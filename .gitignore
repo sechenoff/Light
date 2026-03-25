@@ -5,6 +5,5 @@ dist
 .env.local
 apps/api/.env
 apps/web/.env.local
-*.db
 *.zip
 .DS_Store
