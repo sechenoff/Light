@@ -7,8 +7,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -k -n api,web \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
-    "build": "npm run build -w apps/api && npm run build -w apps/web",
+    "dev": "concurrently -k -n api,web,bot \"npm run dev -w apps/api\" \"npm run dev -w apps/web\" \"npm run dev -w apps/bot\"",
+    "dev:no-bot": "concurrently -k -n api,web \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "build": "npm run build -w apps/api && npm run build -w apps/web && npm run build -w apps/bot",
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
     "prisma:generate": "npm run prisma:generate -w apps/api",
     "prisma:migrate": "npm run prisma:migrate -w apps/api",
