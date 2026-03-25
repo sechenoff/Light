@@ -4,6 +4,8 @@ import { prisma } from "../prisma";
 import { getMergedCategoryOrder } from "./categoryOrder";
 import { compareEquipmentTransportLast } from "../utils/equipmentSort";
 
+type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
+
 export type AvailabilityRow = {
   equipment: Pick<
     Equipment,
@@ -35,7 +37,7 @@ export async function getAvailability(args: {
   search?: string;
   category?: string;
   excludeBookingId?: string;
-  tx?: typeof prisma;
+  tx?: TxClient;
 }) {
   const tx = args.tx ?? prisma;
   const searchNeedle = args.search?.trim().toLocaleLowerCase("ru-RU") ?? "";

@@ -39,9 +39,9 @@ router.get("/", async (req, res, next) => {
         ...(q.search
           ? {
               OR: [
-                { name: { contains: q.search, mode: "insensitive" } },
-                { brand: { contains: q.search, mode: "insensitive" } },
-                { model: { contains: q.search, mode: "insensitive" } },
+                { name: { contains: q.search } },
+                { brand: { contains: q.search } },
+                { model: { contains: q.search } },
               ],
             }
           : {}),

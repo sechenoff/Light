@@ -210,9 +210,10 @@ export async function commitEquipmentImport(args: {
     }
 
     const importKey = computeImportKey({ category, name, brand, model });
-    if (!Number.isFinite(qty) || qty < 0) {
+    if (qty == null || !Number.isFinite(qty) || qty < 0) {
       throw new HttpError(400, `Invalid quantity at row ${r + 1}.`);
     }
+    const safeQty: number = qty;
     const rentalRatePerShift = rate;
 
     // For count-based: quantity is total units. For unit-based: create units records.
@@ -249,7 +250,7 @@ export async function commitEquipmentImport(args: {
           brand,
           model,
           comment,
-          totalQuantity: qty,
+          totalQuantity: safeQty,
           rentalRatePerShift,
         },
         create: {
@@ -260,9 +261,8 @@ export async function commitEquipmentImport(args: {
           brand,
           model,
           comment,
-          totalQuantity: qty,
+          totalQuantity: safeQty,
           rentalRatePerShift,
-          // rates for 2 shifts / project can be added later via mapping
         },
       });
 
@@ -292,11 +292,17 @@ export async function commitEquipmentImport(args: {
           });
         }
 
-        if (unitRecords.length > 0) {
-          await tx.equipmentUnit.createMany({
-            data: unitRecords,
-            skipDuplicates: true,
-          });
+        // Filter out units already existing to avoid unique-constraint errors on SQLite.
+        const existingSerials = new Set(
+          (await tx.equipmentUnit.findMany({ where: { equipmentId: eq.id }, select: { serialNumber: true, internalInventoryNumber: true } }))
+            .map((u) => `${u.serialNumber ?? ""}|${u.internalInventoryNumber ?? ""}`),
+        );
+        const newUnitRecords = unitRecords.filter(
+          (u) => !existingSerials.has(`${u.serialNumber ?? ""}|${u.internalInventoryNumber ?? ""}`),
+        );
+
+        if (newUnitRecords.length > 0) {
+          await tx.equipmentUnit.createMany({ data: newUnitRecords });
         }
 
         // Recompute totalQuantity from units to avoid mismatch due to duplicates.
@@ -311,7 +317,7 @@ export async function commitEquipmentImport(args: {
         // Count-based mode: totalQuantity already set.
         await tx.equipment.update({
           where: { id: eq.id },
-          data: { totalQuantity: qty },
+          data: { totalQuantity: safeQty },
         });
       }
     });

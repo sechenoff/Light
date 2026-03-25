@@ -14,7 +14,7 @@ function toDec(value: string | number | Decimal): Decimal {
 }
 
 function sumDec(values: Array<string | number | Decimal>): Decimal {
-  return values.reduce((acc, v) => acc.add(toDec(v)), new Decimal(0));
+  return values.reduce<Decimal>((acc, v) => acc.add(toDec(v)), new Decimal(0));
 }
 
 export function calcBookingPaymentStatus(args: {

@@ -309,7 +309,7 @@ export async function confirmBooking(bookingId: string) {
     // Reserve units for UNIT-tracked equipment (count-only needs no per-unit rows).
     const overlappingBlockingBookings = await tx.booking.findMany({
       where: {
-        status: { in: BLOCKING_STATUSES },
+        status: { in: [...BLOCKING_STATUSES] },
         startDate: { lte: booking.endDate },
         endDate: { gte: booking.startDate },
       },

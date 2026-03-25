@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import type { Decimal as PrismaDecimal } from "@prisma/client/runtime/library";
 
 import type { QuoteLine } from "../bookings";
 import type { SmetaExportDocument, SmetaExportLine } from "./types";
