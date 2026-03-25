@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -89,7 +89,7 @@ function splitLocalDateTime(local: string): { date: string; time: string } {
   return { date: d.length === 10 ? d : "", time: "10:00" };
 }
 
-export default function BookingNewPage() {
+function BookingNewPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -1111,6 +1111,14 @@ export default function BookingNewPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function BookingNewPageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-8 text-gray-400">Загрузка...</div>}>
+      <BookingNewPage />
+    </Suspense>
   );
 }
 
