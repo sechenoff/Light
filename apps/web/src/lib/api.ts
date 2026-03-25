@@ -1,6 +1,6 @@
 function resolveApiBaseUrl(): string {
   const raw = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (raw == null || String(raw).trim() === "") return "http://localhost:4000";
+  if (raw == null || String(raw).trim() === "") return "/api";
   return String(raw).trim().replace(/\/$/, "");
 }
 
