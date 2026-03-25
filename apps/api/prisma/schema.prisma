@@ -1,0 +1,309 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum StockTrackingMode {
+  COUNT
+  UNIT
+}
+
+enum BookingStatus {
+  DRAFT
+  CONFIRMED
+  ISSUED
+  RETURNED
+  CANCELLED
+}
+
+enum BookingPaymentStatus {
+  NOT_PAID
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+enum PaymentDirection {
+  INCOME
+  EXPENSE
+}
+
+enum PaymentRecordStatus {
+  PLANNED
+  RECEIVED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  OTHER
+}
+
+enum ExpenseCategory {
+  TRANSPORT
+  EQUIPMENT
+  CONTRACTORS
+  STAFF
+  RENT
+  REPAIR
+  OTHER
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  phone     String?
+  email     String?
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookings Booking[]
+
+  @@index([name])
+}
+
+/// Простые настройки приложения (JSON и др.), например порядок категорий оборудования.
+model AppSetting {
+  key   String   @id
+  value String
+
+  updatedAt DateTime @updatedAt
+}
+
+// Парк техники в терминах сметы SvetoBaza (порядок как в Excel):
+// 1) Перечень оборудования → name (+ category как группа/раздел)
+// 2) Кол-во → totalQuantity
+// 3) Стоимость → rentalRatePerShift (за смену)
+// Не храним: «Общая стоимость», «Заказ Количество», «Сумма аренды» — только вычисляются при брони/смете.
+model Equipment {
+  id                String            @id @default(cuid())
+  importKey         String            @unique
+  stockTrackingMode StockTrackingMode @default(COUNT)
+  sortOrder         Int               @default(0)
+
+  category String
+  /// Перечень оборудования (наименование позиции)
+  name     String
+  brand    String?
+  model    String?
+  comment  String?
+
+  /// Кол-во (единиц на складе / в парке)
+  totalQuantity Int @default(0)
+  /// Стоимость (ставка аренды за смену)
+  rentalRatePerShift Decimal
+
+  rentalRateTwoShifts  Decimal?
+  rentalRatePerProject Decimal?
+
+  units        EquipmentUnit[]
+  bookingItems BookingItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([name])
+  @@index([sortOrder])
+}
+
+model EquipmentUnit {
+  id                      String   @id @default(cuid())
+  equipmentId             String
+  serialNumber           String?  @unique
+  internalInventoryNumber String? @unique
+  comment                 String?
+  createdAt               DateTime @default(now())
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  bookingItemUnits BookingItemUnit[]
+
+  @@index([equipmentId])
+}
+
+model Booking {
+  id         String        @id @default(cuid())
+  clientId   String
+  client     Client        @relation(fields: [clientId], references: [id])
+
+  projectName String
+  startDate   DateTime
+  endDate     DateTime
+
+  status      BookingStatus @default(DRAFT)
+  comment     String?
+
+  discountPercent Decimal?
+  totalEstimateAmount Decimal @default(0)
+  discountAmount Decimal @default(0)
+  finalAmount Decimal @default(0)
+  paymentStatus BookingPaymentStatus @default(NOT_PAID)
+  expectedPaymentDate DateTime?
+  actualPaymentDate DateTime?
+  paymentComment String?
+  isFullyPaid Boolean @default(false)
+  amountPaid Decimal @default(0)
+  amountOutstanding Decimal @default(0)
+
+  /// Текст для экспорта сметы (PDF/XLSX), опционально
+  estimateOptionalNote            String?
+  estimateIncludeOptionalInExport Boolean @default(false)
+
+  estimate Estimate?
+  payments Payment[]
+  expenses Expense[]
+  financeEvents BookingFinanceEvent[]
+
+  items BookingItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  confirmedAt DateTime?
+
+  @@index([startDate])
+  @@index([endDate])
+  @@index([status])
+}
+
+model Payment {
+  id String @id @default(cuid())
+  bookingId String?
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  amount Decimal
+  currency String @default("RUB")
+  paymentDate DateTime?
+  plannedPaymentDate DateTime?
+  paymentMethod PaymentMethod @default(OTHER)
+  direction PaymentDirection @default(INCOME)
+  status PaymentRecordStatus @default(PLANNED)
+  payerName String?
+  comment String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([direction])
+  @@index([plannedPaymentDate])
+  @@index([paymentDate])
+}
+
+model Expense {
+  id String @id @default(cuid())
+  bookingId String?
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  category ExpenseCategory @default(OTHER)
+  name String
+  amount Decimal
+  currency String @default("RUB")
+  expenseDate DateTime
+  comment String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bookingId])
+  @@index([category])
+  @@index([expenseDate])
+}
+
+model BookingFinanceEvent {
+  id String @id @default(cuid())
+  bookingId String
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  eventType String
+  statusFrom BookingPaymentStatus?
+  statusTo BookingPaymentStatus?
+  amountDelta Decimal?
+  payloadJson String?
+  createdAt DateTime @default(now())
+
+  @@index([bookingId])
+  @@index([createdAt])
+}
+
+model BookingItem {
+  id          String   @id @default(cuid())
+  bookingId   String
+  equipmentId String
+
+  quantity Int
+
+  booking Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  equipment Equipment  @relation(fields: [equipmentId], references: [id])
+
+  unitReservations BookingItemUnit[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([bookingId, equipmentId])
+  @@index([equipmentId])
+}
+
+model BookingItemUnit {
+  id              String @id @default(cuid())
+  bookingItemId  String
+  equipmentUnitId String
+
+  bookingItem BookingItem  @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
+  equipmentUnit EquipmentUnit @relation(fields: [equipmentUnitId], references: [id])
+
+  @@unique([bookingItemId, equipmentUnitId])
+  @@index([equipmentUnitId])
+}
+
+model Estimate {
+  id              String   @id @default(cuid())
+  bookingId       String   @unique
+  booking         Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  currency        String   @default("RUB")
+  shifts          Int
+
+  subtotal        Decimal 
+  discountPercent Decimal? 
+  discountAmount  Decimal  
+  totalAfterDiscount Decimal
+
+  commentSnapshot String?
+  /// Доп. текст в экспорте (копия из брони при подтверждении)
+  optionalNote            String?
+  includeOptionalInExport Boolean @default(false)
+  /// «1 смена = 24 ч. · …» на момент подтверждения
+  hoursSummaryText      String?
+
+  createdAt DateTime @default(now())
+
+  lines EstimateLine[]
+}
+
+model EstimateLine {
+  id           String @id @default(cuid())
+  estimateId   String
+  equipmentId  String?
+
+  categorySnapshot String
+  nameSnapshot     String
+  brandSnapshot    String?
+  modelSnapshot    String?
+
+  quantity Int
+  unitPrice Decimal 
+  lineSum   Decimal 
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@index([estimateId])
+}
+
