@@ -155,7 +155,10 @@ export class GeminiVisionProvider implements VisionProvider {
   }
 
   async analyzePhoto(input: VisionInput): Promise<LightingAnalysis> {
-    const model = this.client.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = this.client.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      generationConfig: { maxOutputTokens: 4096, responseMimeType: "application/json" },
+    });
 
     const catalogSection = input.catalogHint?.length
       ? "\n\nAVAILABLE RENTAL INVENTORY — use these exact names in the equipment list when possible:\n" +
@@ -178,15 +181,18 @@ export class GeminiVisionProvider implements VisionProvider {
 
     const raw = result.response.text().trim();
 
-    // Извлекаем JSON если модель добавила markdown-блок
-    const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) ?? [null, raw];
-    const jsonStr = jsonMatch[1]?.trim() ?? raw;
-
+    // Извлекаем JSON: сначала пробуем напрямую, потом из markdown-блока
     let parsed: unknown;
     try {
-      parsed = JSON.parse(jsonStr);
+      parsed = JSON.parse(raw);
     } catch {
-      throw new Error(`Gemini вернул невалидный JSON анализа: ${raw.slice(0, 200)}`);
+      const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      const jsonStr = jsonMatch?.[1]?.trim() ?? raw;
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch {
+        throw new Error(`Gemini вернул невалидный JSON анализа: ${raw.slice(0, 300)}`);
+      }
     }
 
     // Если description пришёл как объект (Gemini иногда создаёт вложенный объект из emoji-заголовков)
