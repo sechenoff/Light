@@ -141,6 +141,42 @@ STYLE — match this exact aesthetic:
 
 
 /**
+ * Робастный парсинг JSON — пробует несколько стратегий:
+ * 1. Прямой JSON.parse
+ * 2. Извлечение из markdown-блока ```json ... ```
+ * 3. Ремонт: удаление trailing commas, BOM, управляющих символов
+ * Возвращает parsed object или undefined при неудаче.
+ */
+function tryParseJson(raw: string): unknown | undefined {
+  // 1. Прямой парсинг
+  try {
+    return JSON.parse(raw);
+  } catch {}
+
+  // 2. Markdown-блок
+  const mdMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (mdMatch?.[1]) {
+    try {
+      return JSON.parse(mdMatch[1].trim());
+    } catch {}
+  }
+
+  // 3. Ремонт строки
+  let repaired = raw
+    .replace(/^\uFEFF/, "")                      // BOM
+    .replace(/^[^{[]*/, "")                       // мусор до JSON
+    .replace(/[^}\]]*$/, "")                      // мусор после JSON
+    .replace(/,\s*([}\]])/g, "$1")                // trailing commas
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ""); // control chars (кроме \t \n \r)
+
+  try {
+    return JSON.parse(repaired);
+  } catch {}
+
+  return undefined;
+}
+
+/**
  * Google Gemini Flash implementation of VisionProvider.
  * Инициализируется лениво — не бросает ошибку при старте если ключ не задан,
  * только при первом вызове.
@@ -180,40 +216,42 @@ export class GeminiVisionProvider implements VisionProvider {
     const result = await retryOnOverload(() => model.generateContent(contentParts));
 
     const raw = result.response.text().trim();
+    console.log(`[gemini] analyzePhoto raw length=${raw.length}, first 200: ${raw.slice(0, 200)}`);
 
-    // Извлекаем JSON: сначала пробуем напрямую, потом из markdown-блока
+    // Робастный парсинг JSON: прямой → markdown-блок → ремонт строки
     let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-      const jsonStr = jsonMatch?.[1]?.trim() ?? raw;
-      try {
-        parsed = JSON.parse(jsonStr);
-      } catch {
-        throw new Error(`Gemini вернул невалидный JSON анализа: ${raw.slice(0, 300)}`);
-      }
+    parsed = tryParseJson(raw);
+
+    if (parsed === undefined) {
+      throw new Error(`Gemini вернул невалидный JSON анализа: ${raw.slice(0, 400)}`);
     }
 
     // Если description пришёл как объект (Gemini иногда создаёт вложенный объект из emoji-заголовков)
     // — склеиваем значения в плоскую строку
-    if (
-      parsed !== null &&
-      typeof parsed === "object" &&
-      "description" in (parsed as object) &&
-      typeof (parsed as Record<string, unknown>).description === "object" &&
-      (parsed as Record<string, unknown>).description !== null
-    ) {
-      const descObj = (parsed as Record<string, unknown>).description as Record<string, string>;
-      (parsed as Record<string, unknown>).description = Object.entries(descObj)
+    const obj = parsed as Record<string, unknown>;
+    if (obj.description !== null && typeof obj.description === "object") {
+      const descObj = obj.description as Record<string, string>;
+      obj.description = Object.entries(descObj)
         .map(([k, v]) => `${k}: ${v}`)
         .join("\n\n");
     }
 
+    // Если equipment — объект вместо массива, извлекаем значения
+    if (obj.equipment && !Array.isArray(obj.equipment) && typeof obj.equipment === "object") {
+      obj.equipment = Object.values(obj.equipment);
+    }
+
     try {
-      return parseLightingAnalysis(parsed);
-    } catch (zodErr) {
-      throw new Error(`Gemini вернул невалидный JSON анализа: ${raw.slice(0, 200)}`);
+      return parseLightingAnalysis(obj);
+    } catch (zodErr: any) {
+      console.error(`[gemini] Zod validation failed:`, zodErr?.issues ?? zodErr?.message ?? zodErr);
+      console.error(`[gemini] Parsed object keys:`, Object.keys(obj));
+      if (Array.isArray(obj.equipment)) {
+        console.error(`[gemini] equipment[0]:`, JSON.stringify(obj.equipment[0])?.slice(0, 200));
+        console.error(`[gemini] equipment count:`, obj.equipment.length);
+      }
+      console.error(`[gemini] description type:`, typeof obj.description, `len:`, String(obj.description).length);
+      throw new Error(`Gemini JSON не прошёл валидацию: ${zodErr?.issues?.[0]?.message ?? zodErr?.message ?? "unknown"}`);
     }
   }
 
