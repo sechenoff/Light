@@ -16,5 +16,7 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             cd ~/light-rental-system
-            git pull origin main
+            git fetch origin
+            git reset --hard origin/main
+            chmod +x deploy.sh
             ./deploy.sh --api --rental-bot
