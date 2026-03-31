@@ -19,7 +19,7 @@ jobs:
             cd /opt/light-rental-system
             git fetch origin
             git reset --hard origin/main
-            git clean -fd --exclude="apps/api/.env" --exclude="apps/bot/.env" --exclude="apps/api/prisma/*.db" --exclude="data/" --exclude="apps/api/data/" --exclude="apps/api/storage/"
+            git clean -fd -e "*.env" -e "*.db" -e "data/" -e "storage/"
             npm install
             chmod +x deploy.sh
             ./deploy.sh --api --rental-bot
