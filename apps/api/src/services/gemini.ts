@@ -3,6 +3,22 @@ import type { VisionProvider } from "./vision/provider";
 import type { VisionInput, LightingAnalysis } from "./vision/types";
 import { parseLightingAnalysis } from "./vision/types";
 
+/** Retry up to 2 times on 503/429 with exponential backoff */
+async function retryOnOverload<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const status = err?.status ?? err?.response?.status;
+      if ((status === 503 || status === 429) && attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, (attempt + 1) * 3000));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 const ANALYSIS_SYSTEM_PROMPT = `You are a professional gaffer and cinematographer with high-end commercial and music video experience.
 
 Analyze the provided image (film still, music video frame, or commercial shot) and reconstruct the full lighting setup as accurately and technically as possible.
@@ -148,7 +164,7 @@ export class GeminiVisionProvider implements VisionProvider {
           .join("\n")
       : "";
 
-    const result = await model.generateContent([
+    const contentParts = [
       { text: ANALYSIS_SYSTEM_PROMPT + catalogSection },
       {
         inlineData: {
@@ -156,7 +172,9 @@ export class GeminiVisionProvider implements VisionProvider {
           data: input.imageBuffer.toString("base64"),
         },
       },
-    ]);
+    ];
+
+    const result = await retryOnOverload(() => model.generateContent(contentParts));
 
     const raw = result.response.text().trim();
 
@@ -202,7 +220,7 @@ export class GeminiVisionProvider implements VisionProvider {
         } as any,
       });
 
-      const result = await model.generateContent(DIAGRAM_IMAGE_PROMPT(description));
+      const result = await retryOnOverload(() => model.generateContent(DIAGRAM_IMAGE_PROMPT(description)));
       const response = result.response;
       const candidates = response.candidates;
 
