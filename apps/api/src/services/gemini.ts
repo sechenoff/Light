@@ -196,7 +196,7 @@ export class GeminiVisionProvider implements VisionProvider {
   async generateDiagram(description: string): Promise<Buffer | null> {
     try {
       const model = this.client.getGenerativeModel({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-2.5-flash-image",
         generationConfig: {
           responseModalities: ["IMAGE", "TEXT"],
         } as any,
