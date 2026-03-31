@@ -4,7 +4,10 @@ dist
 .env
 .env.local
 apps/api/.env
+apps/api/prod.db
 apps/web/.env.local
 apps/bot/.env
+apps/prod-bot/.env
 *.zip
 .DS_Store
+logs/*.log

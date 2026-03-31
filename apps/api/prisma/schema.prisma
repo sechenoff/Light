@@ -55,6 +55,89 @@ enum ExpenseCategory {
   OTHER
 }
 
+enum LeadStatus {
+  NEW
+  IN_PROGRESS
+  CONVERTED
+  CLOSED
+}
+
+enum AnalysisStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+
+/// Telegram-пользователь, отправивший фото для анализа
+model User {
+  id         String   @id @default(cuid())
+  telegramId BigInt   @unique
+  username   String?
+  firstName  String?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  analyses Analysis[]
+  leads    Lead[]
+
+  @@index([telegramId])
+}
+
+/// Результат AI-анализа кадра: описание схемы освещения + список оборудования
+model Analysis {
+  id     String         @id @default(cuid())
+  userId String
+  user   User           @relation(fields: [userId], references: [id])
+
+  status AnalysisStatus @default(PENDING)
+
+  /// Telegram file_id исходного фото (для повторной загрузки при необходимости)
+  telegramFileId   String
+  telegramMimeType String  @default("image/jpeg")
+
+  /// Путь к сохранённому файлу (заполняется после загрузки через storage service)
+  storagePath      String?
+
+  /// Заполняются после завершения AI-анализа (DONE)
+  description      String?
+  equipmentJson    String?
+  estimatePerShift Decimal?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lead Lead?
+
+  @@index([userId])
+  @@index([status])
+}
+
+/// Лид — намерение клиента оформить бронь на основе анализа
+model Lead {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id])
+
+  analysisId String?    @unique
+  analysis   Analysis?  @relation(fields: [analysisId], references: [id])
+
+  /// Бронь, созданная из этого лида (заполняется после перехода в booking-сцену)
+  bookingId  String?    @unique
+  booking    Booking?   @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  status     LeadStatus @default(NEW)
+  comment    String?
+
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
 model Client {
   id        String   @id @default(cuid())
   name      String   @unique
@@ -163,6 +246,7 @@ model Booking {
   financeEvents BookingFinanceEvent[]
 
   items BookingItem[]
+  lead  Lead?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -119,17 +119,11 @@ export default function EquipmentPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link className="rounded border border-slate-300 bg-white px-4 py-2 hover:bg-slate-50" href="/equipment/manage">
-            Редактор
-          </Link>
-          <Link className="rounded border border-slate-300 bg-white px-4 py-2 hover:bg-slate-50" href="/finance">
-            Финансы
-          </Link>
-          <Link className="rounded border border-slate-300 bg-white px-4 py-2 hover:bg-slate-50" href="/crew-calculator">
-            Калькулятор осветителей
-          </Link>
           <Link className="rounded bg-slate-900 text-white px-4 py-2 hover:bg-slate-800" href={`/bookings/new?start=${start}&end=${end}`}>
             Создать бронь
+          </Link>
+          <Link className="rounded border border-slate-300 bg-white px-4 py-2 hover:bg-slate-50" href="/settings">
+            ⚙️
           </Link>
         </div>
       </div>
