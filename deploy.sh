@@ -45,12 +45,11 @@ echo ""
 
 # ── API ───────────────────────────────────────────────────────────────────────
 if $DEPLOY_API; then
-  echo "▶ API: install + migrate + build"
+  echo "▶ API: migrate + build"
   cd "$ROOT/apps/api"
 
   [ ! -f .env ] && { echo "  ⚠ .env не найден. Скопируйте .env.production → .env"; exit 1; }
 
-  npm ci --prefer-offline --silent
   npx prisma generate
   npx prisma db push --accept-data-loss   # SQLite: синхронизируем схему
   npm run build
@@ -81,12 +80,11 @@ fi
 
 # ── rental-bot ────────────────────────────────────────────────────────────────
 if $DEPLOY_RENTAL_BOT; then
-  echo "▶ rental-bot: install + build"
+  echo "▶ rental-bot: build"
   cd "$ROOT/apps/bot"
 
   [ ! -f .env ] && { echo "  ⚠ .env не найден. Скопируйте .env.example → .env и заполни"; exit 1; }
 
-  npm ci --prefer-offline --silent
   npm run build
 
   pm2 describe rental-bot > /dev/null 2>&1 \
