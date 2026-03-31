@@ -14,9 +14,12 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 5m
           script: |
-            cd ~/light-rental-system
+            cd /opt/light-rental-system
             git fetch origin
             git reset --hard origin/main
+            git clean -fd --exclude="apps/api/.env" --exclude="apps/bot/.env" --exclude="apps/api/prisma/*.db" --exclude="data/" --exclude="apps/api/data/" --exclude="apps/api/storage/"
+            npm install
             chmod +x deploy.sh
             ./deploy.sh --api --rental-bot
