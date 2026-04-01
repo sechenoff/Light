@@ -804,7 +804,7 @@ function toMatchedItem(
 // ── Вспомогательные функции ───────────────────────────────────────────────────
 
 /** Нормализация: нижний регистр, только буквы/цифры/пробелы */
-function norm(s: string): string {
+export function norm(s: string): string {
   return s
     .toLowerCase()
     .replace(/[^a-zа-яё0-9\s]/gi, " ")
@@ -832,4 +832,206 @@ function categoriesOverlap(catA: string, catB: string): boolean {
   if (catA === catB) return true;
   const keywords = catA.split(" ").filter((t) => t.length >= 4);
   return keywords.some((k) => catB.includes(k));
+}
+
+// ── Типы для гаффер-парсера ───────────────────────────────────────────────────
+
+/** Одна позиция из свободного текста заявки (после LLM-разбора) */
+export type ParsedRequestItem = {
+  name: string;
+  quantity: number;
+  notes?: string;
+};
+
+/** Конкретный кандидат из каталога для неуверенного совпадения */
+export type GafferCandidate = {
+  equipmentId: string;
+  catalogName: string;
+  category: string;
+  availableQuantity: number;
+  rentalRatePerShift: string;
+  confidence: number;
+};
+
+/** Позиция с уверенным совпадением (score ≥ 0.7) */
+export type GafferResolved = {
+  equipmentId: string;
+  catalogName: string;
+  suggestedName: string;
+  category: string;
+  quantity: number;
+  availableQuantity: number;
+  rentalRatePerShift: string;
+  confidence: number;
+};
+
+/** Позиция с неуверенными кандидатами (score 0.3–0.69) */
+export type GafferNeedsReview = {
+  rawPhrase: string;
+  quantity: number;
+  candidates: GafferCandidate[];
+};
+
+/** Полностью нераспознанная позиция */
+export type GafferUnmatched = {
+  rawPhrase: string;
+  quantity: number;
+};
+
+export type GafferMatchResult = {
+  resolved: GafferResolved[];
+  needsReview: GafferNeedsReview[];
+  unmatched: GafferUnmatched[];
+};
+
+// ── Scoring ───────────────────────────────────────────────────────────────────
+
+/** Вычисляет confidence [0..1] для пары (query, catalogRow) */
+function scoreRow(query: string, row: CatalogRow): number {
+  const q = norm(query);
+  const n = norm(row.name);
+
+  if (q === n) return 1.0;
+
+  const qInN = n.includes(q);
+  const nInQ = q.includes(n);
+  if (qInN || nInQ) return 0.9;
+
+  // token score
+  const qTokens = q.split(" ").filter((t) => t.length >= 3);
+  const nTokens = n.split(" ").filter((t) => t.length >= 3);
+  if (qTokens.length > 0 && nTokens.length > 0) {
+    const hits = qTokens.filter((t) => nTokens.includes(t)).length;
+    const tokenScore = hits / Math.max(qTokens.length, nTokens.length);
+    if (tokenScore >= 0.5) return 0.5 + tokenScore * 0.3;
+  }
+
+  // type-synonym hit
+  for (const [key, searchTerms] of Object.entries(TYPE_SYNONYMS)) {
+    if (!q.includes(key)) continue;
+    if (searchTerms.some((term) => n.includes(term.toLowerCase()))) {
+      return 0.65;
+    }
+  }
+
+  // category overlap only
+  if (categoriesOverlap(norm(row.category), q)) return 0.25;
+
+  return 0;
+}
+
+/**
+ * Находит top-N кандидатов из каталога для свободной фразы.
+ * Предварительно проверяет DB-псевдонимы (SlangAlias) — они имеют приоритет.
+ */
+async function findTopCandidates(
+  phrase: string,
+  quantity: number,
+  catalog: CatalogRow[],
+  dbAliases: Map<string, string>,
+  topN = 3,
+): Promise<{ resolved?: GafferResolved; needsReview?: GafferNeedsReview; unmatched?: GafferUnmatched }> {
+  const q = norm(phrase);
+
+  // 1. Check DB SlangAlias first
+  const aliasEquipmentId = dbAliases.get(q);
+  if (aliasEquipmentId) {
+    const row = catalog.find((c) => c.id === aliasEquipmentId);
+    if (row) {
+      return {
+        resolved: {
+          equipmentId: row.id,
+          catalogName: row.name,
+          suggestedName: phrase,
+          category: row.category,
+          quantity: Math.min(quantity, row.totalQuantity),
+          availableQuantity: row.totalQuantity,
+          rentalRatePerShift: row.rentalRatePerShift.toString(),
+          confidence: 1.0,
+        },
+      };
+    }
+  }
+
+  // 2. Score all catalog rows
+  const scored = catalog
+    .map((row) => ({ row, score: scoreRow(phrase, row) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topN);
+
+  if (scored.length === 0) {
+    return { unmatched: { rawPhrase: phrase, quantity } };
+  }
+
+  const best = scored[0];
+
+  if (best.score >= 0.7) {
+    return {
+      resolved: {
+        equipmentId: best.row.id,
+        catalogName: best.row.name,
+        suggestedName: phrase,
+        category: best.row.category,
+        quantity: Math.min(quantity, best.row.totalQuantity),
+        availableQuantity: best.row.totalQuantity,
+        rentalRatePerShift: best.row.rentalRatePerShift.toString(),
+        confidence: best.score,
+      },
+    };
+  }
+
+  if (best.score >= 0.3) {
+    return {
+      needsReview: {
+        rawPhrase: phrase,
+        quantity,
+        candidates: scored.map(({ row, score }) => ({
+          equipmentId: row.id,
+          catalogName: row.name,
+          category: row.category,
+          availableQuantity: row.totalQuantity,
+          rentalRatePerShift: row.rentalRatePerShift.toString(),
+          confidence: score,
+        })),
+      },
+    };
+  }
+
+  return { unmatched: { rawPhrase: phrase, quantity } };
+}
+
+/**
+ * Основная функция для гаффер-парсера.
+ * Принимает распознанные AI позиции и матчит их в каталог.
+ * Использует DB-псевдонимы (SlangAlias) как приоритетный словарь.
+ */
+export async function matchGafferRequest(
+  items: ParsedRequestItem[],
+): Promise<GafferMatchResult> {
+  const [catalog, dbAliasRows] = await Promise.all([
+    prisma.equipment.findMany({
+      where: { totalQuantity: { gt: 0 } },
+      select: { id: true, name: true, category: true, totalQuantity: true, rentalRatePerShift: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+    prisma.slangAlias.findMany({ select: { phraseNormalized: true, equipmentId: true } }),
+  ]);
+
+  const dbAliases = new Map<string, string>(
+    dbAliasRows.map((a) => [a.phraseNormalized, a.equipmentId]),
+  );
+
+  const resolved: GafferResolved[] = [];
+  const needsReview: GafferNeedsReview[] = [];
+  const unmatched: GafferUnmatched[] = [];
+
+  for (const item of items) {
+    const result = await findTopCandidates(item.name, item.quantity, catalog, dbAliases);
+    if (result.resolved) resolved.push(result.resolved);
+    else if (result.needsReview) needsReview.push(result.needsReview);
+    else if (result.unmatched) unmatched.push(result.unmatched);
+  }
+
+  return { resolved, needsReview, unmatched };
 }

@@ -31,6 +31,44 @@ type AvailabilityRow = {
   comment: string | null;
 };
 
+type GafferCandidate = {
+  equipmentId: string;
+  catalogName: string;
+  category: string;
+  availableQuantity: number;
+  rentalRatePerShift: string;
+  confidence: number;
+};
+
+type GafferResolved = {
+  equipmentId: string;
+  catalogName: string;
+  suggestedName: string;
+  category: string;
+  quantity: number;
+  availableQuantity: number;
+  rentalRatePerShift: string;
+  confidence: number;
+};
+
+type GafferNeedsReview = {
+  rawPhrase: string;
+  quantity: number;
+  candidates: GafferCandidate[];
+};
+
+type GafferUnmatched = {
+  rawPhrase: string;
+  quantity: number;
+};
+
+type GafferParseResult = {
+  resolved: GafferResolved[];
+  needsReview: GafferNeedsReview[];
+  unmatched: GafferUnmatched[];
+  message?: string;
+};
+
 type QuoteResponse = {
   shifts: number;
   totalHours?: number;
@@ -197,6 +235,80 @@ function BookingNewPage() {
   const [timeModalOpen, setTimeModalOpen] = useState(false);
   const [draftPickupTime, setDraftPickupTime] = useState("10:00");
   const [draftReturnTime, setDraftReturnTime] = useState("10:00");
+
+  // ── Gaffer AI request ────────────────────────────────────────────────────────
+  const [gafferText, setGafferText] = useState("");
+  const [gafferParsing, setGafferParsing] = useState(false);
+  const [gafferError, setGafferError] = useState<string | null>(null);
+  const [gafferResult, setGafferResult] = useState<GafferParseResult | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewChoices, setReviewChoices] = useState<Record<string, string>>({}); // rawPhrase -> equipmentId
+
+  async function parseGafferRequest() {
+    const text = gafferText.trim();
+    if (!text) return;
+    setGafferParsing(true);
+    setGafferError(null);
+    setGafferResult(null);
+    try {
+      const result = await apiFetch<GafferParseResult>("/api/bookings/parse-request", {
+        method: "POST",
+        body: JSON.stringify({ requestText: text, startDate: pickupISO, endDate: returnISO }),
+      });
+      setGafferResult(result);
+      if (result.resolved.length > 0) {
+        setSelected((prev) => {
+          const next = { ...prev };
+          for (const item of result.resolved) {
+            const clamped = Math.min(item.quantity, item.availableQuantity);
+            if (clamped > 0) {
+              next[item.equipmentId] = (next[item.equipmentId] ?? 0) + clamped;
+            }
+          }
+          return next;
+        });
+      }
+      if (result.needsReview.length > 0) {
+        const initial: Record<string, string> = {};
+        for (const nr of result.needsReview) {
+          if (nr.candidates.length > 0) initial[nr.rawPhrase] = nr.candidates[0].equipmentId;
+        }
+        setReviewChoices(initial);
+        setReviewOpen(true);
+      }
+    } catch (err: any) {
+      setGafferError(err?.message ?? "Ошибка при обращении к AI");
+    } finally {
+      setGafferParsing(false);
+    }
+  }
+
+  function applyReviewChoices() {
+    if (!gafferResult) return;
+    setSelected((prev) => {
+      const next = { ...prev };
+      for (const item of gafferResult.needsReview) {
+        const chosenId = reviewChoices[item.rawPhrase];
+        if (!chosenId || chosenId === "__skip__") continue;
+        const candidate = item.candidates.find((c) => c.equipmentId === chosenId);
+        if (!candidate) continue;
+        const clamped = Math.min(item.quantity, candidate.availableQuantity);
+        if (clamped > 0) next[chosenId] = (next[chosenId] ?? 0) + clamped;
+        apiFetch("/api/admin/slang-learning/propose", {
+          method: "POST",
+          body: JSON.stringify({
+            rawPhrase: item.rawPhrase,
+            proposedEquipmentId: chosenId,
+            proposedEquipmentName: candidate.catalogName,
+            confidence: candidate.confidence,
+            contextJson: JSON.stringify({ source: "booking_review", text: gafferText.slice(0, 300) }),
+          }),
+        }).catch(() => {});
+      }
+      return next;
+    });
+    setReviewOpen(false);
+  }
 
   function openTimeModal() {
     setDraftPickupTime(splitLocalDateTime(pickupLocal).time);
@@ -629,6 +741,71 @@ function BookingNewPage() {
               </div>
             </div>
 
+            {/* ── Gaffer AI request ──────────────────────────────────────────── */}
+            <div className="p-3 border-b border-slate-200 bg-violet-50/40">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-violet-700 uppercase tracking-wide">✨ Заявка гаффера (AI)</span>
+                <span className="text-xs text-slate-500">Вставьте текст заявки — AI распознает оборудование</span>
+              </div>
+              <textarea
+                className="w-full rounded border border-violet-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y"
+                rows={3}
+                maxLength={5000}
+                value={gafferText}
+                onChange={(e) => setGafferText(e.target.value)}
+                placeholder={"Например: 2 штуки 52xt, 3 nova p300, 4 c-stand, 1 чайнабол, 2 рамы 6x6, hazer hz350"}
+              />
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <button
+                  type="button"
+                  className="rounded bg-violet-600 text-white px-4 py-1.5 text-sm font-medium hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  disabled={!gafferText.trim() || gafferParsing}
+                  onClick={parseGafferRequest}
+                >
+                  {gafferParsing ? "Распознаю…" : "Распознать через AI"}
+                </button>
+                {gafferText && (
+                  <button
+                    type="button"
+                    className="text-xs text-slate-500 hover:text-slate-700"
+                    onClick={() => { setGafferText(""); setGafferResult(null); setGafferError(null); }}
+                  >
+                    Очистить
+                  </button>
+                )}
+              </div>
+              {gafferError && (
+                <div className="mt-2 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {gafferError}
+                </div>
+              )}
+              {gafferResult && !gafferParsing && (
+                <div className="mt-2 space-y-1 text-xs">
+                  {gafferResult.resolved.length > 0 && (
+                    <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-800">
+                      ✅ Добавлено автоматически: {gafferResult.resolved.map((r) => `${r.catalogName} ×${Math.min(r.quantity, r.availableQuantity)}`).join(", ")}
+                    </div>
+                  )}
+                  {gafferResult.needsReview.length > 0 && (
+                    <div className="rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-800 flex items-center gap-2">
+                      ⚠️ {gafferResult.needsReview.length} позиц. требуют уточнения —{" "}
+                      <button type="button" className="underline font-medium" onClick={() => setReviewOpen(true)}>
+                        Проверить
+                      </button>
+                    </div>
+                  )}
+                  {gafferResult.unmatched.length > 0 && (
+                    <div className="rounded border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-600">
+                      ❌ Не распознано: {gafferResult.unmatched.map((u) => u.rawPhrase).join(", ")}
+                    </div>
+                  )}
+                  {gafferResult.message && (
+                    <div className="text-slate-500 px-1">{gafferResult.message}</div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3 items-end border-b border-slate-200">
               <div className="flex flex-col">
                 <label className="text-xs text-slate-600">Поиск</label>
@@ -1016,6 +1193,92 @@ function BookingNewPage() {
                   Сохранить
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Gaffer review modal ─────────────────────────────────────────────── */}
+      {reviewOpen && gafferResult && gafferResult.needsReview.length > 0 ? (
+        <div className="fixed inset-0 z-[70] bg-slate-900/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-xl rounded-lg bg-white border border-slate-200 shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between shrink-0">
+              <div className="font-semibold text-slate-900">Уточнение позиций</div>
+              <button type="button" className="text-slate-500 hover:text-slate-900 text-sm" onClick={() => setReviewOpen(false)}>
+                Закрыть
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
+              {gafferResult.needsReview.map((item) => (
+                <div key={item.rawPhrase} className="p-4">
+                  <div className="text-sm font-medium text-slate-800 mb-1">
+                    «{item.rawPhrase}»{" "}
+                    <span className="text-slate-400 font-normal">×{item.quantity}</span>
+                  </div>
+                  <div className="text-xs text-slate-500 mb-2">AI нашёл несколько кандидатов. Выберите нужный:</div>
+                  <div className="space-y-1.5">
+                    {item.candidates.map((c) => (
+                      <label
+                        key={c.equipmentId}
+                        className={`flex items-start gap-2.5 rounded border p-2.5 cursor-pointer transition-colors ${
+                          reviewChoices[item.rawPhrase] === c.equipmentId
+                            ? "border-violet-400 bg-violet-50"
+                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`review_${item.rawPhrase}`}
+                          value={c.equipmentId}
+                          checked={reviewChoices[item.rawPhrase] === c.equipmentId}
+                          onChange={() => setReviewChoices((prev) => ({ ...prev, [item.rawPhrase]: c.equipmentId }))}
+                          className="mt-0.5 accent-violet-600"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-sm text-slate-900">{c.catalogName}</div>
+                          <div className="text-xs text-slate-500">{c.category} · Доступно: {c.availableQuantity}</div>
+                        </div>
+                        <div className="text-xs text-slate-500 shrink-0">
+                          {Math.round(c.confidence * 100)}%
+                        </div>
+                      </label>
+                    ))}
+                    <label
+                      className={`flex items-start gap-2.5 rounded border p-2.5 cursor-pointer transition-colors ${
+                        reviewChoices[item.rawPhrase] === "__skip__"
+                          ? "border-slate-400 bg-slate-100"
+                          : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={`review_${item.rawPhrase}`}
+                        value="__skip__"
+                        checked={reviewChoices[item.rawPhrase] === "__skip__"}
+                        onChange={() => setReviewChoices((prev) => ({ ...prev, [item.rawPhrase]: "__skip__" }))}
+                        className="mt-0.5 accent-slate-500"
+                      />
+                      <div className="text-sm text-slate-500">Пропустить эту позицию</div>
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t border-slate-200 flex justify-end gap-2 shrink-0 bg-white">
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+                onClick={() => setReviewOpen(false)}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="rounded bg-violet-600 text-white px-4 py-2 text-sm font-medium hover:bg-violet-700"
+                onClick={applyReviewChoices}
+              >
+                Применить выбранное
+              </button>
             </div>
           </div>
         </div>

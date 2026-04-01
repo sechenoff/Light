@@ -12,6 +12,8 @@ import { setCategoryOrder } from "../services/categoryOrder";
 import { photoAnalysisRouter } from "./photoAnalysis";
 import { usersRouter } from "./users";
 import { analysesRouter } from "./analyses";
+import { bookingRequestParserRouter } from "./bookingRequestParser";
+import { slangLearningRouter } from "./slangLearning";
 
 const router = express.Router();
 
@@ -40,6 +42,8 @@ router.use("/api", financeRouter);
 router.use("/api/photo-analysis", photoAnalysisRouter);
 router.use("/api/users", usersRouter);
 router.use("/api/analyses", analysesRouter);
+router.use("/api/bookings", bookingRequestParserRouter);
+router.use("/api/admin/slang-learning", slangLearningRouter);
 
 export { router };
 

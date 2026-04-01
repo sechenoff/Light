@@ -521,13 +521,267 @@ function ImportTab() {
   );
 }
 
+// ── Tab: Жаргон / Обучение ────────────────────────────────────────────────────
+
+type SlangCandidate = {
+  id: string;
+  rawPhrase: string;
+  normalizedPhrase: string;
+  proposedEquipmentId: string | null;
+  proposedEquipmentName: string | null;
+  confidence: number;
+  contextJson: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+};
+
+type SlangAlias = {
+  id: string;
+  phraseNormalized: string;
+  phraseOriginal: string;
+  equipmentId: string;
+  confidence: number;
+  source: string;
+  createdAt: string;
+  equipment: { name: string; category: string };
+};
+
+function SlangLearningTab() {
+  const [activeSection, setActiveSection] = useState<"pending" | "approved" | "aliases">("pending");
+  const [candidates, setCandidates] = useState<SlangCandidate[]>([]);
+  const [aliases, setAliases] = useState<SlangAlias[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [actionState, setActionState] = useState<Record<string, "approving" | "rejecting">>({});
+  const [overrideEquipId, setOverrideEquipId] = useState<Record<string, string>>({});
+
+  async function loadCandidates(status: "PENDING" | "APPROVED" | "REJECTED") {
+    setLoading(true);
+    try {
+      const data = await apiFetch<SlangCandidate[]>(`/api/admin/slang-learning?status=${status}`);
+      setCandidates(data);
+    } catch {
+      setCandidates([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadAliases() {
+    setLoading(true);
+    try {
+      const data = await apiFetch<SlangAlias[]>("/api/admin/slang-learning/aliases");
+      setAliases(data);
+    } catch {
+      setAliases([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeSection === "pending") loadCandidates("PENDING");
+    else if (activeSection === "approved") loadCandidates("APPROVED");
+    else loadAliases();
+  }, [activeSection]);
+
+  async function handleApprove(c: SlangCandidate) {
+    setActionState((s) => ({ ...s, [c.id]: "approving" }));
+    try {
+      await apiFetch(`/api/admin/slang-learning/${c.id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ reviewedBy: "admin", equipmentId: overrideEquipId[c.id] || c.proposedEquipmentId }),
+      });
+      setCandidates((prev) => prev.filter((x) => x.id !== c.id));
+    } catch (err: any) {
+      alert(err?.message ?? "Ошибка подтверждения");
+    } finally {
+      setActionState((s) => { const n = { ...s }; delete n[c.id]; return n; });
+    }
+  }
+
+  async function handleReject(c: SlangCandidate) {
+    setActionState((s) => ({ ...s, [c.id]: "rejecting" }));
+    try {
+      await apiFetch(`/api/admin/slang-learning/${c.id}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ reviewedBy: "admin" }),
+      });
+      setCandidates((prev) => prev.filter((x) => x.id !== c.id));
+    } catch (err: any) {
+      alert(err?.message ?? "Ошибка отклонения");
+    } finally {
+      setActionState((s) => { const n = { ...s }; delete n[c.id]; return n; });
+    }
+  }
+
+  async function handleDeleteAlias(id: string) {
+    if (!confirm("Удалить этот псевдоним?")) return;
+    try {
+      await apiFetch(`/api/admin/slang-learning/aliases/${id}`, { method: "DELETE" });
+      setAliases((prev) => prev.filter((a) => a.id !== id));
+    } catch (err: any) {
+      alert(err?.message ?? "Ошибка удаления");
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-slate-800">Жаргон / Обучение AI</h2>
+        <p className="text-xs text-slate-500 mt-0.5">
+          Когда менеджер уточняет позицию через заявку гаффера, система предлагает сохранить жаргонное соответствие.
+          Здесь вы подтверждаете или отклоняете кандидатов, а также просматриваете активный словарь.
+        </p>
+      </div>
+
+      {/* Section tabs */}
+      <div className="flex gap-1 border-b border-slate-200">
+        {([
+          ["pending", "На проверке"],
+          ["approved", "Одобрено"],
+          ["aliases", "Словарь псевдонимов"],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setActiveSection(id)}
+            className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+              activeSection === id
+                ? "border-slate-700 text-slate-900"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {loading && <div className="py-6 text-center text-sm text-slate-400">Загрузка…</div>}
+
+      {!loading && activeSection !== "aliases" && (
+        <>
+          {candidates.length === 0 ? (
+            <div className="py-8 text-center text-sm text-slate-400">
+              {activeSection === "pending" ? "Нет кандидатов на проверку" : "История пуста"}
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 -mx-6">
+              {candidates.map((c) => (
+                <div key={c.id} className="px-6 py-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
+                  <div className="flex-1 min-w-0 space-y-0.5">
+                    <div className="font-medium text-slate-900 text-sm">«{c.rawPhrase}»</div>
+                    <div className="text-xs text-slate-500">
+                      Нормализовано: <code className="bg-slate-100 px-1 rounded">{c.normalizedPhrase}</code>
+                    </div>
+                    {c.proposedEquipmentName && (
+                      <div className="text-xs text-slate-600">
+                        Предложено: <span className="font-medium">{c.proposedEquipmentName}</span>
+                        {" "}
+                        <span className="text-slate-400">({Math.round(c.confidence * 100)}%)</span>
+                      </div>
+                    )}
+                    {activeSection === "pending" && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <label className="text-xs text-slate-500">ID позиции (если изменить):</label>
+                        <input
+                          type="text"
+                          className="text-xs rounded border border-slate-200 px-2 py-0.5 w-44 bg-white"
+                          placeholder={c.proposedEquipmentId ?? "не задан"}
+                          value={overrideEquipId[c.id] ?? ""}
+                          onChange={(e) => setOverrideEquipId((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                        />
+                      </div>
+                    )}
+                    {c.reviewedAt && (
+                      <div className="text-xs text-slate-400">
+                        {c.status === "APPROVED" ? "Одобрено" : "Отклонено"} {new Date(c.reviewedAt).toLocaleString("ru-RU")} · {c.reviewedBy}
+                      </div>
+                    )}
+                    <div className="text-xs text-slate-400">{new Date(c.createdAt).toLocaleString("ru-RU")}</div>
+                  </div>
+                  {activeSection === "pending" && (
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        type="button"
+                        className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                        disabled={!!actionState[c.id] || !c.proposedEquipmentId}
+                        onClick={() => handleApprove(c)}
+                      >
+                        {actionState[c.id] === "approving" ? "…" : "Подтвердить"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                        disabled={!!actionState[c.id]}
+                        onClick={() => handleReject(c)}
+                      >
+                        {actionState[c.id] === "rejecting" ? "…" : "Отклонить"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {!loading && activeSection === "aliases" && (
+        <>
+          {aliases.length === 0 ? (
+            <div className="py-8 text-center text-sm text-slate-400">Словарь пуст</div>
+          ) : (
+            <div className="overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="text-left px-3 py-2">Жаргон</th>
+                    <th className="text-left px-3 py-2">Каталог</th>
+                    <th className="text-left px-3 py-2">Категория</th>
+                    <th className="px-3 py-2 text-center">Ув.</th>
+                    <th className="px-3 py-2 text-center">Источник</th>
+                    <th className="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {aliases.map((a) => (
+                    <tr key={a.id}>
+                      <td className="px-3 py-2 font-medium text-slate-900">{a.phraseOriginal}</td>
+                      <td className="px-3 py-2 text-slate-700">{a.equipment.name}</td>
+                      <td className="px-3 py-2 text-slate-500">{a.equipment.category}</td>
+                      <td className="px-3 py-2 text-center">{Math.round(a.confidence * 100)}%</td>
+                      <td className="px-3 py-2 text-center text-slate-400">{a.source}</td>
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          className="text-rose-500 hover:text-rose-700"
+                          title="Удалить псевдоним"
+                          onClick={() => handleDeleteAlias(a.id)}
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Admin panel (authenticated) ───────────────────────────────────────────────
 
-type AdminTab = "pricelist" | "import";
+type AdminTab = "pricelist" | "import" | "slang";
 
 const TABS: Array<{ id: AdminTab; label: string }> = [
   { id: "pricelist", label: "Прайслист бота" },
   { id: "import", label: "Импорт оборудования" },
+  { id: "slang", label: "Жаргон / Обучение" },
 ];
 
 function AdminPanel({ onLogout }: { onLogout: () => void }) {
@@ -579,6 +833,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
         {tab === "pricelist" && <PricelistTab />}
         {tab === "import" && <ImportTab />}
+        {tab === "slang" && <SlangLearningTab />}
       </div>
     </div>
   );
