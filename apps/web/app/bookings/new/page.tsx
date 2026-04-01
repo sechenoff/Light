@@ -241,15 +241,12 @@ function BookingNewPage() {
   const [gafferParsing, setGafferParsing] = useState(false);
   const [gafferError, setGafferError] = useState<string | null>(null);
   const [gafferResult, setGafferResult] = useState<GafferParseResult | null>(null);
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const [reviewChoices, setReviewChoices] = useState<Record<string, string>>({}); // rawPhrase -> equipmentId
-
-  // ── Manual learning modal (for unmatched items) ───────────────────────────
-  const [manualLearnOpen, setManualLearnOpen] = useState(false);
-  const [manualLearnChoices, setManualLearnChoices] = useState<Record<string, string>>({}); // rawPhrase -> equipmentId
-  const [manualLearnSearches, setManualLearnSearches] = useState<Record<string, string>>({}); // rawPhrase -> search text
-  const [manualLearnSubmitting, setManualLearnSubmitting] = useState(false);
-  const [manualLearnSaved, setManualLearnSaved] = useState(false);
+  /** Единое окно: needsReview (варианты AI + ручной поиск) и unmatched (только поиск) */
+  const [clarifyOpen, setClarifyOpen] = useState(false);
+  const [clarifyChoices, setClarifyChoices] = useState<Record<string, string>>({}); // rawPhrase -> equipmentId | __skip__
+  const [clarifySearches, setClarifySearches] = useState<Record<string, string>>({});
+  const [clarifySubmitting, setClarifySubmitting] = useState(false);
+  const [clarifySaved, setClarifySaved] = useState(false);
 
   async function parseGafferRequest() {
     const text = gafferText.trim();
@@ -275,13 +272,16 @@ function BookingNewPage() {
           return next;
         });
       }
-      if (result.needsReview.length > 0) {
+      const clarifyCount = result.needsReview.length + result.unmatched.length;
+      if (clarifyCount > 0) {
         const initial: Record<string, string> = {};
         for (const nr of result.needsReview) {
           if (nr.candidates.length > 0) initial[nr.rawPhrase] = nr.candidates[0].equipmentId;
         }
-        setReviewChoices(initial);
-        setReviewOpen(true);
+        setClarifyChoices(initial);
+        setClarifySearches({});
+        setClarifySaved(false);
+        setClarifyOpen(true);
       }
     } catch (err: any) {
       setGafferError(err?.message ?? "Ошибка при обращении к AI");
@@ -290,71 +290,98 @@ function BookingNewPage() {
     }
   }
 
-  function applyReviewChoices() {
+  function applyClarifyAll() {
     if (!gafferResult) return;
-    setSelected((prev) => {
-      const next = { ...prev };
-      for (const item of gafferResult.needsReview) {
-        const chosenId = reviewChoices[item.rawPhrase];
-        if (!chosenId || chosenId === "__skip__") continue;
-        const candidate = item.candidates.find((c) => c.equipmentId === chosenId);
-        if (!candidate) continue;
-        const clamped = Math.min(item.quantity, candidate.availableQuantity);
-        if (clamped > 0) next[chosenId] = (next[chosenId] ?? 0) + clamped;
-        apiFetch("/api/admin/slang-learning/propose", {
-          method: "POST",
-          body: JSON.stringify({
-            rawPhrase: item.rawPhrase,
-            proposedEquipmentId: chosenId,
-            proposedEquipmentName: candidate.catalogName,
-            confidence: candidate.confidence,
-            contextJson: JSON.stringify({ source: "booking_review", text: gafferText.slice(0, 300) }),
-          }),
-        }).catch(() => {});
-      }
-      return next;
-    });
-    setReviewOpen(false);
-  }
+    setClarifySubmitting(true);
 
-  async function submitManualLearning() {
-    if (!gafferResult) return;
-    setManualLearnSubmitting(true);
-    setSelected((prev) => {
-      const next = { ...prev };
-      for (const item of gafferResult.unmatched) {
-        const chosenId = manualLearnChoices[item.rawPhrase];
-        if (!chosenId) continue;
+    const delta: Record<string, number> = {};
+    const addQty = (equipmentId: string, q: number) => {
+      if (q <= 0) return;
+      delta[equipmentId] = (delta[equipmentId] ?? 0) + q;
+    };
+
+    type ProposeBody = {
+      rawPhrase: string;
+      proposedEquipmentId: string;
+      proposedEquipmentName: string;
+      confidence: number;
+      contextJson: string;
+    };
+    const payloads: ProposeBody[] = [];
+
+    for (const item of gafferResult.needsReview) {
+      const chosenId = clarifyChoices[item.rawPhrase];
+      if (!chosenId || chosenId === "__skip__") continue;
+      const fromCand = item.candidates.find((c) => c.equipmentId === chosenId);
+      if (fromCand) {
+        const clamped = Math.min(item.quantity, fromCand.availableQuantity);
+        addQty(chosenId, clamped);
+        payloads.push({
+          rawPhrase: item.rawPhrase,
+          proposedEquipmentId: chosenId,
+          proposedEquipmentName: fromCand.catalogName,
+          confidence: fromCand.confidence,
+          contextJson: JSON.stringify({ source: "booking_review", text: gafferText.slice(0, 300) }),
+        });
+      } else {
         const row = rowCache.get(chosenId);
         if (!row) continue;
         const clamped = Math.min(item.quantity, row.availableQuantity);
-        if (clamped > 0) next[chosenId] = (next[chosenId] ?? 0) + clamped;
-      }
-      return next;
-    });
-    const promises = gafferResult.unmatched.map(async (item) => {
-      const chosenId = manualLearnChoices[item.rawPhrase];
-      if (!chosenId) return;
-      const row = rowCache.get(chosenId);
-      const chosenName = row ? [row.name, row.brand, row.model].filter(Boolean).join(" ") : chosenId;
-      await apiFetch("/api/admin/slang-learning/propose", {
-        method: "POST",
-        body: JSON.stringify({
+        addQty(chosenId, clamped);
+        payloads.push({
           rawPhrase: item.rawPhrase,
           proposedEquipmentId: chosenId,
-          proposedEquipmentName: chosenName,
+          proposedEquipmentName: [row.name, row.brand, row.model].filter(Boolean).join(" "),
           confidence: 1.0,
           contextJson: JSON.stringify({
             source: "manual_unmatched_learning",
             text: gafferText.slice(0, 300),
-            submittedAt: new Date().toISOString(),
+            clarifyHadCandidates: true,
           }),
+        });
+      }
+    }
+
+    for (const item of gafferResult.unmatched) {
+      const chosenId = clarifyChoices[item.rawPhrase];
+      if (!chosenId) continue;
+      const row = rowCache.get(chosenId);
+      if (!row) continue;
+      const clamped = Math.min(item.quantity, row.availableQuantity);
+      addQty(chosenId, clamped);
+      payloads.push({
+        rawPhrase: item.rawPhrase,
+        proposedEquipmentId: chosenId,
+        proposedEquipmentName: [row.name, row.brand, row.model].filter(Boolean).join(" "),
+        confidence: 1.0,
+        contextJson: JSON.stringify({
+          source: "manual_unmatched_learning",
+          text: gafferText.slice(0, 300),
+          submittedAt: new Date().toISOString(),
         }),
-      }).catch(() => {});
+      });
+    }
+
+    setSelected((prev) => {
+      const next = { ...prev };
+      for (const [id, q] of Object.entries(delta)) {
+        next[id] = (next[id] ?? 0) + q;
+      }
+      return next;
     });
-    await Promise.all(promises);
-    setManualLearnSubmitting(false);
-    setManualLearnSaved(true);
+
+    void Promise.all(
+      payloads.map((body) =>
+        apiFetch("/api/admin/slang-learning/propose", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }).catch(() => {}),
+      ),
+    );
+
+    if (payloads.length > 0) setClarifySaved(true);
+    setClarifyOpen(false);
+    setClarifySubmitting(false);
   }
 
   function openTimeModal() {
@@ -833,28 +860,32 @@ function BookingNewPage() {
                       ✅ Добавлено автоматически: {gafferResult.resolved.map((r) => `${r.catalogName} ×${Math.min(r.quantity, r.availableQuantity)}`).join(", ")}
                     </div>
                   )}
-                  {gafferResult.needsReview.length > 0 && (
-                    <div className="rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-800 flex items-center gap-2">
-                      ⚠️ {gafferResult.needsReview.length} позиц. требуют уточнения —{" "}
-                      <button type="button" className="underline font-medium" onClick={() => setReviewOpen(true)}>
-                        Проверить
-                      </button>
-                    </div>
-                  )}
-                  {gafferResult.unmatched.length > 0 && (
-                    <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
-                      <div className="flex items-center justify-between gap-3">
-                        <span>❌ Не распознано: {gafferResult.unmatched.map((u) => u.rawPhrase).join(", ")}</span>
+                  {gafferResult.needsReview.length + gafferResult.unmatched.length > 0 && (
+                    <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span>
+                          ⚠️ Уточнение:{" "}
+                          {gafferResult.needsReview.length > 0 && (
+                            <span className="font-medium">{gafferResult.needsReview.length} с вариантами</span>
+                          )}
+                          {gafferResult.needsReview.length > 0 && gafferResult.unmatched.length > 0 && " · "}
+                          {gafferResult.unmatched.length > 0 && (
+                            <span className="font-medium">{gafferResult.unmatched.length} не распознано</span>
+                          )}
+                        </span>
                         <button
                           type="button"
-                          className="shrink-0 rounded bg-slate-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-900 transition-colors"
-                          onClick={() => { setManualLearnOpen(true); setManualLearnSaved(false); setManualLearnChoices({}); setManualLearnSearches({}); }}
+                          className="underline font-semibold text-amber-950"
+                          onClick={() => {
+                            setClarifyOpen(true);
+                            setClarifySaved(false);
+                          }}
                         >
-                          Дообучить вручную
+                          Открыть
                         </button>
                       </div>
-                      {manualLearnSaved && (
-                        <div className="mt-1 text-xs text-emerald-700">✅ Сохранено в очередь обучения — ждёт подтверждения в админке</div>
+                      {clarifySaved && (
+                        <div className="text-xs text-emerald-800">✅ Сохранено в очередь обучения — ждёт подтверждения в админке</div>
                       )}
                     </div>
                   )}
@@ -1257,124 +1288,212 @@ function BookingNewPage() {
         </div>
       ) : null}
 
-      {/* ── Gaffer review modal ─────────────────────────────────────────────── */}
-      {reviewOpen && gafferResult && gafferResult.needsReview.length > 0 ? (
+      {/* ── Gaffer: единое окно уточнения (варианты AI + ручной поиск) ─────────── */}
+      {clarifyOpen && gafferResult && gafferResult.needsReview.length + gafferResult.unmatched.length > 0 ? (
         <div className="fixed inset-0 z-[70] bg-slate-900/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-xl rounded-lg bg-white border border-slate-200 shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between shrink-0">
-              <div className="font-semibold text-slate-900">Уточнение позиций</div>
-              <button type="button" className="text-slate-500 hover:text-slate-900 text-sm" onClick={() => setReviewOpen(false)}>
-                Закрыть
+          <div className="w-full max-w-2xl rounded-xl bg-white border border-slate-200 shadow-xl flex flex-col max-h-[92vh]">
+            <div className="p-4 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
+              <div>
+                <div className="font-semibold text-slate-900">Уточнение позиций</div>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Где есть похожие строки — выберите вариант из списка или найдите позицию вручную в каталоге. Нераспознанные — только поиск.
+                  Выбранные сопоставления попадут в комплект брони и в очередь обучения (после подтверждения в админке).
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-slate-400 hover:text-slate-700 text-xl leading-none shrink-0"
+                onClick={() => setClarifyOpen(false)}
+              >
+                ✕
               </button>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
-              {gafferResult.needsReview.map((item) => (
-                <div key={item.rawPhrase} className="p-4">
-                  <div className="text-sm font-medium text-slate-800 mb-1">
-                    «{item.rawPhrase}»{" "}
-                    <span className="text-slate-400 font-normal">×{item.quantity}</span>
-                  </div>
-                  <div className="text-xs text-slate-500 mb-2">AI нашёл несколько кандидатов. Выберите нужный:</div>
-                  <div className="space-y-1.5">
-                    {item.candidates.map((c) => (
+            <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-6">
+              {gafferResult.needsReview.map((item) => {
+                const search = clarifySearches[item.rawPhrase] ?? "";
+                const chosen = clarifyChoices[item.rawPhrase];
+                const allRows = Array.from(rowCache.values());
+                const filtered = allRows
+                  .filter((r) => {
+                    const q = search.toLowerCase();
+                    return (
+                      !q ||
+                      r.name.toLowerCase().includes(q) ||
+                      (r.brand ?? "").toLowerCase().includes(q) ||
+                      (r.model ?? "").toLowerCase().includes(q) ||
+                      r.category.toLowerCase().includes(q)
+                    );
+                  })
+                  .slice(0, 30);
+                const chosenRow = chosen && chosen !== "__skip__" ? rowCache.get(chosen) : undefined;
+                const chosenLabel =
+                  chosenRow != null
+                    ? [chosenRow.name, chosenRow.brand, chosenRow.model].filter(Boolean).join(" ")
+                    : chosen && chosen !== "__skip__"
+                      ? chosen
+                      : null;
+
+                return (
+                  <div key={`rev-${item.rawPhrase}`} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs bg-amber-100 text-amber-800 rounded px-2 py-0.5 font-medium">похожие варианты</span>
+                      <span className="text-sm font-medium text-slate-900">«{item.rawPhrase}»</span>
+                      <span className="text-xs text-slate-500">×{item.quantity}</span>
+                    </div>
+
+                    <div className="text-xs font-medium text-slate-600">Варианты из каталога</div>
+                    <div className="space-y-1.5">
+                      {item.candidates.map((c) => (
+                        <label
+                          key={c.equipmentId}
+                          className={`flex items-start gap-2.5 rounded border p-2.5 cursor-pointer transition-colors ${
+                            clarifyChoices[item.rawPhrase] === c.equipmentId
+                              ? "border-emerald-400 bg-emerald-50"
+                              : "border-slate-200 hover:border-slate-300 hover:bg-white"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name={`clarify_${item.rawPhrase}`}
+                            value={c.equipmentId}
+                            checked={clarifyChoices[item.rawPhrase] === c.equipmentId}
+                            onChange={() => setClarifyChoices((prev) => ({ ...prev, [item.rawPhrase]: c.equipmentId }))}
+                            className="mt-0.5 accent-emerald-600"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium text-sm text-slate-900">{c.catalogName}</div>
+                            <div className="text-xs text-slate-500">
+                              {c.category} · Доступно: {c.availableQuantity}
+                            </div>
+                          </div>
+                          <div className="text-xs text-slate-500 shrink-0">{Math.round(c.confidence * 100)}%</div>
+                        </label>
+                      ))}
                       <label
-                        key={c.equipmentId}
                         className={`flex items-start gap-2.5 rounded border p-2.5 cursor-pointer transition-colors ${
-                          reviewChoices[item.rawPhrase] === c.equipmentId
-                            ? "border-emerald-400 bg-emerald-50"
-                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                          clarifyChoices[item.rawPhrase] === "__skip__"
+                            ? "border-slate-400 bg-slate-100"
+                            : "border-slate-200 hover:border-slate-300 hover:bg-white"
                         }`}
                       >
                         <input
                           type="radio"
-                          name={`review_${item.rawPhrase}`}
-                          value={c.equipmentId}
-                          checked={reviewChoices[item.rawPhrase] === c.equipmentId}
-                          onChange={() => setReviewChoices((prev) => ({ ...prev, [item.rawPhrase]: c.equipmentId }))}
-                          className="mt-0.5 accent-emerald-600"
+                          name={`clarify_${item.rawPhrase}`}
+                          value="__skip__"
+                          checked={clarifyChoices[item.rawPhrase] === "__skip__"}
+                          onChange={() => setClarifyChoices((prev) => ({ ...prev, [item.rawPhrase]: "__skip__" }))}
+                          className="mt-0.5 accent-slate-500"
                         />
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium text-sm text-slate-900">{c.catalogName}</div>
-                          <div className="text-xs text-slate-500">{c.category} · Доступно: {c.availableQuantity}</div>
-                        </div>
-                        <div className="text-xs text-slate-500 shrink-0">
-                          {Math.round(c.confidence * 100)}%
-                        </div>
+                        <div className="text-sm text-slate-500">Пропустить эту позицию</div>
                       </label>
-                    ))}
-                    <label
-                      className={`flex items-start gap-2.5 rounded border p-2.5 cursor-pointer transition-colors ${
-                        reviewChoices[item.rawPhrase] === "__skip__"
-                          ? "border-slate-400 bg-slate-100"
-                          : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name={`review_${item.rawPhrase}`}
-                        value="__skip__"
-                        checked={reviewChoices[item.rawPhrase] === "__skip__"}
-                        onChange={() => setReviewChoices((prev) => ({ ...prev, [item.rawPhrase]: "__skip__" }))}
-                        className="mt-0.5 accent-slate-500"
-                      />
-                      <div className="text-sm text-slate-500">Пропустить эту позицию</div>
-                    </label>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="p-4 border-t border-slate-200 flex justify-end gap-2 shrink-0 bg-white">
-              <button
-                type="button"
-                className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
-                onClick={() => setReviewOpen(false)}
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                className="rounded bg-violet-600 text-white px-4 py-2 text-sm font-medium hover:bg-violet-700"
-                onClick={applyReviewChoices}
-              >
-                Применить выбранное
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {manualLearnOpen && gafferResult && gafferResult.unmatched.length > 0 ? (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl rounded-xl bg-white border border-slate-200 shadow-xl flex flex-col max-h-[90vh]">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between shrink-0">
-              <div>
-                <div className="font-semibold text-slate-900">Дообучение вручную</div>
-                <div className="text-xs text-slate-500 mt-0.5">Сопоставьте нераспознанные фразы с позициями каталога — они попадут в очередь на подтверждение</div>
-              </div>
-              <button type="button" className="text-slate-400 hover:text-slate-700 text-xl leading-none" onClick={() => setManualLearnOpen(false)}>✕</button>
-            </div>
-            <div className="overflow-y-auto flex-1 p-4 space-y-5">
-              {gafferResult.unmatched.map((item) => {
-                const search = manualLearnSearches[item.rawPhrase] ?? "";
-                const chosen = manualLearnChoices[item.rawPhrase];
-                const allRows = Array.from(rowCache.values());
-                const filtered = allRows.filter((r) => {
-                  const q = search.toLowerCase();
-                  return !q || r.name.toLowerCase().includes(q) || (r.brand ?? "").toLowerCase().includes(q) || (r.model ?? "").toLowerCase().includes(q) || r.category.toLowerCase().includes(q);
-                }).slice(0, 30);
-                return (
-                  <div key={item.rawPhrase} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs bg-rose-100 text-rose-700 rounded px-2 py-0.5 font-mono">не распознано</span>
-                      <span className="text-sm font-medium text-slate-900">"{item.rawPhrase}"</span>
-                      {item.quantity && <span className="text-xs text-slate-500">×{item.quantity}</span>}
                     </div>
-                    {chosen ? (
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 flex-1">
-                          ✓ {rowCache.get(chosen) ? [rowCache.get(chosen)!.name, rowCache.get(chosen)!.brand, rowCache.get(chosen)!.model].filter(Boolean).join(" ") : chosen}
+
+                    <div className="border-t border-slate-200 pt-3 space-y-2">
+                      <div className="text-xs font-medium text-slate-600">Или поиск по каталогу</div>
+                      {chosenLabel && !item.candidates.some((c) => c.equipmentId === chosen) ? (
+                        <div className="flex items-center gap-2">
+                          <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 flex-1">
+                            ✓ Вручную: {chosenLabel}
+                          </div>
+                          <button
+                            type="button"
+                            className="text-xs text-slate-500 hover:text-rose-600 underline shrink-0"
+                            onClick={() =>
+                              setClarifyChoices((p) => {
+                                const n = { ...p };
+                                const first = item.candidates[0]?.equipmentId;
+                                if (first) n[item.rawPhrase] = first;
+                                else delete n[item.rawPhrase];
+                                return n;
+                              })
+                            }
+                          >
+                            Сбросить к вариантам
+                          </button>
                         </div>
-                        <button type="button" className="text-xs text-slate-500 hover:text-rose-600 underline" onClick={() => setManualLearnChoices((p) => { const n = {...p}; delete n[item.rawPhrase]; return n; })}>
+                      ) : null}
+                      {!(chosenLabel && !item.candidates.some((c) => c.equipmentId === chosen)) ? (
+                        <>
+                          <input
+                            type="text"
+                            placeholder="Название, бренд, модель, категория…"
+                            className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm bg-white"
+                            value={search}
+                            onChange={(e) => setClarifySearches((p) => ({ ...p, [item.rawPhrase]: e.target.value }))}
+                          />
+                          {filtered.length === 0 && search && (
+                            <div className="text-xs text-slate-500 py-1">Ничего не найдено — попробуйте другой запрос.</div>
+                          )}
+                          {filtered.length === 0 && !search && (
+                            <div className="text-xs text-slate-400 py-1">Введите запрос или выберите вариант выше.</div>
+                          )}
+                          <div className="space-y-1 max-h-36 overflow-y-auto">
+                            {filtered.map((r) => (
+                              <button
+                                key={r.equipmentId}
+                                type="button"
+                                className="w-full text-left rounded border border-slate-200 px-2.5 py-1.5 text-xs hover:border-violet-400 hover:bg-violet-50 transition-colors bg-white"
+                                onClick={() => {
+                                  setClarifyChoices((p) => ({ ...p, [item.rawPhrase]: r.equipmentId }));
+                                  setClarifySearches((p) => ({ ...p, [item.rawPhrase]: "" }));
+                                }}
+                              >
+                                <div className="font-medium text-slate-900">{r.name}</div>
+                                <div className="text-slate-500">{[r.brand, r.model, r.category].filter(Boolean).join(" · ")}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {gafferResult.needsReview.length > 0 && gafferResult.unmatched.length > 0 ? (
+                <div className="text-center text-xs text-slate-400 uppercase tracking-wide">— без похожих в каталоге —</div>
+              ) : null}
+
+              {gafferResult.unmatched.map((item) => {
+                const search = clarifySearches[item.rawPhrase] ?? "";
+                const chosen = clarifyChoices[item.rawPhrase];
+                const allRows = Array.from(rowCache.values());
+                const filtered = allRows
+                  .filter((r) => {
+                    const q = search.toLowerCase();
+                    return (
+                      !q ||
+                      r.name.toLowerCase().includes(q) ||
+                      (r.brand ?? "").toLowerCase().includes(q) ||
+                      (r.model ?? "").toLowerCase().includes(q) ||
+                      r.category.toLowerCase().includes(q)
+                    );
+                  })
+                  .slice(0, 30);
+                const chosenRow = chosen ? rowCache.get(chosen) : undefined;
+                return (
+                  <div key={`unm-${item.rawPhrase}`} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs bg-rose-100 text-rose-700 rounded px-2 py-0.5 font-medium">не распознано</span>
+                      <span className="text-sm font-medium text-slate-900">«{item.rawPhrase}»</span>
+                      <span className="text-xs text-slate-500">×{item.quantity}</span>
+                    </div>
+                    {chosen && chosenRow ? (
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 flex-1">
+                          ✓ {[chosenRow.name, chosenRow.brand, chosenRow.model].filter(Boolean).join(" ")}
+                        </div>
+                        <button
+                          type="button"
+                          className="text-xs text-slate-500 hover:text-rose-600 underline shrink-0"
+                          onClick={() =>
+                            setClarifyChoices((p) => {
+                              const n = { ...p };
+                              delete n[item.rawPhrase];
+                              return n;
+                            })
+                          }
+                        >
                           Изменить
                         </button>
                       </div>
@@ -1382,24 +1501,27 @@ function BookingNewPage() {
                       <>
                         <input
                           type="text"
-                          placeholder="Поиск по каталогу..."
-                          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm mb-2 bg-white"
+                          placeholder="Поиск по каталогу…"
+                          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm bg-white"
                           value={search}
-                          onChange={(e) => setManualLearnSearches((p) => ({ ...p, [item.rawPhrase]: e.target.value }))}
+                          onChange={(e) => setClarifySearches((p) => ({ ...p, [item.rawPhrase]: e.target.value }))}
                         />
                         {filtered.length === 0 && search && (
                           <div className="text-xs text-slate-500 py-1">Ничего не найдено. Попробуйте другой запрос.</div>
                         )}
                         {filtered.length === 0 && !search && (
-                          <div className="text-xs text-slate-400 py-1">Начните вводить название для поиска по каталогу</div>
+                          <div className="text-xs text-slate-400 py-1">Начните вводить название для поиска по каталогу.</div>
                         )}
                         <div className="space-y-1 max-h-40 overflow-y-auto">
                           {filtered.map((r) => (
                             <button
                               key={r.equipmentId}
                               type="button"
-                              className="w-full text-left rounded border border-slate-200 px-2.5 py-1.5 text-xs hover:border-violet-400 hover:bg-violet-50 transition-colors"
-                              onClick={() => { setManualLearnChoices((p) => ({ ...p, [item.rawPhrase]: r.equipmentId })); setManualLearnSearches((p) => ({ ...p, [item.rawPhrase]: "" })); }}
+                              className="w-full text-left rounded border border-slate-200 px-2.5 py-1.5 text-xs hover:border-violet-400 hover:bg-violet-50 transition-colors bg-white"
+                              onClick={() => {
+                                setClarifyChoices((p) => ({ ...p, [item.rawPhrase]: r.equipmentId }));
+                                setClarifySearches((p) => ({ ...p, [item.rawPhrase]: "" }));
+                              }}
                             >
                               <div className="font-medium text-slate-900">{r.name}</div>
                               <div className="text-slate-500">{[r.brand, r.model, r.category].filter(Boolean).join(" · ")}</div>
@@ -1412,21 +1534,25 @@ function BookingNewPage() {
                 );
               })}
             </div>
-            <div className="p-4 border-t border-slate-200 flex items-center justify-between shrink-0 bg-white">
+            <div className="p-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0 bg-white">
               <div className="text-xs text-slate-500">
-                {Object.keys(manualLearnChoices).length} из {gafferResult.unmatched.length} сопоставлено
+                Всего строк: {gafferResult.needsReview.length + gafferResult.unmatched.length}
               </div>
               <div className="flex gap-2">
-                <button type="button" className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50" onClick={() => setManualLearnOpen(false)}>
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+                  onClick={() => setClarifyOpen(false)}
+                >
                   Отмена
                 </button>
                 <button
                   type="button"
-                  disabled={manualLearnSubmitting || Object.keys(manualLearnChoices).length === 0}
-                  className="rounded bg-slate-800 text-white px-4 py-2 text-sm font-medium hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  onClick={async () => { await submitManualLearning(); setManualLearnOpen(false); }}
+                  disabled={clarifySubmitting}
+                  className="rounded bg-violet-600 text-white px-4 py-2 text-sm font-medium hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  onClick={applyClarifyAll}
                 >
-                  {manualLearnSubmitting ? "Сохранение..." : "Сохранить в обучение"}
+                  {clarifySubmitting ? "Применение…" : "Применить в комплект"}
                 </button>
               </div>
             </div>
