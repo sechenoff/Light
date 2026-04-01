@@ -22,4 +22,4 @@ jobs:
             git clean -fd -e "*.env" -e "*.db" -e "data/" -e "storage/"
             npm install
             chmod +x deploy.sh
-            ./deploy.sh --api --rental-bot
+            ./deploy.sh --api --rental-bot --web
