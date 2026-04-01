@@ -864,14 +864,11 @@ function BookingNewPage() {
                     <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 space-y-1">
                       <div className="flex flex-wrap items-center gap-2 text-sm">
                         <span>
-                          ⚠️ Уточнение:{" "}
-                          {gafferResult.needsReview.length > 0 && (
-                            <span className="font-medium">{gafferResult.needsReview.length} с вариантами</span>
-                          )}
-                          {gafferResult.needsReview.length > 0 && gafferResult.unmatched.length > 0 && " · "}
-                          {gafferResult.unmatched.length > 0 && (
-                            <span className="font-medium">{gafferResult.unmatched.length} не распознано</span>
-                          )}
+                          ⚠️{" "}
+                          <span className="font-medium">
+                            {gafferResult.needsReview.length + gafferResult.unmatched.length} позиц.
+                          </span>
+                          {" "}нужно сопоставить с каталогом (похожие — с вариантами, остальные — поиск)
                         </span>
                         <button
                           type="button"
@@ -1451,7 +1448,7 @@ function BookingNewPage() {
               })}
 
               {gafferResult.needsReview.length > 0 && gafferResult.unmatched.length > 0 ? (
-                <div className="text-center text-xs text-slate-400 uppercase tracking-wide">— без похожих в каталоге —</div>
+                <div className="text-xs text-slate-500 font-medium px-1">Дальше — без похожих совпадений, только поиск:</div>
               ) : null}
 
               {gafferResult.unmatched.map((item) => {
