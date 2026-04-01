@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useMemo, useState } from "react";
+import Link from "next/link";
 import { apiFetch } from "../../src/lib/api";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -286,6 +287,132 @@ function PricelistTab() {
   );
 }
 
+// ── Tab: Каталог техники ──────────────────────────────────────────────────────
+
+type CatalogSummaryRow = {
+  id: string;
+  category: string;
+  name: string;
+  totalQuantity: number;
+  rentalRatePerShift: string;
+};
+
+function CatalogTab() {
+  const [rows, setRows] = useState<CatalogSummaryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch<{ equipments: CatalogSummaryRow[] }>("/api/equipment");
+      setRows(data.equipments);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка загрузки каталога");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const byCategory = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      map.set(r.category, (map.get(r.category) ?? 0) + 1);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], "ru"));
+  }, [rows]);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-slate-800">Каталог техники</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Полный список оборудования в базе данных. Для редактирования перейдите в расширенный редактор.
+          </p>
+        </div>
+        <Link
+          href="/equipment/manage"
+          className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          Редактор
+        </Link>
+      </div>
+
+      {loading ? (
+        <div className="py-8 text-center text-sm text-slate-400">Загрузка…</div>
+      ) : error ? (
+        <div className="p-4 rounded-xl border border-rose-200 bg-rose-50 text-sm text-rose-700">
+          <div className="font-medium mb-1">Ошибка загрузки</div>
+          <div>{error}</div>
+          <button onClick={load} className="mt-2 text-xs underline">Повторить</button>
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="p-8 text-center rounded-xl border border-dashed border-slate-300">
+          <div className="text-sm font-medium text-slate-600 mb-1">Каталог пуст</div>
+          <p className="text-xs text-slate-400">
+            Добавьте оборудование через вкладку{" "}
+            <span className="font-medium text-slate-600">Импорт оборудования</span>{" "}
+            или нажмите <span className="font-medium text-slate-600">Редактор</span>.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-2xl font-bold text-slate-900">{rows.length}</div>
+              <div className="text-xs text-slate-500 mt-0.5">позиций в каталоге</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-2xl font-bold text-slate-900">{byCategory.length}</div>
+              <div className="text-xs text-slate-500 mt-0.5">категорий</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-2xl font-bold text-slate-900">
+                {rows.reduce((s, r) => s + r.totalQuantity, 0)}
+              </div>
+              <div className="text-xs text-slate-500 mt-0.5">единиц всего</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <button
+                onClick={load}
+                className="text-xs text-slate-500 hover:text-slate-800 underline"
+              >
+                Обновить
+              </button>
+            </div>
+          </div>
+
+          {/* Category breakdown */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wide">
+              По категориям
+            </div>
+            <div className="divide-y divide-slate-100">
+              {byCategory.map(([cat, count]) => (
+                <div key={cat} className="flex items-center justify-between px-4 py-2.5">
+                  <span className="text-sm text-slate-800">{cat}</span>
+                  <span className="text-sm font-medium text-slate-600">{count} позиц.</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Tab: Импорт оборудования ──────────────────────────────────────────────────
 
 function ImportTab() {
@@ -307,12 +434,12 @@ function ImportTab() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"}/api/equipment/import/preview`,
-        { method: "POST", body: form, credentials: "include" },
-      ).then((r) => r.json());
-      setPreview(res as PreviewResponse);
-      const suggested = (res as PreviewResponse).suggestedMapping ?? {};
+      const res = await apiFetch<PreviewResponse>("/api/equipment/import/preview", {
+        method: "POST",
+        body: form,
+      });
+      setPreview(res);
+      const suggested = res.suggestedMapping ?? {};
       setMapping((prev) => {
         const next: MappingState = { ...prev };
         for (const k of Object.keys(suggested)) {
@@ -340,11 +467,11 @@ function ImportTab() {
     form.append("file", file);
     form.append("mapping", JSON.stringify(mappingPayload));
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"}/api/equipment/import/commit`,
-        { method: "POST", body: form, credentials: "include" },
-      ).then((r) => r.json());
-      setCommitResult(res as CommitResult);
+      const res = await apiFetch<CommitResult>("/api/equipment/import/commit", {
+        method: "POST",
+        body: form,
+      });
+      setCommitResult(res);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Ошибка импорта");
     }
@@ -511,6 +638,20 @@ function ImportTab() {
                       <span className="font-semibold">{commitResult.unitsAdded}</span>
                     </div>
                   )}
+                  <div className="pt-2 border-t border-emerald-200 flex gap-2 flex-wrap">
+                    <Link
+                      href="/equipment"
+                      className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-900 underline"
+                    >
+                      Посмотреть каталог →
+                    </Link>
+                    <Link
+                      href="/equipment/manage"
+                      className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-900 underline"
+                    >
+                      Редактор →
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>
@@ -789,16 +930,17 @@ function SlangLearningTab() {
 
 // ── Admin panel (authenticated) ───────────────────────────────────────────────
 
-type AdminTab = "pricelist" | "import" | "slang";
+type AdminTab = "catalog" | "pricelist" | "import" | "slang";
 
 const TABS: Array<{ id: AdminTab; label: string }> = [
+  { id: "catalog", label: "Каталог техники" },
   { id: "pricelist", label: "Прайслист бота" },
   { id: "import", label: "Импорт оборудования" },
   { id: "slang", label: "Жаргон / Обучение" },
 ];
 
 function AdminPanel({ onLogout }: { onLogout: () => void }) {
-  const [tab, setTab] = useState<AdminTab>("pricelist");
+  const [tab, setTab] = useState<AdminTab>("catalog");
 
   return (
     <div className="p-4 max-w-4xl">
@@ -844,6 +986,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
       {/* Tab content */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+        {tab === "catalog" && <CatalogTab />}
         {tab === "pricelist" && <PricelistTab />}
         {tab === "import" && <ImportTab />}
         {tab === "slang" && <SlangLearningTab />}
