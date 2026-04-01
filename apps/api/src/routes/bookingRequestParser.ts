@@ -1,6 +1,7 @@
 import express from "express";
 import { z } from "zod";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { Prisma } from "@prisma/client";
 import { matchGafferRequest, type ParsedRequestItem } from "../services/equipmentMatcher";
 
 const router = express.Router();
@@ -40,13 +41,35 @@ If no equipment items can be identified, return an empty array: []
 Gaffer request:
 `;
 
+/** Gemini SDK may throw from response.text() when candidates are empty, blocked, or malformed. */
+function readGeminiText(result: { response: { text: () => string; candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }> } }): string {
+  try {
+    return result.response.text();
+  } catch (first: unknown) {
+    const c = result.response.candidates?.[0];
+    const reason = c?.finishReason;
+    if (reason && reason !== "STOP") {
+      throw new Error(`Gemini завершила ответ со статусом ${reason}`);
+    }
+    const parts = c?.content?.parts;
+    if (Array.isArray(parts)) {
+      const joined = parts.map((p) => (typeof p?.text === "string" ? p.text : "")).join("");
+      if (joined.trim()) return joined;
+    }
+    const msg = first instanceof Error ? first.message : String(first);
+    throw new Error(`Пустой ответ AI: ${msg}`);
+  }
+}
+
 async function extractItemsWithLLM(text: string): Promise<ParsedRequestItem[]> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
 
+  const modelName = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+
   const client = new GoogleGenerativeAI(apiKey);
   const model = client.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: modelName,
     generationConfig: {
       /** Long lists need a large JSON array; was 2048 and truncated for ~50+ lines. */
       maxOutputTokens: 4096,
@@ -58,7 +81,7 @@ async function extractItemsWithLLM(text: string): Promise<ParsedRequestItem[]> {
   for (let attempt = 0; attempt <= 2; attempt++) {
     try {
       const result = await model.generateContent(EXTRACT_PROMPT + text);
-      raw = result.response.text();
+      raw = readGeminiText(result);
       break;
     } catch (err: any) {
       const status = err?.status ?? err?.response?.status;
@@ -91,7 +114,13 @@ async function extractItemsWithLLM(text: string): Promise<ParsedRequestItem[]> {
 
   const ItemSchema = z.object({
     name: z.string().min(1),
-    quantity: z.number().int().positive().default(1),
+    /** Модель может опустить quantity или отдать строкой. */
+    quantity: z.preprocess((v) => {
+      if (v === undefined || v === null || v === "") return 1;
+      if (typeof v === "number" && Number.isFinite(v)) return Math.max(1, Math.round(v));
+      const n = Number(String(v).trim().replace(",", "."));
+      return Number.isFinite(n) && n > 0 ? Math.round(n) : 1;
+    }, z.number().int().positive()),
     notes: z.string().optional(),
   });
 
@@ -135,7 +164,22 @@ router.post("/parse-request", async (req, res, next) => {
     }
 
     // Step 2: Match extracted items to catalog
-    const matchResult = await matchGafferRequest(extractedItems);
+    let matchResult;
+    try {
+      matchResult = await matchGafferRequest(extractedItems);
+    } catch (err) {
+      console.error("[parse-request] catalog match failed:", err);
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        return res.status(503).json({
+          error: "Ошибка чтения каталога из базы. Проверьте миграции Prisma и перезапустите API.",
+          code: "CATALOG_DB_ERROR",
+        });
+      }
+      return res.status(503).json({
+        error: "Не удалось сопоставить позиции с каталогом. Попробуйте позже.",
+        code: "MATCH_FAILED",
+      });
+    }
 
     return res.json(matchResult);
   } catch (err) {

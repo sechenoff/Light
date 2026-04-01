@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import { ZodError } from "zod";
 
 import { router } from "./routes";
 import { HttpError } from "./utils/errors";
@@ -30,6 +31,12 @@ app.use(router);
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err instanceof HttpError) {
     return res.status(err.status).json({ message: err.message, details: err.details });
+  }
+  if (err instanceof ZodError) {
+    return res.status(400).json({
+      message: "Некорректные данные запроса",
+      details: err.flatten(),
+    });
   }
   const rawMessage = err instanceof Error ? err.message : String(err ?? "");
   const normalized = rawMessage.toLowerCase();

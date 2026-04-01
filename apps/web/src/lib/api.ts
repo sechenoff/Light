@@ -51,7 +51,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     const message =
       typeof jsonObject?.message === "string"
         ? jsonObject.message
-        : `Request failed: ${res.status}`;
+        : typeof jsonObject?.error === "string"
+          ? jsonObject.error
+          : `Request failed: ${res.status}`;
     throw new ApiFetchError(message, res.status, jsonObject?.details ?? json);
   }
 
