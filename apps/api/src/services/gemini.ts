@@ -126,17 +126,24 @@ Lighting setup to visualize:
 
 STYLE — match this exact aesthetic:
 - Overhead top-down perspective looking straight down at the studio floor
-- Vintage craft paper / parchment background texture, slightly aged look
-- The studio room is a rectangle with visible walls/boundaries drawn as dark lines, with door openings at top and bottom edges
-- All light fixtures are realistic black studio lights seen from above (not abstract shapes), with visible power cables/wires drawn as loose curvy black lines on the floor
-- Each light fixture emits a wide colored TRANSLUCENT CONE/BEAM of light directed toward the center subject — the beams should overlap and blend where they cross
-- Color coding for light beams: warm lights (3200K) = yellow/amber glow, cool lights (5600K) = cyan/light blue glow, LED panels = purple/magenta glow, strobes = blue glow, reflectors = soft orange glow
-- Center of the room: a simple white circular icon of a MODEL/SUBJECT (minimalist human figure symbol), labeled "MODEL"
-- Bottom center: a PHOTOGRAPHER/CAMERA icon (simple camera silhouette), labeled "PHOTOGRAPHER"
-- Each light fixture has a clear bold BLACK TEXT LABEL next to it: the light role + color temperature, e.g. "KEY LIGHT (WARM 3200K)", "FILL LIGHT (COOL 5600K)"
-- Include a LEGEND box in the upper-right corner showing color swatches: WARM, REFLECTOR, STROBE, LED PANEL with matching colored squares
-- The overall look should be clean, professional, and visually rich — like a well-designed lighting plan from a cinematography textbook
-- No watermarks, no extra text beyond labels and legend
+- Hand-drawn lighting diagram style on white graph paper / blueprint notebook paper with visible light blue grid lines
+- Clean pencil-and-colored-pencil illustration aesthetic, like a cinematography lighting plan sketched by hand
+- The studio room is a simple rectangle with visible dark border lines
+- All light fixtures are realistic studio lights seen from above, hand-drawn in black/grey pencil with subtle shading
+- Each light fixture emits a wide translucent colored beam of light directed toward the subject, with soft overlap where beams intersect
+- Light beam colors should match the reference: warm yellow-tinted beams for the visible sources
+- Left side of frame: a CINEMA CAMERA mounted on a TRIPOD, seen from above, aimed toward the subject; label it clearly as "CAMERA"
+- Center-right of the room: a small seated female subject seen from above, minimal but hand-drawn, positioned as the talent
+- Top-left: a large MAIN LIGHT aimed diagonally toward the subject, labeled "MAIN LIGHT (5600K)"
+- Bottom-left: a softer FILL LIGHT aimed diagonally upward toward the subject, labeled "FILL LIGHT (5600K)"
+- Right side near the subject: a focused RIM LIGHT aimed horizontally toward the subject, labeled "RIM LIGHT (5600K)"
+- Far right side: a BACKGROUND LIGHT illuminating a vertical paper backdrop / seamless roll area, labeled "BACKGROUND (3200K)"
+- Top-right corner: an additional small overhead lamp illuminating the background rolls
+- The background area on the right should include vertically standing seamless paper rolls in different colors, drawn in a simple hand-sketched way
+- All labels must be in bold, clean, hand-drawn black uppercase text placed next to each fixture
+- Overall look should feel like a professional film lighting plan drawn by hand for a cinematography setup
+- Clean, readable, visually balanced composition
+- No photographer, no photo camera, no legend box, no extra text beyond the fixture labels and "CAMERA"
 - Landscape orientation, high detail`;
 
 
