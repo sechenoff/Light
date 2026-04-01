@@ -631,8 +631,8 @@ function SlangLearningTab() {
       <div>
         <h2 className="text-base font-semibold text-slate-800">Жаргон / Обучение AI</h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          Когда менеджер уточняет позицию через заявку гаффера, система предлагает сохранить жаргонное соответствие.
-          Здесь вы подтверждаете или отклоняете кандидатов, а также просматриваете активный словарь.
+          Кандидаты поступают из двух источников: <span className="font-medium text-amber-700">AI-уточнение</span> — менеджер выбрал из предложенных AI вариантов; <span className="font-medium text-violet-700">Ручной ввод</span> — менеджер вручную сопоставил нераспознанную фразу с каталогом.
+          Подтверждённые записи добавляются в словарь и повышают точность будущего распознавания.
         </p>
       </div>
 
@@ -670,7 +670,20 @@ function SlangLearningTab() {
               {candidates.map((c) => (
                 <div key={c.id} className="px-6 py-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
                   <div className="flex-1 min-w-0 space-y-0.5">
-                    <div className="font-medium text-slate-900 text-sm">«{c.rawPhrase}»</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="font-medium text-slate-900 text-sm">«{c.rawPhrase}»</div>
+                      {(() => {
+                        let src: string | undefined;
+                        try { src = c.contextJson ? JSON.parse(c.contextJson).source : undefined; } catch { /* */ }
+                        if (src === "manual_unmatched_learning") {
+                          return <span className="text-[10px] font-semibold bg-violet-100 text-violet-700 rounded px-1.5 py-0.5 uppercase tracking-wide">Ручной ввод</span>;
+                        }
+                        if (src === "booking_review") {
+                          return <span className="text-[10px] font-semibold bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 uppercase tracking-wide">AI-уточнение</span>;
+                        }
+                        return null;
+                      })()}
+                    </div>
                     <div className="text-xs text-slate-500">
                       Нормализовано: <code className="bg-slate-100 px-1 rounded">{c.normalizedPhrase}</code>
                     </div>

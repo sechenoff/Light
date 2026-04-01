@@ -244,6 +244,13 @@ function BookingNewPage() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewChoices, setReviewChoices] = useState<Record<string, string>>({}); // rawPhrase -> equipmentId
 
+  // ── Manual learning modal (for unmatched items) ───────────────────────────
+  const [manualLearnOpen, setManualLearnOpen] = useState(false);
+  const [manualLearnChoices, setManualLearnChoices] = useState<Record<string, string>>({}); // rawPhrase -> equipmentId
+  const [manualLearnSearches, setManualLearnSearches] = useState<Record<string, string>>({}); // rawPhrase -> search text
+  const [manualLearnSubmitting, setManualLearnSubmitting] = useState(false);
+  const [manualLearnSaved, setManualLearnSaved] = useState(false);
+
   async function parseGafferRequest() {
     const text = gafferText.trim();
     if (!text) return;
@@ -308,6 +315,34 @@ function BookingNewPage() {
       return next;
     });
     setReviewOpen(false);
+  }
+
+  async function submitManualLearning() {
+    if (!gafferResult) return;
+    setManualLearnSubmitting(true);
+    const promises = gafferResult.unmatched.map(async (item) => {
+      const chosenId = manualLearnChoices[item.rawPhrase];
+      if (!chosenId) return;
+      const row = rowCache.get(chosenId);
+      const chosenName = row ? [row.name, row.brand, row.model].filter(Boolean).join(" ") : chosenId;
+      await apiFetch("/api/admin/slang-learning/propose", {
+        method: "POST",
+        body: JSON.stringify({
+          rawPhrase: item.rawPhrase,
+          proposedEquipmentId: chosenId,
+          proposedEquipmentName: chosenName,
+          confidence: 1.0,
+          contextJson: JSON.stringify({
+            source: "manual_unmatched_learning",
+            text: gafferText.slice(0, 300),
+            submittedAt: new Date().toISOString(),
+          }),
+        }),
+      }).catch(() => {});
+    });
+    await Promise.all(promises);
+    setManualLearnSubmitting(false);
+    setManualLearnSaved(true);
   }
 
   function openTimeModal() {
@@ -795,8 +830,20 @@ function BookingNewPage() {
                     </div>
                   )}
                   {gafferResult.unmatched.length > 0 && (
-                    <div className="rounded border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-600">
-                      ❌ Не распознано: {gafferResult.unmatched.map((u) => u.rawPhrase).join(", ")}
+                    <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
+                      <div className="flex items-center justify-between gap-3">
+                        <span>❌ Не распознано: {gafferResult.unmatched.map((u) => u.rawPhrase).join(", ")}</span>
+                        <button
+                          type="button"
+                          className="shrink-0 rounded bg-slate-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-900 transition-colors"
+                          onClick={() => { setManualLearnOpen(true); setManualLearnSaved(false); setManualLearnChoices({}); setManualLearnSearches({}); }}
+                        >
+                          Дообучить вручную
+                        </button>
+                      </div>
+                      {manualLearnSaved && (
+                        <div className="mt-1 text-xs text-emerald-700">✅ Сохранено в очередь обучения — ждёт подтверждения в админке</div>
+                      )}
                     </div>
                   )}
                   {gafferResult.message && (
@@ -1279,6 +1326,97 @@ function BookingNewPage() {
               >
                 Применить выбранное
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {manualLearnOpen && gafferResult && gafferResult.unmatched.length > 0 ? (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-white border border-slate-200 shadow-xl flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between shrink-0">
+              <div>
+                <div className="font-semibold text-slate-900">Дообучение вручную</div>
+                <div className="text-xs text-slate-500 mt-0.5">Сопоставьте нераспознанные фразы с позициями каталога — они попадут в очередь на подтверждение</div>
+              </div>
+              <button type="button" className="text-slate-400 hover:text-slate-700 text-xl leading-none" onClick={() => setManualLearnOpen(false)}>✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-4 space-y-5">
+              {gafferResult.unmatched.map((item) => {
+                const search = manualLearnSearches[item.rawPhrase] ?? "";
+                const chosen = manualLearnChoices[item.rawPhrase];
+                const allRows = Array.from(rowCache.values());
+                const filtered = allRows.filter((r) => {
+                  const q = search.toLowerCase();
+                  return !q || r.name.toLowerCase().includes(q) || (r.brand ?? "").toLowerCase().includes(q) || (r.model ?? "").toLowerCase().includes(q) || r.category.toLowerCase().includes(q);
+                }).slice(0, 30);
+                return (
+                  <div key={item.rawPhrase} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs bg-rose-100 text-rose-700 rounded px-2 py-0.5 font-mono">не распознано</span>
+                      <span className="text-sm font-medium text-slate-900">"{item.rawPhrase}"</span>
+                      {item.quantity && <span className="text-xs text-slate-500">×{item.quantity}</span>}
+                    </div>
+                    {chosen ? (
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 flex-1">
+                          ✓ {rowCache.get(chosen) ? [rowCache.get(chosen)!.name, rowCache.get(chosen)!.brand, rowCache.get(chosen)!.model].filter(Boolean).join(" ") : chosen}
+                        </div>
+                        <button type="button" className="text-xs text-slate-500 hover:text-rose-600 underline" onClick={() => setManualLearnChoices((p) => { const n = {...p}; delete n[item.rawPhrase]; return n; })}>
+                          Изменить
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          placeholder="Поиск по каталогу..."
+                          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm mb-2 bg-white"
+                          value={search}
+                          onChange={(e) => setManualLearnSearches((p) => ({ ...p, [item.rawPhrase]: e.target.value }))}
+                        />
+                        {filtered.length === 0 && search && (
+                          <div className="text-xs text-slate-500 py-1">Ничего не найдено. Попробуйте другой запрос.</div>
+                        )}
+                        {filtered.length === 0 && !search && (
+                          <div className="text-xs text-slate-400 py-1">Начните вводить название для поиска по каталогу</div>
+                        )}
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                          {filtered.map((r) => (
+                            <button
+                              key={r.equipmentId}
+                              type="button"
+                              className="w-full text-left rounded border border-slate-200 px-2.5 py-1.5 text-xs hover:border-violet-400 hover:bg-violet-50 transition-colors"
+                              onClick={() => { setManualLearnChoices((p) => ({ ...p, [item.rawPhrase]: r.equipmentId })); setManualLearnSearches((p) => ({ ...p, [item.rawPhrase]: "" })); }}
+                            >
+                              <div className="font-medium text-slate-900">{r.name}</div>
+                              <div className="text-slate-500">{[r.brand, r.model, r.category].filter(Boolean).join(" · ")}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="p-4 border-t border-slate-200 flex items-center justify-between shrink-0 bg-white">
+              <div className="text-xs text-slate-500">
+                {Object.keys(manualLearnChoices).length} из {gafferResult.unmatched.length} сопоставлено
+              </div>
+              <div className="flex gap-2">
+                <button type="button" className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50" onClick={() => setManualLearnOpen(false)}>
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={manualLearnSubmitting || Object.keys(manualLearnChoices).length === 0}
+                  className="rounded bg-slate-800 text-white px-4 py-2 text-sm font-medium hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  onClick={async () => { await submitManualLearning(); setManualLearnOpen(false); }}
+                >
+                  {manualLearnSubmitting ? "Сохранение..." : "Сохранить в обучение"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

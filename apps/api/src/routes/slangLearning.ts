@@ -6,8 +6,13 @@ import { norm } from "../services/equipmentMatcher";
 const router = express.Router();
 
 // ── POST /api/admin/slang-learning/propose ─────────────────────────────────────
-// Called by the frontend when a user confirms an ambiguous match (needsReview).
+// Called by the frontend when a user confirms an ambiguous match (needsReview)
+// or manually maps an unrecognized phrase to a catalog item.
 // Creates a PENDING candidate in the learning queue.
+//
+// source values (inside contextJson):
+//   "booking_review"             — manager picked from AI-suggested candidates
+//   "manual_unmatched_learning"  — manager manually mapped an unrecognized phrase
 
 const ProposeBody = z.object({
   rawPhrase: z.string().min(1).max(500),
@@ -22,7 +27,18 @@ router.post("/propose", async (req, res, next) => {
     const body = ProposeBody.parse(req.body);
     const normalizedPhrase = norm(body.rawPhrase);
 
-    // Avoid duplicate pending candidates for the same phrase+equipment
+    // For manual mappings (confidence === 1.0) reject if an APPROVED alias
+    // already exists for the exact same phrase+equipment pair to avoid noise.
+    if (body.proposedEquipmentId && body.confidence >= 1.0) {
+      const approvedAlias = await prisma.slangAlias.findFirst({
+        where: { phraseNormalized: normalizedPhrase, equipmentId: body.proposedEquipmentId },
+      });
+      if (approvedAlias) {
+        return res.json({ id: approvedAlias.id, alreadyApproved: true });
+      }
+    }
+
+    // Avoid duplicate PENDING candidates for the same phrase+equipment
     const existing = await prisma.slangLearningCandidate.findFirst({
       where: {
         normalizedPhrase,
@@ -32,6 +48,14 @@ router.post("/propose", async (req, res, next) => {
     });
 
     if (existing) {
+      // If the incoming request is more confident (manual > AI), update confidence
+      if (body.confidence > existing.confidence) {
+        const updated = await prisma.slangLearningCandidate.update({
+          where: { id: existing.id },
+          data: { confidence: body.confidence, contextJson: body.contextJson ?? existing.contextJson },
+        });
+        return res.json({ ...updated, duplicate: true });
+      }
       return res.json({ id: existing.id, duplicate: true });
     }
 
