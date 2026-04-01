@@ -334,11 +334,6 @@ export default function BookingEditPage() {
           </h1>
           <span className="text-sm text-slate-500">{booking.client.name} · {booking.projectName}</span>
         </div>
-        <div className="flex items-center gap-3 text-sm">
-          <Link href="/bookings" className="text-slate-600 hover:text-slate-900">История броней</Link>
-          <Link href="/equipment/manage" className="text-slate-600 hover:text-slate-900">Оборудование</Link>
-          <Link href="/crew-calculator" className="text-slate-600 hover:text-slate-900">Калькулятор осветителей</Link>
-        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-12 gap-4">

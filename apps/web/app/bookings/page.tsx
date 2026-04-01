@@ -137,15 +137,6 @@ export default function BookingHistoryPage() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-semibold">История броней</h1>
         <div className="flex items-center gap-2">
-          <Link href="/equipment/manage" className="rounded border border-slate-300 bg-white px-4 py-2 hover:bg-slate-50">
-            Оборудование
-          </Link>
-          <Link href="/finance" className="rounded border border-slate-300 bg-white px-4 py-2 hover:bg-slate-50">
-            Финансы
-          </Link>
-          <Link href="/crew-calculator" className="rounded border border-slate-300 bg-white px-4 py-2 hover:bg-slate-50">
-            Калькулятор осветителей
-          </Link>
           <Link href="/bookings/new" className="rounded bg-slate-900 text-white px-4 py-2 hover:bg-slate-800">
             Новая бронь
           </Link>

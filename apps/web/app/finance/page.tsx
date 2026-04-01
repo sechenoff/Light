@@ -218,11 +218,6 @@ function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
           >
             Войти
           </button>
-          <div className="text-center">
-            <Link href="/bookings" className="text-xs text-slate-400 hover:text-slate-600">
-              ← Вернуться к броням
-            </Link>
-          </div>
         </form>
       </div>
     </div>
@@ -437,17 +432,6 @@ function FinancePageInner() {
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap no-print">
         <h1 className="text-xl font-semibold">Финансы</h1>
-        <div className="flex items-center gap-2 text-sm">
-          <Link href="/bookings" className="rounded border border-slate-300 px-3 py-1.5 hover:bg-slate-50">
-            Брони
-          </Link>
-          <Link href="/equipment/manage" className="rounded border border-slate-300 px-3 py-1.5 hover:bg-slate-50">
-            Оборудование
-          </Link>
-          <Link href="/crew-calculator" className="rounded border border-slate-300 px-3 py-1.5 hover:bg-slate-50">
-            Калькулятор осветителей
-          </Link>
-        </div>
       </div>
 
       <div className="rounded border border-slate-200 bg-white p-3 flex flex-wrap items-center gap-2 no-print">

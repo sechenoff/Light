@@ -122,9 +122,6 @@ export default function EquipmentPage() {
           <Link className="rounded bg-slate-900 text-white px-4 py-2 hover:bg-slate-800" href={`/bookings/new?start=${start}&end=${end}`}>
             Создать бронь
           </Link>
-          <Link className="rounded border border-slate-300 bg-white px-4 py-2 hover:bg-slate-50" href="/settings">
-            ⚙️
-          </Link>
         </div>
       </div>
 

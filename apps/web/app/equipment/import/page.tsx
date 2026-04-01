@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 
 type PreviewResponse = {
   sheetName: string;
@@ -29,7 +28,6 @@ function mappingValueOrEmpty(v: string | undefined) {
 }
 
 export default function EquipmentImportPage() {
-  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [mapping, setMapping] = useState<MappingState>({});
@@ -106,9 +104,6 @@ export default function EquipmentImportPage() {
     <div className="p-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-xl font-semibold">Импорт парка техники (Excel)</h1>
-        <button className="text-sm text-slate-600 hover:text-slate-900" onClick={() => router.push("/equipment")}>
-          Назад к списку
-        </button>
       </div>
 
       <div className="mt-4 rounded border border-slate-200 bg-white overflow-hidden">

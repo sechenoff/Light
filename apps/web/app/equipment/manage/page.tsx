@@ -282,18 +282,6 @@ export default function EquipmentManagePage() {
           >
             Порядок категорий
           </button>
-          <Link href="/bookings" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
-            Брони
-          </Link>
-          <Link href="/finance" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
-            Финансы
-          </Link>
-          <Link href="/equipment" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
-            Остатки
-          </Link>
-          <Link href="/crew-calculator" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
-            Калькулятор осветителей
-          </Link>
         </div>
       </div>
 

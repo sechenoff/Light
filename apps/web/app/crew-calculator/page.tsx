@@ -239,17 +239,6 @@ export default function CrewCalculatorPage() {
             Расчёт стоимости съёмочного дня с учётом переработок
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm flex-wrap">
-          <Link href="/bookings" className="text-slate-600 hover:text-slate-900">
-            История броней
-          </Link>
-          <Link href="/equipment" className="text-slate-600 hover:text-slate-900">
-            Оборудование
-          </Link>
-          <Link href="/finance" className="text-slate-600 hover:text-slate-900">
-            Финансы
-          </Link>
-        </div>
       </div>
 
       <div className="grid grid-cols-12 gap-5">

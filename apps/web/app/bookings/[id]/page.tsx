@@ -160,19 +160,10 @@ export default function BookingDetailPage() {
         <h1 className="text-xl font-semibold">{booking?.displayName || `Бронь: ${id}`}</h1>
         <div className="flex items-center gap-2 flex-wrap">
           <Link href="/bookings" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
-            Назад
+            ← Брони
           </Link>
           <Link href="/bookings/new" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
             Новая бронь
-          </Link>
-          <Link href="/finance" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
-            Финансы
-          </Link>
-          <Link href="/equipment/manage" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
-            Оборудование
-          </Link>
-          <Link href="/crew-calculator" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
-            Калькулятор осветителей
           </Link>
           <div className="text-sm text-slate-600">{booking ? <StatusBadge status={statusText(booking.status)} /> : ""}</div>
         </div>
