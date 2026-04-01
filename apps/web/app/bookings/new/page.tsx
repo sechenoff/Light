@@ -320,6 +320,18 @@ function BookingNewPage() {
   async function submitManualLearning() {
     if (!gafferResult) return;
     setManualLearnSubmitting(true);
+    setSelected((prev) => {
+      const next = { ...prev };
+      for (const item of gafferResult.unmatched) {
+        const chosenId = manualLearnChoices[item.rawPhrase];
+        if (!chosenId) continue;
+        const row = rowCache.get(chosenId);
+        if (!row) continue;
+        const clamped = Math.min(item.quantity, row.available);
+        if (clamped > 0) next[chosenId] = (next[chosenId] ?? 0) + clamped;
+      }
+      return next;
+    });
     const promises = gafferResult.unmatched.map(async (item) => {
       const chosenId = manualLearnChoices[item.rawPhrase];
       if (!chosenId) return;
@@ -1269,7 +1281,7 @@ function BookingNewPage() {
                         key={c.equipmentId}
                         className={`flex items-start gap-2.5 rounded border p-2.5 cursor-pointer transition-colors ${
                           reviewChoices[item.rawPhrase] === c.equipmentId
-                            ? "border-violet-400 bg-violet-50"
+                            ? "border-emerald-400 bg-emerald-50"
                             : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
                         }`}
                       >
@@ -1279,7 +1291,7 @@ function BookingNewPage() {
                           value={c.equipmentId}
                           checked={reviewChoices[item.rawPhrase] === c.equipmentId}
                           onChange={() => setReviewChoices((prev) => ({ ...prev, [item.rawPhrase]: c.equipmentId }))}
-                          className="mt-0.5 accent-violet-600"
+                          className="mt-0.5 accent-emerald-600"
                         />
                         <div className="min-w-0 flex-1">
                           <div className="font-medium text-sm text-slate-900">{c.catalogName}</div>
