@@ -7,8 +7,11 @@ const router = express.Router();
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
+/** Max chars for gaffer paste; keep in sync with bookings/new textarea maxLength. */
+const MAX_REQUEST_TEXT_CHARS = 10_000;
+
 const ParseRequestBody = z.object({
-  requestText: z.string().min(1).max(5000),
+  requestText: z.string().min(1).max(MAX_REQUEST_TEXT_CHARS),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
 });
@@ -45,7 +48,8 @@ async function extractItemsWithLLM(text: string): Promise<ParsedRequestItem[]> {
   const model = client.getGenerativeModel({
     model: "gemini-2.5-flash",
     generationConfig: {
-      maxOutputTokens: 2048,
+      /** Long lists need a large JSON array; was 2048 and truncated for ~50+ lines. */
+      maxOutputTokens: 4096,
       responseMimeType: "application/json",
     },
   });

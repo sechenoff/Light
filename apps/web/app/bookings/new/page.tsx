@@ -797,7 +797,7 @@ function BookingNewPage() {
               <textarea
                 className="w-full rounded border border-violet-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y"
                 rows={3}
-                maxLength={5000}
+                maxLength={10000}
                 value={gafferText}
                 onChange={(e) => setGafferText(e.target.value)}
                 placeholder={"Например: 2 штуки 52xt, 3 nova p300, 4 c-stand, 1 чайнабол, 2 рамы 6x6, hazer hz350"}
