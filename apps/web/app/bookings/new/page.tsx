@@ -327,7 +327,7 @@ function BookingNewPage() {
         if (!chosenId) continue;
         const row = rowCache.get(chosenId);
         if (!row) continue;
-        const clamped = Math.min(item.quantity, row.available);
+        const clamped = Math.min(item.quantity, row.availableQuantity);
         if (clamped > 0) next[chosenId] = (next[chosenId] ?? 0) + clamped;
       }
       return next;
