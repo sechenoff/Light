@@ -1,10 +1,12 @@
 import { Markup } from "telegraf";
 
+/** Подпись кнопки и `bot.hears` — должны совпадать */
+export const BTN_AI_LIGHTING_ANALYSIS = "✨ AI анализ освещений";
+
 /** Главное меню бота */
 export const mainMenuKeyboard = Markup.keyboard([
-  ["🎬 Аренда оборудования"],
-  ["💡 Калькулятор осветителей"],
-  ["$$$ Кадр (AI)", "ℹ️ Помощь"],
+  ["🎬 Аренда оборудования", "💡 Калькулятор осветителей"],
+  [BTN_AI_LIGHTING_ANALYSIS],
 ]).resize();
 
 /** Inline-кнопки под результатом анализа фото */

@@ -198,16 +198,6 @@ function SettingsContent({ onLogout }: { onLogout: () => void }) {
               </div>
             </Link>
             <Link
-              href="/ops"
-              className="flex items-center gap-3 px-4 py-3 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors"
-            >
-              <span className="text-xl">🤖</span>
-              <div>
-                <div className="text-sm font-medium text-indigo-800">Ops Dashboard</div>
-                <div className="text-xs text-indigo-600">Задачи и координация команды</div>
-              </div>
-            </Link>
-            <Link
               href="/bookings"
               className="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors"
             >
