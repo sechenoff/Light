@@ -159,7 +159,7 @@ function cashflowSourceRu(v: CashflowRow["source"]): string {
   return v === "payment" ? "Платеж" : "Расход";
 }
 
-const FINANCE_PASSWORD = "4020909";
+const FINANCE_PASSWORD = "4020909Bear";
 const SESSION_KEY = "finance_auth";
 
 function PasswordGate({ onUnlock }: { onUnlock: () => void }) {

@@ -1,6 +1,70 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
+
+const IMPORT_SESSION_KEY = "import_auth";
+const IMPORT_PASSWORD = "4020909Bear";
+
+function ImportPasswordGate({ onUnlock }: { onUnlock: () => void }) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (value === IMPORT_PASSWORD) {
+      sessionStorage.setItem(IMPORT_SESSION_KEY, "1");
+      onUnlock();
+    } else {
+      setError(true);
+      setValue("");
+      setTimeout(() => setError(false), 2000);
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-center py-16 px-4">
+      <div className="w-full max-w-sm">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+          <div className="flex flex-col items-center mb-6">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </div>
+            <h1 className="text-xl font-semibold text-slate-800">Импорт Excel</h1>
+            <p className="text-sm text-slate-500 mt-1 text-center">Введите пароль для доступа</p>
+          </div>
+          <form onSubmit={submit} className="space-y-4">
+            <input
+              ref={inputRef}
+              type="password"
+              autoComplete="off"
+              className={`w-full rounded-lg border px-4 py-2.5 text-center text-xl tracking-widest bg-white outline-none transition-colors ${
+                error
+                  ? "border-rose-400 focus:border-rose-500"
+                  : "border-slate-300 focus:border-slate-500"
+              }`}
+              placeholder="••••••••"
+              value={value}
+              onChange={(e) => { setValue(e.target.value); setError(false); }}
+            />
+            {error && <p className="text-center text-sm text-rose-600">Неверный пароль</p>}
+            <button
+              type="submit"
+              className="w-full rounded-lg bg-slate-900 text-white py-2.5 font-medium hover:bg-slate-800 transition-colors"
+            >
+              Войти
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type PreviewResponse = {
   sheetName: string;
@@ -27,7 +91,7 @@ function mappingValueOrEmpty(v: string | undefined) {
   return v ?? "";
 }
 
-export default function EquipmentImportPage() {
+function EquipmentImportContent() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [mapping, setMapping] = useState<MappingState>({});
@@ -216,3 +280,16 @@ export default function EquipmentImportPage() {
   );
 }
 
+export default function EquipmentImportPage() {
+  const [unlocked, setUnlocked] = useState(false);
+
+  useEffect(() => {
+    if (sessionStorage.getItem(IMPORT_SESSION_KEY) === "1") setUnlocked(true);
+  }, []);
+
+  if (!unlocked) {
+    return <ImportPasswordGate onUnlock={() => setUnlocked(true)} />;
+  }
+
+  return <EquipmentImportContent />;
+}
