@@ -9,10 +9,11 @@ import type { SuggestedEquipmentItem } from "./vision/types";
  *   exact    — нормализованные имена совпали полностью
  *   contains — одно имя содержит другое
  *   token    — совпадение ≥2 значимых токенов (слов длиной ≥3)
+ *   alias    — совпадение через DB-псевдоним (SlangAlias)
  *   analog   — точного совпадения нет, взят наиболее доступный прибор
  *              из той же категории каталога
  */
-export type MatchType = "exact" | "contains" | "token" | "analog";
+export type MatchType = "exact" | "contains" | "token" | "alias" | "analog";
 
 export type MatchedItem = {
   equipmentId: string;
@@ -157,7 +158,7 @@ function findBestMatch(
     },
     {
       // 4. DB alias lookup — заменяет TYPE_SYNONYMS
-      type: "token",
+      type: "alias",
       pick: (rows) => {
         const aliases = dbAliases.get(query);
         if (!aliases) return undefined;

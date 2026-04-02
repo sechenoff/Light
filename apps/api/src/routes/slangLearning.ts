@@ -94,9 +94,9 @@ router.post("/propose", async (req, res, next) => {
 
 router.get("/", async (req, res, next) => {
   try {
-    const status = (req.query.status as string) || "PENDING";
+    const statusParam = z.enum(["PENDING", "APPROVED", "REJECTED"]).default("PENDING").parse(req.query.status || undefined);
     const candidates = await prisma.slangLearningCandidate.findMany({
-      where: { status: status as any },
+      where: { status: statusParam },
       orderBy: { createdAt: "desc" },
       take: 200,
     });
