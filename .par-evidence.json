@@ -1,12 +1,15 @@
 {
-  "sprint": 1,
+  "sprint": 2,
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
   "fixes_applied": [
-    "Fixed source enum value in slangLearning.ts: approved_candidate → MANUAL_ADMIN",
-    "Import norm() from equipmentMatcher instead of duplicating",
-    "Added production source value migration in migrate script"
+    "Added 'alias' to MatchType union (was 'token' for DB alias matches)",
+    "Added Zod validation for status query parameter"
   ],
-  "ts": "2026-04-02T10:57:00Z"
+  "disagreements": [
+    "Finding #2 (unreachable /aliases routes): Routes ARE reachable — frontend calls /api/admin/slang-learning/aliases which matches the router mount + /aliases path",
+    "Finding #4 (business logic in routes): Pre-existing pattern in all 12 route files. Extracting to services is a valid improvement but out of Sprint 2 scope"
+  ],
+  "ts": "2026-04-02T11:12:00Z"
 }
