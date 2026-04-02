@@ -59,9 +59,10 @@ light-rental-system/
 |------|---------|
 | `apps/api/src/app.ts` | Express app: middleware stack + centralized error handler |
 | `apps/api/src/index.ts` | Server start, conditional Redis/BullMQ worker bootstrap |
-| `apps/api/prisma/schema.prisma` | 18 models, 438 lines -- source of truth for data layer |
+| `apps/api/prisma/schema.prisma` | 19 models (incl. SlangAliasSource enum) -- source of truth for data layer |
 | `apps/api/src/services/gemini.ts` | Gemini 2.5 Flash: photo analysis + diagram generation |
-| `apps/api/src/services/equipmentMatcher.ts` | AI output to catalog matching (1,092 lines, ~400 lines hardcoded aliases) |
+| `apps/api/src/services/equipmentMatcher.ts` | AI output to catalog matching (~530 lines, DB-driven aliases via SlangAlias) |
+| `apps/api/scripts/migrate-aliases-to-db.ts` | One-time migration: TYPE_SYNONYMS → SlangAlias DB records |
 | `apps/api/src/services/smetaExport/renderPdf.ts` | PDF estimate export via pdfkit |
 | `apps/api/src/services/smetaExport/renderXlsx.ts` | XLSX estimate export via exceljs |
 | `apps/api/src/routes/bookingRequestParser.ts` | Gemini AI gaffer text -> equipment list parsing |
@@ -122,7 +123,7 @@ npm run seed                  # Seed database
 1. **No authentication** on API -- 12 route files with 40+ endpoints are publicly accessible.
 2. **Crew calculator duplication**: `apps/web/src/lib/crewCalculator.ts` and `apps/bot/src/lib/crewCalculator.ts` are separate copies. No shared package extracts this.
 3. **Minimal test coverage**: Only `crewCalculator.test.ts` (209 lines, vitest). No integration or API tests.
-4. **Hardcoded aliases in equipmentMatcher.ts**: ~400 lines of slang-to-catalog mappings that should migrate to SlangAlias DB table.
+4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **`packages/db` is empty**: Listed as workspace but contains no code.
 6. **`apps/web/app/ops/` is empty**: Directory exists but has no page file.
 
