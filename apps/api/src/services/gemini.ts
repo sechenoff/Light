@@ -199,14 +199,11 @@ export class GeminiVisionProvider implements VisionProvider {
 
   async analyzePhoto(input: VisionInput): Promise<LightingAnalysis> {
     const model = this.client.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       generationConfig: {
-        maxOutputTokens: 16384,
+        maxOutputTokens: 8192,
         responseMimeType: "application/json",
-        // Gemini 2.5 Flash использует thinking tokens из общего бюджета maxOutputTokens.
-        // Ограничиваем thinking чтобы оставить достаточно токенов на JSON-ответ.
-        thinkingConfig: { thinkingBudget: 4096 },
-      } as any,
+      },
     });
 
     const catalogSection = input.catalogHint?.length
