@@ -773,11 +773,10 @@ function SlangLearningTab() {
       await apiFetch(`/api/admin/slang-learning/aliases/${id}`, { method: "DELETE" });
       setDictionary((prev) =>
         prev
-          .map((g) => ({
-            ...g,
-            aliases: g.aliases.filter((a) => a.id !== id),
-            aliasCount: g.aliases.filter((a) => a.id !== id).length,
-          }))
+          .map((g) => {
+            const remaining = g.aliases.filter((a) => a.id !== id);
+            return { ...g, aliases: remaining, aliasCount: remaining.length };
+          })
           .filter((g) => g.aliases.length > 0)
       );
     } catch (err: any) {
