@@ -200,7 +200,13 @@ export class GeminiVisionProvider implements VisionProvider {
   async analyzePhoto(input: VisionInput): Promise<LightingAnalysis> {
     const model = this.client.getGenerativeModel({
       model: "gemini-2.5-flash",
-      generationConfig: { maxOutputTokens: 4096, responseMimeType: "application/json" },
+      generationConfig: {
+        maxOutputTokens: 16384,
+        responseMimeType: "application/json",
+        // Gemini 2.5 Flash использует thinking tokens из общего бюджета maxOutputTokens.
+        // Ограничиваем thinking чтобы оставить достаточно токенов на JSON-ответ.
+        thinkingConfig: { thinkingBudget: 4096 },
+      } as any,
     });
 
     const catalogSection = input.catalogHint?.length
@@ -223,13 +229,14 @@ export class GeminiVisionProvider implements VisionProvider {
     const result = await retryOnOverload(() => model.generateContent(contentParts));
 
     const raw = result.response.text().trim();
-    console.log(`[gemini] analyzePhoto raw length=${raw.length}, first 200: ${raw.slice(0, 200)}`);
+    console.log(`[gemini] analyzePhoto raw length=${raw.length}, last 100: ...${raw.slice(-100)}`);
 
     // Робастный парсинг JSON: прямой → markdown-блок → ремонт строки
     let parsed: unknown;
     parsed = tryParseJson(raw);
 
     if (parsed === undefined) {
+      console.error(`[gemini] FULL raw response:\n${raw}`);
       throw new Error(`Gemini вернул невалидный JSON анализа: ${raw.slice(0, 400)}`);
     }
 
