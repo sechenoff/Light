@@ -126,7 +126,7 @@ router.post("/:id/approve", async (req, res, next) => {
         phraseOriginal: candidate.rawPhrase,
         equipmentId,
         confidence: candidate.confidence,
-        source: "approved_candidate",
+        source: "MANUAL_ADMIN",
       },
       update: {
         confidence: candidate.confidence,
