@@ -1,19 +1,11 @@
 #!/usr/bin/env tsx
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
+import { norm } from "../src/services/equipmentMatcher";
 
 const prisma = new PrismaClient();
 
 const DRY_RUN = process.argv.includes("--dry-run");
-
-/** Нормализация: нижний регистр, только буквы/цифры/пробелы */
-function norm(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-zа-яё0-9\s]/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 // Карта: ключевое слово из AI-ответа → список слов для поиска в каталоге.
 // Скопировано из equipmentMatcher.ts (TYPE_SYNONYMS).
@@ -624,6 +616,20 @@ const TYPE_SYNONYMS: Record<string, string[]> = {
 
 async function main() {
   console.log(`[migrate-aliases-to-db] Запуск${DRY_RUN ? " (--dry-run, без записи в БД)" : ""}`);
+
+  // Конвертация старых строковых значений source → enum (для существующих записей на продакшене)
+  if (!DRY_RUN) {
+    await prisma.$executeRawUnsafe(
+      `UPDATE SlangAlias SET source = 'AUTO_LEARNED' WHERE source = 'approved_candidate'`
+    );
+    await prisma.$executeRawUnsafe(
+      `UPDATE SlangAlias SET source = 'MANUAL_ADMIN' WHERE source = 'manual_admin'`
+    );
+    await prisma.$executeRawUnsafe(
+      `UPDATE SlangAlias SET source = 'SEED' WHERE source = 'seed'`
+    );
+    console.log(`[migrate-aliases-to-db] Конвертация старых source-значений завершена`);
+  }
 
   const allEquipment = await prisma.equipment.findMany({
     select: { id: true, name: true },
