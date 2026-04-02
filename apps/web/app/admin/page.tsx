@@ -686,16 +686,26 @@ type SlangAlias = {
   confidence: number;
   source: string;
   createdAt: string;
+  usageCount: number;
+  lastUsedAt: string;
   equipment: { name: string; category: string };
 };
 
+type DictionaryGroup = {
+  equipment: { id: string; name: string; category: string };
+  aliases: SlangAlias[];
+  aliasCount: number;
+};
+
 function SlangLearningTab() {
-  const [activeSection, setActiveSection] = useState<"pending" | "approved" | "aliases">("pending");
+  const [activeSection, setActiveSection] = useState<"pending" | "approved" | "dictionary">("pending");
   const [candidates, setCandidates] = useState<SlangCandidate[]>([]);
-  const [aliases, setAliases] = useState<SlangAlias[]>([]);
+  const [dictionary, setDictionary] = useState<DictionaryGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionState, setActionState] = useState<Record<string, "approving" | "rejecting">>({});
   const [overrideEquipId, setOverrideEquipId] = useState<Record<string, string>>({});
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [dictSearch, setDictSearch] = useState("");
 
   async function loadCandidates(status: "PENDING" | "APPROVED" | "REJECTED") {
     setLoading(true);
@@ -709,13 +719,13 @@ function SlangLearningTab() {
     }
   }
 
-  async function loadAliases() {
+  async function loadDictionary() {
     setLoading(true);
     try {
-      const data = await apiFetch<SlangAlias[]>("/api/admin/slang-learning/aliases");
-      setAliases(data);
+      const data = await apiFetch<DictionaryGroup[]>("/api/admin/slang-learning/dictionary");
+      setDictionary(data);
     } catch {
-      setAliases([]);
+      setDictionary([]);
     } finally {
       setLoading(false);
     }
@@ -724,7 +734,7 @@ function SlangLearningTab() {
   useEffect(() => {
     if (activeSection === "pending") loadCandidates("PENDING");
     else if (activeSection === "approved") loadCandidates("APPROVED");
-    else loadAliases();
+    else loadDictionary();
   }, [activeSection]);
 
   async function handleApprove(c: SlangCandidate) {
@@ -761,10 +771,55 @@ function SlangLearningTab() {
     if (!confirm("Удалить этот псевдоним?")) return;
     try {
       await apiFetch(`/api/admin/slang-learning/aliases/${id}`, { method: "DELETE" });
-      setAliases((prev) => prev.filter((a) => a.id !== id));
+      setDictionary((prev) =>
+        prev
+          .map((g) => ({
+            ...g,
+            aliases: g.aliases.filter((a) => a.id !== id),
+            aliasCount: g.aliases.filter((a) => a.id !== id).length,
+          }))
+          .filter((g) => g.aliases.length > 0)
+      );
     } catch (err: any) {
       alert(err?.message ?? "Ошибка удаления");
     }
+  }
+
+  async function handleExportDictionary() {
+    try {
+      const data = await apiFetch<unknown>("/api/admin/slang-learning/dictionary/export");
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `slang-dictionary-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err?.message ?? "Ошибка экспорта");
+    }
+  }
+
+  const filteredDictionary = dictionary.filter((g) => {
+    if (!dictSearch.trim()) return true;
+    const q = dictSearch.toLowerCase();
+    return (
+      g.equipment.name.toLowerCase().includes(q) ||
+      g.aliases.some((a) => a.phraseOriginal.toLowerCase().includes(q))
+    );
+  });
+
+  function sourceLabel(source: string) {
+    if (source === "SEED") {
+      return <span className="text-[10px] font-semibold bg-slate-100 text-slate-500 rounded px-1.5 py-0.5">Миграция</span>;
+    }
+    if (source === "AUTO_LEARNED") {
+      return <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-700 rounded px-1.5 py-0.5">Авто</span>;
+    }
+    if (source === "MANUAL_ADMIN") {
+      return <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 rounded px-1.5 py-0.5">Вручную</span>;
+    }
+    return <span className="text-[10px] text-slate-400">{source}</span>;
   }
 
   return (
@@ -782,7 +837,7 @@ function SlangLearningTab() {
         {([
           ["pending", "На проверке"],
           ["approved", "Одобрено"],
-          ["aliases", "Словарь псевдонимов"],
+          ["dictionary", "Словарь жаргона"],
         ] as const).map(([id, label]) => (
           <button
             key={id}
@@ -800,7 +855,7 @@ function SlangLearningTab() {
 
       {loading && <div className="py-6 text-center text-sm text-slate-400">Загрузка…</div>}
 
-      {!loading && activeSection !== "aliases" && (
+      {!loading && activeSection !== "dictionary" && (
         <>
           {candidates.length === 0 ? (
             <div className="py-8 text-center text-sm text-slate-400">
@@ -884,45 +939,89 @@ function SlangLearningTab() {
         </>
       )}
 
-      {!loading && activeSection === "aliases" && (
+      {!loading && activeSection === "dictionary" && (
         <>
-          {aliases.length === 0 ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              className="flex-1 text-xs rounded border border-slate-200 px-3 py-1.5 bg-white placeholder-slate-400"
+              placeholder="Поиск по оборудованию или фразе…"
+              value={dictSearch}
+              onChange={(e) => setDictSearch(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={handleExportDictionary}
+              className="shrink-0 rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Экспорт JSON
+            </button>
+          </div>
+          {filteredDictionary.length === 0 ? (
             <div className="py-8 text-center text-sm text-slate-400">Словарь пуст</div>
           ) : (
-            <div className="overflow-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-slate-50 text-slate-500">
-                  <tr>
-                    <th className="text-left px-3 py-2">Жаргон</th>
-                    <th className="text-left px-3 py-2">Каталог</th>
-                    <th className="text-left px-3 py-2">Категория</th>
-                    <th className="px-3 py-2 text-center">Ув.</th>
-                    <th className="px-3 py-2 text-center">Источник</th>
-                    <th className="px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {aliases.map((a) => (
-                    <tr key={a.id}>
-                      <td className="px-3 py-2 font-medium text-slate-900">{a.phraseOriginal}</td>
-                      <td className="px-3 py-2 text-slate-700">{a.equipment.name}</td>
-                      <td className="px-3 py-2 text-slate-500">{a.equipment.category}</td>
-                      <td className="px-3 py-2 text-center">{Math.round(a.confidence * 100)}%</td>
-                      <td className="px-3 py-2 text-center text-slate-400">{a.source}</td>
-                      <td className="px-3 py-2">
-                        <button
-                          type="button"
-                          className="text-rose-500 hover:text-rose-700"
-                          title="Удалить псевдоним"
-                          onClick={() => handleDeleteAlias(a.id)}
-                        >
-                          ✕
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
+              {filteredDictionary.map((g) => {
+                const isExpanded = !!expandedGroups[g.equipment.id];
+                return (
+                  <div key={g.equipment.id}>
+                    <button
+                      type="button"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                      onClick={() =>
+                        setExpandedGroups((prev) => ({
+                          ...prev,
+                          [g.equipment.id]: !prev[g.equipment.id],
+                        }))
+                      }
+                    >
+                      <span className="text-slate-400 text-xs w-3">{isExpanded ? "▼" : "▶"}</span>
+                      <span className="flex-1 text-sm font-medium text-slate-900">{g.equipment.name}</span>
+                      <span className="text-xs text-slate-400">{g.equipment.category}</span>
+                      <span className="ml-2 text-[10px] font-semibold bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">
+                        {g.aliasCount}
+                      </span>
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t border-slate-100 overflow-auto">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-50 text-slate-500">
+                            <tr>
+                              <th className="text-left px-4 py-1.5">Фраза</th>
+                              <th className="text-left px-3 py-1.5">Источник</th>
+                              <th className="px-3 py-1.5 text-center">Использований</th>
+                              <th className="px-3 py-1.5 text-left">Дата</th>
+                              <th className="px-3 py-1.5"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {g.aliases.map((a) => (
+                              <tr key={a.id} className="hover:bg-slate-50">
+                                <td className="px-4 py-1.5 font-medium text-slate-900">{a.phraseOriginal}</td>
+                                <td className="px-3 py-1.5">{sourceLabel(a.source)}</td>
+                                <td className="px-3 py-1.5 text-center text-slate-600">{a.usageCount}</td>
+                                <td className="px-3 py-1.5 text-slate-400">
+                                  {a.lastUsedAt ? new Date(a.lastUsedAt).toLocaleDateString("ru-RU") : "—"}
+                                </td>
+                                <td className="px-3 py-1.5">
+                                  <button
+                                    type="button"
+                                    className="text-rose-400 hover:text-rose-600"
+                                    title="Удалить псевдоним"
+                                    onClick={() => handleDeleteAlias(a.id)}
+                                  >
+                                    ✕
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </>

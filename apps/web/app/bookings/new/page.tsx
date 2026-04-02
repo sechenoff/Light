@@ -326,13 +326,11 @@ function BookingNewPage() {
   }
 
   function shouldProposeGafferRow(row: GafferReviewRowState): boolean {
-    if (!row.equipmentId) return false;
-    return row.equipmentId !== row.autoEquipmentId || row.autoEquipmentId == null;
+    return !!row.equipmentId;
   }
 
-  function confidenceForPropose(row: GafferReviewRowState, equipmentId: string): number {
-    const c = row.candidates.find((x) => x.equipmentId === equipmentId);
-    return c ? c.confidence : 1.0;
+  function confidenceForPropose(_row: GafferReviewRowState, _equipmentId: string): number {
+    return 1.0;
   }
 
   function addGafferReviewToOrder() {
