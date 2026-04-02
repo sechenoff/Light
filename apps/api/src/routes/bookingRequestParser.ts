@@ -181,7 +181,7 @@ async function extractGafferLinesForReview(text: string): Promise<GafferExtracte
 }
 
 function toParsedItems(lines: GafferExtractedLine[]): ParsedRequestItem[] {
-  return lines.map((l) => ({ name: l.interpretedName, quantity: l.quantity }));
+  return lines.map((l) => ({ name: l.interpretedName, quantity: l.quantity, gafferPhrase: l.gafferPhrase }));
 }
 
 /**

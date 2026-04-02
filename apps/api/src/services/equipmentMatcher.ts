@@ -270,6 +270,8 @@ export type ParsedRequestItem = {
   name: string;
   quantity: number;
   notes?: string;
+  /** Оригинальная фраза гаффера (до AI-интерпретации) для проверки по псевдонимам */
+  gafferPhrase?: string;
 };
 
 /** Конкретный кандидат из каталога для неуверенного совпадения */
@@ -368,11 +370,13 @@ function findTopCandidates(
   catalog: CatalogRow[],
   dbAliases: DbAliasMap,
   topN = 3,
+  gafferPhrase?: string,
 ): { resolved?: GafferResolved; needsReview?: GafferNeedsReview; unmatched?: GafferUnmatched } {
   const q = norm(phrase);
 
-  // 1. Check DB SlangAlias first
-  const aliasEntries = dbAliases.get(q);
+  // 1. Check DB SlangAlias first — try original gaffer phrase, then AI-interpreted name
+  const gafferQ = gafferPhrase ? norm(gafferPhrase) : null;
+  const aliasEntries = (gafferQ && gafferQ !== q ? dbAliases.get(gafferQ) : null) ?? dbAliases.get(q);
   if (aliasEntries && aliasEntries.length > 0) {
     if (aliasEntries.length === 1) {
       // Один однозначный псевдоним → resolved
@@ -487,7 +491,7 @@ export async function matchGafferRequest(
   const unmatched: GafferUnmatched[] = [];
 
   for (const item of items) {
-    const result = findTopCandidates(item.name, item.quantity, catalog, dbAliases);
+    const result = findTopCandidates(item.name, item.quantity, catalog, dbAliases, 3, item.gafferPhrase);
     if (result.resolved) resolved.push(result.resolved);
     else if (result.needsReview) needsReview.push(result.needsReview);
     else if (result.unmatched) unmatched.push(result.unmatched);
@@ -517,7 +521,7 @@ export async function matchGafferRequestOrdered(
 
   const out: GafferOrderedRowMatch[] = [];
   for (const item of items) {
-    const result = findTopCandidates(item.name, item.quantity, catalog, dbAliases);
+    const result = findTopCandidates(item.name, item.quantity, catalog, dbAliases, 3, item.gafferPhrase);
     if (result.resolved) {
       out.push({
         kind: "resolved",
