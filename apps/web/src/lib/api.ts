@@ -1,7 +1,13 @@
 function resolveApiBaseUrl(): string {
+  // В dev всегда /api на том же origin — Route Handler проксирует на :4000 и при падении бэкенда отдаёт JSON, а не HTML «Internal Server Error» от Next.
+  if (process.env.NODE_ENV === "development") {
+    return "";
+  }
   const raw = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (raw == null || String(raw).trim() === "") return "";
-  return String(raw).trim().replace(/\/$/, "");
+  if (raw != null && String(raw).trim() !== "") {
+    return String(raw).trim().replace(/\/$/, "");
+  }
+  return "";
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
@@ -53,7 +59,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
         ? jsonObject.message
         : typeof jsonObject?.error === "string"
           ? jsonObject.error
-          : `Request failed: ${res.status}`;
+          : text.trimStart().startsWith("<")
+            ? `Сервер вернул страницу ошибки (HTTP ${res.status}) вместо JSON — чаще всего не запущен API или сбой прокси Next. Запустите бэкенд: npm run dev -w apps/api`
+            : `Request failed: ${res.status}`;
     throw new ApiFetchError(message, res.status, jsonObject?.details ?? json);
   }
 
