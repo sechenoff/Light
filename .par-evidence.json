@@ -1,0 +1,12 @@
+{
+  "sprint": 1,
+  "claude_product": "ACCEPTED",
+  "technical_review": "APPROVE",
+  "provider": "split-focus",
+  "fixes_applied": [
+    "Fixed source enum value in slangLearning.ts: approved_candidate → MANUAL_ADMIN",
+    "Import norm() from equipmentMatcher instead of duplicating",
+    "Added production source value migration in migrate script"
+  ],
+  "ts": "2026-04-02T10:57:00Z"
+}
