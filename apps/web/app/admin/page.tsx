@@ -822,6 +822,9 @@ function SlangLearningTab() {
                         if (src === "booking_review") {
                           return <span className="text-[10px] font-semibold bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 uppercase tracking-wide">AI-уточнение</span>;
                         }
+                        if (src === "gaffer_review_table") {
+                          return <span className="text-[10px] font-semibold bg-teal-100 text-teal-800 rounded px-1.5 py-0.5 uppercase tracking-wide">Таблица гаффера</span>;
+                        }
                         return null;
                       })()}
                     </div>

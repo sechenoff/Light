@@ -40,34 +40,86 @@ type GafferCandidate = {
   confidence: number;
 };
 
-type GafferResolved = {
-  equipmentId: string;
-  catalogName: string;
-  suggestedName: string;
-  category: string;
+type GafferOrderedMatch =
+  | {
+      kind: "resolved";
+      equipmentId: string;
+      catalogName: string;
+      category: string;
+      availableQuantity: number;
+      rentalRatePerShift: string;
+      confidence: number;
+    }
+  | { kind: "needsReview"; candidates: GafferCandidate[] }
+  | { kind: "unmatched" };
+
+type GafferReviewApiItem = {
+  id: string;
+  gafferPhrase: string;
+  interpretedName: string;
   quantity: number;
-  availableQuantity: number;
-  rentalRatePerShift: string;
-  confidence: number;
+  match: GafferOrderedMatch;
 };
 
-type GafferNeedsReview = {
-  rawPhrase: string;
+type GafferReviewApiResponse = {
+  items: GafferReviewApiItem[];
+  message?: string;
+};
+
+/** Строка таблицы «гаффер / каталог» в модалке */
+type GafferReviewRowState = {
+  id: string;
+  gafferPhrase: string;
+  interpretedName: string;
   quantity: number;
+  equipmentId: string | null;
+  catalogLabel: string | null;
+  availableQuantity: number;
+  autoEquipmentId: string | null;
   candidates: GafferCandidate[];
 };
 
-type GafferUnmatched = {
-  rawPhrase: string;
-  quantity: number;
-};
-
-type GafferParseResult = {
-  resolved: GafferResolved[];
-  needsReview: GafferNeedsReview[];
-  unmatched: GafferUnmatched[];
-  message?: string;
-};
+function apiItemToRowState(item: GafferReviewApiItem): GafferReviewRowState {
+  const m = item.match;
+  if (m.kind === "resolved") {
+    return {
+      id: item.id,
+      gafferPhrase: item.gafferPhrase,
+      interpretedName: item.interpretedName,
+      quantity: item.quantity,
+      equipmentId: m.equipmentId,
+      catalogLabel: m.catalogName,
+      availableQuantity: m.availableQuantity,
+      autoEquipmentId: m.equipmentId,
+      candidates: [],
+    };
+  }
+  if (m.kind === "needsReview") {
+    const first = m.candidates[0];
+    return {
+      id: item.id,
+      gafferPhrase: item.gafferPhrase,
+      interpretedName: item.interpretedName,
+      quantity: item.quantity,
+      equipmentId: first?.equipmentId ?? null,
+      catalogLabel: first?.catalogName ?? item.interpretedName,
+      availableQuantity: first?.availableQuantity ?? 0,
+      autoEquipmentId: first?.equipmentId ?? null,
+      candidates: m.candidates,
+    };
+  }
+  return {
+    id: item.id,
+    gafferPhrase: item.gafferPhrase,
+    interpretedName: item.interpretedName,
+    quantity: item.quantity,
+    equipmentId: null,
+    catalogLabel: null,
+    availableQuantity: 0,
+    autoEquipmentId: null,
+    candidates: [],
+  };
+}
 
 type QuoteResponse = {
   shifts: number;
@@ -236,53 +288,36 @@ function BookingNewPage() {
   const [draftPickupTime, setDraftPickupTime] = useState("10:00");
   const [draftReturnTime, setDraftReturnTime] = useState("10:00");
 
-  // ── Gaffer AI request ────────────────────────────────────────────────────────
+  // ── Gaffer AI request (таблица: гаффер | понимание AI → выбор каталога) ─────
   const [gafferText, setGafferText] = useState("");
   const [gafferParsing, setGafferParsing] = useState(false);
   const [gafferError, setGafferError] = useState<string | null>(null);
-  const [gafferResult, setGafferResult] = useState<GafferParseResult | null>(null);
-  /** Единое окно: needsReview (варианты AI + ручной поиск) и unmatched (только поиск) */
-  const [clarifyOpen, setClarifyOpen] = useState(false);
-  const [clarifyChoices, setClarifyChoices] = useState<Record<string, string>>({}); // rawPhrase -> equipmentId | __skip__
-  const [clarifySearches, setClarifySearches] = useState<Record<string, string>>({});
-  const [clarifySubmitting, setClarifySubmitting] = useState(false);
-  const [clarifySaved, setClarifySaved] = useState(false);
+  const [gafferReviewRows, setGafferReviewRows] = useState<GafferReviewRowState[] | null>(null);
+  const [gafferReviewOpen, setGafferReviewOpen] = useState(false);
+  const [gafferReviewSubmitting, setGafferReviewSubmitting] = useState(false);
+  const [gafferReviewSavedHint, setGafferReviewSavedHint] = useState(false);
+  /** Подмодалка выбора позиции из каталога */
+  const [gafferPickRowId, setGafferPickRowId] = useState<string | null>(null);
+  const [gafferPickSearch, setGafferPickSearch] = useState("");
 
   async function parseGafferRequest() {
     const text = gafferText.trim();
     if (!text) return;
     setGafferParsing(true);
     setGafferError(null);
-    setGafferResult(null);
+    setGafferReviewRows(null);
+    setGafferReviewSavedHint(false);
     try {
-      const result = await apiFetch<GafferParseResult>("/api/bookings/parse-request", {
+      const result = await apiFetch<GafferReviewApiResponse>("/api/bookings/parse-gaffer-review", {
         method: "POST",
         body: JSON.stringify({ requestText: text, startDate: pickupISO, endDate: returnISO }),
       });
-      setGafferResult(result);
-      if (result.resolved.length > 0) {
-        setSelected((prev) => {
-          const next = { ...prev };
-          for (const item of result.resolved) {
-            const clamped = Math.min(item.quantity, item.availableQuantity);
-            if (clamped > 0) {
-              next[item.equipmentId] = (next[item.equipmentId] ?? 0) + clamped;
-            }
-          }
-          return next;
-        });
+      if (result.items.length === 0) {
+        setGafferError(result.message ?? "AI не распознал позиции в тексте.");
+        return;
       }
-      const clarifyCount = result.needsReview.length + result.unmatched.length;
-      if (clarifyCount > 0) {
-        const initial: Record<string, string> = {};
-        for (const nr of result.needsReview) {
-          if (nr.candidates.length > 0) initial[nr.rawPhrase] = nr.candidates[0].equipmentId;
-        }
-        setClarifyChoices(initial);
-        setClarifySearches({});
-        setClarifySaved(false);
-        setClarifyOpen(true);
-      }
+      setGafferReviewRows(result.items.map(apiItemToRowState));
+      setGafferReviewOpen(true);
     } catch (err: any) {
       setGafferError(err?.message ?? "Ошибка при обращении к AI");
     } finally {
@@ -290,9 +325,19 @@ function BookingNewPage() {
     }
   }
 
-  function applyClarifyAll() {
-    if (!gafferResult) return;
-    setClarifySubmitting(true);
+  function shouldProposeGafferRow(row: GafferReviewRowState): boolean {
+    if (!row.equipmentId) return false;
+    return row.equipmentId !== row.autoEquipmentId || row.autoEquipmentId == null;
+  }
+
+  function confidenceForPropose(row: GafferReviewRowState, equipmentId: string): number {
+    const c = row.candidates.find((x) => x.equipmentId === equipmentId);
+    return c ? c.confidence : 1.0;
+  }
+
+  function addGafferReviewToOrder() {
+    if (!gafferReviewRows || gafferReviewRows.length === 0) return;
+    setGafferReviewSubmitting(true);
 
     const delta: Record<string, number> = {};
     const addQty = (equipmentId: string, q: number) => {
@@ -309,57 +354,32 @@ function BookingNewPage() {
     };
     const payloads: ProposeBody[] = [];
 
-    for (const item of gafferResult.needsReview) {
-      const chosenId = clarifyChoices[item.rawPhrase];
-      if (!chosenId || chosenId === "__skip__") continue;
-      const fromCand = item.candidates.find((c) => c.equipmentId === chosenId);
-      if (fromCand) {
-        const clamped = Math.min(item.quantity, fromCand.availableQuantity);
-        addQty(chosenId, clamped);
+    for (const row of gafferReviewRows) {
+      if (!row.equipmentId) continue;
+      const live = rowCache.get(row.equipmentId);
+      const avail = live?.availableQuantity ?? row.availableQuantity;
+      const clamped = Math.min(row.quantity, avail);
+      addQty(row.equipmentId, clamped);
+
+      if (shouldProposeGafferRow(row)) {
+        const nameFromCache = live
+          ? [live.name, live.brand, live.model].filter(Boolean).join(" ")
+          : row.catalogLabel ?? row.equipmentId;
+        const src =
+          row.autoEquipmentId == null ? "manual_unmatched_learning" : "gaffer_review_table";
         payloads.push({
-          rawPhrase: item.rawPhrase,
-          proposedEquipmentId: chosenId,
-          proposedEquipmentName: fromCand.catalogName,
-          confidence: fromCand.confidence,
-          contextJson: JSON.stringify({ source: "booking_review", text: gafferText.slice(0, 300) }),
-        });
-      } else {
-        const row = rowCache.get(chosenId);
-        if (!row) continue;
-        const clamped = Math.min(item.quantity, row.availableQuantity);
-        addQty(chosenId, clamped);
-        payloads.push({
-          rawPhrase: item.rawPhrase,
-          proposedEquipmentId: chosenId,
-          proposedEquipmentName: [row.name, row.brand, row.model].filter(Boolean).join(" "),
-          confidence: 1.0,
+          rawPhrase: row.gafferPhrase,
+          proposedEquipmentId: row.equipmentId,
+          proposedEquipmentName: nameFromCache,
+          confidence: confidenceForPropose(row, row.equipmentId),
           contextJson: JSON.stringify({
-            source: "manual_unmatched_learning",
+            source: src,
+            interpretedName: row.interpretedName,
             text: gafferText.slice(0, 300),
-            clarifyHadCandidates: true,
+            submittedAt: new Date().toISOString(),
           }),
         });
       }
-    }
-
-    for (const item of gafferResult.unmatched) {
-      const chosenId = clarifyChoices[item.rawPhrase];
-      if (!chosenId) continue;
-      const row = rowCache.get(chosenId);
-      if (!row) continue;
-      const clamped = Math.min(item.quantity, row.availableQuantity);
-      addQty(chosenId, clamped);
-      payloads.push({
-        rawPhrase: item.rawPhrase,
-        proposedEquipmentId: chosenId,
-        proposedEquipmentName: [row.name, row.brand, row.model].filter(Boolean).join(" "),
-        confidence: 1.0,
-        contextJson: JSON.stringify({
-          source: "manual_unmatched_learning",
-          text: gafferText.slice(0, 300),
-          submittedAt: new Date().toISOString(),
-        }),
-      });
     }
 
     setSelected((prev) => {
@@ -379,9 +399,10 @@ function BookingNewPage() {
       ),
     );
 
-    if (payloads.length > 0) setClarifySaved(true);
-    setClarifyOpen(false);
-    setClarifySubmitting(false);
+    if (payloads.length > 0) setGafferReviewSavedHint(true);
+    setGafferReviewOpen(false);
+    setGafferPickRowId(null);
+    setGafferReviewSubmitting(false);
   }
 
   function openTimeModal() {
@@ -842,7 +863,13 @@ function BookingNewPage() {
                   <button
                     type="button"
                     className="text-xs text-slate-500 hover:text-slate-700"
-                    onClick={() => { setGafferText(""); setGafferResult(null); setGafferError(null); }}
+                    onClick={() => {
+                      setGafferText("");
+                      setGafferError(null);
+                      setGafferReviewRows(null);
+                      setGafferReviewOpen(false);
+                      setGafferReviewSavedHint(false);
+                    }}
                   >
                     Очистить
                   </button>
@@ -853,42 +880,23 @@ function BookingNewPage() {
                   {gafferError}
                 </div>
               )}
-              {gafferResult && !gafferParsing && (
-                <div className="mt-2 space-y-1 text-xs">
-                  {gafferResult.resolved.length > 0 && (
-                    <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-800">
-                      ✅ Добавлено автоматически: {gafferResult.resolved.map((r) => `${r.catalogName} ×${Math.min(r.quantity, r.availableQuantity)}`).join(", ")}
-                    </div>
-                  )}
-                  {gafferResult.needsReview.length + gafferResult.unmatched.length > 0 && (
-                    <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2 text-sm">
-                        <span>
-                          ⚠️{" "}
-                          <span className="font-medium">
-                            {gafferResult.needsReview.length + gafferResult.unmatched.length} позиц.
-                          </span>
-                          {" "}нужно сопоставить с каталогом (похожие — с вариантами, остальные — поиск)
-                        </span>
-                        <button
-                          type="button"
-                          className="underline font-semibold text-amber-950"
-                          onClick={() => {
-                            setClarifyOpen(true);
-                            setClarifySaved(false);
-                          }}
-                        >
-                          Открыть
-                        </button>
-                      </div>
-                      {clarifySaved && (
-                        <div className="text-xs text-emerald-800">✅ Сохранено в очередь обучения — ждёт подтверждения в админке</div>
-                      )}
-                    </div>
-                  )}
-                  {gafferResult.message && (
-                    <div className="text-slate-500 px-1">{gafferResult.message}</div>
-                  )}
+              {gafferReviewRows && gafferReviewRows.length > 0 && !gafferReviewOpen && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                  <span>
+                    Распознано <span className="font-medium text-slate-800">{gafferReviewRows.length}</span> строк — откройте таблицу, чтобы проверить и добавить в заказ.
+                  </span>
+                  <button
+                    type="button"
+                    className="text-violet-700 font-medium underline"
+                    onClick={() => setGafferReviewOpen(true)}
+                  >
+                    Открыть таблицу
+                  </button>
+                </div>
+              )}
+              {gafferReviewSavedHint && (
+                <div className="mt-2 text-xs text-emerald-700 px-1">
+                  ✅ Сопоставления отправлены в очередь обучения (где применимо) — подтвердите в админке.
                 </div>
               )}
             </div>
@@ -1285,272 +1293,210 @@ function BookingNewPage() {
         </div>
       ) : null}
 
-      {/* ── Gaffer: единое окно уточнения (варианты AI + ручной поиск) ─────────── */}
-      {clarifyOpen && gafferResult && gafferResult.needsReview.length + gafferResult.unmatched.length > 0 ? (
+      {/* ── Gaffer: таблица «гаффер | каталог» + поиск по клику ───────────────── */}
+      {gafferReviewOpen && gafferReviewRows && gafferReviewRows.length > 0 ? (
         <div className="fixed inset-0 z-[70] bg-slate-900/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl rounded-xl bg-white border border-slate-200 shadow-xl flex flex-col max-h-[92vh]">
+          <div className="w-full max-w-4xl rounded-xl bg-white border border-slate-200 shadow-xl flex flex-col max-h-[92vh]">
             <div className="p-4 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
               <div>
-                <div className="font-semibold text-slate-900">Уточнение позиций</div>
+                <div className="font-semibold text-slate-900">Проверка заявки гаффера</div>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Где есть похожие строки — выберите вариант из списка или найдите позицию вручную в каталоге. Нераспознанные — только поиск.
-                  Выбранные сопоставления попадут в комплект брони и в очередь обучения (после подтверждения в админке).
+                  Слева — как в тексте заявки. Справа — позиция каталога (по умолчанию от нейросети). Нажмите справа, чтобы найти другую
+                  позицию. Затем «Добавить в заказ».
                 </p>
               </div>
               <button
                 type="button"
                 className="text-slate-400 hover:text-slate-700 text-xl leading-none shrink-0"
-                onClick={() => setClarifyOpen(false)}
+                onClick={() => {
+                  setGafferReviewOpen(false);
+                  setGafferPickRowId(null);
+                }}
               >
                 ✕
               </button>
             </div>
-            <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-6">
-              {gafferResult.needsReview.map((item) => {
-                const search = clarifySearches[item.rawPhrase] ?? "";
-                const chosen = clarifyChoices[item.rawPhrase];
-                const allRows = Array.from(rowCache.values());
-                const filtered = allRows
-                  .filter((r) => {
-                    const q = search.toLowerCase();
-                    return (
-                      !q ||
-                      r.name.toLowerCase().includes(q) ||
-                      (r.brand ?? "").toLowerCase().includes(q) ||
-                      (r.model ?? "").toLowerCase().includes(q) ||
-                      r.category.toLowerCase().includes(q)
-                    );
-                  })
-                  .slice(0, 30);
-                const chosenRow = chosen && chosen !== "__skip__" ? rowCache.get(chosen) : undefined;
-                const chosenLabel =
-                  chosenRow != null
-                    ? [chosenRow.name, chosenRow.brand, chosenRow.model].filter(Boolean).join(" ")
-                    : chosen && chosen !== "__skip__"
-                      ? chosen
-                      : null;
-
-                return (
-                  <div key={`rev-${item.rawPhrase}`} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs bg-amber-100 text-amber-800 rounded px-2 py-0.5 font-medium">похожие варианты</span>
-                      <span className="text-sm font-medium text-slate-900">«{item.rawPhrase}»</span>
-                      <span className="text-xs text-slate-500">×{item.quantity}</span>
-                    </div>
-
-                    <div className="text-xs font-medium text-slate-600">Варианты из каталога</div>
-                    <div className="space-y-1.5">
-                      {item.candidates.map((c) => (
-                        <label
-                          key={c.equipmentId}
-                          className={`flex items-start gap-2.5 rounded border p-2.5 cursor-pointer transition-colors ${
-                            clarifyChoices[item.rawPhrase] === c.equipmentId
-                              ? "border-emerald-400 bg-emerald-50"
-                              : "border-slate-200 hover:border-slate-300 hover:bg-white"
+            <div className="overflow-auto flex-1 min-h-0">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-slate-600 sticky top-0 z-10">
+                  <tr>
+                    <th className="text-left px-3 py-2 border-b border-slate-200 w-[42%]">Как написал гаффер</th>
+                    <th className="text-left px-3 py-2 border-b border-slate-200">Позиция в каталоге</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {gafferReviewRows.map((row) => (
+                    <tr key={row.id} className="align-top">
+                      <td className="px-3 py-2.5 text-slate-800">
+                        <div className="font-medium">{row.gafferPhrase}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">Кол-во: {row.quantity}</div>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <button
+                          type="button"
+                          className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
+                            row.equipmentId
+                              ? "border-violet-200 bg-violet-50/50 hover:border-violet-400"
+                              : "border-amber-200 bg-amber-50/60 hover:border-amber-400"
                           }`}
+                          onClick={() => {
+                            setGafferPickRowId(row.id);
+                            setGafferPickSearch("");
+                          }}
                         >
-                          <input
-                            type="radio"
-                            name={`clarify_${item.rawPhrase}`}
-                            value={c.equipmentId}
-                            checked={clarifyChoices[item.rawPhrase] === c.equipmentId}
-                            onChange={() => setClarifyChoices((prev) => ({ ...prev, [item.rawPhrase]: c.equipmentId }))}
-                            className="mt-0.5 accent-emerald-600"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium text-sm text-slate-900">{c.catalogName}</div>
-                            <div className="text-xs text-slate-500">
-                              {c.category} · Доступно: {c.availableQuantity}
-                            </div>
-                          </div>
-                          <div className="text-xs text-slate-500 shrink-0">{Math.round(c.confidence * 100)}%</div>
-                        </label>
-                      ))}
-                      <label
-                        className={`flex items-start gap-2.5 rounded border p-2.5 cursor-pointer transition-colors ${
-                          clarifyChoices[item.rawPhrase] === "__skip__"
-                            ? "border-slate-400 bg-slate-100"
-                            : "border-slate-200 hover:border-slate-300 hover:bg-white"
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name={`clarify_${item.rawPhrase}`}
-                          value="__skip__"
-                          checked={clarifyChoices[item.rawPhrase] === "__skip__"}
-                          onChange={() => setClarifyChoices((prev) => ({ ...prev, [item.rawPhrase]: "__skip__" }))}
-                          className="mt-0.5 accent-slate-500"
-                        />
-                        <div className="text-sm text-slate-500">Пропустить эту позицию</div>
-                      </label>
-                    </div>
-
-                    <div className="border-t border-slate-200 pt-3 space-y-2">
-                      <div className="text-xs font-medium text-slate-600">Или поиск по каталогу</div>
-                      {chosenLabel && !item.candidates.some((c) => c.equipmentId === chosen) ? (
-                        <div className="flex items-center gap-2">
-                          <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 flex-1">
-                            ✓ Вручную: {chosenLabel}
-                          </div>
-                          <button
-                            type="button"
-                            className="text-xs text-slate-500 hover:text-rose-600 underline shrink-0"
-                            onClick={() =>
-                              setClarifyChoices((p) => {
-                                const n = { ...p };
-                                const first = item.candidates[0]?.equipmentId;
-                                if (first) n[item.rawPhrase] = first;
-                                else delete n[item.rawPhrase];
-                                return n;
-                              })
-                            }
-                          >
-                            Сбросить к вариантам
-                          </button>
-                        </div>
-                      ) : null}
-                      {!(chosenLabel && !item.candidates.some((c) => c.equipmentId === chosen)) ? (
-                        <>
-                          <input
-                            type="text"
-                            placeholder="Название, бренд, модель, категория…"
-                            className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm bg-white"
-                            value={search}
-                            onChange={(e) => setClarifySearches((p) => ({ ...p, [item.rawPhrase]: e.target.value }))}
-                          />
-                          {filtered.length === 0 && search && (
-                            <div className="text-xs text-slate-500 py-1">Ничего не найдено — попробуйте другой запрос.</div>
+                          {row.equipmentId && row.catalogLabel ? (
+                            <>
+                              <div className="font-medium text-slate-900">{row.catalogLabel}</div>
+                              <div className="text-xs text-slate-500 mt-0.5">Нейросеть: {row.interpretedName}</div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-amber-800 font-medium">Не выбрано — нажмите и найдите в каталоге</div>
+                              <div className="text-xs text-slate-500 mt-0.5">Нейросеть поняла как: {row.interpretedName}</div>
+                            </>
                           )}
-                          {filtered.length === 0 && !search && (
-                            <div className="text-xs text-slate-400 py-1">Введите запрос или выберите вариант выше.</div>
-                          )}
-                          <div className="space-y-1 max-h-36 overflow-y-auto">
-                            {filtered.map((r) => (
+                          <div className="text-[10px] text-violet-600 mt-1">Нажмите для поиска…</div>
+                        </button>
+                        {row.candidates.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wide w-full">Быстрый выбор</span>
+                            {row.candidates.map((c) => (
                               <button
-                                key={r.equipmentId}
+                                key={c.equipmentId}
                                 type="button"
-                                className="w-full text-left rounded border border-slate-200 px-2.5 py-1.5 text-xs hover:border-violet-400 hover:bg-violet-50 transition-colors bg-white"
-                                onClick={() => {
-                                  setClarifyChoices((p) => ({ ...p, [item.rawPhrase]: r.equipmentId }));
-                                  setClarifySearches((p) => ({ ...p, [item.rawPhrase]: "" }));
-                                }}
+                                className={`text-xs rounded border px-2 py-0.5 ${
+                                  row.equipmentId === c.equipmentId
+                                    ? "border-emerald-400 bg-emerald-50 text-emerald-900"
+                                    : "border-slate-200 bg-white text-slate-700 hover:border-violet-300"
+                                }`}
+                                onClick={() =>
+                                  setGafferReviewRows((rows) =>
+                                    rows?.map((r) =>
+                                      r.id === row.id
+                                        ? {
+                                            ...r,
+                                            equipmentId: c.equipmentId,
+                                            catalogLabel: c.catalogName,
+                                            availableQuantity: c.availableQuantity,
+                                          }
+                                        : r,
+                                    ) ?? null,
+                                  )
+                                }
                               >
-                                <div className="font-medium text-slate-900">{r.name}</div>
-                                <div className="text-slate-500">{[r.brand, r.model, r.category].filter(Boolean).join(" · ")}</div>
+                                {c.catalogName}
                               </button>
                             ))}
                           </div>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {gafferResult.needsReview.length > 0 && gafferResult.unmatched.length > 0 ? (
-                <div className="text-xs text-slate-500 font-medium px-1">Дальше — без похожих совпадений, только поиск:</div>
-              ) : null}
-
-              {gafferResult.unmatched.map((item) => {
-                const search = clarifySearches[item.rawPhrase] ?? "";
-                const chosen = clarifyChoices[item.rawPhrase];
-                const allRows = Array.from(rowCache.values());
-                const filtered = allRows
-                  .filter((r) => {
-                    const q = search.toLowerCase();
-                    return (
-                      !q ||
-                      r.name.toLowerCase().includes(q) ||
-                      (r.brand ?? "").toLowerCase().includes(q) ||
-                      (r.model ?? "").toLowerCase().includes(q) ||
-                      r.category.toLowerCase().includes(q)
-                    );
-                  })
-                  .slice(0, 30);
-                const chosenRow = chosen ? rowCache.get(chosen) : undefined;
-                return (
-                  <div key={`unm-${item.rawPhrase}`} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs bg-rose-100 text-rose-700 rounded px-2 py-0.5 font-medium">не распознано</span>
-                      <span className="text-sm font-medium text-slate-900">«{item.rawPhrase}»</span>
-                      <span className="text-xs text-slate-500">×{item.quantity}</span>
-                    </div>
-                    {chosen && chosenRow ? (
-                      <div className="flex items-center gap-2">
-                        <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 flex-1">
-                          ✓ {[chosenRow.name, chosenRow.brand, chosenRow.model].filter(Boolean).join(" ")}
-                        </div>
-                        <button
-                          type="button"
-                          className="text-xs text-slate-500 hover:text-rose-600 underline shrink-0"
-                          onClick={() =>
-                            setClarifyChoices((p) => {
-                              const n = { ...p };
-                              delete n[item.rawPhrase];
-                              return n;
-                            })
-                          }
-                        >
-                          Изменить
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <input
-                          type="text"
-                          placeholder="Поиск по каталогу…"
-                          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm bg-white"
-                          value={search}
-                          onChange={(e) => setClarifySearches((p) => ({ ...p, [item.rawPhrase]: e.target.value }))}
-                        />
-                        {filtered.length === 0 && search && (
-                          <div className="text-xs text-slate-500 py-1">Ничего не найдено. Попробуйте другой запрос.</div>
-                        )}
-                        {filtered.length === 0 && !search && (
-                          <div className="text-xs text-slate-400 py-1">Начните вводить название для поиска по каталогу.</div>
-                        )}
-                        <div className="space-y-1 max-h-40 overflow-y-auto">
-                          {filtered.map((r) => (
-                            <button
-                              key={r.equipmentId}
-                              type="button"
-                              className="w-full text-left rounded border border-slate-200 px-2.5 py-1.5 text-xs hover:border-violet-400 hover:bg-violet-50 transition-colors bg-white"
-                              onClick={() => {
-                                setClarifyChoices((p) => ({ ...p, [item.rawPhrase]: r.equipmentId }));
-                                setClarifySearches((p) => ({ ...p, [item.rawPhrase]: "" }));
-                              }}
-                            >
-                              <div className="font-medium text-slate-900">{r.name}</div>
-                              <div className="text-slate-500">{[r.brand, r.model, r.category].filter(Boolean).join(" · ")}</div>
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
             <div className="p-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0 bg-white">
               <div className="text-xs text-slate-500">
-                Всего строк: {gafferResult.needsReview.length + gafferResult.unmatched.length}
+                В заказ пойдут строки с выбранным каталогом:{" "}
+                <span className="font-medium text-slate-700">
+                  {gafferReviewRows.filter((r) => r.equipmentId).length} / {gafferReviewRows.length}
+                </span>
               </div>
               <div className="flex gap-2">
                 <button
                   type="button"
                   className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
-                  onClick={() => setClarifyOpen(false)}
+                  onClick={() => {
+                    setGafferReviewOpen(false);
+                    setGafferPickRowId(null);
+                  }}
                 >
-                  Отмена
+                  Закрыть
                 </button>
                 <button
                   type="button"
-                  disabled={clarifySubmitting}
+                  disabled={gafferReviewSubmitting || gafferReviewRows.every((r) => !r.equipmentId)}
                   className="rounded bg-violet-600 text-white px-4 py-2 text-sm font-medium hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  onClick={applyClarifyAll}
+                  onClick={addGafferReviewToOrder}
                 >
-                  {clarifySubmitting ? "Применение…" : "Применить в комплект"}
+                  {gafferReviewSubmitting ? "Добавление…" : "Добавить в заказ"}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {gafferPickRowId && gafferReviewRows ? (
+        <div className="fixed inset-0 z-[80] bg-slate-900/50 flex items-center justify-center p-4">
+          <div
+            className="w-full max-w-lg rounded-xl bg-white border border-slate-200 shadow-xl flex flex-col max-h-[80vh]"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Поиск позиции каталога"
+          >
+            <div className="p-3 border-b border-slate-200 flex items-center justify-between">
+              <div className="font-medium text-slate-900 text-sm">Поиск в каталоге</div>
+              <button
+                type="button"
+                className="text-slate-400 hover:text-slate-700"
+                onClick={() => {
+                  setGafferPickRowId(null);
+                  setGafferPickSearch("");
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-3 flex-1 min-h-0 flex flex-col gap-2">
+              <input
+                type="text"
+                autoFocus
+                placeholder="Название, бренд, модель, категория…"
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                value={gafferPickSearch}
+                onChange={(e) => setGafferPickSearch(e.target.value)}
+              />
+              <div className="overflow-y-auto flex-1 space-y-1 min-h-[200px]">
+                {Array.from(rowCache.values())
+                  .filter((r) => {
+                    const q = gafferPickSearch.toLowerCase();
+                    return (
+                      !q ||
+                      r.name.toLowerCase().includes(q) ||
+                      (r.brand ?? "").toLowerCase().includes(q) ||
+                      (r.model ?? "").toLowerCase().includes(q) ||
+                      r.category.toLowerCase().includes(q)
+                    );
+                  })
+                  .slice(0, 40)
+                  .map((r) => (
+                    <button
+                      key={r.equipmentId}
+                      type="button"
+                      className="w-full text-left rounded border border-slate-200 px-3 py-2 text-xs hover:border-violet-400 hover:bg-violet-50"
+                      onClick={() => {
+                        setGafferReviewRows((rows) =>
+                          rows?.map((row) =>
+                            row.id === gafferPickRowId
+                              ? {
+                                  ...row,
+                                  equipmentId: r.equipmentId,
+                                  catalogLabel: [r.name, r.brand, r.model].filter(Boolean).join(" ") || r.name,
+                                  availableQuantity: r.availableQuantity,
+                                }
+                              : row,
+                          ) ?? null,
+                        );
+                        setGafferPickRowId(null);
+                        setGafferPickSearch("");
+                      }}
+                    >
+                      <div className="font-medium text-slate-900">{r.name}</div>
+                      <div className="text-slate-500">{[r.brand, r.model, r.category].filter(Boolean).join(" · ")}</div>
+                      <div className="text-slate-400 mt-0.5">Доступно: {r.availableQuantity}</div>
+                    </button>
+                  ))}
               </div>
             </div>
           </div>

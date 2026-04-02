@@ -1,12 +1,11 @@
 import express from "express";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Prisma } from "@prisma/client";
-import { matchGafferRequest, type ParsedRequestItem } from "../services/equipmentMatcher";
+import { matchGafferRequestOrdered, type GafferOrderedRowMatch, type ParsedRequestItem } from "../services/equipmentMatcher";
 
 const router = express.Router();
-
-// ── Validation ────────────────────────────────────────────────────────────────
 
 /** Max chars for gaffer paste; keep in sync with bookings/new textarea maxLength. */
 const MAX_REQUEST_TEXT_CHARS = 10_000;
@@ -17,23 +16,32 @@ const ParseRequestBody = z.object({
   endDate: z.string().optional(),
 });
 
-// ── LLM extraction ─────────────────────────────────────────────────────────────
+export type GafferReviewApiItem = {
+  id: string;
+  gafferPhrase: string;
+  interpretedName: string;
+  quantity: number;
+  match: GafferOrderedRowMatch;
+};
 
-const EXTRACT_PROMPT = `You are an equipment list parser for a film/photo lighting rental company.
+// ── LLM extraction (review table: как написал гаффер / как поняла модель) ─────
+
+const EXTRACT_PROMPT_REVIEW = `You are an equipment list parser for a film/photo lighting rental company.
 
 Extract ALL equipment items from the gaffer's request text below.
-For each item, extract:
-- name: the equipment name (as written, do NOT translate or normalize)
-- quantity: integer quantity (default 1 if not specified)
-- notes: any additional notes about the item (optional)
+
+For EACH item output a JSON object with:
+- gafferPhrase: copy the phrase EXACTLY as it appears in the request (include quantity words if they are on the same line, e.g. "2x 52xt"). If impossible, use the shortest faithful quote from the request.
+- interpretedName: a short normalized equipment name for inventory matching (Latin/brand/model style when obvious, e.g. "52xt", "nova p300"). Do NOT put quantity here.
+- quantity: integer, default 1 if not specified in the request.
 
 CRITICAL: Respond with ONLY a valid JSON array. No markdown, no extra text.
 
 Example:
 [
-  { "name": "52xt", "quantity": 2 },
-  { "name": "nova p300", "quantity": 1, "notes": "с мягкой коробкой" },
-  { "name": "c-stand", "quantity": 4 }
+  { "gafferPhrase": "2 шт 52xt blair", "interpretedName": "52xt", "quantity": 2 },
+  { "gafferPhrase": "nova p300 с софтом", "interpretedName": "nova p300", "quantity": 1 },
+  { "gafferPhrase": "c-stand", "interpretedName": "c-stand", "quantity": 4 }
 ]
 
 If no equipment items can be identified, return an empty array: []
@@ -41,8 +49,12 @@ If no equipment items can be identified, return an empty array: []
 Gaffer request:
 `;
 
-/** Gemini SDK may throw from response.text() when candidates are empty, blocked, or malformed. */
-function readGeminiText(result: { response: { text: () => string; candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }> } }): string {
+function readGeminiText(result: {
+  response: {
+    text: () => string;
+    candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }>;
+  };
+}): string {
   try {
     return result.response.text();
   } catch (first: unknown) {
@@ -61,7 +73,36 @@ function readGeminiText(result: { response: { text: () => string; candidates?: A
   }
 }
 
-async function extractItemsWithLLM(text: string): Promise<ParsedRequestItem[]> {
+const quantityPreprocess = z.preprocess((v) => {
+  if (v === undefined || v === null || v === "") return 1;
+  if (typeof v === "number" && Number.isFinite(v)) return Math.max(1, Math.round(v));
+  const n = Number(String(v).trim().replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 1;
+}, z.number().int().positive());
+
+const RawLineSchema = z.object({
+  gafferPhrase: z.string().optional(),
+  interpretedName: z.string().optional(),
+  /** Совместимость со старым форматом ответа модели */
+  name: z.string().optional(),
+  quantity: quantityPreprocess,
+  notes: z.string().optional(),
+});
+
+export type GafferExtractedLine = {
+  gafferPhrase: string;
+  interpretedName: string;
+  quantity: number;
+};
+
+function normalizeExtractedLine(raw: z.infer<typeof RawLineSchema>): GafferExtractedLine | null {
+  const interpreted = (raw.interpretedName ?? raw.name ?? "").trim();
+  if (!interpreted) return null;
+  const gaffer = (raw.gafferPhrase ?? raw.name ?? interpreted).trim() || interpreted;
+  return { gafferPhrase: gaffer, interpretedName: interpreted, quantity: raw.quantity };
+}
+
+async function extractGafferLinesForReview(text: string): Promise<GafferExtractedLine[]> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
 
@@ -71,7 +112,6 @@ async function extractItemsWithLLM(text: string): Promise<ParsedRequestItem[]> {
   const model = client.getGenerativeModel({
     model: modelName,
     generationConfig: {
-      /** Long lists need a large JSON array; was 2048 and truncated for ~50+ lines. */
       maxOutputTokens: 4096,
       responseMimeType: "application/json",
     },
@@ -80,7 +120,7 @@ async function extractItemsWithLLM(text: string): Promise<ParsedRequestItem[]> {
   let raw = "";
   for (let attempt = 0; attempt <= 2; attempt++) {
     try {
-      const result = await model.generateContent(EXTRACT_PROMPT + text);
+      const result = await model.generateContent(EXTRACT_PROMPT_REVIEW + text);
       raw = readGeminiText(result);
       break;
     } catch (err: any) {
@@ -93,82 +133,74 @@ async function extractItemsWithLLM(text: string): Promise<ParsedRequestItem[]> {
     }
   }
 
-  // Robust JSON parse
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
     const mdMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (mdMatch?.[1]) {
-      try { parsed = JSON.parse(mdMatch[1].trim()); } catch {}
+      try {
+        parsed = JSON.parse(mdMatch[1].trim());
+      } catch {}
     }
     if (!parsed) {
       const arrMatch = raw.match(/\[[\s\S]*\]/);
       if (arrMatch) {
-        try { parsed = JSON.parse(arrMatch[0]); } catch {}
+        try {
+          parsed = JSON.parse(arrMatch[0]);
+        } catch {}
       }
     }
   }
 
   if (!Array.isArray(parsed)) return [];
 
-  const ItemSchema = z.object({
-    name: z.string().min(1),
-    /** Модель может опустить quantity или отдать строкой. */
-    quantity: z.preprocess((v) => {
-      if (v === undefined || v === null || v === "") return 1;
-      if (typeof v === "number" && Number.isFinite(v)) return Math.max(1, Math.round(v));
-      const n = Number(String(v).trim().replace(",", "."));
-      return Number.isFinite(n) && n > 0 ? Math.round(n) : 1;
-    }, z.number().int().positive()),
-    notes: z.string().optional(),
-  });
-
-  return parsed
-    .map((item) => {
-      const r = ItemSchema.safeParse(item);
-      return r.success ? r.data : null;
-    })
-    .filter((x): x is ParsedRequestItem => x !== null);
+  const out: GafferExtractedLine[] = [];
+  for (const row of parsed) {
+    const r = RawLineSchema.safeParse(row);
+    if (!r.success) continue;
+    const n = normalizeExtractedLine(r.data);
+    if (n) out.push(n);
+  }
+  return out;
 }
 
-// ── Route ──────────────────────────────────────────────────────────────────────
+function toParsedItems(lines: GafferExtractedLine[]): ParsedRequestItem[] {
+  return lines.map((l) => ({ name: l.interpretedName, quantity: l.quantity }));
+}
 
 /**
- * POST /api/bookings/parse-request
- * Parses free-form gaffer equipment request text with AI and matches to catalog.
+ * POST /api/bookings/parse-gaffer-review
+ * LLM → список (гаффер / интерпретация / кол-во) + поштучный матчинг каталога в исходном порядке.
  */
-router.post("/parse-request", async (req, res, next) => {
+router.post("/parse-gaffer-review", async (req, res, next) => {
   try {
-    const { requestText } = ParseRequestBody.parse(req.body);
+    const body = ParseRequestBody.parse(req.body);
 
-    // Step 1: LLM extracts structured items from free-form text
-    let extractedItems: ParsedRequestItem[];
+    let lines: GafferExtractedLine[];
     try {
-      extractedItems = await extractItemsWithLLM(requestText);
+      lines = await extractGafferLinesForReview(body.requestText);
     } catch (err: any) {
-      console.error("[parse-request] LLM extraction failed:", err?.message ?? err);
+      console.error("[parse-gaffer-review] LLM extraction failed:", err?.message ?? err);
       return res.status(503).json({
         error: "AI временно недоступен. Используйте ручной режим добавления оборудования.",
         code: "AI_UNAVAILABLE",
       });
     }
 
-    if (extractedItems.length === 0) {
+    if (lines.length === 0) {
       return res.json({
-        resolved: [],
-        needsReview: [],
-        unmatched: [],
+        items: [] as GafferReviewApiItem[],
         message: "AI не смог распознать позиции оборудования в тексте заявки.",
       });
     }
 
-    // Step 2: Match extracted items to catalog
-    let matchResult;
+    const forMatch = toParsedItems(lines);
+    let matches: GafferOrderedRowMatch[];
     try {
-      matchResult = await matchGafferRequest(extractedItems);
+      matches = await matchGafferRequestOrdered(forMatch);
     } catch (err) {
-      console.error("[parse-request] catalog match failed:", err);
+      console.error("[parse-gaffer-review] catalog match failed:", err);
       if (err instanceof Prisma.PrismaClientKnownRequestError) {
         return res.status(503).json({
           error: "Ошибка чтения каталога из базы. Проверьте миграции Prisma и перезапустите API.",
@@ -181,7 +213,15 @@ router.post("/parse-request", async (req, res, next) => {
       });
     }
 
-    return res.json(matchResult);
+    const items: GafferReviewApiItem[] = lines.map((line, i) => ({
+      id: randomUUID(),
+      gafferPhrase: line.gafferPhrase,
+      interpretedName: line.interpretedName,
+      quantity: line.quantity,
+      match: matches[i] ?? { kind: "unmatched" as const },
+    }));
+
+    return res.json({ items });
   } catch (err) {
     next(err);
   }

@@ -884,6 +884,20 @@ export type GafferMatchResult = {
   unmatched: GafferUnmatched[];
 };
 
+/** Результат матчинга одной строки заявки (порядок совпадает с входным массивом). */
+export type GafferOrderedRowMatch =
+  | {
+      kind: "resolved";
+      equipmentId: string;
+      catalogName: string;
+      category: string;
+      availableQuantity: number;
+      rentalRatePerShift: string;
+      confidence: number;
+    }
+  | { kind: "needsReview"; candidates: GafferCandidate[] }
+  | { kind: "unmatched" };
+
 // ── Scoring ───────────────────────────────────────────────────────────────────
 
 /** Вычисляет confidence [0..1] для пары (query, catalogRow) */
@@ -1034,4 +1048,45 @@ export async function matchGafferRequest(
   }
 
   return { resolved, needsReview, unmatched };
+}
+
+/**
+ * Матчинг каждой строки в том же порядке, что и вход (для UI «гаффер | понимание AI»).
+ */
+export async function matchGafferRequestOrdered(
+  items: ParsedRequestItem[],
+): Promise<GafferOrderedRowMatch[]> {
+  const [catalog, dbAliasRows] = await Promise.all([
+    prisma.equipment.findMany({
+      where: { totalQuantity: { gt: 0 } },
+      select: { id: true, name: true, category: true, totalQuantity: true, rentalRatePerShift: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+    prisma.slangAlias.findMany({ select: { phraseNormalized: true, equipmentId: true } }),
+  ]);
+
+  const dbAliases = new Map<string, string>(
+    dbAliasRows.map((a) => [a.phraseNormalized, a.equipmentId]),
+  );
+
+  const out: GafferOrderedRowMatch[] = [];
+  for (const item of items) {
+    const result = await findTopCandidates(item.name, item.quantity, catalog, dbAliases);
+    if (result.resolved) {
+      out.push({
+        kind: "resolved",
+        equipmentId: result.resolved.equipmentId,
+        catalogName: result.resolved.catalogName,
+        category: result.resolved.category,
+        availableQuantity: result.resolved.availableQuantity,
+        rentalRatePerShift: result.resolved.rentalRatePerShift,
+        confidence: result.resolved.confidence,
+      });
+    } else if (result.needsReview) {
+      out.push({ kind: "needsReview", candidates: result.needsReview.candidates });
+    } else {
+      out.push({ kind: "unmatched" });
+    }
+  }
+  return out;
 }
