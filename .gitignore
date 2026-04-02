@@ -11,3 +11,7 @@ apps/prod-bot/.env
 *.zip
 .DS_Store
 logs/*.log
+.worktrees/
+.superflow/
+.superflow-state.json
+CLAUDE.local.md
