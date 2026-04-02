@@ -8,7 +8,7 @@ const router = express.Router();
 // ── POST /api/admin/slang-learning/propose ─────────────────────────────────────
 // Called by the frontend when a user confirms an ambiguous match (needsReview)
 // or manually maps an unrecognized phrase to a catalog item.
-// Creates a PENDING candidate in the learning queue.
+// Немедленно сохраняет SlangAlias (AUTO_LEARNED) и создаёт APPROVED кандидата для аудита.
 //
 // source values (inside contextJson):
 //   "booking_review"             — manager picked from AI-suggested candidates
@@ -27,38 +27,48 @@ router.post("/propose", async (req, res, next) => {
     const body = ProposeBody.parse(req.body);
     const normalizedPhrase = norm(body.rawPhrase);
 
-    // For manual mappings (confidence === 1.0) reject if an APPROVED alias
-    // already exists for the exact same phrase+equipment pair to avoid noise.
-    if (body.proposedEquipmentId && body.confidence >= 1.0) {
-      const approvedAlias = await prisma.slangAlias.findFirst({
-        where: { phraseNormalized: normalizedPhrase, equipmentId: body.proposedEquipmentId },
+    // Если equipmentId передан — сразу upsert SlangAlias (авто-обучение)
+    let alias = null;
+    if (body.proposedEquipmentId) {
+      // Проверяем конфликт: есть ли уже псевдоним для той же фразы с другим оборудованием
+      const existingAliases = await prisma.slangAlias.findMany({
+        where: { phraseNormalized: normalizedPhrase },
+        select: { equipmentId: true },
       });
-      if (approvedAlias) {
-        return res.json({ id: approvedAlias.id, alreadyApproved: true });
+
+      const conflictExists = existingAliases.some(
+        (a: { equipmentId: string }) => a.equipmentId !== body.proposedEquipmentId,
+      );
+      if (conflictExists) {
+        console.warn(
+          `[slangLearning] Конфликт псевдонима: фраза "${normalizedPhrase}" уже привязана к другому оборудованию. Добавляем как ещё один кандидат.`,
+        );
       }
+
+      alias = await prisma.slangAlias.upsert({
+        where: {
+          phraseNormalized_equipmentId: {
+            phraseNormalized: normalizedPhrase,
+            equipmentId: body.proposedEquipmentId,
+          },
+        },
+        create: {
+          phraseNormalized: normalizedPhrase,
+          phraseOriginal: body.rawPhrase,
+          equipmentId: body.proposedEquipmentId,
+          confidence: body.confidence,
+          source: "AUTO_LEARNED",
+          usageCount: 1,
+          lastUsedAt: new Date(),
+        },
+        update: {
+          usageCount: { increment: 1 },
+          lastUsedAt: new Date(),
+        },
+      });
     }
 
-    // Avoid duplicate PENDING candidates for the same phrase+equipment
-    const existing = await prisma.slangLearningCandidate.findFirst({
-      where: {
-        normalizedPhrase,
-        proposedEquipmentId: body.proposedEquipmentId ?? null,
-        status: "PENDING",
-      },
-    });
-
-    if (existing) {
-      // If the incoming request is more confident (manual > AI), update confidence
-      if (body.confidence > existing.confidence) {
-        const updated = await prisma.slangLearningCandidate.update({
-          where: { id: existing.id },
-          data: { confidence: body.confidence, contextJson: body.contextJson ?? existing.contextJson },
-        });
-        return res.json({ ...updated, duplicate: true });
-      }
-      return res.json({ id: existing.id, duplicate: true });
-    }
-
+    // Создаём запись в очереди кандидатов со статусом APPROVED (аудит)
     const candidate = await prisma.slangLearningCandidate.create({
       data: {
         rawPhrase: body.rawPhrase,
@@ -67,10 +77,13 @@ router.post("/propose", async (req, res, next) => {
         proposedEquipmentName: body.proposedEquipmentName,
         confidence: body.confidence,
         contextJson: body.contextJson,
+        status: "APPROVED",
+        reviewedAt: new Date(),
+        reviewedBy: "auto",
       },
     });
 
-    return res.status(201).json(candidate);
+    return res.status(201).json({ alias, candidate, autoApproved: true });
   } catch (err) {
     next(err);
   }
@@ -88,6 +101,83 @@ router.get("/", async (req, res, next) => {
       take: 200,
     });
     return res.json(candidates);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/admin/slang-learning/dictionary/export ───────────────────────────
+// Плоский JSON-массив всех псевдонимов для импорта в бот.
+// ВАЖНО: должен быть определён ДО /dictionary, иначе Express перехватит как /:id
+
+router.get("/dictionary/export", async (req, res, next) => {
+  try {
+    const aliases = await prisma.slangAlias.findMany({
+      include: { equipment: { select: { name: true, category: true } } },
+      orderBy: { phraseNormalized: "asc" },
+    });
+
+    const result = (aliases as Array<{
+      phraseNormalized: string;
+      phraseOriginal: string;
+      equipmentId: string;
+      equipment: { name: string; category: string };
+      source: string;
+      confidence: number;
+    }>).map((a) => ({
+      phraseNormalized: a.phraseNormalized,
+      phraseOriginal: a.phraseOriginal,
+      equipmentId: a.equipmentId,
+      equipmentName: a.equipment.name,
+      source: a.source,
+      confidence: a.confidence,
+    }));
+
+    return res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/admin/slang-learning/dictionary ──────────────────────────────────
+// Все псевдонимы, сгруппированные по оборудованию.
+// ВАЖНО: должен быть определён ДО /:id/approve, но ПОСЛЕ /dictionary/export
+
+router.get("/dictionary", async (req, res, next) => {
+  try {
+    const aliases = await prisma.slangAlias.findMany({
+      include: { equipment: { select: { name: true, category: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Группируем по equipmentId
+    const grouped = new Map<
+      string,
+      { equipment: { id: string; name: string; category: string }; aliases: typeof aliases }
+    >();
+
+    for (const alias of aliases) {
+      const existing = grouped.get(alias.equipmentId);
+      if (existing) {
+        existing.aliases.push(alias);
+      } else {
+        grouped.set(alias.equipmentId, {
+          equipment: {
+            id: alias.equipmentId,
+            name: alias.equipment.name,
+            category: alias.equipment.category,
+          },
+          aliases: [alias],
+        });
+      }
+    }
+
+    // Сортируем по количеству псевдонимов (по убыванию)
+    const result = Array.from(grouped.values())
+      .map((g) => ({ ...g, aliasCount: g.aliases.length }))
+      .sort((a, b) => b.aliasCount - a.aliasCount);
+
+    return res.json(result);
   } catch (err) {
     next(err);
   }
