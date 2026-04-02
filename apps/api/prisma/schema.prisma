@@ -392,19 +392,26 @@ model EstimateLine {
   @@index([estimateId])
 }
 
+enum SlangAliasSource {
+  SEED
+  AUTO_LEARNED
+  MANUAL_ADMIN
+}
+
 /// Подтверждённый жаргонный псевдоним → конкретная позиция каталога.
 /// Пополняется только после одобрения администратором.
 model SlangAlias {
-  id              String    @id @default(cuid())
-  phraseNormalized String   /// нормализованная форма (нижний регистр, без спецсимволов)
-  phraseOriginal  String    /// оригинальный текст из заявки
+  id              String           @id @default(cuid())
+  phraseNormalized String          /// нормализованная форма (нижний регистр, без спецсимволов)
+  phraseOriginal  String           /// оригинальный текст из заявки
   equipmentId     String
-  equipment       Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  confidence      Float     @default(1.0)
-  /// откуда взялся псевдоним: "manual_admin" | "approved_candidate"
-  source          String    @default("approved_candidate")
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  equipment       Equipment        @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  confidence      Float            @default(1.0)
+  source          SlangAliasSource @default(AUTO_LEARNED)
+  usageCount      Int              @default(1)
+  lastUsedAt      DateTime         @default(now())
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@unique([phraseNormalized, equipmentId])
   @@index([phraseNormalized])
