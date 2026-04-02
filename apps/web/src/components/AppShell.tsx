@@ -112,7 +112,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Работа",
     items: [
       {
-        label: "Доступность",
+        label: "Бронирование оборудования",
         href: "/equipment",
         icon: <IconGrid />,
         match: (p) => p === "/equipment" || p === "/",
