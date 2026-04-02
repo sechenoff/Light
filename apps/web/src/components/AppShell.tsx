@@ -118,12 +118,6 @@ const NAV_GROUPS: NavGroup[] = [
         match: (p) => p === "/equipment" || p === "/",
       },
       {
-        label: "Брони",
-        href: "/bookings",
-        icon: <IconClipboard />,
-        match: (p) => p.startsWith("/bookings"),
-      },
-      {
         label: "Финансы",
         href: "/finance",
         icon: <IconCoin />,
