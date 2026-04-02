@@ -112,7 +112,7 @@ async function extractGafferLinesForReview(text: string): Promise<GafferExtracte
   const model = client.getGenerativeModel({
     model: modelName,
     generationConfig: {
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
       responseMimeType: "application/json",
     },
   });
@@ -133,6 +133,8 @@ async function extractGafferLinesForReview(text: string): Promise<GafferExtracte
     }
   }
 
+  console.log(`[parse-gaffer] raw response length=${raw.length}, last 50: ...${raw.slice(-50)}`);
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -151,9 +153,22 @@ async function extractGafferLinesForReview(text: string): Promise<GafferExtracte
         } catch {}
       }
     }
+    // Попытка починить обрезанный JSON: закрыть незавершённые структуры
+    if (!parsed && raw.startsWith("[")) {
+      const lastComplete = raw.lastIndexOf("}");
+      if (lastComplete > 0) {
+        try {
+          parsed = JSON.parse(raw.slice(0, lastComplete + 1) + "]");
+          console.log(`[parse-gaffer] repaired truncated JSON, recovered array`);
+        } catch {}
+      }
+    }
   }
 
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) {
+    console.warn(`[parse-gaffer] failed to parse as array, raw start: ${raw.slice(0, 200)}`);
+    return [];
+  }
 
   const out: GafferExtractedLine[] = [];
   for (const row of parsed) {
