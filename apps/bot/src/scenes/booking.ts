@@ -641,6 +641,17 @@ bookingScene.on("text", async (ctx) => {
     }));
 
     const cartItems = s.items ?? [];
+
+    // Удаление работает и в каталоге
+    const deleteResult = tryDeleteItems(cartItems, text);
+    if (deleteResult) {
+      setState(ctx, { items: deleteResult.remaining });
+      const removedNames = deleteResult.removed.map((r) => `• ${r.name}`).join("\n");
+      await ctx.reply(`🗑 Удалено:\n${removedNames}`, { parse_mode: "Markdown" });
+      await showCatalogCategoryItems(ctx, s.catalogCategory!, catalog);
+      return;
+    }
+
     const thinking = await ctx.reply("⏳ Обрабатываю…");
     const del = () => ctx.telegram.deleteMessage(ctx.chat!.id, thinking.message_id).catch(() => {});
 
@@ -835,9 +846,16 @@ async function showHub(ctx: BotContext, unmatchedText?: string): Promise<void> {
       "• Или выберите из каталога по категориям";
   } else {
     const full = totalCost(items, s.startDate!, s.endDate!);
+    const MAX_DISPLAY = 15;
+    const displayItems = items.slice(0, MAX_DISPLAY);
+    const hiddenCount = items.length - MAX_DISPLAY;
+    let listStr = fmtList(displayItems, true);
+    if (hiddenCount > 0) {
+      listStr += `\n... и ещё ${hiddenCount} позиций`;
+    }
     msg =
       `📋 *Список оборудования (${items.length} поз.):*\n` +
-      `${fmtList(items, true)}\n\n` +
+      `${listStr}\n\n` +
       `${fmtPrice(full)}\n\n` +
       `Напишите что добавить или убрать — бот поймёт.`;
   }
@@ -881,11 +899,13 @@ async function showNextReview(ctx: BotContext): Promise<void> {
 
   const candidates = item.match.candidates;
 
+  const progress = `(${idx + 1}/${pending.length}) `;
+
   if (candidates.length === 1) {
     const c = candidates[0]!;
     const pct = Math.round(c.confidence * 100);
     await ctx.reply(
-      `❓ «${item.gafferPhrase}» — это ${c.catalogName}?`,
+      `❓ ${progress}«${item.gafferPhrase}» — это ${c.catalogName}?`,
       {
         ...Markup.inlineKeyboard([
           [
@@ -905,7 +925,7 @@ async function showNextReview(ctx: BotContext): Promise<void> {
     rows.push([Markup.button.callback("⏭ Пропустить все оставшиеся", "nr:skipall")]);
 
     await ctx.reply(
-      `❓ «${item.gafferPhrase}» — вы имели в виду:`,
+      `❓ ${progress}«${item.gafferPhrase}» — вы имели в виду:`,
       {
         ...Markup.inlineKeyboard(rows),
       },

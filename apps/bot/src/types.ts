@@ -37,13 +37,7 @@ export type BookingDraft = {
   rawDates?: string;
   startDate?: string; // ISO
   endDate?: string;   // ISO
-  /** Исходный текст запроса оборудования */
-  rawEquipment?: string;
   items?: MatchedItem[];
-  /** Позиции, которые не удалось найти в каталоге — ожидают уточнения */
-  unmatchedText?: string;
-  /** Сколько раз подряд не удавалось уточнить ненайденные позиции */
-  clarifyAttempts?: number;
   comment?: string;
   /** Каталог, загруженный для пошагового режима */
   catalogItems?: EquipmentItem[];
