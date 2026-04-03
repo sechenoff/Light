@@ -53,6 +53,7 @@ async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResp
       outHeaders.set(key, value);
     }
   });
+  outHeaders.set('X-API-Key', process.env.API_KEY ?? '');
 
   let body: ArrayBuffer | undefined;
   if (req.method !== "GET" && req.method !== "HEAD") {
