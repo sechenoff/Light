@@ -2,7 +2,7 @@ import { Scenes, Markup } from "telegraf";
 import type { BotContext, BookingDraft, MatchedItem } from "../types";
 import { parseDates, matchEquipment, parseCatalogIntent } from "../services/llm";
 import type { MatchResult } from "../services/llm";
-import { getAvailability, createBooking, getPricelistMeta, fetchPricelistBuffer } from "../services/api";
+import { getAvailability, createBooking } from "../services/api";
 import type { GafferReviewItem, GafferMatchCandidate } from "../services/api";
 import { logError, logWarn } from "../services/logger";
 import { mainMenuKeyboard } from "../keyboards";
