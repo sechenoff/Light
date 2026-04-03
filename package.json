@@ -14,10 +14,9 @@
     "prisma:generate": "npm run prisma:generate -w apps/api",
     "prisma:migrate": "npm run prisma:migrate -w apps/api",
     "seed": "npm run seed -w apps/api",
-    "test": "npm run test -w packages/shared"
+    "test": "npm run test -w packages/shared && npm run test -w apps/bot && npm run test -w apps/api"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"
   }
 }
-
