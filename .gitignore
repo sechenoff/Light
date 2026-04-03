@@ -5,7 +5,7 @@ dist
 .env.local
 apps/api/.env
 apps/api/prod.db
-apps/api/prisma/test.db
+apps/api/prisma/test.db*
 apps/web/.env.local
 apps/bot/.env
 apps/prod-bot/.env

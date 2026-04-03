@@ -34,12 +34,16 @@ beforeAll(async () => {
   app = mod.app;
 });
 
-afterAll(() => {
-  if (fs.existsSync(TEST_DB_PATH)) {
-    try {
-      fs.unlinkSync(TEST_DB_PATH);
-    } catch {
-      // Ignore cleanup errors
+afterAll(async () => {
+  // Disconnect Prisma to release DB handles and prevent process hang
+  const { prisma } = await import("../prisma");
+  await prisma.$disconnect();
+
+  // Clean up test DB and WAL sidecar files
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const f = TEST_DB_PATH + suffix;
+    if (fs.existsSync(f)) {
+      try { fs.unlinkSync(f); } catch { /* ignore */ }
     }
   }
 });
