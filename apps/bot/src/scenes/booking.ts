@@ -6,46 +6,12 @@ import { getAvailability, createBooking } from "../services/api";
 import type { GafferReviewItem, GafferMatchCandidate } from "../services/api";
 import { logError, logWarn } from "../services/logger";
 import { mainMenuKeyboard } from "../keyboards";
-
-const DISCOUNT = 0.5; // 50% скидка
+import { today, fmtItem, fmtList, totalCost, fmtPrice, buildItems, mergeItems } from "./booking-helpers";
 
 /** Шаги 1–3/4: назад по шагам + отмена в главное меню */
 const bookingStepNavKeyboard = Markup.keyboard([
   ["⬅️ Назад", "❌ Отмена бронирования"],
 ]).resize();
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function fmtItem(i: MatchedItem, idx?: number): string {
-  const prefix = idx !== undefined ? `${idx + 1}. ` : "• ";
-  return `${prefix}${i.name} × ${i.quantity} шт — ${Number(i.rentalRatePerShift).toLocaleString("ru-RU")} ₽/смена`;
-}
-
-function fmtList(items: MatchedItem[], numbered = false): string {
-  return items.map((i, idx) => fmtItem(i, numbered ? idx : undefined)).join("\n");
-}
-
-function totalCost(items: MatchedItem[], start: string, end: string): number {
-  const days = Math.max(
-    1,
-    Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000),
-  );
-  return items.reduce(
-    (sum, i) => sum + Number(i.rentalRatePerShift) * i.quantity * days,
-    0,
-  );
-}
-
-/** Строка с полной ценой и ценой со скидкой */
-function fmtPrice(full: number): string {
-  const discounted = Math.round(full * (1 - DISCOUNT));
-  return (
-    `💰 Полная стоимость: ~${full.toLocaleString("ru-RU")} ₽~\n` +
-    `🏷 Со скидкой 50%: *${discounted.toLocaleString("ru-RU")} ₽*`
-  );
-}
 
 /**
  * Клавиатура хаба — явный reply_markup для Telegram.
@@ -68,36 +34,6 @@ function getState(ctx: BotContext): Partial<BookingDraft> {
 }
 function setState(ctx: BotContext, patch: Partial<BookingDraft>): void {
   Object.assign(ctx.scene.state, patch);
-}
-
-/** Строим MatchedItem[] из результата matchEquipment (данные каталога уже в resolved) */
-function buildItems(
-  resolved: Array<{ equipmentId: string; quantity: number; catalogName: string; category: string; availableQuantity: number; rentalRatePerShift: string }>,
-): MatchedItem[] {
-  return resolved
-    .filter((i) => i.quantity > 0)
-    .map((i) => ({
-      equipmentId: i.equipmentId,
-      name: i.catalogName,
-      category: i.category,
-      quantity: Math.min(i.quantity, i.availableQuantity),
-      rentalRatePerShift: i.rentalRatePerShift,
-      availableQuantity: i.availableQuantity,
-    }));
-}
-
-/** Объединяет два списка: если equipmentId совпадает — суммирует qty */
-function mergeItems(existing: MatchedItem[], incoming: MatchedItem[]): MatchedItem[] {
-  const map = new Map<string, MatchedItem>(existing.map((i) => [i.equipmentId, { ...i }]));
-  for (const item of incoming) {
-    if (map.has(item.equipmentId)) {
-      const cur = map.get(item.equipmentId)!;
-      cur.quantity = Math.min(cur.quantity + item.quantity, item.availableQuantity);
-    } else {
-      map.set(item.equipmentId, { ...item });
-    }
-  }
-  return Array.from(map.values());
 }
 
 /** Клавиатура подтверждения */
