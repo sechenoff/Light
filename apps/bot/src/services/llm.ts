@@ -1,9 +1,18 @@
 import OpenAI from "openai";
-import type { EquipmentItem, MatchedItem } from "../types";
+import type { MatchedItem } from "../types";
 import { parseGafferReview, type GafferReviewItem } from "./api";
 
+export type ResolvedItem = {
+  equipmentId: string;
+  quantity: number;
+  catalogName: string;
+  category: string;
+  availableQuantity: number;
+  rentalRatePerShift: string;
+};
+
 export type MatchResult = {
-  resolved: Array<{ equipmentId: string; quantity: number }>;
+  resolved: ResolvedItem[];
   needsReview: GafferReviewItem[];
   unmatched: string[];
 };
@@ -51,12 +60,10 @@ export async function parseDates(
 /**
  * Матчит текстовое описание оборудования к каталогу через API
  * (Gemini AI + обучаемый словарь SlangAlias — тот же движок, что и на сайте).
- * Параметр catalog сохранён для совместимости сигнатуры, но не используется —
- * матчинг и доступность определяет API.
+ * Матчинг и доступность определяет API — отдельный запрос каталога не нужен.
  */
 export async function matchEquipment(
   userText: string,
-  _catalog: EquipmentItem[],
 ): Promise<MatchResult | { error: string }> {
   try {
     const response = await parseGafferReview(userText);
@@ -65,7 +72,7 @@ export async function matchEquipment(
       return { error: response.error };
     }
 
-    const resolved: Array<{ equipmentId: string; quantity: number }> = [];
+    const resolved: ResolvedItem[] = [];
     const needsReview: GafferReviewItem[] = [];
     const unmatched: string[] = [];
 
@@ -74,6 +81,10 @@ export async function matchEquipment(
         resolved.push({
           equipmentId: item.match.equipmentId,
           quantity: Math.min(item.quantity, item.match.availableQuantity),
+          catalogName: item.match.catalogName,
+          category: item.match.category,
+          availableQuantity: item.match.availableQuantity,
+          rentalRatePerShift: item.match.rentalRatePerShift,
         });
       } else if (item.match.kind === "needsReview") {
         needsReview.push(item);
