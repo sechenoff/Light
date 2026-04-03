@@ -70,25 +70,20 @@ function setState(ctx: BotContext, patch: Partial<BookingDraft>): void {
   Object.assign(ctx.scene.state, patch);
 }
 
-/** Строим MatchedItem[] из результата matchEquipment + каталога */
+/** Строим MatchedItem[] из результата matchEquipment (данные каталога уже в resolved) */
 function buildItems(
-  rawMatched: Array<{ equipmentId: string; quantity: number }>,
-  catalog: Array<{ equipmentId: string; name: string; category: string; availableQuantity: number; rentalRatePerShift: string }>,
+  resolved: Array<{ equipmentId: string; quantity: number; catalogName: string; category: string; availableQuantity: number; rentalRatePerShift: string }>,
 ): MatchedItem[] {
-  const catalogMap = new Map(catalog.map((e) => [e.equipmentId, e]));
-  return rawMatched
-    .filter((i) => catalogMap.has(i.equipmentId) && i.quantity > 0)
-    .map((i) => {
-      const eq = catalogMap.get(i.equipmentId)!;
-      return {
-        equipmentId: i.equipmentId,
-        name: eq.name,
-        category: eq.category,
-        quantity: Math.min(i.quantity, eq.availableQuantity),
-        rentalRatePerShift: eq.rentalRatePerShift,
-        availableQuantity: eq.availableQuantity,
-      };
-    });
+  return resolved
+    .filter((i) => i.quantity > 0)
+    .map((i) => ({
+      equipmentId: i.equipmentId,
+      name: i.catalogName,
+      category: i.category,
+      quantity: Math.min(i.quantity, i.availableQuantity),
+      rentalRatePerShift: i.rentalRatePerShift,
+      availableQuantity: i.availableQuantity,
+    }));
 }
 
 /** Объединяет два списка: если equipmentId совпадает — суммирует qty */
@@ -503,21 +498,9 @@ bookingScene.on("text", async (ctx) => {
     // Свободный ввод — AI матчинг
     const thinking = await ctx.reply("⏳ Ищу в каталоге…");
 
-    let catalog;
-    try {
-      catalog = await getAvailability(s.startDate!, s.endDate!);
-    } catch (e) {
-      logError("hub:getAvailability", "Failed to load catalog", e);
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id, thinking.message_id, undefined,
-        "⚠️ Не удалось получить каталог. Попробуйте позже.",
-      );
-      return;
-    }
-
     let matchResult: MatchResult | { error: string };
     try {
-      matchResult = await matchEquipment(text, catalog);
+      matchResult = await matchEquipment(text);
     } catch (e) {
       const isTimeout = e instanceof Error && e.name === "TimeoutError";
       logError("hub:matchEquipment", `LLM error for: "${text.slice(0, 120)}"`, e);
@@ -539,7 +522,7 @@ bookingScene.on("text", async (ctx) => {
       return;
     }
 
-    const newItems = buildItems(matchResult.resolved, catalog);
+    const newItems = buildItems(matchResult.resolved);
     const merged = mergeItems(items, newItems);
 
     const unmatchedText = matchResult.unmatched.length > 0
