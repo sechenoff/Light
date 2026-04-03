@@ -7,6 +7,8 @@ import { ZodError } from "zod";
 
 import { router } from "./routes";
 import { HttpError } from "./utils/errors";
+import { rateLimiter } from "./middleware/rateLimiter";
+import { apiKeyAuth } from "./middleware/apiKeyAuth";
 
 function isMalformedJsonBodyError(err: unknown): boolean {
   return (
@@ -50,8 +52,10 @@ app.use(
 );
 app.use(morgan("dev"));
 app.use(express.json({ limit: "1mb" }));
+app.use(rateLimiter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+app.use(apiKeyAuth);
 app.use(router);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
