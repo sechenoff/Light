@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { splitHours, calcPersonCost, calculateCrewCost } from "./crewCalculator";
-import { ROLES_BY_ID } from "./crewRates";
+import { splitHours, calcPersonCost, calculateCrewCost } from "../src/crewCalculator";
+import { ROLES_BY_ID } from "../src/crewRates";
 
 // ─── splitHours ───────────────────────────────────────────────────────────────
 

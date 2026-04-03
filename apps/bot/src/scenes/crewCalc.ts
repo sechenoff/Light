@@ -1,8 +1,6 @@
 import { Scenes, Markup } from "telegraf";
 import type { BotContext } from "../types";
-import type { RoleId } from "../lib/crewRates";
-import { ROLES, ROLES_BY_ID } from "../lib/crewRates";
-import { calculateCrewCost, type RoleBreakdown } from "../lib/crewCalculator";
+import { ROLES, ROLES_BY_ID, calculateCrewCost, type RoleId, type RoleBreakdown } from "@light-rental/shared";
 import { mainMenuKeyboard } from "../keyboards";
 
 type CrewCalcDraft = {
