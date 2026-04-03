@@ -31,13 +31,13 @@
 - [apps/web/src/components/AppShell.tsx](apps/web/src/components/AppShell.tsx): Navigation shell component
 - [apps/web/next.config.mjs](apps/web/next.config.mjs): Next.js configuration
 
-### Bot (Telegraf 4 + OpenAI GPT-4o-mini)
+### Bot (Telegraf 4 + API-backed AI matching)
 11 source files, ~2,700 LOC
 
 - [apps/bot/src/index.ts](apps/bot/src/index.ts): Bot entrypoint — Telegraf setup with session, Stage (3 scenes), webhook/polling modes
-- [apps/bot/src/services/llm.ts](apps/bot/src/services/llm.ts): OpenAI GPT-4o-mini integration — date parsing, equipment matching, catalog intent parsing, booking validation
-- [apps/bot/src/services/api.ts](apps/bot/src/services/api.ts): HTTP client calling the Express API
-- [apps/bot/src/types.ts](apps/bot/src/types.ts): Bot context type definitions
+- [apps/bot/src/services/llm.ts](apps/bot/src/services/llm.ts): Equipment matching via parseGafferReview API (3-tier: resolved/needsReview/unmatched), date parsing
+- [apps/bot/src/services/api.ts](apps/bot/src/services/api.ts): HTTP client calling the Express API — includes gaffer review types and parseGafferReview()
+- [apps/bot/src/types.ts](apps/bot/src/types.ts): Bot context type definitions (BookingDraft with hub-and-spoke steps, pendingReview state)
 
 ## Key Modules
 
@@ -80,7 +80,7 @@
 - [apps/bot/src/lib/crewRates.ts](apps/bot/src/lib/crewRates.ts): Rate constants copy (used by bot)
 
 ### Bot Scenes
-- [apps/bot/src/scenes/booking.ts](apps/bot/src/scenes/booking.ts): Multi-step booking wizard (dates, equipment, confirmation via LLM)
+- [apps/bot/src/scenes/booking.ts](apps/bot/src/scenes/booking.ts): Hub-and-spoke booking scene (~1000 LOC) — central hub cart, AI free-text matching, inline needsReview confirmations, catalog spoke
 - [apps/bot/src/scenes/crewCalc.ts](apps/bot/src/scenes/crewCalc.ts): Crew calculator conversation scene
 - [apps/bot/src/scenes/photoAnalysis.ts](apps/bot/src/scenes/photoAnalysis.ts): Photo analysis scene — sends image to API queue
 
@@ -128,4 +128,4 @@
 - [apps/api/assets/fonts/](apps/api/assets/fonts/): DejaVu fonts for PDF export
 - [docs/DATA_MODEL_SMETA.md](docs/DATA_MODEL_SMETA.md): Data model documentation for estimates
 
-<!-- updated-by-superflow:2026-04-02 -->
+<!-- updated-by-superflow:2026-04-03 -->
