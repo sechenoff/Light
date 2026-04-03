@@ -35,25 +35,20 @@ export function fmtPrice(full: number): string {
   );
 }
 
-/** Строим MatchedItem[] из результата matchEquipment + каталога */
+/** Строим MatchedItem[] из результата matchEquipment (данные каталога уже в resolved) */
 export function buildItems(
-  rawMatched: Array<{ equipmentId: string; quantity: number }>,
-  catalog: Array<{ equipmentId: string; name: string; category: string; availableQuantity: number; rentalRatePerShift: string }>,
+  resolved: Array<{ equipmentId: string; quantity: number; catalogName: string; category: string; availableQuantity: number; rentalRatePerShift: string }>,
 ): MatchedItem[] {
-  const catalogMap = new Map(catalog.map((e) => [e.equipmentId, e]));
-  return rawMatched
-    .filter((i) => catalogMap.has(i.equipmentId) && i.quantity > 0)
-    .map((i) => {
-      const eq = catalogMap.get(i.equipmentId)!;
-      return {
-        equipmentId: i.equipmentId,
-        name: eq.name,
-        category: eq.category,
-        quantity: Math.min(i.quantity, eq.availableQuantity),
-        rentalRatePerShift: eq.rentalRatePerShift,
-        availableQuantity: eq.availableQuantity,
-      };
-    });
+  return resolved
+    .filter((i) => i.quantity > 0)
+    .map((i) => ({
+      equipmentId: i.equipmentId,
+      name: i.catalogName,
+      category: i.category,
+      quantity: Math.min(i.quantity, i.availableQuantity),
+      rentalRatePerShift: i.rentalRatePerShift,
+      availableQuantity: i.availableQuantity,
+    }));
 }
 
 /** Объединяет два списка: если equipmentId совпадает — суммирует qty */

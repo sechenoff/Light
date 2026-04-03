@@ -153,26 +153,19 @@ describe('fmtPrice', () => {
 // ── buildItems ────────────────────────────────────────────────────────────────
 
 describe('buildItems', () => {
-  const catalog = [
+  const resolved = [
     {
       equipmentId: 'eq-1',
-      name: 'Aputure 600D',
+      quantity: 2,
+      catalogName: 'Aputure 600D',
       category: 'Источники света',
       availableQuantity: 3,
       rentalRatePerShift: '5000',
     },
-    {
-      equipmentId: 'eq-2',
-      name: 'Godox SL200',
-      category: 'Источники света',
-      availableQuantity: 2,
-      rentalRatePerShift: '2500',
-    },
   ];
 
-  it('строит MatchedItem[] из rawMatched и каталога', () => {
-    const raw = [{ equipmentId: 'eq-1', quantity: 2 }];
-    const result = buildItems(raw, catalog);
+  it('строит MatchedItem[] из resolved данных', () => {
+    const result = buildItems(resolved);
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       equipmentId: 'eq-1',
@@ -182,25 +175,20 @@ describe('buildItems', () => {
   });
 
   it('фильтрует позиции с quantity=0', () => {
-    const raw = [{ equipmentId: 'eq-1', quantity: 0 }];
-    const result = buildItems(raw, catalog);
-    expect(result).toHaveLength(0);
-  });
-
-  it('фильтрует неизвестные equipmentId', () => {
-    const raw = [{ equipmentId: 'unknown', quantity: 1 }];
-    const result = buildItems(raw, catalog);
+    const result = buildItems([{ ...resolved[0]!, quantity: 0 }]);
     expect(result).toHaveLength(0);
   });
 
   it('ограничивает quantity по availableQuantity', () => {
-    const raw = [{ equipmentId: 'eq-2', quantity: 10 }];
-    const result = buildItems(raw, catalog);
-    expect(result[0]!.quantity).toBe(2); // availableQuantity = 2
+    const result = buildItems([{
+      equipmentId: 'eq-2', quantity: 10, catalogName: 'Godox SL200',
+      category: 'Источники света', availableQuantity: 2, rentalRatePerShift: '2500',
+    }]);
+    expect(result[0]!.quantity).toBe(2);
   });
 
-  it('возвращает пустой массив для пустого rawMatched', () => {
-    const result = buildItems([], catalog);
+  it('возвращает пустой массив для пустого входа', () => {
+    const result = buildItems([]);
     expect(result).toHaveLength(0);
   });
 });
