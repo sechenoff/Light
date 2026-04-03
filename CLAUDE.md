@@ -5,7 +5,7 @@
 Film lighting equipment rental platform for a Russian cinematography rental house. Three apps in an npm workspaces monorepo:
 - **API** (`apps/api`): Express 4 REST server with Prisma 6 (SQLite), BullMQ photo analysis queue, Gemini AI vision
 - **Web** (`apps/web`): Next.js 14 admin dashboard with Tailwind CSS 3, proxies API via catch-all route handler
-- **Bot** (`apps/bot`): Telegram bot via Telegraf 4, uses OpenAI GPT-4o-mini for NLP booking flow
+- **Bot** (`apps/bot`): Telegram bot via Telegraf 4, hub-and-spoke booking flow with AI equipment matching via API
 
 All UI text, comments, and business logic use Russian language.
 
@@ -41,16 +41,16 @@ light-rental-system/
       app/api/        Catch-all proxy to Express backend
       src/lib/        Shared logic: api client, crew calculator, formatting
       src/components/ AppShell, StatusBadge
-    bot/          Telegraf 4 + OpenAI GPT-4o-mini
-      src/scenes/     booking, crewCalc, photoAnalysis wizard scenes
-      src/services/   llm (GPT-4o-mini), api client, logger
+    bot/          Telegraf 4 + AI booking (API-backed matching)
+      src/scenes/     booking (hub-and-spoke), crewCalc, photoAnalysis wizard scenes
+      src/services/   llm (equipment matching via API), api client, logger
       src/lib/        crewCalculator, crewRates (copy of web)
   packages/
     db/           Empty placeholder package
 ```
 
 **Request flow:** Browser -> Next.js `/api/[...path]` proxy -> Express :4000 -> Prisma/SQLite
-**Bot flow:** Telegram -> Telegraf scenes -> Express API + OpenAI GPT-4o-mini
+**Bot flow:** Telegram -> Telegraf scenes (hub-and-spoke booking) -> Express API (parseGafferReview) + inline confirmations
 **AI analysis flow:** Photo -> BullMQ queue -> Gemini 2.5 Flash vision -> equipmentMatcher -> catalog estimate
 
 ## Key Files
@@ -65,8 +65,10 @@ light-rental-system/
 | `apps/api/scripts/migrate-aliases-to-db.ts` | One-time migration: TYPE_SYNONYMS → SlangAlias DB records |
 | `apps/api/src/services/smetaExport/renderPdf.ts` | PDF estimate export via pdfkit |
 | `apps/api/src/services/smetaExport/renderXlsx.ts` | XLSX estimate export via exceljs |
-| `apps/api/src/routes/bookingRequestParser.ts` | Gemini AI gaffer text -> equipment list parsing |
-| `apps/bot/src/services/llm.ts` | GPT-4o-mini: date parsing, equipment matching, booking validation |
+| `apps/api/src/routes/bookingRequestParser.ts` | Gemini AI gaffer text -> equipment list parsing (used by bot's parseGafferReview) |
+| `apps/bot/src/scenes/booking.ts` | Hub-and-spoke booking scene (~1000 LOC): hub step is central cart screen, spokes: catalog, inline needsReview confirmations |
+| `apps/bot/src/services/api.ts` | Bot API client: gaffer review types (GafferReviewItem, GafferMatchCandidate), parseGafferReview() |
+| `apps/bot/src/services/llm.ts` | Equipment matching via parseGafferReview API (3-tier: resolved/needsReview/unmatched), date parsing |
 | `apps/web/app/api/[...path]/route.ts` | Catch-all API proxy with connection error handling |
 | `apps/web/app/admin/page.tsx` | Admin panel (1,024 lines) -- slang learning review |
 | `ecosystem.config.js` | PM2 process definitions for api (:4000) + rental-bot |
@@ -117,6 +119,7 @@ npm run seed                  # Seed database
 - **PDF fonts**: DejaVu Sans loaded from `apps/api/assets/fonts/` for Cyrillic support in PDF exports.
 - **Redis optional**: API starts without Redis -- BullMQ worker simply does not initialize if Redis is unreachable.
 - **No authentication**: API endpoints are publicly accessible. No auth middleware exists.
+- **Bot booking is hub-and-spoke**: Steps are client→project→dates→hub→confirm. Hub is the central cart screen; free text triggers AI matching (parseGafferReview API), ambiguous matches get inline keyboard confirmations (needsReview). Catalog is a spoke from hub. Items persist across all navigation.
 
 ## Known Issues
 
@@ -127,4 +130,4 @@ npm run seed                  # Seed database
 5. **`packages/db` is empty**: Listed as workspace but contains no code.
 6. **`apps/web/app/ops/` is empty**: Directory exists but has no page file.
 
-<!-- updated-by-superflow:2026-04-02 -->
+<!-- updated-by-superflow:2026-04-03 -->
