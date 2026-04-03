@@ -1,6 +1,6 @@
 import type { MatchedItem } from "../types";
 
-export const DISCOUNT = 0.5; // 50% скидка
+export const DISCOUNT = Number(process.env.BOOKING_DISCOUNT) || 0.5; // по умолчанию 50%
 
 export function today(): string {
   return new Date().toISOString().slice(0, 10);

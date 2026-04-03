@@ -53,6 +53,9 @@ async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResp
       outHeaders.set(key, value);
     }
   });
+  if (!process.env.API_KEY) {
+    console.warn("[WARNING] API_KEY не задан в web .env.local — запросы к API будут без аутентификации.");
+  }
   outHeaders.set('X-API-Key', process.env.API_KEY ?? '');
 
   let body: ArrayBuffer | undefined;

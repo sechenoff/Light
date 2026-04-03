@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "crypto";
 import type { Request, Response, NextFunction } from "express";
 
-// Читаем ключи из env при загрузке модуля
+// Ключи загружаются один раз при старте. После ротации API_KEYS необходим перезапуск сервера.
 const rawKeys = process.env.API_KEYS ?? "";
 const apiKeys: Set<string> = new Set(
   rawKeys

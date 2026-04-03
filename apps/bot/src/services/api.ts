@@ -24,6 +24,11 @@ export type PendingAnalysisResult = {
 
 const BASE = (process.env.API_BASE_URL ?? "http://localhost:4000").replace(/\/$/, "");
 
+if (!process.env.API_KEY) {
+  // eslint-disable-next-line no-console
+  console.warn("[WARNING] API_KEY не задан. Запросы к API будут отклонены при AUTH_MODE=enforce.");
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
