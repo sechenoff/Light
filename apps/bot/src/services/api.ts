@@ -173,6 +173,48 @@ export async function analyzePhoto(
   return res.json() as Promise<PhotoAnalysisResult>;
 }
 
+// ── Gaffer request parser (shared with web) ──────────────────────────────────
+
+export type GafferMatchCandidate = {
+  equipmentId: string;
+  catalogName: string;
+  category: string;
+  availableQuantity: number;
+  rentalRatePerShift: string;
+  confidence: number;
+};
+
+export type GafferMatchResolved = GafferMatchCandidate & { kind: "resolved" };
+
+export type GafferReviewItem = {
+  id: string;
+  gafferPhrase: string;
+  interpretedName: string;
+  quantity: number;
+  match:
+    | GafferMatchResolved
+    | { kind: "needsReview"; candidates: GafferMatchCandidate[] }
+    | { kind: "unmatched" };
+};
+
+export type ParseGafferReviewResponse = {
+  items: GafferReviewItem[];
+  message?: string;
+  error?: string;
+  code?: string;
+};
+
+/** Парсинг текста гаффера через Gemini AI + обучаемый словарь SlangAlias */
+export async function parseGafferReview(
+  requestText: string,
+): Promise<ParseGafferReviewResponse> {
+  return apiFetch<ParseGafferReviewResponse>("/api/bookings/parse-gaffer-review", {
+    method: "POST",
+    body: JSON.stringify({ requestText }),
+    signal: AbortSignal.timeout(60_000),
+  });
+}
+
 /** Создать новую бронь (draft → confirm) */
 export async function createBooking(args: {
   clientName: string;

@@ -1,5 +1,12 @@
 import OpenAI from "openai";
 import type { EquipmentItem, MatchedItem } from "../types";
+import { parseGafferReview, type GafferReviewItem } from "./api";
+
+export type MatchResult = {
+  resolved: Array<{ equipmentId: string; quantity: number }>;
+  needsReview: GafferReviewItem[];
+  unmatched: string[];
+};
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -41,55 +48,44 @@ export async function parseDates(
   }
 }
 
-/** Матчит текстовое описание оборудования к каталогу, возвращает список позиций с количеством */
+/**
+ * Матчит текстовое описание оборудования к каталогу через API
+ * (Gemini AI + обучаемый словарь SlangAlias — тот же движок, что и на сайте).
+ * Параметр catalog сохранён для совместимости сигнатуры, но не используется —
+ * матчинг и доступность определяет API.
+ */
 export async function matchEquipment(
   userText: string,
-  catalog: EquipmentItem[],
-): Promise<{ items: Array<{ equipmentId: string; quantity: number }>; unmatchedText?: string } | { error: string }> {
-  const catalogSummary = catalog
-    .map((e) => `ID:${e.equipmentId} | ${e.category} | ${e.name}${e.brand ? ` ${e.brand}` : ""}${e.model ? ` ${e.model}` : ""} | макс: ${e.availableQuantity} шт`)
-    .join("\n");
-
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content: `Ты помощник по подбору оборудования для аренды.
-Ниже — каталог доступного оборудования:
-
-${catalogSummary}
-
-Задача: сопоставь запрос клиента с позициями каталога.
-Верни JSON:
-{
-  "items": [
-    { "equipmentId": "...", "quantity": N }
-  ],
-  "unmatchedText": "что не нашлось в каталоге (или null)"
-}
-
-Правила:
-- quantity не должен превышать "макс" из каталога
-- если позиция не найдена — укажи её в unmatchedText
-- если запрос пустой — верни { "items": [], "unmatchedText": null }`,
-      },
-      { role: "user", content: userText },
-    ],
-  });
-
+  _catalog: EquipmentItem[],
+): Promise<MatchResult | { error: string }> {
   try {
-    const raw = response.choices[0].message.content ?? "{}";
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed.items)) return { error: "Не удалось разобрать список оборудования" };
-    return {
-      items: parsed.items,
-      unmatchedText: parsed.unmatchedText ?? undefined,
-    };
-  } catch {
-    return { error: "Ошибка разбора ответа LLM" };
+    const response = await parseGafferReview(userText);
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    const resolved: Array<{ equipmentId: string; quantity: number }> = [];
+    const needsReview: GafferReviewItem[] = [];
+    const unmatched: string[] = [];
+
+    for (const item of response.items) {
+      if (item.match.kind === "resolved") {
+        resolved.push({
+          equipmentId: item.match.equipmentId,
+          quantity: Math.min(item.quantity, item.match.availableQuantity),
+        });
+      } else if (item.match.kind === "needsReview") {
+        needsReview.push(item);
+      } else {
+        unmatched.push(item.gafferPhrase);
+      }
+    }
+
+    return { resolved, needsReview, unmatched };
+  } catch (e) {
+    if (e instanceof Error) return { error: e.message };
+    return { error: "Ошибка при разборе запроса" };
   }
 }
 
