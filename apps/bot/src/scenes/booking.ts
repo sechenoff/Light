@@ -802,7 +802,7 @@ bookingScene.on("text", async (ctx) => {
     }
 
     if (text === "✏️ Редактировать список") {
-      setState(ctx, { step: "hub" });
+      setState(ctx, { step: "hub", pendingReview: [], pendingReviewIndex: 0 });
       await showHub(ctx);
       return;
     }
@@ -874,7 +874,15 @@ async function showHub(ctx: BotContext, unmatchedText?: string): Promise<void> {
 async function showNextReview(ctx: BotContext): Promise<void> {
   const s = getState(ctx);
   const pending = s.pendingReview ?? [];
-  const idx = s.pendingReviewIndex ?? 0;
+  let idx = s.pendingReviewIndex ?? 0;
+
+  // Пропускаем позиции без кандидатов (цикл вместо рекурсии)
+  while (idx < pending.length) {
+    const cur = pending[idx];
+    if (cur && cur.match.kind === "needsReview" && cur.match.candidates.length > 0) break;
+    idx++;
+  }
+  setState(ctx, { pendingReviewIndex: idx });
 
   // Все обработаны
   if (idx >= pending.length) {
@@ -883,21 +891,8 @@ async function showNextReview(ctx: BotContext): Promise<void> {
     return;
   }
 
-  const item = pending[idx];
-  if (!item) {
-    setState(ctx, { pendingReview: [], pendingReviewIndex: 0 });
-    await showHub(ctx);
-    return;
-  }
-
-  // 0 кандидатов — пропускаем автоматически
-  if (item.match.kind !== "needsReview" || item.match.candidates.length === 0) {
-    setState(ctx, { pendingReviewIndex: idx + 1 });
-    await showNextReview(ctx);
-    return;
-  }
-
-  const candidates = item.match.candidates;
+  const item = pending[idx]!;
+  const candidates = item.match.kind === "needsReview" ? item.match.candidates : [];
 
   const progress = `(${idx + 1}/${pending.length}) `;
 
@@ -985,7 +980,7 @@ function tryDeleteItems(
 async function showConfirm(ctx: BotContext): Promise<void> {
   const s = getState(ctx);
   const items = s.items ?? [];
-  setState(ctx, { step: "confirm" });
+  setState(ctx, { step: "confirm", pendingReview: [], pendingReviewIndex: 0 });
 
   const full = totalCost(items, s.startDate!, s.endDate!);
 
