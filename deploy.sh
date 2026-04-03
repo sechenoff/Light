@@ -43,6 +43,12 @@ echo "║   Light Rental System  · Deploy      ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 
+# ── Shared package ────────────────────────────────────────────────────────────
+echo "▶ shared: build"
+cd "$ROOT/packages/shared"
+npm run build
+echo "  ✓ shared готов"
+
 # ── API ───────────────────────────────────────────────────────────────────────
 if $DEPLOY_API; then
   echo "▶ API: migrate + build"

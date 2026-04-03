@@ -3,8 +3,7 @@
 import { useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 
-import { calculateCrewCost, type RoleBreakdown } from "../../src/lib/crewCalculator";
-import { ROLES, type RoleId } from "../../src/lib/crewRates";
+import { calculateCrewCost, type RoleBreakdown, ROLES, type RoleId } from "@light-rental/shared";
 import { formatMoneyRub } from "../../src/lib/format";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
