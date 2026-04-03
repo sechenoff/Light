@@ -1,23 +1,17 @@
 import { Scenes, Markup } from "telegraf";
 import type { BotContext, BookingDraft, MatchedItem } from "../types";
 import { parseDates, matchEquipment, parseCatalogIntent } from "../services/llm";
+import type { MatchResult } from "../services/llm";
 import { getAvailability, createBooking, getPricelistMeta, fetchPricelistBuffer } from "../services/api";
 import { logError, logWarn } from "../services/logger";
 import { mainMenuKeyboard } from "../keyboards";
 
 const DISCOUNT = 0.5; // 50% скидка
 
-/** Шаги 1–3/5: назад по шагам + отмена в главное меню */
+/** Шаги 1–3/4: назад по шагам + отмена в главное меню */
 const bookingStepNavKeyboard = Markup.keyboard([
   ["⬅️ Назад", "❌ Отмена бронирования"],
 ]).resize();
-
-/** Свободный ввод списка оборудования (AI) */
-const equipmentFreeNavKeyboard = Markup.keyboard([
-  ["⬅️ Назад", "❌ Отмена бронирования"],
-]).resize();
-
-const BTN_ADD_POSITION_AI = "➕ Добавить позицию (AI)";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -52,26 +46,14 @@ function fmtPrice(full: number): string {
   );
 }
 
-/** Клавиатура шага clarify: пропустить непонятое + каталог + прайслист */
-function buildClarifyKeyboard(_items: MatchedItem[], hasPricelist = false) {
-  const rows: string[][] = [
-    ["⬅️ Назад", "❌ Отмена бронирования"],
-    ["📋 Добавить из каталога"],
-    ["➡️ Пропустить непонятое"],
-  ];
-  if (hasPricelist) rows.push(["📄 Получить прайслист"]);
-  return Markup.keyboard(rows).resize();
-}
-
 /**
- * Клавиатура М4А.2 — явный reply_markup для Telegram (без spread Extra из Markup,
- * чтобы клавиатура не «обрезалась» из‑за конфликта опций).
+ * Клавиатура хаба — явный reply_markup для Telegram.
  * По одной кнопке в ряд — на узких экранах всё видно.
  */
-function editListKeyboardMarkup() {
+function hubKeyboardMarkup() {
   return {
     keyboard: [
-      [{ text: BTN_ADD_POSITION_AI }],
+      [{ text: "➕ Добавить текстом (AI)" }],
       [{ text: "📋 Добавить из каталога" }],
       [{ text: "🗑 Удалить позицию" }],
       [{ text: "✅ Готово" }, { text: "❌ Отмена бронирования" }],
@@ -122,25 +104,11 @@ function mergeItems(existing: MatchedItem[], incoming: MatchedItem[]): MatchedIt
   return Array.from(map.values());
 }
 
-/** Клавиатура выбора режима ввода оборудования */
-const equipmentModeKeyboard = Markup.keyboard([
-  ["⬅️ Назад"],
-  ["✍️ Внесение списка (AI)"],
-  ["📋 По категориям"],
-  ["❌ Отмена бронирования"],
-]).resize();
-
 /** Клавиатура подтверждения */
 const confirmKeyboard = Markup.keyboard([
   ["✅ Подтвердить"],
   ["✏️ Редактировать список", "✏️ Изменить даты"],
   ["❌ Отмена бронирования"],
-]).resize();
-
-/** Клавиатура ввода нового оборудования в режиме редактора */
-const addEquipmentKeyboard = Markup.keyboard([
-  ["📋 Добавить из каталога"],
-  ["⬅️ Назад к списку"],
 ]).resize();
 
 // ─── Каталог: вспомогательные функции ─────────────────────────────────────
@@ -230,7 +198,7 @@ export const bookingScene = new Scenes.BaseScene<BotContext>("booking");
 bookingScene.enter(async (ctx) => {
   setState(ctx, { step: "client" });
   await ctx.reply(
-    "📋 *Новая бронь*\n\nШаг 1/5 — Как зовут клиента?",
+    "📋 *Новая бронь*\n\nШаг 1/4 — Как зовут клиента?",
     { parse_mode: "Markdown", ...bookingStepNavKeyboard },
   );
 });
@@ -271,7 +239,7 @@ bookingScene.on("text", async (ctx) => {
     }
     setState(ctx, { clientName: text, step: "project" });
     await ctx.reply(
-      "Шаг 2/5 — Название проекта или съёмки?\n_(или отправьте «-» чтобы пропустить)_",
+      "Шаг 2/4 — Название проекта или съёмки?\n_(или отправьте «-» чтобы пропустить)_",
       { parse_mode: "Markdown", ...bookingStepNavKeyboard },
     );
     return;
@@ -287,14 +255,14 @@ bookingScene.on("text", async (ctx) => {
     if (text === "⬅️ Назад") {
       setState(ctx, { step: "client", clientName: undefined });
       await ctx.reply(
-        "Шаг 1/5 — Как зовут клиента?",
+        "Шаг 1/4 — Как зовут клиента?",
         { parse_mode: "Markdown", ...bookingStepNavKeyboard },
       );
       return;
     }
     setState(ctx, { projectName: text === "-" ? "" : text, step: "dates" });
     await ctx.reply(
-      "Шаг 3/5 — На какой период нужно оборудование?\n\n_Примеры:_\n• «с 10 апреля по 12 апреля»\n• «14-16 мая»\n• «20 июня, один день»",
+      "Шаг 3/4 — На какой период нужно оборудование?\n\n_Примеры:_\n• «с 10 апреля по 12 апреля»\n• «14-16 мая»\n• «20 июня, один день»",
       { parse_mode: "Markdown", ...bookingStepNavKeyboard },
     );
     return;
@@ -310,7 +278,7 @@ bookingScene.on("text", async (ctx) => {
     if (text === "⬅️ Назад") {
       setState(ctx, { step: "project" });
       await ctx.reply(
-        "Шаг 2/5 — Название проекта или съёмки?\n_(или отправьте «-» чтобы пропустить)_",
+        "Шаг 2/4 — Название проекта или съёмки?\n_(или отправьте «-» чтобы пропустить)_",
         { parse_mode: "Markdown", ...bookingStepNavKeyboard },
       );
       return;
@@ -331,46 +299,38 @@ bookingScene.on("text", async (ctx) => {
       rawDates: text,
       startDate: result.startDate,
       endDate: result.endDate,
-      step: "equipment_mode",
+      step: "hub",
+      items: s.items ?? [],
     });
 
     await ctx.telegram.editMessageText(
       ctx.chat!.id, thinking.message_id, undefined,
-      `✅ Период: *${result.startDate}* — *${result.endDate}*\n\nШаг 4/5 — Как выбрать оборудование?`,
+      `✅ Период: *${result.startDate}* — *${result.endDate}*`,
       { parse_mode: "Markdown" },
     );
-    await ctx.reply(
-      `*✍️ Внесение списка (AI)* — напишите всё что нужно одним сообщением\n\n` +
-      `*📋 По категориям* — мы покажем каталог по разделам, вы выберете нужное`,
-      { parse_mode: "Markdown", ...equipmentModeKeyboard },
-    );
+    await showHub(ctx);
     return;
   }
 
-  // ─── Шаг 4: выбор режима ввода оборудования ───────────────────────────────
-  if (s.step === "equipment_mode") {
+  // ─── Шаг 4: хаб ───────────────────────────────────────────────────────────
+  if (s.step === "hub") {
     if (text === "❌ Отмена бронирования") {
       await ctx.reply("❌ Создание брони отменено.", mainMenuKeyboard);
       await ctx.scene.leave();
       return;
     }
-    if (text === "⬅️ Назад") {
-      setState(ctx, { step: "dates", startDate: undefined, endDate: undefined, rawDates: undefined });
+
+    // Кнопка «➕ Добавить текстом (AI)» — показываем подсказку, остаёмся на хабе
+    if (text === "➕ Добавить текстом (AI)") {
       await ctx.reply(
-        "Шаг 3/5 — На какой период нужно оборудование?\n\n_Примеры:_\n• «с 10 апреля по 12 апреля»\n• «14-16 мая»\n• «20 июня, один день»",
-        { parse_mode: "Markdown", ...bookingStepNavKeyboard },
+        "Напишите что нужно — AI подберёт из каталога",
+        { reply_markup: hubKeyboardMarkup() },
       );
       return;
     }
-    if (text === "✍️ Внесение списка (AI)") {
-      setState(ctx, { step: "equipment" });
-      await ctx.reply(
-        "Напишите что нужно произвольно:\n\n_Например: «Aputure 1200x 2 шт, astera kit, Nova 2  4шт»_",
-        { parse_mode: "Markdown", ...equipmentFreeNavKeyboard },
-      );
-      return;
-    }
-    if (text === "📋 По категориям") {
+
+    // Кнопка «📋 Добавить из каталога»
+    if (text === "📋 Добавить из каталога") {
       const thinking = await ctx.reply("⏳ Загружаю каталог…");
       try {
         const catalog = await getAvailability(s.startDate!, s.endDate!);
@@ -383,40 +343,147 @@ bookingScene.on("text", async (ctx) => {
         });
         await ctx.telegram.deleteMessage(ctx.chat!.id, thinking.message_id);
         await showCatalogCategories(ctx);
-      } catch {
+      } catch (e) {
+        logError("hub:catalog", "Failed to load catalog", e);
         await ctx.telegram.editMessageText(
           ctx.chat!.id, thinking.message_id, undefined,
-          "⚠️ Не удалось загрузить каталог. Попробуйте ещё раз или выберите свободный список.",
+          "⚠️ Не удалось загрузить каталог. Попробуйте позже.",
         );
       }
       return;
     }
-    await ctx.reply("Выберите способ через кнопки.", equipmentModeKeyboard);
-    return;
-  }
 
-  // ─── Шаг 4а: свободный ввод оборудования ──────────────────────────────────
-  if (s.step === "equipment") {
-    if (text === "❌ Отмена бронирования") {
-      await ctx.reply("❌ Создание брони отменено.", mainMenuKeyboard);
-      await ctx.scene.leave();
-      return;
-    }
-    if (text === "⬅️ Назад") {
-      setState(ctx, { step: "equipment_mode" });
+    // Кнопка «🗑 Удалить позицию»
+    if (text === "🗑 Удалить позицию") {
+      const items = s.items ?? [];
+      if (items.length === 0) {
+        await ctx.reply("⚠️ Список пуст — нечего удалять.", { reply_markup: hubKeyboardMarkup() });
+        return;
+      }
+      const numbered = items.map((i, n) => `${n + 1}. ${i.name} × ${i.quantity} шт`).join("\n");
       await ctx.reply(
-        `Шаг 4/5 — Как выбрать оборудование?\n\n` +
-        `*✍️ Внесение списка (AI)* — напишите всё одним сообщением\n` +
-        `*📋 По категориям* — каталог по разделам`,
-        { parse_mode: "Markdown", ...equipmentModeKeyboard },
+        `Напишите номер или название позиции для удаления:\n\n${numbered}`,
+        { parse_mode: "Markdown", reply_markup: hubKeyboardMarkup() },
       );
       return;
     }
-    await handleEquipmentInput(ctx, text, [], false);
+
+    // Кнопка «✅ Готово»
+    if (text === "✅ Готово") {
+      const items = s.items ?? [];
+      if (items.length === 0) {
+        await ctx.reply(
+          "⚠️ Список пуст. Добавьте хотя бы одну позицию.",
+          { reply_markup: hubKeyboardMarkup() },
+        );
+        return;
+      }
+      await showConfirm(ctx);
+      return;
+    }
+
+    const items = s.items ?? [];
+
+    // Проверяем tryDeleteItems первым (до pendingReview)
+    const deleteResult = tryDeleteItems(items, text);
+    if (deleteResult) {
+      setState(ctx, { items: deleteResult.remaining });
+      const removedNames = deleteResult.removed.map((r) => `• ${r.name}`).join("\n");
+      await ctx.reply(
+        `🗑 Удалено:\n${removedNames}`,
+        { parse_mode: "Markdown" },
+      );
+      await showHub(ctx);
+      return;
+    }
+
+    // Явное намерение удалить, но ничего не нашли в списке
+    if (DELETE_PREFIXES_RE.test(text)) {
+      const query = text.replace(DELETE_STRIP_RE, "").trim();
+      await ctx.reply(
+        `❓ Не нашёл «${query}» в списке.\n_Напишите номер позиции или другую часть названия._`,
+        { parse_mode: "Markdown", reply_markup: hubKeyboardMarkup() },
+      );
+      return;
+    }
+
+    // Свободный ввод — AI матчинг
+    const thinking = await ctx.reply("⏳ Ищу в каталоге…");
+
+    let catalog;
+    try {
+      catalog = await getAvailability(s.startDate!, s.endDate!);
+    } catch (e) {
+      logError("hub:getAvailability", "Failed to load catalog", e);
+      await ctx.telegram.editMessageText(
+        ctx.chat!.id, thinking.message_id, undefined,
+        "⚠️ Не удалось получить каталог. Попробуйте позже.",
+      );
+      return;
+    }
+
+    let matchResult: MatchResult | { error: string };
+    try {
+      matchResult = await matchEquipment(text, catalog);
+    } catch (e) {
+      const isTimeout = e instanceof Error && e.name === "TimeoutError";
+      logError("hub:matchEquipment", `LLM error for: "${text.slice(0, 120)}"`, e);
+      await ctx.telegram.editMessageText(
+        ctx.chat!.id, thinking.message_id, undefined,
+        isTimeout
+          ? "⏱ Запрос слишком долгий. Попробуйте написать короче."
+          : "⚠️ Ошибка при подборе оборудования. Попробуйте позже.",
+      );
+      return;
+    }
+
+    if ("error" in matchResult) {
+      logWarn("hub:matchEquipment", `LLM returned error: ${matchResult.error}`);
+      await ctx.telegram.editMessageText(
+        ctx.chat!.id, thinking.message_id, undefined,
+        `❓ ${matchResult.error}\n\nПопробуйте описать оборудование иначе.`,
+      );
+      return;
+    }
+
+    const newItems = buildItems(matchResult.resolved, catalog);
+    const merged = mergeItems(items, newItems);
+
+    // Until Sprint 3 adds inline confirmations, treat needsReview as unmatched
+    const allUnmatched = [
+      ...matchResult.unmatched,
+      ...matchResult.needsReview.map((r) => r.gafferPhrase),
+    ];
+    const unmatchedText = allUnmatched.length > 0
+      ? allUnmatched.join(", ")
+      : undefined;
+
+    setState(ctx, {
+      items: merged,
+      pendingReview: [],  // Sprint 3 will populate and present these
+      pendingReviewIndex: 0,
+    });
+
+    // Обновляем «думающее» сообщение
+    if (newItems.length > 0) {
+      const added = newItems.map((i) => `• ${i.name} × ${i.quantity} шт`).join("\n");
+      await ctx.telegram.editMessageText(
+        ctx.chat!.id, thinking.message_id, undefined,
+        `✅ Добавлено:\n${added}`,
+        { parse_mode: "Markdown" },
+      );
+    } else {
+      await ctx.telegram.editMessageText(
+        ctx.chat!.id, thinking.message_id, undefined,
+        "❓ Ничего не удалось найти в каталоге. Попробуйте описать иначе.",
+      );
+    }
+
+    await showHub(ctx, unmatchedText);
     return;
   }
 
-  // ─── Шаг 4б: пошаговый выбор по каталогу ─────────────────────────────────
+  // ─── Шаг «catalog»: пошаговый выбор по каталогу ──────────────────────────
   if (s.step === "catalog") {
     if (text === "❌ Отмена бронирования") {
       await ctx.reply("❌ Создание брони отменено.", mainMenuKeyboard);
@@ -430,15 +497,12 @@ bookingScene.on("text", async (ctx) => {
         await showCatalogCategories(ctx);
       } else {
         setState(ctx, {
-          step: "equipment_mode",
+          step: "hub",
           catalogItems: undefined,
           catalogCategories: undefined,
           catalogCategory: null,
         });
-        await ctx.reply(
-          `Шаг 4/5 — Как выбрать оборудование?`,
-          { parse_mode: "Markdown", ...equipmentModeKeyboard },
-        );
+        await showHub(ctx);
       }
       return;
     }
@@ -450,11 +514,8 @@ bookingScene.on("text", async (ctx) => {
           buildCatalogCategoriesKeyboard(s.catalogCategories ?? []));
         return;
       }
-      setState(ctx, { step: "edit_list", catalogItems: undefined, catalogCategories: undefined, catalogCategory: null });
-      await ctx.reply(
-        buildEditListMessage(items, s.startDate!, s.endDate!),
-        { parse_mode: "Markdown", reply_markup: editListKeyboardMarkup() },
-      );
+      setState(ctx, { step: "hub", catalogItems: undefined, catalogCategories: undefined, catalogCategory: null });
+      await showHub(ctx);
       return;
     }
 
@@ -578,370 +639,7 @@ bookingScene.on("text", async (ctx) => {
     return;
   }
 
-  // ─── Шаг 4в: уточнение ненайденных позиций ────────────────────────────────
-  if (s.step === "clarify") {
-    if (text === "❌ Отмена бронирования") {
-      await ctx.reply("❌ Создание брони отменено.", mainMenuKeyboard);
-      await ctx.scene.leave();
-      return;
-    }
-    if (text === "⬅️ Назад") {
-      setState(ctx, {
-        step: "equipment_mode",
-        unmatchedText: undefined,
-        clarifyAttempts: 0,
-      });
-      await ctx.reply(
-        `Шаг 4/5 — Как выбрать оборудование?`,
-        { parse_mode: "Markdown", ...equipmentModeKeyboard },
-      );
-      return;
-    }
-    if (text === "➡️ Пропустить непонятое") {
-      setState(ctx, { unmatchedText: undefined, clarifyAttempts: 0 });
-      await showConfirm(ctx);
-      return;
-    }
-
-    const items = s.items ?? [];
-
-    // Кнопка "📋 Добавить из каталога"
-    if (text === "📋 Добавить из каталога") {
-      const thinking = await ctx.reply("⏳ Загружаю каталог…");
-      try {
-        const catalog = await getAvailability(s.startDate!, s.endDate!);
-        const categories = Array.from(new Set(catalog.map((e) => e.category))).sort();
-        setState(ctx, {
-          step: "catalog",
-          catalogItems: catalog,
-          catalogCategories: categories,
-          catalogCategory: null,
-          unmatchedText: undefined,
-          clarifyAttempts: 0,
-        });
-        await ctx.telegram.deleteMessage(ctx.chat!.id, thinking.message_id);
-        await showCatalogCategories(ctx);
-      } catch (e) {
-        logError("clarify:catalog", "Failed to load catalog", e);
-        await ctx.telegram.editMessageText(
-          ctx.chat!.id, thinking.message_id, undefined,
-          "⚠️ Не удалось загрузить каталог. Попробуйте позже.",
-        );
-      }
-      return;
-    }
-
-    // Отправить прайслист
-    if (text === "📄 Получить прайслист") {
-      const file = await fetchPricelistBuffer();
-      if (!file) {
-        await ctx.reply("⚠️ Прайслист пока не загружен. Обратитесь к менеджеру.");
-        return;
-      }
-      await ctx.replyWithDocument(
-        { source: file.buffer, filename: file.filename },
-        { caption: "📄 Прайслист оборудования" },
-      );
-      return;
-    }
-
-    // Удаление по номеру или названию (включая «удали/убери/убрать»)
-    const deleteResult = tryDeleteItems(items, text);
-    if (deleteResult) {
-      setState(ctx, { items: deleteResult.remaining });
-      const removedNames = deleteResult.removed.map((r) => `• ${r.name}`).join("\n");
-      const plMeta = await getPricelistMeta();
-      await ctx.reply(
-        `🗑 Удалено:\n${removedNames}\n\n` +
-        (deleteResult.remaining.length > 0
-          ? buildClarifyMessage(deleteResult.remaining, s.unmatchedText!)
-          : "Список пуст."),
-        { parse_mode: "Markdown", ...buildClarifyKeyboard(deleteResult.remaining, plMeta?.exists === true) },
-      );
-      return;
-    }
-
-    // Явное намерение удалить, но нет совпадений
-    if (DELETE_PREFIXES_RE.test(text)) {
-      const query = text.replace(DELETE_STRIP_RE, "").trim();
-      const plMeta = await getPricelistMeta();
-      await ctx.reply(
-        `❓ Не нашёл «${query}» в списке.\n_Напишите номер позиции или другую часть названия._`,
-        { parse_mode: "Markdown", ...buildClarifyKeyboard(items, plMeta?.exists === true) },
-      );
-      return;
-    }
-
-    // Иначе — попытка добавить уточнённые позиции через LLM
-    await handleEquipmentInput(ctx, text, items, true);
-    return;
-  }
-
-  // ─── Шаг 4в: редактирование списка ────────────────────────────────────────
-  if (s.step === "edit_list") {
-    if (text === "✅ Готово") {
-      await showConfirm(ctx);
-      return;
-    }
-
-    if (text === "❌ Отмена бронирования") {
-      await ctx.reply("❌ Создание брони отменено.", mainMenuKeyboard);
-      await ctx.scene.leave();
-      return;
-    }
-
-    const items = s.items ?? [];
-
-    // Кнопка "📋 Добавить из каталога"
-    if (text === "📋 Добавить из каталога") {
-      const thinking = await ctx.reply("⏳ Загружаю каталог…");
-      try {
-        const catalog = await getAvailability(s.startDate!, s.endDate!);
-        const categories = Array.from(new Set(catalog.map((e) => e.category))).sort();
-        setState(ctx, {
-          step: "catalog",
-          catalogItems: catalog,
-          catalogCategories: categories,
-          catalogCategory: null,
-        });
-        await ctx.telegram.deleteMessage(ctx.chat!.id, thinking.message_id);
-        await showCatalogCategories(ctx);
-      } catch (e) {
-        logError("edit_list:catalog", "Failed to load catalog", e);
-        await ctx.telegram.editMessageText(
-          ctx.chat!.id, thinking.message_id, undefined,
-          "⚠️ Не удалось загрузить каталог. Попробуйте позже.",
-        );
-      }
-      return;
-    }
-
-    // Кнопка «Добавить позицию (AI)»
-    if (text === BTN_ADD_POSITION_AI) {
-      setState(ctx, { step: "edit_add" });
-      await ctx.reply(
-        "Напишите что добавить или убрать — бот поймёт:\n\n" +
-        "_Добавить: «aputure 2шт», «Nova 300 1 штука»_\n" +
-        "_Убрать: «убери nova», «удали 2 b7c»_",
-        { parse_mode: "Markdown", ...addEquipmentKeyboard },
-      );
-      return;
-    }
-
-    // Кнопка "🗑 Удалить позицию"
-    if (text === "🗑 Удалить позицию") {
-      if (items.length === 0) {
-        await ctx.reply("⚠️ Список пуст — нечего удалять.", { reply_markup: editListKeyboardMarkup() });
-        return;
-      }
-      const numbered = items.map((i, n) => `${n + 1}. ${i.name} × ${i.quantity} шт`).join("\n");
-      await ctx.reply(
-        `Напишите номер или название позиции для удаления:\n\n${numbered}`,
-        { parse_mode: "Markdown", reply_markup: editListKeyboardMarkup() },
-      );
-      return;
-    }
-
-    // Удаление по номеру или названию
-    const deleteResult = tryDeleteItems(items, text);
-    if (deleteResult) {
-      setState(ctx, { items: deleteResult.remaining });
-      const removedNames = deleteResult.removed.map((r) => `• ${r.name}`).join("\n");
-      if (deleteResult.remaining.length === 0) {
-        await ctx.reply(
-          `🗑 Удалено:\n${removedNames}\n\n⚠️ Список пуст. Добавьте оборудование или отмените бронь.`,
-          { parse_mode: "Markdown", reply_markup: editListKeyboardMarkup() },
-        );
-      } else {
-        await ctx.reply(
-          `🗑 Удалено:\n${removedNames}\n\n${buildEditListMessage(deleteResult.remaining, s.startDate!, s.endDate!)}`,
-          { parse_mode: "Markdown", reply_markup: editListKeyboardMarkup() },
-        );
-      }
-      return;
-    }
-
-    // Явное намерение удалить, но ничего не нашли в списке
-    if (DELETE_PREFIXES_RE.test(text)) {
-      const query = text.replace(DELETE_STRIP_RE, "").trim();
-      await ctx.reply(
-        `❓ Не нашёл «${query}» в списке.\n_Напишите номер позиции или другую часть названия._`,
-        { parse_mode: "Markdown", reply_markup: editListKeyboardMarkup() },
-      );
-      return;
-    }
-
-    // Свободный ввод — пытаемся добавить через LLM
-    const thinking = await ctx.reply("⏳ Ищу в каталоге…");
-    let catalog;
-    try {
-      catalog = await getAvailability(s.startDate!, s.endDate!);
-    } catch (e) {
-      logError("edit_list:getAvailability", "Failed to load catalog", e);
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id, thinking.message_id, undefined,
-        "⚠️ Не удалось получить каталог. Попробуйте позже.",
-      );
-      return;
-    }
-
-    let matchResult;
-    try {
-      matchResult = await matchEquipment(text, catalog);
-    } catch (e) {
-      const isTimeout = e instanceof Error && e.name === "TimeoutError";
-      logError("edit_list:matchEquipment", `LLM error for: "${text.slice(0, 120)}"`, e);
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id, thinking.message_id, undefined,
-        isTimeout ? "⏱ Запрос слишком долгий. Попробуйте написать короче." : "⚠️ Ошибка. Попробуйте позже.",
-      );
-      return;
-    }
-
-    if ("error" in matchResult || matchResult.items.length === 0) {
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id, thinking.message_id, undefined,
-        `❓ Не нашёл «${text}» в каталоге.\n\nПопробуйте описать иначе или используйте «📋 Добавить из каталога».`,
-      );
-      return;
-    }
-
-    const newItems = buildItems(matchResult.items, catalog);
-    const merged = mergeItems(items, newItems);
-    setState(ctx, { items: merged });
-
-    const added = newItems.map((i) => `• ${i.name} × ${i.quantity} шт`).join("\n");
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id, thinking.message_id, undefined,
-      `✅ Добавлено:\n${added}`,
-      { parse_mode: "Markdown" },
-    );
-    await ctx.reply(
-      buildEditListMessage(merged, s.startDate!, s.endDate!),
-      { parse_mode: "Markdown", reply_markup: editListKeyboardMarkup() },
-    );
-    return;
-  }
-
-  // ─── Шаг 4г: добавление/удаление позиции в режиме редактора ──────────────
-  if (s.step === "edit_add") {
-    if (text === "⬅️ Назад к списку") {
-      setState(ctx, { step: "edit_list" });
-      const items = s.items ?? [];
-      await ctx.reply(
-        buildEditListMessage(items, s.startDate!, s.endDate!),
-        { parse_mode: "Markdown", reply_markup: editListKeyboardMarkup() },
-      );
-      return;
-    }
-
-    // Кнопка "📋 Добавить из каталога"
-    if (text === "📋 Добавить из каталога") {
-      const thinking = await ctx.reply("⏳ Загружаю каталог…");
-      try {
-        const catalog = await getAvailability(s.startDate!, s.endDate!);
-        const categories = Array.from(new Set(catalog.map((e) => e.category))).sort();
-        setState(ctx, {
-          step: "catalog",
-          catalogItems: catalog,
-          catalogCategories: categories,
-          catalogCategory: null,
-        });
-        await ctx.telegram.deleteMessage(ctx.chat!.id, thinking.message_id);
-        await showCatalogCategories(ctx);
-      } catch (e) {
-        logError("edit_add:catalog", "Failed to load catalog", e);
-        await ctx.telegram.editMessageText(
-          ctx.chat!.id, thinking.message_id, undefined,
-          "⚠️ Не удалось загрузить каталог. Попробуйте позже.",
-        );
-      }
-      return;
-    }
-
-    const items = s.items ?? [];
-
-    // Удаление по номеру или названию (включая «удали/убери/убрать»)
-    const deleteResult = tryDeleteItems(items, text);
-    if (deleteResult) {
-      setState(ctx, { items: deleteResult.remaining, step: "edit_list" });
-      const removedNames = deleteResult.removed.map((r) => `• ${r.name}`).join("\n");
-      if (deleteResult.remaining.length === 0) {
-        await ctx.reply(
-          `🗑 Удалено:\n${removedNames}\n\n⚠️ Список пуст. Добавьте оборудование или отмените бронь.`,
-          { parse_mode: "Markdown", reply_markup: editListKeyboardMarkup() },
-        );
-      } else {
-        await ctx.reply(
-          `🗑 Удалено:\n${removedNames}\n\n${buildEditListMessage(deleteResult.remaining, s.startDate!, s.endDate!)}`,
-          { parse_mode: "Markdown", reply_markup: editListKeyboardMarkup() },
-        );
-      }
-      return;
-    }
-
-    // Явное намерение удалить, но нет совпадений
-    if (DELETE_PREFIXES_RE.test(text)) {
-      const query = text.replace(DELETE_STRIP_RE, "").trim();
-      await ctx.reply(
-        `❓ Не нашёл «${query}» в списке.\n_Напишите номер позиции или другую часть названия._`,
-        { parse_mode: "Markdown", ...addEquipmentKeyboard },
-      );
-      return;
-    }
-
-    // Свободный ввод — добавляем через LLM
-    const thinking = await ctx.reply("⏳ Ищу в каталоге…");
-    let catalog;
-    try {
-      catalog = await getAvailability(s.startDate!, s.endDate!);
-    } catch (e) {
-      logError("edit_add:getAvailability", "Failed to load catalog", e);
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id, thinking.message_id, undefined,
-        "⚠️ Не удалось получить каталог. Попробуйте позже.",
-      );
-      return;
-    }
-
-    let matchResult;
-    try {
-      matchResult = await matchEquipment(text, catalog);
-    } catch (e) {
-      const isTimeout = e instanceof Error && e.name === "TimeoutError";
-      logError("edit_add:matchEquipment", `LLM error for: "${text.slice(0, 120)}"`, e);
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id, thinking.message_id, undefined,
-        isTimeout ? "⏱ Запрос слишком долгий. Попробуйте написать короче." : "⚠️ Ошибка. Попробуйте позже.",
-      );
-      return;
-    }
-    if ("error" in matchResult || matchResult.items.length === 0) {
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id, thinking.message_id, undefined,
-        `❓ Не нашёл «${text}» в каталоге.\n\nПопробуйте описать иначе или используйте «📋 Добавить из каталога».`,
-      );
-      return;
-    }
-
-    const newItems = buildItems(matchResult.items, catalog);
-    const merged = mergeItems(items, newItems);
-    setState(ctx, { items: merged, step: "edit_list" });
-
-    const added = newItems.map((i) => `• ${i.name} × ${i.quantity} шт`).join("\n");
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id, thinking.message_id, undefined,
-      `✅ Добавлено:\n${added}`,
-      { parse_mode: "Markdown" },
-    );
-    await ctx.reply(
-      buildEditListMessage(merged, s.startDate!, s.endDate!),
-      { parse_mode: "Markdown", reply_markup: editListKeyboardMarkup() },
-    );
-    return;
-  }
-
-  // ─── Шаг 5: подтверждение ─────────────────────────────────────────────────
+  // ─── Шаг 4/4: подтверждение ───────────────────────────────────────────────
   if (s.step === "confirm") {
     if (text === "✅ Подтвердить") {
       const thinking = await ctx.reply("⏳ Создаю бронь…", Markup.removeKeyboard());
@@ -1002,12 +700,8 @@ bookingScene.on("text", async (ctx) => {
     }
 
     if (text === "✏️ Редактировать список") {
-      setState(ctx, { step: "edit_list" });
-      const items = s.items ?? [];
-      await ctx.reply(
-        buildEditListMessage(items, s.startDate!, s.endDate!),
-        { parse_mode: "Markdown", reply_markup: editListKeyboardMarkup() },
-      );
+      setState(ctx, { step: "hub" });
+      await showHub(ctx);
       return;
     }
 
@@ -1032,132 +726,36 @@ bookingScene.on("text", async (ctx) => {
 
 // ── Вспомогательные функции ───────────────────────────────────────────────────
 
-/** Обрабатывает текст с оборудованием. existingItems — уже накопленный список. isClarify — режим уточнения */
-async function handleEquipmentInput(
-  ctx: BotContext,
-  text: string,
-  existingItems: MatchedItem[],
-  isClarify: boolean,
-): Promise<void> {
+/**
+ * Показывает хаб: корзину (или сообщение о пустом списке) + клавиатуру хаба.
+ * @param unmatchedText — опциональный текст для предупреждения о ненайденных позициях
+ */
+async function showHub(ctx: BotContext, unmatchedText?: string): Promise<void> {
   const s = getState(ctx);
-  const thinking = await ctx.reply("⏳ Подбираю оборудование по каталогу…");
+  const items = s.items ?? [];
 
-  let catalog;
-  try {
-    catalog = await getAvailability(s.startDate!, s.endDate!);
-  } catch (e) {
-    logError("handleEquipmentInput:getAvailability", "Failed to load catalog", e);
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id, thinking.message_id, undefined,
-      "⚠️ Не удалось получить список оборудования. Попробуйте позже.",
-    );
-    return;
-  }
+  let msg: string;
 
-  let matchResult;
-  try {
-    matchResult = await matchEquipment(text, catalog);
-  } catch (e) {
-    const isTimeout = e instanceof Error && e.name === "TimeoutError";
-    logError("handleEquipmentInput:matchEquipment", `LLM error (timeout=${isTimeout}) for: "${text.slice(0, 120)}"`, e);
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id, thinking.message_id, undefined,
-      isTimeout
-        ? "⏱ Запрос слишком большой — сервер не успел обработать за 30 сек.\n\nПопробуйте разбить на несколько частей."
-        : "⚠️ Ошибка при подборе оборудования. Попробуйте позже.",
-    );
-    return;
-  }
-
-  if ("error" in matchResult) {
-    logWarn("handleEquipmentInput:matchEquipment", `LLM returned error: ${matchResult.error}`);
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id, thinking.message_id, undefined,
-      `❓ ${matchResult.error}\n\nПопробуйте описать оборудование иначе.`,
-    );
-    return;
-  }
-
-  const newItems = buildItems(matchResult.items, catalog);
-  const merged = mergeItems(existingItems, newItems);
-  const unmatched = matchResult.unmatchedText?.trim() || undefined;
-
-  if (merged.length === 0 && !unmatched) {
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id, thinking.message_id, undefined,
-      "❓ Ничего не удалось найти в каталоге. Попробуйте описать иначе.",
-    );
-    return;
-  }
-
-  if (unmatched) {
-    // Есть непонятые позиции — показываем объединённое сообщение и ждём уточнения
-    setState(ctx, {
-      items: merged,
-      unmatchedText: unmatched,
-      clarifyAttempts: (s.clarifyAttempts ?? 0) + (isClarify ? 1 : 0),
-      step: "clarify",
-    });
-
-    // Редактируем «думающее» сообщение → итоговый результат
-    const headerLabel = isClarify ? "✅ *Добавлено, обновлённый список:*" : "📦 *Вот что удалось найти:*";
-    const resultMsg = merged.length > 0
-      ? `${headerLabel}\n${fmtList(merged, true)}\n\n${fmtPrice(totalCost(merged, s.startDate!, s.endDate!))}`
-      : "_(ничего не добавлено)_";
-
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id, thinking.message_id, undefined,
-      resultMsg,
-      { parse_mode: "Markdown" },
-    );
-
-    // Проверяем наличие прайслиста для кнопки
-    const plMeta = await getPricelistMeta();
-    const hasPricelist = plMeta?.exists === true;
-
-    // Отдельным сообщением — запрос на уточнение
-    await ctx.reply(
-      buildClarifyMessage(merged, unmatched, hasPricelist),
-      { parse_mode: "Markdown", ...buildClarifyKeyboard(merged, hasPricelist) },
-    );
+  if (items.length === 0) {
+    msg =
+      "📋 Список пуст\n\n" +
+      "Добавьте оборудование любым способом:\n" +
+      "• Напишите список текстом — AI подберёт из каталога\n" +
+      "• Или выберите из каталога по категориям";
   } else {
-    // Всё нашлось — сохраняем и идём к подтверждению
-    setState(ctx, { items: merged, unmatchedText: undefined, clarifyAttempts: 0 });
-
-    const label = isClarify ? "✅ *Добавлено, обновлённый список:*" : "📦 *Вот что удалось найти:*";
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id, thinking.message_id, undefined,
-      `${label}\n${fmtList(merged, true)}\n\n${fmtPrice(totalCost(merged, s.startDate!, s.endDate!))}`,
-      { parse_mode: "Markdown" },
-    );
-
-    await showConfirm(ctx);
+    const full = totalCost(items, s.startDate!, s.endDate!);
+    msg =
+      `📋 *Список оборудования (${items.length} поз.):*\n` +
+      `${fmtList(items, true)}\n\n` +
+      `${fmtPrice(full)}\n\n` +
+      `Напишите что добавить или убрать — бот поймёт.`;
   }
-}
 
-/** Строит сообщение-запрос на уточнение непонятых позиций */
-function buildClarifyMessage(
-  items: MatchedItem[],
-  unmatched: string,
-  hasPricelist = false,
-): string {
-  const unmatchedLines = unmatched
-    .split(/[,;]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => `• ${s}`)
-    .join("\n");
+  if (unmatchedText) {
+    msg = `⚠️ Не найдено в каталоге: ${unmatchedText}\n\n${msg}`;
+  }
 
-  let msg = `❓ *Не смог найти в каталоге:*\n${unmatchedLines}\n\n`;
-  msg += `Просто напишите что нужно добавить или убрать — бот поймёт.\n`;
-  msg += `_Примеры: «добавь апчур 2шт», «убери генератор», «Nova P 1 штука»_`;
-  if (hasPricelist) {
-    msg += `\n\nИли нажмите *📄 Получить прайслист* чтобы узнать точные названия.`;
-  }
-  if (items.length > 0) {
-    msg += `\n\n_Текущий список: ${items.length} поз. Чтобы удалить — напишите «удали [название]» или номер._`;
-  }
-  return msg;
+  await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: hubKeyboardMarkup() });
 }
 
 /**
@@ -1223,25 +821,7 @@ async function showConfirm(ctx: BotContext): Promise<void> {
     `👤 Клиент: ${s.clientName}\n` +
     `🎬 Проект: ${s.projectName || "—"}\n` +
     `📅 Период: ${s.startDate} — ${s.endDate}\n\n` +
-    `Шаг 5/5 — Всё верно?`;
+    `Шаг 4/4 — Всё верно?`;
 
   await ctx.reply(msg, { parse_mode: "Markdown", ...confirmKeyboard });
-}
-
-/** Строит текст для экрана редактора списка */
-function buildEditListMessage(
-  items: MatchedItem[],
-  startDate: string,
-  endDate: string,
-): string {
-  if (items.length === 0) {
-    return "📋 *Список пуст*\n\nНажмите «➕ Добавить позицию (AI)» чтобы добавить оборудование.";
-  }
-  const full = totalCost(items, startDate, endDate);
-  return (
-    `📋 *Список (${items.length} поз.):*\n${fmtList(items, true)}\n\n` +
-    `${fmtPrice(full)}\n\n` +
-    `_Чтобы удалить — напишите «удали [название]» или номер позиции_\n` +
-    `_Чтобы добавить — напишите название или используйте «📋 Добавить из каталога»_`
-  );
 }
