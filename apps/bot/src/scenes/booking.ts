@@ -3,6 +3,7 @@ import type { BotContext, BookingDraft, MatchedItem } from "../types";
 import { parseDates, matchEquipment, parseCatalogIntent } from "../services/llm";
 import type { MatchResult } from "../services/llm";
 import { getAvailability, createBooking, getPricelistMeta, fetchPricelistBuffer } from "../services/api";
+import type { GafferReviewItem, GafferMatchCandidate } from "../services/api";
 import { logError, logWarn } from "../services/logger";
 import { mainMenuKeyboard } from "../keyboards";
 
@@ -214,6 +215,89 @@ bookingScene.command("cancel", async (ctx) => {
   await ctx.scene.leave();
 });
 
+// ── Обработчик inline-кнопок pendingReview ───────────────────────────────────
+bookingScene.action(/^nr:(.+)/, async (ctx) => {
+  const s = getState(ctx);
+  const pending = s.pendingReview ?? [];
+  const idx = s.pendingReviewIndex ?? 0;
+
+  // Истёкший коллбэк — pendingReview пуст или индекс выходит за границы
+  if (pending.length === 0 || idx >= pending.length) {
+    await ctx.answerCbQuery("Время истекло");
+    return;
+  }
+
+  await ctx.answerCbQuery();
+
+  const item = pending[idx]!;
+  // Нормализуем match для безопасного доступа к candidates
+  const candidates: GafferMatchCandidate[] =
+    item.match.kind === "needsReview" ? item.match.candidates : [];
+
+  const data = ctx.callbackQuery && "data" in ctx.callbackQuery ? ctx.callbackQuery.data : "";
+
+  if (data === "nr:skipall") {
+    setState(ctx, { pendingReview: [], pendingReviewIndex: 0 });
+    await ctx.editMessageText("⏭ Пропущено: все оставшиеся");
+    await showHub(ctx);
+    return;
+  }
+
+  if (data === "nr:skip") {
+    await ctx.editMessageText(`⏭ Пропущено: «${item.gafferPhrase}»`);
+    const nextIdx = idx + 1;
+    setState(ctx, { pendingReviewIndex: nextIdx });
+    if (nextIdx >= pending.length) {
+      setState(ctx, { pendingReview: [], pendingReviewIndex: 0 });
+      await showHub(ctx);
+    } else {
+      await showNextReview(ctx);
+    }
+    return;
+  }
+
+  if (data.startsWith("nr:accept:")) {
+    // Формат: nr:accept:{equipmentId}:{quantity}
+    const rest = data.slice("nr:accept:".length);
+    const lastColon = rest.lastIndexOf(":");
+    const equipmentId = rest.slice(0, lastColon);
+    const qty = parseInt(rest.slice(lastColon + 1), 10);
+
+    // Безопасность: проверяем, что equipmentId действительно среди кандидатов
+    const candidate = candidates.find((c) => c.equipmentId === equipmentId);
+    if (!candidate) {
+      await ctx.editMessageText("⚠️ Неверный выбор.");
+      await showNextReview(ctx);
+      return;
+    }
+
+    const newItem: MatchedItem = {
+      equipmentId: candidate.equipmentId,
+      name: candidate.catalogName,
+      category: candidate.category,
+      quantity: Math.min(qty > 0 ? qty : 1, candidate.availableQuantity),
+      rentalRatePerShift: candidate.rentalRatePerShift,
+      availableQuantity: candidate.availableQuantity,
+    };
+
+    const currentItems = s.items ?? [];
+    const merged = mergeItems(currentItems, [newItem]);
+    setState(ctx, { items: merged });
+
+    await ctx.editMessageText(`✅ Добавлено: ${newItem.name} × ${newItem.quantity} шт`);
+
+    const nextIdx = idx + 1;
+    setState(ctx, { pendingReviewIndex: nextIdx });
+    if (nextIdx >= pending.length) {
+      setState(ctx, { pendingReview: [], pendingReviewIndex: 0 });
+      await showHub(ctx);
+    } else {
+      await showNextReview(ctx);
+    }
+    return;
+  }
+});
+
 // ── Главный обработчик текста ─────────────────────────────────────────────────
 bookingScene.on("text", async (ctx) => {
   const s = getState(ctx);
@@ -407,6 +491,15 @@ bookingScene.on("text", async (ctx) => {
       return;
     }
 
+    // Если активен pendingReview и это не удаление — отклоняем
+    if (s.pendingReview && s.pendingReview.length > 0 && (s.pendingReviewIndex ?? 0) < s.pendingReview.length) {
+      await ctx.reply(
+        "Ответьте на вопрос выше или нажмите кнопку.",
+        { reply_markup: hubKeyboardMarkup() },
+      );
+      return;
+    }
+
     // Свободный ввод — AI матчинг
     const thinking = await ctx.reply("⏳ Ищу в каталоге…");
 
@@ -449,18 +542,13 @@ bookingScene.on("text", async (ctx) => {
     const newItems = buildItems(matchResult.resolved, catalog);
     const merged = mergeItems(items, newItems);
 
-    // Until Sprint 3 adds inline confirmations, treat needsReview as unmatched
-    const allUnmatched = [
-      ...matchResult.unmatched,
-      ...matchResult.needsReview.map((r) => r.gafferPhrase),
-    ];
-    const unmatchedText = allUnmatched.length > 0
-      ? allUnmatched.join(", ")
+    const unmatchedText = matchResult.unmatched.length > 0
+      ? matchResult.unmatched.join(", ")
       : undefined;
 
     setState(ctx, {
       items: merged,
-      pendingReview: [],  // Sprint 3 will populate and present these
+      pendingReview: matchResult.needsReview,
       pendingReviewIndex: 0,
     });
 
@@ -480,6 +568,9 @@ bookingScene.on("text", async (ctx) => {
     }
 
     await showHub(ctx, unmatchedText);
+    if (matchResult.needsReview.length > 0) {
+      await showNextReview(ctx);
+    }
     return;
   }
 
@@ -756,6 +847,70 @@ async function showHub(ctx: BotContext, unmatchedText?: string): Promise<void> {
   }
 
   await ctx.reply(msg, { parse_mode: "Markdown", reply_markup: hubKeyboardMarkup() });
+}
+
+/**
+ * Показывает текущий элемент pendingReview как инлайн-клавиатуру.
+ * Если кандидатов 0 — автоматически пропускает и переходит к следующему.
+ */
+async function showNextReview(ctx: BotContext): Promise<void> {
+  const s = getState(ctx);
+  const pending = s.pendingReview ?? [];
+  const idx = s.pendingReviewIndex ?? 0;
+
+  // Все обработаны
+  if (idx >= pending.length) {
+    setState(ctx, { pendingReview: [], pendingReviewIndex: 0 });
+    await showHub(ctx);
+    return;
+  }
+
+  const item = pending[idx];
+  if (!item) {
+    setState(ctx, { pendingReview: [], pendingReviewIndex: 0 });
+    await showHub(ctx);
+    return;
+  }
+
+  // 0 кандидатов — пропускаем автоматически
+  if (item.match.kind !== "needsReview" || item.match.candidates.length === 0) {
+    setState(ctx, { pendingReviewIndex: idx + 1 });
+    await showNextReview(ctx);
+    return;
+  }
+
+  const candidates = item.match.candidates;
+
+  if (candidates.length === 1) {
+    const c = candidates[0]!;
+    const pct = Math.round(c.confidence * 100);
+    await ctx.reply(
+      `❓ «${item.gafferPhrase}» — это ${c.catalogName}?`,
+      {
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback(`✅ Да (${pct}%)`, `nr:accept:${c.equipmentId}:${item.quantity}`),
+            Markup.button.callback("❌ Нет", "nr:skip"),
+            Markup.button.callback("⏭ Пропустить все", "nr:skipall"),
+          ],
+        ]),
+      },
+    );
+  } else {
+    const rows = candidates.map((c) => {
+      const pct = Math.round(c.confidence * 100);
+      return [Markup.button.callback(`${c.catalogName} (${pct}%)`, `nr:accept:${c.equipmentId}:${item.quantity}`)];
+    });
+    rows.push([Markup.button.callback("❌ Нет, пропустить", "nr:skip")]);
+    rows.push([Markup.button.callback("⏭ Пропустить все оставшиеся", "nr:skipall")]);
+
+    await ctx.reply(
+      `❓ «${item.gafferPhrase}» — вы имели в виду:`,
+      {
+        ...Markup.inlineKeyboard(rows),
+      },
+    );
+  }
 }
 
 /**
