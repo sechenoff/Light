@@ -43,11 +43,13 @@ echo "║   Light Rental System  · Deploy      ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 
-# ── Shared package ────────────────────────────────────────────────────────────
-echo "▶ shared: build"
-cd "$ROOT/packages/shared"
-npm run build
-echo "  ✓ shared готов"
+# ── Shared package (нужен для web, bot) ───────────────────────────────────────
+if $DEPLOY_WEB || $DEPLOY_RENTAL_BOT || $DEPLOY_ALL; then
+  echo "▶ shared: build"
+  cd "$ROOT/packages/shared"
+  npm run build
+  echo "  ✓ shared готов"
+fi
 
 # ── API ───────────────────────────────────────────────────────────────────────
 if $DEPLOY_API; then
