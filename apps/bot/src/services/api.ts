@@ -27,7 +27,7 @@ const BASE = (process.env.API_BASE_URL ?? "http://localhost:4000").replace(/\/$/
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "Content-Type": "application/json", "X-API-Key": process.env.API_KEY ?? "", ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -66,7 +66,7 @@ export async function getPricelistMeta(): Promise<{ exists: boolean; filename?: 
 /** Скачать прайслист как Buffer */
 export async function fetchPricelistBuffer(): Promise<{ buffer: Buffer; filename: string } | null> {
   try {
-    const res = await fetch(`${BASE}/api/pricelist/file`);
+    const res = await fetch(`${BASE}/api/pricelist/file`, { headers: { "X-API-Key": process.env.API_KEY ?? "" } });
     if (!res.ok) return null;
     const arrayBuffer = await res.arrayBuffer();
     const disposition = res.headers.get("Content-Disposition") ?? "";
@@ -124,6 +124,7 @@ export async function uploadAnalysisFile(
 
   const res = await fetch(`${BASE}/api/analyses/${analysisId}/upload`, {
     method: "POST",
+    headers: { "X-API-Key": process.env.API_KEY ?? "" },
     body: formData,
   });
 
@@ -155,6 +156,7 @@ export async function analyzePhoto(
 
   const res = await fetch(`${BASE}/api/photo-analysis`, {
     method: "POST",
+    headers: { "X-API-Key": process.env.API_KEY ?? "" },
     body: formData,
     signal: AbortSignal.timeout(150_000), // 2.5 min — Gemini 2.5 Flash может занять 40s+
   });
