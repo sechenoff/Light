@@ -1,4 +1,5 @@
 import type { Scenes } from "telegraf";
+import type { GafferReviewItem } from "./services/api";
 
 export type EquipmentItem = {
   equipmentId: string;
@@ -27,12 +28,8 @@ export type BookingDraft = {
     | "client"
     | "project"
     | "dates"
-    | "equipment_mode" // выбор способа ввода оборудования
-    | "equipment"      // свободный ввод
-    | "clarify"        // уточнение позиций, не найденных в каталоге
-    | "catalog"        // пошаговый выбор по категориям
-    | "edit_list"      // редактирование итогового списка
-    | "edit_add"       // добавление позиции в режиме редактора
+    | "hub"     // хаб: редактирование итогового списка
+    | "catalog" // пошаговый выбор по категориям
     | "confirm";
   clientName?: string;
   projectName?: string;
@@ -54,6 +51,10 @@ export type BookingDraft = {
   catalogCategories?: string[];
   /** Текущая открытая категория (null = показываем список категорий) */
   catalogCategory?: string | null;
+  /** Позиции из API, ожидающие выбора кандидата пользователем */
+  pendingReview?: GafferReviewItem[];
+  /** Индекс текущей позиции в pendingReview */
+  pendingReviewIndex?: number;
 };
 
 /** Строка сметы (зеркало EstimateLine из API) */
