@@ -16,11 +16,12 @@ All UI text, comments, and business logic use Russian language.
 3. **Zod for validation** -- request bodies validated with Zod schemas; errors caught by centralized handler in `app.ts`.
 4. **Decimal.js for money** -- monetary values use Prisma `Decimal` type, serialized via `apps/api/src/utils/serializeDecimal.ts`.
 5. **Vision provider is pluggable** -- interface at `apps/api/src/services/vision/provider.ts`, implementations: `gemini.ts` (production), `mock.ts` (dev). Selected by `VISION_PROVIDER` env var.
-6. **Crew calculator is duplicated** -- identical logic in `apps/web/src/lib/crewCalculator.ts` and `apps/bot/src/lib/crewCalculator.ts`. Changes must be synced manually.
+6. **Crew calculator is shared** -- logic lives in `packages/shared/` (`@light-rental/shared`). Both web and bot import from there. Do not add local copies.
 7. **Web proxies API** -- `apps/web/app/api/[...path]/route.ts` forwards all `/api/*` requests to Express backend. In dev it targets `http://127.0.0.1:4000`. Do not duplicate API endpoints in Next.js.
 8. **Prisma pinned** to `>=6.5.0 <7.0.0` -- v7 broke `url` in datasource, <6.5 lacks SQLite enum support.
 9. **User-facing text in Russian** -- bot messages, web UI labels, error messages, PDF exports.
 10. **deploy.sh uses `prisma db push --accept-data-loss`** -- do not make schema changes without a DB backup.
+11. **API key auth** -- `apps/api/src/middleware/apiKeyAuth.ts` validates `X-API-Key` header. `AUTH_MODE=warn` logs violations; `AUTH_MODE=enforce` rejects them. Set `API_KEYS` env var (comma-separated). Health endpoint `/health` is exempt.
 
 ## Architecture
 
@@ -39,14 +40,13 @@ light-rental-system/
     web/          Next.js 14 + React 18 + Tailwind CSS 3
       app/            Pages: bookings, equipment, finance, admin, crew-calculator, settings
       app/api/        Catch-all proxy to Express backend
-      src/lib/        Shared logic: api client, crew calculator, formatting
+      src/lib/        Shared logic: api client, formatting
       src/components/ AppShell, StatusBadge
     bot/          Telegraf 4 + AI booking (API-backed matching)
       src/scenes/     booking (hub-and-spoke), crewCalc, photoAnalysis wizard scenes
       src/services/   llm (equipment matching via API), api client, logger
-      src/lib/        crewCalculator, crewRates (copy of web)
   packages/
-    db/           Empty placeholder package
+    shared/       @light-rental/shared — crewCalculator + crewRates (dual CJS/ESM via tsup)
 ```
 
 **Request flow:** Browser -> Next.js `/api/[...path]` proxy -> Express :4000 -> Prisma/SQLite
@@ -69,10 +69,14 @@ light-rental-system/
 | `apps/bot/src/scenes/booking.ts` | Hub-and-spoke booking scene (~1000 LOC): hub step is central cart screen, spokes: catalog, inline needsReview confirmations |
 | `apps/bot/src/services/api.ts` | Bot API client: gaffer review types (GafferReviewItem, GafferMatchCandidate), parseGafferReview() |
 | `apps/bot/src/services/llm.ts` | Equipment matching via parseGafferReview API (3-tier: resolved/needsReview/unmatched), date parsing |
+| `apps/api/src/middleware/apiKeyAuth.ts` | API key auth middleware (warn/enforce modes, X-API-Key header) |
+| `apps/api/src/middleware/rateLimiter.ts` | Rate limiter: 100 req/min per IP (express-rate-limit) |
+| `packages/shared/src/crewCalculator.ts` | Shared crew cost calculator (imported by web + bot) |
+| `apps/bot/src/scenes/booking-helpers.ts` | Extracted pure functions from booking scene |
 | `apps/web/app/api/[...path]/route.ts` | Catch-all API proxy with connection error handling |
 | `apps/web/app/admin/page.tsx` | Admin panel (1,024 lines) -- slang learning review |
 | `ecosystem.config.js` | PM2 process definitions for api (:4000) + rental-bot |
-| `deploy.sh` | Build + deploy script (supports --api, --web, --rental-bot flags) |
+| `deploy.sh` | Build + deploy script (builds shared first; supports --api, --web, --rental-bot flags) |
 
 ## Commands
 
@@ -94,8 +98,11 @@ npm run build
 # Lint (API + Web only)
 npm run lint
 
-# Tests (only crew calculator exists)
-npm run test -w apps/web      # vitest run
+# Tests
+npm test                          # run all (shared + bot + api)
+npm run test -w apps/api          # API smoke tests only (17 tests)
+npm run test -w apps/bot          # bot booking-helpers tests only (27 tests)
+npm run test -w packages/shared   # shared package tests only
 
 # Database
 npm run prisma:generate       # Generate Prisma client
@@ -118,16 +125,15 @@ npm run seed                  # Seed database
 - **API prefix**: All routes under `/api/*` (e.g., `/api/bookings`, `/api/equipment`).
 - **PDF fonts**: DejaVu Sans loaded from `apps/api/assets/fonts/` for Cyrillic support in PDF exports.
 - **Redis optional**: API starts without Redis -- BullMQ worker simply does not initialize if Redis is unreachable.
-- **No authentication**: API endpoints are publicly accessible. No auth middleware exists.
+- **API authentication**: `X-API-Key` header required on all routes except `/health`. Controlled by `AUTH_MODE=warn|enforce` and `API_KEYS` env var (comma-separated). In `warn` mode violations are logged but not blocked; in `enforce` mode they return 401.
 - **Bot booking is hub-and-spoke**: Steps are client→project→dates→hub→confirm. Hub is the central cart screen; free text triggers AI matching (parseGafferReview API), ambiguous matches get inline keyboard confirmations (needsReview). Catalog is a spoke from hub. Items persist across all navigation.
 
 ## Known Issues
 
-1. **No authentication** on API -- 12 route files with 40+ endpoints are publicly accessible.
-2. **Crew calculator duplication**: `apps/web/src/lib/crewCalculator.ts` and `apps/bot/src/lib/crewCalculator.ts` are separate copies. No shared package extracts this.
-3. **Minimal test coverage**: Only `crewCalculator.test.ts` (209 lines, vitest). No integration or API tests.
+1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
+2. **~~Crew calculator duplication~~** — RESOLVED: extracted to `packages/shared` (`@light-rental/shared`).
+3. **~~Minimal test coverage~~** — RESOLVED: 102 tests across shared, bot (booking-helpers), and API smoke tests.
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
-5. **`packages/db` is empty**: Listed as workspace but contains no code.
-6. **`apps/web/app/ops/` is empty**: Directory exists but has no page file.
+5. **`apps/web/app/ops/` is empty**: Directory exists but has no page file.
 
 <!-- updated-by-superflow:2026-04-03 -->
