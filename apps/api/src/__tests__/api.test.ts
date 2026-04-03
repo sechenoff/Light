@@ -179,6 +179,42 @@ describe("Booking Parser", () => {
   });
 });
 
+describe("Match Equipment", () => {
+  it("POST /api/bookings/match-equipment without body returns 400", async () => {
+    const res = await request(app)
+      .post("/api/bookings/match-equipment")
+      .set(AUTH)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /api/bookings/match-equipment with empty items array returns items:[]", async () => {
+    const res = await request(app)
+      .post("/api/bookings/match-equipment")
+      .set(AUTH)
+      .send({ items: [] });
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([]);
+  });
+
+  it("POST /api/bookings/match-equipment with invalid item (missing name) returns 400", async () => {
+    const res = await request(app)
+      .post("/api/bookings/match-equipment")
+      .set(AUTH)
+      .send({ items: [{ quantity: 2 }] });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /api/bookings/match-equipment with valid items returns items array", async () => {
+    const res = await request(app)
+      .post("/api/bookings/match-equipment")
+      .set(AUTH)
+      .send({ items: [{ name: "nova p300", quantity: 1 }] });
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+  });
+});
+
 describe("Slang Learning", () => {
   it("GET /api/admin/slang-learning returns 200", async () => {
     const res = await request(app)

@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { MatchedItem } from "../types";
-import { parseGafferReview, type GafferReviewItem } from "./api";
+import { parseGafferReview, matchEquipmentItems, type GafferReviewItem } from "./api";
 
 export type ResolvedItem = {
   equipmentId: string;
@@ -57,16 +57,106 @@ export async function parseDates(
   }
 }
 
+const EXTRACT_EQUIPMENT_PROMPT = `Ты парсер списков оборудования для компании аренды осветительной техники.
+
+Извлеки ВСЕ позиции оборудования из текста гаффера.
+
+Для каждой позиции верни JSON-объект с полями:
+- gafferPhrase: точная цитата из текста (включая числа на той же строке, например "2x 52xt"). Если невозможно — кратчайшая верная цитата.
+- interpretedName: короткое нормализованное название оборудования для поиска по каталогу (латиница/бренд/модель, например "52xt", "nova p300"). Количество НЕ включать.
+- quantity: целое число, по умолчанию 1 если не указано.
+
+КРИТИЧЕСКИ ВАЖНО: верни ТОЛЬКО валидный JSON-массив. Без markdown, без лишнего текста.
+
+Пример:
+[
+  { "gafferPhrase": "2 шт 52xt blair", "interpretedName": "52xt", "quantity": 2 },
+  { "gafferPhrase": "nova p300 с софтом", "interpretedName": "nova p300", "quantity": 1 }
+]
+
+Если позиции оборудования не найдены — верни пустой массив: []
+
+Текст гаффера:
+`;
+
+type ExtractedEquipmentItem = {
+  gafferPhrase: string;
+  interpretedName: string;
+  quantity: number;
+};
+
 /**
- * Матчит текстовое описание оборудования к каталогу через API
- * (Gemini AI + обучаемый словарь SlangAlias — тот же движок, что и на сайте).
- * Матчинг и доступность определяет API — отдельный запрос каталога не нужен.
+ * Извлекает позиции оборудования из произвольного текста через OpenAI.
+ */
+async function extractEquipmentItems(text: string): Promise<ExtractedEquipmentItem[]> {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: "Верни результат в виде JSON-объекта с полем \"items\", содержащим массив позиций оборудования.",
+      },
+      {
+        role: "user",
+        content: EXTRACT_EQUIPMENT_PROMPT + text,
+      },
+    ],
+  });
+
+  try {
+    const raw = response.choices[0].message.content ?? "{}";
+    const parsed = JSON.parse(raw);
+
+    // Поддержка форматов: { items: [...] } или напрямую [...]
+    const arr: unknown[] = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.items) ? parsed.items : []);
+
+    const result: ExtractedEquipmentItem[] = [];
+    for (const row of arr) {
+      if (typeof row !== "object" || row === null) continue;
+      const r = row as Record<string, unknown>;
+      const interpretedName = (typeof r.interpretedName === "string" ? r.interpretedName : (typeof r.name === "string" ? r.name : "")).trim();
+      if (!interpretedName) continue;
+      const gafferPhrase = (typeof r.gafferPhrase === "string" ? r.gafferPhrase : interpretedName).trim() || interpretedName;
+      const rawQty = r.quantity;
+      const qty = typeof rawQty === "number" && rawQty > 0 ? Math.round(rawQty) : 1;
+      result.push({ gafferPhrase, interpretedName, quantity: qty });
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Матчит текстовое описание оборудования к каталогу:
+ * 1. OpenAI извлекает позиции из текста гаффера
+ * 2. API match-equipment сопоставляет с каталогом без LLM
  */
 export async function matchEquipment(
   userText: string,
 ): Promise<MatchResult | { error: string }> {
   try {
-    const response = await parseGafferReview(userText);
+    let extracted: ExtractedEquipmentItem[];
+    try {
+      extracted = await extractEquipmentItems(userText);
+    } catch (e) {
+      console.error("[matchEquipment] OpenAI extraction failed:", e);
+      return { error: "AI временно недоступен. Используйте ручной режим добавления оборудования." };
+    }
+
+    if (extracted.length === 0) {
+      return { resolved: [], needsReview: [], unmatched: [] };
+    }
+
+    const response = await matchEquipmentItems(
+      extracted.map((item) => ({
+        name: item.interpretedName,
+        quantity: item.quantity,
+        gafferPhrase: item.gafferPhrase,
+      })),
+    );
 
     if (response.error) {
       return { error: response.error };

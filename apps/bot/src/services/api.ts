@@ -222,6 +222,16 @@ export async function parseGafferReview(
   });
 }
 
+/** Матчинг уже извлечённых позиций к каталогу без вызова LLM */
+export async function matchEquipmentItems(
+  items: Array<{ name: string; quantity: number; gafferPhrase?: string }>,
+): Promise<ParseGafferReviewResponse> {
+  return apiFetch<ParseGafferReviewResponse>("/api/bookings/match-equipment", {
+    method: "POST",
+    body: JSON.stringify({ items }),
+  });
+}
+
 /** Создать новую бронь (draft → confirm) */
 export async function createBooking(args: {
   clientName: string;

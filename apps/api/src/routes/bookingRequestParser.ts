@@ -242,4 +242,66 @@ router.post("/parse-gaffer-review", async (req, res, next) => {
   }
 });
 
+// ── match-equipment endpoint ──────────────────────────────────────────────────
+
+const MatchEquipmentItemSchema = z.object({
+  name: z.string().min(1),
+  quantity: quantityPreprocess,
+  gafferPhrase: z.string().optional(),
+});
+
+const MatchEquipmentBody = z.object({
+  items: z.array(MatchEquipmentItemSchema),
+});
+
+/**
+ * POST /api/bookings/match-equipment
+ * Принимает уже извлечённые позиции (name + quantity + gafferPhrase опционально)
+ * и запускает matchGafferRequestOrdered() — без вызова LLM.
+ */
+router.post("/match-equipment", async (req, res, next) => {
+  try {
+    const body = MatchEquipmentBody.parse(req.body);
+
+    if (body.items.length === 0) {
+      return res.json({ items: [] as GafferReviewApiItem[] });
+    }
+
+    const forMatch: ParsedRequestItem[] = body.items.map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      gafferPhrase: item.gafferPhrase,
+    }));
+
+    let matches: GafferOrderedRowMatch[];
+    try {
+      matches = await matchGafferRequestOrdered(forMatch);
+    } catch (err) {
+      console.error("[match-equipment] catalog match failed:", err);
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        return res.status(503).json({
+          error: "Ошибка чтения каталога из базы. Проверьте миграции Prisma и перезапустите API.",
+          code: "CATALOG_DB_ERROR",
+        });
+      }
+      return res.status(503).json({
+        error: "Не удалось сопоставить позиции с каталогом. Попробуйте позже.",
+        code: "MATCH_FAILED",
+      });
+    }
+
+    const items: GafferReviewApiItem[] = body.items.map((item, i) => ({
+      id: randomUUID(),
+      gafferPhrase: item.gafferPhrase ?? item.name,
+      interpretedName: item.name,
+      quantity: item.quantity,
+      match: matches[i] ?? { kind: "unmatched" as const },
+    }));
+
+    return res.json({ items });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export { router as bookingRequestParserRouter };
