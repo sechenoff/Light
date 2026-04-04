@@ -59,6 +59,20 @@ if $DEPLOY_API; then
   [ ! -f .env ] && { echo "  ⚠ .env не найден. Скопируйте .env.production → .env"; exit 1; }
 
   npx prisma generate
+
+  # ── Backup SQLite DB before schema changes ────────────────────────────────
+  DB_FILE="$ROOT/apps/api/prisma/rental.db"
+  BACKUP_DIR="$ROOT/backups"
+  if [ -f "$DB_FILE" ]; then
+    mkdir -p "$BACKUP_DIR"
+    BACKUP_NAME="rental_$(date +%Y-%m-%d_%H-%M-%S).db"
+    cp "$DB_FILE" "$BACKUP_DIR/$BACKUP_NAME"
+    echo "  ✓ БД сохранена: backups/$BACKUP_NAME"
+    # Удаляем старые бэкапы, оставляем последние 10
+    ls -1t "$BACKUP_DIR"/rental_*.db 2>/dev/null | tail -n +11 | xargs -r rm --
+  fi
+  # ─────────────────────────────────────────────────────────────────────────
+
   npx prisma db push --accept-data-loss   # SQLite: синхронизируем схему
   npm run build
 

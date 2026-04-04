@@ -37,6 +37,9 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         API_BASE_URL: "http://localhost:4000",
+        WEBHOOK_DOMAIN: "",   // Set on production, empty = polling mode
+        WEBHOOK_PORT: 3001,
+        WEBHOOK_SECRET: "",   // Set on production for security
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       error_file: "../../logs/rental-bot-error.log",
