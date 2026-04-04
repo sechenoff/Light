@@ -124,7 +124,7 @@ const BOTTOM_ITEMS: NavItem[] = [
     match: (p) => p === "/finance",
   },
   {
-    label: "Администратор",
+    label: "Admin Panel",
     href: "/admin",
     icon: <IconGear />,
     match: (p) => p.startsWith("/admin"),

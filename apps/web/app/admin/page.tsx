@@ -95,7 +95,7 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
                   d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
             </div>
-            <h1 className="text-lg font-semibold text-white">Панель администратора</h1>
+            <h1 className="text-lg font-semibold text-white">Admin Panel</h1>
             <p className="text-sm text-slate-400 mt-1">Введите пароль для доступа</p>
           </div>
 
@@ -1048,7 +1048,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       {/* Page header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Панель администратора</h1>
+          <h1 className="text-xl font-semibold text-slate-900">Admin Panel</h1>
           <p className="text-sm text-slate-500 mt-0.5">Системные настройки и управление данными</p>
         </div>
         <button
@@ -1063,7 +1063,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       <div className="flex items-center gap-3 mb-5">
         <div className="h-px flex-1 bg-slate-200" />
         <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-          Разделы администратора
+          Admin Panel sections
         </span>
         <div className="h-px flex-1 bg-slate-200" />
       </div>
