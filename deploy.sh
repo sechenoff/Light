@@ -129,8 +129,9 @@ if $DEPLOY_WEB; then
   npm ci --prefer-offline --silent
   npm run build
 
+  # --update-env обязателен чтобы Next.js подхватил новые .env.local переменные (API_KEY и т.д.)
   pm2 describe web > /dev/null 2>&1 \
-    && pm2 reload web \
+    && pm2 restart web --update-env \
     || pm2 start npm --name web --cwd "$ROOT/apps/web" -- start
 
   echo "  ✓ web готов"
