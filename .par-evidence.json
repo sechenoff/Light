@@ -1,9 +1,9 @@
 {
-  "sprint": 2,
+  "sprint": 3,
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "review_notes": "Product flagged SVG font for Cyrillic — disagreed: sans-serif fallback works on Debian VPS. Technical flagged HMAC 12-hex truncation — disagreed: per spec for barcodes (Code128 size constraint).",
-  "test_evidence": "shared: 33/33, bot: 31/31, barcode: 12/12 pass",
-  "ts": "2026-04-07T16:17:00Z"
+  "review_fixes": ["Full HMAC-SHA256 for tokens", "Timing-safe comparison", "Reset lockout counter after expiry", "4-digit minimum PIN", "Return name/expiresAt in auth response"],
+  "test_evidence": "shared: 33/33, bot: 31/31, warehouseAuth: 6/6, api: 25/25 pass",
+  "ts": "2026-04-07T16:18:00Z"
 }
