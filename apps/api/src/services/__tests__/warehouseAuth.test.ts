@@ -56,8 +56,7 @@ describe("warehouseAuth", () => {
       const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64");
       const hmac = createHmac("sha256", "test-warehouse-secret")
         .update(payloadB64)
-        .digest("hex")
-        .slice(0, 12);
+        .digest("hex");
       const token = `${payloadB64}:${hmac}`;
       const result = verifyToken(token);
       expect(result).toBeNull();
