@@ -1029,15 +1029,366 @@ function SlangLearningTab() {
   );
 }
 
+// ── Workers tab ───────────────────────────────────────────────────────────────
+
+type Worker = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  failedAttempts: number;
+  lockedUntil: string | null;
+  createdAt: string;
+};
+
+function WorkersTab() {
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Add worker form
+  const [newName, setNewName] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addLoading, setAddLoading] = useState(false);
+
+  // PIN reset
+  const [resetPinId, setResetPinId] = useState<string | null>(null);
+  const [resetPinValue, setResetPinValue] = useState("");
+  const [resetPinError, setResetPinError] = useState<string | null>(null);
+  const [resetPinLoading, setResetPinLoading] = useState(false);
+
+  // Delete confirm
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function loadWorkers() {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch<{ workers: Worker[] }>("/api/warehouse/workers");
+      setWorkers(data.workers);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка загрузки");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadWorkers();
+  }, []);
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newName.trim() || newPin.length !== 4) {
+      setAddError("Введите имя и 4-значный PIN");
+      return;
+    }
+    setAddLoading(true);
+    setAddError(null);
+    try {
+      await apiFetch("/api/warehouse/workers", {
+        method: "POST",
+        body: JSON.stringify({ name: newName.trim(), pin: newPin }),
+      });
+      setNewName("");
+      setNewPin("");
+      await loadWorkers();
+    } catch (e) {
+      setAddError(e instanceof Error ? e.message : "Ошибка добавления");
+    } finally {
+      setAddLoading(false);
+    }
+  }
+
+  async function handleToggleActive(worker: Worker) {
+    try {
+      await apiFetch(`/api/warehouse/workers/${worker.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: !worker.isActive }),
+      });
+      await loadWorkers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка обновления");
+    }
+  }
+
+  async function handleResetPin(id: string) {
+    if (resetPinValue.length !== 4) {
+      setResetPinError("PIN должен быть 4-значным");
+      return;
+    }
+    setResetPinLoading(true);
+    setResetPinError(null);
+    try {
+      await apiFetch(`/api/warehouse/workers/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ pin: resetPinValue }),
+      });
+      setResetPinId(null);
+      setResetPinValue("");
+      await loadWorkers();
+    } catch (e) {
+      setResetPinError(e instanceof Error ? e.message : "Ошибка смены PIN");
+    } finally {
+      setResetPinLoading(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      await apiFetch(`/api/warehouse/workers/${id}`, { method: "DELETE" });
+      setDeleteId(null);
+      await loadWorkers();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Ошибка удаления");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <h3 className="text-sm font-semibold text-slate-900">Кладовщики</h3>
+
+      {/* Add worker form */}
+      <form onSubmit={handleAdd} className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50">
+        <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Добавить кладовщика</p>
+        <div className="flex gap-3 flex-wrap">
+          <input
+            type="text"
+            placeholder="Имя"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="rounded border border-slate-300 px-3 py-2 text-sm bg-white flex-1 min-w-[140px]"
+          />
+          <input
+            type="text"
+            placeholder="PIN (4 цифры)"
+            value={newPin}
+            maxLength={4}
+            onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+            className="rounded border border-slate-300 px-3 py-2 text-sm bg-white w-[120px]"
+          />
+          <button
+            type="submit"
+            disabled={addLoading}
+            className="rounded bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+          >
+            {addLoading ? "..." : "Добавить"}
+          </button>
+        </div>
+        {addError && <p className="text-xs text-rose-600">{addError}</p>}
+      </form>
+
+      {/* Workers list */}
+      {loading && <p className="text-sm text-slate-400">Загрузка...</p>}
+      {error && <p className="text-sm text-rose-600">{error}</p>}
+
+      {/* Desktop table */}
+      {!loading && workers.length > 0 && (
+        <div className="hidden md:block border border-slate-200 rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-600 text-xs">
+              <tr>
+                <th className="text-left px-4 py-3">Имя</th>
+                <th className="text-left px-3 py-3">Статус</th>
+                <th className="text-left px-3 py-3">Последний вход</th>
+                <th className="text-left px-3 py-3">Попытки</th>
+                <th className="text-left px-3 py-3">Блокировка</th>
+                <th className="px-3 py-3 text-right">Действия</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {workers.map((w) => (
+                <tr key={w.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 font-medium text-slate-900">{w.name}</td>
+                  <td className="px-3 py-3">
+                    {w.isActive ? (
+                      <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Активен</span>
+                    ) : (
+                      <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-slate-100 text-slate-500 border-slate-200">Отключён</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-slate-500 text-xs">
+                    {w.lastLoginAt ? new Date(w.lastLoginAt).toLocaleString("ru-RU") : "—"}
+                  </td>
+                  <td className="px-3 py-3 text-slate-600">{w.failedAttempts}</td>
+                  <td className="px-3 py-3 text-xs">
+                    {w.lockedUntil ? (
+                      <span className="text-rose-600">{new Date(w.lockedUntil).toLocaleString("ru-RU")}</span>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleActive(w)}
+                        className="text-xs rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50"
+                      >
+                        {w.isActive ? "Отключить" : "Включить"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setResetPinId(w.id); setResetPinValue(""); setResetPinError(null); }}
+                        className="text-xs rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50"
+                      >
+                        Сменить PIN
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setDeleteId(w.id); setDeleteError(null); }}
+                        className="text-xs rounded border border-rose-200 px-2 py-1 text-rose-600 hover:bg-rose-50"
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Mobile cards */}
+      {!loading && workers.length > 0 && (
+        <div className="md:hidden space-y-3">
+          {workers.map((w) => (
+            <div key={w.id} className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-medium text-slate-900">{w.name}</span>
+                {w.isActive ? (
+                  <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Активен</span>
+                ) : (
+                  <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-slate-100 text-slate-500 border-slate-200">Отключён</span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mb-1">
+                Последний вход: {w.lastLoginAt ? new Date(w.lastLoginAt).toLocaleString("ru-RU") : "—"}
+              </p>
+              <p className="text-xs text-slate-400 mb-1">Неудачных попыток: {w.failedAttempts}</p>
+              {w.lockedUntil && (
+                <p className="text-xs text-rose-600 mb-1">Заблокирован до: {new Date(w.lockedUntil).toLocaleString("ru-RU")}</p>
+              )}
+              <div className="flex gap-2 flex-wrap mt-3">
+                <button
+                  type="button"
+                  onClick={() => handleToggleActive(w)}
+                  className="text-xs rounded border border-slate-200 px-2 py-1.5 text-slate-600 hover:bg-slate-50"
+                >
+                  {w.isActive ? "Отключить" : "Включить"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setResetPinId(w.id); setResetPinValue(""); setResetPinError(null); }}
+                  className="text-xs rounded border border-slate-200 px-2 py-1.5 text-slate-600 hover:bg-slate-50"
+                >
+                  Сменить PIN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setDeleteId(w.id); setDeleteError(null); }}
+                  className="text-xs rounded border border-rose-200 px-2 py-1.5 text-rose-600 hover:bg-rose-50"
+                >
+                  Удалить
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && workers.length === 0 && !error && (
+        <p className="text-sm text-slate-400 py-6 text-center border border-slate-200 rounded-xl">
+          Кладовщики не добавлены
+        </p>
+      )}
+
+      {/* Reset PIN modal */}
+      {resetPinId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xs bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-4">Сменить PIN</h2>
+            <input
+              type="text"
+              placeholder="Новый PIN (4 цифры)"
+              value={resetPinValue}
+              maxLength={4}
+              onChange={(e) => setResetPinValue(e.target.value.replace(/\D/g, ""))}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm mb-3"
+            />
+            {resetPinError && <p className="text-xs text-rose-600 mb-3">{resetPinError}</p>}
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setResetPinId(null)}
+                className="rounded border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => handleResetPin(resetPinId)}
+                disabled={resetPinLoading}
+                className="rounded bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+              >
+                {resetPinLoading ? "..." : "Сохранить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm */}
+      {deleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xs bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
+            <h2 className="text-base font-semibold text-slate-900 mb-2">Удалить кладовщика?</h2>
+            <p className="text-sm text-slate-600 mb-4">
+              {workers.find((w) => w.id === deleteId)?.name}
+            </p>
+            {deleteError && <p className="text-xs text-rose-600 mb-3">{deleteError}</p>}
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setDeleteId(null)}
+                className="rounded border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDelete(deleteId)}
+                disabled={deleteLoading}
+                className="rounded bg-rose-600 text-white px-4 py-2 text-sm hover:bg-rose-700 disabled:opacity-50"
+              >
+                {deleteLoading ? "..." : "Удалить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Admin panel (authenticated) ───────────────────────────────────────────────
 
-type AdminTab = "catalog" | "pricelist" | "import" | "slang";
+type AdminTab = "catalog" | "pricelist" | "import" | "slang" | "workers";
 
 const TABS: Array<{ id: AdminTab; label: string }> = [
   { id: "catalog", label: "Каталог техники" },
   { id: "pricelist", label: "Прайслист бота" },
   { id: "import", label: "Импорт оборудования" },
   { id: "slang", label: "Жаргон / Обучение" },
+  { id: "workers", label: "Кладовщики" },
 ];
 
 function AdminPanel({ onLogout }: { onLogout: () => void }) {
@@ -1091,6 +1442,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         {tab === "pricelist" && <PricelistTab />}
         {tab === "import" && <ImportTab />}
         {tab === "slang" && <SlangLearningTab />}
+        {tab === "workers" && <WorkersTab />}
       </div>
     </div>
   );
