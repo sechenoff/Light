@@ -214,6 +214,28 @@ export default function BookingDetailPage() {
           </div>
 
           <div className="lg:col-span-4 space-y-4">
+            {(booking.status === "CONFIRMED" || booking.status === "ISSUED") && (
+              <div className="rounded border border-slate-200 bg-white overflow-hidden no-print">
+                <div className="p-3 border-b border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700">
+                  Сканирование
+                </div>
+                <div className="p-3 text-sm text-slate-700 space-y-2">
+                  <Link
+                    href={`/warehouse/scan?booking=${booking.id}`}
+                    className="inline-flex items-center gap-1.5 rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+                      <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+                      <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+                      <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+                      <line x1="7" y1="12" x2="17" y2="12" />
+                    </svg>
+                    Начать сканирование
+                  </Link>
+                </div>
+              </div>
+            )}
             <div className="rounded border border-slate-200 bg-white overflow-hidden">
               <div className="p-3 border-b border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700">
                 Данные заказа и финансы
