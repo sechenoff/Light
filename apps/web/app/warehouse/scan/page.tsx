@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { apiFetch } from "../../../src/lib/api";
 
@@ -246,10 +246,12 @@ function BookingStep({
   operation,
   onSelect,
   onUnauth,
+  onBack,
 }: {
   operation: Operation;
   onSelect: (sessionId: string) => void;
   onUnauth: () => void;
+  onBack: () => void;
 }) {
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -294,6 +296,12 @@ function BookingStep({
 
   return (
     <div className="px-4 py-6">
+      <button
+        onClick={onBack}
+        className="mb-4 text-sm text-slate-500 hover:text-slate-700 transition-colors"
+      >
+        ← Назад
+      </button>
       <h2 className="text-xl font-bold text-slate-800 mb-4">{opLabel}: выберите бронирование</h2>
 
       {loading && (
@@ -365,10 +373,29 @@ function ScanStep({
   const [manualInput, setManualInput] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastScanRef = useRef<{ value: string; ts: number }>({ value: "", ts: 0 });
+  const scanningRef = useRef(false);
 
   function showToast(message: string, type: "success" | "error") {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ message, type });
-    setTimeout(() => setToast(null), 2500);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+  }
+
+  function playBeep(success: boolean) {
+    try {
+      navigator.vibrate?.(success ? 100 : [50, 50, 50]);
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = success ? 880 : 440;
+      gain.gain.value = 0.3;
+      osc.start();
+      osc.stop(ctx.currentTime + (success ? 0.15 : 0.3));
+    } catch {}
   }
 
   const loadDetail = useCallback(async () => {
@@ -391,6 +418,11 @@ function ScanStep({
 
   const handleScan = useCallback(
     async (barcodePayload: string) => {
+      const now = Date.now();
+      if (barcodePayload === lastScanRef.current.value && now - lastScanRef.current.ts < 3000) return;
+      lastScanRef.current = { value: barcodePayload, ts: now };
+      if (scanningRef.current) return;
+      scanningRef.current = true;
       try {
         const result = await warehouseFetch<ScanResult>(
           `/api/warehouse/sessions/${sessionId}/scan`,
@@ -400,9 +432,11 @@ function ScanStep({
           },
         );
         if (result.status === "ok") {
+          playBeep(true);
           showToast("Отсканировано успешно", "success");
           await loadDetail();
         } else {
+          playBeep(false);
           showToast(result.message ?? "Ошибка сканирования", "error");
         }
       } catch (err: unknown) {
@@ -411,7 +445,10 @@ function ScanStep({
           onUnauth();
           return;
         }
+        playBeep(false);
         showToast(e?.message ?? "Ошибка сканирования", "error");
+      } finally {
+        scanningRef.current = false;
       }
     },
     [sessionId, onUnauth, loadDetail],
@@ -570,7 +607,7 @@ function ScanStep({
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
             <h3 className="text-lg font-bold text-slate-800 mb-2">Отменить сессию?</h3>
             <p className="text-sm text-slate-600 mb-6">
-              Все данные сканирования будут потеряны. Это действие нельзя отменить.
+              Сессия сканирования будет отменена. Записи сканирования сохранятся для аудита.
             </p>
             <div className="flex gap-3">
               <button
@@ -752,10 +789,10 @@ export default function WarehouseScanPage() {
   const [operation, setOperation] = useState<Operation>("ISSUE");
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  function goToLogin() {
+  const goToLogin = useCallback(() => {
     sessionStorage.removeItem("warehouse_token");
     setStep("login");
-  }
+  }, []);
 
   function handleLoginSuccess() {
     setStep("operation");
@@ -796,6 +833,7 @@ export default function WarehouseScanPage() {
           operation={operation}
           onSelect={handleBookingSelect}
           onUnauth={goToLogin}
+          onBack={() => setStep("operation")}
         />
       )}
 
