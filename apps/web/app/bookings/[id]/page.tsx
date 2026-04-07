@@ -9,10 +9,21 @@ import { getFileNameFromContentDisposition } from "../../../src/lib/download";
 import { StatusBadge } from "../../../src/components/StatusBadge";
 import { formatMoneyRub } from "../../../src/lib/format";
 
+type ScanSession = {
+  id: string;
+  workerName: string;
+  operation: "ISSUE" | "RETURN";
+  status: "ACTIVE" | "COMPLETED" | "CANCELLED";
+  createdAt: string;
+  completedAt: string | null;
+  _count: { scanRecords: number };
+};
+
 type BookingDetail = {
   id: string;
   displayName?: string;
   status: "DRAFT" | "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
+  scanSessions?: ScanSession[];
   projectName: string;
   startDate: string;
   endDate: string;
@@ -214,25 +225,56 @@ export default function BookingDetailPage() {
           </div>
 
           <div className="lg:col-span-4 space-y-4">
-            {(booking.status === "CONFIRMED" || booking.status === "ISSUED") && (
+            {(booking.status === "CONFIRMED" || booking.status === "ISSUED" || booking.status === "RETURNED") && (
               <div className="rounded border border-slate-200 bg-white overflow-hidden no-print">
                 <div className="p-3 border-b border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700">
                   Сканирование
                 </div>
-                <div className="p-3 text-sm text-slate-700 space-y-2">
-                  <Link
-                    href={`/warehouse/scan?booking=${booking.id}`}
-                    className="inline-flex items-center gap-1.5 rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-                      <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-                      <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-                      <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-                      <line x1="7" y1="12" x2="17" y2="12" />
-                    </svg>
-                    Начать сканирование
-                  </Link>
+                <div className="p-3 text-sm text-slate-700 space-y-3">
+                  {(booking.scanSessions ?? []).length > 0 ? (
+                    <div className="space-y-2">
+                      {(booking.scanSessions ?? []).map((ss) => (
+                        <div key={ss.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-100 bg-slate-50">
+                          <div>
+                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium mr-2 ${
+                              ss.operation === "ISSUE" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"
+                            }`}>
+                              {ss.operation === "ISSUE" ? "Выдача" : "Возврат"}
+                            </span>
+                            <span className="text-slate-600">{ss.workerName}</span>
+                          </div>
+                          <div className="text-right text-xs text-slate-500">
+                            <div>{new Date(ss.createdAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}</div>
+                            <div>{ss._count.scanRecords} скан. · <StatusBadge status={
+                              ss.status === "COMPLETED" ? "Завершена" : ss.status === "ACTIVE" ? "Активна" : "Отменена"
+                            } /></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-slate-400 text-sm">Нет сессий сканирования</div>
+                  )}
+                  {booking.status === "CONFIRMED" && (booking.scanSessions ?? []).some(s => s.operation === "ISSUE" && s.status === "COMPLETED") && (
+                    <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                      Выдача отсканирована — переведите заказ в статус «Выдан»
+                    </div>
+                  )}
+                  {(booking.status === "CONFIRMED" || booking.status === "ISSUED") && (
+                    <Link
+                      href={`/warehouse/scan?booking=${booking.id}`}
+                      className="inline-flex items-center gap-1.5 rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+                        <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+                        <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+                        <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+                        <line x1="7" y1="12" x2="17" y2="12" />
+                      </svg>
+                      Начать сканирование
+                    </Link>
+                  )}
                 </div>
               </div>
             )}
