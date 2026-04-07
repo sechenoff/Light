@@ -1,1 +1,1 @@
-{"sprint":9,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","fixes_applied":["scan session history on booking detail (blocker)","bookings list scan status indicator","API includes scanSessions in booking responses"],"ts":"2026-04-07T17:50:00Z"}
+{"sprint":10,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","fixes_applied":["added RETIRED status to MAINTENANCE/RETIRED edge case test","added PIN lockout after 5 failures test"],"ts":"2026-04-07T18:10:00Z"}
