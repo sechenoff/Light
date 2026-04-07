@@ -18,6 +18,7 @@ process.env.API_KEYS = "test-key-1,test-key-2";
 process.env.AUTH_MODE = "enforce";
 process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-for-integration";
+process.env.WAREHOUSE_SECRET = "test-warehouse-secret-integration";
 
 let app: Express;
 let prisma: any;
@@ -274,13 +275,17 @@ describe("Full RETURN flow", () => {
 
 describe("Edge cases", () => {
   it("при подтверждении резервируются только AVAILABLE юниты (MAINTENANCE/RETIRED исключаются)", async () => {
-    const equipment = await createEquipment("Прожектор Arri M18", "Свет", 3, "UNIT");
-    const units = await generateUnits(equipment.id, 3);
+    const equipment = await createEquipment("Прожектор Arri M18", "Свет", 4, "UNIT");
+    const units = await generateUnits(equipment.id, 4);
 
-    // Переводим 1 юнит в MAINTENANCE напрямую через Prisma
+    // Переводим unit[0] в MAINTENANCE и unit[1] в RETIRED напрямую через Prisma
     await prisma.equipmentUnit.update({
       where: { id: units[0].id },
       data: { status: "MAINTENANCE" },
+    });
+    await prisma.equipmentUnit.update({
+      where: { id: units[1].id },
+      data: { status: "RETIRED" },
     });
 
     // Создаём бронь на 2 штуки (только 2 AVAILABLE)
@@ -297,6 +302,7 @@ describe("Edge cases", () => {
     for (const r of reservations) {
       expect(r.equipmentUnit.status).toBe("AVAILABLE");
       expect(r.equipmentUnit.id).not.toBe(units[0].id); // не MAINTENANCE юнит
+      expect(r.equipmentUnit.id).not.toBe(units[1].id); // не RETIRED юнит
     }
   });
 
@@ -450,5 +456,36 @@ describe("Edge cases", () => {
     const summary = await completeSession(session.id);
     // COUNT-позиции не влияют на expected
     expect(summary.expected).toBe(1);
+  });
+
+  it("PIN-код: блокировка после 5 неудачных попыток", async () => {
+    const { hashPin, authenticateWorker } = await import("../services/warehouseAuth");
+
+    const pin = "9876";
+    const pinHash = await hashPin(pin);
+
+    // Создаём складского работника с известным PIN
+    const worker = await prisma.warehousePin.create({
+      data: {
+        name: "Тест Блокировка",
+        pinHash,
+        isActive: true,
+        failedAttempts: 0,
+      },
+    });
+
+    // 5 неудачных попыток с неверным PIN
+    for (let i = 0; i < 5; i++) {
+      const result = await authenticateWorker("Тест Блокировка", "wrongpin");
+      expect("error" in result).toBe(true);
+    }
+
+    // 6-я попытка с правильным PIN — должна быть заблокирована
+    const lockedResult = await authenticateWorker("Тест Блокировка", pin);
+    expect("error" in lockedResult).toBe(true);
+    expect((lockedResult as { error: string }).error).toContain("заблокирован");
+
+    // Убираем за собой
+    await prisma.warehousePin.delete({ where: { id: worker.id } });
   });
 });
