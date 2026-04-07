@@ -1,0 +1,13 @@
+{
+  "sprint": 1,
+  "claude_product": "ACCEPTED",
+  "technical_review": "APPROVE",
+  "provider": "split-focus",
+  "review_fixes": [
+    "Added onDelete: Cascade to ScanSession.booking relation",
+    "Added onDelete: Cascade to ScanRecord.equipmentUnit relation",
+    "Removed redundant @@index([barcode]) — @unique already provides index"
+  ],
+  "test_evidence": "shared: 33/33 pass, bot: 31/31 pass, api: 25/25 pass (21 skipped — pre-existing gemini module issue on main)",
+  "ts": "2026-04-07T16:04:30Z"
+}
