@@ -21,6 +21,7 @@ import { generateBarcodeId as _generateBarcodeId } from "../utils/barcodeAbbrev"
 
 export interface LabelUnit {
   barcode: string;
+  barcodePayload: string;
   equipment: { name: string; category: string };
 }
 
@@ -196,9 +197,11 @@ function buildTextOverlaySvg(
  */
 export async function renderLabelPng(unit: LabelUnit): Promise<Buffer> {
   // 1. Генерируем штрихкод Code128 через bwip-js
+  // Кодируем barcodePayload (HMAC-подписанный payload для сканера),
+  // а НЕ human-readable barcode ID — иначе сканер получает нечитаемое значение
   const barcodeBuffer = await bwipjs.toBuffer({
     bcid: "code128",
-    text: unit.barcode,
+    text: unit.barcodePayload,
     scale: 3,
     height: 18,       // высота в мм (bwip-js единицы)
     includetext: true,

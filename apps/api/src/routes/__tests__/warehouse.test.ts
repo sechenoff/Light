@@ -143,7 +143,7 @@ describe("GET /api/warehouse/bookings", () => {
       startDate: "2026-01-01",
       endDate: "2026-01-05",
       status: "CONFIRMED",
-      _count: { items: 3 },
+      items: [{ id: "item-1" }, { id: "item-2" }, { id: "item-3" }],
     };
     mockPrisma.booking.findMany.mockResolvedValue([booking]);
 
@@ -153,7 +153,8 @@ describe("GET /api/warehouse/bookings", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.bookings).toHaveLength(1);
-    expect(res.body.bookings[0].itemCount).toBe(3);
+    expect(res.body.bookings[0].items).toHaveLength(3);
+    expect(res.body.bookings[0].items[0]).toEqual({ id: "item-1" });
     expect(res.body.bookings[0].status).toBe("CONFIRMED");
 
     // Verify filter: ISSUE → CONFIRMED
