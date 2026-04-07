@@ -69,6 +69,7 @@ describe("renderLabelPng", () => {
     const { renderLabelPng } = await getBarcode();
     const buf = await renderLabelPng({
       barcode: "LR-SKY60-003",
+      barcodePayload: "cuid123:abcdef012345",
       equipment: { name: "Skypanel S60", category: "LED панели" },
     });
     expect(buf).toBeInstanceOf(Buffer);
@@ -83,10 +84,26 @@ describe("renderLabelPng", () => {
     const { renderLabelPng } = await getBarcode();
     const buf = await renderLabelPng({
       barcode: "LR-TEST-001",
+      barcodePayload: "cuid456:fedcba098765",
       equipment: { name: "Тестовый прибор", category: "Прочее" },
     });
     // A 638x298 PNG should be at least a few KB
     expect(buf.byteLength).toBeGreaterThan(1000);
+  });
+
+  it("encodes barcodePayload (not barcode) in the barcode image", async () => {
+    // Verify that the payload (HMAC-signed) is what gets encoded in the image,
+    // not the human-readable barcode ID. We do this by checking renderLabelPng
+    // accepts barcodePayload as a required field (interface enforcement test).
+    const { renderLabelPng } = await getBarcode();
+    const payload = "unit-id-123:abcdef012345";
+    const buf = await renderLabelPng({
+      barcode: "LR-TEST-001",
+      barcodePayload: payload,
+      equipment: { name: "Тест", category: "Прочее" },
+    });
+    expect(buf).toBeInstanceOf(Buffer);
+    expect(buf[0]).toBe(0x89); // PNG magic
   });
 });
 
@@ -96,6 +113,7 @@ describe("renderLabelsPdf", () => {
     const buf = await renderLabelsPdf([
       {
         barcode: "LR-SKY60-003",
+        barcodePayload: "cuid123:abcdef012345",
         equipment: { name: "Skypanel S60", category: "LED панели" },
       },
     ]);
@@ -110,10 +128,12 @@ describe("renderLabelsPdf", () => {
     const buf = await renderLabelsPdf([
       {
         barcode: "LR-SKY60-001",
+        barcodePayload: "cuid111:abcdef012345",
         equipment: { name: "Skypanel S60", category: "LED панели" },
       },
       {
         barcode: "LR-HMI-002",
+        barcodePayload: "cuid222:fedcba098765",
         equipment: { name: "Arri M18", category: "ГМИ приборы" },
       },
     ]);

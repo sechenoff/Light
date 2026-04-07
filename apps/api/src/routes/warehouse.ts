@@ -151,9 +151,6 @@ warehouseRouter.delete("/workers/:id", async (req, res, next) => {
 
 export const warehouseScanRouter = express.Router();
 
-// All routes in this router require a valid warehouse worker token
-warehouseScanRouter.use(warehouseAuth);
-
 const operationSchema = z.enum(["ISSUE", "RETURN"]);
 
 const createSessionBodySchema = z.object({
@@ -166,7 +163,7 @@ const scanBodySchema = z.object({
 });
 
 /** GET /api/warehouse/bookings — список броней, доступных для сканирования */
-warehouseScanRouter.get("/bookings", async (req, res, next) => {
+warehouseScanRouter.get("/bookings", warehouseAuth, async (req, res, next) => {
   try {
     const parseResult = operationSchema.safeParse(req.query.operation);
     if (!parseResult.success) {
@@ -185,7 +182,7 @@ warehouseScanRouter.get("/bookings", async (req, res, next) => {
         startDate: true,
         endDate: true,
         status: true,
-        _count: { select: { items: true } },
+        items: { select: { id: true } },
       },
     });
 
@@ -197,7 +194,7 @@ warehouseScanRouter.get("/bookings", async (req, res, next) => {
         startDate: b.startDate,
         endDate: b.endDate,
         status: b.status,
-        itemCount: b._count.items,
+        items: b.items.map((i) => ({ id: i.id })),
       })),
     });
   } catch (err) {
@@ -206,7 +203,7 @@ warehouseScanRouter.get("/bookings", async (req, res, next) => {
 });
 
 /** POST /api/warehouse/sessions — создать сессию сканирования */
-warehouseScanRouter.post("/sessions", async (req, res, next) => {
+warehouseScanRouter.post("/sessions", warehouseAuth, async (req, res, next) => {
   try {
     const { bookingId, operation } = createSessionBodySchema.parse(req.body);
     const workerName = req.warehouseWorker!.name;
@@ -218,7 +215,7 @@ warehouseScanRouter.post("/sessions", async (req, res, next) => {
 });
 
 /** GET /api/warehouse/sessions/:id — получить детали сессии */
-warehouseScanRouter.get("/sessions/:id", async (req, res, next) => {
+warehouseScanRouter.get("/sessions/:id", warehouseAuth, async (req, res, next) => {
   try {
     const result = await getSessionWithDetails(req.params.id);
     // Rename trackingMode→scanMode and scanned→scannedCount to match frontend contract
@@ -236,7 +233,7 @@ warehouseScanRouter.get("/sessions/:id", async (req, res, next) => {
 });
 
 /** POST /api/warehouse/sessions/:id/scan — зарегистрировать сканирование */
-warehouseScanRouter.post("/sessions/:id/scan", async (req, res, next) => {
+warehouseScanRouter.post("/sessions/:id/scan", warehouseAuth, async (req, res, next) => {
   try {
     const { barcodePayload } = scanBodySchema.parse(req.body);
     const result = await recordScan(req.params.id, barcodePayload);
@@ -251,7 +248,7 @@ warehouseScanRouter.post("/sessions/:id/scan", async (req, res, next) => {
 });
 
 /** GET /api/warehouse/sessions/:id/summary — предварительная сверка (без завершения) */
-warehouseScanRouter.get("/sessions/:id/summary", async (req, res, next) => {
+warehouseScanRouter.get("/sessions/:id/summary", warehouseAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
     const summary = await getReconciliationPreview(id);
@@ -300,7 +297,7 @@ warehouseScanRouter.get("/sessions/:id/summary", async (req, res, next) => {
 });
 
 /** POST /api/warehouse/sessions/:id/complete — завершить сессию */
-warehouseScanRouter.post("/sessions/:id/complete", async (req, res, next) => {
+warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
     const summary = await completeSession(id);
@@ -349,7 +346,7 @@ warehouseScanRouter.post("/sessions/:id/complete", async (req, res, next) => {
 });
 
 /** POST /api/warehouse/sessions/:id/cancel — отменить сессию */
-warehouseScanRouter.post("/sessions/:id/cancel", async (req, res, next) => {
+warehouseScanRouter.post("/sessions/:id/cancel", warehouseAuth, async (req, res, next) => {
   try {
     const session = await cancelSession(req.params.id);
     res.json(session);

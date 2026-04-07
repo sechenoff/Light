@@ -145,7 +145,7 @@ router.get("/labels", async (req, res, next) => {
 
     const units = await prisma.equipmentUnit.findMany({
       where: { equipmentId, barcode: { not: null } },
-      select: { barcode: true },
+      select: { barcode: true, barcodePayload: true },
       orderBy: { createdAt: "asc" },
     });
 
@@ -154,9 +154,11 @@ router.get("/labels", async (req, res, next) => {
     }
 
     const labelUnits = units
-      .filter((u): u is { barcode: string } => u.barcode !== null)
+      .filter((u): u is { barcode: string; barcodePayload: string | null } => u.barcode !== null)
+      .filter((u): u is { barcode: string; barcodePayload: string } => u.barcodePayload !== null)
       .map((u) => ({
         barcode: u.barcode,
+        barcodePayload: u.barcodePayload,
         equipment: { name: equipment.name, category: equipment.category },
       }));
 
@@ -250,6 +252,7 @@ router.get("/:unitId/label", async (req, res, next) => {
       where: { id: unitId, equipmentId },
       select: {
         barcode: true,
+        barcodePayload: true,
         equipment: { select: { name: true, category: true } },
       },
     });
@@ -259,9 +262,13 @@ router.get("/:unitId/label", async (req, res, next) => {
     if (!unit.barcode) {
       throw new HttpError(404, "У единицы отсутствует штрихкод");
     }
+    if (!unit.barcodePayload) {
+      throw new HttpError(404, "У единицы отсутствует payload штрихкода");
+    }
 
     const pngBuffer = await renderLabelPng({
       barcode: unit.barcode,
+      barcodePayload: unit.barcodePayload,
       equipment: { name: unit.equipment.name, category: unit.equipment.category },
     });
 
