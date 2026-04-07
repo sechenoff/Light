@@ -14,6 +14,7 @@ import { usersRouter } from "./users";
 import { analysesRouter } from "./analyses";
 import { bookingRequestParserRouter } from "./bookingRequestParser";
 import { slangLearningRouter } from "./slangLearning";
+import { warehouseRouter } from "./warehouse";
 
 const router = express.Router();
 
@@ -44,6 +45,7 @@ router.use("/api/users", usersRouter);
 router.use("/api/analyses", analysesRouter);
 router.use("/api/bookings", bookingRequestParserRouter);
 router.use("/api/admin/slang-learning", slangLearningRouter);
+router.use("/api/warehouse", warehouseRouter);
 
 export { router };
 
