@@ -291,6 +291,7 @@ export async function completeSession(sessionId: string): Promise<Reconciliation
       // Удалить резервации для зарезервированных, но не отсканированных юнитов
       for (const reservation of allReservations) {
         if (!scannedUnitIds.has(reservation.equipmentUnitId)) {
+          summary.missing.push(reservation.equipmentUnitId);
           await tx.bookingItemUnit.delete({ where: { id: reservation.id } });
         }
       }
@@ -347,6 +348,70 @@ export async function cancelSession(sessionId: string) {
     where: { id: sessionId },
     data: { status: "CANCELLED" },
   });
+}
+
+// ──────────────────────────────────────────────
+// 5.4b getReconciliationPreview
+// ──────────────────────────────────────────────
+
+/**
+ * Предварительный просмотр сверки (без изменения данных).
+ * Позволяет складскому работнику увидеть, что отсканировано, а что нет,
+ * прежде чем завершать сессию.
+ */
+export async function getReconciliationPreview(sessionId: string): Promise<ReconciliationSummary> {
+  const session = await prisma.scanSession.findUnique({
+    where: { id: sessionId },
+    include: {
+      booking: true,
+      scans: {
+        include: { equipmentUnit: true },
+      },
+    },
+  });
+
+  if (!session) {
+    throw new Error("Сессия не найдена");
+  }
+
+  const scannedUnitIds = new Set(session.scans.map((s) => s.equipmentUnitId));
+
+  const bookingItems = await prisma.bookingItem.findMany({
+    where: { bookingId: session.bookingId },
+  });
+  const bookingItemIds = bookingItems.map((bi) => bi.id);
+  const allReservations = await prisma.bookingItemUnit.findMany({
+    where: {
+      bookingItemId: { in: bookingItemIds },
+      ...(session.operation === "RETURN" ? { returnedAt: null } : {}),
+    },
+  });
+
+  const reservedUnitIds = new Set(allReservations.map((r) => r.equipmentUnitId));
+
+  const missing: string[] = [];
+  const substituted: string[] = [];
+
+  // Зарезервированные, но не отсканированные
+  for (const reservation of allReservations) {
+    if (!scannedUnitIds.has(reservation.equipmentUnitId)) {
+      missing.push(reservation.equipmentUnitId);
+    }
+  }
+
+  // Отсканированные, но не зарезервированные (замены)
+  for (const scan of session.scans) {
+    if (!reservedUnitIds.has(scan.equipmentUnitId)) {
+      substituted.push(scan.equipmentUnitId);
+    }
+  }
+
+  return {
+    scanned: scannedUnitIds.size,
+    expected: allReservations.length,
+    missing,
+    substituted,
+  };
 }
 
 // ──────────────────────────────────────────────
