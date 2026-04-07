@@ -60,18 +60,32 @@ router.get("/", async (req, res, next) => {
         rentalRateTwoShifts: true,
         rentalRatePerProject: true,
         comment: true,
+        units: { select: { status: true } },
       },
     });
 
     equipments.sort((a, b) => compareEquipmentTransportLast(a, b, categoryOrder));
 
     res.json({
-      equipments: equipments.map((e) => ({
-        ...e,
-        rentalRatePerShift: e.rentalRatePerShift.toString(),
-        rentalRateTwoShifts: e.rentalRateTwoShifts?.toString() ?? null,
-        rentalRatePerProject: e.rentalRatePerProject?.toString() ?? null,
-      })),
+      equipments: equipments.map((e) => {
+        let unitStatusCounts: Record<string, number> | null = null;
+        if (e.stockTrackingMode === "UNIT" && e.units.length > 0) {
+          unitStatusCounts = {};
+          for (const u of e.units) {
+            unitStatusCounts[u.status] = (unitStatusCounts[u.status] ?? 0) + 1;
+          }
+        } else if (e.stockTrackingMode === "UNIT") {
+          unitStatusCounts = {};
+        }
+        const { units: _units, ...rest } = e;
+        return {
+          ...rest,
+          rentalRatePerShift: e.rentalRatePerShift.toString(),
+          rentalRateTwoShifts: e.rentalRateTwoShifts?.toString() ?? null,
+          rentalRatePerProject: e.rentalRatePerProject?.toString() ?? null,
+          unitStatusCounts,
+        };
+      }),
     });
   } catch (err) {
     next(err);
