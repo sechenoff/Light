@@ -8,8 +8,11 @@
  * Каждая сессия привязана к брони и проходит состояния: ACTIVE → COMPLETED | CANCELLED.
  */
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { verifyBarcodePayload } from "./barcode";
+
+type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
 
 // ──────────────────────────────────────────────
 // Типы
@@ -90,7 +93,7 @@ export async function createSession(
   }
 
   // Защита от конкурентных сессий (в транзакции для атомарности)
-  return prisma.$transaction(async (tx: typeof prisma) => {
+  return prisma.$transaction(async (tx: TxClient) => {
     const existing = await tx.scanSession.findFirst({
       where: { bookingId, operation, status: "ACTIVE" },
     });
@@ -232,7 +235,7 @@ export async function completeSession(sessionId: string): Promise<Reconciliation
 
   const scannedUnitIds = new Set(session.scans.map((s) => s.equipmentUnitId));
 
-  return prisma.$transaction(async (tx: typeof prisma) => {
+  return prisma.$transaction(async (tx: TxClient) => {
     // Загружаем позиции заказа
     const bookingItems = await tx.bookingItem.findMany({
       where: { bookingId: session.bookingId },

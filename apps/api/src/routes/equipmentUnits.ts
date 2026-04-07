@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { generateBarcodeId, generateBarcodePayload, renderLabelPng, renderLabelsPdf } from "../services/barcode";
 
+type UnitParams = { equipmentId: string; unitId?: string };
 const router = express.Router({ mergeParams: true });
 
 // ──────────────────────────────────────────────
@@ -28,7 +29,7 @@ const patchSchema = z.object({
 
 router.get("/", async (req, res, next) => {
   try {
-    const { equipmentId } = req.params;
+    const { equipmentId } = req.params as UnitParams;
     const units = await prisma.equipmentUnit.findMany({
       where: { equipmentId },
       select: {
@@ -54,7 +55,7 @@ router.get("/", async (req, res, next) => {
 
 router.post("/generate", async (req, res, next) => {
   try {
-    const { equipmentId } = req.params;
+    const { equipmentId } = req.params as UnitParams;
     const body = generateSchema.parse(req.body);
 
     // Получаем информацию об оборудовании для генерации штрихкода
@@ -133,7 +134,7 @@ router.post("/generate", async (req, res, next) => {
 
 router.get("/labels", async (req, res, next) => {
   try {
-    const { equipmentId } = req.params;
+    const { equipmentId } = req.params as UnitParams;
 
     const equipment = await prisma.equipment.findUnique({
       where: { id: equipmentId },
@@ -178,7 +179,7 @@ router.get("/labels", async (req, res, next) => {
 
 router.patch("/:unitId", async (req, res, next) => {
   try {
-    const { equipmentId, unitId } = req.params;
+    const { equipmentId, unitId } = req.params as UnitParams;
     const body = patchSchema.parse(req.body);
 
     const existing = await prisma.equipmentUnit.findFirst({
@@ -218,7 +219,7 @@ router.patch("/:unitId", async (req, res, next) => {
 
 router.delete("/:unitId", async (req, res, next) => {
   try {
-    const { equipmentId, unitId } = req.params;
+    const { equipmentId, unitId } = req.params as UnitParams;
 
     const unit = await prisma.equipmentUnit.findFirst({
       where: { id: unitId, equipmentId },
@@ -246,7 +247,7 @@ router.delete("/:unitId", async (req, res, next) => {
 
 router.get("/:unitId/label", async (req, res, next) => {
   try {
-    const { equipmentId, unitId } = req.params;
+    const { equipmentId, unitId } = req.params as UnitParams;
 
     const unit = await prisma.equipmentUnit.findFirst({
       where: { id: unitId, equipmentId },
