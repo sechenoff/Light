@@ -9,6 +9,7 @@ import {
   completeSession,
   cancelSession,
   getSessionWithDetails,
+  getReconciliationPreview,
 } from "../services/warehouseScan";
 
 // ── Public router (mounted BEFORE apiKeyAuth) ─────────────────────────────────
@@ -231,7 +232,21 @@ warehouseScanRouter.post("/sessions/:id/scan", async (req, res, next) => {
   try {
     const { barcodePayload } = scanBodySchema.parse(req.body);
     const result = await recordScan(req.params.id, barcodePayload);
+    if ("error" in result) {
+      res.status(400).json(result);
+      return;
+    }
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/warehouse/sessions/:id/summary — предварительная сверка (без завершения) */
+warehouseScanRouter.get("/sessions/:id/summary", async (req, res, next) => {
+  try {
+    const summary = await getReconciliationPreview(req.params.id);
+    res.json(summary);
   } catch (err) {
     next(err);
   }

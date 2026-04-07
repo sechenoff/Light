@@ -284,7 +284,7 @@ describe("POST /api/warehouse/sessions/:id/scan", () => {
       .set("Authorization", "Bearer valid-token")
       .send({ barcodePayload: "bad" });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     expect(res.body.error).toBe("Неверный штрихкод");
   });
 
