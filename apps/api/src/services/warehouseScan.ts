@@ -89,21 +89,23 @@ export async function createSession(
     throw new Error("Для возврата бронь должна быть в статусе ISSUED");
   }
 
-  // Защита от конкурентных сессий
-  const existing = await prisma.scanSession.findFirst({
-    where: { bookingId, operation, status: "ACTIVE" },
-  });
-  if (existing) {
-    throw new Error("Уже существует активная сессия для этой брони и операции");
-  }
+  // Защита от конкурентных сессий (в транзакции для атомарности)
+  return prisma.$transaction(async (tx: typeof prisma) => {
+    const existing = await tx.scanSession.findFirst({
+      where: { bookingId, operation, status: "ACTIVE" },
+    });
+    if (existing) {
+      throw new Error("Уже существует активная сессия для этой брони и операции");
+    }
 
-  return prisma.scanSession.create({
-    data: {
-      bookingId,
-      workerName,
-      operation,
-      status: "ACTIVE",
-    },
+    return tx.scanSession.create({
+      data: {
+        bookingId,
+        workerName,
+        operation,
+        status: "ACTIVE",
+      },
+    });
   });
 }
 
@@ -170,7 +172,7 @@ export async function recordScan(
       return { error: "Единица не была выдана" };
     }
     const biu = await prisma.bookingItemUnit.findFirst({
-      where: { equipmentUnitId: unitId },
+      where: { equipmentUnitId: unitId, bookingItem: { bookingId: session.bookingId } },
     });
     if (!biu) {
       return { error: "Единица не была выдана" };
@@ -239,7 +241,10 @@ export async function completeSession(sessionId: string): Promise<Reconciliation
     // Загружаем все резервации BookingItemUnit для этой брони
     const bookingItemIds = bookingItems.map((bi) => bi.id);
     const allReservations = await tx.bookingItemUnit.findMany({
-      where: { bookingItemId: { in: bookingItemIds } },
+      where: {
+        bookingItemId: { in: bookingItemIds },
+        ...(session.operation === "RETURN" ? { returnedAt: null } : {}),
+      },
       include: { equipmentUnit: true },
     });
 
