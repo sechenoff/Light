@@ -7,9 +7,11 @@ import { prisma } from "../prisma";
 
 export const warehousePublicRouter = express.Router();
 
+const pinSchema = z.string().min(4, "PIN должен быть не менее 4 символов").regex(/^\d+$/, "PIN должен содержать только цифры");
+
 const authBodySchema = z.object({
   name: z.string().min(1),
-  pin: z.string().min(1),
+  pin: pinSchema,
 });
 
 /** POST /api/warehouse/auth — аутентификация сотрудника склада по PIN */
@@ -21,7 +23,7 @@ warehousePublicRouter.post("/auth", async (req, res, next) => {
       res.status(401).json({ message: result.error });
       return;
     }
-    res.json({ token: result.token });
+    res.json({ token: result.token, name: result.name, expiresAt: result.expiresAt });
   } catch (err) {
     next(err);
   }
@@ -46,12 +48,12 @@ export const warehouseRouter = express.Router();
 
 const createWorkerSchema = z.object({
   name: z.string().min(1),
-  pin: z.string().min(1),
+  pin: pinSchema,
 });
 
 const updateWorkerSchema = z.object({
   name: z.string().min(1).optional(),
-  pin: z.string().min(1).optional(),
+  pin: pinSchema.optional(),
   isActive: z.boolean().optional(),
 });
 

@@ -1,12 +1,11 @@
 import bcrypt from "bcryptjs";
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { prisma } from "../prisma";
 
 const BCRYPT_ROUNDS = 10;
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 const LOCKOUT_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_FAILED_ATTEMPTS = 5;
-const HMAC_HEX_LENGTH = 12;
 
 function getSecret(): string {
   const secret = process.env.WAREHOUSE_SECRET;
@@ -30,8 +29,7 @@ export function generateToken(name: string): string {
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64");
   const hmac = createHmac("sha256", secret)
     .update(payloadB64)
-    .digest("hex")
-    .slice(0, HMAC_HEX_LENGTH);
+    .digest("hex");
   return `${payloadB64}:${hmac}`;
 }
 
@@ -46,10 +44,11 @@ export function verifyToken(token: string): { name: string } | null {
     const secret = getSecret();
     const hmacExpected = createHmac("sha256", secret)
       .update(payloadB64)
-      .digest("hex")
-      .slice(0, HMAC_HEX_LENGTH);
+      .digest("hex");
 
-    if (hmacProvided !== hmacExpected) return null;
+    const providedBuf = Buffer.from(hmacProvided, "utf8");
+    const expectedBuf = Buffer.from(hmacExpected, "utf8");
+    if (providedBuf.length !== expectedBuf.length || !timingSafeEqual(providedBuf, expectedBuf)) return null;
 
     const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8"));
     if (typeof payload.name !== "string" || typeof payload.exp !== "number") return null;
@@ -64,7 +63,7 @@ export function verifyToken(token: string): { name: string } | null {
 export async function authenticateWorker(
   name: string,
   pin: string,
-): Promise<{ token: string } | { error: string }> {
+): Promise<{ token: string; name: string; expiresAt: string } | { error: string }> {
   const worker = await prisma.warehousePin.findUnique({ where: { name } });
 
   if (!worker) {
@@ -82,6 +81,15 @@ export async function authenticateWorker(
     worker.lockedUntil > new Date()
   ) {
     return { error: "Аккаунт заблокирован" };
+  }
+
+  // Reset counter if lockout period expired
+  if (worker.failedAttempts >= MAX_FAILED_ATTEMPTS && (worker.lockedUntil === null || worker.lockedUntil <= new Date())) {
+    await prisma.warehousePin.update({
+      where: { id: worker.id },
+      data: { failedAttempts: 0, lockedUntil: null },
+    });
+    worker.failedAttempts = 0;
   }
 
   const correct = await verifyPin(pin, worker.pinHash);
@@ -109,5 +117,7 @@ export async function authenticateWorker(
     },
   });
 
-  return { token: generateToken(worker.name) };
+  const token = generateToken(worker.name);
+  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS).toISOString();
+  return { token, name: worker.name, expiresAt };
 }
