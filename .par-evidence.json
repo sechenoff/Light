@@ -1,1 +1,1 @@
-{"sprint":5,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","fixes_applied":["RETURN recordScan scoped to booking","returnedAt:null filter for partial returns","createSession wrapped in transaction"],"ts":"2026-04-07T16:40:00Z"}
+{"sprint":6,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","fixes_applied":["added GET /sessions/:id/summary endpoint","scan errors return 400 not 200","ISSUE missing array populated"],"ts":"2026-04-07T17:05:00Z"}
