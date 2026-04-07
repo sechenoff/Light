@@ -15,6 +15,7 @@ import { analysesRouter } from "./analyses";
 import { bookingRequestParserRouter } from "./bookingRequestParser";
 import { slangLearningRouter } from "./slangLearning";
 import { warehouseRouter } from "./warehouse";
+import { equipmentUnitsRouter } from "./equipmentUnits";
 
 const router = express.Router();
 
@@ -34,6 +35,7 @@ router.post("/api/equipment/reorder/categories", async (req, res, next) => {
 
 // Более длинный префикс раньше короткого /api/equipment, иначе import уезжает в equipmentRouter.
 router.use("/api/equipment/import", equipmentImportRouter);
+router.use("/api/equipment/:equipmentId/units", equipmentUnitsRouter);
 router.use("/api/equipment", equipmentRouter);
 router.use("/api/availability", availabilityRouter);
 router.use("/api/bookings", bookingsRouter);

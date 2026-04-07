@@ -378,7 +378,7 @@ export async function confirmBooking(bookingId: string) {
       if (it.equipment.stockTrackingMode !== "UNIT") continue;
       const alreadyReserved = bookedReservedUnitsByEquipmentId.get(it.equipmentId) ?? new Set<string>();
       const availableUnits = await tx.equipmentUnit.findMany({
-        where: { equipmentId: it.equipmentId },
+        where: { equipmentId: it.equipmentId, status: "AVAILABLE" },
         select: { id: true },
         orderBy: { id: "asc" },
       });
