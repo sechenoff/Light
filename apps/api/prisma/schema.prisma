@@ -233,7 +233,6 @@ model EquipmentUnit {
   scanRecords      ScanRecord[]
 
   @@index([equipmentId])
-  @@index([barcode])
   @@index([status])
 }
 
@@ -421,7 +420,7 @@ model EstimateLine {
 model ScanSession {
   id          String            @id @default(cuid())
   bookingId   String
-  booking     Booking           @relation(fields: [bookingId], references: [id])
+  booking     Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   workerName  String
   operation   ScanOperation
   status      ScanSessionStatus @default(ACTIVE)
@@ -440,7 +439,7 @@ model ScanRecord {
   scannedAt       DateTime @default(now())
 
   session       ScanSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  equipmentUnit EquipmentUnit @relation(fields: [equipmentUnitId], references: [id])
+  equipmentUnit EquipmentUnit @relation(fields: [equipmentUnitId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, equipmentUnitId])
   @@index([equipmentUnitId])
