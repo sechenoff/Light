@@ -181,7 +181,7 @@ warehouseScanRouter.get("/bookings", async (req, res, next) => {
       select: {
         id: true,
         client: true,
-        project: true,
+        projectName: true,
         startDate: true,
         endDate: true,
         status: true,
@@ -193,7 +193,7 @@ warehouseScanRouter.get("/bookings", async (req, res, next) => {
       bookings: bookings.map((b) => ({
         id: b.id,
         client: b.client,
-        project: b.project,
+        projectName: b.projectName,
         startDate: b.startDate,
         endDate: b.endDate,
         status: b.status,
@@ -221,7 +221,15 @@ warehouseScanRouter.post("/sessions", async (req, res, next) => {
 warehouseScanRouter.get("/sessions/:id", async (req, res, next) => {
   try {
     const result = await getSessionWithDetails(req.params.id);
-    res.json(result);
+    // Rename trackingMode→scanMode and scanned→scannedCount to match frontend contract
+    res.json({
+      ...result,
+      bookingItems: result.bookingItems.map((item) => ({
+        ...item,
+        scanMode: item.trackingMode,
+        scannedCount: item.scanned ?? 0,
+      })),
+    });
   } catch (err) {
     next(err);
   }
@@ -233,10 +241,10 @@ warehouseScanRouter.post("/sessions/:id/scan", async (req, res, next) => {
     const { barcodePayload } = scanBodySchema.parse(req.body);
     const result = await recordScan(req.params.id, barcodePayload);
     if ("error" in result) {
-      res.status(400).json(result);
+      res.status(400).json({ status: "error", message: result.error });
       return;
     }
-    res.json(result);
+    res.json({ status: "ok", ...result });
   } catch (err) {
     next(err);
   }
@@ -245,8 +253,47 @@ warehouseScanRouter.post("/sessions/:id/scan", async (req, res, next) => {
 /** GET /api/warehouse/sessions/:id/summary — предварительная сверка (без завершения) */
 warehouseScanRouter.get("/sessions/:id/summary", async (req, res, next) => {
   try {
-    const summary = await getReconciliationPreview(req.params.id);
-    res.json(summary);
+    const { id } = req.params;
+    const summary = await getReconciliationPreview(id);
+
+    // Enrich unit ID arrays with name and barcode data
+    const [missingUnits, substitutedUnits] = await Promise.all([
+      summary.missing.length > 0
+        ? prisma.equipmentUnit.findMany({
+            where: { id: { in: summary.missing } },
+            select: { id: true, barcode: true, equipment: { select: { name: true } } },
+          })
+        : Promise.resolve([]),
+      summary.substituted.length > 0
+        ? prisma.equipmentUnit.findMany({
+            where: { id: { in: summary.substituted } },
+            select: { id: true, barcode: true, equipment: { select: { name: true } } },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    // Fetch session for sessionId and operation fields
+    const session = await prisma.scanSession.findUnique({
+      where: { id },
+      select: { id: true, operation: true },
+    });
+
+    res.json({
+      sessionId: session?.id ?? id,
+      operation: session?.operation ?? "ISSUE",
+      scannedCount: summary.scanned,
+      expectedCount: summary.expected,
+      missingItems: missingUnits.map((u) => ({
+        id: u.id,
+        name: u.equipment.name,
+        barcode: u.barcode ?? "",
+      })),
+      substitutedItems: substitutedUnits.map((u) => ({
+        id: u.id,
+        name: u.equipment.name,
+        barcode: u.barcode ?? "",
+      })),
+    });
   } catch (err) {
     next(err);
   }
@@ -255,8 +302,47 @@ warehouseScanRouter.get("/sessions/:id/summary", async (req, res, next) => {
 /** POST /api/warehouse/sessions/:id/complete — завершить сессию */
 warehouseScanRouter.post("/sessions/:id/complete", async (req, res, next) => {
   try {
-    const summary = await completeSession(req.params.id);
-    res.json(summary);
+    const { id } = req.params;
+    const summary = await completeSession(id);
+
+    // Enrich unit ID arrays with name and barcode data
+    const [missingUnits, substitutedUnits] = await Promise.all([
+      summary.missing.length > 0
+        ? prisma.equipmentUnit.findMany({
+            where: { id: { in: summary.missing } },
+            select: { id: true, barcode: true, equipment: { select: { name: true } } },
+          })
+        : Promise.resolve([]),
+      summary.substituted.length > 0
+        ? prisma.equipmentUnit.findMany({
+            where: { id: { in: summary.substituted } },
+            select: { id: true, barcode: true, equipment: { select: { name: true } } },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    // Fetch session for operation field (status is now COMPLETED)
+    const session = await prisma.scanSession.findUnique({
+      where: { id },
+      select: { id: true, operation: true },
+    });
+
+    res.json({
+      sessionId: session?.id ?? id,
+      operation: session?.operation ?? "ISSUE",
+      scannedCount: summary.scanned,
+      expectedCount: summary.expected,
+      missingItems: missingUnits.map((u) => ({
+        id: u.id,
+        name: u.equipment.name,
+        barcode: u.barcode ?? "",
+      })),
+      substitutedItems: substitutedUnits.map((u) => ({
+        id: u.id,
+        name: u.equipment.name,
+        barcode: u.barcode ?? "",
+      })),
+    });
   } catch (err) {
     next(err);
   }

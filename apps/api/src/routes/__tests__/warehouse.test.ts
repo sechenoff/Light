@@ -22,6 +22,12 @@ const mockPrisma = {
   booking: {
     findMany: vi.fn(),
   },
+  equipmentUnit: {
+    findMany: vi.fn(),
+  },
+  scanSession: {
+    findUnique: vi.fn(),
+  },
 };
 
 vi.mock("../../prisma", () => ({ prisma: mockPrisma }));
@@ -31,6 +37,7 @@ const mockRecordScan = vi.fn();
 const mockCompleteSession = vi.fn();
 const mockCancelSession = vi.fn();
 const mockGetSessionWithDetails = vi.fn();
+const mockGetReconciliationPreview = vi.fn();
 
 vi.mock("../../services/warehouseScan", () => ({
   createSession: mockCreateSession,
@@ -38,6 +45,7 @@ vi.mock("../../services/warehouseScan", () => ({
   completeSession: mockCompleteSession,
   cancelSession: mockCancelSession,
   getSessionWithDetails: mockGetSessionWithDetails,
+  getReconciliationPreview: mockGetReconciliationPreview,
 }));
 
 // ── Imports (after mocks) ─────────────────────────────────────────────────────
@@ -272,7 +280,7 @@ describe("POST /api/warehouse/sessions/:id/scan", () => {
       .send({ barcodePayload: "hmac-signed-payload" });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual(scanResult);
+    expect(res.body).toEqual({ status: "ok", ...scanResult });
     expect(mockRecordScan).toHaveBeenCalledWith("sess-1", "hmac-signed-payload");
   });
 
@@ -285,7 +293,8 @@ describe("POST /api/warehouse/sessions/:id/scan", () => {
       .send({ barcodePayload: "bad" });
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("Неверный штрихкод");
+    expect(res.body.message).toBe("Неверный штрихкод");
+    expect(res.body.status).toBe("error");
   });
 
   it("returns 400 when barcodePayload is missing", async () => {
@@ -308,13 +317,22 @@ describe("POST /api/warehouse/sessions/:id/complete", () => {
   it("returns reconciliation summary", async () => {
     const summary = { scanned: 5, expected: 5, missing: [], substituted: [] };
     mockCompleteSession.mockResolvedValue(summary);
+    mockPrisma.equipmentUnit.findMany.mockResolvedValue([]);
+    mockPrisma.scanSession.findUnique.mockResolvedValue({ id: "sess-1", operation: "ISSUE" });
 
     const res = await request(app)
       .post("/api/warehouse/sessions/sess-1/complete")
       .set("Authorization", "Bearer valid-token");
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual(summary);
+    expect(res.body).toEqual({
+      sessionId: "sess-1",
+      operation: "ISSUE",
+      scannedCount: 5,
+      expectedCount: 5,
+      missingItems: [],
+      substitutedItems: [],
+    });
     expect(mockCompleteSession).toHaveBeenCalledWith("sess-1");
   });
 });
