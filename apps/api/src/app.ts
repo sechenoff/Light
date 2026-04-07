@@ -9,6 +9,7 @@ import { router } from "./routes";
 import { HttpError } from "./utils/errors";
 import { rateLimiter } from "./middleware/rateLimiter";
 import { apiKeyAuth } from "./middleware/apiKeyAuth";
+import { warehousePublicRouter } from "./routes/warehouse";
 
 function isMalformedJsonBodyError(err: unknown): boolean {
   return (
@@ -55,6 +56,7 @@ app.use(express.json({ limit: "1mb" }));
 app.use(rateLimiter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+app.use("/api/warehouse", warehousePublicRouter);
 app.use(apiKeyAuth);
 app.use(router);
 
