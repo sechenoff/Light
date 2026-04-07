@@ -30,6 +30,9 @@ type BookingRow = {
   expectedPaymentDate: string | null;
   confirmedAt: string | null;
   createdAt: string;
+  hasScanSessions?: boolean;
+  lastScanOperation?: "ISSUE" | "RETURN" | null;
+  lastScanStatus?: string | null;
 };
 
 
@@ -189,7 +192,20 @@ export default function BookingHistoryPage() {
                     {new Date(r.startDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })} —{" "}
                     {new Date(r.endDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
                   </td>
-                  <td className="px-3 py-2 text-center"><StatusBadge status={statusText(r.status)} /></td>
+                  <td className="px-3 py-2 text-center">
+                    <StatusBadge status={statusText(r.status)} />
+                    {r.hasScanSessions && (
+                      <span className="ml-1 inline-block" title={
+                        r.lastScanOperation === "ISSUE" && r.lastScanStatus === "COMPLETED" ? "Выдача отсканирована" :
+                        r.lastScanOperation === "RETURN" && r.lastScanStatus === "COMPLETED" ? "Возврат завершён" :
+                        "Есть сканирования"
+                      }>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline text-blue-500">
+                          <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><line x1="7" y1="12" x2="17" y2="12" />
+                        </svg>
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-center"><StatusBadge status={paymentStatusText(r.paymentStatus)} /></td>
                   <td className="px-3 py-2 text-center">{formatMoneyRub(r.amountOutstanding)}</td>
                   <td className="px-3 py-2">

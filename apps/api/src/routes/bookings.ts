@@ -143,20 +143,32 @@ router.get("/", async (req, res, next) => {
         },
         confirmedAt: true,
         createdAt: true,
+        _count: { select: { scanSessions: true } },
+        scanSessions: {
+          select: { operation: true, status: true },
+          orderBy: { startedAt: "desc" },
+          take: 1,
+        },
       },
     });
     res.json({
-      bookings: bookings.map((b) => ({
-        ...b,
-        amountPaid: b.amountPaid.toString(),
-        amountOutstanding: b.amountOutstanding.toString(),
-        finalAmount: b.finalAmount.toString(),
-        displayName: buildBookingHumanName({
-          startDate: b.startDate,
-          clientName: b.client.name,
-          totalAfterDiscount: b.finalAmount.toString(),
-        }),
-      })),
+      bookings: bookings.map((b) => {
+        const lastScan = b.scanSessions[0] ?? null;
+        return {
+          ...b,
+          amountPaid: b.amountPaid.toString(),
+          amountOutstanding: b.amountOutstanding.toString(),
+          finalAmount: b.finalAmount.toString(),
+          displayName: buildBookingHumanName({
+            startDate: b.startDate,
+            clientName: b.client.name,
+            totalAfterDiscount: b.finalAmount.toString(),
+          }),
+          hasScanSessions: b._count.scanSessions > 0,
+          lastScanOperation: lastScan?.operation ?? null,
+          lastScanStatus: lastScan?.status ?? null,
+        };
+      }),
     });
   } catch (err) {
     next(err);
@@ -173,10 +185,22 @@ router.get("/:id", async (req, res, next) => {
         items: { include: { equipment: true } },
         estimate: { include: { lines: true } },
         financeEvents: { orderBy: { createdAt: "desc" }, take: 100 },
+        scanSessions: {
+          select: {
+            id: true,
+            workerName: true,
+            operation: true,
+            status: true,
+            startedAt: true,
+            completedAt: true,
+            _count: { select: { scans: true } },
+          },
+          orderBy: { startedAt: "desc" },
+        },
       },
     });
     if (!booking) return res.status(404).json({ message: "Booking not found" });
-    const { financeEvents, ...bookingCore } = booking as any;
+    const { financeEvents, scanSessions, ...bookingCore } = booking as any;
     const serialized = serializeBookingForApi(bookingCore);
     const displayName = buildBookingHumanName({
       startDate: booking.startDate,
@@ -190,6 +214,15 @@ router.get("/:id", async (req, res, next) => {
         financeEvents: financeEvents.map((ev: any) => ({
           ...ev,
           amountDelta: ev.amountDelta?.toString() ?? null,
+        })),
+        scanSessions: (scanSessions ?? []).map((ss: any) => ({
+          id: ss.id,
+          workerName: ss.workerName,
+          operation: ss.operation,
+          status: ss.status,
+          createdAt: ss.startedAt,
+          completedAt: ss.completedAt,
+          _count: { scanRecords: ss._count.scans },
         })),
       },
     });
