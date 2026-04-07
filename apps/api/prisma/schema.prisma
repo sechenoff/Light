@@ -69,6 +69,24 @@ enum AnalysisStatus {
   FAILED
 }
 
+enum UnitStatus {
+  AVAILABLE
+  ISSUED
+  MAINTENANCE
+  RETIRED
+  MISSING
+}
+
+enum ScanOperation {
+  ISSUE
+  RETURN
+}
+
+enum ScanSessionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
 
 /// Telegram-пользователь, отправивший фото для анализа
 model User {
@@ -199,18 +217,24 @@ model Equipment {
 }
 
 model EquipmentUnit {
-  id                      String   @id @default(cuid())
+  id                      String     @id @default(cuid())
   equipmentId             String
-  serialNumber           String?  @unique
-  internalInventoryNumber String? @unique
+  serialNumber            String?    @unique
+  internalInventoryNumber String?    @unique
+  barcode                 String?    @unique
+  barcodePayload          String?    @unique
+  status                  UnitStatus @default(AVAILABLE)
   comment                 String?
-  createdAt               DateTime @default(now())
+  createdAt               DateTime   @default(now())
 
   equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
 
   bookingItemUnits BookingItemUnit[]
+  scanRecords      ScanRecord[]
 
   @@index([equipmentId])
+  @@index([barcode])
+  @@index([status])
 }
 
 model Booking {
@@ -246,8 +270,9 @@ model Booking {
   expenses Expense[]
   financeEvents BookingFinanceEvent[]
 
-  items BookingItem[]
-  lead  Lead?
+  items        BookingItem[]
+  lead         Lead?
+  scanSessions ScanSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -337,11 +362,12 @@ model BookingItem {
 }
 
 model BookingItemUnit {
-  id              String @id @default(cuid())
-  bookingItemId  String
+  id              String    @id @default(cuid())
+  bookingItemId   String
   equipmentUnitId String
+  returnedAt      DateTime?
 
-  bookingItem BookingItem  @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
+  bookingItem   BookingItem   @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
   equipmentUnit EquipmentUnit @relation(fields: [equipmentUnitId], references: [id])
 
   @@unique([bookingItemId, equipmentUnitId])
@@ -390,6 +416,46 @@ model EstimateLine {
   estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
 
   @@index([estimateId])
+}
+
+model ScanSession {
+  id          String            @id @default(cuid())
+  bookingId   String
+  booking     Booking           @relation(fields: [bookingId], references: [id])
+  workerName  String
+  operation   ScanOperation
+  status      ScanSessionStatus @default(ACTIVE)
+  startedAt   DateTime          @default(now())
+  completedAt DateTime?
+
+  scans ScanRecord[]
+
+  @@index([bookingId, operation, status])
+}
+
+model ScanRecord {
+  id              String   @id @default(cuid())
+  sessionId       String
+  equipmentUnitId String
+  scannedAt       DateTime @default(now())
+
+  session       ScanSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  equipmentUnit EquipmentUnit @relation(fields: [equipmentUnitId], references: [id])
+
+  @@unique([sessionId, equipmentUnitId])
+  @@index([equipmentUnitId])
+}
+
+model WarehousePin {
+  id             String    @id @default(cuid())
+  name           String    @unique
+  pinHash        String
+  isActive       Boolean   @default(true)
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 enum SlangAliasSource {
