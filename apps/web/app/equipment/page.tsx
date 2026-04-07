@@ -6,6 +6,14 @@ import Link from "next/link";
 import { apiFetch } from "../../src/lib/api";
 import { formatMoneyRub } from "../../src/lib/format";
 
+const UNIT_STATUS_LABELS: Record<string, string> = {
+  AVAILABLE: "на складе",
+  ISSUED: "выдана",
+  MAINTENANCE: "ремонт",
+  RETIRED: "списана",
+  MISSING: "утеряна",
+};
+
 type CatalogRow = {
   id: string;
   sortOrder: number;
@@ -17,6 +25,7 @@ type CatalogRow = {
   stockTrackingMode: "COUNT" | "UNIT";
   rentalRatePerShift: string;
   comment: string | null;
+  unitStatusCounts: Record<string, number> | null;
 };
 
 type AvailInfo = {
@@ -111,6 +120,15 @@ export default function EquipmentPage() {
     load();
     return () => controller.abort();
   }, [start, end]);
+
+  function unitStatusSummary(counts: Record<string, number> | null | undefined, total: number): string | null {
+    if (!counts) return null;
+    const parts = Object.entries(counts)
+      .filter(([, n]) => n > 0)
+      .map(([status, n]) => `${n} ${UNIT_STATUS_LABELS[status] ?? status}`);
+    if (parts.length === 0) return null;
+    return `${total} ед: ${parts.join(", ")}`;
+  }
 
   function statusBadge(avail: AvailInfo | undefined, total: number) {
     if (!avail) return <span className="text-xs text-slate-400">—</span>;
@@ -271,10 +289,22 @@ export default function EquipmentPage() {
                         className={`border-t border-slate-100 ${isFullyUnavailable ? "opacity-50" : ""}`}
                       >
                         <td className="px-3 py-2">
-                          <div className="font-medium text-slate-900">
+                          <div className="font-medium text-slate-900 flex items-center gap-1.5">
                             {r.name}
                             {r.model ? (
                               <span className="text-slate-500 font-normal"> · {r.model}</span>
+                            ) : null}
+                            {r.stockTrackingMode === "UNIT" ? (
+                              <Link
+                                href={`/equipment/${r.id}/units`}
+                                title="Управление единицами"
+                                className="text-slate-400 hover:text-slate-700 flex-shrink-0"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                </svg>
+                              </Link>
                             ) : null}
                           </div>
                           {r.brand ? (
@@ -283,7 +313,18 @@ export default function EquipmentPage() {
                             <div className="text-xs text-slate-500">&nbsp;</div>
                           )}
                         </td>
-                        <td className="px-3 py-2 font-medium">{r.totalQuantity}</td>
+                        <td className="px-3 py-2 font-medium">
+                          {r.stockTrackingMode === "UNIT" && r.unitStatusCounts ? (
+                            <div>
+                              <div>{r.totalQuantity}</div>
+                              <div className="text-xs font-normal text-slate-500 whitespace-nowrap">
+                                {unitStatusSummary(r.unitStatusCounts, r.totalQuantity)}
+                              </div>
+                            </div>
+                          ) : (
+                            r.totalQuantity
+                          )}
+                        </td>
                         <td className="px-3 py-2 font-medium">{formatMoneyRub(r.rentalRatePerShift)}</td>
                         <td className="px-3 py-2 text-slate-700">{r.category}</td>
                         <td className="px-3 py-2 text-slate-600">
