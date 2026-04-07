@@ -1,1 +1,1 @@
-{"sprint":7,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","ts":"2026-04-07T17:30:00Z"}
+{"sprint":8,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","fixes_applied":["camera useRef fix (critical)","scan debounce + lock","useCallback goToLogin","toast timer ref cleanup","haptic + audio feedback","torch toggle","qrbox landscape","back navigation","cancel dialog text"],"ts":"2026-04-07T17:45:00Z"}
