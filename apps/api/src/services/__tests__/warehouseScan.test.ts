@@ -118,6 +118,7 @@ describe("createSession", () => {
     const db = await getPrisma();
     db.booking.findUnique.mockResolvedValue({ id: "b1", status: "CONFIRMED" });
     db.scanSession.findFirst.mockResolvedValue({ id: "s1", status: "ACTIVE" });
+    db.$transaction.mockImplementation(async (fn: any) => fn(db));
 
     await expect(createSession("b1", "Иван", "ISSUE")).rejects.toThrow("активная сессия");
   });
@@ -137,6 +138,7 @@ describe("createSession", () => {
       startedAt: new Date(),
     };
     db.scanSession.create.mockResolvedValue(mockSession);
+    db.$transaction.mockImplementation(async (fn: any) => fn(db));
 
     const result = await createSession("b1", "Иван", "ISSUE");
     expect(result).toEqual(mockSession);
@@ -167,6 +169,7 @@ describe("createSession", () => {
       startedAt: new Date(),
     };
     db.scanSession.create.mockResolvedValue(mockSession);
+    db.$transaction.mockImplementation(async (fn: any) => fn(db));
 
     const result = await createSession("b1", "Петр", "RETURN");
     expect(result).toEqual(mockSession);
