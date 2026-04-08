@@ -10,7 +10,7 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
-import { verifyBarcodePayload } from "./barcode";
+import { resolveBarcode } from "./barcode";
 
 type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
 
@@ -142,11 +142,12 @@ export async function recordScan(
     return { error: "Сессия не активна" };
   }
 
-  // Верифицируем HMAC-подпись штрихкода
-  const unitId = verifyBarcodePayload(barcodePayload);
-  if (!unitId) {
+  // Двухпроходное разрешение штрихкода (HMAC → raw DB lookup)
+  const resolved = await resolveBarcode(barcodePayload);
+  if (!resolved) {
     return { error: "Неверный штрихкод" };
   }
+  const { unitId, hmacVerified } = resolved;
 
   // Находим единицу оборудования
   const unit = await prisma.equipmentUnit.findUnique({
@@ -188,6 +189,7 @@ export async function recordScan(
       data: {
         sessionId,
         equipmentUnitId: unitId,
+        hmacVerified,
       },
     });
     return { scanRecord, bookingItem, unit };
