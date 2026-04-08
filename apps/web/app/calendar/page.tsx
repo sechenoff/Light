@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, Suspense } from "react";
+import { Fragment, useEffect, useState, useMemo, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../src/lib/api";
 import { CalendarTooltip } from "../../src/components/CalendarTooltip";
@@ -62,7 +62,8 @@ function capitalize(s: string): string {
 }
 
 function cellColorClass(occupied: number, total: number): string {
-  if (total === 0 || occupied === 0) return "text-slate-400";
+  if (occupied === 0) return "text-emerald-500";
+  if (total === 0) return "text-slate-400";
   const pct = occupied / total;
   if (pct >= 0.8) return "text-rose-600 bg-rose-50";
   return "text-amber-600 bg-amber-50";
@@ -100,6 +101,9 @@ function SkeletonMobile() {
 function CalendarPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // ── Ключ повтора для retry ──
+  const [retryKey, setRetryKey] = useState(0);
 
   // ── Состояние параметров ──
   const [period, setPeriod] = useState<number>(() => {
@@ -160,7 +164,6 @@ function CalendarPageInner() {
           end: periodEnd,
         });
         if (category) params.set("category", category);
-        if (search) params.set("search", search);
         if (includeDrafts) params.set("includeDrafts", "true");
 
         const data = await apiFetch<CalendarResponse>(
@@ -180,31 +183,44 @@ function CalendarPageInner() {
         setLoading(false);
       }
     },
-    [periodStart, periodEnd, category, search, includeDrafts]
+    [periodStart, periodEnd, category, includeDrafts]
   );
 
   useEffect(() => {
     const controller = new AbortController();
     fetchData(controller.signal);
     return () => controller.abort();
-  }, [fetchData]);
+  }, [fetchData, retryKey]);
+
+  // ── Фильтрация ресурсов по поисковому запросу (клиентская сторона) ──
+  const filteredResources = useMemo(() => {
+    if (!search.trim()) return resources;
+    const needle = search.trim().toLowerCase();
+    return resources.filter((r) => r.name.toLowerCase().includes(needle));
+  }, [resources, search]);
+
+  // ── Фильтрация событий для отображаемых ресурсов ──
+  const filteredEvents = useMemo(() => {
+    const resourceIds = new Set(filteredResources.map((r) => r.id));
+    return events.filter((e) => resourceIds.has(e.resourceId));
+  }, [events, filteredResources]);
 
   // ── Карта занятости ──
   const occupancyMap = useMemo(
-    () => buildOccupancyMap(events, periodStart, periodEnd),
-    [events, periodStart, periodEnd]
+    () => buildOccupancyMap(filteredEvents, periodStart, periodEnd),
+    [filteredEvents, periodStart, periodEnd]
   );
 
   // ── Группировка ресурсов по категории ──
   const grouped = useMemo(() => {
     const map = new Map<string, CalendarResource[]>();
-    for (const r of resources) {
+    for (const r of filteredResources) {
       const arr = map.get(r.category) ?? [];
       arr.push(r);
       map.set(r.category, arr);
     }
     return map;
-  }, [resources]);
+  }, [filteredResources]);
 
   // ── Навигация по периоду ──
   function navPrev() {
@@ -244,14 +260,14 @@ function CalendarPageInner() {
 
   // ── Карточки для мобильного дня ──
   const mobileDayResources = useMemo(() => {
-    return resources.filter((r) => {
+    return filteredResources.filter((r) => {
       const entry = occupancyMap.get(`${r.id}-${mobileDay}`);
       return entry && entry.occupied > 0;
     });
-  }, [resources, occupancyMap, mobileDay]);
+  }, [filteredResources, occupancyMap, mobileDay]);
 
   const showAllMobile = mobileDayResources.length === 0;
-  const mobileDisplayResources = showAllMobile ? resources : mobileDayResources;
+  const mobileDisplayResources = showAllMobile ? filteredResources : mobileDayResources;
 
   // ── Поиск: применяем с задержкой или кнопкой ──
   function applySearch() {
@@ -259,7 +275,7 @@ function CalendarPageInner() {
   }
 
   // ── Пустое состояние ──
-  const isEmpty = !loading && !error && resources.length === 0;
+  const isEmpty = !loading && !error && filteredResources.length === 0;
 
   return (
     <div className="p-4 lg:p-6 space-y-4">
@@ -359,10 +375,7 @@ function CalendarPageInner() {
           <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-md p-3 flex items-center justify-between gap-2 mb-4">
             <span>{error}</span>
             <button
-              onClick={() => {
-                const controller = new AbortController();
-                fetchData(controller.signal);
-              }}
+              onClick={() => setRetryKey((k) => k + 1)}
               className="text-rose-700 underline shrink-0"
             >
               Повторить
@@ -407,10 +420,9 @@ function CalendarPageInner() {
               </thead>
               <tbody>
                 {[...grouped.entries()].map(([cat, catResources]) => (
-                  <>
+                  <Fragment key={cat}>
                     {/* Заголовок категории */}
                     <tr
-                      key={`cat-${cat}`}
                       className="bg-slate-100 border-b border-slate-200 cursor-pointer hover:bg-slate-200 transition-colors"
                       onClick={() => toggleCategory(cat)}
                     >
@@ -461,7 +473,7 @@ function CalendarPageInner() {
                                   d === today ? "bg-blue-50/50" : ""
                                 }`}
                               >
-                                {occupied > 0 ? (
+                                {bookingsOnDay.length > 0 ? (
                                   <CalendarTooltip
                                     equipmentName={resource.name}
                                     date={d}
@@ -486,8 +498,8 @@ function CalendarPageInner() {
                                     </span>
                                   </CalendarTooltip>
                                 ) : (
-                                  <span className="text-xs text-slate-300">
-                                    —
+                                  <span className={`text-xs ${cellColorClass(0, resource.totalQuantity)}`}>
+                                    0/{resource.totalQuantity}
                                   </span>
                                 )}
                               </td>
@@ -495,7 +507,7 @@ function CalendarPageInner() {
                           })}
                         </tr>
                       ))}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -544,7 +556,8 @@ function CalendarPageInner() {
         <div className="flex items-center justify-between gap-2">
           <button
             onClick={mobilePrevDay}
-            className="px-3 py-2 text-sm border border-slate-200 rounded-md hover:bg-slate-50 transition-colors"
+            disabled={mobileDay <= periodStart}
+            className="px-3 py-2 text-sm border border-slate-200 rounded-md hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             ← Пред. день
           </button>
@@ -553,7 +566,8 @@ function CalendarPageInner() {
           </span>
           <button
             onClick={mobileNextDay}
-            className="px-3 py-2 text-sm border border-slate-200 rounded-md hover:bg-slate-50 transition-colors"
+            disabled={mobileDay >= periodEnd}
+            className="px-3 py-2 text-sm border border-slate-200 rounded-md hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             След. день →
           </button>
@@ -564,10 +578,7 @@ function CalendarPageInner() {
           <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-md p-3 flex items-center justify-between gap-2">
             <span>{error}</span>
             <button
-              onClick={() => {
-                const controller = new AbortController();
-                fetchData(controller.signal);
-              }}
+              onClick={() => setRetryKey((k) => k + 1)}
               className="text-rose-700 underline shrink-0"
             >
               Повторить
