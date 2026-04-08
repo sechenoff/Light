@@ -392,6 +392,12 @@ export default function UnitsPage() {
           >
             Сгенерировать единицы
           </button>
+          <Link
+            href={`/admin/scanner?equipmentId=${params.id}&mode=assign`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            📷 Открыть в сканере
+          </Link>
         </div>
       </div>
 
