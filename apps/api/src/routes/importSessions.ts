@@ -123,6 +123,8 @@ importSessionsRouter.get("/:id/rows", async (req, res, next) => {
     if (req.query.action) where.action = req.query.action;
     if (req.query.status) where.status = req.query.status;
     if (req.query.category) where.sourceCategory = req.query.category;
+    if (req.query.changed === "true") where.action = { notIn: ["NO_CHANGE"] };
+    if (req.query.unmatched === "true") where.equipmentId = null;
 
     const [rows, total] = await Promise.all([
       prisma.importSessionRow.findMany({
@@ -199,7 +201,7 @@ const mapBodySchema = z
     type: z.enum(["OWN_PRICE_UPDATE", "COMPETITOR_IMPORT"]),
     mapping: z.object({
       name: z.string().min(1),
-      category: z.string().min(1),
+      category: z.string().optional(),
       brand: z.string().optional(),
       model: z.string().optional(),
       quantity: z.string().optional(),
