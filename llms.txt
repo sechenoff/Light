@@ -25,10 +25,13 @@
 23 source files, ~7,800 LOC
 
 - [apps/web/app/layout.tsx](apps/web/app/layout.tsx): Root layout with AppShell wrapper
-- [apps/web/app/page.tsx](apps/web/app/page.tsx): Home page
+- [apps/web/app/page.tsx](apps/web/app/page.tsx): Dashboard home — pickups/returns/active ops today (from /api/dashboard/today), MiniCalendar heatmap, QuickAvailabilityCheck widget
 - [apps/web/app/api/[...path]/route.ts](apps/web/app/api/[...path]/route.ts): Catch-all API proxy — forwards /api/* to Express backend (port 4000 in dev)
 - [apps/web/src/lib/api.ts](apps/web/src/lib/api.ts): `apiFetch` helper with typed error handling
-- [apps/web/src/components/AppShell.tsx](apps/web/src/components/AppShell.tsx): Navigation shell component
+- [apps/web/src/components/AppShell.tsx](apps/web/src/components/AppShell.tsx): Navigation shell — Дашборд (/), Бронирование оборудования (/equipment), Календарь (/calendar), Финансы, Admin; logo href changed to /
+- [apps/web/src/components/MiniCalendar.tsx](apps/web/src/components/MiniCalendar.tsx): Month occupancy heatmap (react-day-picker v9, /api/calendar/occupancy)
+- [apps/web/src/components/DashboardOpsCard.tsx](apps/web/src/components/DashboardOpsCard.tsx): Booking operation card used in dashboard sections
+- [apps/web/src/components/QuickAvailabilityCheck.tsx](apps/web/src/components/QuickAvailabilityCheck.tsx): Availability search widget — date range + category, calls /api/equipment with availability params
 - [apps/web/next.config.mjs](apps/web/next.config.mjs): Next.js configuration
 
 ### Bot (Telegraf 4 + API-backed AI matching)
@@ -93,6 +96,7 @@
 - [apps/bot/src/scenes/photoAnalysis.ts](apps/bot/src/scenes/photoAnalysis.ts): Photo analysis scene — sends image to API queue
 
 ### Web Pages
+- [apps/web/app/page.tsx](apps/web/app/page.tsx): Dashboard (home page at /) — three sections (pickups/returns/active), MiniCalendar heatmap, QuickAvailabilityCheck widget
 - [apps/web/app/admin/page.tsx](apps/web/app/admin/page.tsx): Admin panel (2,771 lines) — slang learning review, warehouse worker management, cross-catalog barcode management, PricesTab (import session workflow: upload → column mapping → row review with filters → bulk actions → apply)
 - [apps/web/app/finance/page.tsx](apps/web/app/finance/page.tsx): Finance dashboard (905 lines) — payments, expenses, reports
 - [apps/web/app/bookings/page.tsx](apps/web/app/bookings/page.tsx): Bookings list page
@@ -110,7 +114,7 @@
 - [package.json](package.json): Root workspace config — concurrently for dev, workspace scripts
 - [tsconfig.base.json](tsconfig.base.json): Shared TypeScript config (ES2022, CommonJS, strict)
 - [apps/api/package.json](apps/api/package.json): API dependencies — express, @prisma/client, bullmq, @google/generative-ai, zod, pdfkit, exceljs, sharp, multer, string-similarity
-- [apps/web/package.json](apps/web/package.json): Web dependencies — next 14, react 18, tailwindcss, react-hook-form, zod, vitest
+- [apps/web/package.json](apps/web/package.json): Web dependencies — next 14, react 18, tailwindcss, react-hook-form, zod, vitest, react-day-picker 9, @floating-ui/react, date-fns 4
 - [apps/bot/package.json](apps/bot/package.json): Bot dependencies — telegraf, openai, node-fetch
 - [apps/api/.env.example](apps/api/.env.example): Environment template — DATABASE_URL, CORS_ORIGIN, PORT, REDIS_URL, VISION_PROVIDER, GEMINI_API_KEY
 - [apps/web/tailwind.config.js](apps/web/tailwind.config.js): Tailwind CSS configuration

@@ -39,10 +39,10 @@ light-rental-system/
       scripts/        One-off import/sync scripts (SvetoBaza catalog), backfill-barcodes.ts
       assets/fonts/   DejaVu fonts for PDF Cyrillic support
     web/          Next.js 14 + React 18 + Tailwind CSS 3
-      app/            Pages: bookings, equipment, finance, admin, crew-calculator, settings, warehouse (scan UI)
+      app/            Pages: dashboard (/), bookings, equipment, calendar, finance, admin, crew-calculator, settings, warehouse (scan UI)
       app/api/        Catch-all proxy to Express backend
       src/lib/        Shared logic: api client, formatting
-      src/components/ AppShell, StatusBadge, BarcodeScanner
+      src/components/ AppShell, StatusBadge, BarcodeScanner, MiniCalendar, DashboardOpsCard, QuickAvailabilityCheck
     bot/          Telegraf 4 + AI booking (API-backed matching)
       src/scenes/     booking (hub-and-spoke), crewCalc, photoAnalysis wizard scenes
       src/services/   llm (equipment matching via API), api client, logger
@@ -85,6 +85,10 @@ light-rental-system/
 | `apps/web/app/equipment/[id]/units/page.tsx` | Unit management: status badges, generate/edit/delete, label printing |
 | `packages/shared/src/crewCalculator.ts` | Shared crew cost calculator (imported by web + bot) |
 | `apps/bot/src/scenes/booking-helpers.ts` | Extracted pure functions from booking scene |
+| `apps/web/app/page.tsx` | Dashboard home — pickups/returns/active ops today, MiniCalendar heatmap, QuickAvailabilityCheck widget |
+| `apps/web/src/components/MiniCalendar.tsx` | Month heatmap component (react-day-picker + /api/calendar/occupancy) |
+| `apps/web/src/components/DashboardOpsCard.tsx` | Booking operation card for dashboard sections |
+| `apps/web/src/components/QuickAvailabilityCheck.tsx` | Equipment availability search widget (date range + category filter) |
 | `apps/web/app/api/[...path]/route.ts` | Catch-all API proxy with connection error handling |
 | `apps/web/app/admin/page.tsx` | Admin panel -- slang learning review + warehouse worker management + cross-catalog barcode management + price import (PricesTab: upload, column mapping, review with filters, bulk actions, apply, XLSX export) |
 | `apps/api/src/routes/equipmentUnitsGlobal.ts` | Cross-catalog equipment units API: list, lookup, batch labels (mounted at `/api/equipment-units`) |
@@ -157,6 +161,7 @@ npm run seed                  # Seed database
 - **Price comparison uses Decimal.equals()**: never use `===` to compare monetary values — `Decimal` instances are objects. Use `.equals()` from Decimal.js.
 - **Import file formats**: `.xlsx`, `.csv`, `.xls` accepted (max 5 MB). Parsed via `xlsx` + `exceljs` libraries.
 - **Import apply uses optimistic locking**: `version` field on `ImportSession` prevents double-apply. `applyChanges()` increments version atomically and rejects stale requests.
+- **Home page is a dashboard**: `/` renders `apps/web/app/page.tsx` (dashboard with pickups/returns/active ops, MiniCalendar, QuickAvailabilityCheck). Navigation: Дашборд (/), Бронирование оборудования (/equipment), Календарь (/calendar). Uses `react-day-picker`, `@floating-ui/react`, `date-fns`.
 
 ## Known Issues
 
