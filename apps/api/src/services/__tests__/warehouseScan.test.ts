@@ -21,6 +21,7 @@ vi.mock("../../prisma", () => ({
       update: vi.fn(),
     },
     equipmentUnit: {
+      findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
     },

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 
 // Set BARCODE_SECRET before importing the module
 beforeAll(() => {
@@ -138,5 +138,50 @@ describe("renderLabelsPdf", () => {
       },
     ]);
     expect(buf.byteLength).toBeGreaterThan(1000);
+  });
+});
+
+// ── resolveBarcode tests ──
+
+// Mock prisma for resolveBarcode tests
+vi.mock("../../prisma", () => ({
+  prisma: {
+    equipmentUnit: {
+      findFirst: vi.fn(),
+    },
+  },
+}));
+
+describe("resolveBarcode", () => {
+  it("resolves valid HMAC payload → unitId + hmacVerified: true", async () => {
+    const { generateBarcodePayload, resolveBarcode } = await getBarcode();
+    const payload = generateBarcodePayload("unit-123");
+    const result = await resolveBarcode(payload);
+    expect(result).toEqual({ unitId: "unit-123", hmacVerified: true });
+  });
+
+  it("resolves raw barcode via DB lookup → unitId + hmacVerified: false", async () => {
+    const { prisma } = await import("../../prisma");
+    (prisma.equipmentUnit.findFirst as any).mockResolvedValueOnce({ id: "unit-456" });
+
+    const { resolveBarcode } = await getBarcode();
+    const result = await resolveBarcode("RAW-BARCODE-123");
+    expect(result).toEqual({ unitId: "unit-456", hmacVerified: false });
+  });
+
+  it("returns null for unknown barcode", async () => {
+    const { prisma } = await import("../../prisma");
+    (prisma.equipmentUnit.findFirst as any).mockResolvedValueOnce(null);
+
+    const { resolveBarcode } = await getBarcode();
+    const result = await resolveBarcode("UNKNOWN-BARCODE");
+    expect(result).toBeNull();
+  });
+
+  it("returns null for barcode exceeding 100 chars", async () => {
+    const { resolveBarcode } = await getBarcode();
+    const longBarcode = "A".repeat(101);
+    const result = await resolveBarcode(longBarcode);
+    expect(result).toBeNull();
   });
 });
