@@ -59,6 +59,40 @@ function datetimeLocalToISO(dtLocal: string): string {
   return new Date(dtLocal).toISOString();
 }
 
+function formatDatetimeLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
+function getQuickPeriod(type: "today" | "tomorrow" | "week"): { start: string; end: string } {
+  const now = new Date();
+  if (type === "today") {
+    const s = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0);
+    return {
+      start: formatDatetimeLocal(s),
+      end: formatDatetimeLocal(new Date(s.getTime() + 24 * 60 * 60 * 1000)),
+    };
+  }
+  if (type === "tomorrow") {
+    const s = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 10, 0);
+    return {
+      start: formatDatetimeLocal(s),
+      end: formatDatetimeLocal(new Date(s.getTime() + 24 * 60 * 60 * 1000)),
+    };
+  }
+  // "week" — Monday 10:00 to Sunday 22:00
+  const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ...
+  const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon, 10, 0);
+  const sunday = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000);
+  sunday.setHours(22, 0, 0, 0);
+  return { start: formatDatetimeLocal(monday), end: formatDatetimeLocal(sunday) };
+}
+
 export default function EquipmentPage() {
   const defaultStart = defaultPickupDatetimeLocal();
   const [start, setStart] = useState(defaultStart);
@@ -170,22 +204,41 @@ export default function EquipmentPage() {
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex flex-col">
-            <label className="text-xs text-slate-600">Старт</label>
-            <input
-              className="rounded border border-slate-300 px-2 py-1 bg-white"
-              type="datetime-local"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col">
-            <label className="text-xs text-slate-600">Конец</label>
-            <input
-              className="rounded border border-slate-300 px-2 py-1 bg-white"
-              type="datetime-local"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-            />
+            <div className="flex gap-1.5 mb-2">
+              {(["today", "tomorrow", "week"] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    const p = getQuickPeriod(type);
+                    setStart(p.start);
+                    setEnd(p.end);
+                  }}
+                  className="text-xs px-2.5 py-1 rounded-full border border-slate-300 text-slate-600 hover:bg-slate-100 hover:border-slate-400 transition-colors"
+                >
+                  {type === "today" ? "Сегодня 10-10" : type === "tomorrow" ? "Завтра 10-10" : "Эта неделя"}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex flex-col">
+                <label className="text-xs text-slate-600">Старт</label>
+                <input
+                  className="rounded border border-slate-300 px-2 py-1 bg-white"
+                  type="datetime-local"
+                  value={start}
+                  onChange={(e) => setStart(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs text-slate-600">Конец</label>
+                <input
+                  className="rounded border border-slate-300 px-2 py-1 bg-white"
+                  type="datetime-local"
+                  value={end}
+                  onChange={(e) => setEnd(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-col">
