@@ -537,18 +537,20 @@ describe("GET /api/import-sessions/:id/export", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────
-// POST /:id/match (placeholder)
+// POST /:id/match — повторный матчинг через Gemini
 // ──────────────────────────────────────────────────────────────────
 
 describe("POST /api/import-sessions/:id/match", () => {
-  it("возвращает 501 Не реализовано", async () => {
+  it("возвращает 200 с результатами матчинга", async () => {
     const { session } = await uploadSession();
 
     const res = await request(app)
       .post(`/api/import-sessions/${session.id}/match`)
       .set(AUTH);
 
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("matched");
+    expect(res.body).toHaveProperty("total");
   });
 });
 
