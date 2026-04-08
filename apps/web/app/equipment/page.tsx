@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { apiFetch } from "../../src/lib/api";
@@ -35,24 +35,34 @@ type AvailInfo = {
   availability: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
 };
 
-function isoTodayUTC() {
+function defaultPickupDatetimeLocal(): string {
   const d = new Date();
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  d.setHours(10, 0, 0, 0);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}T10:00`;
+}
+
+function addHoursToDatetimeLocal(dtLocal: string, hours: number): string {
+  const d = new Date(dtLocal);
+  d.setTime(d.getTime() + hours * 60 * 60 * 1000);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
+function datetimeLocalToISO(dtLocal: string): string {
+  return new Date(dtLocal).toISOString();
 }
 
 export default function EquipmentPage() {
-  const today = isoTodayUTC();
-  const defaultEnd = useMemo(() => {
-    const d = new Date(today + "T00:00:00Z");
-    d.setUTCDate(d.getUTCDate() + 1);
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-  }, [today]);
-
-  const [start, setStart] = useState(today);
-  const [end, setEnd] = useState(defaultEnd);
+  const defaultStart = defaultPickupDatetimeLocal();
+  const [start, setStart] = useState(defaultStart);
+  const [end, setEnd] = useState(addHoursToDatetimeLocal(defaultStart, 24));
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [categories, setCategories] = useState<string[]>([]);
@@ -104,7 +114,7 @@ export default function EquipmentPage() {
     async function load() {
       setLoadingAvail(true);
       try {
-        const params = new URLSearchParams({ start, end });
+        const params = new URLSearchParams({ start: datetimeLocalToISO(start), end: datetimeLocalToISO(end) });
         const data = await apiFetch<{ rows: AvailInfo[] }>(`/api/availability?${params.toString()}`, {
           signal: controller.signal,
         });
@@ -163,7 +173,7 @@ export default function EquipmentPage() {
             <label className="text-xs text-slate-600">Старт</label>
             <input
               className="rounded border border-slate-300 px-2 py-1 bg-white"
-              type="date"
+              type="datetime-local"
               value={start}
               onChange={(e) => setStart(e.target.value)}
             />
@@ -172,7 +182,7 @@ export default function EquipmentPage() {
             <label className="text-xs text-slate-600">Конец</label>
             <input
               className="rounded border border-slate-300 px-2 py-1 bg-white"
-              type="date"
+              type="datetime-local"
               value={end}
               onChange={(e) => setEnd(e.target.value)}
             />
@@ -208,7 +218,7 @@ export default function EquipmentPage() {
         <div className="flex items-center gap-2">
           <Link
             className="rounded bg-slate-900 text-white px-4 py-2 hover:bg-slate-800"
-            href={`/bookings/new?start=${start}&end=${end}`}
+            href={`/bookings/new?start=${datetimeLocalToISO(start)}&end=${datetimeLocalToISO(end)}`}
           >
             Создать бронь
           </Link>
