@@ -5,10 +5,11 @@ import { apiFetch } from "../lib/api";
 
 type AvailabilityItem = {
   equipmentId: string;
-  equipmentName: string;
-  status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
-  occupied: number;
-  total: number;
+  name: string;
+  availability: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+  occupiedQuantity: number;
+  availableQuantity: number;
+  totalQuantity: number;
 };
 
 function defaultDatetimeLocal(offsetHours = 0): string {
@@ -29,7 +30,7 @@ function defaultDatetimeLocal(offsetHours = 0): string {
 function StatusBadgeAvailability({
   status,
 }: {
-  status: AvailabilityItem["status"];
+  status: AvailabilityItem["availability"];
 }) {
   const cls =
     status === "AVAILABLE"
@@ -68,10 +69,10 @@ export function QuickAvailabilityCheck() {
       const endIso = new Date(end).toISOString();
       const params = new URLSearchParams({ start: startIso, end: endIso });
       if (search.trim()) params.set("search", search.trim());
-      const data = await apiFetch<AvailabilityItem[]>(
+      const data = await apiFetch<{ rows: AvailabilityItem[] }>(
         `/api/availability?${params.toString()}`
       );
-      setResults(data);
+      setResults(data.rows);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка при проверке");
     } finally {
@@ -149,12 +150,12 @@ export function QuickAvailabilityCheck() {
               key={item.equipmentId}
               className="flex items-center justify-between gap-2 text-xs"
             >
-              <span className="text-slate-700 truncate">{item.equipmentName}</span>
+              <span className="text-slate-700 truncate">{item.name}</span>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-slate-400">
-                  {item.occupied}/{item.total}
+                  {item.occupiedQuantity}/{item.totalQuantity}
                 </span>
-                <StatusBadgeAvailability status={item.status} />
+                <StatusBadgeAvailability status={item.availability} />
               </div>
             </li>
           ))}

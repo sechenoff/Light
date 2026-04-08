@@ -77,23 +77,28 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardToday | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await apiFetch<DashboardToday>("/api/dashboard/today");
-      setData(result);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка загрузки дашборда");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const retry = useCallback(() => setRetryCount((c) => c + 1), []);
 
   useEffect(() => {
+    const controller = new AbortController();
+    async function fetchData() {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await apiFetch<DashboardToday>("/api/dashboard/today", { signal: controller.signal });
+        setData(result);
+      } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") return;
+        setError(e instanceof Error ? e.message : "Ошибка загрузки");
+      } finally {
+        setLoading(false);
+      }
+    }
     fetchData();
-  }, [fetchData]);
+    return () => controller.abort();
+  }, [retryCount]);
 
   return (
     <div className="p-4 lg:p-6 max-w-screen-xl mx-auto">
@@ -107,7 +112,7 @@ export default function DashboardPage() {
         <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-lg p-3 flex items-center justify-between">
           <span>{error}</span>
           <button
-            onClick={fetchData}
+            onClick={retry}
             className="ml-2 underline text-rose-700 shrink-0"
           >
             Повторить

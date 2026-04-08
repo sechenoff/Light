@@ -31,20 +31,22 @@ export function MiniCalendar() {
   const [occupancyMap, setOccupancyMap] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
 
-  const fetchOccupancy = useCallback(async (targetMonth: Date) => {
+  const fetchOccupancy = useCallback(async (targetMonth: Date, signal: AbortSignal) => {
     setLoading(true);
     try {
       const start = format(startOfMonth(targetMonth), "yyyy-MM-dd");
       const end = format(endOfMonth(targetMonth), "yyyy-MM-dd");
       const data = await apiFetch<OccupancyResponse>(
-        `/api/calendar/occupancy?start=${start}&end=${end}`
+        `/api/calendar/occupancy?start=${start}&end=${end}`,
+        { signal }
       );
       const map: Record<string, number> = {};
       for (const d of data.days) {
         map[d.date] = d.occupancyPercent;
       }
       setOccupancyMap(map);
-    } catch {
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return;
       // Не показываем ошибку — просто нет данных
     } finally {
       setLoading(false);
@@ -52,7 +54,9 @@ export function MiniCalendar() {
   }, []);
 
   useEffect(() => {
-    fetchOccupancy(month);
+    const controller = new AbortController();
+    fetchOccupancy(month, controller.signal);
+    return () => controller.abort();
   }, [month, fetchOccupancy]);
 
   return (

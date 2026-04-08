@@ -21,6 +21,14 @@ function formatTime(dateStr: string): string {
   });
 }
 
+function pluralizePosition(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "позиция";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "позиции";
+  return "позиций";
+}
+
 function formatItemsPreview(
   items: DashboardBooking["items"],
   itemCount: number
@@ -29,7 +37,7 @@ function formatItemsPreview(
     .slice(0, 3)
     .map((i) => `${i.equipmentName} ×${i.quantity}`)
     .join(", ");
-  return `${itemCount} позиц${itemCount === 1 ? "ия" : itemCount < 5 ? "ии" : "ий"}: ${preview}${items.length > 3 ? "..." : ""}`;
+  return `${itemCount} ${pluralizePosition(itemCount)}: ${preview}${items.length > 3 ? "..." : ""}`;
 }
 
 export function DashboardOpsCard({ booking }: { booking: DashboardBooking }) {
