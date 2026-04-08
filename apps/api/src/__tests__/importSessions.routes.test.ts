@@ -543,6 +543,7 @@ describe("GET /api/import-sessions/:id/export", () => {
 describe("POST /api/import-sessions/:id/match", () => {
   it("возвращает 200 с результатами матчинга", async () => {
     const { session } = await uploadSession();
+    await prisma.importSession.update({ where: { id: session.id }, data: { status: "REVIEW" } });
 
     const res = await request(app)
       .post(`/api/import-sessions/${session.id}/match`)

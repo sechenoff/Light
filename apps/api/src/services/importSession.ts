@@ -293,12 +293,17 @@ export async function matchRow(
 
   // Tier 2: alias lookup (только для конкурентов)
   if (competitorName) {
-    const alias = await prisma.competitorAlias.findFirst({
-      where: {
-        competitorName,
-        competitorItem: row.sourceName,
-      },
+    let alias = await prisma.competitorAlias.findFirst({
+      where: { competitorName, competitorItem: row.sourceName },
     });
+    if (!alias) {
+      const candidates = await prisma.competitorAlias.findMany({
+        where: { competitorName },
+      });
+      alias = candidates.find(
+        (a) => a.competitorItem.toLowerCase() === row.sourceName.toLowerCase(),
+      ) ?? null;
+    }
     if (alias) {
       return {
         equipmentId: alias.equipmentId,
@@ -573,13 +578,15 @@ export async function mapAndMatch(
 
       const geminiMatches = await batchMatchWithGemini(unmatchedItems, catalogForGemini, competitorName);
 
+      const catalogIdSet = new Set(catalog.map((c) => c.id));
+
       if (geminiMatches.length > 0) {
         // Применяем матчи к строкам
         for (const match of geminiMatches) {
           const idx = unmatchedIndices.find(
             (i) => (rowsToCreate[i]!.sourceName as string) === match.competitorItem,
           );
-          if (idx !== undefined && match.catalogId) {
+          if (idx !== undefined && match.catalogId && catalogIdSet.has(match.catalogId)) {
             rowsToCreate[idx]!.equipmentId = match.catalogId;
             rowsToCreate[idx]!.matchConfidence = match.confidence;
             rowsToCreate[idx]!.matchMethod = "gemini";
@@ -902,6 +909,9 @@ export async function rematchUnmatched(
 ): Promise<{ matched: number; total: number }> {
   const session = await prisma.importSession.findUnique({ where: { id: sessionId } });
   if (!session) throw new HttpError(404, "Сессия не найдена");
+  if (session.status !== ImportSessionStatus.REVIEW && session.status !== ImportSessionStatus.MATCHING) {
+    throw new HttpError(400, "Повторный матчинг доступен только для сессий в статусе REVIEW или MATCHING");
+  }
 
   const unmatchedRows = await prisma.importSessionRow.findMany({
     where: { sessionId, equipmentId: null },
@@ -933,9 +943,11 @@ export async function rematchUnmatched(
 
   const geminiMatches = await batchMatchWithGemini(items, catalogForGemini, competitorName ?? "");
 
+  const catalogIdSet = new Set(catalog.map((c) => c.id));
+
   let matched = 0;
   for (const match of geminiMatches) {
-    if (!match.catalogId) continue;
+    if (!match.catalogId || !catalogIdSet.has(match.catalogId)) continue;
     const row = unmatchedRows.find((r: any) => r.sourceName === match.competitorItem);
     if (!row) continue;
 
