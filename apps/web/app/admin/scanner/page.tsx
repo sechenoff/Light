@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { BarcodeScannerProps } from "@/components/BarcodeScanner";
@@ -301,6 +301,13 @@ function ScannerApp() {
     };
   }, []);
 
+  // Cleanup flash timer on unmount
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    };
+  }, []);
+
   // Pre-select equipment from URL ?equipmentId= (assign mode)
   useEffect(() => {
     const equipmentId = searchParams.get("equipmentId");
@@ -493,7 +500,15 @@ function ScannerApp() {
         { method: "DELETE" },
       );
       setBatchItems((prev) => prev.filter((i) => i.unit.id !== item.unit.id));
-    } catch {}
+    } catch (err: any) {
+      if (err?.status === 404) {
+        // Already deleted server-side, remove from list
+        setBatchItems((prev) => prev.filter((i) => i.unit.id !== item.unit.id));
+      } else {
+        flash("red");
+        vibrate([50, 50, 50]);
+      }
+    }
   }
 
   function handleBatchManualSubmit(e: React.FormEvent) {
@@ -574,7 +589,7 @@ function ScannerApp() {
             [
               { id: "lookup", label: "Поиск" },
               { id: "assign", label: "Привязка" },
-              { id: "batch", label: "Быстрая" },
+              { id: "batch", label: "Быстрая привязка" },
             ] as { id: ScanMode; label: string }[]
           ).map(({ id, label }) => (
             <button
@@ -803,5 +818,9 @@ export default function AdminScannerPage() {
     return <LoginScreen onSuccess={() => setAuthed(true)} />;
   }
 
-  return <ScannerApp />;
+  return (
+    <Suspense fallback={null}>
+      <ScannerApp />
+    </Suspense>
+  );
 }
