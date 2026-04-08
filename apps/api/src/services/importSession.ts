@@ -230,7 +230,7 @@ export async function createSession(file: {
       status: ImportSessionStatus.PARSING,
       fileName: file.originalname,
       fileSize: file.size,
-      fileBuffer: file.buffer,
+      fileBuffer: new Uint8Array(file.buffer),
       expiresAt,
     },
   });
@@ -833,7 +833,7 @@ export async function updateRowStatus(
   status: "ACCEPTED" | "REJECTED",
   equipmentId?: string,
 ): Promise<void> {
-  const updateData: Prisma.ImportSessionRowUpdateInput = {
+  const updateData: Prisma.ImportSessionRowUncheckedUpdateInput = {
     status: status as DiffRowStatus,
   };
   if (equipmentId !== undefined) {

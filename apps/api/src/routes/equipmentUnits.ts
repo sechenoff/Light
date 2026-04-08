@@ -213,7 +213,7 @@ router.post("/:unitId/assign-barcode", async (req, res, next) => {
     }
 
     // Assign barcode + generate HMAC payload
-    const barcodePayload = generateBarcodePayload(unitId);
+    const barcodePayload = generateBarcodePayload(unitId!);
     const updated = await prisma.equipmentUnit.update({
       where: { id: unitId },
       data: { barcode: body.barcode, barcodePayload },
