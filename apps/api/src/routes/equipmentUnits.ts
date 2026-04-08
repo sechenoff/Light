@@ -23,6 +23,11 @@ const patchSchema = z.object({
   comment: z.string().optional().nullable(),
 });
 
+const assignBarcodeSchema = z.object({
+  barcode: z.string().min(1).max(100).transform(s => s.trim()).refine(s => !s.includes(':'), { message: "Штрихкод не должен содержать двоеточие" }),
+  force: z.boolean().optional().default(false),
+});
+
 // ──────────────────────────────────────────────
 // GET / — список единиц оборудования
 // ──────────────────────────────────────────────
@@ -168,6 +173,111 @@ router.get("/labels", async (req, res, next) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="labels-${equipmentId}.pdf"`);
     res.send(pdfBuffer);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────
+// POST /:unitId/assign-barcode — ручная привязка штрихкода к единице
+// ──────────────────────────────────────────────
+
+router.post("/:unitId/assign-barcode", async (req, res, next) => {
+  try {
+    const { equipmentId, unitId } = req.params as UnitParams;
+    const body = assignBarcodeSchema.parse(req.body);
+
+    // Check unit exists and belongs to equipment
+    const unit = await prisma.equipmentUnit.findFirst({
+      where: { id: unitId, equipmentId },
+    });
+    if (!unit) {
+      throw new HttpError(404, "Единица оборудования не найдена");
+    }
+
+    // Check if unit already has barcode (unless force)
+    if (unit.barcode && !body.force) {
+      return res.status(409).json({ error: "У единицы уже есть штрихкод. Используйте force: true для перезаписи" });
+    }
+
+    // Check barcode uniqueness
+    const existing = await prisma.equipmentUnit.findFirst({
+      where: { barcode: body.barcode, id: { not: unitId } },
+      include: { equipment: { select: { id: true, name: true } } },
+    });
+    if (existing) {
+      return res.status(409).json({
+        error: "Штрихкод уже присвоен другой единице",
+        existingUnit: { id: existing.id, equipmentId: existing.equipment.id, equipmentName: existing.equipment.name },
+      });
+    }
+
+    // Assign barcode + generate HMAC payload
+    const barcodePayload = generateBarcodePayload(unitId);
+    const updated = await prisma.equipmentUnit.update({
+      where: { id: unitId },
+      data: { barcode: body.barcode, barcodePayload },
+      select: { id: true, barcode: true, barcodePayload: true, status: true, serialNumber: true, comment: true, createdAt: true },
+    });
+
+    res.json({ unit: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────
+// POST /batch-assign — создание единицы с штрихкодом (UNIT-режим)
+// ──────────────────────────────────────────────
+
+router.post("/batch-assign", async (req, res, next) => {
+  try {
+    const { equipmentId } = req.params as UnitParams;
+    const body = assignBarcodeSchema.parse(req.body);
+
+    // Check equipment exists and is UNIT mode
+    const equipment = await prisma.equipment.findUnique({
+      where: { id: equipmentId },
+      select: { id: true, name: true, category: true, stockTrackingMode: true },
+    });
+    if (!equipment) {
+      throw new HttpError(404, "Оборудование не найдено");
+    }
+    if (equipment.stockTrackingMode === "COUNT") {
+      return res.status(400).json({ error: "Для привязки штрихкодов переведите оборудование в режим UNIT" });
+    }
+
+    // Check barcode uniqueness
+    const existing = await prisma.equipmentUnit.findFirst({
+      where: { barcode: body.barcode },
+      include: { equipment: { select: { id: true, name: true } } },
+    });
+    if (existing) {
+      return res.status(409).json({
+        error: "Штрихкод уже присвоен другой единице",
+        existingUnit: { id: existing.id, equipmentId: existing.equipment.id, equipmentName: existing.equipment.name },
+      });
+    }
+
+    // Create unit + assign barcode + increment totalQuantity in transaction
+    const result = await prisma.$transaction(async (tx: any) => {
+      const unit = await tx.equipmentUnit.create({
+        data: { equipmentId, barcode: body.barcode, status: "AVAILABLE" },
+      });
+      const barcodePayload = generateBarcodePayload(unit.id);
+      const updated = await tx.equipmentUnit.update({
+        where: { id: unit.id },
+        data: { barcodePayload },
+        select: { id: true, barcode: true, barcodePayload: true, status: true, serialNumber: true, comment: true, createdAt: true },
+      });
+      await tx.equipment.update({
+        where: { id: equipmentId },
+        data: { totalQuantity: { increment: 1 } },
+      });
+      return updated;
+    });
+
+    res.status(201).json({ unit: result });
   } catch (err) {
     next(err);
   }
