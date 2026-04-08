@@ -24,7 +24,7 @@ const patchSchema = z.object({
 });
 
 const assignBarcodeSchema = z.object({
-  barcode: z.string().min(1).max(100).transform(s => s.trim()).refine(s => !s.includes(':'), { message: "Штрихкод не должен содержать двоеточие" }),
+  barcode: z.string().transform(s => s.trim()).pipe(z.string().min(1, "Штрихкод не может быть пустым").max(100)).refine(s => !s.includes(':'), { message: "Штрихкод не должен содержать двоеточие" }),
   force: z.boolean().optional().default(false),
 });
 
