@@ -17,8 +17,8 @@
 - [apps/api/src/index.ts](apps/api/src/index.ts): Server entrypoint — starts Express on :4000, conditionally starts BullMQ worker if Redis is reachable
 - [apps/api/src/app.ts](apps/api/src/app.ts): Express app setup — helmet, CORS, morgan, JSON body parser, centralized error handler (Zod, Prisma, HttpError)
 - [apps/api/src/prisma.ts](apps/api/src/prisma.ts): Singleton PrismaClient instance
-- [apps/api/src/routes/index.ts](apps/api/src/routes/index.ts): Route registry mounting 12 sub-routers under /api/*
-- [apps/api/prisma/schema.prisma](apps/api/prisma/schema.prisma): Database schema (438 lines) — 18 models: User, Analysis, Lead, Client, Equipment, EquipmentUnit, Booking, BookingItem, BookingItemUnit, Estimate, EstimateLine, Payment, Expense, BookingFinanceEvent, AppSetting, SlangAlias, SlangLearningCandidate
+- [apps/api/src/routes/index.ts](apps/api/src/routes/index.ts): Route registry mounting 13 sub-routers under /api/*
+- [apps/api/prisma/schema.prisma](apps/api/prisma/schema.prisma): Database schema — 23 models: User, Analysis, Lead, Client, Equipment, EquipmentUnit, Booking, BookingItem, BookingItemUnit, Estimate, EstimateLine, Payment, Expense, BookingFinanceEvent, AppSetting, SlangAlias, SlangLearningCandidate, ScanSession, ScanRecord, WarehousePin, ImportSession, ImportSessionRow, CompetitorAlias
 - [apps/api/prisma/seed.ts](apps/api/prisma/seed.ts): Database seeder
 
 ### Web (Next.js 14 + React 18 + Tailwind CSS 3)
@@ -73,6 +73,10 @@
 - [apps/api/src/routes/slangLearning.ts](apps/api/src/routes/slangLearning.ts): Admin endpoints for managing gaffer slang aliases
 - [apps/api/src/services/pricing.ts](apps/api/src/services/pricing.ts): Pricing service
 
+### Price Import (competitor price analytics)
+- [apps/api/src/services/importSession.ts](apps/api/src/services/importSession.ts): Import session lifecycle (985 lines) — XLSX/CSV parsing via exceljs, 4-tier matching (exact → SlangAlias → fuzzy via string-similarity → Gemini AI fallback), diff computation (price/qty changes, new/removed rows), bulk-accept/reject actions, apply with optimistic locking
+- [apps/api/src/routes/importSessions.ts](apps/api/src/routes/importSessions.ts): REST API for import workflow (385 lines, 11 endpoints under `/api/import-sessions`) — upload, list, get, rows (paginated+filtered), map columns, match, patch row, bulk-action, apply, export XLSX, delete
+
 ### Crew Calculator (shared logic)
 - [apps/web/src/lib/crewCalculator.ts](apps/web/src/lib/crewCalculator.ts): Crew cost calculator with overtime tiers (used by web)
 - [apps/web/src/lib/crewRates.ts](apps/web/src/lib/crewRates.ts): Role definitions and rate constants
@@ -85,7 +89,7 @@
 - [apps/bot/src/scenes/photoAnalysis.ts](apps/bot/src/scenes/photoAnalysis.ts): Photo analysis scene — sends image to API queue
 
 ### Web Pages
-- [apps/web/app/admin/page.tsx](apps/web/app/admin/page.tsx): Admin panel (1,024 lines) — slang learning review, system management
+- [apps/web/app/admin/page.tsx](apps/web/app/admin/page.tsx): Admin panel (2,771 lines) — slang learning review, warehouse worker management, cross-catalog barcode management, PricesTab (import session workflow: upload → column mapping → row review with filters → bulk actions → apply)
 - [apps/web/app/finance/page.tsx](apps/web/app/finance/page.tsx): Finance dashboard (905 lines) — payments, expenses, reports
 - [apps/web/app/bookings/page.tsx](apps/web/app/bookings/page.tsx): Bookings list page
 - [apps/web/app/bookings/new/page.tsx](apps/web/app/bookings/new/page.tsx): New booking form
@@ -101,7 +105,7 @@
 
 - [package.json](package.json): Root workspace config — concurrently for dev, workspace scripts
 - [tsconfig.base.json](tsconfig.base.json): Shared TypeScript config (ES2022, CommonJS, strict)
-- [apps/api/package.json](apps/api/package.json): API dependencies — express, @prisma/client, bullmq, @google/generative-ai, zod, pdfkit, exceljs, sharp, multer
+- [apps/api/package.json](apps/api/package.json): API dependencies — express, @prisma/client, bullmq, @google/generative-ai, zod, pdfkit, exceljs, sharp, multer, string-similarity
 - [apps/web/package.json](apps/web/package.json): Web dependencies — next 14, react 18, tailwindcss, react-hook-form, zod, vitest
 - [apps/bot/package.json](apps/bot/package.json): Bot dependencies — telegraf, openai, node-fetch
 - [apps/api/.env.example](apps/api/.env.example): Environment template — DATABASE_URL, CORS_ORIGIN, PORT, REDIS_URL, VISION_PROVIDER, GEMINI_API_KEY
@@ -128,4 +132,4 @@
 - [apps/api/assets/fonts/](apps/api/assets/fonts/): DejaVu fonts for PDF export
 - [docs/DATA_MODEL_SMETA.md](docs/DATA_MODEL_SMETA.md): Data model documentation for estimates
 
-<!-- updated-by-superflow:2026-04-03 -->
+<!-- updated-by-superflow:2026-04-08 -->

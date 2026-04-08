@@ -61,7 +61,7 @@ light-rental-system/
 |------|---------|
 | `apps/api/src/app.ts` | Express app: middleware stack + centralized error handler |
 | `apps/api/src/index.ts` | Server start, conditional Redis/BullMQ worker bootstrap |
-| `apps/api/prisma/schema.prisma` | 23 models (incl. ScanSession, ScanRecord, WarehousePin, ImportSession, ImportSessionRow, CompetitorAlias) -- source of truth for data layer |
+| `apps/api/prisma/schema.prisma` | 23 models (incl. ScanSession, ScanRecord, WarehousePin, ImportSession, DiffRow, CompetitorAlias) -- source of truth for data layer |
 | `apps/api/src/services/gemini.ts` | Gemini 2.5 Flash: photo analysis + diagram generation |
 | `apps/api/src/services/equipmentMatcher.ts` | AI output to catalog matching (~530 lines, DB-driven aliases via SlangAlias) |
 | `apps/api/scripts/migrate-aliases-to-db.ts` | One-time migration: TYPE_SYNONYMS → SlangAlias DB records |
@@ -71,8 +71,8 @@ light-rental-system/
 | `apps/bot/src/scenes/booking.ts` | Hub-and-spoke booking scene (~1000 LOC): hub step is central cart screen, spokes: catalog, inline needsReview confirmations |
 | `apps/bot/src/services/api.ts` | Bot API client: gaffer review types (GafferReviewItem, GafferMatchCandidate), parseGafferReview() |
 | `apps/bot/src/services/llm.ts` | Equipment matching via parseGafferReview API (3-tier: resolved/needsReview/unmatched), date parsing |
-| `apps/api/src/services/importSession.ts` | Import session lifecycle: parse XLSX buffer, match rows against catalog (string-similarity), build diff, apply price/qty changes |
-| `apps/api/src/routes/importSessions.ts` | Import sessions REST endpoints: upload, map, rows, apply, export, bulk-action (11 endpoints under `/api/import-sessions`) |
+| `apps/api/src/services/importSession.ts` | Import session service: XLSX/CSV parsing, 4-tier matching (exact→alias→fuzzy→AI), diff, bulk actions, apply with optimistic locking |
+| `apps/api/src/routes/importSessions.ts` | Import session API: upload, map, match, rows (filter: changed/unmatched/action), bulk accept/reject, apply, rematch, XLSX export |
 | `apps/api/src/services/barcode.ts` | Barcode generation (Code128 via bwip-js), HMAC-SHA256 verification, label rendering (PNG/PDF), dual resolution via `resolveBarcode()` |
 | `apps/api/src/services/scanSession.ts` | Scan session service: issue/return/cancel logic, unit status transitions, reconciliation |
 | `apps/api/src/routes/warehouse.ts` | Warehouse scan endpoints: auth, sessions, scan, summary, complete (7 scan routes + public auth) |
@@ -86,7 +86,7 @@ light-rental-system/
 | `packages/shared/src/crewCalculator.ts` | Shared crew cost calculator (imported by web + bot) |
 | `apps/bot/src/scenes/booking-helpers.ts` | Extracted pure functions from booking scene |
 | `apps/web/app/api/[...path]/route.ts` | Catch-all API proxy with connection error handling |
-| `apps/web/app/admin/page.tsx` | Admin panel -- slang learning review + warehouse worker management + cross-catalog barcode management |
+| `apps/web/app/admin/page.tsx` | Admin panel -- slang learning review + warehouse worker management + cross-catalog barcode management + price import (PricesTab: upload, column mapping, review with filters, bulk actions, apply, XLSX export) |
 | `apps/api/src/routes/equipmentUnitsGlobal.ts` | Cross-catalog equipment units API: list, lookup, batch labels (mounted at `/api/equipment-units`) |
 | `apps/web/app/admin/scanner/page.tsx` | Mobile-first barcode scanner page: lookup, assign, batch-assign modes |
 | `apps/web/src/components/BarcodeScanner.tsx` | Shared barcode scanner component (html5-qrcode, Wake Lock, flash animation) |
@@ -114,7 +114,7 @@ npm run build
 npm run lint
 
 # Tests
-npm test                          # run all (shared + bot + api) — 256 tests
+npm test                          # run all (shared + bot + api) — 202 tests
 npm run test -w apps/api          # API tests (smoke + barcode integration)
 npm run test -w apps/bot          # bot booking-helpers tests only (27 tests)
 npm run test -w packages/shared   # shared package tests only
@@ -151,12 +151,16 @@ npm run seed                  # Seed database
 - **Dual barcode resolution**: `resolveBarcode()` in `barcode.ts` resolves scanned values via HMAC-first, raw-barcode-fallback. All raw-resolved scans logged with `hmacVerified: false` on `ScanRecord`.
 - **Global equipment-units routes**: `/api/equipment-units` routes are mounted BEFORE `/api/equipment` in `routes/index.ts` to prevent prefix collision. Same apiKeyAuth protection.
 - **Scanner component is shared**: `BarcodeScanner.tsx` in `src/components/` is used by both `/warehouse/scan` and `/admin/scanner`. The warehouse re-export (`Html5QrcodePlugin.tsx`) is a thin wrapper.
+- **Import session matching is 4-tier**: exact `importKey` match → `CompetitorAlias` lookup → `string-similarity` fuzzy match → Gemini AI. Confirmed matches are auto-saved as `CompetitorAlias` records for future imports.
+- **Price comparison uses Decimal.equals()**: never use `===` to compare monetary values — `Decimal` instances are objects. Use `.equals()` from Decimal.js.
+- **Import file formats**: `.xlsx`, `.csv`, `.xls` accepted (max 5 MB). Parsed via `xlsx` + `exceljs` libraries.
+- **Import apply uses optimistic locking**: `version` field on `ImportSession` prevents double-apply. `applyChanges()` increments version atomically and rejects stale requests.
 
 ## Known Issues
 
 1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
 2. **~~Crew calculator duplication~~** — RESOLVED: extracted to `packages/shared` (`@light-rental/shared`).
-3. **~~Minimal test coverage~~** — RESOLVED: 256 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, and importSession routes tests.
+3. **~~Minimal test coverage~~** — RESOLVED: 202 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, and importSession routes tests.
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
 
