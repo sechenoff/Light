@@ -15,9 +15,11 @@ export interface BarcodeScannerProps {
   flashColor?: "green" | "red" | "amber" | null;
 }
 
+const DEFAULT_FORMATS = [Html5QrcodeSupportedFormats.CODE_128];
+
 export default function BarcodeScanner({
   onScan,
-  formats = [Html5QrcodeSupportedFormats.CODE_128],
+  formats = DEFAULT_FORMATS,
   fps = 5,
   enableTorch = true,
   flashColor = null,
