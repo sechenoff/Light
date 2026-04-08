@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
+import { parseBookingRangeBound } from "../utils/dates";
 
 const router = express.Router();
 
@@ -22,13 +23,12 @@ router.get("/today", async (req, res, next) => {
     let todayEnd: Date;
 
     if (q.date) {
-      const ISO_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-      if (!ISO_DATE_ONLY.test(q.date.trim())) {
-        throw new HttpError(400, "Некорректный формат даты (ожидается YYYY-MM-DD)");
+      try {
+        todayStart = parseBookingRangeBound(q.date, "start");
+        todayEnd = parseBookingRangeBound(q.date, "end");
+      } catch (e) {
+        throw new HttpError(400, e instanceof Error ? e.message : "Некорректный формат даты");
       }
-      const [y, m, d] = q.date.split("-").map(Number);
-      todayStart = new Date(Date.UTC(y, (m || 1) - 1, d || 1, 0, 0, 0, 0));
-      todayEnd = new Date(Date.UTC(y, (m || 1) - 1, d || 1, 23, 59, 59, 999));
     } else {
       const now = new Date();
       todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));

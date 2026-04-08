@@ -4,7 +4,7 @@ import type { BookingStatus } from "@prisma/client";
 
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
-import { parseBookingRangeBound, diffDaysInclusive } from "../utils/dates";
+import { parseBookingRangeBound, diffDaysInclusive, assertBookingRangeOrder } from "../utils/dates";
 
 const router = express.Router();
 
@@ -43,6 +43,7 @@ router.get("/", async (req, res, next) => {
     try {
       start = parseBookingRangeBound(q.start, "start");
       end = parseBookingRangeBound(q.end, "end");
+      assertBookingRangeOrder(start, end);
     } catch (e) {
       throw new HttpError(400, e instanceof Error ? e.message : "Некорректный период");
     }
@@ -161,6 +162,7 @@ router.get("/occupancy", async (req, res, next) => {
     try {
       start = parseBookingRangeBound(q.start, "start");
       end = parseBookingRangeBound(q.end, "end");
+      assertBookingRangeOrder(start, end);
     } catch (e) {
       throw new HttpError(400, e instanceof Error ? e.message : "Некорректный период");
     }
@@ -171,10 +173,10 @@ router.get("/occupancy", async (req, res, next) => {
     }
 
     // Суммарная мощность всего оборудования
-    const allEquipment = await prisma.equipment.findMany({
-      select: { totalQuantity: true },
+    const capacityResult = await prisma.equipment.aggregate({
+      _sum: { totalQuantity: true },
     });
-    const totalCapacity = allEquipment.reduce((sum, eq) => sum + eq.totalQuantity, 0);
+    const totalCapacity = capacityResult._sum.totalQuantity ?? 0;
 
     // Брони пересекающиеся с диапазоном (только CONFIRMED и ISSUED)
     const bookings = await prisma.booking.findMany({
