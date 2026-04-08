@@ -68,6 +68,17 @@ function formatDatetimeLocal(d: Date): string {
   return `${y}-${m}-${day}T${h}:${min}`;
 }
 
+function displayDatetime(dtLocal: string): string {
+  const d = new Date(dtLocal);
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
 function getQuickPeriod(type: "today" | "tomorrow" | "week"): { start: string; end: string } {
   const now = new Date();
   if (type === "today") {
@@ -282,8 +293,8 @@ export default function EquipmentPage() {
         <div className="p-3 border-b border-slate-200 flex items-center justify-between">
           <div className="text-sm text-slate-700">
             Каталог на период{" "}
-            <span className="font-medium">{start}</span> —{" "}
-            <span className="font-medium">{end}</span>
+            <span className="font-medium">{displayDatetime(start)}</span> —{" "}
+            <span className="font-medium">{displayDatetime(end)}</span>
           </div>
           <div className="text-xs text-slate-500">
             {loadingCatalog
