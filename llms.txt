@@ -17,7 +17,7 @@
 - [apps/api/src/index.ts](apps/api/src/index.ts): Server entrypoint — starts Express on :4000, conditionally starts BullMQ worker if Redis is reachable
 - [apps/api/src/app.ts](apps/api/src/app.ts): Express app setup — helmet, CORS, morgan, JSON body parser, centralized error handler (Zod, Prisma, HttpError)
 - [apps/api/src/prisma.ts](apps/api/src/prisma.ts): Singleton PrismaClient instance
-- [apps/api/src/routes/index.ts](apps/api/src/routes/index.ts): Route registry mounting 13 sub-routers under /api/*
+- [apps/api/src/routes/index.ts](apps/api/src/routes/index.ts): Route registry mounting 19 sub-routers under /api/*
 - [apps/api/prisma/schema.prisma](apps/api/prisma/schema.prisma): Database schema — 23 models: User, Analysis, Lead, Client, Equipment, EquipmentUnit, Booking, BookingItem, BookingItemUnit, Estimate, EstimateLine, Payment, Expense, BookingFinanceEvent, AppSetting, SlangAlias, SlangLearningCandidate, ScanSession, ScanRecord, WarehousePin, ImportSession, ImportSessionRow, CompetitorAlias
 - [apps/api/prisma/seed.ts](apps/api/prisma/seed.ts): Database seeder
 
@@ -64,6 +64,10 @@
 - [apps/api/src/queue/connection.ts](apps/api/src/queue/connection.ts): Shared ioredis connection (lazy, no auto-reconnect)
 - [apps/api/src/queue/analysisQueue.ts](apps/api/src/queue/analysisQueue.ts): Queue definition and job types
 - [apps/api/src/queue/analysisWorker.ts](apps/api/src/queue/analysisWorker.ts): Worker — processes photo analysis jobs (vision -> match -> estimate)
+
+### Dashboard & Calendar
+- [apps/api/src/routes/dashboard.ts](apps/api/src/routes/dashboard.ts): GET /api/dashboard/today — daily operations summary (pickups, returns, active bookings); optional `?date=YYYY-MM-DD`
+- [apps/api/src/routes/calendar.ts](apps/api/src/routes/calendar.ts): GET /api/calendar (resources + booking events with category/search/includeDrafts filters), GET /api/calendar/occupancy (per-day booking heatmap)
 
 ### Finance
 - [apps/api/src/routes/finance.ts](apps/api/src/routes/finance.ts): Payment and expense endpoints
