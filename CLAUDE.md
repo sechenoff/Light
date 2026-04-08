@@ -85,8 +85,8 @@ light-rental-system/
 | `apps/web/app/equipment/[id]/units/page.tsx` | Unit management: status badges, generate/edit/delete, label printing |
 | `packages/shared/src/crewCalculator.ts` | Shared crew cost calculator (imported by web + bot) |
 | `apps/bot/src/scenes/booking-helpers.ts` | Extracted pure functions from booking scene |
-| `apps/web/app/page.tsx` | Dashboard home — pickups/returns/active ops today, MiniCalendar heatmap, QuickAvailabilityCheck widget |
-| `apps/web/src/components/MiniCalendar.tsx` | Month heatmap component (react-day-picker + /api/calendar/occupancy) |
+| `apps/web/app/page.tsx` | Operations dashboard home page (was redirect) |
+| `apps/web/src/components/MiniCalendar.tsx` | Month heatmap using react-day-picker v9, click→calendar |
 | `apps/web/src/components/DashboardOpsCard.tsx` | Booking operation card for dashboard sections |
 | `apps/web/src/components/QuickAvailabilityCheck.tsx` | Equipment availability search widget (date range + category filter) |
 | `apps/web/app/api/[...path]/route.ts` | Catch-all API proxy with connection error handling |
@@ -123,7 +123,7 @@ npm run build
 npm run lint
 
 # Tests
-npm test                          # run all (shared + bot + api) — 208 tests
+npm test                          # run all (shared + bot + api) — 227 tests
 npm run test -w apps/api          # API tests (smoke + barcode integration)
 npm run test -w apps/bot          # bot booking-helpers tests only (27 tests)
 npm run test -w packages/shared   # shared package tests only
@@ -164,13 +164,16 @@ npm run seed                  # Seed database
 - **Price comparison uses Decimal.equals()**: never use `===` to compare monetary values — `Decimal` instances are objects. Use `.equals()` from Decimal.js.
 - **Import file formats**: `.xlsx`, `.csv`, `.xls` accepted (max 5 MB). Parsed via `xlsx` + `exceljs` libraries.
 - **Import apply uses optimistic locking**: `version` field on `ImportSession` prevents double-apply. `applyChanges()` increments version atomically and rejects stale requests.
-- **Home page is a dashboard**: `/` renders `apps/web/app/page.tsx` (dashboard with pickups/returns/active ops, MiniCalendar, QuickAvailabilityCheck). Navigation: Дашборд (/), Бронирование оборудования (/equipment), Календарь (/calendar). Uses `react-day-picker`, `@floating-ui/react`, `date-fns`.
+- **Dashboard is home page** — `/` shows operations dashboard (pickups/returns/active + MiniCalendar + availability check), not equipment list.
+- **Calendar BLOCKING_STATUSES** — `["CONFIRMED", "ISSUED"]` used by both `calendar.ts` and `availability.ts`. DRAFT bookings excluded from occupancy calculations.
+- **Hourly precision** — Equipment page and QuickAvailabilityCheck use `datetime-local` inputs. Bookings resolved to exact hour, not just date.
+- **New web dependencies**: `react-day-picker` v9, `@floating-ui/react`, `date-fns` (web only).
 
 ## Known Issues
 
 1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
 2. **~~Crew calculator duplication~~** — RESOLVED: extracted to `packages/shared` (`@light-rental/shared`).
-3. **~~Minimal test coverage~~** — RESOLVED: 208 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, importSession routes, and calendarUtils tests.
+3. **~~Minimal test coverage~~** — RESOLVED: 227 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, importSession routes, dashboard, calendar, and calendarUtils tests.
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
 
