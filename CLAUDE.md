@@ -30,7 +30,7 @@ light-rental-system/
   apps/
     api/          Express 4 + Prisma 6 (SQLite) + BullMQ
       src/
-        routes/       16 route files (equipment, bookings, warehouse, equipmentUnits, etc.)
+        routes/       17 route files (equipment, bookings, warehouse, equipmentUnits, equipmentUnitsGlobal, etc.)
         services/     Business logic (bookings, analyses, barcode, scanSession, equipmentMatcher, gemini, smetaExport/, vision/)
         middleware/   apiKeyAuth, rateLimiter, warehouseAuth (PIN-based token auth)
         queue/        BullMQ connection, worker, queue definitions
@@ -42,7 +42,7 @@ light-rental-system/
       app/            Pages: bookings, equipment, finance, admin, crew-calculator, settings, warehouse (scan UI)
       app/api/        Catch-all proxy to Express backend
       src/lib/        Shared logic: api client, formatting
-      src/components/ AppShell, StatusBadge
+      src/components/ AppShell, StatusBadge, BarcodeScanner
     bot/          Telegraf 4 + AI booking (API-backed matching)
       src/scenes/     booking (hub-and-spoke), crewCalc, photoAnalysis wizard scenes
       src/services/   llm (equipment matching via API), api client, logger
@@ -71,10 +71,10 @@ light-rental-system/
 | `apps/bot/src/scenes/booking.ts` | Hub-and-spoke booking scene (~1000 LOC): hub step is central cart screen, spokes: catalog, inline needsReview confirmations |
 | `apps/bot/src/services/api.ts` | Bot API client: gaffer review types (GafferReviewItem, GafferMatchCandidate), parseGafferReview() |
 | `apps/bot/src/services/llm.ts` | Equipment matching via parseGafferReview API (3-tier: resolved/needsReview/unmatched), date parsing |
-| `apps/api/src/services/barcode.ts` | Barcode generation (Code128 via bwip-js), HMAC-SHA256 verification, label rendering (PNG/PDF) |
+| `apps/api/src/services/barcode.ts` | Barcode generation (Code128 via bwip-js), HMAC-SHA256 verification, label rendering (PNG/PDF), dual resolution via `resolveBarcode()` |
 | `apps/api/src/services/scanSession.ts` | Scan session service: issue/return/cancel logic, unit status transitions, reconciliation |
 | `apps/api/src/routes/warehouse.ts` | Warehouse scan endpoints: auth, sessions, scan, summary, complete (7 scan routes + public auth) |
-| `apps/api/src/routes/equipmentUnits.ts` | Equipment unit CRUD, barcode generation, label endpoints (PNG single, PDF batch) |
+| `apps/api/src/routes/equipmentUnits.ts` | Equipment unit CRUD, barcode generation, label endpoints (PNG single, PDF batch), assign-barcode, batch-assign endpoints |
 | `apps/api/src/middleware/apiKeyAuth.ts` | API key auth middleware (warn/enforce modes, X-API-Key header) |
 | `apps/api/src/middleware/warehouseAuth.ts` | Warehouse PIN auth middleware: HMAC-signed token, per-route (not global) |
 | `apps/api/src/middleware/rateLimiter.ts` | Rate limiter: 100 req/min per IP (express-rate-limit) |
@@ -84,7 +84,10 @@ light-rental-system/
 | `packages/shared/src/crewCalculator.ts` | Shared crew cost calculator (imported by web + bot) |
 | `apps/bot/src/scenes/booking-helpers.ts` | Extracted pure functions from booking scene |
 | `apps/web/app/api/[...path]/route.ts` | Catch-all API proxy with connection error handling |
-| `apps/web/app/admin/page.tsx` | Admin panel -- slang learning review + warehouse worker management |
+| `apps/web/app/admin/page.tsx` | Admin panel -- slang learning review + warehouse worker management + cross-catalog barcode management |
+| `apps/api/src/routes/equipmentUnitsGlobal.ts` | Cross-catalog equipment units API: list, lookup, batch labels (mounted at `/api/equipment-units`) |
+| `apps/web/app/admin/scanner/page.tsx` | Mobile-first barcode scanner page: lookup, assign, batch-assign modes |
+| `apps/web/src/components/BarcodeScanner.tsx` | Shared barcode scanner component (html5-qrcode, Wake Lock, flash animation) |
 | `ecosystem.config.js` | PM2 process definitions for api (:4000) + rental-bot |
 | `deploy.sh` | Build + deploy script (builds shared first; supports --api, --web, --rental-bot flags) |
 
@@ -143,6 +146,9 @@ npm run seed                  # Seed database
 - **Barcode payloads use HMAC-SHA256**: `BARCODE_SECRET` env var required. Payload format: `unitId:hmac12hex`. Labels encode `barcodePayload` (machine-scannable), display `barcode` (human-readable like `LR-SKY60-003`).
 - **Equipment tracking modes**: `COUNT` (legacy, quantity-only) and `UNIT` (individual barcode tracking). Both coexist — COUNT items skip scan verification.
 - **Unit status lifecycle**: AVAILABLE → ISSUED (on scan) → AVAILABLE (on return). MAINTENANCE and RETIRED units excluded from reservation and scanning.
+- **Dual barcode resolution**: `resolveBarcode()` in `barcode.ts` resolves scanned values via HMAC-first, raw-barcode-fallback. All raw-resolved scans logged with `hmacVerified: false` on `ScanRecord`.
+- **Global equipment-units routes**: `/api/equipment-units` routes are mounted BEFORE `/api/equipment` in `routes/index.ts` to prevent prefix collision. Same apiKeyAuth protection.
+- **Scanner component is shared**: `BarcodeScanner.tsx` in `src/components/` is used by both `/warehouse/scan` and `/admin/scanner`. The warehouse re-export (`Html5QrcodePlugin.tsx`) is a thin wrapper.
 
 ## Known Issues
 
@@ -152,4 +158,4 @@ npm run seed                  # Seed database
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
 
-<!-- updated-by-superflow:2026-04-07 -->
+<!-- updated-by-superflow:2026-04-08 -->
