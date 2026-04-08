@@ -83,9 +83,6 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
     });
   }
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
-    if (err.code === "P2002") {
-      return res.status(409).json({ error: "Запись с таким значением уже существует" });
-    }
     if (err.code === "P1001" || err.code === "P1003") {
       return res.status(503).json({
         message:
