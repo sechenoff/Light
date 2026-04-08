@@ -344,7 +344,13 @@ router.delete("/:unitId", async (req, res, next) => {
       });
     }
 
-    await prisma.equipmentUnit.delete({ where: { id: unitId } });
+    await prisma.$transaction(async (tx) => {
+      await tx.equipmentUnit.delete({ where: { id: unitId } });
+      await tx.equipment.update({
+        where: { id: equipmentId },
+        data: { totalQuantity: { decrement: 1 } },
+      });
+    });
     res.json({ ok: true });
   } catch (err) {
     next(err);
