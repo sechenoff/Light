@@ -1379,9 +1379,400 @@ function WorkersTab() {
   );
 }
 
+// ── Barcodes tab ─────────────────────────────────────────────────────────────
+
+type UnitRow = {
+  id: string;
+  barcode: string | null;
+  barcodePayload: string | null;
+  status: string;
+  serialNumber: string | null;
+  comment: string | null;
+  createdAt: string;
+  equipment: { id: string; name: string; category: string; brand: string | null; model: string | null };
+};
+
+function BarcodesTab() {
+  const [units, setUnits] = useState<UnitRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+
+  // Filters
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [hasBarcodeFilter, setHasBarcodeFilter] = useState<"" | "true" | "false">("");
+
+  // Stats
+  const [stats, setStats] = useState({ total: 0, withBarcode: 0, withoutBarcode: 0, issued: 0 });
+
+  // Selection for batch actions
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Assign modal
+  const [assignModal, setAssignModal] = useState<{ unitId: string; equipmentId: string } | null>(null);
+  const [assignBarcode, setAssignBarcode] = useState("");
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [assignError, setAssignError] = useState("");
+
+  // Categories for filter dropdown
+  const [categories, setCategories] = useState<string[]>([]);
+
+  // Debounced search
+  const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(searchTimeout.current);
+  }, [search]);
+
+  // Fetch stats on mount
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const [allRes, barcodeRes, noBarcodeRes, issuedRes] = await Promise.all([
+          apiFetch<{ total: number }>("/api/equipment-units?limit=1"),
+          apiFetch<{ total: number }>("/api/equipment-units?hasBarcode=true&limit=1"),
+          apiFetch<{ total: number }>("/api/equipment-units?hasBarcode=false&limit=1"),
+          apiFetch<{ total: number }>("/api/equipment-units?status=ISSUED&limit=1"),
+        ]);
+        setStats({
+          total: allRes.total,
+          withBarcode: barcodeRes.total,
+          withoutBarcode: noBarcodeRes.total,
+          issued: issuedRes.total,
+        });
+      } catch {}
+    }
+    fetchStats();
+  }, []);
+
+  // Fetch categories on mount
+  useEffect(() => {
+    async function fetchCategories() {
+      try {
+        const res = await apiFetch<{ equipment: any[] }>("/api/equipment");
+        const cats = [...new Set(res.equipment.map((e: any) => e.category))].filter(Boolean).sort();
+        setCategories(cats as string[]);
+      } catch {}
+    }
+    fetchCategories();
+  }, []);
+
+  // Fetch units
+  useEffect(() => {
+    async function fetchUnits() {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("page", String(page));
+        params.set("limit", "50");
+        if (debouncedSearch) params.set("search", debouncedSearch);
+        if (statusFilter) params.set("status", statusFilter);
+        if (categoryFilter) params.set("category", categoryFilter);
+        if (hasBarcodeFilter) params.set("hasBarcode", hasBarcodeFilter);
+
+        const res = await apiFetch<{ units: UnitRow[]; total: number; totalPages: number }>(`/api/equipment-units?${params.toString()}`);
+        setUnits(res.units);
+        setTotal(res.total);
+        setTotalPages(res.totalPages);
+      } catch {}
+      setLoading(false);
+    }
+    fetchUnits();
+  }, [page, debouncedSearch, statusFilter, categoryFilter, hasBarcodeFilter]);
+
+  // Reset page on filter change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter, categoryFilter, hasBarcodeFilter]);
+
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selected.size === units.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(units.map(u => u.id)));
+    }
+  }
+
+  async function handlePrintLabels() {
+    const ids = [...selected].filter(id => {
+      const u = units.find(u => u.id === id);
+      return u?.barcode && u?.barcodePayload;
+    });
+    if (ids.length === 0) return;
+
+    try {
+      const res = await fetch("/api/equipment-units/labels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unitIds: ids }),
+      });
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "labels.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Ошибка при генерации этикеток");
+    }
+  }
+
+  async function handleAssign() {
+    if (!assignModal || !assignBarcode.trim()) return;
+    setAssignLoading(true);
+    setAssignError("");
+    try {
+      await apiFetch(`/api/equipment/${assignModal.equipmentId}/units/${assignModal.unitId}/assign-barcode`, {
+        method: "POST",
+        body: JSON.stringify({ barcode: assignBarcode.trim() }),
+      });
+      setAssignModal(null);
+      setAssignBarcode("");
+      // Refresh
+      setPage(p => p);
+      // Trigger re-fetch by toggling a dummy
+      setDebouncedSearch(prev => prev + " ");
+      setTimeout(() => setDebouncedSearch(prev => prev.trim()), 50);
+    } catch (err: any) {
+      setAssignError(err?.message || "Ошибка привязки штрихкода");
+    }
+    setAssignLoading(false);
+  }
+
+  const STATUS_LABELS: Record<string, string> = {
+    AVAILABLE: "Доступен",
+    ISSUED: "Выдан",
+    MAINTENANCE: "Обслуживание",
+    RETIRED: "Списан",
+    MISSING: "Утерян",
+  };
+
+  const STATUS_COLORS: Record<string, string> = {
+    AVAILABLE: "bg-green-100 text-green-700",
+    ISSUED: "bg-blue-100 text-blue-700",
+    MAINTENANCE: "bg-amber-100 text-amber-700",
+    RETIRED: "bg-slate-100 text-slate-500",
+    MISSING: "bg-red-100 text-red-700",
+  };
+
+  return (
+    <div>
+      {/* Stats bar */}
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="bg-slate-50 rounded-lg p-3 text-center">
+          <div className="text-lg font-semibold">{stats.total}</div>
+          <div className="text-xs text-slate-500">Всего единиц</div>
+        </div>
+        <div className="bg-green-50 rounded-lg p-3 text-center">
+          <div className="text-lg font-semibold text-green-700">{stats.withBarcode}</div>
+          <div className="text-xs text-slate-500">Со штрихкодом</div>
+        </div>
+        <div className="bg-amber-50 rounded-lg p-3 text-center">
+          <div className="text-lg font-semibold text-amber-700">{stats.withoutBarcode}</div>
+          <div className="text-xs text-slate-500">Без штрихкода</div>
+        </div>
+        <div className="bg-blue-50 rounded-lg p-3 text-center">
+          <div className="text-lg font-semibold text-blue-700">{stats.issued}</div>
+          <div className="text-xs text-slate-500">Выдано</div>
+        </div>
+      </div>
+
+      {/* Filters row */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Поиск по штрихкоду, серийному №, названию..."
+          className="flex-1 min-w-[200px] px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
+        />
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="px-3 py-2 text-sm border border-slate-200 rounded-lg"
+        >
+          <option value="">Все статусы</option>
+          <option value="AVAILABLE">Доступен</option>
+          <option value="ISSUED">Выдан</option>
+          <option value="MAINTENANCE">Обслуживание</option>
+          <option value="RETIRED">Списан</option>
+          <option value="MISSING">Утерян</option>
+        </select>
+        <select
+          value={categoryFilter}
+          onChange={e => setCategoryFilter(e.target.value)}
+          className="px-3 py-2 text-sm border border-slate-200 rounded-lg"
+        >
+          <option value="">Все категории</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select
+          value={hasBarcodeFilter}
+          onChange={e => setHasBarcodeFilter(e.target.value as "" | "true" | "false")}
+          className="px-3 py-2 text-sm border border-slate-200 rounded-lg"
+        >
+          <option value="">Штрихкод: все</option>
+          <option value="true">Со штрихкодом</option>
+          <option value="false">Без штрихкода</option>
+        </select>
+      </div>
+
+      {/* Batch actions */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4 p-3 bg-slate-50 rounded-lg">
+          <span className="text-sm text-slate-600">Выбрано: {selected.size}</span>
+          <button
+            onClick={handlePrintLabels}
+            className="px-3 py-1.5 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700"
+          >
+            Печать этикеток
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700"
+          >
+            Снять выделение
+          </button>
+        </div>
+      )}
+
+      {/* Table */}
+      {loading ? (
+        <div className="text-center py-8 text-slate-400">Загрузка...</div>
+      ) : units.length === 0 ? (
+        <div className="text-center py-8 text-slate-400">Ничего не найдено</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200">
+                <th className="py-2 px-2 text-left">
+                  <input type="checkbox" onChange={toggleAll} checked={selected.size === units.length && units.length > 0} />
+                </th>
+                <th className="py-2 px-2 text-left text-slate-500 font-medium">Штрихкод</th>
+                <th className="py-2 px-2 text-left text-slate-500 font-medium">Оборудование</th>
+                <th className="py-2 px-2 text-left text-slate-500 font-medium">Категория</th>
+                <th className="py-2 px-2 text-left text-slate-500 font-medium">Статус</th>
+                <th className="py-2 px-2 text-left text-slate-500 font-medium">Серийный №</th>
+                <th className="py-2 px-2 text-left text-slate-500 font-medium">Дата</th>
+                <th className="py-2 px-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {units.map(u => (
+                <tr key={u.id} className="border-b border-slate-100 hover:bg-slate-50">
+                  <td className="py-2 px-2">
+                    <input type="checkbox" checked={selected.has(u.id)} onChange={() => toggleSelect(u.id)} />
+                  </td>
+                  <td className="py-2 px-2 font-mono text-xs">{u.barcode || <span className="text-slate-300">—</span>}</td>
+                  <td className="py-2 px-2">
+                    <Link href={`/equipment/${u.equipment.id}/units`} className="text-blue-600 hover:underline">
+                      {u.equipment.name}
+                    </Link>
+                  </td>
+                  <td className="py-2 px-2 text-slate-500">{u.equipment.category}</td>
+                  <td className="py-2 px-2">
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[u.status] || "bg-slate-100"}`}>
+                      {STATUS_LABELS[u.status] || u.status}
+                    </span>
+                  </td>
+                  <td className="py-2 px-2 text-slate-500 text-xs">{u.serialNumber || "—"}</td>
+                  <td className="py-2 px-2 text-slate-400 text-xs">{formatDate(u.createdAt)}</td>
+                  <td className="py-2 px-2">
+                    {!u.barcode && (
+                      <button
+                        onClick={() => { setAssignModal({ unitId: u.id, equipmentId: u.equipment.id }); setAssignBarcode(""); setAssignError(""); }}
+                        className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+                      >
+                        Привязать
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-sm text-slate-500">
+            Показано {(page - 1) * 50 + 1}–{Math.min(page * 50, total)} из {total}
+          </span>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-30"
+            >
+              ←
+            </button>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-30"
+            >
+              →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Assign barcode modal */}
+      {assignModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setAssignModal(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-4">Привязать штрихкод</h3>
+            <input
+              type="text"
+              value={assignBarcode}
+              onChange={e => setAssignBarcode(e.target.value)}
+              placeholder="Введите штрихкод..."
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              autoFocus
+            />
+            {assignError && <p className="text-sm text-red-600 mb-3">{assignError}</p>}
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setAssignModal(null)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">
+                Отмена
+              </button>
+              <button
+                onClick={handleAssign}
+                disabled={assignLoading || !assignBarcode.trim()}
+                className="px-4 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50"
+              >
+                {assignLoading ? "..." : "Привязать"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Admin panel (authenticated) ───────────────────────────────────────────────
 
-type AdminTab = "catalog" | "pricelist" | "import" | "slang" | "workers";
+type AdminTab = "catalog" | "pricelist" | "import" | "slang" | "workers" | "barcodes";
 
 const TABS: Array<{ id: AdminTab; label: string }> = [
   { id: "catalog", label: "Каталог техники" },
@@ -1389,6 +1780,7 @@ const TABS: Array<{ id: AdminTab; label: string }> = [
   { id: "import", label: "Импорт оборудования" },
   { id: "slang", label: "Жаргон / Обучение" },
   { id: "workers", label: "Кладовщики" },
+  { id: "barcodes", label: "Штрихкоды" },
 ];
 
 function AdminPanel({ onLogout }: { onLogout: () => void }) {
@@ -1443,6 +1835,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         {tab === "import" && <ImportTab />}
         {tab === "slang" && <SlangLearningTab />}
         {tab === "workers" && <WorkersTab />}
+        {tab === "barcodes" && <BarcodesTab />}
       </div>
     </div>
   );
