@@ -336,30 +336,39 @@ async function computeDiffForSession(sessionId: string): Promise<void> {
 
     const eq = row.equipment;
 
-    const oldPrice = eq.rentalRatePerShift ? parseFloat(eq.rentalRatePerShift.toString()) : null;
-    const oldPrice2 = eq.rentalRateTwoShifts ? parseFloat(eq.rentalRateTwoShifts.toString()) : null;
-    const oldPriceProject = eq.rentalRatePerProject ? parseFloat(eq.rentalRatePerProject.toString()) : null;
+    // Use Decimal for precise comparison (avoid float rounding issues)
+    const oldPriceDec = eq.rentalRatePerShift ? new Prisma.Decimal(eq.rentalRatePerShift.toString()) : null;
+    const oldPrice2Dec = eq.rentalRateTwoShifts ? new Prisma.Decimal(eq.rentalRateTwoShifts.toString()) : null;
+    const oldPriceProjectDec = eq.rentalRatePerProject ? new Prisma.Decimal(eq.rentalRatePerProject.toString()) : null;
     const oldQty = eq.totalQuantity;
 
-    const newPrice = row.sourcePrice ? parseFloat(row.sourcePrice.toString()) : null;
-    const newPrice2 = row.sourcePrice2 ? parseFloat(row.sourcePrice2.toString()) : null;
-    const newPriceProject = row.sourcePriceProject ? parseFloat(row.sourcePriceProject.toString()) : null;
+    const newPriceDec = row.sourcePrice ? new Prisma.Decimal(row.sourcePrice.toString()) : null;
+    const newPrice2Dec = row.sourcePrice2 ? new Prisma.Decimal(row.sourcePrice2.toString()) : null;
+    const newPriceProjectDec = row.sourcePriceProject ? new Prisma.Decimal(row.sourcePriceProject.toString()) : null;
     const newQty = row.sourceQty;
 
-    update.oldPrice = oldPrice !== null ? new Prisma.Decimal(oldPrice) : null;
-    update.oldPrice2 = oldPrice2 !== null ? new Prisma.Decimal(oldPrice2) : null;
-    update.oldPriceProject = oldPriceProject !== null ? new Prisma.Decimal(oldPriceProject) : null;
+    // Float versions for suspicious value detection (thresholds don't need Decimal precision)
+    const newPriceFloat = newPriceDec ? parseFloat(newPriceDec.toString()) : null;
+    const oldPriceFloat = oldPriceDec ? parseFloat(oldPriceDec.toString()) : null;
+    const newPrice2Float = newPrice2Dec ? parseFloat(newPrice2Dec.toString()) : null;
+    const oldPrice2Float = oldPrice2Dec ? parseFloat(oldPrice2Dec.toString()) : null;
+    const newPriceProjectFloat = newPriceProjectDec ? parseFloat(newPriceProjectDec.toString()) : null;
+    const oldPriceProjectFloat = oldPriceProjectDec ? parseFloat(oldPriceProjectDec.toString()) : null;
+
+    update.oldPrice = oldPriceDec;
+    update.oldPrice2 = oldPrice2Dec;
+    update.oldPriceProject = oldPriceProjectDec;
     update.oldQty = oldQty;
 
     // Detect suspicious price and mark in matchMethod
     let isFlagged = false;
-    if (newPrice !== null && isSuspiciousPrice(newPrice, oldPrice)) {
+    if (newPriceFloat !== null && isSuspiciousPrice(newPriceFloat, oldPriceFloat)) {
       isFlagged = true;
     }
-    if (newPrice2 !== null && isSuspiciousPrice(newPrice2, oldPrice2)) {
+    if (newPrice2Float !== null && isSuspiciousPrice(newPrice2Float, oldPrice2Float)) {
       isFlagged = true;
     }
-    if (newPriceProject !== null && isSuspiciousPrice(newPriceProject, oldPriceProject)) {
+    if (newPriceProjectFloat !== null && isSuspiciousPrice(newPriceProjectFloat, oldPriceProjectFloat)) {
       isFlagged = true;
     }
 
@@ -368,25 +377,27 @@ async function computeDiffForSession(sessionId: string): Promise<void> {
       update.matchMethod = (row.matchMethod ? row.matchMethod + ":FLAGGED" : "FLAGGED");
     }
 
-    // Compute action
-    const priceChanged =
-      (newPrice !== null && oldPrice !== null && newPrice !== oldPrice) ||
-      (newPrice2 !== null && oldPrice2 !== null && newPrice2 !== oldPrice2) ||
-      (newPriceProject !== null && oldPriceProject !== null && newPriceProject !== oldPriceProject);
+    // Compute action using Decimal.equals() for precise comparison
+    const decChanged = (a: Prisma.Decimal | null, b: Prisma.Decimal | null): boolean =>
+      a !== null && b !== null && !a.equals(b);
+
+    const priceChanged = decChanged(newPriceDec, oldPriceDec) ||
+      decChanged(newPrice2Dec, oldPrice2Dec) ||
+      decChanged(newPriceProjectDec, oldPriceProjectDec);
 
     const qtyChanged = newQty !== null && newQty !== oldQty;
 
     if (priceChanged) {
       update.action = DiffAction.PRICE_CHANGE;
-      // Compute priceDelta from primary field
-      if (newPrice !== null && oldPrice !== null && oldPrice > 0) {
-        const delta = ((newPrice - oldPrice) / oldPrice) * 100;
+      // Compute priceDelta from primary field using Decimal arithmetic
+      if (newPriceDec && oldPriceDec && !oldPriceDec.isZero()) {
+        const delta = newPriceDec.sub(oldPriceDec).div(oldPriceDec).mul(100);
         update.priceDelta = new Prisma.Decimal(delta.toFixed(2));
-      } else if (newPrice2 !== null && oldPrice2 !== null && oldPrice2 > 0) {
-        const delta = ((newPrice2 - oldPrice2) / oldPrice2) * 100;
+      } else if (newPrice2Dec && oldPrice2Dec && !oldPrice2Dec.isZero()) {
+        const delta = newPrice2Dec.sub(oldPrice2Dec).div(oldPrice2Dec).mul(100);
         update.priceDelta = new Prisma.Decimal(delta.toFixed(2));
-      } else if (newPriceProject !== null && oldPriceProject !== null && oldPriceProject > 0) {
-        const delta = ((newPriceProject - oldPriceProject) / oldPriceProject) * 100;
+      } else if (newPriceProjectDec && oldPriceProjectDec && !oldPriceProjectDec.isZero()) {
+        const delta = newPriceProjectDec.sub(oldPriceProjectDec).div(oldPriceProjectDec).mul(100);
         update.priceDelta = new Prisma.Decimal(delta.toFixed(2));
       }
     } else if (qtyChanged) {
@@ -538,6 +549,7 @@ export async function mapAndMatch(
   await prisma.importSession.update({
     where: { id: sessionId },
     data: {
+      type: type as ImportSessionType,
       fileBuffer: null,
       columnMapping: JSON.stringify(mapping),
       competitorName: competitorName ?? null,
@@ -640,7 +652,10 @@ export async function applyChanges(sessionId: string): Promise<{
             continue;
           }
 
-          await prisma.equipment.delete({ where: { id: row.equipmentId! } });
+          await prisma.equipment.update({
+            where: { id: row.equipmentId! },
+            data: { totalQuantity: 0 },
+          });
           applied.removedItems++;
 
         } else if (row.action === DiffAction.QTY_CHANGE) {
