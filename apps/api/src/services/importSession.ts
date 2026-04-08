@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { computeImportKey, normalizeImportPart } from "./equipmentImport";
 import { Prisma, DiffAction, DiffRowStatus, ImportSessionStatus, ImportSessionType } from "@prisma/client";
+import { batchMatchWithGemini, saveAliases } from "./competitorMatcher";
 
 // ──────────────────────────────────────────────────────────────────
 // Типы
@@ -290,7 +291,24 @@ export async function matchRow(
     };
   }
 
-  // Tier 2: dice similarity
+  // Tier 2: alias lookup (только для конкурентов)
+  if (competitorName) {
+    const alias = await prisma.competitorAlias.findFirst({
+      where: {
+        competitorName,
+        competitorItem: row.sourceName,
+      },
+    });
+    if (alias) {
+      return {
+        equipmentId: alias.equipmentId,
+        matchConfidence: 0.9,
+        matchMethod: "alias",
+      };
+    }
+  }
+
+  // Tier 3: dice similarity
   const names = catalog.map((eq) => eq.name);
   if (names.length === 0) {
     return { equipmentId: null, matchConfidence: null, matchMethod: null };
@@ -529,6 +547,51 @@ export async function mapAndMatch(
           oldQty: eq.totalQuantity,
           status: DiffRowStatus.PENDING,
         });
+      }
+    }
+  }
+
+  // Tier 4: Gemini batch matching для несопоставленных строк конкурента
+  if (competitorName) {
+    const unmatchedIndices = rowsToCreate
+      .map((r, i) => (!r.equipmentId ? i : -1))
+      .filter((i) => i >= 0);
+
+    if (unmatchedIndices.length > 0) {
+      const unmatchedItems = unmatchedIndices.map((i) => ({
+        name: rowsToCreate[i]!.sourceName as string,
+        category: rowsToCreate[i]!.sourceCategory as string | undefined,
+      }));
+
+      const catalogForGemini = catalog.map((c) => ({
+        id: c.id,
+        name: c.name,
+        category: c.category,
+        brand: c.brand,
+        model: c.model,
+      }));
+
+      const geminiMatches = await batchMatchWithGemini(unmatchedItems, catalogForGemini, competitorName);
+
+      if (geminiMatches.length > 0) {
+        // Применяем матчи к строкам
+        for (const match of geminiMatches) {
+          const idx = unmatchedIndices.find(
+            (i) => (rowsToCreate[i]!.sourceName as string) === match.competitorItem,
+          );
+          if (idx !== undefined && match.catalogId) {
+            rowsToCreate[idx]!.equipmentId = match.catalogId;
+            rowsToCreate[idx]!.matchConfidence = match.confidence;
+            rowsToCreate[idx]!.matchMethod = "gemini";
+            matchedEquipmentIds.add(match.catalogId);
+          }
+        }
+
+        // Сохраняем высокоуверенные алиасы
+        const aliasInput = geminiMatches
+          .filter((m) => m.catalogId)
+          .map((m) => ({ competitorItem: m.competitorItem, catalogId: m.catalogId, confidence: m.confidence }));
+        await saveAliases(competitorName, aliasInput);
       }
     }
   }
@@ -824,4 +887,88 @@ export async function bulkAction(
     });
     return { updated: result.count };
   }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// rematchUnmatched
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Повторный матчинг несопоставленных строк сессии через Gemini.
+ * Используется маршрутом POST /:id/match.
+ */
+export async function rematchUnmatched(
+  sessionId: string,
+): Promise<{ matched: number; total: number }> {
+  const session = await prisma.importSession.findUnique({ where: { id: sessionId } });
+  if (!session) throw new HttpError(404, "Сессия не найдена");
+
+  const unmatchedRows = await prisma.importSessionRow.findMany({
+    where: { sessionId, equipmentId: null },
+  });
+
+  if (unmatchedRows.length === 0) {
+    return { matched: 0, total: 0 };
+  }
+
+  // Загружаем каталог
+  const catalog = await prisma.equipment.findMany({
+    select: { id: true, importKey: true, category: true, name: true, brand: true, model: true, totalQuantity: true, rentalRatePerShift: true, rentalRateTwoShifts: true, rentalRatePerProject: true },
+  }) as CatalogItem[];
+
+  const competitorName = session.competitorName ?? undefined;
+
+  const items = unmatchedRows.map((r: any) => ({
+    name: r.sourceName as string,
+    category: r.sourceCategory as string | undefined,
+  }));
+
+  const catalogForGemini = catalog.map((c) => ({
+    id: c.id,
+    name: c.name,
+    category: c.category,
+    brand: c.brand,
+    model: c.model,
+  }));
+
+  const geminiMatches = await batchMatchWithGemini(items, catalogForGemini, competitorName ?? "");
+
+  let matched = 0;
+  for (const match of geminiMatches) {
+    if (!match.catalogId) continue;
+    const row = unmatchedRows.find((r: any) => r.sourceName === match.competitorItem);
+    if (!row) continue;
+
+    await prisma.importSessionRow.update({
+      where: { id: row.id },
+      data: {
+        equipmentId: match.catalogId,
+        matchConfidence: match.confidence,
+        matchMethod: "gemini",
+      },
+    });
+    matched++;
+  }
+
+  if (competitorName && geminiMatches.length > 0) {
+    const aliasInput = geminiMatches
+      .filter((m) => m.catalogId)
+      .map((m) => ({ competitorItem: m.competitorItem, catalogId: m.catalogId, confidence: m.confidence }));
+    await saveAliases(competitorName, aliasInput);
+  }
+
+  // Пересчитываем diff для обновлённых строк
+  if (matched > 0) {
+    await computeDiffForSession(sessionId);
+    // Обновляем статистику сессии
+    const allRows = await prisma.importSessionRow.findMany({ where: { sessionId } });
+    const newMatchedRows = allRows.filter((r: any) => r.equipmentId && r.action !== DiffAction.REMOVED_ITEM).length;
+    const newUnmatchedRows = allRows.filter((r: any) => !r.equipmentId).length;
+    await prisma.importSession.update({
+      where: { id: sessionId },
+      data: { matchedRows: newMatchedRows, unmatchedRows: newUnmatchedRows },
+    });
+  }
+
+  return { matched, total: unmatchedRows.length };
 }

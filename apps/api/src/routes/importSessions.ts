@@ -12,6 +12,7 @@ import {
   applyChanges,
   exportComparison,
   cleanExpired,
+  rematchUnmatched,
 } from "../services/importSession";
 
 const upload = multer({
@@ -267,11 +268,17 @@ importSessionsRouter.post("/:id/map", async (req, res, next) => {
 });
 
 // ──────────────────────────────────────────────────────────────────
-// POST /:id/match — re-trigger matching (placeholder Sprint 3)
+// POST /:id/match — повторный матчинг несопоставленных строк (Gemini)
 // ──────────────────────────────────────────────────────────────────
 
-importSessionsRouter.post("/:id/match", async (_req, res) => {
-  res.status(501).json({ message: "Не реализовано" });
+importSessionsRouter.post("/:id/match", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await rematchUnmatched(id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ──────────────────────────────────────────────────────────────────
