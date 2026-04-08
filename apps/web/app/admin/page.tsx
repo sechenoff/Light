@@ -31,7 +31,8 @@ type CommitResult = {
 type ImportSession = {
   id: string; type: string; status: string; fileName: string; fileSize: number;
   totalRows: number; matchedRows: number; unmatchedRows: number;
-  appliedCount: number; competitorName: string | null; columnMapping: string | null;
+  appliedCount: number; acceptedCount: number; rejectedCount: number;
+  competitorName: string | null; columnMapping: string | null;
   expiresAt: string; createdAt: string; updatedAt: string;
 };
 
@@ -1827,7 +1828,7 @@ const FILTER_OPTIONS: Array<{ id: PricesFilter; label: string; actionFilter?: st
   { id: "new", label: "Новые", actionFilter: "NEW_ITEM" },
   { id: "removed", label: "Удалённые", actionFilter: "REMOVED_ITEM" },
   { id: "qty", label: "Количество", actionFilter: "QTY_CHANGE" },
-  { id: "unmatched", label: "Не найдено", actionFilter: "NO_MATCH" },
+  { id: "unmatched", label: "Не найдено", actionFilter: "NO_CHANGE" },
 ];
 
 function actionLabel(action: string): string {
@@ -1888,7 +1889,7 @@ function PricesTab() {
   const [mapping, setMapping] = useState(false);
   const [applying, setApplying] = useState(false);
   const [loadingRows, setLoadingRows] = useState(false);
-  const [confirmBulk, setConfirmBulk] = useState<{ action: "ACCEPT" | "REJECT"; count: number } | null>(null);
+  const [confirmBulk, setConfirmBulk] = useState<{ action: "ACCEPTED" | "REJECTED"; count: number } | null>(null);
   const [confirmApply, setConfirmApply] = useState(false);
   const [applyResult, setApplyResult] = useState<{ applied: Record<string, number>; skipped: Array<{ id: string; reason: string }> } | null>(null);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -1905,9 +1906,7 @@ function PricesTab() {
         (s) => s.type === "OWN_PRICE_UPDATE" && s.status === "REVIEW"
       );
       if (active) {
-        setActiveSession(active);
-        setStep("review");
-        loadRows(active.id, "changed", 1);
+        handleOpenSession(active);
       }
     } catch {
       setSessions([]);
@@ -1988,7 +1987,7 @@ function PricesTab() {
           body: JSON.stringify({
             type: importType,
             competitorName: importType === "COMPETITOR_IMPORT" ? competitorName || undefined : undefined,
-            columnMapping,
+            mapping: columnMapping,
           }),
         }
       );
@@ -2007,7 +2006,7 @@ function PricesTab() {
 
   async function handleRowToggle(row: ImportSessionRow) {
     if (!activeSession) return;
-    const newStatus = row.status === "ACCEPTED" ? "PENDING" : "ACCEPTED";
+    const newStatus = row.status === "ACCEPTED" ? "REJECTED" : "ACCEPTED";
     try {
       await apiFetch(`/api/import-sessions/${activeSession.id}/rows/${row.id}`, {
         method: "PATCH",
@@ -2021,17 +2020,18 @@ function PricesTab() {
 
   // ── Bulk action ────────────────────────────────────────────────────────────
 
-  async function handleBulkAction(action: "ACCEPT" | "REJECT") {
+  async function handleBulkAction(action: "ACCEPTED" | "REJECTED") {
     if (!activeSession) return;
     setConfirmBulk(null);
     try {
       const opt = FILTER_OPTIONS.find((x) => x.id === filter);
+      const filterObj = opt?.actionFilter ? { action: opt.actionFilter } : {};
       await apiFetch(`/api/import-sessions/${activeSession.id}/bulk-action`, {
         method: "POST",
-        body: JSON.stringify({ action, filter: opt?.actionFilter ?? filter }),
+        body: JSON.stringify({ action, filter: filterObj }),
       });
       loadRows(activeSession.id, filter, rowsPage);
-      setMessage({ type: "ok", text: action === "ACCEPT" ? "Все позиции приняты" : "Все позиции отклонены" });
+      setMessage({ type: "ok", text: action === "ACCEPTED" ? "Все позиции приняты" : "Все позиции отклонены" });
     } catch (e) {
       setMessage({ type: "err", text: e instanceof Error ? e.message : "Ошибка массового действия" });
     }
@@ -2103,6 +2103,21 @@ function PricesTab() {
 
   async function handleOpenSession(session: ImportSession) {
     setActiveSession(session);
+    // Загружаем stats из API для подтверждения применения
+    try {
+      const data = await apiFetch<{ session: ImportSession; rows: ImportSessionRow[]; total: number }>(`/api/import-sessions/${session.id}/rows?limit=1&page=1`);
+      // Fetch action distribution from rows endpoint with each action filter
+      const actionCounts: MapStats = { priceChanges: 0, newItems: 0, removedItems: 0, qtyChanges: 0, noChange: 0 };
+      const countPromises = [
+        apiFetch<{ total: number }>(`/api/import-sessions/${session.id}/rows?action=PRICE_CHANGE&limit=1`).then(r => actionCounts.priceChanges = r.total),
+        apiFetch<{ total: number }>(`/api/import-sessions/${session.id}/rows?action=NEW_ITEM&limit=1`).then(r => actionCounts.newItems = r.total),
+        apiFetch<{ total: number }>(`/api/import-sessions/${session.id}/rows?action=REMOVED_ITEM&limit=1`).then(r => actionCounts.removedItems = r.total),
+        apiFetch<{ total: number }>(`/api/import-sessions/${session.id}/rows?action=QTY_CHANGE&limit=1`).then(r => actionCounts.qtyChanges = r.total),
+        apiFetch<{ total: number }>(`/api/import-sessions/${session.id}/rows?action=NO_CHANGE&limit=1`).then(r => actionCounts.noChange = r.total),
+      ];
+      await Promise.all(countPromises);
+      setStats(actionCounts);
+    } catch { /* stats загрузятся при следующем map, не критично */ }
     setStep("review");
     loadRows(session.id, "changed", 1);
   }
@@ -2116,7 +2131,7 @@ function PricesTab() {
   }
 
   const isOwnMode = (activeSession?.type ?? importType) === "OWN_PRICE_UPDATE";
-  const acceptedCount = rows.filter((r) => r.status === "ACCEPTED").length;
+  const acceptedCount = activeSession?.acceptedCount ?? rows.filter((r) => r.status === "ACCEPTED").length;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -2383,13 +2398,13 @@ function PricesTab() {
           {isOwnMode && activeSession.status !== "COMPLETED" && (
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setConfirmBulk({ action: "ACCEPT", count: rowsTotal })}
+                onClick={() => setConfirmBulk({ action: "ACCEPTED", count: rowsTotal })}
                 className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"
               >
                 Принять все
               </button>
               <button
-                onClick={() => setConfirmBulk({ action: "REJECT", count: rowsTotal })}
+                onClick={() => setConfirmBulk({ action: "REJECTED", count: rowsTotal })}
                 className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors"
               >
                 Отклонить все
@@ -2597,7 +2612,7 @@ function PricesTab() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
             <h3 className="text-base font-semibold text-slate-900">
-              {confirmBulk.action === "ACCEPT" ? "Принять" : "Отклонить"} {confirmBulk.count} позиций?
+              {confirmBulk.action === "ACCEPTED" ? "Принять" : "Отклонить"} {confirmBulk.count} позиций?
             </h3>
             <p className="text-sm text-slate-500">
               Действие применится ко всем строкам в текущем фильтре.
@@ -2609,7 +2624,7 @@ function PricesTab() {
               <button
                 onClick={() => handleBulkAction(confirmBulk.action)}
                 className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors ${
-                  confirmBulk.action === "ACCEPT" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-red-600 hover:bg-red-500"
+                  confirmBulk.action === "ACCEPTED" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-red-600 hover:bg-red-500"
                 }`}
               >
                 Подтвердить
