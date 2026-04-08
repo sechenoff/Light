@@ -1,0 +1,807 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { useRouter, useSearchParams } from "next/navigation";
+import type { BarcodeScannerProps } from "@/components/BarcodeScanner";
+import { apiFetch } from "../../../src/lib/api";
+
+const BarcodeScanner = dynamic<BarcodeScannerProps>(
+  () => import("@/components/BarcodeScanner"),
+  { ssr: false },
+);
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type ScanMode = "lookup" | "assign" | "batch";
+
+type EquipmentItem = {
+  id: string;
+  name: string;
+  category: string;
+  brand: string | null;
+  model: string | null;
+  stockTrackingMode: string;
+};
+
+type LookupResult = {
+  unit: {
+    id: string;
+    barcode: string | null;
+    status: string;
+    serialNumber: string | null;
+  };
+  equipment: {
+    id: string;
+    name: string;
+    category: string;
+    brand: string | null;
+    model: string | null;
+  };
+  hmacVerified: boolean;
+};
+
+type UnitResult = {
+  id: string;
+  barcode: string | null;
+  barcodePayload: string | null;
+  status: string;
+  serialNumber: string | null;
+};
+
+type BatchItem = { unit: UnitResult; barcode: string };
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const ADMIN_SESSION_KEY = "admin_auth";
+const ADMIN_PASSWORD = "4020909Bear";
+
+const STATUS_LABELS: Record<string, string> = {
+  AVAILABLE: "Доступен",
+  ISSUED: "Выдан",
+  MAINTENANCE: "Обслуживание",
+  RETIRED: "Списан",
+  MISSING: "Утерян",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  AVAILABLE: "bg-green-100 text-green-700",
+  ISSUED: "bg-blue-100 text-blue-700",
+  MAINTENANCE: "bg-amber-100 text-amber-700",
+  RETIRED: "bg-slate-100 text-slate-500",
+  MISSING: "bg-red-100 text-red-700",
+};
+
+// ── Login Screen ──────────────────────────────────────────────────────────────
+
+function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
+  const [pwd, setPwd] = useState("");
+  const [error, setError] = useState(false);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (pwd === ADMIN_PASSWORD) {
+      sessionStorage.setItem(ADMIN_SESSION_KEY, "1");
+      onSuccess();
+    } else {
+      setError(true);
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-xs">
+        <h1 className="text-xl font-semibold text-center mb-6">Сканер</h1>
+        <input
+          type="password"
+          value={pwd}
+          onChange={(e) => {
+            setPwd(e.target.value);
+            setError(false);
+          }}
+          placeholder="Пароль администратора"
+          className="w-full px-4 py-3 text-lg border border-slate-200 rounded-xl mb-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
+          autoFocus
+        />
+        {error && (
+          <p className="text-sm text-red-500 mb-3 text-center">Неверный пароль</p>
+        )}
+        <button
+          type="submit"
+          className="w-full py-3 text-lg font-medium bg-slate-900 text-white rounded-xl"
+        >
+          Войти
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ── Equipment Search List ─────────────────────────────────────────────────────
+
+function EquipmentList({
+  onSelect,
+}: {
+  onSelect: (item: EquipmentItem) => void;
+}) {
+  const [items, setItems] = useState<EquipmentItem[]>([]);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch<{ equipment: EquipmentItem[] }>("/api/equipment?limit=500")
+      .then((data) => {
+        // Only UNIT-mode equipment can have barcodes assigned
+        setItems(
+          data.equipment.filter((e) => e.stockTrackingMode === "UNIT"),
+        );
+      })
+      .catch((err: unknown) => {
+        const e = err as { message?: string };
+        setError(e?.message ?? "Ошибка загрузки оборудования");
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = query
+    ? items.filter(
+        (item) =>
+          item.name.toLowerCase().includes(query.toLowerCase()) ||
+          item.category.toLowerCase().includes(query.toLowerCase()),
+      )
+    : items;
+
+  if (loading) {
+    return (
+      <div className="space-y-2 p-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-14 bg-slate-100 rounded-xl animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl mx-4">
+        {error}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 px-4 pb-4">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Поиск оборудования..."
+        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+      />
+      {filtered.length === 0 ? (
+        <p className="text-sm text-slate-400 text-center py-6">
+          {query ? "Ничего не найдено" : "Нет оборудования в режиме UNIT"}
+        </p>
+      ) : (
+        <div className="space-y-1.5 max-h-64 overflow-y-auto">
+          {filtered.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => onSelect(item)}
+              className="w-full text-left px-4 py-3 bg-white border border-slate-200 rounded-xl hover:border-slate-400 hover:shadow-sm transition-all"
+            >
+              <div className="text-sm font-medium text-slate-800 truncate">
+                {item.name}
+              </div>
+              <div className="text-xs text-slate-400 mt-0.5">{item.category}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Lookup Result Card ────────────────────────────────────────────────────────
+
+function LookupCard({ result }: { result: LookupResult }) {
+  const statusLabel = STATUS_LABELS[result.unit.status] ?? result.unit.status;
+  const statusColor =
+    STATUS_COLORS[result.unit.status] ?? "bg-slate-100 text-slate-700";
+
+  return (
+    <div className="mx-4 mt-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-slate-800 text-base truncate">
+            {result.equipment.name}
+          </div>
+          <div className="text-xs text-slate-400 mt-0.5">{result.equipment.category}</div>
+        </div>
+        <span
+          className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ${statusColor}`}
+        >
+          {statusLabel}
+        </span>
+      </div>
+
+      <div className="space-y-1.5 text-sm">
+        {result.unit.barcode && (
+          <div className="flex justify-between">
+            <span className="text-slate-500">Штрихкод</span>
+            <span className="font-mono text-slate-700">{result.unit.barcode}</span>
+          </div>
+        )}
+        {result.unit.serialNumber && (
+          <div className="flex justify-between">
+            <span className="text-slate-500">Серийный №</span>
+            <span className="font-mono text-slate-700">{result.unit.serialNumber}</span>
+          </div>
+        )}
+        <div className="flex justify-between">
+          <span className="text-slate-500">HMAC</span>
+          <span
+            className={result.hmacVerified ? "text-green-600 font-medium" : "text-red-500"}
+          >
+            {result.hmacVerified ? "Подтверждён" : "Не подтверждён"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Scanner Component ────────────────────────────────────────────────────
+
+function ScannerApp() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [mode, setMode] = useState<ScanMode>("lookup");
+  const [online, setOnline] = useState(true);
+
+  // Flash state for camera border
+  const [flashColor, setFlashColor] = useState<"green" | "red" | "amber" | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Lookup mode state
+  const [lookupResult, setLookupResult] = useState<LookupResult | null>(null);
+  const [lookupNotFound, setLookupNotFound] = useState(false);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupManual, setLookupManual] = useState("");
+
+  // ── Assign mode state
+  const [assignEquipment, setAssignEquipment] = useState<EquipmentItem | null>(null);
+  const [assignManual, setAssignManual] = useState("");
+  const [assignResult, setAssignResult] = useState<UnitResult | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [assignLoading, setAssignLoading] = useState(false);
+
+  // ── Batch mode state
+  const [batchEquipment, setBatchEquipment] = useState<EquipmentItem | null>(null);
+  const [batchManual, setBatchManual] = useState("");
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
+  const [batchLoading, setBatchLoading] = useState(false);
+
+  // Deduplicate scan calls
+  const lastScanRef = useRef<{ value: string; ts: number }>({ value: "", ts: 0 });
+  const scanningRef = useRef(false);
+
+  // Online status
+  useEffect(() => {
+    setOnline(navigator.onLine);
+    const onOnline = () => setOnline(true);
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  // Pre-select equipment from URL ?equipmentId= (assign mode)
+  useEffect(() => {
+    const equipmentId = searchParams.get("equipmentId");
+    if (equipmentId) {
+      setMode("assign");
+      apiFetch<{ equipment: EquipmentItem }>(`/api/equipment/${equipmentId}`)
+        .then((data) => setAssignEquipment(data.equipment))
+        .catch(() => {});
+    }
+  }, [searchParams]);
+
+  function flash(color: "green" | "red" | "amber") {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    setFlashColor(color);
+    flashTimerRef.current = setTimeout(() => setFlashColor(null), 600);
+  }
+
+  function vibrate(pattern: number | number[]) {
+    try {
+      navigator.vibrate?.(pattern);
+    } catch {}
+  }
+
+  // ── Lookup handler ────────────────────────────────────────────────────────
+
+  const handleLookup = useCallback(
+    async (barcode: string) => {
+      const now = Date.now();
+      if (barcode === lastScanRef.current.value && now - lastScanRef.current.ts < 2000) return;
+      lastScanRef.current = { value: barcode, ts: now };
+
+      setLookupLoading(true);
+      setLookupResult(null);
+      setLookupNotFound(false);
+      try {
+        const result = await apiFetch<LookupResult>(
+          `/api/equipment-units/lookup?barcode=${encodeURIComponent(barcode)}`,
+        );
+        setLookupResult(result);
+        flash("green");
+        vibrate(100);
+      } catch (err: unknown) {
+        const e = err as { status?: number };
+        if (e?.status === 404) {
+          setLookupNotFound(true);
+          flash("red");
+          vibrate([50, 50, 50]);
+        } else {
+          flash("red");
+          vibrate([50, 50, 50]);
+        }
+      } finally {
+        setLookupLoading(false);
+      }
+    },
+    [],
+  );
+
+  function handleLookupManualSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const val = lookupManual.trim();
+    if (!val) return;
+    setLookupManual("");
+    handleLookup(val);
+  }
+
+  // ── Assign handler ────────────────────────────────────────────────────────
+
+  const handleAssign = useCallback(
+    async (barcode: string) => {
+      if (!assignEquipment) return;
+      if (scanningRef.current) return;
+      const now = Date.now();
+      if (barcode === lastScanRef.current.value && now - lastScanRef.current.ts < 2000) return;
+      lastScanRef.current = { value: barcode, ts: now };
+      scanningRef.current = true;
+
+      setAssignLoading(true);
+      setAssignResult(null);
+      setAssignError(null);
+      try {
+        // Check if there's an existing unit without barcode
+        const unitsData = await apiFetch<{ units: UnitResult[] }>(
+          `/api/equipment/${assignEquipment.id}/units`,
+        );
+        const freeUnit = unitsData.units.find((u) => u.barcode === null);
+
+        let result: UnitResult;
+        if (freeUnit) {
+          // Assign barcode to the existing free unit
+          const data = await apiFetch<{ unit: UnitResult }>(
+            `/api/equipment/${assignEquipment.id}/units/${freeUnit.id}/assign-barcode`,
+            {
+              method: "POST",
+              body: JSON.stringify({ barcode }),
+            },
+          );
+          result = data.unit;
+        } else {
+          // Create new unit with barcode
+          const data = await apiFetch<{ unit: UnitResult }>(
+            `/api/equipment/${assignEquipment.id}/units/batch-assign`,
+            {
+              method: "POST",
+              body: JSON.stringify({ barcode }),
+            },
+          );
+          result = data.unit;
+        }
+
+        setAssignResult(result);
+        flash("green");
+        vibrate(100);
+      } catch (err: unknown) {
+        const e = err as { status?: number; message?: string };
+        setAssignError(e?.message ?? "Ошибка привязки");
+        flash("red");
+        vibrate([50, 50, 50]);
+      } finally {
+        setAssignLoading(false);
+        scanningRef.current = false;
+      }
+    },
+    [assignEquipment],
+  );
+
+  function handleAssignManualSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const val = assignManual.trim();
+    if (!val) return;
+    setAssignManual("");
+    handleAssign(val);
+  }
+
+  // ── Batch assign handler ──────────────────────────────────────────────────
+
+  const handleBatch = useCallback(
+    async (barcode: string) => {
+      if (!batchEquipment) return;
+      if (scanningRef.current) return;
+      const now = Date.now();
+      if (barcode === lastScanRef.current.value && now - lastScanRef.current.ts < 2000) return;
+      lastScanRef.current = { value: barcode, ts: now };
+      scanningRef.current = true;
+
+      // Check for duplicate within this session
+      const isDuplicate = batchItems.some((item) => item.barcode === barcode);
+      if (isDuplicate) {
+        flash("amber");
+        vibrate([50, 50, 50]);
+        scanningRef.current = false;
+        return;
+      }
+
+      setBatchLoading(true);
+      try {
+        const data = await apiFetch<{ unit: UnitResult }>(
+          `/api/equipment/${batchEquipment.id}/units/batch-assign`,
+          {
+            method: "POST",
+            body: JSON.stringify({ barcode }),
+          },
+        );
+        setBatchItems((prev) => [{ unit: data.unit, barcode }, ...prev]);
+        flash("green");
+        vibrate(100);
+      } catch (err: unknown) {
+        const e = err as { status?: number; message?: string };
+        if (e?.status === 409) {
+          // Already assigned elsewhere — amber flash
+          flash("amber");
+          vibrate([50, 50, 50]);
+        } else {
+          flash("red");
+          vibrate([50, 50, 50]);
+        }
+      } finally {
+        setBatchLoading(false);
+        scanningRef.current = false;
+      }
+    },
+    [batchEquipment, batchItems],
+  );
+
+  async function handleBatchDelete(item: BatchItem) {
+    if (!batchEquipment) return;
+    try {
+      await apiFetch(
+        `/api/equipment/${batchEquipment.id}/units/${item.unit.id}`,
+        { method: "DELETE" },
+      );
+      setBatchItems((prev) => prev.filter((i) => i.unit.id !== item.unit.id));
+    } catch {}
+  }
+
+  function handleBatchManualSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const val = batchManual.trim();
+    if (!val) return;
+    setBatchManual("");
+    handleBatch(val);
+  }
+
+  // ── Active scan handler by mode ───────────────────────────────────────────
+
+  const activeScanHandler =
+    mode === "lookup"
+      ? handleLookup
+      : mode === "assign" && assignEquipment
+        ? handleAssign
+        : mode === "batch" && batchEquipment
+          ? handleBatch
+          : undefined;
+
+  // Reset deduplicate ref on mode change
+  function switchMode(m: ScanMode) {
+    setMode(m);
+    lastScanRef.current = { value: "", ts: 0 };
+    setAssignResult(null);
+    setAssignError(null);
+  }
+
+  return (
+    <div className="flex flex-col h-screen bg-slate-900 overflow-hidden">
+      {/* ── Top bar ──────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between px-4 py-3 bg-slate-900 z-10 shrink-0">
+        <h1 className="text-white text-lg font-semibold">Сканер</h1>
+        <div className="flex items-center gap-3">
+          {/* Online status dot */}
+          <span
+            className={`w-2.5 h-2.5 rounded-full ${online ? "bg-green-400" : "bg-red-400"}`}
+            title={online ? "Онлайн" : "Офлайн"}
+          />
+          {/* Close → /admin */}
+          <button
+            onClick={() => router.push("/admin")}
+            className="text-slate-400 hover:text-white text-2xl leading-none pb-0.5"
+            aria-label="Закрыть"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+
+      {/* ── Camera region ─────────────────────────────────────────────────── */}
+      <div className="h-[60vh] shrink-0 relative bg-black">
+        {activeScanHandler ? (
+          <BarcodeScanner
+            onScan={activeScanHandler}
+            flashColor={flashColor}
+            enableTorch
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-slate-400 text-sm text-center px-8">
+              {mode === "assign"
+                ? "Выберите оборудование ниже"
+                : mode === "batch"
+                  ? "Выберите оборудование ниже"
+                  : ""}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Bottom sheet ──────────────────────────────────────────────────── */}
+      <div className="flex-1 bg-slate-50 rounded-t-3xl overflow-y-auto">
+        {/* Mode pills */}
+        <div className="flex gap-2 px-4 pt-4 pb-3 shrink-0">
+          {(
+            [
+              { id: "lookup", label: "Поиск" },
+              { id: "assign", label: "Привязка" },
+              { id: "batch", label: "Быстрая" },
+            ] as { id: ScanMode; label: string }[]
+          ).map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => switchMode(id)}
+              className={`flex-1 py-2 text-sm font-medium rounded-xl transition-colors ${
+                mode === id
+                  ? "bg-slate-900 text-white"
+                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Lookup mode ──────────────────────────────────────────────────── */}
+        {mode === "lookup" && (
+          <div>
+            {/* Manual input */}
+            <form
+              onSubmit={handleLookupManualSubmit}
+              className="flex gap-2 px-4 pb-3"
+            >
+              <input
+                type="text"
+                value={lookupManual}
+                onChange={(e) => setLookupManual(e.target.value)}
+                placeholder="Штрихкод вручную"
+                className="flex-1 h-11 px-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+              <button
+                type="submit"
+                className="h-11 px-4 bg-slate-900 text-white text-sm font-medium rounded-xl"
+              >
+                Ввести
+              </button>
+            </form>
+
+            {lookupLoading && (
+              <div className="mx-4 h-24 bg-slate-100 rounded-2xl animate-pulse" />
+            )}
+
+            {lookupNotFound && !lookupLoading && (
+              <div className="mx-4 mt-2 px-4 py-4 bg-red-50 border border-red-200 rounded-2xl text-center text-sm text-red-600">
+                Штрихкод не найден
+              </div>
+            )}
+
+            {lookupResult && !lookupLoading && (
+              <LookupCard result={lookupResult} />
+            )}
+          </div>
+        )}
+
+        {/* ── Assign mode ──────────────────────────────────────────────────── */}
+        {mode === "assign" && (
+          <div>
+            {!assignEquipment ? (
+              <EquipmentList onSelect={(item) => setAssignEquipment(item)} />
+            ) : (
+              <div className="px-4 pb-4">
+                {/* Selected equipment header */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-slate-800 truncate">
+                      {assignEquipment.name}
+                    </div>
+                    <div className="text-xs text-slate-400">{assignEquipment.category}</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setAssignEquipment(null);
+                      setAssignResult(null);
+                      setAssignError(null);
+                    }}
+                    className="text-xs text-slate-400 hover:text-slate-700 ml-2 underline"
+                  >
+                    Сменить
+                  </button>
+                </div>
+
+                {/* Manual input */}
+                <form onSubmit={handleAssignManualSubmit} className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={assignManual}
+                    onChange={(e) => setAssignManual(e.target.value)}
+                    placeholder="Штрихкод вручную"
+                    className="flex-1 h-11 px-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  />
+                  <button
+                    type="submit"
+                    disabled={assignLoading}
+                    className="h-11 px-4 bg-slate-900 text-white text-sm font-medium rounded-xl disabled:opacity-50"
+                  >
+                    Ввести
+                  </button>
+                </form>
+
+                {assignLoading && (
+                  <div className="h-16 bg-slate-100 rounded-xl animate-pulse" />
+                )}
+
+                {assignError && !assignLoading && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                    {assignError}
+                  </div>
+                )}
+
+                {assignResult && !assignLoading && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                    <p className="text-sm font-medium text-green-700 mb-1">
+                      Привязано успешно
+                    </p>
+                    <p className="text-xs text-green-600 font-mono">{assignResult.barcode}</p>
+                    <p className="text-xs text-slate-500 mt-2">Сканируйте следующий</p>
+                  </div>
+                )}
+
+                {!assignLoading && !assignError && !assignResult && (
+                  <p className="text-sm text-slate-400 text-center py-2">
+                    Наведите камеру на штрихкод или введите вручную
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Batch mode ───────────────────────────────────────────────────── */}
+        {mode === "batch" && (
+          <div>
+            {!batchEquipment ? (
+              <EquipmentList onSelect={(item) => setBatchEquipment(item)} />
+            ) : (
+              <div className="px-4 pb-4">
+                {/* Header with counter + equipment name + done button */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-slate-800 truncate">
+                      {batchEquipment.name}
+                    </div>
+                    <div className="text-xs text-green-600 font-medium">
+                      Привязано: {batchItems.length}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setBatchEquipment(null);
+                      setBatchItems([]);
+                    }}
+                    className="ml-2 px-3 py-1.5 text-xs font-medium bg-slate-900 text-white rounded-lg"
+                  >
+                    Готово
+                  </button>
+                </div>
+
+                {/* Manual input */}
+                <form onSubmit={handleBatchManualSubmit} className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={batchManual}
+                    onChange={(e) => setBatchManual(e.target.value)}
+                    placeholder="Штрихкод вручную"
+                    className="flex-1 h-11 px-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  />
+                  <button
+                    type="submit"
+                    disabled={batchLoading}
+                    className="h-11 px-4 bg-slate-900 text-white text-sm font-medium rounded-xl disabled:opacity-50"
+                  >
+                    Ввести
+                  </button>
+                </form>
+
+                {/* Assigned items list */}
+                {batchItems.length > 0 ? (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {batchItems.map((item) => (
+                      <div
+                        key={item.unit.id}
+                        className="flex items-center justify-between px-3 py-2.5 bg-white border border-slate-200 rounded-xl"
+                      >
+                        <span className="text-xs font-mono text-slate-700 truncate">
+                          {item.barcode}
+                        </span>
+                        <button
+                          onClick={() => handleBatchDelete(item)}
+                          className="ml-2 text-slate-400 hover:text-red-500 text-lg leading-none shrink-0"
+                          aria-label="Удалить"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 text-center py-2">
+                    Наведите камеру на штрихкод или введите вручную
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default function AdminScannerPage() {
+  const [authed, setAuthed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem(ADMIN_SESSION_KEY);
+    setAuthed(stored === "1");
+  }, []);
+
+  // Avoid flash of login screen before session check
+  if (authed === null) return null;
+
+  if (!authed) {
+    return <LoginScreen onSuccess={() => setAuthed(true)} />;
+  }
+
+  return <ScannerApp />;
+}
