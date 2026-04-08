@@ -1416,6 +1416,7 @@ function BarcodesTab() {
   const [assignBarcode, setAssignBarcode] = useState("");
   const [assignLoading, setAssignLoading] = useState(false);
   const [assignError, setAssignError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Categories for filter dropdown
   const [categories, setCategories] = useState<string[]>([]);
@@ -1455,8 +1456,8 @@ function BarcodesTab() {
   useEffect(() => {
     async function fetchCategories() {
       try {
-        const res = await apiFetch<{ equipment: any[] }>("/api/equipment");
-        const cats = [...new Set(res.equipment.map((e: any) => e.category))].filter(Boolean).sort();
+        const res = await apiFetch<{ equipments: any[] }>("/api/equipment");
+        const cats = [...new Set(res.equipments.map((e: any) => e.category))].filter(Boolean).sort();
         setCategories(cats as string[]);
       } catch {}
     }
@@ -1484,7 +1485,7 @@ function BarcodesTab() {
       setLoading(false);
     }
     fetchUnits();
-  }, [page, debouncedSearch, statusFilter, categoryFilter, hasBarcodeFilter]);
+  }, [page, debouncedSearch, statusFilter, categoryFilter, hasBarcodeFilter, refreshKey]);
 
   // Reset page on filter change
   useEffect(() => {
@@ -1545,11 +1546,7 @@ function BarcodesTab() {
       });
       setAssignModal(null);
       setAssignBarcode("");
-      // Refresh
-      setPage(p => p);
-      // Trigger re-fetch by toggling a dummy
-      setDebouncedSearch(prev => prev + " ");
-      setTimeout(() => setDebouncedSearch(prev => prev.trim()), 50);
+      setRefreshKey(k => k + 1);
     } catch (err: any) {
       setAssignError(err?.message || "Ошибка привязки штрихкода");
     }
