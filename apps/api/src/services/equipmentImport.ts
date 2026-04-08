@@ -22,12 +22,12 @@ export const ImportMappingSchema = z.object({
   internalInventoryNumber: z.string().optional(),
 });
 
-function normalizeImportPart(s: unknown) {
+export function normalizeImportPart(s: unknown) {
   if (s == null) return "";
   return String(s).trim().replace(/\s+/g, " ").toUpperCase();
 }
 
-function computeImportKey(args: { category: string; name: string; brand?: string | null; model?: string | null }) {
+export function computeImportKey(args: { category: string; name: string; brand?: string | null; model?: string | null }) {
   return [
     normalizeImportPart(args.category),
     normalizeImportPart(args.name),

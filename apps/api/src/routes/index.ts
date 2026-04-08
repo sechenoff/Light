@@ -17,6 +17,7 @@ import { slangLearningRouter } from "./slangLearning";
 import { warehouseRouter } from "./warehouse";
 import { equipmentUnitsRouter } from "./equipmentUnits";
 import { equipmentUnitsGlobalRouter } from "./equipmentUnitsGlobal";
+import { importSessionsRouter } from "./importSessions";
 
 const router = express.Router();
 
@@ -41,6 +42,7 @@ router.use("/api/equipment/:equipmentId/units", equipmentUnitsRouter);
 router.use("/api/equipment", equipmentRouter);
 router.use("/api/availability", availabilityRouter);
 router.use("/api/bookings", bookingsRouter);
+router.use("/api/import-sessions", importSessionsRouter);
 router.use("/api/estimates", estimatesRouter);
 router.use("/api/pricelist", pricelistRouter);
 router.use("/api", financeRouter);

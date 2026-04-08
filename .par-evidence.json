@@ -1,1 +1,12 @@
-{"sprint":2,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","governance":"standard","ts":"2026-04-08T07:51:00Z"}
+{
+  "sprint": 2,
+  "claude_product": "ACCEPTED",
+  "technical_review": "APPROVE",
+  "provider": "split-focus",
+  "findings_fixed": [
+    "IMPORTANT: Batch hasActiveBookings query (eliminate N+1)",
+    "IMPORTANT: Cap limit at 200",
+    "CONCERN: Map endpoint returns {session, stats} per spec"
+  ],
+  "ts": "2026-04-08T12:30:00Z"
+}
