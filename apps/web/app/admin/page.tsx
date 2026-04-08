@@ -1821,14 +1821,14 @@ type MapStats = {
   noChange: number;
 };
 
-const FILTER_OPTIONS: Array<{ id: PricesFilter; label: string; actionFilter?: string }> = [
-  { id: "changed", label: "Изменённые" },
+const FILTER_OPTIONS: Array<{ id: PricesFilter; label: string; actionFilter?: string; queryParam?: string }> = [
+  { id: "changed", label: "Изменённые", queryParam: "changed" },
   { id: "all", label: "Все" },
   { id: "price", label: "Цены", actionFilter: "PRICE_CHANGE" },
   { id: "new", label: "Новые", actionFilter: "NEW_ITEM" },
   { id: "removed", label: "Удалённые", actionFilter: "REMOVED_ITEM" },
   { id: "qty", label: "Количество", actionFilter: "QTY_CHANGE" },
-  { id: "unmatched", label: "Не найдено", actionFilter: "NO_CHANGE" },
+  { id: "unmatched", label: "Не найдено", queryParam: "unmatched" },
 ];
 
 function actionLabel(action: string): string {
@@ -1837,7 +1837,6 @@ function actionLabel(action: string): string {
     case "NEW_ITEM": return "Новая";
     case "REMOVED_ITEM": return "Удалена";
     case "QTY_CHANGE": return "Кол-во";
-    case "NO_MATCH": return "Не найдено";
     case "NO_CHANGE": return "Без изм.";
     default: return action;
   }
@@ -1925,7 +1924,7 @@ function PricesTab() {
       const opt = FILTER_OPTIONS.find((x) => x.id === f);
       const params = new URLSearchParams({ page: String(page), limit: "50" });
       if (opt?.actionFilter) params.set("action", opt.actionFilter);
-      else if (f === "changed") params.set("changed", "true");
+      if (opt?.queryParam) params.set(opt.queryParam, "true");
       const data = await apiFetch<{ rows: ImportSessionRow[]; total: number; totalPages: number }>(
         `/api/import-sessions/${sessionId}/rows?${params.toString()}`
       );
@@ -2483,7 +2482,7 @@ function PricesTab() {
                         <tr key={row.id} className={bg}>
                           <td className="px-3 py-2.5 text-slate-800 max-w-[200px]">
                             <div className="truncate">{row.sourceName}</div>
-                            {row.action === "NO_MATCH" && (
+                            {!row.equipmentId && (
                               <span className="inline-block text-[10px] font-medium bg-slate-100 text-slate-500 rounded px-1.5 py-0.5 mt-0.5">Не найдено</span>
                             )}
                             {row.matchMethod?.includes(":FLAGGED") && (
