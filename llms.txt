@@ -31,7 +31,7 @@
 - [apps/web/src/components/AppShell.tsx](apps/web/src/components/AppShell.tsx): Navigation shell — Дашборд (/), Бронирование оборудования (/equipment), Календарь (/calendar), Финансы, Admin; logo href changed to /
 - [apps/web/src/components/MiniCalendar.tsx](apps/web/src/components/MiniCalendar.tsx): Month occupancy heatmap (react-day-picker v9, /api/calendar/occupancy)
 - [apps/web/src/components/DashboardOpsCard.tsx](apps/web/src/components/DashboardOpsCard.tsx): Booking operation card used in dashboard sections
-- [apps/web/src/components/QuickAvailabilityCheck.tsx](apps/web/src/components/QuickAvailabilityCheck.tsx): Availability search widget — date range + category, calls /api/equipment with availability params
+- [apps/web/src/components/QuickAvailabilityCheck.tsx](apps/web/src/components/QuickAvailabilityCheck.tsx): Availability search widget — hourly-precision datetime-local inputs + category filter, calls /api/equipment with availability params
 - [apps/web/next.config.mjs](apps/web/next.config.mjs): Next.js configuration
 
 ### Bot (Telegraf 4 + API-backed AI matching)
