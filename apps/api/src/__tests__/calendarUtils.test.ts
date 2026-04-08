@@ -86,6 +86,27 @@ describe("buildOccupancyMap", () => {
     expect(entry?.bookings).toHaveLength(2);
   });
 
+  it("DRAFT события не добавляются к occupied, но присутствуют в bookings", () => {
+    const events: CalendarEvent[] = [
+      {
+        id: "ed1",
+        bookingId: "bd1",
+        resourceId: "rd1",
+        title: "Черновик",
+        clientName: "Клиент",
+        start: "2025-03-03T00:00:00.000Z",
+        end: "2025-03-03T23:59:59.000Z",
+        quantity: 2,
+        status: "DRAFT",
+      },
+    ];
+    const map = buildOccupancyMap(events, "2025-03-01", "2025-03-07");
+    const entry = map.get("rd1-2025-03-03");
+    expect(entry).toBeDefined();
+    expect(entry!.occupied).toBe(0);
+    expect(entry!.bookings).toHaveLength(1);
+  });
+
   it("обрезает события, выходящие за пределы диапазона", () => {
     const events: CalendarEvent[] = [
       {

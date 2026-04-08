@@ -54,7 +54,9 @@ export function buildOccupancyMap(
       if (dateStr >= periodStart && dateStr <= periodEnd) {
         const key = `${event.resourceId}-${dateStr}`;
         const entry = map.get(key) ?? { occupied: 0, bookings: [] };
-        entry.occupied += event.quantity;
+        if (event.status !== "DRAFT") {
+          entry.occupied += event.quantity;
+        }
         entry.bookings.push(event);
         map.set(key, entry);
       }
