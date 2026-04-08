@@ -42,7 +42,7 @@ light-rental-system/
       app/            Pages: dashboard (/), bookings, equipment, calendar, finance, admin, crew-calculator, settings, warehouse (scan UI)
       app/api/        Catch-all proxy to Express backend
       src/lib/        Shared logic: api client, formatting
-      src/components/ AppShell, StatusBadge, BarcodeScanner, MiniCalendar, DashboardOpsCard, QuickAvailabilityCheck
+      src/components/ AppShell, StatusBadge, BarcodeScanner, MiniCalendar, DashboardOpsCard, QuickAvailabilityCheck, CalendarTooltip
     bot/          Telegraf 4 + AI booking (API-backed matching)
       src/scenes/     booking (hub-and-spoke), crewCalc, photoAnalysis wizard scenes
       src/services/   llm (equipment matching via API), api client, logger
@@ -98,6 +98,9 @@ light-rental-system/
 | `deploy.sh` | Build + deploy script (builds shared first; supports --api, --web, --rental-bot flags) |
 | `apps/api/src/routes/dashboard.ts` | GET /api/dashboard/today — daily operations summary: pickups, returns, active bookings |
 | `apps/api/src/routes/calendar.ts` | GET /api/calendar (resources + events), GET /api/calendar/occupancy (per-day heatmap) |
+| `apps/web/app/calendar/page.tsx` | Full calendar page: desktop availability grid (equipment rows × day columns, collapsible categories) + mobile day-by-day card view; URL params: date, period, category |
+| `apps/web/src/components/CalendarTooltip.tsx` | Floating tooltip for calendar cells (via @floating-ui/react): shows booking details on hover |
+| `apps/web/src/lib/calendarUtils.ts` | Pure utility: `buildOccupancyMap()` builds Map<`resourceId-date`, OccupancyEntry>; DRAFT bookings excluded from occupied counts |
 
 ## Commands
 
@@ -120,7 +123,7 @@ npm run build
 npm run lint
 
 # Tests
-npm test                          # run all (shared + bot + api) — 202 tests
+npm test                          # run all (shared + bot + api) — 208 tests
 npm run test -w apps/api          # API tests (smoke + barcode integration)
 npm run test -w apps/bot          # bot booking-helpers tests only (27 tests)
 npm run test -w packages/shared   # shared package tests only
@@ -167,8 +170,9 @@ npm run seed                  # Seed database
 
 1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
 2. **~~Crew calculator duplication~~** — RESOLVED: extracted to `packages/shared` (`@light-rental/shared`).
-3. **~~Minimal test coverage~~** — RESOLVED: 202 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, and importSession routes tests.
+3. **~~Minimal test coverage~~** — RESOLVED: 208 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, importSession routes, and calendarUtils tests.
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
 
 <!-- updated-by-superflow:2026-04-08 -->
+

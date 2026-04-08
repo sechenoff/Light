@@ -22,7 +22,7 @@
 - [apps/api/prisma/seed.ts](apps/api/prisma/seed.ts): Database seeder
 
 ### Web (Next.js 14 + React 18 + Tailwind CSS 3)
-23 source files, ~7,800 LOC
+26 source files, ~8,700 LOC
 
 - [apps/web/app/layout.tsx](apps/web/app/layout.tsx): Root layout with AppShell wrapper
 - [apps/web/app/page.tsx](apps/web/app/page.tsx): Dashboard home — pickups/returns/active ops today (from /api/dashboard/today), MiniCalendar heatmap, QuickAvailabilityCheck widget
@@ -106,6 +106,9 @@
 - [apps/web/app/equipment/page.tsx](apps/web/app/equipment/page.tsx): Equipment catalog page
 - [apps/web/app/equipment/import/page.tsx](apps/web/app/equipment/import/page.tsx): Equipment XLSX import page
 - [apps/web/app/equipment/manage/page.tsx](apps/web/app/equipment/manage/page.tsx): Equipment management page
+- [apps/web/app/calendar/page.tsx](apps/web/app/calendar/page.tsx): Equipment availability calendar (680 lines) — desktop grid (equipment rows × day columns, collapsible categories, color-coded occupancy cells) + mobile day-by-day card view; URL params: date, period, category; DRAFT bookings shown but excluded from occupancy counts
+- [apps/web/src/components/CalendarTooltip.tsx](apps/web/src/components/CalendarTooltip.tsx): Floating tooltip for calendar cells — shows booking details on hover via @floating-ui/react
+- [apps/web/src/lib/calendarUtils.ts](apps/web/src/lib/calendarUtils.ts): `buildOccupancyMap(events, periodStart, periodEnd)` — pure utility building `Map<resourceId-date, OccupancyEntry>`; timezone-safe date iteration; DRAFT status excluded from occupied count
 - [apps/web/app/crew-calculator/page.tsx](apps/web/app/crew-calculator/page.tsx): Crew calculator UI
 - [apps/web/app/settings/page.tsx](apps/web/app/settings/page.tsx): Settings page
 
@@ -123,7 +126,8 @@
 ## Testing
 
 - [apps/web/src/lib/crewCalculator.test.ts](apps/web/src/lib/crewCalculator.test.ts): Crew calculator unit tests (209 lines, vitest)
-- Test command: `npm run test -w apps/web` (runs `vitest run src/lib/crewCalculator.test.ts`)
+- [apps/api/src/__tests__/calendarUtils.test.ts](apps/api/src/__tests__/calendarUtils.test.ts): `buildOccupancyMap` unit tests — 6 cases covering DRAFT exclusion, timezone-safe date iteration, multi-day events, period clipping (130 lines)
+- Test command: `npm test` — 208 tests total (shared + bot + api)
 
 ## Infrastructure
 
