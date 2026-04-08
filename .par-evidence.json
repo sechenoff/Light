@@ -1,1 +1,1 @@
-{"sprint":10,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","fixes_applied":["added RETIRED status to MAINTENANCE/RETIRED edge case test","added PIN lockout after 5 failures test"],"ts":"2026-04-07T18:10:00Z"}
+{"sprint":1,"claude_product":"SKIPPED","technical_review":"APPROVE","provider":"split-focus","governance":"standard","ts":"2026-04-08T07:41:00Z"}
