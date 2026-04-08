@@ -5,7 +5,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
 export interface BarcodeScannerProps {
   onScan: (value: string) => void;
-  /** Supported barcode formats. When omitted, all formats are scanned. */
+  /** Supported barcode formats. Default: [CODE_128] */
   formats?: Html5QrcodeSupportedFormats[];
   /** Frames per second. Default: 5 */
   fps?: number;
@@ -15,9 +15,11 @@ export interface BarcodeScannerProps {
   flashColor?: "green" | "red" | "amber" | null;
 }
 
+const DEFAULT_FORMATS = [Html5QrcodeSupportedFormats.CODE_128];
+
 export default function BarcodeScanner({
   onScan,
-  formats,
+  formats = DEFAULT_FORMATS,
   fps = 5,
   enableTorch = true,
   flashColor = null,
@@ -58,7 +60,7 @@ export default function BarcodeScanner({
     if (!containerRef.current) return;
 
     const scanner = new Html5Qrcode(containerId.current, {
-      ...(formats ? { formatsToSupport: formats } : {}),
+      formatsToSupport: formats,
       useBarCodeDetectorIfSupported: true,
       verbose: undefined,
     });
