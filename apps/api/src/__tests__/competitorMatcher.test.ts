@@ -273,10 +273,16 @@ describe("alias lookup в matchRow", () => {
       },
     ];
 
+    // Pre-load alias map (as mapAndMatch does)
+    const aliases = await prisma.competitorAlias.findMany({ where: { competitorName: "АлиасКонкурент" } });
+    const aliasMap = new Map<string, string>();
+    for (const a of aliases) aliasMap.set(a.competitorItem.toLowerCase(), a.equipmentId);
+
     const result = await matchRow(
       { sourceName: "STORM 400x alias", sourceCategory: "Свет", sourceBrand: null, sourceModel: null },
       catalog,
       "АлиасКонкурент",
+      aliasMap,
     );
 
     expect(result.equipmentId).toBe(eq.id);
