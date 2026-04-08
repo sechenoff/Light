@@ -35,7 +35,7 @@ light-rental-system/
         middleware/   apiKeyAuth, rateLimiter, warehouseAuth (PIN-based token auth)
         queue/        BullMQ connection, worker, queue definitions
         utils/        Helpers (dates, errors, decimal serialization)
-      prisma/         schema.prisma (20 models), migrations, seed.ts
+      prisma/         schema.prisma (23 models), migrations, seed.ts
       scripts/        One-off import/sync scripts (SvetoBaza catalog), backfill-barcodes.ts
       assets/fonts/   DejaVu fonts for PDF Cyrillic support
     web/          Next.js 14 + React 18 + Tailwind CSS 3
@@ -61,7 +61,7 @@ light-rental-system/
 |------|---------|
 | `apps/api/src/app.ts` | Express app: middleware stack + centralized error handler |
 | `apps/api/src/index.ts` | Server start, conditional Redis/BullMQ worker bootstrap |
-| `apps/api/prisma/schema.prisma` | 20 models (incl. ScanSession, ScanRecord, WarehousePin) -- source of truth for data layer |
+| `apps/api/prisma/schema.prisma` | 23 models (incl. ScanSession, ScanRecord, WarehousePin, ImportSession, ImportSessionRow, CompetitorAlias) -- source of truth for data layer |
 | `apps/api/src/services/gemini.ts` | Gemini 2.5 Flash: photo analysis + diagram generation |
 | `apps/api/src/services/equipmentMatcher.ts` | AI output to catalog matching (~530 lines, DB-driven aliases via SlangAlias) |
 | `apps/api/scripts/migrate-aliases-to-db.ts` | One-time migration: TYPE_SYNONYMS → SlangAlias DB records |
@@ -71,6 +71,7 @@ light-rental-system/
 | `apps/bot/src/scenes/booking.ts` | Hub-and-spoke booking scene (~1000 LOC): hub step is central cart screen, spokes: catalog, inline needsReview confirmations |
 | `apps/bot/src/services/api.ts` | Bot API client: gaffer review types (GafferReviewItem, GafferMatchCandidate), parseGafferReview() |
 | `apps/bot/src/services/llm.ts` | Equipment matching via parseGafferReview API (3-tier: resolved/needsReview/unmatched), date parsing |
+| `apps/api/src/services/importSession.ts` | Import session lifecycle: parse XLSX buffer, match rows against catalog (string-similarity), build diff, apply price/qty changes |
 | `apps/api/src/services/barcode.ts` | Barcode generation (Code128 via bwip-js), HMAC-SHA256 verification, label rendering (PNG/PDF), dual resolution via `resolveBarcode()` |
 | `apps/api/src/services/scanSession.ts` | Scan session service: issue/return/cancel logic, unit status transitions, reconciliation |
 | `apps/api/src/routes/warehouse.ts` | Warehouse scan endpoints: auth, sessions, scan, summary, complete (7 scan routes + public auth) |
@@ -112,7 +113,7 @@ npm run build
 npm run lint
 
 # Tests
-npm test                          # run all (shared + bot + api) — 134 tests
+npm test                          # run all (shared + bot + api) — 173 tests
 npm run test -w apps/api          # API tests (smoke + barcode integration)
 npm run test -w apps/bot          # bot booking-helpers tests only (27 tests)
 npm run test -w packages/shared   # shared package tests only
@@ -154,7 +155,7 @@ npm run seed                  # Seed database
 
 1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
 2. **~~Crew calculator duplication~~** — RESOLVED: extracted to `packages/shared` (`@light-rental/shared`).
-3. **~~Minimal test coverage~~** — RESOLVED: 134 tests across shared, bot (booking-helpers), API smoke, and barcode integration tests.
+3. **~~Minimal test coverage~~** — RESOLVED: 173 tests across shared, bot (booking-helpers), API smoke, barcode integration, and importSession tests.
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
 
