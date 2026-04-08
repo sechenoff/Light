@@ -115,7 +115,7 @@ importSessionsRouter.get("/:id/rows", async (req, res, next) => {
   try {
     const { id } = req.params;
     const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
-    const limit = Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50);
+    const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50));
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = { sessionId: id };
@@ -134,19 +134,30 @@ importSessionsRouter.get("/:id/rows", async (req, res, next) => {
       prisma.importSessionRow.count({ where }),
     ]);
 
-    // Вычисляем hasActiveBookings для REMOVED_ITEM строк
-    const enrichedRows = await Promise.all(
-      rows.map(async (row: any) => {
-        let hasActiveBookings = false;
-        if (row.action === "REMOVED_ITEM" && row.equipmentId) {
-          const activeBooking = await prisma.bookingItem.findFirst({
-            where: {
-              equipmentId: row.equipmentId,
-              booking: { status: { in: ["CONFIRMED", "ISSUED"] } },
-            },
-          });
-          hasActiveBookings = !!activeBooking;
-        }
+    // Batch query hasActiveBookings for REMOVED_ITEM rows (avoid N+1)
+    const removedEquipmentIds = rows
+      .filter((r: any) => r.action === "REMOVED_ITEM" && r.equipmentId)
+      .map((r: any) => r.equipmentId as string);
+
+    const activeBookingSet = new Set<string>();
+    if (removedEquipmentIds.length > 0) {
+      const activeBookings = await prisma.bookingItem.findMany({
+        where: {
+          equipmentId: { in: removedEquipmentIds },
+          booking: { status: { in: ["CONFIRMED", "ISSUED"] } },
+        },
+        select: { equipmentId: true },
+        distinct: ["equipmentId"],
+      });
+      for (const b of activeBookings) {
+        activeBookingSet.add(b.equipmentId);
+      }
+    }
+
+    const enrichedRows = rows.map((row: any) => {
+        const hasActiveBookings = row.action === "REMOVED_ITEM" && row.equipmentId
+          ? activeBookingSet.has(row.equipmentId)
+          : false;
 
         // Сериализуем Decimal поля
         return {
@@ -169,8 +180,7 @@ importSessionsRouter.get("/:id/rows", async (req, res, next) => {
               }
             : null,
         };
-      }),
-    );
+    });
 
     const totalPages = Math.ceil(total / limit);
     res.json({ rows: enrichedRows, total, totalPages });
@@ -221,7 +231,7 @@ importSessionsRouter.post("/:id/map", async (req, res, next) => {
     const { type, mapping, competitorName } = mapBodySchema.parse(req.body);
     await mapAndMatch(id, type, mapping, competitorName);
 
-    // Возвращаем обновлённые stats сессии
+    // Возвращаем session + stats per spec
     const session = await prisma.importSession.findUnique({
       where: { id },
       select: {
@@ -232,7 +242,25 @@ importSessionsRouter.post("/:id/map", async (req, res, next) => {
         unmatchedRows: true,
       },
     });
-    res.json(session);
+
+    // Aggregate stats by action from rows
+    const actionCounts = await prisma.importSessionRow.groupBy({
+      by: ["action"],
+      where: { sessionId: id },
+      _count: { action: true },
+    });
+    const stats: Record<string, number> = {
+      priceChanges: 0, newItems: 0, removedItems: 0, qtyChanges: 0, noChange: 0,
+    };
+    for (const ac of actionCounts) {
+      if (ac.action === "PRICE_CHANGE") stats.priceChanges = ac._count.action;
+      else if (ac.action === "NEW_ITEM") stats.newItems = ac._count.action;
+      else if (ac.action === "REMOVED_ITEM") stats.removedItems = ac._count.action;
+      else if (ac.action === "QTY_CHANGE") stats.qtyChanges = ac._count.action;
+      else if (ac.action === "NO_CHANGE") stats.noChange = ac._count.action;
+    }
+
+    res.json({ session, stats });
   } catch (err) {
     next(err);
   }
