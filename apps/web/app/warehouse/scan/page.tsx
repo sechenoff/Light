@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { apiFetch } from "../../../src/lib/api";
 
-const Html5QrcodePlugin = dynamic(() => import("./Html5QrcodePlugin"), { ssr: false });
+const Html5QrcodePlugin = dynamic<{ onScan: (text: string) => void }>(
+  () => import("./Html5QrcodePlugin"),
+  { ssr: false },
+);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
