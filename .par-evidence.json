@@ -1,1 +1,12 @@
-{"sprint":2,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","governance":"standard","ts":"2026-04-08T07:51:00Z"}
+{
+  "sprint": 1,
+  "claude_product": "ACCEPTED",
+  "technical_review": "APPROVE",
+  "provider": "split-focus",
+  "findings_fixed": [
+    "CRITICAL: REMOVED_ITEM now uses update(totalQuantity=0) instead of delete",
+    "CRITICAL: Price comparison uses Decimal.equals() instead of float ===",
+    "HIGH: mapAndMatch now updates session type in DB"
+  ],
+  "ts": "2026-04-08T12:14:00Z"
+}
