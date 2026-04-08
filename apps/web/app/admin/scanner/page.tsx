@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Html5QrcodeSupportedFormats } from "html5-qrcode";
 import type { BarcodeScannerProps } from "@/components/BarcodeScanner";
 import { apiFetch } from "../../../src/lib/api";
 
@@ -130,11 +131,11 @@ function EquipmentList({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<{ equipment: EquipmentItem[] }>("/api/equipment?limit=500")
+    apiFetch<{ equipments: EquipmentItem[] }>("/api/equipment?limit=500")
       .then((data) => {
         // Only UNIT-mode equipment can have barcodes assigned
         setItems(
-          data.equipment.filter((e) => e.stockTrackingMode === "UNIT"),
+          data.equipments.filter((e) => e.stockTrackingMode === "UNIT"),
         );
       })
       .catch((err: unknown) => {
@@ -565,6 +566,7 @@ function ScannerApp() {
         {activeScanHandler ? (
           <BarcodeScanner
             onScan={activeScanHandler}
+            formats={[Html5QrcodeSupportedFormats.CODE_128]}
             flashColor={flashColor}
             enableTorch
           />
