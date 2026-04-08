@@ -273,6 +273,7 @@ export async function matchRow(
   row: MatchRowInput,
   catalog: CatalogItem[],
   competitorName?: string,
+  aliasMap?: Map<string, string>,
 ): Promise<MatchRowResult> {
   // Tier 1: exact match by importKey
   const importKey = computeImportKey({
@@ -293,20 +294,10 @@ export async function matchRow(
 
   // Tier 2: alias lookup (только для конкурентов)
   if (competitorName) {
-    let alias = await prisma.competitorAlias.findFirst({
-      where: { competitorName, competitorItem: row.sourceName },
-    });
-    if (!alias) {
-      const candidates = await prisma.competitorAlias.findMany({
-        where: { competitorName },
-      });
-      alias = candidates.find(
-        (a) => a.competitorItem.toLowerCase() === row.sourceName.toLowerCase(),
-      ) ?? null;
-    }
-    if (alias) {
+    const aliasEquipmentId = aliasMap?.get(row.sourceName.toLowerCase());
+    if (aliasEquipmentId) {
       return {
-        equipmentId: alias.equipmentId,
+        equipmentId: aliasEquipmentId,
         matchConfidence: 0.9,
         matchMethod: "alias",
       };
@@ -477,6 +468,13 @@ export async function mapAndMatch(
     },
   }) as CatalogItem[];
 
+  // Pre-load alias map for case-insensitive lookup (avoid N+1)
+  const aliasMap = new Map<string, string>();
+  if (competitorName) {
+    const aliases = await prisma.competitorAlias.findMany({ where: { competitorName } });
+    for (const a of aliases) aliasMap.set(a.competitorItem.toLowerCase(), a.equipmentId);
+  }
+
   const matchedEquipmentIds = new Set<string>();
   const rowsToCreate: Prisma.ImportSessionRowCreateManyInput[] = [];
 
@@ -502,6 +500,7 @@ export async function mapAndMatch(
       { sourceName, sourceCategory, sourceBrand, sourceModel },
       catalog,
       competitorName,
+      aliasMap,
     );
 
     if (matchResult.equipmentId) {
@@ -584,7 +583,7 @@ export async function mapAndMatch(
         // Применяем матчи к строкам
         for (const match of geminiMatches) {
           const idx = unmatchedIndices.find(
-            (i) => (rowsToCreate[i]!.sourceName as string) === match.competitorItem,
+            (i) => (rowsToCreate[i]!.sourceName as string).trim().toLowerCase() === match.competitorItem.trim().toLowerCase(),
           );
           if (idx !== undefined && match.catalogId && catalogIdSet.has(match.catalogId)) {
             rowsToCreate[idx]!.equipmentId = match.catalogId;
@@ -594,9 +593,9 @@ export async function mapAndMatch(
           }
         }
 
-        // Сохраняем высокоуверенные алиасы
+        // Сохраняем высокоуверенные алиасы (только с валидными catalogId)
         const aliasInput = geminiMatches
-          .filter((m) => m.catalogId)
+          .filter((m) => m.catalogId && catalogIdSet.has(m.catalogId))
           .map((m) => ({ competitorItem: m.competitorItem, catalogId: m.catalogId, confidence: m.confidence }));
         await saveAliases(competitorName, aliasInput);
       }
@@ -948,7 +947,7 @@ export async function rematchUnmatched(
   let matched = 0;
   for (const match of geminiMatches) {
     if (!match.catalogId || !catalogIdSet.has(match.catalogId)) continue;
-    const row = unmatchedRows.find((r: any) => r.sourceName === match.competitorItem);
+    const row = unmatchedRows.find((r: any) => (r.sourceName as string).trim().toLowerCase() === match.competitorItem.trim().toLowerCase());
     if (!row) continue;
 
     await prisma.importSessionRow.update({
@@ -964,7 +963,7 @@ export async function rematchUnmatched(
 
   if (competitorName && geminiMatches.length > 0) {
     const aliasInput = geminiMatches
-      .filter((m) => m.catalogId)
+      .filter((m) => m.catalogId && catalogIdSet.has(m.catalogId))
       .map((m) => ({ competitorItem: m.competitorItem, catalogId: m.catalogId, confidence: m.confidence }));
     await saveAliases(competitorName, aliasInput);
   }
