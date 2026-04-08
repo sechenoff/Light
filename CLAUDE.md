@@ -30,7 +30,7 @@ light-rental-system/
   apps/
     api/          Express 4 + Prisma 6 (SQLite) + BullMQ
       src/
-        routes/       18 route files (equipment, bookings, warehouse, equipmentUnits, equipmentUnitsGlobal, importSessions, etc.)
+        routes/       20 route files (equipment, bookings, warehouse, equipmentUnits, equipmentUnitsGlobal, importSessions, dashboard, calendar, etc.)
         services/     Business logic (bookings, analyses, barcode, scanSession, equipmentMatcher, gemini, smetaExport/, vision/)
         middleware/   apiKeyAuth, rateLimiter, warehouseAuth (PIN-based token auth)
         queue/        BullMQ connection, worker, queue definitions
@@ -92,6 +92,8 @@ light-rental-system/
 | `apps/web/src/components/BarcodeScanner.tsx` | Shared barcode scanner component (html5-qrcode, Wake Lock, flash animation) |
 | `ecosystem.config.js` | PM2 process definitions for api (:4000) + rental-bot |
 | `deploy.sh` | Build + deploy script (builds shared first; supports --api, --web, --rental-bot flags) |
+| `apps/api/src/routes/dashboard.ts` | GET /api/dashboard/today — daily operations summary: pickups, returns, active bookings |
+| `apps/api/src/routes/calendar.ts` | GET /api/calendar (resources + events), GET /api/calendar/occupancy (per-day heatmap) |
 
 ## Commands
 
