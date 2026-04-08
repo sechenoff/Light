@@ -28,6 +28,23 @@ type CommitResult = {
   unitsAdded: number;
 };
 
+type ImportSession = {
+  id: string; type: string; status: string; fileName: string; fileSize: number;
+  totalRows: number; matchedRows: number; unmatchedRows: number;
+  appliedCount: number; competitorName: string | null; columnMapping: string | null;
+  expiresAt: string; createdAt: string; updatedAt: string;
+};
+
+type ImportSessionRow = {
+  id: string; sourceName: string; sourceCategory: string | null;
+  sourcePrice: string | null; sourcePrice2: string | null; sourcePriceProject: string | null;
+  equipmentId: string | null; matchConfidence: string | null; matchMethod: string | null;
+  action: string; oldPrice: string | null; oldPrice2: string | null; oldPriceProject: string | null;
+  oldQty: number | null; sourceQty: number | null;
+  priceDelta: string | null; status: string; hasActiveBookings: boolean;
+  equipment: { id: string; name: string; category: string; rentalRatePerShift: string | null } | null;
+};
+
 const IMPORT_FIELD_KEYS = [
   "category",
   "name",
@@ -1767,9 +1784,883 @@ function BarcodesTab() {
   );
 }
 
+// ── Tab: Аналитика цен ────────────────────────────────────────────────────────
+
+type PricesStep = "empty" | "upload" | "mapping" | "review";
+type PricesFilter = "changed" | "all" | "price" | "new" | "removed" | "qty" | "unmatched";
+
+const PRICE_MAPPING_FIELDS = [
+  { key: "name", label: "Наименование", required: true },
+  { key: "category", label: "Категория", required: false },
+  { key: "brand", label: "Бренд", required: false },
+  { key: "model", label: "Модель", required: false },
+  { key: "quantity", label: "Количество", required: false },
+  { key: "rentalRatePerShift", label: "Цена (смена)", required: true },
+  { key: "rentalRateTwoShifts", label: "Цена (2 смены)", required: false },
+  { key: "rentalRatePerProject", label: "Цена (проект)", required: false },
+] as const;
+
+type PriceMappingKey = (typeof PRICE_MAPPING_FIELDS)[number]["key"];
+type PriceMappingState = Partial<Record<PriceMappingKey, string>>;
+
+type UploadPreview = {
+  session: ImportSession;
+  preview: {
+    headers: string[];
+    sampleRows: Record<string, unknown>[];
+    suggestedMapping: Record<string, string>;
+  };
+};
+
+type MapStats = {
+  priceChanges: number;
+  newItems: number;
+  removedItems: number;
+  qtyChanges: number;
+  noChange: number;
+};
+
+const FILTER_OPTIONS: Array<{ id: PricesFilter; label: string; actionFilter?: string }> = [
+  { id: "changed", label: "Изменённые" },
+  { id: "all", label: "Все" },
+  { id: "price", label: "Цены", actionFilter: "PRICE_CHANGE" },
+  { id: "new", label: "Новые", actionFilter: "NEW_ITEM" },
+  { id: "removed", label: "Удалённые", actionFilter: "REMOVED_ITEM" },
+  { id: "qty", label: "Количество", actionFilter: "QTY_CHANGE" },
+  { id: "unmatched", label: "Не найдено", actionFilter: "NO_MATCH" },
+];
+
+function actionLabel(action: string): string {
+  switch (action) {
+    case "PRICE_CHANGE": return "Цена";
+    case "NEW_ITEM": return "Новая";
+    case "REMOVED_ITEM": return "Удалена";
+    case "QTY_CHANGE": return "Кол-во";
+    case "NO_MATCH": return "Не найдено";
+    case "NO_CHANGE": return "Без изм.";
+    default: return action;
+  }
+}
+
+function rowBgClass(row: ImportSessionRow): string {
+  const delta = row.priceDelta ? parseFloat(row.priceDelta) : null;
+  if (row.action === "REMOVED_ITEM") return "bg-red-50";
+  if (row.action === "NEW_ITEM") return "bg-green-50";
+  if (delta !== null) {
+    if (delta > 5) return "bg-red-50";
+    if (delta < -5) return "bg-green-50";
+    return "bg-yellow-50";
+  }
+  return "";
+}
+
+function confidenceBadge(conf: string | null) {
+  if (!conf) return null;
+  const v = parseFloat(conf);
+  const cls =
+    v >= 0.8
+      ? "bg-green-100 text-green-800"
+      : v >= 0.5
+      ? "bg-yellow-100 text-yellow-800"
+      : "bg-red-100 text-red-800";
+  return (
+    <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${cls}`}>
+      {Math.round(v * 100)}%
+    </span>
+  );
+}
+
+function PricesTab() {
+  const [step, setStep] = useState<PricesStep>("empty");
+  const [sessions, setSessions] = useState<ImportSession[]>([]);
+  const [activeSession, setActiveSession] = useState<ImportSession | null>(null);
+  const [preview, setPreview] = useState<UploadPreview["preview"] | null>(null);
+  const [mappingConfig, setMappingConfig] = useState<PriceMappingState>({});
+  const [importType, setImportType] = useState<"OWN" | "COMPETITOR">("OWN");
+  const [competitorName, setCompetitorName] = useState("");
+  const [rows, setRows] = useState<ImportSessionRow[]>([]);
+  const [rowsTotal, setRowsTotal] = useState(0);
+  const [rowsPage, setRowsPage] = useState(1);
+  const [rowsTotalPages, setRowsTotalPages] = useState(1);
+  const [filter, setFilter] = useState<PricesFilter>("changed");
+  const [stats, setStats] = useState<MapStats | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [mapping, setMapping] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [loadingRows, setLoadingRows] = useState(false);
+  const [confirmBulk, setConfirmBulk] = useState<{ action: "ACCEPT" | "REJECT"; count: number } | null>(null);
+  const [confirmApply, setConfirmApply] = useState(false);
+  const [applyResult, setApplyResult] = useState<{ applied: Record<string, number>; skipped: Array<{ id: string; reason: string }> } | null>(null);
+  const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const dropRef = useRef<HTMLInputElement>(null);
+
+  // ── Load sessions on mount ─────────────────────────────────────────────────
+
+  async function loadSessions() {
+    try {
+      const data = await apiFetch<{ sessions: ImportSession[] }>("/api/import-sessions");
+      setSessions(data.sessions ?? []);
+      // Auto-resume active OWN session that is in MAPPED/PENDING state
+      const active = (data.sessions ?? []).find(
+        (s) => s.type === "OWN" && (s.status === "MAPPED" || s.status === "PENDING")
+      );
+      if (active) {
+        setActiveSession(active);
+        setStep("review");
+        loadRows(active.id, "changed", 1);
+      }
+    } catch {
+      setSessions([]);
+    }
+  }
+
+  useEffect(() => {
+    loadSessions();
+  }, []);
+
+  // ── Load rows for review ───────────────────────────────────────────────────
+
+  async function loadRows(sessionId: string, f: PricesFilter, page: number) {
+    setLoadingRows(true);
+    try {
+      const opt = FILTER_OPTIONS.find((x) => x.id === f);
+      const params = new URLSearchParams({ page: String(page), limit: "50" });
+      if (opt?.actionFilter) params.set("action", opt.actionFilter);
+      else if (f === "changed") params.set("changed", "true");
+      const data = await apiFetch<{ rows: ImportSessionRow[]; total: number; totalPages: number }>(
+        `/api/import-sessions/${sessionId}/rows?${params.toString()}`
+      );
+      setRows(data.rows ?? []);
+      setRowsTotal(data.total ?? 0);
+      setRowsTotalPages(data.totalPages ?? 1);
+      setRowsPage(page);
+    } catch {
+      setRows([]);
+    } finally {
+      setLoadingRows(false);
+    }
+  }
+
+  // ── Upload ─────────────────────────────────────────────────────────────────
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    setMessage(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await apiFetch<UploadPreview>("/api/import-sessions/upload", {
+        method: "POST",
+        body: form,
+      });
+      setActiveSession(res.session);
+      setPreview(res.preview);
+      const suggested = res.preview?.suggestedMapping ?? {};
+      const next: PriceMappingState = {};
+      for (const k of Object.keys(suggested)) {
+        next[k as PriceMappingKey] = suggested[k];
+      }
+      setMappingConfig(next);
+      setStep("mapping");
+    } catch (e) {
+      setMessage({ type: "err", text: e instanceof Error ? e.message : "Ошибка загрузки файла" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // ── Start analysis (map) ───────────────────────────────────────────────────
+
+  async function handleMap() {
+    if (!activeSession) return;
+    setMapping(true);
+    setMessage(null);
+    try {
+      const columnMapping: Record<string, string> = {};
+      for (const k of Object.keys(mappingConfig)) {
+        const v = mappingConfig[k as PriceMappingKey];
+        if (v) columnMapping[k] = v;
+      }
+      const res = await apiFetch<{ session: ImportSession; stats: MapStats }>(
+        `/api/import-sessions/${activeSession.id}/map`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            type: importType,
+            competitorName: importType === "COMPETITOR" ? competitorName : undefined,
+            columnMapping,
+          }),
+        }
+      );
+      setActiveSession(res.session);
+      setStats(res.stats);
+      setStep("review");
+      loadRows(res.session.id, "changed", 1);
+    } catch (e) {
+      setMessage({ type: "err", text: e instanceof Error ? e.message : "Ошибка анализа" });
+    } finally {
+      setMapping(false);
+    }
+  }
+
+  // ── Toggle row status ──────────────────────────────────────────────────────
+
+  async function handleRowToggle(row: ImportSessionRow) {
+    if (!activeSession) return;
+    const newStatus = row.status === "ACCEPTED" ? "PENDING" : "ACCEPTED";
+    try {
+      await apiFetch(`/api/import-sessions/${activeSession.id}/rows/${row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, status: newStatus } : r)));
+    } catch (e) {
+      setMessage({ type: "err", text: e instanceof Error ? e.message : "Ошибка обновления строки" });
+    }
+  }
+
+  // ── Bulk action ────────────────────────────────────────────────────────────
+
+  async function handleBulkAction(action: "ACCEPT" | "REJECT") {
+    if (!activeSession) return;
+    setConfirmBulk(null);
+    try {
+      const opt = FILTER_OPTIONS.find((x) => x.id === filter);
+      await apiFetch(`/api/import-sessions/${activeSession.id}/bulk-action`, {
+        method: "POST",
+        body: JSON.stringify({ action, filter: opt?.actionFilter ?? filter }),
+      });
+      loadRows(activeSession.id, filter, rowsPage);
+      setMessage({ type: "ok", text: action === "ACCEPT" ? "Все позиции приняты" : "Все позиции отклонены" });
+    } catch (e) {
+      setMessage({ type: "err", text: e instanceof Error ? e.message : "Ошибка массового действия" });
+    }
+  }
+
+  // ── Apply ──────────────────────────────────────────────────────────────────
+
+  async function handleApply() {
+    if (!activeSession) return;
+    setApplying(true);
+    setConfirmApply(false);
+    setMessage(null);
+    try {
+      const res = await apiFetch<{ applied: Record<string, number>; skipped: Array<{ id: string; reason: string }> }>(
+        `/api/import-sessions/${activeSession.id}/apply`,
+        { method: "POST" }
+      );
+      setApplyResult(res);
+      setMessage({ type: "ok", text: "Изменения применены" });
+      loadSessions();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Ошибка применения";
+      if (msg.includes("409") || msg.toLowerCase().includes("применяются")) {
+        setMessage({ type: "err", text: "Изменения уже применяются, подождите" });
+      } else {
+        setMessage({ type: "err", text: msg });
+      }
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  // ── Export ─────────────────────────────────────────────────────────────────
+
+  async function handleExport(sessionId: string) {
+    try {
+      const res = await fetch(`/api/import-sessions/${sessionId}/export`);
+      if (!res.ok) throw new Error("Ошибка экспорта");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `import-session-${sessionId}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setMessage({ type: "err", text: e instanceof Error ? e.message : "Ошибка экспорта" });
+    }
+  }
+
+  // ── Delete session ─────────────────────────────────────────────────────────
+
+  async function handleDeleteSession(sessionId: string) {
+    if (!confirm("Удалить сессию импорта?")) return;
+    try {
+      await apiFetch(`/api/import-sessions/${sessionId}`, { method: "DELETE" });
+      if (activeSession?.id === sessionId) {
+        setActiveSession(null);
+        setStep("empty");
+        setRows([]);
+      }
+      loadSessions();
+    } catch (e) {
+      setMessage({ type: "err", text: e instanceof Error ? e.message : "Ошибка удаления" });
+    }
+  }
+
+  // ── Open existing session ──────────────────────────────────────────────────
+
+  async function handleOpenSession(session: ImportSession) {
+    setActiveSession(session);
+    setStep("review");
+    loadRows(session.id, "changed", 1);
+  }
+
+  // ── Drag & drop zone ───────────────────────────────────────────────────────
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleUpload(file);
+  }
+
+  const isOwnMode = (activeSession?.type ?? importType) === "OWN";
+  const acceptedCount = rows.filter((r) => r.status === "ACCEPTED").length;
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-slate-800">Аналитика цен</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Загрузите прайс-лист для обновления цен или сравнения с конкурентом.
+          </p>
+        </div>
+        {step !== "empty" && (
+          <button
+            onClick={() => { setStep("empty"); setActiveSession(null); setRows([]); setApplyResult(null); loadSessions(); }}
+            className="shrink-0 text-xs text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors"
+          >
+            ← Назад
+          </button>
+        )}
+      </div>
+
+      {message && (
+        <div className={`px-4 py-3 rounded-lg text-sm font-medium ${message.type === "ok" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+          {message.text}
+          <button onClick={() => setMessage(null)} className="ml-3 text-xs opacity-60 hover:opacity-100">✕</button>
+        </div>
+      )}
+
+      {/* ── Empty / upload step ─────────────────────────────────────────────── */}
+      {step === "empty" && (
+        <div className="space-y-5">
+          {/* Upload dropzone */}
+          <div
+            className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
+            onClick={() => dropRef.current?.click()}
+          >
+            <div className="flex flex-col items-center py-10 px-6 text-center">
+              <svg className="w-10 h-10 text-slate-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              <p className="text-sm font-medium text-slate-700">
+                {uploading ? "Загрузка…" : "Перетащите файл или нажмите для выбора"}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">Поддерживаются .xlsx, .xls, .csv</p>
+            </div>
+            <input
+              ref={dropRef}
+              type="file"
+              className="hidden"
+              accept=".xlsx,.xls,.csv"
+              disabled={uploading}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
+            />
+          </div>
+
+          {/* Past sessions */}
+          {sessions.length > 0 && (
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                Прошлые сессии
+              </div>
+              <div className="divide-y divide-slate-100">
+                {sessions.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-slate-800 truncate">{s.fileName}</div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {formatDate(s.createdAt)} · {s.type === "COMPETITOR" ? `Конкурент: ${s.competitorName ?? "—"}` : "Обновление прайса"} · {s.status}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => handleOpenSession(s)}
+                        className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                      >
+                        Открыть
+                      </button>
+                      <button
+                        onClick={() => handleExport(s.id)}
+                        className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                      >
+                        Скачать XLSX
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSession(s.id)}
+                        className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Mapping step ────────────────────────────────────────────────────── */}
+      {step === "mapping" && preview && (
+        <div className="space-y-5">
+          {/* Type + competitor */}
+          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Шаг 1 — Тип импорта</span>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="flex gap-3">
+                {(["OWN", "COMPETITOR"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setImportType(t)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      importType === t
+                        ? "bg-slate-900 text-white border-slate-900"
+                        : "bg-white text-slate-600 border-slate-300 hover:border-slate-500"
+                    }`}
+                  >
+                    {t === "OWN" ? "Обновление прайса" : "Сравнение с конкурентом"}
+                  </button>
+                ))}
+              </div>
+              {importType === "COMPETITOR" && (
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Название конкурента</label>
+                  <input
+                    type="text"
+                    value={competitorName}
+                    onChange={(e) => setCompetitorName(e.target.value)}
+                    placeholder="Например: РентаЛайт"
+                    className="w-full max-w-xs px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-slate-500"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Column mapping */}
+          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Шаг 2 — Сопоставление колонок</span>
+            </div>
+            <div className="p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="lg:col-span-6 space-y-2">
+                {PRICE_MAPPING_FIELDS.map((f) => (
+                  <div key={f.key} className="flex items-center gap-3">
+                    <div className="w-44 text-xs text-slate-500 shrink-0">
+                      {f.label}
+                      {f.required && <span className="text-red-500 ml-0.5">*</span>}
+                    </div>
+                    <select
+                      className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm bg-white"
+                      value={mappingConfig[f.key] ?? ""}
+                      onChange={(e) =>
+                        setMappingConfig((prev) => ({ ...prev, [f.key]: e.target.value || undefined }))
+                      }
+                    >
+                      <option value="">(не используется)</option>
+                      {preview.headers.map((h) => (
+                        <option value={h} key={h}>{h}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+
+              {/* Sample rows */}
+              <div className="lg:col-span-6">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-slate-200 text-xs font-semibold text-slate-600">
+                    Предпросмотр (первые строки)
+                  </div>
+                  <div className="overflow-auto max-h-48">
+                    <table className="min-w-[400px] w-full text-xs">
+                      <thead className="bg-slate-100">
+                        <tr>
+                          {preview.headers.slice(0, 6).map((h) => (
+                            <th key={h} className="text-left px-3 py-2 border-b border-slate-200 font-medium text-slate-600">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {preview.sampleRows.slice(0, 5).map((row, idx) => (
+                          <tr key={idx} className="border-t border-slate-100">
+                            {preview.headers.slice(0, 6).map((h) => (
+                              <td key={h} className="px-3 py-1.5 text-slate-700">{String(row[h] ?? "")}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleMap}
+            disabled={mapping || !mappingConfig.name || !mappingConfig.rentalRatePerShift}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+          >
+            {mapping ? "Анализ…" : "Начать анализ"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Review step ─────────────────────────────────────────────────────── */}
+      {step === "review" && activeSession && (
+        <div className="space-y-4">
+          {/* Header info */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-medium text-slate-700">{activeSession.fileName}</span>
+            <span className="text-xs text-slate-500">
+              {activeSession.type === "COMPETITOR"
+                ? `Конкурент: ${activeSession.competitorName ?? "—"}`
+                : "Обновление прайса"}
+            </span>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${activeSession.status === "APPLIED" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+              {activeSession.status}
+            </span>
+          </div>
+
+          {/* Stats bar */}
+          {stats && (
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {[
+                { label: "Изменены цены", value: stats.priceChanges, color: "text-amber-700" },
+                { label: "Новые", value: stats.newItems, color: "text-emerald-700" },
+                { label: "Удалены", value: stats.removedItems, color: "text-red-700" },
+                { label: "Кол-во", value: stats.qtyChanges, color: "text-blue-700" },
+                { label: "Без изм.", value: stats.noChange, color: "text-slate-500" },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className={`text-xl font-bold ${color}`}>{value}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Filter pills */}
+          <div className="flex gap-1.5 flex-wrap">
+            {FILTER_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => { setFilter(opt.id); if (activeSession) loadRows(activeSession.id, opt.id, 1); }}
+                className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                  filter === opt.id
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "bg-white text-slate-600 border-slate-300 hover:border-slate-500"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Bulk actions (OWN mode only) */}
+          {isOwnMode && activeSession.status !== "APPLIED" && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setConfirmBulk({ action: "ACCEPT", count: rowsTotal })}
+                className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"
+              >
+                Принять все
+              </button>
+              <button
+                onClick={() => setConfirmBulk({ action: "REJECT", count: rowsTotal })}
+                className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors"
+              >
+                Отклонить все
+              </button>
+              <span className="text-xs text-slate-400">в текущем фильтре</span>
+            </div>
+          )}
+
+          {/* Apply result */}
+          {applyResult && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 space-y-1">
+              <div className="font-semibold text-emerald-800 mb-2">Изменения применены</div>
+              {Object.entries(applyResult.applied).map(([k, v]) => (
+                <div key={k} className="flex justify-between">
+                  <span className="text-emerald-700">{k}</span>
+                  <span className="font-semibold">{v}</span>
+                </div>
+              ))}
+              {applyResult.skipped.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-emerald-200">
+                  <div className="text-amber-700 font-medium">Пропущено {applyResult.skipped.length} позиц.</div>
+                  <ul className="mt-1 space-y-0.5">
+                    {applyResult.skipped.map((s) => (
+                      <li key={s.id} className="text-xs text-amber-600">{s.reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Table */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Позиция</th>
+                    <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Категория</th>
+                    {isOwnMode ? (
+                      <>
+                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Текущая цена</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Новая цена</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Δ%</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Кол-во</th>
+                        <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Действие</th>
+                        {activeSession.status !== "APPLIED" && (
+                          <th className="px-3 py-2.5" />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Наша цена</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Конкурент</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Δ%</th>
+                        <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Уверенность</th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {loadingRows ? (
+                    <tr>
+                      <td colSpan={isOwnMode ? 8 : 6} className="py-8 text-center text-slate-400">Загрузка…</td>
+                    </tr>
+                  ) : rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={isOwnMode ? 8 : 6} className="py-8 text-center text-slate-400">Нет позиций</td>
+                    </tr>
+                  ) : (
+                    rows.map((row) => {
+                      const bg = rowBgClass(row);
+                      const delta = row.priceDelta ? parseFloat(row.priceDelta) : null;
+                      const isRemovedWithBookings = row.action === "REMOVED_ITEM" && row.hasActiveBookings;
+                      return (
+                        <tr key={row.id} className={bg}>
+                          <td className="px-3 py-2.5 text-slate-800 max-w-[200px]">
+                            <div className="truncate">{row.sourceName}</div>
+                            {row.action === "NO_MATCH" && (
+                              <span className="inline-block text-[10px] font-medium bg-slate-100 text-slate-500 rounded px-1.5 py-0.5 mt-0.5">Не найдено</span>
+                            )}
+                            {row.matchMethod === "SUSPICIOUS" && (
+                              <span className="inline-block text-[10px] font-medium bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 mt-0.5">⚠️ Подозрительное значение</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-slate-500">{row.sourceCategory ?? row.equipment?.category ?? "—"}</td>
+                          {isOwnMode ? (
+                            <>
+                              <td className="px-3 py-2.5 text-right text-slate-700">{row.oldPrice ?? "—"}</td>
+                              <td className="px-3 py-2.5 text-right font-medium text-slate-900">{row.sourcePrice ?? "—"}</td>
+                              <td className={`px-3 py-2.5 text-right font-medium ${delta !== null ? (delta > 5 ? "text-red-700" : delta < -5 ? "text-green-700" : "text-amber-700") : "text-slate-400"}`}>
+                                {delta !== null ? `${delta > 0 ? "+" : ""}${delta.toFixed(1)}%` : "—"}
+                              </td>
+                              <td className="px-3 py-2.5 text-right text-slate-600">
+                                {row.sourceQty !== null ? row.sourceQty : "—"}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                  row.action === "NEW_ITEM" ? "bg-green-100 text-green-800"
+                                  : row.action === "REMOVED_ITEM" ? "bg-red-100 text-red-800"
+                                  : row.action === "PRICE_CHANGE" ? "bg-amber-100 text-amber-800"
+                                  : row.action === "QTY_CHANGE" ? "bg-blue-100 text-blue-800"
+                                  : "bg-slate-100 text-slate-600"
+                                }`}>
+                                  {actionLabel(row.action)}
+                                </span>
+                              </td>
+                              {activeSession.status !== "APPLIED" && (
+                                <td className="px-3 py-2.5 text-right">
+                                  {isRemovedWithBookings ? (
+                                    <span
+                                      title="Нельзя удалить (активные брони)"
+                                      className="inline-block text-[10px] text-slate-400 cursor-not-allowed px-2 py-1 rounded border border-slate-200"
+                                    >
+                                      Заблокировано
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleRowToggle(row)}
+                                      className={`text-[10px] font-medium px-2 py-1 rounded border transition-colors ${
+                                        row.status === "ACCEPTED"
+                                          ? "bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200"
+                                          : "bg-white text-slate-600 border-slate-300 hover:border-emerald-400"
+                                      }`}
+                                    >
+                                      {row.status === "ACCEPTED" ? "Принято ✓" : "Принять"}
+                                    </button>
+                                  )}
+                                </td>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <td className="px-3 py-2.5 text-right text-slate-700">{row.oldPrice ?? "—"}</td>
+                              <td className="px-3 py-2.5 text-right font-medium text-slate-900">{row.sourcePrice ?? "—"}</td>
+                              <td className={`px-3 py-2.5 text-right font-medium ${delta !== null ? (delta > 5 ? "text-red-700" : delta < -5 ? "text-green-700" : "text-amber-700") : "text-slate-400"}`}>
+                                {delta !== null ? `${delta > 0 ? "+" : ""}${delta.toFixed(1)}%` : "—"}
+                              </td>
+                              <td className="px-3 py-2.5">{confidenceBadge(row.matchConfidence)}</td>
+                            </>
+                          )}
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {rowsTotalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
+                <span className="text-xs text-slate-500">
+                  Страница {rowsPage} из {rowsTotalPages} · {rowsTotal} позиций
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    disabled={rowsPage <= 1}
+                    onClick={() => { if (activeSession) loadRows(activeSession.id, filter, rowsPage - 1); }}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 disabled:opacity-40 hover:bg-slate-100 transition-colors"
+                  >
+                    ← Назад
+                  </button>
+                  <button
+                    disabled={rowsPage >= rowsTotalPages}
+                    onClick={() => { if (activeSession) loadRows(activeSession.id, filter, rowsPage + 1); }}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 disabled:opacity-40 hover:bg-slate-100 transition-colors"
+                  >
+                    Вперёд →
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom actions */}
+          <div className="flex items-center gap-3 flex-wrap pt-1">
+            <button
+              onClick={() => handleExport(activeSession.id)}
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-colors"
+            >
+              Скачать XLSX
+            </button>
+            {isOwnMode && activeSession.status !== "APPLIED" && (
+              <button
+                onClick={() => setConfirmApply(true)}
+                disabled={applying}
+                className="px-4 py-2 text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 rounded-xl transition-colors"
+              >
+                {applying ? "Применение…" : `Применить ${acceptedCount > 0 ? acceptedCount : ""} изменений`}
+              </button>
+            )}
+            <button
+              onClick={() => handleDeleteSession(activeSession.id)}
+              className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors"
+            >
+              Удалить сессию
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk confirm modal ───────────────────────────────────────────────── */}
+      {confirmBulk && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+            <h3 className="text-base font-semibold text-slate-900">
+              {confirmBulk.action === "ACCEPT" ? "Принять" : "Отклонить"} {confirmBulk.count} позиций?
+            </h3>
+            <p className="text-sm text-slate-500">
+              Действие применится ко всем строкам в текущем фильтре.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmBulk(null)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">
+                Отмена
+              </button>
+              <button
+                onClick={() => handleBulkAction(confirmBulk.action)}
+                className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors ${
+                  confirmBulk.action === "ACCEPT" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-red-600 hover:bg-red-500"
+                }`}
+              >
+                Подтвердить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Apply confirm modal ──────────────────────────────────────────────── */}
+      {confirmApply && stats && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+            <h3 className="text-base font-semibold text-slate-900">Применить изменения?</h3>
+            <div className="space-y-2 text-sm">
+              {([
+                ["Изменены цены", stats.priceChanges],
+                ["Новые позиции", stats.newItems],
+                ["Удалены позиции", stats.removedItems],
+                ["Изменено кол-во", stats.qtyChanges],
+              ] as [string, number][]).map(([label, count]) => (
+                count > 0 && (
+                  <div key={label} className="flex justify-between">
+                    <span className="text-slate-600">{label}</span>
+                    <span className="font-semibold text-slate-900">{count}</span>
+                  </div>
+                )
+              ))}
+            </div>
+            <p className="text-xs text-amber-600">Действие нельзя отменить.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmApply(false)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">
+                Отмена
+              </button>
+              <button
+                onClick={handleApply}
+                className="px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors"
+              >
+                Применить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Admin panel (authenticated) ───────────────────────────────────────────────
 
-type AdminTab = "catalog" | "pricelist" | "import" | "slang" | "workers" | "barcodes";
+type AdminTab = "catalog" | "pricelist" | "import" | "slang" | "workers" | "barcodes" | "prices";
 
 const TABS: Array<{ id: AdminTab; label: string }> = [
   { id: "catalog", label: "Каталог техники" },
@@ -1778,6 +2669,7 @@ const TABS: Array<{ id: AdminTab; label: string }> = [
   { id: "slang", label: "Жаргон / Обучение" },
   { id: "workers", label: "Кладовщики" },
   { id: "barcodes", label: "Штрихкоды" },
+  { id: "prices", label: "Аналитика цен" },
 ];
 
 function AdminPanel({ onLogout }: { onLogout: () => void }) {
@@ -1833,6 +2725,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         {tab === "slang" && <SlangLearningTab />}
         {tab === "workers" && <WorkersTab />}
         {tab === "barcodes" && <BarcodesTab />}
+        {tab === "prices" && <PricesTab />}
       </div>
     </div>
   );
