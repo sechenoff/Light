@@ -14,6 +14,7 @@ import sharp from "sharp";
 import PDFDocument from "pdfkit";
 
 import { generateBarcodeId as _generateBarcodeId } from "../utils/barcodeAbbrev";
+import { prisma } from "../prisma";
 
 // ──────────────────────────────────────────────
 // Типы
@@ -115,6 +116,32 @@ export function verifyBarcodePayload(payload: string): string | null {
   }
 
   return unitId;
+}
+
+/**
+ * Двухпроходное разрешение штрихкода: HMAC → raw barcode DB lookup.
+ * @returns { unitId, hmacVerified } или null если не найден.
+ */
+export async function resolveBarcode(
+  scannedValue: string
+): Promise<{ unitId: string; hmacVerified: boolean } | null> {
+  // Pass 1: HMAC verification
+  const hmacUnitId = verifyBarcodePayload(scannedValue);
+  if (hmacUnitId) {
+    return { unitId: hmacUnitId, hmacVerified: true };
+  }
+
+  // Pass 2: raw barcode lookup (max 100 chars)
+  if (scannedValue.length > 100) return null;
+  const unit = await prisma.equipmentUnit.findFirst({
+    where: { barcode: scannedValue },
+    select: { id: true },
+  });
+  if (unit) {
+    return { unitId: unit.id, hmacVerified: false };
+  }
+
+  return null;
 }
 
 // ──────────────────────────────────────────────
