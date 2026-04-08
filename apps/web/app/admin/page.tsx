@@ -1876,7 +1876,7 @@ function PricesTab() {
   const [activeSession, setActiveSession] = useState<ImportSession | null>(null);
   const [preview, setPreview] = useState<UploadPreview["preview"] | null>(null);
   const [mappingConfig, setMappingConfig] = useState<PriceMappingState>({});
-  const [importType, setImportType] = useState<"OWN" | "COMPETITOR">("OWN");
+  const [importType, setImportType] = useState<"OWN_PRICE_UPDATE" | "COMPETITOR_IMPORT">("OWN_PRICE_UPDATE");
   const [competitorName, setCompetitorName] = useState("");
   const [rows, setRows] = useState<ImportSessionRow[]>([]);
   const [rowsTotal, setRowsTotal] = useState(0);
@@ -1902,7 +1902,7 @@ function PricesTab() {
       setSessions(data.sessions ?? []);
       // Auto-resume active OWN session that is in MAPPED/PENDING state
       const active = (data.sessions ?? []).find(
-        (s) => s.type === "OWN" && (s.status === "MAPPED" || s.status === "PENDING")
+        (s) => s.type === "OWN_PRICE_UPDATE" && s.status === "REVIEW"
       );
       if (active) {
         setActiveSession(active);
@@ -1987,7 +1987,7 @@ function PricesTab() {
           method: "POST",
           body: JSON.stringify({
             type: importType,
-            competitorName: importType === "COMPETITOR" ? competitorName : undefined,
+            competitorName: importType === "COMPETITOR_IMPORT" ? competitorName || undefined : undefined,
             columnMapping,
           }),
         }
@@ -2115,7 +2115,7 @@ function PricesTab() {
     if (file) handleUpload(file);
   }
 
-  const isOwnMode = (activeSession?.type ?? importType) === "OWN";
+  const isOwnMode = (activeSession?.type ?? importType) === "OWN_PRICE_UPDATE";
   const acceptedCount = rows.filter((r) => r.status === "ACCEPTED").length;
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -2164,13 +2164,13 @@ function PricesTab() {
               <p className="text-sm font-medium text-slate-700">
                 {uploading ? "Загрузка…" : "Перетащите файл или нажмите для выбора"}
               </p>
-              <p className="text-xs text-slate-400 mt-1">Поддерживаются .xlsx, .xls, .csv</p>
+              <p className="text-xs text-slate-400 mt-1">Поддерживаются .xlsx, .xls</p>
             </div>
             <input
               ref={dropRef}
               type="file"
               className="hidden"
-              accept=".xlsx,.xls,.csv"
+              accept=".xlsx,.xls"
               disabled={uploading}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
             />
@@ -2188,7 +2188,7 @@ function PricesTab() {
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-slate-800 truncate">{s.fileName}</div>
                       <div className="text-xs text-slate-500 mt-0.5">
-                        {formatDate(s.createdAt)} · {s.type === "COMPETITOR" ? `Конкурент: ${s.competitorName ?? "—"}` : "Обновление прайса"} · {s.status}
+                        {formatDate(s.createdAt)} · {s.type === "COMPETITOR_IMPORT" ? `Конкурент: ${s.competitorName ?? "—"}` : "Обновление прайса"} · {s.status}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -2229,7 +2229,7 @@ function PricesTab() {
             </div>
             <div className="p-4 space-y-3">
               <div className="flex gap-3">
-                {(["OWN", "COMPETITOR"] as const).map((t) => (
+                {(["OWN_PRICE_UPDATE", "COMPETITOR_IMPORT"] as const).map((t) => (
                   <button
                     key={t}
                     onClick={() => setImportType(t)}
@@ -2239,11 +2239,11 @@ function PricesTab() {
                         : "bg-white text-slate-600 border-slate-300 hover:border-slate-500"
                     }`}
                   >
-                    {t === "OWN" ? "Обновление прайса" : "Сравнение с конкурентом"}
+                    {t === "OWN_PRICE_UPDATE" ? "Обновление прайса" : "Сравнение с конкурентом"}
                   </button>
                 ))}
               </div>
-              {importType === "COMPETITOR" && (
+              {importType === "COMPETITOR_IMPORT" && (
                 <div>
                   <label className="text-xs text-slate-500 mb-1 block">Название конкурента</label>
                   <input
@@ -2335,11 +2335,11 @@ function PricesTab() {
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium text-slate-700">{activeSession.fileName}</span>
             <span className="text-xs text-slate-500">
-              {activeSession.type === "COMPETITOR"
+              {activeSession.type === "COMPETITOR_IMPORT"
                 ? `Конкурент: ${activeSession.competitorName ?? "—"}`
                 : "Обновление прайса"}
             </span>
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${activeSession.status === "APPLIED" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${activeSession.status === "COMPLETED" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
               {activeSession.status}
             </span>
           </div>
@@ -2380,7 +2380,7 @@ function PricesTab() {
           </div>
 
           {/* Bulk actions (OWN mode only) */}
-          {isOwnMode && activeSession.status !== "APPLIED" && (
+          {isOwnMode && activeSession.status !== "COMPLETED" && (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setConfirmBulk({ action: "ACCEPT", count: rowsTotal })}
@@ -2436,7 +2436,7 @@ function PricesTab() {
                         <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Δ%</th>
                         <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Кол-во</th>
                         <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Действие</th>
-                        {activeSession.status !== "APPLIED" && (
+                        {activeSession.status !== "COMPLETED" && (
                           <th className="px-3 py-2.5" />
                         )}
                       </>
@@ -2471,7 +2471,7 @@ function PricesTab() {
                             {row.action === "NO_MATCH" && (
                               <span className="inline-block text-[10px] font-medium bg-slate-100 text-slate-500 rounded px-1.5 py-0.5 mt-0.5">Не найдено</span>
                             )}
-                            {row.matchMethod === "SUSPICIOUS" && (
+                            {row.matchMethod?.includes(":FLAGGED") && (
                               <span className="inline-block text-[10px] font-medium bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 mt-0.5">⚠️ Подозрительное значение</span>
                             )}
                           </td>
@@ -2497,7 +2497,7 @@ function PricesTab() {
                                   {actionLabel(row.action)}
                                 </span>
                               </td>
-                              {activeSession.status !== "APPLIED" && (
+                              {activeSession.status !== "COMPLETED" && (
                                 <td className="px-3 py-2.5 text-right">
                                   {isRemovedWithBookings ? (
                                     <span
@@ -2573,7 +2573,7 @@ function PricesTab() {
             >
               Скачать XLSX
             </button>
-            {isOwnMode && activeSession.status !== "APPLIED" && (
+            {isOwnMode && activeSession.status !== "COMPLETED" && (
               <button
                 onClick={() => setConfirmApply(true)}
                 disabled={applying}
