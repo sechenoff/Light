@@ -436,6 +436,7 @@ model ScanRecord {
   id              String   @id @default(cuid())
   sessionId       String
   equipmentUnitId String
+  hmacVerified    Boolean  @default(true)
   scannedAt       DateTime @default(now())
 
   session       ScanSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
