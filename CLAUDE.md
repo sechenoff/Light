@@ -30,7 +30,7 @@ light-rental-system/
   apps/
     api/          Express 4 + Prisma 6 (SQLite) + BullMQ
       src/
-        routes/       17 route files (equipment, bookings, warehouse, equipmentUnits, equipmentUnitsGlobal, etc.)
+        routes/       18 route files (equipment, bookings, warehouse, equipmentUnits, equipmentUnitsGlobal, importSessions, etc.)
         services/     Business logic (bookings, analyses, barcode, scanSession, equipmentMatcher, gemini, smetaExport/, vision/)
         middleware/   apiKeyAuth, rateLimiter, warehouseAuth (PIN-based token auth)
         queue/        BullMQ connection, worker, queue definitions
@@ -72,6 +72,7 @@ light-rental-system/
 | `apps/bot/src/services/api.ts` | Bot API client: gaffer review types (GafferReviewItem, GafferMatchCandidate), parseGafferReview() |
 | `apps/bot/src/services/llm.ts` | Equipment matching via parseGafferReview API (3-tier: resolved/needsReview/unmatched), date parsing |
 | `apps/api/src/services/importSession.ts` | Import session lifecycle: parse XLSX buffer, match rows against catalog (string-similarity), build diff, apply price/qty changes |
+| `apps/api/src/routes/importSessions.ts` | Import sessions REST endpoints: upload, map, rows, apply, export, bulk-action (11 endpoints under `/api/import-sessions`) |
 | `apps/api/src/services/barcode.ts` | Barcode generation (Code128 via bwip-js), HMAC-SHA256 verification, label rendering (PNG/PDF), dual resolution via `resolveBarcode()` |
 | `apps/api/src/services/scanSession.ts` | Scan session service: issue/return/cancel logic, unit status transitions, reconciliation |
 | `apps/api/src/routes/warehouse.ts` | Warehouse scan endpoints: auth, sessions, scan, summary, complete (7 scan routes + public auth) |
@@ -113,7 +114,7 @@ npm run build
 npm run lint
 
 # Tests
-npm test                          # run all (shared + bot + api) — 173 tests
+npm test                          # run all (shared + bot + api) — 256 tests
 npm run test -w apps/api          # API tests (smoke + barcode integration)
 npm run test -w apps/bot          # bot booking-helpers tests only (27 tests)
 npm run test -w packages/shared   # shared package tests only
@@ -155,7 +156,7 @@ npm run seed                  # Seed database
 
 1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
 2. **~~Crew calculator duplication~~** — RESOLVED: extracted to `packages/shared` (`@light-rental/shared`).
-3. **~~Minimal test coverage~~** — RESOLVED: 173 tests across shared, bot (booking-helpers), API smoke, barcode integration, and importSession tests.
+3. **~~Minimal test coverage~~** — RESOLVED: 256 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, and importSession routes tests.
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
 
