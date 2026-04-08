@@ -1,12 +1,8 @@
 {
-  "sprint": 2,
+  "sprint": 3,
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "findings_fixed": [
-    "IMPORTANT: Batch hasActiveBookings query (eliminate N+1)",
-    "IMPORTANT: Cap limit at 200",
-    "CONCERN: Map endpoint returns {session, stats} per spec"
-  ],
-  "ts": "2026-04-08T12:30:00Z"
+  "ts": "2026-04-08T13:05:00Z",
+  "notes": "Product: NEEDS_FIXES → fixed (catalogId validation, alias N+1, string normalization). Technical: REQUEST_CHANGES → fixed (same issues). All 202 tests pass."
 }
