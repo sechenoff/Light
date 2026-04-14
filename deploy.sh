@@ -43,6 +43,13 @@ echo "║   Light Rental System  · Deploy      ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 
+# ── Root workspace install (hoists deps для всех приложений) ──────────────────
+# Идемпотентно: если node_modules актуален — npm install отработает быстро.
+cd "$ROOT"
+echo "▶ root: npm install (workspaces)"
+npm install --prefer-offline --no-audit --no-fund --silent
+echo "  ✓ workspace deps установлены"
+
 # ── Shared package (нужен для web, bot) ───────────────────────────────────────
 if $DEPLOY_WEB || $DEPLOY_RENTAL_BOT || $DEPLOY_ALL; then
   echo "▶ shared: build"
