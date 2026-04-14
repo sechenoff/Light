@@ -11,6 +11,7 @@ import { authRouter } from "./routes/auth";
 import { HttpError } from "./utils/errors";
 import { rateLimiter } from "./middleware/rateLimiter";
 import { apiKeyAuth } from "./middleware/apiKeyAuth";
+import { botScopeGuard } from "./middleware/botScopeGuard";
 import { sessionParser } from "./middleware/sessionAuth";
 import { warehousePublicRouter, warehouseScanRouter } from "./routes/warehouse";
 
@@ -66,6 +67,7 @@ app.use("/api/warehouse", warehousePublicRouter);
 app.use("/api/warehouse", warehouseScanRouter);
 app.use(apiKeyAuth);
 app.use(sessionParser);
+app.use(botScopeGuard);
 app.use(router);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
