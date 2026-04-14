@@ -73,8 +73,14 @@
 - [apps/api/src/routes/calendar.ts](apps/api/src/routes/calendar.ts): GET /api/calendar (resources + booking events with category/search/includeDrafts filters), GET /api/calendar/occupancy (per-day booking heatmap)
 
 ### Finance
-- [apps/api/src/routes/finance.ts](apps/api/src/routes/finance.ts): Payment and expense endpoints
-- [apps/api/src/services/finance.ts](apps/api/src/services/finance.ts): Finance business logic
+- [apps/api/src/routes/finance.ts](apps/api/src/routes/finance.ts): Payment and expense endpoints + `GET /api/finance/debts` (aggregated client debts with project breakdown)
+- [apps/api/src/services/finance.ts](apps/api/src/services/finance.ts): Finance business logic — includes `computeDebts()` (on-the-fly aggregation from Booking.amountOutstanding, no new DB tables)
+
+### Bot API (external integration)
+- [apps/api/src/middleware/botScopeGuard.ts](apps/api/src/middleware/botScopeGuard.ts): Scope guard for API keys with `openclaw-` prefix — DELETE globally blocked, whitelist of 14 routes (equipment, availability, bookings, finance/debts, finance/dashboard). Returns 403 `BOT_SCOPE_FORBIDDEN` for non-whitelisted routes.
+- [apps/api/src/routes/bookings.ts](apps/api/src/routes/bookings.ts): Booking CRUD — `POST /draft` and `PATCH /:id` accept `dryRun: true` (validate + quote without writing to DB, returns `status: "DRAFT_PREVIEW"`)
+- [docs/bot-api.md](docs/bot-api.md): Bot API documentation (Russian) — auth, scope, endpoints, curl examples, error codes, scenarios
+- [docs/bot-api-tools.json](docs/bot-api-tools.json): 12 OpenAI function-calling schemas (JSON Schema Draft-07), ready to paste into Chat Completions `tools` param
 
 ### Slang Learning
 - [apps/api/src/routes/slangLearning.ts](apps/api/src/routes/slangLearning.ts): Admin endpoints for managing gaffer slang aliases
@@ -144,4 +150,4 @@
 - [apps/api/assets/fonts/](apps/api/assets/fonts/): DejaVu fonts for PDF export
 - [docs/DATA_MODEL_SMETA.md](docs/DATA_MODEL_SMETA.md): Data model documentation for estimates
 
-<!-- updated-by-superflow:2026-04-08 -->
+<!-- updated-by-superflow:2026-04-14 -->
