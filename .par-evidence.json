@@ -1,0 +1,18 @@
+{
+  "sprint": 1,
+  "feature": "bot-api",
+  "governance_mode": "light",
+  "claude_product": "SKIPPED-LIGHT",
+  "technical_review": "APPROVE",
+  "provider": "claude-standard-code-reviewer",
+  "reviewer_agent_id": "a81c0b93294f03046",
+  "verdict_summary": "APPROVE — scope guard, debts aggregation, and dryRun implementation match the spec. 257/257 tests pass (30 new). TypeScript clean. 2 minor non-blocking findings noted for follow-up (overdueAmount consistency when expectedPaymentDate is null; overdueOnly query param could accept more boolean formats).",
+  "tests": {
+    "total": 257,
+    "passing": 257,
+    "new_cases": 30,
+    "runner": "vitest",
+    "min_required": 5
+  },
+  "ts": "2026-04-14T11:30:00Z"
+}
