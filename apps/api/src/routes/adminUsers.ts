@@ -2,7 +2,7 @@ import express from "express";
 import { z } from "zod";
 
 import { prisma } from "../prisma";
-import { hashPassword } from "../services/auth";
+import { hashPassword, normalizeUsername } from "../services/auth";
 import { requireRole } from "../middleware/sessionAuth";
 import { HttpError } from "../utils/errors";
 
@@ -17,7 +17,8 @@ const createSchema = z.object({
     .trim()
     .min(3, "Логин должен быть не короче 3 символов")
     .max(50, "Логин должен быть не длиннее 50 символов")
-    .regex(/^[a-zA-Z0-9_.-]+$/, "Логин: только латиница, цифры, дефис, подчёркивание, точка"),
+    .regex(/^[a-zA-Z0-9_.-]+$/, "Логин: только латиница, цифры, дефис, подчёркивание, точка")
+    .transform(normalizeUsername),
   password: z.string().min(3, "Пароль не короче 3 символов").max(200),
   role: z.enum(["SUPER_ADMIN", "RENTAL_ADMIN"]).default("RENTAL_ADMIN"),
 });

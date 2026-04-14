@@ -59,8 +59,13 @@ export function verifySession(token: string): SessionPayload | null {
 // Пользователи
 // ──────────────────────────────────────────────
 
+/** Нормализация логина: trim + lowercase. Логин case-insensitive. */
+export function normalizeUsername(username: string): string {
+  return username.trim().toLowerCase();
+}
+
 export async function authenticate(username: string, password: string): Promise<SessionPayload | null> {
-  const user = await prisma.adminUser.findUnique({ where: { username } });
+  const user = await prisma.adminUser.findUnique({ where: { username: normalizeUsername(username) } });
   if (!user) return null;
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) return null;

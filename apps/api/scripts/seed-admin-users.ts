@@ -3,29 +3,32 @@
  * Запуск: `npx tsx scripts/seed-admin-users.ts`
  * Вызывается автоматически в deploy.sh после `prisma db push`.
  *
- * Логины/пароли по умолчанию (меняются через UI после первого входа):
- *   super / тест  (SUPER_ADMIN)
- *   admin / тест  (RENTAL_ADMIN)
+ * Логины case-insensitive (хранятся lowercase). Пароли меняются через UI после входа.
+ *   sechenoff / test  (SUPER_ADMIN)
+ *   super     / тест  (SUPER_ADMIN)
+ *   admin     / тест  (RENTAL_ADMIN)
  */
 import { prisma } from "../src/prisma";
-import { hashPassword } from "../src/services/auth";
+import { hashPassword, normalizeUsername } from "../src/services/auth";
 
 async function ensureUser(username: string, password: string, role: "SUPER_ADMIN" | "RENTAL_ADMIN") {
-  const existing = await prisma.adminUser.findUnique({ where: { username } });
+  const normalized = normalizeUsername(username);
+  const existing = await prisma.adminUser.findUnique({ where: { username: normalized } });
   if (existing) {
     // eslint-disable-next-line no-console
-    console.log(`✓ ${role.padEnd(12)} ${username}: уже существует`);
+    console.log(`✓ ${role.padEnd(12)} ${normalized}: уже существует`);
     return;
   }
   const passwordHash = await hashPassword(password);
   await prisma.adminUser.create({
-    data: { username, passwordHash, role },
+    data: { username: normalized, passwordHash, role },
   });
   // eslint-disable-next-line no-console
-  console.log(`+ ${role.padEnd(12)} ${username}: создан (пароль: ${password})`);
+  console.log(`+ ${role.padEnd(12)} ${normalized}: создан (пароль: ${password})`);
 }
 
 async function main() {
+  await ensureUser("Sechenoff", "test", "SUPER_ADMIN");
   await ensureUser("super", "тест", "SUPER_ADMIN");
   await ensureUser("admin", "тест", "RENTAL_ADMIN");
 }
