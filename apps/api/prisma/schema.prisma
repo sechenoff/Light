@@ -602,3 +602,18 @@ model CompetitorAlias {
   @@index([competitorName])
   @@index([equipmentId])
 }
+
+enum AdminRole {
+  SUPER_ADMIN
+  RENTAL_ADMIN
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  role         AdminRole @default(RENTAL_ADMIN)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  @@index([username])
+}

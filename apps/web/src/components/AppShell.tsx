@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useCurrentUser, type AdminRole } from "../lib/auth";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -109,6 +110,8 @@ type NavItem = {
   href: string;
   icon: React.ReactNode;
   match: (pathname: string) => boolean;
+  /** Если указано — пункт видят только эти роли. */
+  roles?: AdminRole[];
 };
 
 type NavGroup = {
@@ -154,6 +157,7 @@ const BOTTOM_ITEMS: NavItem[] = [
     href: "/finance",
     icon: <IconCoin />,
     match: (p) => p === "/finance",
+    roles: ["SUPER_ADMIN"],
   },
   {
     label: "Admin Panel",
@@ -165,7 +169,24 @@ const BOTTOM_ITEMS: NavItem[] = [
 
 // ── Sidebar content ───────────────────────────────────────────────────────────
 
-function SidebarContent({ pathname, onClose }: { pathname: string; onClose?: () => void }) {
+function allowedForRole(roles: AdminRole[] | undefined, role: AdminRole | null): boolean {
+  if (!roles) return true;
+  if (!role) return false;
+  return roles.includes(role);
+}
+
+function SidebarContent({
+  pathname,
+  onClose,
+  user,
+  onLogout,
+}: {
+  pathname: string;
+  onClose?: () => void;
+  user: { username: string; role: AdminRole } | null;
+  onLogout: () => void;
+}) {
+  const role = user?.role ?? null;
   return (
     <div className="flex flex-col h-full">
       {/* Logo */}
@@ -192,39 +213,43 @@ function SidebarContent({ pathname, onClose }: { pathname: string; onClose?: () 
 
       {/* Nav groups */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label}>
-            <div className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-              {group.label}
+        {NAV_GROUPS.map((group) => {
+          const visibleItems = group.items.filter((i) => allowedForRole(i.roles, role));
+          if (visibleItems.length === 0) return null;
+          return (
+            <div key={group.label}>
+              <div className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                {group.label}
+              </div>
+              <ul className="space-y-0.5">
+                {visibleItems.map((item) => {
+                  const active = item.match(pathname);
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={onClose}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          active
+                            ? "bg-white/10 text-white font-medium"
+                            : "text-slate-400 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        <span className={active ? "text-white" : "text-slate-500"}>{item.icon}</span>
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
-            <ul className="space-y-0.5">
-              {group.items.map((item) => {
-                const active = item.match(pathname);
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      onClick={onClose}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                        active
-                          ? "bg-white/10 text-white font-medium"
-                          : "text-slate-400 hover:text-white hover:bg-white/5"
-                      }`}
-                    >
-                      <span className={active ? "text-white" : "text-slate-500"}>{item.icon}</span>
-                      {item.label}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* Finance & Admin links at bottom */}
-      <div className="px-3 pb-4 border-t border-slate-700 pt-3 space-y-1">
-        {BOTTOM_ITEMS.map((item) => {
+      <div className="px-3 pb-3 border-t border-slate-700 pt-3 space-y-1">
+        {BOTTOM_ITEMS.filter((i) => allowedForRole(i.roles, role)).map((item) => {
           const active = item.match(pathname);
           return (
             <Link
@@ -243,6 +268,34 @@ function SidebarContent({ pathname, onClose }: { pathname: string; onClose?: () 
           );
         })}
       </div>
+
+      {/* User panel */}
+      {user && (
+        <div className="px-3 pb-4 border-t border-slate-700 pt-3">
+          <div className="px-3 py-1.5 text-xs text-slate-300">
+            <div className="truncate font-medium text-white">{user.username}</div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">
+              {user.role === "SUPER_ADMIN" ? "Супер-админ" : "Админ рентала"}
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              onClose?.();
+              onLogout();
+            }}
+            className="w-full mt-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            <span className="text-slate-500">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </span>
+            Выйти
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -252,14 +305,20 @@ function SidebarContent({ pathname, onClose }: { pathname: string; onClose?: () 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user, logout } = useCurrentUser();
 
   // Close mobile sidebar on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Landing page is standalone — no sidebar/chrome
-  if (pathname === "/") {
+  // Публичные маршруты без оболочки: лендинг, логин, калькулятор осветителей, warehouse/scan (свой UI).
+  const isStandalone =
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname === "/crew-calculator" ||
+    pathname.startsWith("/warehouse/scan");
+  if (isStandalone) {
     return <>{children}</>;
   }
 
@@ -267,7 +326,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen">
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex flex-col w-56 shrink-0 bg-slate-900 fixed inset-y-0 left-0 z-30">
-        <SidebarContent pathname={pathname} />
+        <SidebarContent pathname={pathname} user={user} onLogout={logout} />
       </aside>
 
       {/* Mobile overlay */}
@@ -284,7 +343,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <SidebarContent pathname={pathname} onClose={() => setMobileOpen(false)} />
+        <SidebarContent
+          pathname={pathname}
+          onClose={() => setMobileOpen(false)}
+          user={user}
+          onLogout={logout}
+        />
       </aside>
 
       {/* Main content */}

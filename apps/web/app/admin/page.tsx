@@ -3,6 +3,7 @@
 import { useEffect, useRef, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "../../src/lib/api";
+import { useCurrentUser } from "../../src/lib/auth";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -2672,11 +2673,246 @@ function PricesTab() {
   );
 }
 
+// ── Users tab (SUPER_ADMIN only) ──────────────────────────────────────────────
+
+type AdminUserRow = {
+  id: string;
+  username: string;
+  role: "SUPER_ADMIN" | "RENTAL_ADMIN";
+  createdAt: string;
+  updatedAt: string;
+};
+
+function UsersTab() {
+  const [users, setUsers] = useState<AdminUserRow[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Форма создания
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<"SUPER_ADMIN" | "RENTAL_ADMIN">("RENTAL_ADMIN");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch<{ users: AdminUserRow[] }>("/api/admin-users");
+      setUsers(res.users);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка загрузки");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreateError(null);
+    setCreating(true);
+    try {
+      await apiFetch("/api/admin-users", {
+        method: "POST",
+        body: JSON.stringify({ username: newUsername.trim(), password: newPassword, role: newRole }),
+      });
+      setNewUsername("");
+      setNewPassword("");
+      setNewRole("RENTAL_ADMIN");
+      await load();
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : "Ошибка создания");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleDelete(id: string, username: string) {
+    if (!window.confirm(`Удалить пользователя «${username}»?`)) return;
+    try {
+      await apiFetch(`/api/admin-users/${id}`, { method: "DELETE" });
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Ошибка удаления");
+    }
+  }
+
+  async function handleChangePassword(id: string, username: string) {
+    const password = window.prompt(`Новый пароль для «${username}»:`);
+    if (!password) return;
+    if (password.length < 3) {
+      alert("Пароль должен быть не короче 3 символов");
+      return;
+    }
+    try {
+      await apiFetch(`/api/admin-users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ password }),
+      });
+      alert("Пароль изменён");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Ошибка");
+    }
+  }
+
+  async function handleChangeRole(id: string, current: "SUPER_ADMIN" | "RENTAL_ADMIN") {
+    const next = current === "SUPER_ADMIN" ? "RENTAL_ADMIN" : "SUPER_ADMIN";
+    if (!window.confirm(`Изменить роль на ${next === "SUPER_ADMIN" ? "Супер-админ" : "Админ рентала"}?`)) return;
+    try {
+      await apiFetch(`/api/admin-users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ role: next }),
+      });
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Ошибка");
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-base font-semibold text-slate-900 mb-1">Пользователи CRM</h2>
+        <p className="text-xs text-slate-500">
+          Только Супер-админ видит эту вкладку. Админы рентала не имеют доступа к финансам.
+        </p>
+      </div>
+
+      {/* Create form */}
+      <form onSubmit={handleCreate} className="bg-slate-50 rounded-lg p-4 border border-slate-200 space-y-3">
+        <h3 className="text-sm font-medium text-slate-900">Добавить пользователя</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Логин</label>
+            <input
+              type="text"
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+              disabled={creating}
+              placeholder="ivan"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Пароль</label>
+            <input
+              type="text"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              disabled={creating}
+              placeholder="Минимум 3 символа"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Роль</label>
+            <select
+              value={newRole}
+              onChange={(e) => setNewRole(e.target.value as "SUPER_ADMIN" | "RENTAL_ADMIN")}
+              disabled={creating}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white"
+            >
+              <option value="RENTAL_ADMIN">Админ рентала</option>
+              <option value="SUPER_ADMIN">Супер-админ</option>
+            </select>
+          </div>
+        </div>
+        {createError && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded px-3 py-2">
+            {createError}
+          </div>
+        )}
+        <button
+          type="submit"
+          disabled={creating || !newUsername || !newPassword}
+          className="bg-sky-600 hover:bg-sky-700 text-white font-medium rounded-lg px-4 py-2 text-sm transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
+        >
+          {creating ? "Создаём..." : "Создать пользователя"}
+        </button>
+      </form>
+
+      {/* List */}
+      <div>
+        <h3 className="text-sm font-medium text-slate-900 mb-2">Существующие пользователи</h3>
+        {error && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-lg px-3 py-2 mb-3">
+            {error}
+          </div>
+        )}
+        {loading ? (
+          <p className="text-sm text-slate-500">Загрузка…</p>
+        ) : users && users.length > 0 ? (
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="text-left px-3 py-2">Логин</th>
+                  <th className="text-left px-3 py-2">Роль</th>
+                  <th className="text-left px-3 py-2">Создан</th>
+                  <th className="text-right px-3 py-2">Действия</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td className="px-3 py-2 font-medium text-slate-900">{u.username}</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-block text-[10px] uppercase tracking-wider px-2 py-0.5 rounded ${
+                          u.role === "SUPER_ADMIN"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-sky-100 text-sky-800"
+                        }`}
+                      >
+                        {u.role === "SUPER_ADMIN" ? "Супер-админ" : "Админ рентала"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-slate-500">{formatDate(u.createdAt)}</td>
+                    <td className="px-3 py-2 text-right space-x-2">
+                      <button
+                        onClick={() => handleChangePassword(u.id, u.username)}
+                        className="text-xs text-slate-600 hover:text-slate-900 underline"
+                      >
+                        Пароль
+                      </button>
+                      <button
+                        onClick={() => handleChangeRole(u.id, u.role)}
+                        className="text-xs text-slate-600 hover:text-slate-900 underline"
+                      >
+                        Роль
+                      </button>
+                      <button
+                        onClick={() => handleDelete(u.id, u.username)}
+                        className="text-xs text-rose-600 hover:text-rose-700 underline"
+                      >
+                        Удалить
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">Пользователей пока нет.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Admin panel (authenticated) ───────────────────────────────────────────────
 
-type AdminTab = "catalog" | "pricelist" | "import" | "slang" | "workers" | "barcodes" | "prices";
+type AdminTab = "catalog" | "pricelist" | "import" | "slang" | "workers" | "barcodes" | "prices" | "users";
 
-const TABS: Array<{ id: AdminTab; label: string }> = [
+const ALL_TABS: Array<{ id: AdminTab; label: string; superAdminOnly?: boolean }> = [
   { id: "catalog", label: "Каталог техники" },
   { id: "pricelist", label: "Прайслист бота" },
   { id: "import", label: "Импорт оборудования" },
@@ -2684,10 +2920,20 @@ const TABS: Array<{ id: AdminTab; label: string }> = [
   { id: "workers", label: "Кладовщики" },
   { id: "barcodes", label: "Штрихкоды" },
   { id: "prices", label: "Аналитика цен" },
+  { id: "users", label: "Пользователи", superAdminOnly: true },
 ];
 
 function AdminPanel({ onLogout }: { onLogout: () => void }) {
+  const { user } = useCurrentUser();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const tabs = ALL_TABS.filter((t) => !t.superAdminOnly || isSuperAdmin);
+
   const [tab, setTab] = useState<AdminTab>("catalog");
+
+  // Если пользователь перестал быть супер-админом — переключаем с "users".
+  useEffect(() => {
+    if (tab === "users" && !isSuperAdmin) setTab("catalog");
+  }, [tab, isSuperAdmin]);
 
   return (
     <div className="p-4 max-w-4xl">
@@ -2715,12 +2961,12 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 mb-6 border-b border-slate-200">
-        {TABS.map((t) => (
+      <div className="flex gap-1 mb-6 border-b border-slate-200 overflow-x-auto">
+        {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
               tab === t.id
                 ? "border-slate-900 text-slate-900"
                 : "border-transparent text-slate-500 hover:text-slate-700"
@@ -2740,6 +2986,7 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
         {tab === "workers" && <WorkersTab />}
         {tab === "barcodes" && <BarcodesTab />}
         {tab === "prices" && <PricesTab />}
+        {tab === "users" && isSuperAdmin && <UsersTab />}
       </div>
     </div>
   );

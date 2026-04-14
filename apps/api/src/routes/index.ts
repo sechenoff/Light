@@ -20,6 +20,7 @@ import { equipmentUnitsGlobalRouter } from "./equipmentUnitsGlobal";
 import { importSessionsRouter } from "./importSessions";
 import { dashboardRouter } from "./dashboard";
 import { calendarRouter } from "./calendar";
+import { adminUsersRouter } from "./adminUsers";
 
 const router = express.Router();
 
@@ -56,6 +57,7 @@ router.use("/api/admin/slang-learning", slangLearningRouter);
 router.use("/api/warehouse", warehouseRouter);
 router.use("/api/dashboard", dashboardRouter);
 router.use("/api/calendar", calendarRouter);
+router.use("/api/admin-users", adminUsersRouter);
 
 export { router };
 

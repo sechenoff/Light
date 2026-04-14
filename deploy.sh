@@ -74,6 +74,7 @@ if $DEPLOY_API; then
   # ─────────────────────────────────────────────────────────────────────────
 
   npx prisma db push --accept-data-loss   # SQLite: синхронизируем схему
+  npx tsx scripts/seed-admin-users.ts || true   # идемпотентный seed админ-пользователей
   npm run build
 
   pm2 describe api > /dev/null 2>&1 \

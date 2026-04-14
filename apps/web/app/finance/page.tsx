@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiFetch, apiFetchRaw } from "../../src/lib/api";
 import { StatusBadge } from "../../src/components/StatusBadge";
 import { formatMoneyRub } from "../../src/lib/format";
+import { RoleGuard } from "../../src/components/RoleGuard";
 
 type Tab = "bookings" | "dashboard" | "payments" | "receivables" | "expenses" | "profit" | "cashflow";
 
@@ -244,6 +245,14 @@ function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
 }
 
 export default function FinancePage() {
+  return (
+    <RoleGuard allow={["SUPER_ADMIN"]}>
+      <FinancePageGate />
+    </RoleGuard>
+  );
+}
+
+function FinancePageGate() {
   const [unlocked, setUnlocked] = useState(false);
 
   useEffect(() => {

@@ -2,13 +2,16 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import cookieParser from "cookie-parser";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 
 import { router } from "./routes";
+import { authRouter } from "./routes/auth";
 import { HttpError } from "./utils/errors";
 import { rateLimiter } from "./middleware/rateLimiter";
 import { apiKeyAuth } from "./middleware/apiKeyAuth";
+import { sessionParser } from "./middleware/sessionAuth";
 import { warehousePublicRouter, warehouseScanRouter } from "./routes/warehouse";
 
 function isMalformedJsonBodyError(err: unknown): boolean {
@@ -53,12 +56,16 @@ app.use(
 );
 app.use(morgan("dev"));
 app.use(express.json({ limit: "1mb" }));
+app.use(cookieParser());
 app.use(rateLimiter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+// Auth routes — публичные (до apiKeyAuth), но login/logout не требует авторизации; /me использует cookie.
+app.use("/api/auth", sessionParser, authRouter);
 app.use("/api/warehouse", warehousePublicRouter);
 app.use("/api/warehouse", warehouseScanRouter);
 app.use(apiKeyAuth);
+app.use(sessionParser);
 app.use(router);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
