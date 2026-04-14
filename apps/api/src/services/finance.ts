@@ -215,3 +215,144 @@ export async function paymentStatusSyncForAllBookings() {
   }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Агрегация долгов по клиентам
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface ClientDebtProject {
+  bookingId: string;
+  projectName: string;
+  amountOutstanding: string;
+  expectedPaymentDate: Date | null;
+  daysOverdue: number | null;
+  paymentStatus: string;
+  bookingStatus: string;
+}
+
+interface ClientDebtAccumulator {
+  clientId: string;
+  clientName: string;
+  totalOutstanding: Decimal;
+  overdueAmount: Decimal;
+  maxDaysOverdue: number;
+  projects: ClientDebtProject[];
+}
+
+/**
+ * Возвращает агрегированные долги клиентов по броням.
+ * Игнорирует: CANCELLED брони, брони с amountOutstanding = 0.
+ */
+export async function computeDebts(
+  options: { overdueOnly?: boolean; minAmount?: number } = {},
+): Promise<{
+  debts: Array<{
+    clientId: string;
+    clientName: string;
+    totalOutstanding: string;
+    overdueAmount: string;
+    maxDaysOverdue: number;
+    bookingsCount: number;
+    projects: ClientDebtProject[];
+  }>;
+  summary: {
+    totalClients: number;
+    totalOutstanding: string;
+    totalOverdue: string;
+    asOf: string;
+  };
+}> {
+  const now = new Date();
+
+  const bookings = await prisma.booking.findMany({
+    where: {
+      status: { not: "CANCELLED" },
+      amountOutstanding: { gt: 0 },
+    },
+    include: { client: true },
+    orderBy: { expectedPaymentDate: "asc" },
+  });
+
+  const byClient = new Map<string, ClientDebtAccumulator>();
+
+  for (const b of bookings) {
+    const amt = new Decimal(b.amountOutstanding.toString());
+    const daysOverdue = b.expectedPaymentDate
+      ? Math.floor((now.getTime() - b.expectedPaymentDate.getTime()) / 86400000)
+      : null;
+    const isOverdue =
+      (daysOverdue !== null && daysOverdue > 0) || b.paymentStatus === "OVERDUE";
+
+    const acc = byClient.get(b.clientId) ?? {
+      clientId: b.clientId,
+      clientName: b.client.name,
+      totalOutstanding: new Decimal(0),
+      overdueAmount: new Decimal(0),
+      maxDaysOverdue: 0,
+      projects: [],
+    };
+
+    acc.totalOutstanding = acc.totalOutstanding.add(amt);
+    if (isOverdue) {
+      acc.overdueAmount = acc.overdueAmount.add(amt);
+      if (daysOverdue !== null && daysOverdue > acc.maxDaysOverdue) {
+        acc.maxDaysOverdue = daysOverdue;
+      }
+    }
+    acc.projects.push({
+      bookingId: b.id,
+      projectName: b.projectName,
+      amountOutstanding: amt.toDecimalPlaces(2).toString(),
+      expectedPaymentDate: b.expectedPaymentDate,
+      daysOverdue: isOverdue ? daysOverdue : null,
+      paymentStatus: b.paymentStatus,
+      bookingStatus: b.status,
+    });
+
+    byClient.set(b.clientId, acc);
+  }
+
+  let debts = Array.from(byClient.values()).map((c) => ({
+    clientId: c.clientId,
+    clientName: c.clientName,
+    totalOutstanding: c.totalOutstanding.toDecimalPlaces(2).toString(),
+    overdueAmount: c.overdueAmount.toDecimalPlaces(2).toString(),
+    maxDaysOverdue: c.maxDaysOverdue,
+    bookingsCount: c.projects.length,
+    projects: c.projects,
+  }));
+
+  if (options.overdueOnly) {
+    debts = debts.filter((d) => new Decimal(d.overdueAmount).gt(0));
+  }
+  if (options.minAmount != null) {
+    debts = debts.filter((d) =>
+      new Decimal(d.totalOutstanding).gte(options.minAmount!),
+    );
+  }
+
+  // Сортировка по totalOutstanding desc
+  debts.sort(
+    (a, b) =>
+      new Decimal(b.totalOutstanding).cmp(new Decimal(a.totalOutstanding)),
+  );
+
+  const totalOutstanding = debts
+    .reduce((acc, d) => acc.add(d.totalOutstanding), new Decimal(0))
+    .toDecimalPlaces(2)
+    .toString();
+  const totalOverdue = debts
+    .reduce((acc, d) => acc.add(d.overdueAmount), new Decimal(0))
+    .toDecimalPlaces(2)
+    .toString();
+
+  return {
+    debts,
+    summary: {
+      totalClients: debts.length,
+      totalOutstanding,
+      totalOverdue,
+      asOf: now.toISOString(),
+    },
+  };
+}
+
