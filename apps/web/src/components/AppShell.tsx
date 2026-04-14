@@ -122,9 +122,9 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         label: "Дашборд",
-        href: "/",
+        href: "/dashboard",
         icon: <IconHome />,
-        match: (p) => p === "/",
+        match: (p) => p === "/dashboard",
       },
       {
         label: "Бронирование оборудования",
@@ -171,7 +171,7 @@ function SidebarContent({ pathname, onClose }: { pathname: string; onClose?: () 
       {/* Logo */}
       <div className="flex items-center justify-between px-4 py-5 border-b border-slate-700">
         <Link
-          href="/"
+          href="/dashboard"
           className="flex items-center gap-2.5 text-white"
           onClick={onClose}
         >
@@ -258,6 +258,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setMobileOpen(false);
   }, [pathname]);
 
+  // Landing page is standalone — no sidebar/chrome
+  if (pathname === "/") {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex min-h-screen">
       {/* Desktop sidebar */}
@@ -293,7 +298,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <IconMenu />
           </button>
-          <Link href="/" className="text-sm font-semibold text-white">
+          <Link href="/dashboard" className="text-sm font-semibold text-white">
             Light Rental
           </Link>
         </div>
