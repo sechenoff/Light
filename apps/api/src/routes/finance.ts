@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { prisma } from "../prisma";
 import {
+  computeDebts,
   createFinanceEvent,
   csvEscape,
   dashboardMetrics,
@@ -48,6 +49,25 @@ router.get("/finance/dashboard", async (_req, res, next) => {
     await paymentStatusSyncForAllBookings();
     const data = await dashboardMetrics();
     res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const debtsQuerySchema = z.object({
+  overdueOnly: z.enum(["true", "false"]).optional(),
+  minAmount: z.coerce.number().nonnegative().optional(),
+});
+
+router.get("/finance/debts", async (req, res, next) => {
+  try {
+    await paymentStatusSyncForAllBookings();
+    const query = debtsQuerySchema.parse(req.query);
+    const result = await computeDebts({
+      overdueOnly: query.overdueOnly === "true",
+      minAmount: query.minAmount,
+    });
+    res.json(result);
   } catch (err) {
     next(err);
   }
