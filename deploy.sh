@@ -100,7 +100,7 @@ if $DEPLOY_PROD_BOT; then
 
   [ ! -f .env ] && { echo "  ⚠ .env не найден. Скопируйте .env.production → .env"; exit 1; }
 
-  npm ci --prefer-offline --silent
+  # Deps уже установлены корневым `npm ci` в начале скрипта.
   npm run build
 
   pm2 describe prod-bot > /dev/null 2>&1 \
@@ -136,7 +136,7 @@ if $DEPLOY_WEB; then
     exit 1
   }
 
-  npm ci --prefer-offline --silent
+  # Deps уже установлены корневым `npm ci` в начале скрипта (workspace hoisting).
   npm run build
 
   # --update-env обязателен чтобы Next.js подхватил новые .env.local переменные (API_KEY и т.д.)
