@@ -5,11 +5,6 @@ import Link from "next/link";
 import { apiFetch } from "../../src/lib/api";
 import { useCurrentUser } from "../../src/lib/auth";
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
-
-const ADMIN_SESSION_KEY = "admin_auth";
-const ADMIN_PASSWORD = "4020909Bear";
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type PricelistMeta =
@@ -77,78 +72,6 @@ function formatDate(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-// ── Login screen ──────────────────────────────────────────────────────────────
-
-function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
-  const [pwd, setPwd] = useState("");
-  const [error, setError] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (pwd === ADMIN_PASSWORD) {
-      sessionStorage.setItem(ADMIN_SESSION_KEY, "1");
-      onSuccess();
-    } else {
-      setError(true);
-      setPwd("");
-      setTimeout(() => setError(false), 2000);
-    }
-  }
-
-  return (
-    <div className="flex items-center justify-center py-20 px-4">
-      <div className="w-full max-w-sm">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          {/* Header band */}
-          <div className="bg-slate-900 px-8 py-7 flex flex-col items-center">
-            <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
-                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-            </div>
-            <h1 className="text-lg font-semibold text-white">Admin Panel</h1>
-            <p className="text-sm text-slate-400 mt-1">Введите пароль для доступа</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="px-8 py-7 space-y-4">
-            <input
-              ref={inputRef}
-              type="password"
-              value={pwd}
-              onChange={(e) => {
-                setPwd(e.target.value);
-                setError(false);
-              }}
-              placeholder="Пароль"
-              autoComplete="current-password"
-              className={`w-full px-4 py-3 rounded-xl border text-sm outline-none transition-colors ${
-                error
-                  ? "border-red-300 bg-red-50 text-red-700 placeholder-red-300"
-                  : "border-slate-300 bg-white text-slate-800 placeholder-slate-400 focus:border-slate-500"
-              }`}
-            />
-            {error && (
-              <p className="text-xs text-red-600 text-center -mt-2">Неверный пароль</p>
-            )}
-            <button
-              type="submit"
-              className="w-full bg-slate-900 hover:bg-slate-700 text-white font-medium text-sm py-3 rounded-xl transition-colors"
-            >
-              Войти
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ── Tab: Прайслист ────────────────────────────────────────────────────────────
@@ -2923,7 +2846,7 @@ const ALL_TABS: Array<{ id: AdminTab; label: string; superAdminOnly?: boolean }>
   { id: "users", label: "Пользователи", superAdminOnly: true },
 ];
 
-function AdminPanel({ onLogout }: { onLogout: () => void }) {
+function AdminPanel() {
   const { user } = useCurrentUser();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const tabs = ALL_TABS.filter((t) => !t.superAdminOnly || isSuperAdmin);
@@ -2938,17 +2861,9 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="p-4 max-w-4xl">
       {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Admin Panel</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Системные настройки и управление данными</p>
-        </div>
-        <button
-          onClick={onLogout}
-          className="text-xs text-slate-400 hover:text-slate-700 transition-colors border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50"
-        >
-          Выйти
-        </button>
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-slate-900">Admin Panel</h1>
+        <p className="text-sm text-slate-500 mt-0.5">Системные настройки и управление данными</p>
       </div>
 
       {/* Divider with label */}
@@ -2993,26 +2908,9 @@ function AdminPanel({ onLogout }: { onLogout: () => void }) {
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
+// Доступ защищён middleware.ts + сессией пользователя (SUPER_ADMIN/RENTAL_ADMIN).
+// Выход — через кнопку «Выйти» в сайдбаре.
 
 export default function AdminPage() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    setAuthed(sessionStorage.getItem(ADMIN_SESSION_KEY) === "1");
-  }, []);
-
-  if (authed === null) return null;
-
-  if (!authed) {
-    return <LoginScreen onSuccess={() => setAuthed(true)} />;
-  }
-
-  return (
-    <AdminPanel
-      onLogout={() => {
-        sessionStorage.removeItem(ADMIN_SESSION_KEY);
-        setAuthed(false);
-      }}
-    />
-  );
+  return <AdminPanel />;
 }

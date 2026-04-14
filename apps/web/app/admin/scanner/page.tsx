@@ -54,9 +54,6 @@ type BatchItem = { unit: UnitResult; barcode: string };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const ADMIN_SESSION_KEY = "admin_auth";
-const ADMIN_PASSWORD = "4020909Bear";
-
 const STATUS_LABELS: Record<string, string> = {
   AVAILABLE: "Доступен",
   ISSUED: "Выдан",
@@ -72,51 +69,6 @@ const STATUS_COLORS: Record<string, string> = {
   RETIRED: "bg-slate-100 text-slate-500",
   MISSING: "bg-red-100 text-red-700",
 };
-
-// ── Login Screen ──────────────────────────────────────────────────────────────
-
-function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
-  const [pwd, setPwd] = useState("");
-  const [error, setError] = useState(false);
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (pwd === ADMIN_PASSWORD) {
-      sessionStorage.setItem(ADMIN_SESSION_KEY, "1");
-      onSuccess();
-    } else {
-      setError(true);
-    }
-  }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-xs">
-        <h1 className="text-xl font-semibold text-center mb-6">Сканер</h1>
-        <input
-          type="password"
-          value={pwd}
-          onChange={(e) => {
-            setPwd(e.target.value);
-            setError(false);
-          }}
-          placeholder="Пароль администратора"
-          className="w-full px-4 py-3 text-lg border border-slate-200 rounded-xl mb-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
-          autoFocus
-        />
-        {error && (
-          <p className="text-sm text-red-500 mb-3 text-center">Неверный пароль</p>
-        )}
-        <button
-          type="submit"
-          className="w-full py-3 text-lg font-medium bg-slate-900 text-white rounded-xl"
-        >
-          Войти
-        </button>
-      </form>
-    </div>
-  );
-}
 
 // ── Equipment Search List ─────────────────────────────────────────────────────
 
@@ -805,21 +757,8 @@ function ScannerApp() {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// Доступ защищён middleware.ts + сессией пользователя.
 export default function AdminScannerPage() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const stored = sessionStorage.getItem(ADMIN_SESSION_KEY);
-    setAuthed(stored === "1");
-  }, []);
-
-  // Avoid flash of login screen before session check
-  if (authed === null) return null;
-
-  if (!authed) {
-    return <LoginScreen onSuccess={() => setAuthed(true)} />;
-  }
-
   return (
     <Suspense fallback={null}>
       <ScannerApp />

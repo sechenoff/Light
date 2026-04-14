@@ -179,91 +179,14 @@ function cashflowSourceRu(v: CashflowRow["source"]): string {
   return v === "payment" ? "Платеж" : "Расход";
 }
 
-const FINANCE_PASSWORD = "4020909Bear";
-const SESSION_KEY = "finance_auth";
-
-function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
-  const [value, setValue] = useState("");
-  const [error, setError] = useState(false);
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (value === FINANCE_PASSWORD) {
-      sessionStorage.setItem(SESSION_KEY, "1");
-      onUnlock();
-    } else {
-      setError(true);
-      setValue("");
-    }
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-            </div>
-            <div>
-              <div className="font-semibold text-slate-900">Финансы</div>
-              <div className="text-xs text-slate-500">Введите пароль для доступа</div>
-            </div>
-          </div>
-        </div>
-        <form onSubmit={submit} className="px-6 py-5 space-y-4">
-          <div>
-            <input
-              type="password"
-              autoFocus
-              className={`w-full rounded-lg border px-4 py-2.5 text-center text-xl tracking-widest bg-white outline-none transition-colors ${
-                error
-                  ? "border-rose-400 focus:border-rose-500"
-                  : "border-slate-300 focus:border-slate-500"
-              }`}
-              placeholder="••••••••"
-              value={value}
-              onChange={(e) => { setValue(e.target.value); setError(false); }}
-            />
-            {error && (
-              <p className="mt-1.5 text-center text-sm text-rose-600">Неверный пароль</p>
-            )}
-          </div>
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-slate-900 text-white py-2.5 font-medium hover:bg-slate-800 transition-colors"
-          >
-            Войти
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
+// Доступ ограничен ролью SUPER_ADMIN — локальный пароль убран,
+// проверка идёт через RoleGuard на основе сессии пользователя.
 export default function FinancePage() {
   return (
     <RoleGuard allow={["SUPER_ADMIN"]}>
-      <FinancePageGate />
+      <FinancePageInner />
     </RoleGuard>
   );
-}
-
-function FinancePageGate() {
-  const [unlocked, setUnlocked] = useState(false);
-
-  useEffect(() => {
-    if (sessionStorage.getItem(SESSION_KEY) === "1") setUnlocked(true);
-  }, []);
-
-  if (!unlocked) {
-    return <PasswordGate onUnlock={() => setUnlocked(true)} />;
-  }
-
-  return <FinancePageInner />;
 }
 
 function FinancePageInner() {
