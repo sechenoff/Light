@@ -49,6 +49,8 @@ const bookingCreateSchema = z.object({
   /** Переопределить строку «Просчёт часов» (иначе считается по датам) */
   hourCalculationOverride: z.string().optional().nullable(),
   items: z.array(bookingItemSchema).min(1),
+  /** Если true — возвращает превью брони без записи в БД */
+  dryRun: z.boolean().optional().default(false),
 });
 
 const quoteExportSchema = bookingCreateSchema.extend({
@@ -71,6 +73,8 @@ const bookingUpdateSchema = z.object({
     )
     .min(1)
     .optional(),
+  /** Если true — возвращает превью изменений брони без записи в БД */
+  dryRun: z.boolean().optional().default(false),
 });
 
 const bookingStatusActionSchema = z.object({
@@ -237,9 +241,65 @@ router.patch("/:id", async (req, res, next) => {
     const body = bookingUpdateSchema.parse(req.body);
     const existing = await prisma.booking.findUnique({
       where: { id },
-      select: { id: true, status: true, startDate: true, endDate: true },
+      include: { client: true, items: { include: { equipment: true } }, estimate: { include: { lines: true } } },
     });
     if (!existing) throw new HttpError(404, "Booking not found");
+
+    // ── dryRun: превью изменений без записи в БД ──────────────────────────────
+    if (body.dryRun) {
+      const start = body.startDate
+        ? parseBookingRangeBound(body.startDate, "start")
+        : existing.startDate;
+      const end = body.endDate
+        ? parseBookingRangeBound(body.endDate, "end")
+        : existing.endDate;
+      assertBookingRangeOrder(start, end);
+
+      const itemsAfter = body.items
+        ? body.items.map((it) => ({ equipmentId: it.equipmentId, quantity: it.quantity }))
+        : existing.items.map((i) => ({ equipmentId: i.equipmentId, quantity: i.quantity }));
+
+      const estimate = await quoteEstimate({
+        startDate: start,
+        endDate: end,
+        clientId: existing.clientId,
+        discountPercent:
+          body.discountPercent !== undefined
+            ? body.discountPercent
+            : existing.discountPercent
+              ? Number(existing.discountPercent)
+              : null,
+        items: itemsAfter,
+      });
+
+      res.json({
+        dryRun: true,
+        booking: {
+          id: existing.id,
+          status: existing.status,
+          projectName: body.projectName ?? existing.projectName,
+          startDate: start,
+          endDate: end,
+          items: itemsAfter,
+          estimate: {
+            shifts: estimate.shifts,
+            subtotal: estimate.subtotal.toDecimalPlaces(2).toString(),
+            discountPercent: estimate.discountPercent.toString(),
+            discountAmount: estimate.discountAmount.toDecimalPlaces(2).toString(),
+            totalAfterDiscount: estimate.totalAfterDiscount.toDecimalPlaces(2).toString(),
+            lines: estimate.lines.map((l) => ({
+              equipmentId: l.equipmentId,
+              nameSnapshot: l.nameSnapshot,
+              quantity: l.quantity,
+              unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
+              lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+            })),
+          },
+        },
+      });
+      return;
+    }
+
     if (!["DRAFT", "CONFIRMED"].includes(existing.status)) {
       throw new HttpError(409, "Редактирование доступно для черновиков и подтвержденных броней.");
     }
@@ -575,6 +635,56 @@ router.post("/draft", async (req, res, next) => {
       assertBookingRangeOrder(start, end);
     } catch (e) {
       throw new HttpError(400, e instanceof Error ? e.message : "Некорректный период аренды");
+    }
+
+    // ── dryRun: превью брони без записи в БД ─────────────────────────────────
+    if (body.dryRun) {
+      // Ищем существующего клиента по имени (не upsert-им)
+      const existingClient = await prisma.client.findFirst({
+        where: { name: body.client.name.trim() },
+        select: { id: true },
+      });
+      const clientIdForQuote = existingClient?.id ?? "dry-run-placeholder";
+
+      const estimate = await quoteEstimate({
+        startDate: start,
+        endDate: end,
+        clientId: clientIdForQuote,
+        discountPercent: body.discountPercent ?? null,
+        items: body.items.map((it) => ({ equipmentId: it.equipmentId, quantity: it.quantity })),
+      });
+
+      res.json({
+        dryRun: true,
+        booking: {
+          id: null,
+          status: "DRAFT_PREVIEW",
+          client: {
+            name: body.client.name.trim(),
+            phone: body.client.phone ?? null,
+            email: body.client.email ?? null,
+          },
+          projectName: body.projectName,
+          startDate: start,
+          endDate: end,
+          items: body.items,
+          estimate: {
+            shifts: estimate.shifts,
+            subtotal: estimate.subtotal.toDecimalPlaces(2).toString(),
+            discountPercent: estimate.discountPercent.toString(),
+            discountAmount: estimate.discountAmount.toDecimalPlaces(2).toString(),
+            totalAfterDiscount: estimate.totalAfterDiscount.toDecimalPlaces(2).toString(),
+            lines: estimate.lines.map((l) => ({
+              equipmentId: l.equipmentId,
+              nameSnapshot: l.nameSnapshot,
+              quantity: l.quantity,
+              unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
+              lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+            })),
+          },
+        },
+      });
+      return;
     }
 
     const client = await prisma.client.upsert({
