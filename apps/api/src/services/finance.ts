@@ -301,7 +301,7 @@ export async function computeDebts(
     acc.projects.push({
       bookingId: b.id,
       projectName: b.projectName,
-      amountOutstanding: amt.toDecimalPlaces(2).toString(),
+      amountOutstanding: amt.toFixed(2),
       expectedPaymentDate: b.expectedPaymentDate,
       daysOverdue: isOverdue ? daysOverdue : null,
       paymentStatus: b.paymentStatus,
@@ -314,8 +314,8 @@ export async function computeDebts(
   let debts = Array.from(byClient.values()).map((c) => ({
     clientId: c.clientId,
     clientName: c.clientName,
-    totalOutstanding: c.totalOutstanding.toDecimalPlaces(2).toString(),
-    overdueAmount: c.overdueAmount.toDecimalPlaces(2).toString(),
+    totalOutstanding: c.totalOutstanding.toFixed(2),
+    overdueAmount: c.overdueAmount.toFixed(2),
     maxDaysOverdue: c.maxDaysOverdue,
     bookingsCount: c.projects.length,
     projects: c.projects,
@@ -338,12 +338,10 @@ export async function computeDebts(
 
   const totalOutstanding = debts
     .reduce((acc, d) => acc.add(d.totalOutstanding), new Decimal(0))
-    .toDecimalPlaces(2)
-    .toString();
+    .toFixed(2);
   const totalOverdue = debts
     .reduce((acc, d) => acc.add(d.overdueAmount), new Decimal(0))
-    .toDecimalPlaces(2)
-    .toString();
+    .toFixed(2);
 
   return {
     debts,
