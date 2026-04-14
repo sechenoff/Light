@@ -101,6 +101,9 @@ light-rental-system/
 | `apps/web/app/calendar/page.tsx` | Full calendar page: desktop availability grid (equipment rows × day columns, collapsible categories) + mobile day-by-day card view; URL params: date, period, category |
 | `apps/web/src/components/CalendarTooltip.tsx` | Floating tooltip for calendar cells (via @floating-ui/react): shows booking details on hover |
 | `apps/web/src/lib/calendarUtils.ts` | Pure utility: `buildOccupancyMap()` builds Map<`resourceId-date`, OccupancyEntry>; DRAFT bookings excluded from occupied counts |
+| `apps/api/src/middleware/botScopeGuard.ts` | Bot scope enforcement: keys with `openclaw-` prefix are restricted to whitelist routes; DELETE globally blocked → 403 BOT_SCOPE_FORBIDDEN |
+| `docs/bot-api.md` | Bot API documentation (Russian): auth, scope, all endpoints, curl examples, error codes, 3 typical scenarios |
+| `docs/bot-api-tools.json` | OpenAI function-calling schemas (12 tools): ready to paste into `client.chat.completions.create({ tools: [...] })` |
 
 ## Commands
 
@@ -168,6 +171,9 @@ npm run seed                  # Seed database
 - **Calendar BLOCKING_STATUSES** — `["CONFIRMED", "ISSUED"]` used by both `calendar.ts` and `availability.ts`. DRAFT bookings excluded from occupancy calculations.
 - **Hourly precision** — Equipment page and QuickAvailabilityCheck use `datetime-local` inputs. Bookings resolved to exact hour, not just date.
 - **New web dependencies**: `react-day-picker` v9, `@floating-ui/react`, `date-fns` (web only).
+- **Bot scope guard** — `botScopeGuard` middleware (mounted in `app.ts` after `apiKeyAuth`) enforces whitelist for API keys with prefix `openclaw-`. DELETE is globally blocked. Non-whitelisted routes return 403 `{ code: "BOT_SCOPE_FORBIDDEN" }`. Keys without this prefix pass through without restriction.
+- **Finance debts endpoint** — `GET /api/finance/debts` aggregates `amountOutstanding > 0` bookings (excluding CANCELLED) by client. Supports `?overdueOnly=true` and `?minAmount=N` filters. Service function: `computeDebts()` in `apps/api/src/services/finance.ts`.
+- **dryRun option** — `POST /api/bookings/draft` and `PATCH /api/bookings/:id` accept `dryRun: true` in the request body. When true, validates input, computes estimate via `quoteEstimate()`, and returns a preview without writing to DB. POST returns `{ id: null, status: "DRAFT_PREVIEW", ... }`. PATCH returns the existing booking's projected state.
 
 ## Known Issues
 
