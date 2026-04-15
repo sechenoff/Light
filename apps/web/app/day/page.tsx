@@ -87,10 +87,23 @@ function DaySuperAdmin() {
   );
 }
 
+interface DashboardToday {
+  pickups: Array<{ id: string; projectName: string; clientName: string }>;
+  returns: Array<{ id: string; projectName: string; clientName: string }>;
+  active: Array<{ id: string }>;
+}
+
 function DayWarehouse() {
+  const [dashboard, setDashboard] = useState<DashboardToday | null>(null);
   const [openRepairCount, setOpenRepairCount] = useState<number | null>(null);
+  const [dashLoading, setDashLoading] = useState(true);
 
   useEffect(() => {
+    apiFetch<DashboardToday>("/api/dashboard/today")
+      .then((data) => setDashboard(data))
+      .catch(() => { /* не блокируем */ })
+      .finally(() => setDashLoading(false));
+
     apiFetch<{ repairs: RepairCardData[] }>(
       "/api/repairs?status=WAITING_REPAIR,IN_REPAIR,WAITING_PARTS&limit=100",
     )
@@ -105,18 +118,48 @@ function DayWarehouse() {
         <h1 className="text-lg font-semibold text-ink mt-0.5">Мой день</h1>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <PlaceholderCard title="Выдачи сегодня" hint="скоро" />
-        <PlaceholderCard title="Возвраты сегодня" hint="скоро" />
+        {/* Выдачи сегодня */}
+        <div className="bg-surface border border-border rounded-lg p-4 shadow-xs">
+          <p className="eyebrow">Выдачи сегодня</p>
+          {dashLoading ? (
+            <p className="mono-num text-xl mt-1 text-ink-3">—</p>
+          ) : (
+            <>
+              <p className="mono-num text-xl mt-1 text-ink">{dashboard?.pickups.length ?? 0}</p>
+              {dashboard?.pickups.slice(0, 2).map((b) => (
+                <p key={b.id} className="text-xs text-ink-3 mt-0.5 truncate">{b.clientName} · {b.projectName}</p>
+              ))}
+            </>
+          )}
+        </div>
+        {/* Возвраты сегодня */}
+        <div className="bg-surface border border-border rounded-lg p-4 shadow-xs">
+          <p className="eyebrow">Возвраты сегодня</p>
+          {dashLoading ? (
+            <p className="mono-num text-xl mt-1 text-ink-3">—</p>
+          ) : (
+            <>
+              <p className="mono-num text-xl mt-1 text-ink">{dashboard?.returns.length ?? 0}</p>
+              {dashboard?.returns.slice(0, 2).map((b) => (
+                <p key={b.id} className="text-xs text-ink-3 mt-0.5 truncate">{b.clientName} · {b.projectName}</p>
+              ))}
+            </>
+          )}
+        </div>
+        {/* Мастерская */}
         {openRepairCount !== null && openRepairCount > 0 ? (
           <a href="/repair" className="block">
-            <div className="bg-amber-50 border border-amber-border rounded-lg p-4 shadow-xs hover:border-amber transition-colors">
+            <div className="bg-amber-soft border border-amber-border rounded-lg p-4 shadow-xs hover:border-amber transition-colors">
               <p className="eyebrow text-amber">Мастерская</p>
               <p className="mono-num text-xl mt-1 text-ink">{openRepairCount}</p>
               <p className="text-xs text-ink-3 mt-0.5">открытых ремонтов</p>
             </div>
           </a>
         ) : (
-          <PlaceholderCard title="Конфликты" hint="скоро" />
+          <div className="bg-surface border border-border rounded-lg p-4 shadow-xs">
+            <p className="eyebrow">Активных броней</p>
+            <p className="mono-num text-xl mt-1 text-ink">{dashLoading ? "—" : (dashboard?.active.length ?? 0)}</p>
+          </div>
         )}
       </div>
     </div>
