@@ -3,6 +3,7 @@ import { z } from "zod";
 import { authenticateWorker, hashPin } from "../services/warehouseAuth";
 import { prisma } from "../prisma";
 import { warehouseAuth } from "../middleware/warehouseAuth";
+import { rolesGuard } from "../middleware/rolesGuard";
 import {
   createSession,
   recordScan,
@@ -68,7 +69,7 @@ const updateWorkerSchema = z.object({
 });
 
 /** GET /api/warehouse/workers — список всех сотрудников (для администратора) */
-warehouseRouter.get("/workers", async (_req, res, next) => {
+warehouseRouter.get("/workers", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (_req, res, next) => {
   try {
     const workers = await prisma.warehousePin.findMany({
       select: {
@@ -87,7 +88,7 @@ warehouseRouter.get("/workers", async (_req, res, next) => {
 });
 
 /** POST /api/warehouse/workers — создать нового сотрудника */
-warehouseRouter.post("/workers", async (req, res, next) => {
+warehouseRouter.post("/workers", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const { name, pin } = createWorkerSchema.parse(req.body);
     const pinHash = await hashPin(pin);
@@ -109,7 +110,7 @@ warehouseRouter.post("/workers", async (req, res, next) => {
 });
 
 /** PATCH /api/warehouse/workers/:id — обновить сотрудника */
-warehouseRouter.patch("/workers/:id", async (req, res, next) => {
+warehouseRouter.patch("/workers/:id", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const { id } = req.params;
     const body = updateWorkerSchema.parse(req.body);
@@ -138,7 +139,7 @@ warehouseRouter.patch("/workers/:id", async (req, res, next) => {
 });
 
 /** DELETE /api/warehouse/workers/:id — удалить сотрудника */
-warehouseRouter.delete("/workers/:id", async (req, res, next) => {
+warehouseRouter.delete("/workers/:id", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const { id } = req.params;
     await prisma.warehousePin.delete({ where: { id } });

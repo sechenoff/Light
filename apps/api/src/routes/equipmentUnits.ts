@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { generateBarcodeId, generateBarcodePayload, renderLabelPng, renderLabelsPdf } from "../services/barcode";
+import { rolesGuard } from "../middleware/rolesGuard";
 
 type UnitParams = { equipmentId: string; unitId?: string };
 const router = express.Router({ mergeParams: true });
@@ -32,7 +33,7 @@ const assignBarcodeSchema = z.object({
 // GET / — список единиц оборудования
 // ──────────────────────────────────────────────
 
-router.get("/", async (req, res, next) => {
+router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), async (req, res, next) => {
   try {
     const { equipmentId } = req.params as UnitParams;
     const units = await prisma.equipmentUnit.findMany({
@@ -58,7 +59,7 @@ router.get("/", async (req, res, next) => {
 // POST /generate — массовая генерация единиц со штрихкодами
 // ──────────────────────────────────────────────
 
-router.post("/generate", async (req, res, next) => {
+router.post("/generate", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const { equipmentId } = req.params as UnitParams;
     const body = generateSchema.parse(req.body);
@@ -137,7 +138,7 @@ router.post("/generate", async (req, res, next) => {
 // GET /labels — PDF с этикетками для всех единиц
 // ──────────────────────────────────────────────
 
-router.get("/labels", async (req, res, next) => {
+router.get("/labels", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), async (req, res, next) => {
   try {
     const { equipmentId } = req.params as UnitParams;
 
@@ -182,7 +183,7 @@ router.get("/labels", async (req, res, next) => {
 // POST /:unitId/assign-barcode — ручная привязка штрихкода к единице
 // ──────────────────────────────────────────────
 
-router.post("/:unitId/assign-barcode", async (req, res, next) => {
+router.post("/:unitId/assign-barcode", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const { equipmentId, unitId } = req.params as UnitParams;
     const body = assignBarcodeSchema.parse(req.body);
@@ -230,7 +231,7 @@ router.post("/:unitId/assign-barcode", async (req, res, next) => {
 // POST /batch-assign — создание единицы с штрихкодом (UNIT-режим)
 // ──────────────────────────────────────────────
 
-router.post("/batch-assign", async (req, res, next) => {
+router.post("/batch-assign", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const { equipmentId } = req.params as UnitParams;
     const body = assignBarcodeSchema.parse(req.body);
@@ -287,7 +288,7 @@ router.post("/batch-assign", async (req, res, next) => {
 // PATCH /:unitId — обновление единицы
 // ──────────────────────────────────────────────
 
-router.patch("/:unitId", async (req, res, next) => {
+router.patch("/:unitId", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const { equipmentId, unitId } = req.params as UnitParams;
     const body = patchSchema.parse(req.body);
@@ -327,7 +328,7 @@ router.patch("/:unitId", async (req, res, next) => {
 // DELETE /:unitId — удаление единицы (только AVAILABLE)
 // ──────────────────────────────────────────────
 
-router.delete("/:unitId", async (req, res, next) => {
+router.delete("/:unitId", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const { equipmentId, unitId } = req.params as UnitParams;
 
@@ -361,7 +362,7 @@ router.delete("/:unitId", async (req, res, next) => {
 // GET /:unitId/label — PNG-этикетка для одной единицы
 // ──────────────────────────────────────────────
 
-router.get("/:unitId/label", async (req, res, next) => {
+router.get("/:unitId/label", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), async (req, res, next) => {
   try {
     const { equipmentId, unitId } = req.params as UnitParams;
 
