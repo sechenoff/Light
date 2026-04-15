@@ -491,6 +491,8 @@ export async function getReconciliationPreview(sessionId: string): Promise<Recon
     expected: allReservations.length,
     missing,
     substituted,
+    createdRepairIds: [],
+    failedBrokenUnits: [],
   };
 }
 

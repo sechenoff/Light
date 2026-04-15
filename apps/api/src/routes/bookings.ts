@@ -19,7 +19,7 @@ import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
 import { createFinanceEvent, recomputeBookingFinance } from "../services/finance";
 import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 import { rolesGuard } from "../middleware/rolesGuard";
-import { writeAuditEntry } from "../services/audit";
+import { writeAuditEntry, diffFields } from "../services/audit";
 
 const router = express.Router();
 
@@ -453,12 +453,24 @@ router.post("/:id/status", async (req, res, next) => {
 router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const id = req.params.id;
+    const userId = req.adminUser!.userId;
     const existing = await prisma.booking.findUnique({
       where: { id },
-      select: { id: true, status: true },
+      select: { id: true, status: true, projectName: true, startDate: true, endDate: true },
     });
     if (!existing) throw new HttpError(404, "Booking not found");
-    await prisma.booking.delete({ where: { id } });
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await writeAuditEntry({
+        tx,
+        userId,
+        action: "delete",
+        entityType: "Booking",
+        entityId: id,
+        before: diffFields(existing as Record<string, unknown>),
+        after: null,
+      });
+      await tx.booking.delete({ where: { id } });
+    });
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -787,7 +799,7 @@ router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next
     if (body.endDate) updateData.endDate = new Date(body.endDate);
 
     // Обновление и запись аудита в одной транзакции — если audit упадёт, бронь не изменится
-    const updated = await prisma.$transaction(async (tx: typeof prisma) => {
+    const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updatedBooking = await tx.booking.update({
         where: { id },
         data: updateData,
