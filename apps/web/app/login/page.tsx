@@ -53,23 +53,23 @@ function LoginForm() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
+    <main className="min-h-screen bg-accent flex items-center justify-center p-6">
+      <div className="w-full max-w-[360px]">
         <div className="text-center mb-8">
           <Link href="/" className="inline-block">
-            <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">
+            <h1 className="text-xl font-semibold text-white tracking-tight">
               Svetobaza Rental
             </h1>
           </Link>
-          <p className="text-slate-400 text-sm mt-2">Вход в CRM</p>
+          <p className="text-accent-border text-xs mt-1.5 eyebrow">Вход в систему</p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl shadow-xl p-6 lg:p-8 space-y-4"
+          className="bg-surface rounded-lg shadow-sm p-6 space-y-4 border border-border"
         >
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+            <label className="block text-sm font-medium text-ink mb-1.5">
               Логин
             </label>
             <input
@@ -79,13 +79,13 @@ function LoginForm() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={loading}
-              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 disabled:bg-slate-50"
+              className="w-full px-3 py-2.5 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright focus:border-accent-bright disabled:bg-surface-subtle"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+            <label className="block text-sm font-medium text-ink mb-1.5">
               Пароль
             </label>
             <input
@@ -94,13 +94,13 @@ function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
-              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 disabled:bg-slate-50"
+              className="w-full px-3 py-2.5 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright focus:border-accent-bright disabled:bg-surface-subtle"
               required
             />
           </div>
 
           {error && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-lg px-3 py-2">
+            <div className="bg-rose-soft border border-rose-border text-rose text-sm rounded px-3 py-2">
               {error}
             </div>
           )}
@@ -108,7 +108,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading || !username || !password}
-            className="w-full bg-sky-600 hover:bg-sky-700 text-white font-medium rounded-lg px-4 py-2.5 text-sm transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
+            className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-2.5 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Вход..." : "Войти"}
           </button>
@@ -116,7 +116,7 @@ function LoginForm() {
           <div className="pt-2 text-center">
             <Link
               href="/"
-              className="text-xs text-slate-500 hover:text-slate-700 transition-colors"
+              className="text-xs text-ink-3 hover:text-ink-2 transition-colors"
             >
               ← На главную
             </Link>

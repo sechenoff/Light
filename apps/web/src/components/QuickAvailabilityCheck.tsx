@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { apiFetch } from "../lib/api";
+import { StatusPill } from "./StatusPill";
 
 type AvailabilityItem = {
   equipmentId: string;
@@ -32,25 +33,11 @@ function StatusBadgeAvailability({
 }: {
   status: AvailabilityItem["availability"];
 }) {
-  const cls =
-    status === "AVAILABLE"
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : status === "PARTIAL"
-        ? "bg-amber-50 text-amber-700 border-amber-200"
-        : "bg-rose-50 text-rose-700 border-rose-200";
+  const variant =
+    status === "AVAILABLE" ? "full" : status === "PARTIAL" ? "limited" : "none";
   const label =
-    status === "AVAILABLE"
-      ? "Доступно"
-      : status === "PARTIAL"
-        ? "Частично"
-        : "Занято";
-  return (
-    <span
-      className={`inline-flex items-center rounded border px-2 py-0.5 text-xs ${cls}`}
-    >
-      {label}
-    </span>
-  );
+    status === "AVAILABLE" ? "Доступно" : status === "PARTIAL" ? "Частично" : "Занято";
+  return <StatusPill variant={variant} label={label} />;
 }
 
 export function QuickAvailabilityCheck() {
@@ -114,7 +101,7 @@ export function QuickAvailabilityCheck() {
       <button
         onClick={handleCheck}
         disabled={loading}
-        className="w-full bg-slate-800 hover:bg-slate-700 text-white text-sm py-1.5 rounded-md disabled:opacity-50 transition-colors"
+        className="w-full bg-accent-bright hover:bg-accent text-white text-sm py-1.5 rounded disabled:opacity-50 transition-colors"
       >
         {loading ? "Проверяю..." : "Проверить"}
       </button>

@@ -6,7 +6,8 @@ import Link from "next/link";
 
 import { apiFetchRaw } from "../../../src/lib/api";
 import { getFileNameFromContentDisposition } from "../../../src/lib/download";
-import { StatusBadge } from "../../../src/components/StatusBadge";
+import { StatusPill } from "../../../src/components/StatusPill";
+import { SectionHeader } from "../../../src/components/SectionHeader";
 import { formatMoneyRub } from "../../../src/lib/format";
 
 type ScanSession = {
@@ -168,15 +169,29 @@ export default function BookingDetailPage() {
   return (
     <div className="p-4">
       <div className="flex items-center justify-between flex-wrap gap-3 no-print">
-        <h1 className="text-xl font-semibold">{booking?.displayName || `Бронь: ${id}`}</h1>
+        <SectionHeader
+          eyebrow="Бронирование"
+          title={booking?.displayName || `Бронь: ${id}`}
+        />
         <div className="flex items-center gap-2 flex-wrap">
-          <Link href="/bookings" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
+          <Link href="/bookings" className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-muted transition-colors">
             ← Брони
           </Link>
-          <Link href="/bookings/new" className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
+          <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors">
             Новая бронь
           </Link>
-          <div className="text-sm text-slate-600">{booking ? <StatusBadge status={statusText(booking.status)} /> : ""}</div>
+          {booking && (
+            <StatusPill
+              variant={
+                booking.status === "CONFIRMED" ? "full"
+                : booking.status === "ISSUED" ? "edit"
+                : booking.status === "RETURNED" ? "ok"
+                : booking.status === "CANCELLED" ? "none"
+                : "view"
+              }
+              label={statusText(booking.status)}
+            />
+          )}
         </div>
       </div>
 
@@ -186,35 +201,35 @@ export default function BookingDetailPage() {
         <div className="mt-4 text-rose-700">{err}</div>
       ) : booking ? (
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-4 print-booking">
-          <div className="lg:col-span-8 rounded border border-slate-200 bg-white overflow-hidden">
-            <div className="p-3 border-b border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700">
-              Позиции
+          <div className="lg:col-span-8 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+            <div className="p-3 border-b border-border bg-surface-subtle">
+              <p className="eyebrow">Позиции брони</p>
             </div>
             <div className="overflow-auto">
               <table className="min-w-[860px] w-full text-sm">
-                <thead className="bg-slate-50 text-slate-600">
+                <thead className="bg-surface-subtle text-ink-2 border-b border-border">
                   <tr>
-                    <th className="text-left px-3 py-2">Категория</th>
-                    <th className="text-left px-3 py-2">Наименование</th>
-                    <th className="px-3 py-2 w-[120px]">Кол-во</th>
+                    <th className="text-left px-3 py-2 font-medium">Категория</th>
+                    <th className="text-left px-3 py-2 font-medium">Наименование</th>
+                    <th className="px-3 py-2 w-[120px] font-medium text-right">Кол-во</th>
                   </tr>
                 </thead>
                 <tbody>
                   {booking.items.map((it) => (
-                    <tr key={it.id} className="border-t border-slate-100">
-                      <td className="px-3 py-2">{it.equipment.category}</td>
+                    <tr key={it.id} className="border-t border-border">
+                      <td className="px-3 py-2 text-ink-2">{it.equipment.category}</td>
                       <td className="px-3 py-2">
-                        <div className="font-medium">{it.equipment.name}</div>
-                        <div className="text-xs text-slate-500">
+                        <div className="font-medium text-ink">{it.equipment.name}</div>
+                        <div className="text-xs text-ink-3">
                           {it.equipment.brand ? it.equipment.brand : ""} {it.equipment.model ? `· ${it.equipment.model}` : ""}
                         </div>
                       </td>
-                      <td className="px-3 py-2 font-medium">{it.quantity}</td>
+                      <td className="px-3 py-2 font-medium text-right mono-num">{it.quantity}</td>
                     </tr>
                   ))}
                   {booking.items.length === 0 ? (
                     <tr>
-                      <td className="px-3 py-6 text-center text-slate-500" colSpan={3}>
+                      <td className="px-3 py-6 text-center text-ink-3" colSpan={3}>
                         Нет позиций
                       </td>
                     </tr>
@@ -226,44 +241,47 @@ export default function BookingDetailPage() {
 
           <div className="lg:col-span-4 space-y-4">
             {(booking.status === "CONFIRMED" || booking.status === "ISSUED" || booking.status === "RETURNED") && (
-              <div className="rounded border border-slate-200 bg-white overflow-hidden no-print">
-                <div className="p-3 border-b border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700">
-                  Сканирование
+              <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden no-print">
+                <div className="p-3 border-b border-border bg-surface-subtle">
+                  <p className="eyebrow">Сканирование</p>
                 </div>
-                <div className="p-3 text-sm text-slate-700 space-y-3">
+                <div className="p-3 text-sm text-ink space-y-3">
                   {(booking.scanSessions ?? []).length > 0 ? (
                     <div className="space-y-2">
                       {(booking.scanSessions ?? []).map((ss) => (
-                        <div key={ss.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-100 bg-slate-50">
-                          <div>
-                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium mr-2 ${
-                              ss.operation === "ISSUE" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"
-                            }`}>
-                              {ss.operation === "ISSUE" ? "Выдача" : "Возврат"}
-                            </span>
-                            <span className="text-slate-600">{ss.workerName}</span>
+                        <div key={ss.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border bg-surface-subtle">
+                          <div className="flex items-center gap-2">
+                            <StatusPill
+                              variant={ss.operation === "ISSUE" ? "info" : "ok"}
+                              label={ss.operation === "ISSUE" ? "Выдача" : "Возврат"}
+                            />
+                            <span className="text-ink-2">{ss.workerName}</span>
                           </div>
-                          <div className="text-right text-xs text-slate-500">
+                          <div className="text-right text-xs text-ink-3">
                             <div>{new Date(ss.createdAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}</div>
-                            <div>{ss._count.scanRecords} скан. · <StatusBadge status={
-                              ss.status === "COMPLETED" ? "Завершена" : ss.status === "ACTIVE" ? "Активна" : "Отменена"
-                            } /></div>
+                            <div className="flex items-center gap-1 justify-end">
+                              <span>{ss._count.scanRecords} скан. ·</span>
+                              <StatusPill
+                                variant={ss.status === "COMPLETED" ? "ok" : ss.status === "ACTIVE" ? "edit" : "none"}
+                                label={ss.status === "COMPLETED" ? "Завершена" : ss.status === "ACTIVE" ? "Активна" : "Отменена"}
+                              />
+                            </div>
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="text-slate-400 text-sm">Нет сессий сканирования</div>
+                    <div className="text-ink-3 text-sm">Нет сессий сканирования</div>
                   )}
                   {booking.status === "CONFIRMED" && (booking.scanSessions ?? []).some(s => s.operation === "ISSUE" && s.status === "COMPLETED") && (
-                    <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                    <div className="text-xs text-accent bg-accent-soft border border-accent-border rounded-lg px-3 py-2">
                       Выдача отсканирована — переведите заказ в статус «Выдан»
                     </div>
                   )}
                   {(booking.status === "CONFIRMED" || booking.status === "ISSUED") && (
                     <Link
                       href={`/warehouse/scan?booking=${booking.id}`}
-                      className="inline-flex items-center gap-1.5 rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+                      className="inline-flex items-center gap-1.5 rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-muted transition-colors"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M3 7V5a2 2 0 0 1 2-2h2" />
@@ -278,19 +296,19 @@ export default function BookingDetailPage() {
                 </div>
               </div>
             )}
-            <div className="rounded border border-slate-200 bg-white overflow-hidden">
-              <div className="p-3 border-b border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700">
-                Данные заказа и финансы
+            <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+              <div className="p-3 border-b border-border bg-surface-subtle">
+                <p className="eyebrow">Данные заказа и финансы</p>
               </div>
-              <div className="p-3 text-sm text-slate-700 space-y-2">
+              <div className="p-3 text-sm text-ink space-y-2">
                 <div>
-                  <span className="text-slate-500">Клиент:</span> <span className="font-medium">{booking.client.name}</span>
+                  <span className="text-ink-3">Клиент:</span> <span className="font-medium">{booking.client.name}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500">Проект:</span> <span className="font-medium">{booking.projectName}</span>
+                  <span className="text-ink-3">Проект:</span> <span className="font-medium">{booking.projectName}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500">Период:</span>{" "}
+                  <span className="text-ink-3">Период:</span>{" "}
                   <span className="font-medium">
                     {new Date(booking.startDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })} —{" "}
                     {new Date(booking.endDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
@@ -298,47 +316,63 @@ export default function BookingDetailPage() {
                 </div>
                 {booking.comment ? (
                   <div>
-                    <span className="text-slate-500">Комментарий:</span> <span>{booking.comment}</span>
+                    <span className="text-ink-3">Комментарий:</span> <span>{booking.comment}</span>
                   </div>
                 ) : null}
-                <div className="border-t border-slate-200 pt-2 mt-2 space-y-1">
-                  <div><span className="text-slate-500">Сумма сметы:</span> <span className="font-medium">{formatMoneyRub(booking.totalEstimateAmount ?? "0")}</span></div>
-                  <div><span className="text-slate-500">Скидка:</span> <span className="font-medium">{formatMoneyRub(booking.discountAmount ?? "0")}</span></div>
-                  <div><span className="text-slate-500">Итог:</span> <span className="font-medium">{formatMoneyRub(booking.finalAmount ?? "0")}</span></div>
-                  <div><span className="text-slate-500">Оплачено:</span> <span className="font-medium">{formatMoneyRub(booking.amountPaid ?? "0")}</span></div>
-                  <div><span className="text-slate-500">Остаток:</span> <span className="font-medium">{formatMoneyRub(booking.amountOutstanding ?? "0")}</span></div>
-                  <div><span className="text-slate-500">Статус оплаты:</span> <span className="font-medium"><StatusBadge status={booking.paymentStatus ?? "NOT_PAID"} /></span></div>
-                  <div><span className="text-slate-500">Плановая дата платежа:</span> <span className="font-medium">{booking.expectedPaymentDate ? new Date(booking.expectedPaymentDate).toLocaleDateString("ru-RU") : "—"}</span></div>
+                <div className="border-t border-border pt-2 mt-2 space-y-1">
+                  <div><span className="text-ink-3">Сумма сметы:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.totalEstimateAmount ?? "0")}</span></div>
+                  <div><span className="text-ink-3">Скидка:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.discountAmount ?? "0")}</span></div>
+                  <div><span className="text-ink-3">Итог:</span> <span className="font-semibold mono-num">{formatMoneyRub(booking.finalAmount ?? "0")}</span></div>
+                  <div><span className="text-ink-3">Оплачено:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.amountPaid ?? "0")}</span></div>
+                  <div><span className="text-ink-3">Остаток:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.amountOutstanding ?? "0")}</span></div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-ink-3">Статус оплаты:</span>
+                    <StatusPill
+                      variant={
+                        booking.paymentStatus === "PAID" ? "ok"
+                        : booking.paymentStatus === "PARTIALLY_PAID" ? "limited"
+                        : booking.paymentStatus === "OVERDUE" ? "warn"
+                        : "none"
+                      }
+                      label={
+                        booking.paymentStatus === "PAID" ? "Оплачен"
+                        : booking.paymentStatus === "PARTIALLY_PAID" ? "Частично"
+                        : booking.paymentStatus === "OVERDUE" ? "Просрочен"
+                        : "Не оплачен"
+                      }
+                    />
+                  </div>
+                  <div><span className="text-ink-3">Плановая дата платежа:</span> <span className="font-medium">{booking.expectedPaymentDate ? new Date(booking.expectedPaymentDate).toLocaleDateString("ru-RU") : "—"}</span></div>
                   <div className="pt-2">
-                    <button className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50" onClick={quickAddPayment}>Добавить платеж</button>
+                    <button className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-muted transition-colors" onClick={quickAddPayment}>Добавить платёж</button>
                   </div>
                 </div>
               </div>
             </div>
 
             {booking.estimate ? (
-              <div className="rounded border border-slate-200 bg-white overflow-hidden">
-                <div className="p-3 border-b border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700 flex items-center justify-between">
-                  <span>Смета</span>
-                  <span className="text-xs text-slate-500">Шифты: {booking.estimate.shifts}</span>
+              <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+                <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
+                  <p className="eyebrow">Смета</p>
+                  <span className="text-xs text-ink-3">Шифты: {booking.estimate.shifts}</span>
                 </div>
                 <div className="p-3 space-y-3">
                   <div className="text-sm flex justify-between">
-                    <span className="text-slate-600">Итого</span>
-                    <span className="font-medium">{formatMoneyRub(booking.estimate.subtotal)}</span>
+                    <span className="text-ink-2">Итого</span>
+                    <span className="font-medium mono-num">{formatMoneyRub(booking.estimate.subtotal)}</span>
                   </div>
                   <div className="text-sm flex justify-between">
-                    <span className="text-slate-600">Скидка</span>
-                    <span className="font-medium">-{formatMoneyRub(booking.estimate.discountAmount)}</span>
+                    <span className="text-ink-2">Скидка</span>
+                    <span className="font-medium mono-num">-{formatMoneyRub(booking.estimate.discountAmount)}</span>
                   </div>
-                  <div className="text-base flex justify-between pt-1 border-t border-slate-200">
-                    <span className="font-semibold text-slate-900">После скидки</span>
-                    <span className="font-semibold text-slate-900">{formatMoneyRub(booking.estimate.totalAfterDiscount)}</span>
+                  <div className="text-sm flex justify-between pt-1 border-t border-border">
+                    <span className="font-semibold text-ink">После скидки</span>
+                    <span className="font-semibold text-ink mono-num">{formatMoneyRub(booking.estimate.totalAfterDiscount)}</span>
                   </div>
 
                   <div className="flex gap-2 no-print">
                     <button
-                      className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
+                      className="flex-1 rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
                       onClick={() =>
                         download(
                           `/api/estimates/${booking.estimate!.id}/export/xlsx`,
@@ -349,7 +383,7 @@ export default function BookingDetailPage() {
                       Excel
                     </button>
                     <button
-                      className="flex-1 rounded bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800"
+                      className="flex-1 rounded bg-accent-bright text-white px-3 py-2 text-sm hover:bg-accent transition-colors"
                       onClick={() =>
                         download(
                           `/api/estimates/${booking.estimate!.id}/export/pdf`,
@@ -359,51 +393,53 @@ export default function BookingDetailPage() {
                     >
                       PDF
                     </button>
-                    <button className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50" onClick={() => window.print()}>
+                    <button className="flex-1 rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors" onClick={() => window.print()}>
                       Печать
                     </button>
                   </div>
 
-                  <div className="max-h-[280px] overflow-auto border rounded border-slate-200">
-                    <div className="text-xs bg-slate-50 p-2 font-semibold text-slate-700">Позиции</div>
+                  <div className="max-h-[280px] overflow-auto border rounded-lg border-border">
+                    <div className="eyebrow p-2 border-b border-border">Позиции</div>
                     {booking.estimate.lines.map((l) => (
-                      <div key={l.id} className="px-2 py-2 border-t border-slate-100 flex justify-between gap-3 text-sm">
+                      <div key={l.id} className="px-2 py-2 border-t border-border flex justify-between gap-3 text-sm">
                         <div className="min-w-0">
                           <div className="font-medium truncate">{l.nameSnapshot}</div>
-                          <div className="text-xs text-slate-500">
+                          <div className="text-xs text-ink-3 mono-num">
                             {l.quantity} × {formatMoneyRub(l.unitPrice)}
                           </div>
                         </div>
-                        <div className="font-medium">{formatMoneyRub(l.lineSum)}</div>
+                        <div className="font-medium mono-num">{formatMoneyRub(l.lineSum)}</div>
                       </div>
                     ))}
                   </div>
 
-                  {booking.estimate.commentSnapshot ? <div className="text-xs text-slate-500">{booking.estimate.commentSnapshot}</div> : null}
+                  {booking.estimate.commentSnapshot ? <div className="text-xs text-ink-3">{booking.estimate.commentSnapshot}</div> : null}
                 </div>
               </div>
             ) : (
-              <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <div className="rounded-lg border border-border bg-surface-subtle p-3 text-sm text-ink-2">
                 Смета пока не сформирована (возможно, это черновик).
               </div>
             )}
-            <div className="rounded border border-slate-200 bg-white overflow-hidden">
-              <div className="p-3 border-b border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700">Журнал изменений</div>
+            <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+              <div className="p-3 border-b border-border bg-surface-subtle">
+                <p className="eyebrow">Журнал изменений</p>
+              </div>
               <div className="max-h-[280px] overflow-auto">
                 {(booking.financeEvents ?? []).map((ev) => (
-                  <div key={ev.id} className="px-3 py-2 border-b border-slate-100 text-sm flex items-center justify-between gap-2">
+                  <div key={ev.id} className="px-3 py-2 border-b border-border text-sm flex items-center justify-between gap-2">
                     <div>
-                      <div className="font-medium">{ev.eventType}</div>
-                      <div className="text-xs text-slate-500">{new Date(ev.createdAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}</div>
+                      <div className="font-medium text-ink">{ev.eventType}</div>
+                      <div className="text-xs text-ink-3">{new Date(ev.createdAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}</div>
                     </div>
-                    <div className="text-right text-xs text-slate-600">
+                    <div className="text-right text-xs text-ink-2">
                       {ev.statusFrom || ev.statusTo ? `${ev.statusFrom ?? "—"} → ${ev.statusTo ?? "—"}` : ""}
-                      {ev.amountDelta ? <div>{formatMoneyRub(ev.amountDelta)}</div> : null}
+                      {ev.amountDelta ? <div className="mono-num">{formatMoneyRub(ev.amountDelta)}</div> : null}
                     </div>
                   </div>
                 ))}
                 {(booking.financeEvents ?? []).length === 0 ? (
-                  <div className="px-3 py-4 text-sm text-slate-500">Пока нет событий.</div>
+                  <div className="px-3 py-4 text-sm text-ink-3">Пока нет событий.</div>
                 ) : null}
               </div>
             </div>

@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, apiFetchRaw } from "../../../../src/lib/api";
+import { StatusPill, type StatusPillVariant } from "../../../../src/components/StatusPill";
+import { SectionHeader } from "../../../../src/components/SectionHeader";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,20 +30,28 @@ type Equipment = {
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<UnitStatus, { label: string; classes: string }> = {
-  AVAILABLE:   { label: "На складе",  classes: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  ISSUED:      { label: "Выдана",     classes: "bg-blue-50 text-blue-700 border-blue-200" },
-  MAINTENANCE: { label: "Ремонт",     classes: "bg-amber-50 text-amber-700 border-amber-200" },
-  RETIRED:     { label: "Списана",    classes: "bg-slate-100 text-slate-500 border-slate-200" },
-  MISSING:     { label: "Утеряна",    classes: "bg-rose-50 text-rose-700 border-rose-200" },
+const STATUS_LABELS: Record<UnitStatus, string> = {
+  AVAILABLE:   "На складе",
+  ISSUED:      "Выдана",
+  MAINTENANCE: "Ремонт",
+  RETIRED:     "Списана",
+  MISSING:     "Утеряна",
+};
+
+const STATUS_VARIANT: Record<UnitStatus, StatusPillVariant> = {
+  AVAILABLE:   "full",
+  ISSUED:      "limited",
+  MAINTENANCE: "warn",
+  RETIRED:     "none",
+  MISSING:     "none",
 };
 
 function UnitStatusBadge({ status }: { status: UnitStatus }) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.AVAILABLE;
   return (
-    <span className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium ${cfg.classes}`}>
-      {cfg.label}
-    </span>
+    <StatusPill
+      variant={STATUS_VARIANT[status] ?? "none"}
+      label={STATUS_LABELS[status] ?? status}
+    />
   );
 }
 
@@ -104,7 +114,7 @@ function GenerateModal({
             type="button"
             onClick={handleGenerate}
             disabled={loading}
-            className="rounded bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+            className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent disabled:opacity-50 transition-colors"
           >
             {loading ? "Генерация..." : `Создать ${count} шт.`}
           </button>
@@ -175,8 +185,8 @@ function EditModal({
           onChange={(e) => setStatus(e.target.value as UnitStatus)}
           className="w-full rounded border border-slate-300 px-3 py-2 text-sm mb-3 bg-white"
         >
-          {(Object.keys(STATUS_CONFIG) as UnitStatus[]).map((s) => (
-            <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
+          {(Object.keys(STATUS_LABELS) as UnitStatus[]).map((s) => (
+            <option key={s} value={s}>{STATUS_LABELS[s]}</option>
           ))}
         </select>
 
@@ -202,7 +212,7 @@ function EditModal({
             type="button"
             onClick={handleSave}
             disabled={loading}
-            className="rounded bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+            className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent disabled:opacity-50 transition-colors"
           >
             {loading ? "Сохранение..." : "Сохранить"}
           </button>
@@ -388,7 +398,7 @@ export default function UnitsPage() {
           <button
             type="button"
             onClick={() => setShowGenerate(true)}
-            className="rounded bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800"
+            className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent transition-colors"
           >
             Сгенерировать единицы
           </button>
@@ -423,24 +433,24 @@ export default function UnitsPage() {
 
       {/* Desktop table */}
       {!loading && units.length > 0 && (
-        <div className="hidden md:block rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div className="hidden md:block rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600 text-xs">
+            <thead className="bg-surface-subtle text-ink-2 border-b border-border text-xs">
               <tr>
-                <th className="text-left px-4 py-3">Штрихкод</th>
-                <th className="text-left px-3 py-3">Серийный номер</th>
-                <th className="text-left px-3 py-3">Статус</th>
-                <th className="text-left px-3 py-3">Комментарий</th>
-                <th className="px-3 py-3 text-right">Действия</th>
+                <th className="text-left px-4 py-3 font-medium">Штрихкод</th>
+                <th className="text-left px-3 py-3 font-medium">Серийный номер</th>
+                <th className="text-left px-3 py-3 font-medium">Статус</th>
+                <th className="text-left px-3 py-3 font-medium">Комментарий</th>
+                <th className="px-3 py-3 text-right font-medium">Действия</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border">
               {units.map((unit) => (
-                <tr key={unit.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-700">{unit.barcode}</td>
-                  <td className="px-3 py-3 text-slate-600">{unit.serialNumber ?? <span className="text-slate-300">—</span>}</td>
+                <tr key={unit.id} className="hover:bg-surface-muted transition-colors">
+                  <td className="px-4 py-3 text-xs text-ink-3 font-mono">{unit.barcode}</td>
+                  <td className="px-3 py-3 text-ink-2">{unit.serialNumber ?? <span className="text-ink-3">—</span>}</td>
                   <td className="px-3 py-3"><UnitStatusBadge status={unit.status} /></td>
-                  <td className="px-3 py-3 text-slate-500 text-xs max-w-[200px] truncate">{unit.comment ?? <span className="text-slate-300">—</span>}</td>
+                  <td className="px-3 py-3 text-ink-3 text-xs max-w-[200px] truncate">{unit.comment ?? <span className="text-ink-3">—</span>}</td>
                   <td className="px-3 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
@@ -482,7 +492,7 @@ export default function UnitsPage() {
           {units.map((unit) => (
             <div key={unit.id} className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-start justify-between mb-2">
-                <span className="font-mono text-xs text-slate-600">{unit.barcode}</span>
+                <span className="font-mono text-xs text-ink-3">{unit.barcode}</span>
                 <UnitStatusBadge status={unit.status} />
               </div>
               {unit.serialNumber && (

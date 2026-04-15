@@ -20,9 +20,9 @@ type OccupancyResponse = {
 
 function getDayColor(percent: number): string {
   if (percent === 0) return "";
-  if (percent < 50) return "bg-green-100";
-  if (percent < 80) return "bg-amber-100";
-  return "bg-rose-100";
+  if (percent < 50) return "bg-emerald-soft";
+  if (percent < 80) return "bg-amber-soft";
+  return "bg-rose-soft";
 }
 
 export function MiniCalendar() {

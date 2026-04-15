@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { apiFetch } from "../../src/lib/api";
+import { StatusPill } from "../../src/components/StatusPill";
+import { SectionHeader } from "../../src/components/SectionHeader";
 import { formatMoneyRub } from "../../src/lib/format";
 
 const UNIT_STATUS_LABELS: Record<string, string> = {
@@ -186,24 +188,12 @@ export default function EquipmentPage() {
   }
 
   function statusBadge(avail: AvailInfo | undefined, total: number) {
-    if (!avail) return <span className="text-xs text-slate-400">—</span>;
+    if (!avail) return <span className="text-xs text-ink-3">—</span>;
     if (avail.availability === "AVAILABLE")
-      return (
-        <span className="inline-flex items-center rounded border px-2 py-1 text-xs bg-emerald-50 text-emerald-700 border-emerald-200">
-          Доступно
-        </span>
-      );
+      return <StatusPill variant="full" label="Доступно" />;
     if (avail.availability === "PARTIAL")
-      return (
-        <span className="inline-flex items-center rounded border px-2 py-1 text-xs bg-amber-50 text-amber-700 border-amber-200">
-          Частично ({avail.availableQuantity} из {total})
-        </span>
-      );
-    return (
-      <span className="inline-flex items-center rounded border px-2 py-1 text-xs bg-rose-50 text-rose-700 border-rose-200">
-        Занято
-      </span>
-    );
+      return <StatusPill variant="limited" label={`Частично (${avail.availableQuantity} из ${total})`} />;
+    return <StatusPill variant="none" label="Занято" />;
   }
 
   const availableCount = availMap.size > 0
@@ -224,7 +214,7 @@ export default function EquipmentPage() {
                     setStart(p.start);
                     setEnd(p.end);
                   }}
-                  className="text-xs px-2.5 py-1 rounded-full border border-slate-300 text-slate-600 hover:bg-slate-100 hover:border-slate-400 transition-colors"
+                  className="text-xs px-2.5 py-1 rounded border border-border text-ink-2 hover:bg-surface-subtle transition-colors"
                 >
                   {type === "today" ? "Сегодня 10-10" : type === "tomorrow" ? "Завтра 10-10" : "Эта неделя"}
                 </button>
@@ -281,7 +271,7 @@ export default function EquipmentPage() {
 
         <div className="flex items-center gap-2">
           <Link
-            className="rounded bg-slate-900 text-white px-4 py-2 hover:bg-slate-800"
+            className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent transition-colors"
             href={`/bookings/new?start=${datetimeLocalToISO(start)}&end=${datetimeLocalToISO(end)}`}
           >
             Создать бронь
@@ -289,14 +279,15 @@ export default function EquipmentPage() {
         </div>
       </div>
 
-      <div className="mt-4 rounded border border-slate-200 bg-white overflow-hidden">
-        <div className="p-3 border-b border-slate-200 flex items-center justify-between">
-          <div className="text-sm text-slate-700">
-            Каталог на период{" "}
-            <span className="font-medium">{displayDatetime(start)}</span> —{" "}
-            <span className="font-medium">{displayDatetime(end)}</span>
-          </div>
-          <div className="text-xs text-slate-500">
+      <div className="mt-4 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+        <div className="p-3 border-b border-border flex items-center justify-between">
+          <p className="eyebrow">
+            Каталог{" "}
+            <span className="font-normal normal-case tracking-normal text-ink-2">
+              {displayDatetime(start)} — {displayDatetime(end)}
+            </span>
+          </p>
+          <div className="text-xs text-ink-3">
             {loadingCatalog
               ? "Загрузка каталога..."
               : loadingAvail
@@ -327,27 +318,27 @@ export default function EquipmentPage() {
         ) : (
           <div className="overflow-auto">
             <table className="min-w-[980px] w-full text-sm">
-              <thead className="bg-slate-50 text-slate-600">
+              <thead className="bg-surface-subtle text-ink-2 border-b border-border">
                 <tr>
-                  <th className="text-left px-3 py-2">Перечень оборудования</th>
-                  <th className="text-left px-3 py-2 w-[100px]">Всего</th>
-                  <th className="text-left px-3 py-2 w-[130px]">Стоимость</th>
-                  <th className="text-left px-3 py-2">Категория</th>
-                  <th className="text-left px-3 py-2 w-[90px]">Занято</th>
-                  <th className="text-left px-3 py-2 w-[100px]">Доступно</th>
-                  <th className="px-3 py-2">Статус</th>
+                  <th className="text-left px-3 py-2 font-medium">Оборудование</th>
+                  <th className="text-left px-3 py-2 font-medium w-[100px]">Всего</th>
+                  <th className="text-right px-3 py-2 font-medium w-[130px]">Стоимость</th>
+                  <th className="text-left px-3 py-2 font-medium">Категория</th>
+                  <th className="text-right px-3 py-2 font-medium w-[90px]">Занято</th>
+                  <th className="text-right px-3 py-2 font-medium w-[100px]">Доступно</th>
+                  <th className="px-3 py-2 font-medium">Статус</th>
                 </tr>
               </thead>
               <tbody>
                 {loadingCatalog ? (
                   <tr>
-                    <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
+                    <td className="px-3 py-8 text-center text-ink-3" colSpan={7}>
                       Загрузка...
                     </td>
                   </tr>
                 ) : catalog.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-8 text-center text-slate-500" colSpan={7}>
+                    <td className="px-3 py-8 text-center text-ink-3" colSpan={7}>
                       {search || category
                         ? "Ничего не найдено по фильтрам"
                         : "Каталог пуст — добавьте технику через Администратор → Импорт оборудования"}
@@ -360,19 +351,19 @@ export default function EquipmentPage() {
                     return (
                       <tr
                         key={r.id}
-                        className={`border-t border-slate-100 ${isFullyUnavailable ? "opacity-50" : ""}`}
+                        className={`border-t border-border hover:bg-surface-muted transition-colors ${isFullyUnavailable ? "opacity-50" : ""}`}
                       >
                         <td className="px-3 py-2">
-                          <div className="font-medium text-slate-900 flex items-center gap-1.5">
+                          <div className="font-medium text-ink flex items-center gap-1.5">
                             {r.name}
                             {r.model ? (
-                              <span className="text-slate-500 font-normal"> · {r.model}</span>
+                              <span className="text-ink-3 font-normal"> · {r.model}</span>
                             ) : null}
                             {r.stockTrackingMode === "UNIT" ? (
                               <Link
                                 href={`/equipment/${r.id}/units`}
                                 title="Управление единицами"
-                                className="text-slate-400 hover:text-slate-700 flex-shrink-0"
+                                className="text-ink-3 hover:text-ink flex-shrink-0"
                               >
                                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -382,16 +373,16 @@ export default function EquipmentPage() {
                             ) : null}
                           </div>
                           {r.brand ? (
-                            <div className="text-xs text-slate-500">{r.brand}</div>
+                            <div className="text-xs text-ink-3 font-mono">{r.brand}</div>
                           ) : (
-                            <div className="text-xs text-slate-500">&nbsp;</div>
+                            <div className="text-xs">&nbsp;</div>
                           )}
                         </td>
-                        <td className="px-3 py-2 font-medium">
+                        <td className="px-3 py-2 font-medium mono-num">
                           {r.stockTrackingMode === "UNIT" && r.unitStatusCounts ? (
                             <div>
                               <div>{r.totalQuantity}</div>
-                              <div className="text-xs font-normal text-slate-500 whitespace-nowrap">
+                              <div className="text-xs font-normal text-ink-3 whitespace-nowrap">
                                 {unitStatusSummary(r.unitStatusCounts, r.totalQuantity)}
                               </div>
                             </div>
@@ -399,13 +390,13 @@ export default function EquipmentPage() {
                             r.totalQuantity
                           )}
                         </td>
-                        <td className="px-3 py-2 font-medium">{formatMoneyRub(r.rentalRatePerShift)}</td>
-                        <td className="px-3 py-2 text-slate-700">{r.category}</td>
-                        <td className="px-3 py-2 text-slate-600">
-                          {avail ? avail.occupiedQuantity : <span className="text-slate-300">—</span>}
+                        <td className="px-3 py-2 font-medium text-right mono-num">{formatMoneyRub(r.rentalRatePerShift)}</td>
+                        <td className="px-3 py-2 text-ink-2">{r.category}</td>
+                        <td className="px-3 py-2 text-right mono-num text-ink-2">
+                          {avail ? avail.occupiedQuantity : <span className="text-ink-3">—</span>}
                         </td>
-                        <td className="px-3 py-2 font-medium">
-                          {avail ? avail.availableQuantity : <span className="text-slate-300">—</span>}
+                        <td className="px-3 py-2 text-right mono-num font-medium">
+                          {avail ? avail.availableQuantity : <span className="text-ink-3">—</span>}
                         </td>
                         <td className="px-3 py-2">{statusBadge(avail, r.totalQuantity)}</td>
                       </tr>

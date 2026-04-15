@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { StatusBadge } from "./StatusBadge";
+import { StatusPill } from "./StatusPill";
 
 export type DashboardBooking = {
   id: string;
@@ -53,7 +53,22 @@ export function DashboardOpsCard({ booking }: { booking: DashboardBooking }) {
           </p>
           <p className="text-xs text-slate-500 truncate">{booking.clientName}</p>
         </div>
-        <StatusBadge status={booking.status} />
+        <StatusPill
+          variant={
+            booking.status === "CONFIRMED" || booking.status === "RETURNED" ? "full"
+            : booking.status === "ISSUED" || booking.status === "DRAFT" ? "limited"
+            : booking.status === "CANCELLED" ? "none"
+            : "view"
+          }
+          label={
+            booking.status === "CONFIRMED" ? "Подтверждено"
+            : booking.status === "ISSUED" ? "Выдано"
+            : booking.status === "RETURNED" ? "Возвращено"
+            : booking.status === "DRAFT" ? "Черновик"
+            : booking.status === "CANCELLED" ? "Отменено"
+            : booking.status
+          }
+        />
       </div>
 
       <p className="mt-1.5 text-xs text-slate-600">

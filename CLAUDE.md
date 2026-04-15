@@ -314,5 +314,33 @@ CSS-утилиты: `.eyebrow` (надстрочники), `.mono-num` (числ
 
 `src/lib/auth.ts` — `CurrentUser.userId` (опциональное поле) теперь синхронизируется из `/api/auth/me`. Используется для фильтрации ремонтов по назначенному технику.
 
+## Sprint 5: Design Canon Repaint
+
+Рескин существующих страниц до IBM Plex Canon. Миграция завершена.
+
+Канонический reference: `docs/design-system.md`.
+
+### Новые общие компоненты
+
+- **`src/components/StatusPill.tsx`** — универсальный статусный бейдж. Props: `{ variant: "full" | "edit" | "view" | "limited" | "own" | "none" | "ok" | "warn" | "info", label: string, className?: string }`. Заменяет удалённый `StatusBadge.tsx`.
+- **`src/components/SectionHeader.tsx`** — заголовок секции с eyebrow и optional actions. Props: `{ eyebrow?: string, title: string, actions?: ReactNode, className?: string }`.
+
+### Страницы рескина
+
+- `/bookings` — SectionHeader, StatusPill, mono-num для сумм, accent-bright на кнопку.
+- `/bookings/[id]` — карточки-секции, StatusPill для статусов, token-цвета.
+- `/equipment` — StatusPill для доступности, accent-bright, token-классы.
+- `/equipment/[id]/units` — StatusPill для UnitStatus, барткод de-emphasize (`text-xs text-ink-3 font-mono`).
+- `/calendar` — semantic token colors для ячеек (emerald/amber/rose-soft), accent-soft для today.
+- `/login` — max-w-[360px], bg-accent, accent-bright primary button.
+- `/admin` — eyebrow tabs, border-border, shadow-xs.
+- `/warehouse/scan` — токенизация цветов, accent-bright для primary action.
+- `DashboardOpsCard`, `QuickAvailabilityCheck`, `CalendarTooltip`, `MiniCalendar` — токенизация.
+
+### Аудит (после Sprint 5)
+
+- `style={{` в `apps/web/`: 5 штук — все в `finance/` (SVG-bars, dynamic category-color dots). Вне scope Sprint 5.
+- Hex в `apps/web/app` и `apps/web/src`: 0 вне `finance/`.
+
 <!-- updated-by-superflow:2026-04-15 -->
 
