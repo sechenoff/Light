@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { apiFetch } from "../../../src/lib/api";
+import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 
 type EquipmentRow = {
   id: string;
@@ -58,6 +59,8 @@ function uniqueCategoriesFromEquipments(equipments: EquipmentRow[]): string[] {
 }
 
 export default function EquipmentManagePage() {
+  const { user } = useCurrentUser();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const [rows, setRows] = useState<EquipmentRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
@@ -357,8 +360,10 @@ export default function EquipmentManagePage() {
                         value={inlineForm.category}
                         onChange={(e) => setInlineForm((p) => ({ ...p, category: e.target.value }))}
                       />
-                    ) : (
+                    ) : isSuperAdmin ? (
                       <button className="text-left hover:underline" onClick={() => beginInlineEdit(r)}>{r.category}</button>
+                    ) : (
+                      <span>{r.category}</span>
                     )}
                   </td>
                   <td className="px-3 py-2">
@@ -368,8 +373,10 @@ export default function EquipmentManagePage() {
                         value={inlineForm.name}
                         onChange={(e) => setInlineForm((p) => ({ ...p, name: e.target.value }))}
                       />
-                    ) : (
+                    ) : isSuperAdmin ? (
                       <button className="text-left hover:underline" onClick={() => beginInlineEdit(r)}>{r.name}</button>
+                    ) : (
+                      <span>{r.name}</span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -381,8 +388,10 @@ export default function EquipmentManagePage() {
                         value={inlineForm.totalQuantity}
                         onChange={(e) => setInlineForm((p) => ({ ...p, totalQuantity: e.target.value }))}
                       />
-                    ) : (
+                    ) : isSuperAdmin ? (
                       <button className="hover:underline" onClick={() => beginInlineEdit(r)}>{r.totalQuantity}</button>
+                    ) : (
+                      <span>{r.totalQuantity}</span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -395,8 +404,10 @@ export default function EquipmentManagePage() {
                         value={inlineForm.rentalRatePerShift}
                         onChange={(e) => setInlineForm((p) => ({ ...p, rentalRatePerShift: e.target.value }))}
                       />
-                    ) : (
+                    ) : isSuperAdmin ? (
                       <button className="hover:underline" onClick={() => beginInlineEdit(r)}>{r.rentalRatePerShift}</button>
+                    ) : (
+                      <span>{r.rentalRatePerShift}</span>
                     )}
                   </td>
                   <td className="px-3 py-2">
@@ -417,12 +428,14 @@ export default function EquipmentManagePage() {
                           </button>
                         </>
                       ) : null}
-                      <button
-                        className="rounded border border-rose-300 text-rose-700 px-2 py-1 text-xs hover:bg-rose-50"
-                        onClick={() => removeRow(r.id)}
-                      >
-                        Удалить
-                      </button>
+                      {isSuperAdmin && (
+                        <button
+                          className="rounded border border-rose-300 text-rose-700 px-2 py-1 text-xs hover:bg-rose-50"
+                          onClick={() => removeRow(r.id)}
+                        >
+                          Удалить
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
