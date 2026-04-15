@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -39,7 +39,7 @@ type BookingRow = {
 };
 
 
-export default function BookingHistoryPage() {
+function BookingHistoryPageInner() {
   const { user } = useCurrentUser();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const searchParams = useSearchParams();
@@ -330,6 +330,14 @@ export default function BookingHistoryPage() {
       </div>
 
     </div>
+  );
+}
+
+export default function BookingHistoryPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-ink-3">Загрузка...</div>}>
+      <BookingHistoryPageInner />
+    </Suspense>
   );
 }
 
