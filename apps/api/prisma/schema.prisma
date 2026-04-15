@@ -276,6 +276,10 @@ model Booking {
   expectedPaymentDate DateTime?
   actualPaymentDate DateTime?
   paymentComment String?
+
+  /// Причина последнего отклонения (заполняется при rejectBooking, очищается при submitForApproval).
+  rejectionReason String?
+
   isFullyPaid Boolean @default(false)
   amountPaid Decimal @default(0)
   amountOutstanding Decimal @default(0)
