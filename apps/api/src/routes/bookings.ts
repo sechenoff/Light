@@ -5,6 +5,7 @@ import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
 import { createBookingDraft, confirmBooking, quoteEstimate, rebuildBookingEstimate } from "../services/bookings";
+import { submitForApproval, approveBooking, rejectBooking } from "../services/bookingApproval";
 import { HttpError } from "../utils/errors";
 import {
   assertBookingRangeOrder,
@@ -834,6 +835,56 @@ router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next
     next(err);
   }
 });
+
+const rejectSchema = z.object({
+  reason: z.string().min(1, "Укажите причину отклонения").max(2000),
+});
+
+/** POST /api/bookings/:id/submit-for-approval — DRAFT → PENDING_APPROVAL (SUPER_ADMIN + WAREHOUSE). */
+router.post(
+  "/:id/submit-for-approval",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  async (req, res, next) => {
+    try {
+      if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      const updated = await submitForApproval(req.params.id, req.adminUser.userId);
+      res.json({ booking: serializeBookingForApi(updated as any) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** POST /api/bookings/:id/approve — PENDING_APPROVAL → CONFIRMED (только SUPER_ADMIN). */
+router.post(
+  "/:id/approve",
+  rolesGuard(["SUPER_ADMIN"]),
+  async (req, res, next) => {
+    try {
+      if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      const updated = await approveBooking(req.params.id, req.adminUser.userId);
+      res.json({ booking: serializeBookingForApi(updated as any) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** POST /api/bookings/:id/reject — PENDING_APPROVAL → DRAFT + причина (только SUPER_ADMIN). */
+router.post(
+  "/:id/reject",
+  rolesGuard(["SUPER_ADMIN"]),
+  async (req, res, next) => {
+    try {
+      if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      const body = rejectSchema.parse(req.body);
+      const updated = await rejectBooking(req.params.id, req.adminUser.userId, body.reason);
+      res.json({ booking: serializeBookingForApi(updated as any) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 export { router as bookingsRouter };
 
