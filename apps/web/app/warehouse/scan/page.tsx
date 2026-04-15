@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { apiFetch } from "../../../src/lib/api";
+import { pluralRu } from "../../../src/lib/pluralRu";
 
 const Html5QrcodePlugin = dynamic<{ onScan: (text: string) => void }>(
   () => import("./Html5QrcodePlugin"),
@@ -750,7 +751,7 @@ function SummaryStep({
 }: {
   sessionId: string;
   operation: Operation;
-  onComplete: (repairCount: number) => void;
+  onComplete: (createdRepairIds: string[], failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>) => void;
   onUnauth: () => void;
 }) {
   const [summary, setSummary] = useState<ReconciliationSummary | null>(null);
@@ -808,11 +809,14 @@ function SummaryStep({
           equipmentUnitId, reason, urgency,
         }));
       }
-      await warehouseFetch(`/api/warehouse/sessions/${sessionId}/complete`, {
+      const result = await warehouseFetch<{
+        createdRepairIds: string[];
+        failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>;
+      }>(`/api/warehouse/sessions/${sessionId}/complete`, {
         method: "POST",
         body: JSON.stringify(body),
       });
-      onComplete(brokenUnits.length);
+      onComplete(result.createdRepairIds ?? [], result.failedBrokenUnits ?? []);
     } catch (err: unknown) {
       const e = err as { status?: number; message?: string };
       if (e?.status === 401) {
@@ -998,6 +1002,7 @@ export default function WarehouseScanPage() {
   const [operation, setOperation] = useState<Operation>("ISSUE");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [completionToast, setCompletionToast] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   const goToLogin = useCallback(() => {
     sessionStorage.removeItem("warehouse_token");
@@ -1027,12 +1032,21 @@ export default function WarehouseScanPage() {
     setStep("operation");
   }
 
-  function handleSummaryComplete(repairCount: number) {
+  function handleSummaryComplete(
+    createdRepairIds: string[],
+    failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>,
+  ) {
     setSessionId(null);
     setStep("operation");
-    if (repairCount > 0) {
-      setCompletionToast(`Создано ${repairCount} ${repairCount === 1 ? "карточка ремонта" : "карточки ремонта"}`);
+    const n = createdRepairIds.length;
+    if (n > 0) {
+      setCompletionToast(`Создано ${n} ${pluralRu(n, ["карточка", "карточки", "карточек"])} ремонта`);
       setTimeout(() => setCompletionToast(null), 5000);
+    }
+    if (failedBrokenUnits.length > 0) {
+      const m = failedBrokenUnits.length;
+      setErrorToast(`Не удалось создать ${m} ${pluralRu(m, ["карточку", "карточки", "карточек"])} — обратитесь к администратору`);
+      setTimeout(() => setErrorToast(null), 8000);
     }
   }
 
@@ -1078,6 +1092,13 @@ export default function WarehouseScanPage() {
           <a href="/repair" className="underline text-blue-300">
             Открыть мастерскую
           </a>
+        </div>
+      )}
+
+      {/* Toast: ошибка создания карточек ремонта */}
+      {errorToast && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-rose-600 text-white text-sm font-medium shadow-lg max-w-xs w-full text-center">
+          {errorToast}
         </div>
       )}
     </>
