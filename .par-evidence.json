@@ -1,72 +1,71 @@
 {
-  "cycle": "holistic-fix",
-  "feature": "roles-navigation",
-  "governance_mode": "standard",
-  "complexity": "medium",
-  "claude_product": "ACCEPTED",
-  "technical_review": "APPROVE",
-  "provider": "split-focus",
-  "base_commit": "e07e6df",
+  "sprint": 1,
+  "project": "admin-roles-matrix",
+  "feature": "subproject-C-admin-roles-matrix-page",
+  "governance_mode": "light",
+  "complexity": "simple",
+  "base_commit": "9e6c0eb",
   "head_commits": [
-    "f69b50d fix(api): add rolesGuard to warehouse workers and equipment units write ops",
-    "96ed70a fix(api): fix tsc errors — transaction type, audit entity union, reconciliation preview",
-    "54edb6f feat(api): audit logging on booking delete and admin user CRUD",
-    "b1c47a3 fix(web): admin users tab supports all UserRole values, drop RENTAL_ADMIN",
-    "7822777 fix(web): hide destructive actions from WAREHOUSE on bookings and equipment manage",
-    "79fdded fix(web): wire DayWarehouse to /api/dashboard/today, gate repair source link",
-    "d4be521 fix(web): trim quickAddPayment payload, fix LoginResponse type, redirect to /day",
-    "0cee7e4 fix(web): menu — add /calendar and /repair to SA+WH, drop /clients stub",
-    "304ccd2 fix(api): migrate seed-admin-users RENTAL_ADMIN → WAREHOUSE",
-    "5bcdcbe fix(api): wrap adminUsers CRUD audit writes in $transaction for atomicity",
-    "df9e770 chore(web): remove unused useCurrentUser import in repair detail"
+    "49c5ae7 docs(superflow): plan for /admin/roles matrix page (subproject C)",
+    "3709f0b feat(web): data model for /admin/roles matrix page",
+    "0a5567a feat(web): /admin/roles — read-only permissions matrix for SUPER_ADMIN",
+    "628055e feat(web): link to /admin/roles from admin panel",
+    "cfd117f style(web): dedupe border-border class on matrix <th>"
   ],
-  "initial_verdicts": {
-    "product": "NEEDS_FIXES",
-    "technical": "APPROVE",
-    "product_blockers": [
-      "seed-admin-users.ts line 14/33 still references RENTAL_ADMIN — deploy.sh runs this, would silently fail Prisma validation on every fresh deploy (script excluded from tsconfig, so tsc didn't catch it)"
+  "reviewers": {
+    "technical": {
+      "agent": "claude-standard-code-reviewer",
+      "model": "opus",
+      "verdict": "APPROVE",
+      "findings": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low_nits": 1
+      },
+      "nits_addressed": "cfd117f style(web): dedupe border-border class on matrix <th>"
+    }
+  },
+  "rationale": "Light governance mode — single technical reviewer sufficient. Risk profile: pure frontend, data-as-const, no API/schema/middleware/auth changes. Scope: replicate pre-approved mockup docs/mockups/roles-matrix.html as live page at /admin/roles, visible only to SUPER_ADMIN via useRequireRole.",
+  "technical_review": "APPROVE",
+  "claude_product": "ACCEPTED",
+  "provider": "single-technical-reviewer-light-mode",
+  "gates": {
+    "tsc_noEmit": {
+      "apps_web": "exit 0",
+      "apps_api": "exit 0"
+    },
+    "tests": {
+      "total": 451,
+      "passing": 451,
+      "breakdown": {
+        "shared": 33,
+        "bot": 31,
+        "api": 387
+      },
+      "runner": "vitest",
+      "new_tests": "none (pure read-only page, no web-side test infra in project; out of scope per plan)"
+    },
+    "build": "Compiled successfully, /admin/roles route present (8.62 kB / 106 kB first load)"
+  },
+  "scope_notes": {
+    "files_created": [
+      "apps/web/src/lib/rolesMatrix.ts (315 lines — types + 8 matrix sections, 6 legend items, 8 edge cases, 6 tech notes)",
+      "apps/web/app/admin/roles/page.tsx (227 lines — client page with guard, 6 layout blocks, inline markdown helper)"
     ],
-    "technical_notes": [
-      "adminUsers CRUD audit writes happen AFTER Prisma op, not inside $transaction — inconsistent with bookings DELETE pattern landed in same cycle, can persist a destructive change without audit if writeAuditEntry throws",
-      "Both flagged as small follow-ups; addressed in commits 304ccd2 and 5bcdcbe before merge"
-    ]
+    "files_modified": [
+      "apps/web/app/admin/page.tsx (+16 lines: Link card to /admin/roles above tab bar)"
+    ],
+    "design_canon_compliance": "All colors via canonical tokens (indigo/teal/amber/slate/accent/ink/border/surface + -soft/-border). Zero hex, one intentional style={{}} on <col> for table colgroup width (only way to size <col> elements).",
+    "component_reuse": "StatusPill (all 6 permission variants), useRequireRole — existing components, not modified.",
+    "api_changes": "none",
+    "schema_changes": "none",
+    "middleware_changes": "none"
   },
-  "final_verdicts": {
-    "product": "ACCEPTED",
-    "technical": "APPROVE"
-  },
-  "review_notes": {
-    "holistic_review_input": "Final holistic review (post-Sprint-5) surfaced 2 CRITICAL + 4 HIGH technical + 8 HIGH product + selected MEDIUMs. Privilege escalation on /api/warehouse/workers/* (no rolesGuard at all) and /api/equipment/:id/units/* wrapper guard granting TECHNICIAN write access. Hardcoded RENTAL_ADMIN throughout admin Users tab blocking WAREHOUSE+TECH user creation. 3 landed tsc errors. Missing audit entries on destructive ops (booking DELETE, AdminUser CRUD). Stale payment payload. Orphan /clients menu item. DayWarehouse placeholders.",
-    "fixes_summary": {
-      "CRITICAL": "C1/C2 — /admin Users tab now supports all 3 UserRole values via roleLabel() helper (Руководитель/Кладовщик/Техник) and proper role <select>; every RENTAL_ADMIN reference purged from apps/web/ and apps/api/scripts/seed-admin-users.ts (only migration script + its tests retain legacy mapping, expected).",
-      "HIGH_security": "H1 — rolesGuard([SA,WAREHOUSE]) on /api/warehouse/workers/* CRUD; /auth and /workers/names remain public. H2 — per-route guards split read/write on /api/equipment/:id/units/* and /api/equipment-units globals (GET all 3 roles, POST/PATCH/DELETE SA+WH only). Wrapper guard in routes/index.ts removed.",
-      "HIGH_types": "H3 — bookings.ts uses Prisma.TransactionClient (not typeof prisma); AuditEntityType union expanded with EquipmentUnit; getReconciliationPreview return shape includes createdRepairIds + failedBrokenUnits. tsc --noEmit exits 0 on both api and web.",
-      "HIGH_audit": "H4 — DELETE booking writeAuditEntry inside same $transaction; AdminUser CRUD (create/update/delete) writeAuditEntry inside $transaction (initial commit 54edb6f wrote audit AFTER op; follow-up 5bcdcbe wrapped both in tx for atomicity rollback); P2003 caught cleanly → 409 ADMIN_HAS_AUDIT_HISTORY.",
-      "HIGH_ux": "H5 — Delete/Edit buttons gated on isSuperAdmin on /bookings and /equipment/manage. H6 — quickAddPayment payload trimmed to backend Zod schema {bookingId, amount, method, receivedAt}. H7 — DayWarehouse wired to /api/dashboard/today with loading skeleton. H8 — repair source-booking link role-gated SA+WH. H9 — /clients removed from menus (no page existed).",
-      "MEDIUM": "M1 — /calendar added to SA+WH menus. M2 — /repair added to WH menu. M3 — LoginResponse.role uses new 3-role union; AdminRole alias updated in auth.ts. M4 — login default redirect /day (was /dashboard 404)."
-    },
-    "security_posture": "Zero new privilege-escalation vectors. TECHNICIAN now read-only on equipment units. WAREHOUSE retains operational access. botScopeGuard bypass still works (req.botAccess short-circuits rolesGuard at line 18). New 21-test integration suite (apps/api/src/__tests__/rolesGuardHolistic.test.ts) covers TECH→403 / WH→2xx / SA→2xx + audit-entry creation assertions for H1/H2/H4.",
-    "reviewer_consensus": "Both reviewers verified all original holistic findings closed. Initial 2nd-pass surfaced ONE additional HIGH (seed script — caught by product, escapes tsc since scripts/ is tsconfig-excluded) and ONE consistency MINOR (admin CRUD audit not transactional — caught by technical, real risk: SA delete could persist with no audit if writeAuditEntry throws). Both addressed in 3 follow-up commits. Final pass: ACCEPTED + APPROVE.",
-    "deferred_out_of_scope": [
-      "apps/web/app/equipment/manage/page.tsx — inline edit form state (setInlineForm) populated by beginInlineEdit even for WAREHOUSE; harmless (UI button hidden), pre-existing pattern.",
-      "apps/web/app/bookings/[id]/page.tsx quickAddPayment uses raw fetch() instead of apiFetch wrapper — pre-existing inconsistency, not introduced this cycle.",
-      "Project-wide ESLint v9 config error (npm run lint fails) — pre-existing on main, unrelated to feature."
-    ]
-  },
-  "tests": {
-    "total": 451,
-    "passing": 451,
-    "breakdown": {
-      "shared": 33,
-      "bot": 31,
-      "api": 387
-    },
-    "runner": "vitest",
-    "new_tests": "21 integration tests in apps/api/src/__tests__/rolesGuardHolistic.test.ts covering H1/H2/H4: TECHNICIAN→403 / WAREHOUSE→2xx / SUPER_ADMIN→2xx on warehouse workers + equipment units; audit-entry creation on adminUser CRUD"
-  },
-  "tsc_noEmit": {
-    "apps_api": "exit 0",
-    "apps_web": "exit 0"
-  },
-  "ts": "2026-04-15T09:37:40Z"
+  "deferred_out_of_scope": [
+    "No frontend unit tests — apps/web has no RTL/Playwright infra; adding one for a static page is YAGNI.",
+    "Role matrix editor UI — by design (matrix is doctrine, encoded in TS const, not DB).",
+    "apps/web/tsconfig.tsbuildinfo untrack — pre-existing noise, spawned separately as side-task."
+  ],
+  "ts": "2026-04-15T11:27:04Z"
 }
