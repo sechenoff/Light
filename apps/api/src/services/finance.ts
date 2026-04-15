@@ -41,7 +41,10 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
     include: {
       estimate: true,
       payments: {
-        where: { direction: "INCOME", status: "RECEIVED" },
+        where: {
+          direction: "INCOME",
+          OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }],
+        },
         select: { amount: true, paymentDate: true, createdAt: true },
       },
     },
