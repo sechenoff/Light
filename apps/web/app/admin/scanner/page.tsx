@@ -63,11 +63,11 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  AVAILABLE: "bg-green-100 text-green-700",
-  ISSUED: "bg-blue-100 text-blue-700",
-  MAINTENANCE: "bg-amber-100 text-amber-700",
-  RETIRED: "bg-slate-100 text-slate-500",
-  MISSING: "bg-red-100 text-red-700",
+  AVAILABLE: "bg-emerald-soft text-emerald",
+  ISSUED: "bg-accent-soft text-accent",
+  MAINTENANCE: "bg-amber-soft text-amber",
+  RETIRED: "bg-surface-muted text-ink-3",
+  MISSING: "bg-rose-soft text-rose",
 };
 
 // ── Equipment Search List ─────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ function EquipmentList({
     return (
       <div className="space-y-2 p-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-14 bg-slate-100 rounded-xl animate-pulse" />
+          <div key={i} className="h-14 bg-surface-muted rounded-xl animate-pulse" />
         ))}
       </div>
     );
@@ -117,7 +117,7 @@ function EquipmentList({
 
   if (error) {
     return (
-      <div className="p-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl mx-4">
+      <div className="p-4 text-sm text-rose bg-rose-soft border border-rose-border rounded-xl mx-4">
         {error}
       </div>
     );
@@ -130,10 +130,10 @@ function EquipmentList({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Поиск оборудования..."
-        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+        className="w-full px-3 py-2.5 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
       />
       {filtered.length === 0 ? (
-        <p className="text-sm text-slate-400 text-center py-6">
+        <p className="text-sm text-ink-3 text-center py-6">
           {query ? "Ничего не найдено" : "Нет оборудования в режиме UNIT"}
         </p>
       ) : (
@@ -142,12 +142,12 @@ function EquipmentList({
             <button
               key={item.id}
               onClick={() => onSelect(item)}
-              className="w-full text-left px-4 py-3 bg-white border border-slate-200 rounded-xl hover:border-slate-400 hover:shadow-sm transition-all"
+              className="w-full text-left px-4 py-3 bg-surface border border-border rounded-xl hover:border-border-strong hover:shadow-sm transition-all"
             >
-              <div className="text-sm font-medium text-slate-800 truncate">
+              <div className="text-sm font-medium text-ink truncate">
                 {item.name}
               </div>
-              <div className="text-xs text-slate-400 mt-0.5">{item.category}</div>
+              <div className="text-xs text-ink-3 mt-0.5">{item.category}</div>
             </button>
           ))}
         </div>
@@ -161,16 +161,16 @@ function EquipmentList({
 function LookupCard({ result }: { result: LookupResult }) {
   const statusLabel = STATUS_LABELS[result.unit.status] ?? result.unit.status;
   const statusColor =
-    STATUS_COLORS[result.unit.status] ?? "bg-slate-100 text-slate-700";
+    STATUS_COLORS[result.unit.status] ?? "bg-surface-muted text-ink-2";
 
   return (
-    <div className="mx-4 mt-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+    <div className="mx-4 mt-3 bg-surface border border-border rounded-2xl p-4 shadow-sm">
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-slate-800 text-base truncate">
+          <div className="font-semibold text-ink text-base truncate">
             {result.equipment.name}
           </div>
-          <div className="text-xs text-slate-400 mt-0.5">{result.equipment.category}</div>
+          <div className="text-xs text-ink-3 mt-0.5">{result.equipment.category}</div>
         </div>
         <span
           className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ${statusColor}`}
@@ -182,20 +182,20 @@ function LookupCard({ result }: { result: LookupResult }) {
       <div className="space-y-1.5 text-sm">
         {result.unit.barcode && (
           <div className="flex justify-between">
-            <span className="text-slate-500">Штрихкод</span>
-            <span className="font-mono text-slate-700">{result.unit.barcode}</span>
+            <span className="text-ink-2">Штрихкод</span>
+            <span className="font-mono text-ink">{result.unit.barcode}</span>
           </div>
         )}
         {result.unit.serialNumber && (
           <div className="flex justify-between">
-            <span className="text-slate-500">Серийный №</span>
-            <span className="font-mono text-slate-700">{result.unit.serialNumber}</span>
+            <span className="text-ink-2">Серийный №</span>
+            <span className="font-mono text-ink">{result.unit.serialNumber}</span>
           </div>
         )}
         <div className="flex justify-between">
-          <span className="text-slate-500">HMAC</span>
+          <span className="text-ink-2">HMAC</span>
           <span
-            className={result.hmacVerified ? "text-green-600 font-medium" : "text-red-500"}
+            className={result.hmacVerified ? "text-emerald font-medium" : "text-rose"}
           >
             {result.hmacVerified ? "Подтверждён" : "Не подтверждён"}
           </span>
@@ -492,20 +492,20 @@ function ScannerApp() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-slate-900 overflow-hidden">
+    <div className="flex flex-col h-screen bg-accent overflow-hidden">
       {/* ── Top bar ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-3 bg-slate-900 z-10 shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 bg-accent z-10 shrink-0">
         <h1 className="text-white text-lg font-semibold">Сканер</h1>
         <div className="flex items-center gap-3">
           {/* Online status dot */}
           <span
-            className={`w-2.5 h-2.5 rounded-full ${online ? "bg-green-400" : "bg-red-400"}`}
+            className={`w-2.5 h-2.5 rounded-full ${online ? "bg-emerald" : "bg-rose"}`}
             title={online ? "Онлайн" : "Офлайн"}
           />
           {/* Close → /admin */}
           <button
             onClick={() => router.push("/admin")}
-            className="text-slate-400 hover:text-white text-2xl leading-none pb-0.5"
+            className="text-ink-3 hover:text-white text-2xl leading-none pb-0.5"
             aria-label="Закрыть"
           >
             ×
@@ -524,7 +524,7 @@ function ScannerApp() {
           />
         ) : (
           <div className="flex items-center justify-center h-full">
-            <p className="text-slate-400 text-sm text-center px-8">
+            <p className="text-ink-3 text-sm text-center px-8">
               {mode === "assign"
                 ? "Выберите оборудование ниже"
                 : mode === "batch"
@@ -536,7 +536,7 @@ function ScannerApp() {
       </div>
 
       {/* ── Bottom sheet ──────────────────────────────────────────────────── */}
-      <div className="flex-1 bg-slate-50 rounded-t-3xl overflow-y-auto">
+      <div className="flex-1 bg-surface rounded-t-3xl overflow-y-auto">
         {/* Mode pills */}
         <div className="flex gap-2 px-4 pt-4 pb-3 shrink-0">
           {(
@@ -551,8 +551,8 @@ function ScannerApp() {
               onClick={() => switchMode(id)}
               className={`flex-1 py-2 text-sm font-medium rounded-xl transition-colors ${
                 mode === id
-                  ? "bg-slate-900 text-white"
-                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                  ? "bg-accent-bright text-white"
+                  : "bg-surface text-ink-2 border border-border hover:bg-surface-muted"
               }`}
             >
               {label}
@@ -573,22 +573,22 @@ function ScannerApp() {
                 value={lookupManual}
                 onChange={(e) => setLookupManual(e.target.value)}
                 placeholder="Штрихкод вручную"
-                className="flex-1 h-11 px-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                className="flex-1 h-11 px-3 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
               />
               <button
                 type="submit"
-                className="h-11 px-4 bg-slate-900 text-white text-sm font-medium rounded-xl"
+                className="h-11 px-4 bg-accent-bright text-white text-sm font-medium rounded-xl"
               >
                 Ввести
               </button>
             </form>
 
             {lookupLoading && (
-              <div className="mx-4 h-24 bg-slate-100 rounded-2xl animate-pulse" />
+              <div className="mx-4 h-24 bg-surface-muted rounded-2xl animate-pulse" />
             )}
 
             {lookupNotFound && !lookupLoading && (
-              <div className="mx-4 mt-2 px-4 py-4 bg-red-50 border border-red-200 rounded-2xl text-center text-sm text-red-600">
+              <div className="mx-4 mt-2 px-4 py-4 bg-rose-soft border border-rose-border rounded-2xl text-center text-sm text-rose">
                 Штрихкод не найден
               </div>
             )}
@@ -609,10 +609,10 @@ function ScannerApp() {
                 {/* Selected equipment header */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-slate-800 truncate">
+                    <div className="text-sm font-semibold text-ink truncate">
                       {assignEquipment.name}
                     </div>
-                    <div className="text-xs text-slate-400">{assignEquipment.category}</div>
+                    <div className="text-xs text-ink-3">{assignEquipment.category}</div>
                   </div>
                   <button
                     onClick={() => {
@@ -620,7 +620,7 @@ function ScannerApp() {
                       setAssignResult(null);
                       setAssignError(null);
                     }}
-                    className="text-xs text-slate-400 hover:text-slate-700 ml-2 underline"
+                    className="text-xs text-ink-3 hover:text-ink ml-2 underline"
                   >
                     Сменить
                   </button>
@@ -633,39 +633,39 @@ function ScannerApp() {
                     value={assignManual}
                     onChange={(e) => setAssignManual(e.target.value)}
                     placeholder="Штрихкод вручную"
-                    className="flex-1 h-11 px-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    className="flex-1 h-11 px-3 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
                   />
                   <button
                     type="submit"
                     disabled={assignLoading}
-                    className="h-11 px-4 bg-slate-900 text-white text-sm font-medium rounded-xl disabled:opacity-50"
+                    className="h-11 px-4 bg-accent-bright text-white text-sm font-medium rounded-xl disabled:opacity-50"
                   >
                     Ввести
                   </button>
                 </form>
 
                 {assignLoading && (
-                  <div className="h-16 bg-slate-100 rounded-xl animate-pulse" />
+                  <div className="h-16 bg-surface-muted rounded-xl animate-pulse" />
                 )}
 
                 {assignError && !assignLoading && (
-                  <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  <div className="text-sm text-rose bg-rose-soft border border-rose-border rounded-xl px-4 py-3">
                     {assignError}
                   </div>
                 )}
 
                 {assignResult && !assignLoading && (
-                  <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
-                    <p className="text-sm font-medium text-green-700 mb-1">
+                  <div className="bg-emerald-soft border border-emerald-border rounded-xl px-4 py-3">
+                    <p className="text-sm font-medium text-emerald mb-1">
                       Привязано успешно
                     </p>
-                    <p className="text-xs text-green-600 font-mono">{assignResult.barcode}</p>
-                    <p className="text-xs text-slate-500 mt-2">Сканируйте следующий</p>
+                    <p className="text-xs text-emerald font-mono">{assignResult.barcode}</p>
+                    <p className="text-xs text-ink-2 mt-2">Сканируйте следующий</p>
                   </div>
                 )}
 
                 {!assignLoading && !assignError && !assignResult && (
-                  <p className="text-sm text-slate-400 text-center py-2">
+                  <p className="text-sm text-ink-3 text-center py-2">
                     Наведите камеру на штрихкод или введите вручную
                   </p>
                 )}
@@ -684,10 +684,10 @@ function ScannerApp() {
                 {/* Header with counter + equipment name + done button */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-slate-800 truncate">
+                    <div className="text-sm font-semibold text-ink truncate">
                       {batchEquipment.name}
                     </div>
-                    <div className="text-xs text-green-600 font-medium">
+                    <div className="text-xs text-emerald font-medium">
                       Привязано: {batchItems.length}
                     </div>
                   </div>
@@ -696,7 +696,7 @@ function ScannerApp() {
                       setBatchEquipment(null);
                       setBatchItems([]);
                     }}
-                    className="ml-2 px-3 py-1.5 text-xs font-medium bg-slate-900 text-white rounded-lg"
+                    className="ml-2 px-3 py-1.5 text-xs font-medium bg-accent text-white rounded-lg"
                   >
                     Готово
                   </button>
@@ -709,12 +709,12 @@ function ScannerApp() {
                     value={batchManual}
                     onChange={(e) => setBatchManual(e.target.value)}
                     placeholder="Штрихкод вручную"
-                    className="flex-1 h-11 px-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    className="flex-1 h-11 px-3 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
                   />
                   <button
                     type="submit"
                     disabled={batchLoading}
-                    className="h-11 px-4 bg-slate-900 text-white text-sm font-medium rounded-xl disabled:opacity-50"
+                    className="h-11 px-4 bg-accent-bright text-white text-sm font-medium rounded-xl disabled:opacity-50"
                   >
                     Ввести
                   </button>
@@ -726,14 +726,14 @@ function ScannerApp() {
                     {batchItems.map((item) => (
                       <div
                         key={item.unit.id}
-                        className="flex items-center justify-between px-3 py-2.5 bg-white border border-slate-200 rounded-xl"
+                        className="flex items-center justify-between px-3 py-2.5 bg-surface border border-border rounded-xl"
                       >
-                        <span className="text-xs font-mono text-slate-700 truncate">
+                        <span className="text-xs font-mono text-ink-2 truncate">
                           {item.barcode}
                         </span>
                         <button
                           onClick={() => handleBatchDelete(item)}
-                          className="ml-2 text-slate-400 hover:text-red-500 text-lg leading-none shrink-0"
+                          className="ml-2 text-ink-3 hover:text-rose text-lg leading-none shrink-0"
                           aria-label="Удалить"
                         >
                           ×
@@ -742,7 +742,7 @@ function ScannerApp() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-400 text-center py-2">
+                  <p className="text-sm text-ink-3 text-center py-2">
                     Наведите камеру на штрихкод или введите вручную
                   </p>
                 )}
