@@ -2,15 +2,6 @@ import type { Request, Response, NextFunction } from "express";
 
 import { verifySession, SESSION_COOKIE_NAME, type SessionPayload, type AdminRole } from "../services/auth";
 
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace Express {
-    interface Request {
-      adminUser?: SessionPayload;
-    }
-  }
-}
-
 /**
  * Извлекает JWT из cookie `lr_session` или из заголовка Authorization: Bearer <token>.
  * Если токен валиден — кладёт пользователя в req.adminUser. Не блокирует запрос при отсутствии токена.
@@ -37,13 +28,13 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-/** Требует конкретную роль. */
+/** Требует конкретную роль (legacy, используйте rolesGuard для новых роутов). */
 export function requireRole(...roles: AdminRole[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.adminUser) {
       return res.status(401).json({ message: "Требуется авторизация" });
     }
-    if (!roles.includes(req.adminUser.role)) {
+    if (!roles.includes(req.adminUser.role as AdminRole)) {
       return res.status(403).json({ message: "Недостаточно прав" });
     }
     next();

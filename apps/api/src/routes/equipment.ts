@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { getMergedCategoryOrder } from "../services/categoryOrder";
 import { compareEquipmentTransportLast } from "../utils/equipmentSort";
+import { rolesGuard } from "../middleware/rolesGuard";
 
 const querySchema = z.object({
   search: z.string().optional(),
@@ -101,7 +102,7 @@ router.get("/categories", async (_req, res, next) => {
   }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const body = equipmentCreateSchema.parse(req.body);
     const max = await prisma.equipment.aggregate({ _max: { sortOrder: true } });
@@ -160,7 +161,7 @@ router.post("/reorder", async (req, res, next) => {
 });
 
 /** Сохранение порядка категорий (двухсегментный путь рядом с /reorder — надёжнее, чем POST …/categories/order на части окружений). */
-router.patch("/:id", async (req, res, next) => {
+router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const body = equipmentPatchSchema.parse(req.body);
     const updated = await prisma.equipment.update({
@@ -206,7 +207,7 @@ router.patch("/:id", async (req, res, next) => {
   }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const id = req.params.id;
     const bookingCount = await prisma.bookingItem.count({ where: { equipmentId: id } });

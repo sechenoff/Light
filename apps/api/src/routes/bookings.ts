@@ -18,6 +18,8 @@ import { formatExportHourCalculationLine } from "../utils/dates";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
 import { createFinanceEvent, recomputeBookingFinance } from "../services/finance";
 import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
+import { rolesGuard } from "../middleware/rolesGuard";
+import { writeAuditEntry } from "../services/audit";
 
 const router = express.Router();
 
@@ -448,7 +450,7 @@ router.post("/:id/status", async (req, res, next) => {
   }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const id = req.params.id;
     const existing = await prisma.booking.findUnique({
@@ -751,6 +753,60 @@ router.post("/:id/confirm", async (req, res, next) => {
       console.error("Finance side-effects failed in /confirm:", financeErr);
     }
     res.json({ booking: serializeBookingForApi(confirmed as any), warning });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const backdateSchema = z.object({
+  startDate: bookingRangeStringSchema.optional(),
+  endDate: bookingRangeStringSchema.optional(),
+  reason: z.string().min(1, "Укажите причину изменения дат"),
+});
+
+/** PATCH /api/bookings/:id/backdate — смена дат задним числом (только SUPER_ADMIN). Пишет AuditEntry. */
+router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const body = backdateSchema.parse(req.body);
+    const userId = req.adminUser!.userId;
+
+    const existing = await prisma.booking.findUnique({
+      where: { id },
+      select: { id: true, startDate: true, endDate: true, status: true, projectName: true },
+    });
+    if (!existing) throw new HttpError(404, "Бронь не найдена");
+
+    const updateData: Record<string, unknown> = {};
+    if (body.startDate) updateData.startDate = new Date(body.startDate);
+    if (body.endDate) updateData.endDate = new Date(body.endDate);
+
+    const updated = await prisma.booking.update({
+      where: { id },
+      data: updateData,
+      include: { client: true, items: { include: { equipment: true } }, estimate: { include: { lines: true } } },
+    });
+
+    await writeAuditEntry({
+      userId,
+      action: "BOOKING_BACKDATE_EDIT",
+      entityType: "Booking",
+      entityId: id,
+      before: {
+        startDate: existing.startDate.toISOString(),
+        endDate: existing.endDate.toISOString(),
+        status: existing.status,
+        projectName: existing.projectName,
+      },
+      after: {
+        startDate: updated.startDate.toISOString(),
+        endDate: updated.endDate.toISOString(),
+        status: updated.status,
+        reason: body.reason,
+      },
+    });
+
+    res.json({ booking: serializeBookingForApi(updated as any) });
   } catch (err) {
     next(err);
   }

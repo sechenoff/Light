@@ -175,6 +175,69 @@ npm run seed                  # Seed database
 - **Finance debts endpoint** — `GET /api/finance/debts` aggregates `amountOutstanding > 0` bookings (excluding CANCELLED) by client. Supports `?overdueOnly=true` and `?minAmount=N` filters. Service function: `computeDebts()` in `apps/api/src/services/finance.ts`.
 - **dryRun option** — `POST /api/bookings/draft` and `PATCH /api/bookings/:id` accept `dryRun: true` in the request body. When true, validates input, computes estimate via `quoteEstimate()`, and returns a preview without writing to DB. POST returns `{ id: null, status: "DRAFT_PREVIEW", ... }`. PATCH returns the existing booking's projected state.
 
+## UserRole и rolesGuard (Sprint 1)
+
+### Система ролей
+
+Три роли (enum `UserRole` в Prisma, был `AdminRole`):
+- `SUPER_ADMIN` — полный доступ ко всем функциям (финансы, удаление, аудит, бэкдейт).
+- `WAREHOUSE` — склад/кладовщик: брони (R/W), оборудование (создать, не менять цены), клиенты (R/W), сканирование.
+- `TECHNICIAN` — техник: только чтение оборудования, мастерская (ремонты). Нет доступа к финансам и удалению.
+
+Middleware `rolesGuard(allowed: UserRole[])` в `apps/api/src/middleware/rolesGuard.ts`:
+- Если `req.botAccess === true` (бот-ключ openclaw-* прошёл botScopeGuard) → пропускает без проверки роли.
+- Если `req.adminUser` отсутствует (API-key-only запрос без сессии) → пропускает (backward compat).
+- Если роль пользователя не в `allowed` → 403 `{ code: "FORBIDDEN_BY_ROLE" }`.
+
+Для полного принуждения сессионной авторизации использовать `requireAdmin` из `sessionAuth.ts`.
+
+### Матрица прав (краткая)
+
+| Маршрут | SUPER_ADMIN | WAREHOUSE | TECHNICIAN |
+|---------|-------------|-----------|------------|
+| GET /api/bookings | ✓ | ✓ | ✗ |
+| POST/PATCH /api/bookings | ✓ | ✓ | ✗ |
+| DELETE /api/bookings/:id | ✓ | ✗ | ✗ |
+| PATCH /api/bookings/:id/backdate | ✓ | ✗ | ✗ |
+| GET /api/equipment | ✓ | ✓ | ✓ |
+| POST /api/equipment | ✓ | ✓ | ✗ |
+| PATCH/DELETE /api/equipment | ✓ | ✗ | ✗ |
+| GET /api/finance/* | ✓ | ✗ | ✗ |
+| GET /api/dashboard | ✓ | ✓ | ✓ |
+| GET /api/calendar | ✓ | ✓ | ✗ |
+| /api/admin-users, /api/import-sessions, /api/pricelist | ✓ | ✗ | ✗ |
+
+### Аудит-сервис
+
+`apps/api/src/services/audit.ts`:
+- `writeAuditEntry(args)` — записывает событие в `AuditEntry`. Принимает `tx?` для транзакций.
+- `diffFields(obj, maxBytes)` — очищает объект от вложенных relations (объекты с `id`), массивов. При > 10 KB усекает до примитивов.
+
+### Новые модели Prisma (Sprint 1)
+
+- **`Repair`** — ремонтная карточка на `EquipmentUnit`. Поля: `unitId`, `status` (RepairStatus), `urgency` (RepairUrgency), `reason`, `sourceBookingId?`, `createdBy`, `assignedTo?`, `partsCost`, `totalTimeHours`, `closedAt?`.
+- **`RepairWorkLog`** — запись работ по ремонту. Поля: `repairId`, `description`, `timeSpentHours`, `partCost`, `loggedBy`, `loggedAt`.
+- **`AuditEntry`** — аудит-лог. Поля: `userId`, `action`, `entityType`, `entityId`, `before?` (JSON), `after?` (JSON).
+
+Расширенные поля у существующих моделей:
+- **`Payment`** — добавлены: `method?`, `receivedAt?`, `note?`, `createdBy?`.
+- **`Expense`** — добавлены: `description?`, `documentUrl?`, `linkedRepairId?`, `approved` (boolean), `createdBy?`.
+
+### Новые enum-значения
+
+- **`BookingStatus.PENDING_APPROVAL`** — новый статус между DRAFT и CONFIRMED (для approval workflow Sprint 3+).
+- **`ExpenseCategory`** — добавлены: `PAYROLL`, `PURCHASE`.
+- **`RepairStatus`**: `WAITING_REPAIR`, `IN_REPAIR`, `WAITING_PARTS`, `CLOSED`, `WROTE_OFF`.
+- **`RepairUrgency`**: `NOT_URGENT`, `NORMAL`, `URGENT`.
+
+### Миграция AdminRole → UserRole
+
+Скрипт: `apps/api/scripts/migrate-adminrole-to-userrole.ts`.
+- Dry-run по умолчанию: `tsx scripts/migrate-adminrole-to-userrole.ts`.
+- Реальная запись: `tsx scripts/migrate-adminrole-to-userrole.ts --execute`.
+- Заменяет `RENTAL_ADMIN` → `WAREHOUSE`. `SUPER_ADMIN` остаётся.
+- На prod перед deploy: `cp prod.db prod.db.$(date +%F).bak` затем запустить скрипт.
+
 ## Known Issues
 
 1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
