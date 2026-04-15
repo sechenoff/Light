@@ -205,3 +205,64 @@ describe("POST /api/bookings/:id/approve", () => {
     expect(res.body.details).toBe("INVALID_BOOKING_STATE");
   });
 });
+
+describe("POST /api/bookings/:id/reject", () => {
+  it("SUPER_ADMIN отклоняет с причиной: PENDING_APPROVAL → DRAFT + rejectionReason", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/reject`)
+      .set(AUTH_SA())
+      .send({ reason: "Слишком высокая скидка, пересчитайте" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe("DRAFT");
+    expect(res.body.booking.rejectionReason).toBe("Слишком высокая скидка, пересчитайте");
+
+    const audit = await prisma.auditEntry.findMany({
+      where: { entityType: "Booking", entityId: booking.id, action: "BOOKING_REJECTED" },
+    });
+    expect(audit).toHaveLength(1);
+  });
+
+  it("пустая причина → 400", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/reject`)
+      .set(AUTH_SA())
+      .send({ reason: "" });
+    expect(res.status).toBe(400);
+  });
+
+  it("отсутствие reason в теле → 400", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/reject`)
+      .set(AUTH_SA())
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("WAREHOUSE получает 403", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/reject`)
+      .set(AUTH_WH())
+      .send({ reason: "test" });
+    expect(res.status).toBe(403);
+  });
+
+  it("не-PENDING_APPROVAL → 409", async () => {
+    const booking = await createDraftBooking(); // DRAFT
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/reject`)
+      .set(AUTH_SA())
+      .send({ reason: "test" });
+    expect(res.status).toBe(409);
+    expect(res.body.details).toBe("INVALID_BOOKING_STATE");
+  });
+});
