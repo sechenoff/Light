@@ -266,3 +266,27 @@ describe("POST /api/bookings/:id/reject", () => {
     expect(res.body.details).toBe("INVALID_BOOKING_STATE");
   });
 });
+
+describe("PATCH /api/bookings/:id — edit-prevention для PENDING_APPROVAL", () => {
+  it("PATCH по PENDING_APPROVAL возвращает 409", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+
+    const res = await request(app)
+      .patch(`/api/bookings/${booking.id}`)
+      .set(AUTH_WH())
+      .send({ projectName: "Новое имя" });
+
+    expect(res.status).toBe(409);
+  });
+
+  it("PATCH по DRAFT по-прежнему разрешён", async () => {
+    const booking = await createDraftBooking();
+    const res = await request(app)
+      .patch(`/api/bookings/${booking.id}`)
+      .set(AUTH_WH())
+      .send({ projectName: "Обновлённое имя" });
+    expect(res.status).toBe(200);
+    expect(res.body.booking.projectName).toBe("Обновлённое имя");
+  });
+});
