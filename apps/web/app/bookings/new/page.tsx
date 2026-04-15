@@ -962,6 +962,7 @@ function BookingNewPage() {
                           <div className="inline-flex items-center rounded border border-border overflow-hidden">
                             <button
                               type="button"
+                              aria-label="Уменьшить количество"
                               className="h-9 w-9 text-lg leading-none bg-white hover:bg-surface disabled:opacity-50"
                               onClick={() => decreaseQuantity(r.equipmentId)}
                               disabled={qty <= 0}
@@ -989,6 +990,7 @@ function BookingNewPage() {
                             />
                             <button
                               type="button"
+                              aria-label="Увеличить количество"
                               className="h-9 w-9 text-lg leading-none bg-white hover:bg-surface disabled:opacity-50"
                               onClick={() => increaseQuantity(r)}
                               disabled={isUnavailable || qty >= r.availableQuantity}
@@ -1305,6 +1307,7 @@ function BookingNewPage() {
               </div>
               <button
                 type="button"
+                aria-label="Закрыть"
                 className="text-ink-3 hover:text-ink-2 text-xl leading-none shrink-0"
                 onClick={() => {
                   setGafferReviewOpen(false);
@@ -1437,6 +1440,7 @@ function BookingNewPage() {
               <div className="font-medium text-ink text-sm">Поиск в каталоге</div>
               <button
                 type="button"
+                aria-label="Закрыть"
                 className="text-ink-3 hover:text-ink-2"
                 onClick={() => {
                   setGafferPickRowId(null);

@@ -212,6 +212,7 @@ function SidebarContent({
         {onClose && (
           <button
             onClick={onClose}
+            aria-label="Закрыть меню"
             className="text-slate-400 hover:text-white transition-colors lg:hidden"
           >
             <IconClose />

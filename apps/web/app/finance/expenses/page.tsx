@@ -299,9 +299,9 @@ export default function ExpensesPage() {
 
       {/* Month selector */}
       <div className="flex items-center gap-3">
-        <button onClick={prevMonth} className="p-2 border border-border rounded hover:bg-surface-subtle">‹</button>
+        <button onClick={prevMonth} aria-label="Предыдущий месяц" className="p-2 border border-border rounded hover:bg-surface-subtle">‹</button>
         <span className="text-sm font-medium text-ink capitalize">{monthStr}</span>
-        <button onClick={nextMonth} className="p-2 border border-border rounded hover:bg-surface-subtle">›</button>
+        <button onClick={nextMonth} aria-label="Следующий месяц" className="p-2 border border-border rounded hover:bg-surface-subtle">›</button>
       </div>
 
       {/* Donut + category list */}
