@@ -2917,6 +2917,22 @@ function AdminPanel() {
         <p className="text-sm text-ink-3 mt-0.5">Системные настройки и управление данными</p>
       </div>
 
+      {/* Ссылка на матрицу прав — только для SUPER_ADMIN.
+          Показывается всегда, т.к. вся страница /admin и так закрыта за SUPER_ADMIN guard'ом. */}
+      <Link
+        href="/admin/roles"
+        className="block mb-4 bg-indigo-soft border border-indigo-border rounded-lg px-4 py-3 hover:border-indigo transition-colors"
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="eyebrow text-indigo">Справочник</div>
+            <div className="text-sm font-semibold text-ink mt-0.5">Матрица прав по ролям</div>
+            <div className="text-xs text-ink-2 mt-0.5">Кто что видит и делает — полная таблица для онбординга</div>
+          </div>
+          <span className="text-indigo text-lg">→</span>
+        </div>
+      </Link>
+
       {/* Tab bar */}
       <div className="flex gap-1 mb-5 border-b border-border overflow-x-auto">
         {tabs.map((t) => (
