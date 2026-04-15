@@ -13,6 +13,7 @@ import type { RepairUrgency } from "@prisma/client";
 import { prisma } from "../prisma";
 import { resolveBarcode } from "./barcode";
 import { createRepair } from "./repairService";
+import { writeAuditEntry } from "./audit";
 
 type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
 
@@ -33,6 +34,8 @@ export interface ReconciliationSummary {
   expected: number;
   missing: string[];    // equipmentUnitId[] не отсканированных
   substituted: string[]; // equipmentUnitId[] замен (отсканирован другой юнит вместо зарезервированного)
+  createdRepairIds: string[];  // id карточек ремонта, успешно созданных после возврата
+  failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>; // единицы, для которых ремонт не удалось создать
 }
 
 export interface SessionBookingItem {
@@ -225,7 +228,7 @@ export async function recordScan(
 export async function completeSession(
   sessionId: string,
   options?: { brokenUnits?: BrokenUnit[]; createdBy?: string },
-): Promise<ReconciliationSummary> {
+): Promise<ReconciliationSummary & { createdRepairIds: string[]; failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }> }> {
   // Загружаем сессию со сканами и информацией о брони
   const session = await prisma.scanSession.findUnique({
     where: { id: sessionId },
@@ -272,6 +275,8 @@ export async function completeSession(
       expected: allReservations.length,
       missing: [],
       substituted: [],
+      createdRepairIds: [],
+      failedBrokenUnits: [],
     };
 
     if (session.operation === "ISSUE") {
@@ -352,16 +357,53 @@ export async function completeSession(
     const createdBy = options?.createdBy ?? session.workerName;
     for (const broken of brokenUnits) {
       try {
-        await createRepair({
+        const repair = await createRepair({
           unitId: broken.equipmentUnitId,
           reason: broken.reason,
           urgency: broken.urgency,
           sourceBookingId: session.bookingId,
           createdBy,
         });
-      } catch {
-        // Не блокируем завершение сессии из-за ошибки создания ремонта
-        // (например, если unit уже в MAINTENANCE или нет активной карточки)
+        summary.createdRepairIds.push(repair.id);
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error("createRepair failed during scan completion", {
+          unitId: broken.equipmentUnitId,
+          bookingId: session.bookingId,
+          error: errMsg,
+        });
+
+        // Безопасность: возвращаем unit в MAINTENANCE, чтобы не сдать сломанный в аренду
+        try {
+          await prisma.equipmentUnit.update({
+            where: { id: broken.equipmentUnitId },
+            data: { status: "MAINTENANCE" },
+          });
+          console.error("unit restored to MAINTENANCE after createRepair failure", { unitId: broken.equipmentUnitId });
+        } catch (fallbackErr: unknown) {
+          console.error("CRITICAL: failed to restore unit to MAINTENANCE", {
+            unitId: broken.equipmentUnitId,
+            fallbackError: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+          });
+        }
+
+        // Аудит провала (без транзакции)
+        try {
+          await writeAuditEntry({
+            userId: createdBy,
+            action: "REPAIR_CREATE_FAILED",
+            entityType: "EquipmentUnit",
+            entityId: broken.equipmentUnitId,
+            before: null,
+            after: { reason: broken.reason, urgency: broken.urgency, error: errMsg },
+          });
+        } catch { /* аудит не должен блокировать */ }
+
+        summary.failedBrokenUnits.push({
+          unitId: broken.equipmentUnitId,
+          reason: broken.reason,
+          error: errMsg,
+        });
       }
     }
   }
