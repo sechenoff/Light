@@ -1,6 +1,6 @@
 "use client";
 
-import { useCurrentUser, type AdminRole } from "../lib/auth";
+import { useCurrentUser, type UserRole } from "../lib/auth";
 import Link from "next/link";
 
 /**
@@ -12,7 +12,7 @@ export function RoleGuard({
   allow,
   children,
 }: {
-  allow: AdminRole[];
+  allow: UserRole[];
   children: React.ReactNode;
 }) {
   const { user, loading } = useCurrentUser();
@@ -50,10 +50,10 @@ export function RoleGuard({
           У вашей учётной записи нет прав для просмотра этой страницы.
         </p>
         <Link
-          href="/dashboard"
+          href="/day"
           className="inline-block bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg px-4 py-2 transition-colors"
         >
-          На дашборд
+          На главную
         </Link>
       </div>
     );
