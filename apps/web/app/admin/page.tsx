@@ -139,8 +139,8 @@ function PricelistTab() {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-base font-semibold text-slate-800">Прайслист для Telegram-бота</h2>
-        <p className="text-sm text-slate-500 mt-1">
+        <h2 className="text-base font-semibold text-ink">Прайслист для Telegram-бота</h2>
+        <p className="text-sm text-ink-2 mt-1">
           Файл предлагается клиентам бота когда они не могут найти нужное оборудование.
           Поддерживаются PDF, Excel (.xlsx), Word (.docx) и другие форматы.
         </p>
@@ -150,8 +150,8 @@ function PricelistTab() {
         <div
           className={`px-4 py-3 rounded-lg text-sm font-medium ${
             message.type === "ok"
-              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-              : "bg-red-50 text-red-700 border border-red-200"
+              ? "bg-emerald-soft text-emerald border border-emerald-border"
+              : "bg-rose-soft text-rose border border-rose-border"
           }`}
         >
           {message.text}
@@ -159,19 +159,19 @@ function PricelistTab() {
       )}
 
       {meta === null ? (
-        <div className="text-sm text-slate-400 py-4">Загрузка…</div>
+        <div className="text-sm text-ink-3 py-4">Загрузка…</div>
       ) : meta.exists ? (
-        <div className="flex items-center justify-between gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+        <div className="flex items-center justify-between gap-4 p-4 bg-surface rounded-xl border border-border">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="w-10 h-10 rounded-lg bg-accent-soft flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-accent-bright" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-medium text-slate-800 truncate">{meta.filename}</div>
-              <div className="text-xs text-slate-500">
+              <div className="text-sm font-medium text-ink truncate">{meta.filename}</div>
+              <div className="text-xs text-ink-2">
                 {formatBytes(meta.size)} · Загружен {formatDate(meta.uploadedAt)}
               </div>
             </div>
@@ -179,26 +179,26 @@ function PricelistTab() {
           <div className="flex items-center gap-2 flex-shrink-0">
             <a
               href="/api/pricelist/file"
-              className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+              className="px-3 py-1.5 text-xs font-medium text-accent-bright bg-accent-soft hover:bg-accent-soft rounded-lg transition-colors"
             >
               Скачать
             </a>
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-xs font-medium text-rose bg-rose-soft hover:bg-rose-soft rounded-lg transition-colors disabled:opacity-50"
             >
               {deleting ? "Удаление…" : "Удалить"}
             </button>
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-3 p-4 bg-amber-50 rounded-xl border border-amber-200">
-          <svg className="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="flex items-center gap-3 p-4 bg-amber-soft rounded-xl border border-amber-border">
+          <svg className="w-5 h-5 text-amber flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="text-sm text-amber-700">
+          <span className="text-sm text-amber">
             Прайслист не загружен. Бот не сможет его отправить клиентам.
           </span>
         </div>
@@ -207,8 +207,8 @@ function PricelistTab() {
       <label
         className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-colors ${
           uploading
-            ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-            : "bg-slate-800 hover:bg-slate-700 text-white"
+            ? "bg-surface-muted text-ink-3 cursor-not-allowed"
+            : "bg-accent-bright hover:bg-accent text-white"
         }`}
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -273,14 +273,14 @@ function CatalogTab() {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-base font-semibold text-slate-800">Каталог техники</h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <h2 className="text-base font-semibold text-ink">Каталог техники</h2>
+          <p className="text-sm text-ink-2 mt-1">
             Полный список оборудования в базе данных. Для редактирования перейдите в расширенный редактор.
           </p>
         </div>
         <Link
           href="/equipment/manage"
-          className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors"
+          className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-accent text-white hover:bg-accent transition-colors"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -291,44 +291,44 @@ function CatalogTab() {
       </div>
 
       {loading ? (
-        <div className="py-8 text-center text-sm text-slate-400">Загрузка…</div>
+        <div className="py-8 text-center text-sm text-ink-3">Загрузка…</div>
       ) : error ? (
-        <div className="p-4 rounded-xl border border-rose-200 bg-rose-50 text-sm text-rose-700">
+        <div className="p-4 rounded-xl border border-rose-border bg-rose-soft text-sm text-rose">
           <div className="font-medium mb-1">Ошибка загрузки</div>
           <div>{error}</div>
           <button onClick={load} className="mt-2 text-xs underline">Повторить</button>
         </div>
       ) : rows.length === 0 ? (
-        <div className="p-8 text-center rounded-xl border border-dashed border-slate-300">
-          <div className="text-sm font-medium text-slate-600 mb-1">Каталог пуст</div>
-          <p className="text-xs text-slate-400">
+        <div className="p-8 text-center rounded-xl border border-dashed border-border">
+          <div className="text-sm font-medium text-ink-2 mb-1">Каталог пуст</div>
+          <p className="text-xs text-ink-3">
             Добавьте оборудование через вкладку{" "}
-            <span className="font-medium text-slate-600">Импорт оборудования</span>{" "}
-            или нажмите <span className="font-medium text-slate-600">Редактор</span>.
+            <span className="font-medium text-ink-2">Импорт оборудования</span>{" "}
+            или нажмите <span className="font-medium text-ink-2">Редактор</span>.
           </p>
         </div>
       ) : (
         <>
           {/* Summary cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-2xl font-bold text-slate-900">{rows.length}</div>
-              <div className="text-xs text-slate-500 mt-0.5">позиций в каталоге</div>
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <div className="text-2xl font-bold text-ink">{rows.length}</div>
+              <div className="text-xs text-ink-2 mt-0.5">позиций в каталоге</div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-2xl font-bold text-slate-900">{byCategory.length}</div>
-              <div className="text-xs text-slate-500 mt-0.5">категорий</div>
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <div className="text-2xl font-bold text-ink">{byCategory.length}</div>
+              <div className="text-xs text-ink-2 mt-0.5">категорий</div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-2xl font-bold text-slate-900">
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <div className="text-2xl font-bold text-ink">
                 {rows.reduce((s, r) => s + r.totalQuantity, 0)}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">единиц всего</div>
+              <div className="text-xs text-ink-2 mt-0.5">единиц всего</div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="rounded-xl border border-border bg-surface p-4">
               <button
                 onClick={load}
-                className="text-xs text-slate-500 hover:text-slate-800 underline"
+                className="text-xs text-ink-2 hover:text-ink underline"
               >
                 Обновить
               </button>
@@ -336,15 +336,15 @@ function CatalogTab() {
           </div>
 
           {/* Category breakdown */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wide">
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="px-4 py-2.5 bg-surface border-b border-border text-xs font-semibold text-ink-2 uppercase tracking-wide">
               По категориям
             </div>
             <div className="divide-y divide-slate-100">
               {byCategory.map(([cat, count]) => (
                 <div key={cat} className="flex items-center justify-between px-4 py-2.5">
-                  <span className="text-sm text-slate-800">{cat}</span>
-                  <span className="text-sm font-medium text-slate-600">{count} позиц.</span>
+                  <span className="text-sm text-ink">{cat}</span>
+                  <span className="text-sm font-medium text-ink-2">{count} позиц.</span>
                 </div>
               ))}
             </div>
@@ -430,11 +430,11 @@ function ImportTab() {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-base font-semibold text-slate-800">Импорт оборудования из Excel</h2>
-        <p className="text-sm text-slate-500 mt-1">
+        <h2 className="text-base font-semibold text-ink">Импорт оборудования из Excel</h2>
+        <p className="text-sm text-ink-2 mt-1">
           Загрузите .xlsx файл, сопоставьте колонки с полями каталога и запустите импорт.
           Существующие позиции обновляются по ключу{" "}
-          <span className="font-mono text-xs bg-slate-100 px-1 rounded">
+          <span className="font-mono text-xs bg-surface-muted px-1 rounded">
             категория + наименование + бренд + модель
           </span>
           .
@@ -442,13 +442,13 @@ function ImportTab() {
       </div>
 
       {/* Step 1: File pick */}
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+      <div className="rounded-xl border border-border bg-surface overflow-hidden">
+        <div className="px-4 py-3 bg-surface border-b border-border flex items-center justify-between">
+          <span className="text-xs font-semibold text-ink-2 uppercase tracking-wide">
             Шаг 1 — Файл
           </span>
           {preview && (
-            <button onClick={reset} className="text-xs text-slate-400 hover:text-slate-700 transition-colors">
+            <button onClick={reset} className="text-xs text-ink-3 hover:text-ink-2 transition-colors">
               Сбросить
             </button>
           )}
@@ -466,7 +466,7 @@ function ImportTab() {
             }}
           />
           <button
-            className="rounded-lg bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            className="rounded-lg bg-accent text-white px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-40 transition-colors"
             disabled={!file || loadingPreview}
             onClick={handlePreview}
           >
@@ -477,9 +477,9 @@ function ImportTab() {
 
       {/* Step 2: Mapping + preview */}
       {preview && (
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-            <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+        <div className="rounded-xl border border-border bg-surface overflow-hidden">
+          <div className="px-4 py-3 bg-surface border-b border-border">
+            <span className="text-xs font-semibold text-ink-2 uppercase tracking-wide">
               Шаг 2 — Сопоставление колонок
             </span>
           </div>
@@ -488,9 +488,9 @@ function ImportTab() {
             <div className="lg:col-span-7 space-y-2">
               {IMPORT_FIELD_KEYS.map((k) => (
                 <div key={k} className="flex items-center gap-3">
-                  <div className="w-44 text-xs text-slate-500 shrink-0">{k}</div>
+                  <div className="w-44 text-xs text-ink-2 shrink-0">{k}</div>
                   <select
-                    className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm bg-white"
+                    className="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm bg-white"
                     value={mapping[k] ?? ""}
                     onChange={(e) =>
                       setMapping((prev) => ({ ...prev, [k]: e.target.value || undefined }))
@@ -507,16 +507,16 @@ function ImportTab() {
               ))}
 
               {/* Sample rows */}
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
-                <div className="px-3 py-2 border-b border-slate-200 text-xs font-semibold text-slate-600">
+              <div className="mt-4 rounded-lg border border-border bg-surface overflow-hidden">
+                <div className="px-3 py-2 border-b border-border text-xs font-semibold text-ink-2">
                   Предпросмотр (первые строки файла)
                 </div>
                 <div className="overflow-auto max-h-52">
                   <table className="min-w-[640px] w-full text-xs">
-                    <thead className="bg-slate-100">
+                    <thead className="bg-surface-muted">
                       <tr>
                         {(preview.headers ?? []).slice(0, 8).map((h) => (
-                          <th key={h} className="text-left px-3 py-2 border-b border-slate-200 font-medium text-slate-600">
+                          <th key={h} className="text-left px-3 py-2 border-b border-border font-medium text-ink-2">
                             {h}
                           </th>
                         ))}
@@ -524,9 +524,9 @@ function ImportTab() {
                     </thead>
                     <tbody>
                       {samplePreview.map((row, idx) => (
-                        <tr key={idx} className="border-t border-slate-100">
+                        <tr key={idx} className="border-t border-border">
                           {(preview.headers ?? []).slice(0, 8).map((h) => (
-                            <td key={h} className="px-3 py-1.5 text-slate-700">
+                            <td key={h} className="px-3 py-1.5 text-ink-2">
                               {String(row[h] ?? "")}
                             </td>
                           ))}
@@ -540,15 +540,15 @@ function ImportTab() {
 
             {/* Step 3: Commit */}
             <div className="lg:col-span-5 space-y-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+              <div className="rounded-xl border border-border bg-surface p-4">
+                <span className="text-xs font-semibold text-ink-2 uppercase tracking-wide">
                   Шаг 3 — Запуск импорта
                 </span>
-                <p className="text-sm text-slate-500 mt-2 mb-4">
+                <p className="text-sm text-ink-2 mt-2 mb-4">
                   После нажатия новые позиции будут созданы, существующие — обновлены. Действие нельзя отменить.
                 </p>
                 <button
-                  className="w-full rounded-lg bg-emerald-600 text-white px-4 py-3 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+                  className="w-full rounded-lg bg-emerald text-white px-4 py-3 text-sm font-medium hover:bg-emerald-soft0 disabled:opacity-50 transition-colors"
                   onClick={handleCommit}
                   disabled={!preview}
                 >
@@ -557,39 +557,39 @@ function ImportTab() {
               </div>
 
               {error && (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 text-rose-700 p-4 text-sm">
+                <div className="rounded-lg border border-rose-border bg-rose-soft text-rose p-4 text-sm">
                   <div className="font-semibold mb-1">Ошибка</div>
                   {error}
                 </div>
               )}
 
               {commitResult && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 space-y-1">
-                  <div className="font-semibold text-emerald-800 mb-2">Импорт завершён</div>
+                <div className="rounded-lg border border-emerald-border bg-emerald-soft p-4 text-sm text-emerald space-y-1">
+                  <div className="font-semibold text-emerald mb-2">Импорт завершён</div>
                   <div className="flex justify-between">
-                    <span className="text-emerald-700">Создано позиций</span>
+                    <span className="text-emerald">Создано позиций</span>
                     <span className="font-semibold">{commitResult.created}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-emerald-700">Обновлено позиций</span>
+                    <span className="text-emerald">Обновлено позиций</span>
                     <span className="font-semibold">{commitResult.updated}</span>
                   </div>
                   {commitResult.unitsAdded > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-emerald-700">Добавлено единиц (serial)</span>
+                      <span className="text-emerald">Добавлено единиц (serial)</span>
                       <span className="font-semibold">{commitResult.unitsAdded}</span>
                     </div>
                   )}
-                  <div className="pt-2 border-t border-emerald-200 flex gap-2 flex-wrap">
+                  <div className="pt-2 border-t border-emerald-border flex gap-2 flex-wrap">
                     <Link
                       href="/equipment"
-                      className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-900 underline"
+                      className="inline-flex items-center gap-1 text-xs text-emerald hover:text-emerald underline"
                     >
                       Посмотреть каталог →
                     </Link>
                     <Link
                       href="/equipment/manage"
-                      className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-900 underline"
+                      className="inline-flex items-center gap-1 text-xs text-emerald hover:text-emerald underline"
                     >
                       Редактор →
                     </Link>
@@ -752,29 +752,29 @@ function SlangLearningTab() {
 
   function sourceLabel(source: string) {
     if (source === "SEED") {
-      return <span className="text-[10px] font-semibold bg-slate-100 text-slate-500 rounded px-1.5 py-0.5">Миграция</span>;
+      return <span className="text-[10px] font-semibold bg-surface-muted text-ink-2 rounded px-1.5 py-0.5">Миграция</span>;
     }
     if (source === "AUTO_LEARNED") {
-      return <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-700 rounded px-1.5 py-0.5">Авто</span>;
+      return <span className="text-[10px] font-semibold bg-emerald-soft text-emerald rounded px-1.5 py-0.5">Авто</span>;
     }
     if (source === "MANUAL_ADMIN") {
-      return <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 rounded px-1.5 py-0.5">Вручную</span>;
+      return <span className="text-[10px] font-semibold bg-accent-soft text-accent-bright rounded px-1.5 py-0.5">Вручную</span>;
     }
-    return <span className="text-[10px] text-slate-400">{source}</span>;
+    return <span className="text-[10px] text-ink-3">{source}</span>;
   }
 
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-slate-800">Жаргон / Обучение AI</h2>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Кандидаты поступают из двух источников: <span className="font-medium text-amber-700">AI-уточнение</span> — менеджер выбрал из предложенных AI вариантов; <span className="font-medium text-violet-700">Ручной ввод</span> — менеджер вручную сопоставил нераспознанную фразу с каталогом.
+        <h2 className="text-base font-semibold text-ink">Жаргон / Обучение AI</h2>
+        <p className="text-xs text-ink-2 mt-0.5">
+          Кандидаты поступают из двух источников: <span className="font-medium text-amber">AI-уточнение</span> — менеджер выбрал из предложенных AI вариантов; <span className="font-medium text-violet-700">Ручной ввод</span> — менеджер вручную сопоставил нераспознанную фразу с каталогом.
           Подтверждённые записи добавляются в словарь и повышают точность будущего распознавания.
         </p>
       </div>
 
       {/* Section tabs */}
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="flex gap-1 border-b border-border">
         {([
           ["pending", "На проверке"],
           ["approved", "Одобрено"],
@@ -785,8 +785,8 @@ function SlangLearningTab() {
             onClick={() => setActiveSection(id)}
             className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
               activeSection === id
-                ? "border-slate-700 text-slate-900"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+                ? "border-accent text-ink"
+                : "border-transparent text-ink-2 hover:text-ink-2"
             }`}
           >
             {label}
@@ -794,12 +794,12 @@ function SlangLearningTab() {
         ))}
       </div>
 
-      {loading && <div className="py-6 text-center text-sm text-slate-400">Загрузка…</div>}
+      {loading && <div className="py-6 text-center text-sm text-ink-3">Загрузка…</div>}
 
       {!loading && activeSection !== "dictionary" && (
         <>
           {candidates.length === 0 ? (
-            <div className="py-8 text-center text-sm text-slate-400">
+            <div className="py-8 text-center text-sm text-ink-3">
               {activeSection === "pending" ? "Нет кандидатов на проверку" : "История пуста"}
             </div>
           ) : (
@@ -808,7 +808,7 @@ function SlangLearningTab() {
                 <div key={c.id} className="px-6 py-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
                   <div className="flex-1 min-w-0 space-y-0.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <div className="font-medium text-slate-900 text-sm">«{c.rawPhrase}»</div>
+                      <div className="font-medium text-ink text-sm">«{c.rawPhrase}»</div>
                       {(() => {
                         let src: string | undefined;
                         try { src = c.contextJson ? JSON.parse(c.contextJson).source : undefined; } catch { /* */ }
@@ -816,30 +816,30 @@ function SlangLearningTab() {
                           return <span className="text-[10px] font-semibold bg-violet-100 text-violet-700 rounded px-1.5 py-0.5 uppercase tracking-wide">Ручной ввод</span>;
                         }
                         if (src === "booking_review") {
-                          return <span className="text-[10px] font-semibold bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 uppercase tracking-wide">AI-уточнение</span>;
+                          return <span className="text-[10px] font-semibold bg-amber-soft text-amber rounded px-1.5 py-0.5 uppercase tracking-wide">AI-уточнение</span>;
                         }
                         if (src === "gaffer_review_table") {
-                          return <span className="text-[10px] font-semibold bg-teal-100 text-teal-800 rounded px-1.5 py-0.5 uppercase tracking-wide">Таблица гаффера</span>;
+                          return <span className="text-[10px] font-semibold bg-teal-soft text-teal rounded px-1.5 py-0.5 uppercase tracking-wide">Таблица гаффера</span>;
                         }
                         return null;
                       })()}
                     </div>
-                    <div className="text-xs text-slate-500">
-                      Нормализовано: <code className="bg-slate-100 px-1 rounded">{c.normalizedPhrase}</code>
+                    <div className="text-xs text-ink-2">
+                      Нормализовано: <code className="bg-surface-muted px-1 rounded">{c.normalizedPhrase}</code>
                     </div>
                     {c.proposedEquipmentName && (
-                      <div className="text-xs text-slate-600">
+                      <div className="text-xs text-ink-2">
                         Предложено: <span className="font-medium">{c.proposedEquipmentName}</span>
                         {" "}
-                        <span className="text-slate-400">({Math.round(c.confidence * 100)}%)</span>
+                        <span className="text-ink-3">({Math.round(c.confidence * 100)}%)</span>
                       </div>
                     )}
                     {activeSection === "pending" && (
                       <div className="flex items-center gap-2 mt-1">
-                        <label className="text-xs text-slate-500">ID позиции (если изменить):</label>
+                        <label className="text-xs text-ink-2">ID позиции (если изменить):</label>
                         <input
                           type="text"
-                          className="text-xs rounded border border-slate-200 px-2 py-0.5 w-44 bg-white"
+                          className="text-xs rounded border border-border px-2 py-0.5 w-44 bg-white"
                           placeholder={c.proposedEquipmentId ?? "не задан"}
                           value={overrideEquipId[c.id] ?? ""}
                           onChange={(e) => setOverrideEquipId((prev) => ({ ...prev, [c.id]: e.target.value }))}
@@ -847,17 +847,17 @@ function SlangLearningTab() {
                       </div>
                     )}
                     {c.reviewedAt && (
-                      <div className="text-xs text-slate-400">
+                      <div className="text-xs text-ink-3">
                         {c.status === "APPROVED" ? "Одобрено" : "Отклонено"} {new Date(c.reviewedAt).toLocaleString("ru-RU")} · {c.reviewedBy}
                       </div>
                     )}
-                    <div className="text-xs text-slate-400">{new Date(c.createdAt).toLocaleString("ru-RU")}</div>
+                    <div className="text-xs text-ink-3">{new Date(c.createdAt).toLocaleString("ru-RU")}</div>
                   </div>
                   {activeSection === "pending" && (
                     <div className="flex gap-2 shrink-0">
                       <button
                         type="button"
-                        className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                        className="rounded border border-emerald-border bg-emerald-soft px-3 py-1 text-xs font-medium text-emerald hover:bg-emerald-soft disabled:opacity-50"
                         disabled={!!actionState[c.id] || !c.proposedEquipmentId}
                         onClick={() => handleApprove(c)}
                       >
@@ -865,7 +865,7 @@ function SlangLearningTab() {
                       </button>
                       <button
                         type="button"
-                        className="rounded border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                        className="rounded border border-rose-border bg-rose-soft px-3 py-1 text-xs font-medium text-rose hover:bg-rose-soft disabled:opacity-50"
                         disabled={!!actionState[c.id]}
                         onClick={() => handleReject(c)}
                       >
@@ -885,7 +885,7 @@ function SlangLearningTab() {
           <div className="flex items-center gap-2">
             <input
               type="text"
-              className="flex-1 text-xs rounded border border-slate-200 px-3 py-1.5 bg-white placeholder-slate-400"
+              className="flex-1 text-xs rounded border border-border px-3 py-1.5 bg-surface placeholder-slate-400"
               placeholder="Поиск по оборудованию или фразе…"
               value={dictSearch}
               onChange={(e) => setDictSearch(e.target.value)}
@@ -893,22 +893,22 @@ function SlangLearningTab() {
             <button
               type="button"
               onClick={handleExportDictionary}
-              className="shrink-0 rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              className="shrink-0 rounded border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface"
             >
               Экспорт JSON
             </button>
           </div>
           {filteredDictionary.length === 0 ? (
-            <div className="py-8 text-center text-sm text-slate-400">Словарь пуст</div>
+            <div className="py-8 text-center text-sm text-ink-3">Словарь пуст</div>
           ) : (
-            <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
+            <div className="divide-y divide-slate-100 border border-border rounded-lg overflow-hidden">
               {filteredDictionary.map((g) => {
                 const isExpanded = !!expandedGroups[g.equipment.id];
                 return (
                   <div key={g.equipment.id}>
                     <button
                       type="button"
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-surface transition-colors"
                       onClick={() =>
                         setExpandedGroups((prev) => ({
                           ...prev,
@@ -916,17 +916,17 @@ function SlangLearningTab() {
                         }))
                       }
                     >
-                      <span className="text-slate-400 text-xs w-3">{isExpanded ? "▼" : "▶"}</span>
-                      <span className="flex-1 text-sm font-medium text-slate-900">{g.equipment.name}</span>
-                      <span className="text-xs text-slate-400">{g.equipment.category}</span>
-                      <span className="ml-2 text-[10px] font-semibold bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">
+                      <span className="text-ink-3 text-xs w-3">{isExpanded ? "▼" : "▶"}</span>
+                      <span className="flex-1 text-sm font-medium text-ink">{g.equipment.name}</span>
+                      <span className="text-xs text-ink-3">{g.equipment.category}</span>
+                      <span className="ml-2 text-[10px] font-semibold bg-surface-muted text-ink-2 rounded-full px-2 py-0.5">
                         {g.aliasCount}
                       </span>
                     </button>
                     {isExpanded && (
-                      <div className="border-t border-slate-100 overflow-auto">
+                      <div className="border-t border-border overflow-auto">
                         <table className="w-full text-xs">
-                          <thead className="bg-slate-50 text-slate-500">
+                          <thead className="bg-surface text-ink-2">
                             <tr>
                               <th className="text-left px-4 py-1.5">Фраза</th>
                               <th className="text-left px-3 py-1.5">Источник</th>
@@ -937,17 +937,17 @@ function SlangLearningTab() {
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {g.aliases.map((a) => (
-                              <tr key={a.id} className="hover:bg-slate-50">
-                                <td className="px-4 py-1.5 font-medium text-slate-900">{a.phraseOriginal}</td>
+                              <tr key={a.id} className="hover:bg-surface">
+                                <td className="px-4 py-1.5 font-medium text-ink">{a.phraseOriginal}</td>
                                 <td className="px-3 py-1.5">{sourceLabel(a.source)}</td>
-                                <td className="px-3 py-1.5 text-center text-slate-600">{a.usageCount}</td>
-                                <td className="px-3 py-1.5 text-slate-400">
+                                <td className="px-3 py-1.5 text-center text-ink-2">{a.usageCount}</td>
+                                <td className="px-3 py-1.5 text-ink-3">
                                   {a.lastUsedAt ? new Date(a.lastUsedAt).toLocaleDateString("ru-RU") : "—"}
                                 </td>
                                 <td className="px-3 py-1.5">
                                   <button
                                     type="button"
-                                    className="text-rose-400 hover:text-rose-600"
+                                    className="text-rose hover:text-rose"
                                     title="Удалить псевдоним"
                                     onClick={() => handleDeleteAlias(a.id)}
                                   >
@@ -1095,18 +1095,18 @@ function WorkersTab() {
 
   return (
     <div className="space-y-6">
-      <h3 className="text-sm font-semibold text-slate-900">Кладовщики</h3>
+      <h3 className="text-sm font-semibold text-ink">Кладовщики</h3>
 
       {/* Add worker form */}
-      <form onSubmit={handleAdd} className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50">
-        <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Добавить кладовщика</p>
+      <form onSubmit={handleAdd} className="border border-border rounded-xl p-4 space-y-3 bg-surface">
+        <p className="text-xs font-semibold text-ink-2 uppercase tracking-wider">Добавить кладовщика</p>
         <div className="flex gap-3 flex-wrap">
           <input
             type="text"
             placeholder="Имя"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="rounded border border-slate-300 px-3 py-2 text-sm bg-white flex-1 min-w-[140px]"
+            className="rounded border border-border px-3 py-2 text-sm bg-surface flex-1 min-w-[140px]"
           />
           <input
             type="text"
@@ -1114,28 +1114,28 @@ function WorkersTab() {
             value={newPin}
             maxLength={4}
             onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
-            className="rounded border border-slate-300 px-3 py-2 text-sm bg-white w-[120px]"
+            className="rounded border border-border px-3 py-2 text-sm bg-surface w-[120px]"
           />
           <button
             type="submit"
             disabled={addLoading}
-            className="rounded bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+            className="rounded bg-accent text-white px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-50"
           >
             {addLoading ? "..." : "Добавить"}
           </button>
         </div>
-        {addError && <p className="text-xs text-rose-600">{addError}</p>}
+        {addError && <p className="text-xs text-rose">{addError}</p>}
       </form>
 
       {/* Workers list */}
-      {loading && <p className="text-sm text-slate-400">Загрузка...</p>}
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {loading && <p className="text-sm text-ink-3">Загрузка...</p>}
+      {error && <p className="text-sm text-rose">{error}</p>}
 
       {/* Desktop table */}
       {!loading && workers.length > 0 && (
-        <div className="hidden md:block border border-slate-200 rounded-xl overflow-hidden">
+        <div className="hidden md:block border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600 text-xs">
+            <thead className="bg-surface text-ink-2 text-xs">
               <tr>
                 <th className="text-left px-4 py-3">Имя</th>
                 <th className="text-left px-3 py-3">Статус</th>
@@ -1147,24 +1147,24 @@ function WorkersTab() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {workers.map((w) => (
-                <tr key={w.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-900">{w.name}</td>
+                <tr key={w.id} className="hover:bg-surface">
+                  <td className="px-4 py-3 font-medium text-ink">{w.name}</td>
                   <td className="px-3 py-3">
                     {w.isActive ? (
-                      <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Активен</span>
+                      <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-emerald-soft text-emerald border-emerald-border">Активен</span>
                     ) : (
-                      <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-slate-100 text-slate-500 border-slate-200">Отключён</span>
+                      <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-surface-muted text-ink-2 border-border">Отключён</span>
                     )}
                   </td>
-                  <td className="px-3 py-3 text-slate-500 text-xs">
+                  <td className="px-3 py-3 text-ink-2 text-xs">
                     {w.lastLoginAt ? new Date(w.lastLoginAt).toLocaleString("ru-RU") : "—"}
                   </td>
-                  <td className="px-3 py-3 text-slate-600">{w.failedAttempts}</td>
+                  <td className="px-3 py-3 text-ink-2">{w.failedAttempts}</td>
                   <td className="px-3 py-3 text-xs">
                     {w.lockedUntil ? (
-                      <span className="text-rose-600">{new Date(w.lockedUntil).toLocaleString("ru-RU")}</span>
+                      <span className="text-rose">{new Date(w.lockedUntil).toLocaleString("ru-RU")}</span>
                     ) : (
-                      <span className="text-slate-300">—</span>
+                      <span className="text-ink-3">—</span>
                     )}
                   </td>
                   <td className="px-3 py-3 text-right">
@@ -1172,21 +1172,21 @@ function WorkersTab() {
                       <button
                         type="button"
                         onClick={() => handleToggleActive(w)}
-                        className="text-xs rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50"
+                        className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface"
                       >
                         {w.isActive ? "Отключить" : "Включить"}
                       </button>
                       <button
                         type="button"
                         onClick={() => { setResetPinId(w.id); setResetPinValue(""); setResetPinError(null); }}
-                        className="text-xs rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50"
+                        className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface"
                       >
                         Сменить PIN
                       </button>
                       <button
                         type="button"
                         onClick={() => { setDeleteId(w.id); setDeleteError(null); }}
-                        className="text-xs rounded border border-rose-200 px-2 py-1 text-rose-600 hover:bg-rose-50"
+                        className="text-xs rounded border border-rose-border px-2 py-1 text-rose hover:bg-rose-soft"
                       >
                         Удалить
                       </button>
@@ -1203,41 +1203,41 @@ function WorkersTab() {
       {!loading && workers.length > 0 && (
         <div className="md:hidden space-y-3">
           {workers.map((w) => (
-            <div key={w.id} className="rounded-xl border border-slate-200 bg-white p-4">
+            <div key={w.id} className="rounded-xl border border-border bg-surface p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="font-medium text-slate-900">{w.name}</span>
+                <span className="font-medium text-ink">{w.name}</span>
                 {w.isActive ? (
-                  <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Активен</span>
+                  <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-emerald-soft text-emerald border-emerald-border">Активен</span>
                 ) : (
-                  <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-slate-100 text-slate-500 border-slate-200">Отключён</span>
+                  <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-surface-muted text-ink-2 border-border">Отключён</span>
                 )}
               </div>
-              <p className="text-xs text-slate-400 mb-1">
+              <p className="text-xs text-ink-3 mb-1">
                 Последний вход: {w.lastLoginAt ? new Date(w.lastLoginAt).toLocaleString("ru-RU") : "—"}
               </p>
-              <p className="text-xs text-slate-400 mb-1">Неудачных попыток: {w.failedAttempts}</p>
+              <p className="text-xs text-ink-3 mb-1">Неудачных попыток: {w.failedAttempts}</p>
               {w.lockedUntil && (
-                <p className="text-xs text-rose-600 mb-1">Заблокирован до: {new Date(w.lockedUntil).toLocaleString("ru-RU")}</p>
+                <p className="text-xs text-rose mb-1">Заблокирован до: {new Date(w.lockedUntil).toLocaleString("ru-RU")}</p>
               )}
               <div className="flex gap-2 flex-wrap mt-3">
                 <button
                   type="button"
                   onClick={() => handleToggleActive(w)}
-                  className="text-xs rounded border border-slate-200 px-2 py-1.5 text-slate-600 hover:bg-slate-50"
+                  className="text-xs rounded border border-border px-2 py-1.5 text-ink-2 hover:bg-surface"
                 >
                   {w.isActive ? "Отключить" : "Включить"}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setResetPinId(w.id); setResetPinValue(""); setResetPinError(null); }}
-                  className="text-xs rounded border border-slate-200 px-2 py-1.5 text-slate-600 hover:bg-slate-50"
+                  className="text-xs rounded border border-border px-2 py-1.5 text-ink-2 hover:bg-surface"
                 >
                   Сменить PIN
                 </button>
                 <button
                   type="button"
                   onClick={() => { setDeleteId(w.id); setDeleteError(null); }}
-                  className="text-xs rounded border border-rose-200 px-2 py-1.5 text-rose-600 hover:bg-rose-50"
+                  className="text-xs rounded border border-rose-border px-2 py-1.5 text-rose hover:bg-rose-soft"
                 >
                   Удалить
                 </button>
@@ -1248,7 +1248,7 @@ function WorkersTab() {
       )}
 
       {!loading && workers.length === 0 && !error && (
-        <p className="text-sm text-slate-400 py-6 text-center border border-slate-200 rounded-xl">
+        <p className="text-sm text-ink-3 py-6 text-center border border-border rounded-xl">
           Кладовщики не добавлены
         </p>
       )}
@@ -1256,22 +1256,22 @@ function WorkersTab() {
       {/* Reset PIN modal */}
       {resetPinId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-xs bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
-            <h2 className="text-base font-semibold text-slate-900 mb-4">Сменить PIN</h2>
+          <div className="w-full max-w-xs bg-surface rounded-2xl border border-border shadow-lg p-6">
+            <h2 className="text-base font-semibold text-ink mb-4">Сменить PIN</h2>
             <input
               type="text"
               placeholder="Новый PIN (4 цифры)"
               value={resetPinValue}
               maxLength={4}
               onChange={(e) => setResetPinValue(e.target.value.replace(/\D/g, ""))}
-              className="w-full rounded border border-slate-300 px-3 py-2 text-sm mb-3"
+              className="w-full rounded border border-border px-3 py-2 text-sm mb-3"
             />
-            {resetPinError && <p className="text-xs text-rose-600 mb-3">{resetPinError}</p>}
+            {resetPinError && <p className="text-xs text-rose mb-3">{resetPinError}</p>}
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
                 onClick={() => setResetPinId(null)}
-                className="rounded border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface"
               >
                 Отмена
               </button>
@@ -1279,7 +1279,7 @@ function WorkersTab() {
                 type="button"
                 onClick={() => handleResetPin(resetPinId)}
                 disabled={resetPinLoading}
-                className="rounded bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+                className="rounded bg-accent text-white px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-50"
               >
                 {resetPinLoading ? "..." : "Сохранить"}
               </button>
@@ -1291,17 +1291,17 @@ function WorkersTab() {
       {/* Delete confirm */}
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-xs bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
-            <h2 className="text-base font-semibold text-slate-900 mb-2">Удалить кладовщика?</h2>
-            <p className="text-sm text-slate-600 mb-4">
+          <div className="w-full max-w-xs bg-surface rounded-2xl border border-border shadow-lg p-6">
+            <h2 className="text-base font-semibold text-ink mb-2">Удалить кладовщика?</h2>
+            <p className="text-sm text-ink-2 mb-4">
               {workers.find((w) => w.id === deleteId)?.name}
             </p>
-            {deleteError && <p className="text-xs text-rose-600 mb-3">{deleteError}</p>}
+            {deleteError && <p className="text-xs text-rose mb-3">{deleteError}</p>}
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
                 onClick={() => setDeleteId(null)}
-                className="rounded border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface"
               >
                 Отмена
               </button>
@@ -1309,7 +1309,7 @@ function WorkersTab() {
                 type="button"
                 onClick={() => handleDelete(deleteId)}
                 disabled={deleteLoading}
-                className="rounded bg-rose-600 text-white px-4 py-2 text-sm hover:bg-rose-700 disabled:opacity-50"
+                className="rounded bg-rose text-white px-4 py-2 text-sm hover:bg-rose/90 disabled:opacity-50"
               >
                 {deleteLoading ? "..." : "Удалить"}
               </button>
@@ -1504,32 +1504,32 @@ function BarcodesTab() {
   };
 
   const STATUS_COLORS: Record<string, string> = {
-    AVAILABLE: "bg-green-100 text-green-700",
-    ISSUED: "bg-blue-100 text-blue-700",
-    MAINTENANCE: "bg-amber-100 text-amber-700",
-    RETIRED: "bg-slate-100 text-slate-500",
-    MISSING: "bg-red-100 text-red-700",
+    AVAILABLE: "bg-emerald-soft text-emerald",
+    ISSUED: "bg-accent-soft text-accent-bright",
+    MAINTENANCE: "bg-amber-soft text-amber",
+    RETIRED: "bg-surface-muted text-ink-2",
+    MISSING: "bg-rose-soft text-rose",
   };
 
   return (
     <div>
       {/* Stats bar */}
       <div className="grid grid-cols-4 gap-3 mb-4">
-        <div className="bg-slate-50 rounded-lg p-3 text-center">
+        <div className="bg-surface rounded-lg p-3 text-center">
           <div className="text-lg font-semibold">{stats.total}</div>
-          <div className="text-xs text-slate-500">Всего единиц</div>
+          <div className="text-xs text-ink-2">Всего единиц</div>
         </div>
-        <div className="bg-green-50 rounded-lg p-3 text-center">
-          <div className="text-lg font-semibold text-green-700">{stats.withBarcode}</div>
-          <div className="text-xs text-slate-500">Со штрихкодом</div>
+        <div className="bg-emerald-soft rounded-lg p-3 text-center">
+          <div className="text-lg font-semibold text-emerald">{stats.withBarcode}</div>
+          <div className="text-xs text-ink-2">Со штрихкодом</div>
         </div>
-        <div className="bg-amber-50 rounded-lg p-3 text-center">
-          <div className="text-lg font-semibold text-amber-700">{stats.withoutBarcode}</div>
-          <div className="text-xs text-slate-500">Без штрихкода</div>
+        <div className="bg-amber-soft rounded-lg p-3 text-center">
+          <div className="text-lg font-semibold text-amber">{stats.withoutBarcode}</div>
+          <div className="text-xs text-ink-2">Без штрихкода</div>
         </div>
-        <div className="bg-blue-50 rounded-lg p-3 text-center">
-          <div className="text-lg font-semibold text-blue-700">{stats.issued}</div>
-          <div className="text-xs text-slate-500">Выдано</div>
+        <div className="bg-accent-soft rounded-lg p-3 text-center">
+          <div className="text-lg font-semibold text-accent-bright">{stats.issued}</div>
+          <div className="text-xs text-ink-2">Выдано</div>
         </div>
       </div>
 
@@ -1540,12 +1540,12 @@ function BarcodesTab() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Поиск по штрихкоду, серийному №, названию..."
-          className="flex-1 min-w-[200px] px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
+          className="flex-1 min-w-[200px] px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300"
         />
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-2 text-sm border border-slate-200 rounded-lg"
+          className="px-3 py-2 text-sm border border-border rounded-lg"
         >
           <option value="">Все статусы</option>
           <option value="AVAILABLE">Доступен</option>
@@ -1557,7 +1557,7 @@ function BarcodesTab() {
         <select
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value)}
-          className="px-3 py-2 text-sm border border-slate-200 rounded-lg"
+          className="px-3 py-2 text-sm border border-border rounded-lg"
         >
           <option value="">Все категории</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
@@ -1565,7 +1565,7 @@ function BarcodesTab() {
         <select
           value={hasBarcodeFilter}
           onChange={e => setHasBarcodeFilter(e.target.value as "" | "true" | "false")}
-          className="px-3 py-2 text-sm border border-slate-200 rounded-lg"
+          className="px-3 py-2 text-sm border border-border rounded-lg"
         >
           <option value="">Штрихкод: все</option>
           <option value="true">Со штрихкодом</option>
@@ -1575,17 +1575,17 @@ function BarcodesTab() {
 
       {/* Batch actions */}
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 mb-4 p-3 bg-slate-50 rounded-lg">
-          <span className="text-sm text-slate-600">Выбрано: {selected.size}</span>
+        <div className="flex items-center gap-3 mb-4 p-3 bg-surface rounded-lg">
+          <span className="text-sm text-ink-2">Выбрано: {selected.size}</span>
           <button
             onClick={handlePrintLabels}
-            className="px-3 py-1.5 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700"
+            className="px-3 py-1.5 text-sm font-medium bg-accent text-white rounded-lg hover:bg-accent"
           >
             Печать этикеток
           </button>
           <button
             onClick={() => setSelected(new Set())}
-            className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700"
+            className="px-3 py-1.5 text-sm text-ink-2 hover:text-ink-2"
           >
             Снять выделение
           </button>
@@ -1594,51 +1594,51 @@ function BarcodesTab() {
 
       {/* Table */}
       {loading ? (
-        <div className="text-center py-8 text-slate-400">Загрузка...</div>
+        <div className="text-center py-8 text-ink-3">Загрузка...</div>
       ) : units.length === 0 ? (
-        <div className="text-center py-8 text-slate-400">Ничего не найдено</div>
+        <div className="text-center py-8 text-ink-3">Ничего не найдено</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200">
+              <tr className="border-b border-border">
                 <th className="py-2 px-2 text-left">
                   <input type="checkbox" onChange={toggleAll} checked={selected.size === units.length && units.length > 0} />
                 </th>
-                <th className="py-2 px-2 text-left text-slate-500 font-medium">Штрихкод</th>
-                <th className="py-2 px-2 text-left text-slate-500 font-medium">Оборудование</th>
-                <th className="py-2 px-2 text-left text-slate-500 font-medium">Категория</th>
-                <th className="py-2 px-2 text-left text-slate-500 font-medium">Статус</th>
-                <th className="py-2 px-2 text-left text-slate-500 font-medium">Серийный №</th>
-                <th className="py-2 px-2 text-left text-slate-500 font-medium">Дата</th>
+                <th className="py-2 px-2 text-left text-ink-2 font-medium">Штрихкод</th>
+                <th className="py-2 px-2 text-left text-ink-2 font-medium">Оборудование</th>
+                <th className="py-2 px-2 text-left text-ink-2 font-medium">Категория</th>
+                <th className="py-2 px-2 text-left text-ink-2 font-medium">Статус</th>
+                <th className="py-2 px-2 text-left text-ink-2 font-medium">Серийный №</th>
+                <th className="py-2 px-2 text-left text-ink-2 font-medium">Дата</th>
                 <th className="py-2 px-2"></th>
               </tr>
             </thead>
             <tbody>
               {units.map(u => (
-                <tr key={u.id} className="border-b border-slate-100 hover:bg-slate-50">
+                <tr key={u.id} className="border-b border-border hover:bg-surface">
                   <td className="py-2 px-2">
                     <input type="checkbox" checked={selected.has(u.id)} onChange={() => toggleSelect(u.id)} />
                   </td>
-                  <td className="py-2 px-2 font-mono text-xs">{u.barcode || <span className="text-slate-300">—</span>}</td>
+                  <td className="py-2 px-2 font-mono text-xs">{u.barcode || <span className="text-ink-3">—</span>}</td>
                   <td className="py-2 px-2">
-                    <Link href={`/equipment/${u.equipment.id}/units`} className="text-blue-600 hover:underline">
+                    <Link href={`/equipment/${u.equipment.id}/units`} className="text-accent-bright hover:underline">
                       {u.equipment.name}
                     </Link>
                   </td>
-                  <td className="py-2 px-2 text-slate-500">{u.equipment.category}</td>
+                  <td className="py-2 px-2 text-ink-2">{u.equipment.category}</td>
                   <td className="py-2 px-2">
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[u.status] || "bg-slate-100"}`}>
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[u.status] || "bg-surface-muted"}`}>
                       {STATUS_LABELS[u.status] || u.status}
                     </span>
                   </td>
-                  <td className="py-2 px-2 text-slate-500 text-xs">{u.serialNumber || "—"}</td>
-                  <td className="py-2 px-2 text-slate-400 text-xs">{formatDate(u.createdAt)}</td>
+                  <td className="py-2 px-2 text-ink-2 text-xs">{u.serialNumber || "—"}</td>
+                  <td className="py-2 px-2 text-ink-3 text-xs">{formatDate(u.createdAt)}</td>
                   <td className="py-2 px-2">
                     {!u.barcode && (
                       <button
                         onClick={() => { setAssignModal({ unitId: u.id, equipmentId: u.equipment.id }); setAssignBarcode(""); setAssignError(""); }}
-                        className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+                        className="text-xs text-accent-bright hover:underline whitespace-nowrap"
                       >
                         Привязать
                       </button>
@@ -1654,21 +1654,21 @@ function BarcodesTab() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-4">
-          <span className="text-sm text-slate-500">
+          <span className="text-sm text-ink-2">
             Показано {(page - 1) * 50 + 1}–{Math.min(page * 50, total)} из {total}
           </span>
           <div className="flex gap-1">
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-30"
+              className="px-3 py-1.5 text-sm border border-border rounded-lg disabled:opacity-30"
             >
               ←
             </button>
             <button
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-30"
+              className="px-3 py-1.5 text-sm border border-border rounded-lg disabled:opacity-30"
             >
               →
             </button>
@@ -1679,25 +1679,25 @@ function BarcodesTab() {
       {/* Assign barcode modal */}
       {assignModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setAssignModal(null)}>
-          <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface rounded-xl p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-semibold mb-4">Привязать штрихкод</h3>
             <input
               type="text"
               value={assignBarcode}
               onChange={e => setAssignBarcode(e.target.value)}
               placeholder="Введите штрихкод..."
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              className="w-full px-3 py-2 border border-border rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-slate-300"
               autoFocus
             />
-            {assignError && <p className="text-sm text-red-600 mb-3">{assignError}</p>}
+            {assignError && <p className="text-sm text-rose mb-3">{assignError}</p>}
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setAssignModal(null)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">
+              <button onClick={() => setAssignModal(null)} className="px-4 py-2 text-sm text-ink-2 hover:text-ink-2">
                 Отмена
               </button>
               <button
                 onClick={handleAssign}
                 disabled={assignLoading || !assignBarcode.trim()}
-                className="px-4 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-accent text-white rounded-lg hover:bg-accent disabled:opacity-50"
               >
                 {assignLoading ? "..." : "Привязать"}
               </button>
@@ -1768,12 +1768,12 @@ function actionLabel(action: string): string {
 
 function rowBgClass(row: ImportSessionRow): string {
   const delta = row.priceDelta ? parseFloat(row.priceDelta) : null;
-  if (row.action === "REMOVED_ITEM") return "bg-red-50";
-  if (row.action === "NEW_ITEM") return "bg-green-50";
+  if (row.action === "REMOVED_ITEM") return "bg-rose-soft";
+  if (row.action === "NEW_ITEM") return "bg-emerald-soft";
   if (delta !== null) {
-    if (delta > 5) return "bg-red-50";
-    if (delta < -5) return "bg-green-50";
-    return "bg-yellow-50";
+    if (delta > 5) return "bg-rose-soft";
+    if (delta < -5) return "bg-emerald-soft";
+    return "bg-amber-soft";
   }
   return "";
 }
@@ -1783,10 +1783,10 @@ function confidenceBadge(conf: string | null) {
   const v = parseFloat(conf);
   const cls =
     v >= 0.8
-      ? "bg-green-100 text-green-800"
+      ? "bg-emerald-soft text-emerald"
       : v >= 0.5
-      ? "bg-yellow-100 text-yellow-800"
-      : "bg-red-100 text-red-800";
+      ? "bg-amber-soft text-amber"
+      : "bg-rose-soft text-rose";
   return (
     <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${cls}`}>
       {Math.round(v * 100)}%
@@ -2062,15 +2062,15 @@ function PricesTab() {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-base font-semibold text-slate-800">Аналитика цен</h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <h2 className="text-base font-semibold text-ink">Аналитика цен</h2>
+          <p className="text-sm text-ink-2 mt-1">
             Загрузите прайс-лист для обновления цен или сравнения с конкурентом.
           </p>
         </div>
         {step !== "empty" && (
           <button
             onClick={() => { setStep("empty"); setActiveSession(null); setRows([]); setApplyResult(null); loadSessions(); }}
-            className="shrink-0 text-xs text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors"
+            className="shrink-0 text-xs text-ink-3 hover:text-ink-2 border border-border rounded-lg px-3 py-1.5 hover:bg-surface transition-colors"
           >
             ← Назад
           </button>
@@ -2078,7 +2078,7 @@ function PricesTab() {
       </div>
 
       {message && (
-        <div className={`px-4 py-3 rounded-lg text-sm font-medium ${message.type === "ok" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+        <div className={`px-4 py-3 rounded-lg text-sm font-medium ${message.type === "ok" ? "bg-emerald-soft text-emerald border border-emerald-border" : "bg-rose-soft text-rose border border-rose-border"}`}>
           {message.text}
           <button onClick={() => setMessage(null)} className="ml-3 text-xs opacity-60 hover:opacity-100">✕</button>
         </div>
@@ -2089,20 +2089,20 @@ function PricesTab() {
         <div className="space-y-5">
           {/* Upload dropzone */}
           <div
-            className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="rounded-xl border-2 border-dashed border-border bg-surface hover:bg-surface-muted transition-colors cursor-pointer"
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
             onClick={() => dropRef.current?.click()}
           >
             <div className="flex flex-col items-center py-10 px-6 text-center">
-              <svg className="w-10 h-10 text-slate-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-10 h-10 text-ink-3 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                   d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
-              <p className="text-sm font-medium text-slate-700">
+              <p className="text-sm font-medium text-ink-2">
                 {uploading ? "Загрузка…" : "Перетащите файл или нажмите для выбора"}
               </p>
-              <p className="text-xs text-slate-400 mt-1">Поддерживаются .xlsx, .xls</p>
+              <p className="text-xs text-ink-3 mt-1">Поддерживаются .xlsx, .xls</p>
             </div>
             <input
               ref={dropRef}
@@ -2116,35 +2116,35 @@ function PricesTab() {
 
           {/* Past sessions */}
           {sessions.length > 0 && (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wide">
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="px-4 py-2.5 bg-surface border-b border-border text-xs font-semibold text-ink-2 uppercase tracking-wide">
                 Прошлые сессии
               </div>
               <div className="divide-y divide-slate-100">
                 {sessions.map((s) => (
                   <div key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-slate-800 truncate">{s.fileName}</div>
-                      <div className="text-xs text-slate-500 mt-0.5">
+                      <div className="text-sm font-medium text-ink truncate">{s.fileName}</div>
+                      <div className="text-xs text-ink-2 mt-0.5">
                         {formatDate(s.createdAt)} · {s.type === "COMPETITOR_IMPORT" ? `Конкурент: ${s.competitorName ?? "—"}` : "Обновление прайса"} · {s.status}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => handleOpenSession(s)}
-                        className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                        className="px-3 py-1.5 text-xs font-medium text-accent-bright bg-accent-soft hover:bg-accent-soft rounded-lg transition-colors"
                       >
                         Открыть
                       </button>
                       <button
                         onClick={() => handleExport(s.id)}
-                        className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                        className="px-3 py-1.5 text-xs font-medium text-ink-2 bg-surface-muted hover:bg-surface-muted rounded-lg transition-colors"
                       >
                         Скачать XLSX
                       </button>
                       <button
                         onClick={() => handleDeleteSession(s.id)}
-                        className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                        className="px-3 py-1.5 text-xs font-medium text-rose bg-rose-soft hover:bg-rose-soft rounded-lg transition-colors"
                       >
                         Удалить
                       </button>
@@ -2161,9 +2161,9 @@ function PricesTab() {
       {step === "mapping" && preview && (
         <div className="space-y-5">
           {/* Type + competitor */}
-          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Шаг 1 — Тип импорта</span>
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="px-4 py-3 bg-surface border-b border-border">
+              <span className="text-xs font-semibold text-ink-2 uppercase tracking-wide">Шаг 1 — Тип импорта</span>
             </div>
             <div className="p-4 space-y-3">
               <div className="flex gap-3">
@@ -2173,8 +2173,8 @@ function PricesTab() {
                     onClick={() => setImportType(t)}
                     className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                       importType === t
-                        ? "bg-slate-900 text-white border-slate-900"
-                        : "bg-white text-slate-600 border-slate-300 hover:border-slate-500"
+                        ? "bg-accent text-white border-accent"
+                        : "bg-surface text-ink-2 border-border hover:border-accent"
                     }`}
                   >
                     {t === "OWN_PRICE_UPDATE" ? "Обновление прайса" : "Сравнение с конкурентом"}
@@ -2183,13 +2183,13 @@ function PricesTab() {
               </div>
               {importType === "COMPETITOR_IMPORT" && (
                 <div>
-                  <label className="text-xs text-slate-500 mb-1 block">Название конкурента</label>
+                  <label className="text-xs text-ink-2 mb-1 block">Название конкурента</label>
                   <input
                     type="text"
                     value={competitorName}
                     onChange={(e) => setCompetitorName(e.target.value)}
                     placeholder="Например: РентаЛайт"
-                    className="w-full max-w-xs px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-slate-500"
+                    className="w-full max-w-xs px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-accent"
                   />
                 </div>
               )}
@@ -2197,20 +2197,20 @@ function PricesTab() {
           </div>
 
           {/* Column mapping */}
-          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Шаг 2 — Сопоставление колонок</span>
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="px-4 py-3 bg-surface border-b border-border">
+              <span className="text-xs font-semibold text-ink-2 uppercase tracking-wide">Шаг 2 — Сопоставление колонок</span>
             </div>
             <div className="p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-6 space-y-2">
                 {PRICE_MAPPING_FIELDS.map((f) => (
                   <div key={f.key} className="flex items-center gap-3">
-                    <div className="w-44 text-xs text-slate-500 shrink-0">
+                    <div className="w-44 text-xs text-ink-2 shrink-0">
                       {f.label}
-                      {f.required && <span className="text-red-500 ml-0.5">*</span>}
+                      {f.required && <span className="text-rose ml-0.5">*</span>}
                     </div>
                     <select
-                      className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm bg-white"
+                      className="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm bg-white"
                       value={mappingConfig[f.key] ?? ""}
                       onChange={(e) =>
                         setMappingConfig((prev) => ({ ...prev, [f.key]: e.target.value || undefined }))
@@ -2227,24 +2227,24 @@ function PricesTab() {
 
               {/* Sample rows */}
               <div className="lg:col-span-6">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
-                  <div className="px-3 py-2 border-b border-slate-200 text-xs font-semibold text-slate-600">
+                <div className="rounded-lg border border-border bg-surface overflow-hidden">
+                  <div className="px-3 py-2 border-b border-border text-xs font-semibold text-ink-2">
                     Предпросмотр (первые строки)
                   </div>
                   <div className="overflow-auto max-h-48">
                     <table className="min-w-[400px] w-full text-xs">
-                      <thead className="bg-slate-100">
+                      <thead className="bg-surface-muted">
                         <tr>
                           {preview.headers.slice(0, 6).map((h) => (
-                            <th key={h} className="text-left px-3 py-2 border-b border-slate-200 font-medium text-slate-600">{h}</th>
+                            <th key={h} className="text-left px-3 py-2 border-b border-border font-medium text-ink-2">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {preview.sampleRows.slice(0, 5).map((row, idx) => (
-                          <tr key={idx} className="border-t border-slate-100">
+                          <tr key={idx} className="border-t border-border">
                             {preview.headers.slice(0, 6).map((h) => (
-                              <td key={h} className="px-3 py-1.5 text-slate-700">{String(row[h] ?? "")}</td>
+                              <td key={h} className="px-3 py-1.5 text-ink-2">{String(row[h] ?? "")}</td>
                             ))}
                           </tr>
                         ))}
@@ -2259,7 +2259,7 @@ function PricesTab() {
           <button
             onClick={handleMap}
             disabled={mapping || !mappingConfig.name || !mappingConfig.rentalRatePerShift}
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium bg-accent text-white hover:bg-accent disabled:opacity-50 transition-colors"
           >
             {mapping ? "Анализ…" : "Начать анализ"}
           </button>
@@ -2271,13 +2271,13 @@ function PricesTab() {
         <div className="space-y-4">
           {/* Header info */}
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-medium text-slate-700">{activeSession.fileName}</span>
-            <span className="text-xs text-slate-500">
+            <span className="text-sm font-medium text-ink-2">{activeSession.fileName}</span>
+            <span className="text-xs text-ink-2">
               {activeSession.type === "COMPETITOR_IMPORT"
                 ? `Конкурент: ${activeSession.competitorName ?? "—"}`
                 : "Обновление прайса"}
             </span>
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${activeSession.status === "COMPLETED" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${activeSession.status === "COMPLETED" ? "bg-emerald-soft text-emerald" : "bg-amber-soft text-amber"}`}>
               {activeSession.status}
             </span>
           </div>
@@ -2286,15 +2286,15 @@ function PricesTab() {
           {stats && (
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[
-                { label: "Изменены цены", value: stats.priceChanges, color: "text-amber-700" },
-                { label: "Новые", value: stats.newItems, color: "text-emerald-700" },
-                { label: "Удалены", value: stats.removedItems, color: "text-red-700" },
-                { label: "Кол-во", value: stats.qtyChanges, color: "text-blue-700" },
-                { label: "Без изм.", value: stats.noChange, color: "text-slate-500" },
+                { label: "Изменены цены", value: stats.priceChanges, color: "text-amber" },
+                { label: "Новые", value: stats.newItems, color: "text-emerald" },
+                { label: "Удалены", value: stats.removedItems, color: "text-rose" },
+                { label: "Кол-во", value: stats.qtyChanges, color: "text-accent-bright" },
+                { label: "Без изм.", value: stats.noChange, color: "text-ink-2" },
               ].map(({ label, value, color }) => (
-                <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div key={label} className="rounded-xl border border-border bg-surface p-3">
                   <div className={`text-xl font-bold ${color}`}>{value}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+                  <div className="text-xs text-ink-2 mt-0.5">{label}</div>
                 </div>
               ))}
             </div>
@@ -2308,8 +2308,8 @@ function PricesTab() {
                 onClick={() => { setFilter(opt.id); if (activeSession) loadRows(activeSession.id, opt.id, 1); }}
                 className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
                   filter === opt.id
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "bg-white text-slate-600 border-slate-300 hover:border-slate-500"
+                    ? "bg-accent text-white border-accent"
+                    : "bg-surface text-ink-2 border-border hover:border-accent"
                 }`}
               >
                 {opt.label}
@@ -2322,36 +2322,36 @@ function PricesTab() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setConfirmBulk({ action: "ACCEPTED", count: rowsTotal })}
-                className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"
+                className="px-3 py-1.5 text-xs font-medium text-emerald bg-emerald-soft hover:bg-emerald-soft rounded-lg border border-emerald-border transition-colors"
               >
                 Принять все
               </button>
               <button
                 onClick={() => setConfirmBulk({ action: "REJECTED", count: rowsTotal })}
-                className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors"
+                className="px-3 py-1.5 text-xs font-medium text-rose bg-rose-soft hover:bg-rose-soft rounded-lg border border-rose-border transition-colors"
               >
                 Отклонить все
               </button>
-              <span className="text-xs text-slate-400">в текущем фильтре</span>
+              <span className="text-xs text-ink-3">в текущем фильтре</span>
             </div>
           )}
 
           {/* Apply result */}
           {applyResult && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 space-y-1">
-              <div className="font-semibold text-emerald-800 mb-2">Изменения применены</div>
+            <div className="rounded-xl border border-emerald-border bg-emerald-soft p-4 text-sm text-emerald space-y-1">
+              <div className="font-semibold text-emerald mb-2">Изменения применены</div>
               {Object.entries(applyResult.applied).map(([k, v]) => (
                 <div key={k} className="flex justify-between">
-                  <span className="text-emerald-700">{k}</span>
+                  <span className="text-emerald">{k}</span>
                   <span className="font-semibold">{v}</span>
                 </div>
               ))}
               {applyResult.skipped.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-emerald-200">
-                  <div className="text-amber-700 font-medium">Пропущено {applyResult.skipped.length} позиц.</div>
+                <div className="mt-2 pt-2 border-t border-emerald-border">
+                  <div className="text-amber font-medium">Пропущено {applyResult.skipped.length} позиц.</div>
                   <ul className="mt-1 space-y-0.5">
                     {applyResult.skipped.map((s) => (
-                      <li key={s.id} className="text-xs text-amber-600">{s.reason}</li>
+                      <li key={s.id} className="text-xs text-amber">{s.reason}</li>
                     ))}
                   </ul>
                 </div>
@@ -2360,30 +2360,30 @@ function PricesTab() {
           )}
 
           {/* Table */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <div className="rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Позиция</th>
-                    <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Категория</th>
+                  <tr className="bg-surface border-b border-border">
+                    <th className="text-left px-3 py-2.5 font-semibold text-ink-2">Позиция</th>
+                    <th className="text-left px-3 py-2.5 font-semibold text-ink-2">Категория</th>
                     {isOwnMode ? (
                       <>
-                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Текущая цена</th>
-                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Новая цена</th>
-                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Δ%</th>
-                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Кол-во</th>
-                        <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Действие</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-ink-2">Текущая цена</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-ink-2">Новая цена</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-ink-2">Δ%</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-ink-2">Кол-во</th>
+                        <th className="text-left px-3 py-2.5 font-semibold text-ink-2">Действие</th>
                         {activeSession.status !== "COMPLETED" && (
                           <th className="px-3 py-2.5" />
                         )}
                       </>
                     ) : (
                       <>
-                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Наша цена</th>
-                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Конкурент</th>
-                        <th className="text-right px-3 py-2.5 font-semibold text-slate-600">Δ%</th>
-                        <th className="text-left px-3 py-2.5 font-semibold text-slate-600">Уверенность</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-ink-2">Наша цена</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-ink-2">Конкурент</th>
+                        <th className="text-right px-3 py-2.5 font-semibold text-ink-2">Δ%</th>
+                        <th className="text-left px-3 py-2.5 font-semibold text-ink-2">Уверенность</th>
                       </>
                     )}
                   </tr>
@@ -2391,11 +2391,11 @@ function PricesTab() {
                 <tbody className="divide-y divide-slate-100">
                   {loadingRows ? (
                     <tr>
-                      <td colSpan={isOwnMode ? 8 : 6} className="py-8 text-center text-slate-400">Загрузка…</td>
+                      <td colSpan={isOwnMode ? 8 : 6} className="py-8 text-center text-ink-3">Загрузка…</td>
                     </tr>
                   ) : rows.length === 0 ? (
                     <tr>
-                      <td colSpan={isOwnMode ? 8 : 6} className="py-8 text-center text-slate-400">Нет позиций</td>
+                      <td colSpan={isOwnMode ? 8 : 6} className="py-8 text-center text-ink-3">Нет позиций</td>
                     </tr>
                   ) : (
                     rows.map((row) => {
@@ -2404,33 +2404,33 @@ function PricesTab() {
                       const isRemovedWithBookings = row.action === "REMOVED_ITEM" && row.hasActiveBookings;
                       return (
                         <tr key={row.id} className={bg}>
-                          <td className="px-3 py-2.5 text-slate-800 max-w-[200px]">
+                          <td className="px-3 py-2.5 text-ink max-w-[200px]">
                             <div className="truncate">{row.sourceName}</div>
                             {!row.equipmentId && (
-                              <span className="inline-block text-[10px] font-medium bg-slate-100 text-slate-500 rounded px-1.5 py-0.5 mt-0.5">Не найдено</span>
+                              <span className="inline-block text-[10px] font-medium bg-surface-muted text-ink-2 rounded px-1.5 py-0.5 mt-0.5">Не найдено</span>
                             )}
                             {row.matchMethod?.includes(":FLAGGED") && (
-                              <span className="inline-block text-[10px] font-medium bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 mt-0.5">⚠️ Подозрительное значение</span>
+                              <span className="inline-block text-[10px] font-medium bg-amber-soft text-amber rounded px-1.5 py-0.5 mt-0.5">⚠️ Подозрительное значение</span>
                             )}
                           </td>
-                          <td className="px-3 py-2.5 text-slate-500">{row.sourceCategory ?? row.equipment?.category ?? "—"}</td>
+                          <td className="px-3 py-2.5 text-ink-2">{row.sourceCategory ?? row.equipment?.category ?? "—"}</td>
                           {isOwnMode ? (
                             <>
-                              <td className="px-3 py-2.5 text-right text-slate-700">{row.oldPrice ?? "—"}</td>
-                              <td className="px-3 py-2.5 text-right font-medium text-slate-900">{row.sourcePrice ?? "—"}</td>
-                              <td className={`px-3 py-2.5 text-right font-medium ${delta !== null ? (delta > 5 ? "text-red-700" : delta < -5 ? "text-green-700" : "text-amber-700") : "text-slate-400"}`}>
+                              <td className="px-3 py-2.5 text-right text-ink-2">{row.oldPrice ?? "—"}</td>
+                              <td className="px-3 py-2.5 text-right font-medium text-ink">{row.sourcePrice ?? "—"}</td>
+                              <td className={`px-3 py-2.5 text-right font-medium ${delta !== null ? (delta > 5 ? "text-rose" : delta < -5 ? "text-emerald" : "text-amber") : "text-ink-3"}`}>
                                 {delta !== null ? `${delta > 0 ? "+" : ""}${delta.toFixed(1)}%` : "—"}
                               </td>
-                              <td className="px-3 py-2.5 text-right text-slate-600">
+                              <td className="px-3 py-2.5 text-right text-ink-2">
                                 {row.sourceQty !== null ? row.sourceQty : "—"}
                               </td>
                               <td className="px-3 py-2.5">
                                 <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                                  row.action === "NEW_ITEM" ? "bg-green-100 text-green-800"
-                                  : row.action === "REMOVED_ITEM" ? "bg-red-100 text-red-800"
-                                  : row.action === "PRICE_CHANGE" ? "bg-amber-100 text-amber-800"
-                                  : row.action === "QTY_CHANGE" ? "bg-blue-100 text-blue-800"
-                                  : "bg-slate-100 text-slate-600"
+                                  row.action === "NEW_ITEM" ? "bg-emerald-soft text-emerald"
+                                  : row.action === "REMOVED_ITEM" ? "bg-rose-soft text-rose"
+                                  : row.action === "PRICE_CHANGE" ? "bg-amber-soft text-amber"
+                                  : row.action === "QTY_CHANGE" ? "bg-accent-soft text-accent"
+                                  : "bg-surface-muted text-ink-2"
                                 }`}>
                                   {actionLabel(row.action)}
                                 </span>
@@ -2440,7 +2440,7 @@ function PricesTab() {
                                   {isRemovedWithBookings ? (
                                     <span
                                       title="Нельзя удалить (активные брони)"
-                                      className="inline-block text-[10px] text-slate-400 cursor-not-allowed px-2 py-1 rounded border border-slate-200"
+                                      className="inline-block text-[10px] text-ink-3 cursor-not-allowed px-2 py-1 rounded border border-border"
                                     >
                                       Заблокировано
                                     </span>
@@ -2449,8 +2449,8 @@ function PricesTab() {
                                       onClick={() => handleRowToggle(row)}
                                       className={`text-[10px] font-medium px-2 py-1 rounded border transition-colors ${
                                         row.status === "ACCEPTED"
-                                          ? "bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200"
-                                          : "bg-white text-slate-600 border-slate-300 hover:border-emerald-400"
+                                          ? "bg-emerald-soft text-emerald border-emerald-border hover:bg-emerald-soft"
+                                          : "bg-surface text-ink-2 border-border hover:border-emerald"
                                       }`}
                                     >
                                       {row.status === "ACCEPTED" ? "Принято ✓" : "Принять"}
@@ -2461,9 +2461,9 @@ function PricesTab() {
                             </>
                           ) : (
                             <>
-                              <td className="px-3 py-2.5 text-right text-slate-700">{row.oldPrice ?? "—"}</td>
-                              <td className="px-3 py-2.5 text-right font-medium text-slate-900">{row.sourcePrice ?? "—"}</td>
-                              <td className={`px-3 py-2.5 text-right font-medium ${delta !== null ? (delta > 5 ? "text-red-700" : delta < -5 ? "text-green-700" : "text-amber-700") : "text-slate-400"}`}>
+                              <td className="px-3 py-2.5 text-right text-ink-2">{row.oldPrice ?? "—"}</td>
+                              <td className="px-3 py-2.5 text-right font-medium text-ink">{row.sourcePrice ?? "—"}</td>
+                              <td className={`px-3 py-2.5 text-right font-medium ${delta !== null ? (delta > 5 ? "text-rose" : delta < -5 ? "text-emerald" : "text-amber") : "text-ink-3"}`}>
                                 {delta !== null ? `${delta > 0 ? "+" : ""}${delta.toFixed(1)}%` : "—"}
                               </td>
                               <td className="px-3 py-2.5">{confidenceBadge(row.matchConfidence)}</td>
@@ -2479,22 +2479,22 @@ function PricesTab() {
 
             {/* Pagination */}
             {rowsTotalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
-                <span className="text-xs text-slate-500">
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-surface">
+                <span className="text-xs text-ink-2">
                   Страница {rowsPage} из {rowsTotalPages} · {rowsTotal} позиций
                 </span>
                 <div className="flex gap-2">
                   <button
                     disabled={rowsPage <= 1}
                     onClick={() => { if (activeSession) loadRows(activeSession.id, filter, rowsPage - 1); }}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 disabled:opacity-40 hover:bg-slate-100 transition-colors"
+                    className="px-3 py-1.5 text-xs rounded-lg border border-border disabled:opacity-40 hover:bg-surface-muted transition-colors"
                   >
                     ← Назад
                   </button>
                   <button
                     disabled={rowsPage >= rowsTotalPages}
                     onClick={() => { if (activeSession) loadRows(activeSession.id, filter, rowsPage + 1); }}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 disabled:opacity-40 hover:bg-slate-100 transition-colors"
+                    className="px-3 py-1.5 text-xs rounded-lg border border-border disabled:opacity-40 hover:bg-surface-muted transition-colors"
                   >
                     Вперёд →
                   </button>
@@ -2507,7 +2507,7 @@ function PricesTab() {
           <div className="flex items-center gap-3 flex-wrap pt-1">
             <button
               onClick={() => handleExport(activeSession.id)}
-              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-colors"
+              className="px-4 py-2 text-sm font-medium text-ink-2 bg-surface border border-border hover:bg-surface rounded-xl transition-colors"
             >
               Скачать XLSX
             </button>
@@ -2515,14 +2515,14 @@ function PricesTab() {
               <button
                 onClick={() => setConfirmApply(true)}
                 disabled={applying}
-                className="px-4 py-2 text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 rounded-xl transition-colors"
+                className="px-4 py-2 text-sm font-medium bg-emerald text-white hover:bg-emerald-soft0 disabled:opacity-50 rounded-xl transition-colors"
               >
                 {applying ? "Применение…" : `Применить ${acceptedCount > 0 ? acceptedCount : ""} изменений`}
               </button>
             )}
             <button
               onClick={() => handleDeleteSession(activeSession.id)}
-              className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors"
+              className="px-4 py-2 text-sm font-medium text-rose bg-rose-soft hover:bg-rose-soft border border-rose-border rounded-xl transition-colors"
             >
               Удалить сессию
             </button>
@@ -2533,21 +2533,21 @@ function PricesTab() {
       {/* ── Bulk confirm modal ───────────────────────────────────────────────── */}
       {confirmBulk && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
-            <h3 className="text-base font-semibold text-slate-900">
+          <div className="bg-surface rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+            <h3 className="text-base font-semibold text-ink">
               {confirmBulk.action === "ACCEPTED" ? "Принять" : "Отклонить"} {confirmBulk.count} позиций?
             </h3>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-ink-2">
               Действие применится ко всем строкам в текущем фильтре.
             </p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setConfirmBulk(null)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">
+              <button onClick={() => setConfirmBulk(null)} className="px-4 py-2 text-sm text-ink-2 hover:text-ink-2">
                 Отмена
               </button>
               <button
                 onClick={() => handleBulkAction(confirmBulk.action)}
                 className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors ${
-                  confirmBulk.action === "ACCEPTED" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-red-600 hover:bg-red-500"
+                  confirmBulk.action === "ACCEPTED" ? "bg-emerald hover:bg-emerald-soft0" : "bg-rose hover:bg-rose-soft0"
                 }`}
               >
                 Подтвердить
@@ -2560,8 +2560,8 @@ function PricesTab() {
       {/* ── Apply confirm modal ──────────────────────────────────────────────── */}
       {confirmApply && stats && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
-            <h3 className="text-base font-semibold text-slate-900">Применить изменения?</h3>
+          <div className="bg-surface rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+            <h3 className="text-base font-semibold text-ink">Применить изменения?</h3>
             <div className="space-y-2 text-sm">
               {([
                 ["Изменены цены", stats.priceChanges],
@@ -2571,20 +2571,20 @@ function PricesTab() {
               ] as [string, number][]).map(([label, count]) => (
                 count > 0 && (
                   <div key={label} className="flex justify-between">
-                    <span className="text-slate-600">{label}</span>
-                    <span className="font-semibold text-slate-900">{count}</span>
+                    <span className="text-ink-2">{label}</span>
+                    <span className="font-semibold text-ink">{count}</span>
                   </div>
                 )
               ))}
             </div>
-            <p className="text-xs text-amber-600">Действие нельзя отменить.</p>
+            <p className="text-xs text-amber">Действие нельзя отменить.</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setConfirmApply(false)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">
+              <button onClick={() => setConfirmApply(false)} className="px-4 py-2 text-sm text-ink-2 hover:text-ink-2">
                 Отмена
               </button>
               <button
                 onClick={handleApply}
-                className="px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors"
+                className="px-4 py-2 text-sm font-medium bg-emerald hover:bg-emerald-soft0 text-white rounded-lg transition-colors"
               >
                 Применить
               </button>
@@ -2730,30 +2730,30 @@ function UsersTab() {
       </div>
 
       {/* Create form */}
-      <form onSubmit={handleCreate} className="bg-slate-50 rounded-lg p-4 border border-slate-200 space-y-3">
-        <h3 className="text-sm font-medium text-slate-900">Добавить пользователя</h3>
+      <form onSubmit={handleCreate} className="bg-surface rounded-lg p-4 border border-border space-y-3">
+        <h3 className="text-sm font-medium text-ink">Добавить пользователя</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Логин</label>
+            <label className="block text-xs font-medium text-ink-2 mb-1">Логин</label>
             <input
               type="text"
               value={newUsername}
               onChange={(e) => setNewUsername(e.target.value)}
               disabled={creating}
               placeholder="ivan"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               required
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Пароль</label>
+            <label className="block text-xs font-medium text-ink-2 mb-1">Пароль</label>
             <input
               type="text"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               disabled={creating}
               placeholder="Минимум 3 символа"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
               required
             />
           </div>
