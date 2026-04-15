@@ -45,21 +45,21 @@ type BookingDetail = {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const CATEGORY_PASTEL_CLASSES = [
-  "bg-rose-50 text-rose-700 border-rose-200",
-  "bg-orange-50 text-orange-700 border-orange-200",
-  "bg-amber-50 text-amber-700 border-amber-200",
-  "bg-lime-50 text-lime-700 border-lime-200",
-  "bg-green-50 text-green-700 border-green-200",
-  "bg-emerald-50 text-emerald-700 border-emerald-200",
-  "bg-teal-50 text-teal-700 border-teal-200",
-  "bg-cyan-50 text-cyan-700 border-cyan-200",
-  "bg-sky-50 text-sky-700 border-sky-200",
-  "bg-blue-50 text-blue-700 border-blue-200",
-  "bg-indigo-50 text-indigo-700 border-indigo-200",
-  "bg-violet-50 text-violet-700 border-violet-200",
-  "bg-purple-50 text-purple-700 border-purple-200",
-  "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
-  "bg-pink-50 text-pink-700 border-pink-200",
+  "bg-rose-soft text-rose border-rose-border",
+  "bg-amber-soft text-amber border-amber-border",
+  "bg-amber-soft text-amber border-amber-border",
+  "bg-emerald-soft text-emerald border-emerald-border",
+  "bg-emerald-soft text-emerald border-emerald-border",
+  "bg-emerald-soft text-emerald border-emerald-border",
+  "bg-teal-soft text-teal border-teal-border",
+  "bg-teal-soft text-teal border-teal-border",
+  "bg-accent-soft text-accent border-accent-border",
+  "bg-accent-soft text-accent border-accent-border",
+  "bg-indigo-soft text-indigo border-indigo-border",
+  "bg-indigo-soft text-indigo border-indigo-border",
+  "bg-indigo-soft text-indigo border-indigo-border",
+  "bg-rose-soft text-rose border-rose-border",
+  "bg-rose-soft text-rose border-rose-border",
 ] as const;
 
 function getCategoryColorClass(category: string) {
@@ -298,11 +298,11 @@ export default function BookingEditPage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   if (loading) {
-    return <div className="p-8 text-center text-slate-500">Загрузка…</div>;
+    return <div className="p-8 text-center text-ink-2">Загрузка…</div>;
   }
   if (notFound || !booking) {
     return (
-      <div className="p-8 text-center text-slate-500">
+      <div className="p-8 text-center text-ink-2">
         Бронь не найдена.{" "}
         <Link href="/bookings" className="underline">
           К списку
@@ -312,7 +312,7 @@ export default function BookingEditPage() {
   }
   if (!["DRAFT", "CONFIRMED"].includes(booking.status)) {
     return (
-      <div className="p-8 text-center text-slate-500">
+      <div className="p-8 text-center text-ink-2">
         Редактирование недоступно для статуса «{booking.status}».{" "}
         <Link href={`/bookings/${id}`} className="underline">
           Открыть бронь
@@ -326,13 +326,13 @@ export default function BookingEditPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <Link href={`/bookings/${id}`} className="text-slate-500 hover:text-slate-900 text-sm">
+          <Link href={`/bookings/${id}`} className="text-ink-2 hover:text-ink text-sm">
             ← Назад
           </Link>
           <h1 className="text-xl font-semibold">
             Редактирование брони
           </h1>
-          <span className="text-sm text-slate-500">{booking.client.name} · {booking.projectName}</span>
+          <span className="text-sm text-ink-2">{booking.client.name} · {booking.projectName}</span>
         </div>
       </div>
 
@@ -341,12 +341,12 @@ export default function BookingEditPage() {
         <div className="col-span-12 lg:col-span-8 space-y-4">
 
           {/* Dates + discount */}
-          <div className="rounded border border-slate-200 bg-white">
-            <div className="p-3 border-b border-slate-200 flex items-center gap-3 flex-wrap">
+          <div className="rounded border border-border bg-white">
+            <div className="p-3 border-b border-border flex items-center gap-3 flex-wrap">
               <div className="flex flex-col min-w-[148px]">
-                <label className="text-xs text-slate-600 mb-0.5">Дата выдачи</label>
+                <label className="text-xs text-ink-2 mb-0.5">Дата выдачи</label>
                 <input
-                  className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm"
+                  className="h-9 rounded-md border border-border px-2 bg-white text-sm"
                   type="date"
                   value={splitLocalDateTime(pickupLocal).date}
                   onChange={(e) => {
@@ -366,9 +366,9 @@ export default function BookingEditPage() {
                 />
               </div>
               <div className="flex flex-col min-w-[148px]">
-                <label className="text-xs text-slate-600 mb-0.5">Время выдачи</label>
+                <label className="text-xs text-ink-2 mb-0.5">Время выдачи</label>
                 <input
-                  className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm"
+                  className="h-9 rounded-md border border-border px-2 bg-white text-sm"
                   type="time"
                   value={splitLocalDateTime(pickupLocal).time}
                   onChange={(e) => {
@@ -378,9 +378,9 @@ export default function BookingEditPage() {
                 />
               </div>
               <div className="flex flex-col min-w-[148px]">
-                <label className="text-xs text-slate-600 mb-0.5">Дата возврата</label>
+                <label className="text-xs text-ink-2 mb-0.5">Дата возврата</label>
                 <input
-                  className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm"
+                  className="h-9 rounded-md border border-border px-2 bg-white text-sm"
                   type="date"
                   value={splitLocalDateTime(returnLocal).date}
                   onChange={(e) => {
@@ -392,9 +392,9 @@ export default function BookingEditPage() {
                 />
               </div>
               <div className="flex flex-col min-w-[148px]">
-                <label className="text-xs text-slate-600 mb-0.5">Время возврата</label>
+                <label className="text-xs text-ink-2 mb-0.5">Время возврата</label>
                 <input
-                  className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm"
+                  className="h-9 rounded-md border border-border px-2 bg-white text-sm"
                   type="time"
                   value={splitLocalDateTime(returnLocal).time}
                   onChange={(e) => {
@@ -404,14 +404,14 @@ export default function BookingEditPage() {
                 />
               </div>
               {rentalDurationPreview && (
-                <div className="text-xs text-slate-500 self-end pb-2">
+                <div className="text-xs text-ink-2 self-end pb-2">
                   {rentalDurationPreview.labelShort}
                 </div>
               )}
               <div className="flex flex-col ml-auto">
-                <label className="text-xs text-slate-600 mb-0.5">Скидка, %</label>
+                <label className="text-xs text-ink-2 mb-0.5">Скидка, %</label>
                 <input
-                  className="h-9 w-28 rounded-md border border-slate-300 px-2 bg-white text-sm"
+                  className="h-9 w-28 rounded-md border border-border px-2 bg-white text-sm"
                   type="number"
                   min={0}
                   max={100}
@@ -424,35 +424,35 @@ export default function BookingEditPage() {
             {/* Project, client, comment, payment date */}
             <div className="p-3 grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="flex flex-col">
-                <label className="text-xs text-slate-600">Клиент</label>
+                <label className="text-xs text-ink-2">Клиент</label>
                 <input
-                  className="rounded border border-slate-300 px-2 py-1 bg-slate-50 text-slate-500 cursor-not-allowed"
+                  className="rounded border border-border px-2 py-1 bg-surface text-ink-2 cursor-not-allowed"
                   value={booking.client.name}
                   readOnly
                   title="Клиент задаётся при создании брони"
                 />
               </div>
               <div className="flex flex-col">
-                <label className="text-xs text-slate-600">Проект</label>
+                <label className="text-xs text-ink-2">Проект</label>
                 <input
-                  className="rounded border border-slate-300 px-2 py-1 bg-white"
+                  className="rounded border border-border px-2 py-1 bg-white"
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
                 />
               </div>
               <div className="flex flex-col">
-                <label className="text-xs text-slate-600">Плановая дата платежа</label>
+                <label className="text-xs text-ink-2">Плановая дата платежа</label>
                 <input
-                  className="rounded border border-slate-300 px-2 py-1 bg-white"
+                  className="rounded border border-border px-2 py-1 bg-white"
                   type="date"
                   value={expectedPaymentDate}
                   onChange={(e) => setExpectedPaymentDate(e.target.value)}
                 />
               </div>
               <div className="flex flex-col md:col-span-3">
-                <label className="text-xs text-slate-600">Комментарий</label>
+                <label className="text-xs text-ink-2">Комментарий</label>
                 <textarea
-                  className="rounded border border-slate-300 px-2 py-1.5 bg-white min-h-[44px] resize-y"
+                  className="rounded border border-border px-2 py-1.5 bg-white min-h-[44px] resize-y"
                   value={bookingComment}
                   onChange={(e) => setBookingComment(e.target.value)}
                   rows={2}
@@ -462,16 +462,16 @@ export default function BookingEditPage() {
           </div>
 
           {/* Equipment list */}
-          <div className="rounded border border-slate-200 bg-white overflow-hidden">
-            <div className="p-3 border-b border-slate-200 flex items-center gap-3 flex-wrap">
+          <div className="rounded border border-border bg-white overflow-hidden">
+            <div className="p-3 border-b border-border flex items-center gap-3 flex-wrap">
               <input
-                className="rounded border border-slate-300 px-2 py-1 bg-white text-sm flex-1 max-w-sm"
+                className="rounded border border-border px-2 py-1 bg-white text-sm flex-1 max-w-sm"
                 placeholder="Поиск оборудования…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
               <select
-                className="rounded border border-slate-300 px-2 py-1 bg-white text-sm"
+                className="rounded border border-border px-2 py-1 bg-white text-sm"
                 value={category ?? ""}
                 onChange={(e) => setCategory(e.target.value || undefined)}
               >
@@ -480,13 +480,13 @@ export default function BookingEditPage() {
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-ink-2">
                 {loadingRows ? "Загрузка…" : `Позиций: ${rows.length}`}
               </span>
             </div>
             <div className="overflow-auto">
               <table className="min-w-[900px] w-full text-sm">
-                <thead className="bg-slate-50 text-slate-600">
+                <thead className="bg-surface text-ink-2">
                   <tr>
                     <th className="text-left px-3 py-2">Оборудование</th>
                     <th className="px-3 py-2 w-[100px] text-center">Кол-во</th>
@@ -503,15 +503,15 @@ export default function BookingEditPage() {
                     const isUnavailable = r.availableQuantity <= 0;
                     const statusColor =
                       r.availability === "AVAILABLE"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        ? "bg-emerald-soft text-emerald border-emerald-border"
                         : r.availability === "PARTIAL"
-                          ? "bg-amber-50 text-amber-700 border-amber-200"
-                          : "bg-rose-50 text-rose-700 border-rose-200";
+                          ? "bg-amber-soft text-amber border-amber-border"
+                          : "bg-rose-soft text-rose border-rose-border";
                     return (
-                      <tr key={r.equipmentId} className="border-t border-slate-100">
+                      <tr key={r.equipmentId} className="border-t border-border">
                         <td className="px-3 py-2">
-                          <div className="font-medium text-slate-900">{r.name}</div>
-                          <div className="text-xs text-slate-500">
+                          <div className="font-medium text-ink">{r.name}</div>
+                          <div className="text-xs text-ink-2">
                             {r.brand ?? ""} {r.model ? `· ${r.model}` : ""}
                           </div>
                         </td>
@@ -524,10 +524,10 @@ export default function BookingEditPage() {
                         </td>
                         <td className="px-3 py-2 font-medium text-center">{r.availableQuantity}</td>
                         <td className="px-3 py-2">
-                          <div className="inline-flex items-center rounded border border-slate-300 overflow-hidden">
+                          <div className="inline-flex items-center rounded border border-border overflow-hidden">
                             <button
                               type="button"
-                              className="h-9 w-9 text-lg leading-none bg-white hover:bg-slate-50 disabled:opacity-50"
+                              className="h-9 w-9 text-lg leading-none bg-white hover:bg-surface disabled:opacity-50"
                               onClick={() => decreaseQuantity(r.equipmentId)}
                               disabled={qty <= 0}
                             >
@@ -536,7 +536,7 @@ export default function BookingEditPage() {
                             <input
                               type="text"
                               inputMode="numeric"
-                              className="h-9 w-16 border-x border-slate-300 text-center bg-white"
+                              className="h-9 w-16 border-x border-border text-center bg-white"
                               value={qty}
                               onChange={(e) => {
                                 const raw = Number(e.target.value.replace(/[^\d]/g, ""));
@@ -549,7 +549,7 @@ export default function BookingEditPage() {
                             />
                             <button
                               type="button"
-                              className="h-9 w-9 text-lg leading-none bg-white hover:bg-slate-50 disabled:opacity-50"
+                              className="h-9 w-9 text-lg leading-none bg-white hover:bg-surface disabled:opacity-50"
                               onClick={() => increaseQuantity(r)}
                               disabled={isUnavailable || qty >= r.availableQuantity}
                             >
@@ -567,7 +567,7 @@ export default function BookingEditPage() {
                   })}
                   {rows.length === 0 && !loadingRows ? (
                     <tr>
-                      <td className="px-3 py-6 text-center text-slate-500" colSpan={7}>
+                      <td className="px-3 py-6 text-center text-ink-2" colSpan={7}>
                         Ничего не найдено
                       </td>
                     </tr>
@@ -580,14 +580,14 @@ export default function BookingEditPage() {
 
         {/* ── Right column — selected kit ── */}
         <div className="col-span-12 lg:col-span-4">
-          <div className="rounded border border-slate-200 bg-white overflow-hidden sticky top-4 flex flex-col max-h-[min(calc(100vh-5rem),720px)]">
-            <div className="bg-slate-100 px-3 py-2 border-b border-slate-200 shrink-0">
-              <div className="text-sm font-semibold text-slate-800">Выбранный комплект</div>
+          <div className="rounded border border-border bg-white overflow-hidden sticky top-4 flex flex-col max-h-[min(calc(100vh-5rem),720px)]">
+            <div className="bg-surface-muted px-3 py-2 border-b border-border shrink-0">
+              <div className="text-sm font-semibold text-ink">Выбранный комплект</div>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto">
               {selectedItems.length === 0 ? (
-                <div className="p-3 text-sm text-slate-500">Выберите оборудование слева.</div>
+                <div className="p-3 text-sm text-ink-2">Выберите оборудование слева.</div>
               ) : (
                 <div className="divide-y divide-slate-200">
                   {selectedItems.map((it) => {
@@ -599,24 +599,24 @@ export default function BookingEditPage() {
                     return (
                       <div key={it.equipmentId} className="px-3 py-2.5 text-sm flex justify-between gap-3 items-start">
                         <div className="min-w-0 flex-1">
-                          <div className="font-medium text-slate-900 truncate">{r.name}</div>
-                          <div className="text-xs text-slate-500 truncate">
+                          <div className="font-medium text-ink truncate">{r.name}</div>
+                          <div className="text-xs text-ink-2 truncate">
                             {[r.brand, r.model].filter(Boolean).join(" · ")}
                           </div>
-                          <div className="text-xs text-slate-500 mt-0.5">
+                          <div className="text-xs text-ink-2 mt-0.5">
                             Кол-во: {it.quantity}
-                            <span className="text-slate-400"> · </span>
+                            <span className="text-ink-3"> · </span>
                             {r.category}
                           </div>
                         </div>
                         <div className="flex items-start gap-1 shrink-0">
                           <div className="text-right">
                             <div className="font-medium tabular-nums">{formatMoneyRub(lineTotal)}</div>
-                            <div className="text-[10px] text-slate-500">{formatMoneyRub(Number(r.rentalRatePerShift))}/ед.</div>
+                            <div className="text-[10px] text-ink-2">{formatMoneyRub(Number(r.rentalRatePerShift))}/ед.</div>
                           </div>
                           <button
                             type="button"
-                            className="shrink-0 rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                            className="shrink-0 rounded p-1.5 text-ink-2 hover:bg-rose-soft hover:text-rose transition-colors"
                             aria-label="Убрать из комплекта"
                             onClick={() => setSelected((prev) => { const next = { ...prev }; delete next[it.equipmentId]; return next; })}
                           >
@@ -634,44 +634,44 @@ export default function BookingEditPage() {
             </div>
 
             {/* Summary + save */}
-            <div className="border-t border-slate-200 shrink-0">
-              <div className="bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 border-b border-slate-200">
+            <div className="border-t border-border shrink-0">
+              <div className="bg-surface-muted px-3 py-2 text-xs font-semibold text-ink-2 border-b border-border">
                 Предварительная смета
               </div>
-              <div className="p-3 bg-slate-50 space-y-2">
+              <div className="p-3 bg-surface space-y-2">
                 {selectedItems.length > 0 ? (
                   <>
                     <div className="flex justify-between text-sm">
-                      <span className="text-slate-600">Итого (без скидки)</span>
+                      <span className="text-ink-2">Итого (без скидки)</span>
                       <span className="font-medium tabular-nums">{formatMoneyRub(localSubtotal)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-slate-600">Скидка ({clampedDiscount}%)</span>
+                      <span className="text-ink-2">Скидка ({clampedDiscount}%)</span>
                       <span className="font-medium tabular-nums">-{formatMoneyRub(discountAmount)}</span>
                     </div>
-                    <div className="flex justify-between text-base pt-1 border-t border-slate-200">
-                      <span className="text-slate-900">Итого после скидки</span>
+                    <div className="flex justify-between text-base pt-1 border-t border-border">
+                      <span className="text-ink">Итого после скидки</span>
                       <span className="font-semibold tabular-nums">{formatMoneyRub(totalAfterDiscount)}</span>
                     </div>
-                    <p className="text-xs text-slate-400 pt-1">
+                    <p className="text-xs text-ink-3 pt-1">
                       Предварительно · Окончательная сумма пересчитывается при подтверждении.
                     </p>
                   </>
                 ) : (
-                  <div className="text-sm text-slate-500">Выберите комплект слева.</div>
+                  <div className="text-sm text-ink-2">Выберите комплект слева.</div>
                 )}
               </div>
 
-              <div className="px-3 py-3 border-t border-slate-200 bg-white flex justify-end gap-2">
+              <div className="px-3 py-3 border-t border-border bg-white flex justify-end gap-2">
                 <Link
                   href={`/bookings/${id}`}
-                  className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+                  className="rounded border border-border px-4 py-2 text-sm hover:bg-surface"
                 >
                   Отмена
                 </Link>
                 <button
                   type="button"
-                  className="rounded bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+                  className="rounded bg-accent text-white px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-50"
                   disabled={saving || selectedItems.length === 0}
                   onClick={saveChanges}
                 >
