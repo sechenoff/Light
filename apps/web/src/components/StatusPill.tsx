@@ -9,7 +9,8 @@ export type StatusPillVariant =
   | "none"
   | "ok"
   | "warn"
-  | "info";
+  | "info"
+  | "alert";
 
 const VARIANT_CLASSES: Record<StatusPillVariant, string> = {
   full:    "bg-emerald-soft text-emerald border-emerald-border",
@@ -21,6 +22,7 @@ const VARIANT_CLASSES: Record<StatusPillVariant, string> = {
   ok:      "bg-ok-soft text-ok border-emerald-border",
   warn:    "bg-warn-soft text-warn border-amber-border",
   info:    "bg-accent-soft text-accent border-accent-border",
+  alert:   "bg-rose-soft text-rose border-rose-border",
 };
 
 export function StatusPill({
