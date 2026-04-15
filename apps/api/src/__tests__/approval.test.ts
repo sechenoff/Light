@@ -162,3 +162,46 @@ describe("POST /api/bookings/:id/submit-for-approval", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("POST /api/bookings/:id/approve", () => {
+  it("SUPER_ADMIN переводит PENDING_APPROVAL → CONFIRMED", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/approve`)
+      .set(AUTH_SA())
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe("CONFIRMED");
+
+    const fresh = await prisma.booking.findUnique({ where: { id: booking.id } });
+    expect(fresh.confirmedAt).not.toBeNull();
+
+    const audit = await prisma.auditEntry.findMany({
+      where: { entityType: "Booking", entityId: booking.id, action: "BOOKING_APPROVED" },
+    });
+    expect(audit).toHaveLength(1);
+  });
+
+  it("WAREHOUSE получает 403", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/approve`)
+      .set(AUTH_WH())
+      .send({});
+    expect(res.status).toBe(403);
+  });
+
+  it("не-PENDING_APPROVAL → 409", async () => {
+    const booking = await createDraftBooking(); // DRAFT
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/approve`)
+      .set(AUTH_SA())
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.details).toBe("INVALID_BOOKING_STATE");
+  });
+});
