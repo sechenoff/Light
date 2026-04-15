@@ -154,10 +154,8 @@ export default function BookingDetailPage() {
       body: JSON.stringify({
         bookingId: booking.id,
         amount,
-        direction: "INCOME",
-        status: "RECEIVED",
-        paymentDate: new Date().toISOString(),
-        paymentMethod: "BANK_TRANSFER",
+        method: "BANK_TRANSFER",
+        receivedAt: new Date().toISOString(),
       }),
     });
     const fresh = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"}/api/bookings/${booking.id}`, {

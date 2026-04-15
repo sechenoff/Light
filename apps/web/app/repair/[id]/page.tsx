@@ -442,8 +442,8 @@ export default function RepairDetailPage() {
         <p className="text-sm text-ink">{repair.reason}</p>
       </div>
 
-      {/* Источник брони */}
-      {repair.sourceBooking && (
+      {/* Источник брони — только для ролей с доступом к броням */}
+      {repair.sourceBooking && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
         <div className="bg-surface border border-border rounded-lg p-4">
           <p className="eyebrow mb-1">Источник</p>
           <a
