@@ -2598,13 +2598,24 @@ function PricesTab() {
 
 // ── Users tab (SUPER_ADMIN only) ──────────────────────────────────────────────
 
+type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN";
+
 type AdminUserRow = {
   id: string;
   username: string;
-  role: "SUPER_ADMIN" | "RENTAL_ADMIN";
+  role: UserRole;
   createdAt: string;
   updatedAt: string;
 };
+
+/** Русское название роли */
+function roleLabel(role: UserRole): string {
+  switch (role) {
+    case "SUPER_ADMIN": return "Руководитель";
+    case "WAREHOUSE": return "Кладовщик";
+    case "TECHNICIAN": return "Техник";
+  }
+}
 
 function UsersTab() {
   const [users, setUsers] = useState<AdminUserRow[] | null>(null);
@@ -2614,9 +2625,13 @@ function UsersTab() {
   // Форма создания
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole] = useState<"SUPER_ADMIN" | "RENTAL_ADMIN">("RENTAL_ADMIN");
+  const [newRole, setNewRole] = useState<UserRole>("WAREHOUSE");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  // Смена роли
+  const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
+  const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
 
   async function load() {
     setLoading(true);
@@ -2646,7 +2661,7 @@ function UsersTab() {
       });
       setNewUsername("");
       setNewPassword("");
-      setNewRole("RENTAL_ADMIN");
+      setNewRole("WAREHOUSE");
       await load();
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : "Ошибка создания");
@@ -2683,9 +2698,14 @@ function UsersTab() {
     }
   }
 
-  async function handleChangeRole(id: string, current: "SUPER_ADMIN" | "RENTAL_ADMIN") {
-    const next = current === "SUPER_ADMIN" ? "RENTAL_ADMIN" : "SUPER_ADMIN";
-    if (!window.confirm(`Изменить роль на ${next === "SUPER_ADMIN" ? "Супер-админ" : "Админ рентала"}?`)) return;
+  async function applyRoleChange(id: string, current: UserRole, next: UserRole) {
+    if (current === "SUPER_ADMIN" && next !== "SUPER_ADMIN") {
+      if (!window.confirm(`Понизить Руководителя до роли «${roleLabel(next)}»? Пользователь потеряет доступ к финансам и управлению пользователями.`)) {
+        setChangingRoleId(null);
+        setPendingRole(null);
+        return;
+      }
+    }
     try {
       await apiFetch(`/api/admin-users/${id}`, {
         method: "PATCH",
@@ -2694,15 +2714,18 @@ function UsersTab() {
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Ошибка");
+    } finally {
+      setChangingRoleId(null);
+      setPendingRole(null);
     }
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-slate-900 mb-1">Пользователи CRM</h2>
-        <p className="text-xs text-slate-500">
-          Только Супер-админ видит эту вкладку. Админы рентала не имеют доступа к финансам.
+        <h2 className="text-base font-semibold text-ink mb-1">Пользователи CRM</h2>
+        <p className="text-xs text-ink-3">
+          Только Руководитель видит эту вкладку. Управление доступом к системе.
         </p>
       </div>
 
@@ -2735,27 +2758,28 @@ function UsersTab() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Роль</label>
+            <label className="block text-xs font-medium text-ink-2 mb-1">Роль</label>
             <select
               value={newRole}
-              onChange={(e) => setNewRole(e.target.value as "SUPER_ADMIN" | "RENTAL_ADMIN")}
+              onChange={(e) => setNewRole(e.target.value as UserRole)}
               disabled={creating}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white"
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright bg-surface"
             >
-              <option value="RENTAL_ADMIN">Админ рентала</option>
-              <option value="SUPER_ADMIN">Супер-админ</option>
+              <option value="WAREHOUSE">Кладовщик</option>
+              <option value="TECHNICIAN">Техник</option>
+              <option value="SUPER_ADMIN">Руководитель</option>
             </select>
           </div>
         </div>
         {createError && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded px-3 py-2">
+          <div className="bg-rose-soft border border-rose-border text-rose text-xs rounded px-3 py-2">
             {createError}
           </div>
         )}
         <button
           type="submit"
           disabled={creating || !newUsername || !newPassword}
-          className="bg-sky-600 hover:bg-sky-700 text-white font-medium rounded-lg px-4 py-2 text-sm transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
+          className="bg-accent-bright hover:bg-accent text-white font-medium rounded-lg px-4 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {creating ? "Создаём..." : "Создать пользователя"}
         </button>
@@ -2763,18 +2787,18 @@ function UsersTab() {
 
       {/* List */}
       <div>
-        <h3 className="text-sm font-medium text-slate-900 mb-2">Существующие пользователи</h3>
+        <h3 className="text-sm font-medium text-ink mb-2">Существующие пользователи</h3>
         {error && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-lg px-3 py-2 mb-3">
+          <div className="bg-rose-soft border border-rose-border text-rose text-sm rounded-lg px-3 py-2 mb-3">
             {error}
           </div>
         )}
         {loading ? (
-          <p className="text-sm text-slate-500">Загрузка…</p>
+          <p className="text-sm text-ink-3">Загрузка…</p>
         ) : users && users.length > 0 ? (
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
+          <div className="border border-border rounded-lg overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+              <thead className="bg-surface-subtle text-xs uppercase tracking-wider text-ink-3">
                 <tr>
                   <th className="text-left px-3 py-2">Логин</th>
                   <th className="text-left px-3 py-2">Роль</th>
@@ -2782,38 +2806,64 @@ function UsersTab() {
                   <th className="text-right px-3 py-2">Действия</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border">
                 {users.map((u) => (
                   <tr key={u.id}>
-                    <td className="px-3 py-2 font-medium text-slate-900">{u.username}</td>
+                    <td className="px-3 py-2 font-medium text-ink">{u.username}</td>
                     <td className="px-3 py-2">
                       <span
                         className={`inline-block text-[10px] uppercase tracking-wider px-2 py-0.5 rounded ${
                           u.role === "SUPER_ADMIN"
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-sky-100 text-sky-800"
+                            ? "bg-indigo-soft text-indigo"
+                            : u.role === "WAREHOUSE"
+                            ? "bg-teal-soft text-teal"
+                            : "bg-amber-soft text-amber"
                         }`}
                       >
-                        {u.role === "SUPER_ADMIN" ? "Супер-админ" : "Админ рентала"}
+                        {roleLabel(u.role)}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-500">{formatDate(u.createdAt)}</td>
+                    <td className="px-3 py-2 text-xs text-ink-3">{formatDate(u.createdAt)}</td>
                     <td className="px-3 py-2 text-right space-x-2">
                       <button
                         onClick={() => handleChangePassword(u.id, u.username)}
-                        className="text-xs text-slate-600 hover:text-slate-900 underline"
+                        className="text-xs text-ink-2 hover:text-ink underline"
                       >
                         Пароль
                       </button>
-                      <button
-                        onClick={() => handleChangeRole(u.id, u.role)}
-                        className="text-xs text-slate-600 hover:text-slate-900 underline"
-                      >
-                        Роль
-                      </button>
+                      {/* Dropdown для смены роли */}
+                      {changingRoleId === u.id ? (
+                        <span className="inline-flex items-center gap-1">
+                          <select
+                            value={pendingRole ?? u.role}
+                            onChange={(e) => setPendingRole(e.target.value as UserRole)}
+                            className="text-xs border border-border rounded px-1 py-0.5 bg-surface"
+                            autoFocus
+                          >
+                            <option value="WAREHOUSE">Кладовщик</option>
+                            <option value="TECHNICIAN">Техник</option>
+                            <option value="SUPER_ADMIN">Руководитель</option>
+                          </select>
+                          <button
+                            onClick={() => applyRoleChange(u.id, u.role, pendingRole ?? u.role)}
+                            className="text-xs text-accent hover:underline"
+                          >ОК</button>
+                          <button
+                            onClick={() => { setChangingRoleId(null); setPendingRole(null); }}
+                            className="text-xs text-ink-3 hover:underline"
+                          >✕</button>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => { setChangingRoleId(u.id); setPendingRole(u.role); }}
+                          className="text-xs text-ink-2 hover:text-ink underline"
+                        >
+                          Роль
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDelete(u.id, u.username)}
-                        className="text-xs text-rose-600 hover:text-rose-700 underline"
+                        className="text-xs text-rose hover:text-rose/80 underline"
                       >
                         Удалить
                       </button>
@@ -2824,7 +2874,7 @@ function UsersTab() {
             </table>
           </div>
         ) : (
-          <p className="text-sm text-slate-500">Пользователей пока нет.</p>
+          <p className="text-sm text-ink-3">Пользователей пока нет.</p>
         )}
       </div>
     </div>
@@ -2900,7 +2950,7 @@ function AdminPanel() {
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
-// Доступ защищён middleware.ts + сессией пользователя (SUPER_ADMIN/RENTAL_ADMIN).
+// Доступ защищён middleware.ts + сессией пользователя (SUPER_ADMIN).
 // Выход — через кнопку «Выйти» в сайдбаре.
 
 export default function AdminPage() {
