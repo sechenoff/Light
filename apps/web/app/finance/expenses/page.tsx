@@ -117,6 +117,13 @@ function DonutChart({ breakdown }: { breakdown: BreakdownItem[] }) {
   );
 }
 
+interface BookingOption {
+  id: string;
+  projectName: string;
+  startDate: string;
+  client: { name: string };
+}
+
 // ── Add expense modal ─────────────────────────────────────────────────────────
 
 function AddExpenseModal({
@@ -132,8 +139,15 @@ function AddExpenseModal({
   const [description, setDescription] = useState("");
   const [documentUrl, setDocumentUrl] = useState("");
   const [linkedBookingId, setLinkedBookingId] = useState("");
+  const [bookings, setBookings] = useState<BookingOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    apiFetch<{ bookings: BookingOption[] }>("/api/bookings?status=CONFIRMED,ISSUED&limit=100")
+      .then((r) => setBookings(r.bookings ?? []))
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async () => {
     if (!amount || !description) { setError("Заполните обязательные поля"); return; }
@@ -194,9 +208,19 @@ function AddExpenseModal({
               value={documentUrl} onChange={(e) => setDocumentUrl(e.target.value)} placeholder="https://…" />
           </div>
           <div>
-            <label className="eyebrow block mb-1">ID брони (необязательно)</label>
-            <input className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
-              value={linkedBookingId} onChange={(e) => setLinkedBookingId(e.target.value)} placeholder="cuid…" />
+            <label className="eyebrow block mb-1">Бронирование (необязательно)</label>
+            <select
+              className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
+              value={linkedBookingId}
+              onChange={(e) => setLinkedBookingId(e.target.value)}
+            >
+              <option value="">— не указано —</option>
+              {bookings.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.client.name} — {b.projectName} — {new Date(b.startDate).toLocaleDateString("ru-RU")}
+                </option>
+              ))}
+            </select>
           </div>
           {error && <p className="text-sm text-rose">{error}</p>}
           <div className="flex gap-2 justify-end pt-2">
@@ -285,6 +309,7 @@ export default function ExpensesPage() {
         <div className="bg-surface border border-border rounded-lg p-4 shadow-xs">
           <p className="eyebrow mb-3">По категориям</p>
           <DonutChart breakdown={breakdown} />
+          <p className="text-xs text-ink-3 mt-2">Учтены только одобренные расходы</p>
         </div>
         <div className="bg-surface border border-border rounded-lg p-4 shadow-xs">
           <p className="eyebrow mb-3">Детализация</p>

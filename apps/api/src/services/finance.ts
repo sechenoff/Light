@@ -221,21 +221,23 @@ function toYYYYMMDD(d: Date): string {
 }
 
 async function computeMonthlyTrend(asOf: Date) {
-  const months: Array<{ start: Date; end: Date; label: string }> = [];
+  const months: Array<{ start: Date; nextStart: Date; label: string }> = [];
   for (let i = 11; i >= 0; i--) {
     const d = new Date(asOf.getFullYear(), asOf.getMonth() - i, 1);
-    months.push({ start: startOfMonth(d), end: endOfMonth(d), label: toYYYYMM(d) });
+    const start = startOfMonth(d);
+    const nextStart = new Date(d.getFullYear(), d.getMonth() + 1, 1, 0, 0, 0, 0);
+    months.push({ start, nextStart, label: toYYYYMM(d) });
   }
 
   const results = await Promise.all(
-    months.map(async ({ start, end, label }) => {
+    months.map(async ({ start, nextStart, label }) => {
       const [earnedAgg, spentAgg] = await Promise.all([
         prisma.payment.aggregate({
           where: {
             direction: "INCOME",
             AND: [
               { OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }] },
-              { OR: [{ receivedAt: { gte: start, lte: end } }, { paymentDate: { gte: start, lte: end } }] },
+              { OR: [{ receivedAt: { gte: start, lt: nextStart } }, { paymentDate: { gte: start, lt: nextStart } }] },
             ],
           },
           _sum: { amount: true },
@@ -243,7 +245,7 @@ async function computeMonthlyTrend(asOf: Date) {
         prisma.expense.aggregate({
           where: {
             approved: true,
-            expenseDate: { gte: start, lte: end },
+            expenseDate: { gte: start, lt: nextStart },
           },
           _sum: { amount: true },
         }),
@@ -264,10 +266,10 @@ async function computeMonthlyTrend(asOf: Date) {
 
 export async function computeFinanceDashboard(asOf: Date = new Date()) {
   const monthS = startOfMonth(asOf);
-  const monthE = endOfMonth(asOf);
+  const monthNextS = new Date(asOf.getFullYear(), asOf.getMonth() + 1, 1, 0, 0, 0, 0);
   const weekEnd = new Date(asOf.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const [totalOutstandingAgg, earnedAgg, spentAgg, upcomingWeek, trend] = await Promise.all([
+  const [totalOutstandingAgg, earnedAgg, spentAgg, upcomingWeek, trend, debtorsData] = await Promise.all([
     prisma.booking.aggregate({
       where: { status: { not: "CANCELLED" }, amountOutstanding: { gt: 0 } },
       _sum: { amountOutstanding: true },
@@ -276,14 +278,14 @@ export async function computeFinanceDashboard(asOf: Date = new Date()) {
       where: {
         direction: "INCOME",
         OR: [
-          { receivedAt: { gte: monthS, lte: monthE } },
-          { AND: [{ receivedAt: null }, { paymentDate: { gte: monthS, lte: monthE } }, { status: "RECEIVED" }] },
+          { receivedAt: { gte: monthS, lt: monthNextS } },
+          { AND: [{ receivedAt: null }, { paymentDate: { gte: monthS, lt: monthNextS } }, { status: "RECEIVED" }] },
         ],
       },
       _sum: { amount: true },
     }),
     prisma.expense.aggregate({
-      where: { approved: true, expenseDate: { gte: monthS, lte: monthE } },
+      where: { approved: true, expenseDate: { gte: monthS, lt: monthNextS } },
       _sum: { amount: true },
     }),
     prisma.booking.findMany({
@@ -296,12 +298,46 @@ export async function computeFinanceDashboard(asOf: Date = new Date()) {
       orderBy: { expectedPaymentDate: "asc" },
     }),
     computeMonthlyTrend(asOf),
+    // Top-5 debtors: aggregate per client, top 5 by outstanding desc
+    prisma.booking.findMany({
+      where: { status: { not: "CANCELLED" }, amountOutstanding: { gt: 0 } },
+      include: { client: true },
+      orderBy: { amountOutstanding: "desc" },
+    }),
   ]);
 
   const totalOutstanding = new Decimal(totalOutstandingAgg._sum.amountOutstanding?.toString() ?? "0");
   const earnedThisMonth = new Decimal(earnedAgg._sum.amount?.toString() ?? "0");
   const spentThisMonth = new Decimal(spentAgg._sum.amount?.toString() ?? "0");
   const netThisMonth = earnedThisMonth.sub(spentThisMonth);
+
+  // Compute top-5 debtors: aggregate per client
+  const now = asOf;
+  const clientMap = new Map<string, { clientId: string; clientName: string; outstanding: Decimal; maxDaysOverdue: number }>();
+  for (const b of debtorsData) {
+    const amt = new Decimal(b.amountOutstanding.toString());
+    const daysOverdue = b.expectedPaymentDate
+      ? Math.floor((now.getTime() - b.expectedPaymentDate.getTime()) / 86400000)
+      : 0;
+    const acc = clientMap.get(b.clientId) ?? {
+      clientId: b.clientId,
+      clientName: b.client.name,
+      outstanding: new Decimal(0),
+      maxDaysOverdue: 0,
+    };
+    acc.outstanding = acc.outstanding.add(amt);
+    if (daysOverdue > acc.maxDaysOverdue) acc.maxDaysOverdue = daysOverdue;
+    clientMap.set(b.clientId, acc);
+  }
+  const topDebtors = Array.from(clientMap.values())
+    .sort((a, b) => b.outstanding.cmp(a.outstanding))
+    .slice(0, 5)
+    .map((c) => ({
+      clientId: c.clientId,
+      clientName: c.clientName,
+      outstanding: c.outstanding.toFixed(2),
+      overdueDays: c.maxDaysOverdue > 0 ? c.maxDaysOverdue : null,
+    }));
 
   // Legacy dashboardMetrics keys needed by existing consumers
   const legacyData = await dashboardMetrics();
@@ -322,19 +358,20 @@ export async function computeFinanceDashboard(asOf: Date = new Date()) {
       expectedPaymentDate: b.expectedPaymentDate,
     })),
     trend,
+    topDebtors,
     // Legacy keys (superset — keep for existing consumers)
     ...legacyData,
   };
 }
 
 export async function computePaymentsCalendar(monthStart: Date): Promise<Record<string, { expected: string; received: string }>> {
-  const monthEnd = endOfMonth(monthStart);
+  const monthNextStart = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1, 0, 0, 0, 0);
 
   const [expectedBookings, receivedPayments] = await Promise.all([
     prisma.booking.findMany({
       where: {
         status: { not: "CANCELLED" },
-        expectedPaymentDate: { gte: monthStart, lte: monthEnd },
+        expectedPaymentDate: { gte: monthStart, lt: monthNextStart },
       },
       select: { expectedPaymentDate: true, amountOutstanding: true },
     }),
@@ -343,7 +380,7 @@ export async function computePaymentsCalendar(monthStart: Date): Promise<Record<
         direction: "INCOME",
         AND: [
           { OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }] },
-          { OR: [{ receivedAt: { gte: monthStart, lte: monthEnd } }, { paymentDate: { gte: monthStart, lte: monthEnd } }] },
+          { OR: [{ receivedAt: { gte: monthStart, lt: monthNextStart } }, { paymentDate: { gte: monthStart, lt: monthNextStart } }] },
         ],
       },
       select: { receivedAt: true, paymentDate: true, amount: true },
@@ -373,9 +410,11 @@ export async function computePaymentsCalendar(monthStart: Date): Promise<Record<
 }
 
 export async function computeExpensesBreakdown(from: Date, to: Date) {
+  // Use exclusive upper bound to avoid month-boundary double-count
+  const toExclusive = new Date(to.getTime() + 1);
   const rows = await prisma.expense.groupBy({
     by: ["category"],
-    where: { expenseDate: { gte: from, lte: to }, approved: true },
+    where: { expenseDate: { gte: from, lt: toExclusive }, approved: true },
     _sum: { amount: true },
     _count: true,
   });

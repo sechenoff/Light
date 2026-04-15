@@ -1,12 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
 import { formatRub } from "../../../src/lib/format";
 import type { UserRole } from "../../../src/lib/auth";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  PAID: "Оплачено",
+  PARTIALLY_PAID: "Частично оплачено",
+  NOT_PAID: "Не оплачено",
+  OVERDUE: "Просрочено",
+};
 
 interface DebtProject {
   bookingId: string;
@@ -151,9 +158,8 @@ export default function DebtsPage() {
             </thead>
             <tbody>
               {data.debts.map((d) => (
-                <>
+                <React.Fragment key={d.clientId}>
                   <tr
-                    key={d.clientId}
                     className="border-b border-border hover:bg-surface-subtle cursor-pointer"
                     onClick={() => toggleExpanded(d.clientId)}
                   >
@@ -187,11 +193,11 @@ export default function DebtsPage() {
                         )}
                       </td>
                       <td colSpan={2} className="px-4 py-2 text-xs text-ink-3">
-                        {p.paymentStatus}
+                        {PAYMENT_STATUS_LABELS[p.paymentStatus] ?? p.paymentStatus}
                       </td>
                     </tr>
                   ))}
-                </>
+                </React.Fragment>
               ))}
               {data.debts.length === 0 && (
                 <tr>
