@@ -119,7 +119,10 @@ function financeWarningFromError(err: unknown): string {
 router.get("/", async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit ?? 50), 200);
+    const statusFilter = req.query.status as string | undefined;
+    const where = statusFilter ? { status: statusFilter as any } : {};
     const bookings = await prisma.booking.findMany({
+      where,
       orderBy: { createdAt: "desc" },
       take: limit,
       select: {
