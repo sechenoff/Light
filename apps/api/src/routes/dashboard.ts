@@ -76,6 +76,7 @@ router.get("/today", async (req, res, next) => {
         startDate: b.startDate.toISOString(),
         endDate: b.endDate.toISOString(),
         status: b.status,
+        finalAmount: b.finalAmount.toString(),
         itemCount: b.items.length,
         items: b.items.map((item) => ({
           equipmentName: item.equipment.name,

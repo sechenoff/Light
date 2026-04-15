@@ -144,6 +144,7 @@ describe("GET /api/dashboard/today", () => {
     expect(pickup.itemCount).toBe(1);
     expect(pickup.items[0].quantity).toBe(2);
     expect(pickup.items[0].equipmentName).toBe("Свет пикап");
+    expect(typeof pickup.finalAmount).toBe("string");
   });
 
   it("включает ISSUED брони заканчивающиеся сегодня в returns", async () => {
