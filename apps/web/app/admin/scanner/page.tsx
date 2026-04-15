@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Html5QrcodeSupportedFormats } from "html5-qrcode";
 import type { BarcodeScannerProps } from "@/components/BarcodeScanner";
+import { StatusPill, type StatusPillVariant } from "../../../src/components/StatusPill";
 import { apiFetch } from "../../../src/lib/api";
 
 const BarcodeScanner = dynamic<BarcodeScannerProps>(
@@ -62,12 +63,12 @@ const STATUS_LABELS: Record<string, string> = {
   MISSING: "Утерян",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  AVAILABLE: "bg-emerald-soft text-emerald",
-  ISSUED: "bg-accent-soft text-accent",
-  MAINTENANCE: "bg-amber-soft text-amber",
-  RETIRED: "bg-surface-muted text-ink-3",
-  MISSING: "bg-rose-soft text-rose",
+const STATUS_VARIANTS: Record<string, StatusPillVariant> = {
+  AVAILABLE: "ok",
+  ISSUED: "info",
+  MAINTENANCE: "warn",
+  RETIRED: "none",
+  MISSING: "alert",
 };
 
 // ── Equipment Search List ─────────────────────────────────────────────────────
@@ -160,8 +161,8 @@ function EquipmentList({
 
 function LookupCard({ result }: { result: LookupResult }) {
   const statusLabel = STATUS_LABELS[result.unit.status] ?? result.unit.status;
-  const statusColor =
-    STATUS_COLORS[result.unit.status] ?? "bg-surface-muted text-ink-2";
+  const statusVariant: StatusPillVariant =
+    STATUS_VARIANTS[result.unit.status] ?? "none";
 
   return (
     <div className="mx-4 mt-3 bg-surface border border-border rounded-2xl p-4 shadow-sm">
@@ -172,11 +173,11 @@ function LookupCard({ result }: { result: LookupResult }) {
           </div>
           <div className="text-xs text-ink-3 mt-0.5">{result.equipment.category}</div>
         </div>
-        <span
-          className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ${statusColor}`}
-        >
-          {statusLabel}
-        </span>
+        <StatusPill
+          variant={statusVariant}
+          label={statusLabel}
+          className="shrink-0"
+        />
       </div>
 
       <div className="space-y-1.5 text-sm">

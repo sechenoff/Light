@@ -145,19 +145,11 @@ type QuoteResponse = {
 const CATEGORY_PASTEL_CLASSES = [
   "bg-rose-soft text-rose border-rose-border",
   "bg-amber-soft text-amber border-amber-border",
-  "bg-amber-soft text-amber border-amber-border",
-  "bg-emerald-soft text-emerald border-emerald-border",
-  "bg-emerald-soft text-emerald border-emerald-border",
   "bg-emerald-soft text-emerald border-emerald-border",
   "bg-teal-soft text-teal border-teal-border",
-  "bg-teal-soft text-teal border-teal-border",
-  "bg-accent-soft text-accent border-accent-border",
   "bg-accent-soft text-accent border-accent-border",
   "bg-indigo-soft text-indigo border-indigo-border",
-  "bg-indigo-soft text-indigo border-indigo-border",
-  "bg-indigo-soft text-indigo border-indigo-border",
-  "bg-rose-soft text-rose border-rose-border",
-  "bg-rose-soft text-rose border-rose-border",
+  "bg-slate-soft text-slate border-slate-border",
 ] as const;
 
 function getCategoryColorClass(category: string) {
