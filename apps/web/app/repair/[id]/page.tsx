@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
-import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { apiFetch } from "../../../src/lib/api";
 import { formatRub } from "../../../src/lib/format";
 
