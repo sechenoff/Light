@@ -70,8 +70,8 @@ router.use("/api/estimates", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), estimates
 // /api/pricelist — SUPER_ADMIN only
 router.use("/api/pricelist", rolesGuard(["SUPER_ADMIN"]), pricelistRouter);
 
-// /api/finance/... — SUPER_ADMIN only
-router.use("/api", rolesGuard(["SUPER_ADMIN"]), financeRouter);
+// /api/finance/... — SUPER_ADMIN only (guard внутри financeRouter)
+router.use("/api", financeRouter);
 
 // /api/photo-analysis — SUPER_ADMIN, WAREHOUSE
 router.use("/api/photo-analysis", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), photoAnalysisRouter);
