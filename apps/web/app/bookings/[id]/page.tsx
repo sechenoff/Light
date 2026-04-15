@@ -261,9 +261,9 @@ export default function BookingDetailPage() {
       </div>
 
       {loading ? (
-        <div className="mt-4 text-slate-500">Загрузка...</div>
+        <div className="mt-4 text-ink-3">Загрузка...</div>
       ) : err ? (
-        <div className="mt-4 text-rose-700">{err}</div>
+        <div className="mt-4 text-rose">{err}</div>
       ) : booking ? (
         <div className="mt-4">
           {booking.status === "DRAFT" && booking.rejectionReason && (
@@ -574,7 +574,7 @@ export default function BookingDetailPage() {
           </div>
         </div>
       ) : (
-        <div className="mt-4 text-slate-500">Бронь не найдена.</div>
+        <div className="mt-4 text-ink-3">Бронь не найдена.</div>
       )}
       <style jsx global>{`
         @media print {
