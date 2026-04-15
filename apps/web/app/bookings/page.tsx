@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import { apiFetch } from "../../src/lib/api";
 import { StatusPill } from "../../src/components/StatusPill";
@@ -41,8 +42,9 @@ type BookingRow = {
 export default function BookingHistoryPage() {
   const { user } = useCurrentUser();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const searchParams = useSearchParams();
   const [rows, setRows] = useState<BookingRow[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>(() => searchParams?.get("status") ?? "");
   const [paymentFilter, setPaymentFilter] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -53,7 +55,10 @@ export default function BookingHistoryPage() {
     async function load() {
       setLoading(true);
       try {
-        const data = await apiFetch<{ bookings: BookingRow[] }>("/api/bookings?limit=100", {
+        const url = statusFilter
+          ? `/api/bookings?limit=100&status=${encodeURIComponent(statusFilter)}`
+          : `/api/bookings?limit=100`;
+        const data = await apiFetch<{ bookings: BookingRow[] }>(url, {
           signal: controller.signal,
         });
         if (!isActive) return;
@@ -73,7 +78,7 @@ export default function BookingHistoryPage() {
       isActive = false;
       controller.abort();
     };
-  }, []);
+  }, [statusFilter]);
 
   const statusText = (s: BookingRow["status"]) => {
     switch (s) {
@@ -92,9 +97,9 @@ export default function BookingHistoryPage() {
     }
   };
 
-  const statusVariant = (s: BookingRow["status"]): "info" | "warn" | "ok" | "limited" | "none" | "full" | "edit" => {
+  const statusVariant = (s: BookingRow["status"]): "view" | "warn" | "ok" | "limited" | "none" | "full" | "edit" => {
     switch (s) {
-      case "DRAFT": return "info";
+      case "DRAFT": return "view";
       case "PENDING_APPROVAL": return "warn";
       case "CONFIRMED": return "full";
       case "ISSUED": return "edit";
@@ -146,7 +151,6 @@ export default function BookingHistoryPage() {
   }
 
   const filteredRows = rows.filter((r) => {
-    if (statusFilter && r.status !== statusFilter) return false;
     if (paymentFilter && r.paymentStatus !== paymentFilter) return false;
     return true;
   });
@@ -279,16 +283,6 @@ export default function BookingHistoryPage() {
                           </svg>
                         </button>
                       )}
-                      {r.status === "DRAFT" ? (
-                        <button
-                          type="button"
-                          className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-muted disabled:opacity-40"
-                          disabled={busyId === r.id}
-                          onClick={() => runStatusAction(r.id, "confirm")}
-                        >
-                          Подтвердить
-                        </button>
-                      ) : null}
                       {r.status === "CONFIRMED" ? (
                         <button
                           type="button"

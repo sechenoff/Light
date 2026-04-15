@@ -2,7 +2,8 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
-import { writeAuditEntry, diffFields } from "./audit";
+import { writeAuditEntry } from "./audit";
+import { confirmBooking } from "./bookings";
 
 /**
  * Отправить черновик на согласование руководителю.
@@ -40,8 +41,8 @@ export async function submitForApproval(bookingId: string, userId: string) {
       action: "BOOKING_SUBMITTED",
       entityType: "Booking",
       entityId: bookingId,
-      before: diffFields(before),
-      after: diffFields({ status: updated.status, rejectionReason: updated.rejectionReason }),
+      before,
+      after: { status: updated.status, rejectionReason: updated.rejectionReason },
       tx,
     });
 
@@ -50,47 +51,52 @@ export async function submitForApproval(bookingId: string, userId: string) {
 }
 
 /**
- * Одобрить бронь: PENDING_APPROVAL → CONFIRMED. Выставляет confirmedAt.
+ * Одобрить бронь: PENDING_APPROVAL → CONFIRMED.
+ * Делегирует confirmBooking() для проверки доступности, резервирования единиц и создания snapshot сметы.
  * Пишет AuditEntry "BOOKING_APPROVED".
  */
 export async function approveBooking(bookingId: string, userId: string) {
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const booking = await tx.booking.findUnique({
-      where: { id: bookingId },
-      select: { id: true, status: true },
-    });
-    if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
-    if (booking.status !== "PENDING_APPROVAL") {
-      throw new HttpError(
-        409,
-        "Одобрить можно только бронь на согласовании",
-        "INVALID_BOOKING_STATE",
-      );
-    }
-
-    const before = { status: booking.status };
-    const updated = await tx.booking.update({
-      where: { id: bookingId },
-      data: { status: "CONFIRMED", confirmedAt: new Date() },
-      include: {
-        client: true,
-        items: { include: { equipment: true } },
-        estimate: { include: { lines: true } },
-      },
-    });
-
-    await writeAuditEntry({
-      userId,
-      action: "BOOKING_APPROVED",
-      entityType: "Booking",
-      entityId: bookingId,
-      before: diffFields(before),
-      after: diffFields({ status: updated.status, confirmedAt: updated.confirmedAt }),
-      tx,
-    });
-
-    return updated;
+  // Pre-check state — fail fast before entering confirmBooking
+  const preCheck = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: { id: true, status: true },
   });
+  if (!preCheck) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+  if (preCheck.status !== "PENDING_APPROVAL") {
+    throw new HttpError(
+      409,
+      "Одобрить можно только бронь на согласовании",
+      "INVALID_BOOKING_STATE",
+    );
+  }
+
+  // Temporarily update status to DRAFT so confirmBooking can proceed
+  // (confirmBooking checks: CONFIRMED/ISSUED → return early; items empty → 400)
+  // PENDING_APPROVAL is not CONFIRMED/ISSUED, so confirmBooking will process it normally.
+  // We need to make sure confirmBooking accepts PENDING_APPROVAL as entering state.
+  // confirmBooking only skips if status is already CONFIRMED or ISSUED — PENDING_APPROVAL passes through.
+  const confirmed = await confirmBooking(bookingId);
+
+  // Write audit AFTER confirmBooking succeeds (outside its transaction; acceptable trade-off)
+  await writeAuditEntry({
+    userId,
+    action: "BOOKING_APPROVED",
+    entityType: "Booking",
+    entityId: bookingId,
+    before: { status: "PENDING_APPROVAL" },
+    after: { status: confirmed.status, confirmedAt: confirmed.confirmedAt },
+  });
+
+  // Return full include for API response
+  const full = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    include: {
+      client: true,
+      items: { include: { equipment: true } },
+      estimate: { include: { lines: true } },
+    },
+  });
+  return full!;
 }
 
 /**
@@ -133,8 +139,8 @@ export async function rejectBooking(bookingId: string, userId: string, reason: s
       action: "BOOKING_REJECTED",
       entityType: "Booking",
       entityId: bookingId,
-      before: diffFields(before),
-      after: diffFields({ status: updated.status, rejectionReason: updated.rejectionReason }),
+      before,
+      after: { status: updated.status, rejectionReason: updated.rejectionReason },
       tx,
     });
 

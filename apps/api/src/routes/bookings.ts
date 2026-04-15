@@ -116,11 +116,28 @@ function financeWarningFromError(err: unknown): string {
   return "Бронь подтверждена, но не удалось обновить финансовые данные.";
 }
 
+const bookingStatusEnum = z.enum([
+  "DRAFT",
+  "PENDING_APPROVAL",
+  "CONFIRMED",
+  "ISSUED",
+  "RETURNED",
+  "CANCELLED",
+]);
+
 router.get("/", async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit ?? 50), 200);
-    const statusFilter = req.query.status as string | undefined;
-    const where = statusFilter ? { status: statusFilter as any } : {};
+    const statusParam = req.query.status as string | undefined;
+    let statusFilter: z.infer<typeof bookingStatusEnum> | undefined;
+    if (statusParam) {
+      const parsed = bookingStatusEnum.safeParse(statusParam);
+      if (!parsed.success) {
+        throw new HttpError(400, `Недопустимое значение status: ${statusParam}`, "INVALID_STATUS_FILTER");
+      }
+      statusFilter = parsed.data;
+    }
+    const where = statusFilter ? { status: statusFilter } : {};
     const bookings = await prisma.booking.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -386,7 +403,8 @@ router.post("/:id/status", async (req, res, next) => {
     if (!booking) throw new HttpError(404, "Booking not found");
 
     const allowedActionsByStatus: Record<string, Array<"confirm" | "issue" | "return" | "cancel">> = {
-      DRAFT: ["confirm", "cancel"],
+      DRAFT: ["cancel"],
+      PENDING_APPROVAL: ["cancel"],
       CONFIRMED: ["issue", "cancel"],
       ISSUED: ["return"],
       RETURNED: [],
@@ -870,7 +888,23 @@ router.post(
     try {
       if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
       const updated = await approveBooking(req.params.id, req.adminUser.userId);
-      res.json({ booking: serializeBookingForApi(updated as any) });
+
+      // Finance side-effects — same pattern as POST /:id/confirm
+      let warning: string | null = null;
+      try {
+        await recomputeBookingFinance(req.params.id);
+        await createFinanceEvent({
+          bookingId: req.params.id,
+          eventType: "BOOKING_CONFIRMED",
+          payload: { status: updated.status, via: "approve" },
+        });
+      } catch (financeErr) {
+        warning = financeWarningFromError(financeErr);
+        // eslint-disable-next-line no-console
+        console.error("Finance side-effects failed after approve:", financeErr);
+      }
+
+      res.json({ booking: serializeBookingForApi(updated as any), warning });
     } catch (err) {
       next(err);
     }

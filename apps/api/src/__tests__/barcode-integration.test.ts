@@ -120,9 +120,9 @@ async function createBookingDraft(clientName: string, equipmentId: string, quant
 
 async function confirmBooking(bookingId: string) {
   const res = await request(app)
-    .post(`/api/bookings/${bookingId}/status`)
+    .post(`/api/bookings/${bookingId}/confirm`)
     .set(AUTH())
-    .send({ action: "confirm" });
+    .send({});
   expect(res.status).toBe(200);
   return res.body.booking;
 }

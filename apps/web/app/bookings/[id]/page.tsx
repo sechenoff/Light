@@ -229,8 +229,8 @@ export default function BookingDetailPage() {
       setRejectOpen(false);
       toast.success("Бронь отклонена и возвращена в черновик");
     } catch (e: any) {
-      toast.error(e?.message ?? "Не удалось отклонить бронь");
-      throw e; // пробросить в модалку для inline-ошибки
+      // Don't toast — let modal show inline via thrown error
+      throw e;
     } finally {
       setActionBusy(null);
     }
