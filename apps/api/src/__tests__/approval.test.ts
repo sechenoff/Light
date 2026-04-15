@@ -74,15 +74,18 @@ function AUTH_SA() { return { "X-API-Key": "test-key-1", Authorization: `Bearer 
 function AUTH_WH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${warehouseToken}` }; }
 function AUTH_TECH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${technicianToken}` }; }
 
+let _bookingCounter = 0;
+
 async function createDraftBooking() {
-  const client = await prisma.client.create({ data: { name: "ТК Тест" } });
+  const uid = `${Date.now()}_${++_bookingCounter}`;
+  const client = await prisma.client.create({ data: { name: `ТК Тест ${uid}` } });
   const equipment = await prisma.equipment.create({
     data: {
-      importKey: `СВЕТ||ТЕСТ||||`,
-      name: "Прожектор",
+      importKey: `СВЕТ||ТЕСТ||${uid}||`,
+      name: `Прожектор ${uid}`,
       category: "Свет",
       totalQuantity: 5,
-      basePrice: 1000,
+      rentalRatePerShift: 1000,
     },
   });
   const booking = await prisma.booking.create({
@@ -101,7 +104,61 @@ async function createDraftBooking() {
 }
 
 describe("POST /api/bookings/:id/submit-for-approval", () => {
-  it("PLACEHOLDER — заполнится в Task 3", async () => {
-    expect(true).toBe(true);
+  it("WAREHOUSE переводит DRAFT → PENDING_APPROVAL и очищает rejectionReason", async () => {
+    const booking = await createDraftBooking();
+    // Предварительно выставим rejectionReason, чтобы проверить очистку
+    await prisma.booking.update({ where: { id: booking.id }, data: { rejectionReason: "старая причина" } });
+
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/submit-for-approval`)
+      .set(AUTH_WH())
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe("PENDING_APPROVAL");
+    expect(res.body.booking.rejectionReason).toBeNull();
+
+    const audit = await prisma.auditEntry.findMany({
+      where: { entityType: "Booking", entityId: booking.id, action: "BOOKING_SUBMITTED" },
+    });
+    expect(audit).toHaveLength(1);
+  });
+
+  it("SUPER_ADMIN тоже может отправить на согласование", async () => {
+    const booking = await createDraftBooking();
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/submit-for-approval`)
+      .set(AUTH_SA())
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe("PENDING_APPROVAL");
+  });
+
+  it("TECHNICIAN получает 403", async () => {
+    const booking = await createDraftBooking();
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/submit-for-approval`)
+      .set(AUTH_TECH())
+      .send({});
+    expect(res.status).toBe(403);
+  });
+
+  it("не-DRAFT бронь → 409", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "CONFIRMED" } });
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/submit-for-approval`)
+      .set(AUTH_WH())
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.details).toBe("INVALID_BOOKING_STATE");
+  });
+
+  it("несуществующая бронь → 404", async () => {
+    const res = await request(app)
+      .post(`/api/bookings/does-not-exist/submit-for-approval`)
+      .set(AUTH_WH())
+      .send({});
+    expect(res.status).toBe(404);
   });
 });
