@@ -290,3 +290,26 @@ describe("PATCH /api/bookings/:id — edit-prevention для PENDING_APPROVAL", 
     expect(res.body.booking.projectName).toBe("Обновлённое имя");
   });
 });
+
+describe("GET /api/bookings?status=PENDING_APPROVAL", () => {
+  it("фильтрация по PENDING_APPROVAL возвращает только брони на согласовании", async () => {
+    const b1 = await createDraftBooking(); // DRAFT
+    const b2 = await createDraftBooking();
+    await prisma.booking.update({ where: { id: b2.id }, data: { status: "PENDING_APPROVAL" } });
+    const b3 = await createDraftBooking();
+    await prisma.booking.update({ where: { id: b3.id }, data: { status: "PENDING_APPROVAL" } });
+
+    const res = await request(app)
+      .get(`/api/bookings?status=PENDING_APPROVAL&limit=100`)
+      .set(AUTH_WH());
+
+    expect(res.status).toBe(200);
+    const ids = res.body.bookings.map((b: any) => b.id);
+    expect(ids).toContain(b2.id);
+    expect(ids).toContain(b3.id);
+    expect(ids).not.toContain(b1.id);
+    for (const b of res.body.bookings) {
+      expect(b.status).toBe("PENDING_APPROVAL");
+    }
+  });
+});
