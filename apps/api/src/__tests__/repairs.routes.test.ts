@@ -375,6 +375,154 @@ describe("POST /api/repairs/:id/assign", () => {
   });
 });
 
+// ─── F6: Zod enum validation ─────────────────────────────────────────────────
+
+describe("GET /api/repairs — Zod enum validation (F6)", () => {
+  it("400 — неверный статус в строке запроса", async () => {
+    const res = await request(app)
+      .get("/api/repairs?status=FOO")
+      .set(auth(superAdminToken));
+    expect(res.status).toBe(400);
+  });
+
+  it("400 — неверная срочность", async () => {
+    const res = await request(app)
+      .get("/api/repairs?urgency=VERY_URGENT")
+      .set(auth(superAdminToken));
+    expect(res.status).toBe(400);
+  });
+
+  it("200 — корректный статус", async () => {
+    const res = await request(app)
+      .get("/api/repairs?status=WAITING_REPAIR")
+      .set(auth(superAdminToken));
+    expect(res.status).toBe(200);
+  });
+});
+
+// ─── F5: cursor pagination ────────────────────────────────────────────────────
+
+describe("GET /api/repairs — cursor pagination (F5)", () => {
+  let pUnit1: string, pUnit2: string, pUnit3: string;
+  let r1Id: string, r2Id: string, r3Id: string;
+
+  beforeAll(async () => {
+    const pu1 = await prisma.equipmentUnit.create({ data: { equipmentId, barcode: "PAG-001", status: "AVAILABLE" } });
+    const pu2 = await prisma.equipmentUnit.create({ data: { equipmentId, barcode: "PAG-002", status: "AVAILABLE" } });
+    const pu3 = await prisma.equipmentUnit.create({ data: { equipmentId, barcode: "PAG-003", status: "AVAILABLE" } });
+    pUnit1 = pu1.id; pUnit2 = pu2.id; pUnit3 = pu3.id;
+
+    const mkRepair = (unitId: string, reason: string) => prisma.repair.create({
+      data: { unitId, reason, urgency: "NORMAL", createdBy: superAdminId, status: "WAITING_REPAIR", partsCost: 0, totalTimeHours: 0 },
+    });
+    const rr1 = await mkRepair(pUnit1, "Пагинация 1");
+    const rr2 = await mkRepair(pUnit2, "Пагинация 2");
+    const rr3 = await mkRepair(pUnit3, "Пагинация 3");
+    r1Id = rr1.id; r2Id = rr2.id; r3Id = rr3.id;
+    for (const uid of [pUnit1, pUnit2, pUnit3]) {
+      await prisma.equipmentUnit.update({ where: { id: uid }, data: { status: "MAINTENANCE" } });
+    }
+  });
+
+  afterAll(async () => {
+    for (const id of [r1Id, r2Id, r3Id]) {
+      await prisma.repair.update({ where: { id }, data: { status: "CLOSED", closedAt: new Date() } }).catch(() => {});
+    }
+    for (const uid of [pUnit1, pUnit2, pUnit3]) {
+      await prisma.equipmentUnit.update({ where: { id: uid }, data: { status: "AVAILABLE" } }).catch(() => {});
+    }
+  });
+
+  it("страница 1 (limit=2) возвращает nextCursor", async () => {
+    const res = await request(app)
+      .get("/api/repairs?limit=2")
+      .set(auth(superAdminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.repairs).toHaveLength(2);
+    expect(res.body.nextCursor).not.toBeNull();
+  });
+
+  it("страница 2 через cursor не пересекается со страницей 1", async () => {
+    const page1 = await request(app)
+      .get("/api/repairs?limit=2")
+      .set(auth(superAdminToken));
+    const cursor = page1.body.nextCursor;
+
+    const page2 = await request(app)
+      .get(`/api/repairs?limit=2&cursor=${cursor}`)
+      .set(auth(superAdminToken));
+    expect(page2.status).toBe(200);
+
+    const page1Ids = new Set(page1.body.repairs.map((r: any) => r.id));
+    for (const r of page2.body.repairs) {
+      expect(page1Ids.has(r.id)).toBe(false);
+    }
+  });
+});
+
+// ─── F8: POST /:id/take ───────────────────────────────────────────────────────
+
+describe("POST /api/repairs/:id/take (F8)", () => {
+  let takeRepairId: string;
+  let takeUnitId: string;
+
+  beforeAll(async () => {
+    const tu = await prisma.equipmentUnit.create({ data: { equipmentId, barcode: "TAKE-RT-001", status: "AVAILABLE" } });
+    takeUnitId = tu.id;
+    const r = await prisma.repair.create({
+      data: { unitId: takeUnitId, reason: "Взять в работу тест", urgency: "NORMAL", createdBy: superAdminId, status: "WAITING_REPAIR", partsCost: 0, totalTimeHours: 0 },
+    });
+    takeRepairId = r.id;
+    await prisma.equipmentUnit.update({ where: { id: takeUnitId }, data: { status: "MAINTENANCE" } });
+  });
+
+  afterAll(async () => {
+    await prisma.repair.update({ where: { id: takeRepairId }, data: { status: "CLOSED", closedAt: new Date() } }).catch(() => {});
+    await prisma.equipmentUnit.update({ where: { id: takeUnitId }, data: { status: "AVAILABLE" } }).catch(() => {});
+  });
+
+  it("201 — TECHNICIAN берёт в работу", async () => {
+    const res = await request(app)
+      .post(`/api/repairs/${takeRepairId}/take`)
+      .set(auth(technicianToken));
+    expect(res.status).toBe(201);
+    expect(res.body.repair.status).toBe("IN_REPAIR");
+    expect(res.body.repair.assignedTo).toBe(technicianId);
+  });
+
+  it("400 — нельзя взять уже закрытый ремонт", async () => {
+    // Create a fresh closed repair
+    const cu = await prisma.equipmentUnit.create({ data: { equipmentId, barcode: "TAKE-RT-CLOSED", status: "AVAILABLE" } });
+    const cr = await prisma.repair.create({
+      data: { unitId: cu.id, reason: "Закрытый для take", urgency: "NORMAL", createdBy: superAdminId, status: "CLOSED", closedAt: new Date(), partsCost: 0, totalTimeHours: 0 },
+    });
+
+    const res = await request(app)
+      .post(`/api/repairs/${cr.id}/take`)
+      .set(auth(technicianToken));
+    expect(res.status).toBe(400);
+    expect(res.body.details).toBe("REPAIR_ALREADY_CLOSED");
+
+    await prisma.equipmentUnit.update({ where: { id: cu.id }, data: { status: "AVAILABLE" } });
+  });
+
+  it("403 FORBIDDEN_BY_ROLE — WAREHOUSE не может брать в работу", async () => {
+    const wu = await prisma.equipmentUnit.create({ data: { equipmentId, barcode: "TAKE-RT-WH", status: "AVAILABLE" } });
+    const wr = await prisma.repair.create({
+      data: { unitId: wu.id, reason: "Склад тест take", urgency: "NORMAL", createdBy: superAdminId, status: "WAITING_REPAIR", partsCost: 0, totalTimeHours: 0 },
+    });
+    await prisma.equipmentUnit.update({ where: { id: wu.id }, data: { status: "MAINTENANCE" } });
+
+    const res = await request(app)
+      .post(`/api/repairs/${wr.id}/take`)
+      .set(auth(warehouseToken));
+    expect(res.status).toBe(403);
+
+    await prisma.repair.update({ where: { id: wr.id }, data: { status: "CLOSED", closedAt: new Date() } });
+    await prisma.equipmentUnit.update({ where: { id: wu.id }, data: { status: "AVAILABLE" } });
+  });
+});
+
 // ─── POST /:id/close ─────────────────────────────────────────────────────────
 
 describe("POST /api/repairs/:id/close", () => {
