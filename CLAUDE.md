@@ -114,6 +114,9 @@ light-rental-system/
 | `apps/api/src/__tests__/rolesGuardHolistic.test.ts` | 21 интеграционный тест: TECHNICIAN→403 / WAREHOUSE→2xx / SUPER_ADMIN→2xx на `/api/warehouse/workers/*` и `/api/equipment-units/*` + аудит-проверки на AdminUser CRUD |
 | `docs/bot-api.md` | Bot API documentation (Russian): auth, scope, all endpoints, curl examples, error codes, 3 typical scenarios |
 | `docs/bot-api-tools.json` | OpenAI function-calling schemas (12 tools): ready to paste into `client.chat.completions.create({ tools: [...] })` |
+| `apps/api/src/services/bookingApproval.ts` | Booking approval workflow: `submitForApproval` (DRAFT → PENDING_APPROVAL, clears rejectionReason), `approveBooking` (delegates to `confirmBooking` + audit), `rejectBooking` (required reason, PENDING_APPROVAL → DRAFT + rejectionReason + audit) |
+| `apps/api/src/__tests__/approval.test.ts` | 22 интеграционных теста approval workflow: submit/approve/reject по всем ролям + full reject-resubmit-approve cycle + legacy confirm-bypass регрессия + ?status= Zod-валидация |
+| `apps/web/src/components/bookings/RejectBookingModal.tsx` | Модалка обязательной причины отклонения (min 3 trimmed chars, счётчик, Esc-close, backdrop dismissal, auto-focus textarea) |
 
 ## Commands
 
@@ -418,5 +421,64 @@ CSS-утилиты: `.eyebrow` (надстрочники), `.mono-num` (числ
 - Все три `useEffect` в `/day` используют паттерн `let cancelled = false; ... return () => { cancelled = true; }` — защита от state-updates после unmount.
 - `DayTechnician` гейтит вызов `/api/repairs?assignedTo=<userId>`: если `userId` пустой (старые сессии без связки на AdminUser), сразу показывается «Свободная очередь».
 - Шапка `DayTechnician.summary` гейтится на `newRepairs !== null && myRepairs !== null`, а не на `stats` — чтобы не показать ложный «0 новых», пока списки ремонтов ещё загружаются.
+
+## Booking Approval Workflow (Subproject B)
+
+Двухэтапный процесс согласования броней: `WAREHOUSE` создаёт DRAFT и отправляет на согласование → `SUPER_ADMIN` одобряет или отклоняет с обязательной причиной. Редактирование брони заблокировано в `PENDING_APPROVAL`. Все переходы пишутся в `AuditEntry`. Реализовано в PR #51.
+
+### Жизненный цикл
+
+```
+DRAFT ──submit-for-approval──▶ PENDING_APPROVAL ──approve──▶ CONFIRMED
+  ▲                                    │
+  │                                    └────reject──▶ DRAFT (+ rejectionReason)
+  │                                                        │
+  └──── возврат после правок, цикл повторяется ◀──────────┘
+```
+
+### Маршруты /api/bookings (новые, Sprint B)
+
+| Маршрут | Роли | Переход | Поведение |
+|---------|------|---------|-----------|
+| POST `/:id/submit-for-approval` | SA + WH | DRAFT → PENDING_APPROVAL | Очищает предыдущий `rejectionReason`; аудит `BOOKING_SUBMITTED` внутри транзакции |
+| POST `/:id/approve` | SA only | PENDING_APPROVAL → CONFIRMED | Делегирует в `confirmBooking()` — восстанавливает проверку доступности, резервирование юнитов, снапшот сметы; затем `recomputeBookingFinance` + `createFinanceEvent({eventType:"BOOKING_CONFIRMED", via:"approve"})`; аудит `BOOKING_APPROVED` (вне tx confirmBooking, осознанный trade-off) |
+| POST `/:id/reject` | SA only | PENDING_APPROVAL → DRAFT | Требует `reason` (Zod `min(3)` после trim); сохраняет `rejectionReason`; аудит `BOOKING_REJECTED` с причиной в `after` |
+
+Поведенческие изменения на существующих маршрутах:
+- `allowedActionsByStatus.DRAFT` больше **не включает** `"confirm"` — закрыт легаси-bypass, когда WAREHOUSE мог флипнуть DRAFT→CONFIRMED через `POST /:id/status {action:"confirm"}`, полностью обходя согласование. Добавлена запись `PENDING_APPROVAL: ["cancel"]` (отмена разрешена из любого не-терминального статуса).
+- `PATCH /:id` возвращает 409 `BOOKING_EDIT_FORBIDDEN` при `status === "PENDING_APPROVAL"` — защищает submitted-состояние от мутаций.
+- `GET /api/bookings` валидирует `?status=` через Zod-enum (`bookingStatusEnum`). Мусорное значение → 400 `INVALID_STATUS_FILTER`.
+
+### Prisma schema
+
+`Booking.rejectionReason String?` — хранит последнюю причину отклонения. Очищается на новом `submit-for-approval`. Не очищается на `approve`/`cancel` (осознанный trade-off: UI показывает `rejectionReason` только когда `status === "DRAFT"`, поэтому stale-значение в БД не видно пользователю).
+
+### Frontend
+
+- `/bookings` — фильтр `PENDING_APPROVAL` в dropdown, `statusFilter` инициализируется из `?status=` URL-параметра (`useSearchParams` + обязательный Suspense boundary для Next.js 14), фильтр передаётся на сервер как `?status=` в API-запросе. DRAFT variant: `"view"` (унификация с `/bookings/[id]`). Кнопка «Подтвердить» на DRAFT удалена (была частью легаси-bypass).
+- `/bookings/[id]` — условные кнопки по роли и статусу:
+  - WAREHOUSE + DRAFT → «Отправить на согласование»
+  - SUPER_ADMIN + PENDING_APPROVAL → «Одобрить» + «Отклонить»
+  - Баннеры: rose с причиной отклонения на DRAFT (если `rejectionReason` есть), amber info-баннер «Бронь на согласовании у руководителя» на PENDING_APPROVAL.
+- `RejectBookingModal` — обязательная причина (min 3 trimmed символа), счётчик, Esc/backdrop-закрытие, auto-focus textarea, disabled во время отправки. `handleReject` только re-throw — модалка сама показывает ошибку через `toast.error`, чтобы не было дубликата.
+
+### Аудит
+
+Все три перехода пишут `AuditEntry` с `entityType: "Booking"`:
+
+| Action | userId | before | after |
+|--------|--------|--------|-------|
+| `BOOKING_SUBMITTED` | кто нажал submit | `{status: "DRAFT"}` | `{status: "PENDING_APPROVAL"}` |
+| `BOOKING_APPROVED` | кто одобрил | `{status: "PENDING_APPROVAL"}` | `{status: confirmed.status, confirmedAt}` |
+| `BOOKING_REJECTED` | кто отклонил | `{status: "PENDING_APPROVAL"}` | `{status: "DRAFT", rejectionReason}` |
+
+Просмотр истории согласования — через существующий `/admin/audit` (фильтр `entityType=Booking`).
+
+### Технические нюансы
+
+- `approveBooking` делает pre-check через `prisma.booking.findUnique` (select: `id`, `status`) и валидирует `status === "PENDING_APPROVAL"` до делегации в `confirmBooking()`. Pre-check нужен, потому что `confirmBooking` не знает про approval-статус и не отличит `DRAFT→CONFIRMED` от `PENDING_APPROVAL→CONFIRMED`.
+- `BOOKING_APPROVED` аудит пишется **вне** транзакции `confirmBooking` — осознанный trade-off: аудит это observability, не бизнес-инвариант. Консистентно с другими операциями в кодбейзе.
+- `rejectBooking` использует `prisma.$transaction` для атомарности status+rejectionReason+audit.
+- Интеграционные тесты (`approval.test.ts`, 22 шт.) следуют паттерну `dashboard.test.ts`: изолированная SQLite БД через `TEST_DB_PATH`, `prisma db push --force-reset`, `signSession()` токены для WAREHOUSE/SUPER_ADMIN/TECHNICIAN. Покрывают: все успешные переходы, rolesGuard-ошибки, пустой/пробельный reason → 400, невалидный статус брони → 409 `INVALID_BOOKING_STATE`, PATCH в PENDING_APPROVAL → 409, полный цикл reject→resubmit→approve с проверкой очистки `rejectionReason`, регрессию на легаси confirm-bypass (DRAFT + `/status {action:"confirm"}` → 409).
 
 <!-- updated-by-superflow:2026-04-15 -->
