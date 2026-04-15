@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { UserRole } from "@prisma/client";
 
+import { prisma } from "../prisma";
 import { rolesGuard } from "../middleware/rolesGuard";
 import * as expenseService from "../services/expenseService";
 
@@ -78,7 +79,6 @@ router.get("/", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
 
 router.get("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
-    const { prisma } = await import("../prisma");
     const expense = await prisma.expense.findUniqueOrThrow({
       where: { id: req.params.id },
       include: {

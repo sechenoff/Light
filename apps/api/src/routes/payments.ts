@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Decimal } from "@prisma/client/runtime/library";
+import { Decimal } from "decimal.js";
 
+import { prisma } from "../prisma";
 import { rolesGuard } from "../middleware/rolesGuard";
 import * as paymentService from "../services/paymentService";
 
@@ -67,7 +68,6 @@ router.post("/", async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
   try {
-    const { prisma } = await import("../prisma");
     const payment = await prisma.payment.findUniqueOrThrow({
       where: { id: req.params.id },
       include: { booking: { select: { id: true, projectName: true, client: { select: { id: true, name: true } } } } },

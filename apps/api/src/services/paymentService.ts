@@ -1,5 +1,5 @@
 import type { PaymentMethod, Payment, Prisma } from "@prisma/client";
-import { Decimal } from "@prisma/client/runtime/library";
+import { Decimal } from "decimal.js";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { writeAuditEntry, diffFields } from "./audit";
@@ -85,7 +85,7 @@ export async function updatePayment(
 
     const after = await tx.payment.update({ where: { id }, data });
 
-    const bookingId = before.bookingId!;
+    const bookingId = before.bookingId;
     if (bookingId) await recomputeBookingFinance(bookingId, tx as TxClient);
 
     await writeAuditEntry({
