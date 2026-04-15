@@ -1,5 +1,5 @@
 import type { ExpenseCategory, Expense, UserRole, Prisma } from "@prisma/client";
-import { Decimal } from "@prisma/client/runtime/library";
+import { Decimal } from "decimal.js";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { writeAuditEntry, diffFields } from "./audit";
