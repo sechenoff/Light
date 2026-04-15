@@ -313,3 +313,130 @@ describe("GET /api/bookings?status=PENDING_APPROVAL", () => {
     }
   });
 });
+
+describe("CRITICAL 1 — legacy confirm bypass", () => {
+  it("legacy POST /api/bookings/:id/status {action: 'confirm'} blocked for DRAFT (closes approval bypass)", async () => {
+    const booking = await createDraftBooking();
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/status`)
+      .set(AUTH_WH())
+      .send({ action: "confirm" });
+    expect(res.status).toBe(409);
+    const fresh = await prisma.booking.findUnique({ where: { id: booking.id } });
+    expect(fresh.status).toBe("DRAFT");
+  });
+});
+
+describe("CRITICAL 2 — approveBooking via confirmBooking (estimate snapshot)", () => {
+  it("approveBooking создаёт snapshot сметы (estimate non-null после approve)", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/approve`)
+      .set(AUTH_SA())
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe("CONFIRMED");
+
+    const fresh = await prisma.booking.findUnique({
+      where: { id: booking.id },
+      include: { estimate: { include: { lines: true } } },
+    });
+    expect(fresh!.confirmedAt).not.toBeNull();
+    expect(fresh!.estimate).not.toBeNull();
+    expect(fresh!.estimate!.lines.length).toBeGreaterThan(0);
+  });
+
+  it("approveBooking: audit entry содержит правильный userId", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+
+    const sa = await prisma.adminUser.findFirst({ where: { role: "SUPER_ADMIN" } });
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/approve`)
+      .set(AUTH_SA())
+      .send({});
+    expect(res.status).toBe(200);
+
+    const audit = await prisma.auditEntry.findFirst({
+      where: { entityType: "Booking", entityId: booking.id, action: "BOOKING_APPROVED" },
+    });
+    expect(audit).not.toBeNull();
+    expect(audit!.userId).toBe(sa.id);
+  });
+});
+
+describe("HIGH — status filter validation", () => {
+  it("GET /api/bookings?status=garbage → 400", async () => {
+    const res = await request(app)
+      .get("/api/bookings?status=garbage")
+      .set(AUTH_WH());
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("MEDIUM 4+5 — stronger audit assertions + resubmit roundtrip", () => {
+  it("SUPER_ADMIN отклоняет с причиной: audit.after содержит rejectionReason", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/reject`)
+      .set(AUTH_SA())
+      .send({ reason: "Слишком высокая скидка, пересчитайте" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe("DRAFT");
+    expect(res.body.booking.rejectionReason).toBe("Слишком высокая скидка, пересчитайте");
+
+    const audit = await prisma.auditEntry.findFirst({
+      where: { entityType: "Booking", entityId: booking.id, action: "BOOKING_REJECTED" },
+    });
+    expect(audit).not.toBeNull();
+    const sa = await prisma.adminUser.findFirst({ where: { role: "SUPER_ADMIN" } });
+    expect(audit!.userId).toBe(sa.id);
+
+    // Assert after.rejectionReason — parse JSON if stored as string
+    const afterJson = typeof audit!.after === "string" ? JSON.parse(audit!.after) : audit!.after;
+    expect(afterJson.rejectionReason).toBe("Слишком высокая скидка, пересчитайте");
+  });
+
+  it("полный цикл: submit → reject → resubmit очищает rejectionReason", async () => {
+    const booking = await createDraftBooking();
+
+    // Step 1: WAREHOUSE submits
+    let res = await request(app)
+      .post(`/api/bookings/${booking.id}/submit-for-approval`)
+      .set(AUTH_WH())
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe("PENDING_APPROVAL");
+
+    // Step 2: SA rejects
+    res = await request(app)
+      .post(`/api/bookings/${booking.id}/reject`)
+      .set(AUTH_SA())
+      .send({ reason: "пересчитайте" });
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe("DRAFT");
+    expect(res.body.booking.rejectionReason).toBe("пересчитайте");
+
+    // Step 3: WAREHOUSE resubmits — should clear rejectionReason
+    res = await request(app)
+      .post(`/api/bookings/${booking.id}/submit-for-approval`)
+      .set(AUTH_WH())
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe("PENDING_APPROVAL");
+    expect(res.body.booking.rejectionReason).toBeNull();
+
+    // 3 audit entries: SUBMITTED, REJECTED, SUBMITTED
+    const audit = await prisma.auditEntry.findMany({
+      where: { entityType: "Booking", entityId: booking.id },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(audit.map((a: any) => a.action)).toEqual(["BOOKING_SUBMITTED", "BOOKING_REJECTED", "BOOKING_SUBMITTED"]);
+  });
+});
