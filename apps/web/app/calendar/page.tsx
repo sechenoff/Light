@@ -76,9 +76,9 @@ function cellColorClass(occupied: number, total: number): string {
 function SkeletonDesktop() {
   return (
     <div className="animate-pulse space-y-2">
-      <div className="h-8 bg-slate-200 rounded w-full" />
+      <div className="h-8 bg-surface-muted rounded w-full" />
       {[...Array(5)].map((_, i) => (
-        <div key={i} className="h-10 bg-slate-100 rounded w-full" />
+        <div key={i} className="h-10 bg-surface rounded w-full" />
       ))}
     </div>
   );
@@ -88,7 +88,7 @@ function SkeletonMobile() {
   return (
     <div className="animate-pulse space-y-3">
       {[...Array(4)].map((_, i) => (
-        <div key={i} className="h-24 bg-slate-100 rounded-lg w-full" />
+        <div key={i} className="h-24 bg-surface rounded-lg w-full" />
       ))}
     </div>
   );
@@ -279,7 +279,7 @@ function CalendarPageInner() {
 
   return (
     <div className="p-4 lg:p-6 space-y-4">
-      <h1 className="text-xl font-semibold text-slate-800">Календарь</h1>
+      <h1 className="text-xl font-semibold text-ink">Календарь</h1>
 
       {/* ================================================================
           ДЕСКТОПНЫЙ ВИД
@@ -288,7 +288,7 @@ function CalendarPageInner() {
         {/* Тулбар */}
         <div className="flex flex-wrap items-center gap-3 mb-4">
           {/* Период */}
-          <div className="flex rounded-md border border-slate-200 overflow-hidden text-sm">
+          <div className="flex rounded-md border border-border overflow-hidden text-sm">
             {([7, 14, 30] as const).map((p) => (
               <button
                 key={p}
@@ -298,8 +298,8 @@ function CalendarPageInner() {
                 }}
                 className={`px-3 py-1.5 transition-colors ${
                   period === p
-                    ? "bg-slate-800 text-white"
-                    : "bg-white text-slate-700 hover:bg-slate-50"
+                    ? "bg-accent text-white"
+                    : "bg-surface text-ink-2 hover:bg-surface-muted"
                 }`}
               >
                 {p} дн.
@@ -314,7 +314,7 @@ function CalendarPageInner() {
               setCategory(e.target.value);
               syncUrl(periodStart, period, e.target.value, search);
             }}
-            className="border border-slate-200 rounded-md px-3 py-1.5 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            className="border border-border rounded-md px-3 py-1.5 text-sm bg-surface text-ink-2 focus:outline-none focus:ring-2 focus:ring-accent-bright"
           >
             <option value="">Все категории</option>
             {categories.map((c) => (
@@ -331,16 +331,16 @@ function CalendarPageInner() {
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && applySearch()}
             placeholder="Поиск..."
-            className="border border-slate-200 rounded-md px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            className="border border-border rounded-md px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-accent-bright"
           />
 
           {/* Черновики */}
-          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-sm text-ink-2 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={includeDrafts}
               onChange={(e) => setIncludeDrafts(e.target.checked)}
-              className="rounded border-slate-300"
+              className="rounded border-border"
             />
             Показывать черновики
           </label>
@@ -349,20 +349,20 @@ function CalendarPageInner() {
           <div className="flex items-center gap-1 ml-auto">
             <button
               onClick={navPrev}
-              className="px-2 py-1.5 text-sm border border-slate-200 rounded-md hover:bg-slate-50 transition-colors"
+              className="px-2 py-1.5 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors"
               title="Предыдущий период"
             >
               ←
             </button>
             <button
               onClick={goToday}
-              className="px-3 py-1.5 text-sm border border-slate-200 rounded-md hover:bg-slate-50 transition-colors"
+              className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors"
             >
               Сегодня
             </button>
             <button
               onClick={navNext}
-              className="px-2 py-1.5 text-sm border border-slate-200 rounded-md hover:bg-slate-50 transition-colors"
+              className="px-2 py-1.5 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors"
               title="Следующий период"
             >
               →
@@ -372,11 +372,11 @@ function CalendarPageInner() {
 
         {/* Ошибка */}
         {error && (
-          <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-md p-3 flex items-center justify-between gap-2 mb-4">
+          <div className="text-sm text-rose bg-rose-soft border border-rose-border rounded-md p-3 flex items-center justify-between gap-2 mb-4">
             <span>{error}</span>
             <button
               onClick={() => setRetryKey((k) => k + 1)}
-              className="text-rose-700 underline shrink-0"
+              className="text-rose underline shrink-0"
             >
               Повторить
             </button>
@@ -388,7 +388,7 @@ function CalendarPageInner() {
 
         {/* Пустое состояние */}
         {isEmpty && (
-          <p className="text-sm text-slate-400 text-center py-12">
+          <p className="text-sm text-ink-3 text-center py-12">
             Нет оборудования для отображения в этом периоде.
             <br />
             Добавьте оборудование для просмотра календаря.
@@ -423,7 +423,7 @@ function CalendarPageInner() {
                   <Fragment key={cat}>
                     {/* Заголовок категории */}
                     <tr
-                      className="bg-surface-subtle border-b border-border cursor-pointer hover:bg-slate-soft transition-colors"
+                      className="bg-surface-subtle border-b border-border cursor-pointer hover:bg-surface-muted transition-colors"
                       onClick={() => toggleCategory(cat)}
                     >
                       <td
@@ -527,7 +527,7 @@ function CalendarPageInner() {
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && applySearch()}
             placeholder="Поиск оборудования..."
-            className="flex-1 border border-slate-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+            className="flex-1 border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
           />
           <select
             value={category}
@@ -535,7 +535,7 @@ function CalendarPageInner() {
               setCategory(e.target.value);
               syncUrl(periodStart, period, e.target.value, search);
             }}
-            className="border border-slate-200 rounded-md px-2 py-2 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            className="border border-border rounded-md px-2 py-2 text-sm bg-surface text-ink-2 focus:outline-none focus:ring-2 focus:ring-accent-bright"
           >
             <option value="">Все</option>
             {categories.map((c) => (
@@ -546,7 +546,7 @@ function CalendarPageInner() {
           </select>
           <button
             onClick={goToday}
-            className="px-3 py-2 text-sm border border-slate-200 rounded-md hover:bg-slate-50 transition-colors shrink-0"
+            className="px-3 py-2 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors shrink-0"
           >
             Сегодня
           </button>
@@ -557,17 +557,17 @@ function CalendarPageInner() {
           <button
             onClick={mobilePrevDay}
             disabled={mobileDay <= periodStart}
-            className="px-3 py-2 text-sm border border-slate-200 rounded-md hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="px-3 py-2 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             ← Пред. день
           </button>
-          <span className="text-sm text-slate-700 font-medium text-center">
+          <span className="text-sm text-ink-2 font-medium text-center">
             {capitalize(formatDayRu(mobileDay))}
           </span>
           <button
             onClick={mobileNextDay}
             disabled={mobileDay >= periodEnd}
-            className="px-3 py-2 text-sm border border-slate-200 rounded-md hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="px-3 py-2 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             След. день →
           </button>
@@ -575,11 +575,11 @@ function CalendarPageInner() {
 
         {/* Ошибка */}
         {error && (
-          <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-md p-3 flex items-center justify-between gap-2">
+          <div className="text-sm text-rose bg-rose-soft border border-rose-border rounded-md p-3 flex items-center justify-between gap-2">
             <span>{error}</span>
             <button
               onClick={() => setRetryKey((k) => k + 1)}
-              className="text-rose-700 underline shrink-0"
+              className="text-rose underline shrink-0"
             >
               Повторить
             </button>
@@ -591,7 +591,7 @@ function CalendarPageInner() {
 
         {/* Пустое состояние */}
         {isEmpty && (
-          <p className="text-sm text-slate-400 text-center py-8">
+          <p className="text-sm text-ink-3 text-center py-8">
             Нет оборудования. Добавьте оборудование для просмотра календаря.
           </p>
         )}
@@ -600,7 +600,7 @@ function CalendarPageInner() {
         {!loading && !error && !isEmpty && (
           <div className="space-y-3">
             {showAllMobile && (
-              <p className="text-xs text-slate-400 text-center py-2">
+              <p className="text-xs text-ink-3 text-center py-2">
                 На этот день нет бронирований — показывается всё оборудование
               </p>
             )}
@@ -616,17 +616,17 @@ function CalendarPageInner() {
               return (
                 <div
                   key={resource.id}
-                  className="rounded-lg border border-slate-200 bg-white p-3 space-y-2"
+                  className="rounded-lg border border-border bg-surface p-3 space-y-2"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-slate-800 truncate">
+                    <span className="font-medium text-ink truncate">
                       {resource.name}
                     </span>
                     <span
                       className={`text-xs font-medium px-2 py-0.5 rounded shrink-0 ${
                         occupied > 0
                           ? colorClass
-                          : "text-slate-400"
+                          : "text-ink-3"
                       }`}
                     >
                       {occupied}/{resource.totalQuantity} занято
@@ -647,13 +647,13 @@ function CalendarPageInner() {
                             <span
                               className={`mt-1 flex-shrink-0 w-2 h-2 rounded-full ${
                                 b.status === "CONFIRMED"
-                                  ? "bg-blue-500"
+                                  ? "bg-accent-bright"
                                   : b.status === "ISSUED"
-                                    ? "bg-amber-500"
-                                    : "bg-slate-400"
+                                    ? "bg-amber"
+                                    : "bg-ink-3"
                               }`}
                             />
-                            <span className="text-slate-700">
+                            <span className="text-ink-2">
                               {b.clientName} · {b.quantity} шт.
                             </span>
                           </li>
@@ -673,7 +673,7 @@ function CalendarPageInner() {
 
 export default function CalendarPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-slate-400">Загрузка...</div>}>
+    <Suspense fallback={<div className="p-8 text-ink-3">Загрузка...</div>}>
       <CalendarPageInner />
     </Suspense>
   );
