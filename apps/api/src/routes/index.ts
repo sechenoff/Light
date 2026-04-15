@@ -21,6 +21,7 @@ import { importSessionsRouter } from "./importSessions";
 import { dashboardRouter } from "./dashboard";
 import { calendarRouter } from "./calendar";
 import { adminUsersRouter } from "./adminUsers";
+import auditRouter from "./audit";
 import { rolesGuard } from "../middleware/rolesGuard";
 
 const router = express.Router();
@@ -96,5 +97,8 @@ router.use("/api/calendar", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), calendarRo
 
 // /api/admin-users — SUPER_ADMIN only
 router.use("/api/admin-users", rolesGuard(["SUPER_ADMIN"]), adminUsersRouter);
+
+// /api/audit — SUPER_ADMIN only
+router.use("/api/audit", auditRouter);
 
 export { router };
