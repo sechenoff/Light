@@ -11,6 +11,7 @@ type AuditEntityType =
   | "Payment"
   | "Expense"
   | "Unit"
+  | "EquipmentUnit"
   | "Client"
   | "Repair"
   | "AdminUser";
