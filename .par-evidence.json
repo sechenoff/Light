@@ -1,53 +1,57 @@
 {
-  "sprint": 4,
+  "sprint": 5,
   "feature": "roles-navigation",
   "governance_mode": "standard",
-  "complexity": "complex",
+  "complexity": "medium",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "head_commit": "a177ae0",
-  "fix_commits": ["efba246", "3e748af", "a177ae0"],
+  "head_commit": "a177ffa",
+  "fix_commits": [],
   "initial_verdicts": {
-    "product": "NEEDS_FIXES",
-    "technical": "REQUEST_CHANGES"
+    "product": "ACCEPTED",
+    "technical": "APPROVE"
   },
   "final_verdicts": {
     "product": "ACCEPTED",
     "technical": "APPROVE"
   },
-  "review_notes_addressed": {
-    "product_fixes": [
-      "#2 (HIGH): ENUM English leaks removed — write-off modal now «Списано», expense modal «Ремонт»; no UnitStatus/RepairStatus strings visible to users.",
-      "#3 (HIGH): Russian pluralization helper apps/web/src/lib/pluralRu.ts added — «карточка/карточки/карточек» correctly produced for 1/2/5/11/21. Used in warehouse-scan success toast.",
-      "#4 (HIGH): silent createRepair failure surfaced — completeSession returns createdRepairIds[] + failedBrokenUnits[]; failure path logs console.error, forces unit → MAINTENANCE (with CRITICAL log on nested failure), writes REPAIR_CREATE_FAILED audit; routes/warehouse.ts pipes both fields; scan UI reads actual counts."
+  "review_notes": {
+    "summary": "Cosmetic repaint passed both reviewers on first pass — no fix cycle needed. Sprint 5 is strictly presentation: new shared components (StatusPill, SectionHeader), StatusBadge removed, 8 pages + 4 components repainted to IBM Plex + semantic tokens. Zero business-logic diff, zero new dependencies, zero type regressions.",
+    "audit_numbers": {
+      "inline_style_in_scope": 0,
+      "inline_style_in_finance_out_of_scope": 5,
+      "arbitrary_hex_tailwind_classes_in_components": 0,
+      "finance_svg_hex_fills_out_of_scope": "pre-existing from Sprint 3"
+    },
+    "product_notes": [
+      "Russian labels preserved (Черновик/Подтверждено/Выдано/etc.); /admin header translated from English 'Admin Panel' to 'Администрирование'.",
+      "accent-bright applied consistently on primary CTAs across touched pages.",
+      "StatusPill variant mapping stable across list+detail (CONFIRMED → full/emerald everywhere, etc.).",
+      "Mobile warehouse flow preserved — 5-step wizard + 44px+ tap targets (h-14/h-12).",
+      "finance/* correctly untouched (Sprint 3 scope)."
     ],
-    "technical_fixes": [
-      "H1: Decimal precision in addWorkLog — `{ increment: new Prisma.Decimal(timeSpentHours/partCost) }` replaces `.toDecimalPlaces(2).toNumber()`; test asserts 0.1+0.2+0.1 = 0.4 exactly.",
-      "H2: silent createRepair failure in scan integration — return type extended, error logged, audit REPAIR_CREATE_FAILED, unit forced MAINTENANCE, tests assert duplicate active repair → failedBrokenUnits.length === 1.",
-      "M1: cursor pagination — `orderBy id desc` with `where.id = { lt: cursor }` (consistent direction); non-overlapping page verified in tests.",
-      "M2: Zod enum validation on status + urgency query params — unknown values return 400 (verified by GET /api/repairs?status=FOO and ?urgency=VERY_URGENT).",
-      "M3: assignRepair closed-guard — REPAIR_ALREADY_CLOSED throws at top of tx; tests verify.",
-      "M4: atomic takeRepair — POST /api/repairs/:id/take merges assign + IN_REPAIR + REPAIR_TAKE audit in single transaction; rolesGuard TECH+SA; UI calls single endpoint."
+    "technical_notes": [
+      "Business logic untouched — zero handler/effect/fetch additions or removals across 8 repainted pages.",
+      "StatusPill (9 variants) and SectionHeader (eyebrow + title + actions) both clean, no side effects, typed props.",
+      "StatusBadge fully migrated — 0 remaining references; StatusPill imported in 6 sites.",
+      "tsc --noEmit clean; web build clean (no size regressions); 366/366 tests (no flakes on this run).",
+      "CLAUDE.md updated with Sprint 5 section."
     ],
     "deferred_out_of_scope": [
-      "#1 sidebar counter real-time update — backlog",
-      "#5 SLA overdue threshold configurable — hard-coded 5d accepted for Sprint 4",
-      "#6 kanban DnD — not in charter",
-      "#7 repair photo attachments — backlog"
+      "/login types still say RENTAL_ADMIN (pre-existing on main, not user-visible — future cleanup).",
+      "/admin Users tab label 'Админ рентала' (pre-existing, future cleanup).",
+      "Barcode IDs (LR-XXX-NNN) remain visible on /equipment/[id]/units and /warehouse/scan (pre-existing content/IA question, separate from cosmetic repaint).",
+      "finance/* inline styles (5 items) — Sprint 3 code, SVG bar fills + dynamic category dots, legitimately dynamic."
     ]
   },
   "tests": {
     "total": 366,
     "passing": 366,
-    "new_files": [
-      "repairService.test.ts",
-      "repairs.routes.test.ts",
-      "warehouseScan.brokenUnits.test.ts"
-    ],
     "runner": "vitest",
-    "duration_s": 9.78
+    "suites": 32,
+    "duration_s": 8.22
   },
   "web_build": "clean",
-  "ts": "2026-04-15T11:10:00Z"
+  "ts": "2026-04-15T11:45:00Z"
 }
