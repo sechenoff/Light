@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 
-import { apiFetchRaw } from "../../../src/lib/api";
+import { apiFetch, apiFetchRaw } from "../../../src/lib/api";
 import { getFileNameFromContentDisposition } from "../../../src/lib/download";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { SectionHeader } from "../../../src/components/SectionHeader";
 import { formatMoneyRub } from "../../../src/lib/format";
+import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
+import { RejectBookingModal } from "../../../src/components/bookings/RejectBookingModal";
+import { toast } from "../../../src/components/ToastProvider";
 
 type ScanSession = {
   id: string;
@@ -23,7 +26,8 @@ type ScanSession = {
 type BookingDetail = {
   id: string;
   displayName?: string;
-  status: "DRAFT" | "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
+  status: "DRAFT" | "PENDING_APPROVAL" | "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
+  rejectionReason?: string | null;
   scanSessions?: ScanSession[];
   projectName: string;
   startDate: string;
@@ -75,6 +79,8 @@ function statusText(s: BookingDetail["status"]) {
   switch (s) {
     case "DRAFT":
       return "Черновик";
+    case "PENDING_APPROVAL":
+      return "На согласовании";
     case "CONFIRMED":
       return "Подтверждено";
     case "ISSUED":
@@ -86,6 +92,17 @@ function statusText(s: BookingDetail["status"]) {
   }
 }
 
+function statusVariant(s: BookingDetail["status"]): "info" | "warn" | "full" | "edit" | "ok" | "none" | "view" {
+  switch (s) {
+    case "DRAFT": return "view";
+    case "PENDING_APPROVAL": return "warn";
+    case "CONFIRMED": return "full";
+    case "ISSUED": return "edit";
+    case "RETURNED": return "ok";
+    case "CANCELLED": return "none";
+  }
+}
+
 export default function BookingDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -93,6 +110,9 @@ export default function BookingDetailPage() {
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { user } = useCurrentUser();
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [actionBusy, setActionBusy] = useState<null | "submit" | "approve" | "reject">(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -164,6 +184,58 @@ export default function BookingDetailPage() {
     setBooking(fresh.booking);
   }
 
+  async function handleSubmitForApproval() {
+    if (!booking) return;
+    setActionBusy("submit");
+    try {
+      const data = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${booking.id}/submit-for-approval`, {
+        method: "POST",
+      });
+      setBooking(data.booking);
+      toast.success("Бронь отправлена на согласование");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Не удалось отправить на согласование");
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  async function handleApprove() {
+    if (!booking) return;
+    if (!confirm("Одобрить бронь и перевести её в «Подтверждено»?")) return;
+    setActionBusy("approve");
+    try {
+      const data = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${booking.id}/approve`, {
+        method: "POST",
+      });
+      setBooking(data.booking);
+      toast.success("Бронь одобрена");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Не удалось одобрить бронь");
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  async function handleReject(reason: string) {
+    if (!booking) return;
+    setActionBusy("reject");
+    try {
+      const data = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${booking.id}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      });
+      setBooking(data.booking);
+      setRejectOpen(false);
+      toast.success("Бронь отклонена и возвращена в черновик");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Не удалось отклонить бронь");
+      throw e; // пробросить в модалку для inline-ошибки
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
   return (
     <div className="p-4">
       <div className="flex items-center justify-between flex-wrap gap-3 no-print">
@@ -180,13 +252,7 @@ export default function BookingDetailPage() {
           </Link>
           {booking && (
             <StatusPill
-              variant={
-                booking.status === "CONFIRMED" ? "full"
-                : booking.status === "ISSUED" ? "edit"
-                : booking.status === "RETURNED" ? "ok"
-                : booking.status === "CANCELLED" ? "none"
-                : "view"
-              }
+              variant={statusVariant(booking.status)}
               label={statusText(booking.status)}
             />
           )}
@@ -198,7 +264,65 @@ export default function BookingDetailPage() {
       ) : err ? (
         <div className="mt-4 text-rose-700">{err}</div>
       ) : booking ? (
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-4 print-booking">
+        <div className="mt-4">
+          {booking.status === "DRAFT" && booking.rejectionReason && (
+            <div className="mb-4 rounded border-l-4 border-rose bg-rose-soft px-4 py-3 text-sm text-ink-1">
+              <div className="eyebrow mb-1 text-rose">Отклонено руководителем</div>
+              <div className="whitespace-pre-wrap">{booking.rejectionReason}</div>
+              <div className="mt-2 text-xs text-ink-3">
+                Внесите правки и отправьте снова кнопкой «Отправить на согласование».
+              </div>
+            </div>
+          )}
+
+          {booking.status === "PENDING_APPROVAL" && (
+            <div className="mb-4 rounded border border-amber bg-amber-soft px-4 py-2 text-sm text-ink-1">
+              Бронь на согласовании у руководителя — редактирование временно заблокировано.
+            </div>
+          )}
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            {booking.status === "DRAFT" && (user?.role === "WAREHOUSE" || user?.role === "SUPER_ADMIN") && (
+              <button
+                type="button"
+                onClick={handleSubmitForApproval}
+                disabled={actionBusy !== null}
+                className="rounded bg-accent-bright px-4 py-2 text-sm text-white hover:bg-accent-bright/90 disabled:opacity-50"
+              >
+                {actionBusy === "submit" ? "Отправляю…" : "Отправить на согласование"}
+              </button>
+            )}
+            {booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN" && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleApprove}
+                  disabled={actionBusy !== null}
+                  className="rounded bg-emerald px-4 py-2 text-sm text-white hover:bg-emerald/90 disabled:opacity-50"
+                >
+                  {actionBusy === "approve" ? "Одобряю…" : "Одобрить"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRejectOpen(true)}
+                  disabled={actionBusy !== null}
+                  className="rounded border border-rose px-4 py-2 text-sm text-rose hover:bg-rose-soft disabled:opacity-50"
+                >
+                  Отклонить
+                </button>
+              </>
+            )}
+          </div>
+
+          <RejectBookingModal
+            open={rejectOpen}
+            bookingDisplayName={booking.displayName ?? booking.projectName}
+            loading={actionBusy === "reject"}
+            onClose={() => setRejectOpen(false)}
+            onSubmit={handleReject}
+          />
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 print-booking">
           <div className="lg:col-span-8 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
             <div className="p-3 border-b border-border bg-surface-subtle">
               <p className="eyebrow">Позиции брони</p>
@@ -441,6 +565,7 @@ export default function BookingDetailPage() {
                 ) : null}
               </div>
             </div>
+          </div>
           </div>
         </div>
       ) : (
