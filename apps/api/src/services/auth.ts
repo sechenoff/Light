@@ -2,7 +2,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "../prisma";
 
-export type AdminRole = "SUPER_ADMIN" | "RENTAL_ADMIN";
+/** @deprecated Используй UserRole. AdminRole оставлен для обратной совместимости с requireRole(). */
+export type AdminRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN";
 export type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN";
 
 export type SessionPayload = {

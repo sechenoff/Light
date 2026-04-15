@@ -6,7 +6,7 @@ import Link from "next/link";
 import { apiFetch } from "../../src/lib/api";
 
 type LoginResponse = {
-  user: { userId: string; username: string; role: "SUPER_ADMIN" | "RENTAL_ADMIN" };
+  user: { userId: string; username: string; role: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" };
 };
 
 export default function LoginPage() {
@@ -20,7 +20,7 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("from") || "/dashboard";
+  const redirectTo = searchParams.get("from") || "/day";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
