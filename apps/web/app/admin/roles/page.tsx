@@ -143,7 +143,7 @@ export default function AdminRolesPage() {
                 : key === "WAREHOUSE"   ? "text-teal"
                                         : "text-amber";
                 return (
-                  <th key={key} className={`px-5 py-3 text-center bg-slate-soft border-b border-border eyebrow ${colCls} border-r border-border last:border-r-0`}>
+                  <th key={key} className={`px-5 py-3 text-center bg-slate-soft border-b border-r border-border eyebrow ${colCls} last:border-r-0`}>
                     {d.title}
                   </th>
                 );
