@@ -1,10 +1,12 @@
 import express from "express";
 import { z } from "zod";
+import type { Prisma as PrismaNamespace } from "@prisma/client";
 
 import { prisma } from "../prisma";
 import { hashPassword, normalizeUsername } from "../services/auth";
 import { requireRole } from "../middleware/sessionAuth";
 import { HttpError } from "../utils/errors";
+import { writeAuditEntry, diffFields } from "../services/audit";
 
 const router = express.Router();
 
@@ -49,6 +51,7 @@ router.get("/", async (_req, res, next) => {
 router.post("/", async (req, res, next) => {
   try {
     const body = createSchema.parse(req.body);
+    const actorId = req.adminUser!.userId;
     const existing = await prisma.adminUser.findUnique({ where: { username: body.username } });
     if (existing) {
       return res.status(409).json({ message: "Пользователь с таким логином уже существует" });
@@ -57,6 +60,14 @@ router.post("/", async (req, res, next) => {
     const user = await prisma.adminUser.create({
       data: { username: body.username, passwordHash, role: body.role },
       select: { id: true, username: true, role: true, createdAt: true, updatedAt: true },
+    });
+    await writeAuditEntry({
+      userId: actorId,
+      action: "create",
+      entityType: "AdminUser",
+      entityId: user.id,
+      before: null,
+      after: diffFields({ username: user.username, role: user.role } as Record<string, unknown>),
     });
     res.status(201).json({ user });
   } catch (err) {
@@ -70,10 +81,13 @@ router.post("/", async (req, res, next) => {
 router.patch("/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
+    const actorId = req.adminUser!.userId;
     const body = updateSchema.parse(req.body);
 
     const existing = await prisma.adminUser.findUnique({ where: { id } });
     if (!existing) throw new HttpError(404, "Пользователь не найден");
+
+    const before = diffFields({ username: existing.username, role: existing.role } as Record<string, unknown>);
 
     const data: { passwordHash?: string; role?: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" } = {};
     if (body.password) data.passwordHash = await hashPassword(body.password);
@@ -83,6 +97,14 @@ router.patch("/:id", async (req, res, next) => {
       where: { id },
       data,
       select: { id: true, username: true, role: true, createdAt: true, updatedAt: true },
+    });
+    await writeAuditEntry({
+      userId: actorId,
+      action: "update",
+      entityType: "AdminUser",
+      entityId: id,
+      before,
+      after: diffFields({ username: user.username, role: user.role } as Record<string, unknown>),
     });
     res.json({ user });
   } catch (err) {
@@ -96,6 +118,7 @@ router.patch("/:id", async (req, res, next) => {
 router.delete("/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
+    const actorId = req.adminUser!.userId;
     const existing = await prisma.adminUser.findUnique({ where: { id } });
     if (!existing) throw new HttpError(404, "Пользователь не найден");
 
@@ -112,7 +135,24 @@ router.delete("/:id", async (req, res, next) => {
       }
     }
 
-    await prisma.adminUser.delete({ where: { id } });
+    const before = diffFields({ username: existing.username, role: existing.role } as Record<string, unknown>);
+    try {
+      await prisma.adminUser.delete({ where: { id } });
+    } catch (err) {
+      // P2003 = FK constraint — у пользователя есть записи аудита
+      if ((err as PrismaNamespace.PrismaClientKnownRequestError).code === "P2003") {
+        return res.status(409).json({ code: "ADMIN_HAS_AUDIT_HISTORY", message: "Невозможно удалить: у пользователя есть записи аудита" });
+      }
+      throw err;
+    }
+    await writeAuditEntry({
+      userId: actorId,
+      action: "delete",
+      entityType: "AdminUser",
+      entityId: id,
+      before,
+      after: null,
+    });
     res.json({ ok: true });
   } catch (err) {
     next(err);
