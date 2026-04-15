@@ -6,12 +6,12 @@
  * Логины case-insensitive (хранятся lowercase). Пароли меняются через UI после входа.
  *   sechenoff / test  (SUPER_ADMIN)
  *   super     / тест  (SUPER_ADMIN)
- *   admin     / тест  (RENTAL_ADMIN)
+ *   admin     / тест  (WAREHOUSE)
  */
 import { prisma } from "../src/prisma";
 import { hashPassword, normalizeUsername } from "../src/services/auth";
 
-async function ensureUser(username: string, password: string, role: "SUPER_ADMIN" | "RENTAL_ADMIN") {
+async function ensureUser(username: string, password: string, role: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN") {
   const normalized = normalizeUsername(username);
   const existing = await prisma.adminUser.findUnique({ where: { username: normalized } });
   if (existing) {
@@ -30,7 +30,7 @@ async function ensureUser(username: string, password: string, role: "SUPER_ADMIN
 async function main() {
   await ensureUser("Sechenoff", "test", "SUPER_ADMIN");
   await ensureUser("super", "тест", "SUPER_ADMIN");
-  await ensureUser("admin", "тест", "RENTAL_ADMIN");
+  await ensureUser("admin", "тест", "WAREHOUSE");
 }
 
 main()
