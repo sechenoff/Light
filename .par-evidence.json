@@ -1,57 +1,72 @@
 {
-  "sprint": 5,
+  "cycle": "holistic-fix",
   "feature": "roles-navigation",
   "governance_mode": "standard",
   "complexity": "medium",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "head_commit": "a177ffa",
-  "fix_commits": [],
+  "base_commit": "e07e6df",
+  "head_commits": [
+    "f69b50d fix(api): add rolesGuard to warehouse workers and equipment units write ops",
+    "96ed70a fix(api): fix tsc errors — transaction type, audit entity union, reconciliation preview",
+    "54edb6f feat(api): audit logging on booking delete and admin user CRUD",
+    "b1c47a3 fix(web): admin users tab supports all UserRole values, drop RENTAL_ADMIN",
+    "7822777 fix(web): hide destructive actions from WAREHOUSE on bookings and equipment manage",
+    "79fdded fix(web): wire DayWarehouse to /api/dashboard/today, gate repair source link",
+    "d4be521 fix(web): trim quickAddPayment payload, fix LoginResponse type, redirect to /day",
+    "0cee7e4 fix(web): menu — add /calendar and /repair to SA+WH, drop /clients stub",
+    "304ccd2 fix(api): migrate seed-admin-users RENTAL_ADMIN → WAREHOUSE",
+    "5bcdcbe fix(api): wrap adminUsers CRUD audit writes in $transaction for atomicity",
+    "df9e770 chore(web): remove unused useCurrentUser import in repair detail"
+  ],
   "initial_verdicts": {
-    "product": "ACCEPTED",
-    "technical": "APPROVE"
+    "product": "NEEDS_FIXES",
+    "technical": "APPROVE",
+    "product_blockers": [
+      "seed-admin-users.ts line 14/33 still references RENTAL_ADMIN — deploy.sh runs this, would silently fail Prisma validation on every fresh deploy (script excluded from tsconfig, so tsc didn't catch it)"
+    ],
+    "technical_notes": [
+      "adminUsers CRUD audit writes happen AFTER Prisma op, not inside $transaction — inconsistent with bookings DELETE pattern landed in same cycle, can persist a destructive change without audit if writeAuditEntry throws",
+      "Both flagged as small follow-ups; addressed in commits 304ccd2 and 5bcdcbe before merge"
+    ]
   },
   "final_verdicts": {
     "product": "ACCEPTED",
     "technical": "APPROVE"
   },
   "review_notes": {
-    "summary": "Cosmetic repaint passed both reviewers on first pass — no fix cycle needed. Sprint 5 is strictly presentation: new shared components (StatusPill, SectionHeader), StatusBadge removed, 8 pages + 4 components repainted to IBM Plex + semantic tokens. Zero business-logic diff, zero new dependencies, zero type regressions.",
-    "audit_numbers": {
-      "inline_style_in_scope": 0,
-      "inline_style_in_finance_out_of_scope": 5,
-      "arbitrary_hex_tailwind_classes_in_components": 0,
-      "finance_svg_hex_fills_out_of_scope": "pre-existing from Sprint 3"
+    "holistic_review_input": "Final holistic review (post-Sprint-5) surfaced 2 CRITICAL + 4 HIGH technical + 8 HIGH product + selected MEDIUMs. Privilege escalation on /api/warehouse/workers/* (no rolesGuard at all) and /api/equipment/:id/units/* wrapper guard granting TECHNICIAN write access. Hardcoded RENTAL_ADMIN throughout admin Users tab blocking WAREHOUSE+TECH user creation. 3 landed tsc errors. Missing audit entries on destructive ops (booking DELETE, AdminUser CRUD). Stale payment payload. Orphan /clients menu item. DayWarehouse placeholders.",
+    "fixes_summary": {
+      "CRITICAL": "C1/C2 — /admin Users tab now supports all 3 UserRole values via roleLabel() helper (Руководитель/Кладовщик/Техник) and proper role <select>; every RENTAL_ADMIN reference purged from apps/web/ and apps/api/scripts/seed-admin-users.ts (only migration script + its tests retain legacy mapping, expected).",
+      "HIGH_security": "H1 — rolesGuard([SA,WAREHOUSE]) on /api/warehouse/workers/* CRUD; /auth and /workers/names remain public. H2 — per-route guards split read/write on /api/equipment/:id/units/* and /api/equipment-units globals (GET all 3 roles, POST/PATCH/DELETE SA+WH only). Wrapper guard in routes/index.ts removed.",
+      "HIGH_types": "H3 — bookings.ts uses Prisma.TransactionClient (not typeof prisma); AuditEntityType union expanded with EquipmentUnit; getReconciliationPreview return shape includes createdRepairIds + failedBrokenUnits. tsc --noEmit exits 0 on both api and web.",
+      "HIGH_audit": "H4 — DELETE booking writeAuditEntry inside same $transaction; AdminUser CRUD (create/update/delete) writeAuditEntry inside $transaction (initial commit 54edb6f wrote audit AFTER op; follow-up 5bcdcbe wrapped both in tx for atomicity rollback); P2003 caught cleanly → 409 ADMIN_HAS_AUDIT_HISTORY.",
+      "HIGH_ux": "H5 — Delete/Edit buttons gated on isSuperAdmin on /bookings and /equipment/manage. H6 — quickAddPayment payload trimmed to backend Zod schema {bookingId, amount, method, receivedAt}. H7 — DayWarehouse wired to /api/dashboard/today with loading skeleton. H8 — repair source-booking link role-gated SA+WH. H9 — /clients removed from menus (no page existed).",
+      "MEDIUM": "M1 — /calendar added to SA+WH menus. M2 — /repair added to WH menu. M3 — LoginResponse.role uses new 3-role union; AdminRole alias updated in auth.ts. M4 — login default redirect /day (was /dashboard 404)."
     },
-    "product_notes": [
-      "Russian labels preserved (Черновик/Подтверждено/Выдано/etc.); /admin header translated from English 'Admin Panel' to 'Администрирование'.",
-      "accent-bright applied consistently on primary CTAs across touched pages.",
-      "StatusPill variant mapping stable across list+detail (CONFIRMED → full/emerald everywhere, etc.).",
-      "Mobile warehouse flow preserved — 5-step wizard + 44px+ tap targets (h-14/h-12).",
-      "finance/* correctly untouched (Sprint 3 scope)."
-    ],
-    "technical_notes": [
-      "Business logic untouched — zero handler/effect/fetch additions or removals across 8 repainted pages.",
-      "StatusPill (9 variants) and SectionHeader (eyebrow + title + actions) both clean, no side effects, typed props.",
-      "StatusBadge fully migrated — 0 remaining references; StatusPill imported in 6 sites.",
-      "tsc --noEmit clean; web build clean (no size regressions); 366/366 tests (no flakes on this run).",
-      "CLAUDE.md updated with Sprint 5 section."
-    ],
+    "security_posture": "Zero new privilege-escalation vectors. TECHNICIAN now read-only on equipment units. WAREHOUSE retains operational access. botScopeGuard bypass still works (req.botAccess short-circuits rolesGuard at line 18). New 21-test integration suite (apps/api/src/__tests__/rolesGuardHolistic.test.ts) covers TECH→403 / WH→2xx / SA→2xx + audit-entry creation assertions for H1/H2/H4.",
+    "reviewer_consensus": "Both reviewers verified all original holistic findings closed. Initial 2nd-pass surfaced ONE additional HIGH (seed script — caught by product, escapes tsc since scripts/ is tsconfig-excluded) and ONE consistency MINOR (admin CRUD audit not transactional — caught by technical, real risk: SA delete could persist with no audit if writeAuditEntry throws). Both addressed in 3 follow-up commits. Final pass: ACCEPTED + APPROVE.",
     "deferred_out_of_scope": [
-      "/login types still say RENTAL_ADMIN (pre-existing on main, not user-visible — future cleanup).",
-      "/admin Users tab label 'Админ рентала' (pre-existing, future cleanup).",
-      "Barcode IDs (LR-XXX-NNN) remain visible on /equipment/[id]/units and /warehouse/scan (pre-existing content/IA question, separate from cosmetic repaint).",
-      "finance/* inline styles (5 items) — Sprint 3 code, SVG bar fills + dynamic category dots, legitimately dynamic."
+      "apps/web/app/equipment/manage/page.tsx — inline edit form state (setInlineForm) populated by beginInlineEdit even for WAREHOUSE; harmless (UI button hidden), pre-existing pattern.",
+      "apps/web/app/bookings/[id]/page.tsx quickAddPayment uses raw fetch() instead of apiFetch wrapper — pre-existing inconsistency, not introduced this cycle.",
+      "Project-wide ESLint v9 config error (npm run lint fails) — pre-existing on main, unrelated to feature."
     ]
   },
   "tests": {
-    "total": 366,
-    "passing": 366,
+    "total": 451,
+    "passing": 451,
+    "breakdown": {
+      "shared": 33,
+      "bot": 31,
+      "api": 387
+    },
     "runner": "vitest",
-    "suites": 32,
-    "duration_s": 8.22
+    "new_tests": "21 integration tests in apps/api/src/__tests__/rolesGuardHolistic.test.ts covering H1/H2/H4: TECHNICIAN→403 / WAREHOUSE→2xx / SUPER_ADMIN→2xx on warehouse workers + equipment units; audit-entry creation on adminUser CRUD"
   },
-  "web_build": "clean",
-  "ts": "2026-04-15T11:45:00Z"
+  "tsc_noEmit": {
+    "apps_api": "exit 0",
+    "apps_web": "exit 0"
+  },
+  "ts": "2026-04-15T09:37:40Z"
 }
