@@ -22,6 +22,7 @@ process.env.JWT_SECRET = "test-jwt-secret-dashboard-min16chars";
 let app: Express;
 let prisma: any;
 let superAdminToken: string;
+let technicianToken: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -39,13 +40,18 @@ beforeAll(async () => {
   const pmod = await import("../prisma");
   prisma = pmod.prisma;
 
-  // Создаём SUPER_ADMIN для тестов роутов, защищённых rolesGuard
+  // Создаём SUPER_ADMIN и TECHNICIAN для тестов роутов, защищённых rolesGuard
   const { hashPassword, signSession } = await import("../services/auth");
   const hash = await hashPassword("test-pass-123");
   const admin = await prisma.adminUser.create({
     data: { username: "dashboard_super_admin", passwordHash: hash, role: "SUPER_ADMIN" },
   });
   superAdminToken = signSession({ userId: admin.id, username: admin.username, role: "SUPER_ADMIN" });
+
+  const tech = await prisma.adminUser.create({
+    data: { username: "dashboard_technician", passwordHash: hash, role: "TECHNICIAN" },
+  });
+  technicianToken = signSession({ userId: tech.id, username: tech.username, role: "TECHNICIAN" });
 });
 
 afterAll(async () => {
@@ -59,6 +65,7 @@ afterAll(async () => {
 });
 
 function AUTH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${superAdminToken}` }; }
+function AUTH_TECH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${technicianToken}` }; }
 
 // ──────────────────────────────────────────────────────────────────
 // Helpers
@@ -226,6 +233,13 @@ describe("GET /api/dashboard/pending-approvals", () => {
   it("возвращает 401 без API-ключа", async () => {
     const res = await request(app).get("/api/dashboard/pending-approvals");
     expect(res.status).toBe(401);
+  });
+
+  it("TECHNICIAN получает 403 (финансовые данные недоступны)", async () => {
+    const res = await request(app)
+      .get("/api/dashboard/pending-approvals")
+      .set(AUTH_TECH());
+    expect(res.status).toBe(403);
   });
 
   it("возвращает PENDING_APPROVAL брони", async () => {

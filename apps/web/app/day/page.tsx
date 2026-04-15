@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { UserRole } from "../../src/lib/auth";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
 import { apiFetch } from "../../src/lib/api";
-import { formatRub } from "../../src/lib/format";
+import { formatRub, pluralize, MONTHS_LOCATIVE } from "../../src/lib/format";
 import { DayHeader } from "../../src/components/day/DayHeader";
 import { DayAlert } from "../../src/components/day/DayAlert";
 import { DayKpiCard } from "../../src/components/day/DayKpiCard";
@@ -91,10 +91,20 @@ function DaySuperAdmin({ username }: { username: string }) {
   const [repairStats, setRepairStats] = useState<RepairStats | null>(null);
 
   useEffect(() => {
-    apiFetch<FinanceDashboard>("/api/finance/dashboard").then(setFin).catch(() => {});
-    apiFetch<DashboardToday>("/api/dashboard/today").then(setDashboard).catch(() => {});
-    apiFetch<PendingApprovalsResponse>("/api/dashboard/pending-approvals").then(setPending).catch(() => {});
-    apiFetch<RepairStats>("/api/dashboard/repair-stats").then(setRepairStats).catch(() => {});
+    let cancelled = false;
+    apiFetch<FinanceDashboard>("/api/finance/dashboard")
+      .then((d) => { if (!cancelled) setFin(d); })
+      .catch(() => {});
+    apiFetch<DashboardToday>("/api/dashboard/today")
+      .then((d) => { if (!cancelled) setDashboard(d); })
+      .catch(() => {});
+    apiFetch<PendingApprovalsResponse>("/api/dashboard/pending-approvals")
+      .then((d) => { if (!cancelled) setPending(d); })
+      .catch(() => {});
+    apiFetch<RepairStats>("/api/dashboard/repair-stats")
+      .then((d) => { if (!cancelled) setRepairStats(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const pickups = dashboard?.pickups ?? [];
@@ -108,11 +118,14 @@ function DaySuperAdmin({ username }: { username: string }) {
   const prevEarned = fin?.trend && fin.trend.length >= 2 ? fin.trend[fin.trend.length - 2].earned : null;
   const pct = currEarned && prevEarned ? deltaPct(currEarned, prevEarned) : null;
 
-  // Шапка-сводка для правого верхнего угла
+  // Шапка-сводка для правого верхнего угла.
+  // Показываем две НЕ-конфликтующие метрики: сегодняшние операции и выручку месяца —
+  // с явными подписями, чтобы ничего не путать.
   const now = new Date();
-  const monthLabel = now.toLocaleDateString("ru-RU", { month: "long" });
+  const monthLocative = MONTHS_LOCATIVE[now.getMonth()];
+  const todayOpsCount = pickups.length + returns.length;
   const summary = currEarned
-    ? `${monthLabel}: ${pickups.length + returns.length} операций · ${formatRub(currEarned)}`
+    ? `Сегодня ${todayOpsCount} ${pluralize(todayOpsCount, "операция", "операции", "операций")} · в ${monthLocative} ${formatRub(currEarned)}`
     : "—";
 
   // Список операций сегодня (pickup+return склеенные по времени)
@@ -150,8 +163,8 @@ function DaySuperAdmin({ username }: { username: string }) {
         {pending && pending.total > 0 && (
           <DayAlert
             variant="amber"
-            title={`📋 Требует твоего решения — ${pending.total} брон${pending.total === 1 ? "ь" : pending.total >= 2 && pending.total <= 4 ? "и" : "ей"} на согласовании`}
-            linkHref="/bookings"
+            title={`📋 Требует твоего решения — ${pending.total} ${pluralize(pending.total, "бронь", "брони", "броней")} на согласовании`}
+            linkHref="/bookings?status=PENDING_APPROVAL"
             linkLabel="Все →"
           >
             <ul className="divide-y divide-amber-border">
@@ -171,7 +184,7 @@ function DaySuperAdmin({ username }: { username: string }) {
           <DayKpiCard
             eyebrow="Сегодня"
             value={formatRub(todayRevenue)}
-            sub={`${pickups.length} выдач · ${returns.length} возвратов`}
+            sub={`${pickups.length} ${pluralize(pickups.length, "выдача", "выдачи", "выдач")} · ${returns.length} ${pluralize(returns.length, "возврат", "возврата", "возвратов")}`}
           />
           <DayKpiCard
             eyebrow="Долги"
@@ -189,7 +202,7 @@ function DaySuperAdmin({ username }: { username: string }) {
             }
             sub={
               repairStats
-                ? <>≈ {formatRub(repairStats.spentThisMonth)} в {monthLabel}е</>
+                ? <>≈ {formatRub(repairStats.spentThisMonth)} в {monthLocative}</>
                 : "—"
             }
           />
@@ -198,7 +211,7 @@ function DaySuperAdmin({ username }: { username: string }) {
         <div className="bg-surface border border-border rounded-lg p-3">
           <div className="flex justify-between items-baseline mb-2">
             <p className="text-sm font-semibold text-ink">Операции сегодня</p>
-            <Link href="/calendar" className="text-xs text-accent hover:underline">Все →</Link>
+            <Link href="/bookings" className="text-xs text-accent hover:underline">Все →</Link>
           </div>
           <DayOperationsList operations={operations} showAmount emptyLabel="На сегодня нет операций" />
         </div>
@@ -230,19 +243,21 @@ function DayWarehouse({ username }: { username: string }) {
   const [pending, setPending] = useState<PendingApprovalsResponse | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<DashboardToday>("/api/dashboard/today")
-      .then(setDashboard)
+      .then((d) => { if (!cancelled) setDashboard(d); })
       .catch(() => { /* не блокируем */ });
     apiFetch<PendingApprovalsResponse>("/api/dashboard/pending-approvals")
-      .then(setPending)
+      .then((d) => { if (!cancelled) setPending(d); })
       .catch(() => { /* не блокируем */ });
+    return () => { cancelled = true; };
   }, []);
 
   const pickups = dashboard?.pickups ?? [];
   const returns = dashboard?.returns ?? [];
   const summary =
     dashboard
-      ? `${pickups.length} выдач · ${returns.length} возврат${returns.length === 1 ? "" : returns.length >= 2 && returns.length <= 4 ? "а" : "ов"}`
+      ? `${pickups.length} ${pluralize(pickups.length, "выдача", "выдачи", "выдач")} · ${returns.length} ${pluralize(returns.length, "возврат", "возврата", "возвратов")}`
       : "—";
 
   return (
@@ -252,8 +267,8 @@ function DayWarehouse({ username }: { username: string }) {
         {pending && pending.total > 0 && (
           <DayAlert
             variant="amber"
-            title={`📋 ${pending.total} брон${pending.total === 1 ? "ь" : pending.total >= 2 && pending.total <= 4 ? "и" : "ей"} на согласовании у руководителя`}
-            linkHref="/bookings"
+            title={`📋 ${pending.total} ${pluralize(pending.total, "бронь", "брони", "броней")} на согласовании у руководителя`}
+            linkHref="/bookings?status=PENDING_APPROVAL"
             linkLabel="Все →"
           />
         )}
@@ -315,8 +330,8 @@ function DayWarehouse({ username }: { username: string }) {
         <DayFooterMetrics>
           {pending && pending.total > 0 ? (
             <>
-              <span className="font-semibold text-ink-2">{pending.total}</span> бронь
-              {pending.total === 1 ? "" : pending.total >= 2 && pending.total <= 4 ? "и" : "ей"} ждёт согласования у руководителя
+              <span className="font-semibold text-ink-2">{pending.total}</span>{" "}
+              {pluralize(pending.total, "бронь ждёт", "брони ждут", "броней ждут")} согласования у руководителя
             </>
           ) : (
             <>Все брони на сегодня согласованы</>
@@ -343,14 +358,6 @@ function daysSince(iso: string): number {
   return Math.max(0, Math.floor(ms / 86_400_000));
 }
 
-function pluralize(n: number, one: string, few: string, many: string): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
-}
-
 function DayTechnician({ userId, username }: { userId: string; username: string }) {
   const router = useRouter();
   const [newRepairs, setNewRepairs] = useState<RepairListItem[] | null>(null);
@@ -358,25 +365,39 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
   const [stats, setStats] = useState<RepairStats | null>(null);
 
   useEffect(() => {
-    apiFetch<{ repairs: RepairListItem[] }>("/api/repairs?status=WAITING_REPAIR&limit=20")
-      .then((d) => setNewRepairs(d.repairs))
-      .catch(() => setNewRepairs([]));
+    let cancelled = false;
 
-    apiFetch<{ repairs: RepairListItem[] }>(
-      `/api/repairs?assignedTo=${userId}&status=IN_REPAIR,WAITING_PARTS&limit=20`,
-    )
-      .then((d) => setMyRepairs(d.repairs))
-      .catch(() => setMyRepairs([]));
+    apiFetch<{ repairs: RepairListItem[] }>("/api/repairs?status=WAITING_REPAIR&limit=20")
+      .then((d) => { if (!cancelled) setNewRepairs(d.repairs); })
+      .catch(() => { if (!cancelled) setNewRepairs([]); });
+
+    // Без userId нет смысла запрашивать «назначенные мне» — у пользователя
+    // ещё нет связки на AdminUser (старые сессии). Сразу показываем «Свободно».
+    if (userId) {
+      apiFetch<{ repairs: RepairListItem[] }>(
+        `/api/repairs?assignedTo=${encodeURIComponent(userId)}&status=IN_REPAIR,WAITING_PARTS&limit=20`,
+      )
+        .then((d) => { if (!cancelled) setMyRepairs(d.repairs); })
+        .catch(() => { if (!cancelled) setMyRepairs([]); });
+    } else {
+      setMyRepairs([]);
+    }
 
     apiFetch<RepairStats>("/api/dashboard/repair-stats")
-      .then(setStats)
+      .then((d) => { if (!cancelled) setStats(d); })
       .catch(() => { /* не блокируем */ });
+
+    return () => { cancelled = true; };
   }, [userId]);
 
   const newCount = newRepairs?.length ?? 0;
   const myCount = myRepairs?.length ?? 0;
+  // Шапка зависит от самих списков ремонтов, а не от stats: иначе при быстрой
+  // загрузке stats и медленных `/api/repairs` пользователь увидел бы «0 новых».
   const summary =
-    stats ? `${newCount} нов${pluralize(newCount, "ая поломка", "ых поломки", "ых поломок")} · ${myCount} в работе` : "—";
+    newRepairs !== null && myRepairs !== null
+      ? `${newCount} ${pluralize(newCount, "новая поломка", "новые поломки", "новых поломок")} · ${myCount} в работе`
+      : "—";
 
   // Статус-подпись для моего ремонта
   function statusLabel(r: RepairListItem): { text: string; tone: "rose" | "amber" | "emerald" | "slate" } {

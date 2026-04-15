@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { parseBookingRangeBound } from "../utils/dates";
+import { rolesGuard } from "../middleware/rolesGuard";
 
 const router = express.Router();
 
@@ -98,9 +99,13 @@ router.get("/today", async (req, res, next) => {
 /**
  * GET /api/dashboard/pending-approvals
  * Возвращает брони со статусом PENDING_APPROVAL (ждут решения руководителя).
- * Доступ — любой аутентифицированный (rolesGuard на уровне router-а допускает все три роли).
+ *
+ * Доступ — SUPER_ADMIN + WAREHOUSE: в ответе есть `finalAmount` (денежные данные),
+ * а TECHNICIAN по матрице прав не имеет доступа к финансам. Router-level rolesGuard
+ * допускает все три роли (нужен для /today и /repair-stats), поэтому здесь добавляем
+ * явный per-route guard.
  */
-router.get("/pending-approvals", async (_req, res, next) => {
+router.get("/pending-approvals", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (_req, res, next) => {
   try {
     const bookings = await prisma.booking.findMany({
       where: { status: "PENDING_APPROVAL" },
