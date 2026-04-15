@@ -1,71 +1,117 @@
 {
   "sprint": 1,
-  "project": "admin-roles-matrix",
-  "feature": "subproject-C-admin-roles-matrix-page",
-  "governance_mode": "light",
-  "complexity": "simple",
+  "project": "day-enrichment",
+  "feature": "subproject-A-day-role-dashboard",
+  "governance_mode": "standard",
+  "complexity": "medium",
   "base_commit": "9e6c0eb",
   "head_commits": [
-    "49c5ae7 docs(superflow): plan for /admin/roles matrix page (subproject C)",
-    "3709f0b feat(web): data model for /admin/roles matrix page",
-    "0a5567a feat(web): /admin/roles — read-only permissions matrix for SUPER_ADMIN",
-    "628055e feat(web): link to /admin/roles from admin panel",
-    "cfd117f style(web): dedupe border-border class on matrix <th>"
+    "d3f0553 docs(superflow): plan for /day enrichment (subproject A)",
+    "8f9bdc7 feat(api): add finalAmount to dashboard/today mapBooking",
+    "0ab6675 feat(api): add /api/dashboard/pending-approvals and /repair-stats handlers",
+    "50a9a07 feat(web): add DayHeader greeting bar component",
+    "cf12155 feat(web): add DayAlert component (rose/amber variants)",
+    "78ce092 feat(web): add DayKpiCard component",
+    "05d26f4 feat(web): add DayOperationsList component",
+    "38c98de feat(web): add DayFooterMetrics component (dashed top border)",
+    "262da55 feat(web): rewrite DayWarehouse with greeting/alert/operations/footer",
+    "1fd1575 fix(day): address PAR review findings (HIGH + MEDIUM + LOW)"
   ],
   "reviewers": {
+    "product": {
+      "agent": "claude-standard-product-reviewer",
+      "model": "opus",
+      "rounds": 2,
+      "initial_verdict": "NEEDS_FIXES",
+      "initial_findings": {
+        "high": 3,
+        "medium": 3,
+        "low": 2
+      },
+      "final_verdict": "ACCEPTED",
+      "findings_closed": {
+        "high": [
+          "H1 Russian pluralization (выдач/возвратов/броней/позиций/поломки)",
+          "H2 SA header conflated today's op count with month's revenue",
+          "H3 technician alert 'ых поломки' mis-declension"
+        ],
+        "medium": [
+          "M1 alert linkHref now /bookings?status=PENDING_APPROVAL",
+          "M2 ops list 'Все →' now /bookings, not /calendar"
+        ],
+        "low": [
+          "L1 locative month via MONTHS_LOCATIVE (в апреле)",
+          "L2 technician summary gates on loaded repair lists, not stats"
+        ]
+      }
+    },
     "technical": {
       "agent": "claude-standard-code-reviewer",
       "model": "opus",
+      "rounds": 1,
       "verdict": "APPROVE",
       "findings": {
         "critical": 0,
         "high": 0,
-        "medium": 0,
-        "low_nits": 1
+        "medium": 3,
+        "low": 1
       },
-      "nits_addressed": "cfd117f style(web): dedupe border-border class on matrix <th>"
+      "mediums_addressed_in_fix_commit": [
+        "M1 empty userId guard before /api/repairs?assignedTo= fetch",
+        "M2 cancelled flag in all three useEffects (state after unmount)",
+        "M3 rolesGuard([SUPER_ADMIN, WAREHOUSE]) inline on /api/dashboard/pending-approvals (finalAmount disclosure to TECHNICIAN) + TECHNICIAN→403 integration test added"
+      ],
+      "low_intentionally_skipped": [
+        "L1 extract pluralize/MONTHS_LOCATIVE to format.ts — done (addressed as refactor)",
+        "L2 tenant-scoped repair filters — out of scope (single-tenant app)"
+      ]
     }
   },
-  "rationale": "Light governance mode — single technical reviewer sufficient. Risk profile: pure frontend, data-as-const, no API/schema/middleware/auth changes. Scope: replicate pre-approved mockup docs/mockups/roles-matrix.html as live page at /admin/roles, visible only to SUPER_ADMIN via useRequireRole.",
+  "rationale": "Standard governance — dual reviewers (product lens + technical lens). Codex not installed, so technical lens is a second Claude agent. Scope: replicate docs/mockups/my-day-all-roles.html as role-aware /day. Feature enriches existing /day page for SUPER_ADMIN/WAREHOUSE/TECHNICIAN with greeting header, pending-approvals alerts, KPI cards, operations list, role-specific footer metrics. No schema changes.",
   "technical_review": "APPROVE",
   "claude_product": "ACCEPTED",
-  "provider": "single-technical-reviewer-light-mode",
+  "provider": "split-focus",
   "gates": {
     "tsc_noEmit": {
       "apps_web": "exit 0",
       "apps_api": "exit 0"
     },
     "tests": {
-      "total": 451,
-      "passing": 451,
+      "total": 392,
+      "passing": 392,
       "breakdown": {
-        "shared": 33,
-        "bot": 31,
-        "api": 387
+        "api_dashboard": 12
       },
       "runner": "vitest",
-      "new_tests": "none (pure read-only page, no web-side test infra in project; out of scope per plan)"
+      "new_tests": "apps/api/src/__tests__/dashboard.test.ts: +3 tests (pending-approvals 401/403/200 + repair-stats 401/200 + finalAmount in /today payload)"
     },
-    "build": "Compiled successfully, /admin/roles route present (8.62 kB / 106 kB first load)"
+    "build": "npm run build -w apps/web — Compiled successfully; /day route: 6.78 kB / 104 kB first load"
   },
   "scope_notes": {
     "files_created": [
-      "apps/web/src/lib/rolesMatrix.ts (315 lines — types + 8 matrix sections, 6 legend items, 8 edge cases, 6 tech notes)",
-      "apps/web/app/admin/roles/page.tsx (227 lines — client page with guard, 6 layout blocks, inline markdown helper)"
+      "apps/web/src/components/day/DayHeader.tsx",
+      "apps/web/src/components/day/DayAlert.tsx",
+      "apps/web/src/components/day/DayKpiCard.tsx",
+      "apps/web/src/components/day/DayOperationsList.tsx",
+      "apps/web/src/components/day/DayFooterMetrics.tsx",
+      "docs/superflow/plans/2026-04-15-day-enrichment.md"
     ],
     "files_modified": [
-      "apps/web/app/admin/page.tsx (+16 lines: Link card to /admin/roles above tab bar)"
+      "apps/web/app/day/page.tsx (full rewrite: 3 role components + inline types + shared helpers)",
+      "apps/web/src/lib/format.ts (+ pluralize, MONTHS_LOCATIVE)",
+      "apps/api/src/routes/dashboard.ts (+ /pending-approvals + /repair-stats + inline rolesGuard)",
+      "apps/api/src/__tests__/dashboard.test.ts (+ 3 new test blocks, TECHNICIAN fixture)"
     ],
-    "design_canon_compliance": "All colors via canonical tokens (indigo/teal/amber/slate/accent/ink/border/surface + -soft/-border). Zero hex, one intentional style={{}} on <col> for table colgroup width (only way to size <col> elements).",
-    "component_reuse": "StatusPill (all 6 permission variants), useRequireRole — existing components, not modified.",
-    "api_changes": "none",
+    "design_canon_compliance": "All colors via canonical IBM Plex tokens (rose/amber/emerald/teal/indigo/slate/accent/ink/border/surface + -soft/-border/-bright). Zero hex. Uses existing StatusPill component pattern; does not introduce new abstractions.",
+    "component_reuse": "useRequireRole, apiFetch, formatRub, MiniCalendar-compatible design primitives — existing modules, not modified beyond format.ts additions.",
+    "api_changes": "+2 GET endpoints (/api/dashboard/pending-approvals, /api/dashboard/repair-stats), + finalAmount on /api/dashboard/today response",
     "schema_changes": "none",
-    "middleware_changes": "none"
+    "middleware_changes": "inline rolesGuard per-route on /pending-approvals (router-level guard already present)"
   },
   "deferred_out_of_scope": [
-    "No frontend unit tests — apps/web has no RTL/Playwright infra; adding one for a static page is YAGNI.",
-    "Role matrix editor UI — by design (matrix is doctrine, encoded in TS const, not DB).",
-    "apps/web/tsconfig.tsbuildinfo untrack — pre-existing noise, spawned separately as side-task."
+    "Tenant-scoped repair filters — single-tenant system; low priority.",
+    "Frontend unit tests for day components — apps/web has no RTL/Playwright infra.",
+    "Finance dashboard 'upcomingWeek' surfacing — currently loaded but not used; reserved for a follow-up."
   ],
-  "ts": "2026-04-15T11:27:04Z"
+  "ts": "2026-04-15T12:32:00Z"
 }
