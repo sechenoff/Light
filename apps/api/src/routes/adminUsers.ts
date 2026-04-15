@@ -57,17 +57,21 @@ router.post("/", async (req, res, next) => {
       return res.status(409).json({ message: "Пользователь с таким логином уже существует" });
     }
     const passwordHash = await hashPassword(body.password);
-    const user = await prisma.adminUser.create({
-      data: { username: body.username, passwordHash, role: body.role },
-      select: { id: true, username: true, role: true, createdAt: true, updatedAt: true },
-    });
-    await writeAuditEntry({
-      userId: actorId,
-      action: "create",
-      entityType: "AdminUser",
-      entityId: user.id,
-      before: null,
-      after: diffFields({ username: user.username, role: user.role } as Record<string, unknown>),
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.adminUser.create({
+        data: { username: body.username, passwordHash, role: body.role },
+        select: { id: true, username: true, role: true, createdAt: true, updatedAt: true },
+      });
+      await writeAuditEntry({
+        tx,
+        userId: actorId,
+        action: "create",
+        entityType: "AdminUser",
+        entityId: created.id,
+        before: null,
+        after: diffFields({ username: created.username, role: created.role } as Record<string, unknown>),
+      });
+      return created;
     });
     res.status(201).json({ user });
   } catch (err) {
@@ -93,18 +97,22 @@ router.patch("/:id", async (req, res, next) => {
     if (body.password) data.passwordHash = await hashPassword(body.password);
     if (body.role) data.role = body.role;
 
-    const user = await prisma.adminUser.update({
-      where: { id },
-      data,
-      select: { id: true, username: true, role: true, createdAt: true, updatedAt: true },
-    });
-    await writeAuditEntry({
-      userId: actorId,
-      action: "update",
-      entityType: "AdminUser",
-      entityId: id,
-      before,
-      after: diffFields({ username: user.username, role: user.role } as Record<string, unknown>),
+    const user = await prisma.$transaction(async (tx) => {
+      const updated = await tx.adminUser.update({
+        where: { id },
+        data,
+        select: { id: true, username: true, role: true, createdAt: true, updatedAt: true },
+      });
+      await writeAuditEntry({
+        tx,
+        userId: actorId,
+        action: "update",
+        entityType: "AdminUser",
+        entityId: id,
+        before,
+        after: diffFields({ username: updated.username, role: updated.role } as Record<string, unknown>),
+      });
+      return updated;
     });
     res.json({ user });
   } catch (err) {
@@ -137,7 +145,18 @@ router.delete("/:id", async (req, res, next) => {
 
     const before = diffFields({ username: existing.username, role: existing.role } as Record<string, unknown>);
     try {
-      await prisma.adminUser.delete({ where: { id } });
+      await prisma.$transaction(async (tx) => {
+        await writeAuditEntry({
+          tx,
+          userId: actorId,
+          action: "delete",
+          entityType: "AdminUser",
+          entityId: id,
+          before,
+          after: null,
+        });
+        await tx.adminUser.delete({ where: { id } });
+      });
     } catch (err) {
       // P2003 = FK constraint — у пользователя есть записи аудита
       if ((err as PrismaNamespace.PrismaClientKnownRequestError).code === "P2003") {
@@ -145,14 +164,6 @@ router.delete("/:id", async (req, res, next) => {
       }
       throw err;
     }
-    await writeAuditEntry({
-      userId: actorId,
-      action: "delete",
-      entityType: "AdminUser",
-      entityId: id,
-      before,
-      after: null,
-    });
     res.json({ ok: true });
   } catch (err) {
     next(err);
