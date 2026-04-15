@@ -98,7 +98,14 @@ light-rental-system/
 | `apps/web/src/components/BarcodeScanner.tsx` | Shared barcode scanner component (html5-qrcode, Wake Lock, flash animation) |
 | `ecosystem.config.js` | PM2 process definitions for api (:4000) + rental-bot |
 | `deploy.sh` | Build + deploy script (builds shared first; supports --api, --web, --rental-bot flags) |
-| `apps/api/src/routes/dashboard.ts` | GET /api/dashboard/today — daily operations summary: pickups, returns, active bookings |
+| `apps/api/src/routes/dashboard.ts` | GET /api/dashboard/today — daily ops; /pending-approvals (SUPER_ADMIN+WAREHOUSE, `finalAmount` included); /repair-stats (all 3 roles) |
+| `apps/web/app/day/page.tsx` | Role-aware «Мой день»: 3 компонента (DaySuperAdmin/DayWarehouse/DayTechnician) — greeting + алерт ожидающих согласования + KPI/ops/repairs + footer metrics |
+| `apps/web/src/components/day/DayHeader.tsx` | Тёмная шапка `/day`: приветствие + русская дата + role-specific summary справа |
+| `apps/web/src/components/day/DayAlert.tsx` | Алерт с вариантами rose/amber, опциональным счётчиком и Link-кнопкой «Все →» |
+| `apps/web/src/components/day/DayKpiCard.tsx` | KPI-карточка: eyebrow / value (ReactNode) / sub с `subTone: "muted" \| "rose"` |
+| `apps/web/src/components/day/DayOperationsList.tsx` | Список операций: HH:MM · выдача/возврат · клиент · (сумма)? · N позиций. Использует shared `pluralize()` |
+| `apps/web/src/components/day/DayFooterMetrics.tsx` | Обёртка для нижней строки-сводки с dashed-top-border |
+| `apps/web/src/lib/format.ts` | formatRub + formatMoneyRub + `pluralize(n, one, few, many)` + `MONTHS_LOCATIVE` (в январе, в феврале, …) |
 | `apps/api/src/routes/calendar.ts` | GET /api/calendar (resources + events), GET /api/calendar/occupancy (per-day heatmap) |
 | `apps/web/app/calendar/page.tsx` | Full calendar page: desktop availability grid (equipment rows × day columns, collapsible categories) + mobile day-by-day card view; URL params: date, period, category |
 | `apps/web/src/components/CalendarTooltip.tsx` | Floating tooltip for calendar cells (via @floating-ui/react): shows booking details on hover |
@@ -372,5 +379,44 @@ CSS-утилиты: `.eyebrow` (надстрочники), `.mono-num` (числ
 **TypeScript (HIGH).** Исправлены 3 ошибки `tsc --noEmit`: неверный тип `Prisma.TransactionClient` в `bookings.ts`, отсутствующее значение `"EquipmentUnit"` в union `AuditEntityType`, неполный тип возврата `getReconciliationPreview` (добавлены `createdRepairIds` и `failedBrokenUnits`).
 
 **Навигация и аудит (HIGH/MEDIUM).** Страница `/clients` удалена из меню всех ролей (роут не существовал). В меню `SUPER_ADMIN` и `WAREHOUSE` добавлен `/calendar`; в меню `WAREHOUSE` добавлен `/repair`. Деструктивные операции `DELETE /api/bookings/:id` и весь CRUD `/api/admin-users` теперь пишут `AuditEntry` в той же транзакции (подробности — в разделе «Аудит-сервис» выше). Редирект после логина изменён с несуществующего `/dashboard` на `/day`.
+
+## Day Enrichment (Subproject A)
+
+«Мой день» `/day` доведён до уровня мокапа `docs/mockups/my-day-all-roles.html`: роль-специфичный первый экран, который пользователь видит после логина.
+
+### Компоненты и композиция
+
+Страница `apps/web/app/day/page.tsx` выбирает один из трёх роль-специфичных компонентов (`DaySuperAdmin` / `DayWarehouse` / `DayTechnician`). Общая структура у всех трёх:
+
+1. `DayHeader` — тёмная шапка с приветствием (`доброе утро, Имя 👋`), русской датой и правым саммари (состав зависит от роли).
+2. Опциональный `DayAlert` (rose или amber) — например, «N броней на согласовании» для SA/WAREHOUSE, «N новых поломок» для TECH.
+3. KPI-сетка из `DayKpiCard` (для SA) или структурированные карточки (для WAREHOUSE/TECH).
+4. `DayOperationsList` (в нём `formatHM` для HH:MM + shared `pluralize` для позиций) — общий для SA и WAREHOUSE.
+5. `DayFooterMetrics` — нижняя строка-сводка с dashed-top-border.
+
+### API endpoints
+
+- `GET /api/dashboard/pending-approvals` — список броней в статусе `PENDING_APPROVAL` для алерта. **Inline `rolesGuard(["SUPER_ADMIN", "WAREHOUSE"])`** — router-level guard допускает все три роли (нужен для `/today` и `/repair-stats`), но `/pending-approvals` возвращает `finalAmount`, поэтому TECHNICIAN → 403. Интеграционный тест `apps/api/src/__tests__/dashboard.test.ts` это фиксирует.
+- `GET /api/dashboard/repair-stats` — агрегаты мастерской: `openCount`, `newCount` (= WAITING_REPAIR), `closedThisMonth`, `writtenOffThisMonth`, `spentThisMonth` (сумма approved-расходов с `linkedRepairId` за текущий месяц).
+- `GET /api/dashboard/today` — теперь возвращает `finalAmount` на каждой брони (было только `itemCount`).
+
+### Роли — что в шапке и футере
+
+| Роль | Шапка (summary справа) | Алерт | KPI/контент | Footer |
+|------|------------------------|-------|-------------|--------|
+| SUPER_ADMIN | `Сегодня N операций · в апреле X ₽` | amber «N броней на согласовании» (linkHref=`/bookings?status=PENDING_APPROVAL`) | 3 KPI: Сегодня (revenue), Долги, Ремонт | Месячная выручка + Δ% к прошлому месяцу |
+| WAREHOUSE | `N выдач · M возвратов` | amber «N броней ждут у руководителя» | 2 карточки: 📤 Выдачи + 📥 Возвраты | Счётчик ожидающих согласования (`N броней ждут`) |
+| TECHNICIAN | `N новых поломок · M в работе` | rose «Новые поломки — требуют оценки» с кнопками «Взять» / «Списать» | Карточка «🛠 В работе» со SLA-подписями (`просрочено SLA` ≥ 5 дней в IN_REPAIR) | Месячные агрегаты: починено, списано, в работе, потрачено ≈ |
+
+### Shared helpers в `format.ts`
+
+- `pluralize(n, one, few, many)` — русская плюрализация (1 → one, 2-4 → few, 5+/11-14 → many). Используется везде: позиции, выдачи, возвраты, брони, поломки.
+- `MONTHS_LOCATIVE[0..11]` — русские названия месяцев в предложном падеже (`январе`, `феврале`, …), индекс совместим с `Date#getMonth()`. Используется в `в апреле`.
+
+### Технические нюансы
+
+- Все три `useEffect` в `/day` используют паттерн `let cancelled = false; ... return () => { cancelled = true; }` — защита от state-updates после unmount.
+- `DayTechnician` гейтит вызов `/api/repairs?assignedTo=<userId>`: если `userId` пустой (старые сессии без связки на AdminUser), сразу показывается «Свободная очередь».
+- Шапка `DayTechnician.summary` гейтится на `newRepairs !== null && myRepairs !== null`, а не на `stats` — чтобы не показать ложный «0 новых», пока списки ремонтов ещё загружаются.
 
 <!-- updated-by-superflow:2026-04-15 -->
