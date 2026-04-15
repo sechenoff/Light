@@ -304,7 +304,11 @@ router.patch("/:id", async (req, res, next) => {
     }
 
     if (!["DRAFT", "CONFIRMED"].includes(existing.status)) {
-      throw new HttpError(409, "Редактирование доступно для черновиков и подтвержденных броней.");
+      const reason =
+        existing.status === "PENDING_APPROVAL"
+          ? "Бронь на согласовании — редактирование недоступно. Отправьте на доработку через «Отклонить»."
+          : "Редактирование доступно для черновиков и подтверждённых броней.";
+      throw new HttpError(409, reason, "BOOKING_EDIT_FORBIDDEN");
     }
 
     let start = existing.startDate;
