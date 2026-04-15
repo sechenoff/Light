@@ -25,6 +25,13 @@ interface UpcomingEntry {
   expectedPaymentDate: string | null;
 }
 
+interface TopDebtor {
+  clientId: string;
+  clientName: string;
+  outstanding: string;
+  overdueDays: number | null;
+}
+
 interface Dashboard {
   asOf: string;
   totalOutstanding: string;
@@ -33,6 +40,7 @@ interface Dashboard {
   netThisMonth: string;
   upcomingWeek: UpcomingEntry[];
   trend: TrendEntry[];
+  topDebtors: TopDebtor[];
   summary: {
     totalReceivables: string;
     overdueReceivables: string;
@@ -187,6 +195,31 @@ export default function FinancePage() {
           )}
         </div>
       </div>
+
+      {/* Top-5 debtors */}
+      {data.topDebtors.length > 0 && (
+        <div className="bg-surface border border-border rounded-lg p-4 shadow-xs">
+          <p className="eyebrow mb-3">Топ-5 должников</p>
+          <ul className="divide-y divide-border">
+            {data.topDebtors.map((d) => (
+              <li key={d.clientId} className="py-2 flex items-center justify-between">
+                <a
+                  href={`/finance/debts?clientId=${d.clientId}`}
+                  className="text-sm font-medium text-ink hover:text-accent transition-colors"
+                >
+                  {d.clientName}
+                </a>
+                <div className="flex items-center gap-3 text-right">
+                  <span className="mono-num text-sm font-semibold text-ink">{formatRub(d.outstanding)}</span>
+                  {d.overdueDays !== null && d.overdueDays > 0 && (
+                    <span className="text-xs text-rose">просрочка {d.overdueDays} дн.</span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

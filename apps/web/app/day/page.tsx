@@ -98,8 +98,8 @@ function DayTechnician() {
         <h1 className="text-lg font-semibold text-ink mt-0.5">Мой день</h1>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <PlaceholderCard title="В очереди" hint="WAITING_REPAIR — скоро" />
-        <PlaceholderCard title="В работе" hint="IN_REPAIR — скоро" />
+        <PlaceholderCard title="В очереди" hint="В очереди на ремонт — скоро" />
+        <PlaceholderCard title="В работе" hint="В работе — скоро" />
       </div>
     </div>
   );

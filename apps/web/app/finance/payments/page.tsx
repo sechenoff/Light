@@ -99,6 +99,13 @@ function DayCell({ day, entry }: { day: number; entry?: CalendarDay }) {
 
 // ── Add payment modal ─────────────────────────────────────────────────────────
 
+interface BookingOption {
+  id: string;
+  projectName: string;
+  startDate: string;
+  client: { name: string };
+}
+
 function AddPaymentModal({
   onClose,
   onCreated,
@@ -113,6 +120,13 @@ function AddPaymentModal({
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [bookings, setBookings] = useState<BookingOption[]>([]);
+
+  useEffect(() => {
+    apiFetch<{ bookings: BookingOption[] }>("/api/bookings?status=CONFIRMED,ISSUED&limit=100")
+      .then((r) => setBookings(r.bookings ?? []))
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async () => {
     if (!bookingId || !amount) { setError("Заполните обязательные поля"); return; }
@@ -143,13 +157,19 @@ function AddPaymentModal({
         <h2 className="text-lg font-semibold text-ink mb-4">Добавить платёж</h2>
         <div className="space-y-3">
           <div>
-            <label className="eyebrow block mb-1">ID брони *</label>
-            <input
+            <label className="eyebrow block mb-1">Бронирование *</label>
+            <select
               className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
               value={bookingId}
               onChange={(e) => setBookingId(e.target.value)}
-              placeholder="cuid..."
-            />
+            >
+              <option value="">— выберите бронирование —</option>
+              {bookings.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.client.name} — {b.projectName} — {new Date(b.startDate).toLocaleDateString("ru-RU")}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="eyebrow block mb-1">Сумма *</label>
