@@ -164,5 +164,70 @@ describe("completeSession с brokenUnits", () => {
     // Unit должен быть в MAINTENANCE (createRepair изменил статус)
     const unit = await prisma.equipmentUnit.findUnique({ where: { id: unitId } });
     expect(unit.status).toBe("MAINTENANCE");
+
+    // Новая форма ответа: createdRepairIds и failedBrokenUnits
+    expect(summary.createdRepairIds).toHaveLength(1);
+    expect(summary.createdRepairIds[0]).toBe(repair.id);
+    expect(summary.failedBrokenUnits).toHaveLength(0);
+  });
+
+  it("F1 сценарий: createRepair бросает REPAIR_ACTIVE_EXISTS — unit остаётся в MAINTENANCE, failedBrokenUnits.length === 1", async () => {
+    // Unit уже в MAINTENANCE с активным ремонтом (создан в предыдущем тесте)
+    // Пытаемся завершить сессию с тем же unit — создадим новую сессию
+
+    // Создаём второй unit для новой сессии
+    const unit2 = await prisma.equipmentUnit.create({
+      data: { equipmentId, barcode: "SCAN-BROKEN-002", status: "ISSUED" },
+    });
+
+    const booking2 = await prisma.booking.create({
+      data: {
+        clientId,
+        projectName: "Тест провал ремонта",
+        startDate: new Date("2026-04-02"),
+        endDate: new Date("2026-04-06"),
+        status: "ISSUED",
+        amountPaid: 0,
+        amountOutstanding: 0,
+      },
+    });
+
+    const bookingItem2 = await prisma.bookingItem.create({
+      data: { bookingId: booking2.id, equipmentId, quantity: 1 },
+    });
+    await prisma.bookingItemUnit.create({
+      data: { bookingItemId: bookingItem2.id, equipmentUnitId: unit2.id },
+    });
+
+    const session2 = await prisma.scanSession.create({
+      data: { bookingId: booking2.id, workerName: "Тест склад", operation: "RETURN", status: "ACTIVE" },
+    });
+    await prisma.scanRecord.create({
+      data: { sessionId: session2.id, equipmentUnitId: unit2.id, hmacVerified: false },
+    });
+
+    const { completeSession } = await import("../services/warehouseScan");
+
+    // Используем unitId из первого теста (уже имеет активный ремонт!) → REPAIR_ACTIVE_EXISTS
+    const summary = await completeSession(session2.id, {
+      brokenUnits: [{ equipmentUnitId: unitId, reason: "Снова поломка", urgency: "NORMAL" }],
+      createdBy: superAdminId,
+    });
+
+    // Основная сессия завершилась успешно (unit2 вернулся)
+    expect(summary.scanned).toBe(1);
+
+    // Ремонт для unit2 не создавался (не в brokenUnits)
+    // Ремонт для unitId провалился — уже есть активный
+    expect(summary.createdRepairIds).toHaveLength(0);
+    expect(summary.failedBrokenUnits).toHaveLength(1);
+    expect(summary.failedBrokenUnits[0].unitId).toBe(unitId);
+
+    // Unit из provальной записи остаётся в MAINTENANCE (восстановлен fallback'ом)
+    // (unit уже был MAINTENANCE, после возврата стал AVAILABLE через транзакцию? Нет — он не был в этой сессии)
+    // На самом деле unitId не был отсканирован во второй сессии, только в brokenUnits.
+    // После createRepair провала — fallback не изменит его, т.к. он уже MAINTENANCE из первого теста.
+    const unitAfter = await prisma.equipmentUnit.findUnique({ where: { id: unitId } });
+    expect(unitAfter.status).toBe("MAINTENANCE");
   });
 });

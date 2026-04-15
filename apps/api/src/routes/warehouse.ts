@@ -355,6 +355,8 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
         name: u.equipment.name,
         barcode: u.barcode ?? "",
       })),
+      createdRepairIds: summary.createdRepairIds,
+      failedBrokenUnits: summary.failedBrokenUnits,
     });
   } catch (err) {
     next(err);
