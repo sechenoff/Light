@@ -11,6 +11,7 @@ import { SectionHeader } from "../../../src/components/SectionHeader";
 import { formatMoneyRub } from "../../../src/lib/format";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { RejectBookingModal } from "../../../src/components/bookings/RejectBookingModal";
+import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
 import { toast } from "../../../src/components/ToastProvider";
 
 type ScanSession = {
@@ -279,6 +280,10 @@ export default function BookingDetailPage() {
             <div className="mb-4 rounded border border-amber bg-amber-soft px-4 py-2 text-sm text-ink-1">
               Бронь на согласовании у руководителя — редактирование временно заблокировано.
             </div>
+          )}
+
+          {user?.role === "SUPER_ADMIN" && (
+            <ApprovalTimeline bookingId={booking.id} />
           )}
 
           <div className="mb-4 flex flex-wrap gap-2">
