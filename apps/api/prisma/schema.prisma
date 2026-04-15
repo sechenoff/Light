@@ -14,6 +14,7 @@ enum StockTrackingMode {
 
 enum BookingStatus {
   DRAFT
+  PENDING_APPROVAL
   CONFIRMED
   ISSUED
   RETURNED
@@ -52,7 +53,23 @@ enum ExpenseCategory {
   STAFF
   RENT
   REPAIR
+  PAYROLL
+  PURCHASE
   OTHER
+}
+
+enum RepairStatus {
+  WAITING_REPAIR
+  IN_REPAIR
+  WAITING_PARTS
+  CLOSED
+  WROTE_OFF
+}
+
+enum RepairUrgency {
+  NOT_URGENT
+  NORMAL
+  URGENT
 }
 
 enum LeadStatus {
@@ -233,6 +250,7 @@ model EquipmentUnit {
 
   bookingItemUnits BookingItemUnit[]
   scanRecords      ScanRecord[]
+  repairs          Repair[]
 
   @@index([equipmentId])
   @@index([status])
@@ -270,6 +288,7 @@ model Booking {
   payments Payment[]
   expenses Expense[]
   financeEvents BookingFinanceEvent[]
+  sourceRepairs  Repair[]    @relation("RepairSourceBooking")
 
   items        BookingItem[]
   lead         Lead?
@@ -299,6 +318,12 @@ model Payment {
   payerName String?
   comment String?
 
+  /// Новые поля для системы ролей (Sprint 1)
+  method      PaymentMethod? // синоним paymentMethod для новой системы
+  receivedAt  DateTime?      // фактическая дата получения
+  note        String?        // примечание (замена comment)
+  createdBy   String?        // AdminUser.id
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -307,6 +332,7 @@ model Payment {
   @@index([direction])
   @@index([plannedPaymentDate])
   @@index([paymentDate])
+  @@index([receivedAt])
 }
 
 model Expense {
@@ -321,12 +347,21 @@ model Expense {
   expenseDate DateTime
   comment String?
 
+  /// Новые поля для системы ролей (Sprint 1)
+  description   String?    // расширенное описание
+  documentUrl   String?    // ссылка на документ
+  linkedRepairId String?   // связанный ремонт
+  linkedRepair  Repair?   @relation(fields: [linkedRepairId], references: [id], onDelete: SetNull)
+  approved      Boolean    @default(true) // для TECHNICIAN-расходов — нужен approval SUPER_ADMIN
+  createdBy     String?    // AdminUser.id
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([bookingId])
   @@index([category])
   @@index([expenseDate])
+  @@index([linkedRepairId])
 }
 
 model BookingFinanceEvent {
@@ -603,17 +638,78 @@ model CompetitorAlias {
   @@index([equipmentId])
 }
 
-enum AdminRole {
+enum UserRole {
   SUPER_ADMIN
-  RENTAL_ADMIN
+  WAREHOUSE
+  TECHNICIAN
 }
 
 model AdminUser {
   id           String    @id @default(cuid())
   username     String    @unique
   passwordHash String
-  role         AdminRole @default(RENTAL_ADMIN)
+  role         UserRole  @default(WAREHOUSE)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  auditEntries AuditEntry[]
+
   @@index([username])
+}
+
+/// Ремонтная карточка на EquipmentUnit
+model Repair {
+  id              String         @id @default(cuid())
+  unitId          String
+  unit            EquipmentUnit  @relation(fields: [unitId], references: [id])
+  status          RepairStatus   @default(WAITING_REPAIR)
+  urgency         RepairUrgency  @default(NORMAL)
+  reason          String
+  sourceBookingId String?
+  sourceBooking   Booking?       @relation("RepairSourceBooking", fields: [sourceBookingId], references: [id], onDelete: SetNull)
+  createdBy       String         // AdminUser.id (обычно WAREHOUSE)
+  assignedTo      String?        // AdminUser.id (TECHNICIAN)
+  partsCost       Decimal        @default(0)
+  totalTimeHours  Decimal        @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  closedAt        DateTime?
+
+  workLog  RepairWorkLog[]
+  expenses Expense[]
+
+  @@index([unitId])
+  @@index([status])
+  @@index([assignedTo])
+}
+
+/// Запись работ по ремонту (журнал)
+model RepairWorkLog {
+  id             String   @id @default(cuid())
+  repairId       String
+  repair         Repair   @relation(fields: [repairId], references: [id], onDelete: Cascade)
+  description    String
+  timeSpentHours Decimal
+  partCost       Decimal  @default(0)
+  loggedBy       String   // AdminUser.id
+  loggedAt       DateTime @default(now())
+
+  @@index([repairId])
+}
+
+/// Аудит-лог изменений критичных сущностей
+model AuditEntry {
+  id         String    @id @default(cuid())
+  userId     String
+  user       AdminUser @relation(fields: [userId], references: [id])
+  action     String    // e.g. "BOOKING_BACKDATE_EDIT", "PAYMENT_DELETE"
+  entityType String    // "Booking" | "Payment" | "Expense" | "Unit" | "Client" | "Repair" | "AdminUser"
+  entityId   String
+  before     String?   // JSON snapshot (diff-relevant fields only)
+  after      String?   // JSON snapshot
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }

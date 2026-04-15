@@ -73,5 +73,7 @@ export function botScopeGuard(req: Request, res: Response, next: NextFunction): 
     return;
   }
 
+  // Бот-ключ прошёл whitelist — выставляем флаг для rolesGuard
+  req.botAccess = true;
   next();
 }

@@ -3,11 +3,12 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../prisma";
 
 export type AdminRole = "SUPER_ADMIN" | "RENTAL_ADMIN";
+export type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN";
 
 export type SessionPayload = {
   userId: string;
   username: string;
-  role: AdminRole;
+  role: UserRole;
 };
 
 /** JWT secret. В проде задаётся через JWT_SECRET в .env; fallback даёт понятную ошибку вместо тихого молчания. */
@@ -69,7 +70,7 @@ export async function authenticate(username: string, password: string): Promise<
   if (!user) return null;
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) return null;
-  return { userId: user.id, username: user.username, role: user.role as AdminRole };
+  return { userId: user.id, username: user.username, role: user.role as UserRole };
 }
 
 export function sessionCookieOptions() {

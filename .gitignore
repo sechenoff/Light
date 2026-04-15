@@ -8,6 +8,8 @@ apps/api/prod.db
 apps/api/prisma/test.db*
 apps/api/prisma/test-*.db
 apps/api/prisma/test-*.db-journal
+apps/api/prisma/dev.db.before-*
+apps/api/prisma/backups/
 apps/web/.env.local
 apps/bot/.env
 apps/prod-bot/.env
