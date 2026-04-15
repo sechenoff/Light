@@ -4,11 +4,14 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "./api";
 
-export type AdminRole = "SUPER_ADMIN" | "RENTAL_ADMIN";
+export type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN";
+
+/** @deprecated используй UserRole */
+export type AdminRole = UserRole;
 
 export type CurrentUser = {
   username: string;
-  role: AdminRole;
+  role: UserRole;
 };
 
 const STORAGE_KEY = "lr_user";
@@ -19,7 +22,10 @@ function readLocal(): CurrentUser | null {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<CurrentUser>;
-    if (typeof parsed?.username === "string" && (parsed.role === "SUPER_ADMIN" || parsed.role === "RENTAL_ADMIN")) {
+    if (
+      typeof parsed?.username === "string" &&
+      (parsed.role === "SUPER_ADMIN" || parsed.role === "WAREHOUSE" || parsed.role === "TECHNICIAN")
+    ) {
       return { username: parsed.username, role: parsed.role };
     }
     return null;
@@ -45,7 +51,7 @@ export function useCurrentUser(): {
     let cancelled = false;
     async function sync() {
       try {
-        const res = await apiFetch<{ user: { username: string; role: AdminRole } }>("/api/auth/me");
+        const res = await apiFetch<{ user: { username: string; role: UserRole } }>("/api/auth/me");
         if (cancelled) return;
         const u = { username: res.user.username, role: res.user.role };
         setUser(u);
