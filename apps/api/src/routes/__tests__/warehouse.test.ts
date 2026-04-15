@@ -334,7 +334,7 @@ describe("POST /api/warehouse/sessions/:id/complete", () => {
       missingItems: [],
       substitutedItems: [],
     });
-    expect(mockCompleteSession).toHaveBeenCalledWith("sess-1");
+    expect(mockCompleteSession).toHaveBeenCalledWith("sess-1", expect.objectContaining({}));
   });
 });
 

@@ -10,6 +10,7 @@ import {
   cancelSession,
   getSessionWithDetails,
   getReconciliationPreview,
+  type BrokenUnit,
 } from "../services/warehouseScan";
 
 // ── Public router (mounted BEFORE apiKeyAuth) ─────────────────────────────────
@@ -296,11 +297,26 @@ warehouseScanRouter.get("/sessions/:id/summary", warehouseAuth, async (req, res,
   }
 });
 
+const brokenUnitSchema = z.object({
+  equipmentUnitId: z.string().min(1),
+  reason: z.string().min(1),
+  urgency: z.enum(["NOT_URGENT", "NORMAL", "URGENT"]),
+});
+
+const completeSessionBodySchema = z.object({
+  brokenUnits: z.array(brokenUnitSchema).optional(),
+}).optional();
+
 /** POST /api/warehouse/sessions/:id/complete — завершить сессию */
 warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const summary = await completeSession(id);
+    const body = completeSessionBodySchema.parse(req.body);
+    const brokenUnits = body?.brokenUnits as BrokenUnit[] | undefined;
+    const summary = await completeSession(id, {
+      brokenUnits,
+      createdBy: req.warehouseWorker?.name,
+    });
 
     // Enrich unit ID arrays with name and barcode data
     const [missingUnits, substitutedUnits] = await Promise.all([

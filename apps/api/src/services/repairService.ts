@@ -17,6 +17,16 @@ import { prisma } from "../prisma";
 import { writeAuditEntry } from "./audit";
 import { HttpError } from "../utils/errors";
 
+function notFoundToHttpError(err: unknown, entity = "Ремонт"): never {
+  if (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2025"
+  ) {
+    throw new HttpError(404, `${entity} не найден`, "NOT_FOUND");
+  }
+  throw err;
+}
+
 type TxClient = Omit<
   Prisma.TransactionClient,
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends" | "$use"
@@ -47,7 +57,7 @@ export async function createRepair(args: {
     }
 
     // 2. Проверить: unit существует и не RETIRED
-    const unit = await tx.equipmentUnit.findUniqueOrThrow({ where: { id: args.unitId } });
+    const unit = await tx.equipmentUnit.findUniqueOrThrow({ where: { id: args.unitId } }).catch((e) => notFoundToHttpError(e, "Единица оборудования"));
     if (unit.status === "RETIRED") {
       throw new HttpError(400, "Нельзя ремонтировать списанную единицу", "UNIT_RETIRED");
     }
@@ -91,7 +101,7 @@ export async function createRepair(args: {
 
 export async function assignRepair(id: string, assigneeId: string, userId: string) {
   return prisma.$transaction(async (tx: TxClient) => {
-    const repair = await tx.repair.findUniqueOrThrow({ where: { id } });
+    const repair = await tx.repair.findUniqueOrThrow({ where: { id } }).catch((e) => notFoundToHttpError(e));
 
     const before = { assignedTo: repair.assignedTo };
 
@@ -118,7 +128,7 @@ export async function assignRepair(id: string, assigneeId: string, userId: strin
 
 export async function setRepairStatus(id: string, nextStatus: RepairStatus, userId: string) {
   return prisma.$transaction(async (tx: TxClient) => {
-    const repair = await tx.repair.findUniqueOrThrow({ where: { id } });
+    const repair = await tx.repair.findUniqueOrThrow({ where: { id } }).catch((e) => notFoundToHttpError(e));
 
     // Нельзя менять статус закрытого
     if (CLOSED_STATUSES.includes(repair.status as RepairStatus)) {
@@ -154,7 +164,7 @@ export async function setRepairStatus(id: string, nextStatus: RepairStatus, user
 
 export async function closeRepair(id: string, userId: string) {
   return prisma.$transaction(async (tx: TxClient) => {
-    const repair = await tx.repair.findUniqueOrThrow({ where: { id } });
+    const repair = await tx.repair.findUniqueOrThrow({ where: { id } }).catch((e) => notFoundToHttpError(e));
 
     if (CLOSED_STATUSES.includes(repair.status as RepairStatus)) {
       throw new HttpError(400, "Ремонт уже закрыт", "REPAIR_ALREADY_CLOSED");
@@ -193,7 +203,7 @@ export async function closeRepair(id: string, userId: string) {
 
 export async function writeOffRepair(id: string, userId: string) {
   return prisma.$transaction(async (tx: TxClient) => {
-    const repair = await tx.repair.findUniqueOrThrow({ where: { id } });
+    const repair = await tx.repair.findUniqueOrThrow({ where: { id } }).catch((e) => notFoundToHttpError(e));
 
     if (CLOSED_STATUSES.includes(repair.status as RepairStatus)) {
       throw new HttpError(400, "Ремонт уже закрыт", "REPAIR_ALREADY_CLOSED");
@@ -243,7 +253,7 @@ export async function addWorkLog(
   loggedByRole: string,
 ) {
   return prisma.$transaction(async (tx: TxClient) => {
-    const repair = await tx.repair.findUniqueOrThrow({ where: { id: repairId } });
+    const repair = await tx.repair.findUniqueOrThrow({ where: { id: repairId } }).catch((e) => notFoundToHttpError(e));
 
     // Только assignedTo или SUPER_ADMIN
     if (loggedByRole !== "SUPER_ADMIN" && repair.assignedTo !== args.loggedBy) {

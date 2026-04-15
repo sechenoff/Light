@@ -9,8 +9,10 @@
  */
 
 import { Prisma } from "@prisma/client";
+import type { RepairUrgency } from "@prisma/client";
 import { prisma } from "../prisma";
 import { resolveBarcode } from "./barcode";
+import { createRepair } from "./repairService";
 
 type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
 
@@ -19,6 +21,12 @@ type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$trans
 // ──────────────────────────────────────────────
 
 export type ScanOperation = "ISSUE" | "RETURN";
+
+export interface BrokenUnit {
+  equipmentUnitId: string;
+  reason: string;
+  urgency: RepairUrgency;
+}
 
 export interface ReconciliationSummary {
   scanned: number;
@@ -214,7 +222,10 @@ export async function recordScan(
  *
  * @returns ReconciliationSummary с количеством отсканированных, ожидаемых, пропущенных и замен
  */
-export async function completeSession(sessionId: string): Promise<ReconciliationSummary> {
+export async function completeSession(
+  sessionId: string,
+  options?: { brokenUnits?: BrokenUnit[]; createdBy?: string },
+): Promise<ReconciliationSummary> {
   // Загружаем сессию со сканами и информацией о брони
   const session = await prisma.scanSession.findUnique({
     where: { id: sessionId },
@@ -237,7 +248,7 @@ export async function completeSession(sessionId: string): Promise<Reconciliation
 
   const scannedUnitIds = new Set(session.scans.map((s) => s.equipmentUnitId));
 
-  return prisma.$transaction(async (tx: TxClient) => {
+  const summary = await prisma.$transaction(async (tx: TxClient) => {
     // Загружаем позиции заказа
     const bookingItems = await tx.bookingItem.findMany({
       where: { bookingId: session.bookingId },
@@ -334,6 +345,28 @@ export async function completeSession(sessionId: string): Promise<Reconciliation
 
     return summary;
   });
+
+  // После завершения транзакции — создаём карточки ремонта для поломанных единиц
+  const brokenUnits = options?.brokenUnits ?? [];
+  if (brokenUnits.length > 0 && session.operation === "RETURN") {
+    const createdBy = options?.createdBy ?? session.workerName;
+    for (const broken of brokenUnits) {
+      try {
+        await createRepair({
+          unitId: broken.equipmentUnitId,
+          reason: broken.reason,
+          urgency: broken.urgency,
+          sourceBookingId: session.bookingId,
+          createdBy,
+        });
+      } catch {
+        // Не блокируем завершение сессии из-за ошибки создания ремонта
+        // (например, если unit уже в MAINTENANCE или нет активной карточки)
+      }
+    }
+  }
+
+  return summary;
 }
 
 // ──────────────────────────────────────────────
