@@ -1,7 +1,7 @@
 "use client";
 
-import { useCurrentUser } from "../../src/lib/auth";
 import type { UserRole } from "../../src/lib/auth";
+import { useRequireRole } from "../../src/hooks/useRequireRole";
 
 // ── Placeholder card ──────────────────────────────────────────────────────────
 
@@ -70,16 +70,19 @@ const VIEWS: Record<UserRole, React.ComponentType> = {
   TECHNICIAN:  DayTechnician,
 };
 
-export default function DayPage() {
-  const { user, loading } = useCurrentUser();
+const ALL_ROLES: UserRole[] = ["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"];
 
-  if (loading || !user) {
+export default function DayPage() {
+  const { user, loading } = useRequireRole(ALL_ROLES);
+
+  if (loading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[200px]">
         <span className="text-sm text-ink-3">Загрузка…</span>
       </div>
     );
   }
+  if (!user) return null; // hook already redirected
 
   const View = VIEWS[user.role];
   return (
