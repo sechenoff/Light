@@ -1,13 +1,13 @@
 {
-  "sprint": 3,
+  "sprint": 4,
   "feature": "roles-navigation",
   "governance_mode": "standard",
   "complexity": "complex",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "head_commit": "2f3fb3f",
-  "fix_commits": ["2cf3c68", "d8e50bb", "2f3fb3f"],
+  "head_commit": "a177ae0",
+  "fix_commits": ["efba246", "3e748af", "a177ae0"],
   "initial_verdicts": {
     "product": "NEEDS_FIXES",
     "technical": "REQUEST_CHANGES"
@@ -17,38 +17,37 @@
     "technical": "APPROVE"
   },
   "review_notes_addressed": {
-    "shared_critical_finding": "Both reviewers flagged route shadowing: financeRouter mounted at /api had legacy /payments and /expenses handlers that intercepted the new paymentsRouter/expensesRouter, making the entire Sprint 3 write path unreachable. Root cause deeper than initially reported \u2014 the `rolesGuard(['SUPER_ADMIN'])` wrapper on the financeRouter mount was blocking ALL /api/* traffic including the new routers (preventing TECHNICIAN from creating REPAIR expenses). Fixed in 2cf3c68 by removing the legacy handlers from finance.ts AND moving the SUPER_ADMIN guard to per-route inside financeRouter via a `superAdminOnly` helper, with no wrapper on the mount.",
     "product_fixes": [
-      "#1 (CRITICAL): route shadowing resolved \u2014 paymentsRouter + expensesRouter reachable; 6 breakage scenarios (A\u2013F) closed",
-      "#2 (HIGH): top-5 debtors panel added to /finance \u2014 backed by topDebtors field in computeFinanceDashboard",
-      "#3 (MEDIUM): booking picker replaces raw CUID input in add-payment + add-expense modals (fetches GET /api/bookings?status=CONFIRMED,ISSUED&limit=100)",
-      "#4 (MEDIUM): ENUM English \u2192 Russian via PAYMENT_STATUS_LABELS map in debts page; /day TECHNICIAN hints translated",
-      "#5 (MEDIUM): donut caption '\u0423\u0447\u0442\u0435\u043d\u044b \u0442\u043e\u043b\u044c\u043a\u043e \u043e\u0434\u043e\u0431\u0440\u0435\u043d\u043d\u044b\u0435 \u0440\u0430\u0441\u0445\u043e\u0434\u044b' added",
-      "#6 (MEDIUM): React.Fragment key replaces bare fragment in debts .map()"
+      "#2 (HIGH): ENUM English leaks removed — write-off modal now «Списано», expense modal «Ремонт»; no UnitStatus/RepairStatus strings visible to users.",
+      "#3 (HIGH): Russian pluralization helper apps/web/src/lib/pluralRu.ts added — «карточка/карточки/карточек» correctly produced for 1/2/5/11/21. Used in warehouse-scan success toast.",
+      "#4 (HIGH): silent createRepair failure surfaced — completeSession returns createdRepairIds[] + failedBrokenUnits[]; failure path logs console.error, forces unit → MAINTENANCE (with CRITICAL log on nested failure), writes REPAIR_CREATE_FAILED audit; routes/warehouse.ts pipes both fields; scan UI reads actual counts."
     ],
     "technical_fixes": [
-      "C1+H1+H2: route shadowing resolved (removed legacy handlers + per-route guards)",
-      "H3: HTTP-level integration tests added \u2014 payments.routes.test.ts (5 cases) + expenses.routes.test.ts (7 cases) covering 401/403/400/201/409/TECHNICIAN-REPAIR-only",
-      "M1: date-range boundaries switched from inclusive `lte: endOfMonth` to half-open `lt: startOfNextMonth` across computeMonthlyTrend / computeFinanceDashboard / computePaymentsCalendar / computeExpensesBreakdown",
-      "L1: Decimal import unified \u2014 paymentService, expenseService, finance.ts all import from `decimal.js`",
-      "L2: dynamic `await import('../prisma')` replaced with top-level import in routes/payments.ts + routes/expenses.ts",
-      "L4: contradictory `bookingId!` + `if (bookingId)` resolved by dropping the `!`"
+      "H1: Decimal precision in addWorkLog — `{ increment: new Prisma.Decimal(timeSpentHours/partCost) }` replaces `.toDecimalPlaces(2).toNumber()`; test asserts 0.1+0.2+0.1 = 0.4 exactly.",
+      "H2: silent createRepair failure in scan integration — return type extended, error logged, audit REPAIR_CREATE_FAILED, unit forced MAINTENANCE, tests assert duplicate active repair → failedBrokenUnits.length === 1.",
+      "M1: cursor pagination — `orderBy id desc` with `where.id = { lt: cursor }` (consistent direction); non-overlapping page verified in tests.",
+      "M2: Zod enum validation on status + urgency query params — unknown values return 400 (verified by GET /api/repairs?status=FOO and ?urgency=VERY_URGENT).",
+      "M3: assignRepair closed-guard — REPAIR_ALREADY_CLOSED throws at top of tx; tests verify.",
+      "M4: atomic takeRepair — POST /api/repairs/:id/take merges assign + IN_REPAIR + REPAIR_TAKE audit in single transaction; rolesGuard TECH+SA; UI calls single endpoint."
     ],
-    "deferred_non_blocker": [
-      "Technical M2: pre-existing Number() coercion in /profit legacy code (not introduced by Sprint 3)",
-      "Technical M3: computeDebts in-memory filter (fine at current scale)",
-      "Technical M4: paymentStatusSyncForAllBookings per-request overhead (pre-existing; Sprint 4 follow-up)",
-      "Technical M5: schema verification of Expense.date vs expenseDate (schema confirmed \u2014 no new column; no bug)",
-      "Technical L3/L5: cosmetic (approvedOnly coercion, string negative Decimal) \u2014 deferred",
-      "Technical minor: dead `endOfMonth` helper in finance.ts \u2014 safe to remove in follow-up",
-      "Product #5: donut approved-only filter \u2014 documented on page (explicit toggle deferred)"
+    "deferred_out_of_scope": [
+      "#1 sidebar counter real-time update — backlog",
+      "#5 SLA overdue threshold configurable — hard-coded 5d accepted for Sprint 4",
+      "#6 kanban DnD — not in charter",
+      "#7 repair photo attachments — backlog"
     ]
   },
   "tests": {
-    "total": 324,
-    "passing": 324,
-    "new_route_tests": 12,
-    "runner": "vitest"
+    "total": 366,
+    "passing": 366,
+    "new_files": [
+      "repairService.test.ts",
+      "repairs.routes.test.ts",
+      "warehouseScan.brokenUnits.test.ts"
+    ],
+    "runner": "vitest",
+    "duration_s": 9.78
   },
-  "ts": "2026-04-15T10:30:00Z"
+  "web_build": "clean",
+  "ts": "2026-04-15T11:10:00Z"
 }
