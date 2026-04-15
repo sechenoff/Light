@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · booking create</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+.bc-scope {
+  --bg: #fafafa;
+  --bg-2: #f4f4f5;
+  --surface: #ffffff;
+  --ink: #09090b;
+  --ink-2: #52525b;
+  --ink-3: #a1a1aa;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --border-dark: #18181b;
+  --accent: #1e3a8a;
+  --accent-2: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --ok: #15803d;
+  --ok-soft: #dcfce7;
+  --warn: #a16207;
+  --warn-soft: #fef9c3;
+  --warn-border: #fde047;
+  --danger: #b91c1c;
+  --danger-soft: #fef2f2;
+  --danger-border: #fecaca;
+  --shadow-xs: 0 1px 0 rgba(9,9,11,.03);
+  --shadow-sm: 0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02);
+  --shadow-md: 0 8px 32px -12px rgba(9,9,11,.14);
+  --r: 4px;
+  --r-lg: 6px;
+
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  padding: 0;
+  line-height: 1.5;
+  font-size: 13.5px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bc-scope .mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+.bc-scope .cond { font-family: 'IBM Plex Sans Condensed', sans-serif; }
+
+.bc-scope .eyebrow {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+
+/* ── Top bar ── */
+.bc-topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 32px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+}
+.bc-crumbs { display:flex; gap:10px; align-items:center; font-size: 13px; }
+.bc-crumbs .back {
+  color: var(--ink-2); font-size: 13px; text-decoration: none;
+  display:flex; gap:4px; align-items:center;
+}
+.bc-crumbs .back:hover { color: var(--ink); }
+.bc-crumbs .sep { color: var(--ink-3); }
+.bc-crumbs .title { color: var(--ink); font-weight: 500; }
+.bc-crumbs .id {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--ink-3);
+  padding: 2px 8px; background: var(--bg-2); border-radius: var(--r);
+  margin-left: 4px;
+}
+
+.bc-status-chip {
+  display:inline-flex; align-items:center; gap:6px;
+  font-size: 11.5px; color: var(--ink-2);
+  padding: 3px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.bc-status-chip .dot { width:6px; height:6px; border-radius:50%; background: var(--ink-3); }
+
+.bc-actions { display:flex; gap:6px; }
+.bc-btn {
+  font-family: inherit;
+  font-size: 12.5px; font-weight: 500;
+  padding: 7px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+  line-height: 1.3;
+}
+.bc-btn:hover { background: var(--bg-2); border-color: var(--ink-3); }
+.bc-btn.primary {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.bc-btn.primary:hover { background: #000; border-color: #000; }
+.bc-btn.ghost { background: transparent; border-color: transparent; color: var(--ink-2); padding-left:8px; padding-right:8px; }
+.bc-btn.ghost:hover { color: var(--ink); background: var(--bg-2); }
+.bc-btn.sm { font-size: 11.5px; padding: 5px 10px; }
+
+/* ── Page frame ── */
+.bc-page {
+  max-width: 1280px; margin: 0 auto;
+  padding: 28px 32px 60px;
+}
+
+.bc-hero {
+  display:flex; justify-content:space-between; align-items:flex-end;
+  margin-bottom: 24px; gap: 32px;
+}
+.bc-hero h1 {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 28px; font-weight: 600;
+  margin: 0 0 4px; line-height: 1.15;
+  letter-spacing: -0.015em;
+}
+.bc-hero .sub { color: var(--ink-2); font-size: 13.5px; max-width: 560px; }
+.bc-hero .hero-meta { display:flex; gap:28px; font-size:12px; color: var(--ink-2); }
+.bc-hero .hero-meta .eyebrow { display:block; margin-bottom:2px; }
+.bc-hero .hero-meta b { color: var(--ink); font-weight: 500; font-size: 13px; }
+
+/* ── 2-col grid ── */
+.bc-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 20px;
+  align-items: start;
+}
+
+.bc-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+.bc-card .head {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+  display:flex; justify-content:space-between; align-items:center;
+}
+.bc-card .head h3 { margin: 0; font-size: 12px; font-family: 'IBM Plex Sans Condensed',sans-serif; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); }
+.bc-card .head .aux { font-size: 11.5px; color: var(--ink-3); }
+.bc-card .body { padding: 18px 20px; }
+
+/* ── Fields ── */
+.bc-field { margin-bottom: 12px; }
+.bc-field:last-child { margin-bottom: 0; }
+.bc-label { display:flex; justify-content:space-between; font-size: 11.5px; color: var(--ink-2); margin-bottom: 5px; }
+.bc-label .opt { color: var(--ink-3); font-size: 11px; font-style: italic; }
+.bc-input {
+  width: 100%;
+  font-family: inherit; font-size: 13.5px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink);
+  transition: border-color .12s, box-shadow .12s;
+}
+.bc-input:focus { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* ── Client pill ── */
+.bc-pill {
+  display: inline-flex; align-items:center; gap: 10px;
+  padding: 6px 10px 6px 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  font-size: 13px;
+}
+.bc-pill .ava {
+  width: 24px; height: 24px; border-radius: 3px;
+  background: var(--ink); color: #fff;
+  font-size: 11px; font-weight: 600;
+  display:flex; align-items:center; justify-content:center;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.bc-pill .meta { font-size: 11px; color: var(--ink-3); font-family: 'IBM Plex Mono',monospace; padding-left: 4px; border-left: 1px solid var(--border-strong); margin-left: 2px; }
+.bc-pill .x { color: var(--ink-3); cursor:pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
+.bc-pill .x:hover { color: var(--ink); }
+
+/* ── Dates ── */
+.bc-date-row {
+  display: grid; grid-template-columns: 1fr 16px 1fr; gap: 8px; align-items: center;
+}
+.bc-date-row .arrow { text-align:center; color: var(--ink-3); font-family:'IBM Plex Mono',monospace; }
+.bc-date-hint {
+  margin-top: 8px; font-size: 11.5px; color: var(--ink-2);
+  display:flex; gap: 10px; align-items:center;
+}
+.bc-date-hint .tag {
+  padding: 2px 8px; background: var(--accent-soft); color: var(--accent);
+  border-radius: var(--r); font-family: 'IBM Plex Mono',monospace; font-size: 11px;
+}
+
+/* ── Paste zone ── */
+.bc-paste {
+  margin: 18px 20px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r);
+  background: var(--bg-2);
+  padding: 12px 14px;
+  font-size: 12.5px;
+  transition: border-color .12s;
+}
+.bc-paste:focus-within { border-color: var(--accent-2); background: var(--accent-soft); }
+.bc-paste .paste-head {
+  display:flex; justify-content:space-between; align-items:center;
+  font-size: 11.5px; color: var(--ink-2); margin-bottom: 6px;
+}
+.bc-paste .paste-head .lbl { display:flex; align-items:center; gap:6px; }
+.bc-paste .paste-head .lbl .ico {
+  width: 16px; height: 16px; border-radius: 3px;
+  background: var(--ink); color: #fff;
+  font-size: 10px; font-weight: 700;
+  display:flex; align-items:center; justify-content:center;
+  font-family: 'IBM Plex Mono',monospace;
+}
+.bc-paste .paste-head kbd {
+  font-family: 'IBM Plex Mono',monospace; font-size: 10.5px;
+  padding: 1px 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 3px;
+  color: var(--ink-2);
+}
+.bc-paste textarea {
+  width: 100%; border: none; background: transparent; outline: none; resize: none;
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 1.6;
+  color: var(--ink); padding: 2px 0; min-height: 66px;
+}
+.bc-paste .paste-actions { margin-top: 6px; display:flex; gap:6px; align-items:center; }
+.bc-paste .paste-result {
+  margin-left: auto; font-size: 11.5px; color: var(--ink-2);
+  display:flex; align-items:center; gap: 10px;
+}
+.bc-paste .paste-result b.ok { color: var(--ok); }
+.bc-paste .paste-result b.warn { color: var(--warn); }
+.bc-paste .paste-result b.danger { color: var(--danger); }
+
+/* ── Equipment table ── */
+.bc-eq-table {
+  margin: 0 20px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--surface);
+}
+.bc-eq-row {
+  display: grid;
+  grid-template-columns: 6px 1fr 72px 90px 104px 24px;
+  gap: 14px; padding: 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.bc-eq-row > * { padding: 11px 0; align-self: center; }
+.bc-eq-row > *:first-child { padding-left: 0; }
+.bc-eq-row > *:last-child { padding-right: 12px; }
+.bc-eq-row:last-child { border-bottom: none; }
+
+.bc-eq-row.head {
+  background: var(--bg-2);
+  font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--ink-3);
+  font-family: 'IBM Plex Sans Condensed',sans-serif; font-weight: 600;
+}
+.bc-eq-row.head > * { padding: 8px 0; }
+
+.bc-eq-row .stripe { align-self: stretch; background: var(--ok); padding: 0 !important; }
+.bc-eq-row .stripe.warn { background: var(--warn); }
+.bc-eq-row .stripe.danger { background: var(--danger); }
+.bc-eq-row .stripe.head-stripe { background: transparent; }
+
+.bc-eq-row .name { font-weight: 500; color: var(--ink); padding-right: 12px; }
+.bc-eq-row .name small { display:block; font-weight:400; color: var(--ink-3); font-size: 11.5px; margin-top: 2px; font-family: 'IBM Plex Mono',monospace; }
+.bc-eq-row .qty input {
+  width: 60px; padding: 3px 8px; border: 1px solid var(--border-strong); border-radius: 3px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px; text-align: right;
+  background: var(--surface);
+}
+.bc-eq-row .qty input:focus { outline: none; border-color: var(--accent-2); }
+.bc-eq-row .price { font-family: 'IBM Plex Mono', monospace; color: var(--ink-2); font-size: 12.5px; text-align: right; }
+.bc-eq-row .total { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 13.5px; text-align: right; font-weight: 600; letter-spacing: -0.01em; }
+.bc-eq-row .del { color: var(--ink-3); cursor: pointer; font-size: 14px; text-align:center; line-height: 1; }
+.bc-eq-row .del:hover { color: var(--danger); }
+
+/* Expansion row (nested under a needs-review or unmatched item) */
+.bc-eq-row.expand {
+  grid-template-columns: 6px 1fr;
+  background: var(--bg-2);
+  padding: 0;
+}
+.bc-eq-row.expand .inner { padding: 12px 16px 14px; }
+.bc-eq-row.expand .inner h4 { margin: 0 0 6px; font-size: 11.5px; color: var(--ink-2); font-weight: 500; }
+
+.bc-opts { display:flex; gap:6px; flex-wrap:wrap; margin-top: 6px; }
+.bc-opt {
+  padding: 5px 10px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 3px; cursor: pointer;
+  font-size: 12px; font-family: inherit;
+}
+.bc-opt:hover { border-color: var(--ink); }
+.bc-opt.chosen { border-color: var(--ink); background: var(--ink); color: #fff; }
+.bc-opt .mp { font-family: 'IBM Plex Mono',monospace; color: var(--ink-3); font-size: 11px; margin-left: 4px; }
+.bc-opt.chosen .mp { color: rgba(255,255,255,0.6); }
+.bc-opt.skip { background: transparent; color: var(--ink-3); border-style: dashed; }
+
+/* Unmatched: inline catalog search */
+.bc-eq-row.unmatched > .stripe { background: var(--danger); }
+.bc-search-box {
+  margin-top: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.bc-search-box .input-wrap {
+  display:flex; align-items:center; padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+.bc-search-box .input-wrap .ico {
+  color: var(--ink-3); font-family: 'IBM Plex Mono',monospace; font-size: 12px; margin-right: 6px;
+}
+.bc-search-box input {
+  flex: 1; border: none; outline: none; background: transparent;
+  font-family: inherit; font-size: 13.5px; padding: 10px 0; color: var(--ink);
+}
+.bc-search-box .clear {
+  color: var(--ink-3); cursor: pointer; padding: 0 6px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+}
+.bc-search-box .results { max-height: 200px; overflow-y:auto; }
+.bc-search-box .res-item {
+  padding: 9px 14px;
+  display:grid; grid-template-columns: 1fr auto auto; gap:12px;
+  border-bottom: 1px solid var(--border-soft, #f5f5f4);
+  cursor: pointer;
+  font-size: 13px;
+  align-items: center;
+}
+.bc-search-box .res-item:last-child { border-bottom: none; }
+.bc-search-box .res-item:hover { background: var(--accent-soft); }
+.bc-search-box .res-item .name { color: var(--ink); font-weight: 500; }
+.bc-search-box .res-item .cat { font-family: 'IBM Plex Mono',monospace; font-size: 11px; color: var(--ink-3); }
+.bc-search-box .res-item .rate { font-family: 'IBM Plex Mono',monospace; font-size: 11.5px; color: var(--ink-2); }
+.bc-search-box .res-item.keyboard-focus { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent-2); }
+.bc-search-box .footer {
+  padding: 8px 14px;
+  display:flex; justify-content:space-between; align-items:center;
+  background: var(--bg-2);
+  font-size: 11.5px; color: var(--ink-3);
+}
+.bc-search-box .footer .save-alias {
+  display:flex; align-items:center; gap:6px;
+  color: var(--ink-2); font-size: 11.5px;
+}
+.bc-search-box .footer .save-alias input { margin:0; }
+.bc-search-box .footer a { color: var(--accent-2); text-decoration: none; font-size: 11.5px; }
+.bc-search-box .footer a:hover { text-decoration: underline; }
+.bc-search-box .kb {
+  font-family: 'IBM Plex Mono',monospace; font-size: 10.5px;
+  padding: 1px 5px; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; color: var(--ink-2);
+}
+
+/* Add row */
+.bc-eq-add {
+  padding: 10px 20px; display:flex; gap:14px; align-items:center;
+  border-top: 1px solid var(--border); background: var(--bg-2);
+  font-size: 12.5px;
+}
+.bc-eq-add a { color: var(--accent-2); text-decoration: none; cursor: pointer; }
+.bc-eq-add a:hover { text-decoration: underline; }
+.bc-eq-add .sep { color: var(--ink-3); }
+
+/* Legend under table */
+.bc-legend {
+  padding: 10px 20px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--ink-2);
+  display:flex; gap:20px; font-family: 'IBM Plex Sans Condensed',sans-serif; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.bc-legend span { display:flex; align-items:center; gap: 6px; }
+.bc-legend .d { width:8px; height:8px; border-radius:2px; }
+
+/* ── Right summary ── */
+.bc-summary {
+  position: sticky; top: 80px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.bc-summary .head {
+  padding: 12px 18px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  display:flex; justify-content:space-between; align-items:center;
+}
+.bc-summary .head h3 { margin:0; font-size: 12px; font-family: 'IBM Plex Sans Condensed',sans-serif; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; }
+.bc-summary .head .updated { font-size: 11px; color: var(--ink-3); font-family: 'IBM Plex Mono',monospace; }
+
+.bc-summary .total-big {
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.bc-summary .total-big .eyebrow { display: block; margin-bottom: 4px; }
+.bc-summary .total-big .num {
+  font-size: 32px; line-height: 1.05;
+  font-family: 'IBM Plex Mono',monospace;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.bc-summary .total-big .num .cur { font-size: 18px; color: var(--ink-3); margin-left: 2px; font-weight: 400; }
+.bc-summary .total-big .sub { font-size: 11.5px; color: var(--ink-2); margin-top: 4px; }
+
+.bc-summary .breakdown { padding: 14px 18px; font-size: 12.5px; border-bottom: 1px solid var(--border); }
+.bc-summary .breakdown .row {
+  display:flex; justify-content:space-between; padding: 4px 0;
+  color: var(--ink-2);
+}
+.bc-summary .breakdown .row .v { font-family: 'IBM Plex Mono', monospace; color: var(--ink); }
+.bc-summary .breakdown .row.neg .v { color: var(--danger); }
+.bc-summary .breakdown .row.total {
+  border-top: 1px solid var(--border); padding-top: 8px; margin-top: 6px;
+  color: var(--ink); font-weight: 600;
+}
+.bc-summary .breakdown .row.total .v { font-size: 14px; }
+
+.bc-summary .sum-actions { padding: 14px 18px; display:flex; flex-direction:column; gap:6px; border-bottom: 1px solid var(--border); }
+.bc-summary .sum-btn {
+  font-family: inherit; font-size: 13px; font-weight: 500;
+  padding: 9px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--ink);
+  cursor: pointer;
+  text-align: center;
+  transition: background .12s, border-color .12s;
+}
+.bc-summary .sum-btn:hover { background: var(--bg-2); border-color: var(--ink-3); }
+.bc-summary .sum-btn.primary {
+  background: var(--ink); color: #fff; border-color: var(--ink);
+}
+.bc-summary .sum-btn.primary:hover { background: #000; }
+
+.bc-summary .checks { padding: 14px 18px; font-size: 12px; color: var(--ink-2); line-height: 1.6; }
+.bc-summary .checks .ch { display:flex; gap:8px; align-items:flex-start; padding: 2px 0; }
+.bc-summary .checks .ch .mk {
+  width: 14px; height: 14px; border-radius: 2px;
+  display:flex; align-items:center; justify-content:center;
+  font-size: 10px; font-weight: 700; font-family: 'IBM Plex Mono',monospace;
+  flex-shrink: 0; margin-top: 2px;
+}
+.bc-summary .checks .ch .mk.ok { background: var(--ok-soft); color: var(--ok); }
+.bc-summary .checks .ch .mk.warn { background: var(--warn-soft); color: var(--warn); }
+.bc-summary .checks .ch .mk.tip { background: var(--accent-soft); color: var(--accent); }
+.bc-summary .checks .ch b { color: var(--ink); font-weight: 500; }
+.bc-summary .checks .ch a { color: var(--accent-2); }
+
+/* Comment card uses same card style, just full-width textarea */
+.bc-comment-input {
+  width: 100%; min-height: 64px; resize: vertical;
+  font-family: inherit; font-size: 13.5px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--r);
+  background: var(--surface); color: var(--ink);
+  line-height: 1.5;
+}
+.bc-comment-input:focus { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+</style>
+
+<div class="bc-scope">
+
+  <!-- Top bar -->
+  <div class="bc-topbar">
+    <div class="bc-crumbs">
+      <a href="#" class="back">← Брони</a>
+      <span class="sep">/</span>
+      <span class="title">Новая бронь</span>
+      <span class="id">#—</span>
+      <span class="bc-status-chip" style="margin-left:8px"><span class="dot"></span>Черновик · автосохранение</span>
+    </div>
+    <div class="bc-actions">
+      <button class="bc-btn ghost">Отмена</button>
+      <button class="bc-btn">Сохранить черновик</button>
+      <button class="bc-btn primary">Отправить на согласование →</button>
+    </div>
+  </div>
+
+  <div class="bc-page">
+
+    <!-- Hero -->
+    <div class="bc-hero">
+      <div>
+        <h1>Новая бронь</h1>
+        <p class="sub">Клиент, даты, список оборудования. Можно вставить текст от гаффера — AI распознает позиции и подтянет цены.</p>
+      </div>
+      <div class="hero-meta">
+        <div>
+          <span class="eyebrow">Автор</span>
+          <b>Пётр Сидоров</b>
+        </div>
+        <div>
+          <span class="eyebrow">Создана</span>
+          <b class="mono">14.04 · 16:08</b>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grid -->
+    <div class="bc-grid">
+
+      <!-- LEFT -->
+      <div>
+
+        <!-- Client & Project -->
+        <div class="bc-card">
+          <div class="head"><h3>1. Клиент и проект</h3></div>
+          <div class="body">
+            <div class="bc-field">
+              <label class="bc-label"><span>Клиент</span><a href="#" style="color:var(--accent-2);font-size:11px;text-decoration:none">+ Новый клиент</a></label>
+              <span class="bc-pill">
+                <span class="ava">РП</span>
+                Ромашка Продакшн
+                <span class="meta">14 броней · долг 0 ₽</span>
+                <span class="x">×</span>
+              </span>
+            </div>
+
+            <div class="bc-field">
+              <label class="bc-label"><span>Название проекта</span><span class="opt">опционально</span></label>
+              <input class="bc-input" value="Клип «Лето» · Артист Иванов" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Dates -->
+        <div class="bc-card">
+          <div class="head"><h3>2. Когда</h3></div>
+          <div class="body">
+            <div class="bc-date-row">
+              <input class="bc-input" value="20 апр 2026, 09:00" />
+              <div class="arrow">→</div>
+              <input class="bc-input" value="22 апр 2026, 21:00" />
+            </div>
+            <div class="bc-date-hint">
+              <span class="tag">3 дня</span>
+              начало в понедельник 09:00, возврат в среду 21:00
+            </div>
+          </div>
+        </div>
+
+        <!-- Equipment -->
+        <div class="bc-card">
+          <div class="head">
+            <h3>3. Оборудование</h3>
+            <span class="aux">7 позиций · 75 900 ₽ / период</span>
+          </div>
+
+          <!-- Paste zone -->
+          <div class="bc-paste">
+            <div class="paste-head">
+              <span class="lbl"><span class="ico">AI</span>Вставьте текст от гаффера или напечатайте список</span>
+              <kbd>⌘ V</kbd>
+            </div>
+            <textarea>Привет. На 20-22 апреля нужно:
+2 HMI 1.2
+4 Арри 2к
+6 стоек Avenger
+пара димеров по 2к
+1 Kinoflo 4ft
+полуомнитет крабов и 2 парафлекта маленьких</textarea>
+            <div class="paste-actions">
+              <button class="bc-btn sm primary">Распознать позиции</button>
+              <button class="bc-btn sm">Очистить</button>
+              <span class="paste-result">
+                Распознано: <b class="ok">5 точно</b> · <b class="warn">1 уточнить</b> · <b class="danger">1 не найдено</b>
+              </span>
+            </div>
+          </div>
+
+          <!-- Parsed table -->
+          <div class="bc-eq-table">
+            <div class="bc-eq-row head">
+              <div class="stripe head-stripe"></div>
+              <div>Позиция</div>
+              <div style="text-align:right">Кол-во</div>
+              <div style="text-align:right">Цена/день</div>
+              <div style="text-align:right">× 3 дня</div>
+              <div></div>
+            </div>
+
+            <div class="bc-eq-row">
+              <div class="stripe"></div>
+              <div class="name">HMI 1.2kW <small>alias: «HMI 1.2»</small></div>
+              <div class="qty" style="text-align:right"><input value="2" /></div>
+              <div class="price">4 000 ₽</div>
+              <div class="total">24 000 ₽</div>
+              <div class="del">×</div>
+            </div>
+
+            <div class="bc-eq-row">
+              <div class="stripe"></div>
+              <div class="name">Arri Fresnel 2kW <small>alias: «Арри 2к»</small></div>
+              <div class="qty" style="text-align:right"><input value="4" /></div>
+              <div class="price">3 000 ₽</div>
+              <div class="total">36 000 ₽</div>
+              <div class="del">×</div>
+            </div>
+
+            <div class="bc-eq-row">
+              <div class="stripe"></div>
+              <div class="name">Стойка Avenger C-stand <small>alias: «стоек Avenger»</small></div>
+              <div class="qty" style="text-align:right"><input value="6" /></div>
+              <div class="price">500 ₽</div>
+              <div class="total">9 000 ₽</div>
+              <div class="del">×</div>
+            </div>
+
+            <div class="bc-eq-row">
+              <div class="stripe"></div>
+              <div class="name">Kinoflo 4ft <small>точное совпадение по модели</small></div>
+              <div class="qty" style="text-align:right"><input value="1" /></div>
+              <div class="price">1 500 ₽</div>
+              <div class="total">4 500 ₽</div>
+              <div class="del">×</div>
+            </div>
+
+            <!-- Needs review (multi-match) -->
+            <div class="bc-eq-row">
+              <div class="stripe warn"></div>
+              <div class="name">
+                Димер 2kW
+                <small>«пара димеров по 2к» · 3 варианта в каталоге</small>
+              </div>
+              <div class="qty" style="text-align:right"><input value="2" /></div>
+              <div class="price" style="color:var(--ink-3)">— уточнить →</div>
+              <div class="total" style="color:var(--ink-3)">—</div>
+              <div class="del">×</div>
+            </div>
+            <div class="bc-eq-row expand">
+              <div class="stripe warn"></div>
+              <div class="inner">
+                <h4>Какой именно? AI нашёл несколько вариантов:</h4>
+                <div class="bc-opts">
+                  <span class="bc-opt chosen">Dimmer Pro 2kW<span class="mp">800 ₽/день</span></span>
+                  <span class="bc-opt">DMX-диммер 2kW<span class="mp">1 200 ₽/день</span></span>
+                  <span class="bc-opt">Механический реостат 2kW<span class="mp">400 ₽/день</span></span>
+                  <span class="bc-opt skip">Пропустить позицию</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- UNMATCHED: inline catalog search -->
+            <div class="bc-eq-row unmatched">
+              <div class="stripe danger"></div>
+              <div class="name">
+                «полуомнитет крабов»
+                <small style="color:var(--danger)">не в каталоге · найдите правильное название ниже</small>
+              </div>
+              <div class="qty" style="text-align:right"><input value="6" /></div>
+              <div class="price" style="color:var(--ink-3)">—</div>
+              <div class="total" style="color:var(--ink-3)">—</div>
+              <div class="del">×</div>
+            </div>
+            <div class="bc-eq-row expand">
+              <div class="stripe danger"></div>
+              <div class="inner">
+                <h4>Найдите позицию в каталоге (обычно это сленг — кладовщик знает, как правильно):</h4>
+                <div class="bc-search-box">
+                  <div class="input-wrap">
+                    <span class="ico">⌕</span>
+                    <input placeholder="начните печатать: держатель, magic arm, пружинный..." value="магик" />
+                    <span class="clear">esc</span>
+                  </div>
+                  <div class="results">
+                    <div class="res-item keyboard-focus">
+                      <span class="name">Magic Arm / Краб держатель</span>
+                      <span class="cat">Крепления · 12 шт в парке</span>
+                      <span class="rate">400 ₽/день</span>
+                    </div>
+                    <div class="res-item">
+                      <span class="name">Magic Arm большой (24")</span>
+                      <span class="cat">Крепления · 4 шт</span>
+                      <span class="rate">600 ₽/день</span>
+                    </div>
+                    <div class="res-item">
+                      <span class="name">Super Clamp (краб-зажим)</span>
+                      <span class="cat">Крепления · 20 шт</span>
+                      <span class="rate">250 ₽/день</span>
+                    </div>
+                    <div class="res-item">
+                      <span class="name">Mafer Clamp (жёсткий краб)</span>
+                      <span class="cat">Крепления · 8 шт</span>
+                      <span class="rate">350 ₽/день</span>
+                    </div>
+                  </div>
+                  <div class="footer">
+                    <label class="save-alias">
+                      <input type="checkbox" checked />
+                      Запомнить: <b>«полуомнитет крабов» → «Magic Arm»</b>
+                    </label>
+                    <div style="display:flex;gap:10px;align-items:center">
+                      <span class="kb">↑↓</span>
+                      <span class="kb">⏎ выбрать</span>
+                      <a href="#">+ Создать новую позицию</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Manual add -->
+            <div class="bc-eq-row">
+              <div class="stripe"></div>
+              <div class="name">ПараФлект 150W <small>добавлено вручную</small></div>
+              <div class="qty" style="text-align:right"><input value="2" /></div>
+              <div class="price">400 ₽</div>
+              <div class="total">2 400 ₽</div>
+              <div class="del">×</div>
+            </div>
+
+            <div class="bc-eq-add">
+              <a>+ Добавить позицию вручную</a>
+              <span class="sep">·</span>
+              <a>Открыть каталог</a>
+              <span class="sep">·</span>
+              <a>Скопировать из прошлой брони</a>
+            </div>
+
+            <div class="bc-legend">
+              <span><span class="d" style="background:var(--ok)"></span>Точно</span>
+              <span><span class="d" style="background:var(--warn)"></span>Уточнить</span>
+              <span><span class="d" style="background:var(--danger)"></span>Не в каталоге</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Comment -->
+        <div class="bc-card">
+          <div class="head"><h3>4. Для руководителя</h3><span class="aux">опционально</span></div>
+          <div class="body">
+            <label class="bc-label"><span>Зачем эта бронь и что важно знать</span></label>
+            <textarea class="bc-comment-input">Постоянный клиент, торгуется по свету. Готов до 85k, если дать все 4 Arri.</textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Summary -->
+      <aside class="bc-summary">
+        <div class="head">
+          <h3>Расчёт</h3>
+          <span class="updated">обновлено сейчас</span>
+        </div>
+
+        <div class="total-big">
+          <span class="eyebrow">К оплате</span>
+          <div class="num">70 000<span class="cur"> ₽</span></div>
+          <div class="sub">за 3 дня · 7 позиций</div>
+        </div>
+
+        <div class="breakdown">
+          <div class="row"><span>Аренда (7 позиций)</span><span class="v">75 900 ₽</span></div>
+          <div class="row neg"><span>Скидка постоянному</span><span class="v">−5 900 ₽</span></div>
+          <div class="row total"><span>Итого</span><span class="v">70 000 ₽</span></div>
+        </div>
+
+        <div class="sum-actions">
+          <button class="sum-btn primary">Отправить на согласование →</button>
+          <button class="sum-btn">Сохранить черновик</button>
+        </div>
+
+        <div class="checks">
+          <div class="ch"><span class="mk ok">✓</span><span><b>Конфликтов нет</b> — все позиции свободны на 20–22 апр.</span></div>
+          <div class="ch"><span class="mk ok">✓</span><span><b>Клиент без долгов</b> · 14 броней, средний чек 58 000 ₽.</span></div>
+          <div class="ch"><span class="mk warn">!</span><span><b>1 позиция не распознана</b> — найдите «полуомнитет крабов» в каталоге.</span></div>
+          <div class="ch"><span class="mk tip">i</span><span>В прошлый раз клиент брал ещё <b>2 Kinoflo</b>. <a href="#">Добавить?</a></span></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

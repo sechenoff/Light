@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · menu structure</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<h2>Два подхода к структуре меню</h2>
+<p class="subtitle">Показываю перспективу <b>кладовщика</b> (что он видит в левой панели после входа).</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f172a;padding:0;overflow:hidden">
+      <div style="background:#0f172a;color:#cbd5e1;padding:14px 10px;font-family:-apple-system,sans-serif;font-size:11px;line-height:1.5">
+        <div style="display:flex;align-items:center;gap:6px;padding:0 4px 12px;border-bottom:1px solid #1e293b;margin-bottom:10px">
+          <div style="width:18px;height:18px;background:rgba(255,255,255,.08);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:700">LR</div>
+          <div style="color:#fff;font-weight:600;font-size:10px">Light Rental</div>
+        </div>
+        <div style="color:#64748b;font-size:8px;letter-spacing:1px;padding:0 4px 6px">СЕГОДНЯ</div>
+        <div style="background:rgba(255,255,255,.1);color:#fff;padding:5px 8px;border-radius:5px;margin-bottom:2px;font-weight:500">▸ Мой день</div>
+        <div style="padding:5px 8px;margin-bottom:2px">▸ Выдачи и возвраты</div>
+        <div style="padding:5px 8px;margin-bottom:10px">▸ Сканер штрихкодов</div>
+        <div style="color:#64748b;font-size:8px;letter-spacing:1px;padding:0 4px 6px">БРОНИ</div>
+        <div style="padding:5px 8px;margin-bottom:2px">▸ Все брони</div>
+        <div style="padding:5px 8px;margin-bottom:2px">▸ Новая бронь</div>
+        <div style="padding:5px 8px;margin-bottom:10px">▸ Календарь загрузки</div>
+        <div style="color:#64748b;font-size:8px;letter-spacing:1px;padding:0 4px 6px">КАТАЛОГ</div>
+        <div style="padding:5px 8px;margin-bottom:2px">▸ Оборудование</div>
+        <div style="padding:5px 8px;margin-bottom:10px">▸ Штрихкоды и единицы</div>
+        <div style="color:#64748b;font-size:8px;letter-spacing:1px;padding:0 4px 6px">ИНСТРУМЕНТЫ</div>
+        <div style="padding:5px 8px">▸ Калькулятор команды</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="letter" style="background:#2563eb;color:#fff;display:inline-flex;width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;font-weight:700;margin-right:8px">A</div>
+      <h3 style="display:inline">Роль-центричное меню</h3>
+      <p style="margin-top:10px">Кладовщик видит <b>только свои разделы</b>. Разделов "Финансы", "Мастерская", "Админ" в его сайдбаре вообще нет — как будто их не существует.</p>
+      <p><b>Плюсы:</b> чисто, ничего не путает, минимум клавиатуры.<br>
+      <b>Минусы:</b> меню у всех выглядит по-разному → когда вы (руководитель) помогаете сотруднику по скриншоту, у вас меню ДРУГОЕ. Сложнее документировать.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0f172a;padding:0;overflow:hidden">
+      <div style="background:#0f172a;color:#cbd5e1;padding:14px 10px;font-family:-apple-system,sans-serif;font-size:11px;line-height:1.5">
+        <div style="display:flex;align-items:center;gap:6px;padding:0 4px 12px;border-bottom:1px solid #1e293b;margin-bottom:10px">
+          <div style="width:18px;height:18px;background:rgba(255,255,255,.08);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:700">LR</div>
+          <div style="color:#fff;font-weight:600;font-size:10px">Light Rental</div>
+        </div>
+        <div style="color:#64748b;font-size:8px;letter-spacing:1px;padding:0 4px 6px">ГЛАВНОЕ</div>
+        <div style="background:rgba(255,255,255,.1);color:#fff;padding:5px 8px;border-radius:5px;margin-bottom:10px;font-weight:500">▸ Мой день</div>
+        <div style="color:#64748b;font-size:8px;letter-spacing:1px;padding:0 4px 6px">СКЛАД</div>
+        <div style="padding:5px 8px;margin-bottom:2px">▸ Выдачи и возвраты</div>
+        <div style="padding:5px 8px;margin-bottom:10px">▸ Сканер штрихкодов</div>
+        <div style="color:#64748b;font-size:8px;letter-spacing:1px;padding:0 4px 6px">БРОНИРОВАНИЕ</div>
+        <div style="padding:5px 8px;margin-bottom:2px">▸ Список броней</div>
+        <div style="padding:5px 8px;margin-bottom:2px">▸ Новая бронь</div>
+        <div style="padding:5px 8px;margin-bottom:10px">▸ Календарь</div>
+        <div style="color:#64748b;font-size:8px;letter-spacing:1px;padding:0 4px 6px">КАТАЛОГ</div>
+        <div style="padding:5px 8px;margin-bottom:2px">▸ Оборудование</div>
+        <div style="padding:5px 8px;margin-bottom:10px">▸ Единицы/штрихкоды</div>
+        <div style="color:#334155;padding:5px 8px;font-style:italic;font-size:10px">МАСТЕРСКАЯ — нет доступа</div>
+        <div style="color:#334155;padding:5px 8px;font-style:italic;font-size:10px">ФИНАНСЫ — нет доступа</div>
+        <div style="color:#334155;padding:5px 8px;font-style:italic;font-size:10px">АДМИН — нет доступа</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="letter" style="background:#059669;color:#fff;display:inline-flex;width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;font-weight:700;margin-right:8px">B</div>
+      <h3 style="display:inline">Единая структура, ролевая видимость</h3>
+      <p style="margin-top:10px">Меню у всех выглядит <b>одинаково по структуре</b>. Разделы, к которым нет доступа, либо скрыты, либо показаны серым с пометкой "нет доступа".</p>
+      <p><b>Плюсы:</b> одна конфигурация на всех, вы как руководитель видите ту же карту мира. Легче объяснять "нажми там-то". Стандарт в Linear/Notion/Jira.<br>
+      <b>Минусы:</b> у кладовщика в сайдбаре есть "пустые" разделы (или серые). Можно и скрыть — тогда отличие от A минимально.</p>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:32px;padding:16px;background:#f0fdf4;border-left:3px solid #059669;border-radius:4px">
+  <b>Моя рекомендация: B</b> — с пунктами-"без-доступа" <i>скрытыми</i>, не серыми. Это даёт главное преимущество (единая карта для всех) и убирает главный минус (лишний визуальный мусор). По функциональности это почти равно A, но сильно проще поддерживать и обсуждать.
+</div>
+
+</body>
+</html>

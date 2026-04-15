@@ -1,0 +1,1437 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · finance pages</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+.fin-scope {
+  --bg: #fafafa;
+  --bg-2: #f4f4f5;
+  --surface: #ffffff;
+  --ink: #09090b;
+  --ink-2: #52525b;
+  --ink-3: #a1a1aa;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+
+  --accent: #1e3a8a;
+  --accent-2: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --accent-border: #bfdbfe;
+
+  --teal: #0f766e;       --teal-soft: #ccfbf1;    --teal-border: #99f6e4;
+  --amber: #a16207;      --amber-soft: #fef3c7;   --amber-border: #fde68a;
+  --rose: #9f1239;       --rose-soft: #ffe4e6;    --rose-border: #fecdd3;
+  --indigo: #4338ca;     --indigo-soft: #e0e7ff;  --indigo-border: #c7d2fe;
+  --slate: #334155;      --slate-soft: #f1f5f9;   --slate-border: #cbd5e1;
+  --emerald: #047857;    --emerald-soft: #d1fae5; --emerald-border: #a7f3d0;
+
+  --ok: #15803d;    --ok-soft: #dcfce7;
+  --warn: #a16207;  --warn-soft: #fef9c3;
+  --danger: #b91c1c; --danger-soft: #fef2f2; --danger-border: #fecaca;
+
+  --r: 4px; --r-lg: 6px;
+  --shadow-sm: 0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02);
+
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+  color: var(--ink); background: var(--bg);
+  line-height: 1.5; font-size: 13.5px;
+  -webkit-font-smoothing: antialiased;
+  padding: 24px 32px 60px;
+}
+.fin-scope .mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+.fin-scope .cond { font-family: 'IBM Plex Sans Condensed', sans-serif; }
+.fin-scope .eyebrow {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--ink-3); font-weight: 600;
+}
+
+.fin-intro {
+  background: var(--indigo-soft);
+  border: 1px solid var(--indigo-border);
+  border-radius: var(--r-lg);
+  padding: 18px 22px;
+  margin-bottom: 28px;
+  font-size: 13px; line-height: 1.65;
+}
+.fin-intro h2 { margin: 0 0 6px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.fin-intro p { margin: 0; color: var(--ink-2); }
+.fin-intro .q { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.fin-intro .qbtn {
+  background: #fff; border: 1px solid var(--indigo-border);
+  border-radius: 20px; padding: 5px 12px; font-size: 11.5px;
+  color: var(--indigo); font-weight: 500;
+}
+
+.fin-frame {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  margin-bottom: 32px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.fin-frame-label {
+  padding: 8px 18px;
+  background: var(--slate);
+  color: #fff;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; letter-spacing: 0.03em;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.fin-frame-label .tag { font-size: 10px; opacity: 0.7; }
+.fin-frame-body { padding: 0; }
+
+/* Tabs along top of each page */
+.fin-tabs {
+  display: flex; gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px; background: #fff;
+}
+.fin-tab {
+  padding: 14px 18px; font-size: 13px; color: var(--ink-2); font-weight: 500;
+  border-bottom: 2px solid transparent; cursor: pointer; margin-bottom: -1px;
+}
+.fin-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.fin-tab .badge {
+  display: inline-block; background: var(--rose-soft); color: var(--rose);
+  border-radius: 10px; padding: 1px 6px; font-size: 10.5px; margin-left: 6px;
+  font-weight: 600;
+}
+
+/* Page shell */
+.fin-page { padding: 22px 28px 28px; }
+.fin-page-head {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+}
+.fin-page-head h1 {
+  margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
+}
+.fin-page-head .sub { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+
+/* Period selector */
+.period-sel {
+  display: flex; gap: 6px; align-items: center;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 3px;
+}
+.period-sel button {
+  background: transparent; border: 0; padding: 5px 11px;
+  font-size: 12px; color: var(--ink-2); border-radius: 2px;
+  font-weight: 500; cursor: pointer;
+}
+.period-sel button.active { background: #fff; color: var(--ink); box-shadow: var(--shadow-sm); }
+
+.btn {
+  border: 1px solid var(--border-strong); background: #fff;
+  border-radius: var(--r); padding: 7px 14px; font-size: 12.5px;
+  font-weight: 500; color: var(--ink); cursor: pointer;
+}
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn.sm { padding: 4px 9px; font-size: 11.5px; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+
+/* ——— KPI row (the 4 metrics) ——— */
+.kpi-row {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+  margin-bottom: 22px;
+}
+.kpi {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 16px 18px 18px;
+  background: #fff;
+  position: relative; overflow: hidden;
+}
+.kpi::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--border-strong);
+}
+.kpi.debts::before { background: var(--rose); }
+.kpi.pay::before { background: var(--amber); }
+.kpi.rev::before { background: var(--emerald); }
+.kpi.exp::before { background: var(--slate); }
+
+.kpi .q {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--ink-3); font-weight: 600; margin-bottom: 8px;
+}
+.kpi .val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 24px; font-weight: 600; letter-spacing: -0.02em;
+  color: var(--ink); line-height: 1.1;
+}
+.kpi .ctx { font-size: 11.5px; color: var(--ink-2); margin-top: 6px; }
+.kpi .trend {
+  display: inline-flex; gap: 4px; align-items: center;
+  font-size: 11px; margin-top: 10px; font-weight: 500;
+  padding: 2px 7px; border-radius: 10px;
+}
+.kpi .trend.up { background: var(--emerald-soft); color: var(--emerald); }
+.kpi .trend.down { background: var(--rose-soft); color: var(--rose); }
+.kpi .trend.neutral { background: var(--slate-soft); color: var(--slate); }
+
+/* Net result strip under KPIs */
+.net-strip {
+  background: linear-gradient(90deg, var(--accent-soft), #fff 80%);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-lg); padding: 14px 20px;
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 28px;
+}
+.net-strip .lbl { font-size: 11.5px; color: var(--ink-2); letter-spacing: 0.03em; text-transform: uppercase; font-weight: 600; }
+.net-strip .num {
+  font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600;
+  color: var(--accent); letter-spacing: -0.01em; margin-top: 2px;
+}
+.net-strip .formula {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* Two-col sections */
+.fin-twocol {
+  display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px;
+  margin-bottom: 22px;
+}
+.panel {
+  background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.panel-head {
+  padding: 13px 16px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.panel-head h3 { margin: 0; font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em; }
+.panel-head .link { font-size: 12px; color: var(--accent); font-weight: 500; }
+.panel-body { padding: 0; }
+
+/* Mini bar chart */
+.chart {
+  padding: 18px 20px 20px;
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px;
+  align-items: end;
+  height: 170px;
+}
+.chart .bar-col {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  height: 100%; justify-content: flex-end;
+}
+.chart .bar-pair { display: flex; gap: 3px; align-items: flex-end; height: 100%; }
+.chart .bar {
+  width: 14px; border-radius: 2px 2px 0 0;
+}
+.chart .bar.rev { background: var(--emerald); }
+.chart .bar.exp { background: var(--slate); }
+.chart .x-lbl {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em;
+}
+.chart-legend { padding: 0 20px 14px; display: flex; gap: 18px; font-size: 11.5px; color: var(--ink-2); }
+.chart-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+/* Debtor list */
+.debtor-list { padding: 6px 0; }
+.debtor-row {
+  display: grid; grid-template-columns: 1fr auto auto;
+  align-items: center; gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.debtor-row:last-child { border-bottom: 0; }
+.debtor-row .name { font-weight: 500; font-size: 13px; }
+.debtor-row .meta { font-size: 11.5px; color: var(--ink-2); margin-top: 1px; }
+.debtor-row .sum {
+  font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 13px;
+  text-align: right;
+}
+.debtor-row .age-pill {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; padding: 2px 8px; border-radius: 10px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  min-width: 70px; text-align: center;
+}
+.age-pill.overdue { background: var(--rose-soft); color: var(--rose); border: 1px solid var(--rose-border); }
+.age-pill.soon { background: var(--amber-soft); color: var(--amber); border: 1px solid var(--amber-border); }
+.age-pill.ok { background: var(--emerald-soft); color: var(--emerald); border: 1px solid var(--emerald-border); }
+
+/* Upcoming payments list */
+.upcoming {
+  padding: 6px 0;
+}
+.up-row {
+  display: grid; grid-template-columns: 44px 1fr auto;
+  gap: 12px; align-items: center;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+}
+.up-row:last-child { border-bottom: 0; }
+.up-date {
+  text-align: center;
+  background: var(--bg-2); border-radius: var(--r);
+  padding: 4px 0; font-family: 'IBM Plex Sans Condensed', sans-serif;
+}
+.up-date .d { font-size: 16px; font-weight: 700; color: var(--ink); line-height: 1; }
+.up-date .m { font-size: 9.5px; text-transform: uppercase; color: var(--ink-3); letter-spacing: 0.06em; margin-top: 2px; }
+.up-row.today .up-date { background: var(--amber-soft); }
+.up-row.today .up-date .d { color: var(--amber); }
+
+.up-row .name { font-size: 13px; font-weight: 500; }
+.up-row .meta { font-size: 11.5px; color: var(--ink-2); margin-top: 1px; }
+.up-row .sum {
+  font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 13px;
+  text-align: right;
+}
+
+/* ——— Debts page ——— */
+.aging-bar {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--border); border: 1px solid var(--border);
+  border-radius: var(--r-lg); overflow: hidden;
+  margin-bottom: 20px;
+}
+.aging-cell {
+  padding: 13px 16px; background: #fff;
+}
+.aging-cell .lbl {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; text-transform: uppercase; color: var(--ink-3);
+  letter-spacing: 0.08em; font-weight: 600; margin-bottom: 5px;
+}
+.aging-cell .sum {
+  font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 16px;
+}
+.aging-cell .count { font-size: 11.5px; color: var(--ink-2); margin-top: 2px; }
+.aging-cell.overdue-30 { background: var(--rose-soft); }
+.aging-cell.overdue-30 .sum { color: var(--rose); }
+.aging-cell.overdue-30 .lbl { color: var(--rose); }
+.aging-cell.overdue-7 { background: #fff4f4; }
+.aging-cell.soon { background: var(--amber-soft); }
+.aging-cell.soon .lbl { color: var(--amber); }
+.aging-cell.current .lbl { color: var(--ink-2); }
+
+/* Debts table */
+.tbl {
+  width: 100%; border-collapse: collapse;
+  font-size: 12.5px;
+}
+.tbl thead th {
+  text-align: left; padding: 10px 14px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--ink-2); font-weight: 600;
+}
+.tbl tbody td {
+  padding: 11px 14px; border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.tbl tbody tr:last-child td { border-bottom: 0; }
+.tbl tbody tr:hover { background: var(--bg-2); cursor: pointer; }
+.tbl .client-cell { font-weight: 500; }
+.tbl .booking-sub { font-size: 11px; color: var(--ink-2); margin-top: 2px; }
+.tbl .sum-cell { font-family: 'IBM Plex Mono', monospace; font-weight: 600; text-align: right; }
+.tbl .row-stripe { border-left: 3px solid transparent; }
+.tbl tr.overdue-30 .row-stripe { border-left-color: var(--rose); }
+.tbl tr.overdue-7 .row-stripe { border-left-color: #f87171; }
+.tbl tr.soon .row-stripe { border-left-color: var(--amber); }
+.tbl tr.current .row-stripe { border-left-color: var(--emerald); }
+
+.filter-bar {
+  display: flex; gap: 8px; align-items: center; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); background: var(--bg-2);
+}
+.filter-bar .pill {
+  background: #fff; border: 1px solid var(--border);
+  border-radius: 20px; padding: 4px 12px; font-size: 11.5px;
+  color: var(--ink-2); cursor: pointer; font-weight: 500;
+}
+.filter-bar .pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.filter-bar .pill .c { opacity: 0.7; margin-left: 4px; font-family: 'IBM Plex Mono', monospace; }
+.filter-bar .spacer { flex: 1; }
+.filter-bar .search {
+  background: #fff; border: 1px solid var(--border); border-radius: var(--r);
+  padding: 4px 10px; font-size: 12px; color: var(--ink-2); min-width: 180px;
+}
+
+/* Action icons in table */
+.act-icons { display: flex; gap: 6px; justify-content: flex-end; }
+.act-icons .ic {
+  width: 26px; height: 26px; border-radius: var(--r);
+  border: 1px solid var(--border); background: #fff;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-2); font-size: 13px; cursor: pointer;
+}
+.act-icons .ic:hover { background: var(--bg-2); color: var(--ink); }
+
+/* ——— Payments page ——— */
+.pay-split {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+}
+.pay-col h4 {
+  margin: 0 0 10px; font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2);
+  padding: 0 4px;
+}
+
+/* Calendar heatmap */
+.heatmap {
+  padding: 18px 20px;
+}
+.heatmap .head {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px;
+  margin-bottom: 3px;
+}
+.heatmap .head div {
+  text-align: center; font-size: 10px; color: var(--ink-3);
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.heatmap .grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px;
+}
+.heatmap .cell {
+  aspect-ratio: 1; border-radius: 2px;
+  background: var(--bg-2);
+  font-size: 10px; color: var(--ink-3);
+  padding: 3px 4px; position: relative;
+  font-family: 'IBM Plex Mono', monospace;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.heatmap .cell.other { opacity: 0.3; }
+.heatmap .cell.today { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 1; }
+.heatmap .cell .amt {
+  font-size: 9px; font-weight: 600; color: var(--ink);
+  text-align: right;
+}
+.heatmap .cell.lvl-1 { background: var(--emerald-soft); }
+.heatmap .cell.lvl-2 { background: var(--emerald-soft); border: 1px solid var(--emerald-border); }
+.heatmap .cell.lvl-3 { background: var(--emerald-border); }
+.heatmap .cell.lvl-3 .amt { color: var(--emerald); }
+.heatmap .cell.expected { background: var(--amber-soft); }
+.heatmap .cell.expected .amt { color: var(--amber); }
+.heatmap .cell.overdue { background: var(--rose-soft); border: 1px solid var(--rose-border); }
+.heatmap .cell.overdue .amt { color: var(--rose); }
+.heatmap-legend {
+  display: flex; gap: 14px; font-size: 11px; color: var(--ink-2);
+  padding: 8px 20px 14px; border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.heatmap-legend .chip {
+  display: inline-block; width: 12px; height: 12px; border-radius: 2px;
+  vertical-align: -1px; margin-right: 5px;
+}
+
+.pay-row {
+  display: grid; grid-template-columns: 44px 1fr auto auto;
+  gap: 12px; align-items: center;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.pay-row:last-child { border-bottom: 0; }
+.pay-row .name { font-size: 13px; font-weight: 500; }
+.pay-row .meta { font-size: 11px; color: var(--ink-2); margin-top: 1px; }
+.pay-row .sum {
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;
+  text-align: right;
+}
+.pay-row .pill-mini {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10px; padding: 2px 7px; border-radius: 10px;
+  text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+}
+.pay-row.received .pill-mini { background: var(--emerald-soft); color: var(--emerald); border: 1px solid var(--emerald-border); }
+.pay-row.expected .pill-mini { background: var(--amber-soft); color: var(--amber); border: 1px solid var(--amber-border); }
+.pay-row.overdue .pill-mini { background: var(--rose-soft); color: var(--rose); border: 1px solid var(--rose-border); }
+
+/* ——— Expenses page ——— */
+.exp-donut-row {
+  display: grid; grid-template-columns: 200px 1fr; gap: 22px;
+  padding: 20px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.exp-donut {
+  width: 160px; height: 160px; border-radius: 50%;
+  background:
+    conic-gradient(
+      var(--rose) 0 28%,
+      var(--slate) 28% 49%,
+      var(--accent) 49% 70%,
+      var(--amber) 70% 86%,
+      var(--emerald) 86% 100%
+    );
+  position: relative; margin: 0 auto;
+}
+.exp-donut::after {
+  content: ''; position: absolute;
+  inset: 28px; border-radius: 50%; background: #fff;
+}
+.exp-donut-center {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center;
+  z-index: 1;
+}
+.exp-donut-center .big {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 17px; font-weight: 600;
+}
+.exp-donut-center .sm {
+  font-size: 10.5px; color: var(--ink-2);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+}
+.exp-cat-list { display: flex; flex-direction: column; gap: 7px; }
+.exp-cat {
+  display: grid; grid-template-columns: 14px 1fr auto auto;
+  gap: 10px; align-items: center;
+  padding: 5px 0;
+  font-size: 12.5px;
+}
+.exp-cat .swatch { width: 10px; height: 10px; border-radius: 2px; }
+.exp-cat .bar-wrap { height: 5px; background: var(--bg-2); border-radius: 3px; min-width: 120px; }
+.exp-cat .bar-fill { height: 100%; border-radius: 3px; }
+.exp-cat .sum { font-family: 'IBM Plex Mono', monospace; font-weight: 600; min-width: 85px; text-align: right; }
+.exp-cat .pct { color: var(--ink-2); font-size: 11.5px; min-width: 38px; text-align: right; font-family: 'IBM Plex Mono', monospace; }
+
+/* Role badge (who sees it) */
+.role-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--indigo-soft); color: var(--indigo);
+  border: 1px solid var(--indigo-border);
+  padding: 2px 7px; border-radius: 10px;
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fin-foot {
+  background: var(--bg-2);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 18px 22px; margin-top: 20px;
+  font-size: 12.5px; color: var(--ink-2); line-height: 1.65;
+}
+.fin-foot h3 { margin: 0 0 8px; font-size: 14px; color: var(--ink); font-weight: 600; }
+.fin-foot ul { margin: 6px 0 0 18px; padding: 0; }
+.fin-foot li { margin: 3px 0; }
+.fin-foot strong { color: var(--ink); font-weight: 600; }
+</style>
+
+<div class="fin-scope">
+
+  <div class="fin-intro">
+    <h2>Финансовая секция — собрана вокруг четырёх вопросов</h2>
+    <p>Всё остальное (выгрузки, теги, отчёты по оборудованию) уходит на второй план. Четыре страницы закрывают ровно то, что важно руководителю каждый день.</p>
+    <div class="q">
+      <span class="qbtn">1 · Кто сколько должен</span>
+      <span class="qbtn">2 · Когда оплатят</span>
+      <span class="qbtn">3 · Сколько заработал</span>
+      <span class="qbtn">4 · Сколько потратил</span>
+      <span class="qbtn" style="background: var(--slate-soft); color: var(--slate); border-color: var(--slate-border);">Видно только руководителю</span>
+    </div>
+  </div>
+
+  <!-- ============================================= -->
+  <!-- PAGE 1 · /finance (DASHBOARD)                  -->
+  <!-- ============================================= -->
+  <div class="fin-frame">
+    <div class="fin-frame-label">
+      /finance · Главная финансовая сводка
+      <span class="tag">страница 1 из 4</span>
+    </div>
+    <div class="fin-frame-body">
+
+      <div class="fin-tabs">
+        <div class="fin-tab active">Сводка</div>
+        <div class="fin-tab">Долги <span class="badge">12</span></div>
+        <div class="fin-tab">Поступления</div>
+        <div class="fin-tab">Расходы</div>
+      </div>
+
+      <div class="fin-page">
+
+        <div class="fin-page-head">
+          <div>
+            <h1>Финансы</h1>
+            <div class="sub">Апрель 2026 · данные обновлены 14 апр, 11:42 · <span class="role-badge">Только руководитель</span></div>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <div class="period-sel">
+              <button>Сегодня</button>
+              <button>Неделя</button>
+              <button class="active">Месяц</button>
+              <button>Квартал</button>
+              <button>Год</button>
+            </div>
+            <button class="btn">Скачать отчёт</button>
+          </div>
+        </div>
+
+        <!-- The four answers as KPIs -->
+        <div class="kpi-row">
+          <div class="kpi debts">
+            <div class="q">Кто должен</div>
+            <div class="val">425 400 ₽</div>
+            <div class="ctx">12 клиентов, из них <strong style="color: var(--rose);">4 просрочки</strong></div>
+            <span class="trend down">▲ 62 000 ₽ к марту</span>
+          </div>
+          <div class="kpi pay">
+            <div class="q">Когда оплатят</div>
+            <div class="val">1 245 000 ₽</div>
+            <div class="ctx">ожидается за 30 дней · ближайший — завтра</div>
+            <span class="trend neutral">8 платежей в очереди</span>
+          </div>
+          <div class="kpi rev">
+            <div class="q">Сколько заработал</div>
+            <div class="val">2 890 000 ₽</div>
+            <div class="ctx">выручка за месяц · 47 закрытых броней</div>
+            <span class="trend up">▲ 18% к марту</span>
+          </div>
+          <div class="kpi exp">
+            <div class="q">Сколько потратил</div>
+            <div class="val">480 500 ₽</div>
+            <div class="ctx">ремонт, аренда, закупка · 23 операции</div>
+            <span class="trend up" style="background: var(--amber-soft); color: var(--amber);">▲ 9% — выше нормы</span>
+          </div>
+        </div>
+
+        <div class="net-strip">
+          <div>
+            <div class="lbl">Чистый результат месяца</div>
+            <div class="num">+ 2 409 500 ₽</div>
+          </div>
+          <div class="formula">
+            2 890 000 (заработал) − 480 500 (потратил) = <strong style="color: var(--accent);">2 409 500 ₽</strong>
+          </div>
+        </div>
+
+        <!-- Revenue/Expenses trend + top debtors -->
+        <div class="fin-twocol">
+
+          <div class="panel">
+            <div class="panel-head">
+              <h3>Доходы и расходы по месяцам</h3>
+              <span class="link">Открыть детально →</span>
+            </div>
+            <div class="chart">
+              <div class="bar-col"><div class="bar-pair"><div class="bar rev" style="height: 52%;"></div><div class="bar exp" style="height: 14%;"></div></div><div class="x-lbl">Ноя</div></div>
+              <div class="bar-col"><div class="bar-pair"><div class="bar rev" style="height: 60%;"></div><div class="bar exp" style="height: 16%;"></div></div><div class="x-lbl">Дек</div></div>
+              <div class="bar-col"><div class="bar-pair"><div class="bar rev" style="height: 45%;"></div><div class="bar exp" style="height: 12%;"></div></div><div class="x-lbl">Янв</div></div>
+              <div class="bar-col"><div class="bar-pair"><div class="bar rev" style="height: 70%;"></div><div class="bar exp" style="height: 17%;"></div></div><div class="x-lbl">Фев</div></div>
+              <div class="bar-col"><div class="bar-pair"><div class="bar rev" style="height: 82%;"></div><div class="bar exp" style="height: 19%;"></div></div><div class="x-lbl">Мар</div></div>
+              <div class="bar-col"><div class="bar-pair"><div class="bar rev" style="height: 96%;"></div><div class="bar exp" style="height: 24%;"></div></div><div class="x-lbl">Апр</div></div>
+            </div>
+            <div class="chart-legend">
+              <span><span class="dot" style="background: var(--emerald);"></span>Выручка</span>
+              <span><span class="dot" style="background: var(--slate);"></span>Расходы</span>
+              <span style="margin-left: auto; color: var(--ink-3);">Ось Y — тыс. ₽ (пиксельная)</span>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h3>Топ должников</h3>
+              <span class="link">Все 12 →</span>
+            </div>
+            <div class="debtor-list">
+              <div class="debtor-row">
+                <div>
+                  <div class="name">Мосфильм</div>
+                  <div class="meta">Съёмки «Пост-гравитация» · с 5 марта</div>
+                </div>
+                <span class="age-pill overdue">35 дней</span>
+                <div class="sum">142 000 ₽</div>
+              </div>
+              <div class="debtor-row">
+                <div>
+                  <div class="name">RedLogic Production</div>
+                  <div class="meta">Реклама «Альфа-банк» · с 28 марта</div>
+                </div>
+                <span class="age-pill overdue">12 дней</span>
+                <div class="sum">87 500 ₽</div>
+              </div>
+              <div class="debtor-row">
+                <div>
+                  <div class="name">Бюро Горбунова</div>
+                  <div class="meta">Корпоративный фильм · 8–10 апр</div>
+                </div>
+                <span class="age-pill soon">Через 3 дня</span>
+                <div class="sum">64 200 ₽</div>
+              </div>
+              <div class="debtor-row">
+                <div>
+                  <div class="name">Студия «Паровоз»</div>
+                  <div class="meta">Сериал «По тонкому льду» · постоплата</div>
+                </div>
+                <span class="age-pill ok">По графику</span>
+                <div class="sum">56 800 ₽</div>
+              </div>
+              <div class="debtor-row">
+                <div>
+                  <div class="name">Other Films</div>
+                  <div class="meta">Клип «Матрёшки» · 12 апр</div>
+                </div>
+                <span class="age-pill ok">По графику</span>
+                <div class="sum">42 100 ₽</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Upcoming payments wide -->
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Ожидаемые поступления на этой неделе</h3>
+            <span class="link">Все платежи →</span>
+          </div>
+          <div class="upcoming">
+            <div class="up-row today">
+              <div class="up-date"><div class="d">15</div><div class="m">Апр</div></div>
+              <div>
+                <div class="name">Мосфильм · частичный платёж</div>
+                <div class="meta">Бронь «Пост-гравитация» · переведено сегодня утром — ожидаем подтверждение</div>
+              </div>
+              <div class="sum">80 000 ₽</div>
+            </div>
+            <div class="up-row">
+              <div class="up-date"><div class="d">16</div><div class="m">Апр</div></div>
+              <div>
+                <div class="name">RedLogic Production</div>
+                <div class="meta">Реклама «Альфа-банк» · счёт № 2026-0412 · срок по договору</div>
+              </div>
+              <div class="sum">87 500 ₽</div>
+            </div>
+            <div class="up-row">
+              <div class="up-date"><div class="d">17</div><div class="m">Апр</div></div>
+              <div>
+                <div class="name">Бюро Горбунова · полная оплата</div>
+                <div class="meta">Корпоративный фильм · по договору после возврата оборудования</div>
+              </div>
+              <div class="sum">64 200 ₽</div>
+            </div>
+            <div class="up-row">
+              <div class="up-date"><div class="d">18</div><div class="m">Апр</div></div>
+              <div>
+                <div class="name">Студия «Паровоз» · транш 2</div>
+                <div class="meta">Сериал «По тонкому льду» · постоплатная схема</div>
+              </div>
+              <div class="sum">56 800 ₽</div>
+            </div>
+            <div class="up-row">
+              <div class="up-date"><div class="d">19</div><div class="m">Апр</div></div>
+              <div>
+                <div class="name">Other Films</div>
+                <div class="meta">Клип «Матрёшки» · клиент обещал вторую половину после монтажа</div>
+              </div>
+              <div class="sum">42 100 ₽</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================= -->
+  <!-- PAGE 2 · /finance/debts                         -->
+  <!-- ============================================= -->
+  <div class="fin-frame">
+    <div class="fin-frame-label">
+      /finance/debts · Должники и просрочки
+      <span class="tag">страница 2 из 4 · ответ на «кто должен»</span>
+    </div>
+    <div class="fin-frame-body">
+
+      <div class="fin-tabs">
+        <div class="fin-tab">Сводка</div>
+        <div class="fin-tab active">Долги <span class="badge">12</span></div>
+        <div class="fin-tab">Поступления</div>
+        <div class="fin-tab">Расходы</div>
+      </div>
+
+      <div class="fin-page">
+
+        <div class="fin-page-head">
+          <div>
+            <h1>Должники</h1>
+            <div class="sub">Итого задолженность: <strong style="font-family: 'IBM Plex Mono', monospace; color: var(--rose);">425 400 ₽</strong> · 12 клиентов · 4 с просрочкой</div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn">Экспорт в XLSX</button>
+            <button class="btn primary">Отправить напоминания (4)</button>
+          </div>
+        </div>
+
+        <!-- Aging buckets -->
+        <div class="aging-bar">
+          <div class="aging-cell overdue-30">
+            <div class="lbl">Просрочка > 30 дней</div>
+            <div class="sum">142 000 ₽</div>
+            <div class="count">1 клиент · Мосфильм</div>
+          </div>
+          <div class="aging-cell overdue-7">
+            <div class="lbl">Просрочка 1–30 дней</div>
+            <div class="sum">125 600 ₽</div>
+            <div class="count">3 клиента</div>
+          </div>
+          <div class="aging-cell soon">
+            <div class="lbl">Срок через 1–7 дней</div>
+            <div class="sum">121 000 ₽</div>
+            <div class="count">3 клиента</div>
+          </div>
+          <div class="aging-cell current">
+            <div class="lbl">В пределах графика</div>
+            <div class="sum">36 800 ₽</div>
+            <div class="count">5 клиентов</div>
+          </div>
+        </div>
+
+        <!-- Table with filters -->
+        <div class="panel" style="margin-bottom: 0;">
+          <div class="filter-bar">
+            <span class="pill active">Все <span class="c">12</span></span>
+            <span class="pill" style="border-color: var(--rose-border); color: var(--rose);">Просрочка <span class="c">4</span></span>
+            <span class="pill" style="border-color: var(--amber-border); color: var(--amber);">Скоро <span class="c">3</span></span>
+            <span class="pill">По графику <span class="c">5</span></span>
+            <span class="spacer"></span>
+            <input class="search" placeholder="Поиск по клиенту или броне" />
+            <button class="btn sm ghost">⇅ Сортировка</button>
+          </div>
+
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th style="width: 4px;"></th>
+                <th style="width: 28%;">Клиент</th>
+                <th>Бронь</th>
+                <th style="text-align: right;">Должен</th>
+                <th style="width: 15%;">Срок оплаты</th>
+                <th style="width: 15%;">Статус</th>
+                <th style="width: 14%; text-align: right;">Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="overdue-30">
+                <td class="row-stripe"></td>
+                <td>
+                  <div class="client-cell">Мосфильм</div>
+                  <div class="booking-sub">Договор № МФ-2026-03-15 · Иванов И. И.</div>
+                </td>
+                <td>
+                  Съёмки «Пост-гравитация»
+                  <div class="booking-sub">5–12 марта · закрыта 12 марта</div>
+                </td>
+                <td class="sum-cell" style="color: var(--rose);">142 000 ₽</td>
+                <td class="mono">10 марта</td>
+                <td><span class="age-pill overdue">35 дней</span></td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Напомнить">📧</div>
+                    <div class="ic" title="Позвонить">📞</div>
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+              <tr class="overdue-7">
+                <td class="row-stripe"></td>
+                <td>
+                  <div class="client-cell">RedLogic Production</div>
+                  <div class="booking-sub">Петров С. А.</div>
+                </td>
+                <td>
+                  Реклама «Альфа-банк»
+                  <div class="booking-sub">20–28 марта · счёт 2026-0328</div>
+                </td>
+                <td class="sum-cell" style="color: var(--rose);">87 500 ₽</td>
+                <td class="mono">2 апреля</td>
+                <td><span class="age-pill overdue">12 дней</span></td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Напомнить">📧</div>
+                    <div class="ic" title="Позвонить">📞</div>
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+              <tr class="overdue-7">
+                <td class="row-stripe"></td>
+                <td>
+                  <div class="client-cell">Sentry Films</div>
+                  <div class="booking-sub">Сидорова А. М.</div>
+                </td>
+                <td>
+                  Короткометражка «Черешня»
+                  <div class="booking-sub">1–4 апреля</div>
+                </td>
+                <td class="sum-cell" style="color: var(--rose);">24 300 ₽</td>
+                <td class="mono">5 апреля</td>
+                <td><span class="age-pill overdue">9 дней</span></td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Напомнить">📧</div>
+                    <div class="ic" title="Позвонить">📞</div>
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+              <tr class="overdue-7">
+                <td class="row-stripe"></td>
+                <td>
+                  <div class="client-cell">CineLab Rental</div>
+                  <div class="booking-sub">Кузнецов П.</div>
+                </td>
+                <td>
+                  Суб-аренда · свет на 3 дня
+                  <div class="booking-sub">7–9 апреля</div>
+                </td>
+                <td class="sum-cell" style="color: var(--rose);">13 800 ₽</td>
+                <td class="mono">10 апреля</td>
+                <td><span class="age-pill overdue">4 дня</span></td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Напомнить">📧</div>
+                    <div class="ic" title="Позвонить">📞</div>
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+              <tr class="soon">
+                <td class="row-stripe"></td>
+                <td>
+                  <div class="client-cell">Бюро Горбунова</div>
+                  <div class="booking-sub">Смирнова Е. В.</div>
+                </td>
+                <td>
+                  Корпоративный фильм
+                  <div class="booking-sub">8–10 апреля · возврат 10 апр</div>
+                </td>
+                <td class="sum-cell" style="color: var(--amber);">64 200 ₽</td>
+                <td class="mono">17 апреля</td>
+                <td><span class="age-pill soon">Через 3 дня</span></td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+              <tr class="soon">
+                <td class="row-stripe"></td>
+                <td>
+                  <div class="client-cell">Other Films</div>
+                  <div class="booking-sub">Абрамова Д. Л.</div>
+                </td>
+                <td>
+                  Клип «Матрёшки»
+                  <div class="booking-sub">12–13 апреля · закрыта</div>
+                </td>
+                <td class="sum-cell" style="color: var(--amber);">42 100 ₽</td>
+                <td class="mono">19 апреля</td>
+                <td><span class="age-pill soon">Через 5 дней</span></td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+              <tr class="current">
+                <td class="row-stripe"></td>
+                <td>
+                  <div class="client-cell">Студия «Паровоз»</div>
+                  <div class="booking-sub">Долгосрочный клиент · постоплата</div>
+                </td>
+                <td>
+                  Сериал «По тонкому льду» · транш 2
+                  <div class="booking-sub">Графиковый договор</div>
+                </td>
+                <td class="sum-cell">56 800 ₽</td>
+                <td class="mono">18 апреля</td>
+                <td><span class="age-pill ok">По графику</span></td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================= -->
+  <!-- PAGE 3 · /finance/payments                     -->
+  <!-- ============================================= -->
+  <div class="fin-frame">
+    <div class="fin-frame-label">
+      /finance/payments · График поступлений
+      <span class="tag">страница 3 из 4 · ответ на «когда оплатят» и «сколько заработал»</span>
+    </div>
+    <div class="fin-frame-body">
+
+      <div class="fin-tabs">
+        <div class="fin-tab">Сводка</div>
+        <div class="fin-tab">Долги <span class="badge">12</span></div>
+        <div class="fin-tab active">Поступления</div>
+        <div class="fin-tab">Расходы</div>
+      </div>
+
+      <div class="fin-page">
+
+        <div class="fin-page-head">
+          <div>
+            <h1>Поступления</h1>
+            <div class="sub">За апрель получено <strong class="mono" style="color: var(--emerald);">1 645 000 ₽</strong> · ожидается ещё <strong class="mono" style="color: var(--amber);">1 245 000 ₽</strong></div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <div class="period-sel">
+              <button>Неделя</button>
+              <button class="active">Месяц</button>
+              <button>Квартал</button>
+            </div>
+            <button class="btn primary">+ Отметить оплату</button>
+          </div>
+        </div>
+
+        <!-- Heatmap -->
+        <div class="panel" style="margin-bottom: 18px;">
+          <div class="panel-head">
+            <h3>Календарь платежей — апрель 2026</h3>
+            <span class="link">Переключить на список →</span>
+          </div>
+          <div class="heatmap">
+            <div class="head"><div>Пн</div><div>Вт</div><div>Ср</div><div>Чт</div><div>Пт</div><div>Сб</div><div>Вс</div></div>
+            <div class="grid">
+              <!-- week 1 (1–6 апр) -->
+              <div class="cell other"><span>30</span></div>
+              <div class="cell other"><span>31</span></div>
+              <div class="cell"><span>1</span></div>
+              <div class="cell lvl-2"><span>2</span><span class="amt">215к</span></div>
+              <div class="cell lvl-1"><span>3</span><span class="amt">84к</span></div>
+              <div class="cell"><span>4</span></div>
+              <div class="cell"><span>5</span></div>
+              <!-- week 2 -->
+              <div class="cell lvl-3"><span>6</span><span class="amt">420к</span></div>
+              <div class="cell"><span>7</span></div>
+              <div class="cell lvl-2"><span>8</span><span class="amt">185к</span></div>
+              <div class="cell lvl-1"><span>9</span><span class="amt">62к</span></div>
+              <div class="cell"><span>10</span></div>
+              <div class="cell"><span>11</span></div>
+              <div class="cell"><span>12</span></div>
+              <!-- week 3 -->
+              <div class="cell lvl-2"><span>13</span><span class="amt">165к</span></div>
+              <div class="cell today expected"><span>14</span><span class="amt">·</span></div>
+              <div class="cell expected"><span>15</span><span class="amt">80к</span></div>
+              <div class="cell expected"><span>16</span><span class="amt">88к</span></div>
+              <div class="cell overdue"><span>17</span><span class="amt">64к</span></div>
+              <div class="cell expected"><span>18</span><span class="amt">57к</span></div>
+              <div class="cell"><span>19</span></div>
+              <!-- week 4 -->
+              <div class="cell"><span>20</span></div>
+              <div class="cell expected"><span>21</span><span class="amt">124к</span></div>
+              <div class="cell"><span>22</span></div>
+              <div class="cell expected"><span>23</span><span class="amt">96к</span></div>
+              <div class="cell"><span>24</span></div>
+              <div class="cell expected"><span>25</span><span class="amt">210к</span></div>
+              <div class="cell"><span>26</span></div>
+              <!-- week 5 -->
+              <div class="cell expected"><span>27</span><span class="amt">55к</span></div>
+              <div class="cell"><span>28</span></div>
+              <div class="cell expected"><span>29</span><span class="amt">140к</span></div>
+              <div class="cell expected"><span>30</span><span class="amt">331к</span></div>
+              <div class="cell other"><span>1</span></div>
+              <div class="cell other"><span>2</span></div>
+              <div class="cell other"><span>3</span></div>
+            </div>
+          </div>
+          <div class="heatmap-legend">
+            <span><span class="chip" style="background: var(--emerald-border);"></span>Поступило</span>
+            <span><span class="chip" style="background: var(--amber-soft); border: 1px solid var(--amber-border);"></span>Ожидается</span>
+            <span><span class="chip" style="background: var(--rose-soft); border: 1px solid var(--rose-border);"></span>Просрочка</span>
+            <span style="margin-left: auto; color: var(--ink-3);">Клик по дню — список платежей</span>
+          </div>
+        </div>
+
+        <!-- Two columns: Expected / Recent -->
+        <div class="pay-split">
+
+          <div>
+            <h4>Ожидается на этой неделе</h4>
+            <div class="panel">
+              <div class="pay-row today expected">
+                <div class="up-date"><div class="d">14</div><div class="m">Апр</div></div>
+                <div>
+                  <div class="name">Мосфильм</div>
+                  <div class="meta">Частичный платёж · переведено утром</div>
+                </div>
+                <span class="pill-mini">сегодня</span>
+                <div class="sum">80 000 ₽</div>
+              </div>
+              <div class="pay-row expected">
+                <div class="up-date"><div class="d">16</div><div class="m">Апр</div></div>
+                <div>
+                  <div class="name">RedLogic Production</div>
+                  <div class="meta">Счёт № 2026-0412</div>
+                </div>
+                <span class="pill-mini">ожидаем</span>
+                <div class="sum">87 500 ₽</div>
+              </div>
+              <div class="pay-row overdue">
+                <div class="up-date"><div class="d">17</div><div class="m">Апр</div></div>
+                <div>
+                  <div class="name">Бюро Горбунова</div>
+                  <div class="meta">Корпоративный фильм · договор</div>
+                </div>
+                <span class="pill-mini">риск</span>
+                <div class="sum">64 200 ₽</div>
+              </div>
+              <div class="pay-row expected">
+                <div class="up-date"><div class="d">18</div><div class="m">Апр</div></div>
+                <div>
+                  <div class="name">Студия «Паровоз»</div>
+                  <div class="meta">Транш 2 по договору</div>
+                </div>
+                <span class="pill-mini">ожидаем</span>
+                <div class="sum">56 800 ₽</div>
+              </div>
+              <div class="pay-row expected">
+                <div class="up-date"><div class="d">19</div><div class="m">Апр</div></div>
+                <div>
+                  <div class="name">Other Films</div>
+                  <div class="meta">Клип «Матрёшки»</div>
+                </div>
+                <span class="pill-mini">ожидаем</span>
+                <div class="sum">42 100 ₽</div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4>Поступило недавно</h4>
+            <div class="panel">
+              <div class="pay-row received">
+                <div class="up-date"><div class="d">13</div><div class="m">Апр</div></div>
+                <div>
+                  <div class="name">Триколор Фильм</div>
+                  <div class="meta">Бронь № 2026-0411-09</div>
+                </div>
+                <span class="pill-mini">зачислено</span>
+                <div class="sum">165 000 ₽</div>
+              </div>
+              <div class="pay-row received">
+                <div class="up-date"><div class="d">09</div><div class="m">Апр</div></div>
+                <div>
+                  <div class="name">Киностудия Горького</div>
+                  <div class="meta">Аванс за май</div>
+                </div>
+                <span class="pill-mini">зачислено</span>
+                <div class="sum">62 000 ₽</div>
+              </div>
+              <div class="pay-row received">
+                <div class="up-date"><div class="d">08</div><div class="m">Апр</div></div>
+                <div>
+                  <div class="name">Студия «Паровоз»</div>
+                  <div class="meta">Транш 1 по договору</div>
+                </div>
+                <span class="pill-mini">зачислено</span>
+                <div class="sum">185 000 ₽</div>
+              </div>
+              <div class="pay-row received">
+                <div class="up-date"><div class="d">06</div><div class="m">Апр</div></div>
+                <div>
+                  <div class="name">Лаборатория Культуры</div>
+                  <div class="meta">Полная оплата · 2 броней</div>
+                </div>
+                <span class="pill-mini">зачислено</span>
+                <div class="sum">420 000 ₽</div>
+              </div>
+              <div class="pay-row received">
+                <div class="up-date"><div class="d">03</div><div class="m">Апр</div></div>
+                <div>
+                  <div class="name">Sentry Films</div>
+                  <div class="meta">Аванс под «Черешню»</div>
+                </div>
+                <span class="pill-mini">зачислено</span>
+                <div class="sum">84 000 ₽</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================= -->
+  <!-- PAGE 4 · /finance/expenses                     -->
+  <!-- ============================================= -->
+  <div class="fin-frame">
+    <div class="fin-frame-label">
+      /finance/expenses · Расходы и структура затрат
+      <span class="tag">страница 4 из 4 · ответ на «сколько потратил»</span>
+    </div>
+    <div class="fin-frame-body">
+
+      <div class="fin-tabs">
+        <div class="fin-tab">Сводка</div>
+        <div class="fin-tab">Долги <span class="badge">12</span></div>
+        <div class="fin-tab">Поступления</div>
+        <div class="fin-tab active">Расходы</div>
+      </div>
+
+      <div class="fin-page">
+
+        <div class="fin-page-head">
+          <div>
+            <h1>Расходы</h1>
+            <div class="sub">За апрель потрачено <strong class="mono" style="color: var(--slate);">480 500 ₽</strong> · 23 операции · на 9% выше среднего за 6 мес.</div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <div class="period-sel">
+              <button>Неделя</button>
+              <button class="active">Месяц</button>
+              <button>Квартал</button>
+              <button>Год</button>
+            </div>
+            <button class="btn primary">+ Добавить расход</button>
+          </div>
+        </div>
+
+        <!-- Donut + categories -->
+        <div class="panel" style="margin-bottom: 18px;">
+          <div class="panel-head">
+            <h3>Структура расходов за апрель</h3>
+            <span class="link">Сравнить с мартом →</span>
+          </div>
+          <div class="exp-donut-row">
+            <div style="position: relative;">
+              <div class="exp-donut"></div>
+              <div class="exp-donut-center">
+                <div class="sm">Всего</div>
+                <div class="big">480 500 ₽</div>
+                <div class="sm">23 операции</div>
+              </div>
+            </div>
+            <div class="exp-cat-list">
+              <div class="exp-cat">
+                <span class="swatch" style="background: var(--rose);"></span>
+                <div>
+                  <div style="font-weight: 500;">Ремонт оборудования</div>
+                  <div class="bar-wrap"><div class="bar-fill" style="width: 100%; background: var(--rose);"></div></div>
+                </div>
+                <span class="sum">134 500 ₽</span>
+                <span class="pct">28%</span>
+              </div>
+              <div class="exp-cat">
+                <span class="swatch" style="background: var(--slate);"></span>
+                <div>
+                  <div style="font-weight: 500;">Аренда помещения и склад</div>
+                  <div class="bar-wrap"><div class="bar-fill" style="width: 75%; background: var(--slate);"></div></div>
+                </div>
+                <span class="sum">100 000 ₽</span>
+                <span class="pct">21%</span>
+              </div>
+              <div class="exp-cat">
+                <span class="swatch" style="background: var(--accent);"></span>
+                <div>
+                  <div style="font-weight: 500;">Закупка оборудования</div>
+                  <div class="bar-wrap"><div class="bar-fill" style="width: 75%; background: var(--accent);"></div></div>
+                </div>
+                <span class="sum">101 000 ₽</span>
+                <span class="pct">21%</span>
+              </div>
+              <div class="exp-cat">
+                <span class="swatch" style="background: var(--amber);"></span>
+                <div>
+                  <div style="font-weight: 500;">Зарплата и подряды</div>
+                  <div class="bar-wrap"><div class="bar-fill" style="width: 57%; background: var(--amber);"></div></div>
+                </div>
+                <span class="sum">77 000 ₽</span>
+                <span class="pct">16%</span>
+              </div>
+              <div class="exp-cat">
+                <span class="swatch" style="background: var(--emerald);"></span>
+                <div>
+                  <div style="font-weight: 500;">Логистика и прочее</div>
+                  <div class="bar-wrap"><div class="bar-fill" style="width: 50%; background: var(--emerald);"></div></div>
+                </div>
+                <span class="sum">68 000 ₽</span>
+                <span class="pct">14%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent expenses table -->
+        <div class="panel">
+          <div class="filter-bar">
+            <span class="pill active">Все категории</span>
+            <span class="pill">Ремонт</span>
+            <span class="pill">Аренда</span>
+            <span class="pill">Закупка</span>
+            <span class="pill">Зарплаты</span>
+            <span class="pill">Прочее</span>
+            <span class="spacer"></span>
+            <input class="search" placeholder="Поиск по описанию" />
+          </div>
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th style="width: 4px;"></th>
+                <th style="width: 13%;">Дата</th>
+                <th style="width: 30%;">Категория и описание</th>
+                <th>Основание</th>
+                <th style="text-align: right; width: 14%;">Сумма</th>
+                <th style="width: 12%; text-align: right;">Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="row-stripe" style="border-left-color: var(--rose);"></td>
+                <td class="mono">13 апр</td>
+                <td>
+                  <div class="client-cell">Ремонт · балласт ARRI 2kW</div>
+                  <div class="booking-sub">Замена платы розжига</div>
+                </td>
+                <td>
+                  Мастерская «СветСервис»
+                  <div class="booking-sub">акт № СС-2026-0413</div>
+                </td>
+                <td class="sum-cell" style="color: var(--rose);">34 500 ₽</td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Документ">📎</div>
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="row-stripe" style="border-left-color: var(--accent);"></td>
+                <td class="mono">10 апр</td>
+                <td>
+                  <div class="client-cell">Закупка · SkyPanel S60</div>
+                  <div class="booking-sub">1 шт + чемодан + рама</div>
+                </td>
+                <td>
+                  CVP Russia · договор № 2026-04-07
+                  <div class="booking-sub">оплата по счёту</div>
+                </td>
+                <td class="sum-cell" style="color: var(--accent);">101 000 ₽</td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Документ">📎</div>
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="row-stripe" style="border-left-color: var(--slate);"></td>
+                <td class="mono">08 апр</td>
+                <td>
+                  <div class="client-cell">Аренда · склад и офис</div>
+                  <div class="booking-sub">Апрель 2026</div>
+                </td>
+                <td>
+                  ООО «Ангара-Парк»
+                  <div class="booking-sub">платёж по договору</div>
+                </td>
+                <td class="sum-cell" style="color: var(--slate);">100 000 ₽</td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Документ">📎</div>
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="row-stripe" style="border-left-color: var(--amber);"></td>
+                <td class="mono">05 апр</td>
+                <td>
+                  <div class="client-cell">Зарплата · кладовщики</div>
+                  <div class="booking-sub">Два сотрудника · половина месяца</div>
+                </td>
+                <td>
+                  Ведомость № 2026-04-01
+                </td>
+                <td class="sum-cell" style="color: var(--amber);">45 000 ₽</td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Документ">📎</div>
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="row-stripe" style="border-left-color: var(--rose);"></td>
+                <td class="mono">03 апр</td>
+                <td>
+                  <div class="client-cell">Ремонт · Fresnel 2kW (№4)</div>
+                  <div class="booking-sub">Треснул рефлектор после возврата</div>
+                </td>
+                <td>
+                  Мастерская Петрова
+                  <div class="booking-sub">связан с возвратом · Мосфильм</div>
+                </td>
+                <td class="sum-cell" style="color: var(--rose);">18 000 ₽</td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Документ">📎</div>
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="row-stripe" style="border-left-color: var(--emerald);"></td>
+                <td class="mono">02 апр</td>
+                <td>
+                  <div class="client-cell">Логистика · доставка в Крым</div>
+                  <div class="booking-sub">Комплект на выезд «Гранит»</div>
+                </td>
+                <td>
+                  СДЭК · квитанция
+                </td>
+                <td class="sum-cell" style="color: var(--emerald);">28 400 ₽</td>
+                <td>
+                  <div class="act-icons">
+                    <div class="ic" title="Документ">📎</div>
+                    <div class="ic" title="Открыть">›</div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer / logic notes -->
+  <div class="fin-foot">
+    <h3>Логика секции</h3>
+    <ul>
+      <li><strong>Вся секция — только для руководителя.</strong> Кладовщик и техник не видят /finance ни в меню, ни по прямой ссылке (403). В <code>roles-permissions</code> зафиксируем.</li>
+      <li><strong>Страницы отвечают на строго четыре вопроса.</strong> Левый цветной стрип на KPI: <span style="color: var(--rose);">rose</span> — долги, <span style="color: var(--amber);">amber</span> — ожидания, <span style="color: var(--emerald);">emerald</span> — выручка, <span style="color: var(--slate);">slate</span> — расходы. Одна и та же палитра повторяется на таблицах и календаре — глаз привыкает.</li>
+      <li><strong>Расчёт долга</strong> — существующий <code>computeDebts()</code> в <code>apps/api/src/services/finance.ts</code>. Докручиваем aging-бакеты (>30 / 1–30 / 1–7 дней / в графике) и сортировку по возрасту задолженности.</li>
+      <li><strong>Ожидания и поступления</strong> — вытягиваем из поля <code>dueDate</code> брони и отдельной таблицы <code>Payment</code> (добавить в Prisma: id, bookingId, amount, receivedAt, method). Календарь — это агрегация платежей по дню.</li>
+      <li><strong>Расходы</strong> — новая таблица <code>Expense</code> (id, date, categoryEnum, amount, description, documentUrl?, linkedBookingId?). Пять категорий фиксированно; «Прочее» — открытый текст.</li>
+      <li><strong>Связь с ремонтом.</strong> Если в <code>repair-workflow</code> создаётся карточка ремонта с платной работой — автоматически предлагается создать расход категории «Ремонт» с привязкой к единице и броне. Одно действие, не двойной ввод.</li>
+      <li><strong>Чистая прибыль</strong> — расчётное поле <em>(выручка − расходы)</em>, не хранится отдельно, считается на лету в API за выбранный период.</li>
+      <li><strong>Мобильная версия</strong> — KPI сворачиваются в вертикальный стек, таблицы становятся карточками. Календарь на экране ≤ 640px заменяется списком «ближайшие 7 дней».</li>
+    </ul>
+  </div>
+
+</div>
+
+</body>
+</html>

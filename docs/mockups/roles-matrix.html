@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · roles matrix</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+.rm-scope {
+  --bg: #fafafa;
+  --bg-2: #f4f4f5;
+  --surface: #ffffff;
+  --ink: #09090b;
+  --ink-2: #52525b;
+  --ink-3: #a1a1aa;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+
+  --accent: #1e3a8a;
+  --accent-2: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --accent-border: #bfdbfe;
+
+  --teal: #0f766e;       --teal-soft: #ccfbf1;    --teal-border: #99f6e4;
+  --amber: #a16207;      --amber-soft: #fef3c7;   --amber-border: #fde68a;
+  --rose: #9f1239;       --rose-soft: #ffe4e6;    --rose-border: #fecdd3;
+  --indigo: #4338ca;     --indigo-soft: #e0e7ff;  --indigo-border: #c7d2fe;
+  --slate: #334155;      --slate-soft: #f1f5f9;   --slate-border: #cbd5e1;
+  --emerald: #047857;    --emerald-soft: #d1fae5; --emerald-border: #a7f3d0;
+
+  --ok: #15803d;         --ok-soft: #dcfce7;
+  --warn: #a16207;       --warn-soft: #fef9c3;
+
+  --shadow-xs: 0 1px 0 rgba(9,9,11,.03);
+  --shadow-sm: 0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02);
+  --r: 4px;
+  --r-lg: 6px;
+
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+  color: var(--ink); background: var(--bg);
+  line-height: 1.5; font-size: 13.5px;
+  -webkit-font-smoothing: antialiased;
+  padding: 24px 32px 60px;
+}
+
+.rm-scope .mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+.rm-scope .cond { font-family: 'IBM Plex Sans Condensed', sans-serif; }
+.rm-scope .eyebrow {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--ink-3); font-weight: 600;
+}
+
+/* Section intro */
+.rm-intro {
+  background: var(--indigo-soft);
+  border: 1px solid var(--indigo-border);
+  border-radius: var(--r-lg);
+  padding: 18px 22px;
+  margin-bottom: 28px;
+  font-size: 13px; line-height: 1.65;
+  color: var(--ink);
+}
+.rm-intro h2 {
+  margin: 0 0 6px; font-size: 17px; font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.rm-intro p { margin: 0 0 6px; color: var(--ink-2); }
+.rm-intro p:last-child { margin-bottom: 0; }
+.rm-intro strong { color: var(--ink); font-weight: 600; }
+
+/* Roles header row */
+.roles-row {
+  display: grid; grid-template-columns: 260px 1fr 1fr 1fr;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 18px;
+  overflow: hidden;
+}
+.roles-corner {
+  padding: 18px 22px; background: var(--bg-2);
+  border-right: 1px solid var(--border);
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; color: var(--ink-3);
+  text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600;
+  display: flex; align-items: flex-end;
+}
+.role-col {
+  padding: 18px 22px;
+  border-right: 1px solid var(--border);
+  position: relative;
+}
+.role-col:last-child { border-right: 0; }
+.role-col::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+.role-col.super::before { background: var(--indigo); }
+.role-col.ware::before { background: var(--teal); }
+.role-col.tech::before { background: var(--amber); }
+
+.role-col .tag {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em;
+  font-weight: 600; padding: 2px 8px; border-radius: var(--r);
+  display: inline-block; margin-bottom: 10px;
+  border: 1px solid transparent;
+}
+.role-col.super .tag { background: var(--indigo-soft); color: var(--indigo); border-color: var(--indigo-border); }
+.role-col.ware .tag { background: var(--teal-soft); color: var(--teal); border-color: var(--teal-border); }
+.role-col.tech .tag { background: var(--amber-soft); color: var(--amber); border-color: var(--amber-border); }
+
+.role-col .title {
+  font-size: 18px; font-weight: 600; letter-spacing: -0.015em;
+  margin-bottom: 3px;
+}
+.role-col .subtitle {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 11px; color: var(--ink-3);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px;
+  font-weight: 600;
+}
+.role-col .desc { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+.role-col .count {
+  font-family: 'IBM Plex Mono', monospace;
+  margin-top: 10px; font-size: 11px; color: var(--ink-3);
+}
+
+/* Legend */
+.legend {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 14px 22px; margin-bottom: 22px;
+  display: flex; gap: 22px; flex-wrap: wrap; align-items: center;
+}
+.legend h4 {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--ink-3); font-weight: 600;
+  margin: 0 14px 0 0;
+}
+.legend .item {
+  font-size: 12px; color: var(--ink-2);
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* Permission pills */
+.perm {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; padding: 3px 9px; border-radius: var(--r);
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  border: 1px solid transparent;
+}
+.perm.full { background: var(--emerald-soft); color: var(--emerald); border-color: var(--emerald-border); }
+.perm.edit { background: var(--teal-soft); color: var(--teal); border-color: var(--teal-border); }
+.perm.view { background: var(--slate-soft); color: var(--slate); border-color: var(--slate-border); }
+.perm.limited { background: var(--amber-soft); color: var(--amber); border-color: var(--amber-border); }
+.perm.own { background: var(--indigo-soft); color: var(--indigo); border-color: var(--indigo-border); }
+.perm.none { background: #fff; color: var(--ink-3); border-color: var(--border); }
+
+/* Matrix */
+.matrix {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden; margin-bottom: 26px;
+}
+.matrix table {
+  width: 100%; border-collapse: collapse;
+  font-size: 13px;
+}
+.matrix thead th {
+  text-align: left; padding: 12px 20px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--ink-2); font-weight: 600;
+}
+.matrix thead th.group {
+  text-align: center;
+  border-right: 1px solid var(--border);
+  width: 135px;
+}
+.matrix thead th.group:last-child { border-right: 0; }
+.matrix thead th.group.super { color: var(--indigo); }
+.matrix thead th.group.ware { color: var(--teal); }
+.matrix thead th.group.tech { color: var(--amber); }
+
+.matrix tbody tr.section-head td {
+  background: var(--slate-soft); padding: 11px 20px 9px;
+  font-size: 12.5px; font-weight: 600; letter-spacing: -0.005em;
+  color: var(--ink);
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.matrix tbody tr.section-head td span.hint {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 11.5px; color: var(--ink-2); text-transform: none;
+  letter-spacing: 0; font-weight: 400; margin-left: 12px;
+}
+.matrix tbody td {
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.matrix tbody tr:last-child td { border-bottom: 0; }
+.matrix tbody td.cap {
+  font-weight: 500; letter-spacing: -0.005em; font-size: 13px;
+}
+.matrix tbody td.cap .hint {
+  font-size: 11.5px; color: var(--ink-3); margin-top: 2px; font-weight: 400;
+}
+.matrix tbody td.role-cell {
+  text-align: center;
+  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  width: 135px;
+}
+.matrix tbody td.role-cell:last-child { border-right: 0; }
+.matrix tbody td.role-cell.super-bg { background: color-mix(in srgb, var(--indigo-soft) 28%, transparent); }
+.matrix tbody td.role-cell.ware-bg { background: color-mix(in srgb, var(--teal-soft) 28%, transparent); }
+.matrix tbody td.role-cell.tech-bg { background: color-mix(in srgb, var(--amber-soft) 28%, transparent); }
+
+/* Edge cases block */
+.special {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 20px 24px; margin-bottom: 22px;
+}
+.special h3 {
+  margin: 0 0 14px; font-size: 16px; font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.special .grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+}
+.special .case {
+  border: 1px solid var(--border); border-radius: var(--r);
+  padding: 14px 16px; background: var(--bg);
+}
+.special .case .q {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--accent); font-weight: 600; margin-bottom: 6px;
+}
+.special .case .title {
+  font-weight: 600; font-size: 13px; letter-spacing: -0.005em; margin-bottom: 4px;
+}
+.special .case .body {
+  font-size: 12.5px; color: var(--ink-2); line-height: 1.55;
+}
+.special .case .body strong { color: var(--ink); font-weight: 600; }
+.special .case .body code {
+  font-family: 'IBM Plex Mono', monospace;
+  background: var(--bg-2); border: 1px solid var(--border);
+  padding: 1px 6px; border-radius: 2px; font-size: 11px;
+}
+
+/* Footer / technical notes */
+.rm-foot {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 18px 22px;
+  font-size: 12.5px; color: var(--ink-2); line-height: 1.65;
+}
+.rm-foot h3 {
+  margin: 0 0 10px; font-size: 14px; color: var(--ink); font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.rm-foot ul { margin: 6px 0 0 18px; padding: 0; }
+.rm-foot li { margin: 4px 0; }
+.rm-foot strong { color: var(--ink); font-weight: 600; }
+.rm-foot code {
+  font-family: 'IBM Plex Mono', monospace;
+  background: #fff; border: 1px solid var(--border);
+  padding: 1px 6px; border-radius: 2px; font-size: 11.5px;
+}
+</style>
+
+<div class="rm-scope">
+
+  <div class="rm-intro">
+    <h2>Матрица прав — кто что видит и делает</h2>
+    <p>Три роли: <strong>Руководитель</strong>, <strong>Кладовщик</strong>, <strong>Техник</strong>. Логика — каждый видит ровно столько, сколько нужно для его ежедневной работы. Минимум опций в боковом меню → меньше когнитивной нагрузки + проще обучать новых сотрудников.</p>
+    <p>Ниже полная матрица по разделам + легенда + обсуждение спорных мест (кто удаляет, кто редактирует задним числом, кто отменяет, кто принимает возврат и т. д.).</p>
+  </div>
+
+  <!-- Roles header -->
+  <div class="roles-row">
+    <div class="roles-corner">Раздел / Роль</div>
+
+    <div class="role-col super">
+      <span class="tag">Super-admin</span>
+      <div class="title">Руководитель</div>
+      <div class="subtitle">Владелец / CEO</div>
+      <div class="desc">Видит всё. Отвечает за деньги, стратегию, договоры. Единственная роль с доступом к финансам, настройкам и удалениям.</div>
+      <div class="count">обычно 1 человек</div>
+    </div>
+
+    <div class="role-col ware">
+      <span class="tag">Warehouse</span>
+      <div class="title">Кладовщик</div>
+      <div class="subtitle">Operator / старший смены</div>
+      <div class="desc">Работает с бронями и складом каждый день. Создаёт и редактирует заявки, выдаёт и принимает оборудование, сопровождает проект от запроса до возврата.</div>
+      <div class="count">1–3 человека</div>
+    </div>
+
+    <div class="role-col tech">
+      <span class="tag">Technician</span>
+      <div class="title">Техник</div>
+      <div class="subtitle">Repair specialist</div>
+      <div class="desc">Чинит оборудование. Видит только «Мой день» и «Мастерскую». Никаких денег, договоров, клиентов — только единицы техники и их состояние.</div>
+      <div class="count">1–2 человека</div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <h4>Обозначения</h4>
+    <div class="item"><span class="perm full">полный</span> создание, редактирование, удаление</div>
+    <div class="item"><span class="perm edit">редактирует</span> создаёт и меняет, но не удаляет</div>
+    <div class="item"><span class="perm own">свои</span> только свои записи</div>
+    <div class="item"><span class="perm view">читает</span> видит, но не меняет</div>
+    <div class="item"><span class="perm limited">частично</span> ограниченный набор</div>
+    <div class="item"><span class="perm none">нет</span> доступа нет (пункт меню скрыт)</div>
+  </div>
+
+  <!-- Matrix -->
+  <div class="matrix">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 260px;">Функция</th>
+          <th class="group super">Руководитель</th>
+          <th class="group ware">Кладовщик</th>
+          <th class="group tech">Техник</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <!-- §1 Меню и навигация -->
+        <tr class="section-head"><td colspan="4">Меню и навигация <span class="hint">что видно в боковой панели</span></td></tr>
+        <tr>
+          <td class="cap">«Мой день» (главная)<div class="hint">дневник задач, зависит от роли</div></td>
+          <td class="role-cell super-bg"><span class="perm full">своя</span></td>
+          <td class="role-cell ware-bg"><span class="perm full">своя</span></td>
+          <td class="role-cell tech-bg"><span class="perm full">своя</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Брони<div class="hint">список, календарь, аналитика</div></td>
+          <td class="role-cell super-bg"><span class="perm full">полный</span></td>
+          <td class="role-cell ware-bg"><span class="perm edit">работает</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Оборудование<div class="hint">каталог, единицы, категории</div></td>
+          <td class="role-cell super-bg"><span class="perm full">полный</span></td>
+          <td class="role-cell ware-bg"><span class="perm edit">редактирует</span></td>
+          <td class="role-cell tech-bg"><span class="perm view">читает</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Мастерская<div class="hint">очередь ремонта, история</div></td>
+          <td class="role-cell super-bg"><span class="perm view">читает</span></td>
+          <td class="role-cell ware-bg"><span class="perm limited">создаёт</span></td>
+          <td class="role-cell tech-bg"><span class="perm full">работает</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Клиенты<div class="hint">карточки, история, задолженности</div></td>
+          <td class="role-cell super-bg"><span class="perm full">полный</span></td>
+          <td class="role-cell ware-bg"><span class="perm edit">редактирует</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Финансы<div class="hint">сводка, долги, поступления, расходы</div></td>
+          <td class="role-cell super-bg"><span class="perm full">полный</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Админка<div class="hint">пользователи, сленг, импорт, настройки</div></td>
+          <td class="role-cell super-bg"><span class="perm full">полный</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+
+        <!-- §2 Бронирование -->
+        <tr class="section-head"><td colspan="4">Бронирование <span class="hint">жизненный цикл заявки</span></td></tr>
+        <tr>
+          <td class="cap">Создать черновик</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm full">да</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Редактировать черновик</td>
+          <td class="role-cell super-bg"><span class="perm full">любой</span></td>
+          <td class="role-cell ware-bg"><span class="perm edit">любой</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Отправить на согласование</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm full">да</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Одобрить / отклонить<div class="hint">выход из статуса «На согласовании»</div></td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Выдача и возврат оборудования</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm full">да</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Отменить бронь<div class="hint">после статуса «Одобрено»</div></td>
+          <td class="role-cell super-bg"><span class="perm full">любую</span></td>
+          <td class="role-cell ware-bg"><span class="perm limited">до выдачи</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Редактировать задним числом<div class="hint">после закрытия брони</div></td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Удалить бронь</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+
+        <!-- §3 Оборудование -->
+        <tr class="section-head"><td colspan="4">Оборудование <span class="hint">каталог и единицы</span></td></tr>
+        <tr>
+          <td class="cap">Добавить позицию в каталог<div class="hint">новая модель — SkyPanel S60 и т. п.</div></td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm edit">да</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Менять цены и правила сборов</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Добавить единицу (инвентарь)</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm edit">да</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Списать единицу<div class="hint">перевод в «Списано»</div></td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm limited">предлагает</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Удалить позицию из каталога</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+
+        <!-- §4 Мастерская -->
+        <tr class="section-head"><td colspan="4">Мастерская <span class="hint">ремонт и обслуживание</span></td></tr>
+        <tr>
+          <td class="cap">Завести карточку ремонта<div class="hint">автоматически при возврате со статусом «Ждёт ремонта»</div></td>
+          <td class="role-cell super-bg"><span class="perm edit">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm full">да</span></td>
+          <td class="role-cell tech-bg"><span class="perm edit">да</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Взять в работу / менять статус ремонта</td>
+          <td class="role-cell super-bg"><span class="perm view">читает</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm full">полный</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Добавить запись работ / запчасти / время<div class="hint">журнал с таймкодами</div></td>
+          <td class="role-cell super-bg"><span class="perm view">читает</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm full">полный</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Закрыть ремонт → единица снова «Свободна»</td>
+          <td class="role-cell super-bg"><span class="perm edit">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm full">да</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Создать расход категории «Ремонт»<div class="hint">автопредложение при закрытии платного ремонта</div></td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm limited">предлагает</span></td>
+        </tr>
+
+        <!-- §5 Клиенты -->
+        <tr class="section-head"><td colspan="4">Клиенты <span class="hint">CRM-карточки</span></td></tr>
+        <tr>
+          <td class="cap">Создать клиента</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm full">да</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Редактировать карточку клиента</td>
+          <td class="role-cell super-bg"><span class="perm full">любого</span></td>
+          <td class="role-cell ware-bg"><span class="perm edit">любого</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Видеть задолженность клиента</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm limited">сумма и статус</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Удалить клиента</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+
+        <!-- §6 Финансы -->
+        <tr class="section-head"><td colspan="4">Финансы <span class="hint">секция доступна только руководителю</span></td></tr>
+        <tr>
+          <td class="cap">Открыть любую финансовую страницу</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Отмечать оплату, редактировать платежи</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Добавить расход</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Скачать отчёт / экспорт</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+
+        <!-- §7 Админка -->
+        <tr class="section-head"><td colspan="4">Админка <span class="hint">настройки системы</span></td></tr>
+        <tr>
+          <td class="cap">Пользователи — создание, роли, блокировка</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Сленг — принять / отклонить / исправить</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Импорт прайсов и сравнение с конкурентами</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Настройки — организация, AI, Telegram, правила</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+
+        <!-- §8 Разрушающие действия -->
+        <tr class="section-head"><td colspan="4">Разрушающие действия <span class="hint">только руководитель, везде и всегда</span></td></tr>
+        <tr>
+          <td class="cap">Удаление чего-либо (кроме собственных черновиков)</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Массовые операции (импорт с overwrite, bulk delete)</td>
+          <td class="role-cell super-bg"><span class="perm full">да</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+        <tr>
+          <td class="cap">Изменения задним числом (аудит-важные поля)</td>
+          <td class="role-cell super-bg"><span class="perm full">да, с логом</span></td>
+          <td class="role-cell ware-bg"><span class="perm none">нет</span></td>
+          <td class="role-cell tech-bg"><span class="perm none">нет</span></td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Edge cases -->
+  <div class="special">
+    <h3>Спорные места — где важно договориться на берегу</h3>
+    <div class="grid">
+
+      <div class="case">
+        <div class="q">Сценарий 1</div>
+        <div class="title">Кладовщик может отменить бронь после «Одобрено»?</div>
+        <div class="body">
+          <strong>Только до выдачи.</strong> Если оборудование ещё на складе и клиент звонит с отменой — кладовщик может сам вернуть бронь в «Отменено» (убирает из слотов доступности). После выдачи отмена = возврат с пересчётом → нужна резолюция руководителя.
+        </div>
+      </div>
+
+      <div class="case">
+        <div class="q">Сценарий 2</div>
+        <div class="title">Кто заводит карточку ремонта?</div>
+        <div class="body">
+          <strong>Кладовщик — автоматически,</strong> когда на возврате нажимает «поломка». Система создаёт <code>Repair</code>-карточку со статусом «Ждёт ремонта», единицу переводит из «Выдано» в «Ждёт ремонта». Техник потом берёт в работу. Техник тоже может создать карточку вручную (плановая профилактика).
+        </div>
+      </div>
+
+      <div class="case">
+        <div class="q">Сценарий 3</div>
+        <div class="title">Техник видит, от какой брони пришла единица?</div>
+        <div class="body">
+          <strong>Видит номер и даты брони</strong> (чтобы понять контекст использования), но <strong>не видит клиента, цену, суммы</strong>. На карточке ремонта: «Arri Fresnel 2kW №4 · из брони <code>№ МФ-2026-03-15</code>, даты 5–12 марта · причина: треснул рефлектор».
+        </div>
+      </div>
+
+      <div class="case">
+        <div class="q">Сценарий 4</div>
+        <div class="title">Кладовщик видит финансовые цифры?</div>
+        <div class="body">
+          <strong>Внутри брони — да</strong> (сумма аренды, залог, статус оплаты — нужно для разговора с клиентом). <strong>В карточке клиента — видит «общий долг»</strong> (чтобы не выдать оборудование должнику). <strong>Раздел /finance не видит вообще</strong> — ни в меню, ни по прямой ссылке.
+        </div>
+      </div>
+
+      <div class="case">
+        <div class="q">Сценарий 5</div>
+        <div class="title">Редактирование задним числом</div>
+        <div class="body">
+          Закрытая бронь (статус «Возвращено» или «Отменено») — только руководитель. Любое изменение <strong>пишется в аудит-лог</strong> (кто, когда, что было, что стало). Кладовщик — только через руководителя.
+        </div>
+      </div>
+
+      <div class="case">
+        <div class="q">Сценарий 6</div>
+        <div class="title">Прямая ссылка, если роль не видит страницу</div>
+        <div class="body">
+          <strong>HTTP 403 на уровне API</strong> (<code>apiKeyAuth</code> + <code>rolesGuard</code> middleware) + <strong>редирект на /day на фронте</strong>. В меню пункт вообще скрыт. Попытка прямого перехода = сразу «нет доступа, вернуться на главную».
+        </div>
+      </div>
+
+      <div class="case">
+        <div class="q">Сценарий 7</div>
+        <div class="title">Один человек совмещает роли?</div>
+        <div class="body">
+          <strong>У одного пользователя одна роль.</strong> Если руководитель хочет «побыть кладовщиком» — работает через Super-admin (у него все права кладовщика и сверху). Мультироли в этой итерации не делаем — усложняет матрицу и тестирование.
+        </div>
+      </div>
+
+      <div class="case">
+        <div class="q">Сценарий 8</div>
+        <div class="title">Что видно на «Моём дне»?</div>
+        <div class="body">
+          Все три роли видят /day, но <strong>содержимое зависит от роли.</strong> Руководитель: согласования + долги + аномалии расходов. Кладовщик: выдачи / возвраты / конфликты сегодняшнего дня. Техник: очередь ремонта + просроченные по SLA.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Technical notes -->
+  <div class="rm-foot">
+    <h3>Техническая реализация</h3>
+    <ul>
+      <li><strong>Prisma-схема.</strong> В модели <code>User</code> уже есть <code>role: UserRole</code> (сейчас <code>SUPER_ADMIN</code>, <code>WAREHOUSE</code>). Добавить <code>TECHNICIAN</code>.</li>
+      <li><strong>Middleware <code>rolesGuard</code></strong> — новый, в <code>apps/api/src/middleware/rolesGuard.ts</code>. Принимает массив разрешённых ролей, читает <code>req.user.role</code>, возвращает <code>403 {code: "FORBIDDEN_BY_ROLE"}</code>. Навешивается на роуты в <code>routes/index.ts</code>.</li>
+      <li><strong>Фронт — сокрытие меню.</strong> В <code>apps/web/src/components/AppShell.tsx</code> фильтруем массив пунктов по <code>currentUser.role</code>. При попытке прямого URL — <code>useEffect</code>-редирект на <code>/day</code>, если нет прав.</li>
+      <li><strong>Аудит-лог</strong> — новая таблица <code>AuditEntry</code> (<code>id, userId, action, entityType, entityId, before (JSON), after (JSON), createdAt</code>). Пишется через сервисный слой на <code>UPDATE</code>/<code>DELETE</code>, не через Prisma middleware — чтобы не дублировать.</li>
+      <li><strong>Тесты.</strong> Для каждой роли — набор smoke-тестов: «Кладовщик → GET /api/finance/debts → 403», «Техник → POST /api/bookings → 403», «Руководитель → всё 200». Минимум 20 кейсов на матрицу.</li>
+      <li><strong>Существующий <code>botScopeGuard</code></strong> (ограничивает ключи <code>openclaw-*</code>) остаётся как есть — это слой для ботов, поверх роли. Telegram-бот гафферов работает от имени «виртуального» пользователя-кладовщика.</li>
+    </ul>
+  </div>
+
+</div>
+
+</body>
+</html>

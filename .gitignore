@@ -20,3 +20,4 @@ logs/*.log
 .superflow/
 .superflow-state.json
 CLAUDE.local.md
+.superpowers/
