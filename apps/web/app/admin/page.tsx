@@ -949,6 +949,7 @@ function SlangLearningTab() {
                                     type="button"
                                     className="text-rose hover:text-rose"
                                     title="Удалить псевдоним"
+                                    aria-label="Удалить псевдоним"
                                     onClick={() => handleDeleteAlias(a.id)}
                                   >
                                     ✕
@@ -2080,7 +2081,7 @@ function PricesTab() {
       {message && (
         <div className={`px-4 py-3 rounded-lg text-sm font-medium ${message.type === "ok" ? "bg-emerald-soft text-emerald border border-emerald-border" : "bg-rose-soft text-rose border border-rose-border"}`}>
           {message.text}
-          <button onClick={() => setMessage(null)} className="ml-3 text-xs opacity-60 hover:opacity-100">✕</button>
+          <button onClick={() => setMessage(null)} aria-label="Закрыть" className="ml-3 text-xs opacity-60 hover:opacity-100">✕</button>
         </div>
       )}
 
@@ -2850,6 +2851,7 @@ function UsersTab() {
                           >ОК</button>
                           <button
                             onClick={() => { setChangingRoleId(null); setPendingRole(null); }}
+                            aria-label="Отмена"
                             className="text-xs text-ink-3 hover:underline"
                           >✕</button>
                         </span>
