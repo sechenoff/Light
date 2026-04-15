@@ -46,9 +46,9 @@ const URGENCY_LABELS: Record<RepairUrgency, string> = {
 };
 
 const URGENCY_CLASSES: Record<RepairUrgency, string> = {
-  URGENT:     "bg-rose-100 text-rose-700 border border-rose-200",
-  NORMAL:     "bg-amber-100 text-amber-700 border border-amber-200",
-  NOT_URGENT: "bg-slate-100 text-slate-600 border border-slate-200",
+  URGENT:     "bg-rose-soft text-rose border border-rose-border",
+  NORMAL:     "bg-amber-soft text-amber border border-amber-border",
+  NOT_URGENT: "bg-slate-soft text-slate border border-slate-border",
 };
 
 const ALL_ROLES = ["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"] as const;
@@ -194,7 +194,7 @@ export default function RepairQueuePage() {
 
       {/* Ошибка */}
       {error && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+        <div className="bg-rose-soft border border-rose-border rounded-lg px-4 py-3 text-sm text-rose">
           {error}
         </div>
       )}
@@ -204,9 +204,9 @@ export default function RepairQueuePage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {COLUMNS.map((col) => (
             <div key={col.status} className="space-y-2">
-              <div className="h-4 w-24 bg-slate-100 rounded animate-pulse" />
+              <div className="h-4 w-24 bg-surface-muted rounded animate-pulse" />
               {[1, 2].map((i) => (
-                <div key={i} className="h-24 bg-slate-100 rounded-lg animate-pulse" />
+                <div key={i} className="h-24 bg-surface-muted rounded-lg animate-pulse" />
               ))}
             </div>
           ))}
