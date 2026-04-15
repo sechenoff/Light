@@ -125,7 +125,7 @@ function Toast({ message, type }: { message: string; type: "success" | "error" }
   return (
     <div
       className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-white text-sm font-medium shadow-lg max-w-xs w-full text-center ${
-        type === "success" ? "bg-green-600" : "bg-red-600"
+        type === "success" ? "bg-ok" : "bg-rose"
       }`}
     >
       {message}
@@ -179,17 +179,17 @@ function LoginStep({ onSuccess }: { onSuccess: () => void }) {
   return (
     <div className="min-h-[calc(100vh-56px)] flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">Вход на склад</h2>
+        <h2 className="text-2xl font-bold text-ink mb-6 text-center">Вход на склад</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Сотрудник</label>
+            <label className="block text-sm font-medium text-ink mb-1.5">Сотрудник</label>
             {loadingNames ? (
-              <div className="h-12 bg-slate-100 rounded-lg animate-pulse" />
+              <div className="h-12 bg-surface-subtle rounded-lg animate-pulse" />
             ) : (
               <select
                 value={selectedName}
                 onChange={(e) => setSelectedName(e.target.value)}
-                className="w-full h-12 px-3 border border-slate-300 rounded-lg text-base bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-12 px-3 border border-border rounded-lg text-base bg-surface focus:outline-none focus:ring-2 focus:ring-accent-bright"
                 required
               >
                 <option value="">— выберите сотрудника —</option>
@@ -203,7 +203,7 @@ function LoginStep({ onSuccess }: { onSuccess: () => void }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">PIN-код</label>
+            <label className="block text-sm font-medium text-ink mb-1.5">PIN-код</label>
             <input
               type="password"
               inputMode="numeric"
@@ -213,13 +213,13 @@ function LoginStep({ onSuccess }: { onSuccess: () => void }) {
               minLength={4}
               maxLength={8}
               placeholder="••••"
-              className="w-full h-12 px-3 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full h-12 px-3 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent-bright"
               required
             />
           </div>
 
           {error && (
-            <div className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <div className="text-rose text-sm bg-rose-soft border border-rose-border rounded-lg px-3 py-2">
               {error}
             </div>
           )}
@@ -227,7 +227,7 @@ function LoginStep({ onSuccess }: { onSuccess: () => void }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full h-14 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-base font-semibold rounded-xl transition-colors"
+            className="w-full h-14 bg-accent-bright hover:bg-accent disabled:opacity-50 text-white text-base font-semibold rounded-xl transition-colors"
           >
             {loading ? "Вход..." : "Войти"}
           </button>
@@ -242,18 +242,18 @@ function LoginStep({ onSuccess }: { onSuccess: () => void }) {
 function OperationStep({ onSelect }: { onSelect: (op: Operation) => void }) {
   return (
     <div className="min-h-[calc(100vh-56px)] flex flex-col items-center justify-center px-4 gap-6">
-      <h2 className="text-2xl font-bold text-slate-800">Выберите операцию</h2>
+      <h2 className="text-2xl font-bold text-ink">Выберите операцию</h2>
       <div className="w-full max-w-sm space-y-4">
         <button
           onClick={() => onSelect("ISSUE")}
-          className="w-full h-20 bg-blue-600 hover:bg-blue-700 text-white text-xl font-semibold rounded-2xl transition-colors flex items-center justify-center gap-3"
+          className="w-full h-20 bg-accent-bright hover:bg-accent text-white text-xl font-semibold rounded-2xl transition-colors flex items-center justify-center gap-3"
         >
           <span>📤</span>
           Выдача
         </button>
         <button
           onClick={() => onSelect("RETURN")}
-          className="w-full h-20 bg-green-600 hover:bg-green-700 text-white text-xl font-semibold rounded-2xl transition-colors flex items-center justify-center gap-3"
+          className="w-full h-20 bg-emerald hover:bg-ok text-white text-xl font-semibold rounded-2xl transition-colors flex items-center justify-center gap-3"
         >
           <span>📥</span>
           Возврат
@@ -336,7 +336,7 @@ function BookingStep({
       )}
 
       {error && (
-        <div className="text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm">
+        <div className="text-rose bg-rose-soft border border-rose-border rounded-xl px-4 py-3 text-sm">
           {error}
         </div>
       )}
@@ -354,7 +354,7 @@ function BookingStep({
               key={b.id}
               onClick={() => handleSelect(b.id)}
               disabled={!!creating}
-              className="w-full text-left bg-white border border-slate-200 rounded-xl px-4 py-4 hover:border-blue-400 hover:shadow-sm transition-all disabled:opacity-60 min-h-[80px]"
+              className="w-full text-left bg-white border border-slate-200 rounded-xl px-4 py-4 hover:border-accent-bright hover:shadow-sm transition-all disabled:opacity-60 min-h-[80px]"
             >
               <div className="font-semibold text-slate-800 text-base">
                 {b.client.name}
@@ -365,7 +365,7 @@ function BookingStep({
                 {itemCount === 1 ? "позиция" : itemCount < 5 ? "позиции" : "позиций"}
               </div>
               {isBusy && (
-                <div className="text-blue-600 text-xs mt-1">Создание сессии...</div>
+                <div className="text-accent-bright text-xs mt-1">Создание сессии...</div>
               )}
             </button>
           );
@@ -537,7 +537,7 @@ function ScanStep({
           value={manualInput}
           onChange={(e) => setManualInput(e.target.value)}
           placeholder="Введите штрихкод вручную"
-          className="flex-1 h-12 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 h-12 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
         />
         <button
           type="submit"
@@ -562,7 +562,7 @@ function ScanStep({
                 <div
                   key={item.id}
                   className={`flex items-center justify-between px-4 py-3 rounded-xl border ${
-                    done ? "bg-green-50 border-green-200" : "bg-white border-slate-200"
+                    done ? "bg-emerald-soft border-emerald-border" : "bg-white border-slate-200"
                   }`}
                 >
                   <div className="flex-1 min-w-0">
@@ -570,12 +570,12 @@ function ScanStep({
                       {item.equipment.name}
                     </div>
                     {item.units?.some((u) => u.reservedButUnavailable) && (
-                      <div className="text-xs text-amber-600 mt-0.5">
+                      <div className="text-xs text-amber mt-0.5">
                         ⚠ Часть единиц недоступна
                       </div>
                     )}
                   </div>
-                  <div className={`text-sm font-semibold ml-3 ${done ? "text-green-700" : "text-slate-700"}`}>
+                  <div className={`text-sm font-semibold ml-3 ${done ? "text-emerald" : "text-slate-700"}`}>
                     {scanned} / {total}
                   </div>
                 </div>
@@ -606,16 +606,16 @@ function ScanStep({
       )}
 
       {/* Bottom actions */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-4 space-y-2">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border px-4 py-4 space-y-2">
         <button
           onClick={onDone}
-          className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white text-base font-semibold rounded-xl transition-colors"
+          className="w-full h-14 bg-accent-bright hover:bg-accent text-white text-base font-semibold rounded-xl transition-colors"
         >
           Завершить и просмотреть итог
         </button>
         <button
           onClick={() => setConfirmCancel(true)}
-          className="w-full h-12 text-red-600 border border-red-200 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors"
+          className="w-full h-12 text-rose border border-rose-border rounded-xl text-sm font-medium hover:bg-rose-soft transition-colors"
         >
           Отменить сессию
         </button>
@@ -628,21 +628,21 @@ function ScanStep({
       {confirmCancel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-bold text-slate-800 mb-2">Отменить сессию?</h3>
-            <p className="text-sm text-slate-600 mb-6">
+            <h3 className="text-lg font-bold text-ink mb-2">Отменить сессию?</h3>
+            <p className="text-sm text-ink-2 mb-6">
               Сессия сканирования будет отменена. Записи сканирования сохранятся для аудита.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmCancel(false)}
-                className="flex-1 h-12 border border-slate-300 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                className="flex-1 h-12 border border-border rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
               >
                 Отмена
               </button>
               <button
                 onClick={handleCancelConfirm}
                 disabled={cancelling}
-                className="flex-1 h-12 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-colors"
+                className="flex-1 h-12 bg-rose hover:bg-rose/80 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-colors"
               >
                 {cancelling ? "Отмена..." : "Да, отменить"}
               </button>
@@ -694,11 +694,11 @@ function BrokenUnitModal({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
               placeholder="Опишите повреждение..."
               required
             />
-            {err && <p className="text-xs text-red-600 mt-1">{err}</p>}
+            {err && <p className="text-xs text-rose mt-1">{err}</p>}
           </div>
           <div>
             <p className="text-sm font-medium text-slate-700 mb-2">Срочность</p>
@@ -712,7 +712,7 @@ function BrokenUnitModal({
                       value={val}
                       checked={urgency === val}
                       onChange={() => setUrgency(val)}
-                      className="text-blue-600"
+                      className="text-accent-bright"
                     />
                     <span className="text-sm text-slate-700">{label}</span>
                   </label>
@@ -724,13 +724,13 @@ function BrokenUnitModal({
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 h-12 border border-slate-300 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+              className="flex-1 h-12 border border-border rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
             >
               Отмена
             </button>
             <button
               type="submit"
-              className="flex-1 h-12 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors"
+              className="flex-1 h-12 bg-rose hover:bg-rose/80 text-white rounded-xl text-sm font-semibold transition-colors"
             >
               Отметить
             </button>
@@ -849,7 +849,7 @@ function SummaryStep({
       <h2 className="text-xl font-bold text-slate-800 mb-4">Итог: {opLabelCap}</h2>
 
       {error && (
-        <div className="text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm mb-4">
+        <div className="text-rose bg-rose-soft border border-rose-border rounded-xl px-4 py-3 text-sm mb-4">
           {error}
         </div>
       )}
@@ -858,11 +858,11 @@ function SummaryStep({
         <>
           {/* Summary stats */}
           <div className="grid grid-cols-2 gap-3 mb-6">
-            <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-4 text-center">
-              <div className="text-3xl font-bold text-green-700">{summary.scannedCount}</div>
-              <div className="text-xs text-green-600 mt-1">Отсканировано</div>
+            <div className="bg-emerald-soft border border-emerald-border rounded-xl px-4 py-4 text-center">
+              <div className="text-3xl font-bold text-emerald">{summary.scannedCount}</div>
+              <div className="text-xs text-ok mt-1">Отсканировано</div>
             </div>
-            <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-4 text-center">
+            <div className="bg-surface-subtle border border-border rounded-xl px-4 py-4 text-center">
               <div className="text-3xl font-bold text-slate-700">{summary.expectedCount}</div>
               <div className="text-xs text-slate-500 mt-1">Ожидалось</div>
             </div>
@@ -882,7 +882,7 @@ function SummaryStep({
                       key={scan.equipmentUnitId}
                       className={`flex items-center justify-between px-3 py-2.5 rounded-xl border ${
                         broken
-                          ? "bg-red-50 border-red-200"
+                          ? "bg-rose-soft border-rose-border"
                           : "bg-white border-slate-200"
                       }`}
                     >
@@ -891,20 +891,20 @@ function SummaryStep({
                           {scan.equipmentUnit.equipment.name}
                         </div>
                         {broken && (
-                          <div className="text-xs text-red-600 mt-0.5">Поломка отмечена</div>
+                          <div className="text-xs text-rose mt-0.5">Поломка отмечена</div>
                         )}
                       </div>
                       {broken ? (
                         <button
                           onClick={() => removeBroken(scan.equipmentUnitId)}
-                          className="ml-2 text-xs text-slate-400 hover:text-red-600 transition-colors"
+                          className="ml-2 text-xs text-slate-400 hover:text-rose transition-colors"
                         >
                           Отменить
                         </button>
                       ) : (
                         <button
                           onClick={() => markBroken(scan.equipmentUnitId, scan.equipmentUnit.equipment.name)}
-                          className="ml-2 text-xs text-orange-600 border border-orange-200 rounded-lg px-2 py-1 hover:bg-orange-50 transition-colors whitespace-nowrap"
+                          className="ml-2 text-xs text-amber border border-amber-border rounded-lg px-2 py-1 hover:bg-amber-soft transition-colors whitespace-nowrap"
                         >
                           🔧 Поломка
                         </button>
@@ -919,14 +919,14 @@ function SummaryStep({
           {/* Missing items */}
           {summary.missingItems.length > 0 && (
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-red-600 mb-2">
+              <h3 className="text-sm font-semibold text-rose mb-2">
                 Не найдено ({summary.missingItems.length})
               </h3>
               <div className="space-y-1">
                 {summary.missingItems.map((item) => (
                   <div
                     key={item.id}
-                    className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+                    className="text-sm text-rose bg-rose-soft border border-rose-border rounded-lg px-3 py-2"
                   >
                     {item.name} — <span className="font-mono text-xs">{item.barcode}</span>
                   </div>
@@ -938,14 +938,14 @@ function SummaryStep({
           {/* Substituted items */}
           {summary.substitutedItems.length > 0 && (
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-amber-600 mb-2">
+              <h3 className="text-sm font-semibold text-amber mb-2">
                 Замены ({summary.substitutedItems.length})
               </h3>
               <div className="space-y-1">
                 {summary.substitutedItems.map((item) => (
                   <div
                     key={item.id}
-                    className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"
+                    className="text-sm text-amber bg-amber-soft border border-amber-border rounded-lg px-3 py-2"
                   >
                     {item.name} — <span className="font-mono text-xs">{item.barcode}</span>
                   </div>
@@ -955,26 +955,26 @@ function SummaryStep({
           )}
 
           {summary.missingItems.length === 0 && summary.substitutedItems.length === 0 && scannedUnits.length === 0 && (
-            <div className="text-center text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-6 mb-4">
+            <div className="text-center text-emerald bg-emerald-soft border border-emerald-border rounded-xl px-4 py-6 mb-4">
               <div className="text-2xl mb-1">✓</div>
               <div className="font-semibold">Всё в порядке</div>
-              <div className="text-sm text-green-600 mt-1">Все позиции совпадают</div>
+              <div className="text-sm text-ok mt-1">Все позиции совпадают</div>
             </div>
           )}
         </>
       )}
 
       {/* Bottom action */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border px-4 py-4">
         {brokenUnits.length > 0 && (
-          <p className="text-xs text-orange-600 mb-2 text-center">
+          <p className="text-xs text-amber mb-2 text-center">
             {brokenUnits.length} {brokenUnits.length === 1 ? "единица" : "единицы"} отмечено как поломка
           </p>
         )}
         <button
           onClick={handleComplete}
           disabled={completing || !summary}
-          className="w-full h-14 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-base font-semibold rounded-xl transition-colors"
+          className="w-full h-14 bg-accent-bright hover:bg-accent disabled:opacity-50 text-white text-base font-semibold rounded-xl transition-colors"
         >
           {completing ? "Подтверждение..." : `Подтвердить ${opLabel}`}
         </button>
@@ -1089,7 +1089,7 @@ export default function WarehouseScanPage() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-slate-800 text-white text-sm font-medium shadow-lg max-w-xs w-full text-center">
           {completionToast}
           {" · "}
-          <a href="/repair" className="underline text-blue-300">
+          <a href="/repair" className="underline text-accent-border">
             Открыть мастерскую
           </a>
         </div>

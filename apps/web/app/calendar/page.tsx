@@ -62,11 +62,11 @@ function capitalize(s: string): string {
 }
 
 function cellColorClass(occupied: number, total: number): string {
-  if (occupied === 0) return "text-emerald-500";
-  if (total === 0) return "text-slate-400";
+  if (occupied === 0) return "text-emerald";
+  if (total === 0) return "text-ink-3";
   const pct = occupied / total;
-  if (pct >= 0.8) return "text-rose-600 bg-rose-50";
-  return "text-amber-600 bg-amber-50";
+  if (pct >= 0.8) return "text-rose bg-rose-soft";
+  return "text-amber bg-amber-soft";
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -397,19 +397,19 @@ function CalendarPageInner() {
 
         {/* Таблица */}
         {!loading && !error && !isEmpty && (
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <div className="overflow-x-auto rounded-lg border border-border">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left px-3 py-2 font-medium text-slate-600 whitespace-nowrap min-w-[180px] sticky left-0 bg-slate-50">
+                <tr className="bg-surface-subtle border-b border-border">
+                  <th className="text-left px-3 py-2 font-medium text-ink-2 whitespace-nowrap min-w-[180px] sticky left-0 bg-surface-subtle">
                     Оборудование
                   </th>
                   {days.map((d) => (
                     <th
                       key={d}
-                      className={`text-center px-2 py-2 font-medium text-slate-600 whitespace-nowrap min-w-[52px] ${
+                      className={`text-center px-2 py-2 font-medium text-ink-2 whitespace-nowrap min-w-[52px] ${
                         d === today
-                          ? "bg-blue-50 text-blue-700"
+                          ? "bg-accent-soft text-accent"
                           : ""
                       }`}
                     >
@@ -423,18 +423,18 @@ function CalendarPageInner() {
                   <Fragment key={cat}>
                     {/* Заголовок категории */}
                     <tr
-                      className="bg-slate-100 border-b border-slate-200 cursor-pointer hover:bg-slate-200 transition-colors"
+                      className="bg-surface-subtle border-b border-border cursor-pointer hover:bg-slate-soft transition-colors"
                       onClick={() => toggleCategory(cat)}
                     >
                       <td
                         colSpan={days.length + 1}
-                        className="px-3 py-1.5 font-semibold text-slate-700 text-xs uppercase tracking-wide"
+                        className="px-3 py-1.5 font-semibold text-ink-2 text-xs uppercase tracking-wide"
                       >
                         <span className="mr-2">
                           {collapsed.has(cat) ? "▸" : "▾"}
                         </span>
                         {cat}
-                        <span className="ml-2 text-slate-500 font-normal">
+                        <span className="ml-2 text-ink-3 font-normal">
                           ({catResources.length})
                         </span>
                       </td>
@@ -445,9 +445,9 @@ function CalendarPageInner() {
                       catResources.map((resource) => (
                         <tr
                           key={resource.id}
-                          className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                          className="border-b border-border hover:bg-surface-muted transition-colors"
                         >
-                          <td className="px-3 py-1.5 text-slate-700 whitespace-nowrap sticky left-0 bg-white hover:bg-slate-50 max-w-[220px] truncate">
+                          <td className="px-3 py-1.5 text-ink whitespace-nowrap sticky left-0 bg-surface hover:bg-surface-muted max-w-[220px] truncate">
                             {resource.name}
                           </td>
                           {days.map((d) => {
@@ -470,7 +470,7 @@ function CalendarPageInner() {
                               <td
                                 key={d}
                                 className={`text-center px-1 py-1.5 ${
-                                  d === today ? "bg-blue-50/50" : ""
+                                  d === today ? "bg-accent-soft/50" : ""
                                 }`}
                               >
                                 {bookingsOnDay.length > 0 ? (

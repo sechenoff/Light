@@ -34,9 +34,9 @@ type CalendarTooltipProps = {
 };
 
 function statusDotClass(status: string): string {
-  if (status === "CONFIRMED") return "bg-blue-500";
-  if (status === "ISSUED") return "bg-amber-500";
-  return "bg-slate-400";
+  if (status === "CONFIRMED") return "bg-accent-bright";
+  if (status === "ISSUED") return "bg-amber";
+  return "bg-slate-border";
 }
 
 function formatTimeRange(start: string, end: string): string {
@@ -89,27 +89,27 @@ export function CalendarTooltip({
             ref={refs.setFloating}
             style={floatingStyles}
             {...getFloatingProps()}
-            className="z-50 w-64 rounded-lg border border-slate-200 bg-white shadow-lg text-sm"
+            className="z-50 w-64 rounded-lg border border-border bg-surface shadow-sm text-sm"
           >
             {/* Заголовок */}
             <div className="px-3 pt-3 pb-2">
-              <p className="font-semibold text-slate-800 truncate">{equipmentName}</p>
-              <p className="text-xs text-slate-500 mt-0.5">{capitalizedDate}</p>
-              <p className="text-xs text-slate-600 mt-1">
+              <p className="font-semibold text-ink truncate">{equipmentName}</p>
+              <p className="eyebrow mt-0.5">{capitalizedDate}</p>
+              <p className="text-xs text-ink-2 mt-1">
                 Занято:{" "}
-                <span className="font-medium">
+                <span className="font-medium mono-num">
                   {occupiedCount} из {totalCount}
                 </span>
               </p>
             </div>
 
             {/* Разделитель */}
-            <div className="border-t border-slate-100" />
+            <div className="border-t border-border" />
 
             {/* Список бронирований */}
             <div className="px-3 py-2 space-y-2 max-h-48 overflow-y-auto">
               {bookings.length === 0 ? (
-                <p className="text-xs text-slate-400">Нет бронирований</p>
+                <p className="text-xs text-ink-3">Нет бронирований</p>
               ) : (
                 bookings.map((booking) => (
                   <div key={booking.id} className="space-y-0.5">
@@ -118,17 +118,17 @@ export function CalendarTooltip({
                         className={`mt-1 flex-shrink-0 w-2 h-2 rounded-full ${statusDotClass(booking.status)}`}
                       />
                       <div className="min-w-0">
-                        <p className="text-slate-700 truncate font-medium text-xs">
+                        <p className="text-ink truncate font-medium text-xs">
                           {booking.clientName}
                         </p>
-                        <p className="text-slate-500 text-xs">
+                        <p className="text-ink-3 text-xs">
                           {formatTimeRange(booking.start, booking.end)} · {booking.quantity} шт.
                         </p>
                       </div>
                     </div>
                     <Link
                       href={`/bookings/${booking.id}`}
-                      className="text-xs text-blue-600 hover:text-blue-800 pl-3.5 block"
+                      className="text-xs text-accent-bright hover:text-accent pl-3.5 block"
                     >
                       Открыть бронь →
                     </Link>

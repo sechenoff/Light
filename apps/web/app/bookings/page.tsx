@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { apiFetch } from "../../src/lib/api";
-import { StatusBadge } from "../../src/components/StatusBadge";
+import { StatusPill } from "../../src/components/StatusPill";
+import { SectionHeader } from "../../src/components/SectionHeader";
 import { formatMoneyRub } from "../../src/lib/format";
 
 type BookingItemMini = {
@@ -137,96 +138,116 @@ export default function BookingHistoryPage() {
 
   return (
     <div className="p-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-semibold">История броней</h1>
-        <div className="flex items-center gap-2">
-          <Link href="/bookings/new" className="rounded bg-slate-900 text-white px-4 py-2 hover:bg-slate-800">
-            Новая бронь
+      <SectionHeader
+        eyebrow="Аренда"
+        title="История броней"
+        actions={
+          <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent transition-colors">
+            Создать бронь
           </Link>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="mt-4 rounded border border-slate-200 bg-white overflow-hidden">
-        <div className="p-3 border-b border-slate-200 flex items-center justify-between">
-          <div className="text-sm text-slate-700">Последние брони</div>
+      <div className="mt-4 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+        <div className="p-3 border-b border-border flex items-center justify-between">
+          <p className="eyebrow">Список броней</p>
           <div className="flex items-center gap-2">
-            <select className="rounded border border-slate-300 px-2 py-1 text-xs bg-white" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <select className="rounded border border-border px-2 py-1 text-xs bg-surface" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="">Все статусы брони</option>
-              <option value="DRAFT">DRAFT</option>
-              <option value="CONFIRMED">CONFIRMED</option>
-              <option value="ISSUED">ISSUED</option>
-              <option value="RETURNED">RETURNED</option>
-              <option value="CANCELLED">CANCELLED</option>
+              <option value="DRAFT">Черновик</option>
+              <option value="CONFIRMED">Подтверждено</option>
+              <option value="ISSUED">Выдано</option>
+              <option value="RETURNED">Возвращено</option>
+              <option value="CANCELLED">Отменено</option>
             </select>
-            <select className="rounded border border-slate-300 px-2 py-1 text-xs bg-white" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
+            <select className="rounded border border-border px-2 py-1 text-xs bg-surface" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
               <option value="">Все статусы оплаты</option>
-              <option value="NOT_PAID">NOT_PAID</option>
-              <option value="PARTIALLY_PAID">PARTIALLY_PAID</option>
-              <option value="PAID">PAID</option>
-              <option value="OVERDUE">OVERDUE</option>
+              <option value="NOT_PAID">Не оплачен</option>
+              <option value="PARTIALLY_PAID">Частично</option>
+              <option value="PAID">Оплачен</option>
+              <option value="OVERDUE">Просрочен</option>
             </select>
-            <div className="text-xs text-slate-500">{loading ? "Загрузка..." : `Всего: ${filteredRows.length}`}</div>
+            <div className="text-xs text-ink-3">{loading ? "Загрузка..." : `Всего: ${filteredRows.length}`}</div>
           </div>
         </div>
         <div className="overflow-auto">
           <table className="min-w-[1300px] w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
+            <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
-                <th className="text-center px-3 py-2">Название</th>
-                <th className="text-center px-3 py-2">Клиент</th>
-                <th className="text-center px-3 py-2">Проект</th>
-                <th className="text-center px-3 py-2">Период</th>
-                <th className="text-center px-3 py-2">Статус</th>
-                <th className="text-center px-3 py-2">Оплата</th>
-                <th className="text-center px-3 py-2">Остаток</th>
-                <th className="text-center px-3 py-2">Действия</th>
+                <th className="text-left px-3 py-2 font-medium">Название</th>
+                <th className="text-left px-3 py-2 font-medium">Клиент</th>
+                <th className="text-left px-3 py-2 font-medium">Проект</th>
+                <th className="text-left px-3 py-2 font-medium">Период</th>
+                <th className="text-left px-3 py-2 font-medium">Статус</th>
+                <th className="text-left px-3 py-2 font-medium">Оплата</th>
+                <th className="text-right px-3 py-2 font-medium">Остаток</th>
+                <th className="px-3 py-2 font-medium">Действия</th>
               </tr>
             </thead>
             <tbody>
               {filteredRows.map((r) => (
-                <tr key={r.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2 text-center">{r.displayName}</td>
-                  <td className="px-3 py-2 text-center">{r.client.name}</td>
-                  <td className="px-3 py-2 text-center">{r.projectName}</td>
-                  <td className="px-3 py-2 text-center">
+                <tr key={r.id} className="border-t border-border hover:bg-surface-muted transition-colors">
+                  <td className="px-3 py-2 text-ink">{r.displayName}</td>
+                  <td className="px-3 py-2 text-ink-2">{r.client.name}</td>
+                  <td className="px-3 py-2 text-ink-2">{r.projectName}</td>
+                  <td className="px-3 py-2 text-ink-2 whitespace-nowrap">
                     {new Date(r.startDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })} —{" "}
                     {new Date(r.endDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
                   </td>
-                  <td className="px-3 py-2 text-center">
-                    <StatusBadge status={statusText(r.status)} />
+                  <td className="px-3 py-2">
+                    <StatusPill
+                      variant={
+                        r.status === "CONFIRMED" ? "full"
+                        : r.status === "ISSUED" ? "edit"
+                        : r.status === "RETURNED" ? "ok"
+                        : r.status === "CANCELLED" ? "none"
+                        : "view"
+                      }
+                      label={statusText(r.status)}
+                    />
                     {r.hasScanSessions && (
                       <span className="ml-1 inline-block" title={
                         r.lastScanOperation === "ISSUE" && r.lastScanStatus === "COMPLETED" ? "Выдача отсканирована" :
                         r.lastScanOperation === "RETURN" && r.lastScanStatus === "COMPLETED" ? "Возврат завершён" :
                         "Есть сканирования"
                       }>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline text-blue-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline text-accent-bright">
                           <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><line x1="7" y1="12" x2="17" y2="12" />
                         </svg>
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-center"><StatusBadge status={paymentStatusText(r.paymentStatus)} /></td>
-                  <td className="px-3 py-2 text-center">{formatMoneyRub(r.amountOutstanding)}</td>
                   <td className="px-3 py-2">
-                    <div className="flex items-center justify-center gap-3">
-                      <Link className="text-slate-700 hover:text-slate-900" href={`/bookings/${r.id}`}>
+                    <StatusPill
+                      variant={
+                        r.paymentStatus === "PAID" ? "ok"
+                        : r.paymentStatus === "PARTIALLY_PAID" ? "limited"
+                        : r.paymentStatus === "OVERDUE" ? "warn"
+                        : "none"
+                      }
+                      label={paymentStatusText(r.paymentStatus)}
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-right mono-num text-ink">{formatMoneyRub(r.amountOutstanding)}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Link className="text-xs text-accent-bright hover:text-accent font-medium" href={`/bookings/${r.id}`}>
                         Открыть
                       </Link>
                       {["DRAFT", "CONFIRMED"].includes(r.status) ? (
                         <Link
                           href={`/bookings/${r.id}/edit`}
                           title="Редактировать"
-                          className="text-slate-500 hover:text-slate-900"
+                          className="text-ink-3 hover:text-ink"
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M12 20h9" />
                             <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />
                           </svg>
                         </Link>
                       ) : (
-                        <span className="text-slate-300 cursor-not-allowed">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <span className="text-border cursor-not-allowed">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M12 20h9" />
                             <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />
                           </svg>
@@ -235,11 +256,11 @@ export default function BookingHistoryPage() {
                       <button
                         type="button"
                         title="Удалить"
-                        className="text-rose-500 hover:text-rose-700 disabled:opacity-40"
+                        className="text-rose hover:text-rose/80 disabled:opacity-40"
                         disabled={busyId === r.id}
                         onClick={() => removeBooking(r.id)}
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M3 6h18" />
                           <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
                           <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
@@ -248,7 +269,7 @@ export default function BookingHistoryPage() {
                       {r.status === "DRAFT" ? (
                         <button
                           type="button"
-                          className="text-xs rounded border border-slate-300 px-2 py-1"
+                          className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-muted disabled:opacity-40"
                           disabled={busyId === r.id}
                           onClick={() => runStatusAction(r.id, "confirm")}
                         >
@@ -258,7 +279,7 @@ export default function BookingHistoryPage() {
                       {r.status === "CONFIRMED" ? (
                         <button
                           type="button"
-                          className="text-xs rounded border border-slate-300 px-2 py-1"
+                          className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-muted disabled:opacity-40"
                           disabled={busyId === r.id}
                           onClick={() => runStatusAction(r.id, "issue")}
                         >
@@ -268,7 +289,7 @@ export default function BookingHistoryPage() {
                       {r.status === "ISSUED" ? (
                         <button
                           type="button"
-                          className="text-xs rounded border border-slate-300 px-2 py-1"
+                          className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-muted disabled:opacity-40"
                           disabled={busyId === r.id}
                           onClick={() => runStatusAction(r.id, "return")}
                         >
@@ -278,7 +299,7 @@ export default function BookingHistoryPage() {
                       {!["CANCELLED", "RETURNED"].includes(r.status) ? (
                         <button
                           type="button"
-                          className="text-xs rounded border border-rose-300 text-rose-700 px-2 py-1"
+                          className="text-xs rounded border border-rose-border text-rose px-2 py-1 hover:bg-rose-soft disabled:opacity-40"
                           disabled={busyId === r.id}
                           onClick={() => runStatusAction(r.id, "cancel")}
                         >
@@ -291,7 +312,7 @@ export default function BookingHistoryPage() {
               ))}
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-slate-500" colSpan={8}>
+                  <td className="px-3 py-6 text-center text-ink-3" colSpan={8}>
                     Нет данных
                   </td>
                 </tr>

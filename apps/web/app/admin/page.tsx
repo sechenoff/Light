@@ -2862,29 +2862,21 @@ function AdminPanel() {
     <div className="p-4 max-w-4xl">
       {/* Page header */}
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Admin Panel</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Системные настройки и управление данными</p>
-      </div>
-
-      {/* Divider with label */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className="h-px flex-1 bg-slate-200" />
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-          Admin Panel sections
-        </span>
-        <div className="h-px flex-1 bg-slate-200" />
+        <p className="eyebrow mb-0.5">Система</p>
+        <h1 className="text-[17px] font-semibold tracking-tight text-ink">Администрирование</h1>
+        <p className="text-sm text-ink-3 mt-0.5">Системные настройки и управление данными</p>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 mb-6 border-b border-slate-200 overflow-x-auto">
+      <div className="flex gap-1 mb-5 border-b border-border overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            className={`px-4 py-2.5 eyebrow border-b-2 -mb-px transition-colors whitespace-nowrap normal-case tracking-normal text-xs ${
               tab === t.id
-                ? "border-slate-900 text-slate-900"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+                ? "border-accent-bright text-accent"
+                : "border-transparent text-ink-3 hover:text-ink-2"
             }`}
           >
             {t.label}
@@ -2893,7 +2885,7 @@ function AdminPanel() {
       </div>
 
       {/* Tab content */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <div className="bg-surface rounded-lg border border-border p-6 shadow-xs">
         {tab === "catalog" && <CatalogTab />}
         {tab === "pricelist" && <PricelistTab />}
         {tab === "import" && <ImportTab />}
