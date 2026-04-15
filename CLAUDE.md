@@ -102,6 +102,7 @@ light-rental-system/
 | `apps/web/src/components/CalendarTooltip.tsx` | Floating tooltip for calendar cells (via @floating-ui/react): shows booking details on hover |
 | `apps/web/src/lib/calendarUtils.ts` | Pure utility: `buildOccupancyMap()` builds Map<`resourceId-date`, OccupancyEntry>; DRAFT bookings excluded from occupied counts |
 | `apps/api/src/middleware/botScopeGuard.ts` | Bot scope enforcement: keys with `openclaw-` prefix are restricted to whitelist routes; DELETE globally blocked → 403 BOT_SCOPE_FORBIDDEN |
+| `apps/api/src/__tests__/rolesGuardHolistic.test.ts` | 21 интеграционный тест: TECHNICIAN→403 / WAREHOUSE→2xx / SUPER_ADMIN→2xx на `/api/warehouse/workers/*` и `/api/equipment-units/*` + аудит-проверки на AdminUser CRUD |
 | `docs/bot-api.md` | Bot API documentation (Russian): auth, scope, all endpoints, curl examples, error codes, 3 typical scenarios |
 | `docs/bot-api-tools.json` | OpenAI function-calling schemas (12 tools): ready to paste into `client.chat.completions.create({ tools: [...] })` |
 
@@ -126,9 +127,9 @@ npm run build
 npm run lint
 
 # Tests
-npm test                          # run all (shared + bot + api) — 227 tests
+npm test                          # run all (shared + bot + api) — 451 tests
 npm run test -w apps/api          # API tests (smoke + barcode integration)
-npm run test -w apps/bot          # bot booking-helpers tests only (27 tests)
+npm run test -w apps/bot          # bot booking-helpers tests only (31 tests)
 npm run test -w packages/shared   # shared package tests only
 
 # Database
@@ -206,12 +207,27 @@ Middleware `rolesGuard(allowed: UserRole[])` в `apps/api/src/middleware/rolesGu
 | GET /api/dashboard | ✓ | ✓ | ✓ |
 | GET /api/calendar | ✓ | ✓ | ✗ |
 | /api/admin-users, /api/import-sessions, /api/pricelist | ✓ | ✗ | ✗ |
+| GET /api/warehouse/workers | ✓ | ✓ | ✗ |
+| POST/PATCH/DELETE /api/warehouse/workers | ✓ | ✓ | ✗ |
+| GET /api/equipment/:id/units | ✓ | ✓ | ✓ |
+| POST/PATCH/DELETE /api/equipment/:id/units | ✓ | ✓ | ✗ |
+| GET /api/equipment-units, /api/equipment-units/lookup | ✓ | ✓ | ✓ |
+| POST /api/equipment-units/labels | ✓ | ✓ | ✗ |
+
+Примечание: `/api/warehouse/auth` и `/api/warehouse/workers/names` остаются публичными (без `rolesGuard`).
 
 ### Аудит-сервис
 
 `apps/api/src/services/audit.ts`:
 - `writeAuditEntry(args)` — записывает событие в `AuditEntry`. Принимает `tx?` для транзакций.
 - `diffFields(obj, maxBytes)` — очищает объект от вложенных relations (объекты с `id`), массивов. При > 10 KB усекает до примитивов.
+
+`AuditEntityType` union включает: `"Booking"`, `"Payment"`, `"Expense"`, `"Unit"`, `"Client"`, `"Repair"`, `"AdminUser"`, `"EquipmentUnit"` (последнее добавлено для scan-session write-offs и статусных переходов unit).
+
+Деструктивные операции с аудит-записью:
+- `DELETE /api/bookings/:id` пишет `AuditEntry` внутри того же `prisma.$transaction`, что и сам delete.
+- `POST/PATCH/DELETE /api/admin-users` — все три операции обёрнуты в `prisma.$transaction` вместе с `writeAuditEntry` для атомарного rollback.
+- При удалении `AdminUser`, у которого есть связанные `AuditEntry` записи (Prisma FK Restrict), ловится `P2003` и возвращается `409 { code: "ADMIN_HAS_AUDIT_HISTORY" }` — не 500.
 
 ### Новые модели Prisma (Sprint 1)
 
@@ -242,9 +258,10 @@ Middleware `rolesGuard(allowed: UserRole[])` в `apps/api/src/middleware/rolesGu
 
 1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
 2. **~~Crew calculator duplication~~** — RESOLVED: extracted to `packages/shared` (`@light-rental/shared`).
-3. **~~Minimal test coverage~~** — RESOLVED: 227 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, importSession routes, dashboard, calendar, and calendarUtils tests.
+3. **~~Minimal test coverage~~** — RESOLVED: 451 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, importSession routes, dashboard, calendar, calendarUtils, rolesGuard holistic tests.
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
+6. **`npm run lint` fails on main** — ESLint v9 expects `eslint.config.(js|mjs|cjs)` but the repo has `.eslintrc.json`. Pre-existing, unrelated to feature work. Fix before any lint-gated CI.
 
 ## Sprint 2: Navigation, Design Canon & Audit UI
 
@@ -342,5 +359,16 @@ CSS-утилиты: `.eyebrow` (надстрочники), `.mono-num` (числ
 - `style={{` в `apps/web/`: 5 штук — все в `finance/` (SVG-bars, dynamic category-color dots). Вне scope Sprint 5.
 - Hex в `apps/web/app` и `apps/web/src`: 0 вне `finance/`.
 
-<!-- updated-by-superflow:2026-04-15 -->
+## Финальный холистический фикс (после Sprint 5)
 
+По итогам финального холистического ревью закрыто 2 CRITICAL + 12 HIGH + 4 MEDIUM нарушения.
+
+**Privilege escalation (CRITICAL).** Маршруты `/api/warehouse/workers/*` не имели `rolesGuard` вообще — любой аутентифицированный пользователь мог создавать, изменять и удалять складских работников. Маршруты `/api/equipment/:id/units/*` защищал wrapper, который ошибочно пропускал TECHNICIAN на write-операции. Оба пробела закрыты добавлением `rolesGuard([SUPER_ADMIN, WAREHOUSE])` на соответствующие роуты.
+
+**Хардкод ролей и seed (HIGH).** В `/admin` вкладка «Пользователи» отображала только `RENTAL_ADMIN` — устаревший enum. Заменено на helper `roleLabel()` со всеми тремя ролями (`SUPER_ADMIN` / `WAREHOUSE` / `TECHNICIAN`) и русскими подписями. Seed `admin/тест` теперь создаётся с ролью `WAREHOUSE` вместо несуществующего значения.
+
+**TypeScript (HIGH).** Исправлены 3 ошибки `tsc --noEmit`: неверный тип `Prisma.TransactionClient` в `bookings.ts`, отсутствующее значение `"EquipmentUnit"` в union `AuditEntityType`, неполный тип возврата `getReconciliationPreview` (добавлены `createdRepairIds` и `failedBrokenUnits`).
+
+**Навигация и аудит (HIGH/MEDIUM).** Страница `/clients` удалена из меню всех ролей (роут не существовал). В меню `SUPER_ADMIN` и `WAREHOUSE` добавлен `/calendar`; в меню `WAREHOUSE` добавлен `/repair`. Деструктивные операции `DELETE /api/bookings/:id` и весь CRUD `/api/admin-users` теперь пишут `AuditEntry` в той же транзакции (подробности — в разделе «Аудит-сервис» выше). Редирект после логина изменён с несуществующего `/dashboard` на `/day`.
+
+<!-- updated-by-superflow:2026-04-15 -->
