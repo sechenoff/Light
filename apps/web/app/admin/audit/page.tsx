@@ -56,7 +56,7 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
 
   return (
     <>
-      <tr className="border-b border-border hover:bg-surface-2">
+      <tr className="border-b border-border hover:bg-surface-muted">
         <td className="py-2 px-3 text-xs mono-num text-ink-3 whitespace-nowrap">{ts}</td>
         <td className="py-2 px-3 text-xs text-ink-2">{entry.user?.username ?? entry.userId}</td>
         <td className="py-2 px-3 text-xs font-medium text-ink">{entry.action}</td>
@@ -74,7 +74,7 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
         </td>
       </tr>
       {expanded && (
-        <tr className="bg-surface-2 border-b border-border">
+        <tr className="bg-surface-muted border-b border-border">
           <td colSpan={6} className="px-4 py-3">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <JsonDiff label="До" value={entry.before} colorClass="bg-rose-soft text-rose" />
@@ -215,7 +215,7 @@ export default function AuditPage() {
       <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-surface-2 border-b border-border">
+            <thead className="bg-surface-muted border-b border-border">
               <tr>
                 <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">Время</th>
                 <th className="py-2 px-3 text-xs font-semibold text-ink-3 uppercase tracking-wider">Пользователь</th>

@@ -26,6 +26,7 @@ let prisma: any;
 
 let superAdminToken: string;
 let warehouseToken: string;
+let technicianToken: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -52,9 +53,13 @@ beforeAll(async () => {
   const warehouse = await prisma.adminUser.create({
     data: { username: "audit_warehouse", passwordHash: hash, role: "WAREHOUSE" },
   });
+  const technician = await prisma.adminUser.create({
+    data: { username: "audit_technician", passwordHash: hash, role: "TECHNICIAN" },
+  });
 
   superAdminToken = signSession({ userId: superAdmin.id, username: superAdmin.username, role: "SUPER_ADMIN" });
   warehouseToken = signSession({ userId: warehouse.id, username: warehouse.username, role: "WAREHOUSE" });
+  technicianToken = signSession({ userId: technician.id, username: technician.username, role: "TECHNICIAN" });
 
   // Создаём 3 записи аудита последовательно (небольшая пауза для уникальности createdAt)
   const now = Date.now();
@@ -109,6 +114,29 @@ describe("GET /api/audit", () => {
     expect(res.status).toBe(200);
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].entityType).toBe("Payment");
+  });
+
+  it("returns 401 UNAUTHENTICATED when called with API key but no session", async () => {
+    const res = await request(app)
+      .get("/api/audit")
+      .set("X-API-Key", "test-key-audit");
+    expect(res.status).toBe(401);
+    expect(res.body.details).toBe("UNAUTHENTICATED");
+  });
+
+  it("returns 403 FORBIDDEN_BY_ROLE for TECHNICIAN", async () => {
+    const res = await request(app)
+      .get("/api/audit")
+      .set(authHeaders(technicianToken));
+    expect(res.status).toBe(403);
+    expect(res.body.details).toBe("FORBIDDEN_BY_ROLE");
+  });
+
+  it("returns 400 for invalid date filter", async () => {
+    const res = await request(app)
+      .get("/api/audit?from=not-a-date")
+      .set(authHeaders(superAdminToken));
+    expect(res.status).toBe(400);
   });
 
   it("SUPER_ADMIN → cursor pagination with limit=2", async () => {
