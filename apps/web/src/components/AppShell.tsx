@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { useCurrentUser, type AdminRole } from "../lib/auth";
+import { useCurrentUser, type UserRole } from "../lib/auth";
+import { menuByRole, type MenuItem } from "../lib/roleMatrix";
+import { RoleBadge } from "./RoleBadge";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -103,96 +105,102 @@ function IconCalendar() {
   );
 }
 
-// ── Navigation config ─────────────────────────────────────────────────────────
+function IconWrench() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+    </svg>
+  );
+}
 
-type NavItem = {
-  label: string;
-  href: string;
-  icon: React.ReactNode;
-  match: (pathname: string) => boolean;
-  /** Если указано — пункт видят только эти роли. */
-  roles?: AdminRole[];
-};
+function IconUsers() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
 
-type NavGroup = {
-  label: string;
-  items: NavItem[];
-};
+function IconMoney() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+      <line x1="1" y1="10" x2="23" y2="10" />
+    </svg>
+  );
+}
 
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "Работа",
-    items: [
-      {
-        label: "Дашборд",
-        href: "/dashboard",
-        icon: <IconHome />,
-        match: (p) => p === "/dashboard",
-      },
-      {
-        label: "Бронирование оборудования",
-        href: "/equipment",
-        icon: <IconGrid />,
-        match: (p) => p.startsWith("/equipment"),
-      },
-      {
-        label: "Календарь",
-        href: "/calendar",
-        icon: <IconCalendar />,
-        match: (p) => p.startsWith("/calendar"),
-      },
-      {
-        label: "Калькулятор осветителей",
-        href: "/crew-calculator",
-        icon: <IconCalc />,
-        match: (p) => p === "/crew-calculator",
-      },
-    ],
-  },
-];
+function IconBooking() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+    </svg>
+  );
+}
 
-const BOTTOM_ITEMS: NavItem[] = [
-  {
-    label: "Финансы",
-    href: "/finance",
-    icon: <IconCoin />,
-    match: (p) => p === "/finance",
-    roles: ["SUPER_ADMIN"],
-  },
-  {
-    label: "Admin Panel",
-    href: "/admin",
-    icon: <IconGear />,
-    match: (p) => p.startsWith("/admin"),
-  },
-];
+// ── Icon map ─────────────────────────────────────────────────────────────────
+
+function iconFor(name: string | undefined): React.ReactNode {
+  switch (name) {
+    case "home":     return <IconHome />;
+    case "booking":  return <IconBooking />;
+    case "gear":     return <IconGrid />;
+    case "wrench":   return <IconWrench />;
+    case "users":    return <IconUsers />;
+    case "money":    return <IconMoney />;
+    case "settings": return <IconGear />;
+    default:         return <IconGrid />;
+  }
+}
+
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+
+function LoadingSkeleton() {
+  return (
+    <div className="flex flex-col h-full animate-pulse">
+      <div className="px-4 py-5 border-b border-slate-700">
+        <div className="h-5 w-28 bg-slate-700 rounded" />
+      </div>
+      <div className="flex-1 px-3 py-4 space-y-2">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="h-8 bg-slate-700 rounded-lg" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ── Sidebar content ───────────────────────────────────────────────────────────
-
-function allowedForRole(roles: AdminRole[] | undefined, role: AdminRole | null): boolean {
-  if (!roles) return true;
-  if (!role) return false;
-  return roles.includes(role);
-}
 
 function SidebarContent({
   pathname,
   onClose,
   user,
+  loading,
   onLogout,
 }: {
   pathname: string;
   onClose?: () => void;
-  user: { username: string; role: AdminRole } | null;
+  user: { username: string; role: UserRole } | null;
+  loading: boolean;
   onLogout: () => void;
 }) {
-  const role = user?.role ?? null;
+  if (loading && !user) {
+    return <LoadingSkeleton />;
+  }
+
+  const items: MenuItem[] = user ? menuByRole[user.role] : [];
+
   return (
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="flex items-center justify-between px-4 py-5 border-b border-slate-700">
         <Link
-          href="/dashboard"
+          href="/day"
           className="flex items-center gap-2.5 text-white"
           onClick={onClose}
         >
@@ -211,72 +219,39 @@ function SidebarContent({
         )}
       </div>
 
-      {/* Nav groups */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
-        {NAV_GROUPS.map((group) => {
-          const visibleItems = group.items.filter((i) => allowedForRole(i.roles, role));
-          if (visibleItems.length === 0) return null;
-          return (
-            <div key={group.label}>
-              <div className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                {group.label}
-              </div>
-              <ul className="space-y-0.5">
-                {visibleItems.map((item) => {
-                  const active = item.match(pathname);
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        onClick={onClose}
-                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                          active
-                            ? "bg-white/10 text-white font-medium"
-                            : "text-slate-400 hover:text-white hover:bg-white/5"
-                        }`}
-                      >
-                        <span className={active ? "text-white" : "text-slate-500"}>{item.icon}</span>
-                        {item.label}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          );
-        })}
+      {/* Nav items */}
+      <nav className="flex-1 overflow-y-auto py-4 px-3">
+        <ul className="space-y-0.5">
+          {items.map((item) => {
+            const active = pathname === item.href || (item.href !== "/day" && pathname.startsWith(item.href));
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  onClick={onClose}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    active
+                      ? "bg-white/10 text-white font-medium"
+                      : "text-slate-400 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <span className={active ? "text-white" : "text-slate-500"}>
+                    {iconFor(item.icon)}
+                  </span>
+                  {item.label}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
       </nav>
-
-      {/* Finance & Admin links at bottom */}
-      <div className="px-3 pb-3 border-t border-slate-700 pt-3 space-y-1">
-        {BOTTOM_ITEMS.filter((i) => allowedForRole(i.roles, role)).map((item) => {
-          const active = item.match(pathname);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onClose}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                active
-                  ? "bg-white/10 text-white font-medium"
-                  : "text-slate-400 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <span className={active ? "text-white" : "text-slate-500"}>{item.icon}</span>
-              {item.label}
-            </Link>
-          );
-        })}
-      </div>
 
       {/* User panel */}
       {user && (
         <div className="px-3 pb-4 border-t border-slate-700 pt-3">
-          <div className="px-3 py-1.5 text-xs text-slate-300">
-            <div className="truncate font-medium text-white">{user.username}</div>
-            <div className="text-[10px] uppercase tracking-wider text-slate-500">
-              {user.role === "SUPER_ADMIN" ? "Супер-админ" : "Админ рентала"}
-            </div>
+          <div className="px-3 py-1.5 space-y-1.5">
+            <div className="truncate font-medium text-sm text-white">{user.username}</div>
+            <RoleBadge role={user.role} />
           </div>
           <button
             onClick={() => {
@@ -305,16 +280,15 @@ function SidebarContent({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user, logout } = useCurrentUser();
+  const { user, loading, logout } = useCurrentUser();
 
   // Close mobile sidebar on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Публичные маршруты без оболочки: лендинг, логин, калькулятор осветителей, warehouse/scan (свой UI).
+  // Публичные маршруты без оболочки: логин, калькулятор осветителей, warehouse/scan (свой UI).
   const isStandalone =
-    pathname === "/" ||
     pathname === "/login" ||
     pathname === "/crew-calculator" ||
     pathname.startsWith("/warehouse/scan");
@@ -326,7 +300,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen">
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex flex-col w-56 shrink-0 bg-slate-900 fixed inset-y-0 left-0 z-30">
-        <SidebarContent pathname={pathname} user={user} onLogout={logout} />
+        <SidebarContent pathname={pathname} user={user} loading={loading} onLogout={logout} />
       </aside>
 
       {/* Mobile overlay */}
@@ -347,6 +321,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           pathname={pathname}
           onClose={() => setMobileOpen(false)}
           user={user}
+          loading={loading}
           onLogout={logout}
         />
       </aside>
@@ -362,7 +337,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <IconMenu />
           </button>
-          <Link href="/dashboard" className="text-sm font-semibold text-white">
+          <Link href="/day" className="text-sm font-semibold text-white">
             Light Rental
           </Link>
         </div>
