@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../prisma";
 import { resolveBarcode, renderLabelsPdf } from "../services/barcode";
 import { HttpError } from "../utils/errors";
+import { rolesGuard } from "../middleware/rolesGuard";
 
 const router = express.Router();
 
@@ -10,7 +11,7 @@ const router = express.Router();
 // GET / — кросс-каталожный список единиц с пагинацией и фильтрами
 // ──────────────────────────────────────────────
 
-router.get("/", async (req, res, next) => {
+router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), async (req, res, next) => {
   try {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
@@ -75,7 +76,7 @@ router.get("/", async (req, res, next) => {
 // GET /lookup — поиск единицы по штрихкоду через resolveBarcode
 // ──────────────────────────────────────────────
 
-router.get("/lookup", async (req, res, next) => {
+router.get("/lookup", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), async (req, res, next) => {
   try {
     const barcode = String(req.query.barcode || "");
     if (!barcode) {
@@ -119,7 +120,7 @@ router.get("/lookup", async (req, res, next) => {
 // POST /labels — пакетная генерация PDF-этикеток
 // ──────────────────────────────────────────────
 
-router.post("/labels", async (req, res, next) => {
+router.post("/labels", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const body = z.object({ unitIds: z.array(z.string()).min(1).max(100) }).parse(req.body);
 

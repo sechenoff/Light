@@ -50,8 +50,8 @@ router.use("/api/equipment-units", equipmentUnitsGlobalRouter);
 // /api/equipment/import — SUPER_ADMIN only
 router.use("/api/equipment/import", rolesGuard(["SUPER_ADMIN"]), equipmentImportRouter);
 
-// /api/equipment/:id/units — SUPER_ADMIN, WAREHOUSE
-router.use("/api/equipment/:equipmentId/units", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), equipmentUnitsRouter);
+// /api/equipment/:id/units — GET: все роли; POST/PATCH/DELETE: SUPER_ADMIN, WAREHOUSE (per-route guards в equipmentUnitsRouter)
+router.use("/api/equipment/:equipmentId/units", equipmentUnitsRouter);
 
 // /api/equipment — GET: все роли (SUPER_ADMIN, WAREHOUSE, TECHNICIAN); POST/PATCH/DELETE: per-route в equipmentRouter
 router.use("/api/equipment", equipmentRouter);
