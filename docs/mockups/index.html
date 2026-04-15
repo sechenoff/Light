@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокапы · Light Rental</title>
+<link rel="stylesheet" href="shell.css">
+<style>
+  body { max-width: 980px; }
+  .hero { border: 1px solid #e2e8f0; background: #fff; border-radius: 12px; padding: 24px 28px; margin-bottom: 24px; }
+  .hero h1 { margin-bottom: 4px; }
+  .hero .subtitle { margin: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+  .tile { display: block; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; text-decoration: none; color: inherit; transition: all 0.12s; }
+  .tile:hover { border-color: #2563eb; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08); transform: translateY(-1px); }
+  .tile h3 { margin: 0 0 4px; font-size: 15px; }
+  .tile .live { display: inline-block; margin-top: 10px; font-size: 12px; color: #2563eb; font-weight: 600; }
+  .tile .no-live { color: #94a3b8; font-weight: 500; }
+  .tile .tag { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px; letter-spacing: 0.3px; text-transform: uppercase; font-weight: 700; }
+  .tag-ok { background: #d1fae5; color: #065f46; }
+  .tag-partial { background: #fef3c7; color: #92400e; }
+  .tag-none { background: #fee2e2; color: #991b1b; }
+  .tag-concept { background: #e0e7ff; color: #3730a3; }
+  .tag-rejected { background: #f1f5f9; color: #64748b; }
+  .tile p { font-size: 13px; color: #475569; margin: 0; }
+  .section-title { margin: 28px 0 12px; font-size: 13px; letter-spacing: 1.2px; text-transform: uppercase; color: #64748b; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="label">Light Rental</div>
+  <h1>Мокапы страниц</h1>
+  <p class="subtitle">Визуальные референсы из Phase 1 брейнсторма. Сравнивай с живой версией на <a href="https://svetobazarent.ru">svetobazarent.ru</a> — открывай мокап слева, сайт справа.</p>
+</div>
+
+<div class="section-title">Реализовано</div>
+<div class="grid">
+  <a class="tile" href="my-day-all-roles.html">
+    <h3>Мой день <span class="tag tag-ok">live</span></h3>
+    <p>Роль-зависимая главная страница: SUPER_ADMIN / WAREHOUSE / TECHNICIAN.</p>
+    <span class="live">→ https://svetobazarent.ru/day</span>
+  </a>
+
+  <a class="tile" href="booking-create.html">
+    <h3>Создание брони <span class="tag tag-partial">partial</span></h3>
+    <p>Форма новой брони. Частично: approval-флоу в мокапе, но UI согласования — Sprint 3+.</p>
+    <span class="live">→ https://svetobazarent.ru/bookings/new</span>
+  </a>
+
+  <a class="tile" href="repair-workflow.html">
+    <h3>Мастерская / Ремонт <span class="tag tag-ok">live</span></h3>
+    <p>Kanban по статусам, карточка ремонта, журнал работ, списание. Sprint 4.</p>
+    <span class="live">→ https://svetobazarent.ru/repair</span>
+  </a>
+
+  <a class="tile" href="admin-pages.html">
+    <h3>Админ-панель <span class="tag tag-ok">live</span></h3>
+    <p>Вкладки: Слэнг, Пользователи, Штрихкоды, Прайсы.</p>
+    <span class="live">→ https://svetobazarent.ru/admin</span>
+  </a>
+
+  <a class="tile" href="finance-pages.html">
+    <h3>Финансы <span class="tag tag-ok">live</span></h3>
+    <p>Финансовый дашборд, долги, агинг, категории расходов. Sprint 5.</p>
+    <span class="live">→ https://svetobazarent.ru/finance</span>
+  </a>
+
+  <a class="tile" href="menu-tree.html">
+    <h3>Меню по ролям <span class="tag tag-ok">live</span></h3>
+    <p>Левый сайдбар зависит от роли. Реализовано в <code>roleMatrix.ts</code>.</p>
+    <span class="live">→ любая страница, левая панель</span>
+  </a>
+</div>
+
+<div class="section-title">Не реализовано (кандидаты на новый спринт)</div>
+<div class="grid">
+  <a class="tile" href="approval-workflow.html">
+    <h3>Согласование броней <span class="tag tag-none">нет UI</span></h3>
+    <p>Статус <code>PENDING_APPROVAL</code> заведён в Prisma, но полный флоу «кладовщик отправил → руководитель одобрил → выдача» в UI не собран.</p>
+    <span class="no-live">Sprint 3+</span>
+  </a>
+
+  <a class="tile" href="roles-matrix.html">
+    <h3>Матрица прав <span class="tag tag-none">нет UI</span></h3>
+    <p>Таблица «роль × маршрут» живёт в <code>CLAUDE.md</code> и коде (<code>rolesGuard</code>). UI-страницы нет.</p>
+    <span class="no-live">кандидат: /admin/roles read-only</span>
+  </a>
+
+  <a class="tile" href="menu-structure.html">
+    <h3>Меню — концепт (A vs B) <span class="tag tag-concept">концепт</span></h3>
+    <p>Две альтернативы архитектуры меню (выбран вариант A — роль-центричный).</p>
+    <span class="no-live">—</span>
+  </a>
+</div>
+
+<div class="section-title">Отвергнутые эксперименты (оставлены для истории)</div>
+<div class="grid">
+  <a class="tile" href="finance-pages-coss-style.html">
+    <h3>Финансы — coss.com-стиль <span class="tag tag-rejected">отвергнут</span></h3>
+    <p>Бирюза+фиолет в духе coss.com. Отвергнут в пользу IBM Plex + business blue.</p>
+    <span class="no-live">—</span>
+  </a>
+
+  <a class="tile" href="finance-dashboard-coss-style.html">
+    <h3>Финансы дашборд — coss.com-стиль <span class="tag tag-rejected">отвергнут</span></h3>
+    <p>Тот же эксперимент, отдельный дашборд-экран.</p>
+    <span class="no-live">—</span>
+  </a>
+
+  <a class="tile" href="welcome.html">
+    <h3>Welcome <span class="tag tag-concept">концепт</span></h3>
+    <p>Заглушка Phase 1 брейнсторма. UI не нужен.</p>
+    <span class="no-live">—</span>
+  </a>
+</div>
+
+<p style="margin-top: 36px; font-size: 12px; color: #94a3b8;">
+  Подробная таблица соответствий — в <a href="README.md">README.md</a>.
+</p>
+
+</body>
+</html>

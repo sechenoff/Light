@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · repair workflow</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<h2>Мастерская — как ломанная единица попадает в ремонт и возвращается в парк</h2>
+<p class="subtitle">Четыре экрана по порядку + схема статусов единицы. Всё по-русски.</p>
+
+<!-- Схема статусов единицы -->
+<div style="margin-top:20px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+  <h3 style="margin-top:0">Статусы <i>единицы</i> (не брони!)</h3>
+  <p style="margin:4px 0 12px;font-size:12px;color:#64748b">Речь про конкретную лампу со штрихкодом, напр. <b>LR-ARR2K-004</b>. Статусы независимы от статуса брони.</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-family:-apple-system,sans-serif;font-size:12px">
+    <div style="background:#059669;color:#fff;padding:6px 12px;border-radius:6px"><b>Свободна</b><br><span style="font-size:10px">доступна для брони</span></div>
+    <div style="color:#64748b">→ выдача →</div>
+    <div style="background:#2563eb;color:#fff;padding:6px 12px;border-radius:6px"><b>Выдана</b><br><span style="font-size:10px">у клиента на съёмке</span></div>
+    <div style="color:#64748b">→ возврат →</div>
+    <div style="background:#059669;color:#fff;padding:6px 12px;border-radius:6px"><b>Свободна</b></div>
+  </div>
+  <div style="font-size:12px;color:#64748b;margin:10px 0 6px">Развилка при возврате: если кладовщик отметил «поломано» →</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-family:-apple-system,sans-serif;font-size:12px">
+    <div style="background:#2563eb;color:#fff;padding:6px 12px;border-radius:6px"><b>Выдана</b></div>
+    <div style="color:#64748b">→ возврат «поломано» →</div>
+    <div style="background:#dc2626;color:#fff;padding:6px 12px;border-radius:6px"><b>Ждёт ремонта</b><br><span style="font-size:10px">у техника новая задача</span></div>
+    <div style="color:#64748b">→ взять в работу →</div>
+    <div style="background:#d97706;color:#fff;padding:6px 12px;border-radius:6px"><b>В ремонте</b></div>
+    <div style="color:#64748b">→ починил →</div>
+    <div style="background:#059669;color:#fff;padding:6px 12px;border-radius:6px"><b>Свободна</b></div>
+  </div>
+  <div style="font-size:12px;color:#64748b;margin:10px 0 6px">Из «В ремонте» можно уйти ещё двумя путями:</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-family:-apple-system,sans-serif;font-size:12px">
+    <div style="background:#d97706;color:#fff;padding:6px 12px;border-radius:6px"><b>В ремонте</b></div>
+    <div style="color:#64748b">→ нет запчастей →</div>
+    <div style="background:#9333ea;color:#fff;padding:6px 12px;border-radius:6px"><b>Ждёт запчасти</b><br><span style="font-size:10px">пауза</span></div>
+    <div style="color:#64748b">· или ·</div>
+    <div style="background:#d97706;color:#fff;padding:6px 12px;border-radius:6px"><b>В ремонте</b></div>
+    <div style="color:#64748b">→ не чинится →</div>
+    <div style="background:#475569;color:#fff;padding:6px 12px;border-radius:6px"><b>Списана</b><br><span style="font-size:10px">выведена из парка</span></div>
+  </div>
+</div>
+
+<!-- ЭКРАН 1: Кладовщик возвращает бронь, отмечает поломку -->
+<div style="margin-top:28px;padding:18px;border:1px solid #e2e8f0;border-radius:8px;background:#fff">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="background:#2563eb;color:#fff;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600">1. КЛАДОВЩИК</div>
+    <h3 style="margin:0">Возврат брони → «эта лампа поломана»</h3>
+  </div>
+
+  <div style="font-family:-apple-system,sans-serif;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+    <div style="padding:10px 14px;background:#0f172a;color:#fff;font-size:13px;display:flex;justify-content:space-between">
+      <span>Возврат · Мосфильм «Тихий Дон» · 15 апр 18:00</span>
+      <span style="color:#94a3b8;font-size:12px">отсканировано 11 из 12</span>
+    </div>
+    <div style="padding:14px 16px;background:#f8fafc;font-size:13px">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:12px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+          <div>
+            <b>Arri Fresnel 2kW</b> · LR-ARR2K-004<br>
+            <span style="color:#64748b;font-size:11px">Отсканировано в 18:12</span>
+          </div>
+          <div style="background:#059669;color:#fff;padding:3px 10px;border-radius:10px;font-size:11px;align-self:flex-start">✓ возвращена</div>
+        </div>
+        <div style="border-top:1px solid #f1f5f9;padding-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button style="background:#fff;border:1px solid #e2e8f0;padding:6px 12px;border-radius:4px;font-size:12px">Отметить OK</button>
+          <button style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;padding:6px 12px;border-radius:4px;font-size:12px;font-weight:500">🔧 Отметить поломку…</button>
+        </div>
+      </div>
+
+      <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:5px;padding:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+          <b style="color:#dc2626">🔧 Отмечаем поломку: LR-ARR2K-004</b>
+        </div>
+        <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px">Что не работает? <span style="color:#dc2626">*</span></label>
+        <textarea style="width:100%;border:1px solid #e2e8f0;border-radius:4px;padding:8px;font-size:12px;resize:none;height:48px;font-family:inherit">Не включается, провод в порядке. Возможно лампа или балласт.</textarea>
+
+        <label style="font-size:12px;color:#64748b;display:block;margin:10px 0 4px">Срочность</label>
+        <div style="display:flex;gap:6px">
+          <label style="font-size:12px;background:#fff;border:1px solid #e2e8f0;padding:5px 10px;border-radius:4px"><input type="radio" name="urg"> Не срочно</label>
+          <label style="font-size:12px;background:#fff;border:1px solid #d97706;padding:5px 10px;border-radius:4px;color:#d97706"><input type="radio" name="urg" checked> Обычно</label>
+          <label style="font-size:12px;background:#fff;border:1px solid #e2e8f0;padding:5px 10px;border-radius:4px"><input type="radio" name="urg"> Срочно (есть бронь на 20 апр)</label>
+        </div>
+
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button style="background:#dc2626;color:#fff;border:none;padding:8px 16px;border-radius:4px;font-size:12px;font-weight:500">Отправить в мастерскую</button>
+          <button style="background:#fff;border:1px solid #e2e8f0;padding:8px 14px;border-radius:4px;font-size:12px">Отмена</button>
+        </div>
+
+        <div style="margin-top:10px;font-size:11px;color:#64748b;font-style:italic">
+          Единица уйдёт в <b>«Ждёт ремонта»</b>, техник получит её сразу в «Мой день». Бронь 20 апр автоматически подсветится жёлтым в календаре — «возможен конфликт».
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ЭКРАН 2: Техник — общий список, фильтр -->
+<div style="margin-top:20px;padding:18px;border:1px solid #e2e8f0;border-radius:8px;background:#fff">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="background:#d97706;color:#fff;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600">2. ТЕХНИК</div>
+    <h3 style="margin:0">«Мастерская» → список всех единиц в ремонте</h3>
+  </div>
+
+  <div style="font-family:-apple-system,sans-serif;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+    <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:13px;display:flex;gap:8px;flex-wrap:wrap">
+      <button style="background:#0f172a;color:#fff;border:none;padding:5px 12px;border-radius:4px;font-size:12px">Все · 6</button>
+      <button style="background:#fff;border:1px solid #fca5a5;color:#dc2626;padding:5px 12px;border-radius:4px;font-size:12px">🆕 Ждут ремонта · 1</button>
+      <button style="background:#fff;border:1px solid #fed7aa;color:#d97706;padding:5px 12px;border-radius:4px;font-size:12px">🔧 В ремонте · 3</button>
+      <button style="background:#fff;border:1px solid #e9d5ff;color:#9333ea;padding:5px 12px;border-radius:4px;font-size:12px">⏸ Ждут запчасти · 2</button>
+    </div>
+
+    <div style="background:#fff">
+      <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:50px 1fr 160px 130px 120px;gap:12px;font-size:13px;align-items:center">
+        <div style="background:#dc2626;color:#fff;font-size:11px;padding:3px 6px;border-radius:4px;text-align:center;font-weight:600">🆕</div>
+        <div>
+          <b>Arri Fresnel 2kW</b> · LR-ARR2K-004<br>
+          <span style="color:#64748b;font-size:11px">«Не включается, провод в порядке. Возможно лампа или балласт.»</span>
+        </div>
+        <div style="font-size:12px;color:#64748b">с возврата «Мосфильм»<br>15 апр 18:12</div>
+        <div style="font-size:12px;color:#dc2626"><b>⚠ есть бронь</b><br><span style="color:#64748b">20 апр, Ромашка</span></div>
+        <div><button style="background:#dc2626;color:#fff;border:none;padding:6px 10px;border-radius:4px;font-size:12px;width:100%">Взять в работу</button></div>
+      </div>
+
+      <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:50px 1fr 160px 130px 120px;gap:12px;font-size:13px;align-items:center">
+        <div style="background:#d97706;color:#fff;font-size:11px;padding:3px 6px;border-radius:4px;text-align:center;font-weight:600">🔧</div>
+        <div>
+          <b>HMI 1.2kW</b> · LR-HMI12-002<br>
+          <span style="color:#64748b;font-size:11px">«Моргает на средней яркости, балласт греется»</span>
+        </div>
+        <div style="font-size:12px;color:#64748b">в работе 3 дня<br>12 апр</div>
+        <div style="font-size:12px;color:#64748b">—</div>
+        <div><button style="background:#fff;border:1px solid #e2e8f0;padding:6px 10px;border-radius:4px;font-size:12px;width:100%">Открыть</button></div>
+      </div>
+
+      <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:50px 1fr 160px 130px 120px;gap:12px;font-size:13px;align-items:center">
+        <div style="background:#059669;color:#fff;font-size:11px;padding:3px 6px;border-radius:4px;text-align:center;font-weight:600">✓</div>
+        <div>
+          <b>Kinoflo 4ft</b> · LR-KINO4-007<br>
+          <span style="color:#64748b;font-size:11px">«Не держит синий балласт» · <b style="color:#059669">готов к тесту</b></span>
+        </div>
+        <div style="font-size:12px;color:#64748b">в работе 1 день<br>14 апр</div>
+        <div style="font-size:12px;color:#64748b">—</div>
+        <div><button style="background:#059669;color:#fff;border:none;padding:6px 10px;border-radius:4px;font-size:12px;width:100%">Вернуть в парк</button></div>
+      </div>
+
+      <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:50px 1fr 160px 130px 120px;gap:12px;font-size:13px;align-items:center">
+        <div style="background:#9333ea;color:#fff;font-size:11px;padding:3px 6px;border-radius:4px;text-align:center;font-weight:600">⏸</div>
+        <div>
+          <b>Dedolight 400W</b> · LR-DED400-011<br>
+          <span style="color:#64748b;font-size:11px">«Нужна новая лампа · заказано у поставщика 12 апр»</span>
+        </div>
+        <div style="font-size:12px;color:#64748b">ждёт 5 дней<br>10 апр</div>
+        <div style="font-size:12px;color:#64748b">—</div>
+        <div><button style="background:#fff;border:1px solid #e2e8f0;padding:6px 10px;border-radius:4px;font-size:12px;width:100%">Открыть</button></div>
+      </div>
+
+      <div style="padding:12px 14px;display:grid;grid-template-columns:1fr;gap:12px;font-size:12px;color:#94a3b8;text-align:center;font-style:italic">
+        + ещё 2 единицы
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ЭКРАН 3: Техник взял в работу, заносит детали -->
+<div style="margin-top:20px;padding:18px;border:1px solid #e2e8f0;border-radius:8px;background:#fff">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="background:#d97706;color:#fff;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600">3. ТЕХНИК</div>
+    <h3 style="margin:0">Карточка ремонта — ведёт историю работ</h3>
+  </div>
+
+  <div style="font-family:-apple-system,sans-serif;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+    <div style="padding:12px 16px;background:#0f172a;color:#fff;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <b>Arri Fresnel 2kW</b> · LR-ARR2K-004
+        <div style="color:#94a3b8;font-size:11px;margin-top:2px">Поломка №R-2026-042 · взята в работу 15 апр 19:00</div>
+      </div>
+      <span style="background:#d97706;padding:3px 10px;border-radius:10px;font-size:11px">В ремонте</span>
+    </div>
+
+    <div style="padding:16px;background:#f8fafc;font-size:13px">
+
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:12px;margin-bottom:12px">
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">ПРИЧИНА ВОЗВРАТА</div>
+        <div><b>Пётр (кладовщик), 15 апр:</b> «Не включается, провод в порядке. Возможно лампа или балласт.»</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:12px;margin-bottom:12px">
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">ИСТОРИЯ РАБОТ</div>
+        <div style="padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12px">
+          <b>15 апр 19:00 ·</b> Разобрал корпус. Лампа целая. Балласт — пробит конденсатор C3.
+        </div>
+        <div style="padding:6px 0;font-size:12px;color:#64748b">
+          <i>+ добавьте запись о том, что сделали сегодня</i>
+        </div>
+        <textarea style="width:100%;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-top:4px;font-size:12px;resize:none;height:50px;font-family:inherit" placeholder="Что сделали, что выяснили, какие запчасти нужны…"></textarea>
+        <button style="margin-top:8px;background:#fff;border:1px solid #e2e8f0;padding:6px 12px;border-radius:4px;font-size:12px">+ Добавить запись</button>
+      </div>
+
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:12px;margin-bottom:12px">
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">ЗАТРАТЫ (необязательно)</div>
+        <div style="display:grid;grid-template-columns:1fr 120px 100px;gap:8px;font-size:12px;margin-bottom:6px">
+          <input style="border:1px solid #e2e8f0;border-radius:4px;padding:6px;font-size:12px" value="Конденсатор 220 мкФ" />
+          <input style="border:1px solid #e2e8f0;border-radius:4px;padding:6px;font-size:12px" value="450 ₽" />
+          <input style="border:1px solid #e2e8f0;border-radius:4px;padding:6px;font-size:12px;color:#64748b" placeholder="Чек, ссылка" />
+        </div>
+        <button style="background:#fff;border:1px solid #e2e8f0;padding:5px 12px;border-radius:4px;font-size:11px">+ Добавить расход</button>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button style="background:#059669;color:#fff;border:none;padding:9px 18px;border-radius:5px;font-size:13px;font-weight:500">✓ Починил — вернуть в парк</button>
+        <button style="background:#fff;border:1px solid #9333ea;color:#9333ea;padding:9px 16px;border-radius:5px;font-size:13px">⏸ Пауза — ждём запчасти</button>
+        <button style="background:#fff;border:1px solid #dc2626;color:#dc2626;padding:9px 16px;border-radius:5px;font-size:13px">✗ Не чинится — списать</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ЭКРАН 4: Руководитель видит отчёт по мастерской -->
+<div style="margin-top:20px;padding:18px;border:1px solid #e2e8f0;border-radius:8px;background:#fff">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="background:#059669;color:#fff;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600">4. РУКОВОДИТЕЛЬ</div>
+    <h3 style="margin:0">Архив ремонтов — видит что происходит с парком</h3>
+  </div>
+
+  <div style="font-family:-apple-system,sans-serif;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+    <div style="padding:12px 16px;background:#f8fafc;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:10px">
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Починено за апрель</div>
+        <div style="font-size:20px;font-weight:600;margin-top:2px">12</div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:10px">
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Списано</div>
+        <div style="font-size:20px;font-weight:600;margin-top:2px">1</div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:10px">
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">В ремонте сейчас</div>
+        <div style="font-size:20px;font-weight:600;margin-top:2px">6</div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:10px">
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Расходы за апрель</div>
+        <div style="font-size:20px;font-weight:600;margin-top:2px">18 400 ₽</div>
+      </div>
+    </div>
+
+    <div style="padding:10px 14px;background:#f1f5f9;font-size:12px;color:#64748b;display:grid;grid-template-columns:1fr 120px 130px 120px 100px;gap:12px">
+      <div>Единица</div><div>Поломка</div><div>В работе</div><div>Результат</div><div>Расход</div>
+    </div>
+
+    <div style="background:#fff">
+      <div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 120px 130px 120px 100px;gap:12px;font-size:12px;align-items:center">
+        <div><b>LR-KINO4-007</b><br><span style="color:#64748b">Kinoflo 4ft</span></div>
+        <div>Синий балласт</div>
+        <div>1 день</div>
+        <div><span style="background:#dcfce7;color:#059669;padding:2px 8px;border-radius:10px;font-size:11px">Починено</span></div>
+        <div>1 200 ₽</div>
+      </div>
+      <div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 120px 130px 120px 100px;gap:12px;font-size:12px;align-items:center">
+        <div><b>LR-ARR2K-004</b><br><span style="color:#64748b">Arri Fresnel 2kW</span></div>
+        <div>Балласт</div>
+        <div>в работе</div>
+        <div><span style="background:#fef3c7;color:#d97706;padding:2px 8px;border-radius:10px;font-size:11px">В ремонте</span></div>
+        <div>450 ₽</div>
+      </div>
+      <div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 120px 130px 120px 100px;gap:12px;font-size:12px;align-items:center">
+        <div><b>LR-ARR650-002</b><br><span style="color:#64748b">Arri 650W</span></div>
+        <div>Трещина корпус</div>
+        <div>—</div>
+        <div><span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:10px;font-size:11px">Списано</span></div>
+        <div>—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Итоговые вопросы -->
+<div style="margin-top:28px;padding:16px;background:#fef3c7;border-left:3px solid #d97706;border-radius:4px;font-size:13px;line-height:1.7">
+  <b>Спорные места — скажите, что изменить:</b>
+  <ul style="margin:8px 0 0;padding-left:20px">
+    <li><b>Статусов единицы больше, чем сейчас.</b> Было: Свободна / Выдана / В ремонте / Списана. Добавляем ещё два: <b>«Ждёт ремонта»</b> (пришла с возврата, техник ещё не взял) и <b>«Ждёт запчасти»</b> (пауза в ремонте). Нужно ли «Ждёт запчасти» отдельно, или можно держать внутри «В ремонте» с флагом?</li>
+    <li><b>«Срочность» при возврате.</b> Кладовщик выбирает: не срочно / обычно / срочно (есть бронь). Если срочно — карточка у техника красная. Ок, или оставить только комментарий без отдельного поля?</li>
+    <li><b>«Есть бронь 20 апр»</b> — автоматически подтягиваем ближайшую бронь на этот тип оборудования, чтобы техник знал крайний срок. Если чинить некогда — руководитель видит «возможный конфликт» в календаре и может заменить единицу или перезвонить клиенту. Полезно?</li>
+    <li><b>История работ — текстовые записи с датой.</b> Как в телеграмме, лентой. Не форма с галочками, а свободный текст. Для вас чтобы читать, для техника чтобы быстро писать. Ок?</li>
+    <li><b>Затраты на ремонт</b> — опционально. Если техник заносит (конденсатор 450₽), они автоматически попадают в «Расходы апреля» на дашборде руководителя. Нужно ли обязательно заполнять, или пусть будет добровольно?</li>
+    <li><b>Архив у руководителя</b> — нужна ли аналитика «какие типы чаще ломаются» (например: «HMI 1.2kW — 4 поломки за квартал, задуматься о новой»)? Или достаточно простого списка?</li>
+  </ul>
+</div>
+
+</body>
+</html>

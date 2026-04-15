@@ -98,12 +98,12 @@
 
 ## Визуальные референсы (мокапы)
 
-Мокапы находятся в `docs/mockups/`:
-- `finance-pages.html` — финансовый дашборд, долги
-- `admin-pages.html` — админ-панель, слэнг, пользователи
-- `booking-create.html` — создание брони
-- `roles-matrix.html` — матрица прав по ролям
-- `repair-workflow.html` — мастерская, ремонт
-- `my-day-all-roles.html` — страница «Мой день» для всех ролей
+Мокапы находятся в `docs/mockups/` — полный список и таблица соответствий «мокап → живая страница» в [`docs/mockups/README.md`](mockups/README.md).
 
-> **TODO:** мокапы будут добавлены в Sprint 5.
+Ключевые:
+- `finance-pages.html` — финансовый дашборд, долги → `/finance`
+- `admin-pages.html` — админ-панель → `/admin`
+- `booking-create.html` — создание брони → `/bookings/new`
+- `roles-matrix.html` — матрица прав по ролям (UI-страницы нет, только таблица в `CLAUDE.md` + код)
+- `repair-workflow.html` — мастерская, ремонт → `/repair`
+- `my-day-all-roles.html` — «Мой день» для всех ролей → `/day`

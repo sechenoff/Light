@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · admin pages</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+.adm-scope {
+  --bg: #fafafa;
+  --bg-2: #f4f4f5;
+  --surface: #ffffff;
+  --ink: #09090b;
+  --ink-2: #52525b;
+  --ink-3: #a1a1aa;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+
+  /* Primary accent (business blue) */
+  --accent: #1e3a8a;
+  --accent-2: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --accent-border: #bfdbfe;
+
+  /* Calm semantic palette */
+  --teal: #0f766e;       --teal-soft: #ccfbf1;   --teal-border: #99f6e4;
+  --amber: #a16207;      --amber-soft: #fef3c7;  --amber-border: #fde68a;
+  --rose: #9f1239;       --rose-soft: #ffe4e6;   --rose-border: #fecdd3;
+  --indigo: #4338ca;     --indigo-soft: #e0e7ff; --indigo-border: #c7d2fe;
+  --slate: #334155;      --slate-soft: #f1f5f9;  --slate-border: #cbd5e1;
+  --emerald: #047857;    --emerald-soft: #d1fae5; --emerald-border: #a7f3d0;
+
+  --ok: #15803d;         --ok-soft: #dcfce7;
+  --warn: #a16207;       --warn-soft: #fef9c3;  --warn-border: #fde047;
+  --danger: #b91c1c;     --danger-soft: #fef2f2; --danger-border: #fecaca;
+
+  --shadow-xs: 0 1px 0 rgba(9,9,11,.03);
+  --shadow-sm: 0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02);
+  --shadow-md: 0 8px 32px -12px rgba(9,9,11,.14);
+  --r: 4px;
+  --r-lg: 6px;
+
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.5;
+  font-size: 13.5px;
+  -webkit-font-smoothing: antialiased;
+  padding: 24px 32px 60px;
+}
+
+.adm-scope .mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+.adm-scope .cond { font-family: 'IBM Plex Sans Condensed', sans-serif; }
+.adm-scope .eyebrow {
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--ink-3); font-weight: 600;
+}
+
+/* Section intro */
+.adm-intro {
+  background: var(--indigo-soft);
+  border: 1px solid var(--indigo-border);
+  border-radius: var(--r-lg);
+  padding: 18px 22px;
+  margin-bottom: 28px;
+  font-size: 13px; line-height: 1.65;
+  color: var(--ink);
+}
+.adm-intro h2 { margin: 0 0 6px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.adm-intro p { margin: 0; color: var(--ink-2); }
+
+/* Admin frame (simulates full admin page) */
+.adm-frame {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  margin-bottom: 32px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.adm-frame-label {
+  padding: 8px 18px;
+  background: var(--slate);
+  color: #fff;
+  font-family: 'IBM Plex Sans Condensed', sans-serif;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600;
+  display:flex; justify-content:space-between; align-items:center;
+}
+.adm-frame-label .url { font-family: 'IBM Plex Mono', monospace; color: rgba(255,255,255,0.6); text-transform:none; letter-spacing: 0; font-weight: 400; font-size: 11px; }
+
+/* Admin top bar with sub-nav */
+.adm-top {
+  padding: 16px 24px 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.adm-top h1 {
+  margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.015em;
+}
+.adm-top .sub { color: var(--ink-2); font-size: 13px; margin: 4px 0 14px; }
+
+/* Sub-nav tabs */
+.adm-tabs { display:flex; gap: 2px; margin-bottom: -1px; }
+.adm-tab {
+  padding: 9px 14px; font-size: 13px; color: var(--ink-2);
+  border: 1px solid transparent; border-bottom: none; border-radius: 5px 5px 0 0;
+  cursor: pointer; background: transparent; text-decoration: none;
+  display:flex; align-items:center; gap: 8px;
+}
+.adm-tab .count {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+  padding: 1px 6px; background: var(--bg-2); color: var(--ink-3); border-radius: 999px;
+}
+.adm-tab:hover { color: var(--ink); background: var(--bg-2); }
+.adm-tab.active {
+  color: var(--ink); background: var(--surface);
+  border-color: var(--border); border-bottom: 1px solid var(--surface);
+  font-weight: 500;
+}
+.adm-tab.active .count { background: var(--accent-soft); color: var(--accent); }
+
+/* Body */
+.adm-body { padding: 22px 24px 26px; background: var(--surface); }
+
+/* Common elements */
+.adm-btn {
+  font-family: inherit; font-size: 12.5px; font-weight: 500;
+  padding: 7px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--ink);
+  cursor: pointer;
+}
+.adm-btn:hover { background: var(--bg-2); border-color: var(--ink-3); }
+.adm-btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+.adm-btn.primary:hover { background: #000; }
+.adm-btn.accent { background: var(--accent-2); color: #fff; border-color: var(--accent-2); }
+.adm-btn.ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
+.adm-btn.ghost:hover { color: var(--ink); background: var(--bg-2); }
+.adm-btn.sm { font-size: 11.5px; padding: 5px 10px; }
+.adm-btn.danger { color: var(--danger); border-color: var(--danger-border); background: var(--danger-soft); }
+.adm-btn.danger:hover { background: #fecaca; }
+
+.adm-input {
+  font-family: inherit; font-size: 13.5px;
+  padding: 7px 11px;
+  border: 1px solid var(--border-strong); border-radius: var(--r);
+  background: var(--surface); color: var(--ink);
+  transition: border-color .12s, box-shadow .12s;
+}
+.adm-input:focus { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.adm-search {
+  display:flex; align-items:center; background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--r);
+  padding: 0 10px; max-width: 280px;
+}
+.adm-search input { flex: 1; border: none; outline: none; padding: 7px 4px; font-family: inherit; font-size: 13px; background: transparent; }
+.adm-search .ico { color: var(--ink-3); font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+.adm-search kbd {
+  font-family: 'IBM Plex Mono',monospace; font-size: 10.5px;
+  padding: 1px 5px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 3px;
+  color: var(--ink-3);
+}
+
+/* Pills & badges */
+.pill {
+  display:inline-flex; align-items:center; gap:4px;
+  padding: 2px 8px; border-radius: var(--r);
+  font-size: 11px; font-weight: 500; font-family: 'IBM Plex Sans',sans-serif;
+  border: 1px solid;
+}
+.pill-indigo { color: var(--indigo); background: var(--indigo-soft); border-color: var(--indigo-border); }
+.pill-teal   { color: var(--teal);   background: var(--teal-soft);   border-color: var(--teal-border); }
+.pill-amber  { color: var(--amber);  background: var(--amber-soft);  border-color: var(--amber-border); }
+.pill-rose   { color: var(--rose);   background: var(--rose-soft);   border-color: var(--rose-border); }
+.pill-slate  { color: var(--slate);  background: var(--slate-soft);  border-color: var(--slate-border); }
+.pill-emerald{ color: var(--emerald);background: var(--emerald-soft); border-color: var(--emerald-border); }
+.pill-gray   { color: var(--ink-2);  background: var(--bg-2);        border-color: var(--border); }
+
+/* ─── PAGE 1: USERS ─── */
+.users-toolbar {
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom: 14px; gap: 12px;
+}
+.users-toolbar .left { display:flex; gap: 8px; align-items:center; }
+
+.users-table {
+  border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden;
+  background: var(--surface);
+}
+.users-table .row {
+  display: grid;
+  grid-template-columns: 36px 2fr 1.2fr 1.2fr 1fr 90px;
+  gap: 14px; padding: 12px 18px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.users-table .row:last-child { border-bottom: none; }
+.users-table .row.head {
+  background: var(--bg-2);
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3);
+  font-family: 'IBM Plex Sans Condensed',sans-serif; font-weight: 600;
+  padding-top: 9px; padding-bottom: 9px;
+}
+.users-table .ava {
+  width: 30px; height: 30px; border-radius: 4px;
+  display:flex; align-items:center; justify-content:center;
+  font-family: 'IBM Plex Mono', monospace; font-weight: 600;
+  font-size: 11.5px; color: #fff;
+}
+.users-table .name { font-weight: 500; }
+.users-table .name small { display:block; font-weight: 400; color: var(--ink-3); font-size: 12px; margin-top: 1px; font-family: 'IBM Plex Mono', monospace; }
+.users-table .last { color: var(--ink-2); font-family: 'IBM Plex Mono',monospace; font-size: 12px; }
+.users-table .dim { color: var(--ink-3); }
+.users-table .actions { text-align: right; }
+
+/* ─── PAGE 2: SLANG ─── */
+.slang-layout { display: grid; grid-template-columns: 1fr 360px; gap: 18px; }
+
+.slang-stats { display:grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.slang-stats .card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 12px 14px;
+}
+.slang-stats .card .eyebrow { display:block; margin-bottom: 4px; }
+.slang-stats .card .num {
+  font-family: 'IBM Plex Mono',monospace; font-size: 22px; font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.slang-stats .card .hint { font-size: 11.5px; color: var(--ink-2); margin-top: 2px; }
+.slang-stats .card.attn { border-color: var(--amber-border); background: var(--amber-soft); }
+.slang-stats .card.attn .num { color: var(--amber); }
+
+.slang-filters {
+  display:flex; gap: 4px; margin-bottom: 12px; padding: 4px;
+  background: var(--bg-2); border-radius: var(--r-lg); width: fit-content;
+}
+.slang-filters .f {
+  padding: 6px 12px; font-size: 12.5px; color: var(--ink-2); cursor: pointer;
+  border-radius: 4px; display:flex; gap: 6px; align-items:center;
+}
+.slang-filters .f:hover { color: var(--ink); }
+.slang-filters .f.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-xs); }
+.slang-filters .f .c {
+  font-family: 'IBM Plex Mono',monospace; font-size: 10.5px;
+  padding: 1px 5px; background: var(--border); border-radius: 999px; color: var(--ink-2);
+}
+.slang-filters .f.active .c { background: var(--accent-soft); color: var(--accent); }
+
+.slang-table {
+  border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden;
+  background: var(--surface);
+}
+.slang-row {
+  display: grid; grid-template-columns: 1.4fr 24px 1.2fr 90px 120px 28px;
+  gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border);
+  font-size: 13px; align-items: center;
+}
+.slang-row:last-child { border-bottom: none; }
+.slang-row.head {
+  background: var(--bg-2); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3);
+  font-family: 'IBM Plex Sans Condensed',sans-serif; font-weight: 600; padding: 8px 16px;
+}
+.slang-row.selected { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent-2); }
+.slang-row .alias { font-family: 'IBM Plex Mono',monospace; color: var(--ink); }
+.slang-row .arrow { color: var(--ink-3); text-align:center; }
+.slang-row .canon { font-weight: 500; }
+.slang-row .canon small { display:block; color: var(--ink-3); font-weight: 400; font-size: 11.5px; margin-top: 1px; }
+.slang-row .uses { font-family: 'IBM Plex Mono',monospace; color: var(--ink-2); font-size: 12px; text-align: right; }
+.slang-row .origin { font-size: 11.5px; color: var(--ink-2); }
+
+.slang-detail {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 18px 20px;
+  position: sticky; top: 20px;
+}
+.slang-detail h3 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+.slang-detail .kv { display:flex; justify-content:space-between; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.slang-detail .kv:last-of-type { border-bottom: none; }
+.slang-detail .kv .k { color: var(--ink-2); }
+.slang-detail .kv .v { color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+.slang-detail .actions { display:flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+
+/* ─── PAGE 3: IMPORTS ─── */
+.imp-wizard {
+  display:flex; gap: 6px; margin-bottom: 18px;
+  padding: 10px 14px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-lg);
+  align-items: center;
+}
+.imp-step {
+  display:flex; gap: 8px; align-items: center;
+  font-size: 12.5px; color: var(--ink-3);
+  padding: 4px 10px; border-radius: var(--r);
+}
+.imp-step .n {
+  width: 20px; height: 20px; border-radius: 50%;
+  display:flex; align-items:center; justify-content:center;
+  font-family: 'IBM Plex Mono',monospace; font-size: 11px; font-weight: 600;
+  background: var(--border); color: var(--ink-2);
+}
+.imp-step.done { color: var(--teal); }
+.imp-step.done .n { background: var(--teal-soft); color: var(--teal); }
+.imp-step.active { color: var(--ink); background: var(--surface); box-shadow: var(--shadow-xs); }
+.imp-step.active .n { background: var(--ink); color: #fff; }
+.imp-step .sep { color: var(--border); padding: 0 4px; }
+
+.imp-header {
+  display:flex; justify-content:space-between; align-items:flex-end;
+  margin-bottom: 14px; gap: 12px;
+}
+.imp-header .title .eyebrow { display: block; margin-bottom: 2px; }
+.imp-header .title h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+.imp-header .title .meta { font-size: 12px; color: var(--ink-2); margin-top: 2px; font-family: 'IBM Plex Mono',monospace; }
+
+.imp-stats {
+  display:grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 14px;
+}
+.imp-stats .card {
+  padding: 11px 14px; border: 1px solid; border-radius: var(--r-lg);
+}
+.imp-stats .card.total { border-color: var(--border); background: var(--surface); }
+.imp-stats .card.new { border-color: var(--emerald-border); background: var(--emerald-soft); }
+.imp-stats .card.chg { border-color: var(--amber-border); background: var(--amber-soft); }
+.imp-stats .card.rem { border-color: var(--rose-border); background: var(--rose-soft); }
+.imp-stats .card.same { border-color: var(--border); background: var(--bg-2); }
+.imp-stats .eyebrow { display:block; margin-bottom: 3px; }
+.imp-stats .num { font-family: 'IBM Plex Mono',monospace; font-size: 20px; font-weight: 500; }
+.imp-stats .card.new .num { color: var(--emerald); }
+.imp-stats .card.chg .num { color: var(--amber); }
+.imp-stats .card.rem .num { color: var(--rose); }
+
+.imp-toolbar { display:flex; justify-content:space-between; margin-bottom: 10px; gap: 10px; }
+
+.imp-table {
+  border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden;
+  background: var(--surface);
+}
+.imp-row {
+  display: grid; grid-template-columns: 24px 1.5fr 1fr 1fr 120px 28px;
+  gap: 14px; padding: 11px 16px; border-bottom: 1px solid var(--border);
+  font-size: 12.5px; align-items: center;
+}
+.imp-row:last-child { border-bottom: none; }
+.imp-row.head {
+  background: var(--bg-2); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3);
+  font-family: 'IBM Plex Sans Condensed',sans-serif; font-weight: 600;
+}
+.imp-row .nm { font-weight: 500; color: var(--ink); }
+.imp-row .nm small { display:block; color: var(--ink-3); font-size: 11px; font-weight: 400; font-family: 'IBM Plex Mono',monospace; margin-top: 1px; }
+.imp-row .old { color: var(--ink-2); font-family: 'IBM Plex Mono',monospace; text-decoration: line-through; text-decoration-color: var(--ink-3); }
+.imp-row .new { color: var(--ink); font-family: 'IBM Plex Mono',monospace; font-weight: 600; }
+.imp-row .new.up { color: var(--emerald); }
+.imp-row .new.dn { color: var(--rose); }
+.imp-row .act {
+  text-align: center;
+  font-family: 'IBM Plex Mono',monospace; font-size: 10.5px;
+}
+
+.imp-act-toolbar {
+  display:flex; gap: 8px; margin-top: 14px; padding: 12px 14px;
+  background: var(--accent-soft); border: 1px solid var(--accent-border);
+  border-radius: var(--r-lg); font-size: 12.5px;
+  align-items: center;
+}
+.imp-act-toolbar b { color: var(--accent); }
+
+/* ─── PAGE 4: SETTINGS ─── */
+.set-grid { display:grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.set-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+}
+.set-card .head {
+  padding: 12px 18px; background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+.set-card .head h3 { margin: 0; font-size: 12px; font-family: 'IBM Plex Sans Condensed',sans-serif; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.set-card .head .ico {
+  display:inline-flex; align-items:center; justify-content:center;
+  width: 20px; height: 20px; border-radius: 4px;
+  font-family: 'IBM Plex Mono',monospace; font-size: 11px; font-weight: 600;
+  margin-right: 8px; vertical-align: -3px;
+}
+.set-card .body { padding: 16px 20px; }
+.set-card .row {
+  display:grid; grid-template-columns: 1fr auto; gap: 14px;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+  font-size: 13px; align-items: center;
+}
+.set-card .row:last-child { border-bottom: none; }
+.set-card .row .k { color: var(--ink); }
+.set-card .row .k small { display:block; color: var(--ink-2); font-size: 11.5px; font-weight: 400; margin-top: 1px; }
+.set-card .row .v {
+  font-family: 'IBM Plex Mono',monospace; font-size: 12.5px; color: var(--ink-2);
+  display:flex; align-items:center; gap: 8px;
+}
+.set-card .row .v.editable { color: var(--ink); }
+.set-card .row .edit {
+  font-size: 11px; color: var(--accent-2); cursor: pointer; font-family: 'IBM Plex Sans',sans-serif;
+}
+.set-card.danger { border-color: var(--danger-border); }
+.set-card.danger .head { background: var(--danger-soft); }
+
+.set-toggle {
+  width: 32px; height: 18px; border-radius: 999px;
+  background: var(--border-strong); position: relative;
+  transition: background .15s;
+}
+.set-toggle::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2);
+  transition: left .15s;
+}
+.set-toggle.on { background: var(--emerald); }
+.set-toggle.on::after { left: 16px; }
+</style>
+
+<div class="adm-scope">
+
+  <!-- Intro -->
+  <div class="adm-intro">
+    <h2>Разборка /admin на 4 отдельные страницы</h2>
+    <p>
+      Сейчас <code style="background:var(--surface);padding:1px 5px;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:12px;border:1px solid var(--indigo-border)">/admin</code> — это одна страница на 2 700 строк с 4 вкладками, грузится медленно, ошибки в одной вкладке роняют весь экран. Делим на четыре независимых маршрута: <b>/admin/users</b>, <b>/admin/slang</b>, <b>/admin/imports</b>, <b>/admin/settings</b>. Наверху у всех общая полоса табов для навигации между собой.
+    </p>
+  </div>
+
+  <!-- ═══════════════════════════ PAGE 1: USERS ═══════════════════════════ -->
+  <div class="adm-frame">
+    <div class="adm-frame-label">
+      <span>Страница 1 · Пользователи</span>
+      <span class="url">/admin/users</span>
+    </div>
+
+    <div class="adm-top">
+      <h1>Пользователи</h1>
+      <p class="sub">Кто может входить в систему и с какими правами. Роли определяют, что человек видит в меню и может делать.</p>
+      <div class="adm-tabs">
+        <a class="adm-tab active">👤 Пользователи <span class="count">4</span></a>
+        <a class="adm-tab">🗣 Словарь сленга <span class="count">543</span></a>
+        <a class="adm-tab">📑 Импорт прайсов <span class="count">2</span></a>
+        <a class="adm-tab">⚙️ Настройки</a>
+      </div>
+    </div>
+
+    <div class="adm-body">
+      <div class="users-toolbar">
+        <div class="left">
+          <div class="adm-search">
+            <span class="ico">⌕</span>
+            <input placeholder="Поиск по имени…" />
+            <kbd>/</kbd>
+          </div>
+          <span class="pill pill-indigo">Супер-админ · 1</span>
+          <span class="pill pill-teal">Кладовщик · 2</span>
+          <span class="pill pill-amber">Техник · 1</span>
+        </div>
+        <div>
+          <button class="adm-btn primary">+ Добавить пользователя</button>
+        </div>
+      </div>
+
+      <div class="users-table">
+        <div class="row head">
+          <div></div>
+          <div>Пользователь</div>
+          <div>Роль</div>
+          <div>Последний вход</div>
+          <div>Статус</div>
+          <div style="text-align:right">Действия</div>
+        </div>
+
+        <div class="row">
+          <div class="ava" style="background:var(--indigo)">СЧ</div>
+          <div class="name">Sechenoff <small>sechenoff@rental.ru</small></div>
+          <div><span class="pill pill-indigo">Супер-админ</span></div>
+          <div class="last">сегодня, 14:22 <span class="dim">· Москва</span></div>
+          <div><span class="pill pill-emerald">● активен</span></div>
+          <div class="actions"><button class="adm-btn sm ghost">⋯</button></div>
+        </div>
+
+        <div class="row">
+          <div class="ava" style="background:var(--teal)">ПС</div>
+          <div class="name">Пётр Сидоров <small>petr@rental.ru</small></div>
+          <div><span class="pill pill-teal">Кладовщик</span></div>
+          <div class="last">сегодня, 08:41</div>
+          <div><span class="pill pill-emerald">● активен</span></div>
+          <div class="actions"><button class="adm-btn sm ghost">⋯</button></div>
+        </div>
+
+        <div class="row">
+          <div class="ava" style="background:var(--teal)">МК</div>
+          <div class="name">Михаил Кузнецов <small>misha@rental.ru</small></div>
+          <div><span class="pill pill-teal">Кладовщик</span></div>
+          <div class="last">12 апр, 19:10</div>
+          <div><span class="pill pill-emerald">● активен</span></div>
+          <div class="actions"><button class="adm-btn sm ghost">⋯</button></div>
+        </div>
+
+        <div class="row">
+          <div class="ava" style="background:var(--amber)">СВ</div>
+          <div class="name">Сергей Волков <small>sergey@rental.ru</small></div>
+          <div><span class="pill pill-amber">Техник</span></div>
+          <div class="last">вчера, 17:30</div>
+          <div><span class="pill pill-emerald">● активен</span></div>
+          <div class="actions"><button class="adm-btn sm ghost">⋯</button></div>
+        </div>
+
+        <div class="row" style="opacity:0.5">
+          <div class="ava" style="background:var(--ink-3)">АП</div>
+          <div class="name">Антон Петров <small>anton@rental.ru</small></div>
+          <div><span class="pill pill-teal">Кладовщик</span></div>
+          <div class="last dim">2 мес назад</div>
+          <div><span class="pill pill-gray">отключён</span></div>
+          <div class="actions"><button class="adm-btn sm ghost">⋯</button></div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;font-size:11.5px;color:var(--ink-2);display:flex;gap:16px">
+        <span><span class="pill pill-indigo" style="font-size:10px;padding:1px 6px">Супер-админ</span> видит всё, может создавать пользователей и менять настройки</span>
+        <span><span class="pill pill-teal" style="font-size:10px;padding:1px 6px">Кладовщик</span> работает с бронями, каталогом, выдачей/возвратами</span>
+        <span><span class="pill pill-amber" style="font-size:10px;padding:1px 6px">Техник</span> видит только мастерскую и каталог</span>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════ PAGE 2: SLANG ═══════════════════════════ -->
+  <div class="adm-frame">
+    <div class="adm-frame-label">
+      <span>Страница 2 · Словарь сленга</span>
+      <span class="url">/admin/slang</span>
+    </div>
+
+    <div class="adm-top">
+      <h1>Словарь сленга</h1>
+      <p class="sub">AI учится понимать, как гафферы называют оборудование. Каждый раз, когда кладовщик поправляет распознавание, строчка попадает сюда — и в следующий раз AI угадывает сам.</p>
+      <div class="adm-tabs">
+        <a class="adm-tab">👤 Пользователи <span class="count">4</span></a>
+        <a class="adm-tab active">🗣 Словарь сленга <span class="count">543</span></a>
+        <a class="adm-tab">📑 Импорт прайсов <span class="count">2</span></a>
+        <a class="adm-tab">⚙️ Настройки</a>
+      </div>
+    </div>
+
+    <div class="adm-body">
+
+      <!-- Stats -->
+      <div class="slang-stats">
+        <div class="card">
+          <span class="eyebrow">Всего алиасов</span>
+          <div class="num">543</div>
+          <div class="hint">к 187 позициям каталога</div>
+        </div>
+        <div class="card">
+          <span class="eyebrow">Покрытие AI</span>
+          <div class="num" style="color:var(--teal)">89%</div>
+          <div class="hint">слов гафферов распознаётся</div>
+        </div>
+        <div class="card attn">
+          <span class="eyebrow">На ревью</span>
+          <div class="num">12</div>
+          <div class="hint">AI не уверен, нужен ваш глаз</div>
+        </div>
+        <div class="card">
+          <span class="eyebrow">За неделю</span>
+          <div class="num">+47</div>
+          <div class="hint">кладовщики научили</div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="slang-filters">
+        <div class="f active">Все <span class="c">543</span></div>
+        <div class="f">🟢 Подтверждённые <span class="c">531</span></div>
+        <div class="f">🟡 На ревью <span class="c">12</span></div>
+        <div class="f">🤖 Авто-обучение <span class="c">389</span></div>
+        <div class="f">✋ Вручную <span class="c">154</span></div>
+      </div>
+
+      <div class="slang-layout">
+        <!-- Left: table -->
+        <div class="slang-table">
+          <div class="slang-row head">
+            <div>Сленг / алиас</div>
+            <div></div>
+            <div>Правильное название</div>
+            <div style="text-align:right">Исп.</div>
+            <div>Источник</div>
+            <div></div>
+          </div>
+
+          <div class="slang-row selected">
+            <div class="alias">«полуомнитет крабов»</div>
+            <div class="arrow">→</div>
+            <div class="canon">Magic Arm / Краб держатель <small>Крепления</small></div>
+            <div class="uses">142</div>
+            <div class="origin"><span class="pill pill-teal">🤖 авто</span> Пётр · 14 апр</div>
+            <div style="text-align:center;color:var(--ink-3)">⋯</div>
+          </div>
+
+          <div class="slang-row">
+            <div class="alias">«Арри 2к»</div>
+            <div class="arrow">→</div>
+            <div class="canon">Arri Fresnel 2kW <small>Свет</small></div>
+            <div class="uses">281</div>
+            <div class="origin"><span class="pill pill-teal">🤖 авто</span> Пётр</div>
+            <div style="text-align:center;color:var(--ink-3)">⋯</div>
+          </div>
+
+          <div class="slang-row">
+            <div class="alias">«HMI 1.2»</div>
+            <div class="arrow">→</div>
+            <div class="canon">HMI 1.2kW <small>Свет</small></div>
+            <div class="uses">198</div>
+            <div class="origin"><span class="pill pill-slate">✋ вручную</span> Sechenoff</div>
+            <div style="text-align:center;color:var(--ink-3)">⋯</div>
+          </div>
+
+          <div class="slang-row" style="background:var(--amber-soft)">
+            <div class="alias">«чимичанга на 6k»</div>
+            <div class="arrow">→</div>
+            <div class="canon" style="color:var(--ink-3);font-style:italic">AI предполагает: HMI 6kW <small>с низкой уверенностью</small></div>
+            <div class="uses">3</div>
+            <div class="origin"><span class="pill pill-amber">🟡 на ревью</span></div>
+            <div style="text-align:center;color:var(--ink-3)">⋯</div>
+          </div>
+
+          <div class="slang-row">
+            <div class="alias">«авенджер с-стенд»</div>
+            <div class="arrow">→</div>
+            <div class="canon">Стойка Avenger C-stand <small>Стойки</small></div>
+            <div class="uses">89</div>
+            <div class="origin"><span class="pill pill-teal">🤖 авто</span> Михаил</div>
+            <div style="text-align:center;color:var(--ink-3)">⋯</div>
+          </div>
+
+          <div class="slang-row" style="background:var(--amber-soft)">
+            <div class="alias">«синий балласт на 4 фута»</div>
+            <div class="arrow">→</div>
+            <div class="canon" style="color:var(--ink-3);font-style:italic">AI не уверен</div>
+            <div class="uses">1</div>
+            <div class="origin"><span class="pill pill-amber">🟡 на ревью</span></div>
+            <div style="text-align:center;color:var(--ink-3)">⋯</div>
+          </div>
+
+          <div class="slang-row">
+            <div class="alias">«димер 2к»</div>
+            <div class="arrow">→</div>
+            <div class="canon">Dimmer Pro 2kW <small>Управление светом</small></div>
+            <div class="uses">54</div>
+            <div class="origin"><span class="pill pill-slate">✋ вручную</span> Пётр</div>
+            <div style="text-align:center;color:var(--ink-3)">⋯</div>
+          </div>
+        </div>
+
+        <!-- Right: detail -->
+        <div class="slang-detail">
+          <span class="eyebrow">Выбрано</span>
+          <h3>«полуомнитет крабов»</h3>
+
+          <div style="padding:12px; background:var(--bg-2); border-radius:var(--r); margin:4px 0 14px; font-size:13px; display:flex; align-items:center; gap:10px">
+            <span style="color:var(--ink-3);font-family:'IBM Plex Mono',monospace;font-size:11px">→</span>
+            <span style="font-weight:500">Magic Arm / Краб держатель</span>
+          </div>
+
+          <div class="kv"><span class="k">Использований</span><span class="v">142 раза</span></div>
+          <div class="kv"><span class="k">Последний раз</span><span class="v">сегодня</span></div>
+          <div class="kv"><span class="k">Первое появление</span><span class="v">12.02.2026</span></div>
+          <div class="kv"><span class="k">Источник</span><span class="v" style="font-family:inherit">🤖 авто-обучение</span></div>
+          <div class="kv"><span class="k">Добавил</span><span class="v" style="font-family:inherit">Пётр Сидоров</span></div>
+          <div class="kv"><span class="k">Клиенты-источники</span><span class="v" style="font-family:inherit">14 разных</span></div>
+
+          <div class="actions">
+            <button class="adm-btn sm">Изменить связь</button>
+            <button class="adm-btn sm">Смотреть контексты</button>
+            <button class="adm-btn sm danger">Удалить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════ PAGE 3: IMPORTS ═══════════════════════════ -->
+  <div class="adm-frame">
+    <div class="adm-frame-label">
+      <span>Страница 3 · Импорт прайсов · текущий импорт</span>
+      <span class="url">/admin/imports/sess_k8n2</span>
+    </div>
+
+    <div class="adm-top">
+      <h1>Импорт прайса · Апрель 2026</h1>
+      <p class="sub">Загружаете XLSX от поставщика или с конкурентного сайта — система сравнивает с текущим каталогом и показывает, что изменилось.</p>
+      <div class="adm-tabs">
+        <a class="adm-tab">👤 Пользователи <span class="count">4</span></a>
+        <a class="adm-tab">🗣 Словарь сленга <span class="count">543</span></a>
+        <a class="adm-tab active">📑 Импорт прайсов <span class="count">2</span></a>
+        <a class="adm-tab">⚙️ Настройки</a>
+      </div>
+    </div>
+
+    <div class="adm-body">
+
+      <!-- Wizard steps -->
+      <div class="imp-wizard">
+        <div class="imp-step done"><span class="n">✓</span>Загрузка</div>
+        <span class="imp-step sep">—</span>
+        <div class="imp-step done"><span class="n">✓</span>Сопоставление колонок</div>
+        <span class="imp-step sep">—</span>
+        <div class="imp-step active"><span class="n">3</span>Проверка изменений</div>
+        <span class="imp-step sep">—</span>
+        <div class="imp-step"><span class="n">4</span>Применить</div>
+      </div>
+
+      <div class="imp-header">
+        <div class="title">
+          <span class="eyebrow">Файл</span>
+          <h2>price_april_2026.xlsx</h2>
+          <div class="meta">187 строк · загружен 14.04 · сопоставлено 5 из 5 колонок</div>
+        </div>
+        <div>
+          <button class="adm-btn">Скачать как XLSX</button>
+          <button class="adm-btn">Повторно сопоставить</button>
+        </div>
+      </div>
+
+      <!-- Diff stats -->
+      <div class="imp-stats">
+        <div class="card total">
+          <span class="eyebrow">Всего строк</span>
+          <div class="num">187</div>
+        </div>
+        <div class="card new">
+          <span class="eyebrow">Новых</span>
+          <div class="num">4</div>
+        </div>
+        <div class="card chg">
+          <span class="eyebrow">Изменены цены</span>
+          <div class="num">23</div>
+        </div>
+        <div class="card rem">
+          <span class="eyebrow">Пропали</span>
+          <div class="num">2</div>
+        </div>
+        <div class="card same">
+          <span class="eyebrow">Без изменений</span>
+          <div class="num">158</div>
+        </div>
+      </div>
+
+      <!-- Toolbar above table -->
+      <div class="imp-toolbar">
+        <div style="display:flex;gap:6px">
+          <button class="adm-btn sm" style="background:var(--ink);color:#fff;border-color:var(--ink)">Все изменения (29)</button>
+          <button class="adm-btn sm">Новых (4)</button>
+          <button class="adm-btn sm">Цены (23)</button>
+          <button class="adm-btn sm">Пропали (2)</button>
+        </div>
+        <div class="adm-search">
+          <span class="ico">⌕</span>
+          <input placeholder="Поиск в импорте…" />
+        </div>
+      </div>
+
+      <!-- Diff table -->
+      <div class="imp-table">
+        <div class="imp-row head">
+          <div></div>
+          <div>Позиция</div>
+          <div>Было</div>
+          <div>Станет</div>
+          <div>Действие</div>
+          <div></div>
+        </div>
+
+        <div class="imp-row" style="background:var(--emerald-soft)">
+          <div><span class="pill pill-emerald" style="font-size:9.5px;padding:1px 5px">NEW</span></div>
+          <div class="nm">LED Panel Aputure 600d Pro <small>из листа «Свет»</small></div>
+          <div class="old" style="color:var(--ink-3);font-style:italic;text-decoration:none">—</div>
+          <div class="new up">2 800 ₽/день</div>
+          <div><span class="pill pill-emerald">Добавить</span></div>
+          <div style="text-align:center;color:var(--ink-3)">⋯</div>
+        </div>
+
+        <div class="imp-row" style="background:var(--amber-soft)">
+          <div><span class="pill pill-amber" style="font-size:9.5px;padding:1px 5px">CHG</span></div>
+          <div class="nm">HMI 1.2kW <small>связана с «HMI 1.2»</small></div>
+          <div class="old">3 500 ₽</div>
+          <div class="new up">4 000 ₽ <span style="font-size:10.5px;color:var(--amber);margin-left:4px">+14%</span></div>
+          <div><span class="pill pill-amber">Обновить</span></div>
+          <div style="text-align:center;color:var(--ink-3)">⋯</div>
+        </div>
+
+        <div class="imp-row" style="background:var(--amber-soft)">
+          <div><span class="pill pill-amber" style="font-size:9.5px;padding:1px 5px">CHG</span></div>
+          <div class="nm">Arri Fresnel 2kW <small>связана с «Арри 2к»</small></div>
+          <div class="old">2 800 ₽</div>
+          <div class="new up">3 000 ₽ <span style="font-size:10.5px;color:var(--amber);margin-left:4px">+7%</span></div>
+          <div><span class="pill pill-amber">Обновить</span></div>
+          <div style="text-align:center;color:var(--ink-3)">⋯</div>
+        </div>
+
+        <div class="imp-row" style="background:var(--amber-soft)">
+          <div><span class="pill pill-amber" style="font-size:9.5px;padding:1px 5px">CHG</span></div>
+          <div class="nm">Kinoflo 4ft 4 banks <small>связана с «Kinoflo 4ft»</small></div>
+          <div class="old">1 800 ₽</div>
+          <div class="new dn">1 500 ₽ <span style="font-size:10.5px;color:var(--rose);margin-left:4px">−17%</span></div>
+          <div><span class="pill pill-amber">Обновить</span></div>
+          <div style="text-align:center;color:var(--ink-3)">⋯</div>
+        </div>
+
+        <div class="imp-row" style="background:var(--rose-soft)">
+          <div><span class="pill pill-rose" style="font-size:9.5px;padding:1px 5px">DEL</span></div>
+          <div class="nm">Dedolight 100W старый <small>нет в прайсе</small></div>
+          <div class="old">600 ₽</div>
+          <div class="new" style="color:var(--ink-3);font-style:italic">пропало</div>
+          <div><span class="pill pill-rose">Скрыть</span></div>
+          <div style="text-align:center;color:var(--ink-3)">⋯</div>
+        </div>
+
+        <div class="imp-row">
+          <div></div>
+          <div style="color:var(--ink-3);font-style:italic;font-size:12px">+ ещё 24 изменения…</div>
+          <div></div><div></div><div></div><div></div>
+        </div>
+      </div>
+
+      <!-- Apply action -->
+      <div class="imp-act-toolbar">
+        <span style="flex:1">Готовы применить? <b>29 изменений</b> — 4 новых, 23 обновления цен, 2 скрыть.</span>
+        <button class="adm-btn">Сохранить на потом</button>
+        <button class="adm-btn primary">Применить к каталогу →</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════ PAGE 4: SETTINGS ═══════════════════════════ -->
+  <div class="adm-frame">
+    <div class="adm-frame-label">
+      <span>Страница 4 · Настройки</span>
+      <span class="url">/admin/settings</span>
+    </div>
+
+    <div class="adm-top">
+      <h1>Настройки</h1>
+      <p class="sub">Параметры рентала: валюта, рабочее время, AI, уведомления, интеграции. Видит только супер-админ.</p>
+      <div class="adm-tabs">
+        <a class="adm-tab">👤 Пользователи <span class="count">4</span></a>
+        <a class="adm-tab">🗣 Словарь сленга <span class="count">543</span></a>
+        <a class="adm-tab">📑 Импорт прайсов <span class="count">2</span></a>
+        <a class="adm-tab active">⚙️ Настройки</a>
+      </div>
+    </div>
+
+    <div class="adm-body">
+
+      <div class="set-grid">
+
+        <div class="set-card">
+          <div class="head">
+            <h3><span class="ico" style="background:var(--slate-soft);color:var(--slate)">Co</span>Организация</h3>
+          </div>
+          <div class="body">
+            <div class="row">
+              <div class="k">Название рентала<small>показывается в заголовках</small></div>
+              <div class="v editable">Light Rental <span class="edit">Изменить</span></div>
+            </div>
+            <div class="row">
+              <div class="k">Валюта</div>
+              <div class="v editable">RUB (₽) <span class="edit">Изменить</span></div>
+            </div>
+            <div class="row">
+              <div class="k">Часовой пояс</div>
+              <div class="v editable">Europe/Moscow · UTC+3</div>
+            </div>
+            <div class="row">
+              <div class="k">Рабочие часы<small>по ним считаются смены и «стандартная выдача»</small></div>
+              <div class="v editable">09:00 — 21:00</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="set-card">
+          <div class="head">
+            <h3><span class="ico" style="background:var(--indigo-soft);color:var(--indigo)">AI</span>Распознавание и AI</h3>
+          </div>
+          <div class="body">
+            <div class="row">
+              <div class="k">Провайдер распознавания текста</div>
+              <div class="v editable">Gemini 2.5 Flash <span class="edit">Изменить</span></div>
+            </div>
+            <div class="row">
+              <div class="k">Авто-сохранение сленга<small>когда кладовщик правит распознавание — сохранять как алиас автоматически</small></div>
+              <div class="v"><span class="set-toggle on"></span></div>
+            </div>
+            <div class="row">
+              <div class="k">Минимальная уверенность AI<small>ниже этой — отправлять на ручное ревью</small></div>
+              <div class="v editable">75%</div>
+            </div>
+            <div class="row">
+              <div class="k">Анализ фото со съёмок<small>распознавать оборудование на снимках</small></div>
+              <div class="v"><span class="set-toggle on"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="set-card">
+          <div class="head">
+            <h3><span class="ico" style="background:var(--teal-soft);color:var(--teal)">Tg</span>Telegram-бот</h3>
+          </div>
+          <div class="body">
+            <div class="row">
+              <div class="k">Бот для клиентов<small>гафферы пишут боту — брони создаются</small></div>
+              <div class="v"><span class="pill pill-emerald">● подключён · @lr_rental_bot</span></div>
+            </div>
+            <div class="row">
+              <div class="k">Уведомления руководителю<small>о новых бронях на согласование</small></div>
+              <div class="v"><span class="set-toggle on"></span></div>
+            </div>
+            <div class="row">
+              <div class="k">API-ключ для внешних ботов<small>OpenClaw и др.</small></div>
+              <div class="v editable" style="font-family:'IBM Plex Mono',monospace;font-size:11.5px">openclaw-••••••••••3h4j <span class="edit">Показать</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="set-card">
+          <div class="head">
+            <h3><span class="ico" style="background:var(--amber-soft);color:var(--amber)">$</span>Финансовые правила</h3>
+          </div>
+          <div class="body">
+            <div class="row">
+              <div class="k">Порог автосогласования<small>брони ниже этой суммы — без вас</small></div>
+              <div class="v editable">20 000 ₽</div>
+            </div>
+            <div class="row">
+              <div class="k">Скидка постоянному клиенту<small>при ≥10 броней без долгов</small></div>
+              <div class="v editable">7%</div>
+            </div>
+            <div class="row">
+              <div class="k">Стандартная отсрочка оплаты</div>
+              <div class="v editable">14 дней</div>
+            </div>
+            <div class="row">
+              <div class="k">Напоминание о просрочке<small>автоматическое письмо/Telegram клиенту</small></div>
+              <div class="v"><span class="set-toggle on"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="set-card danger" style="grid-column:1 / -1">
+          <div class="head">
+            <h3 style="color:var(--danger)"><span class="ico" style="background:#fff;color:var(--danger);border:1px solid var(--danger-border)">!</span>Осторожная зона</h3>
+          </div>
+          <div class="body">
+            <div class="row">
+              <div class="k">Очистить словарь сленга<small>AI перестанет узнавать редкие названия · обучится заново</small></div>
+              <div class="v"><button class="adm-btn sm danger">Очистить…</button></div>
+            </div>
+            <div class="row">
+              <div class="k">Экспорт всей базы<small>дамп в ZIP: брони, клиенты, каталог, ремонты</small></div>
+              <div class="v"><button class="adm-btn sm">Скачать</button></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer: mapping from old admin -->
+  <div style="margin-top:20px;padding:16px 22px;background:var(--slate-soft);border:1px solid var(--slate-border);border-radius:var(--r-lg);font-size:12.5px;line-height:1.7;color:var(--ink-2)">
+    <b style="color:var(--ink);font-size:14px">Что куда уехало из старого /admin</b>
+    <ul style="margin:8px 0 0;padding-left:20px">
+      <li><b>«Управление пользователями»</b> → <span class="mono">/admin/users</span> · почти без изменений, только добавилась роль «Техник»</li>
+      <li><b>«Обучение сленга»</b> → <span class="mono">/admin/slang</span> · добавлены фильтры, детальный правый pane, счётчики использования</li>
+      <li><b>«Импорт цен»</b> → <span class="mono">/admin/imports</span> · переделан в wizard с 4 шагами, цветные статусы изменений</li>
+      <li><b>«Настройки»</b> → <span class="mono">/admin/settings</span> · разбиты на 5 смысловых карточек, добавлены AI и финансовые правила</li>
+      <li><b>«Управление штрихкодами»</b> (было отдельной вкладкой) — <i>скрыто из меню</i>, функционал остаётся в коде</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>

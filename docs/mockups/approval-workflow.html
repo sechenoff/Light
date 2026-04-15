@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · approval workflow</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<h2>Согласование броней — полный флоу</h2>
+<p class="subtitle">Четыре экрана + схема статусов. Смотрите по порядку сверху вниз — это типичный путь брони от создания до выдачи.</p>
+
+<!-- Статусная схема -->
+<div style="margin-top:20px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+  <h3 style="margin-top:0">Статусы брони (предлагаемая модель)</h3>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-family:-apple-system,sans-serif;font-size:12px;margin-top:12px">
+    <div style="background:#94a3b8;color:#fff;padding:6px 12px;border-radius:6px"><b>DRAFT</b><br><span style="font-size:10px">кладовщик редактирует</span></div>
+    <div style="color:#64748b">→</div>
+    <div style="background:#d97706;color:#fff;padding:6px 12px;border-radius:6px"><b>PENDING_APPROVAL</b><br><span style="font-size:10px">отправлено руководителю</span></div>
+    <div style="color:#64748b">→</div>
+    <div style="background:#059669;color:#fff;padding:6px 12px;border-radius:6px"><b>CONFIRMED</b><br><span style="font-size:10px">одобрено</span></div>
+    <div style="color:#64748b">→</div>
+    <div style="background:#2563eb;color:#fff;padding:6px 12px;border-radius:6px"><b>ISSUED</b><br><span style="font-size:10px">выдано</span></div>
+    <div style="color:#64748b">→</div>
+    <div style="background:#475569;color:#fff;padding:6px 12px;border-radius:6px"><b>RETURNED</b><br><span style="font-size:10px">возвращено</span></div>
+  </div>
+  <div style="margin-top:12px;font-size:12px;color:#64748b">
+    <b>Развилки:</b> PENDING_APPROVAL → DRAFT (отклонено, с комментарием) · любой → CANCELLED (отмена).<br>
+    <b>Что меняется:</b> сегодня DRAFT путается с «жду согласования». Добавляем отдельный статус <b>PENDING_APPROVAL</b> — чистое разделение «я ещё пишу» vs «я отправил».
+  </div>
+</div>
+
+<!-- ЭКРАН 1: Кладовщик создаёт бронь -->
+<div style="margin-top:28px;padding:18px;border:1px solid #e2e8f0;border-radius:8px;background:#fff">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="background:#2563eb;color:#fff;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600">1. КЛАДОВЩИК</div>
+    <h3 style="margin:0">Создал бронь → отправляет на согласование</h3>
+  </div>
+
+  <div style="font-family:-apple-system,sans-serif;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+    <div style="padding:10px 14px;background:#0f172a;color:#fff;font-size:13px;display:flex;justify-content:space-between">
+      <span>Бронь #LR-2026-0147 · <span style="color:#94a3b8">DRAFT</span></span>
+      <span style="color:#94a3b8;font-size:12px">Ромашка Продакшн · Клип «Лето» · 20–22 апр</span>
+    </div>
+    <div style="padding:14px 16px;background:#f8fafc;font-size:13px">
+      <div style="margin-bottom:10px;color:#334155">
+        <b>12 позиций</b> · расчётная стоимость аренды <b>72 000 ₽</b><br>
+        <span style="color:#64748b">2× HMI 1.2kW, 4× Arri Fresnel 2kW, стойки, димеры…</span>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:10px;margin-bottom:12px;font-size:12px;color:#64748b">
+        <b style="color:#334155">Для руководителя (опционально):</b><br>
+        <textarea style="width:100%;border:1px solid #e2e8f0;border-radius:4px;padding:6px;margin-top:4px;font-family:inherit;font-size:12px;resize:none;height:40px">Постоянный клиент, торгуется по свету. Готов 70k+ если дать 4 Arri.</textarea>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button style="background:#d97706;color:#fff;border:none;padding:9px 18px;border-radius:5px;font-size:13px;font-weight:500">📤 Отправить на согласование</button>
+        <button style="background:#fff;border:1px solid #e2e8f0;padding:9px 16px;border-radius:5px;font-size:13px">Сохранить черновик</button>
+        <button style="background:#fff;border:1px solid #fca5a5;color:#dc2626;padding:9px 16px;border-radius:5px;font-size:13px">Удалить</button>
+      </div>
+      <div style="margin-top:12px;font-size:11px;color:#64748b;font-style:italic">
+        После отправки бронь переходит в <b>PENDING_APPROVAL</b> — изменить её уже нельзя, только отозвать.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ЭКРАН 2: Руководитель видит очередь -->
+<div style="margin-top:20px;padding:18px;border:1px solid #e2e8f0;border-radius:8px;background:#fff">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="background:#059669;color:#fff;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600">2. РУКОВОДИТЕЛЬ</div>
+    <h3 style="margin:0">«На согласование» — очередь из 5 броней</h3>
+  </div>
+
+  <div style="font-family:-apple-system,sans-serif;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+    <div style="padding:10px 14px;background:#f1f5f9;font-size:12px;color:#64748b;display:grid;grid-template-columns:1fr 1.5fr 1fr 120px 120px;gap:12px">
+      <div>№ брони</div><div>Клиент / проект</div><div>Даты</div><div>Сумма</div><div>Ждёт</div>
+    </div>
+    <div style="background:#fff">
+      <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 1.5fr 1fr 120px 120px;gap:12px;font-size:13px;align-items:center">
+        <div><b>LR-2026-0147</b><br><span style="color:#64748b;font-size:11px">от Петра · 15 апр</span></div>
+        <div><b>Ромашка Продакшн</b><br><span style="color:#64748b;font-size:11px">Клип «Лето»</span></div>
+        <div>20–22 апр<br><span style="color:#64748b;font-size:11px">3 дня</span></div>
+        <div><b>72 000 ₽</b></div>
+        <div><span style="color:#dc2626;font-size:12px">2 дня 🔴</span></div>
+      </div>
+      <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 1.5fr 1fr 120px 120px;gap:12px;font-size:13px;align-items:center">
+        <div><b>LR-2026-0148</b><br><span style="color:#64748b;font-size:11px">от Петра · 15 апр</span></div>
+        <div><b>Мосфильм</b><br><span style="color:#64748b;font-size:11px">«Тихий Дон»</span></div>
+        <div>25–28 апр<br><span style="color:#64748b;font-size:11px">4 дня</span></div>
+        <div><b>186 400 ₽</b></div>
+        <div><span style="color:#d97706;font-size:12px">1 день</span></div>
+      </div>
+      <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:1fr 1.5fr 1fr 120px 120px;gap:12px;font-size:13px;align-items:center">
+        <div><b>LR-2026-0149</b><br><span style="color:#64748b;font-size:11px">от Петра · 14 апр</span></div>
+        <div><b>Иванов И.</b><br><span style="color:#64748b;font-size:11px">Реклама Ozon</span></div>
+        <div>18 апр<br><span style="color:#64748b;font-size:11px">1 день</span></div>
+        <div><b>14 000 ₽</b></div>
+        <div><span style="color:#64748b;font-size:12px">сегодня</span></div>
+      </div>
+      <div style="padding:12px 14px;display:grid;grid-template-columns:1fr 1.5fr 1fr 120px 120px;gap:12px;font-size:13px;align-items:center;color:#94a3b8">
+        <div colspan="5" style="grid-column:1/-1;text-align:center;font-style:italic">+ ещё 2 брони</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ЭКРАН 3: Руководитель одобряет/отклоняет -->
+<div style="margin-top:20px;padding:18px;border:1px solid #e2e8f0;border-radius:8px;background:#fff">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="background:#059669;color:#fff;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600">3. РУКОВОДИТЕЛЬ</div>
+    <h3 style="margin:0">Клик на бронь → решение за 30 секунд</h3>
+  </div>
+
+  <div style="font-family:-apple-system,sans-serif;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+    <div style="padding:12px 16px;background:#0f172a;color:#fff;font-size:13px;display:flex;justify-content:space-between">
+      <span><b>LR-2026-0147</b> · Ромашка Продакшн · Клип «Лето»</span>
+      <span style="background:#d97706;padding:2px 8px;border-radius:10px;font-size:11px">PENDING_APPROVAL</span>
+    </div>
+    <div style="padding:16px;background:#f8fafc;font-size:13px">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px">
+        <div>
+          <div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">ДАТЫ</div>
+          <b>20 апр 09:00 → 22 апр 21:00</b><br><span style="color:#64748b;font-size:12px">3 дня</span>
+        </div>
+        <div>
+          <div style="color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">СУММА</div>
+          <b style="font-size:18px">72 000 ₽</b>
+        </div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:12px;margin-bottom:14px">
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">ОБОРУДОВАНИЕ (12 позиций)</div>
+        <div style="font-size:12px;line-height:1.7">
+          • HMI 1.2kW × 2 — 24 000 ₽<br>
+          • Arri Fresnel 2kW × 4 — 32 000 ₽<br>
+          • Стойка Avenger × 6 — 9 000 ₽<br>
+          • <span style="color:#64748b">+ 9 позиций…</span>
+        </div>
+      </div>
+
+      <div style="background:#fef3c7;border-left:3px solid #d97706;padding:10px 12px;margin-bottom:14px;border-radius:4px;font-size:12px">
+        <b>💬 Комментарий кладовщика:</b><br>
+        Постоянный клиент, торгуется по свету. Готов 70k+ если дать 4 Arri.
+      </div>
+
+      <div style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:5px;padding:10px 12px;margin-bottom:14px;font-size:12px">
+        <b>📅 Конфликтов нет</b> · все 12 позиций свободны на 20–22 апр.
+      </div>
+
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:10px 12px;margin-bottom:14px;font-size:12px">
+        <b>💰 История клиента:</b> 14 броней · средний чек 58 000 ₽ · <span style="color:#059669">долгов нет</span>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button style="background:#059669;color:#fff;border:none;padding:10px 22px;border-radius:5px;font-size:14px;font-weight:500">✓ Одобрить</button>
+        <button style="background:#fff;border:1px solid #dc2626;color:#dc2626;padding:10px 22px;border-radius:5px;font-size:14px">✗ Отклонить…</button>
+        <button style="background:#fff;border:1px solid #e2e8f0;color:#64748b;padding:10px 18px;border-radius:5px;font-size:13px">Вернуться к списку</button>
+      </div>
+
+      <div style="margin-top:14px;font-size:11px;color:#64748b">
+        При клике «Отклонить» появляется textarea для комментария. Без комментария отклонить нельзя.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ЭКРАН 4: Кладовщик видит отклонённую бронь -->
+<div style="margin-top:20px;padding:18px;border:1px solid #e2e8f0;border-radius:8px;background:#fff">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="background:#2563eb;color:#fff;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600">4. КЛАДОВЩИК</div>
+    <h3 style="margin:0">Отклонили — вижу комментарий, правлю, отправляю снова</h3>
+  </div>
+
+  <div style="font-family:-apple-system,sans-serif;border:1px solid #fca5a5;border-radius:6px;overflow:hidden">
+    <div style="padding:10px 14px;background:#fef2f2;border-bottom:1px solid #fecaca;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <b>LR-2026-0147</b> · Ромашка Продакшн · <span style="background:#fff;color:#dc2626;padding:1px 8px;border-radius:10px;font-size:11px;border:1px solid #fca5a5">отклонено → DRAFT</span>
+      </div>
+      <span style="color:#64748b;font-size:12px">15 апр в 14:32 · Sechenoff</span>
+    </div>
+    <div style="padding:14px 16px;background:#fff">
+      <div style="background:#fef2f2;border-left:3px solid #dc2626;padding:10px 12px;margin-bottom:14px;border-radius:4px;font-size:13px">
+        <b>💬 Руководитель пишет:</b><br>
+        Либо уменьшить HMI до 1 штуки (у нас только 2 свободно на эти даты, зачем резервировать оба), либо согласовать с клиентом 85k — за 4 Arri + 2 HMI цена низкая.
+      </div>
+
+      <div style="font-size:13px;color:#334155;margin-bottom:14px">
+        Бронь вернулась в <b>DRAFT</b>. Можно править состав, суммы, комментарии — или нажать «Отправить на согласование» ещё раз.
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button style="background:#2563eb;color:#fff;border:none;padding:9px 18px;border-radius:5px;font-size:13px;font-weight:500">Открыть и править</button>
+        <button style="background:#fff;border:1px solid #e2e8f0;padding:9px 16px;border-radius:5px;font-size:13px">Обсудить с клиентом (→ Telegram)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Итоговые вопросы -->
+<div style="margin-top:28px;padding:16px;background:#fef3c7;border-left:3px solid #d97706;border-radius:4px;font-size:13px;line-height:1.7">
+  <b>Спорные места — скажите, что изменить:</b>
+  <ul style="margin:8px 0 0;padding-left:20px">
+    <li>Добавляем <b>PENDING_APPROVAL</b> как отдельный статус (альтернатива — оставить DRAFT с флагом submittedAt, но тогда путается «черновик» и «ждёт ответа»)</li>
+    <li>Отклонение возвращает бронь в <b>DRAFT</b> с комментарием — это не новый статус REJECTED, чтобы не захламлять. Альтернатива — статус REJECTED, который нельзя править, только «Переоткрыть»</li>
+    <li>Комментарий руководителя <b>обязателен</b> при отклонении (без него кнопка «Отклонить» неактивна)</li>
+    <li>В очереди согласования у руководителя виден <b>возраст брони</b> («ждёт 2 дня 🔴») — чтобы не забывать про старые</li>
+    <li><b>Автоматика на согласование</b> — нужна ли? Например, брони до 20 000 ₽ или от постоянных клиентов без долгов могут автоматически идти в CONFIRMED без участия руководителя. Сейчас такого нет, но это может сэкономить вам кучу кликов</li>
+    <li><b>Редактирование одобренной брони</b> — если клиент передумал, что кладовщику делать с уже CONFIRMED броней: менять внутри без повторного согласования, или снова в PENDING? Моё предложение: мелкие правки (комментарий, часы) — без пересогласования; изменение состава или суммы >10% — снова в PENDING_APPROVAL</li>
+  </ul>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · finance dashboard coss style</title>
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<style>
+@import url('https://api.fontshare.com/v2/css?f[]=cal-sans@400,500,600&f[]=satoshi@300,400,500,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+.coss-scope {
+  --bg: #fafafa;
+  --bg-grid: #f0f0f0;
+  --surface: #ffffff;
+  --ink: #0a0a0a;
+  --ink-2: #52525b;
+  --ink-3: #a1a1aa;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+
+  --accent: #1e3a8a;
+  --accent-2: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --accent-border: #bfdbfe;
+
+  --rose: #9f1239;       --rose-soft: #ffe4e6;    --rose-border: #fecdd3;
+  --amber: #a16207;      --amber-soft: #fef3c7;   --amber-border: #fde68a;
+  --emerald: #047857;    --emerald-soft: #d1fae5; --emerald-border: #a7f3d0;
+  --slate: #334155;      --slate-soft: #f1f5f9;   --slate-border: #cbd5e1;
+  --indigo: #4338ca;     --indigo-soft: #e0e7ff;  --indigo-border: #c7d2fe;
+
+  /* coss.com gradient (blue → purple → orange) */
+  --gradient: linear-gradient(90deg, #3b82f6 0%, #a855f7 55%, #f97316 100%);
+
+  font-family: 'Satoshi', -apple-system, sans-serif;
+  color: var(--ink); background: var(--bg);
+  font-size: 14px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  padding: 28px 36px 80px;
+
+  /* Subtle visible grid (coss.com signature) */
+  background-image:
+    linear-gradient(to right, var(--bg-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bg-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: -1px -1px;
+}
+
+.coss-scope .display {
+  font-family: 'Cal Sans', 'Satoshi', -apple-system, sans-serif;
+  font-weight: 400; letter-spacing: -0.02em;
+}
+.coss-scope .mono {
+  font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.coss-scope .eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--ink-3); font-weight: 500;
+}
+
+/* ——— INTRO ——— */
+.coss-intro {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 22px 26px;
+  margin-bottom: 32px;
+  position: relative;
+}
+/* Decorative corner dots — coss.com signature */
+.corners::before, .corners::after,
+.corners .c-tl, .corners .c-br {
+  content: ''; position: absolute; width: 7px; height: 7px;
+  background: #fff; border: 1px solid var(--border-strong);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.03);
+}
+.corners::before { top: -4px; left: -4px; }
+.corners::after { top: -4px; right: -4px; }
+.corners .c-tl { bottom: -4px; left: -4px; }
+.corners .c-br { bottom: -4px; right: -4px; }
+
+.coss-intro h2 {
+  font-family: 'Cal Sans', sans-serif;
+  margin: 0 0 8px; font-size: 22px; font-weight: 500;
+  letter-spacing: -0.025em;
+}
+.coss-intro h2 .highlight {
+  position: relative; display: inline-block; padding: 0 6px;
+  z-index: 1;
+}
+.coss-intro h2 .highlight::before {
+  content: ''; position: absolute; inset: 2px -3px;
+  background: var(--gradient); opacity: 0.28;
+  transform: rotate(-1.5deg); border-radius: 2px;
+  z-index: -1;
+}
+.coss-intro p { margin: 0; color: var(--ink-2); font-size: 13.5px; line-height: 1.6; }
+.coss-intro .ref {
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+  display: flex; gap: 24px; font-size: 12px; color: var(--ink-2);
+}
+.coss-intro .ref span:first-child { color: var(--ink-3); }
+.coss-intro code {
+  font-family: 'JetBrains Mono', monospace;
+  background: #fff; padding: 2px 6px; border: 1px solid var(--border);
+  border-radius: 2px; font-size: 11.5px;
+  display: inline-block; transform: rotate(-0.5deg);
+}
+
+/* ——— FRAME ——— */
+.coss-frame {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  position: relative;
+  margin-bottom: 28px;
+}
+.coss-frame-label {
+  padding: 9px 18px;
+  background: var(--ink);
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: 0.02em;
+  border-top-left-radius: 3px; border-top-right-radius: 3px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.coss-frame-label .tag { font-size: 10px; opacity: 0.55; }
+
+/* ——— Top chrome: tabs + head ——— */
+.chrome-tabs {
+  display: flex; gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 28px;
+}
+.chrome-tab {
+  padding: 15px 18px; font-size: 13.5px;
+  color: var(--ink-2); font-weight: 500;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  letter-spacing: -0.005em;
+}
+.chrome-tab.active {
+  color: var(--ink); border-bottom-color: var(--ink);
+  font-weight: 600;
+}
+.chrome-tab .dot {
+  display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--rose);
+  margin-left: 5px; vertical-align: 1px;
+}
+
+.page { padding: 28px 32px 36px; }
+
+.page-head {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-bottom: 28px;
+}
+.page-head h1 {
+  font-family: 'Cal Sans', sans-serif;
+  margin: 0; font-size: 40px; font-weight: 500;
+  letter-spacing: -0.035em; line-height: 1;
+}
+.page-head .sub {
+  font-size: 13px; color: var(--ink-2); margin-top: 8px;
+}
+.page-head .sub .mono-chip {
+  font-family: 'JetBrains Mono', monospace;
+  background: #fafafa; border: 1px solid var(--border);
+  padding: 1px 7px; border-radius: 2px; font-size: 11.5px;
+  display: inline-block; margin: 0 2px; transform: rotate(-0.3deg);
+}
+
+.head-actions { display: flex; gap: 10px; align-items: center; }
+
+.period-sel {
+  display: flex; border: 1px solid var(--border);
+  border-radius: 3px; background: #fff;
+  overflow: hidden;
+}
+.period-sel button {
+  background: transparent; border: 0; border-right: 1px solid var(--border);
+  padding: 7px 14px; font-size: 12.5px; color: var(--ink-2);
+  font-weight: 500; cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+}
+.period-sel button:last-child { border-right: 0; }
+.period-sel button.active { background: var(--ink); color: #fff; }
+
+.btn {
+  border: 1px solid var(--border-strong); background: #fff;
+  border-radius: 3px; padding: 8px 14px;
+  font-size: 13px; font-weight: 500; color: var(--ink); cursor: pointer;
+  font-family: 'Satoshi', sans-serif;
+}
+.btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+.btn .arrow {
+  display: inline-block; margin-left: 6px; opacity: 0.6;
+  transition: transform 0.2s;
+}
+.btn:hover .arrow { transform: translateX(2px); opacity: 1; }
+
+/* ——— KPI ROW ——— */
+.kpi-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  border: 1px solid var(--border); border-radius: 3px;
+  background: #fff; overflow: hidden;
+  margin-bottom: 28px;
+}
+.kpi-cell {
+  padding: 22px 24px 24px;
+  border-right: 1px solid var(--border);
+  position: relative;
+}
+.kpi-cell:last-child { border-right: 0; }
+
+.kpi-cell .q {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--ink-3); font-weight: 500; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 7px;
+}
+.kpi-cell .q .num-dot {
+  display: inline-block;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--ink-2); font-size: 9px; text-align: center;
+  line-height: 12px; font-weight: 600;
+}
+.kpi-cell .val {
+  font-family: 'Cal Sans', sans-serif;
+  font-size: 30px; font-weight: 500;
+  letter-spacing: -0.03em; line-height: 1;
+  color: var(--ink);
+}
+.kpi-cell .val.is-num { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 26px; letter-spacing: -0.015em; }
+.kpi-cell .ctx {
+  font-size: 12.5px; color: var(--ink-2); margin-top: 10px;
+  line-height: 1.5;
+}
+.kpi-cell .trend {
+  display: inline-flex; gap: 4px; align-items: center;
+  font-size: 11.5px; margin-top: 12px; font-weight: 500;
+  padding: 3px 8px; border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.trend.up { background: var(--emerald-soft); color: var(--emerald); }
+.trend.down { background: var(--rose-soft); color: var(--rose); }
+.trend.neutral { background: var(--slate-soft); color: var(--slate); }
+.trend.warn { background: var(--amber-soft); color: var(--amber); }
+
+/* Status strip at top of each KPI */
+.kpi-cell::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--border);
+}
+.kpi-cell.debts::before { background: var(--rose); }
+.kpi-cell.pay::before { background: var(--amber); }
+.kpi-cell.rev::before { background: var(--emerald); }
+.kpi-cell.exp::before { background: var(--slate); }
+
+/* ——— Profit strip (signature: gradient highlight) ——— */
+.profit-strip {
+  position: relative;
+  padding: 26px 30px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #fff;
+  margin-bottom: 32px;
+  display: grid; grid-template-columns: 1fr auto; gap: 30px;
+  align-items: center;
+}
+.profit-strip .label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--ink-3); font-weight: 500; margin-bottom: 8px;
+}
+.profit-strip .tag-line {
+  font-family: 'Cal Sans', sans-serif; font-size: 17px;
+  color: var(--ink); letter-spacing: -0.015em; font-weight: 500;
+}
+.profit-strip .tag-line .gradient-chip {
+  position: relative; display: inline-block;
+  padding: 1px 10px 2px; margin: 0 2px; z-index: 1;
+  color: var(--ink); font-weight: 600;
+}
+.profit-strip .tag-line .gradient-chip::before {
+  content: ''; position: absolute; inset: 0;
+  background: var(--gradient); opacity: 0.26;
+  transform: rotate(-1.5deg); border-radius: 2px;
+  z-index: -1;
+}
+.profit-strip .big-number {
+  font-family: 'Cal Sans', sans-serif;
+  font-size: 52px; font-weight: 500;
+  letter-spacing: -0.04em; line-height: 0.95;
+  color: var(--ink);
+}
+.profit-strip .formula {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px; color: var(--ink-3);
+  margin-top: 6px;
+}
+
+/* ——— Two-column ——— */
+.two-col {
+  display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px;
+  margin-bottom: 28px;
+}
+
+.panel {
+  background: #fff; border: 1px solid var(--border);
+  border-radius: 3px; overflow: hidden;
+}
+.panel-head {
+  padding: 16px 20px 14px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.panel-head h3 {
+  font-family: 'Cal Sans', sans-serif;
+  margin: 0; font-size: 17px; font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.panel-head .link {
+  font-size: 12px; color: var(--ink-2);
+  font-family: 'JetBrains Mono', monospace;
+  display: inline-flex; gap: 4px; align-items: center;
+}
+
+/* Chart — column overlay style */
+.chart {
+  padding: 22px 24px 14px;
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 18px;
+  align-items: end; height: 190px;
+}
+.chart .col {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  height: 100%; justify-content: flex-end; position: relative;
+}
+.chart .stack {
+  position: relative; width: 100%; height: 100%;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.chart .bar {
+  width: 100%; max-width: 44px; border-radius: 2px 2px 0 0;
+  position: absolute; bottom: 0;
+}
+.chart .bar.rev { background: var(--emerald); opacity: 1; left: 0; right: 0; margin: auto; width: 44px; }
+.chart .bar.exp {
+  background: var(--slate); left: 0; right: 0; margin: auto;
+  width: 44px; transform: translateX(24px);
+  opacity: 0.85;
+}
+.chart .col.current .bar.rev { outline: 2px solid var(--ink); outline-offset: 1px; }
+.chart .xlbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; color: var(--ink-3); letter-spacing: 0.02em;
+}
+.chart-legend {
+  padding: 0 24px 18px;
+  display: flex; gap: 18px; font-size: 11.5px; color: var(--ink-2);
+  font-family: 'JetBrains Mono', monospace;
+}
+.chart-legend .sw { display: inline-block; width: 9px; height: 9px; border-radius: 1px; margin-right: 5px; vertical-align: 0; }
+
+/* ——— Debtors list ——— */
+.list-row {
+  display: grid; grid-template-columns: 1fr auto auto;
+  align-items: center; gap: 14px;
+  padding: 13px 20px; border-bottom: 1px solid var(--border);
+}
+.list-row:last-child { border-bottom: 0; }
+.list-row:hover { background: #fafafa; cursor: pointer; }
+.list-row .name {
+  font-weight: 500; font-size: 13.5px;
+  letter-spacing: -0.005em;
+}
+.list-row .meta {
+  font-size: 11.5px; color: var(--ink-2); margin-top: 2px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.list-row .sum {
+  font-family: 'JetBrains Mono', monospace; font-weight: 600;
+  font-size: 14px; text-align: right;
+}
+
+.age-pill {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px; padding: 2px 8px; border-radius: 2px;
+  font-weight: 500; text-transform: uppercase; letter-spacing: 0.02em;
+  min-width: 84px; text-align: center;
+}
+.age-pill.overdue { background: var(--rose-soft); color: var(--rose); }
+.age-pill.soon { background: var(--amber-soft); color: var(--amber); }
+.age-pill.ok { background: var(--emerald-soft); color: var(--emerald); }
+
+/* ——— Upcoming row ——— */
+.up-row {
+  display: grid; grid-template-columns: 50px 1fr auto;
+  gap: 14px; align-items: center;
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
+}
+.up-row:last-child { border-bottom: 0; }
+.up-date {
+  text-align: center; padding: 4px 0;
+  border: 1px solid var(--border); border-radius: 2px;
+  background: #fafafa;
+  font-family: 'JetBrains Mono', monospace;
+}
+.up-date .d {
+  font-family: 'Cal Sans', sans-serif;
+  font-size: 17px; font-weight: 500; letter-spacing: -0.02em; line-height: 1;
+}
+.up-date .m {
+  font-size: 9px; text-transform: uppercase; color: var(--ink-3);
+  letter-spacing: 0.08em; margin-top: 2px; font-weight: 500;
+}
+.up-row.today .up-date { background: var(--ink); }
+.up-row.today .up-date .d { color: #fff; }
+.up-row.today .up-date .m { color: rgba(255,255,255,0.6); }
+
+.up-row .name { font-size: 13.5px; font-weight: 500; letter-spacing: -0.005em; }
+.up-row .meta {
+  font-size: 11.5px; color: var(--ink-2); margin-top: 2px;
+}
+.up-row .meta .code {
+  font-family: 'JetBrains Mono', monospace;
+  background: #fafafa; border: 1px solid var(--border);
+  padding: 0 5px; border-radius: 2px; font-size: 11px;
+  display: inline-block; transform: rotate(-0.5deg);
+}
+.up-row .sum {
+  font-family: 'JetBrains Mono', monospace; font-size: 14.5px; font-weight: 600;
+  text-align: right;
+}
+
+/* ——— Diff note from v1 ——— */
+.diff-note {
+  background: #fff; border: 1px solid var(--border);
+  border-radius: 3px; padding: 20px 24px;
+  font-size: 13px; color: var(--ink-2); line-height: 1.65;
+  position: relative;
+}
+.diff-note h3 {
+  font-family: 'Cal Sans', sans-serif;
+  margin: 0 0 10px; font-size: 18px; color: var(--ink); font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.diff-note ul { margin: 8px 0 0 0; padding: 0; list-style: none; }
+.diff-note li {
+  margin: 6px 0; padding-left: 22px; position: relative;
+}
+.diff-note li::before {
+  content: '→'; position: absolute; left: 0;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--ink-3); font-weight: 500;
+}
+.diff-note strong { color: var(--ink); font-weight: 600; }
+.diff-note code {
+  font-family: 'JetBrains Mono', monospace;
+  background: #fafafa; border: 1px solid var(--border);
+  padding: 1px 5px; border-radius: 2px; font-size: 11.5px;
+  display: inline-block; transform: rotate(-0.3deg);
+}
+
+/* mini q number */
+.q .num-dot { font-family: 'JetBrains Mono', monospace; }
+</style>
+
+<div class="coss-scope">
+
+  <div class="coss-intro corners">
+    <span class="c-tl"></span><span class="c-br"></span>
+    <h2>Финансы — версия в стилистике <span class="highlight">coss.com</span></h2>
+    <p>Пилот: одна страница (<code>/finance</code> — сводка) пересобрана в анти-корпоративном редакторском ключе. Cal Sans для крупных чисел и заголовков, JetBrains Mono для ID/счётов/сумм, едва заметная сетка на фоне, наклонные цветные хайлайты, угловые квадраты на рамках. Сравните со строгой версией рядом (<code>finance-pages.html</code>) — если заходит, раскатаем на остальные 3 страницы + долги, поступления, расходы, а заодно и на уже сделанные моки.</p>
+    <div class="ref">
+      <span>Референс</span>
+      <span><code>coss.com</code> / <code>21st.dev/community/coss.com</code></span>
+    </div>
+  </div>
+
+  <div class="coss-frame corners">
+    <span class="c-tl"></span><span class="c-br"></span>
+
+    <div class="coss-frame-label">
+      /finance · Финансовая сводка (coss-style)
+      <span class="tag">пилотный редизайн · 1 страница из 4</span>
+    </div>
+
+    <div class="chrome-tabs">
+      <div class="chrome-tab active">Сводка</div>
+      <div class="chrome-tab">Долги<span class="dot"></span></div>
+      <div class="chrome-tab">Поступления</div>
+      <div class="chrome-tab">Расходы</div>
+    </div>
+
+    <div class="page">
+
+      <div class="page-head">
+        <div>
+          <h1>Финансы.</h1>
+          <div class="sub">
+            Апрель 2026 · обновлено <span class="mono-chip">14 апр, 11:42</span> · доступ только руководителю.
+          </div>
+        </div>
+        <div class="head-actions">
+          <div class="period-sel">
+            <button>День</button>
+            <button>Неделя</button>
+            <button class="active">Месяц</button>
+            <button>Квартал</button>
+            <button>Год</button>
+          </div>
+          <button class="btn">Скачать отчёт <span class="arrow">↗</span></button>
+        </div>
+      </div>
+
+      <!-- KPI — 4 questions as numbered cells -->
+      <div class="kpi-grid">
+        <div class="kpi-cell debts">
+          <div class="q"><span class="num-dot">1</span> Кто должен</div>
+          <div class="val is-num">425 400 ₽</div>
+          <div class="ctx">12 клиентов · из них <strong style="color: var(--rose);">4 просрочки</strong></div>
+          <span class="trend down">↑ 62к к марту</span>
+        </div>
+        <div class="kpi-cell pay">
+          <div class="q"><span class="num-dot">2</span> Когда оплатят</div>
+          <div class="val is-num">1 245 000 ₽</div>
+          <div class="ctx">ожидается за 30 дней · ближайший — завтра</div>
+          <span class="trend neutral">8 платежей в очереди</span>
+        </div>
+        <div class="kpi-cell rev">
+          <div class="q"><span class="num-dot">3</span> Сколько заработал</div>
+          <div class="val is-num">2 890 000 ₽</div>
+          <div class="ctx">47 закрытых броней</div>
+          <span class="trend up">↑ 18% к марту</span>
+        </div>
+        <div class="kpi-cell exp">
+          <div class="q"><span class="num-dot">4</span> Сколько потратил</div>
+          <div class="val is-num">480 500 ₽</div>
+          <div class="ctx">23 операции · ремонт, аренда, закупка</div>
+          <span class="trend warn">↑ 9% — выше нормы</span>
+        </div>
+      </div>
+
+      <!-- Profit strip with gradient highlight -->
+      <div class="profit-strip">
+        <div>
+          <div class="label">Чистый результат</div>
+          <div class="tag-line">
+            В апреле заработано <span class="gradient-chip">+ 2 409 500 ₽</span> после всех расходов — лучший месяц за последние полгода.
+          </div>
+          <div class="formula">2 890 000 (заработал) − 480 500 (потратил) = 2 409 500</div>
+        </div>
+        <div>
+          <div class="big-number">+2.41M</div>
+        </div>
+      </div>
+
+      <!-- Chart + top debtors -->
+      <div class="two-col">
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Доходы и расходы, 6 месяцев</h3>
+            <span class="link">детали →</span>
+          </div>
+          <div class="chart">
+            <div class="col"><div class="stack"><div class="bar rev" style="height: 52%;"></div><div class="bar exp" style="height: 14%;"></div></div><div class="xlbl">НОЯ</div></div>
+            <div class="col"><div class="stack"><div class="bar rev" style="height: 60%;"></div><div class="bar exp" style="height: 16%;"></div></div><div class="xlbl">ДЕК</div></div>
+            <div class="col"><div class="stack"><div class="bar rev" style="height: 45%;"></div><div class="bar exp" style="height: 12%;"></div></div><div class="xlbl">ЯНВ</div></div>
+            <div class="col"><div class="stack"><div class="bar rev" style="height: 70%;"></div><div class="bar exp" style="height: 17%;"></div></div><div class="xlbl">ФЕВ</div></div>
+            <div class="col"><div class="stack"><div class="bar rev" style="height: 82%;"></div><div class="bar exp" style="height: 19%;"></div></div><div class="xlbl">МАР</div></div>
+            <div class="col current"><div class="stack"><div class="bar rev" style="height: 96%;"></div><div class="bar exp" style="height: 24%;"></div></div><div class="xlbl">АПР</div></div>
+          </div>
+          <div class="chart-legend">
+            <span><span class="sw" style="background: var(--emerald);"></span>выручка</span>
+            <span><span class="sw" style="background: var(--slate);"></span>расходы</span>
+            <span style="margin-left: auto; color: var(--ink-3);">ось Y — тыс. ₽</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Топ должников</h3>
+            <span class="link">все 12 →</span>
+          </div>
+          <div>
+            <div class="list-row">
+              <div>
+                <div class="name">Мосфильм</div>
+                <div class="meta">«Пост-гравитация» · с 5 марта</div>
+              </div>
+              <span class="age-pill overdue">35 дней</span>
+              <div class="sum">142 000 ₽</div>
+            </div>
+            <div class="list-row">
+              <div>
+                <div class="name">RedLogic Production</div>
+                <div class="meta">«Альфа-банк» · с 28 марта</div>
+              </div>
+              <span class="age-pill overdue">12 дней</span>
+              <div class="sum">87 500 ₽</div>
+            </div>
+            <div class="list-row">
+              <div>
+                <div class="name">Бюро Горбунова</div>
+                <div class="meta">корпфильм · 8–10 апр</div>
+              </div>
+              <span class="age-pill soon">через 3 дня</span>
+              <div class="sum">64 200 ₽</div>
+            </div>
+            <div class="list-row">
+              <div>
+                <div class="name">Студия «Паровоз»</div>
+                <div class="meta">«По тонкому льду» · постоплата</div>
+              </div>
+              <span class="age-pill ok">по графику</span>
+              <div class="sum">56 800 ₽</div>
+            </div>
+            <div class="list-row">
+              <div>
+                <div class="name">Other Films</div>
+                <div class="meta">«Матрёшки» · 12 апр</div>
+              </div>
+              <span class="age-pill ok">по графику</span>
+              <div class="sum">42 100 ₽</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Upcoming week -->
+      <div class="panel">
+        <div class="panel-head">
+          <h3>На этой неделе ожидаем</h3>
+          <span class="link">весь график →</span>
+        </div>
+        <div>
+          <div class="up-row today">
+            <div class="up-date"><div class="d">15</div><div class="m">Апр</div></div>
+            <div>
+              <div class="name">Мосфильм — частичный платёж</div>
+              <div class="meta">бронь <span class="code">№ МФ-2026-03-15</span> · переведено утром, ждём подтверждение</div>
+            </div>
+            <div class="sum">80 000 ₽</div>
+          </div>
+          <div class="up-row">
+            <div class="up-date"><div class="d">16</div><div class="m">Апр</div></div>
+            <div>
+              <div class="name">RedLogic Production</div>
+              <div class="meta">«Альфа-банк» · счёт <span class="code">№ 2026-0412</span></div>
+            </div>
+            <div class="sum">87 500 ₽</div>
+          </div>
+          <div class="up-row">
+            <div class="up-date"><div class="d">17</div><div class="m">Апр</div></div>
+            <div>
+              <div class="name">Бюро Горбунова — полная оплата</div>
+              <div class="meta">корпфильм · по договору после возврата оборудования</div>
+            </div>
+            <div class="sum">64 200 ₽</div>
+          </div>
+          <div class="up-row">
+            <div class="up-date"><div class="d">18</div><div class="m">Апр</div></div>
+            <div>
+              <div class="name">Студия «Паровоз» — транш 2</div>
+              <div class="meta">«По тонкому льду» · постоплатная схема</div>
+            </div>
+            <div class="sum">56 800 ₽</div>
+          </div>
+          <div class="up-row">
+            <div class="up-date"><div class="d">19</div><div class="m">Апр</div></div>
+            <div>
+              <div class="name">Other Films</div>
+              <div class="meta">«Матрёшки» · клиент обещал после монтажа</div>
+            </div>
+            <div class="sum">42 100 ₽</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Diff from strict version -->
+  <div class="diff-note corners">
+    <span class="c-tl"></span><span class="c-br"></span>
+    <h3>Что изменилось по сравнению со строгой версией</h3>
+    <ul>
+      <li><strong>Типографика.</strong> Cal Sans (geometric display) для заголовков и больших чисел, Satoshi для body, JetBrains Mono для ID/счетов/дат. Раньше всё было в IBM Plex — там был «дизайн-системный» тон, теперь ближе к <em>редакторскому</em>.</li>
+      <li><strong>Сетка фоном.</strong> Едва заметный grid 24×24px — подпись coss.com, даёт «техничный» вайб без давления.</li>
+      <li><strong>Угловые квадраты</strong> на каждой рамке (<code>corners</code>). Маленький сигнатурный штрих, который делает интерфейс узнаваемым.</li>
+      <li><strong>Наклонный цветной хайлайт</strong> с градиентом <code>blue → purple → orange</code> — использован один раз, на «+ 2 409 500 ₽» в блоке чистого результата. Это якорь внимания; не размазываем.</li>
+      <li><strong>Радиусы 3px</strong> (практически острые) — жёстче, чем в первой версии (4–6px). Вместе с тонкими линиями даёт «архитектурное» ощущение.</li>
+      <li><strong>Inline-код стиль</strong> на референсах (счёт № 2026-0412, бронь № МФ-2026-03-15). Подаёт технические идентификаторы как то, чем они являются — кодом.</li>
+      <li><strong>Цвет кнопок</strong> — primary теперь чёрный (<code>var(--ink)</code>), а не синий. Более «осознанно-минимальный» подход, в духе coss.com / Linear.</li>
+      <li><strong>Меньше семантических соусов в фоне</strong> карточек KPI: только верхняя полоска-индикатор (2px), сама карточка остаётся белой. Раньше был ещё и soft-тоновый фон.</li>
+    </ul>
+  </div>
+
+</div>
+
+</body>
+</html>
