@@ -197,6 +197,198 @@ export async function dashboardMetrics() {
   };
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Finance Dashboard (Sprint 3)
+// ──────────────────────────────────────────────────────────────────────────────
+
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function endOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+}
+
+function toYYYYMM(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${d.getFullYear()}-${m}`;
+}
+
+function toYYYYMMDD(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+async function computeMonthlyTrend(asOf: Date) {
+  const months: Array<{ start: Date; end: Date; label: string }> = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(asOf.getFullYear(), asOf.getMonth() - i, 1);
+    months.push({ start: startOfMonth(d), end: endOfMonth(d), label: toYYYYMM(d) });
+  }
+
+  const results = await Promise.all(
+    months.map(async ({ start, end, label }) => {
+      const [earnedAgg, spentAgg] = await Promise.all([
+        prisma.payment.aggregate({
+          where: {
+            direction: "INCOME",
+            AND: [
+              { OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }] },
+              { OR: [{ receivedAt: { gte: start, lte: end } }, { paymentDate: { gte: start, lte: end } }] },
+            ],
+          },
+          _sum: { amount: true },
+        }),
+        prisma.expense.aggregate({
+          where: {
+            approved: true,
+            expenseDate: { gte: start, lte: end },
+          },
+          _sum: { amount: true },
+        }),
+      ]);
+      const earned = new Decimal(earnedAgg._sum.amount?.toString() ?? "0");
+      const spent = new Decimal(spentAgg._sum.amount?.toString() ?? "0");
+      return {
+        month: label,
+        earned: earned.toFixed(2),
+        spent: spent.toFixed(2),
+        net: earned.sub(spent).toFixed(2),
+      };
+    }),
+  );
+
+  return results;
+}
+
+export async function computeFinanceDashboard(asOf: Date = new Date()) {
+  const monthS = startOfMonth(asOf);
+  const monthE = endOfMonth(asOf);
+  const weekEnd = new Date(asOf.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const [totalOutstandingAgg, earnedAgg, spentAgg, upcomingWeek, trend] = await Promise.all([
+    prisma.booking.aggregate({
+      where: { status: { not: "CANCELLED" }, amountOutstanding: { gt: 0 } },
+      _sum: { amountOutstanding: true },
+    }),
+    prisma.payment.aggregate({
+      where: {
+        direction: "INCOME",
+        OR: [
+          { receivedAt: { gte: monthS, lte: monthE } },
+          { AND: [{ receivedAt: null }, { paymentDate: { gte: monthS, lte: monthE } }, { status: "RECEIVED" }] },
+        ],
+      },
+      _sum: { amount: true },
+    }),
+    prisma.expense.aggregate({
+      where: { approved: true, expenseDate: { gte: monthS, lte: monthE } },
+      _sum: { amount: true },
+    }),
+    prisma.booking.findMany({
+      where: {
+        status: { not: "CANCELLED" },
+        amountOutstanding: { gt: 0 },
+        expectedPaymentDate: { gte: asOf, lte: weekEnd },
+      },
+      include: { client: true },
+      orderBy: { expectedPaymentDate: "asc" },
+    }),
+    computeMonthlyTrend(asOf),
+  ]);
+
+  const totalOutstanding = new Decimal(totalOutstandingAgg._sum.amountOutstanding?.toString() ?? "0");
+  const earnedThisMonth = new Decimal(earnedAgg._sum.amount?.toString() ?? "0");
+  const spentThisMonth = new Decimal(spentAgg._sum.amount?.toString() ?? "0");
+  const netThisMonth = earnedThisMonth.sub(spentThisMonth);
+
+  // Legacy dashboardMetrics keys needed by existing consumers
+  const legacyData = await dashboardMetrics();
+
+  return {
+    // New keys
+    asOf: asOf.toISOString(),
+    totalOutstanding: totalOutstanding.toFixed(2),
+    earnedThisMonth: earnedThisMonth.toFixed(2),
+    spentThisMonth: spentThisMonth.toFixed(2),
+    netThisMonth: netThisMonth.toFixed(2),
+    upcomingWeek: upcomingWeek.map((b) => ({
+      bookingId: b.id,
+      projectName: b.projectName,
+      clientId: b.clientId,
+      clientName: b.client.name,
+      amountOutstanding: b.amountOutstanding.toString(),
+      expectedPaymentDate: b.expectedPaymentDate,
+    })),
+    trend,
+    // Legacy keys (superset — keep for existing consumers)
+    ...legacyData,
+  };
+}
+
+export async function computePaymentsCalendar(monthStart: Date): Promise<Record<string, { expected: string; received: string }>> {
+  const monthEnd = endOfMonth(monthStart);
+
+  const [expectedBookings, receivedPayments] = await Promise.all([
+    prisma.booking.findMany({
+      where: {
+        status: { not: "CANCELLED" },
+        expectedPaymentDate: { gte: monthStart, lte: monthEnd },
+      },
+      select: { expectedPaymentDate: true, amountOutstanding: true },
+    }),
+    prisma.payment.findMany({
+      where: {
+        direction: "INCOME",
+        AND: [
+          { OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }] },
+          { OR: [{ receivedAt: { gte: monthStart, lte: monthEnd } }, { paymentDate: { gte: monthStart, lte: monthEnd } }] },
+        ],
+      },
+      select: { receivedAt: true, paymentDate: true, amount: true },
+    }),
+  ]);
+
+  const result: Record<string, { expected: string; received: string }> = {};
+
+  for (const b of expectedBookings) {
+    if (!b.expectedPaymentDate) continue;
+    const key = toYYYYMMDD(b.expectedPaymentDate);
+    const cur = result[key] ?? { expected: "0", received: "0" };
+    cur.expected = new Decimal(cur.expected).add(b.amountOutstanding.toString()).toFixed(2);
+    result[key] = cur;
+  }
+
+  for (const p of receivedPayments) {
+    const date = p.receivedAt ?? p.paymentDate;
+    if (!date) continue;
+    const key = toYYYYMMDD(date);
+    const cur = result[key] ?? { expected: "0", received: "0" };
+    cur.received = new Decimal(cur.received).add(p.amount.toString()).toFixed(2);
+    result[key] = cur;
+  }
+
+  return result;
+}
+
+export async function computeExpensesBreakdown(from: Date, to: Date) {
+  const rows = await prisma.expense.groupBy({
+    by: ["category"],
+    where: { expenseDate: { gte: from, lte: to }, approved: true },
+    _sum: { amount: true },
+    _count: true,
+  });
+
+  return rows
+    .map((r: any) => ({
+      category: r.category as string,
+      total: new Decimal(r._sum.amount?.toString() ?? "0").toFixed(2),
+      count: r._count,
+    }))
+    .sort((a: any, b: any) => new Decimal(b.total).cmp(new Decimal(a.total)));
+}
+
 export function csvEscape(v: string): string {
   return `"${v.replace(/"/g, "\"\"")}"`;
 }
