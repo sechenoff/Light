@@ -305,6 +305,85 @@ describe("writeOffRepair", () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("assignRepair — closed-guard (F7)", () => {
+  it("400 REPAIR_ALREADY_CLOSED — нельзя назначить на закрытый ремонт", async () => {
+    const { createRepair, closeRepair, assignRepair } = await import("../services/repairService");
+
+    const guardUnit = await prisma.equipmentUnit.create({
+      data: { equipmentId, barcode: "ASSIGN-GUARD-001", status: "AVAILABLE" },
+    });
+
+    const repair = await createRepair({
+      unitId: guardUnit.id,
+      reason: "Закрытый тест назначения",
+      urgency: "NORMAL",
+      createdBy: warehouseId,
+    });
+
+    await closeRepair(repair.id, superAdminId);
+
+    await expect(
+      assignRepair(repair.id, technicianId, superAdminId),
+    ).rejects.toMatchObject({ status: 400, details: "REPAIR_ALREADY_CLOSED" });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("takeRepair (F8)", () => {
+  it("статус IN_REPAIR, assignedTo = userId, аудит REPAIR_TAKE", async () => {
+    const { createRepair, takeRepair } = await import("../services/repairService");
+
+    const takeUnit = await prisma.equipmentUnit.create({
+      data: { equipmentId, barcode: "TAKE-001", status: "AVAILABLE" },
+    });
+
+    const repair = await createRepair({
+      unitId: takeUnit.id,
+      reason: "Взять в работу",
+      urgency: "NORMAL",
+      createdBy: warehouseId,
+    });
+
+    const taken = await takeRepair(repair.id, technicianId);
+    expect(taken.status).toBe("IN_REPAIR");
+    expect(taken.assignedTo).toBe(technicianId);
+
+    const audit = await prisma.auditEntry.findFirst({
+      where: { entityType: "Repair", action: "REPAIR_TAKE", entityId: repair.id },
+    });
+    expect(audit).not.toBeNull();
+
+    // Cleanup
+    await prisma.repair.update({ where: { id: repair.id }, data: { status: "CLOSED", closedAt: new Date() } });
+    await prisma.equipmentUnit.update({ where: { id: takeUnit.id }, data: { status: "AVAILABLE" } });
+  });
+
+  it("400 REPAIR_ALREADY_CLOSED — нельзя взять закрытый ремонт", async () => {
+    const { createRepair, closeRepair, takeRepair } = await import("../services/repairService");
+
+    const takeUnit2 = await prisma.equipmentUnit.create({
+      data: { equipmentId, barcode: "TAKE-002", status: "AVAILABLE" },
+    });
+
+    const repair = await createRepair({
+      unitId: takeUnit2.id,
+      reason: "Уже закрытый",
+      urgency: "NORMAL",
+      createdBy: warehouseId,
+    });
+
+    await closeRepair(repair.id, superAdminId);
+
+    await expect(takeRepair(repair.id, technicianId))
+      .rejects.toMatchObject({ status: 400, details: "REPAIR_ALREADY_CLOSED" });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe("addWorkLog", () => {
   it("добавляет запись работ — обновляет totalTimeHours и partsCost", async () => {
     const { createRepair, setRepairStatus, assignRepair, addWorkLog } = await import("../services/repairService");
@@ -339,6 +418,38 @@ describe("addWorkLog", () => {
     await prisma.repairWorkLog.deleteMany({ where: { repairId: repair.id } });
     await prisma.repair.update({ where: { id: repair.id }, data: { status: "CLOSED", closedAt: new Date() } });
     await prisma.equipmentUnit.update({ where: { id: wlUnit.id }, data: { status: "AVAILABLE" } });
+  });
+
+  it("F4: точность Decimal — 0.1 + 0.2 + 0.1 = 0.4 без float-мусора", async () => {
+    const { createRepair, setRepairStatus, assignRepair, addWorkLog } = await import("../services/repairService");
+
+    const precUnit = await prisma.equipmentUnit.create({
+      data: { equipmentId, barcode: "PREC-001", status: "AVAILABLE" },
+    });
+
+    const repair = await createRepair({
+      unitId: precUnit.id,
+      reason: "Точность тест",
+      urgency: "NORMAL",
+      createdBy: warehouseId,
+    });
+
+    await assignRepair(repair.id, technicianId, superAdminId);
+    await setRepairStatus(repair.id, "IN_REPAIR", technicianId);
+
+    await addWorkLog(repair.id, { description: "шаг 1", timeSpentHours: 0.1, partCost: 100, loggedBy: technicianId }, "TECHNICIAN");
+    await addWorkLog(repair.id, { description: "шаг 2", timeSpentHours: 0.2, partCost: 200, loggedBy: technicianId }, "TECHNICIAN");
+    const final = await addWorkLog(repair.id, { description: "шаг 3", timeSpentHours: 0.1, partCost: 50, loggedBy: technicianId }, "TECHNICIAN");
+
+    // 0.1 + 0.2 + 0.1 would be 0.4000000000000001 in native float; expect exact 0.4
+    expect(Number(final.totalTimeHours)).toBe(0.4);
+    // 100 + 200 + 50 = 350 (integer part checks accumulation)
+    expect(Number(final.partsCost)).toBe(350);
+
+    // Cleanup
+    await prisma.repairWorkLog.deleteMany({ where: { repairId: repair.id } });
+    await prisma.repair.update({ where: { id: repair.id }, data: { status: "CLOSED", closedAt: new Date() } });
+    await prisma.equipmentUnit.update({ where: { id: precUnit.id }, data: { status: "AVAILABLE" } });
   });
 
   it("403 — TECHNICIAN не assignedTo не может логировать работы", async () => {

@@ -12,7 +12,6 @@
 
 import type { RepairUrgency, RepairStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
-import Decimal from "decimal.js";
 import { prisma } from "../prisma";
 import { writeAuditEntry } from "./audit";
 import { HttpError } from "../utils/errors";
@@ -102,6 +101,10 @@ export async function createRepair(args: {
 export async function assignRepair(id: string, assigneeId: string, userId: string) {
   return prisma.$transaction(async (tx: TxClient) => {
     const repair = await tx.repair.findUniqueOrThrow({ where: { id } }).catch((e) => notFoundToHttpError(e));
+
+    if (CLOSED_STATUSES.includes(repair.status as RepairStatus)) {
+      throw new HttpError(400, "Ремонт уже закрыт", "REPAIR_ALREADY_CLOSED");
+    }
 
     const before = { assignedTo: repair.assignedTo };
 
@@ -279,17 +282,12 @@ export async function addWorkLog(
       },
     });
 
-    // Атомарное обновление накопленных значений через Decimal
-    const newTotalHours = new Decimal(repair.totalTimeHours.toString())
-      .plus(new Decimal(args.timeSpentHours));
-    const newPartsCost = new Decimal(repair.partsCost.toString())
-      .plus(new Decimal(args.partCost));
-
+    // Атомарное обновление через Prisma increment с Prisma.Decimal — без потери точности
     const updated = await tx.repair.update({
       where: { id: repairId },
       data: {
-        totalTimeHours: newTotalHours.toDecimalPlaces(2).toNumber(),
-        partsCost: newPartsCost.toDecimalPlaces(2).toNumber(),
+        totalTimeHours: { increment: new Prisma.Decimal(args.timeSpentHours) },
+        partsCost: { increment: new Prisma.Decimal(args.partCost) },
       },
     });
 
@@ -306,6 +304,41 @@ export async function addWorkLog(
         timeSpentHours: args.timeSpentHours,
         partCost: args.partCost,
       },
+    });
+
+    return updated;
+  });
+}
+
+// ─── takeRepair ──────────────────────────────────────────────────────────────
+
+/**
+ * Атомарный «взять в работу»: назначает userId и переводит статус в IN_REPAIR.
+ * TECHNICIAN self-takes (assignedTo = userId). SUPER_ADMIN тоже self-takes.
+ */
+export async function takeRepair(id: string, userId: string) {
+  return prisma.$transaction(async (tx: TxClient) => {
+    const repair = await tx.repair.findUniqueOrThrow({ where: { id } }).catch((e) => notFoundToHttpError(e));
+
+    if (CLOSED_STATUSES.includes(repair.status as RepairStatus)) {
+      throw new HttpError(400, "Ремонт уже закрыт", "REPAIR_ALREADY_CLOSED");
+    }
+
+    const before = { status: repair.status, assignedTo: repair.assignedTo };
+
+    const updated = await tx.repair.update({
+      where: { id },
+      data: { assignedTo: userId, status: "IN_REPAIR" },
+    });
+
+    await writeAuditEntry({
+      tx,
+      userId,
+      action: "REPAIR_TAKE",
+      entityType: "Repair",
+      entityId: id,
+      before,
+      after: { status: "IN_REPAIR", assignedTo: userId },
     });
 
     return updated;
