@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { UserRole } from "../../src/lib/auth";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
+import { apiFetch } from "../../src/lib/api";
+import { formatRub } from "../../src/lib/format";
 
 // ── Placeholder card ──────────────────────────────────────────────────────────
 
@@ -16,7 +19,26 @@ function PlaceholderCard({ title, hint }: { title: string; hint?: string }) {
 
 // ── Role-specific day views ───────────────────────────────────────────────────
 
+interface FinanceDashboard {
+  totalOutstanding: string;
+  upcomingWeek: Array<{
+    bookingId: string;
+    projectName: string;
+    clientName: string;
+    amountOutstanding: string;
+    expectedPaymentDate: string | null;
+  }>;
+}
+
 function DaySuperAdmin() {
+  const [fin, setFin] = useState<FinanceDashboard | null>(null);
+
+  useEffect(() => {
+    apiFetch<FinanceDashboard>("/api/finance/dashboard")
+      .then(setFin)
+      .catch(() => { /* не блокируем страницу при ошибке */ });
+  }, []);
+
   return (
     <div className="space-y-4">
       <div>
@@ -24,8 +46,29 @@ function DaySuperAdmin() {
         <h1 className="text-lg font-semibold text-ink mt-0.5">Мой день</h1>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <PlaceholderCard title="На согласовании" hint="soon — Sprint 3" />
-        <PlaceholderCard title="Долги клиентов" hint="soon — Sprint 3" />
+        {/* Долги клиентов */}
+        <div className="bg-rose-soft border border-rose-border rounded-lg p-4 shadow-xs">
+          <p className="eyebrow text-rose">Долги клиентов</p>
+          <p className="mono-num text-xl mt-1 text-ink">
+            {fin ? formatRub(fin.totalOutstanding) : "—"}
+          </p>
+        </div>
+        {/* Ближайшие платежи */}
+        <div className="bg-amber-soft border border-amber-border rounded-lg p-4 shadow-xs">
+          <p className="eyebrow text-amber">Ближайшие платежи (7 дней)</p>
+          {fin && fin.upcomingWeek.length > 0 ? (
+            <ul className="mt-2 space-y-1">
+              {fin.upcomingWeek.slice(0, 3).map((u) => (
+                <li key={u.bookingId} className="text-xs text-ink-2">
+                  <span className="font-medium">{u.clientName}</span> · {u.projectName}
+                  <span className="mono-num ml-1 text-amber font-medium">{formatRub(u.amountOutstanding)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-ink-3 mt-1">{fin ? "Нет платежей" : "—"}</p>
+          )}
+        </div>
       </div>
     </div>
   );
