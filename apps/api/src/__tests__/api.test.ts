@@ -14,8 +14,10 @@ process.env.RATE_LIMIT_DISABLED = "true";
 process.env.API_KEYS = "test-key-1,test-key-2";
 process.env.AUTH_MODE = "enforce";
 process.env.NODE_ENV = "test";
+process.env.JWT_SECRET = "test-jwt-secret-api-smoke-min16chars";
 
 let app: Express;
+let superAdminToken: string;
 
 beforeAll(async () => {
   // Initialize DB schema
@@ -32,6 +34,15 @@ beforeAll(async () => {
   // Dynamically import app AFTER env vars are set and DB is initialized
   const mod = await import("../app");
   app = mod.app;
+
+  // Создаём SUPER_ADMIN для тестов роутов, защищённых rolesGuard
+  const { prisma } = await import("../prisma");
+  const { hashPassword, signSession } = await import("../services/auth");
+  const hash = await hashPassword("test-pass-123");
+  const admin = await prisma.adminUser.create({
+    data: { username: "smoke_super_admin", passwordHash: hash, role: "SUPER_ADMIN" },
+  });
+  superAdminToken = signSession({ userId: admin.id, username: admin.username, role: "SUPER_ADMIN" });
 });
 
 afterAll(async () => {
@@ -49,7 +60,8 @@ afterAll(async () => {
 });
 
 const API_KEY = "test-key-1";
-const AUTH = { "X-API-Key": API_KEY };
+// AUTH включает JWT-токен SUPER_ADMIN, т.к. rolesGuard теперь строгий (§2.1)
+function AUTH() { return { "X-API-Key": API_KEY, Authorization: `Bearer ${superAdminToken}` }; }
 
 describe("Auth middleware", () => {
   it("returns 401 without API key", async () => {
@@ -78,7 +90,7 @@ describe("Health", () => {
 
 describe("Equipment", () => {
   it("GET /api/equipment returns 200", async () => {
-    const res = await request(app).get("/api/equipment").set(AUTH);
+    const res = await request(app).get("/api/equipment").set(AUTH());
     expect(res.status).toBe(200);
   });
 });
@@ -87,7 +99,7 @@ describe("Availability", () => {
   it("GET /api/availability with date params returns 200", async () => {
     const res = await request(app)
       .get("/api/availability?start=2026-04-10&end=2026-04-12")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
   });
 });
@@ -96,34 +108,34 @@ describe("Bookings", () => {
   it("POST /api/bookings/draft without required fields returns 400 (Zod validation)", async () => {
     const res = await request(app)
       .post("/api/bookings/draft")
-      .set(AUTH)
+      .set(AUTH())
       .send({});
     expect(res.status).toBe(400);
   });
 
   it("GET /api/bookings returns 200", async () => {
-    const res = await request(app).get("/api/bookings").set(AUTH);
+    const res = await request(app).get("/api/bookings").set(AUTH());
     expect(res.status).toBe(200);
   });
 });
 
 describe("Estimates", () => {
   it("GET /api/estimates/:id returns 404 for non-existent id", async () => {
-    const res = await request(app).get("/api/estimates/nonexistent-id").set(AUTH);
+    const res = await request(app).get("/api/estimates/nonexistent-id").set(AUTH());
     expect(res.status).toBe(404);
   });
 });
 
 describe("Pricelist", () => {
   it("GET /api/pricelist returns 200 or 404 (not 500)", async () => {
-    const res = await request(app).get("/api/pricelist").set(AUTH);
+    const res = await request(app).get("/api/pricelist").set(AUTH());
     expect([200, 404]).toContain(res.status);
   });
 });
 
 describe("Finance", () => {
   it("GET /api/finance/dashboard returns 200", async () => {
-    const res = await request(app).get("/api/finance/dashboard").set(AUTH);
+    const res = await request(app).get("/api/finance/dashboard").set(AUTH());
     expect(res.status).toBe(200);
   });
 });
@@ -132,7 +144,7 @@ describe("Users", () => {
   it("POST /api/users/upsert with valid body returns 200", async () => {
     const res = await request(app)
       .post("/api/users/upsert")
-      .set(AUTH)
+      .set(AUTH())
       .send({ telegramId: "12345", firstName: "Test" });
     expect(res.status).toBe(200);
     expect(res.body.user).toBeDefined();
@@ -144,14 +156,14 @@ describe("Analyses", () => {
     // First create a user to satisfy the foreign key constraint
     const userRes = await request(app)
       .post("/api/users/upsert")
-      .set(AUTH)
+      .set(AUTH())
       .send({ telegramId: "99999", firstName: "AnalysisTest" });
     expect(userRes.status).toBe(200);
     const userId = userRes.body.user.id;
 
     const res = await request(app)
       .post("/api/analyses/pending")
-      .set(AUTH)
+      .set(AUTH())
       .send({
         userId,
         telegramFileId: "file-abc123",
@@ -164,7 +176,7 @@ describe("Analyses", () => {
 
 describe("Equipment Import", () => {
   it("POST /api/equipment/import/preview without file returns 400", async () => {
-    const res = await request(app).post("/api/equipment/import/preview").set(AUTH);
+    const res = await request(app).post("/api/equipment/import/preview").set(AUTH());
     expect(res.status).toBe(400);
   });
 });
@@ -173,7 +185,7 @@ describe("Booking Parser", () => {
   it("POST /api/bookings/parse-gaffer-review without body returns 400", async () => {
     const res = await request(app)
       .post("/api/bookings/parse-gaffer-review")
-      .set(AUTH)
+      .set(AUTH())
       .send({});
     expect(res.status).toBe(400);
   });
@@ -183,7 +195,7 @@ describe("Match Equipment", () => {
   it("POST /api/bookings/match-equipment without body returns 400", async () => {
     const res = await request(app)
       .post("/api/bookings/match-equipment")
-      .set(AUTH)
+      .set(AUTH())
       .send({});
     expect(res.status).toBe(400);
   });
@@ -191,7 +203,7 @@ describe("Match Equipment", () => {
   it("POST /api/bookings/match-equipment with empty items array returns items:[]", async () => {
     const res = await request(app)
       .post("/api/bookings/match-equipment")
-      .set(AUTH)
+      .set(AUTH())
       .send({ items: [] });
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([]);
@@ -200,7 +212,7 @@ describe("Match Equipment", () => {
   it("POST /api/bookings/match-equipment with invalid item (missing name) returns 400", async () => {
     const res = await request(app)
       .post("/api/bookings/match-equipment")
-      .set(AUTH)
+      .set(AUTH())
       .send({ items: [{ quantity: 2 }] });
     expect(res.status).toBe(400);
   });
@@ -208,7 +220,7 @@ describe("Match Equipment", () => {
   it("POST /api/bookings/match-equipment with valid items returns items array", async () => {
     const res = await request(app)
       .post("/api/bookings/match-equipment")
-      .set(AUTH)
+      .set(AUTH())
       .send({ items: [{ name: "nova p300", quantity: 1 }] });
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.items)).toBe(true);
@@ -219,14 +231,14 @@ describe("Slang Learning", () => {
   it("GET /api/admin/slang-learning returns 200", async () => {
     const res = await request(app)
       .get("/api/admin/slang-learning")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
   });
 });
 
 describe("Photo Analysis", () => {
   it("POST /api/photo-analysis without file returns 400", async () => {
-    const res = await request(app).post("/api/photo-analysis").set(AUTH);
+    const res = await request(app).post("/api/photo-analysis").set(AUTH());
     expect(res.status).toBe(400);
   });
 });

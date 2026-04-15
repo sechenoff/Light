@@ -8,8 +8,8 @@ import { HttpError } from "../utils/errors";
  * Логика:
  * 1. Если `req.botAccess === true` — запрос уже прошёл botScopeGuard (openclaw-ключ),
  *    роль не проверяем, пропускаем.
- * 2. Если `req.adminUser` отсутствует — нет активной сессии, пропускаем (API-ключевые запросы
- *    без сессии сохраняют обратную совместимость; полное принуждение — через requireAdmin).
+ * 2. Если `req.adminUser` отсутствует — нет активной сессии → 401 UNAUTHENTICATED
+ *    (строго по design §2.1; любой валидный API-ключ без JWT не должен проходить guard).
  * 3. Если сессия есть, но роль не входит в `allowed` — 403 FORBIDDEN_BY_ROLE.
  */
 export function rolesGuard(allowed: UserRole[]): RequestHandler {
@@ -19,13 +19,12 @@ export function rolesGuard(allowed: UserRole[]): RequestHandler {
       return next();
     }
 
-    const user = req.adminUser;
-    // Нет сессии — пропускаем (API-key-only запросы, backward compat)
-    if (!user) {
-      return next();
+    // Нет сессии → 401 UNAUTHENTICATED (строго по design §2.1)
+    if (!req.adminUser) {
+      return next(new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED"));
     }
 
-    if (!allowed.includes(user.role as UserRole)) {
+    if (!allowed.includes(req.adminUser.role as UserRole)) {
       return next(new HttpError(403, "Доступ запрещён по роли", "FORBIDDEN_BY_ROLE"));
     }
 

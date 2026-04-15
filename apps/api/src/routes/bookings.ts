@@ -769,7 +769,12 @@ router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next
   try {
     const id = req.params.id;
     const body = backdateSchema.parse(req.body);
-    const userId = req.adminUser!.userId;
+
+    // После rolesGuard req.adminUser гарантированно есть, но защищаемся явно
+    if (!req.adminUser) {
+      throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+    }
+    const { userId } = req.adminUser;
 
     const existing = await prisma.booking.findUnique({
       where: { id },
@@ -781,29 +786,35 @@ router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next
     if (body.startDate) updateData.startDate = new Date(body.startDate);
     if (body.endDate) updateData.endDate = new Date(body.endDate);
 
-    const updated = await prisma.booking.update({
-      where: { id },
-      data: updateData,
-      include: { client: true, items: { include: { equipment: true } }, estimate: { include: { lines: true } } },
-    });
+    // Обновление и запись аудита в одной транзакции — если audit упадёт, бронь не изменится
+    const updated = await prisma.$transaction(async (tx: typeof prisma) => {
+      const updatedBooking = await tx.booking.update({
+        where: { id },
+        data: updateData,
+        include: { client: true, items: { include: { equipment: true } }, estimate: { include: { lines: true } } },
+      });
 
-    await writeAuditEntry({
-      userId,
-      action: "BOOKING_BACKDATE_EDIT",
-      entityType: "Booking",
-      entityId: id,
-      before: {
-        startDate: existing.startDate.toISOString(),
-        endDate: existing.endDate.toISOString(),
-        status: existing.status,
-        projectName: existing.projectName,
-      },
-      after: {
-        startDate: updated.startDate.toISOString(),
-        endDate: updated.endDate.toISOString(),
-        status: updated.status,
-        reason: body.reason,
-      },
+      await writeAuditEntry({
+        tx,
+        userId,
+        action: "BOOKING_BACKDATE_EDIT",
+        entityType: "Booking",
+        entityId: id,
+        before: {
+          startDate: existing.startDate.toISOString(),
+          endDate: existing.endDate.toISOString(),
+          status: existing.status,
+          projectName: existing.projectName,
+        },
+        after: {
+          startDate: updatedBooking.startDate.toISOString(),
+          endDate: updatedBooking.endDate.toISOString(),
+          status: updatedBooking.status,
+          reason: body.reason,
+        },
+      });
+
+      return updatedBooking;
     });
 
     res.json({ booking: serializeBookingForApi(updated as any) });

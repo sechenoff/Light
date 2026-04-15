@@ -20,9 +20,11 @@ process.env.AUTH_MODE = "enforce";
 process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-for-import-routes";
 process.env.WAREHOUSE_SECRET = "test-warehouse-secret-import-routes";
+process.env.JWT_SECRET = "test-jwt-secret-importroutes-min16chars";
 
 let app: Express;
 let prisma: any;
+let superAdminToken: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -39,6 +41,14 @@ beforeAll(async () => {
   app = mod.app;
   const pmod = await import("../prisma");
   prisma = pmod.prisma;
+
+  // Создаём SUPER_ADMIN для тестов роутов, защищённых rolesGuard
+  const { hashPassword, signSession } = await import("../services/auth");
+  const hash = await hashPassword("test-pass-123");
+  const admin = await prisma.adminUser.create({
+    data: { username: "importroutes_super_admin", passwordHash: hash, role: "SUPER_ADMIN" },
+  });
+  superAdminToken = signSession({ userId: admin.id, username: admin.username, role: "SUPER_ADMIN" });
 });
 
 afterAll(async () => {
@@ -55,7 +65,7 @@ afterAll(async () => {
   }
 });
 
-const AUTH = { "X-API-Key": "test-key-1" };
+function AUTH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${superAdminToken}` }; }
 
 // ──────────────────────────────────────────────────────────────────
 // Вспомогательные функции
@@ -78,7 +88,7 @@ async function uploadSession() {
   const buf = makeTestXlsx(TEST_ROWS);
   const res = await request(app)
     .post("/api/import-sessions/upload")
-    .set(AUTH)
+    .set(AUTH())
     .attach("file", buf, { filename: "test.xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   expect(res.status).toBe(200);
   return res.body as { session: { id: string }; preview: { headers: string[] } };
@@ -105,7 +115,7 @@ describe("POST /api/import-sessions/upload", () => {
     const buf = makeTestXlsx(TEST_ROWS);
     const res = await request(app)
       .post("/api/import-sessions/upload")
-      .set(AUTH)
+      .set(AUTH())
       .attach("file", buf, {
         filename: "catalog.xlsx",
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -124,7 +134,7 @@ describe("POST /api/import-sessions/upload", () => {
   it("отклоняет не-xlsx файл с 400", async () => {
     const res = await request(app)
       .post("/api/import-sessions/upload")
-      .set(AUTH)
+      .set(AUTH())
       .attach("file", Buffer.from("not a spreadsheet"), {
         filename: "data.csv",
         contentType: "text/csv",
@@ -136,7 +146,7 @@ describe("POST /api/import-sessions/upload", () => {
   it("возвращает 400 если файл не передан", async () => {
     const res = await request(app)
       .post("/api/import-sessions/upload")
-      .set(AUTH);
+      .set(AUTH());
 
     expect(res.status).toBe(400);
   });
@@ -153,7 +163,7 @@ describe("GET /api/import-sessions", () => {
 
     const res = await request(app)
       .get("/api/import-sessions")
-      .set(AUTH);
+      .set(AUTH());
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.sessions)).toBe(true);
@@ -175,7 +185,7 @@ describe("GET /api/import-sessions/:id", () => {
 
     const res = await request(app)
       .get(`/api/import-sessions/${session.id}`)
-      .set(AUTH);
+      .set(AUTH());
 
     expect(res.status).toBe(200);
     expect(res.body.session).toBeDefined();
@@ -185,7 +195,7 @@ describe("GET /api/import-sessions/:id", () => {
   it("возвращает 404 для несуществующего id", async () => {
     const res = await request(app)
       .get("/api/import-sessions/nonexistent-id-999")
-      .set(AUTH);
+      .set(AUTH());
 
     expect(res.status).toBe(404);
   });
@@ -201,7 +211,7 @@ describe("POST /api/import-sessions/:id/map", () => {
 
     const res = await request(app)
       .post(`/api/import-sessions/${session.id}/map`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         type: "OWN_PRICE_UPDATE",
         mapping: {
@@ -222,7 +232,7 @@ describe("POST /api/import-sessions/:id/map", () => {
 
     const res = await request(app)
       .post(`/api/import-sessions/${session.id}/map`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         type: "OWN_PRICE_UPDATE",
         mapping: {}, // нет обязательных name и category
@@ -236,7 +246,7 @@ describe("POST /api/import-sessions/:id/map", () => {
 
     const res = await request(app)
       .post(`/api/import-sessions/${session.id}/map`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         type: "COMPETITOR_IMPORT",
         mapping: { name: "Наименование", category: "Категория" },
@@ -258,7 +268,7 @@ describe("GET /api/import-sessions/:id/rows", () => {
     // Сначала сделаем map чтобы создались строки
     await request(app)
       .post(`/api/import-sessions/${session.id}/map`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         type: "OWN_PRICE_UPDATE",
         mapping: {
@@ -271,7 +281,7 @@ describe("GET /api/import-sessions/:id/rows", () => {
 
     const res = await request(app)
       .get(`/api/import-sessions/${session.id}/rows`)
-      .set(AUTH)
+      .set(AUTH())
       .query({ page: 1, limit: 50 });
 
     expect(res.status).toBe(200);
@@ -285,7 +295,7 @@ describe("GET /api/import-sessions/:id/rows", () => {
 
     await request(app)
       .post(`/api/import-sessions/${session.id}/map`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         type: "OWN_PRICE_UPDATE",
         mapping: {
@@ -298,7 +308,7 @@ describe("GET /api/import-sessions/:id/rows", () => {
 
     const res = await request(app)
       .get(`/api/import-sessions/${session.id}/rows`)
-      .set(AUTH)
+      .set(AUTH())
       .query({ action: "NEW_ITEM" });
 
     expect(res.status).toBe(200);
@@ -319,7 +329,7 @@ describe("PATCH /api/import-sessions/:id/rows/:rowId", () => {
 
     await request(app)
       .post(`/api/import-sessions/${session.id}/map`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         type: "OWN_PRICE_UPDATE",
         mapping: {
@@ -333,14 +343,14 @@ describe("PATCH /api/import-sessions/:id/rows/:rowId", () => {
     // Берём первую строку
     const rowsRes = await request(app)
       .get(`/api/import-sessions/${session.id}/rows`)
-      .set(AUTH);
+      .set(AUTH());
     expect(rowsRes.status).toBe(200);
     const firstRow = rowsRes.body.rows[0];
     expect(firstRow).toBeDefined();
 
     const res = await request(app)
       .patch(`/api/import-sessions/${session.id}/rows/${firstRow.id}`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ status: "ACCEPTED" });
 
     expect(res.status).toBe(200);
@@ -361,7 +371,7 @@ describe("POST /api/import-sessions/:id/bulk-action", () => {
 
     await request(app)
       .post(`/api/import-sessions/${session.id}/map`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         type: "OWN_PRICE_UPDATE",
         mapping: {
@@ -374,7 +384,7 @@ describe("POST /api/import-sessions/:id/bulk-action", () => {
 
     const res = await request(app)
       .post(`/api/import-sessions/${session.id}/bulk-action`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ action: "REJECTED", filter: {} });
 
     expect(res.status).toBe(200);
@@ -386,7 +396,7 @@ describe("POST /api/import-sessions/:id/bulk-action", () => {
 
     const res = await request(app)
       .post(`/api/import-sessions/${session.id}/bulk-action`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ action: "INVALID_ACTION", filter: {} });
 
     expect(res.status).toBe(400);
@@ -408,7 +418,7 @@ describe("POST /api/import-sessions/:id/apply", () => {
 
     const uploadRes = await request(app)
       .post("/api/import-sessions/upload")
-      .set(AUTH)
+      .set(AUTH())
       .attach("file", buf, {
         filename: "apply-test.xlsx",
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -419,7 +429,7 @@ describe("POST /api/import-sessions/:id/apply", () => {
     // map
     await request(app)
       .post(`/api/import-sessions/${sessionId}/map`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         type: "OWN_PRICE_UPDATE",
         mapping: {
@@ -433,7 +443,7 @@ describe("POST /api/import-sessions/:id/apply", () => {
     // Принимаем строку с нашим оборудованием
     const rowsRes = await request(app)
       .get(`/api/import-sessions/${sessionId}/rows`)
-      .set(AUTH)
+      .set(AUTH())
       .query({ action: "PRICE_CHANGE" });
     expect(rowsRes.status).toBe(200);
 
@@ -441,13 +451,13 @@ describe("POST /api/import-sessions/:id/apply", () => {
     if (priceChangeRow) {
       await request(app)
         .patch(`/api/import-sessions/${sessionId}/rows/${priceChangeRow.id}`)
-        .set(AUTH)
+        .set(AUTH())
         .send({ status: "ACCEPTED" });
     }
 
     const res = await request(app)
       .post(`/api/import-sessions/${sessionId}/apply`)
-      .set(AUTH);
+      .set(AUTH());
 
     expect(res.status).toBe(200);
     expect(res.body.applied).toBeDefined();
@@ -467,7 +477,7 @@ describe("POST /api/import-sessions/:id/apply", () => {
 
     const uploadRes = await request(app)
       .post("/api/import-sessions/upload")
-      .set(AUTH)
+      .set(AUTH())
       .attach("file", buf, {
         filename: "lock-test.xlsx",
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -477,7 +487,7 @@ describe("POST /api/import-sessions/:id/apply", () => {
 
     await request(app)
       .post(`/api/import-sessions/${sessionId}/map`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         type: "OWN_PRICE_UPDATE",
         mapping: {
@@ -491,13 +501,13 @@ describe("POST /api/import-sessions/:id/apply", () => {
     // Первый apply
     const firstApply = await request(app)
       .post(`/api/import-sessions/${sessionId}/apply`)
-      .set(AUTH);
+      .set(AUTH());
     expect(firstApply.status).toBe(200);
 
     // Второй apply — должен вернуть 409
     const secondApply = await request(app)
       .post(`/api/import-sessions/${sessionId}/apply`)
-      .set(AUTH);
+      .set(AUTH());
     expect(secondApply.status).toBe(409);
   });
 });
@@ -512,7 +522,7 @@ describe("GET /api/import-sessions/:id/export", () => {
 
     await request(app)
       .post(`/api/import-sessions/${session.id}/map`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         type: "OWN_PRICE_UPDATE",
         mapping: {
@@ -525,7 +535,7 @@ describe("GET /api/import-sessions/:id/export", () => {
 
     const res = await request(app)
       .get(`/api/import-sessions/${session.id}/export`)
-      .set(AUTH);
+      .set(AUTH());
 
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toContain(
@@ -547,7 +557,7 @@ describe("POST /api/import-sessions/:id/match", () => {
 
     const res = await request(app)
       .post(`/api/import-sessions/${session.id}/match`)
-      .set(AUTH);
+      .set(AUTH());
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("matched");
@@ -565,7 +575,7 @@ describe("DELETE /api/import-sessions/:id", () => {
 
     const res = await request(app)
       .delete(`/api/import-sessions/${session.id}`)
-      .set(AUTH);
+      .set(AUTH());
 
     expect(res.status).toBe(204);
 

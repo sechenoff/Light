@@ -20,12 +20,12 @@ const createSchema = z.object({
     .regex(/^[a-zA-Z0-9_.-]+$/, "Логин: только латиница, цифры, дефис, подчёркивание, точка")
     .transform(normalizeUsername),
   password: z.string().min(3, "Пароль не короче 3 символов").max(200),
-  role: z.enum(["SUPER_ADMIN", "RENTAL_ADMIN"]).default("RENTAL_ADMIN"),
+  role: z.enum(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]).default("WAREHOUSE"),
 });
 
 const updateSchema = z.object({
   password: z.string().min(3).max(200).optional(),
-  role: z.enum(["SUPER_ADMIN", "RENTAL_ADMIN"]).optional(),
+  role: z.enum(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]).optional(),
 });
 
 // ──────────────────────────────────────────────
@@ -75,7 +75,7 @@ router.patch("/:id", async (req, res, next) => {
     const existing = await prisma.adminUser.findUnique({ where: { id } });
     if (!existing) throw new HttpError(404, "Пользователь не найден");
 
-    const data: { passwordHash?: string; role?: "SUPER_ADMIN" | "RENTAL_ADMIN" } = {};
+    const data: { passwordHash?: string; role?: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" } = {};
     if (body.password) data.passwordHash = await hashPassword(body.password);
     if (body.role) data.role = body.role;
 

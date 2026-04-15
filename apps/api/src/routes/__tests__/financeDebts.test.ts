@@ -18,9 +18,11 @@ process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-finance-debts";
 process.env.WAREHOUSE_SECRET = "test-warehouse-secret-finance-debts";
 process.env.VISION_PROVIDER = "mock";
+process.env.JWT_SECRET = "test-jwt-secret-financedebts-min16chars";
 
 let app: Express;
 let prisma: any;
+let superAdminToken: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -37,6 +39,14 @@ beforeAll(async () => {
   app = mod.app;
   const pmod = await import("../../prisma");
   prisma = pmod.prisma;
+
+  // Создаём SUPER_ADMIN для тестов роутов, защищённых rolesGuard
+  const { hashPassword, signSession } = await import("../../services/auth");
+  const hash = await hashPassword("test-pass-123");
+  const admin = await prisma.adminUser.create({
+    data: { username: "financedebts_super_admin", passwordHash: hash, role: "SUPER_ADMIN" },
+  });
+  superAdminToken = signSession({ userId: admin.id, username: admin.username, role: "SUPER_ADMIN" });
 });
 
 afterAll(async () => {
@@ -49,7 +59,7 @@ afterAll(async () => {
   }
 });
 
-const AUTH = { "X-API-Key": "test-key-1" };
+function AUTH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${superAdminToken}` }; }
 
 // ──────────────────────────────────────────────────────────────────
 // Вспомогательные функции
@@ -115,7 +125,7 @@ describe("GET /api/finance/debts", () => {
   });
 
   it("возвращает пустой список когда нет долгов", async () => {
-    const res = await request(app).get("/api/finance/debts").set(AUTH);
+    const res = await request(app).get("/api/finance/debts").set(AUTH());
     expect(res.status).toBe(200);
     expect(res.body.debts).toEqual([]);
     expect(res.body.summary.totalClients).toBe(0);
@@ -134,7 +144,7 @@ describe("GET /api/finance/debts", () => {
     const clientB = await createClient("Клиент Б Агрегация");
     await createBookingWithDebt(clientB.id, eq.id, "CONFIRMED", "12000.00", "NOT_PAID");
 
-    const res = await request(app).get("/api/finance/debts").set(AUTH);
+    const res = await request(app).get("/api/finance/debts").set(AUTH());
     expect(res.status).toBe(200);
 
     const debts = res.body.debts;
@@ -161,7 +171,7 @@ describe("GET /api/finance/debts", () => {
     // CANCELLED бронь с долгом — не должна попасть в debts
     await createBookingWithDebt(client.id, eq.id, "CANCELLED", "9999.00", "NOT_PAID");
 
-    const res = await request(app).get("/api/finance/debts").set(AUTH);
+    const res = await request(app).get("/api/finance/debts").set(AUTH());
     expect(res.status).toBe(200);
     const debt = res.body.debts.find((d: any) => d.clientName === "Клиент Отмена");
     expect(debt).toBeUndefined();
@@ -174,7 +184,7 @@ describe("GET /api/finance/debts", () => {
     // Бронь без долга — не попадает в debts
     await createBookingWithDebt(client.id, eq.id, "RETURNED", "0.00", "PAID");
 
-    const res = await request(app).get("/api/finance/debts").set(AUTH);
+    const res = await request(app).get("/api/finance/debts").set(AUTH());
     expect(res.status).toBe(200);
     const debt = res.body.debts.find((d: any) => d.clientName === "Клиент Оплачен");
     expect(debt).toBeUndefined();
@@ -199,7 +209,7 @@ describe("GET /api/finance/debts", () => {
 
     const res = await request(app)
       .get("/api/finance/debts?overdueOnly=true")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
 
     const overdueDebt = res.body.debts.find((d: any) => d.clientName === "Клиент Просрочен");
@@ -222,7 +232,7 @@ describe("GET /api/finance/debts", () => {
       client.id, eq.id, "CONFIRMED", "5000.00", "OVERDUE", tenDaysAgo,
     );
 
-    const res = await request(app).get("/api/finance/debts").set(AUTH);
+    const res = await request(app).get("/api/finance/debts").set(AUTH());
     expect(res.status).toBe(200);
 
     const debt = res.body.debts.find((d: any) => d.clientName === "Клиент Дней Просрочки");
@@ -246,7 +256,7 @@ describe("GET /api/finance/debts", () => {
 
     const res = await request(app)
       .get("/api/finance/debts?minAmount=1000")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
 
     const smallDebt = res.body.debts.find((d: any) => d.clientName === "Клиент Малый");
@@ -257,7 +267,7 @@ describe("GET /api/finance/debts", () => {
   });
 
   it("возвращает корректную структуру summary", async () => {
-    const res = await request(app).get("/api/finance/debts").set(AUTH);
+    const res = await request(app).get("/api/finance/debts").set(AUTH());
     expect(res.status).toBe(200);
     expect(res.body.summary).toHaveProperty("totalClients");
     expect(res.body.summary).toHaveProperty("totalOutstanding");
@@ -269,7 +279,7 @@ describe("GET /api/finance/debts", () => {
   it("?minAmount=abc возвращает 400 — невалидный параметр", async () => {
     const res = await request(app)
       .get("/api/finance/debts?minAmount=abc")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(400);
   });
 });

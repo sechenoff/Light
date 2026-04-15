@@ -12,8 +12,10 @@ process.env.API_KEYS = "test-key-1";
 process.env.AUTH_MODE = "enforce";
 process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-for-units";
+process.env.JWT_SECRET = "test-jwt-secret-units-min16chars";
 
 let app: Express;
+let superAdminToken: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -28,6 +30,15 @@ beforeAll(async () => {
 
   const mod = await import("../app");
   app = mod.app;
+
+  // Создаём SUPER_ADMIN для тестов роутов, защищённых rolesGuard
+  const { prisma } = await import("../prisma");
+  const { hashPassword, signSession } = await import("../services/auth");
+  const hash = await hashPassword("test-pass-123");
+  const admin = await prisma.adminUser.create({
+    data: { username: "units_super_admin", passwordHash: hash, role: "SUPER_ADMIN" },
+  });
+  superAdminToken = signSession({ userId: admin.id, username: admin.username, role: "SUPER_ADMIN" });
 });
 
 afterAll(async () => {
@@ -42,7 +53,7 @@ afterAll(async () => {
   }
 });
 
-const AUTH = { "X-API-Key": "test-key-1" };
+function AUTH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${superAdminToken}` }; }
 
 /**
  * Список категорий с уникальными аббревиатурами для штрихкодов.
@@ -85,7 +96,7 @@ async function createUnitEquipment() {
   const name = `TestEq-${_equipCounter}`;
   const res = await request(app)
     .post("/api/equipment")
-    .set(AUTH)
+    .set(AUTH())
     .send({
       category,
       name,
@@ -106,7 +117,7 @@ describe("GET /api/equipment/:equipmentId/units", () => {
     const equipmentId = await createUnitEquipment();
     const res = await request(app)
       .get(`/api/equipment/${equipmentId}/units`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     expect(res.body.units).toEqual([]);
   });
@@ -121,7 +132,7 @@ describe("POST /api/equipment/:equipmentId/units/generate", () => {
     const equipmentId = await createUnitEquipment();
     const res = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 3 });
     expect(res.status).toBe(201);
     expect(res.body.units).toHaveLength(3);
@@ -131,7 +142,7 @@ describe("POST /api/equipment/:equipmentId/units/generate", () => {
     const equipmentId = await createUnitEquipment();
     const res = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 1 });
     expect(res.status).toBe(201);
     const unit = res.body.units[0];
@@ -143,11 +154,11 @@ describe("POST /api/equipment/:equipmentId/units/generate", () => {
     const equipmentId = await createUnitEquipment();
     await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 2 });
     const res = await request(app)
       .get(`/api/equipment/${equipmentId}/units`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     expect(res.body.units).toHaveLength(2);
   });
@@ -156,7 +167,7 @@ describe("POST /api/equipment/:equipmentId/units/generate", () => {
     const equipmentId = await createUnitEquipment();
     const res = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 0 });
     expect(res.status).toBe(400);
   });
@@ -165,7 +176,7 @@ describe("POST /api/equipment/:equipmentId/units/generate", () => {
     const equipmentId = await createUnitEquipment();
     const res = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 101 });
     expect(res.status).toBe(400);
   });
@@ -175,12 +186,12 @@ describe("POST /api/equipment/:equipmentId/units/generate", () => {
     // Generate first batch
     const res1 = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 2 });
     // Generate second batch
     const res2 = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 1 });
     expect(res2.status).toBe(201);
     // Barcodes should be unique (no overlap)
@@ -196,7 +207,7 @@ describe("POST /api/equipment/:equipmentId/units/generate", () => {
     const equipmentId = await createUnitEquipment();
     const res = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 2, serialNumbers: ["SN-001", "SN-002"] });
     expect(res.status).toBe(201);
     const serials = res.body.units.map((u: { serialNumber: string | null }) => u.serialNumber);
@@ -214,13 +225,13 @@ describe("PATCH /api/equipment/:equipmentId/units/:unitId", () => {
     const equipmentId = await createUnitEquipment();
     const genRes = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 1 });
     const unitId = genRes.body.units[0].id;
 
     const res = await request(app)
       .patch(`/api/equipment/${equipmentId}/units/${unitId}`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ comment: "Требует проверки" });
     expect(res.status).toBe(200);
     expect(res.body.unit.comment).toBe("Требует проверки");
@@ -230,13 +241,13 @@ describe("PATCH /api/equipment/:equipmentId/units/:unitId", () => {
     const equipmentId = await createUnitEquipment();
     const genRes = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 1 });
     const unitId = genRes.body.units[0].id;
 
     const res = await request(app)
       .patch(`/api/equipment/${equipmentId}/units/${unitId}`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ status: "MAINTENANCE" });
     expect(res.status).toBe(200);
     expect(res.body.unit.status).toBe("MAINTENANCE");
@@ -246,13 +257,13 @@ describe("PATCH /api/equipment/:equipmentId/units/:unitId", () => {
     const equipmentId = await createUnitEquipment();
     const genRes = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 1 });
     const unitId = genRes.body.units[0].id;
 
     const res = await request(app)
       .patch(`/api/equipment/${equipmentId}/units/${unitId}`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ status: "INVALID_STATUS" });
     expect(res.status).toBe(400);
   });
@@ -267,13 +278,13 @@ describe("DELETE /api/equipment/:equipmentId/units/:unitId", () => {
     const equipmentId = await createUnitEquipment();
     const genRes = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 1 });
     const unitId = genRes.body.units[0].id;
 
     const res = await request(app)
       .delete(`/api/equipment/${equipmentId}/units/${unitId}`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
   });
@@ -282,19 +293,19 @@ describe("DELETE /api/equipment/:equipmentId/units/:unitId", () => {
     const equipmentId = await createUnitEquipment();
     const genRes = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 1 });
     const unitId = genRes.body.units[0].id;
 
     // Set status to MAINTENANCE
     await request(app)
       .patch(`/api/equipment/${equipmentId}/units/${unitId}`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ status: "MAINTENANCE" });
 
     const res = await request(app)
       .delete(`/api/equipment/${equipmentId}/units/${unitId}`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(409);
     expect(res.body.message).toMatch(/AVAILABLE/);
   });
@@ -309,12 +320,12 @@ describe("GET /api/equipment/:equipmentId/units/labels", () => {
     const equipmentId = await createUnitEquipment();
     await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 2 });
 
     const res = await request(app)
       .get(`/api/equipment/${equipmentId}/units/labels`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toMatch(/application\/pdf/);
     expect(res.headers["content-disposition"]).toMatch(`labels-${equipmentId}.pdf`);
@@ -324,7 +335,7 @@ describe("GET /api/equipment/:equipmentId/units/labels", () => {
     const equipmentId = await createUnitEquipment();
     const res = await request(app)
       .get(`/api/equipment/${equipmentId}/units/labels`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(404);
   });
 });
@@ -338,13 +349,13 @@ describe("GET /api/equipment/:equipmentId/units/:unitId/label", () => {
     const equipmentId = await createUnitEquipment();
     const genRes = await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 1 });
     const unitId = genRes.body.units[0].id;
 
     const res = await request(app)
       .get(`/api/equipment/${equipmentId}/units/${unitId}/label`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toMatch(/image\/png/);
   });
@@ -353,7 +364,7 @@ describe("GET /api/equipment/:equipmentId/units/:unitId/label", () => {
     const equipmentId = await createUnitEquipment();
     const res = await request(app)
       .get(`/api/equipment/${equipmentId}/units/nonexistent-id/label`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(404);
   });
 });
@@ -367,10 +378,10 @@ describe("GET /api/equipment unitStatusCounts", () => {
     const equipmentId = await createUnitEquipment();
     await request(app)
       .post(`/api/equipment/${equipmentId}/units/generate`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ count: 3 });
 
-    const res = await request(app).get("/api/equipment").set(AUTH);
+    const res = await request(app).get("/api/equipment").set(AUTH());
     expect(res.status).toBe(200);
     const item = res.body.equipments.find((e: { id: string }) => e.id === equipmentId);
     expect(item).toBeDefined();
@@ -381,7 +392,7 @@ describe("GET /api/equipment unitStatusCounts", () => {
   it("unitStatusCounts is null for COUNT-tracked equipment", async () => {
     const res1 = await request(app)
       .post("/api/equipment")
-      .set(AUTH)
+      .set(AUTH())
       .send({
         category: "Тест",
         name: "COUNT-оборудование-уникальное",
@@ -391,7 +402,7 @@ describe("GET /api/equipment unitStatusCounts", () => {
       });
     const equipmentId = res1.body.equipment.id;
 
-    const res = await request(app).get("/api/equipment").set(AUTH);
+    const res = await request(app).get("/api/equipment").set(AUTH());
     const item = res.body.equipments.find((e: { id: string }) => e.id === equipmentId);
     expect(item).toBeDefined();
     expect(item.unitStatusCounts).toBeNull();
