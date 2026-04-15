@@ -1,18 +1,37 @@
 {
   "sprint": 1,
-  "feature": "bot-api",
-  "governance_mode": "light",
-  "claude_product": "SKIPPED-LIGHT",
+  "feature": "roles-navigation",
+  "governance_mode": "standard",
+  "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
-  "provider": "claude-standard-code-reviewer",
-  "reviewer_agent_id": "a81c0b93294f03046",
-  "verdict_summary": "APPROVE — scope guard, debts aggregation, and dryRun implementation match the spec. 257/257 tests pass (30 new). TypeScript clean. 2 minor non-blocking findings noted for follow-up (overdueAmount consistency when expectedPaymentDate is null; overdueOnly query param could accept more boolean formats).",
-  "tests": {
-    "total": 257,
-    "passing": 257,
-    "new_cases": 30,
-    "runner": "vitest",
-    "min_required": 5
+  "provider": "split-focus",
+  "head_commit": "54c21a3",
+  "fix_commit": "79d10e7",
+  "initial_verdicts": {
+    "product": "NEEDS_FIXES",
+    "technical": "REQUEST_CHANGES"
   },
-  "ts": "2026-04-14T11:30:00Z"
+  "final_verdicts": {
+    "product": "ACCEPTED",
+    "technical": "APPROVE"
+  },
+  "blockers_closed": [
+    "rolesGuard permissive pass-through (now strict 401 UNAUTHENTICATED)",
+    "backdate endpoint non-null assertion + non-transactional audit",
+    "adminUsers.ts stale RENTAL_ADMIN Zod enum",
+    "bookingRequestParserRouter missing rolesGuard",
+    "missing negative tests (valid API key + no session)"
+  ],
+  "non_blocker_deferred_to_sprint_2": [
+    "assertGuardOrPublic default-deny sanity check",
+    "Payment/Expense schema reconciliation (design 1.3 deviation)",
+    "Migration script CWD dependency (docs only)"
+  ],
+  "tests": {
+    "total": 293,
+    "passing": 293,
+    "new_negative_tests": 2,
+    "runner": "vitest"
+  },
+  "ts": "2026-04-15T08:40:00Z"
 }
