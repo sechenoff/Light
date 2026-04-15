@@ -1,37 +1,44 @@
 {
-  "sprint": 1,
+  "sprint": 2,
   "feature": "roles-navigation",
   "governance_mode": "standard",
-  "claude_product": "ACCEPTED",
-  "technical_review": "APPROVE",
+  "complexity": "medium",
+  "claude_product": "ACCEPTED_WITH_NOTES",
+  "technical_review": "APPROVE_WITH_NITS",
   "provider": "split-focus",
-  "head_commit": "54c21a3",
-  "fix_commit": "79d10e7",
+  "head_commit": "fffb08a",
+  "fix_commit": "b771112",
   "initial_verdicts": {
-    "product": "NEEDS_FIXES",
-    "technical": "REQUEST_CHANGES"
+    "product": "ACCEPTED_WITH_NOTES",
+    "technical": "APPROVE_WITH_NITS"
   },
   "final_verdicts": {
-    "product": "ACCEPTED",
-    "technical": "APPROVE"
+    "product": "ACCEPTED_WITH_NOTES",
+    "technical": "APPROVE_WITH_NITS"
   },
-  "blockers_closed": [
-    "rolesGuard permissive pass-through (now strict 401 UNAUTHENTICATED)",
-    "backdate endpoint non-null assertion + non-transactional audit",
-    "adminUsers.ts stale RENTAL_ADMIN Zod enum",
-    "bookingRequestParserRouter missing rolesGuard",
-    "missing negative tests (valid API key + no session)"
-  ],
-  "non_blocker_deferred_to_sprint_2": [
-    "assertGuardOrPublic default-deny sanity check",
-    "Payment/Expense schema reconciliation (design 1.3 deviation)",
-    "Migration script CWD dependency (docs only)"
-  ],
+  "review_notes_addressed": {
+    "shared_finding": "Both reviewers flagged /day lacking auth guard \u2014 unauthenticated users stuck on eternal loading after / \u2192 /day redirect (Product N4/N5, Technical T9). Fixed by adding useRequireRole to DayPage.",
+    "product_nits_fixed": [
+      "N1/N2: Tailwind + globals.css hex values aligned to design \u00a73.1 byte-for-byte (ink #09090b, teal #0f766e, amber #a16207, rose #9f1239, indigo #4338ca, emerald #047857, borderRadius 4/6px)",
+      "N4/N5: /day redirects unauthenticated users to /login via useRequireRole(ALL_ROLES)"
+    ],
+    "technical_nits_fixed": [
+      "T4: useRequireRole effect deps stabilized via allowed.join(',')",
+      "T9: /day now guards auth via useRequireRole (same as N4/N5)",
+      "T10: audit.routes.test.ts gains 401 UNAUTHENTICATED + 403 TECHNICIAN + 400 bad-date cases"
+    ],
+    "deferred_non_blocker": [
+      "Product N3: docs/mockups/*.html stubs referenced (Sprint 5 scope per plan)",
+      "Technical T10-last: openclaw-prefixed bot-key 403 test (botScopeGuard covers it separately; already tested in Sprint 1)",
+      "Technical nit: Prisma.DateTimeFilter typing in audit.ts (cosmetic)",
+      "Technical nit: /admin/audit entityId tooltip for cuid2 prefix collision (UX polish)"
+    ]
+  },
   "tests": {
-    "total": 293,
-    "passing": 293,
-    "new_negative_tests": 2,
+    "total": 300,
+    "passing": 300,
+    "new_audit_tests": 4,
     "runner": "vitest"
   },
-  "ts": "2026-04-15T08:40:00Z"
+  "ts": "2026-04-15T09:22:00Z"
 }
