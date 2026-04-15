@@ -273,5 +273,46 @@ CSS-утилиты: `.eyebrow` (надстрочники), `.mono-num` (числ
 
 `GET /api/audit` — SUPER_ADMIN only. Query: `entityType`, `userId`, `from` (ISO), `to` (ISO), `limit` (1–200, default 50), `cursor` (keyset). Response: `{ items: AuditEntry[], nextCursor: string | null }`. Файл: `apps/api/src/routes/audit.ts`.
 
+## Sprint 4: Repair Workflow
+
+### Жизненный цикл ремонта
+
+Статусы: `WAITING_REPAIR` → `IN_REPAIR` (после назначения) ↔ `WAITING_PARTS` → `CLOSED` (или `WROTE_OFF`).
+
+Статус unit при ремонте:
+- При создании Repair: unit.status → `MAINTENANCE`
+- При closeRepair: unit.status → `AVAILABLE`
+- При writeOffRepair: unit.status → `RETIRED`
+
+### Маршруты /api/repairs
+
+| Маршрут | Роли | Действие |
+|---------|------|----------|
+| GET /api/repairs | SA, WH, TECH | Список с фильтрами (status, unitId, assignedTo, urgency) |
+| POST /api/repairs | SA, WH, TECH | Создать ремонт (unitId, reason, urgency, sourceBookingId?) |
+| GET /api/repairs/:id | SA, WH, TECH | Детали + workLog |
+| POST /api/repairs/:id/work-log | SA, TECH | Записать работы (только assignedTo или SA) |
+| PATCH /api/repairs/:id/status | SA, TECH | Сменить статус (IN_REPAIR/WAITING_PARTS) |
+| POST /api/repairs/:id/assign | SA, TECH | TECH только self-assign |
+| POST /api/repairs/:id/close | SA, TECH | Закрыть ремонт |
+| POST /api/repairs/:id/write-off | SA | Списать единицу |
+
+Сервис: `apps/api/src/services/repairService.ts`. Все функции используют `prisma.$transaction` и `writeAuditEntry`.
+
+### Сканирование возврата с поломкой
+
+`POST /api/warehouse/sessions/:id/complete` принимает опциональный `brokenUnits: Array<{ equipmentUnitId, reason, urgency }>`. После завершения транзакции возврата для каждой broken unit вызывается `createRepair({ ..., sourceBookingId: session.bookingId })`.
+
+### Frontend
+
+- `/repair` — `apps/web/app/repair/page.tsx`. Kanban-board: 4 колонки (WAITING_REPAIR/IN_REPAIR/WAITING_PARTS/CLOSED). Фильтры: "Моя очередь" / urgency pills.
+- `/repair/[id]` — `apps/web/app/repair/[id]/page.tsx`. Детали + журнал работ + кнопки по роли (взять, добавить работы, закрыть, списать). Модалка расхода при закрытии.
+- `/warehouse/scan` обновлён: на шаге итога возврата каждая единица имеет кнопку "🔧 Поломка" → модалка reason+urgency → `brokenUnits` в payload.
+- `/day` → `DayTechnician`: подгружает ремонты (`assignedTo=currentUser`), SLA просрочки (IN_REPAIR > 5 дней). `DayWarehouse`: показывает счётчик открытых ремонтов.
+
+### CurrentUser + userId
+
+`src/lib/auth.ts` — `CurrentUser.userId` (опциональное поле) теперь синхронизируется из `/api/auth/me`. Используется для фильтрации ремонтов по назначенному технику.
+
 <!-- updated-by-superflow:2026-04-15 -->
 

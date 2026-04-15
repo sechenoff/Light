@@ -10,6 +10,7 @@ export type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN";
 export type AdminRole = UserRole;
 
 export type CurrentUser = {
+  userId?: string;
   username: string;
   role: UserRole;
 };
@@ -26,7 +27,11 @@ function readLocal(): CurrentUser | null {
       typeof parsed?.username === "string" &&
       (parsed.role === "SUPER_ADMIN" || parsed.role === "WAREHOUSE" || parsed.role === "TECHNICIAN")
     ) {
-      return { username: parsed.username, role: parsed.role };
+      return {
+        userId: typeof parsed.userId === "string" ? parsed.userId : undefined,
+        username: parsed.username,
+        role: parsed.role,
+      };
     }
     return null;
   } catch {
@@ -51,9 +56,9 @@ export function useCurrentUser(): {
     let cancelled = false;
     async function sync() {
       try {
-        const res = await apiFetch<{ user: { username: string; role: UserRole } }>("/api/auth/me");
+        const res = await apiFetch<{ user: { userId: string; username: string; role: UserRole } }>("/api/auth/me");
         if (cancelled) return;
-        const u = { username: res.user.username, role: res.user.role };
+        const u: CurrentUser = { userId: res.user.userId, username: res.user.username, role: res.user.role };
         setUser(u);
         if (typeof window !== "undefined") {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
