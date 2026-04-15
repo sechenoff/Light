@@ -222,7 +222,7 @@ function CloseWithExpenseModal({
       <div className="bg-surface border border-border rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <h3 className="text-base font-semibold text-ink">Закрыть ремонт</h3>
         <p className="text-sm text-ink-2">
-          Создать расход категории REPAIR на{" "}
+          Создать расход «Ремонт» на{" "}
           <span className="font-semibold text-ink">{formatRub(String(totalExpense))}</span>?
         </p>
         {parts > 0 && (
@@ -328,16 +328,8 @@ export default function RepairDetailPage() {
   }
 
   async function handleTakeToWork() {
-    if (!user) return;
     await handleAction(async () => {
-      await apiFetch(`/api/repairs/${id}/assign`, {
-        method: "POST",
-        body: JSON.stringify({ assigneeId: user.userId ?? "" }),
-      });
-      await apiFetch(`/api/repairs/${id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "IN_REPAIR" }),
-      });
+      await apiFetch(`/api/repairs/${id}/take`, { method: "POST" });
     }, "Ремонт взят в работу");
   }
 
@@ -598,7 +590,7 @@ export default function RepairDetailPage() {
           <div className="bg-surface border border-border rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
             <h3 className="text-base font-semibold text-ink">Списать единицу?</h3>
             <p className="text-sm text-ink-2">
-              Единица {repair.unit.equipment.name} будет переведена в статус RETIRED.
+              Единица {repair.unit.equipment.name} будет переведена в статус «Списано».
               Это действие необратимо.
             </p>
             <div className="flex gap-3">
