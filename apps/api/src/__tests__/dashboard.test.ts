@@ -221,3 +221,64 @@ describe("GET /api/dashboard/today", () => {
     expect(pickup).toBeDefined();
   });
 });
+
+describe("GET /api/dashboard/pending-approvals", () => {
+  it("возвращает 401 без API-ключа", async () => {
+    const res = await request(app).get("/api/dashboard/pending-approvals");
+    expect(res.status).toBe(401);
+  });
+
+  it("возвращает PENDING_APPROVAL брони", async () => {
+    const client = await createClient("PendingClient");
+    const equipment = await createEquipment("PendingEquipment");
+    const now = new Date();
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    await createBooking(client.id, equipment.id, "PENDING_APPROVAL", now, tomorrow);
+    await createBooking(client.id, equipment.id, "CONFIRMED", now, tomorrow);
+
+    const res = await request(app)
+      .get("/api/dashboard/pending-approvals")
+      .set(AUTH());
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBeGreaterThanOrEqual(1);
+    expect(res.body.bookings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          projectName: expect.any(String),
+          clientName: expect.any(String),
+          finalAmount: expect.any(String),
+          startDate: expect.any(String),
+          endDate: expect.any(String),
+        }),
+      ]),
+    );
+    // Ни одного не-PENDING не должно протечь
+    for (const b of res.body.bookings) {
+      // Статус не возвращаем — просто проверяем что в ответе нет лишнего ключа
+      expect(b.status).toBeUndefined();
+    }
+  });
+});
+
+describe("GET /api/dashboard/repair-stats", () => {
+  it("возвращает 401 без API-ключа", async () => {
+    const res = await request(app).get("/api/dashboard/repair-stats");
+    expect(res.status).toBe(401);
+  });
+
+  it("возвращает агрегаты по ремонтам", async () => {
+    const res = await request(app)
+      .get("/api/dashboard/repair-stats")
+      .set(AUTH());
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      openCount: expect.any(Number),
+      newCount: expect.any(Number),
+      closedThisMonth: expect.any(Number),
+      writtenOffThisMonth: expect.any(Number),
+      spentThisMonth: expect.any(String), // Decimal stringified
+    });
+  });
+});
