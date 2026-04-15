@@ -246,5 +246,32 @@ Middleware `rolesGuard(allowed: UserRole[])` в `apps/api/src/middleware/rolesGu
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
 
-<!-- updated-by-superflow:2026-04-08 -->
+## Sprint 2: Navigation, Design Canon & Audit UI
+
+### Дизайн-система (Sprint 2)
+
+IBM Plex Sans/Condensed/Mono шрифты через Google Fonts. Tailwind tokens: `ink`, `surface`, `border`, `accent`, `teal`, `amber`, `rose`, `indigo`, `slate`, `emerald`, `ok`, `warn`. Legacy `brand-*` palette удалена — используй `accent-*`. Документация: `docs/design-system.md`.
+
+CSS-утилиты: `.eyebrow` (надстрочники), `.mono-num` (числа в таблицах).
+
+### Роутинг и навигация (Sprint 2)
+
+- **`/`** — редирект на `/day` (server component `redirect()`).
+- **`/day`** — «Мой день», роль-зависимый контент (`DaySuperAdmin` / `DayWarehouse` / `DayTechnician`).
+- **`/admin/audit`** — журнал аудита, только `SUPER_ADMIN`. Фильтры: entityType, userId, from/to. Курсорная пагинация. Expandable JSON diff (before/after).
+
+### Компоненты (Sprint 2)
+
+- **`src/components/RoleBadge.tsx`** — бейдж роли: `SUPER_ADMIN` = indigo («Руководитель»), `WAREHOUSE` = teal («Кладовщик»), `TECHNICIAN` = amber («Техник»).
+- **`src/components/ToastProvider.tsx`** — in-house toast (без зависимостей). `toast.error/success/info(msg)`. Монтируется в `app/layout.tsx`.
+- **`src/hooks/useRequireRole.ts`** — хук: редирект на `/login` (не авторизован) или `/day` (нет роли) + `toast.error`.
+- **`src/hooks/useCurrentUser.ts`** — re-export из `src/lib/auth`.
+- **`src/lib/roleMatrix.ts`** — `menuByRole: Record<UserRole, MenuItem[]>` с навигацией по ролям.
+- **AppShell** — перестроен на `menuByRole[user.role]`. Loading skeleton при загрузке.
+
+### API /api/audit (Sprint 2)
+
+`GET /api/audit` — SUPER_ADMIN only. Query: `entityType`, `userId`, `from` (ISO), `to` (ISO), `limit` (1–200, default 50), `cursor` (keyset). Response: `{ items: AuditEntry[], nextCursor: string | null }`. Файл: `apps/api/src/routes/audit.ts`.
+
+<!-- updated-by-superflow:2026-04-15 -->
 
