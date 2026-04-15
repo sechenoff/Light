@@ -24,6 +24,7 @@ import { adminUsersRouter } from "./adminUsers";
 import auditRouter from "./audit";
 import { paymentsRouter } from "./payments";
 import { expensesRouter } from "./expenses";
+import { repairsRouter } from "./repairs";
 import { rolesGuard } from "../middleware/rolesGuard";
 
 const router = express.Router();
@@ -108,5 +109,8 @@ router.use("/api/payments", paymentsRouter);
 
 // /api/expenses — SUPER_ADMIN + TECHNICIAN POST; остальное — SUPER_ADMIN (роли проверяются внутри роутера)
 router.use("/api/expenses", expensesRouter);
+
+// /api/repairs — SUPER_ADMIN, WAREHOUSE, TECHNICIAN (роли проверяются внутри роутера per-route)
+router.use("/api/repairs", repairsRouter);
 
 export { router };
