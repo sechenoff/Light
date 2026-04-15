@@ -57,6 +57,16 @@ type SessionDetailResponse = {
     bookingId: string;
     operation: Operation;
     status: string;
+    scans?: Array<{
+      id: string;
+      equipmentUnitId: string;
+      scannedAt: string;
+      equipmentUnit: {
+        id: string;
+        equipmentId: string;
+        equipment: { name: string };
+      };
+    }>;
   };
   bookingItems: BookingItem[];
 };
@@ -76,6 +86,15 @@ type ReconciliationSummary = {
   missingItems: { id: string; name: string; barcode: string }[];
   substitutedItems: { id: string; name: string; barcode: string }[];
 };
+
+type RepairUrgency = "NOT_URGENT" | "NORMAL" | "URGENT";
+
+interface BrokenUnit {
+  equipmentUnitId: string;
+  reason: string;
+  urgency: RepairUrgency;
+  name: string; // для отображения
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -636,6 +655,93 @@ function ScanStep({
 
 // ── Step 5: Summary ───────────────────────────────────────────────────────────
 
+// ── Модалка отметки поломки ────────────────────────────────────────────────
+
+function BrokenUnitModal({
+  unitId,
+  unitName,
+  onConfirm,
+  onCancel,
+}: {
+  unitId: string;
+  unitName: string;
+  onConfirm: (reason: string, urgency: RepairUrgency) => void;
+  onCancel: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [urgency, setUrgency] = useState<RepairUrgency>("NORMAL");
+  const [err, setErr] = useState("");
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (reason.trim().length < 5) {
+      setErr("Укажите причину (минимум 5 символов)");
+      return;
+    }
+    onConfirm(reason.trim(), urgency);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm space-y-4">
+        <h3 className="text-lg font-bold text-slate-800">Отметить поломку</h3>
+        <p className="text-sm text-slate-600">{unitName}</p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Причина поломки</label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Опишите повреждение..."
+              required
+            />
+            {err && <p className="text-xs text-red-600 mt-1">{err}</p>}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-700 mb-2">Срочность</p>
+            <div className="space-y-1">
+              {([["URGENT", "Срочно"], ["NORMAL", "Обычно"], ["NOT_URGENT", "Не срочно"]] as [RepairUrgency, string][]).map(
+                ([val, label]) => (
+                  <label key={val} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="urgency"
+                      value={val}
+                      checked={urgency === val}
+                      onChange={() => setUrgency(val)}
+                      className="text-blue-600"
+                    />
+                    <span className="text-sm text-slate-700">{label}</span>
+                  </label>
+                ),
+              )}
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 h-12 border border-slate-300 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              Отмена
+            </button>
+            <button
+              type="submit"
+              className="flex-1 h-12 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors"
+            >
+              Отметить
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Step 5: Summary ───────────────────────────────────────────────────────────
+
 function SummaryStep({
   sessionId,
   operation,
@@ -644,17 +750,26 @@ function SummaryStep({
 }: {
   sessionId: string;
   operation: Operation;
-  onComplete: () => void;
+  onComplete: (repairCount: number) => void;
   onUnauth: () => void;
 }) {
   const [summary, setSummary] = useState<ReconciliationSummary | null>(null);
+  const [sessionDetail, setSessionDetail] = useState<SessionDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [brokenUnits, setBrokenUnits] = useState<BrokenUnit[]>([]);
+  const [brokenModal, setBrokenModal] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
-    warehouseFetch<ReconciliationSummary>(`/api/warehouse/sessions/${sessionId}/summary`)
-      .then((data) => setSummary(data))
+    Promise.all([
+      warehouseFetch<ReconciliationSummary>(`/api/warehouse/sessions/${sessionId}/summary`),
+      warehouseFetch<SessionDetailResponse>(`/api/warehouse/sessions/${sessionId}`),
+    ])
+      .then(([s, d]) => {
+        setSummary(s);
+        setSessionDetail(d);
+      })
       .catch((err: unknown) => {
         const e = err as { status?: number; message?: string };
         if (e?.status === 401) {
@@ -666,13 +781,38 @@ function SummaryStep({
       .finally(() => setLoading(false));
   }, [sessionId, onUnauth]);
 
+  function markBroken(unitId: string, name: string) {
+    setBrokenModal({ id: unitId, name });
+  }
+
+  function confirmBroken(reason: string, urgency: RepairUrgency) {
+    if (!brokenModal) return;
+    setBrokenUnits((prev) => {
+      // Заменить существующую запись если есть
+      const filtered = prev.filter((b) => b.equipmentUnitId !== brokenModal.id);
+      return [...filtered, { equipmentUnitId: brokenModal.id, reason, urgency, name: brokenModal.name }];
+    });
+    setBrokenModal(null);
+  }
+
+  function removeBroken(unitId: string) {
+    setBrokenUnits((prev) => prev.filter((b) => b.equipmentUnitId !== unitId));
+  }
+
   async function handleComplete() {
     setCompleting(true);
     try {
+      const body: { brokenUnits?: Omit<BrokenUnit, "name">[] } = {};
+      if (brokenUnits.length > 0) {
+        body.brokenUnits = brokenUnits.map(({ equipmentUnitId, reason, urgency }) => ({
+          equipmentUnitId, reason, urgency,
+        }));
+      }
       await warehouseFetch(`/api/warehouse/sessions/${sessionId}/complete`, {
         method: "POST",
+        body: JSON.stringify(body),
       });
-      onComplete();
+      onComplete(brokenUnits.length);
     } catch (err: unknown) {
       const e = err as { status?: number; message?: string };
       if (e?.status === 401) {
@@ -687,6 +827,9 @@ function SummaryStep({
 
   const opLabel = operation === "ISSUE" ? "выдачу" : "возврат";
   const opLabelCap = operation === "ISSUE" ? "Выдача" : "Возврат";
+
+  // Все отсканированные единицы из сессии (для RETURN — список поштучных)
+  const scannedUnits = sessionDetail?.session.scans ?? [];
 
   if (loading) {
     return (
@@ -720,6 +863,54 @@ function SummaryStep({
               <div className="text-xs text-slate-500 mt-1">Ожидалось</div>
             </div>
           </div>
+
+          {/* RETURN: список единиц с кнопкой поломки */}
+          {operation === "RETURN" && scannedUnits.length > 0 && (
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                Принятые единицы
+              </h3>
+              <div className="space-y-2">
+                {scannedUnits.map((scan) => {
+                  const broken = brokenUnits.find((b) => b.equipmentUnitId === scan.equipmentUnitId);
+                  return (
+                    <div
+                      key={scan.equipmentUnitId}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-xl border ${
+                        broken
+                          ? "bg-red-50 border-red-200"
+                          : "bg-white border-slate-200"
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-slate-800 truncate">
+                          {scan.equipmentUnit.equipment.name}
+                        </div>
+                        {broken && (
+                          <div className="text-xs text-red-600 mt-0.5">Поломка отмечена</div>
+                        )}
+                      </div>
+                      {broken ? (
+                        <button
+                          onClick={() => removeBroken(scan.equipmentUnitId)}
+                          className="ml-2 text-xs text-slate-400 hover:text-red-600 transition-colors"
+                        >
+                          Отменить
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => markBroken(scan.equipmentUnitId, scan.equipmentUnit.equipment.name)}
+                          className="ml-2 text-xs text-orange-600 border border-orange-200 rounded-lg px-2 py-1 hover:bg-orange-50 transition-colors whitespace-nowrap"
+                        >
+                          🔧 Поломка
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Missing items */}
           {summary.missingItems.length > 0 && (
@@ -759,7 +950,7 @@ function SummaryStep({
             </div>
           )}
 
-          {summary.missingItems.length === 0 && summary.substitutedItems.length === 0 && (
+          {summary.missingItems.length === 0 && summary.substitutedItems.length === 0 && scannedUnits.length === 0 && (
             <div className="text-center text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-6 mb-4">
               <div className="text-2xl mb-1">✓</div>
               <div className="font-semibold">Всё в порядке</div>
@@ -771,6 +962,11 @@ function SummaryStep({
 
       {/* Bottom action */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-4">
+        {brokenUnits.length > 0 && (
+          <p className="text-xs text-orange-600 mb-2 text-center">
+            {brokenUnits.length} {brokenUnits.length === 1 ? "единица" : "единицы"} отмечено как поломка
+          </p>
+        )}
         <button
           onClick={handleComplete}
           disabled={completing || !summary}
@@ -779,6 +975,16 @@ function SummaryStep({
           {completing ? "Подтверждение..." : `Подтвердить ${opLabel}`}
         </button>
       </div>
+
+      {/* Модалка поломки */}
+      {brokenModal && (
+        <BrokenUnitModal
+          unitId={brokenModal.id}
+          unitName={brokenModal.name}
+          onConfirm={confirmBroken}
+          onCancel={() => setBrokenModal(null)}
+        />
+      )}
     </div>
   );
 }
@@ -791,6 +997,7 @@ export default function WarehouseScanPage() {
   const [step, setStep] = useState<Step>("login");
   const [operation, setOperation] = useState<Operation>("ISSUE");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [completionToast, setCompletionToast] = useState<string | null>(null);
 
   const goToLogin = useCallback(() => {
     sessionStorage.removeItem("warehouse_token");
@@ -820,9 +1027,13 @@ export default function WarehouseScanPage() {
     setStep("operation");
   }
 
-  function handleSummaryComplete() {
+  function handleSummaryComplete(repairCount: number) {
     setSessionId(null);
     setStep("operation");
+    if (repairCount > 0) {
+      setCompletionToast(`Создано ${repairCount} ${repairCount === 1 ? "карточка ремонта" : "карточки ремонта"}`);
+      setTimeout(() => setCompletionToast(null), 5000);
+    }
   }
 
   return (
@@ -857,6 +1068,17 @@ export default function WarehouseScanPage() {
           onComplete={handleSummaryComplete}
           onUnauth={goToLogin}
         />
+      )}
+
+      {/* Toast: карточки ремонта созданы */}
+      {completionToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-slate-800 text-white text-sm font-medium shadow-lg max-w-xs w-full text-center">
+          {completionToast}
+          {" · "}
+          <a href="/repair" className="underline text-blue-300">
+            Открыть мастерскую
+          </a>
+        </div>
       )}
     </>
   );
