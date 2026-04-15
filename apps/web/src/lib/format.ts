@@ -25,3 +25,26 @@ export function formatRub(value: string | number | null | undefined): string {
   }).format(n);
 }
 
+/**
+ * Выбирает форму по числу: 1 → one, 2-4 → few, прочее → many.
+ * Пример: pluralize(5, "день", "дня", "дней") → "дней".
+ *
+ * Обычно используется вместе со значением: `${n} ${pluralize(n, ...)}`.
+ */
+export function pluralize(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+/**
+ * Русские названия месяцев в предложном падеже («в январе», «в феврале», …).
+ * Индекс 0..11 соответствует `Date#getMonth()`.
+ */
+export const MONTHS_LOCATIVE = [
+  "январе", "феврале", "марте", "апреле", "мае", "июне",
+  "июле", "августе", "сентябре", "октябре", "ноябре", "декабре",
+] as const;
+

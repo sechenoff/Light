@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { formatRub } from "../../lib/format";
+import { formatRub, pluralize } from "../../lib/format";
 
 // HH:MM from ISO date, ru-RU locale
 function formatHM(iso: string): string {
@@ -9,15 +9,6 @@ function formatHM(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-// Плюрализация «позиция/позиции/позиций»
-function pluralizePositions(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "позиция";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "позиции";
-  return "позиций";
 }
 
 export type DayOperation = {
@@ -65,7 +56,7 @@ export function DayOperationsList({
               )}
               <span className="text-ink-3">—</span>
               <span className="text-xs text-ink-3">
-                {op.itemCount} {pluralizePositions(op.itemCount)}
+                {op.itemCount} {pluralize(op.itemCount, "позиция", "позиции", "позиций")}
               </span>
             </Link>
           </li>
