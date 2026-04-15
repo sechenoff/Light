@@ -18,7 +18,7 @@ type BookingItemMini = {
 
 type BookingRow = {
   id: string;
-  status: "DRAFT" | "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
+  status: "DRAFT" | "PENDING_APPROVAL" | "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
   paymentStatus: "NOT_PAID" | "PARTIALLY_PAID" | "PAID" | "OVERDUE";
   projectName: string;
   startDate: string;
@@ -79,6 +79,8 @@ export default function BookingHistoryPage() {
     switch (s) {
       case "DRAFT":
         return "Черновик";
+      case "PENDING_APPROVAL":
+        return "На согласовании";
       case "CONFIRMED":
         return "Подтверждено";
       case "ISSUED":
@@ -87,6 +89,17 @@ export default function BookingHistoryPage() {
         return "Возвращено";
       case "CANCELLED":
         return "Отменено";
+    }
+  };
+
+  const statusVariant = (s: BookingRow["status"]): "info" | "warn" | "ok" | "limited" | "none" | "full" | "edit" => {
+    switch (s) {
+      case "DRAFT": return "info";
+      case "PENDING_APPROVAL": return "warn";
+      case "CONFIRMED": return "full";
+      case "ISSUED": return "edit";
+      case "RETURNED": return "ok";
+      case "CANCELLED": return "none";
     }
   };
 
@@ -158,6 +171,7 @@ export default function BookingHistoryPage() {
             <select className="rounded border border-border px-2 py-1 text-xs bg-surface" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="">Все статусы брони</option>
               <option value="DRAFT">Черновик</option>
+              <option value="PENDING_APPROVAL">На согласовании</option>
               <option value="CONFIRMED">Подтверждено</option>
               <option value="ISSUED">Выдано</option>
               <option value="RETURNED">Возвращено</option>
@@ -199,13 +213,7 @@ export default function BookingHistoryPage() {
                   </td>
                   <td className="px-3 py-2">
                     <StatusPill
-                      variant={
-                        r.status === "CONFIRMED" ? "full"
-                        : r.status === "ISSUED" ? "edit"
-                        : r.status === "RETURNED" ? "ok"
-                        : r.status === "CANCELLED" ? "none"
-                        : "view"
-                      }
+                      variant={statusVariant(r.status)}
                       label={statusText(r.status)}
                     />
                     {r.hasScanSessions && (
