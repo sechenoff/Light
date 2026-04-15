@@ -19,9 +19,11 @@ process.env.AUTH_MODE = "enforce";
 process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-for-integration";
 process.env.WAREHOUSE_SECRET = "test-warehouse-secret-integration";
+process.env.JWT_SECRET = "test-jwt-secret-barcode-min16chars";
 
 let app: Express;
 let prisma: any;
+let superAdminToken: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -38,6 +40,14 @@ beforeAll(async () => {
   app = mod.app;
   const pmod = await import("../prisma");
   prisma = pmod.prisma;
+
+  // Создаём SUPER_ADMIN для тестов роутов, защищённых rolesGuard
+  const { hashPassword, signSession } = await import("../services/auth");
+  const hash = await hashPassword("test-pass-123");
+  const admin = await prisma.adminUser.create({
+    data: { username: "barcode_super_admin", passwordHash: hash, role: "SUPER_ADMIN" },
+  });
+  superAdminToken = signSession({ userId: admin.id, username: admin.username, role: "SUPER_ADMIN" });
 });
 
 afterAll(async () => {
@@ -54,7 +64,7 @@ afterAll(async () => {
   }
 });
 
-const AUTH = { "X-API-Key": "test-key-1" };
+function AUTH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${superAdminToken}` }; }
 
 // ──────────────────────────────────────────────────────────────────
 // Вспомогательные функции
@@ -68,7 +78,7 @@ async function createEquipment(
 ) {
   const res = await request(app)
     .post("/api/equipment")
-    .set(AUTH)
+    .set(AUTH())
     .send({
       name,
       category,
@@ -83,7 +93,7 @@ async function createEquipment(
 async function generateUnits(equipmentId: string, count: number) {
   const res = await request(app)
     .post(`/api/equipment/${equipmentId}/units/generate`)
-    .set(AUTH)
+    .set(AUTH())
     .send({ count });
   expect(res.status).toBe(201);
   return res.body.units as Array<{ id: string; barcode: string; barcodePayload: string; status: string }>;
@@ -96,7 +106,7 @@ async function createClientDirect(name: string) {
 async function createBookingDraft(clientName: string, equipmentId: string, quantity: number) {
   const res = await request(app)
     .post("/api/bookings/draft")
-    .set(AUTH)
+    .set(AUTH())
     .send({
       client: { name: clientName },
       projectName: "Тестовый проект",
@@ -111,7 +121,7 @@ async function createBookingDraft(clientName: string, equipmentId: string, quant
 async function confirmBooking(bookingId: string) {
   const res = await request(app)
     .post(`/api/bookings/${bookingId}/status`)
-    .set(AUTH)
+    .set(AUTH())
     .send({ action: "confirm" });
   expect(res.status).toBe(200);
   return res.body.booking;
@@ -120,7 +130,7 @@ async function confirmBooking(bookingId: string) {
 async function issueBooking(bookingId: string) {
   const res = await request(app)
     .post(`/api/bookings/${bookingId}/status`)
-    .set(AUTH)
+    .set(AUTH())
     .send({ action: "issue" });
   expect(res.status).toBe(200);
   return res.body.booking;
@@ -429,7 +439,7 @@ describe("Edge cases", () => {
     // Бронь с обоими типами
     const res = await request(app)
       .post("/api/bookings/draft")
-      .set(AUTH)
+      .set(AUTH())
       .send({
         client: { name: "Клиент MIXED" },
         projectName: "Смешанный проект",

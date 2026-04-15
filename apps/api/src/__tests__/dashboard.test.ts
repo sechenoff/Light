@@ -17,9 +17,11 @@ process.env.AUTH_MODE = "enforce";
 process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-dashboard";
 process.env.WAREHOUSE_SECRET = "test-warehouse-secret-dashboard";
+process.env.JWT_SECRET = "test-jwt-secret-dashboard-min16chars";
 
 let app: Express;
 let prisma: any;
+let superAdminToken: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -36,6 +38,14 @@ beforeAll(async () => {
   app = mod.app;
   const pmod = await import("../prisma");
   prisma = pmod.prisma;
+
+  // Создаём SUPER_ADMIN для тестов роутов, защищённых rolesGuard
+  const { hashPassword, signSession } = await import("../services/auth");
+  const hash = await hashPassword("test-pass-123");
+  const admin = await prisma.adminUser.create({
+    data: { username: "dashboard_super_admin", passwordHash: hash, role: "SUPER_ADMIN" },
+  });
+  superAdminToken = signSession({ userId: admin.id, username: admin.username, role: "SUPER_ADMIN" });
 });
 
 afterAll(async () => {
@@ -48,7 +58,7 @@ afterAll(async () => {
   }
 });
 
-const AUTH = { "X-API-Key": "test-key-1" };
+function AUTH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${superAdminToken}` }; }
 
 // ──────────────────────────────────────────────────────────────────
 // Helpers
@@ -106,7 +116,7 @@ describe("GET /api/dashboard/today", () => {
     const today = new Date().toISOString().slice(0, 10);
     const res = await request(app)
       .get(`/api/dashboard/today?date=${today}`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     expect(res.body.pickups).toEqual([]);
     expect(res.body.returns).toEqual([]);
@@ -127,7 +137,7 @@ describe("GET /api/dashboard/today", () => {
 
     const res = await request(app)
       .get(`/api/dashboard/today?date=${todayStr}`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     const pickup = res.body.pickups.find((b: any) => b.clientName === "Клиент пикап");
     expect(pickup).toBeDefined();
@@ -149,7 +159,7 @@ describe("GET /api/dashboard/today", () => {
 
     const res = await request(app)
       .get(`/api/dashboard/today?date=${todayStr}`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     const ret = res.body.returns.find((b: any) => b.clientName === "Клиент возврат");
     expect(ret).toBeDefined();
@@ -169,7 +179,7 @@ describe("GET /api/dashboard/today", () => {
     const today = new Date().toISOString().slice(0, 10);
     const res = await request(app)
       .get(`/api/dashboard/today?date=${today}`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     const active = res.body.active.find((b: any) => b.clientName === "Клиент активный");
     expect(active).toBeDefined();
@@ -187,7 +197,7 @@ describe("GET /api/dashboard/today", () => {
 
     const res = await request(app)
       .get(`/api/dashboard/today?date=${todayStr}`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     const draft = res.body.pickups.find((b: any) => b.clientName === "Клиент черновик");
     expect(draft).toBeUndefined();
@@ -204,7 +214,7 @@ describe("GET /api/dashboard/today", () => {
 
     const res = await request(app)
       .get(`/api/dashboard/today?date=${otherDate}`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     const pickup = res.body.pickups.find((b: any) => b.clientName === "Клиент другой день");
     expect(pickup).toBeDefined();

@@ -18,9 +18,11 @@ process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-dryrun";
 process.env.WAREHOUSE_SECRET = "test-warehouse-secret-dryrun";
 process.env.VISION_PROVIDER = "mock";
+process.env.JWT_SECRET = "test-jwt-secret-dryrun-min16chars";
 
 let app: Express;
 let prisma: any;
+let superAdminToken: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -37,6 +39,14 @@ beforeAll(async () => {
   app = mod.app;
   const pmod = await import("../../prisma");
   prisma = pmod.prisma;
+
+  // Создаём SUPER_ADMIN для тестов роутов, защищённых rolesGuard
+  const { hashPassword, signSession } = await import("../../services/auth");
+  const hash = await hashPassword("test-pass-123");
+  const admin = await prisma.adminUser.create({
+    data: { username: "dryrun_super_admin", passwordHash: hash, role: "SUPER_ADMIN" },
+  });
+  superAdminToken = signSession({ userId: admin.id, username: admin.username, role: "SUPER_ADMIN" });
 });
 
 afterAll(async () => {
@@ -49,7 +59,7 @@ afterAll(async () => {
   }
 });
 
-const AUTH = { "X-API-Key": "test-key-1" };
+function AUTH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${superAdminToken}` }; }
 
 // ──────────────────────────────────────────────────────────────────
 // Вспомогательные функции
@@ -98,7 +108,7 @@ describe("POST /api/bookings/draft с dryRun:true", () => {
 
     const res = await request(app)
       .post("/api/bookings/draft")
-      .set(AUTH)
+      .set(AUTH())
       .send({
         dryRun: true,
         client: { name: "DryRun Клиент А" },
@@ -123,7 +133,7 @@ describe("POST /api/bookings/draft с dryRun:true", () => {
 
     await request(app)
       .post("/api/bookings/draft")
-      .set(AUTH)
+      .set(AUTH())
       .send({
         dryRun: true,
         client: { name: "DryRun Клиент Б" },
@@ -143,7 +153,7 @@ describe("POST /api/bookings/draft с dryRun:true", () => {
 
     await request(app)
       .post("/api/bookings/draft")
-      .set(AUTH)
+      .set(AUTH())
       .send({
         dryRun: true,
         client: { name: "DryRun Клиент Уникальное Имя XYZ123" },
@@ -164,7 +174,7 @@ describe("POST /api/bookings/draft с dryRun:true", () => {
 
     const res = await request(app)
       .post("/api/bookings/draft")
-      .set(AUTH)
+      .set(AUTH())
       .send({
         client: { name: client.name },
         projectName: "Реальный Проект",
@@ -184,7 +194,7 @@ describe("POST /api/bookings/draft с dryRun:true", () => {
   it("dryRun с несуществующим equipmentId возвращает 400", async () => {
     const res = await request(app)
       .post("/api/bookings/draft")
-      .set(AUTH)
+      .set(AUTH())
       .send({
         dryRun: true,
         client: { name: "DryRun Ошибка" },
@@ -212,7 +222,7 @@ describe("PATCH /api/bookings/:id с dryRun:true", () => {
 
     const res = await request(app)
       .patch(`/api/bookings/${booking.id}`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         dryRun: true,
         projectName: "DryRun Новое Название",
@@ -237,7 +247,7 @@ describe("PATCH /api/bookings/:id с dryRun:true", () => {
 
     await request(app)
       .patch(`/api/bookings/${booking.id}`)
-      .set(AUTH)
+      .set(AUTH())
       .send({
         dryRun: true,
         startDate: "2026-12-01T10:00:00.000Z",
@@ -253,7 +263,7 @@ describe("PATCH /api/bookings/:id с dryRun:true", () => {
   it("dryRun PATCH на несуществующую бронь возвращает 404", async () => {
     const res = await request(app)
       .patch("/api/bookings/non-existent-booking-id")
-      .set(AUTH)
+      .set(AUTH())
       .send({ dryRun: true, projectName: "Не важно" });
 
     expect(res.status).toBe(404);

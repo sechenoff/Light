@@ -389,3 +389,24 @@ describe("botAccess bypass", () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────
+// Негативные тесты: валидный API-ключ без JWT-сессии → 401
+// ──────────────────────────────────────────────────────────────────
+describe("valid API key, no session → 401 UNAUTHENTICATED", () => {
+  it("valid API key, no session → DELETE /api/bookings/:id → 401 UNAUTHENTICATED", async () => {
+    const res = await request(app)
+      .delete(`/api/bookings/${bookingId}`)
+      .set("X-API-Key", "test-key-roles");
+    expect(res.status).toBe(401);
+    expect(res.body.details).toBe("UNAUTHENTICATED");
+  });
+
+  it("valid API key, no session → GET /api/finance/dashboard → 401 UNAUTHENTICATED", async () => {
+    const res = await request(app)
+      .get("/api/finance/dashboard")
+      .set("X-API-Key", "test-key-roles");
+    expect(res.status).toBe(401);
+    expect(res.body.details).toBe("UNAUTHENTICATED");
+  });
+});

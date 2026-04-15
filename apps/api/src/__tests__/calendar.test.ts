@@ -17,9 +17,11 @@ process.env.AUTH_MODE = "enforce";
 process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-calendar";
 process.env.WAREHOUSE_SECRET = "test-warehouse-secret-calendar";
+process.env.JWT_SECRET = "test-jwt-secret-calendar-min16chars";
 
 let app: Express;
 let prisma: any;
+let superAdminToken: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -36,6 +38,14 @@ beforeAll(async () => {
   app = mod.app;
   const pmod = await import("../prisma");
   prisma = pmod.prisma;
+
+  // Создаём SUPER_ADMIN для тестов роутов, защищённых rolesGuard
+  const { hashPassword, signSession } = await import("../services/auth");
+  const hash = await hashPassword("test-pass-123");
+  const admin = await prisma.adminUser.create({
+    data: { username: "calendar_super_admin", passwordHash: hash, role: "SUPER_ADMIN" },
+  });
+  superAdminToken = signSession({ userId: admin.id, username: admin.username, role: "SUPER_ADMIN" });
 });
 
 afterAll(async () => {
@@ -48,7 +58,7 @@ afterAll(async () => {
   }
 });
 
-const AUTH = { "X-API-Key": "test-key-1" };
+function AUTH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${superAdminToken}` }; }
 
 // ──────────────────────────────────────────────────────────────────
 // Helpers
@@ -107,7 +117,7 @@ describe("GET /api/calendar", () => {
   });
 
   it("возвращает 400 без обязательных параметров", async () => {
-    const res = await request(app).get("/api/calendar").set(AUTH);
+    const res = await request(app).get("/api/calendar").set(AUTH());
     expect(res.status).toBe(400);
   });
 
@@ -126,7 +136,7 @@ describe("GET /api/calendar", () => {
 
     const res = await request(app)
       .get("/api/calendar?start=2025-03-01&end=2025-03-15")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("resources");
     expect(res.body).toHaveProperty("events");
@@ -158,7 +168,7 @@ describe("GET /api/calendar", () => {
 
     const res = await request(app)
       .get("/api/calendar?start=2025-03-01&end=2025-03-31")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     const event = res.body.events.find((e: any) => e.title === "Январский проект");
     expect(event).toBeUndefined();
@@ -177,7 +187,7 @@ describe("GET /api/calendar", () => {
 
     const res = await request(app)
       .get("/api/calendar?start=2025-04-01&end=2025-04-15&category=Свет")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
 
     const svetEvent = res.body.events.find((e: any) => e.title === "Свет проект");
@@ -201,14 +211,14 @@ describe("GET /api/calendar", () => {
 
     const res = await request(app)
       .get("/api/calendar?start=2025-05-01&end=2025-05-31&search=Документалка")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     const event = res.body.events.find((e: any) => e.title === "Документалка 2025");
     expect(event).toBeDefined();
 
     const resNoMatch = await request(app)
       .get("/api/calendar?start=2025-05-01&end=2025-05-31&search=Несуществующий")
-      .set(AUTH);
+      .set(AUTH());
     expect(resNoMatch.body.events.find((e: any) => e.title === "Документалка 2025")).toBeUndefined();
   });
 
@@ -227,7 +237,7 @@ describe("GET /api/calendar", () => {
 
     const res = await request(app)
       .get("/api/calendar?start=2025-06-01&end=2025-06-30")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     const event = res.body.events.find((e: any) => e.title === "Черновик проект кал");
     expect(event).toBeUndefined();
@@ -248,7 +258,7 @@ describe("GET /api/calendar", () => {
 
     const res = await request(app)
       .get("/api/calendar?start=2025-07-01&end=2025-07-31&includeDrafts=true")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     const event = res.body.events.find((e: any) => e.title === "Черновик проект кал2");
     expect(event).toBeDefined();
@@ -269,7 +279,7 @@ describe("GET /api/calendar/occupancy", () => {
   it("возвращает 400 при диапазоне >90 дней", async () => {
     const res = await request(app)
       .get("/api/calendar/occupancy?start=2025-01-01&end=2025-04-10")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("90");
   });
@@ -290,7 +300,7 @@ describe("GET /api/calendar/occupancy", () => {
 
     const res = await request(app)
       .get("/api/calendar/occupancy?start=2025-08-01&end=2025-08-07")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("days");
     expect(res.body).toHaveProperty("totalCapacity");
@@ -312,7 +322,7 @@ describe("GET /api/calendar/occupancy", () => {
   it("возвращает правильную структуру дней", async () => {
     const res = await request(app)
       .get("/api/calendar/occupancy?start=2025-09-01&end=2025-09-05")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     expect(res.body.days.length).toBe(5);
     for (const day of res.body.days) {

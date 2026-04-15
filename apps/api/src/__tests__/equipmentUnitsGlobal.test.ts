@@ -21,9 +21,11 @@ process.env.API_KEYS = "test-key-1";
 process.env.AUTH_MODE = "enforce";
 process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-global-units";
+process.env.JWT_SECRET = "test-jwt-secret-globalunits-min16chars";
 
 let app: Express;
 let prisma: any;
+let superAdminToken: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -40,6 +42,14 @@ beforeAll(async () => {
   app = mod.app;
   const pmod = await import("../prisma");
   prisma = pmod.prisma;
+
+  // Создаём SUPER_ADMIN для тестов роутов, защищённых rolesGuard
+  const { hashPassword, signSession } = await import("../services/auth");
+  const hash = await hashPassword("test-pass-123");
+  const admin = await prisma.adminUser.create({
+    data: { username: "global_units_super_admin", passwordHash: hash, role: "SUPER_ADMIN" },
+  });
+  superAdminToken = signSession({ userId: admin.id, username: admin.username, role: "SUPER_ADMIN" });
 });
 
 afterAll(async () => {
@@ -52,7 +62,7 @@ afterAll(async () => {
   }
 });
 
-const AUTH = { "X-API-Key": "test-key-1" };
+function AUTH() { return { "X-API-Key": "test-key-1", Authorization: `Bearer ${superAdminToken}` }; }
 
 // ──────────────────────────────────────────────
 // Вспомогательные функции
@@ -69,7 +79,7 @@ async function createEquipment(mode: "UNIT" | "COUNT" = "UNIT") {
   _catIdx++;
   const res = await request(app)
     .post("/api/equipment")
-    .set(AUTH)
+    .set(AUTH())
     .send({
       name: `ТестЕд-${_catIdx}`,
       category,
@@ -84,7 +94,7 @@ async function createEquipment(mode: "UNIT" | "COUNT" = "UNIT") {
 async function generateUnit(equipmentId: string) {
   const res = await request(app)
     .post(`/api/equipment/${equipmentId}/units/generate`)
-    .set(AUTH)
+    .set(AUTH())
     .send({ count: 1 });
   expect(res.status).toBe(201);
   return res.body.units[0] as { id: string; barcode: string; barcodePayload: string; status: string };
@@ -101,7 +111,7 @@ describe("GET /api/equipment-units", () => {
 
     const res = await request(app)
       .get("/api/equipment-units")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("units");
     expect(res.body).toHaveProperty("total");
@@ -114,7 +124,7 @@ describe("GET /api/equipment-units", () => {
   it("supports hasBarcode=true filter", async () => {
     const res = await request(app)
       .get("/api/equipment-units?hasBarcode=true")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     for (const u of res.body.units) {
       expect(u.barcode).not.toBeNull();
@@ -124,7 +134,7 @@ describe("GET /api/equipment-units", () => {
   it("supports status filter", async () => {
     const res = await request(app)
       .get("/api/equipment-units?status=AVAILABLE")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     for (const u of res.body.units) {
       expect(u.status).toBe("AVAILABLE");
@@ -137,7 +147,7 @@ describe("GET /api/equipment-units", () => {
 
     const res = await request(app)
       .get("/api/equipment-units")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     for (const u of res.body.units) {
       expect(u.equipment).toBeDefined();
@@ -158,7 +168,7 @@ describe("GET /api/equipment-units/lookup", () => {
 
     const res = await request(app)
       .get(`/api/equipment-units/lookup?barcode=${unit.barcodePayload}`)
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(200);
     expect(res.body.unit.id).toBe(unit.id);
     expect(res.body.hmacVerified).toBe(true);
@@ -168,14 +178,14 @@ describe("GET /api/equipment-units/lookup", () => {
   it("returns 404 for unknown barcode", async () => {
     const res = await request(app)
       .get("/api/equipment-units/lookup?barcode=totally-unknown-barcode")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(404);
   });
 
   it("returns 400 when barcode param is missing", async () => {
     const res = await request(app)
       .get("/api/equipment-units/lookup")
-      .set(AUTH);
+      .set(AUTH());
     expect(res.status).toBe(400);
   });
 });
@@ -194,7 +204,7 @@ describe("POST /api/equipment/:id/units/:unitId/assign-barcode", () => {
 
     const res = await request(app)
       .post(`/api/equipment/${equipment.id}/units/${unit.id}/assign-barcode`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "MY-CUSTOM-001" });
     expect(res.status).toBe(200);
     expect(res.body.unit.barcode).toBe("MY-CUSTOM-001");
@@ -209,7 +219,7 @@ describe("POST /api/equipment/:id/units/:unitId/assign-barcode", () => {
 
     const res = await request(app)
       .post(`/api/equipment/${equipment.id}/units/${unit.id}/assign-barcode`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "BAD:BARCODE" });
     expect(res.status).toBe(400);
   });
@@ -223,7 +233,7 @@ describe("POST /api/equipment/:id/units/:unitId/assign-barcode", () => {
     });
     await request(app)
       .post(`/api/equipment/${equipment.id}/units/${unit1.id}/assign-barcode`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "UNIQUE-DUP-001" });
 
     // Unit 2 tries same barcode
@@ -232,7 +242,7 @@ describe("POST /api/equipment/:id/units/:unitId/assign-barcode", () => {
     });
     const res = await request(app)
       .post(`/api/equipment/${equipment.id}/units/${unit2.id}/assign-barcode`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "UNIQUE-DUP-001" });
     expect(res.status).toBe(409);
     expect(res.body.existingUnit).toBeDefined();
@@ -245,7 +255,7 @@ describe("POST /api/equipment/:id/units/:unitId/assign-barcode", () => {
 
     const res = await request(app)
       .post(`/api/equipment/${equipment.id}/units/${unit.id}/assign-barcode`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "FORCED-NEW-001", force: true });
     expect(res.status).toBe(200);
     expect(res.body.unit.barcode).toBe("FORCED-NEW-001");
@@ -258,7 +268,7 @@ describe("POST /api/equipment/:id/units/:unitId/assign-barcode", () => {
 
     const res = await request(app)
       .post(`/api/equipment/${equipment.id}/units/${unit.id}/assign-barcode`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "NEW-BARCODE-NO-FORCE" });
     expect(res.status).toBe(409);
   });
@@ -267,7 +277,7 @@ describe("POST /api/equipment/:id/units/:unitId/assign-barcode", () => {
     const equipment = await createEquipment();
     const res = await request(app)
       .post(`/api/equipment/${equipment.id}/units/non-existent-id/assign-barcode`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "SOME-BARCODE" });
     expect(res.status).toBe(404);
   });
@@ -284,7 +294,7 @@ describe("POST /api/equipment/:id/units/batch-assign", () => {
 
     const res = await request(app)
       .post(`/api/equipment/${equipment.id}/units/batch-assign`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "BATCH-001" });
     expect(res.status).toBe(201);
     expect(res.body.unit.barcode).toBe("BATCH-001");
@@ -294,7 +304,7 @@ describe("POST /api/equipment/:id/units/batch-assign", () => {
     // Verify totalQuantity incremented
     const eqRes = await request(app)
       .get(`/api/equipment/${equipment.id}`)
-      .set(AUTH);
+      .set(AUTH());
     expect(eqRes.body.equipment.totalQuantity).toBe(initialQty + 1);
   });
 
@@ -303,7 +313,7 @@ describe("POST /api/equipment/:id/units/batch-assign", () => {
 
     const res = await request(app)
       .post(`/api/equipment/${equipment.id}/units/batch-assign`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "SHOULD-FAIL" });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/UNIT/);
@@ -314,13 +324,13 @@ describe("POST /api/equipment/:id/units/batch-assign", () => {
     // Create first unit
     await request(app)
       .post(`/api/equipment/${equipment.id}/units/batch-assign`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "BATCH-DUP-001" });
 
     // Try duplicate
     const res = await request(app)
       .post(`/api/equipment/${equipment.id}/units/batch-assign`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "BATCH-DUP-001" });
     expect(res.status).toBe(409);
   });
@@ -329,7 +339,7 @@ describe("POST /api/equipment/:id/units/batch-assign", () => {
     const equipment = await createEquipment("UNIT");
     const res = await request(app)
       .post(`/api/equipment/${equipment.id}/units/batch-assign`)
-      .set(AUTH)
+      .set(AUTH())
       .send({ barcode: "BAD:COLON" });
     expect(res.status).toBe(400);
   });
@@ -346,7 +356,7 @@ describe("POST /api/equipment-units/labels", () => {
 
     const res = await request(app)
       .post("/api/equipment-units/labels")
-      .set(AUTH)
+      .set(AUTH())
       .send({ unitIds: [unit.id] });
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toMatch(/application\/pdf/);
@@ -361,7 +371,7 @@ describe("POST /api/equipment-units/labels", () => {
 
     const res = await request(app)
       .post("/api/equipment-units/labels")
-      .set(AUTH)
+      .set(AUTH())
       .send({ unitIds: [unit.id] });
     expect(res.status).toBe(404);
   });
@@ -369,7 +379,7 @@ describe("POST /api/equipment-units/labels", () => {
   it("rejects empty unitIds with 400", async () => {
     const res = await request(app)
       .post("/api/equipment-units/labels")
-      .set(AUTH)
+      .set(AUTH())
       .send({ unitIds: [] });
     expect(res.status).toBe(400);
   });

@@ -79,8 +79,8 @@ router.use("/api/users", usersRouter);
 // /api/analyses — SUPER_ADMIN, WAREHOUSE
 router.use("/api/analyses", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), analysesRouter);
 
-// /api/bookings (parse-gaffer-review и match-equipment) — SUPER_ADMIN, WAREHOUSE (уже покрыто выше)
-router.use("/api/bookings", bookingRequestParserRouter);
+// /api/bookings (parse-gaffer-review и match-equipment) — SUPER_ADMIN, WAREHOUSE
+router.use("/api/bookings", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), bookingRequestParserRouter);
 
 // /api/admin/slang-learning — SUPER_ADMIN only
 router.use("/api/admin/slang-learning", rolesGuard(["SUPER_ADMIN"]), slangLearningRouter);
