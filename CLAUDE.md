@@ -90,7 +90,9 @@ light-rental-system/
 | `apps/web/src/components/DashboardOpsCard.tsx` | Booking operation card for dashboard sections |
 | `apps/web/src/components/QuickAvailabilityCheck.tsx` | Equipment availability search widget (date range + category filter) |
 | `apps/web/app/api/[...path]/route.ts` | Catch-all API proxy with connection error handling |
-| `apps/web/app/admin/page.tsx` | Admin panel -- slang learning review + warehouse worker management + cross-catalog barcode management + price import (PricesTab: upload, column mapping, review with filters, bulk actions, apply, XLSX export) |
+| `apps/web/app/admin/page.tsx` | Admin panel -- slang learning review + warehouse worker management + cross-catalog barcode management + price import (PricesTab: upload, column mapping, review with filters, bulk actions, apply, XLSX export). Сверху — Link-карточка на `/admin/roles`. |
+| `apps/web/app/admin/roles/page.tsx` | Read-only справочник «Матрица прав» — `useRequireRole(["SUPER_ADMIN"])`. Рендерит `MATRIX_SECTIONS`, `LEGEND_ITEMS`, `EDGE_CASES`, `TECH_NOTES` из `rolesMatrix.ts` через `StatusPill`. Реплика мокапа `docs/mockups/roles-matrix.html`. |
+| `apps/web/src/lib/rolesMatrix.ts` | Data-only: типы `Permission/PermissionCell/MatrixRow/MatrixSection/RoleDescription/EdgeCase/TechNote` + константы для страницы `/admin/roles`. Это документация-как-код, не runtime-конфиг. |
 | `apps/api/src/routes/equipmentUnitsGlobal.ts` | Cross-catalog equipment units API: list, lookup, batch labels (mounted at `/api/equipment-units`) |
 | `apps/web/app/admin/scanner/page.tsx` | Mobile-first barcode scanner page: lookup, assign, batch-assign modes |
 | `apps/web/src/components/BarcodeScanner.tsx` | Shared barcode scanner component (html5-qrcode, Wake Lock, flash animation) |
