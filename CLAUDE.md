@@ -186,10 +186,10 @@ npm run seed                  # Seed database
 
 Middleware `rolesGuard(allowed: UserRole[])` в `apps/api/src/middleware/rolesGuard.ts`:
 - Если `req.botAccess === true` (бот-ключ openclaw-* прошёл botScopeGuard) → пропускает без проверки роли.
-- Если `req.adminUser` отсутствует (API-key-only запрос без сессии) → пропускает (backward compat).
+- Если `req.adminUser` отсутствует (валидный `X-API-Key` без JWT-сессии) → 401 `{ code: "UNAUTHENTICATED" }`.
 - Если роль пользователя не в `allowed` → 403 `{ code: "FORBIDDEN_BY_ROLE" }`.
 
-Для полного принуждения сессионной авторизации использовать `requireAdmin` из `sessionAuth.ts`.
+Все guarded-роуты требуют JWT-сессию (cookie `lr_session` или `Authorization: Bearer <token>`). API-ключ без сессии больше не проходит — тесты для guarded endpoints должны инжектить `signSession(...)` токен.
 
 ### Матрица прав (краткая)
 
