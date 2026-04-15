@@ -2,38 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { UserRole } from "../../src/lib/auth";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
-import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 import { apiFetch } from "../../src/lib/api";
 import { formatRub } from "../../src/lib/format";
+import { DayHeader } from "../../src/components/day/DayHeader";
+import { DayAlert } from "../../src/components/day/DayAlert";
+import { DayKpiCard } from "../../src/components/day/DayKpiCard";
+import { DayOperationsList } from "../../src/components/day/DayOperationsList";
+import type { DayOperation } from "../../src/components/day/DayOperationsList";
+import { DayFooterMetrics } from "../../src/components/day/DayFooterMetrics";
 
-// ── Placeholder card ──────────────────────────────────────────────────────────
-
-function PlaceholderCard({ title, hint }: { title: string; hint?: string }) {
-  return (
-    <div className="bg-surface border border-border rounded-lg p-4 shadow-xs">
-      <p className="text-sm font-semibold text-ink">{title}</p>
-      {hint && <p className="mt-1 text-xs text-ink-3">{hint}</p>}
-    </div>
-  );
-}
-
-// ── Типы ──────────────────────────────────────────────────────────────────────
-
-interface RepairCardData {
-  id: string;
-  reason: string;
-  urgency: "NOT_URGENT" | "NORMAL" | "URGENT";
-  status: string;
-  createdAt: string;
-  unit: { equipment: { name: string } };
-}
-
-// ── Role-specific day views ───────────────────────────────────────────────────
+// ── SUPER_ADMIN ──────────────────────────────────────────────────────────────
 
 interface FinanceDashboard {
   totalOutstanding: string;
+  earnedThisMonth: string;
+  netThisMonth: string;
+  trend: Array<{ month: string; earned: string; spent: string; net: string }>;
+  summary?: { overdueReceivables?: string };
   upcomingWeek: Array<{
     bookingId: string;
     projectName: string;
@@ -43,194 +31,448 @@ interface FinanceDashboard {
   }>;
 }
 
-function DaySuperAdmin() {
-  const [fin, setFin] = useState<FinanceDashboard | null>(null);
-
-  useEffect(() => {
-    apiFetch<FinanceDashboard>("/api/finance/dashboard")
-      .then(setFin)
-      .catch(() => { /* не блокируем страницу при ошибке */ });
-  }, []);
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <p className="eyebrow">Руководитель</p>
-        <h1 className="text-lg font-semibold text-ink mt-0.5">Мой день</h1>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Долги клиентов */}
-        <div className="bg-rose-soft border border-rose-border rounded-lg p-4 shadow-xs">
-          <p className="eyebrow text-rose">Долги клиентов</p>
-          <p className="mono-num text-xl mt-1 text-ink">
-            {fin ? formatRub(fin.totalOutstanding) : "—"}
-          </p>
-        </div>
-        {/* Ближайшие платежи */}
-        <div className="bg-amber-soft border border-amber-border rounded-lg p-4 shadow-xs">
-          <p className="eyebrow text-amber">Ближайшие платежи (7 дней)</p>
-          {fin && fin.upcomingWeek.length > 0 ? (
-            <ul className="mt-2 space-y-1">
-              {fin.upcomingWeek.slice(0, 3).map((u) => (
-                <li key={u.bookingId} className="text-xs text-ink-2">
-                  <span className="font-medium">{u.clientName}</span> · {u.projectName}
-                  <span className="mono-num ml-1 text-amber font-medium">{formatRub(u.amountOutstanding)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs text-ink-3 mt-1">{fin ? "Нет платежей" : "—"}</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 interface DashboardToday {
-  pickups: Array<{ id: string; projectName: string; clientName: string }>;
-  returns: Array<{ id: string; projectName: string; clientName: string }>;
+  pickups: Array<{
+    id: string;
+    projectName: string;
+    clientName: string;
+    startDate: string;
+    endDate: string;
+    finalAmount: string;
+    itemCount: number;
+  }>;
+  returns: Array<{
+    id: string;
+    projectName: string;
+    clientName: string;
+    startDate: string;
+    endDate: string;
+    finalAmount: string;
+    itemCount: number;
+  }>;
   active: Array<{ id: string }>;
 }
 
-function DayWarehouse() {
+interface PendingApprovalsResponse {
+  bookings: Array<{
+    id: string;
+    projectName: string;
+    clientName: string;
+    finalAmount: string;
+    startDate: string;
+    endDate: string;
+  }>;
+  total: number;
+}
+
+interface RepairStats {
+  openCount: number;
+  newCount: number;
+  closedThisMonth: number;
+  writtenOffThisMonth: number;
+  spentThisMonth: string;
+}
+
+function sumFinal(bookings: Array<{ finalAmount: string }>): number {
+  return bookings.reduce((acc, b) => acc + Number(b.finalAmount || 0), 0);
+}
+
+function deltaPct(currentStr: string, prevStr: string): number | null {
+  const c = Number(currentStr);
+  const p = Number(prevStr);
+  if (!Number.isFinite(c) || !Number.isFinite(p) || p === 0) return null;
+  return Math.round(((c - p) / p) * 100);
+}
+
+function DaySuperAdmin({ username }: { username: string }) {
+  const [fin, setFin] = useState<FinanceDashboard | null>(null);
   const [dashboard, setDashboard] = useState<DashboardToday | null>(null);
-  const [openRepairCount, setOpenRepairCount] = useState<number | null>(null);
-  const [dashLoading, setDashLoading] = useState(true);
+  const [pending, setPending] = useState<PendingApprovalsResponse | null>(null);
+  const [repairStats, setRepairStats] = useState<RepairStats | null>(null);
 
   useEffect(() => {
-    apiFetch<DashboardToday>("/api/dashboard/today")
-      .then((data) => setDashboard(data))
-      .catch(() => { /* не блокируем */ })
-      .finally(() => setDashLoading(false));
-
-    apiFetch<{ repairs: RepairCardData[] }>(
-      "/api/repairs?status=WAITING_REPAIR,IN_REPAIR,WAITING_PARTS&limit=100",
-    )
-      .then((data) => setOpenRepairCount(data.repairs.length))
-      .catch(() => { /* не блокируем */ });
+    apiFetch<FinanceDashboard>("/api/finance/dashboard").then(setFin).catch(() => {});
+    apiFetch<DashboardToday>("/api/dashboard/today").then(setDashboard).catch(() => {});
+    apiFetch<PendingApprovalsResponse>("/api/dashboard/pending-approvals").then(setPending).catch(() => {});
+    apiFetch<RepairStats>("/api/dashboard/repair-stats").then(setRepairStats).catch(() => {});
   }, []);
 
+  const pickups = dashboard?.pickups ?? [];
+  const returns = dashboard?.returns ?? [];
+
+  const todayRevenue = sumFinal(pickups);
+  const overdue = fin?.summary?.overdueReceivables;
+
+  // Месячная выручка + % к прошлому
+  const currEarned = fin?.earnedThisMonth ?? null;
+  const prevEarned = fin?.trend && fin.trend.length >= 2 ? fin.trend[fin.trend.length - 2].earned : null;
+  const pct = currEarned && prevEarned ? deltaPct(currEarned, prevEarned) : null;
+
+  // Шапка-сводка для правого верхнего угла
+  const now = new Date();
+  const monthLabel = now.toLocaleDateString("ru-RU", { month: "long" });
+  const summary = currEarned
+    ? `${monthLabel}: ${pickups.length + returns.length} операций · ${formatRub(currEarned)}`
+    : "—";
+
+  // Список операций сегодня (pickup+return склеенные по времени)
+  const operations: DayOperation[] = [
+    ...pickups.map((p) => ({
+      id: p.id,
+      kind: "pickup" as const,
+      startDate: p.startDate,
+      endDate: p.endDate,
+      projectName: p.projectName,
+      clientName: p.clientName,
+      itemCount: p.itemCount,
+      finalAmount: p.finalAmount,
+    })),
+    ...returns.map((r) => ({
+      id: r.id,
+      kind: "return" as const,
+      startDate: r.startDate,
+      endDate: r.endDate,
+      projectName: r.projectName,
+      clientName: r.clientName,
+      itemCount: r.itemCount,
+      finalAmount: r.finalAmount,
+    })),
+  ].sort((a, b) => {
+    const ta = a.kind === "pickup" ? a.startDate : a.endDate;
+    const tb = b.kind === "pickup" ? b.startDate : b.endDate;
+    return ta.localeCompare(tb);
+  });
+
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="eyebrow">Кладовщик</p>
-        <h1 className="text-lg font-semibold text-ink mt-0.5">Мой день</h1>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Выдачи сегодня */}
-        <div className="bg-surface border border-border rounded-lg p-4 shadow-xs">
-          <p className="eyebrow">Выдачи сегодня</p>
-          {dashLoading ? (
-            <p className="mono-num text-xl mt-1 text-ink-3">—</p>
-          ) : (
-            <>
-              <p className="mono-num text-xl mt-1 text-ink">{dashboard?.pickups.length ?? 0}</p>
-              {dashboard?.pickups.slice(0, 2).map((b) => (
-                <p key={b.id} className="text-xs text-ink-3 mt-0.5 truncate">{b.clientName} · {b.projectName}</p>
+    <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
+      <DayHeader greeting={`утро, ${username} ✨`} summary={summary} />
+      <div className="p-4 space-y-3">
+        {pending && pending.total > 0 && (
+          <DayAlert
+            variant="amber"
+            title={`📋 Требует твоего решения — ${pending.total} брон${pending.total === 1 ? "ь" : pending.total >= 2 && pending.total <= 4 ? "и" : "ей"} на согласовании`}
+            linkHref="/bookings"
+            linkLabel="Все →"
+          >
+            <ul className="divide-y divide-amber-border">
+              {pending.bookings.slice(0, 3).map((b) => (
+                <li key={b.id} className="py-1 flex justify-between items-baseline gap-2">
+                  <Link href={`/bookings/${b.id}`} className="text-xs truncate hover:text-accent">
+                    {b.clientName} · {b.projectName}
+                  </Link>
+                  <span className="mono-num text-xs text-ink shrink-0">{formatRub(b.finalAmount)}</span>
+                </li>
               ))}
-            </>
-          )}
-        </div>
-        {/* Возвраты сегодня */}
-        <div className="bg-surface border border-border rounded-lg p-4 shadow-xs">
-          <p className="eyebrow">Возвраты сегодня</p>
-          {dashLoading ? (
-            <p className="mono-num text-xl mt-1 text-ink-3">—</p>
-          ) : (
-            <>
-              <p className="mono-num text-xl mt-1 text-ink">{dashboard?.returns.length ?? 0}</p>
-              {dashboard?.returns.slice(0, 2).map((b) => (
-                <p key={b.id} className="text-xs text-ink-3 mt-0.5 truncate">{b.clientName} · {b.projectName}</p>
-              ))}
-            </>
-          )}
-        </div>
-        {/* Мастерская */}
-        {openRepairCount !== null && openRepairCount > 0 ? (
-          <a href="/repair" className="block">
-            <div className="bg-amber-soft border border-amber-border rounded-lg p-4 shadow-xs hover:border-amber transition-colors">
-              <p className="eyebrow text-amber">Мастерская</p>
-              <p className="mono-num text-xl mt-1 text-ink">{openRepairCount}</p>
-              <p className="text-xs text-ink-3 mt-0.5">открытых ремонтов</p>
-            </div>
-          </a>
-        ) : (
-          <div className="bg-surface border border-border rounded-lg p-4 shadow-xs">
-            <p className="eyebrow">Активных броней</p>
-            <p className="mono-num text-xl mt-1 text-ink">{dashLoading ? "—" : (dashboard?.active.length ?? 0)}</p>
-          </div>
+            </ul>
+          </DayAlert>
         )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <DayKpiCard
+            eyebrow="Сегодня"
+            value={formatRub(todayRevenue)}
+            sub={`${pickups.length} выдач · ${returns.length} возвратов`}
+          />
+          <DayKpiCard
+            eyebrow="Долги"
+            value={fin ? formatRub(fin.totalOutstanding) : "—"}
+            sub={overdue && Number(overdue) > 0 ? `из них просрочено ${formatRub(overdue)}` : "без просрочек"}
+            subTone={overdue && Number(overdue) > 0 ? "rose" : "muted"}
+          />
+          <DayKpiCard
+            eyebrow="Ремонт"
+            value={
+              <>
+                {repairStats?.openCount ?? "—"}
+                <span className="text-sm text-ink-3 font-normal ml-1">единиц</span>
+              </>
+            }
+            sub={
+              repairStats
+                ? <>≈ {formatRub(repairStats.spentThisMonth)} в {monthLabel}е</>
+                : "—"
+            }
+          />
+        </div>
+
+        <div className="bg-surface border border-border rounded-lg p-3">
+          <div className="flex justify-between items-baseline mb-2">
+            <p className="text-sm font-semibold text-ink">Операции сегодня</p>
+            <Link href="/calendar" className="text-xs text-accent hover:underline">Все →</Link>
+          </div>
+          <DayOperationsList operations={operations} showAmount emptyLabel="На сегодня нет операций" />
+        </div>
+
+        <DayFooterMetrics>
+          {currEarned ? (
+            <>
+              Месячная выручка: <b className="text-ink-2 mono-num">{formatRub(currEarned)}</b>
+              {pct !== null && (
+                <>
+                  {" · рост к прошлому месяцу: "}
+                  <b className={pct >= 0 ? "text-emerald" : "text-rose"}>
+                    {pct >= 0 ? "+" : ""}{pct}%
+                  </b>
+                </>
+              )}
+            </>
+          ) : "Загрузка финансов…"}
+        </DayFooterMetrics>
       </div>
     </div>
   );
 }
 
-function DayTechnician({ userId }: { userId: string }) {
-  const router = useRouter();
-  const [repairs, setRepairs] = useState<RepairCardData[] | null>(null);
-  const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
+// ── WAREHOUSE ────────────────────────────────────────────────────────────────
+
+function DayWarehouse({ username }: { username: string }) {
+  const [dashboard, setDashboard] = useState<DashboardToday | null>(null);
+  const [pending, setPending] = useState<PendingApprovalsResponse | null>(null);
 
   useEffect(() => {
-    apiFetch<{ repairs: RepairCardData[] }>(
-      `/api/repairs?assignedTo=${userId}&status=WAITING_REPAIR,IN_REPAIR,WAITING_PARTS&limit=50`,
-    )
-      .then((data) => setRepairs(data.repairs))
-      .catch(() => setRepairs([]));
-  }, [userId]);
+    apiFetch<DashboardToday>("/api/dashboard/today")
+      .then(setDashboard)
+      .catch(() => { /* не блокируем */ });
+    apiFetch<PendingApprovalsResponse>("/api/dashboard/pending-approvals")
+      .then(setPending)
+      .catch(() => { /* не блокируем */ });
+  }, []);
 
-  const overdueRepairs = repairs?.filter(
-    (r) => r.status === "IN_REPAIR" &&
-      Date.now() - new Date(r.createdAt).getTime() > FIVE_DAYS_MS,
-  ) ?? [];
+  const pickups = dashboard?.pickups ?? [];
+  const returns = dashboard?.returns ?? [];
+  const summary =
+    dashboard
+      ? `${pickups.length} выдач · ${returns.length} возврат${returns.length === 1 ? "" : returns.length >= 2 && returns.length <= 4 ? "а" : "ов"}`
+      : "—";
 
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="eyebrow">Техник</p>
-        <h1 className="text-lg font-semibold text-ink mt-0.5">Мой день</h1>
-      </div>
+    <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
+      <DayHeader greeting={`доброе утро, ${username} 👋`} summary={summary} />
+      <div className="p-4 space-y-3">
+        {pending && pending.total > 0 && (
+          <DayAlert
+            variant="amber"
+            title={`📋 ${pending.total} брон${pending.total === 1 ? "ь" : pending.total >= 2 && pending.total <= 4 ? "и" : "ей"} на согласовании у руководителя`}
+            linkHref="/bookings"
+            linkLabel="Все →"
+          />
+        )}
 
-      {/* Просрочено по SLA */}
-      {overdueRepairs.length > 0 && (
-        <div className="bg-rose-soft border border-rose-border rounded-lg p-4">
-          <p className="eyebrow text-rose mb-2">Просрочено по SLA ({overdueRepairs.length})</p>
-          <div className="space-y-2">
-            {overdueRepairs.map((r) => (
-              <button
-                key={r.id}
-                onClick={() => router.push(`/repair/${r.id}`)}
-                className="w-full text-left"
-              >
-                <div className="text-sm font-medium text-rose">{r.unit.equipment.name}</div>
-                <div className="text-xs text-rose/70 mt-0.5">{r.reason.slice(0, 60)}</div>
-              </button>
-            ))}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-surface border border-border rounded-lg p-3">
+            <div className="flex justify-between items-baseline mb-2">
+              <p className="text-sm font-semibold text-ink">📤 Выдачи сегодня</p>
+              <span className="mono-num text-sm text-ink-3">{pickups.length}</span>
+            </div>
+            <DayOperationsList
+              operations={pickups.map((p) => ({
+                id: p.id,
+                kind: "pickup",
+                startDate: p.startDate,
+                endDate: p.endDate,
+                projectName: p.projectName,
+                clientName: p.clientName,
+                itemCount: p.itemCount,
+              }))}
+              emptyLabel="Нет выдач"
+            />
+          </div>
+          <div className="bg-surface border border-border rounded-lg p-3">
+            <div className="flex justify-between items-baseline mb-2">
+              <p className="text-sm font-semibold text-ink">📥 Возвраты сегодня</p>
+              <span className="mono-num text-sm text-ink-3">{returns.length}</span>
+            </div>
+            <DayOperationsList
+              operations={returns.map((r) => ({
+                id: r.id,
+                kind: "return",
+                startDate: r.startDate,
+                endDate: r.endDate,
+                projectName: r.projectName,
+                clientName: r.clientName,
+                itemCount: r.itemCount,
+              }))}
+              emptyLabel="Нет возвратов"
+            />
           </div>
         </div>
-      )}
 
-      {/* Мои ремонты */}
-      <div className="space-y-2">
-        <p className="eyebrow">Мои ремонты</p>
-        {repairs === null ? (
-          <div className="text-xs text-ink-3">Загрузка…</div>
-        ) : repairs.length === 0 ? (
-          <div className="bg-surface border border-border rounded-lg p-4">
-            <p className="text-sm text-ink-3 italic">Свободная очередь</p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Link
+            href="/bookings/new"
+            className="inline-flex items-center bg-accent-bright text-white text-sm font-medium px-4 py-2 rounded hover:bg-accent transition-colors"
+          >
+            + Новая бронь
+          </Link>
+          <Link
+            href="/calendar"
+            className="inline-flex items-center bg-surface border border-border text-ink text-sm px-4 py-2 rounded hover:border-accent transition-colors"
+          >
+            Открыть календарь
+          </Link>
+        </div>
+
+        <DayFooterMetrics>
+          {pending && pending.total > 0 ? (
+            <>
+              <span className="font-semibold text-ink-2">{pending.total}</span> бронь
+              {pending.total === 1 ? "" : pending.total >= 2 && pending.total <= 4 ? "и" : "ей"} ждёт согласования у руководителя
+            </>
+          ) : (
+            <>Все брони на сегодня согласованы</>
+          )}
+        </DayFooterMetrics>
+      </div>
+    </div>
+  );
+}
+
+// ── TECHNICIAN ───────────────────────────────────────────────────────────────
+
+interface RepairListItem {
+  id: string;
+  reason: string;
+  status: "WAITING_REPAIR" | "IN_REPAIR" | "WAITING_PARTS" | "CLOSED" | "WROTE_OFF";
+  urgency: "NOT_URGENT" | "NORMAL" | "URGENT";
+  createdAt: string;
+  unit: { equipment: { name: string } };
+}
+
+function daysSince(iso: string): number {
+  const ms = Date.now() - new Date(iso).getTime();
+  return Math.max(0, Math.floor(ms / 86_400_000));
+}
+
+function pluralize(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+function DayTechnician({ userId, username }: { userId: string; username: string }) {
+  const router = useRouter();
+  const [newRepairs, setNewRepairs] = useState<RepairListItem[] | null>(null);
+  const [myRepairs, setMyRepairs] = useState<RepairListItem[] | null>(null);
+  const [stats, setStats] = useState<RepairStats | null>(null);
+
+  useEffect(() => {
+    apiFetch<{ repairs: RepairListItem[] }>("/api/repairs?status=WAITING_REPAIR&limit=20")
+      .then((d) => setNewRepairs(d.repairs))
+      .catch(() => setNewRepairs([]));
+
+    apiFetch<{ repairs: RepairListItem[] }>(
+      `/api/repairs?assignedTo=${userId}&status=IN_REPAIR,WAITING_PARTS&limit=20`,
+    )
+      .then((d) => setMyRepairs(d.repairs))
+      .catch(() => setMyRepairs([]));
+
+    apiFetch<RepairStats>("/api/dashboard/repair-stats")
+      .then(setStats)
+      .catch(() => { /* не блокируем */ });
+  }, [userId]);
+
+  const newCount = newRepairs?.length ?? 0;
+  const myCount = myRepairs?.length ?? 0;
+  const summary =
+    stats ? `${newCount} нов${pluralize(newCount, "ая поломка", "ых поломки", "ых поломок")} · ${myCount} в работе` : "—";
+
+  // Статус-подпись для моего ремонта
+  function statusLabel(r: RepairListItem): { text: string; tone: "rose" | "amber" | "emerald" | "slate" } {
+    const d = daysSince(r.createdAt);
+    const dStr = `${d} ${pluralize(d, "день", "дня", "дней")}`;
+    if (r.status === "WAITING_PARTS") return { text: `${dStr} · ждём поставщика`, tone: "amber" };
+    if (r.urgency === "URGENT") return { text: `${dStr} · срочно`, tone: "rose" };
+    if (r.status === "IN_REPAIR" && d >= 5) return { text: `${dStr} · просрочено SLA`, tone: "rose" };
+    if (r.status === "IN_REPAIR") return { text: `${dStr} · в работе`, tone: "emerald" };
+    return { text: dStr, tone: "slate" };
+  }
+
+  const toneClass: Record<"rose" | "amber" | "emerald" | "slate", string> = {
+    rose:    "text-rose",
+    amber:   "text-amber",
+    emerald: "text-emerald",
+    slate:   "text-slate",
+  };
+
+  return (
+    <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
+      <DayHeader greeting={`привет, ${username} 🔧`} summary={summary} />
+      <div className="p-4 space-y-3">
+        {newRepairs && newRepairs.length > 0 && (
+          <div className="bg-surface border border-rose-border rounded-lg p-4">
+            <div className="flex justify-between items-baseline mb-2">
+              <p className="text-sm font-semibold text-rose">🆕 Новые поломки — требуют твоей оценки</p>
+              <span className="inline-flex items-center justify-center min-w-[20px] px-1.5 py-0.5 rounded-full text-[11px] bg-rose text-white">
+                {newRepairs.length}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {newRepairs.map((r) => (
+                <div key={r.id} className="pt-2 border-t border-border first:border-t-0 first:pt-0">
+                  <p className="text-sm font-semibold text-ink">{r.unit.equipment.name}</p>
+                  <p className="text-xs text-ink-2 mt-0.5">{r.reason}</p>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => router.push(`/repair/${r.id}?action=take`)}
+                      className="inline-flex items-center bg-rose text-white text-xs px-3 py-1.5 rounded hover:bg-rose/90 transition-colors"
+                    >
+                      Взять в работу
+                    </button>
+                    <button
+                      onClick={() => router.push(`/repair/${r.id}?action=write-off`)}
+                      className="inline-flex items-center bg-surface border border-border text-ink text-xs px-3 py-1.5 rounded hover:border-rose transition-colors"
+                    >
+                      Списать
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        ) : (
-          repairs.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => router.push(`/repair/${r.id}`)}
-              className="w-full text-left bg-surface border border-border rounded-lg p-3 hover:border-accent transition-colors space-y-1"
-            >
-              <div className="text-sm font-semibold text-ink">{r.unit.equipment.name}</div>
-              <div className="text-xs text-ink-2">{r.reason.slice(0, 60)}</div>
-            </button>
-          ))
         )}
+
+        <div className="bg-surface border border-border rounded-lg p-4">
+          <div className="flex justify-between items-baseline mb-2">
+            <p className="text-sm font-semibold text-ink">🛠 В работе</p>
+            <span className="mono-num text-sm text-ink-3">{myCount}</span>
+          </div>
+          {myRepairs === null ? (
+            <p className="text-xs text-ink-3">Загрузка…</p>
+          ) : myCount === 0 ? (
+            <p className="text-xs text-ink-3 italic">Свободная очередь</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {myRepairs.map((r) => {
+                const sl = statusLabel(r);
+                return (
+                  <li key={r.id} className="py-2">
+                    <button
+                      onClick={() => router.push(`/repair/${r.id}`)}
+                      className="w-full text-left flex justify-between items-baseline gap-2 hover:text-accent transition-colors"
+                    >
+                      <span className="text-sm text-ink truncate">{r.unit.equipment.name}</span>
+                      <span className={`text-xs ${toneClass[sl.tone]} shrink-0`}>{sl.text}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <DayFooterMetrics>
+          {stats ? (
+            <>
+              За этот месяц: починено <b className="text-ink-2">{stats.closedThisMonth}</b>,
+              списано <b className="text-ink-2">{stats.writtenOffThisMonth}</b>,
+              в работе <b className="text-ink-2">{stats.openCount}</b>
+              {" · потрачено ≈ "}
+              <b className="text-ink-2">{formatRub(stats.spentThisMonth)}</b>
+            </>
+          ) : "Загрузка статистики…"}
+        </DayFooterMetrics>
       </div>
     </div>
   );
@@ -254,9 +496,9 @@ export default function DayPage() {
 
   return (
     <div className="p-6">
-      {user.role === "SUPER_ADMIN" && <DaySuperAdmin />}
-      {user.role === "WAREHOUSE" && <DayWarehouse />}
-      {user.role === "TECHNICIAN" && <DayTechnician userId={user.userId ?? ""} />}
+      {user.role === "SUPER_ADMIN" && <DaySuperAdmin username={user.username} />}
+      {user.role === "WAREHOUSE" && <DayWarehouse username={user.username} />}
+      {user.role === "TECHNICIAN" && <DayTechnician userId={user.userId ?? ""} username={user.username} />}
     </div>
   );
 }
