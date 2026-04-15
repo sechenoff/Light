@@ -4,6 +4,9 @@ import { z } from "zod";
 import { prisma } from "../prisma";
 import {
   computeDebts,
+  computeExpensesBreakdown,
+  computeFinanceDashboard,
+  computePaymentsCalendar,
   createFinanceEvent,
   csvEscape,
   dashboardMetrics,
@@ -47,7 +50,7 @@ const expensePatchSchema = expenseCreateSchema.partial();
 router.get("/finance/dashboard", async (_req, res, next) => {
   try {
     await paymentStatusSyncForAllBookings();
-    const data = await dashboardMetrics();
+    const data = await computeFinanceDashboard();
     res.json(data);
   } catch (err) {
     next(err);
@@ -556,6 +559,36 @@ router.get("/finance/export/profit.csv", async (_req, res, next) => {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", 'attachment; filename="profit.csv"');
     res.send(lines.join("\n"));
+  } catch (err) {
+    next(err);
+  }
+});
+
+const paymentsCalendarQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Формат: YYYY-MM-DD"),
+});
+
+router.get("/finance/payments-calendar", async (req, res, next) => {
+  try {
+    const query = paymentsCalendarQuerySchema.parse(req.query);
+    const monthStart = new Date(query.month);
+    const calendar = await computePaymentsCalendar(monthStart);
+    res.json(calendar);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const expensesBreakdownQuerySchema = z.object({
+  from: z.string().datetime(),
+  to: z.string().datetime(),
+});
+
+router.get("/finance/expenses-breakdown", async (req, res, next) => {
+  try {
+    const query = expensesBreakdownQuerySchema.parse(req.query);
+    const breakdown = await computeExpensesBreakdown(new Date(query.from), new Date(query.to));
+    res.json(breakdown);
   } catch (err) {
     next(err);
   }
