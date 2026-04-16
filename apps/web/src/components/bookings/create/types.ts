@@ -101,3 +101,6 @@ export type ParseResultCounts = {
   needsReview: number;
   unmatched: number;
 };
+
+/** Equipment input mode switcher */
+export type InputMode = "ai" | "catalog";
