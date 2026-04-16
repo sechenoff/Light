@@ -152,83 +152,93 @@ function RepairRow({
   return (
     <div
       onClick={() => router.push(`/repair/${repair.id}`)}
-      className="grid items-center gap-3 px-4 py-3 bg-surface border-b border-border hover:bg-surface-2 cursor-pointer transition-colors"
-      style={{ gridTemplateColumns: "50px 1fr 160px 130px 120px" }}
+      className="px-4 py-3 bg-surface border-b border-border hover:bg-surface-2 cursor-pointer transition-colors"
     >
-      {/* Статус-бейдж */}
-      <div className="flex justify-center">
-        <span
-          className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold ${statusBadgeClasses(repair.status)}`}
-        >
-          {statusBadgeLabel(repair.status)}
-        </span>
-      </div>
-
-      {/* Название + штрих-код + причина */}
-      <div className="min-w-0">
-        <div className="font-semibold text-ink text-sm leading-snug truncate">
-          {repair.unit.equipment.name}
+      {/* Desktop: 5-column grid */}
+      <div
+        className="hidden md:grid items-center gap-3"
+        style={{ gridTemplateColumns: "50px 1fr 160px 130px 120px" }}
+      >
+        <div className="flex justify-center">
+          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold ${statusBadgeClasses(repair.status)}`}>
+            {statusBadgeLabel(repair.status)}
+          </span>
         </div>
-        {repair.unit.barcode && (
-          <div className="mono-num text-xs text-ink-3 truncate">{repair.unit.barcode}</div>
-        )}
-        <div className="text-xs text-ink-2 truncate mt-0.5">
-          {repair.reason.slice(0, 70)}{repair.reason.length > 70 ? "…" : ""}
+        <div className="min-w-0">
+          <div className="font-semibold text-ink text-sm leading-snug truncate">{repair.unit.equipment.name}</div>
+          {repair.unit.barcode && <div className="mono-num text-xs text-ink-3 truncate">{repair.unit.barcode}</div>}
+          <div className="text-xs text-ink-2 truncate mt-0.5">{repair.reason.slice(0, 70)}{repair.reason.length > 70 ? "…" : ""}</div>
+        </div>
+        <div className="text-xs text-ink-2 leading-snug">
+          {repair.sourceBooking ? (
+            <>
+              <div className="text-ink-3 mb-0.5">с возврата</div>
+              <div className="truncate font-medium">«{repair.sourceBooking.projectName}»</div>
+              <div className="text-ink-3 mono-num">{formatDate(repair.createdAt)}</div>
+            </>
+          ) : (
+            <>
+              <div>в работе <span className="mono-num">{days} {pluralize(days, "день", "дня", "дней")}</span></div>
+              <div className="text-ink-3 mono-num">{formatDate(repair.createdAt)}</div>
+            </>
+          )}
+        </div>
+        <div className="text-xs leading-snug">
+          {repair.nextConflict ? (
+            <>
+              <div className="font-semibold text-rose">⚠ есть бронь</div>
+              <div className="mono-num text-rose">{formatDate(repair.nextConflict.date)}</div>
+              <div className="text-ink-2 truncate">{repair.nextConflict.clientName}</div>
+            </>
+          ) : (
+            <span className="text-ink-3">—</span>
+          )}
+        </div>
+        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+          {repair.status === "WAITING_REPAIR" ? (
+            <button onClick={handleTake} disabled={taking} className="px-3 py-1.5 rounded text-xs font-semibold bg-rose text-white hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap">
+              {taking ? "…" : "Взять в работу"}
+            </button>
+          ) : (
+            <button onClick={handleOpen} className="px-3 py-1.5 rounded text-xs font-medium border border-border text-ink-2 hover:bg-surface-2 transition-colors whitespace-nowrap">
+              Открыть
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Источник / время в работе */}
-      <div className="text-xs text-ink-2 leading-snug">
-        {repair.sourceBooking ? (
-          <>
-            <div className="text-ink-3 mb-0.5">с возврата</div>
-            <div className="truncate font-medium">«{repair.sourceBooking.projectName}»</div>
-            <div className="text-ink-3 mono-num">{formatDate(repair.createdAt)}</div>
-          </>
-        ) : (
-          <>
-            <div>
-              в работе{" "}
-              <span className="mono-num">
-                {days} {pluralize(days, "день", "дня", "дней")}
-              </span>
-            </div>
-            <div className="text-ink-3 mono-num">{formatDate(repair.createdAt)}</div>
-          </>
-        )}
-      </div>
-
-      {/* Конфликт */}
-      <div className="text-xs leading-snug">
-        {repair.nextConflict ? (
-          <>
-            <div className="font-semibold text-rose">⚠ есть бронь</div>
-            <div className="mono-num text-rose">{formatDate(repair.nextConflict.date)}</div>
-            <div className="text-ink-2 truncate">{repair.nextConflict.clientName}</div>
-          </>
-        ) : (
-          <span className="text-ink-3">—</span>
-        )}
-      </div>
-
-      {/* Действие */}
-      <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-        {repair.status === "WAITING_REPAIR" ? (
-          <button
-            onClick={handleTake}
-            disabled={taking}
-            className="px-3 py-1.5 rounded text-xs font-semibold bg-rose text-white hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap"
-          >
-            {taking ? "…" : "Взять в работу"}
-          </button>
-        ) : (
-          <button
-            onClick={handleOpen}
-            className="px-3 py-1.5 rounded text-xs font-medium border border-border text-ink-2 hover:bg-surface-2 transition-colors whitespace-nowrap"
-          >
-            Открыть
-          </button>
-        )}
+      {/* Mobile: card layout */}
+      <div className="md:hidden space-y-2">
+        <div className="flex items-start gap-3">
+          <span className={`shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold ${statusBadgeClasses(repair.status)}`}>
+            {statusBadgeLabel(repair.status)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-ink text-sm leading-snug">{repair.unit.equipment.name}</div>
+            <div className="text-xs text-ink-2 mt-0.5">{repair.reason.slice(0, 70)}{repair.reason.length > 70 ? "…" : ""}</div>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2 pl-11">
+          <div className="text-xs text-ink-3">
+            {repair.sourceBooking
+              ? `с возврата «${repair.sourceBooking.projectName}» · ${formatDate(repair.createdAt)}`
+              : `в работе ${days} ${pluralize(days, "день", "дня", "дней")}`}
+          </div>
+          {repair.nextConflict && (
+            <span className="text-xs font-semibold text-rose whitespace-nowrap">⚠ бронь {formatDate(repair.nextConflict.date)}</span>
+          )}
+        </div>
+        <div className="pl-11" onClick={(e) => e.stopPropagation()}>
+          {repair.status === "WAITING_REPAIR" ? (
+            <button onClick={handleTake} disabled={taking} className="w-full h-9 rounded text-xs font-semibold bg-rose text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+              {taking ? "…" : "Взять в работу"}
+            </button>
+          ) : (
+            <button onClick={handleOpen} className="w-full h-9 rounded text-xs font-medium border border-border text-ink-2 hover:bg-surface-2 transition-colors">
+              Открыть
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -251,19 +261,27 @@ function SkeletonRows() {
   return (
     <div className="divide-y divide-border">
       {[1, 2, 3, 4].map((i) => (
-        <div
-          key={i}
-          className="grid items-center gap-3 px-4 py-3"
-          style={{ gridTemplateColumns: "50px 1fr 160px 130px 120px" }}
-        >
-          <div className="w-8 h-8 rounded-full bg-surface-2 animate-pulse" />
-          <div className="space-y-1.5">
-            <div className="h-3.5 w-40 bg-surface-2 rounded animate-pulse" />
-            <div className="h-3 w-24 bg-surface-2 rounded animate-pulse" />
+        <div key={i} className="px-4 py-3">
+          {/* Desktop skeleton */}
+          <div className="hidden md:grid items-center gap-3" style={{ gridTemplateColumns: "50px 1fr 160px 130px 120px" }}>
+            <div className="w-8 h-8 rounded-full bg-surface-2 animate-pulse" />
+            <div className="space-y-1.5">
+              <div className="h-3.5 w-40 bg-surface-2 rounded animate-pulse" />
+              <div className="h-3 w-24 bg-surface-2 rounded animate-pulse" />
+            </div>
+            <div className="h-3 w-28 bg-surface-2 rounded animate-pulse" />
+            <div className="h-3 w-20 bg-surface-2 rounded animate-pulse" />
+            <div className="h-7 w-24 bg-surface-2 rounded animate-pulse ml-auto" />
           </div>
-          <div className="h-3 w-28 bg-surface-2 rounded animate-pulse" />
-          <div className="h-3 w-20 bg-surface-2 rounded animate-pulse" />
-          <div className="h-7 w-24 bg-surface-2 rounded animate-pulse ml-auto" />
+          {/* Mobile skeleton */}
+          <div className="md:hidden flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-surface-2 animate-pulse shrink-0" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3.5 w-3/4 bg-surface-2 rounded animate-pulse" />
+              <div className="h-3 w-1/2 bg-surface-2 rounded animate-pulse" />
+              <div className="h-8 w-full bg-surface-2 rounded animate-pulse" />
+            </div>
+          </div>
         </div>
       ))}
     </div>
@@ -514,7 +532,7 @@ function ArchiveTable({ repairs }: { repairs: RepairCard[] }) {
                 className="grid gap-3 px-4 py-3 items-center hover:bg-surface-2 cursor-pointer transition-colors"
                 style={{ gridTemplateColumns: "1fr 1fr 90px 100px 80px" }}
                 onClick={() => {
-                  if (typeof window !== "undefined") window.location.href = `/repair/${r.id}`;
+                  router.push(`/repair/${r.id}`);
                 }}
               >
                 <div className="min-w-0">

@@ -353,7 +353,7 @@ export default function RepairDetailPage() {
               <p className="text-xs text-slate-400 font-mono mt-0.5">{repair.unit.barcode}</p>
             )}
             <p className="text-xs text-slate-400 mt-1">
-              Поломка №R-{repair.id.slice(-6)} · взята в работу {formatDate(repair.createdAt)}
+              Поломка №R-{repair.id.slice(-6)} · {repair.status === "WAITING_REPAIR" ? "поступила" : "взята в работу"} {formatDate(repair.createdAt)}
             </p>
           </div>
           <span className={`shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_PILL_CLASSES[repair.status]}`}>
