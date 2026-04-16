@@ -199,13 +199,19 @@ function FilterPills({
 function DetailSidebar({
   alias,
   onDelete,
+  onApprove,
+  onReject,
   onClose,
 }: {
   alias: SlangAlias;
   onDelete: (id: string) => void;
+  onApprove?: (id: string) => void;
+  onReject?: (id: string) => void;
   onClose: () => void;
 }) {
   const [deleting, setDeleting] = useState(false);
+  const [acting, setActing] = useState<"approve" | "reject" | null>(null);
+  const isPending = alias.source === "pending";
 
   async function handleDelete() {
     if (!confirm(`Удалить алиас «${alias.phraseOriginal}»?`)) return;
@@ -222,11 +228,43 @@ function DetailSidebar({
     }
   }
 
+  async function handleApprove() {
+    if (!onApprove) return;
+    setActing("approve");
+    try {
+      await apiFetch(`/api/admin/slang-learning/${alias.id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ reviewedBy: "admin", equipmentId: alias.equipmentId }),
+      });
+      onApprove(alias.id);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Ошибка подтверждения");
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function handleReject() {
+    if (!onReject) return;
+    setActing("reject");
+    try {
+      await apiFetch(`/api/admin/slang-learning/${alias.id}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ reviewedBy: "admin" }),
+      });
+      onReject(alias.id);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Ошибка отклонения");
+    } finally {
+      setActing(null);
+    }
+  }
+
   return (
     <div className="w-[360px] shrink-0 sticky top-5 self-start bg-surface border border-border rounded-lg p-4 space-y-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="eyebrow">Выбрано</p>
+          <p className="eyebrow">{isPending ? "На ревью" : "Выбрано"}</p>
           <h3 className="text-base font-semibold text-ink mt-0.5">
             «{alias.phraseOriginal}»
           </h3>
@@ -241,10 +279,12 @@ function DetailSidebar({
       </div>
 
       {/* Canonical link */}
-      <div className="bg-surface-2 rounded p-3 text-sm flex items-center gap-2">
+      <div className={`rounded p-3 text-sm flex items-center gap-2 ${isPending ? "bg-amber-soft border border-amber-border" : "bg-surface-2"}`}>
         <span className="text-ink-3">→</span>
         <div>
-          <p className="font-medium text-ink">{alias.equipment.name}</p>
+          <p className={`font-medium ${isPending ? "text-ink-2 italic" : "text-ink"}`}>
+            {isPending ? `AI предполагает: ${alias.equipment.name}` : alias.equipment.name}
+          </p>
           <p className="text-xs text-ink-3">{alias.equipment.category}</p>
         </div>
       </div>
@@ -279,19 +319,40 @@ function DetailSidebar({
 
       {/* Actions */}
       <div className="flex flex-col gap-2 pt-2 border-t border-border">
-        <button className="w-full px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-2 text-ink transition-colors">
-          Изменить связь
-        </button>
-        <button className="w-full px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-2 text-ink transition-colors">
-          Смотреть контексты
-        </button>
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="w-full px-3 py-1.5 text-sm border border-rose-border rounded bg-rose-soft text-rose hover:opacity-80 transition-opacity disabled:opacity-50"
-        >
-          {deleting ? "Удаление…" : "Удалить"}
-        </button>
+        {isPending ? (
+          <>
+            <button
+              onClick={handleApprove}
+              disabled={acting !== null || !alias.equipmentId}
+              className="w-full px-3 py-1.5 text-sm border border-emerald-border rounded bg-emerald-soft text-emerald hover:opacity-80 transition-opacity disabled:opacity-50 font-medium"
+            >
+              {acting === "approve" ? "Подтверждаем…" : "Подтвердить"}
+            </button>
+            <button
+              onClick={handleReject}
+              disabled={acting !== null}
+              className="w-full px-3 py-1.5 text-sm border border-rose-border rounded bg-rose-soft text-rose hover:opacity-80 transition-opacity disabled:opacity-50 font-medium"
+            >
+              {acting === "reject" ? "Отклоняем…" : "Отклонить"}
+            </button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => alert("Функция в разработке")} className="w-full px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-2 text-ink transition-colors">
+              Изменить связь
+            </button>
+            <button onClick={() => alert("Функция в разработке")} className="w-full px-3 py-1.5 text-sm border border-border rounded hover:bg-surface-2 text-ink transition-colors">
+              Смотреть контексты
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="w-full px-3 py-1.5 text-sm border border-rose-border rounded bg-rose-soft text-rose hover:opacity-80 transition-opacity disabled:opacity-50"
+            >
+              {deleting ? "Удаление…" : "Удалить"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -462,6 +523,16 @@ export default function SlangPage() {
     if (selectedId === id) setSelectedId(null);
   }
 
+  function handleApprovePending(id: string) {
+    setPendingCandidates((prev) => prev.filter((c) => c.id !== id));
+    setSelectedId(null);
+  }
+
+  function handleRejectPending(id: string) {
+    setPendingCandidates((prev) => prev.filter((c) => c.id !== id));
+    setSelectedId(null);
+  }
+
   return (
     <div className="p-4 md:p-6 max-w-6xl">
       <AdminTabNav counts={{ slang: counts.all }} />
@@ -573,6 +644,8 @@ export default function SlangPage() {
           <DetailSidebar
             alias={selectedAlias}
             onDelete={handleDelete}
+            onApprove={selectedAlias.source === "pending" ? handleApprovePending : undefined}
+            onReject={selectedAlias.source === "pending" ? handleRejectPending : undefined}
             onClose={() => setSelectedId(null)}
           />
         )}

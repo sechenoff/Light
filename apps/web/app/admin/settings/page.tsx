@@ -87,7 +87,7 @@ function SettingsCard({ icon, title, rows, danger }: SettingsCardProps) {
                     <span className="mono-num text-xs text-ink-2 font-mono">{row.value}</span>
                   )}
                   {row.link && (
-                    <button className="text-xs text-accent hover:text-accent-bright transition-colors">
+                    <button onClick={() => alert("Настройки пока только для чтения")} className="text-xs text-accent hover:text-accent-bright transition-colors">
                       {row.link}
                     </button>
                   )}
