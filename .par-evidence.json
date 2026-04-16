@@ -1,94 +1,41 @@
 {
-  "sprint": 1,
-  "project": "booking-create-rebuild",
-  "feature": "booking-create-rebuild",
+  "sprint": 2,
+  "project": "approval-workflow-ui",
+  "feature": "approval-ui-sprint2",
   "governance_mode": "standard",
-  "complexity": "high",
   "reviewers": {
     "product": {
       "agent": "claude-standard-product-reviewer",
       "model": "opus",
-      "rounds": 2,
-      "initial_verdict": "NEEDS_FIXES",
-      "initial_findings": {
-        "critical": 0,
-        "high": 3,
-        "medium": 2,
-        "low": 1
-      },
-      "final_verdict": "ACCEPTED",
-      "findings_closed": {
-        "high": [
-          "H1 Discount hardcoded to 50% with no UI control — changed to 0, added inline discount input",
-          "H2 Catalog link wired to same handler as manual add — removed duplicate link",
-          "H3 Duration tag said 'смены' instead of 'дня' per mockup — fixed pluralization"
-        ],
-        "medium": [
-          "M1 alert() instead of toast.error() — replaced with toast integration",
-          "M2 Quantity allows 0/negative — added Math.max(1, qty) clamping"
-        ],
-        "low": [
-          "L1 saveAlias checkbox defaults unchecked — changed to checked per mockup"
-        ]
-      }
+      "rounds": 1,
+      "initial_verdict": "ACCEPTED",
+      "notes": "No blockers. Two suggestions deferred: submitter name in queue (needs schema), dedicated supervisor comment field (existing comment field suffices)"
     },
     "technical": {
       "agent": "claude-standard-code-reviewer",
       "model": "opus",
-      "rounds": 1,
+      "rounds": 2,
       "initial_verdict": "APPROVE",
-      "initial_findings": {
-        "critical": 0,
-        "high": 2,
-        "medium": 3,
-        "low": 1
-      },
-      "final_verdict": "APPROVE",
-      "non_blocker_notes": [
-        "Stale closure in handleSelectFromCatalog — extract gafferPhrase before setItems",
-        "Missing cancelled flag in quote useEffect — added cleanup pattern",
-        "searchCatalog not wrapped in useCallback — wrapped with deps",
-        "Duplicated pluralize functions — imported from shared format.ts",
-        "Quantity input missing clamp — added Math.max(1, qty)",
-        "Test assertion misaligned with saveAlias default change"
-      ]
+      "initial_findings": { "important": 2, "minor": 1 },
+      "fixes_applied": [
+        "Extracted business logic from clients route to services/clientStats.ts",
+        "Stabilized items array dep in ApprovalContext via useMemo key"
+      ],
+      "final_verdict": "APPROVE"
     }
   },
   "gates": {
     "tests": {
-      "web_component_total": 55,
-      "web_component_passing": 55,
-      "breakdown": {
-        "SummaryPanel": 21,
-        "EquipmentTable": 12,
-        "NeedsReviewRow": 9,
-        "UnmatchedRow": 9,
-        "ApprovalTimeline": 4
-      }
+      "api_total": 420,
+      "api_passing": 420,
+      "web_total": 68,
+      "web_passing": 68,
+      "new_tests": 19,
+      "breakdown": { "clientStats": 6, "formatWaitingTime": 6, "ApprovalContext": 7 }
     }
-  },
-  "scope_notes": {
-    "schema_changes": "none",
-    "api_changes": "none — all endpoints pre-existing",
-    "monolith_decomposition": "1,600-line page.tsx → 11 focused files (~1,260 lines)",
-    "files_created": [
-      "apps/web/src/components/bookings/create/types.ts",
-      "apps/web/src/components/bookings/create/CommentCard.tsx",
-      "apps/web/src/components/bookings/create/ClientProjectCard.tsx",
-      "apps/web/src/components/bookings/create/DatesCard.tsx",
-      "apps/web/src/components/bookings/create/PasteZone.tsx",
-      "apps/web/src/components/bookings/create/NeedsReviewRow.tsx",
-      "apps/web/src/components/bookings/create/UnmatchedRow.tsx",
-      "apps/web/src/components/bookings/create/EquipmentTable.tsx",
-      "apps/web/src/components/bookings/create/EquipmentCard.tsx",
-      "apps/web/src/components/bookings/create/SummaryPanel.tsx"
-    ],
-    "files_modified": [
-      "apps/web/app/bookings/new/page.tsx (complete rewrite)"
-    ]
   },
   "technical_review": "APPROVE",
   "claude_product": "ACCEPTED",
   "provider": "claude-split-focus",
-  "ts": "2026-04-16T08:32:00Z"
+  "ts": "2026-04-16T08:50:00Z"
 }
