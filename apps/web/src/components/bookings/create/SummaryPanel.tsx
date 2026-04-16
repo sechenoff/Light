@@ -1,7 +1,7 @@
 "use client";
 
 import { formatMoneyRub, pluralize } from "../../../lib/format";
-import type { QuoteResponse, ValidationCheck } from "./types";
+import type { CatalogSelectedItem, OffCatalogItem, QuoteResponse, ValidationCheck } from "./types";
 
 type SummaryPanelProps = {
   quote: QuoteResponse | null;
@@ -16,8 +16,9 @@ type SummaryPanelProps = {
   onSubmitForApproval: () => void;
   onSaveDraft: () => void;
   canSubmit: boolean;
+  selectedItems?: Map<string, CatalogSelectedItem>;
+  offCatalogItems?: OffCatalogItem[];
 };
-
 
 const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass: string }> = {
   ok: { symbol: "✓", colorClass: "text-emerald" },
@@ -38,16 +39,20 @@ export function SummaryPanel({
   onSubmitForApproval,
   onSaveDraft,
   canSubmit,
+  selectedItems,
+  offCatalogItems,
 }: SummaryPanelProps) {
-  // Use quote values when available, fall back to local*
   const subtotal = quote ? Number(quote.subtotal) : localSubtotal;
   const discount = quote ? Number(quote.discountAmount) : localDiscount;
   const total = quote ? Number(quote.totalAfterDiscount) : localTotal;
   const discPct = quote ? Number(quote.discountPercent) : discountPercent;
   const effectiveShifts = quote ? quote.shifts : shifts;
 
-  // Format big total: integer part with ru-RU thousands separator
   const bigTotalFormatted = Math.round(total).toLocaleString("ru-RU");
+
+  const miniList: Array<{ key: string; name: string; qty: number }> = [];
+  if (selectedItems) for (const s of selectedItems.values()) miniList.push({ key: s.equipmentId, name: s.name, qty: s.quantity });
+  if (offCatalogItems) for (const o of offCatalogItems) miniList.push({ key: o.tempId, name: o.name, qty: o.quantity });
 
   return (
     <aside className="sticky top-20 flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 shadow-xs">
@@ -90,6 +95,18 @@ export function SummaryPanel({
         </div>
       </div>
 
+      {/* Mini-list of selected items */}
+      {miniList.length > 0 && (
+        <div className="flex flex-col gap-1 border-t border-border pt-3">
+          {miniList.map((it) => (
+            <div key={it.key} className="flex items-center justify-between text-[11.5px]">
+              <span className="min-w-0 flex-1 truncate text-ink">{it.name}</span>
+              <span className="ml-2 font-mono text-[11px] text-ink-3">×{it.qty}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="flex flex-col gap-2">
         <button
@@ -103,7 +120,7 @@ export function SummaryPanel({
         <button
           type="button"
           onClick={onSaveDraft}
-          className="w-full rounded border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink-2 hover:bg-surface-soft"
+          className="w-full rounded border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink-2 hover:bg-surface-muted"
         >
           Сохранить черновик
         </button>
@@ -123,7 +140,7 @@ export function SummaryPanel({
                 </span>
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-ink">{check.label}</p>
-                  <p className="text-xs text-ink-3">{check.detail}</p>
+                  {check.detail && <p className="text-xs text-ink-3">{check.detail}</p>}
                 </div>
               </li>
             );

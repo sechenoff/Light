@@ -493,6 +493,8 @@ function BookingNewPage() {
           onSubmitForApproval={handleSubmitForApproval}
           onSaveDraft={handleSaveDraftClick}
           canSubmit={canSubmit}
+          selectedItems={selected}
+          offCatalogItems={offCatalogItems}
         />
       </div>
     </div>
