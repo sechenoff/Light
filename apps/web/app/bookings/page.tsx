@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../../src/lib/api";
 import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
-import { formatMoneyRub } from "../../src/lib/format";
+import { formatMoneyRub, formatWaitingTime } from "../../src/lib/format";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 
 type BookingItemMini = {
@@ -33,6 +33,7 @@ type BookingRow = {
   expectedPaymentDate: string | null;
   confirmedAt: string | null;
   createdAt: string;
+  updatedAt: string;
   hasScanSessions?: boolean;
   lastScanOperation?: "ISSUE" | "RETURN" | null;
   lastScanStatus?: string | null;
@@ -192,7 +193,7 @@ function BookingHistoryPageInner() {
           </div>
         </div>
         <div className="overflow-auto">
-          <table className="min-w-[1300px] w-full text-sm">
+          <table className="min-w-[1400px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
                 <th className="text-left px-3 py-2 font-medium">Название</th>
@@ -200,6 +201,7 @@ function BookingHistoryPageInner() {
                 <th className="text-left px-3 py-2 font-medium">Проект</th>
                 <th className="text-left px-3 py-2 font-medium">Период</th>
                 <th className="text-left px-3 py-2 font-medium">Статус</th>
+                <th className="text-left px-3 py-2 font-medium">Ждёт</th>
                 <th className="text-left px-3 py-2 font-medium">Оплата</th>
                 <th className="text-right px-3 py-2 font-medium">Остаток</th>
                 <th className="px-3 py-2 font-medium">Действия</th>
@@ -231,6 +233,12 @@ function BookingHistoryPageInner() {
                         </svg>
                       </span>
                     )}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {r.status === "PENDING_APPROVAL" ? (() => {
+                      const aging = formatWaitingTime(r.updatedAt, r.createdAt);
+                      return aging ? <span className={aging.className}>{aging.text}</span> : "—";
+                    })() : ""}
                   </td>
                   <td className="px-3 py-2">
                     <StatusPill
@@ -319,7 +327,7 @@ function BookingHistoryPageInner() {
               ))}
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-ink-3" colSpan={8}>
+                  <td className="px-3 py-6 text-center text-ink-3" colSpan={9}>
                     Нет данных
                   </td>
                 </tr>

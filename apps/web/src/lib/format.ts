@@ -40,6 +40,34 @@ export function pluralize(n: number, one: string, few: string, many: string): st
 }
 
 /**
+ * Возвращает метку «времени ожидания» для брони в статусе PENDING_APPROVAL.
+ * Использует submittedAt если доступен, иначе createdAt.
+ * Возвращает null если оба аргумента null/undefined.
+ */
+export function formatWaitingTime(
+  submittedAt: string | null | undefined,
+  createdAt: string | null | undefined,
+): { text: string; className: string } | null {
+  const ref = submittedAt ?? createdAt;
+  if (!ref) return null;
+  const now = new Date();
+  const submitted = new Date(ref);
+  const diffMs = now.getTime() - submitted.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays >= 2) {
+    return {
+      text: `${diffDays} ${pluralize(diffDays, "день", "дня", "дней")}`,
+      className: "text-rose font-medium",
+    };
+  } else if (diffDays >= 1) {
+    return { text: "1 день", className: "text-amber font-medium" };
+  } else {
+    return { text: "сегодня", className: "text-ink-3" };
+  }
+}
+
+/**
  * Русские названия месяцев в предложном падеже («в январе», «в феврале», …).
  * Индекс 0..11 соответствует `Date#getMonth()`.
  */
