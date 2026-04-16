@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 type ResizableContainerProps = {
   children: ReactNode;
@@ -14,10 +14,21 @@ export function ResizableContainer({
   minHeight = 180,
 }: ResizableContainerProps) {
   const [maxH, setMaxH] = useState(defaultHeight);
+  const [clipped, setClipped] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const startY = useRef(0);
   const startH = useRef(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const check = () => setClipped(el.scrollHeight > maxH);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [maxH]);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -43,11 +54,6 @@ export function ResizableContainer({
     dragging.current = false;
   }, []);
 
-  const isClipped =
-    containerRef.current
-      ? containerRef.current.scrollHeight > maxH
-      : false;
-
   return (
     <div className="mx-5">
       <div
@@ -59,8 +65,10 @@ export function ResizableContainer({
       </div>
 
       {/* Clip hint */}
-      {isClipped && (
-        <div className="pointer-events-none -mt-6 h-6 bg-gradient-to-t from-surface to-transparent" />
+      {clipped && (
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-surface to-transparent flex items-end justify-center pb-1">
+          <span className="text-[10px] text-ink-3 opacity-60">↓ потяните для просмотра</span>
+        </div>
       )}
 
       {/* Resize handle */}
