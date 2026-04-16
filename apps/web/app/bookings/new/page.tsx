@@ -22,6 +22,7 @@ import { EquipmentCard } from "../../../src/components/bookings/create/Equipment
 import { CommentCard } from "../../../src/components/bookings/create/CommentCard";
 import { SummaryPanel } from "../../../src/components/bookings/create/SummaryPanel";
 import type {
+  InputMode,
   EquipmentTableItem,
   GafferReviewApiItem,
   GafferReviewApiResponse,
@@ -84,6 +85,7 @@ function BookingNewPage() {
 
   // Gaffer AI
   const [gafferText, setGafferText] = useState("");
+  const [inputMode, setInputMode] = useState<InputMode>("ai");
   const [gafferParsing, setGafferParsing] = useState(false);
   const [gafferError, setGafferError] = useState<string | null>(null);
   const [parseResultCounts, setParseResultCounts] = useState<ParseResultCounts | null>(null);
@@ -337,6 +339,64 @@ function BookingNewPage() {
     ]);
   }
 
+  function handleCatalogAdd(equipment: AvailabilityRow) {
+    // If equipment already in items, increment qty
+    const existing = items.find(
+      (it) => it.match.kind === "resolved" && it.match.equipmentId === equipment.equipmentId,
+    );
+    if (existing) {
+      setItems((prev) =>
+        prev.map((it) => (it.id === existing.id ? { ...it, quantity: it.quantity + 1 } : it)),
+      );
+      return;
+    }
+    // Add new resolved item
+    const id = `catalog-${equipment.equipmentId}-${Date.now()}`;
+    setItems((prev) => [
+      ...prev,
+      {
+        id,
+        gafferPhrase: equipment.name,
+        interpretedName: equipment.name,
+        quantity: 1,
+        match: {
+          kind: "resolved" as const,
+          equipmentId: equipment.equipmentId,
+          catalogName: equipment.name,
+          category: equipment.category,
+          availableQuantity: equipment.availableQuantity,
+          rentalRatePerShift: equipment.rentalRatePerShift,
+          confidence: 1,
+        },
+        unitPrice: equipment.rentalRatePerShift,
+        lineTotal: null,
+      },
+    ]);
+  }
+
+  function handleCatalogQuantityChange(equipmentId: string, qty: number) {
+    if (qty <= 0) {
+      // Remove item
+      setItems((prev) =>
+        prev.filter(
+          (it) => !(it.match.kind === "resolved" && it.match.equipmentId === equipmentId),
+        ),
+      );
+      return;
+    }
+    setItems((prev) =>
+      prev.map((it) =>
+        it.match.kind === "resolved" && it.match.equipmentId === equipmentId
+          ? { ...it, quantity: qty }
+          : it,
+      ),
+    );
+  }
+
+  function handleQuickSearchSelect(equipment: AvailabilityRow) {
+    handleCatalogAdd(equipment);
+  }
+
   async function saveDraft() {
     if (!pickupISO || !returnISO || !clientName.trim() || resolvedItems.length === 0) return;
     setSubmitting(true);
@@ -470,6 +530,8 @@ function BookingNewPage() {
               items={items}
               shifts={shifts}
               totalAmount={quote ? Number(quote.totalAfterDiscount) : localTotal}
+              inputMode={inputMode}
+              onInputModeChange={setInputMode}
               text={gafferText}
               onTextChange={setGafferText}
               onParse={handleParse}
@@ -483,7 +545,11 @@ function BookingNewPage() {
               onSkipItem={handleSkipItem}
               onSelectFromCatalog={handleSelectFromCatalog}
               searchCatalog={searchCatalog}
-              onAddManual={handleAddManual}
+              pickupISO={pickupISO}
+              returnISO={returnISO}
+              onCatalogAdd={handleCatalogAdd}
+              onCatalogQuantityChange={handleCatalogQuantityChange}
+              onQuickSearchSelect={handleQuickSearchSelect}
             />
             {/* Discount */}
             <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden mb-3.5 px-5 py-3 flex items-center gap-3">
