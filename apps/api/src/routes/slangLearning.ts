@@ -89,6 +89,45 @@ router.post("/propose", async (req, res, next) => {
   }
 });
 
+// ── GET /api/admin/slang-learning/stats ──────────────────────────────────────
+// Returns computed KPIs for the slang dictionary page.
+
+router.get("/stats", async (req, res, next) => {
+  try {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const [totalAliases, autoLearnedThisWeek, pendingCount, manualCount] = await Promise.all([
+      prisma.slangAlias.count(),
+      prisma.slangAlias.count({
+        where: {
+          source: "AUTO_LEARNED",
+          createdAt: { gte: sevenDaysAgo },
+        },
+      }),
+      prisma.slangLearningCandidate.count({
+        where: { status: "PENDING" },
+      }),
+      prisma.slangAlias.count({
+        where: { source: "MANUAL_ADMIN" },
+      }),
+    ]);
+
+    const accuracyPercent = totalAliases > 0
+      ? Math.round(((totalAliases - manualCount) / totalAliases) * 100)
+      : 0;
+
+    return res.json({
+      totalAliases,
+      autoLearnedThisWeek,
+      pendingCount,
+      accuracyPercent,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── GET /api/admin/slang-learning ──────────────────────────────────────────────
 // Returns learning candidates filtered by status (default: PENDING).
 
