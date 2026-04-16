@@ -504,6 +504,7 @@ function resultPill(status: RepairStatus) {
 }
 
 function ArchiveTable({ repairs }: { repairs: RepairCard[] }) {
+  const router = useRouter();
   const closed = repairs.filter((r) => r.status === "CLOSED" || r.status === "WROTE_OFF");
 
   if (closed.length === 0) return null;
