@@ -34,7 +34,7 @@ export function AliasRow({ alias, selected, onClick }: Props) {
       onClick={onClick}
       className={[
         "grid gap-2 px-4 py-2.5 border-b border-border text-sm items-center cursor-pointer transition-colors",
-        "grid-cols-[3px_1.4fr_20px_1.2fr_80px_90px_28px]",
+        "grid-cols-[3px_1.4fr_20px_1.2fr_80px_90px]",
         selected
           ? "bg-accent-soft shadow-[inset_2px_0_0_theme(colors.accent)]"
           : "hover:bg-surface-2",
@@ -49,13 +49,6 @@ export function AliasRow({ alias, selected, onClick }: Props) {
       </div>
       <span className="mono-num text-xs text-ink-2 text-right">{alias.usageCount}×</span>
       <SourcePill source={alias.source} />
-      <button
-        onClick={(e) => e.stopPropagation()}
-        aria-label="Действия с алиасом"
-        className="text-ink-3 hover:text-ink text-base leading-none text-center"
-      >
-        ⋯
-      </button>
     </div>
   );
 }

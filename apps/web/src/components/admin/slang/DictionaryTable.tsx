@@ -109,14 +109,13 @@ export function DictionaryTable({ aliases, selectedId, onSelect, onExport }: Pro
 
       {/* Table */}
       <div className="bg-surface border border-border rounded-lg overflow-hidden">
-        <div className="grid gap-2 px-4 py-2 border-b border-border bg-surface-2 text-[10.5px] uppercase tracking-wider text-ink-3 font-semibold grid-cols-[3px_1.4fr_20px_1.2fr_80px_90px_28px]">
+        <div className="grid gap-2 px-4 py-2 border-b border-border bg-surface-2 text-[10.5px] uppercase tracking-wider text-ink-3 font-semibold grid-cols-[3px_1.4fr_20px_1.2fr_80px_90px]">
           <span />
           <span>Фраза</span>
           <span />
           <span>Оборудование</span>
           <span className="text-right">Исп.</span>
           <span>Источник</span>
-          <span />
         </div>
 
         {filtered.length === 0 && (
