@@ -53,7 +53,7 @@ export function OwnCatalogReview({
       {/* AI summary */}
       <div className="mb-6 rounded-lg border border-indigo-border bg-indigo-soft px-4 py-3">
         <div className="eyebrow mb-1 text-indigo">🤖 AI-анализ</div>
-        <p className="text-sm text-ink-1">{result.summary}</p>
+        <p className="text-sm text-ink">{result.summary}</p>
       </div>
 
       {/* Итоговые чипсы по группам */}
@@ -66,7 +66,7 @@ export function OwnCatalogReview({
               className="inline-flex items-center gap-1.5 rounded border border-border bg-surface px-3 py-1 text-sm text-ink-2"
             >
               {meta.icon} {meta.label}
-              <span className="ml-1 rounded bg-surface-2 px-1.5 text-xs font-medium text-ink-1">
+              <span className="ml-1 rounded bg-surface-muted px-1.5 text-xs font-medium text-ink">
                 {g.count}
               </span>
             </span>
@@ -75,7 +75,7 @@ export function OwnCatalogReview({
         {result.noChangeCount > 0 && (
           <span className="inline-flex items-center gap-1.5 rounded border border-border bg-surface px-3 py-1 text-sm text-ink-3">
             ≡ Без изменений
-            <span className="ml-1 rounded bg-surface-2 px-1.5 text-xs font-medium text-ink-2">
+            <span className="ml-1 rounded bg-surface-muted px-1.5 text-xs font-medium text-ink-2">
               {result.noChangeCount}
             </span>
           </span>
@@ -113,7 +113,7 @@ export function OwnCatalogReview({
           <button
             type="button"
             onClick={onExport}
-            className="rounded border border-border px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-2"
+            className="rounded border border-border px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-muted"
           >
             Экспорт XLSX
           </button>
@@ -132,11 +132,11 @@ export function OwnCatalogReview({
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.type)}
-                  className="flex items-center gap-2 text-sm font-medium text-ink-1"
+                  className="flex items-center gap-2 text-sm font-medium text-ink"
                 >
                   <span className={`transition-transform ${isCollapsed ? "" : "rotate-90"}`}>▶</span>
                   {meta.icon} {meta.label}
-                  <span className="rounded bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2">
+                  <span className="rounded bg-surface-muted px-2 py-0.5 text-xs font-medium text-ink-2">
                     {group.count}
                   </span>
                 </button>
@@ -180,7 +180,7 @@ export function OwnCatalogReview({
       {/* Footer */}
       <div className="mt-6 flex items-center justify-between border-t border-border pt-4">
         <span className="text-sm text-ink-2">
-          Принято: <span className="font-medium text-ink-1">{acceptedCount}</span> из{" "}
+          Принято: <span className="font-medium text-ink">{acceptedCount}</span> из{" "}
           {allRows.length} позиций
         </span>
         <button

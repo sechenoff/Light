@@ -61,7 +61,7 @@ export function UploadStep({ onUpload, loading }: Props) {
             className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
               mode === "own"
                 ? "border-accent bg-accent-soft text-accent"
-                : "border-border bg-surface text-ink-2 hover:bg-surface-2"
+                : "border-border bg-surface text-ink-2 hover:bg-surface-muted"
             }`}
           >
             📦 Обновить каталог
@@ -73,7 +73,7 @@ export function UploadStep({ onUpload, loading }: Props) {
             className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
               mode === "competitor"
                 ? "border-accent bg-accent-soft text-accent"
-                : "border-border bg-surface text-ink-2 hover:bg-surface-2"
+                : "border-border bg-surface text-ink-2 hover:bg-surface-muted"
             }`}
           >
             📊 Сравнить с конкурентом
@@ -94,7 +94,7 @@ export function UploadStep({ onUpload, loading }: Props) {
             onChange={(e) => { setCompetitorName(e.target.value); setError(null); }}
             disabled={loading}
             placeholder="Например: СветоБаза"
-            className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink-1 focus:border-accent focus:outline-none disabled:opacity-60"
+            className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none disabled:opacity-60"
           />
         </div>
       )}
@@ -112,7 +112,7 @@ export function UploadStep({ onUpload, loading }: Props) {
         } ${loading ? "pointer-events-none opacity-60" : ""}`}
       >
         <div className="mb-2 text-3xl">📂</div>
-        <div className="mb-1 text-sm font-medium text-ink-1">
+        <div className="mb-1 text-sm font-medium text-ink">
           {dragActive ? "Отпустите файл" : "Перетащите файл или нажмите для выбора"}
         </div>
         <div className="text-xs text-ink-3">Поддерживаются .xlsx, .xls</div>

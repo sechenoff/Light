@@ -121,7 +121,7 @@ export function RebindModal({ phrase, currentEquipmentId, onRebind, onClose }: P
                 key={item.id}
                 onClick={() => setSelectedId(item.id)}
                 className={`w-full flex items-center gap-3 px-5 py-2.5 text-left text-sm transition-colors ${
-                  isCurrent ? "bg-emerald-soft" : isSelected ? "bg-accent-soft" : "hover:bg-surface-2"
+                  isCurrent ? "bg-emerald-soft" : isSelected ? "bg-accent-soft" : "hover:bg-surface-muted"
                 }`}
               >
                 <span

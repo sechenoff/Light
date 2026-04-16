@@ -106,7 +106,7 @@ function statusBadgeClasses(status: RepairStatus): string {
     case "IN_REPAIR":      return "bg-amber-soft text-amber border border-amber-border";
     case "WAITING_PARTS":  return "bg-indigo-soft text-indigo border border-indigo-border";
     case "CLOSED":         return "bg-emerald-soft text-emerald border border-emerald-border";
-    case "WROTE_OFF":      return "bg-surface-2 text-ink-3 border border-border";
+    case "WROTE_OFF":      return "bg-surface-muted text-ink-3 border border-border";
   }
 }
 
@@ -152,7 +152,7 @@ function RepairRow({
   return (
     <div
       onClick={() => router.push(`/repair/${repair.id}`)}
-      className="px-4 py-3 bg-surface border-b border-border hover:bg-surface-2 cursor-pointer transition-colors"
+      className="px-4 py-3 bg-surface border-b border-border hover:bg-surface-muted cursor-pointer transition-colors"
     >
       {/* Desktop: 5-column grid */}
       <div
@@ -200,7 +200,7 @@ function RepairRow({
               {taking ? "…" : "Взять в работу"}
             </button>
           ) : (
-            <button onClick={handleOpen} className="px-3 py-1.5 rounded text-xs font-medium border border-border text-ink-2 hover:bg-surface-2 transition-colors whitespace-nowrap">
+            <button onClick={handleOpen} className="px-3 py-1.5 rounded text-xs font-medium border border-border text-ink-2 hover:bg-surface-muted transition-colors whitespace-nowrap">
               Открыть
             </button>
           )}
@@ -234,7 +234,7 @@ function RepairRow({
               {taking ? "…" : "Взять в работу"}
             </button>
           ) : (
-            <button onClick={handleOpen} className="w-full h-9 rounded text-xs font-medium border border-border text-ink-2 hover:bg-surface-2 transition-colors">
+            <button onClick={handleOpen} className="w-full h-9 rounded text-xs font-medium border border-border text-ink-2 hover:bg-surface-muted transition-colors">
               Открыть
             </button>
           )}
@@ -264,22 +264,22 @@ function SkeletonRows() {
         <div key={i} className="px-4 py-3">
           {/* Desktop skeleton */}
           <div className="hidden md:grid items-center gap-3" style={{ gridTemplateColumns: "50px 1fr 160px 130px 120px" }}>
-            <div className="w-8 h-8 rounded-full bg-surface-2 animate-pulse" />
+            <div className="w-8 h-8 rounded-full bg-surface-muted animate-pulse" />
             <div className="space-y-1.5">
-              <div className="h-3.5 w-40 bg-surface-2 rounded animate-pulse" />
-              <div className="h-3 w-24 bg-surface-2 rounded animate-pulse" />
+              <div className="h-3.5 w-40 bg-surface-muted rounded animate-pulse" />
+              <div className="h-3 w-24 bg-surface-muted rounded animate-pulse" />
             </div>
-            <div className="h-3 w-28 bg-surface-2 rounded animate-pulse" />
-            <div className="h-3 w-20 bg-surface-2 rounded animate-pulse" />
-            <div className="h-7 w-24 bg-surface-2 rounded animate-pulse ml-auto" />
+            <div className="h-3 w-28 bg-surface-muted rounded animate-pulse" />
+            <div className="h-3 w-20 bg-surface-muted rounded animate-pulse" />
+            <div className="h-7 w-24 bg-surface-muted rounded animate-pulse ml-auto" />
           </div>
           {/* Mobile skeleton */}
           <div className="md:hidden flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-surface-2 animate-pulse shrink-0" />
+            <div className="w-8 h-8 rounded-full bg-surface-muted animate-pulse shrink-0" />
             <div className="flex-1 space-y-2">
-              <div className="h-3.5 w-3/4 bg-surface-2 rounded animate-pulse" />
-              <div className="h-3 w-1/2 bg-surface-2 rounded animate-pulse" />
-              <div className="h-8 w-full bg-surface-2 rounded animate-pulse" />
+              <div className="h-3.5 w-3/4 bg-surface-muted rounded animate-pulse" />
+              <div className="h-3 w-1/2 bg-surface-muted rounded animate-pulse" />
+              <div className="h-8 w-full bg-surface-muted rounded animate-pulse" />
             </div>
           </div>
         </div>
@@ -411,7 +411,7 @@ export default function RepairQueuePage() {
               key={f.key}
               onClick={() => setStatusFilter(f.key)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                isActive ? f.activeClass : f.colorClass + " bg-surface hover:bg-surface-2"
+                isActive ? f.activeClass : f.colorClass + " bg-surface hover:bg-surface-muted"
               }`}
             >
               {f.label} · <span className="mono-num">{count}</span>
@@ -429,7 +429,7 @@ export default function RepairQueuePage() {
             className={`px-3 py-1.5 transition-colors ${
               queueFilter === "all"
                 ? "bg-ink text-white"
-                : "bg-surface text-ink-2 hover:bg-surface-2"
+                : "bg-surface text-ink-2 hover:bg-surface-muted"
             }`}
           >
             Все
@@ -439,7 +439,7 @@ export default function RepairQueuePage() {
             className={`px-3 py-1.5 transition-colors border-l border-border ${
               queueFilter === "mine"
                 ? "bg-ink text-white"
-                : "bg-surface text-ink-2 hover:bg-surface-2"
+                : "bg-surface text-ink-2 hover:bg-surface-muted"
             }`}
           >
             Моя очередь
@@ -458,7 +458,7 @@ export default function RepairQueuePage() {
       <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
         {/* Шапка таблицы */}
         <div
-          className="hidden md:grid gap-3 px-4 py-2 bg-surface-2 border-b border-border"
+          className="hidden md:grid gap-3 px-4 py-2 bg-surface-muted border-b border-border"
           style={{ gridTemplateColumns: "50px 1fr 160px 130px 120px" }}
         >
           <div />
@@ -498,7 +498,7 @@ export default function RepairQueuePage() {
 function resultPill(status: RepairStatus) {
   switch (status) {
     case "CLOSED":    return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-soft text-emerald border border-emerald-border">Починено</span>;
-    case "WROTE_OFF": return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-surface-2 text-ink-3 border border-border">Списано</span>;
+    case "WROTE_OFF": return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-surface-muted text-ink-3 border border-border">Списано</span>;
     default:          return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-soft text-amber border border-amber-border">В ремонте</span>;
   }
 }
@@ -513,7 +513,7 @@ function ArchiveTable({ repairs }: { repairs: RepairCard[] }) {
     <div className="space-y-2">
       <p className="eyebrow">Архив</p>
       <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
-        <div className="grid gap-3 px-4 py-2 bg-surface-2 border-b border-border text-xs"
+        <div className="grid gap-3 px-4 py-2 bg-surface-muted border-b border-border text-xs"
           style={{ gridTemplateColumns: "1fr 1fr 90px 100px 80px" }}>
           <p className="eyebrow">Единица</p>
           <p className="eyebrow">Поломка</p>
@@ -531,7 +531,7 @@ function ArchiveTable({ repairs }: { repairs: RepairCard[] }) {
             return (
               <div
                 key={r.id}
-                className="grid gap-3 px-4 py-3 items-center hover:bg-surface-2 cursor-pointer transition-colors"
+                className="grid gap-3 px-4 py-3 items-center hover:bg-surface-muted cursor-pointer transition-colors"
                 style={{ gridTemplateColumns: "1fr 1fr 90px 100px 80px" }}
                 onClick={() => {
                   router.push(`/repair/${r.id}`);

@@ -283,98 +283,96 @@ export default function ImportsPage() {
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-surface">
-      <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
-        <AdminTabNav />
+    <div className="p-6 space-y-6">
+      <AdminTabNav />
 
-        {/* Page header */}
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="text-lg font-semibold text-ink">Импорт цен</h1>
-          {step !== "upload" && (
-            <button
-              type="button"
-              onClick={() => {
-                setStep("upload");
-                setSession(null);
-                setOwnResult(null);
-                setCompetitorResult(null);
-                setError(null);
-              }}
-              className="text-sm text-ink-2 hover:text-ink border border-border rounded-lg px-3 py-1.5 hover:bg-surface-2 transition-colors"
-            >
-              ← Новый импорт
-            </button>
-          )}
-        </div>
-
-        {/* Error banner */}
-        {error && (
-          <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg text-sm font-medium bg-rose-soft text-rose border border-rose-border">
-            <span>{error}</span>
-            <button
-              onClick={() => setError(null)}
-              aria-label="Закрыть ошибку"
-              className="text-xs opacity-60 hover:opacity-100"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Steps */}
-        {step === "upload" && (
-          <div className="space-y-8">
-            <UploadStep onUpload={handleUpload} loading={uploading} />
-            <SessionHistory sessions={sessions} onSelect={handleSelectSession} />
-          </div>
-        )}
-
-        {step === "analyzing" && (
-          <AnalysisProgress fileName={analyzeFileName} />
-        )}
-
-        {step === "review" && session && isOwnType && ownResult && (
-          <OwnCatalogReview
-            result={ownResult}
-            fileName={session.fileName}
-            onAccept={(rowId) => handleRowAction(rowId, "ACCEPTED")}
-            onReject={(rowId) => handleRowAction(rowId, "REJECTED")}
-            onRebind={(rowId) => setRebindRowId(rowId)}
-            onBulkAccept={(groupType) => handleBulkAction("ACCEPTED", groupType)}
-            onBulkReject={(groupType) => handleBulkAction("REJECTED", groupType)}
-            onApply={handleApply}
-            onExport={handleExport}
-            applying={applying}
-          />
-        )}
-
-        {step === "review" && session && !isOwnType && competitorResult && (
-          <CompetitorReview
-            result={competitorResult}
-            competitorName={session.competitorName ?? ""}
-            fileName={session.fileName}
-            onRebind={(rowId) => setRebindRowId(rowId)}
-            onExport={handleExport}
-          />
-        )}
-
-        {/* Fallback: session loaded but no result yet (opened from history) */}
-        {step === "review" && session && !ownResult && !competitorResult && (
-          <div className="py-16 text-center text-sm text-ink-3">
-            <p className="mb-4">Данные анализа недоступны для этой сессии.</p>
-            <button
-              type="button"
-              onClick={() => {
-                setStep("upload");
-                setSession(null);
-              }}
-              className="text-accent hover:underline"
-            >
-              Загрузить новый файл
-            </button>
-          </div>
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-lg font-semibold text-ink">Импорт цен</h1>
+        {step !== "upload" && (
+          <button
+            type="button"
+            onClick={() => {
+              setStep("upload");
+              setSession(null);
+              setOwnResult(null);
+              setCompetitorResult(null);
+              setError(null);
+            }}
+            className="text-sm text-ink-2 hover:text-ink border border-border rounded-lg px-3 py-1.5 hover:bg-surface-muted transition-colors"
+          >
+            ← Новый импорт
+          </button>
         )}
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg text-sm font-medium bg-rose-soft text-rose border border-rose-border">
+          <span>{error}</span>
+          <button
+            onClick={() => setError(null)}
+            aria-label="Закрыть ошибку"
+            className="text-xs opacity-60 hover:opacity-100"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Steps */}
+      {step === "upload" && (
+        <div className="space-y-8">
+          <UploadStep onUpload={handleUpload} loading={uploading} />
+          <SessionHistory sessions={sessions} onSelect={handleSelectSession} />
+        </div>
+      )}
+
+      {step === "analyzing" && (
+        <AnalysisProgress fileName={analyzeFileName} />
+      )}
+
+      {step === "review" && session && isOwnType && ownResult && (
+        <OwnCatalogReview
+          result={ownResult}
+          fileName={session.fileName}
+          onAccept={(rowId) => handleRowAction(rowId, "ACCEPTED")}
+          onReject={(rowId) => handleRowAction(rowId, "REJECTED")}
+          onRebind={(rowId) => setRebindRowId(rowId)}
+          onBulkAccept={(groupType) => handleBulkAction("ACCEPTED", groupType)}
+          onBulkReject={(groupType) => handleBulkAction("REJECTED", groupType)}
+          onApply={handleApply}
+          onExport={handleExport}
+          applying={applying}
+        />
+      )}
+
+      {step === "review" && session && !isOwnType && competitorResult && (
+        <CompetitorReview
+          result={competitorResult}
+          competitorName={session.competitorName ?? ""}
+          fileName={session.fileName}
+          onRebind={(rowId) => setRebindRowId(rowId)}
+          onExport={handleExport}
+        />
+      )}
+
+      {/* Fallback: session loaded but no result yet (opened from history) */}
+      {step === "review" && session && !ownResult && !competitorResult && (
+        <div className="py-16 text-center text-sm text-ink-3">
+          <p className="mb-4">Данные анализа недоступны для этой сессии.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setStep("upload");
+              setSession(null);
+            }}
+            className="text-accent hover:underline"
+          >
+            Загрузить новый файл
+          </button>
+        </div>
+      )}
 
       {/* Rebind modal */}
       {rebindRowId && (

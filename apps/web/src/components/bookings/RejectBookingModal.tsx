@@ -54,7 +54,7 @@ export function RejectBookingModal({ open, bookingDisplayName, loading = false, 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink-1/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
       onClick={() => !loading && onClose()}
     >
       <div
@@ -62,7 +62,7 @@ export function RejectBookingModal({ open, bookingDisplayName, loading = false, 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="eyebrow mb-2">Отклонение брони</div>
-        <h2 className="mb-1 text-lg font-semibold text-ink-1">{bookingDisplayName}</h2>
+        <h2 className="mb-1 text-lg font-semibold text-ink">{bookingDisplayName}</h2>
         <p className="mb-4 text-sm text-ink-3">
           Бронь вернётся в черновик. Причина будет показана кладовщику и записана в журнал аудита.
         </p>
@@ -77,7 +77,7 @@ export function RejectBookingModal({ open, bookingDisplayName, loading = false, 
           onChange={(e) => setReason(e.target.value)}
           rows={4}
           disabled={loading}
-          className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink-1 focus:border-accent focus:outline-none"
+          className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none"
           placeholder="Например: пересчитайте скидку, слишком высокая для этого клиента"
           maxLength={2000}
         />

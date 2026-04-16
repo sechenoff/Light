@@ -86,29 +86,29 @@ export function CompetitorReview({ result, competitorName, fileName, onRebind, o
       {/* AI summary */}
       <div className="mb-6 rounded-lg border border-indigo-border bg-indigo-soft px-4 py-3">
         <div className="eyebrow mb-1 text-indigo">🤖 AI-анализ</div>
-        <p className="text-sm text-ink-1">{result.summary}</p>
+        <p className="text-sm text-ink">{result.summary}</p>
       </div>
 
       {/* KPI карточки */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-lg border border-accent-border bg-accent-soft px-4 py-3 text-center">
           <div className="eyebrow mb-1 text-accent">Сопоставлено</div>
-          <div className="text-2xl font-semibold text-ink-1 mono-num">{kpis.matchedCount}</div>
+          <div className="text-2xl font-semibold text-ink mono-num">{kpis.matchedCount}</div>
           <div className="text-xs text-ink-3">из {kpis.totalCount}</div>
         </div>
         <div className="rounded-lg border border-ok-border bg-ok-soft px-4 py-3 text-center">
           <div className="eyebrow mb-1 text-ok">Мы дешевле</div>
-          <div className="text-2xl font-semibold text-ink-1 mono-num">{kpis.cheaperCount}</div>
+          <div className="text-2xl font-semibold text-ink mono-num">{kpis.cheaperCount}</div>
           <div className="text-xs text-ink-3">&gt;5%</div>
         </div>
         <div className="rounded-lg border border-rose-border bg-rose-soft px-4 py-3 text-center">
           <div className="eyebrow mb-1 text-rose">Мы дороже</div>
-          <div className="text-2xl font-semibold text-ink-1 mono-num">{kpis.expensiveCount}</div>
+          <div className="text-2xl font-semibold text-ink mono-num">{kpis.expensiveCount}</div>
           <div className="text-xs text-ink-3">&gt;5%</div>
         </div>
         <div className="rounded-lg border border-border bg-surface px-4 py-3 text-center">
           <div className="eyebrow mb-1 text-ink-3">Паритет ±5%</div>
-          <div className="text-2xl font-semibold text-ink-1 mono-num">{kpis.parityCount}</div>
+          <div className="text-2xl font-semibold text-ink mono-num">{kpis.parityCount}</div>
           <div className="text-xs text-ink-3">±5%</div>
         </div>
       </div>
@@ -137,12 +137,12 @@ export function CompetitorReview({ result, competitorName, fileName, onRebind, o
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Поиск..."
-            className="min-w-0 flex-1 rounded border border-border bg-surface px-3 py-1.5 text-sm text-ink-1 focus:border-accent focus:outline-none"
+            className="min-w-0 flex-1 rounded border border-border bg-surface px-3 py-1.5 text-sm text-ink focus:border-accent focus:outline-none"
           />
           <button
             type="button"
             onClick={onExport}
-            className="shrink-0 rounded border border-border px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-2"
+            className="shrink-0 rounded border border-border px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-muted"
           >
             Экспорт XLSX
           </button>
@@ -152,7 +152,7 @@ export function CompetitorReview({ result, competitorName, fileName, onRebind, o
       {/* Таблица */}
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
-          <thead className="border-b border-border bg-surface-2">
+          <thead className="border-b border-border bg-surface-muted">
             <tr>
               <th className="px-3 py-2.5 text-left text-xs font-medium text-ink-3">Наше оборудование</th>
               <th className="px-3 py-2.5 text-left text-xs font-medium text-ink-3">У конкурента</th>
@@ -172,15 +172,15 @@ export function CompetitorReview({ result, competitorName, fileName, onRebind, o
               </tr>
             ) : (
               filteredRows.map((row: ComparisonRow) => (
-                <tr key={row.id} className="bg-surface hover:bg-surface-2">
+                <tr key={row.id} className="bg-surface hover:bg-surface-muted">
                   <td className="px-3 py-2.5">
-                    <div className="font-medium text-ink-1">{row.equipmentName}</div>
+                    <div className="font-medium text-ink">{row.equipmentName}</div>
                     <div className="text-xs text-ink-3">{row.equipmentCategory}</div>
                   </td>
                   <td className="px-3 py-2.5">
                     <span className="italic text-ink-2">{row.sourceName}</span>
                   </td>
-                  <td className="px-3 py-2.5 text-right mono-num text-ink-1">{row.ourPrice} ₽</td>
+                  <td className="px-3 py-2.5 text-right mono-num text-ink">{row.ourPrice} ₽</td>
                   <td className="px-3 py-2.5 text-right mono-num text-ink-2">{row.competitorPrice} ₽</td>
                   <td className="px-3 py-2.5 text-right">
                     <DeltaChip delta={row.deltaPercent} />
@@ -217,7 +217,7 @@ export function CompetitorReview({ result, competitorName, fileName, onRebind, o
       <div className="mt-6 flex items-center justify-between border-t border-border pt-4 text-sm text-ink-2">
         <span>
           Сопоставлено:{" "}
-          <span className="font-medium text-ink-1 mono-num">{kpis.matchedCount}</span> из{" "}
+          <span className="font-medium text-ink mono-num">{kpis.matchedCount}</span> из{" "}
           <span className="mono-num">{kpis.totalCount}</span>
         </span>
         <span>

@@ -91,7 +91,7 @@ export function UnmatchedRow({
 
         {/* Name + subtitle */}
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-ink-1">«{gafferPhrase}»</div>
+          <div className="truncate text-sm font-medium text-ink">«{gafferPhrase}»</div>
           <div className="text-xs text-rose">не в каталоге</div>
         </div>
 
@@ -101,7 +101,7 @@ export function UnmatchedRow({
           min={1}
           value={quantity}
           onChange={(e) => onQuantityChange(itemId, Number(e.target.value))}
-          className="w-full rounded border border-border bg-surface px-2 py-1 text-sm text-ink-1 focus:border-accent focus:outline-none"
+          className="w-full rounded border border-border bg-surface px-2 py-1 text-sm text-ink focus:border-accent focus:outline-none"
         />
 
         {/* Price — dash */}
@@ -146,7 +146,7 @@ export function UnmatchedRow({
               onChange={(e) => handleQueryChange(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Поиск по каталогу…"
-              className="w-full rounded border border-border bg-surface py-1.5 pl-7 pr-7 text-sm text-ink-1 focus:border-accent focus:outline-none"
+              className="w-full rounded border border-border bg-surface py-1.5 pl-7 pr-7 text-sm text-ink focus:border-accent focus:outline-none"
             />
             {query && (
               <button
@@ -182,7 +182,7 @@ export function UnmatchedRow({
                     }
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-ink-1">{row.name}</span>
+                      <span className="block truncate font-medium text-ink">{row.name}</span>
                       <span className="text-xs text-ink-3">
                         {row.category} · {row.availableQuantity} шт.
                       </span>

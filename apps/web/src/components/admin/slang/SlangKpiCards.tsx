@@ -34,9 +34,9 @@ export function SlangKpiCards({ stats }: Props) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         {[1, 2, 3, 4].map((i) => (
           <div key={i} className="bg-surface border border-border rounded-lg p-3 animate-pulse">
-            <div className="h-3 w-16 bg-surface-2 rounded mb-2" />
-            <div className="h-6 w-10 bg-surface-2 rounded mb-1" />
-            <div className="h-3 w-24 bg-surface-2 rounded" />
+            <div className="h-3 w-16 bg-surface-muted rounded mb-2" />
+            <div className="h-6 w-10 bg-surface-muted rounded mb-1" />
+            <div className="h-3 w-24 bg-surface-muted rounded" />
           </div>
         ))}
       </div>

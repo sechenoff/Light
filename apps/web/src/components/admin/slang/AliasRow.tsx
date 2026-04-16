@@ -37,7 +37,7 @@ export function AliasRow({ alias, selected, onClick }: Props) {
         "grid-cols-[3px_1.4fr_20px_1.2fr_80px_90px]",
         selected
           ? "bg-accent-soft shadow-[inset_2px_0_0_theme(colors.accent)]"
-          : "hover:bg-surface-2",
+          : "hover:bg-surface-muted",
       ].join(" ")}
     >
       <span className={`w-[3px] h-7 rounded-sm ${stripeClass(alias.source)}`} />

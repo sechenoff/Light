@@ -55,7 +55,7 @@ function SettingsCard({ icon, title, rows, danger }: SettingsCardProps) {
       <div
         className={[
           "px-4 py-3 border-b flex items-center gap-2",
-          danger ? "bg-rose-soft border-rose-border" : "bg-surface-2 border-border",
+          danger ? "bg-rose-soft border-rose-border" : "bg-surface-muted border-border",
         ].join(" ")}
       >
         <span className="text-base">{icon}</span>
@@ -131,7 +131,7 @@ export default function AdminSettingsPage() {
         <AdminTabNav />
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-48 bg-surface-2 rounded-lg animate-pulse" />
+            <div key={i} className="h-48 bg-surface-muted rounded-lg animate-pulse" />
           ))}
         </div>
       </div>
