@@ -345,6 +345,8 @@ function BookingNewPage() {
       (it) => it.match.kind === "resolved" && it.match.equipmentId === equipment.equipmentId,
     );
     if (existing) {
+      const maxQty = existing.match.kind === "resolved" ? existing.match.availableQuantity : Infinity;
+      if (existing.quantity >= maxQty) return; // Already at max
       setItems((prev) =>
         prev.map((it) => (it.id === existing.id ? { ...it, quantity: it.quantity + 1 } : it)),
       );
