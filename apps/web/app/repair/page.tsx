@@ -366,8 +366,8 @@ export default function RepairQueuePage() {
       r = r.filter((rep) => rep.status === statusFilter);
     }
 
-    if (queueFilter === "mine" && currentUser?.userId) {
-      r = r.filter((rep) => rep.assignedTo === currentUser.userId);
+    if (queueFilter === "mine" && currentUser?.user?.userId) {
+      r = r.filter((rep) => rep.assignedTo === currentUser.user!.userId);
     }
 
     return r;
