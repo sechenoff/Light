@@ -1,14 +1,16 @@
 {
-  "sprint": "slang-dictionary-redesign",
+  "sprint": "price-import-redesign",
   "claude_product": "ACCEPTED",
-  "technical_review": "REQUEST_CHANGES→fixed",
-  "provider": "dual-claude",
+  "technical_review": "APPROVE",
+  "provider": "claude-split-focus",
   "findings_fixed": [
-    "non-atomic rebind → create-first order",
-    "batch N parallel → sequential",
-    "accuracy includes SEED → exclude SEED",
-    "HealthBanner pluralization → shared pluralize()",
-    "RebindModal stale responses + no Escape → counter + keydown"
+    "priceDelta displayed with ruble instead of percent (ChangeCard.tsx)",
+    "N+1 SlangAlias queries in matchRow — pre-loaded into Map",
+    "Bulk accept UI/server divergence for flagged rows — re-fetch from server",
+    "decChanged ignored null-to-value transitions — now detects them",
+    "No atomic double-analyze guard — added updateMany with status check"
   ],
-  "ts": "2026-04-16T12:15:00Z"
+  "tests": "419/420 pass (1 pre-existing flaky: socket hang up in approval.test.ts)",
+  "build": "next build succeeds",
+  "ts": "2026-04-16T14:30:00Z"
 }
