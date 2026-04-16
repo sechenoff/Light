@@ -1,6 +1,6 @@
 "use client";
 
-import { formatMoneyRub } from "../../../lib/format";
+import { formatMoneyRub, pluralize } from "../../../lib/format";
 import type { QuoteResponse, ValidationCheck } from "./types";
 
 type SummaryPanelProps = {
@@ -18,21 +18,6 @@ type SummaryPanelProps = {
   canSubmit: boolean;
 };
 
-function pluralizeDays(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "день";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "дня";
-  return "дней";
-}
-
-function pluralizeItems(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "позиция";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "позиции";
-  return "позиций";
-}
 
 const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass: string }> = {
   ok: { symbol: "✓", colorClass: "text-emerald" },
@@ -83,7 +68,7 @@ export function SummaryPanel({
           <span className="text-[18px] text-ink-3">₽</span>
         </div>
         <p className="mt-1 text-xs text-ink-3">
-          {effectiveShifts} {pluralizeDays(effectiveShifts)} · {itemCount} {pluralizeItems(itemCount)}
+          {effectiveShifts} {pluralize(effectiveShifts, "день", "дня", "дней")} · {itemCount} {pluralize(itemCount, "позиция", "позиции", "позиций")}
         </p>
       </div>
 
