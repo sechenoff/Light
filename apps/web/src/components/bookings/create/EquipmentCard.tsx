@@ -1,169 +1,216 @@
 "use client";
 
+import { useMemo } from "react";
+import { SmartInput } from "./SmartInput";
+import { AiResultBanner } from "./AiResultBanner";
+import { CatalogList } from "./CatalogList";
+import type { AvailabilityRow, CatalogSelectedItem, OffCatalogItem } from "./types";
 import { formatMoneyRub, pluralize } from "../../../lib/format";
-import { PasteZone } from "./PasteZone";
-import { EquipmentTable } from "./EquipmentTable";
-import { ModeSwitcher } from "./ModeSwitcher";
-import { ResizableContainer } from "./ResizableContainer";
-import { QuickSearchBar } from "./QuickSearchBar";
-import { CatalogBrowser } from "./CatalogBrowser";
-import type {
-  InputMode,
-  EquipmentTableItem,
-  GafferCandidate,
-  AvailabilityRow,
-  ParseResultCounts,
-} from "./types";
 
-type EquipmentCardProps = {
-  // Data
-  items: EquipmentTableItem[];
-  shifts: number;
-  totalAmount: number;
-  inputMode: InputMode;
-  onInputModeChange: (mode: InputMode) => void;
+type Props = {
+  catalog: AvailabilityRow[];
+  catalogLoading: boolean;
+  selected: Map<string, CatalogSelectedItem>;
+  offCatalogItems: OffCatalogItem[];
 
-  // PasteZone props
-  text: string;
-  onTextChange: (v: string) => void;
+  // Smart input / AI
+  gafferText: string;
+  onGafferTextChange: (v: string) => void;
+  parsing: boolean;
+  parsed: boolean;
+  parseResolved: number;
+  parseTotal: number;
+  unmatchedFromAi: string[];
+  successBannerDismissed: boolean;
   onParse: () => void;
   onClear: () => void;
-  isParsing: boolean;
-  error: string | null;
-  resultCounts: ParseResultCounts | null;
+  onDismissSuccess: () => void;
+  onIgnoreUnmatched: () => void;
+  onAddOffCatalog: (phrase: string) => void;
 
-  // EquipmentTable props
-  onQuantityChange: (itemId: string, qty: number) => void;
-  onDelete: (itemId: string) => void;
-  onSelectCandidate: (itemId: string, candidate: GafferCandidate) => void;
-  onSkipItem: (itemId: string) => void;
-  onSelectFromCatalog: (itemId: string, equipment: AvailabilityRow, saveAlias: boolean) => void;
-  searchCatalog: (query: string) => Promise<AvailabilityRow[]>;
+  // Catalog callbacks
+  onAdd: (row: AvailabilityRow) => void;
+  onChangeQty: (equipmentId: string, newQty: number) => void;
+  onRemove: (equipmentId: string) => void;
+  onChangeOffCatalogQty: (tempId: string, newQty: number) => void;
+  onRemoveOffCatalog: (tempId: string) => void;
 
-  // Catalog browser props
-  pickupISO: string | null;
-  returnISO: string | null;
-  onCatalogAdd: (equipment: AvailabilityRow) => void;
-  onCatalogQuantityChange: (equipmentId: string, qty: number) => void;
+  // Search + tab state (controlled)
+  searchQuery: string;
+  onSearchQueryChange: (q: string) => void;
+  activeTab: string;
+  onActiveTabChange: (t: string) => void;
 
-  // Quick search callback
-  onQuickSearchSelect: (equipment: AvailabilityRow) => void;
+  shifts: number;
 };
 
 export function EquipmentCard({
-  items,
-  shifts,
-  totalAmount,
-  inputMode,
-  onInputModeChange,
-  text,
-  onTextChange,
+  catalog,
+  catalogLoading,
+  selected,
+  offCatalogItems,
+  gafferText,
+  onGafferTextChange,
+  parsing,
+  parsed,
+  parseResolved,
+  parseTotal,
+  unmatchedFromAi,
+  successBannerDismissed,
   onParse,
   onClear,
-  isParsing,
-  error,
-  resultCounts,
-  onQuantityChange,
-  onDelete,
-  onSelectCandidate,
-  onSkipItem,
-  onSelectFromCatalog,
-  searchCatalog,
-  pickupISO,
-  returnISO,
-  onCatalogAdd,
-  onCatalogQuantityChange,
-  onQuickSearchSelect,
-}: EquipmentCardProps) {
-  const itemCount = items.length;
-  const positionLabel = `${itemCount} ${pluralize(itemCount, "позиция", "позиции", "позиций")}`;
-  const totalLabel = `${formatMoneyRub(totalAmount)} ₽ / период`;
+  onDismissSuccess,
+  onIgnoreUnmatched,
+  onAddOffCatalog,
+  onAdd,
+  onChangeQty,
+  onRemove,
+  onChangeOffCatalogQty,
+  onRemoveOffCatalog,
+  searchQuery,
+  onSearchQueryChange,
+  activeTab,
+  onActiveTabChange,
+  shifts,
+}: Props) {
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of catalog) set.add(r.category);
+    return Array.from(set);
+  }, [catalog]);
 
-  const hasDates = Boolean(pickupISO && returnISO);
+  const selectedByCat = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of selected.values()) map.set(item.category, (map.get(item.category) ?? 0) + 1);
+    return map;
+  }, [selected]);
+
+  const totalPositions = selected.size + offCatalogItems.length;
+  const totalUnits =
+    Array.from(selected.values()).reduce((acc, it) => acc + it.quantity, 0) +
+    offCatalogItems.reduce((acc, it) => acc + it.quantity, 0);
+
+  const totalPrice = useMemo(() => {
+    let sum = 0;
+    for (const item of selected.values()) {
+      sum += Number(item.dailyPrice) * item.quantity * shifts;
+    }
+    return sum;
+  }, [selected, shifts]);
+
+  const isAi = gafferText.includes("\n") || gafferText.length > 40;
 
   return (
-    <div className="rounded-lg border border-border bg-surface shadow-xs">
-      {/* Card header */}
-      <div className="flex items-baseline justify-between px-5 pt-4 pb-3 border-b border-border">
-        <div>
-          <p className="eyebrow text-ink-3 mb-0.5">3. Оборудование</p>
+    <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+      {/* Sticky header */}
+      <div className="sticky top-0 z-10 bg-surface">
+        <div className="flex items-center justify-between px-5 pb-3 pt-4">
+          <h2 className="text-[15px] font-semibold">Оборудование</h2>
+          <div className="font-mono text-[12px] text-ink-2">
+            {totalPositions} {pluralize(totalPositions, "позиция", "позиции", "позиций")} · {formatMoneyRub(totalPrice)} ₽
+          </div>
         </div>
-        <p className="text-sm text-ink-2 mono-num">
-          {positionLabel} · {totalLabel}
-        </p>
+
+        {/* Smart input */}
+        <div className="px-5 pb-2">
+          <SmartInput
+            value={gafferText}
+            onValueChange={(v) => {
+              onGafferTextChange(v);
+              if (!isAi) onSearchQueryChange(v);
+            }}
+            onParse={onParse}
+            onClear={onClear}
+            parsing={parsing}
+            parsed={parsed}
+          />
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-0 border-b border-border px-5 pt-1">
+          <TabButton label="Все" active={activeTab === "all"} onClick={() => onActiveTabChange("all")} count={null} />
+          {categories.map((cat) => (
+            <TabButton
+              key={cat}
+              label={cat}
+              active={activeTab === cat}
+              onClick={() => onActiveTabChange(cat)}
+              count={selectedByCat.get(cat) ?? null}
+            />
+          ))}
+        </div>
       </div>
 
-      {/* Mode switcher */}
-      <ModeSwitcher mode={inputMode} onModeChange={onInputModeChange} />
+      {/* AI banner */}
+      <AiResultBanner
+        resolved={parseResolved}
+        total={parseTotal}
+        unmatched={unmatchedFromAi}
+        successDismissed={successBannerDismissed}
+        onDismissSuccess={onDismissSuccess}
+        onAddOffCatalog={onAddOffCatalog}
+        onIgnoreUnmatched={onIgnoreUnmatched}
+      />
 
-      {/* Content area */}
-      <ResizableContainer defaultHeight={inputMode === "catalog" ? 360 : 280}>
-        {inputMode === "ai" ? (
-          <div>
-            {/* AI paste zone */}
-            <PasteZone
-              text={text}
-              onTextChange={onTextChange}
-              onParse={onParse}
-              onClear={onClear}
-              isParsing={isParsing}
-              error={error}
-              resultCounts={resultCounts}
-            />
-
-            {/* Equipment table */}
-            <div className="mx-5 mb-3">
-              <EquipmentTable
-                items={items}
-                shifts={shifts}
-                onQuantityChange={onQuantityChange}
-                onDelete={onDelete}
-                onSelectCandidate={onSelectCandidate}
-                onSkipItem={onSkipItem}
-                onSelectFromCatalog={onSelectFromCatalog}
-                searchCatalog={searchCatalog}
-              />
-            </div>
-
-            {/* Quick search bar */}
-            <div className="mx-5 mb-3">
-              <QuickSearchBar
-                searchCatalog={searchCatalog}
-                onSelect={onQuickSearchSelect}
-                disabled={!hasDates}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="mx-5 mt-3 mb-3">
-            <CatalogBrowser
-              items={items}
-              pickupISO={pickupISO}
-              returnISO={returnISO}
-              onCatalogAdd={onCatalogAdd}
-              onCatalogQuantityChange={onCatalogQuantityChange}
-            />
-          </div>
-        )}
-      </ResizableContainer>
-
-      {/* Legend (AI mode only) */}
-      {inputMode === "ai" && (
-        <div className="flex items-center gap-4 px-5 pb-4 pt-0 text-xs text-ink-3">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald inline-block" aria-hidden="true" />
-            Точно
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber inline-block" aria-hidden="true" />
-            Уточнить
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose inline-block" aria-hidden="true" />
-            Не в каталоге
-          </span>
-        </div>
+      {/* Catalog */}
+      {catalogLoading ? (
+        <div className="px-5 py-12 text-center text-[13px] text-ink-3">Загружаю каталог...</div>
+      ) : (
+        <CatalogList
+          rows={catalog}
+          selected={selected}
+          offCatalogItems={offCatalogItems}
+          activeTab={activeTab}
+          searchQuery={isAi ? "" : searchQuery}
+          onAdd={onAdd}
+          onChangeQty={onChangeQty}
+          onRemove={onRemove}
+          onChangeOffCatalogQty={onChangeOffCatalogQty}
+          onRemoveOffCatalog={onRemoveOffCatalog}
+        />
       )}
+
+      {/* Footer */}
+      <div className="flex items-center justify-between border-t border-border bg-surface-muted px-5 py-3">
+        <div className="text-[12.5px] text-ink-2">
+          {totalPositions === 0 ? (
+            <span>Ничего не выбрано</span>
+          ) : (
+            <>
+              <strong className="text-ink">{totalPositions} {pluralize(totalPositions, "позиция", "позиции", "позиций")}</strong>
+              <span> · {totalUnits} {pluralize(totalUnits, "единица", "единицы", "единиц")}</span>
+            </>
+          )}
+        </div>
+        <div className="font-mono text-[14px] font-semibold">{formatMoneyRub(totalPrice)} ₽</div>
+      </div>
     </div>
+  );
+}
+
+function TabButton({
+  label,
+  active,
+  onClick,
+  count,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  count: number | null;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`-mb-px whitespace-nowrap px-3.5 py-2 text-[12.5px] font-medium transition-colors ${
+        active
+          ? "border-b-2 border-accent-bright font-semibold text-accent-bright"
+          : "border-b-2 border-transparent text-ink-3 hover:text-ink-2"
+      }`}
+    >
+      {label}
+      {count !== null && count > 0 && <span className="ml-1 font-mono text-[10px] text-emerald">{count}</span>}
+    </button>
   );
 }

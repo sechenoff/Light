@@ -1,11 +1,11 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { apiFetch } from "../../../src/lib/api";
-import { formatMoneyRub, pluralize } from "../../../src/lib/format";
+import { pluralize } from "../../../src/lib/format";
 import { toast } from "../../../src/components/ToastProvider";
 import {
   addHoursToDatetimeLocal,
@@ -22,29 +22,13 @@ import { EquipmentCard } from "../../../src/components/bookings/create/Equipment
 import { CommentCard } from "../../../src/components/bookings/create/CommentCard";
 import { SummaryPanel } from "../../../src/components/bookings/create/SummaryPanel";
 import type {
-  InputMode,
-  EquipmentTableItem,
-  GafferReviewApiItem,
-  GafferReviewApiResponse,
-  GafferCandidate,
-  QuoteResponse,
   AvailabilityRow,
+  CatalogSelectedItem,
+  OffCatalogItem,
+  GafferReviewApiResponse,
+  QuoteResponse,
   ValidationCheck,
-  ParseResultCounts,
 } from "../../../src/components/bookings/create/types";
-
-function apiItemToTableItem(item: GafferReviewApiItem): EquipmentTableItem {
-  const m = item.match;
-  return {
-    id: item.id,
-    gafferPhrase: item.gafferPhrase,
-    interpretedName: item.interpretedName,
-    quantity: item.quantity,
-    match: m,
-    unitPrice: m.kind === "resolved" ? m.rentalRatePerShift : null,
-    lineTotal: null,
-  };
-}
 
 function BookingNewPage() {
   const router = useRouter();
@@ -80,81 +64,113 @@ function BookingNewPage() {
   const durationTag = rentalDuration ? `${shifts} ${pluralize(shifts, "день", "дня", "дней")}` : null;
   const durationDetail = rentalDuration?.labelShort ?? null;
 
-  // Equipment items — single source of truth
-  const [items, setItems] = useState<EquipmentTableItem[]>([]);
+  // ── Catalog-first state ──
+  const [catalog, setCatalog] = useState<AvailabilityRow[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [selected, setSelected] = useState<Map<string, CatalogSelectedItem>>(new Map());
+  const [offCatalogItems, setOffCatalogItems] = useState<OffCatalogItem[]>([]);
 
-  // Gaffer AI
+  // Search + tabs
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<string>("all");
+
+  // AI flow
   const [gafferText, setGafferText] = useState("");
-  const [inputMode, setInputMode] = useState<InputMode>("ai");
-  const [gafferParsing, setGafferParsing] = useState(false);
-  const [gafferError, setGafferError] = useState<string | null>(null);
-  const [parseResultCounts, setParseResultCounts] = useState<ParseResultCounts | null>(null);
+  const [parsing, setParsing] = useState(false);
+  const [parsed, setParsed] = useState(false);
+  const [parseResolved, setParseResolved] = useState(0);
+  const [parseTotal, setParseTotal] = useState(0);
+  const [unmatchedFromAi, setUnmatchedFromAi] = useState<string[]>([]);
+  const [successBannerDismissed, setSuccessBannerDismissed] = useState(false);
 
   // Quote
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [loadingQuote, setLoadingQuote] = useState(false);
-
-  // Submission
   const [submitting, setSubmitting] = useState(false);
 
-  // Resolved items for API calls
-  const resolvedItems = useMemo(
-    () =>
-      items
-        .filter((it) => it.match.kind === "resolved")
-        .map((it) => ({
-          equipmentId: (it.match as Extract<typeof it.match, { kind: "resolved" }>).equipmentId,
-          quantity: it.quantity,
-        })),
-    [items],
+  // ── Catalog fetch (on dates change) ──
+  useEffect(() => {
+    if (!pickupISO || !returnISO) return;
+    let cancelled = false;
+    setCatalogLoading(true);
+    const params = new URLSearchParams({ start: pickupISO, end: returnISO });
+    apiFetch<{ rows: AvailabilityRow[] }>(`/api/availability?${params}`)
+      .then((res) => {
+        if (cancelled) return;
+        setCatalog(res.rows);
+        setSelected((prev) => {
+          const next = new Map(prev);
+          for (const [id, sel] of prev) {
+            const latest = res.rows.find((r) => r.equipmentId === id);
+            if (!latest) {
+              next.delete(id);
+              continue;
+            }
+            const clamped = Math.min(sel.quantity, Math.max(0, latest.availableQuantity));
+            next.set(id, {
+              ...sel,
+              quantity: clamped === 0 ? sel.quantity : clamped,
+              availableQuantity: latest.availableQuantity,
+              dailyPrice: latest.rentalRatePerShift,
+            });
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setCatalog([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCatalogLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pickupISO, returnISO]);
+
+  // ── Derived ──
+  const apiItems = useMemo(() => {
+    const cat = Array.from(selected.values()).map((s) => ({ equipmentId: s.equipmentId, quantity: s.quantity }));
+    const off = offCatalogItems.map((o) => ({ name: o.name, quantity: o.quantity }));
+    return [...cat, ...off];
+  }, [selected, offCatalogItems]);
+
+  const resolvedItemsForQuote = useMemo(
+    () => Array.from(selected.values()).map((s) => ({ equipmentId: s.equipmentId, quantity: s.quantity })),
+    [selected],
   );
 
-  // Local price computation for when quote is not yet loaded
   const localSubtotal = useMemo(() => {
-    return items
-      .filter((it) => it.match.kind === "resolved")
-      .reduce((acc, it) => {
-        const price = it.unitPrice ? Number(it.unitPrice) : 0;
-        return acc + price * it.quantity * shifts;
-      }, 0);
-  }, [items, shifts]);
+    let sum = 0;
+    for (const s of selected.values()) sum += Number(s.dailyPrice) * s.quantity * shifts;
+    return sum;
+  }, [selected, shifts]);
 
   const clampedDiscount = Math.max(0, Math.min(100, discountPercent || 0));
   const localDiscount = (localSubtotal * clampedDiscount) / 100;
   const localTotal = localSubtotal - localDiscount;
 
-  // Validation checks
   const checks = useMemo<ValidationCheck[]>(() => {
     const list: ValidationCheck[] = [];
-    const unmatched = items.filter((i) => i.match.kind === "unmatched").length;
-    const needsReview = items.filter((i) => i.match.kind === "needsReview").length;
-    if (items.length > 0 && unmatched === 0 && needsReview === 0) {
+    if (selected.size > 0 && offCatalogItems.length === 0 && unmatchedFromAi.length === 0) {
       list.push({ type: "ok", label: "Все позиции распознаны", detail: "" });
     }
-    if (needsReview > 0) {
-      list.push({
-        type: "warn",
-        label: `${needsReview} позиций требуют уточнения`,
-        detail: "выберите вариант из предложенных",
-      });
+    if (unmatchedFromAi.length > 0) {
+      list.push({ type: "warn", label: `${unmatchedFromAi.length} не распознано`, detail: "добавьте вручную или проигнорируйте" });
     }
-    if (unmatched > 0) {
-      list.push({
-        type: "warn",
-        label: `${unmatched} позиций не распознано`,
-        detail: "найдите в каталоге или удалите",
-      });
+    if (offCatalogItems.length > 0) {
+      list.push({ type: "tip", label: `${offCatalogItems.length} вне каталога`, detail: "позиции сохранятся с ручным описанием" });
     }
     return list;
-  }, [items]);
+  }, [selected, offCatalogItems, unmatchedFromAi]);
 
   const canSubmit = Boolean(
-    clientName.trim() && resolvedItems.length > 0 && pickupISO && returnISO && !submitting,
+    clientName.trim() && (selected.size > 0 || offCatalogItems.length > 0) && pickupISO && returnISO && !submitting,
   );
 
-  // Debounced server-side quote
+  // ── Debounced quote ──
   useEffect(() => {
-    if (!clientName.trim() || resolvedItems.length === 0 || !pickupISO || !returnISO) {
+    if (!clientName.trim() || resolvedItemsForQuote.length === 0 || !pickupISO || !returnISO) {
       setQuote(null);
       return;
     }
@@ -168,12 +184,9 @@ function BookingNewPage() {
           startDate: pickupISO,
           endDate: returnISO,
           discountPercent: discountPercent || 0,
-          items: resolvedItems,
+          items: resolvedItemsForQuote,
         };
-        const data = await apiFetch<QuoteResponse>("/api/bookings/quote", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
+        const data = await apiFetch<QuoteResponse>("/api/bookings/quote", { method: "POST", body: JSON.stringify(body) });
         if (!cancelled) setQuote(data);
       } catch {
         if (!cancelled) setQuote(null);
@@ -181,11 +194,13 @@ function BookingNewPage() {
         if (!cancelled) setLoadingQuote(false);
       }
     }, 500);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [clientName, projectName, pickupISO, returnISO, discountPercent, resolvedItems]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [clientName, projectName, pickupISO, returnISO, discountPercent, resolvedItemsForQuote]);
 
-  // ── Callbacks ────────────────────────────────────────────────────────────────
-
+  // ── Date handlers ──
   function handlePickupChange(v: string) {
     setPickupLocal(v);
     setReturnLocal((prev) => {
@@ -201,395 +216,292 @@ function BookingNewPage() {
     setReturnLocal(v);
   }
 
-  async function handleParse() {
-    setGafferParsing(true);
-    setGafferError(null);
-    try {
-      const res = await apiFetch<GafferReviewApiResponse>(
-        "/api/bookings/parse-gaffer-review",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            requestText: gafferText.trim(),
-            startDate: pickupISO,
-            endDate: returnISO,
-          }),
-        },
-      );
-      if (res.items.length === 0) {
-        setGafferError(res.message ?? "AI не распознал позиции");
-        return;
+  // ── Catalog selection handlers ──
+  function handleAdd(row: AvailabilityRow) {
+    if (row.availableQuantity <= 0) return;
+    setSelected((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(row.equipmentId);
+      if (existing) {
+        if (existing.quantity >= existing.availableQuantity) return prev;
+        next.set(row.equipmentId, { ...existing, quantity: existing.quantity + 1 });
+      } else {
+        next.set(row.equipmentId, {
+          equipmentId: row.equipmentId,
+          name: row.name,
+          category: row.category,
+          quantity: 1,
+          dailyPrice: row.rentalRatePerShift,
+          availableQuantity: row.availableQuantity,
+        });
       }
-      const newItems = res.items.map(apiItemToTableItem);
-      setItems(newItems);
-      setParseResultCounts({
-        resolved: newItems.filter((i) => i.match.kind === "resolved").length,
-        needsReview: newItems.filter((i) => i.match.kind === "needsReview").length,
-        unmatched: newItems.filter((i) => i.match.kind === "unmatched").length,
+      return next;
+    });
+  }
+
+  function handleChangeQty(equipmentId: string, newQty: number) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(equipmentId);
+      if (!existing) return prev;
+      const clamped = Math.max(0, Math.min(newQty, existing.availableQuantity));
+      if (clamped === 0) {
+        next.delete(equipmentId);
+      } else {
+        next.set(equipmentId, { ...existing, quantity: clamped });
+      }
+      return next;
+    });
+  }
+
+  function handleRemove(equipmentId: string) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      next.delete(equipmentId);
+      return next;
+    });
+  }
+
+  function handleChangeOffCatalogQty(tempId: string, newQty: number) {
+    setOffCatalogItems((prev) =>
+      prev.map((it) => (it.tempId === tempId ? { ...it, quantity: Math.max(1, newQty) } : it)),
+    );
+  }
+
+  function handleRemoveOffCatalog(tempId: string) {
+    setOffCatalogItems((prev) => prev.filter((it) => it.tempId !== tempId));
+  }
+
+  // ── AI handlers ──
+  async function handleParse() {
+    if (!pickupISO || !returnISO) return;
+    setParsing(true);
+    try {
+      const res = await apiFetch<GafferReviewApiResponse>("/api/bookings/parse-gaffer-review", {
+        method: "POST",
+        body: JSON.stringify({ requestText: gafferText.trim(), startDate: pickupISO, endDate: returnISO }),
       });
-    } catch (err: any) {
-      setGafferError(err?.message ?? "Ошибка AI");
+
+      const resolvedItems: Array<{
+        equipmentId: string;
+        name: string;
+        category: string;
+        quantity: number;
+        dailyPrice: string;
+        availableQuantity: number;
+      }> = [];
+      const unmatched: string[] = [];
+
+      for (const item of res.items) {
+        if (item.match.kind === "resolved") {
+          resolvedItems.push({
+            equipmentId: item.match.equipmentId,
+            name: item.match.catalogName,
+            category: item.match.category,
+            quantity: item.quantity,
+            dailyPrice: item.match.rentalRatePerShift,
+            availableQuantity: item.match.availableQuantity,
+          });
+        } else if (item.match.kind === "needsReview" && item.match.candidates.length > 0) {
+          const top = item.match.candidates[0];
+          resolvedItems.push({
+            equipmentId: top.equipmentId,
+            name: top.catalogName,
+            category: top.category,
+            quantity: item.quantity,
+            dailyPrice: top.rentalRatePerShift,
+            availableQuantity: top.availableQuantity,
+          });
+        } else {
+          unmatched.push(item.gafferPhrase || item.interpretedName);
+        }
+      }
+
+      setSelected((prev) => {
+        const next = new Map(prev);
+        for (const r of resolvedItems) {
+          next.set(r.equipmentId, {
+            equipmentId: r.equipmentId,
+            name: r.name,
+            category: r.category,
+            quantity: Math.min(r.quantity, r.availableQuantity),
+            dailyPrice: r.dailyPrice,
+            availableQuantity: r.availableQuantity,
+          });
+        }
+        return next;
+      });
+
+      setUnmatchedFromAi(unmatched);
+      setParseResolved(resolvedItems.length);
+      setParseTotal(res.items.length);
+      setSuccessBannerDismissed(false);
+      setParsed(true);
+    } catch (err: unknown) {
+      toast.error((err as { message?: string })?.message ?? "Ошибка AI");
     } finally {
-      setGafferParsing(false);
+      setParsing(false);
     }
   }
 
-  function handlePasteClear() {
+  function handleClear() {
     setGafferText("");
-    setGafferError(null);
-    setParseResultCounts(null);
+    setParsed(false);
+    setUnmatchedFromAi([]);
+    setParseResolved(0);
+    setParseTotal(0);
+    setSuccessBannerDismissed(false);
   }
 
-  function handleQuantityChange(itemId: string, qty: number) {
-    setItems((prev) => prev.map((it) => (it.id === itemId ? { ...it, quantity: Math.max(1, qty) } : it)));
+  function handleDismissSuccess() {
+    setSuccessBannerDismissed(true);
   }
 
-  function handleDeleteItem(itemId: string) {
-    setItems((prev) => prev.filter((it) => it.id !== itemId));
+  function handleIgnoreUnmatched() {
+    setUnmatchedFromAi([]);
   }
 
-  function handleSelectCandidate(itemId: string, candidate: GafferCandidate) {
-    setItems((prev) =>
-      prev.map((it) =>
-        it.id === itemId
-          ? {
-              ...it,
-              match: {
-                kind: "resolved",
-                equipmentId: candidate.equipmentId,
-                catalogName: candidate.catalogName,
-                category: candidate.category,
-                availableQuantity: candidate.availableQuantity,
-                rentalRatePerShift: candidate.rentalRatePerShift,
-                confidence: candidate.confidence,
-              },
-              unitPrice: candidate.rentalRatePerShift,
-            }
-          : it,
-      ),
-    );
+  function handleAddOffCatalog(phrase: string) {
+    const tempId = `off-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setOffCatalogItems((prev) => [...prev, { tempId, name: phrase, quantity: 1 }]);
+    setUnmatchedFromAi((prev) => prev.filter((p) => p !== phrase));
   }
 
-  function handleSkipItem(itemId: string) {
-    setItems((prev) => prev.filter((it) => it.id !== itemId));
-  }
-
-  function handleSelectFromCatalog(
-    itemId: string,
-    equipment: AvailabilityRow,
-    saveAlias: boolean,
-  ) {
-    const item = items.find((it) => it.id === itemId);
-    const gafferPhrase = item?.gafferPhrase;
-
-    setItems((prev) =>
-      prev.map((it) =>
-        it.id === itemId
-          ? {
-              ...it,
-              match: {
-                kind: "resolved" as const,
-                equipmentId: equipment.equipmentId,
-                catalogName: equipment.name,
-                category: equipment.category,
-                availableQuantity: equipment.availableQuantity,
-                rentalRatePerShift: equipment.rentalRatePerShift,
-                confidence: 1,
-              },
-              unitPrice: equipment.rentalRatePerShift,
-            }
-          : it,
-      ),
-    );
-
-    if (saveAlias && gafferPhrase) {
-      apiFetch("/api/admin/slang-learning/propose", {
-        method: "POST",
-        body: JSON.stringify({
-          rawPhrase: gafferPhrase,
-          proposedEquipmentId: equipment.equipmentId,
-          proposedEquipmentName: equipment.name,
-          confidence: 1,
-          contextJson: JSON.stringify({ source: "manual_unmatched_learning" }),
-        }),
-      }).catch(() => {});
-    }
-  }
-
-  const searchCatalog = useCallback(async (query: string): Promise<AvailabilityRow[]> => {
-    if (!pickupISO || !returnISO) return [];
-    const params = new URLSearchParams({ start: pickupISO, end: returnISO, search: query });
-    const data = await apiFetch<{ rows: AvailabilityRow[] }>(`/api/availability?${params}`);
-    return data.rows;
-  }, [pickupISO, returnISO]);
-
-  function handleAddManual() {
-    const id = `manual-${Date.now()}`;
-    setItems((prev) => [
-      ...prev,
-      {
-        id,
-        gafferPhrase: "",
-        interpretedName: "Новая позиция",
-        quantity: 1,
-        match: { kind: "unmatched" },
-        unitPrice: null,
-        lineTotal: null,
-      },
-    ]);
-  }
-
-  function handleCatalogAdd(equipment: AvailabilityRow) {
-    // If equipment already in items, increment qty
-    const existing = items.find(
-      (it) => it.match.kind === "resolved" && it.match.equipmentId === equipment.equipmentId,
-    );
-    if (existing) {
-      const maxQty = existing.match.kind === "resolved" ? existing.match.availableQuantity : Infinity;
-      if (existing.quantity >= maxQty) return; // Already at max
-      setItems((prev) =>
-        prev.map((it) => (it.id === existing.id ? { ...it, quantity: it.quantity + 1 } : it)),
-      );
-      return;
-    }
-    // Add new resolved item
-    const id = `catalog-${equipment.equipmentId}-${Date.now()}`;
-    setItems((prev) => [
-      ...prev,
-      {
-        id,
-        gafferPhrase: equipment.name,
-        interpretedName: equipment.name,
-        quantity: 1,
-        match: {
-          kind: "resolved" as const,
-          equipmentId: equipment.equipmentId,
-          catalogName: equipment.name,
-          category: equipment.category,
-          availableQuantity: equipment.availableQuantity,
-          rentalRatePerShift: equipment.rentalRatePerShift,
-          confidence: 1,
-        },
-        unitPrice: equipment.rentalRatePerShift,
-        lineTotal: null,
-      },
-    ]);
-  }
-
-  function handleCatalogQuantityChange(equipmentId: string, qty: number) {
-    if (qty <= 0) {
-      // Remove item
-      setItems((prev) =>
-        prev.filter(
-          (it) => !(it.match.kind === "resolved" && it.match.equipmentId === equipmentId),
-        ),
-      );
-      return;
-    }
-    setItems((prev) =>
-      prev.map((it) =>
-        it.match.kind === "resolved" && it.match.equipmentId === equipmentId
-          ? { ...it, quantity: qty }
-          : it,
-      ),
-    );
-  }
-
-  function handleQuickSearchSelect(equipment: AvailabilityRow) {
-    handleCatalogAdd(equipment);
-  }
-
-  async function saveDraft() {
-    if (!pickupISO || !returnISO || !clientName.trim() || resolvedItems.length === 0) return;
+  // ── Save / submit ──
+  async function saveDraft(): Promise<string | null> {
     setSubmitting(true);
     try {
       const body = {
-        client: { name: clientName.trim(), phone: null, email: null, comment: null },
+        client: { name: clientName.trim() },
         projectName: projectName.trim() || "Проект",
         startDate: pickupISO,
         endDate: returnISO,
-        comment: bookingComment || null,
         discountPercent: discountPercent || 0,
-        items: resolvedItems,
+        comment: bookingComment.trim() || undefined,
+        items: apiItems,
       };
-      const res = await apiFetch<{ booking: { id: string } }>("/api/bookings/draft", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      router.push(`/bookings/${res.booking.id}`);
-    } catch (err: any) {
-      toast.error(err?.message ?? "Ошибка сохранения");
+      const res = await apiFetch<{ id: string }>("/api/bookings/draft", { method: "POST", body: JSON.stringify(body) });
+      toast.success("Черновик сохранён");
+      return res.id;
+    } catch (err: unknown) {
+      toast.error((err as { message?: string })?.message ?? "Ошибка сохранения");
+      return null;
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function submitForApproval() {
-    if (!pickupISO || !returnISO || !clientName.trim() || resolvedItems.length === 0) return;
-    setSubmitting(true);
+  async function handleSaveDraftClick() {
+    const id = await saveDraft();
+    if (id) router.push(`/bookings/${id}`);
+  }
+
+  async function handleSubmitForApproval() {
+    const id = await saveDraft();
+    if (!id) return;
     try {
-      const body = {
-        client: { name: clientName.trim(), phone: null, email: null, comment: null },
-        projectName: projectName.trim() || "Проект",
-        startDate: pickupISO,
-        endDate: returnISO,
-        comment: bookingComment || null,
-        discountPercent: discountPercent || 0,
-        items: resolvedItems,
-      };
-      const res = await apiFetch<{ booking: { id: string } }>("/api/bookings/draft", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      await apiFetch(`/api/bookings/${res.booking.id}/submit-for-approval`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-      router.push(`/bookings/${res.booking.id}`);
-    } catch (err: any) {
-      toast.error(err?.message ?? "Ошибка отправки");
-    } finally {
-      setSubmitting(false);
+      await apiFetch(`/api/bookings/${id}/submit-for-approval`, { method: "POST" });
+      toast.success("Отправлено на согласование");
+      router.push(`/bookings/${id}`);
+    } catch (err: unknown) {
+      toast.error((err as { message?: string })?.message ?? "Ошибка отправки");
     }
   }
 
   return (
-    <>
-      {/* Sticky top bar */}
-      <div className="flex justify-between items-center px-8 py-3 bg-surface border-b border-border sticky top-0 z-10">
-        <div className="flex items-center gap-2.5 text-[13px]">
-          <Link href="/bookings" className="text-ink-2 hover:text-ink">
-            ← Брони
-          </Link>
-          <span className="text-ink-3">/</span>
-          <span className="text-ink font-medium">Новая бронь</span>
-          <span className="font-mono text-[11.5px] text-ink-3 px-2 py-0.5 bg-surface-muted border border-border rounded ml-1">
-            #—
-          </span>
-          <span className="inline-flex items-center gap-1.5 text-[11.5px] text-ink-2 px-2.5 py-0.5 bg-surface-muted border border-border rounded-full ml-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-ink-3" />
-            Черновик
-          </span>
+    <div>
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-surface px-8 py-3 shadow-xs">
+        <div className="flex items-center gap-3 text-[13px]">
+          <Link href="/bookings" className="text-accent-bright hover:underline">← Брони</Link>
+          <span className="text-ink-3">/ Новая бронь</span>
+          <span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 text-[10px] text-ink-3">Черновик</span>
         </div>
-        <div className="flex gap-1.5">
-          <Link
-            href="/bookings"
-            className="rounded px-3.5 py-[7px] text-[12.5px] font-medium text-ink-2 hover:text-ink"
-          >
-            Отмена
-          </Link>
-          <button
-            type="button"
-            onClick={saveDraft}
-            disabled={submitting}
-            className="rounded px-3.5 py-[7px] text-[12.5px] font-medium border border-border-strong bg-surface hover:bg-surface-muted disabled:opacity-50"
-          >
-            Сохранить черновик
-          </button>
-          <button
-            type="button"
-            onClick={submitForApproval}
-            disabled={submitting || !canSubmit}
-            className="rounded px-3.5 py-[7px] text-[12.5px] font-medium bg-ink text-white hover:bg-black disabled:opacity-50"
-          >
-            Отправить на согласование →
-          </button>
-        </div>
-      </div>
+      </header>
 
-      <div className="max-w-[1280px] mx-auto px-8 py-7">
-        {/* Hero */}
-        <div className="flex justify-between items-end mb-6 gap-8">
-          <div>
-            <h1 className="text-[28px] font-semibold tracking-tight leading-tight">
-              Новая бронь
-            </h1>
-            <p className="text-[13.5px] text-ink-2 max-w-[560px] mt-1">
-              Клиент, даты, список оборудования. Можно вставить текст от гаффера — AI распознает
-              позиции и подтянет цены.
-            </p>
-          </div>
-        </div>
-
-        {/* 2-column grid */}
-        <div className="grid grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
-          <div className="flex flex-col gap-3.5">
-            <ClientProjectCard
-              clientName={clientName}
-              onClientNameChange={setClientName}
-              projectName={projectName}
-              onProjectNameChange={setProjectName}
-            />
-            <DatesCard
-              pickupLocal={pickupLocal}
-              returnLocal={returnLocal}
-              onPickupChange={handlePickupChange}
-              onReturnChange={handleReturnChange}
-              durationTag={durationTag}
-              durationDetail={durationDetail}
-            />
-            <EquipmentCard
-              items={items}
-              shifts={shifts}
-              totalAmount={quote ? Number(quote.totalAfterDiscount) : localTotal}
-              inputMode={inputMode}
-              onInputModeChange={setInputMode}
-              text={gafferText}
-              onTextChange={setGafferText}
-              onParse={handleParse}
-              onClear={handlePasteClear}
-              isParsing={gafferParsing}
-              error={gafferError}
-              resultCounts={parseResultCounts}
-              onQuantityChange={handleQuantityChange}
-              onDelete={handleDeleteItem}
-              onSelectCandidate={handleSelectCandidate}
-              onSkipItem={handleSkipItem}
-              onSelectFromCatalog={handleSelectFromCatalog}
-              searchCatalog={searchCatalog}
-              pickupISO={pickupISO}
-              returnISO={returnISO}
-              onCatalogAdd={handleCatalogAdd}
-              onCatalogQuantityChange={handleCatalogQuantityChange}
-              onQuickSearchSelect={handleQuickSearchSelect}
-            />
-            {/* Discount */}
-            <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden mb-3.5 px-5 py-3 flex items-center gap-3">
-              <label className="text-[11.5px] text-ink-2 whitespace-nowrap">Скидка, %</label>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                className="w-20 rounded border border-border-strong px-2 py-1.5 text-[13.5px] text-ink bg-surface font-mono text-right focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
-                value={discountPercent}
-                onChange={(e) => setDiscountPercent(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
-              />
-            </div>
-            <CommentCard value={bookingComment} onChange={setBookingComment} />
-          </div>
-          <SummaryPanel
-            quote={quote}
-            localSubtotal={localSubtotal}
-            localDiscount={localDiscount}
-            localTotal={localTotal}
-            discountPercent={discountPercent}
-            itemCount={resolvedItems.length}
-            shifts={shifts}
-            isLoadingQuote={loadingQuote}
-            checks={checks}
-            onSubmitForApproval={submitForApproval}
-            onSaveDraft={saveDraft}
-            canSubmit={canSubmit}
+      <div className="mx-auto grid max-w-[1280px] grid-cols-[minmax(0,1fr)_320px] items-start gap-5 px-8 py-7">
+        <div className="flex flex-col gap-3.5">
+          <ClientProjectCard
+            clientName={clientName}
+            projectName={projectName}
+            onClientNameChange={setClientName}
+            onProjectNameChange={setProjectName}
           />
+          <DatesCard
+            pickupLocal={pickupLocal}
+            returnLocal={returnLocal}
+            onPickupChange={handlePickupChange}
+            onReturnChange={handleReturnChange}
+            durationTag={durationTag}
+            durationDetail={durationDetail}
+          />
+
+          <EquipmentCard
+            catalog={catalog}
+            catalogLoading={catalogLoading}
+            selected={selected}
+            offCatalogItems={offCatalogItems}
+            gafferText={gafferText}
+            onGafferTextChange={setGafferText}
+            parsing={parsing}
+            parsed={parsed}
+            parseResolved={parseResolved}
+            parseTotal={parseTotal}
+            unmatchedFromAi={unmatchedFromAi}
+            successBannerDismissed={successBannerDismissed}
+            onParse={handleParse}
+            onClear={handleClear}
+            onDismissSuccess={handleDismissSuccess}
+            onIgnoreUnmatched={handleIgnoreUnmatched}
+            onAddOffCatalog={handleAddOffCatalog}
+            onAdd={handleAdd}
+            onChangeQty={handleChangeQty}
+            onRemove={handleRemove}
+            onChangeOffCatalogQty={handleChangeOffCatalogQty}
+            onRemoveOffCatalog={handleRemoveOffCatalog}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            activeTab={activeTab}
+            onActiveTabChange={setActiveTab}
+            shifts={shifts}
+          />
+
+          <div className="flex items-center justify-between rounded-md border border-border bg-surface px-5 py-3 shadow-xs">
+            <label className="text-[13px] text-ink-2">Скидка, %</label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={discountPercent}
+              onChange={(e) => setDiscountPercent(Number(e.target.value))}
+              className="w-20 rounded border border-border px-2 py-1 text-right font-mono"
+            />
+          </div>
+
+          <CommentCard value={bookingComment} onChange={setBookingComment} />
         </div>
+
+        <SummaryPanel
+          quote={quote}
+          localSubtotal={localSubtotal}
+          localDiscount={localDiscount}
+          localTotal={localTotal}
+          discountPercent={discountPercent}
+          itemCount={selected.size + offCatalogItems.length}
+          shifts={shifts}
+          isLoadingQuote={loadingQuote}
+          checks={checks}
+          onSubmitForApproval={handleSubmitForApproval}
+          onSaveDraft={handleSaveDraftClick}
+          canSubmit={canSubmit}
+        />
       </div>
-    </>
+    </div>
   );
 }
 
 export default function BookingNewPageWrapper() {
   return (
-    <Suspense fallback={<div className="p-8 text-ink-3">Загрузка...</div>}>
+    <Suspense fallback={<div>Загрузка...</div>}>
       <BookingNewPage />
     </Suspense>
   );
