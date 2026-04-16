@@ -275,6 +275,22 @@ export async function matchRow(
   competitorName?: string,
   aliasMap?: Map<string, string>,
 ): Promise<MatchRowResult> {
+  // Tier 0: SlangAlias lookup
+  const normalizedName = row.sourceName.toLowerCase().trim();
+  if (normalizedName) {
+    const slangAlias = await prisma.slangAlias.findFirst({
+      where: { phraseNormalized: normalizedName },
+      orderBy: { confidence: "desc" },
+    });
+    if (slangAlias) {
+      return {
+        equipmentId: slangAlias.equipmentId,
+        matchConfidence: slangAlias.confidence,
+        matchMethod: "slang",
+      };
+    }
+  }
+
   // Tier 1: exact match by importKey
   const importKey = computeImportKey({
     category: row.sourceCategory ?? "",
@@ -521,6 +537,7 @@ export async function mapAndMatch(
       equipmentId: matchResult.equipmentId,
       matchConfidence: matchResult.matchConfidence,
       matchMethod: matchResult.matchMethod,
+      matchSource: matchResult.matchMethod?.replace(":FLAGGED", "") ?? null,
       action: DiffAction.NO_CHANGE,
       status: DiffRowStatus.PENDING,
     });
