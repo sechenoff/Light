@@ -1,26 +1,111 @@
 import type { UserRole } from "./auth";
 
 export type MenuItem = { href: string; label: string; icon?: string };
+export type MenuSection = { title: string; items: MenuItem[] };
 
-export const menuByRole: Record<UserRole, MenuItem[]> = {
+export const menuByRole: Record<UserRole, MenuSection[]> = {
   SUPER_ADMIN: [
-    { href: "/day",       label: "Мой день",       icon: "home" },
-    { href: "/bookings",  label: "Брони",          icon: "booking" },
-    { href: "/equipment", label: "Оборудование",   icon: "gear" },
-    { href: "/calendar",  label: "Календарь",      icon: "calendar" },
-    { href: "/repair",    label: "Мастерская",     icon: "wrench" },
-    { href: "/finance",   label: "Финансы",        icon: "money" },
-    { href: "/admin",     label: "Админка",        icon: "settings" },
+    {
+      title: "Главное",
+      items: [
+        { href: "/day", label: "Мой день", icon: "home" },
+      ],
+    },
+    {
+      title: "Склад",
+      items: [
+        { href: "/warehouse/scan", label: "Выдачи и возвраты", icon: "scan" },
+      ],
+    },
+    {
+      title: "Бронирование",
+      items: [
+        { href: "/bookings", label: "Список броней", icon: "booking" },
+        { href: "/bookings/new", label: "Новая бронь", icon: "plus" },
+        { href: "/calendar", label: "Календарь", icon: "calendar" },
+      ],
+    },
+    {
+      title: "Каталог",
+      items: [
+        { href: "/equipment", label: "Оборудование", icon: "gear" },
+      ],
+    },
+    {
+      title: "Мастерская",
+      items: [
+        { href: "/repair", label: "Ремонты", icon: "wrench" },
+      ],
+    },
+    {
+      title: "Финансы",
+      items: [
+        { href: "/finance", label: "Обзор", icon: "money" },
+        { href: "/finance/debts", label: "Долги", icon: "alert" },
+        { href: "/finance/payments", label: "Платежи", icon: "payment" },
+        { href: "/finance/expenses", label: "Расходы", icon: "expense" },
+      ],
+    },
+    {
+      title: "Система",
+      items: [
+        { href: "/admin", label: "Админка", icon: "settings" },
+        { href: "/crew-calculator", label: "Калькулятор", icon: "calc" },
+      ],
+    },
   ],
   WAREHOUSE: [
-    { href: "/day",       label: "Мой день",     icon: "home" },
-    { href: "/bookings",  label: "Брони",        icon: "booking" },
-    { href: "/equipment", label: "Оборудование", icon: "gear" },
-    { href: "/calendar",  label: "Календарь",    icon: "calendar" },
-    { href: "/repair",    label: "Мастерская",   icon: "wrench" },
+    {
+      title: "Главное",
+      items: [
+        { href: "/day", label: "Мой день", icon: "home" },
+      ],
+    },
+    {
+      title: "Склад",
+      items: [
+        { href: "/warehouse/scan", label: "Выдачи и возвраты", icon: "scan" },
+      ],
+    },
+    {
+      title: "Бронирование",
+      items: [
+        { href: "/bookings", label: "Список броней", icon: "booking" },
+        { href: "/bookings/new", label: "Новая бронь", icon: "plus" },
+        { href: "/calendar", label: "Календарь", icon: "calendar" },
+      ],
+    },
+    {
+      title: "Каталог",
+      items: [
+        { href: "/equipment", label: "Оборудование", icon: "gear" },
+      ],
+    },
+    {
+      title: "Мастерская",
+      items: [
+        { href: "/repair", label: "Ремонты", icon: "wrench" },
+      ],
+    },
   ],
   TECHNICIAN: [
-    { href: "/day",    label: "Мой день",   icon: "home" },
-    { href: "/repair", label: "Мастерская", icon: "wrench" },
+    {
+      title: "Главное",
+      items: [
+        { href: "/day", label: "Мой день", icon: "home" },
+      ],
+    },
+    {
+      title: "Мастерская",
+      items: [
+        { href: "/repair", label: "Ремонты", icon: "wrench" },
+      ],
+    },
+    {
+      title: "Каталог",
+      items: [
+        { href: "/equipment", label: "Оборудование", icon: "gear" },
+      ],
+    },
   ],
 };
