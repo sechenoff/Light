@@ -37,17 +37,6 @@ export type GafferReviewApiResponse = {
   message?: string;
 };
 
-/** Equipment table row — unified across all 3 tiers + manual additions */
-export type EquipmentTableItem = {
-  id: string;
-  gafferPhrase: string;
-  interpretedName: string;
-  quantity: number;
-  match: GafferOrderedMatch;
-  unitPrice: string | null;
-  lineTotal: string | null;
-};
-
 /** Response from POST /api/bookings/quote */
 export type QuoteResponse = {
   shifts: number;
@@ -94,16 +83,6 @@ export type ValidationCheck = {
   actionLabel?: string;
   actionHref?: string;
 };
-
-/** Parse result counts for PasteZone indicator */
-export type ParseResultCounts = {
-  resolved: number;
-  needsReview: number;
-  unmatched: number;
-};
-
-/** Equipment input mode switcher */
-export type InputMode = "ai" | "catalog";
 
 /** Catalog-first selection state (in catalog) */
 export type CatalogSelectedItem = {
