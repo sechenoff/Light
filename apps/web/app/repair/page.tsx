@@ -291,6 +291,7 @@ function SkeletonRows() {
 // ── Страница ──────────────────────────────────────────────────────────────────
 
 export default function RepairQueuePage() {
+  const router = useRouter();
   const { user, loading: authLoading } = useRequireRole(
     ALL_ROLES as unknown as ("SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN")[],
   );
