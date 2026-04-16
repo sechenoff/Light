@@ -42,7 +42,7 @@ light-rental-system/
       app/            Pages: dashboard (/), bookings, equipment, calendar, finance, admin, crew-calculator, settings, warehouse (scan UI)
       app/api/        Catch-all proxy to Express backend
       src/lib/        Shared logic: api client, formatting
-      src/components/ AppShell, StatusBadge, BarcodeScanner, MiniCalendar, DashboardOpsCard, QuickAvailabilityCheck, CalendarTooltip
+      src/components/ AppShell, StatusPill, BarcodeScanner, MiniCalendar, DashboardOpsCard, QuickAvailabilityCheck, CalendarTooltip
     bot/          Telegraf 4 + AI booking (API-backed matching)
       src/scenes/     booking (hub-and-spoke), crewCalc, photoAnalysis wizard scenes
       src/services/   llm (equipment matching via API), api client, logger
@@ -139,7 +139,7 @@ npm run build
 npm run lint
 
 # Tests
-npm test                          # run all (shared + bot + api) — 451 tests
+npm test                          # run all (shared + bot + api) — 478 tests
 npm run test -w apps/api          # API tests (smoke + barcode integration)
 npm run test -w apps/bot          # bot booking-helpers tests only (31 tests)
 npm run test -w packages/shared   # shared package tests only
@@ -270,7 +270,7 @@ Middleware `rolesGuard(allowed: UserRole[])` в `apps/api/src/middleware/rolesGu
 
 1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
 2. **~~Crew calculator duplication~~** — RESOLVED: extracted to `packages/shared` (`@light-rental/shared`).
-3. **~~Minimal test coverage~~** — RESOLVED: 451 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, importSession routes, dashboard, calendar, calendarUtils, rolesGuard holistic tests.
+3. **~~Minimal test coverage~~** — RESOLVED: 478 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, importSession routes, dashboard, calendar, calendarUtils, rolesGuard holistic, approval tests. Plus 4 web component tests (ApprovalTimeline) via vitest + jsdom.
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
 6. **`npm run lint` fails on main** — ESLint v9 expects `eslint.config.(js|mjs|cjs)` but the repo has `.eslintrc.json`. Pre-existing, unrelated to feature work. Fix before any lint-gated CI.
@@ -351,7 +351,7 @@ CSS-утилиты: `.eyebrow` (надстрочники), `.mono-num` (числ
 
 ### Новые общие компоненты
 
-- **`src/components/StatusPill.tsx`** — универсальный статусный бейдж. Props: `{ variant: "full" | "edit" | "view" | "limited" | "own" | "none" | "ok" | "warn" | "info", label: string, className?: string }`. Заменяет удалённый `StatusBadge.tsx`.
+- **`src/components/StatusPill.tsx`** — универсальный статусный бейдж. Props: `{ variant: "full" | "edit" | "view" | "limited" | "own" | "none" | "ok" | "warn" | "info" | "alert", label: string, className?: string }`. Заменяет удалённый `StatusBadge.tsx`. Variant `alert` = `bg-rose-soft text-rose border-rose-border` (для MISSING unit status и деструктивных сигналов).
 - **`src/components/SectionHeader.tsx`** — заголовок секции с eyebrow и optional actions. Props: `{ eyebrow?: string, title: string, actions?: ReactNode, className?: string }`.
 
 ### Страницы рескина
@@ -481,4 +481,42 @@ DRAFT ──submit-for-approval──▶ PENDING_APPROVAL ──approve──▶
 - `rejectBooking` использует `prisma.$transaction` для атомарности status+rejectionReason+audit.
 - Интеграционные тесты (`approval.test.ts`, 22 шт.) следуют паттерну `dashboard.test.ts`: изолированная SQLite БД через `TEST_DB_PATH`, `prisma db push --force-reset`, `signSession()` токены для WAREHOUSE/SUPER_ADMIN/TECHNICIAN. Покрывают: все успешные переходы, rolesGuard-ошибки, пустой/пробельный reason → 400, невалидный статус брони → 409 `INVALID_BOOKING_STATE`, PATCH в PENDING_APPROVAL → 409, полный цикл reject→resubmit→approve с проверкой очистки `rejectionReason`, регрессию на легаси confirm-bypass (DRAFT + `/status {action:"confirm"}` → 409).
 
-<!-- updated-by-superflow:2026-04-15 -->
+## Cosmetic Polish (Subproject D)
+
+UI-only canon repaint + ApprovalTimeline + accessibility. Реализовано в PR #52. Ноль изменений в schema/API/бизнес-логике.
+
+### Страницы рескина (доводка)
+
+6 страниц перекрашены в IBM Plex canon с заменой оставшихся hex/slate/blue на семантические токены (`ink / surface / border / accent / rose / amber / emerald / teal / indigo / slate` с суффиксами `-soft / -border / -bright`):
+- `/calendar` — semantic token colors для ячеек и шапки.
+- `/bookings/new` — категорийная палитра расширена до 7 уникальных канон-оттенков (было 15 слотов, 6 уникальных тинтов, 9 коллизий). `getCategoryColorClass()` → `hash % 7` по массиву `CATEGORY_PASTEL_CLASSES`.
+- `/bookings/[id]/edit` — form-field palette на токены.
+- `/repair` — urgency badges + skeleton loaders.
+- `/admin` — tabs, tables, modals, buttons.
+- `/admin/scanner` — `LookupCard` мигрирован с ad-hoc `STATUS_COLORS` map + raw `<span>` на `<StatusPill>` с variant-маппингом: `AVAILABLE→ok`, `ISSUED→info`, `MAINTENANCE→warn`, `RETIRED→none`, `MISSING→alert`.
+
+### ApprovalTimeline
+
+`apps/web/src/components/bookings/ApprovalTimeline.tsx` — read-only хронология согласования на `/bookings/[id]`. Только для `SUPER_ADMIN`.
+
+- Default-collapsed `<details>` с заголовком «История согласования».
+- Потребляет существующий `GET /api/audit?entityType=Booking&entityId=<id>` (Sprint 2 endpoint, SUPER_ADMIN-only rolesGuard).
+- Фильтрует поток аудита до `BOOKING_SUBMITTED` / `BOOKING_APPROVED` / `BOOKING_REJECTED`.
+- Reverse-chronological sort через ISO-safe `a.createdAt.localeCompare(b.createdAt)`.
+- Defensive 403 handling (для не-SUPER_ADMIN — тихий no-render без ошибки).
+- `cancelled`-flag cleanup pattern для предотвращения post-unmount state updates.
+- Тесты: `apps/web/src/components/bookings/__tests__/ApprovalTimeline.test.tsx` (4 теста: default-collapsed рендер, фильтрация non-approval записей, обработка 403, отображение причины отклонения). Runner: vitest 4.1.2 + jsdom 29 + @testing-library/react 16.
+
+### Accessibility
+
+`aria-label` добавлены на все icon-only кнопки по всем страницам и компонентам (модалки: close, inline actions: delete/sort/expand). Русскоязычные метки.
+
+### Новый variant StatusPill
+
+`alert` — `bg-rose-soft text-rose border-rose-border`. Для деструктивных/критических статусов (MISSING unit). Дополняет существующие 9 вариантов (full/edit/view/limited/own/none/ok/warn/info). Добавлен в Sprint D как 10-й variant.
+
+### Web test harness
+
+Добавлены devDependencies в `apps/web/package.json`: `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/dom`, `@testing-library/jest-dom`, `@vitejs/plugin-react`. Конфигурация: `apps/web/vitest.config.ts`, setup: `apps/web/src/test-setup.ts`. Команда: `npm --workspace=apps/web run test`.
+
+<!-- updated-by-superflow:2026-04-16 -->
