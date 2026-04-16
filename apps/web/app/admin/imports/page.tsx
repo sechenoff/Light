@@ -169,11 +169,15 @@ export default function ImportsPage() {
   // ── API helpers ─────────────────────────────────────────────────────────────
 
   async function loadSessions() {
-    try { const d = await apiFetch<{ sessions: ImportSession[] }>("/api/import-sessions"); setSessions(d.sessions ?? []); }
-    catch { setSessions([]); }
+    try { const d = await apiFetch<{ sessions: ImportSession[] }>("/api/import-sessions"); return d.sessions ?? []; }
+    catch { return []; }
   }
 
-  useEffect(() => { loadSessions(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    loadSessions().then((s) => { if (!cancelled) setSessions(s); });
+    return () => { cancelled = true; };
+  }, []);
 
   async function loadRows(sessionId: string, f: PricesFilter, page: number) {
     setLoadingRows(true);
@@ -271,7 +275,7 @@ export default function ImportsPage() {
 
   async function handleExport(sessionId: string) {
     try {
-      const res = await fetch(`/api/import-sessions/${sessionId}/export`);
+      const res = await window.fetch(`/api/import-sessions/${sessionId}/export`, { credentials: "same-origin" });
       if (!res.ok) throw new Error("Ошибка экспорта");
       const blob = await res.blob(); const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = `import-session-${sessionId}.xlsx`; a.click(); URL.revokeObjectURL(url);

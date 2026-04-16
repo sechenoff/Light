@@ -89,7 +89,20 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     if (!authorized) return;
-    load();
+    let cancelled = false;
+    (async () => {
+      setLoadingUsers(true);
+      setError(null);
+      try {
+        const res = await apiFetch<{ users: AdminUserRow[] }>("/api/admin-users");
+        if (!cancelled) setUsers(res.users);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Ошибка загрузки");
+      } finally {
+        if (!cancelled) setLoadingUsers(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [authorized]);
 
   async function handleCreate(e: React.FormEvent) {
