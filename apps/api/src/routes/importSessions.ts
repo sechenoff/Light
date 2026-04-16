@@ -13,6 +13,7 @@ import {
   exportComparison,
   cleanExpired,
   rematchUnmatched,
+  analyzeWithAI,
 } from "../services/importSession";
 
 const upload = multer({
@@ -193,6 +194,22 @@ importSessionsRouter.get("/:id/rows", async (req, res, next) => {
 });
 
 // ──────────────────────────────────────────────────────────────────
+// POST /:id/analyze — AI-конвейер: маппинг + матчинг + описания
+// ──────────────────────────────────────────────────────────────────
+
+importSessionsRouter.post("/:id/analyze", async (req, res, next) => {
+  try {
+    const result = await analyzeWithAI(req.params.id);
+    res.json(result);
+  } catch (err: any) {
+    if (err.message?.includes("expected PARSING")) {
+      return res.status(409).json({ error: "SESSION_ALREADY_ANALYZED", message: err.message });
+    }
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────
 // POST /:id/map — задать маппинг и запустить матчинг
 // ──────────────────────────────────────────────────────────────────
 
@@ -298,6 +315,96 @@ importSessionsRouter.patch("/:id/rows/:rowId", async (req, res, next) => {
     const { status, equipmentId } = rowUpdateSchema.parse(req.body);
     await updateRowStatus(rowId, status, equipmentId);
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────
+// PATCH /:id/rows/:rowId/rebind — ручное переопределение сопоставления
+// ──────────────────────────────────────────────────────────────────
+
+const rebindBodySchema = z.object({
+  equipmentId: z.string().min(1),
+});
+
+importSessionsRouter.patch("/:id/rows/:rowId/rebind", async (req, res, next) => {
+  try {
+    const { id, rowId } = req.params;
+    const { equipmentId } = rebindBodySchema.parse(req.body);
+
+    // Обновляем строку
+    await prisma.importSessionRow.update({
+      where: { id: rowId },
+      data: {
+        equipmentId,
+        matchMethod: "manual",
+        matchSource: "manual",
+        matchConfidence: 1.0,
+      },
+    });
+
+    // Получаем данные строки для создания алиасов
+    const row = await prisma.importSessionRow.findUnique({ where: { id: rowId } });
+    const session = await prisma.importSession.findUnique({ where: { id } });
+
+    let slangAliasSaved = false;
+    let competitorAliasSaved = false;
+
+    if (row) {
+      const phraseNormalized = row.sourceName.toLowerCase().trim();
+
+      // Upsert SlangAlias
+      try {
+        await prisma.slangAlias.upsert({
+          where: { phraseNormalized_equipmentId: { phraseNormalized, equipmentId } },
+          create: {
+            phraseNormalized,
+            phraseOriginal: row.sourceName,
+            equipmentId,
+            confidence: 1.0,
+            source: "MANUAL_ADMIN",
+          },
+          update: {
+            confidence: 1.0,
+            source: "MANUAL_ADMIN",
+            phraseOriginal: row.sourceName,
+            usageCount: { increment: 1 },
+            lastUsedAt: new Date(),
+          },
+        });
+        slangAliasSaved = true;
+      } catch {
+        slangAliasSaved = false;
+      }
+
+      // Upsert CompetitorAlias если тип COMPETITOR_IMPORT и competitorName есть
+      if (session?.type === "COMPETITOR_IMPORT" && session.competitorName) {
+        try {
+          await prisma.competitorAlias.upsert({
+            where: {
+              competitorName_competitorItem: {
+                competitorName: session.competitorName,
+                competitorItem: row.sourceName,
+              },
+            },
+            create: {
+              competitorName: session.competitorName,
+              competitorItem: row.sourceName,
+              equipmentId,
+            },
+            update: {
+              equipmentId,
+            },
+          });
+          competitorAliasSaved = true;
+        } catch {
+          competitorAliasSaved = false;
+        }
+      }
+    }
+
+    res.json({ ok: true, savedAliases: { slangAlias: slangAliasSaved, competitorAlias: competitorAliasSaved } });
   } catch (err) {
     next(err);
   }

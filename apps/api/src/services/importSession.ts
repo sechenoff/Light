@@ -6,6 +6,7 @@ import { HttpError } from "../utils/errors";
 import { computeImportKey, normalizeImportPart } from "./equipmentImport";
 import { Prisma, DiffAction, DiffRowStatus, ImportSessionStatus, ImportSessionType } from "@prisma/client";
 import { batchMatchWithGemini, saveAliases } from "./competitorMatcher";
+import { analyzeFileStructure, generateDescriptions, ChangeInput } from "./importAnalyzer";
 
 // ──────────────────────────────────────────────────────────────────
 // Типы
@@ -999,4 +1000,297 @@ export async function rematchUnmatched(
   }
 
   return { matched, total: unmatchedRows.length };
+}
+
+// ──────────────────────────────────────────────────────────────────
+// analyzeWithAI
+// ──────────────────────────────────────────────────────────────────
+
+export interface RowData {
+  id: string;
+  sourceName: string;
+  sourceCategory: string | null;
+  sourcePrice: string | null;
+  sourceQty: number | null;
+  equipmentId: string | null;
+  equipmentName: string | null;
+  equipmentCategory: string | null;
+  oldPrice: string | null;
+  oldQty: number | null;
+  priceDelta: string | null;
+  matchMethod: string | null;
+  matchSource: string | null;
+  matchConfidence: number | null;
+  action: string;
+  status: string;
+  aiDescription: string | null;
+}
+
+export interface OwnPriceUpdateResult {
+  summary: string;
+  groups: { type: string; count: number; rows: RowData[] }[];
+  noChangeCount: number;
+}
+
+export interface ComparisonRow extends RowData {
+  // nothing extra — all fields already in RowData
+}
+
+export interface UnmatchedRow {
+  id: string;
+  sourceName: string;
+  sourceCategory: string | null;
+  sourcePrice: string | null;
+  sourceQty: number | null;
+  aiDescription: string | null;
+}
+
+export interface CompetitorImportResult {
+  summary: string;
+  comparison: {
+    matched: ComparisonRow[];
+    unmatched: UnmatchedRow[];
+    kpis: {
+      matchedCount: number;
+      totalCount: number;
+      cheaperCount: number;
+      expensiveCount: number;
+      parityCount: number;
+      avgDeltaPercent: number;
+    };
+  };
+}
+
+/**
+ * Оркестрирует полный AI-конвейер для сессии:
+ * 1. AI-маппинг колонок (с fallback на suggestedMapping)
+ * 2. Детерминированный матчинг + Gemini для несопоставленных
+ * 3. Генерация AI-описаний для изменённых строк
+ * 4. Формирование структурированного ответа по типу сессии
+ */
+export async function analyzeWithAI(
+  sessionId: string,
+): Promise<OwnPriceUpdateResult | CompetitorImportResult> {
+  // 1. Загружаем сессию
+  const session = await prisma.importSession.findUniqueOrThrow({
+    where: { id: sessionId },
+  });
+
+  if (session.status !== ImportSessionStatus.PARSING) {
+    throw new Error(`Сессия ${sessionId}: ожидался статус PARSING, получен ${session.status} (expected PARSING)`);
+  }
+
+  // 2. Парсим файл для AI-анализа заголовков
+  const buffer = session.fileBuffer ? Buffer.from(session.fileBuffer) : null;
+  let aiMapping: ColumnMapping | null = null;
+
+  if (buffer) {
+    const { headers, dataRows } = readXlsxBuffer(buffer);
+    // Собираем sample rows (первые 5 непустых)
+    const sampleRows: Record<string, unknown>[] = [];
+    const nonEmptyDataRows = dataRows.filter((r) =>
+      r.some((cell) => String(cell ?? "").trim().length > 0),
+    );
+    const max = Math.min(nonEmptyDataRows.length, 5);
+    for (let i = 0; i < max; i++) {
+      const row = nonEmptyDataRows[i] ?? [];
+      const obj: Record<string, unknown> = {};
+      for (let col = 0; col < headers.length; col++) {
+        obj[headers[col]] = row[col] ?? "";
+      }
+      sampleRows.push(obj);
+    }
+
+    // 3. AI-маппинг колонок
+    try {
+      const result = await analyzeFileStructure(headers, sampleRows);
+      // analyzeFileStructure returns ColumnMapping (empty obj on failure, not null)
+      if (result && Object.keys(result).length > 0 && result.name) {
+        aiMapping = result;
+      }
+    } catch {
+      aiMapping = null;
+    }
+
+    // Fallback: suggestedMapping из createSession
+    if (!aiMapping) {
+      const suggested = suggestColumnMapping(headers);
+      aiMapping = suggested as ColumnMapping;
+    }
+  }
+
+  // Если маппинга нет вообще — используем пустой (mapAndMatch сам разберётся)
+  if (!aiMapping) {
+    aiMapping = {};
+  }
+
+  const type = session.type === ImportSessionType.OWN_PRICE_UPDATE
+    ? "OWN_PRICE_UPDATE"
+    : "COMPETITOR_IMPORT";
+  const competitorName = session.competitorName ?? undefined;
+
+  // 4. Запускаем детерминированный матчинг + Gemini для несопоставленных
+  await mapAndMatch(sessionId, type, aiMapping, competitorName);
+
+  // 5. Загружаем все строки с equipment
+  const allRows = await prisma.importSessionRow.findMany({
+    where: { sessionId },
+    include: { equipment: true },
+    orderBy: { sourceIndex: "asc" },
+  });
+
+  // 6. Для изменённых строк генерируем AI-описания
+  const changedRows = allRows.filter((r: any) => r.action !== DiffAction.NO_CHANGE);
+
+  let summaryText = "";
+
+  if (changedRows.length > 0) {
+    const changesInput: ChangeInput[] = changedRows.map((r: any) => ({
+      rowId: r.id,
+      equipmentName: r.sourceName,
+      action: r.action,
+      oldPrice: r.oldPrice ? parseFloat(r.oldPrice.toString()) : null,
+      newPrice: r.sourcePrice ? parseFloat(r.sourcePrice.toString()) : null,
+      oldQty: r.oldQty ?? null,
+      newQty: r.sourceQty ?? null,
+      priceDelta: r.priceDelta ? parseFloat(r.priceDelta.toString()) : null,
+      category: r.sourceCategory ?? null,
+    }));
+
+    try {
+      const descResult = await generateDescriptions(changesInput, type);
+      summaryText = descResult.summary;
+
+      // 7. Сохраняем описания в БД
+      for (const desc of descResult.descriptions) {
+        await prisma.importSessionRow.update({
+          where: { id: desc.rowId },
+          data: { aiDescription: desc.text },
+        });
+      }
+
+      // Обновляем aiSummary сессии
+      await prisma.importSession.update({
+        where: { id: sessionId },
+        data: { aiSummary: summaryText },
+      });
+    } catch {
+      // Описания не критичны — продолжаем без них
+    }
+  }
+
+  // Перезагружаем строки с обновлёнными описаниями
+  const finalRows = await prisma.importSessionRow.findMany({
+    where: { sessionId },
+    include: { equipment: true },
+    orderBy: { sourceIndex: "asc" },
+  });
+
+  // Вспомогательная функция сериализации строки в RowData
+  const toRowData = (r: any): RowData => ({
+    id: r.id,
+    sourceName: r.sourceName,
+    sourceCategory: r.sourceCategory ?? null,
+    sourcePrice: r.sourcePrice?.toString() ?? null,
+    sourceQty: r.sourceQty ?? null,
+    equipmentId: r.equipmentId ?? null,
+    equipmentName: r.equipment?.name ?? null,
+    equipmentCategory: r.equipment?.category ?? null,
+    oldPrice: r.oldPrice?.toString() ?? null,
+    oldQty: r.oldQty ?? null,
+    priceDelta: r.priceDelta?.toString() ?? null,
+    matchMethod: r.matchMethod ?? null,
+    matchSource: r.matchSource ?? null,
+    matchConfidence: r.matchConfidence ?? null,
+    action: r.action,
+    status: r.status,
+    aiDescription: r.aiDescription ?? null,
+  });
+
+  // 8. Формируем ответ по типу сессии
+  if (session.type === ImportSessionType.OWN_PRICE_UPDATE) {
+    const noChangeCount = finalRows.filter((r: any) => r.action === DiffAction.NO_CHANGE).length;
+
+    const actionTypes = [
+      DiffAction.PRICE_CHANGE,
+      DiffAction.QTY_CHANGE,
+      DiffAction.NEW_ITEM,
+      DiffAction.REMOVED_ITEM,
+    ];
+
+    const groups: { type: string; count: number; rows: RowData[] }[] = [];
+    for (const actionType of actionTypes) {
+      const rowsForAction = finalRows.filter((r: any) => r.action === actionType);
+      if (rowsForAction.length > 0) {
+        groups.push({
+          type: actionType,
+          count: rowsForAction.length,
+          rows: rowsForAction.map(toRowData),
+        });
+      }
+    }
+
+    return {
+      summary: summaryText,
+      groups,
+      noChangeCount,
+    } as OwnPriceUpdateResult;
+  }
+
+  // COMPETITOR_IMPORT
+  const PARITY_THRESHOLD = 5; // ±5%
+
+  const matchedRows = finalRows.filter((r: any) => r.equipmentId !== null);
+  const unmatchedRowsList = finalRows.filter((r: any) => r.equipmentId === null);
+
+  let cheaperCount = 0;
+  let expensiveCount = 0;
+  let parityCount = 0;
+  let deltaSum = 0;
+  let deltaCount = 0;
+
+  for (const r of matchedRows as any[]) {
+    if (r.oldPrice !== null && r.sourcePrice !== null) {
+      const ourPrice = parseFloat(r.oldPrice.toString());
+      const compPrice = parseFloat(r.sourcePrice.toString());
+      if (compPrice > 0) {
+        const delta = (ourPrice - compPrice) / compPrice * 100;
+        deltaSum += delta;
+        deltaCount++;
+        const absDelta = Math.abs(delta);
+        if (absDelta <= PARITY_THRESHOLD) {
+          parityCount++;
+        } else if (ourPrice < compPrice) {
+          cheaperCount++;
+        } else {
+          expensiveCount++;
+        }
+      }
+    }
+  }
+
+  const avgDeltaPercent = deltaCount > 0 ? parseFloat((deltaSum / deltaCount).toFixed(2)) : 0;
+
+  return {
+    summary: summaryText,
+    comparison: {
+      matched: matchedRows.map(toRowData),
+      unmatched: unmatchedRowsList.map((r: any): UnmatchedRow => ({
+        id: r.id,
+        sourceName: r.sourceName,
+        sourceCategory: r.sourceCategory ?? null,
+        sourcePrice: r.sourcePrice?.toString() ?? null,
+        sourceQty: r.sourceQty ?? null,
+        aiDescription: r.aiDescription ?? null,
+      })),
+      kpis: {
+        matchedCount: matchedRows.length,
+        totalCount: finalRows.length,
+        cheaperCount,
+        expensiveCount,
+        parityCount,
+        avgDeltaPercent,
+      },
+    },
+  } as CompetitorImportResult;
 }
