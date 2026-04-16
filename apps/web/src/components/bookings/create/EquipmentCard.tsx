@@ -106,7 +106,7 @@ export function EquipmentCard({
     <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
       {/* Sticky header */}
       <div className="sticky top-12 z-10 bg-surface">
-        <div className="flex items-center justify-between px-5 pb-3 pt-4">
+        <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
           <h2 className="text-[15px] font-semibold">Оборудование</h2>
           <div className="font-mono text-[12px] text-ink-2">
             {totalPositions} {pluralize(totalPositions, "позиция", "позиции", "позиций")} · {formatMoneyRub(totalPrice)} ₽
@@ -114,7 +114,7 @@ export function EquipmentCard({
         </div>
 
         {/* Smart input */}
-        <div className="px-5 pb-2">
+        <div className="px-5 pb-2.5">
           <SmartInput
             value={gafferText}
             onValueChange={(v) => {
@@ -128,11 +128,11 @@ export function EquipmentCard({
           />
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-0 border-b border-border px-5 pt-1">
-          <TabButton label="Все" active={activeTab === "all"} onClick={() => onActiveTabChange("all")} count={null} />
+        {/* Category chips */}
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-5 pb-3 pt-2">
+          <ChipButton label="Все" active={activeTab === "all"} onClick={() => onActiveTabChange("all")} count={null} />
           {categories.map((cat) => (
-            <TabButton
+            <ChipButton
               key={cat}
               label={cat}
               active={activeTab === cat}
@@ -191,7 +191,7 @@ export function EquipmentCard({
   );
 }
 
-function TabButton({
+function ChipButton({
   label,
   active,
   onClick,
@@ -206,14 +206,17 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`-mb-px whitespace-nowrap px-3.5 py-2 text-[12.5px] font-medium transition-colors ${
+      className={[
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
         active
-          ? "border-b-2 border-accent-bright font-semibold text-accent-bright"
-          : "border-b-2 border-transparent text-ink-3 hover:text-ink-2"
-      }`}
+          ? "bg-accent-soft text-accent-bright border border-accent-border font-semibold"
+          : "border border-border text-ink-2 hover:text-ink hover:border-border-strong",
+      ].join(" ")}
     >
       {label}
-      {count !== null && count > 0 && <span className="ml-1 font-mono text-[10px] text-emerald">{count}</span>}
+      {count !== null && count > 0 && (
+        <span className={`font-mono text-[10px] ${active ? "text-accent" : "text-emerald"}`}>{count}</span>
+      )}
     </button>
   );
 }
