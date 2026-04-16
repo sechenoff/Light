@@ -30,12 +30,19 @@ export function CategoryAccordion({
     if (!isOpen || rows !== null) return;
     let cancelled = false;
     setLoading(true);
-    fetchItems(category).then((data) => {
-      if (!cancelled) {
-        setRows(data);
-        setLoading(false);
-      }
-    });
+    fetchItems(category)
+      .then((data) => {
+        if (!cancelled) {
+          setRows(data);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRows([]);
+          setLoading(false);
+        }
+      });
     return () => { cancelled = true; };
   }, [isOpen, category, fetchItems, rows]);
 
