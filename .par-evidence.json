@@ -1,41 +1,15 @@
 {
-  "sprint": 2,
-  "project": "approval-workflow-ui",
-  "feature": "approval-ui-sprint2",
-  "governance_mode": "standard",
-  "reviewers": {
-    "product": {
-      "agent": "claude-standard-product-reviewer",
-      "model": "opus",
-      "rounds": 1,
-      "initial_verdict": "ACCEPTED",
-      "notes": "No blockers. Two suggestions deferred: submitter name in queue (needs schema), dedicated supervisor comment field (existing comment field suffices)"
-    },
-    "technical": {
-      "agent": "claude-standard-code-reviewer",
-      "model": "opus",
-      "rounds": 2,
-      "initial_verdict": "APPROVE",
-      "initial_findings": { "important": 2, "minor": 1 },
-      "fixes_applied": [
-        "Extracted business logic from clients route to services/clientStats.ts",
-        "Stabilized items array dep in ApprovalContext via useMemo key"
-      ],
-      "final_verdict": "APPROVE"
-    }
-  },
-  "gates": {
-    "tests": {
-      "api_total": 420,
-      "api_passing": 420,
-      "web_total": 68,
-      "web_passing": 68,
-      "new_tests": 19,
-      "breakdown": { "clientStats": 6, "formatWaitingTime": 6, "ApprovalContext": 7 }
-    }
-  },
-  "technical_review": "APPROVE",
+  "sprint": 3,
   "claude_product": "ACCEPTED",
-  "provider": "claude-split-focus",
-  "ts": "2026-04-16T08:50:00Z"
+  "technical_review": "APPROVE",
+  "provider": "split-focus",
+  "ts": "2026-04-16T09:15:00Z",
+  "fixes_applied": [
+    "cancelled-flag pattern in detail useEffect",
+    "handleTake error handling",
+    "removed hardcoded role label",
+    "mobile responsive grid",
+    "status-aware header label",
+    "router.push in archive table"
+  ]
 }
