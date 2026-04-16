@@ -1,0 +1,150 @@
+"use client";
+
+import { formatMoneyRub } from "../../../lib/format";
+import type { QuoteResponse, ValidationCheck } from "./types";
+
+type SummaryPanelProps = {
+  quote: QuoteResponse | null;
+  localSubtotal: number;
+  localDiscount: number;
+  localTotal: number;
+  discountPercent: number;
+  itemCount: number;
+  shifts: number;
+  isLoadingQuote: boolean;
+  checks: ValidationCheck[];
+  onSubmitForApproval: () => void;
+  onSaveDraft: () => void;
+  canSubmit: boolean;
+};
+
+function pluralizeDays(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "день";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "дня";
+  return "дней";
+}
+
+function pluralizeItems(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "позиция";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "позиции";
+  return "позиций";
+}
+
+const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass: string }> = {
+  ok: { symbol: "✓", colorClass: "text-emerald" },
+  warn: { symbol: "!", colorClass: "text-amber" },
+  tip: { symbol: "i", colorClass: "text-accent" },
+};
+
+export function SummaryPanel({
+  quote,
+  localSubtotal,
+  localDiscount,
+  localTotal,
+  discountPercent,
+  itemCount,
+  shifts,
+  isLoadingQuote,
+  checks,
+  onSubmitForApproval,
+  onSaveDraft,
+  canSubmit,
+}: SummaryPanelProps) {
+  // Use quote values when available, fall back to local*
+  const subtotal = quote ? Number(quote.subtotal) : localSubtotal;
+  const discount = quote ? Number(quote.discountAmount) : localDiscount;
+  const total = quote ? Number(quote.totalAfterDiscount) : localTotal;
+  const discPct = quote ? Number(quote.discountPercent) : discountPercent;
+  const effectiveShifts = quote ? quote.shifts : shifts;
+
+  // Format big total: integer part with ru-RU thousands separator
+  const bigTotalFormatted = Math.round(total).toLocaleString("ru-RU");
+
+  return (
+    <aside className="sticky top-20 flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 shadow-xs">
+      {/* Header */}
+      <div className="flex items-baseline justify-between">
+        <p className="eyebrow">Расчёт</p>
+        <span className="text-xs text-ink-3">
+          {isLoadingQuote ? "считаю..." : "обновлено сейчас"}
+        </span>
+      </div>
+
+      {/* Big total */}
+      <div>
+        <div className="flex items-baseline gap-1">
+          <span className="font-mono text-[32px] font-semibold leading-none text-ink-1">
+            {bigTotalFormatted}
+          </span>
+          <span className="text-[18px] text-ink-3">₽</span>
+        </div>
+        <p className="mt-1 text-xs text-ink-3">
+          {effectiveShifts} {pluralizeDays(effectiveShifts)} · {itemCount} {pluralizeItems(itemCount)}
+        </p>
+      </div>
+
+      {/* Breakdown */}
+      <div className="flex flex-col gap-1 text-sm">
+        <div className="flex justify-between">
+          <span className="text-ink-2">Аренда</span>
+          <span className="mono-num text-ink-1">{formatMoneyRub(subtotal)} ₽</span>
+        </div>
+        {discPct > 0 && (
+          <div className="flex justify-between">
+            <span className="text-ink-2">Скидка {discPct}%</span>
+            <span className="mono-num text-rose">−{formatMoneyRub(discount)} ₽</span>
+          </div>
+        )}
+        <div className="flex justify-between border-t border-border pt-1 font-semibold">
+          <span className="text-ink-1">Итого</span>
+          <span className="mono-num text-ink-1">{formatMoneyRub(total)} ₽</span>
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          disabled={!canSubmit}
+          onClick={onSubmitForApproval}
+          className="w-full rounded bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-ink-1 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Отправить на согласование →
+        </button>
+        <button
+          type="button"
+          onClick={onSaveDraft}
+          className="w-full rounded border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink-2 hover:bg-surface-soft"
+        >
+          Сохранить черновик
+        </button>
+      </div>
+
+      {/* Validation checks */}
+      {checks.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {checks.map((check, i) => {
+            const badge = CHECK_BADGE[check.type];
+            return (
+              <li key={i} className="flex items-start gap-2">
+                <span
+                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${badge.colorClass}`}
+                >
+                  {badge.symbol}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-ink-1">{check.label}</p>
+                  <p className="text-xs text-ink-3">{check.detail}</p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </aside>
+  );
+}
