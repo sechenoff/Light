@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { formatMoneyRub, pluralize } from "../../lib/format";
 
@@ -30,6 +30,12 @@ export function ApprovalContext({ bookingId: _bookingId, clientId, startDate, en
   const [clientStats, setClientStats] = useState<ClientStats | null>(null);
   const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
   const [conflictChecked, setConflictChecked] = useState(false);
+
+  // Stable key for items to avoid re-fetching on every parent render
+  const itemsKey = useMemo(
+    () => items.map((i) => `${i.equipmentId}:${i.quantity}`).join(","),
+    [items]
+  );
 
   // Fetch client stats
   useEffect(() => {
@@ -68,7 +74,8 @@ export function ApprovalContext({ bookingId: _bookingId, clientId, startDate, en
       })
       .catch(() => { if (!cancelled) setConflictChecked(true); });
     return () => { cancelled = true; };
-  }, [startDate, endDate, items]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate, itemsKey]);
 
   return (
     <div className="space-y-3">
