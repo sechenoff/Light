@@ -275,20 +275,32 @@ export async function matchRow(
   catalog: CatalogItem[],
   competitorName?: string,
   aliasMap?: Map<string, string>,
+  slangAliasMap?: Map<string, { equipmentId: string; confidence: number }>,
 ): Promise<MatchRowResult> {
   // Tier 0: SlangAlias lookup
   const normalizedName = row.sourceName.toLowerCase().trim();
   if (normalizedName) {
-    const slangAlias = await prisma.slangAlias.findFirst({
-      where: { phraseNormalized: normalizedName },
-      orderBy: { confidence: "desc" },
-    });
-    if (slangAlias) {
-      return {
-        equipmentId: slangAlias.equipmentId,
-        matchConfidence: slangAlias.confidence,
-        matchMethod: "slang",
-      };
+    if (slangAliasMap) {
+      const cached = slangAliasMap.get(normalizedName);
+      if (cached) {
+        return {
+          equipmentId: cached.equipmentId,
+          matchConfidence: cached.confidence,
+          matchMethod: "slang",
+        };
+      }
+    } else {
+      const slangAlias = await prisma.slangAlias.findFirst({
+        where: { phraseNormalized: normalizedName },
+        orderBy: { confidence: "desc" },
+      });
+      if (slangAlias) {
+        return {
+          equipmentId: slangAlias.equipmentId,
+          matchConfidence: slangAlias.confidence,
+          matchMethod: "slang",
+        };
+      }
     }
   }
 
@@ -409,8 +421,11 @@ async function computeDiffForSession(sessionId: string): Promise<void> {
     }
 
     // Compute action using Decimal.equals() for precise comparison
-    const decChanged = (a: Prisma.Decimal | null, b: Prisma.Decimal | null): boolean =>
-      a !== null && b !== null && !a.equals(b);
+    const decChanged = (a: Prisma.Decimal | null, b: Prisma.Decimal | null): boolean => {
+      if (a === null && b === null) return false;
+      if (a === null || b === null) return true;
+      return !a.equals(b);
+    };
 
     const priceChanged = decChanged(newPriceDec, oldPriceDec) ||
       decChanged(newPrice2Dec, oldPrice2Dec) ||
@@ -492,6 +507,21 @@ export async function mapAndMatch(
     for (const a of aliases) aliasMap.set(a.competitorItem.toLowerCase(), a.equipmentId);
   }
 
+  // Pre-load SlangAlias map to avoid N+1 queries in matchRow
+  const allSlangAliases = await prisma.slangAlias.findMany({
+    select: { phraseNormalized: true, equipmentId: true, confidence: true },
+    orderBy: { confidence: "desc" },
+  });
+  const slangAliasMap = new Map<string, { equipmentId: string; confidence: number }>();
+  for (const alias of allSlangAliases) {
+    if (!slangAliasMap.has(alias.phraseNormalized)) {
+      slangAliasMap.set(alias.phraseNormalized, {
+        equipmentId: alias.equipmentId,
+        confidence: alias.confidence ?? 1.0,
+      });
+    }
+  }
+
   const matchedEquipmentIds = new Set<string>();
   const rowsToCreate: Prisma.ImportSessionRowCreateManyInput[] = [];
 
@@ -518,6 +548,7 @@ export async function mapAndMatch(
       catalog,
       competitorName,
       aliasMap,
+      slangAliasMap,
     );
 
     if (matchResult.equipmentId) {
@@ -1071,14 +1102,18 @@ export interface CompetitorImportResult {
 export async function analyzeWithAI(
   sessionId: string,
 ): Promise<OwnPriceUpdateResult | CompetitorImportResult> {
-  // 1. Загружаем сессию
+  // 1. Атомарно переводим сессию из PARSING → MATCHING, чтобы предотвратить двойной анализ
+  const { count } = await prisma.importSession.updateMany({
+    where: { id: sessionId, status: ImportSessionStatus.PARSING },
+    data: { status: ImportSessionStatus.MATCHING },
+  });
+  if (count === 0) {
+    const existing = await prisma.importSession.findUnique({ where: { id: sessionId } });
+    throw new Error(`Сессия ${sessionId}: ожидался статус PARSING, получен ${existing?.status ?? "NOT_FOUND"} (expected PARSING)`);
+  }
   const session = await prisma.importSession.findUniqueOrThrow({
     where: { id: sessionId },
   });
-
-  if (session.status !== ImportSessionStatus.PARSING) {
-    throw new Error(`Сессия ${sessionId}: ожидался статус PARSING, получен ${session.status} (expected PARSING)`);
-  }
 
   // 2. Парсим файл для AI-анализа заголовков
   const buffer = session.fileBuffer ? Buffer.from(session.fileBuffer) : null;

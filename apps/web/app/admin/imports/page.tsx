@@ -143,18 +143,26 @@ export default function ImportsPage() {
           filter: groupType ? { action: groupType } : {},
         }),
       });
-      // Update local ownResult state
+      // Re-fetch rows from server to get the true state (server skips FLAGGED rows for ACCEPTED)
       if (ownResult) {
-        setOwnResult({
-          ...ownResult,
-          groups: ownResult.groups.map((g) => {
-            if (groupType && g.type !== groupType) return g;
-            return {
+        try {
+          const refreshed = await apiFetch<{ rows: ImportRow[] }>(
+            `/api/import-sessions/${session.id}/rows?limit=200`
+          );
+          const updatedRows = refreshed.rows;
+          setOwnResult({
+            ...ownResult,
+            groups: ownResult.groups.map((g) => ({
               ...g,
-              rows: g.rows.map((r) => ({ ...r, status: action })),
-            };
-          }),
-        });
+              rows: g.rows.map((r) => {
+                const serverRow = updatedRows.find((sr) => sr.id === r.id);
+                return serverRow ?? r;
+              }),
+            })),
+          });
+        } catch {
+          // non-critical: leave existing optimistic state
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка массового действия");
