@@ -57,11 +57,19 @@ function deltaChip(row: ImportRow): React.ReactNode {
       ? "border-rose-border bg-rose-soft text-rose"
       : "border-ok-border bg-ok-soft text-ok";
     const sign = isPositive ? "+" : "";
+    const hasAbsolute = row.oldPrice !== null && row.sourcePrice !== null;
     return (
-      <span
-        className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium mono-num ${cls}`}
-      >
-        {sign}{row.priceDelta} ₽
+      <span className="inline-flex items-center gap-1.5 flex-wrap">
+        {hasAbsolute && (
+          <span className="inline-flex items-center text-xs text-ink-2 mono-num">
+            {row.oldPrice}&nbsp;₽&nbsp;→&nbsp;{row.sourcePrice}&nbsp;₽
+          </span>
+        )}
+        <span
+          className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium mono-num ${cls}`}
+        >
+          {sign}{row.priceDelta}%
+        </span>
       </span>
     );
   }
