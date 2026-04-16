@@ -322,8 +322,12 @@ export default function RepairQueuePage() {
   }, [loadRepairs]);
 
   async function handleTake(id: string) {
-    await apiFetch(`/api/repairs/${id}/take`, { method: "POST" });
-    loadRepairs();
+    try {
+      await apiFetch(`/api/repairs/${id}/take`, { method: "POST" });
+      loadRepairs();
+    } catch (err: any) {
+      setError(err?.message ?? "Не удалось взять ремонт");
+    }
   }
 
   // Подсчёт по статусам для пилюль
