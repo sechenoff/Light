@@ -12,6 +12,7 @@ import { formatMoneyRub } from "../../../src/lib/format";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { RejectBookingModal } from "../../../src/components/bookings/RejectBookingModal";
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
+import { ApprovalContext } from "../../../src/components/bookings/ApprovalContext";
 import { toast } from "../../../src/components/ToastProvider";
 
 type ScanSession = {
@@ -279,6 +280,20 @@ export default function BookingDetailPage() {
           {booking.status === "PENDING_APPROVAL" && (
             <div className="mb-4 rounded border border-amber bg-amber-soft px-4 py-2 text-sm text-ink-1">
               Бронь на согласовании у руководителя — редактирование временно заблокировано.
+            </div>
+          )}
+
+          {booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN" && (
+            <div className="mb-4">
+              <ApprovalContext
+                bookingId={booking.id}
+                clientId={booking.client.id}
+                startDate={booking.startDate}
+                endDate={booking.endDate}
+                itemCount={booking.items.length}
+                comment={booking.comment}
+                items={booking.items}
+              />
             </div>
           )}
 

@@ -170,6 +170,7 @@ router.get("/", async (req, res, next) => {
         },
         confirmedAt: true,
         createdAt: true,
+        updatedAt: true,
         _count: { select: { scanSessions: true } },
         scanSessions: {
           select: { operation: true, status: true },
