@@ -7,25 +7,18 @@ import { apiFetch } from "@/lib/api";
 import { HealthBanner } from "@/components/admin/slang/HealthBanner";
 import { SlangKpiCards } from "@/components/admin/slang/SlangKpiCards";
 import { ReviewQueue } from "@/components/admin/slang/ReviewQueue";
-import { DictionaryTable } from "@/components/admin/slang/DictionaryTable";
-import { DetailSidebar } from "@/components/admin/slang/DetailSidebar";
+import { DictionaryAccordion } from "@/components/admin/slang/DictionaryAccordion";
 import { HowItWorks } from "@/components/admin/slang/HowItWorks";
-import type { SlangStats, SlangAlias, DictionaryGroup, SlangCandidate } from "@/components/admin/slang/types";
-
-// Flatten grouped dictionary into flat alias list
-function flattenGroups(groups: DictionaryGroup[]): SlangAlias[] {
-  return groups.flatMap((g) => g.aliases);
-}
+import type { SlangStats, DictionaryGroup, SlangCandidate } from "@/components/admin/slang/types";
 
 export default function SlangPage() {
   useRequireRole(["SUPER_ADMIN"]);
 
   const [stats, setStats] = useState<SlangStats | null>(null);
-  const [aliases, setAliases] = useState<SlangAlias[]>([]);
+  const [groups, setGroups] = useState<DictionaryGroup[]>([]);
   const [candidates, setCandidates] = useState<SlangCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -42,7 +35,7 @@ export default function SlangPage() {
         ]);
         if (!cancelled) {
           setStats(statsData);
-          setAliases(flattenGroups(dictData));
+          setGroups(dictData);
           setCandidates(pendingData);
         }
       } catch (e: unknown) {
@@ -62,18 +55,22 @@ export default function SlangPage() {
     setRefreshKey((k) => k + 1);
   }
 
-  const selectedAlias = selectedId ? aliases.find((a) => a.id === selectedId) ?? null : null;
-
   // Rebind: create new alias first, then delete old (safe order — failure leaves duplicate, not data loss)
   async function handleRebind(oldAliasId: string, newEquipmentId: string, _newEquipmentName: string) {
-    const alias = aliases.find((a) => a.id === oldAliasId);
-    if (!alias) return;
+    // Find the alias in groups
+    let phraseOriginal: string | undefined;
+    for (const group of groups) {
+      const found = group.aliases.find((a) => a.id === oldAliasId);
+      if (found) { phraseOriginal = found.phraseOriginal; break; }
+    }
+    if (!phraseOriginal) return;
+
     try {
       // 1. Create new binding first
       await apiFetch("/api/admin/slang-learning/propose", {
         method: "POST",
         body: JSON.stringify({
-          rawPhrase: alias.phraseOriginal,
+          rawPhrase: phraseOriginal,
           proposedEquipmentId: newEquipmentId,
           confidence: 1.0,
           contextJson: JSON.stringify({ source: "manual_rebind" }),
@@ -83,7 +80,6 @@ export default function SlangPage() {
       await apiFetch(`/api/admin/slang-learning/aliases/${oldAliasId}`, {
         method: "DELETE",
       });
-      setSelectedId(null);
       triggerRefresh();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Ошибка изменения связи");
@@ -92,10 +88,17 @@ export default function SlangPage() {
     }
   }
 
-  function handleDelete(id: string) {
-    setAliases((prev) => prev.filter((a) => a.id !== id));
-    if (selectedId === id) setSelectedId(null);
-    // Also refresh stats
+  function handleDelete(aliasId: string) {
+    // Optimistically remove the phrase from the correct group
+    setGroups((prev) =>
+      prev
+        .map((group) => ({
+          ...group,
+          aliases: group.aliases.filter((a) => a.id !== aliasId),
+          aliasCount: group.aliasCount - (group.aliases.some((a) => a.id === aliasId) ? 1 : 0),
+        }))
+        .filter((group) => group.aliases.length > 0),
+    );
     triggerRefresh();
   }
 
@@ -104,10 +107,11 @@ export default function SlangPage() {
   }
 
   const pendingCount = stats?.pendingCount ?? candidates.length;
+  const totalAliases = groups.reduce((sum, g) => sum + g.aliases.length, 0);
 
   return (
     <div className="p-4 md:p-6 max-w-6xl">
-      <AdminTabNav counts={{ slang: aliases.length }} />
+      <AdminTabNav counts={{ slang: totalAliases }} />
 
       {/* Page header */}
       <div className="mt-4 mb-5">
@@ -138,30 +142,17 @@ export default function SlangPage() {
         <ReviewQueue candidates={candidates} onUpdate={triggerRefresh} />
       )}
 
-      {/* Dictionary + Sidebar layout */}
-      <div className="flex gap-4 items-start">
-        <div className="flex-1 min-w-0">
-          {loading ? (
-            <div className="py-10 text-center text-sm text-ink-3">Загрузка…</div>
-          ) : (
-            <DictionaryTable
-              aliases={aliases}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onExport={handleExport}
-            />
-          )}
-        </div>
-
-        {selectedAlias && (
-          <DetailSidebar
-            alias={selectedAlias}
-            onDelete={handleDelete}
-            onRebind={handleRebind}
-            onClose={() => setSelectedId(null)}
-          />
-        )}
-      </div>
+      {/* Dictionary accordion */}
+      {loading ? (
+        <div className="py-10 text-center text-sm text-ink-3">Загрузка…</div>
+      ) : (
+        <DictionaryAccordion
+          groups={groups}
+          onDelete={handleDelete}
+          onRebind={handleRebind}
+          onExport={handleExport}
+        />
+      )}
 
       {/* How it works */}
       <HowItWorks />
