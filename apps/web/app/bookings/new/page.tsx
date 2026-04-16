@@ -4,8 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-import { apiFetch, apiFetchRaw } from "../../../src/lib/api";
-import { getFileNameFromContentDisposition } from "../../../src/lib/download";
+import { apiFetch } from "../../../src/lib/api";
 import { formatMoneyRub } from "../../../src/lib/format";
 import {
   addHoursToDatetimeLocal,
@@ -16,159 +15,33 @@ import {
   returnFromSearchParam,
 } from "../../../src/lib/rentalTime";
 
-type AvailabilityRow = {
-  equipmentId: string;
-  category: string;
-  name: string;
-  brand: string | null;
-  model: string | null;
-  stockTrackingMode: "COUNT" | "UNIT";
-  totalQuantity: number;
-  rentalRatePerShift: string;
-  occupiedQuantity: number;
-  availableQuantity: number;
-  availability: "UNAVAILABLE" | "PARTIAL" | "AVAILABLE";
-  comment: string | null;
-};
+import { ClientProjectCard } from "../../../src/components/bookings/create/ClientProjectCard";
+import { DatesCard } from "../../../src/components/bookings/create/DatesCard";
+import { EquipmentCard } from "../../../src/components/bookings/create/EquipmentCard";
+import { CommentCard } from "../../../src/components/bookings/create/CommentCard";
+import { SummaryPanel } from "../../../src/components/bookings/create/SummaryPanel";
+import type {
+  EquipmentTableItem,
+  GafferReviewApiItem,
+  GafferReviewApiResponse,
+  GafferCandidate,
+  QuoteResponse,
+  AvailabilityRow,
+  ValidationCheck,
+  ParseResultCounts,
+} from "../../../src/components/bookings/create/types";
 
-type GafferCandidate = {
-  equipmentId: string;
-  catalogName: string;
-  category: string;
-  availableQuantity: number;
-  rentalRatePerShift: string;
-  confidence: number;
-};
-
-type GafferOrderedMatch =
-  | {
-      kind: "resolved";
-      equipmentId: string;
-      catalogName: string;
-      category: string;
-      availableQuantity: number;
-      rentalRatePerShift: string;
-      confidence: number;
-    }
-  | { kind: "needsReview"; candidates: GafferCandidate[] }
-  | { kind: "unmatched" };
-
-type GafferReviewApiItem = {
-  id: string;
-  gafferPhrase: string;
-  interpretedName: string;
-  quantity: number;
-  match: GafferOrderedMatch;
-};
-
-type GafferReviewApiResponse = {
-  items: GafferReviewApiItem[];
-  message?: string;
-};
-
-/** Строка таблицы «гаффер / каталог» в модалке */
-type GafferReviewRowState = {
-  id: string;
-  gafferPhrase: string;
-  interpretedName: string;
-  quantity: number;
-  equipmentId: string | null;
-  catalogLabel: string | null;
-  availableQuantity: number;
-  autoEquipmentId: string | null;
-  candidates: GafferCandidate[];
-};
-
-function apiItemToRowState(item: GafferReviewApiItem): GafferReviewRowState {
+function apiItemToTableItem(item: GafferReviewApiItem): EquipmentTableItem {
   const m = item.match;
-  if (m.kind === "resolved") {
-    return {
-      id: item.id,
-      gafferPhrase: item.gafferPhrase,
-      interpretedName: item.interpretedName,
-      quantity: item.quantity,
-      equipmentId: m.equipmentId,
-      catalogLabel: m.catalogName,
-      availableQuantity: m.availableQuantity,
-      autoEquipmentId: m.equipmentId,
-      candidates: [],
-    };
-  }
-  if (m.kind === "needsReview") {
-    const first = m.candidates[0];
-    return {
-      id: item.id,
-      gafferPhrase: item.gafferPhrase,
-      interpretedName: item.interpretedName,
-      quantity: item.quantity,
-      equipmentId: first?.equipmentId ?? null,
-      catalogLabel: first?.catalogName ?? item.interpretedName,
-      availableQuantity: first?.availableQuantity ?? 0,
-      autoEquipmentId: first?.equipmentId ?? null,
-      candidates: m.candidates,
-    };
-  }
   return {
     id: item.id,
     gafferPhrase: item.gafferPhrase,
     interpretedName: item.interpretedName,
     quantity: item.quantity,
-    equipmentId: null,
-    catalogLabel: null,
-    availableQuantity: 0,
-    autoEquipmentId: null,
-    candidates: [],
+    match: m,
+    unitPrice: m.kind === "resolved" ? m.rentalRatePerShift : null,
+    lineTotal: null,
   };
-}
-
-type QuoteResponse = {
-  shifts: number;
-  totalHours?: number;
-  durationLabel?: string;
-  subtotal: string;
-  discountPercent: string;
-  discountAmount: string;
-  totalAfterDiscount: string;
-  lines: Array<{
-    equipmentId: string;
-    categorySnapshot: string;
-    nameSnapshot: string;
-    brandSnapshot: string | null;
-    modelSnapshot: string | null;
-    quantity: number;
-    pricingMode: "SHIFT" | "TWO_SHIFTS" | "PROJECT";
-    unitPrice: string;
-    lineSum: string;
-  }>;
-};
-
-const CATEGORY_PASTEL_CLASSES = [
-  "bg-rose-soft text-rose border-rose-border",
-  "bg-amber-soft text-amber border-amber-border",
-  "bg-emerald-soft text-emerald border-emerald-border",
-  "bg-teal-soft text-teal border-teal-border",
-  "bg-accent-soft text-accent border-accent-border",
-  "bg-indigo-soft text-indigo border-indigo-border",
-  "bg-slate-soft text-slate border-slate-border",
-] as const;
-
-function getCategoryColorClass(category: string) {
-  let hash = 0;
-  for (let i = 0; i < category.length; i++) {
-    hash = (hash * 31 + category.charCodeAt(i)) >>> 0;
-  }
-  return CATEGORY_PASTEL_CLASSES[hash % CATEGORY_PASTEL_CLASSES.length];
-}
-
-/** Значение datetime-local: дата YYYY-MM-DD и время HH:mm */
-function splitLocalDateTime(local: string): { date: string; time: string } {
-  if (local.includes("T")) {
-    const [d, rest] = local.split("T");
-    const t = (rest ?? "10:00").slice(0, 5);
-    return { date: d, time: /^\d{2}:\d{2}$/.test(t) ? t : "10:00" };
-  }
-  const d = local.slice(0, 10);
-  return { date: d.length === 10 ? d : "", time: "10:00" };
 }
 
 function BookingNewPage() {
@@ -177,6 +50,11 @@ function BookingNewPage() {
 
   const startParam = sp.get("start");
   const endParam = sp.get("end");
+
+  const [clientName, setClientName] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const [bookingComment, setBookingComment] = useState("");
+  const [discountPercent, setDiscountPercent] = useState(50);
 
   const [pickupLocal, setPickupLocal] = useState(() =>
     pickupFromSearchParam(startParam, defaultPickupDatetimeLocal()),
@@ -188,7 +66,7 @@ function BookingNewPage() {
   const pickupISO = useMemo(() => datetimeLocalToISO(pickupLocal), [pickupLocal]);
   const returnISO = useMemo(() => datetimeLocalToISO(returnLocal), [returnLocal]);
 
-  const rentalDurationPreview = useMemo(() => {
+  const rentalDuration = useMemo(() => {
     if (!pickupISO || !returnISO) return null;
     const s = new Date(pickupISO);
     const e = new Date(returnISO);
@@ -196,1397 +74,434 @@ function BookingNewPage() {
     return formatRentalDurationDetails(s, e);
   }, [pickupISO, returnISO]);
 
-  const previewShifts = rentalDurationPreview?.shifts ?? 1;
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<string | undefined>(undefined);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [rows, setRows] = useState<AvailabilityRow[]>([]);
-  const [loadingRows, setLoadingRows] = useState(false);
-  // Накопительный кеш данных позиций — не очищается при смене фильтра/поиска,
-  // чтобы "Выбранный комплект" оставался видимым когда позиция скрыта фильтром.
-  const [rowCache, setRowCache] = useState<Map<string, AvailabilityRow>>(() => new Map());
+  const shifts = rentalDuration?.shifts ?? 1;
+  const durationTag = rentalDuration ? `${shifts} ${shifts === 1 ? "смена" : shifts <= 4 ? "смены" : "смен"}` : null;
+  const durationDetail = rentalDuration?.labelShort ?? null;
 
-  const [clientName, setClientName] = useState("");
-  const [projectName, setProjectName] = useState("");
-  const [clientPhone, setClientPhone] = useState("");
-  const [bookingComment, setBookingComment] = useState("");
-  const [discountPercent, setDiscountPercent] = useState<number>(50);
-  const [expectedPaymentDate, setExpectedPaymentDate] = useState("");
+  // Equipment items — single source of truth
+  const [items, setItems] = useState<EquipmentTableItem[]>([]);
 
-  // equipmentId -> quantity
-  const [selected, setSelected] = useState<Record<string, number>>({});
-  const selectedItems = useMemo(() => {
-    // Приоритет: живые данные из текущего rows, затем кеш (сохраняет панель при фильтрации).
-    const liveById = new Map(rows.map((r) => [r.equipmentId, r]));
-    return Object.entries(selected)
-      .filter(([, qty]) => qty > 0)
-      .map(([equipmentId, quantity]) => {
-        const r = liveById.get(equipmentId) ?? rowCache.get(equipmentId);
-        return { equipmentId, quantity, row: r };
-      });
-  }, [selected, rows, rowCache]);
-  const localPriceSummary = useMemo(() => {
-    const subtotal =
-      previewShifts *
-      selectedItems.reduce((acc, item) => {
-        const rate = item.row ? Number(item.row.rentalRatePerShift) : 0;
-        return acc + (Number.isFinite(rate) ? rate : 0) * item.quantity;
-      }, 0);
-    const clampedDiscount = Math.max(0, Math.min(100, Number(discountPercent) || 0));
-    const discountAmount = (subtotal * clampedDiscount) / 100;
-    const totalAfterDiscount = subtotal - discountAmount;
-    return {
-      subtotal,
-      discountPercent: clampedDiscount,
-      discountAmount,
-      totalAfterDiscount,
-    };
-  }, [selectedItems, discountPercent, previewShifts]);
-
-  const [quote, setQuote] = useState<QuoteResponse | null>(null);
-
-  /** Одна смета: с сервера при наличии quote, иначе локальный черновик (только ставка×кол-во). */
-  const priceSummary = useMemo(() => {
-    if (quote) {
-      return {
-        subtotal: quote.subtotal,
-        discountPercentLabel: String(quote.discountPercent).trim(),
-        discountAmount: quote.discountAmount,
-        totalAfterDiscount: quote.totalAfterDiscount,
-        fromServer: true as const,
-      };
-    }
-    return {
-      subtotal: localPriceSummary.subtotal,
-      discountPercentLabel: String(localPriceSummary.discountPercent),
-      discountAmount: localPriceSummary.discountAmount,
-      totalAfterDiscount: localPriceSummary.totalAfterDiscount,
-      fromServer: false as const,
-    };
-  }, [quote, localPriceSummary]);
-
-  const quoteLineByEquipmentId = useMemo(() => {
-    if (!quote) return null;
-    return new Map(quote.lines.map((l) => [l.equipmentId, l]));
-  }, [quote]);
-  const [loadingQuote, setLoadingQuote] = useState(false);
-  const [quoteError, setQuoteError] = useState<string | null>(null);
-
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmError, setConfirmError] = useState<any>(null);
-  const [exportingFormat, setExportingFormat] = useState<null | "pdf" | "xlsx" | "xml">(null);
-
-  const [timeModalOpen, setTimeModalOpen] = useState(false);
-  const [draftPickupTime, setDraftPickupTime] = useState("10:00");
-  const [draftReturnTime, setDraftReturnTime] = useState("10:00");
-
-  // ── Gaffer AI request (таблица: гаффер | понимание AI → выбор каталога) ─────
+  // Gaffer AI
   const [gafferText, setGafferText] = useState("");
   const [gafferParsing, setGafferParsing] = useState(false);
   const [gafferError, setGafferError] = useState<string | null>(null);
-  const [gafferReviewRows, setGafferReviewRows] = useState<GafferReviewRowState[] | null>(null);
-  const [gafferReviewOpen, setGafferReviewOpen] = useState(false);
-  const [gafferReviewSubmitting, setGafferReviewSubmitting] = useState(false);
-  const [gafferReviewSavedHint, setGafferReviewSavedHint] = useState(false);
-  /** Подмодалка выбора позиции из каталога */
-  const [gafferPickRowId, setGafferPickRowId] = useState<string | null>(null);
-  const [gafferPickSearch, setGafferPickSearch] = useState("");
+  const [parseResultCounts, setParseResultCounts] = useState<ParseResultCounts | null>(null);
 
-  async function parseGafferRequest() {
-    const text = gafferText.trim();
-    if (!text) return;
-    setGafferParsing(true);
-    setGafferError(null);
-    setGafferReviewRows(null);
-    setGafferReviewSavedHint(false);
-    try {
-      const result = await apiFetch<GafferReviewApiResponse>("/api/bookings/parse-gaffer-review", {
-        method: "POST",
-        body: JSON.stringify({ requestText: text, startDate: pickupISO, endDate: returnISO }),
+  // Quote
+  const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  const [loadingQuote, setLoadingQuote] = useState(false);
+
+  // Submission
+  const [submitting, setSubmitting] = useState(false);
+
+  // Resolved items for API calls
+  const resolvedItems = useMemo(
+    () =>
+      items
+        .filter((it) => it.match.kind === "resolved")
+        .map((it) => ({
+          equipmentId: (it.match as Extract<typeof it.match, { kind: "resolved" }>).equipmentId,
+          quantity: it.quantity,
+        })),
+    [items],
+  );
+
+  // Local price computation for when quote is not yet loaded
+  const localSubtotal = useMemo(() => {
+    return items
+      .filter((it) => it.match.kind === "resolved")
+      .reduce((acc, it) => {
+        const price = it.unitPrice ? Number(it.unitPrice) : 0;
+        return acc + price * it.quantity * shifts;
+      }, 0);
+  }, [items, shifts]);
+
+  const clampedDiscount = Math.max(0, Math.min(100, discountPercent || 0));
+  const localDiscount = (localSubtotal * clampedDiscount) / 100;
+  const localTotal = localSubtotal - localDiscount;
+
+  // Validation checks
+  const checks = useMemo<ValidationCheck[]>(() => {
+    const list: ValidationCheck[] = [];
+    const unmatched = items.filter((i) => i.match.kind === "unmatched").length;
+    const needsReview = items.filter((i) => i.match.kind === "needsReview").length;
+    if (items.length > 0 && unmatched === 0 && needsReview === 0) {
+      list.push({ type: "ok", label: "Все позиции распознаны", detail: "" });
+    }
+    if (needsReview > 0) {
+      list.push({
+        type: "warn",
+        label: `${needsReview} позиций требуют уточнения`,
+        detail: "выберите вариант из предложенных",
       });
-      if (result.items.length === 0) {
-        setGafferError(result.message ?? "AI не распознал позиции в тексте.");
-        return;
-      }
-      setGafferReviewRows(result.items.map(apiItemToRowState));
-      setGafferReviewOpen(true);
-    } catch (err: any) {
-      setGafferError(err?.message ?? "Ошибка при обращении к AI");
-    } finally {
-      setGafferParsing(false);
     }
-  }
-
-  function shouldProposeGafferRow(row: GafferReviewRowState): boolean {
-    return !!row.equipmentId;
-  }
-
-  function confidenceForPropose(_row: GafferReviewRowState, _equipmentId: string): number {
-    return 1.0;
-  }
-
-  function addGafferReviewToOrder() {
-    if (!gafferReviewRows || gafferReviewRows.length === 0) return;
-    setGafferReviewSubmitting(true);
-
-    const delta: Record<string, number> = {};
-    const addQty = (equipmentId: string, q: number) => {
-      if (q <= 0) return;
-      delta[equipmentId] = (delta[equipmentId] ?? 0) + q;
-    };
-
-    type ProposeBody = {
-      rawPhrase: string;
-      proposedEquipmentId: string;
-      proposedEquipmentName: string;
-      confidence: number;
-      contextJson: string;
-    };
-    const payloads: ProposeBody[] = [];
-
-    for (const row of gafferReviewRows) {
-      if (!row.equipmentId) continue;
-      const live = rowCache.get(row.equipmentId);
-      const avail = live?.availableQuantity ?? row.availableQuantity;
-      const clamped = Math.min(row.quantity, avail);
-      addQty(row.equipmentId, clamped);
-
-      if (shouldProposeGafferRow(row)) {
-        const nameFromCache = live
-          ? [live.name, live.brand, live.model].filter(Boolean).join(" ")
-          : row.catalogLabel ?? row.equipmentId;
-        const src =
-          row.autoEquipmentId == null ? "manual_unmatched_learning" : "gaffer_review_table";
-        payloads.push({
-          rawPhrase: row.gafferPhrase,
-          proposedEquipmentId: row.equipmentId,
-          proposedEquipmentName: nameFromCache,
-          confidence: confidenceForPropose(row, row.equipmentId),
-          contextJson: JSON.stringify({
-            source: src,
-            interpretedName: row.interpretedName,
-            text: gafferText.slice(0, 300),
-            submittedAt: new Date().toISOString(),
-          }),
-        });
-      }
+    if (unmatched > 0) {
+      list.push({
+        type: "warn",
+        label: `${unmatched} позиций не распознано`,
+        detail: "найдите в каталоге или удалите",
+      });
     }
+    return list;
+  }, [items]);
 
-    setSelected((prev) => {
-      const next = { ...prev };
-      for (const [id, q] of Object.entries(delta)) {
-        next[id] = (next[id] ?? 0) + q;
-      }
-      return next;
-    });
+  const canSubmit = Boolean(
+    clientName.trim() && resolvedItems.length > 0 && pickupISO && returnISO && !submitting,
+  );
 
-    void Promise.all(
-      payloads.map((body) =>
-        apiFetch("/api/admin/slang-learning/propose", {
-          method: "POST",
-          body: JSON.stringify(body),
-        }).catch(() => {}),
-      ),
-    );
-
-    if (payloads.length > 0) setGafferReviewSavedHint(true);
-    setGafferReviewOpen(false);
-    setGafferPickRowId(null);
-    setGafferReviewSubmitting(false);
-  }
-
-  function openTimeModal() {
-    setDraftPickupTime(splitLocalDateTime(pickupLocal).time);
-    setDraftReturnTime(splitLocalDateTime(returnLocal).time);
-    setTimeModalOpen(true);
-  }
-
-  function applyTimeModal() {
-    const pDate = splitLocalDateTime(pickupLocal).date;
-    const rDate = splitLocalDateTime(returnLocal).date;
-    const pt = draftPickupTime || "10:00";
-    const rt = draftReturnTime || "10:00";
-    let p = `${pDate}T${pt}`;
-    let r = `${rDate}T${rt}`;
-    const pu = new Date(p);
-    const re = new Date(r);
-    if (Number.isNaN(pu.getTime()) || Number.isNaN(re.getTime())) {
-      setTimeModalOpen(false);
-      return;
-    }
-    if (re.getTime() <= pu.getTime()) {
-      r = addHoursToDatetimeLocal(p, 24);
-    }
-    setPickupLocal(p);
-    setReturnLocal(r);
-    setTimeModalOpen(false);
-  }
-
+  // Debounced server-side quote
   useEffect(() => {
-    apiFetch<{ categories: string[] }>("/api/equipment/categories")
-      .then((r) => setCategories(r.categories))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!timeModalOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setTimeModalOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [timeModalOpen]);
-
-  useEffect(() => {
-    const pickup = pickupISO;
-    const ret = returnISO;
-    if (!pickup || !ret) return;
-    const controller = new AbortController();
-    let isActive = true;
-    const startQ = pickup;
-    const endQ = ret;
-    async function load() {
-      setLoadingRows(true);
-      try {
-        const params = new URLSearchParams({ start: startQ, end: endQ });
-        if (search.trim()) params.set("search", search.trim());
-        if (category) params.set("category", category);
-        const data = await apiFetch<{ rows: AvailabilityRow[] }>(`/api/availability?${params.toString()}`, {
-          signal: controller.signal,
-        });
-        if (!isActive) return;
-        setRows(data.rows);
-      } catch (e: any) {
-        const isAbort = e?.name === "AbortError" || e?.message === "signal is aborted without reason";
-        if (!isAbort) {
-          // eslint-disable-next-line no-console
-          console.error("Failed to load availability", e);
-        }
-      } finally {
-        if (isActive) setLoadingRows(false);
-      }
-    }
-    load();
-    return () => {
-      isActive = false;
-      controller.abort();
-    };
-  }, [pickupISO, returnISO, search, category]);
-
-  // Обновляем кеш свежими данными когда приходит новая выборка.
-  useEffect(() => {
-    if (rows.length === 0) return;
-    setRowCache((prev) => {
-      const next = new Map(prev);
-      for (const r of rows) next.set(r.equipmentId, r);
-      return next;
-    });
-  }, [rows]);
-
-  // When availability changes, clamp selected quantities to available.
-  // Items not present in current rows (filtered out by search) are preserved unchanged.
-  useEffect(() => {
-    setSelected((prev) => {
-      const byId = new Map(rows.map((r) => [r.equipmentId, r]));
-      const next: Record<string, number> = {};
-      for (const [equipmentId, qty] of Object.entries(prev)) {
-        const r = byId.get(equipmentId);
-        if (!r) {
-          next[equipmentId] = qty;
-          continue;
-        }
-        const clamped = Math.min(qty, r.availableQuantity);
-        if (clamped > 0) next[equipmentId] = clamped;
-      }
-      return next;
-    });
-  }, [rows]);
-
-  const selectionForQuote = useMemo(() => {
-    return Object.entries(selected)
-      .filter(([, qty]) => qty > 0)
-      .map(([equipmentId, quantity]) => ({ equipmentId, quantity }));
-  }, [selected]);
-
-  useEffect(() => {
-    // Debounced server-side quote to keep estimate consistent with backend pricing and discounts.
-    if (!clientName.trim() || selectionForQuote.length === 0 || !pickupISO || !returnISO) {
+    if (!clientName.trim() || resolvedItems.length === 0 || !pickupISO || !returnISO) {
       setQuote(null);
-      setQuoteError(null);
       return;
     }
     const timer = setTimeout(async () => {
       setLoadingQuote(true);
       try {
         const body = {
-          client: {
-            name: clientName.trim(),
-            phone: clientPhone.trim() || null,
-            email: null,
-            comment: null,
-          },
+          client: { name: clientName.trim() },
           projectName: projectName.trim() || "Проект",
           startDate: pickupISO,
           endDate: returnISO,
-          comment: bookingComment || null,
           discountPercent: discountPercent || 0,
-          items: selectionForQuote,
+          items: resolvedItems,
         };
         const data = await apiFetch<QuoteResponse>("/api/bookings/quote", {
           method: "POST",
           body: JSON.stringify(body),
         });
         setQuote(data);
-        setQuoteError(null);
-      } catch (e: any) {
-        setQuoteError(e?.message ?? "Ошибка расчета сметы");
+      } catch {
         setQuote(null);
       } finally {
         setLoadingQuote(false);
       }
-    }, 450);
+    }, 500);
     return () => clearTimeout(timer);
-  }, [
-    clientName,
-    clientPhone,
-    projectName,
-    pickupISO,
-    returnISO,
-    bookingComment,
-    discountPercent,
-    selectionForQuote,
-  ]);
+  }, [clientName, projectName, pickupISO, returnISO, discountPercent, resolvedItems]);
 
-  const statusColor = (availability: AvailabilityRow["availability"]) => {
-    if (availability === "AVAILABLE") return "bg-emerald-soft text-emerald border-emerald-border";
-    if (availability === "PARTIAL") return "bg-amber-soft text-amber border-amber-border";
-    return "bg-rose-soft text-rose border-rose-border";
-  };
+  // ── Callbacks ────────────────────────────────────────────────────────────────
 
-  function increaseQuantity(e: AvailabilityRow) {
-    if (e.availableQuantity <= 0) return;
-    setSelected((prev) => {
-      const current = prev[e.equipmentId] ?? 0;
-      const nextQty = Math.min(current + 1, e.availableQuantity);
-      return { ...prev, [e.equipmentId]: nextQty };
+  function handlePickupChange(v: string) {
+    setPickupLocal(v);
+    setReturnLocal((prev) => {
+      const pu = new Date(v);
+      const re = new Date(prev);
+      if (Number.isNaN(pu.getTime())) return prev;
+      if (re.getTime() <= pu.getTime()) return addHoursToDatetimeLocal(v, 24);
+      return prev;
     });
   }
 
-  function decreaseQuantity(equipmentId: string) {
-    setSelected((prev) => {
-      const current = prev[equipmentId] ?? 0;
-      const nextQty = current - 1;
-      if (nextQty <= 0) {
-        const next = { ...prev };
-        delete next[equipmentId];
-        return next;
-      }
-      return { ...prev, [equipmentId]: nextQty };
-    });
+  function handleReturnChange(v: string) {
+    setReturnLocal(v);
   }
 
-  function buildQuoteRequestBody() {
-    return {
-      client: {
-        name: clientName.trim(),
-        phone: clientPhone.trim() || null,
-        email: null,
-        comment: null,
-      },
-      projectName: projectName.trim() || "Проект",
-      startDate: pickupISO as string,
-      endDate: returnISO as string,
-      comment: bookingComment || null,
-      discountPercent: discountPercent || 0,
-      expectedPaymentDate: expectedPaymentDate || null,
-      items: selectionForQuote,
-    };
-  }
-
-  async function exportQuote(format: "pdf" | "xlsx" | "xml") {
-    if (!pickupISO || !returnISO || !clientName.trim() || selectionForQuote.length === 0) return;
-    setExportingFormat(format);
+  async function handleParse() {
+    setGafferParsing(true);
+    setGafferError(null);
     try {
-      const res = await apiFetchRaw("/api/bookings/quote/export", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ ...buildQuoteRequestBody(), format }),
-      });
-      if (!res.ok) {
-        let msg = "Не удалось сформировать файл";
-        try {
-          const j = await res.json();
-          if (j?.message) msg = j.message;
-        } catch {
-          /* ignore */
-        }
-        alert(msg);
+      const res = await apiFetch<GafferReviewApiResponse>(
+        "/api/bookings/parse-gaffer-review",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            requestText: gafferText.trim(),
+            startDate: pickupISO,
+            endDate: returnISO,
+          }),
+        },
+      );
+      if (res.items.length === 0) {
+        setGafferError(res.message ?? "AI не распознал позиции");
         return;
       }
-      const blob = await res.blob();
-      const ext = format === "pdf" ? "pdf" : format === "xlsx" ? "xlsx" : "xml";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const disposition = res.headers.get("content-disposition") ?? "";
-      a.download = getFileNameFromContentDisposition(disposition, `smeta.${ext}`);
-      a.click();
-      URL.revokeObjectURL(url);
+      const newItems = res.items.map(apiItemToTableItem);
+      setItems(newItems);
+      setParseResultCounts({
+        resolved: newItems.filter((i) => i.match.kind === "resolved").length,
+        needsReview: newItems.filter((i) => i.match.kind === "needsReview").length,
+        unmatched: newItems.filter((i) => i.match.kind === "unmatched").length,
+      });
+    } catch (err: any) {
+      setGafferError(err?.message ?? "Ошибка AI");
     } finally {
-      setExportingFormat(null);
+      setGafferParsing(false);
     }
   }
 
-  async function confirmBooking() {
-    if (!pickupISO || !returnISO) {
-      setConfirmError("Укажите корректные дату и время погрузки (выдачи и возврата).");
-      return;
+  function handlePasteClear() {
+    setGafferText("");
+    setGafferError(null);
+    setParseResultCounts(null);
+  }
+
+  function handleQuantityChange(itemId: string, qty: number) {
+    setItems((prev) => prev.map((it) => (it.id === itemId ? { ...it, quantity: qty } : it)));
+  }
+
+  function handleDeleteItem(itemId: string) {
+    setItems((prev) => prev.filter((it) => it.id !== itemId));
+  }
+
+  function handleSelectCandidate(itemId: string, candidate: GafferCandidate) {
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId
+          ? {
+              ...it,
+              match: {
+                kind: "resolved",
+                equipmentId: candidate.equipmentId,
+                catalogName: candidate.catalogName,
+                category: candidate.category,
+                availableQuantity: candidate.availableQuantity,
+                rentalRatePerShift: candidate.rentalRatePerShift,
+                confidence: candidate.confidence,
+              },
+              unitPrice: candidate.rentalRatePerShift,
+            }
+          : it,
+      ),
+    );
+  }
+
+  function handleSkipItem(itemId: string) {
+    setItems((prev) => prev.filter((it) => it.id !== itemId));
+  }
+
+  function handleSelectFromCatalog(
+    itemId: string,
+    equipment: AvailabilityRow,
+    saveAlias: boolean,
+  ) {
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId
+          ? {
+              ...it,
+              match: {
+                kind: "resolved",
+                equipmentId: equipment.equipmentId,
+                catalogName: equipment.name,
+                category: equipment.category,
+                availableQuantity: equipment.availableQuantity,
+                rentalRatePerShift: equipment.rentalRatePerShift,
+                confidence: 1,
+              },
+              unitPrice: equipment.rentalRatePerShift,
+            }
+          : it,
+      ),
+    );
+    if (saveAlias) {
+      const item = items.find((it) => it.id === itemId);
+      if (item) {
+        apiFetch("/api/admin/slang-learning/propose", {
+          method: "POST",
+          body: JSON.stringify({
+            rawPhrase: item.gafferPhrase,
+            proposedEquipmentId: equipment.equipmentId,
+            proposedEquipmentName: equipment.name,
+            confidence: 1,
+            contextJson: JSON.stringify({ source: "manual_unmatched_learning" }),
+          }),
+        }).catch(() => {});
+      }
     }
+  }
+
+  async function searchCatalog(query: string): Promise<AvailabilityRow[]> {
+    if (!pickupISO || !returnISO) return [];
+    const params = new URLSearchParams({ start: pickupISO, end: returnISO, search: query });
+    const data = await apiFetch<{ rows: AvailabilityRow[] }>(`/api/availability?${params}`);
+    return data.rows;
+  }
+
+  function handleAddManual() {
+    const id = `manual-${Date.now()}`;
+    setItems((prev) => [
+      ...prev,
+      {
+        id,
+        gafferPhrase: "",
+        interpretedName: "Новая позиция",
+        quantity: 1,
+        match: { kind: "unmatched" },
+        unitPrice: null,
+        lineTotal: null,
+      },
+    ]);
+  }
+
+  async function saveDraft() {
+    if (!pickupISO || !returnISO || !clientName.trim() || resolvedItems.length === 0) return;
+    setSubmitting(true);
     try {
-      setConfirmError(null);
-      // 1) Draft
-      const draftBody = {
-        client: {
-          name: clientName.trim(),
-          phone: clientPhone.trim() || null,
-          email: null,
-          comment: null,
-        },
+      const body = {
+        client: { name: clientName.trim(), phone: null, email: null, comment: null },
         projectName: projectName.trim() || "Проект",
         startDate: pickupISO,
         endDate: returnISO,
         comment: bookingComment || null,
         discountPercent: discountPercent || 0,
-        expectedPaymentDate: expectedPaymentDate || null,
-        items: selectionForQuote,
+        items: resolvedItems,
       };
-      const draft = await apiFetch<{ booking: any }>("/api/bookings/draft", {
+      const res = await apiFetch<{ booking: { id: string } }>("/api/bookings/draft", {
         method: "POST",
-        body: JSON.stringify(draftBody),
+        body: JSON.stringify(body),
       });
+      router.push(`/bookings/${res.booking.id}`);
+    } catch (err: any) {
+      alert(err?.message ?? "Ошибка сохранения");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
-      // 2) Confirm (server enforces conflicts & builds estimate snapshot).
-      const confirmed = await apiFetch<{ booking: any }>(`/api/bookings/${draft.booking.id}/confirm`, {
+  async function submitForApproval() {
+    if (!pickupISO || !returnISO || !clientName.trim() || resolvedItems.length === 0) return;
+    setSubmitting(true);
+    try {
+      const body = {
+        client: { name: clientName.trim(), phone: null, email: null, comment: null },
+        projectName: projectName.trim() || "Проект",
+        startDate: pickupISO,
+        endDate: returnISO,
+        comment: bookingComment || null,
+        discountPercent: discountPercent || 0,
+        items: resolvedItems,
+      };
+      const res = await apiFetch<{ booking: { id: string } }>("/api/bookings/draft", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      await apiFetch(`/api/bookings/${res.booking.id}/submit-for-approval`, {
         method: "POST",
         body: JSON.stringify({}),
       });
-
-      setConfirmOpen(false);
-      router.push(`/bookings/${confirmed.booking.id}`);
-    } catch (e: any) {
-      if (e?.status === 409) {
-        setConfirmError(e.details ?? e.message);
-      } else {
-        setConfirmError(e?.message ?? "Ошибка подтверждения брони");
-      }
+      router.push(`/bookings/${res.booking.id}`);
+    } catch (err: any) {
+      alert(err?.message ?? "Ошибка отправки");
+    } finally {
+      setSubmitting(false);
     }
   }
 
   return (
-    <div className="p-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-semibold">Создание брони</h1>
-        <div className="flex items-center gap-3 text-sm">
-          <Link href="/equipment/manage" className="text-ink-2 hover:text-ink">
-            Редактор списка
-          </Link>
-          <Link href="/finance" className="text-ink-2 hover:text-ink">
-            Финансы
-          </Link>
+    <>
+      {/* Sticky top bar */}
+      <div className="flex justify-between items-center px-8 py-3 bg-surface border-b border-border sticky top-0 z-10">
+        <div className="flex items-center gap-2.5 text-[13px]">
           <Link href="/bookings" className="text-ink-2 hover:text-ink">
-            История броней
+            ← Брони
           </Link>
-          <Link href="/crew-calculator" className="text-ink-2 hover:text-ink">
-            Калькулятор осветителей
+          <span className="text-ink-3">/</span>
+          <span className="text-ink font-medium">Новая бронь</span>
+          <span className="font-mono text-[11.5px] text-ink-3 px-2 py-0.5 bg-surface-muted border border-border rounded ml-1">
+            #—
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[11.5px] text-ink-2 px-2.5 py-0.5 bg-surface-muted border border-border rounded-full ml-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-ink-3" />
+            Черновик
+          </span>
+        </div>
+        <div className="flex gap-1.5">
+          <Link
+            href="/bookings"
+            className="rounded px-3.5 py-[7px] text-[12.5px] font-medium text-ink-2 hover:text-ink"
+          >
+            Отмена
           </Link>
+          <button
+            type="button"
+            onClick={saveDraft}
+            disabled={submitting}
+            className="rounded px-3.5 py-[7px] text-[12.5px] font-medium border border-border-strong bg-surface hover:bg-surface-muted disabled:opacity-50"
+          >
+            Сохранить черновик
+          </button>
+          <button
+            type="button"
+            onClick={submitForApproval}
+            disabled={submitting || !canSubmit}
+            className="rounded px-3.5 py-[7px] text-[12.5px] font-medium bg-ink text-white hover:bg-black disabled:opacity-50"
+          >
+            Отправить на согласование →
+          </button>
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-12 gap-4">
-        <div className="col-span-12 lg:col-span-8">
-          <div className="rounded border border-border bg-white overflow-hidden">
-            <div className="p-3 border-b border-border flex items-center justify-between flex-wrap gap-3">
-              <div className="flex flex-col gap-2 min-w-0">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:flex-wrap">
-                  <div className="flex flex-col min-w-0 sm:min-w-[148px] w-full sm:w-auto">
-                    <label className="text-xs text-ink-2 mb-0.5">Дата выдачи</label>
-                    <input
-                      className="h-9 w-full sm:w-auto rounded-md border border-border px-2 bg-white text-sm"
-                      type="date"
-                      value={splitLocalDateTime(pickupLocal).date}
-                      onChange={(e) => {
-                        const d = e.target.value;
-                        if (!d) return;
-                        const t = splitLocalDateTime(pickupLocal).time;
-                        const v = `${d}T${t}`;
-                        setPickupLocal(v);
-                        setReturnLocal((prev) => {
-                          const pu = new Date(v);
-                          const re = new Date(prev);
-                          if (Number.isNaN(pu.getTime())) return prev;
-                          if (re.getTime() <= pu.getTime()) return addHoursToDatetimeLocal(v, 24);
-                          return prev;
-                        });
-                      }}
-                    />
-                  </div>
-                  <div className="flex flex-col min-w-0 sm:min-w-[148px] w-full sm:w-auto">
-                    <label className="text-xs text-ink-2 mb-0.5">Дата возврата</label>
-                    <input
-                      className="h-9 w-full sm:w-auto rounded-md border border-border px-2 bg-white text-sm"
-                      type="date"
-                      value={splitLocalDateTime(returnLocal).date}
-                      onChange={(e) => {
-                        const d = e.target.value;
-                        if (!d) return;
-                        const t = splitLocalDateTime(returnLocal).time;
-                        setReturnLocal(`${d}T${t}`);
-                      }}
-                    />
-                  </div>
-                  <div className="flex flex-col min-w-0 w-full sm:flex-1 sm:min-w-[220px] sm:max-w-md">
-                    <label className="text-xs text-ink-2 mb-0.5">Время погрузки (выдача — возврат)</label>
-                    <button
-                      type="button"
-                      title="Нажмите, чтобы задать время погрузки в отдельном окне"
-                      className="group flex h-9 w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-sm text-ink shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright focus-visible:ring-offset-1"
-                      onClick={openTimeModal}
-                    >
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-surface-muted text-ink-2 group-hover:bg-surface-muted/80" aria-hidden>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <path d="M12 6v6l4 2" />
-                        </svg>
-                      </span>
-                      <span className="min-w-0 flex-1 truncate tabular-nums">
-                        {pickupISO && returnISO ? (
-                          <span className="font-medium">
-                            {new Date(pickupISO).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
-                            <span className="mx-1.5 font-normal text-ink-3">—</span>
-                            {new Date(returnISO).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        ) : (
-                          <span className="text-ink-2">Выбрать время погрузки…</span>
-                        )}
-                      </span>
-                      <span className="shrink-0 text-xs text-ink-2 group-hover:text-ink-2" aria-hidden>
-                        Изменить
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-end gap-2 flex-wrap">
-                <div className="flex flex-col">
-                  <label className="text-xs text-ink-2">Скидка, %</label>
-                  <input
-                    className="rounded border border-border px-2 py-1 bg-white w-28"
-                    type="number"
-                    value={discountPercent}
-                    min={0}
-                    max={100}
-                    onChange={(e) => setDiscountPercent(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3 border-b border-border grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="flex flex-col">
-                <label className="text-xs text-ink-2">Клиент</label>
-                <input className="rounded border border-border px-2 py-1 bg-white" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Название компании/заказчика" />
-              </div>
-              <div className="flex flex-col">
-                <label className="text-xs text-ink-2">Проект</label>
-                <input className="rounded border border-border px-2 py-1 bg-white" value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Название проекта" />
-              </div>
-              <div className="flex flex-col">
-                <label className="text-xs text-ink-2">Телефон</label>
-                <input className="rounded border border-border px-2 py-1 bg-white" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="Телефон" />
-              </div>
-              <div className="flex flex-col">
-                <label className="text-xs text-ink-2">Плановая дата платежа</label>
-                <input
-                  className="rounded border border-border px-2 py-1 bg-white"
-                  type="date"
-                  value={expectedPaymentDate}
-                  onChange={(e) => setExpectedPaymentDate(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col md:col-span-3">
-                <label className="text-xs text-ink-2">Комментарий</label>
-                <textarea
-                  className="rounded border border-border px-2 py-1.5 bg-white min-h-[44px] resize-y"
-                  value={bookingComment}
-                  onChange={(e) => setBookingComment(e.target.value)}
-                  placeholder="Опционально"
-                  rows={2}
-                />
-              </div>
-            </div>
-
-            {/* ── Gaffer AI request ──────────────────────────────────────────── */}
-            <div className="p-3 border-b border-border bg-violet-50/40">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold text-violet-700 uppercase tracking-wide">✨ Заявка гаффера (AI)</span>
-                <span className="text-xs text-ink-2">Вставьте текст заявки — AI распознает оборудование</span>
-              </div>
-              <textarea
-                className="w-full rounded border border-violet-200 bg-white px-3 py-2 text-sm placeholder:text-ink-3 focus:outline-none focus:ring-2 focus:ring-violet-300 resize-y"
-                rows={3}
-                maxLength={10000}
-                value={gafferText}
-                onChange={(e) => setGafferText(e.target.value)}
-                placeholder={"Например: 2 штуки 52xt, 3 nova p300, 4 c-stand, 1 чайнабол, 2 рамы 6x6, hazer hz350"}
-              />
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <button
-                  type="button"
-                  className="rounded bg-violet-600 text-white px-4 py-1.5 text-sm font-medium hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  disabled={!gafferText.trim() || gafferParsing}
-                  onClick={parseGafferRequest}
-                >
-                  {gafferParsing ? "Распознаю…" : "Распознать через AI"}
-                </button>
-                {gafferText && (
-                  <button
-                    type="button"
-                    className="text-xs text-ink-2 hover:text-ink-2"
-                    onClick={() => {
-                      setGafferText("");
-                      setGafferError(null);
-                      setGafferReviewRows(null);
-                      setGafferReviewOpen(false);
-                      setGafferReviewSavedHint(false);
-                    }}
-                  >
-                    Очистить
-                  </button>
-                )}
-              </div>
-              {gafferError && (
-                <div className="mt-2 rounded border border-rose-border bg-rose-soft px-3 py-2 text-sm text-rose">
-                  {gafferError}
-                </div>
-              )}
-              {gafferReviewRows && gafferReviewRows.length > 0 && !gafferReviewOpen && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-2">
-                  <span>
-                    Распознано <span className="font-medium text-ink">{gafferReviewRows.length}</span> строк — откройте таблицу, чтобы проверить и добавить в заказ.
-                  </span>
-                  <button
-                    type="button"
-                    className="text-violet-700 font-medium underline"
-                    onClick={() => setGafferReviewOpen(true)}
-                  >
-                    Открыть таблицу
-                  </button>
-                </div>
-              )}
-              {gafferReviewSavedHint && (
-                <div className="mt-2 text-xs text-emerald px-1">
-                  ✅ Сопоставления отправлены в очередь обучения (где применимо) — подтвердите в админке.
-                </div>
-              )}
-            </div>
-
-            <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3 items-end border-b border-border">
-              <div className="flex flex-col">
-                <label className="text-xs text-ink-2">Поиск</label>
-                <input
-                  className="rounded border border-border px-2 py-1 bg-white"
-                  value={search}
-                  placeholder="Наименование/бренд/модель..."
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col">
-                <label className="text-xs text-ink-2">Категория</label>
-                <select className="rounded border border-border px-2 py-1 bg-white" value={category ?? ""} onChange={(e) => setCategory(e.target.value || undefined)}>
-                  <option value="">Все</option>
-                  {categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="overflow-auto">
-              <table className="min-w-[980px] w-full text-sm">
-                <thead className="bg-surface text-ink-2">
-                  <tr>
-                    <th className="text-left px-3 py-2">Перечень оборудования</th>
-                    <th className="px-3 py-2 w-[90px]">Кол-во</th>
-                    <th className="px-3 py-2 w-[130px]">
-                      <div>Стоимость</div>
-                      <div className="text-[10px] font-normal text-ink-2 normal-case">за смену (24 ч)</div>
-                    </th>
-                    <th className="text-left px-3 py-2">Категория</th>
-                    <th className="px-3 py-2 w-[100px]">Доступно</th>
-                    <th className="px-3 py-2 w-[210px]">В бронь</th>
-                    <th className="px-3 py-2 w-[170px]">Статус</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => {
-                    const qty = selected[r.equipmentId] ?? 0;
-                    const isUnavailable = r.availableQuantity <= 0;
-                    return (
-                      <tr key={r.equipmentId} className="border-t border-border">
-                        <td className="px-3 py-2">
-                          <div className="font-medium text-ink">{r.name}</div>
-                          <div className="text-xs text-ink-2">
-                            {r.brand ? r.brand : ""} {r.model ? `· ${r.model}` : ""}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 font-medium text-center">{r.totalQuantity}</td>
-                        <td className="px-3 py-2 font-medium">{formatMoneyRub(r.rentalRatePerShift)}</td>
-                        <td className="px-3 py-2 text-ink-2">
-                          <span className={`inline-flex items-center rounded border px-2 py-1 text-xs ${getCategoryColorClass(r.category)}`}>
-                            {r.category}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 font-medium">{r.availableQuantity}</td>
-                        <td className="px-3 py-2">
-                          <div className="inline-flex items-center rounded border border-border overflow-hidden">
-                            <button
-                              type="button"
-                              aria-label="Уменьшить количество"
-                              className="h-9 w-9 text-lg leading-none bg-white hover:bg-surface disabled:opacity-50"
-                              onClick={() => decreaseQuantity(r.equipmentId)}
-                              disabled={qty <= 0}
-                            >
-                              -
-                            </button>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              className="h-9 w-16 border-x border-border text-center bg-white"
-                              value={qty}
-                              onChange={(e) => {
-                                const rawText = e.target.value.replace(/[^\d]/g, "");
-                                const raw = Number(rawText);
-                                const nextQty = Number.isFinite(raw) ? Math.max(0, Math.min(raw, r.availableQuantity)) : 0;
-                                setSelected((prev) => {
-                                  if (nextQty <= 0) {
-                                    const next = { ...prev };
-                                    delete next[r.equipmentId];
-                                    return next;
-                                  }
-                                  return { ...prev, [r.equipmentId]: nextQty };
-                                });
-                              }}
-                            />
-                            <button
-                              type="button"
-                              aria-label="Увеличить количество"
-                              className="h-9 w-9 text-lg leading-none bg-white hover:bg-surface disabled:opacity-50"
-                              onClick={() => increaseQuantity(r)}
-                              disabled={isUnavailable || qty >= r.availableQuantity}
-                            >
-                              +
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className={`inline-flex items-center rounded border px-2 py-1 text-xs ${statusColor(r.availability)}`}>
-                            {r.availableQuantity <= 0 ? "Недоступно" : r.availableQuantity < r.totalQuantity ? "Частично" : "Доступно"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {rows.length === 0 ? (
-                    <tr>
-                      <td className="px-3 py-6 text-center text-ink-2" colSpan={7}>
-                        Ничего не найдено
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+      <div className="max-w-[1280px] mx-auto px-8 py-7">
+        {/* Hero */}
+        <div className="flex justify-between items-end mb-6 gap-8">
+          <div>
+            <h1 className="text-[28px] font-semibold tracking-tight leading-tight">
+              Новая бронь
+            </h1>
+            <p className="text-[13.5px] text-ink-2 max-w-[560px] mt-1">
+              Клиент, даты, список оборудования. Можно вставить текст от гаффера — AI распознает
+              позиции и подтянет цены.
+            </p>
           </div>
         </div>
 
-        <div className="col-span-12 lg:col-span-4">
-          <div className="rounded border border-border bg-white overflow-hidden sticky top-4 flex flex-col max-h-[min(calc(100vh-5rem),720px)]">
-            <div className="bg-surface-muted px-3 py-2 border-b border-border flex items-center justify-between shrink-0">
-              <div className="text-sm font-semibold text-ink">Выбранный комплект</div>
-              <div className="text-xs text-ink-2">{loadingQuote ? "Считаю…" : quote ? "Готово" : " "}</div>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {selectedItems.length === 0 ? (
-                <div className="p-3 text-sm text-ink-2">Выберите оборудование слева. Недоступное будет заблокировано.</div>
-              ) : (
-                <div className="divide-y divide-slate-200">
-                  {selectedItems.map((it) => {
-                    const r = it.row;
-                    if (!r) return null;
-                    const qLine = quoteLineByEquipmentId?.get(it.equipmentId);
-                    const unit = qLine ? Number(qLine.unitPrice) : Number(r.rentalRatePerShift);
-                    const lineTotal = qLine
-                      ? Number(qLine.lineSum)
-                      : Number.isFinite(Number(r.rentalRatePerShift))
-                        ? Number(r.rentalRatePerShift) * it.quantity * previewShifts
-                        : 0;
-                    const modeRu =
-                      qLine?.pricingMode === "TWO_SHIFTS"
-                        ? "2 смены"
-                        : qLine?.pricingMode === "PROJECT"
-                          ? "проект"
-                          : null;
-                    const unitLabel = qLine
-                      ? modeRu
-                        ? `${formatMoneyRub(unit)} · ${modeRu}`
-                        : `${formatMoneyRub(unit)}/ед.`
-                      : `${formatMoneyRub(unit)}/ед.`;
-                    return (
-                      <div key={it.equipmentId} className="px-3 py-2.5 text-sm flex justify-between gap-3 items-start">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium text-ink truncate">{r.name}</div>
-                          <div className="text-xs text-ink-2 truncate">
-                            {[r.brand, r.model].filter(Boolean).join(" · ")}
-                          </div>
-                          <div className="text-xs text-ink-2 mt-0.5">
-                            Кол-во: {it.quantity}
-                            <span className="text-ink-3"> · </span>
-                            {r.category}
-                            {qLine ? (
-                              <>
-                                <span className="text-ink-3"> · </span>
-                                {qLine.pricingMode}
-                              </>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-1 shrink-0">
-                          <div className="text-right">
-                            <div className="font-medium tabular-nums">{formatMoneyRub(lineTotal)}</div>
-                            <div className="text-[10px] text-ink-2 tabular-nums max-w-[7rem] leading-tight">{unitLabel}</div>
-                          </div>
-                          <button
-                            type="button"
-                            className="shrink-0 rounded p-1.5 text-ink-2 hover:bg-rose-soft hover:text-rose transition-colors"
-                            aria-label="Убрать из комплекта"
-                            title="Убрать из комплекта"
-                            onClick={() => setSelected((prev) => {
-                              const next = { ...prev };
-                              delete next[it.equipmentId];
-                              return next;
-                            })}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                              <path d="M3 6h18" />
-                              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                              <line x1="10" y1="11" x2="10" y2="17" />
-                              <line x1="14" y1="11" x2="14" y2="17" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-border shrink-0">
-              <div className="bg-surface-muted px-3 py-2 text-xs font-semibold text-ink-2 border-b border-border">Смета</div>
-              <div className="p-3 bg-surface space-y-2">
-                {selectedItems.length === 0 ? (
-                  <div className="text-sm text-ink-2">Выберите комплект слева.</div>
-                ) : (
-                  <>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-ink-2">Итого (без скидки)</span>
-                      <span className="font-medium tabular-nums">{formatMoneyRub(priceSummary.subtotal)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-ink-2">Скидка ({priceSummary.discountPercentLabel}%)</span>
-                      <span className="font-medium text-ink tabular-nums">-{formatMoneyRub(priceSummary.discountAmount)}</span>
-                    </div>
-                    <div className="flex justify-between text-base pt-1 border-t border-border">
-                      <span className="text-ink">Итого после скидки</span>
-                      <span className="font-semibold tabular-nums">{formatMoneyRub(priceSummary.totalAfterDiscount)}</span>
-                    </div>
-                    {!clientName.trim() ? (
-                      <div className="text-xs text-ink-2 pt-1">
-                        Укажите имя клиента — смета пересчитается на сервере (как при подтверждении брони).
-                      </div>
-                    ) : priceSummary.fromServer ? (
-                      <div className="text-xs text-ink-2 pt-1">Расчёт с сервера по интервалу выдачи–возврата и комплекту.</div>
-                    ) : loadingQuote ? (
-                      <div className="text-xs text-ink-2 pt-1">Запрос сметы…</div>
-                    ) : null}
-                  </>
-                )}
-                {quoteError ? <div className="text-xs text-rose pt-1">{quoteError}</div> : null}
-              </div>
-
-              <div className="px-3 py-2.5 border-t border-border bg-white">
-                <div className="text-xs font-semibold text-ink-2 mb-2">Экспорт сметы</div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface disabled:opacity-50 disabled:pointer-events-none"
-                    disabled={
-                      !pickupISO ||
-                      !returnISO ||
-                      !clientName.trim() ||
-                      selectionForQuote.length === 0 ||
-                      exportingFormat !== null
-                    }
-                    onClick={() => exportQuote("pdf")}
-                  >
-                    {exportingFormat === "pdf" ? "PDF…" : "Export PDF"}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface disabled:opacity-50 disabled:pointer-events-none"
-                    disabled={
-                      !pickupISO ||
-                      !returnISO ||
-                      !clientName.trim() ||
-                      selectionForQuote.length === 0 ||
-                      exportingFormat !== null
-                    }
-                    onClick={() => exportQuote("xlsx")}
-                  >
-                    {exportingFormat === "xlsx" ? "Excel…" : "Export XLSX"}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-ink-2 hover:bg-surface-muted disabled:opacity-50 disabled:pointer-events-none"
-                    disabled={
-                      !pickupISO ||
-                      !returnISO ||
-                      !clientName.trim() ||
-                      selectionForQuote.length === 0 ||
-                      exportingFormat !== null
-                    }
-                    onClick={() => exportQuote("xml")}
-                  >
-                    {exportingFormat === "xml" ? "XML…" : "XML"}
-                  </button>
-                </div>
-                <p className="text-[10px] text-ink-2 mt-2 leading-snug">
-                  PDF и Excel формируются на сервере. Кириллица в PDF идёт через встроенный шрифт DejaVu в API (папка{" "}
-                  <code className="text-ink-2">assets/fonts</code>).
-                </p>
-                <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    className="rounded bg-accent text-white px-4 py-2 hover:bg-accent-bright disabled:opacity-50"
-                    disabled={!clientName.trim() || selectionForQuote.length === 0}
-                    onClick={() => setConfirmOpen(true)}
-                  >
-                    Подтвердить бронь
-                  </button>
-                </div>
-              </div>
-            </div>
+        {/* 2-column grid */}
+        <div className="grid grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+          <div className="flex flex-col gap-3.5">
+            <ClientProjectCard
+              clientName={clientName}
+              onClientNameChange={setClientName}
+              projectName={projectName}
+              onProjectNameChange={setProjectName}
+            />
+            <DatesCard
+              pickupLocal={pickupLocal}
+              returnLocal={returnLocal}
+              onPickupChange={handlePickupChange}
+              onReturnChange={handleReturnChange}
+              durationTag={durationTag}
+              durationDetail={durationDetail}
+            />
+            <EquipmentCard
+              items={items}
+              shifts={shifts}
+              totalAmount={quote ? Number(quote.totalAfterDiscount) : localTotal}
+              text={gafferText}
+              onTextChange={setGafferText}
+              onParse={handleParse}
+              onClear={handlePasteClear}
+              isParsing={gafferParsing}
+              error={gafferError}
+              resultCounts={parseResultCounts}
+              onQuantityChange={handleQuantityChange}
+              onDelete={handleDeleteItem}
+              onSelectCandidate={handleSelectCandidate}
+              onSkipItem={handleSkipItem}
+              onSelectFromCatalog={handleSelectFromCatalog}
+              searchCatalog={searchCatalog}
+              onAddManual={handleAddManual}
+              onOpenCatalog={handleAddManual}
+            />
+            <CommentCard value={bookingComment} onChange={setBookingComment} />
           </div>
+          <SummaryPanel
+            quote={quote}
+            localSubtotal={localSubtotal}
+            localDiscount={localDiscount}
+            localTotal={localTotal}
+            discountPercent={discountPercent}
+            itemCount={resolvedItems.length}
+            shifts={shifts}
+            isLoadingQuote={loadingQuote}
+            checks={checks}
+            onSubmitForApproval={submitForApproval}
+            onSaveDraft={saveDraft}
+            canSubmit={canSubmit}
+          />
         </div>
       </div>
-
-      {timeModalOpen ? (
-        <div
-          className="fixed inset-0 z-[60] bg-accent/50 flex items-center justify-center p-4"
-          role="presentation"
-          onClick={() => setTimeModalOpen(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="time-modal-title"
-            tabIndex={-1}
-            className="w-full max-w-md rounded-lg bg-white border border-border shadow-xl overflow-hidden outline-none"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b border-border flex items-center justify-between">
-              <div id="time-modal-title" className="font-semibold text-ink">
-                Время погрузки: выдача и возврат
-              </div>
-              <button
-                type="button"
-                className="text-ink-2 hover:text-ink text-sm"
-                onClick={() => setTimeModalOpen(false)}
-              >
-                Закрыть
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              <p className="text-xs text-ink-2">
-                1 смена = 24 ч. Даты задаются в основной форме; здесь — часы и минуты времени погрузки.
-              </p>
-              <div className="space-y-3">
-                <div>
-                  <div className="text-xs text-ink-2 mb-1">
-                    Выдача,{" "}
-                    {splitLocalDateTime(pickupLocal).date
-                      ? new Date(`${splitLocalDateTime(pickupLocal).date}T12:00:00`).toLocaleDateString("ru-RU", {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric",
-                        })
-                      : "—"}
-                  </div>
-                  <input
-                    type="time"
-                    className="w-full rounded border border-border px-3 py-2 text-base bg-white"
-                    value={draftPickupTime}
-                    onChange={(e) => setDraftPickupTime(e.target.value)}
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <div className="text-xs text-ink-2 mb-1">
-                    Возврат,{" "}
-                    {splitLocalDateTime(returnLocal).date
-                      ? new Date(`${splitLocalDateTime(returnLocal).date}T12:00:00`).toLocaleDateString("ru-RU", {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric",
-                        })
-                      : "—"}
-                  </div>
-                  <input
-                    type="time"
-                    className="w-full rounded border border-border px-3 py-2 text-base bg-white"
-                    value={draftReturnTime}
-                    onChange={(e) => setDraftReturnTime(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2 border-t border-border">
-                <button
-                  type="button"
-                  className="rounded border border-border px-4 py-2 text-sm hover:bg-surface"
-                  onClick={() => setTimeModalOpen(false)}
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  className="rounded bg-accent text-white px-4 py-2 text-sm hover:bg-accent-bright"
-                  onClick={applyTimeModal}
-                >
-                  Сохранить
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── Gaffer: таблица «гаффер | каталог» + поиск по клику ───────────────── */}
-      {gafferReviewOpen && gafferReviewRows && gafferReviewRows.length > 0 ? (
-        <div className="fixed inset-0 z-[70] bg-accent/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl rounded-xl bg-white border border-border shadow-xl flex flex-col max-h-[92vh]">
-            <div className="p-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
-              <div>
-                <div className="font-semibold text-ink">Проверка заявки гаффера</div>
-                <p className="text-xs text-ink-2 mt-1 leading-relaxed">
-                  Слева — как в тексте заявки. Справа — позиция каталога (по умолчанию от нейросети). Нажмите справа, чтобы найти другую
-                  позицию. Затем «Добавить в заказ».
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-label="Закрыть"
-                className="text-ink-3 hover:text-ink-2 text-xl leading-none shrink-0"
-                onClick={() => {
-                  setGafferReviewOpen(false);
-                  setGafferPickRowId(null);
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="overflow-auto flex-1 min-h-0">
-              <table className="min-w-full text-sm">
-                <thead className="bg-surface text-ink-2 sticky top-0 z-10">
-                  <tr>
-                    <th className="text-left px-3 py-2 border-b border-border w-[42%]">Как написал гаффер</th>
-                    <th className="text-left px-3 py-2 border-b border-border">Позиция в каталоге</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {gafferReviewRows.map((row) => (
-                    <tr key={row.id} className="align-top">
-                      <td className="px-3 py-2.5 text-ink">
-                        <div className="font-medium">{row.gafferPhrase}</div>
-                        <div className="text-xs text-ink-2 mt-0.5">Кол-во: {row.quantity}</div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <button
-                          type="button"
-                          className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
-                            row.equipmentId
-                              ? "border-violet-200 bg-violet-50/50 hover:border-violet-400"
-                              : "border-amber-border bg-amber-soft hover:border-amber"
-                          }`}
-                          onClick={() => {
-                            setGafferPickRowId(row.id);
-                            setGafferPickSearch("");
-                          }}
-                        >
-                          {row.equipmentId && row.catalogLabel ? (
-                            <>
-                              <div className="font-medium text-ink">{row.catalogLabel}</div>
-                              <div className="text-xs text-ink-2 mt-0.5">Нейросеть: {row.interpretedName}</div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="text-amber font-medium">Не выбрано — нажмите и найдите в каталоге</div>
-                              <div className="text-xs text-ink-2 mt-0.5">Нейросеть поняла как: {row.interpretedName}</div>
-                            </>
-                          )}
-                          <div className="text-[10px] text-violet-600 mt-1">Нажмите для поиска…</div>
-                        </button>
-                        {row.candidates.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 mt-1.5">
-                            <span className="text-[10px] text-ink-3 uppercase tracking-wide w-full">Быстрый выбор</span>
-                            {row.candidates.map((c) => (
-                              <button
-                                key={c.equipmentId}
-                                type="button"
-                                className={`text-xs rounded border px-2 py-0.5 ${
-                                  row.equipmentId === c.equipmentId
-                                    ? "border-emerald bg-emerald-soft text-emerald"
-                                    : "border-border bg-white text-ink-2 hover:border-violet-300"
-                                }`}
-                                onClick={() =>
-                                  setGafferReviewRows((rows) =>
-                                    rows?.map((r) =>
-                                      r.id === row.id
-                                        ? {
-                                            ...r,
-                                            equipmentId: c.equipmentId,
-                                            catalogLabel: c.catalogName,
-                                            availableQuantity: c.availableQuantity,
-                                          }
-                                        : r,
-                                    ) ?? null,
-                                  )
-                                }
-                              >
-                                {c.catalogName}
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="p-4 border-t border-border flex flex-wrap items-center justify-between gap-3 shrink-0 bg-white">
-              <div className="text-xs text-ink-2">
-                В заказ пойдут строки с выбранным каталогом:{" "}
-                <span className="font-medium text-ink-2">
-                  {gafferReviewRows.filter((r) => r.equipmentId).length} / {gafferReviewRows.length}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="rounded border border-border px-4 py-2 text-sm hover:bg-surface"
-                  onClick={() => {
-                    setGafferReviewOpen(false);
-                    setGafferPickRowId(null);
-                  }}
-                >
-                  Закрыть
-                </button>
-                <button
-                  type="button"
-                  disabled={gafferReviewSubmitting || gafferReviewRows.every((r) => !r.equipmentId)}
-                  className="rounded bg-violet-600 text-white px-4 py-2 text-sm font-medium hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  onClick={addGafferReviewToOrder}
-                >
-                  {gafferReviewSubmitting ? "Добавление…" : "Добавить в заказ"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {gafferPickRowId && gafferReviewRows ? (
-        <div className="fixed inset-0 z-[80] bg-accent/50 flex items-center justify-center p-4">
-          <div
-            className="w-full max-w-lg rounded-xl bg-white border border-border shadow-xl flex flex-col max-h-[80vh]"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Поиск позиции каталога"
-          >
-            <div className="p-3 border-b border-border flex items-center justify-between">
-              <div className="font-medium text-ink text-sm">Поиск в каталоге</div>
-              <button
-                type="button"
-                aria-label="Закрыть"
-                className="text-ink-3 hover:text-ink-2"
-                onClick={() => {
-                  setGafferPickRowId(null);
-                  setGafferPickSearch("");
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-3 flex-1 min-h-0 flex flex-col gap-2">
-              <input
-                type="text"
-                autoFocus
-                placeholder="Название, бренд, модель, категория…"
-                className="w-full rounded border border-border px-3 py-2 text-sm"
-                value={gafferPickSearch}
-                onChange={(e) => setGafferPickSearch(e.target.value)}
-              />
-              <div className="overflow-y-auto flex-1 space-y-1 min-h-[200px]">
-                {Array.from(rowCache.values())
-                  .filter((r) => {
-                    const q = gafferPickSearch.toLowerCase();
-                    return (
-                      !q ||
-                      r.name.toLowerCase().includes(q) ||
-                      (r.brand ?? "").toLowerCase().includes(q) ||
-                      (r.model ?? "").toLowerCase().includes(q) ||
-                      r.category.toLowerCase().includes(q)
-                    );
-                  })
-                  .slice(0, 40)
-                  .map((r) => (
-                    <button
-                      key={r.equipmentId}
-                      type="button"
-                      className="w-full text-left rounded border border-border px-3 py-2 text-xs hover:border-violet-400 hover:bg-violet-50"
-                      onClick={() => {
-                        setGafferReviewRows((rows) =>
-                          rows?.map((row) =>
-                            row.id === gafferPickRowId
-                              ? {
-                                  ...row,
-                                  equipmentId: r.equipmentId,
-                                  catalogLabel: [r.name, r.brand, r.model].filter(Boolean).join(" ") || r.name,
-                                  availableQuantity: r.availableQuantity,
-                                }
-                              : row,
-                          ) ?? null,
-                        );
-                        setGafferPickRowId(null);
-                        setGafferPickSearch("");
-                      }}
-                    >
-                      <div className="font-medium text-ink">{r.name}</div>
-                      <div className="text-ink-2">{[r.brand, r.model, r.category].filter(Boolean).join(" · ")}</div>
-                      <div className="text-ink-3 mt-0.5">Доступно: {r.availableQuantity}</div>
-                    </button>
-                  ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {confirmOpen ? (
-        <div className="fixed inset-0 z-50 bg-accent/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl rounded bg-white border border-border shadow-lg overflow-hidden">
-            <div className="p-4 border-b border-border flex items-center justify-between">
-              <div className="font-semibold">Подтверждение брони</div>
-              <button className="text-ink-2 hover:text-ink" onClick={() => setConfirmOpen(false)}>
-                Закрыть
-              </button>
-            </div>
-            <div className="p-4">
-              <div className="text-sm text-ink-2">
-                Клиент: <span className="font-medium">{clientName || "-"}</span> · Проект: <span className="font-medium">{projectName || "Проект"}</span>
-                <br />
-                Период:{" "}
-                <span className="font-medium">
-                  {pickupISO ? new Date(pickupISO).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" }) : "—"}
-                </span>
-                {" — "}
-                <span className="font-medium">
-                  {returnISO ? new Date(returnISO).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" }) : "—"}
-                </span>
-                {quote?.durationLabel || rentalDurationPreview?.labelShort ? (
-                  <>
-                    <br />
-                    <span className="text-ink-2">
-                      {quote?.durationLabel ?? rentalDurationPreview?.labelShort}
-                    </span>
-                  </>
-                ) : null}
-              </div>
-              <div className="mt-3 rounded border border-border bg-surface p-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-ink-2">Итого (без скидки)</span>
-                  <span className="font-medium">{quote ? formatMoneyRub(quote.subtotal) : "-"}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-ink-2">Скидка ({quote ? quote.discountPercent : "0"}%)</span>
-                  <span className="font-medium text-ink">
-                    {quote ? `-${formatMoneyRub(quote.discountAmount)}` : "-"}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm pt-1 border-t border-border mt-1">
-                  <span className="text-ink font-medium">Итого после скидки</span>
-                  <span className="font-semibold">{quote ? formatMoneyRub(quote.totalAfterDiscount) : "-"}</span>
-                </div>
-              </div>
-
-              {confirmError ? (
-                <div className="mt-3 rounded border border-rose-border bg-rose-soft text-rose p-3 text-sm">
-                  <div className="font-semibold">Конфликт бронирования</div>
-                  <div className="mt-1">
-                    {typeof confirmError === "string" ? confirmError : JSON.stringify(confirmError)}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="mt-4 overflow-auto max-h-[320px]">
-                <table className="min-w-full text-sm">
-                  <thead className="text-ink-2 bg-surface-muted">
-                    <tr>
-                      <th className="text-left px-3 py-2">Оборудование</th>
-                      <th className="text-left px-3 py-2">Кол-во</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedItems.map((it) => (
-                      <tr key={it.equipmentId} className="border-t border-border">
-                        <td className="px-3 py-2">
-                          <div className="font-medium">{it.row?.name ?? it.equipmentId}</div>
-                          <div className="text-xs text-ink-2">{it.row?.category}</div>
-                        </td>
-                        <td className="px-3 py-2 font-medium">{it.quantity}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="p-4 border-t border-border flex items-center justify-end gap-2">
-              <button className="rounded border border-border px-4 py-2 hover:bg-surface" onClick={() => setConfirmOpen(false)}>
-                Отмена
-              </button>
-              <button className="rounded bg-accent text-white px-4 py-2 hover:bg-accent-bright" onClick={confirmBooking}>
-                Подтвердить
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
+    </>
   );
 }
 
@@ -1597,4 +512,3 @@ export default function BookingNewPageWrapper() {
     </Suspense>
   );
 }
-
