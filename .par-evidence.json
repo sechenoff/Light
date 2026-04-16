@@ -1,23 +1,9 @@
 {
   "sprint": 1,
-  "project": "cosmetic-polish",
-  "feature": "subproject-D-cosmetic-polish",
+  "project": "booking-create-rebuild",
+  "feature": "booking-create-rebuild",
   "governance_mode": "standard",
-  "complexity": "low",
-  "base_commit": "5ec1273",
-  "head_commits": [
-    "d48c00b docs(plan): cosmetic polish (Subproject D) implementation plan",
-    "14507ad feat(web): ApprovalTimeline on /bookings/[id] (SUPER_ADMIN)",
-    "b03754e style(calendar): tokenize remaining slate/blue palette to design canon",
-    "a68ad11 style(repair): tokenize urgency badges + skeleton to design canon",
-    "f59ef92 style(admin/scanner): tokenize colors + use StatusPill for unit status",
-    "d2e5256 style(bookings/edit): tokenize form palette to design canon",
-    "33576ec style(bookings/new): tokenize category palette + form fields to design canon",
-    "bdf9be1 style(admin): tokenize tabs/tables/modals/buttons to design canon",
-    "6679d1c style(bookings-detail): fix 3 residual palette violations to design canon",
-    "0981146 a11y(web): aria-label on icon-only buttons across pages and components",
-    "81538d5 fix(web): address Product review findings (category palette, StatusPill migration, lockfile)"
-  ],
+  "complexity": "high",
   "reviewers": {
     "product": {
       "agent": "claude-standard-product-reviewer",
@@ -26,24 +12,25 @@
       "initial_verdict": "NEEDS_FIXES",
       "initial_findings": {
         "critical": 0,
-        "high": 2,
+        "high": 3,
         "medium": 2,
-        "low": 2
+        "low": 1
       },
       "final_verdict": "ACCEPTED",
       "findings_closed": {
         "high": [
-          "H1 /bookings/new category palette collapse — 15-slot CATEGORY_PASTEL_CLASSES had 6 unique tints with 9 collisions (3× emerald, 3× indigo, 3× rose, 2× amber/teal/accent). Widened to 7 canon tints (rose, amber, emerald, teal, accent, indigo, slate) with zero collisions; getCategoryColorClass() body unchanged."
+          "H1 Discount hardcoded to 50% with no UI control — changed to 0, added inline discount input",
+          "H2 Catalog link wired to same handler as manual add — removed duplicate link",
+          "H3 Duration tag said 'смены' instead of 'дня' per mockup — fixed pluralization"
         ],
         "medium": [
-          "M1 /admin/scanner LookupCard still used inline STATUS_COLORS map + raw <span> despite prior claim of StatusPill migration. Replaced with STATUS_VARIANTS map + <StatusPill> component. Required adding new 'alert' variant to StatusPill (rose-soft / rose / rose-border) for MISSING unit status — purely additive, no existing consumer regression risk."
+          "M1 alert() instead of toast.error() — replaced with toast integration",
+          "M2 Quantity allows 0/negative — added Math.max(1, qty) clamping"
+        ],
+        "low": [
+          "L1 saveAlias checkbox defaults unchecked — changed to checked per mockup"
         ]
-      },
-      "deferred_notes": [
-        "H2 Missing Co-Authored-By: Claude trailer on 9 earlier commits (14507ad, b03754e, a68ad11, f59ef92, d2e5256, 33576ec, bdf9be1, 6679d1c, 0981146). Accepted as LOW by re-review. Rationale: global git-safety rule in ~/.claude/rules/superflow-enforcement.md forbids rewriting published history / force-push. Trailer is attribution convention, not correctness. PR body documents Claude-assistance.",
-        "M2 Test-infra scope creep (vitest + @testing-library + jsdom + @vitejs/plugin-react added as devDeps). Accepted. Plan Task 3 mandates TDD for ApprovalTimeline component; web workspace had zero test harness before this. Dev-only deps, don't ship to users, unlock future web-component TDD. 4/4 ApprovalTimeline tests pass.",
-        "L1–L2 minor polish notes (low severity) — acknowledged, no action required"
-      ]
+      }
     },
     "technical": {
       "agent": "claude-standard-code-reviewer",
@@ -52,88 +39,56 @@
       "initial_verdict": "APPROVE",
       "initial_findings": {
         "critical": 0,
-        "high": 0,
-        "medium": 0,
-        "low": 0
+        "high": 2,
+        "medium": 3,
+        "low": 1
       },
       "final_verdict": "APPROVE",
       "non_blocker_notes": [
-        "UI-only refactor. No schema, API, or business-logic mutations. All changes are Tailwind token swaps, StatusPill prop assignment, and one new read-only React component (ApprovalTimeline) that consumes existing /api/audit endpoint with documented SUPER_ADMIN gating.",
-        "ApprovalTimeline filters on client side (audit endpoint is SUPER_ADMIN-only per existing rolesGuard), component itself is default-collapsed <details> — minimal UI surface, no performance concerns."
+        "Stale closure in handleSelectFromCatalog — extract gafferPhrase before setItems",
+        "Missing cancelled flag in quote useEffect — added cleanup pattern",
+        "searchCatalog not wrapped in useCallback — wrapped with deps",
+        "Duplicated pluralize functions — imported from shared format.ts",
+        "Quantity input missing clamp — added Math.max(1, qty)",
+        "Test assertion misaligned with saveAlias default change"
       ]
     }
   },
-  "rationale": "Standard governance, dual-reviewer split-focus (Product + Technical as two Claude agents; no secondary provider on this host). Scope: UI-only repaint of 6 pages to IBM Plex design canon (/calendar, /bookings/new, /bookings/[id]/edit, /repair, /admin, /admin/scanner) + read-only ApprovalTimeline component on /bookings/[id] (SUPER_ADMIN, default-collapsed, consumes existing /api/audit) + aria-label pass across icon-only buttons. Strictly out of scope: schema/API changes, notifications, bulk approve/reject, finance SVG bar rewrite, mobile redesign.",
-  "technical_review": "APPROVE",
-  "claude_product": "ACCEPTED",
-  "provider": "split-focus",
   "gates": {
-    "tsc_noEmit": {
-      "apps_api": "exit 0",
-      "apps_web": "exit 0"
-    },
     "tests": {
-      "monorepo_total": 478,
-      "monorepo_passing": 478,
+      "web_component_total": 55,
+      "web_component_passing": 55,
       "breakdown": {
-        "packages_shared": 33,
-        "apps_bot": 31,
-        "apps_api": 414
-      },
-      "web_component_total": 4,
-      "web_component_passing": 4,
-      "web_suite": "apps/web/src/components/bookings/__tests__/ApprovalTimeline.test.tsx — 4 tests (default-collapsed render, filters non-approval entries, handles 403, shows rejection reason)",
-      "runner_api_shared_bot": "vitest (pre-existing)",
-      "runner_web": "vitest 4.1.2 + jsdom 29 + @testing-library/react 16 (newly added devDeps, web-only)"
-    },
-    "build": "npm --workspace=apps/web run build — 27 routes compile clean; First Load JS unchanged from pre-sprint baseline"
+        "SummaryPanel": 21,
+        "EquipmentTable": 12,
+        "NeedsReviewRow": 9,
+        "UnmatchedRow": 9,
+        "ApprovalTimeline": 4
+      }
+    }
   },
   "scope_notes": {
     "schema_changes": "none",
-    "api_changes": "none (ApprovalTimeline consumes existing GET /api/audit)",
-    "new_component": "apps/web/src/components/bookings/ApprovalTimeline.tsx — default-collapsed <details>, filters audit stream to BOOKING_SUBMITTED/BOOKING_APPROVED/BOOKING_REJECTED, reverse-chronological sort via ISO-safe a.createdAt.localeCompare(b.createdAt), defensive 403 handling, cancelled-flag cleanup to prevent post-unmount state updates. Only mounted on /bookings/[id] for SUPER_ADMIN.",
-    "new_statuspill_variant": "'alert' (bg-rose-soft / text-rose / border-rose-border) — added for MISSING unit status in admin/scanner; complementary to existing rose-soft usage in DayAlert and other destructive-semantic UI.",
-    "pages_repainted": [
-      "/calendar — tokenized remaining slate/blue palette (b03754e)",
-      "/repair — urgency badges + skeleton loaders to canon (a68ad11)",
-      "/admin/scanner — status colors + StatusPill migration (f59ef92 + 81538d5)",
-      "/bookings/[id]/edit — form field palette (d2e5256)",
-      "/bookings/new — category swatches + form fields (33576ec + 81538d5 widening)",
-      "/admin — tabs, tables, modals, buttons (bdf9be1)",
-      "/bookings/[id] — 3 residual palette fixes (6679d1c)"
-    ],
-    "a11y_pass": "aria-label added to icon-only buttons across pages and components (0981146)",
+    "api_changes": "none — all endpoints pre-existing",
+    "monolith_decomposition": "1,600-line page.tsx → 11 focused files (~1,260 lines)",
     "files_created": [
-      "docs/superflow/plans/2026-04-15-cosmetic-polish.md",
-      "apps/web/src/components/bookings/ApprovalTimeline.tsx",
-      "apps/web/src/components/bookings/__tests__/ApprovalTimeline.test.tsx",
-      "apps/web/src/test-setup.ts",
-      "apps/web/vitest.config.ts"
+      "apps/web/src/components/bookings/create/types.ts",
+      "apps/web/src/components/bookings/create/CommentCard.tsx",
+      "apps/web/src/components/bookings/create/ClientProjectCard.tsx",
+      "apps/web/src/components/bookings/create/DatesCard.tsx",
+      "apps/web/src/components/bookings/create/PasteZone.tsx",
+      "apps/web/src/components/bookings/create/NeedsReviewRow.tsx",
+      "apps/web/src/components/bookings/create/UnmatchedRow.tsx",
+      "apps/web/src/components/bookings/create/EquipmentTable.tsx",
+      "apps/web/src/components/bookings/create/EquipmentCard.tsx",
+      "apps/web/src/components/bookings/create/SummaryPanel.tsx"
     ],
     "files_modified": [
-      "apps/web/app/admin/page.tsx",
-      "apps/web/app/admin/scanner/page.tsx",
-      "apps/web/app/bookings/[id]/edit/page.tsx",
-      "apps/web/app/bookings/[id]/page.tsx",
-      "apps/web/app/bookings/new/page.tsx",
-      "apps/web/app/calendar/page.tsx",
-      "apps/web/app/finance/expenses/page.tsx",
-      "apps/web/app/finance/payments/page.tsx",
-      "apps/web/app/repair/page.tsx",
-      "apps/web/src/components/AppShell.tsx",
-      "apps/web/src/components/StatusPill.tsx (added 'alert' variant)",
-      "apps/web/package.json (added vitest test-infra devDeps)",
-      "package-lock.json (captures the new devDeps)"
-    ],
-    "design_canon_compliance": "All repainted pages use canonical Tailwind tokens (ink/surface/border/accent/rose/emerald/amber/teal/indigo/slate with -soft/-border/-bright variants). No hex introduced. Category palette on /bookings/new now distributes categories across 7 unique tints (zero collisions). admin/scanner now uses StatusPill for all unit-status rendering.",
-    "no_mobile_redesign": "Strictly token swaps; no layout or responsive-breakpoint changes."
+      "apps/web/app/bookings/new/page.tsx (complete rewrite)"
+    ]
   },
-  "deferred_out_of_scope": [
-    "Email/Telegram notification to SUPER_ADMIN on new PENDING_APPROVAL — deferred from Subproject B, not picked up here (UI-only sprint)",
-    "Bulk approve/reject UI for /bookings list — deferred from Subproject B, still future",
-    "Finance SVG bars/dynamic category-color dots in apps/web/app/finance/ — 5 instances of style={{}} remain; rewrite needs data-layer redesign, out of scope",
-    "Mobile-specific redesign of /calendar desktop grid — explicit scope exclusion",
-    "apps/web/tsconfig.tsbuildinfo is tracked in git (should be .gitignore-d) — pre-existing tech debt, not introduced by this sprint"
-  ],
-  "ts": "2026-04-15T23:55:00Z"
+  "technical_review": "APPROVE",
+  "claude_product": "ACCEPTED",
+  "provider": "claude-split-focus",
+  "ts": "2026-04-16T08:32:00Z"
 }
