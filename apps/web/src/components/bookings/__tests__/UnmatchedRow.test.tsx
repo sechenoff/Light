@@ -74,7 +74,7 @@ describe("UnmatchedRow", () => {
     fireEvent.change(input, { target: { value: "литепанель" } });
     await waitFor(() => screen.getByText("Litepanels Astra 1x"), { timeout: 1000 });
     fireEvent.click(screen.getByText("Litepanels Astra 1x"));
-    expect(onSelect).toHaveBeenCalledWith("item-u1", mockResult, false);
+    expect(onSelect).toHaveBeenCalledWith("item-u1", mockResult, true);
   });
 
   it("calls onDelete when delete button is clicked", () => {
