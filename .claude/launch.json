@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "-w", "apps/web"],
       "port": 3000
+    },
+    {
+      "name": "mockups",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["http-server", "docs/mockups", "-p", "8090", "-c-1"],
+      "port": 8090
     }
   ]
 }

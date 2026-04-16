@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Оборудование v3 — Каталог + AI-предзаполнение</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --ink:#09090b; --ink-2:#52525b; --ink-3:#a1a1aa;
+  --surface:#ffffff; --surface-muted:#fafafa; --surface-subtle:#f4f4f5;
+  --border:#e4e4e7; --border-strong:#d4d4d8;
+  --accent:#1e3a8a; --accent-bright:#1d4ed8; --accent-soft:#eff6ff; --accent-border:#bfdbfe;
+  --emerald:#047857; --emerald-soft:#d1fae5; --emerald-border:#a7f3d0;
+  --rose:#9f1239; --rose-soft:#ffe4e6; --rose-border:#fecdd3;
+  --amber:#a16207; --amber-soft:#fef3c7; --amber-border:#fde68a;
+  --teal:#0f766e; --teal-soft:#ccfbf1;
+  --shadow-xs:0 1px 0 rgba(9,9,11,.03);
+  --shadow-sm:0 1px 2px rgba(9,9,11,.05),0 0 0 1px rgba(9,9,11,.02);
+  --radius:4px; --radius-lg:6px;
+}
+
+html{font-size:13.5px;line-height:1.6}
+body{font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--surface-subtle)}
+
+/* ── Nav ──────────────────────────────────────────────── */
+.page-nav{display:flex;justify-content:center;gap:8px;padding:20px 32px 16px;position:sticky;top:0;z-index:100;background:var(--surface-subtle)}
+.page-nav a{display:inline-flex;align-items:center;gap:6px;padding:10px 20px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--ink);font-weight:500;font-size:13px;text-decoration:none;transition:all .12s;box-shadow:var(--shadow-xs)}
+.page-nav a:hover{border-color:var(--accent-bright);color:var(--accent-bright)}
+.page-nav .num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--accent-bright);color:#fff;font-size:10px;font-weight:700}
+
+/* ── Section divider ──────────────────────────────────── */
+.section-div{max-width:1280px;margin:48px auto 20px;padding:0 32px;display:flex;align-items:center;gap:14px}
+.section-div .badge{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;font-size:14px;font-weight:700;color:#fff;flex-shrink:0}
+.section-div h2{font-size:18px;font-weight:700}
+.section-div p{color:var(--ink-2);font-size:12.5px;margin-top:2px}
+.section-div .tag{font-size:10px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
+
+/* ── Mockup frame ─────────────────────────────────────── */
+.frame{max-width:1280px;margin:0 auto 48px;padding:0 32px}
+.app{border:1px solid var(--border-strong);border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(9,9,11,.06)}
+
+/* Top bar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+.topbar .left{display:flex;align-items:center;gap:12px}
+.topbar .bc{font-size:12px;color:var(--ink-3)}
+.topbar .bc a{color:var(--accent-bright);text-decoration:none}
+.topbar .pill{font-size:10px;font-weight:500;padding:2px 8px;border-radius:99px;border:1px solid var(--border);color:var(--ink-2);background:var(--surface-muted)}
+.topbar .right{display:flex;align-items:center;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:var(--radius);font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--ink-2);transition:all .12s}
+.btn:hover{border-color:var(--border-strong)}
+.btn-p{background:var(--accent-bright);color:#fff;border-color:var(--accent-bright)}
+.btn-p:hover{background:var(--accent)}
+
+/* Content grid */
+.content{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;padding:20px;background:var(--surface-subtle);align-items:start}
+
+/* ── Cards ────────────────────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-xs);overflow:hidden}
+.card+.card{margin-top:12px}
+.card-h{display:flex;align-items:baseline;justify-content:space-between;padding:12px 16px 10px;border-bottom:1px solid var(--border)}
+.ey{font-family:'IBM Plex Sans Condensed',system-ui,sans-serif;font-size:10.5px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--ink-3)}
+.card-h .st{font-size:12px;color:var(--ink-2);font-family:'IBM Plex Mono',monospace}
+.card-b{padding:14px 16px}
+
+/* Mini placeholders */
+.mini{padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.mini .row{display:flex;gap:10px}
+.mini .f{flex:1;height:32px;background:var(--surface-subtle);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;padding:0 10px;font-size:12px;color:var(--ink);font-weight:500}
+
+/* Summary */
+.sum-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12.5px}
+.sum-row.total{border-top:1px dashed var(--border);margin-top:6px;padding-top:10px;font-weight:600;font-size:14px}
+.sum-row .l{color:var(--ink-2)}
+.sum-row .v{font-family:'IBM Plex Mono',monospace;font-weight:500}
+
+/* ── AI paste bar ─────────────────────────────────────── */
+.ai-bar{display:flex;gap:8px;padding:12px 16px;align-items:flex-start}
+.ai-bar textarea{flex:1;height:36px;min-height:36px;max-height:120px;padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:12.5px;color:var(--ink);resize:vertical;outline:none;transition:border-color .12s}
+.ai-bar textarea:focus{border-color:var(--accent-bright)}
+.ai-bar textarea::placeholder{color:var(--ink-3)}
+.ai-bar .parse-btn{height:36px;padding:0 16px;border:1px solid var(--accent-bright);border-radius:var(--radius);background:var(--accent-bright);color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .12s;display:flex;align-items:center;gap:5px}
+.ai-bar .parse-btn:hover{background:var(--accent)}
+
+/* Expanded textarea state */
+.ai-bar textarea.expanded{height:80px}
+
+/* ── Search + filter row ──────────────────────────────── */
+.filter-row{display:flex;gap:8px;padding:0 16px 10px;align-items:center;flex-wrap:wrap}
+.search-in{flex:1;min-width:180px;height:32px;padding:0 10px 0 32px;border:1px solid var(--border);border-radius:var(--radius);font-size:12.5px;color:var(--ink);background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' fill='none' viewBox='0 0 24 24' stroke='%23a1a1aa' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 9px center;outline:none;transition:border-color .12s}
+.search-in:focus{border-color:var(--accent-bright)}
+.search-in::placeholder{color:var(--ink-3)}
+
+.chip{display:inline-flex;align-items:center;gap:3px;padding:4px 11px;border-radius:99px;border:1px solid var(--border);background:var(--surface);font-size:11.5px;font-weight:500;color:var(--ink-2);cursor:pointer;transition:all .12s;white-space:nowrap}
+.chip:hover{border-color:var(--accent-border);color:var(--accent-bright)}
+.chip.on{background:var(--accent-soft);border-color:var(--accent-border);color:var(--accent-bright);font-weight:600}
+
+/* ── Catalog table ────────────────────────────────────── */
+.cat-table{width:100%;border-collapse:collapse}
+.cat-table th{padding:7px 16px;text-align:left;font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--ink-3);background:var(--surface-muted);border-bottom:1px solid var(--border);font-family:'IBM Plex Sans Condensed',system-ui,sans-serif}
+.cat-table th.r{text-align:right}
+.cat-table td{padding:8px 16px;border-bottom:1px solid var(--surface-subtle);font-size:12.5px;vertical-align:middle}
+.cat-table td.r{text-align:right}
+.cat-table td.mono{font-family:'IBM Plex Mono',monospace;font-size:12px}
+.cat-table tr:last-child td{border-bottom:none}
+.cat-table tr:hover{background:var(--surface-muted)}
+
+/* Row states */
+.cat-table tr.selected{background:var(--emerald-soft)}
+.cat-table tr.selected:hover{background:#c6f7e2}
+.cat-table tr.selected .item-name{color:var(--emerald)}
+.cat-table tr.unavail{opacity:.45}
+.cat-table tr.unavail:hover{background:transparent}
+
+.item-name{font-weight:500}
+.item-cat{font-size:11px;color:var(--ink-3)}
+
+/* Stepper */
+.stp{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.stp button{width:26px;height:24px;border:none;background:var(--surface);color:var(--ink-2);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s}
+.stp button:hover{background:var(--surface-subtle)}
+.stp .q{width:30px;height:24px;border-left:1px solid var(--border);border-right:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;background:var(--surface)}
+
+/* Add button (in table) */
+.add-b{padding:4px 12px;border-radius:var(--radius);border:1px solid var(--accent-border);background:var(--surface);color:var(--accent-bright);font-size:11px;font-weight:500;cursor:pointer;transition:all .12s}
+.add-b:hover{background:var(--accent-soft)}
+
+/* Availability badge */
+.avail{font-size:10.5px;font-family:'IBM Plex Mono',monospace}
+.avail.ok{color:var(--emerald)}
+.avail.low{color:var(--amber)}
+.avail.no{color:var(--rose)}
+
+/* ── AI result banner ─────────────────────────────────── */
+.ai-banner{margin:0 16px 10px;padding:10px 14px;border-radius:var(--radius-lg);display:flex;align-items:center;gap:10px;font-size:12px}
+.ai-banner.success{background:var(--emerald-soft);border:1px solid var(--emerald-border);color:var(--emerald)}
+.ai-banner.warning{background:var(--amber-soft);border:1px solid var(--amber-border);color:var(--amber)}
+.ai-banner .ico{font-size:16px;flex-shrink:0}
+.ai-banner .msg{flex:1;font-weight:500}
+.ai-banner .detail{font-weight:400;color:var(--ink-2);margin-top:2px;font-size:11.5px}
+.ai-banner .close-b{width:20px;height:20px;border:none;background:none;color:inherit;opacity:.5;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+
+/* ── Category group header ────────────────────────────── */
+.cat-group{background:var(--surface-muted);padding:8px 16px;font-size:11px;font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--border);border-top:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none}
+.cat-group:first-of-type{border-top:none}
+.cat-group .arrow{font-size:9px;color:var(--ink-3);transition:transform .15s}
+.cat-group .arrow.open{transform:rotate(90deg)}
+.cat-group .cnt{font-size:10px;color:var(--ink-3);font-weight:400;margin-left:auto;font-family:'IBM Plex Mono',monospace}
+.cat-group .selected-cnt{font-size:10px;color:var(--emerald);font-weight:600;margin-left:4px}
+
+/* ── Footer total ─────────────────────────────────────── */
+.eq-footer{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--border);background:var(--surface-muted)}
+.eq-footer .title{font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px}
+.eq-footer .cnt-badge{font-size:10px;font-weight:600;color:var(--accent-bright);background:var(--accent-soft);padding:1px 7px;border-radius:99px}
+.eq-footer .total{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--ink)}
+
+/* ── Unmatched list ───────────────────────────────────── */
+.unmatched-list{margin:0 16px 10px;padding:10px 14px;border:1px solid var(--rose-border);border-radius:var(--radius-lg);background:var(--rose-soft)}
+.unmatched-list .ul-title{font-size:11.5px;font-weight:600;color:var(--rose);margin-bottom:6px;display:flex;align-items:center;gap:5px}
+.unmatched-item{display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:12px;color:var(--ink-2)}
+.unmatched-item .orig{flex:1}
+.unmatched-item .act{font-size:11px;color:var(--accent-bright);cursor:pointer;text-decoration:underline}
+
+@media(max-width:900px){.content{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="page-nav">
+  <a href="#state-1"><span class="num">1</span> Пустой каталог</a>
+  <a href="#state-2"><span class="num">2</span> Вставлен текст</a>
+  <a href="#state-3"><span class="num">3</span> После AI-распознавания</a>
+  <a href="#state-4"><span class="num">4</span> Ручная корректировка</a>
+</nav>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     STATE 1  —  Empty catalog, nothing selected
+     ═══════════════════════════════════════════════════════ -->
+<div class="section-div" id="state-1">
+  <div class="badge" style="background:var(--accent-bright)">1</div>
+  <div>
+    <h2>Начальное состояние</h2>
+    <p>Каталог сразу виден. Сверху — поле для AI-вставки. Можно просто начать добавлять вручную.</p>
+  </div>
+</div>
+
+<div class="frame">
+  <div class="app">
+    <div class="topbar">
+      <div class="left"><span class="bc"><a href="#">&larr; Брони</a> / Новая бронь</span><span class="pill">Черновик</span></div>
+      <div class="right"><button class="btn">Отмена</button><button class="btn">Сохранить черновик</button><button class="btn btn-p">Согласование &rarr;</button></div>
+    </div>
+    <div class="content">
+      <div>
+        <!-- Client + Dates -->
+        <div class="card"><div class="card-h"><span class="ey">1. Клиент и проект</span></div><div class="mini"><div class="row"><div class="f">Мосфильм</div><div class="f">Сериал &laquo;Свет&raquo;</div></div></div></div>
+        <div class="card"><div class="card-h"><span class="ey">2. Даты</span></div><div class="mini"><div class="row"><div class="f">18.04.2026, 09:00</div><div class="f">22.04.2026, 20:00</div></div></div></div>
+
+        <!-- Equipment card -->
+        <div class="card">
+          <div class="card-h">
+            <span class="ey">3. Оборудование</span>
+            <span class="st">0 позиций</span>
+          </div>
+
+          <!-- AI paste bar (collapsed — single line) -->
+          <div class="ai-bar">
+            <textarea placeholder="Вставьте список от гафера, например: 2x ARRI SkyPanel S60, 1x Kino Flo 4Bank..."></textarea>
+            <button class="parse-btn" style="opacity:.4;pointer-events:none">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              Распознать
+            </button>
+          </div>
+
+          <!-- Search + category filter -->
+          <div class="filter-row">
+            <input class="search-in" type="text" placeholder="Поиск по названию...">
+            <span class="chip on">Все</span>
+            <span class="chip">&#x1F4A1; Свет</span>
+            <span class="chip">&#x1F4F7; Камеры</span>
+            <span class="chip">&#x1F3A4; Звук</span>
+            <span class="chip">&#x1F527; Штативы</span>
+            <span class="chip">&#x26A1; Питание</span>
+          </div>
+
+          <!-- Catalog table -->
+          <table class="cat-table">
+            <thead>
+              <tr>
+                <th style="width:40%">Название</th>
+                <th style="width:15%">Категория</th>
+                <th class="r" style="width:15%">Цена/день</th>
+                <th class="r" style="width:12%">Доступно</th>
+                <th class="r" style="width:18%">Кол-во</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="cat-group" colspan="5"><td colspan="5"><span class="arrow open">&#x25B6;</span> &#x1F4A1; Свет <span class="cnt">12 позиций</span></td></tr>
+              <tr><td><span class="item-name">ARRI SkyPanel S60-C</span></td><td class="item-cat">Свет</td><td class="r mono">4 000 &#8381;</td><td class="r"><span class="avail ok">3 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr><td><span class="item-name">ARRI SkyPanel S30-C</span></td><td class="item-cat">Свет</td><td class="r mono">2 500 &#8381;</td><td class="r"><span class="avail ok">5 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr><td><span class="item-name">ARRI SkyPanel S120-C</span></td><td class="item-cat">Свет</td><td class="r mono">8 000 &#8381;</td><td class="r"><span class="avail low">1 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr><td><span class="item-name">Kino Flo 4Bank 4ft</span></td><td class="item-cat">Свет</td><td class="r mono">3 000 &#8381;</td><td class="r"><span class="avail ok">4 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr><td><span class="item-name">Kino Flo Celeb 450Q</span></td><td class="item-cat">Свет</td><td class="r mono">5 500 &#8381;</td><td class="r"><span class="avail ok">4 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr><td><span class="item-name">Dedolight DLED4.1</span></td><td class="item-cat">Свет</td><td class="r mono">2 500 &#8381;</td><td class="r"><span class="avail ok">6 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr class="unavail"><td><span class="item-name">ARRI SkyPanel S360-C</span></td><td class="item-cat">Свет</td><td class="r mono">15 000 &#8381;</td><td class="r"><span class="avail no">0 шт.</span></td><td class="r"><span style="font-size:11px;color:var(--ink-3)">Нет в наличии</span></td></tr>
+
+              <tr class="cat-group"><td colspan="5"><span class="arrow">&#x25B6;</span> &#x1F527; Штативы и стойки <span class="cnt">8 позиций</span></td></tr>
+              <tr class="cat-group"><td colspan="5"><span class="arrow">&#x25B6;</span> &#x1F4F7; Камеры <span class="cnt">6 позиций</span></td></tr>
+              <tr class="cat-group"><td colspan="5"><span class="arrow">&#x25B6;</span> &#x1F3A4; Звук <span class="cnt">5 позиций</span></td></tr>
+            </tbody>
+          </table>
+
+          <!-- Footer -->
+          <div class="eq-footer">
+            <div class="title">Выбрано: <span class="cnt-badge">0</span></div>
+            <div class="total">0 &#8381;</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary -->
+      <div>
+        <div class="card">
+          <div class="card-h"><span class="ey">Расчёт</span></div>
+          <div class="card-b">
+            <div class="sum-row"><span class="l">Срок</span><span class="v">5 дней (4 смены)</span></div>
+            <div class="sum-row"><span class="l">Позиций</span><span class="v">0</span></div>
+            <div class="sum-row total"><span>Итого</span><span class="v">0 &#8381;</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     STATE 2  —  Text pasted, ready to parse
+     ═══════════════════════════════════════════════════════ -->
+<div class="section-div" id="state-2">
+  <div class="badge" style="background:var(--amber)">2</div>
+  <div>
+    <h2>Вставлен текст от гафера</h2>
+    <p>Пользователь вставил список. Кнопка &laquo;Распознать&raquo; активна. Каталог виден под полем.</p>
+  </div>
+</div>
+
+<div class="frame">
+  <div class="app">
+    <div class="topbar">
+      <div class="left"><span class="bc"><a href="#">&larr; Брони</a> / Новая бронь</span><span class="pill">Черновик</span></div>
+      <div class="right"><button class="btn">Отмена</button><button class="btn">Сохранить черновик</button><button class="btn btn-p">Согласование &rarr;</button></div>
+    </div>
+    <div class="content">
+      <div>
+        <div class="card"><div class="card-h"><span class="ey">1. Клиент и проект</span></div><div class="mini"><div class="row"><div class="f">Мосфильм</div><div class="f">Сериал &laquo;Свет&raquo;</div></div></div></div>
+        <div class="card"><div class="card-h"><span class="ey">2. Даты</span></div><div class="mini"><div class="row"><div class="f">18.04.2026, 09:00</div><div class="f">22.04.2026, 20:00</div></div></div></div>
+
+        <div class="card">
+          <div class="card-h">
+            <span class="ey">3. Оборудование</span>
+            <span class="st">0 позиций</span>
+          </div>
+
+          <!-- AI paste bar (expanded — text pasted) -->
+          <div class="ai-bar">
+            <textarea class="expanded" style="border-color:var(--accent-bright)">2x ARRI SkyPanel S60
+1x Kino Flo 4Bank 4ft
+3x Dedolight DLED4
+4x C-Stand
+1x Генератор 6кВт</textarea>
+            <button class="parse-btn">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              Распознать
+            </button>
+          </div>
+
+          <div class="filter-row">
+            <input class="search-in" type="text" placeholder="Поиск по названию...">
+            <span class="chip on">Все</span>
+            <span class="chip">&#x1F4A1; Свет</span>
+            <span class="chip">&#x1F4F7; Камеры</span>
+            <span class="chip">&#x1F3A4; Звук</span>
+            <span class="chip">&#x1F527; Штативы</span>
+            <span class="chip">&#x26A1; Питание</span>
+          </div>
+
+          <table class="cat-table">
+            <thead><tr><th style="width:40%">Название</th><th style="width:15%">Категория</th><th class="r" style="width:15%">Цена/день</th><th class="r" style="width:12%">Доступно</th><th class="r" style="width:18%">Кол-во</th></tr></thead>
+            <tbody>
+              <tr class="cat-group"><td colspan="5"><span class="arrow open">&#x25B6;</span> &#x1F4A1; Свет <span class="cnt">12 позиций</span></td></tr>
+              <tr><td><span class="item-name">ARRI SkyPanel S60-C</span></td><td class="item-cat">Свет</td><td class="r mono">4 000 &#8381;</td><td class="r"><span class="avail ok">3 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr><td><span class="item-name">ARRI SkyPanel S30-C</span></td><td class="item-cat">Свет</td><td class="r mono">2 500 &#8381;</td><td class="r"><span class="avail ok">5 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr><td><span class="item-name">Kino Flo 4Bank 4ft</span></td><td class="item-cat">Свет</td><td class="r mono">3 000 &#8381;</td><td class="r"><span class="avail ok">4 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr><td><span class="item-name">Dedolight DLED4.1</span></td><td class="item-cat">Свет</td><td class="r mono">2 500 &#8381;</td><td class="r"><span class="avail ok">6 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr class="cat-group"><td colspan="5"><span class="arrow">&#x25B6;</span> &#x1F527; Штативы и стойки <span class="cnt">8 позиций</span></td></tr>
+              <tr class="cat-group"><td colspan="5"><span class="arrow">&#x25B6;</span> &#x1F4F7; Камеры <span class="cnt">6 позиций</span></td></tr>
+            </tbody>
+          </table>
+
+          <div class="eq-footer">
+            <div class="title">Выбрано: <span class="cnt-badge">0</span></div>
+            <div class="total">0 &#8381;</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-h"><span class="ey">Расчёт</span></div>
+          <div class="card-b">
+            <div class="sum-row"><span class="l">Срок</span><span class="v">5 дней (4 смены)</span></div>
+            <div class="sum-row"><span class="l">Позиций</span><span class="v">0</span></div>
+            <div class="sum-row total"><span>Итого</span><span class="v">0 &#8381;</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     STATE 3  —  After AI parse: items pre-selected
+     ═══════════════════════════════════════════════════════ -->
+<div class="section-div" id="state-3">
+  <div class="badge" style="background:var(--emerald)">3</div>
+  <div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <h2>После распознавания</h2>
+      <span class="tag" style="background:var(--emerald-soft);color:var(--emerald);border:1px solid var(--emerald-border)">Ключевой экран</span>
+    </div>
+    <p>AI распознал список. В каталоге уже выбраны 4 из 5 позиций (зелёные строки с количеством). Одна позиция не найдена — баннер сверху.</p>
+  </div>
+</div>
+
+<div class="frame">
+  <div class="app">
+    <div class="topbar">
+      <div class="left"><span class="bc"><a href="#">&larr; Брони</a> / Новая бронь</span><span class="pill">Черновик</span></div>
+      <div class="right"><button class="btn">Отмена</button><button class="btn">Сохранить черновик</button><button class="btn btn-p">Согласование &rarr;</button></div>
+    </div>
+    <div class="content">
+      <div>
+        <div class="card"><div class="card-h"><span class="ey">1. Клиент и проект</span></div><div class="mini"><div class="row"><div class="f">Мосфильм</div><div class="f">Сериал &laquo;Свет&raquo;</div></div></div></div>
+        <div class="card"><div class="card-h"><span class="ey">2. Даты</span></div><div class="mini"><div class="row"><div class="f">18.04.2026, 09:00</div><div class="f">22.04.2026, 20:00</div></div></div></div>
+
+        <div class="card">
+          <div class="card-h">
+            <span class="ey">3. Оборудование</span>
+            <span class="st">4 позиции &middot; 57 500 &#8381;</span>
+          </div>
+
+          <!-- AI bar (collapsed after parse, shows source text faded) -->
+          <div class="ai-bar">
+            <textarea style="color:var(--ink-3);height:36px" disabled>2x ARRI SkyPanel S60, 1x Kino Flo 4Bank 4ft, 3x Dedolight DLED4, 4x C-Stand, 1x Генератор 6кВт</textarea>
+            <button class="parse-btn" style="background:var(--surface);color:var(--accent-bright);border-color:var(--accent-border)">
+              Очистить
+            </button>
+          </div>
+
+          <!-- Success banner -->
+          <div class="ai-banner success">
+            <span class="ico">&#x2705;</span>
+            <div>
+              <div class="msg">Распознано 4 из 5 позиций</div>
+              <div class="detail">Количества проставлены в каталоге. Проверьте и скорректируйте при необходимости.</div>
+            </div>
+            <button class="close-b">&times;</button>
+          </div>
+
+          <!-- Unmatched items -->
+          <div class="unmatched-list">
+            <div class="ul-title">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              Не найдено в каталоге (1)
+            </div>
+            <div class="unmatched-item">
+              <span class="orig">&laquo;Генератор 6кВт&raquo;</span>
+              <span class="act">Добавить вручную</span>
+            </div>
+          </div>
+
+          <div class="filter-row">
+            <input class="search-in" type="text" placeholder="Поиск по названию...">
+            <span class="chip on">Все</span>
+            <span class="chip">&#x1F4A1; Свет</span>
+            <span class="chip">&#x1F527; Штативы</span>
+            <span class="chip">&#x1F4F7; Камеры</span>
+          </div>
+
+          <!-- Catalog with pre-selected items -->
+          <table class="cat-table">
+            <thead><tr><th style="width:40%">Название</th><th style="width:15%">Категория</th><th class="r" style="width:15%">Цена/день</th><th class="r" style="width:12%">Доступно</th><th class="r" style="width:18%">Кол-во</th></tr></thead>
+            <tbody>
+              <tr class="cat-group"><td colspan="5"><span class="arrow open">&#x25B6;</span> &#x1F4A1; Свет <span class="cnt">12 позиций</span> <span class="selected-cnt">&#x2022; 3 выбрано</span></td></tr>
+
+              <tr class="selected">
+                <td><span class="item-name">ARRI SkyPanel S60-C</span></td>
+                <td class="item-cat">Свет</td>
+                <td class="r mono">4 000 &#8381;</td>
+                <td class="r"><span class="avail ok">3 шт.</span></td>
+                <td class="r"><div class="stp"><button>&minus;</button><span class="q">2</span><button>+</button></div></td>
+              </tr>
+              <tr><td><span class="item-name">ARRI SkyPanel S30-C</span></td><td class="item-cat">Свет</td><td class="r mono">2 500 &#8381;</td><td class="r"><span class="avail ok">5 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr><td><span class="item-name">ARRI SkyPanel S120-C</span></td><td class="item-cat">Свет</td><td class="r mono">8 000 &#8381;</td><td class="r"><span class="avail low">1 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr class="selected">
+                <td><span class="item-name">Kino Flo 4Bank 4ft</span></td>
+                <td class="item-cat">Свет</td>
+                <td class="r mono">3 000 &#8381;</td>
+                <td class="r"><span class="avail ok">4 шт.</span></td>
+                <td class="r"><div class="stp"><button>&minus;</button><span class="q">1</span><button>+</button></div></td>
+              </tr>
+              <tr><td><span class="item-name">Kino Flo Celeb 450Q</span></td><td class="item-cat">Свет</td><td class="r mono">5 500 &#8381;</td><td class="r"><span class="avail ok">4 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr class="selected">
+                <td><span class="item-name">Dedolight DLED4.1</span></td>
+                <td class="item-cat">Свет</td>
+                <td class="r mono">2 500 &#8381;</td>
+                <td class="r"><span class="avail ok">6 шт.</span></td>
+                <td class="r"><div class="stp"><button>&minus;</button><span class="q">3</span><button>+</button></div></td>
+              </tr>
+              <tr class="unavail"><td><span class="item-name">ARRI SkyPanel S360-C</span></td><td class="item-cat">Свет</td><td class="r mono">15 000 &#8381;</td><td class="r"><span class="avail no">0 шт.</span></td><td class="r"><span style="font-size:11px;color:var(--ink-3)">Нет</span></td></tr>
+
+              <tr class="cat-group"><td colspan="5"><span class="arrow open">&#x25B6;</span> &#x1F527; Штативы и стойки <span class="cnt">8 позиций</span> <span class="selected-cnt">&#x2022; 1 выбрано</span></td></tr>
+              <tr class="selected">
+                <td><span class="item-name">C-Stand Avenger A2025D</span></td>
+                <td class="item-cat">Штативы</td>
+                <td class="r mono">750 &#8381;</td>
+                <td class="r"><span class="avail ok">10 шт.</span></td>
+                <td class="r"><div class="stp"><button>&minus;</button><span class="q">4</span><button>+</button></div></td>
+              </tr>
+              <tr><td><span class="item-name">C-Stand Kupo CT-40M</span></td><td class="item-cat">Штативы</td><td class="r mono">600 &#8381;</td><td class="r"><span class="avail ok">8 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr><td><span class="item-name">Manfrotto 1004BAC</span></td><td class="item-cat">Штативы</td><td class="r mono">500 &#8381;</td><td class="r"><span class="avail ok">6 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+
+              <tr class="cat-group"><td colspan="5"><span class="arrow">&#x25B6;</span> &#x1F4F7; Камеры <span class="cnt">6 позиций</span></td></tr>
+              <tr class="cat-group"><td colspan="5"><span class="arrow">&#x25B6;</span> &#x1F3A4; Звук <span class="cnt">5 позиций</span></td></tr>
+            </tbody>
+          </table>
+
+          <div class="eq-footer">
+            <div class="title">Выбрано: <span class="cnt-badge">4 позиции &middot; 11 единиц</span></div>
+            <div class="total">57 500 &#8381; / период</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-h"><span class="ey">Расчёт</span></div>
+          <div class="card-b">
+            <div class="sum-row"><span class="l">Срок</span><span class="v">5 дней (4 смены)</span></div>
+            <div class="sum-row"><span class="l">Позиций</span><span class="v">4</span></div>
+            <div class="sum-row"><span class="l">Подитог</span><span class="v">57 500 &#8381;</span></div>
+            <div class="sum-row"><span class="l">Скидка 10%</span><span class="v">&minus;5 750 &#8381;</span></div>
+            <div class="sum-row total"><span>Итого</span><span class="v">51 750 &#8381;</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     STATE 4  —  Manual adjustments after AI
+     ═══════════════════════════════════════════════════════ -->
+<div class="section-div" id="state-4">
+  <div class="badge" style="background:var(--teal)">4</div>
+  <div>
+    <h2>После ручной корректировки</h2>
+    <p>Кладовщик добавил ещё позицию вручную, убрал одну лишнюю, изменил количество. Баннер AI закрыт. Обычная работа с каталогом.</p>
+  </div>
+</div>
+
+<div class="frame">
+  <div class="app">
+    <div class="topbar">
+      <div class="left"><span class="bc"><a href="#">&larr; Брони</a> / Новая бронь</span><span class="pill">Черновик</span></div>
+      <div class="right"><button class="btn">Отмена</button><button class="btn">Сохранить черновик</button><button class="btn btn-p">Согласование &rarr;</button></div>
+    </div>
+    <div class="content">
+      <div>
+        <div class="card"><div class="card-h"><span class="ey">1. Клиент и проект</span></div><div class="mini"><div class="row"><div class="f">Мосфильм</div><div class="f">Сериал &laquo;Свет&raquo;</div></div></div></div>
+        <div class="card"><div class="card-h"><span class="ey">2. Даты</span></div><div class="mini"><div class="row"><div class="f">18.04.2026, 09:00</div><div class="f">22.04.2026, 20:00</div></div></div></div>
+
+        <div class="card">
+          <div class="card-h">
+            <span class="ey">3. Оборудование</span>
+            <span class="st">5 позиций &middot; 67 500 &#8381;</span>
+          </div>
+
+          <!-- AI bar (clean, ready for new paste) -->
+          <div class="ai-bar">
+            <textarea placeholder="Вставьте список от гафера, например: 2x ARRI SkyPanel S60, 1x Kino Flo 4Bank..."></textarea>
+            <button class="parse-btn" style="opacity:.4;pointer-events:none">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              Распознать
+            </button>
+          </div>
+
+          <div class="filter-row">
+            <input class="search-in" type="text" placeholder="Поиск по названию...">
+            <span class="chip on">Все</span>
+            <span class="chip">&#x1F4A1; Свет</span>
+            <span class="chip">&#x1F527; Штативы</span>
+            <span class="chip">&#x1F4F7; Камеры</span>
+            <span class="chip">&#x1F3A4; Звук</span>
+            <span class="chip">&#x26A1; Питание</span>
+          </div>
+
+          <table class="cat-table">
+            <thead><tr><th style="width:40%">Название</th><th style="width:15%">Категория</th><th class="r" style="width:15%">Цена/день</th><th class="r" style="width:12%">Доступно</th><th class="r" style="width:18%">Кол-во</th></tr></thead>
+            <tbody>
+              <tr class="cat-group"><td colspan="5"><span class="arrow open">&#x25B6;</span> &#x1F4A1; Свет <span class="cnt">12 позиций</span> <span class="selected-cnt">&#x2022; 3 выбрано</span></td></tr>
+
+              <tr class="selected"><td><span class="item-name">ARRI SkyPanel S60-C</span></td><td class="item-cat">Свет</td><td class="r mono">4 000 &#8381;</td><td class="r"><span class="avail ok">3 шт.</span></td><td class="r"><div class="stp"><button>&minus;</button><span class="q">2</span><button>+</button></div></td></tr>
+              <tr><td><span class="item-name">ARRI SkyPanel S30-C</span></td><td class="item-cat">Свет</td><td class="r mono">2 500 &#8381;</td><td class="r"><span class="avail ok">5 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr><td><span class="item-name">ARRI SkyPanel S120-C</span></td><td class="item-cat">Свет</td><td class="r mono">8 000 &#8381;</td><td class="r"><span class="avail low">1 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+              <tr class="selected"><td><span class="item-name">Kino Flo 4Bank 4ft</span></td><td class="item-cat">Свет</td><td class="r mono">3 000 &#8381;</td><td class="r"><span class="avail ok">4 шт.</span></td><td class="r"><div class="stp"><button>&minus;</button><span class="q">2</span><button>+</button></div></td></tr>
+              <tr class="selected"><td><span class="item-name">Kino Flo Celeb 450Q</span></td><td class="item-cat">Свет</td><td class="r mono">5 500 &#8381;</td><td class="r"><span class="avail ok">4 шт.</span></td><td class="r"><div class="stp"><button>&minus;</button><span class="q">1</span><button>+</button></div></td></tr>
+              <tr><td><span class="item-name">Dedolight DLED4.1</span></td><td class="item-cat">Свет</td><td class="r mono">2 500 &#8381;</td><td class="r"><span class="avail ok">6 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+
+              <tr class="cat-group"><td colspan="5"><span class="arrow open">&#x25B6;</span> &#x1F527; Штативы и стойки <span class="cnt">8 позиций</span> <span class="selected-cnt">&#x2022; 2 выбрано</span></td></tr>
+              <tr class="selected"><td><span class="item-name">C-Stand Avenger A2025D</span></td><td class="item-cat">Штативы</td><td class="r mono">750 &#8381;</td><td class="r"><span class="avail ok">10 шт.</span></td><td class="r"><div class="stp"><button>&minus;</button><span class="q">4</span><button>+</button></div></td></tr>
+              <tr class="selected"><td><span class="item-name">Kupo Grip Arm 40"</span></td><td class="item-cat">Штативы</td><td class="r mono">400 &#8381;</td><td class="r"><span class="avail ok">12 шт.</span></td><td class="r"><div class="stp"><button>&minus;</button><span class="q">4</span><button>+</button></div></td></tr>
+              <tr><td><span class="item-name">Kupo CT-40M</span></td><td class="item-cat">Штативы</td><td class="r mono">600 &#8381;</td><td class="r"><span class="avail ok">8 шт.</span></td><td class="r"><button class="add-b">+ Добавить</button></td></tr>
+
+              <tr class="cat-group"><td colspan="5"><span class="arrow">&#x25B6;</span> &#x1F4F7; Камеры <span class="cnt">6 позиций</span></td></tr>
+              <tr class="cat-group"><td colspan="5"><span class="arrow">&#x25B6;</span> &#x1F3A4; Звук <span class="cnt">5 позиций</span></td></tr>
+            </tbody>
+          </table>
+
+          <div class="eq-footer">
+            <div class="title">Выбрано: <span class="cnt-badge">5 позиций &middot; 13 единиц</span></div>
+            <div class="total">67 500 &#8381; / период</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-h"><span class="ey">Расчёт</span></div>
+          <div class="card-b">
+            <div class="sum-row"><span class="l">Срок</span><span class="v">5 дней (4 смены)</span></div>
+            <div class="sum-row"><span class="l">Позиций</span><span class="v">5</span></div>
+            <div class="sum-row"><span class="l">Подитог</span><span class="v">67 500 &#8381;</span></div>
+            <div class="sum-row"><span class="l">Скидка 10%</span><span class="v">&minus;6 750 &#8381;</span></div>
+            <div class="sum-row total"><span>Итого</span><span class="v">60 750 &#8381;</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="height:80px"></div>
+
+</body>
+</html>

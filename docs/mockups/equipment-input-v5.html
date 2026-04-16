@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Оборудование — Полный каталог</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --ink:#09090b;--ink-2:#52525b;--ink-3:#a1a1aa;--ink-4:#d4d4d8;
+  --bg:#f7f7f8;--surface:#fff;--surface-m:#fafafa;--surface-s:#f4f4f5;
+  --border:#e4e4e7;--border-s:#d4d4d8;
+  --accent:#1e3a8a;--accent-b:#1d4ed8;--accent-s:#eff6ff;--accent-br:#bfdbfe;
+  --green:#047857;--green-s:#ecfdf5;--green-br:#a7f3d0;--green-bg:#f0fdf4;
+  --rose:#be123c;--rose-s:#fff1f2;--rose-br:#fecdd3;
+  --amber:#a16207;--amber-s:#fefce8;--amber-br:#fde68a;
+  --radius:6px;
+  --shadow:0 1px 3px rgba(0,0,0,.04),0 0 0 1px rgba(0,0,0,.02);
+  --shadow-lg:0 4px 24px rgba(0,0,0,.06),0 0 0 1px rgba(0,0,0,.02);
+}
+
+html{font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+body{font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+
+/* ── Scene labels ─────────────────────────────────── */
+.scene{max-width:1140px;margin:0 auto;padding:56px 40px 0}
+.scene:first-of-type{padding-top:32px}
+.scene-label{
+  display:inline-flex;align-items:center;gap:8px;margin-bottom:14px;
+  font-family:'IBM Plex Sans Condensed',system-ui,sans-serif;
+  font-size:11px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--ink-3);
+}
+.scene-label .dot{width:8px;height:8px;border-radius:50%}
+.scene-desc{font-size:13px;color:var(--ink-2);margin-bottom:20px;max-width:640px;line-height:1.65}
+
+/* ── App frame ────────────────────────────────────── */
+.wrap{max-width:1140px;margin:0 auto;padding:0 40px}
+.app{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow-lg)}
+
+/* Top bar */
+.bar{display:flex;align-items:center;justify-content:space-between;padding:10px 24px;border-bottom:1px solid var(--border);background:var(--surface)}
+.bar-left{display:flex;align-items:center;gap:14px}
+.bar-back{font-size:13px;color:var(--accent-b);text-decoration:none;display:flex;align-items:center;gap:4px}
+.bar-back svg{width:14px;height:14px}
+.bar-title{font-size:13px;color:var(--ink-2)}
+.bar-pill{font-size:10px;padding:2px 10px;border-radius:99px;background:var(--surface-s);color:var(--ink-3);font-weight:500;border:1px solid var(--border)}
+.bar-right{display:flex;gap:8px}
+.b{padding:7px 16px;border-radius:var(--radius);font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--ink-2);transition:all .15s}
+.b:hover{border-color:var(--border-s);color:var(--ink)}
+.b-primary{background:var(--accent-b);color:#fff;border-color:var(--accent-b)}
+.b-primary:hover{background:var(--accent)}
+
+/* Page grid */
+.page{display:grid;grid-template-columns:1fr 260px;gap:20px;padding:24px;background:var(--bg);align-items:start}
+.left-col{display:flex;flex-direction:column;gap:14px}
+
+/* Compact meta */
+.meta-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.meta-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow)}
+.meta-label{font-family:'IBM Plex Sans Condensed',system-ui,sans-serif;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
+.meta-val{font-size:13px;font-weight:500;color:var(--ink)}
+.meta-sub{font-size:12px;color:var(--ink-2);margin-top:2px}
+
+/* ── Equipment section ────────────────────────────── */
+.eq{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+
+/* Sticky header inside eq */
+.eq-top{position:sticky;top:0;z-index:10;background:var(--surface);border-bottom:1px solid var(--border)}
+.eq-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0}
+.eq-title{font-size:15px;font-weight:600}
+.eq-stats{font-size:12px;color:var(--ink-2);font-family:'IBM Plex Mono',monospace}
+
+/* Smart input */
+.smart-input{padding:12px 20px 0;position:relative}
+.smart-input textarea{
+  width:100%;min-height:40px;max-height:140px;
+  padding:9px 14px;padding-right:110px;
+  border:1.5px solid var(--border);border-radius:var(--radius);
+  font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:13px;color:var(--ink);
+  resize:vertical;outline:none;transition:border-color .15s,box-shadow .15s;background:var(--surface);
+}
+.smart-input textarea:focus{border-color:var(--accent-b);box-shadow:0 0 0 3px rgba(29,78,216,.08)}
+.smart-input textarea::placeholder{color:var(--ink-3)}
+.smart-input .si-actions{position:absolute;right:28px;top:50%;transform:translateY(-50%);display:flex;gap:6px}
+.si-hint{font-size:11px;color:var(--ink-3);padding:5px 10px;border-radius:var(--radius);background:var(--surface-s);display:flex;align-items:center;gap:4px;white-space:nowrap}
+.si-parse{padding:6px 14px;border-radius:var(--radius);border:none;background:var(--accent-b);color:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.si-parse:hover{background:var(--accent)}
+
+/* Tabs */
+.eq-tabs{display:flex;gap:0;padding:0 20px;margin-top:10px}
+.tab{padding:8px 14px;font-size:12.5px;font-weight:500;color:var(--ink-3);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;margin-bottom:-1px;white-space:nowrap}
+.tab:hover{color:var(--ink-2)}
+.tab.on{color:var(--accent-b);border-bottom-color:var(--accent-b);font-weight:600}
+.tab .tc{font-size:10px;font-weight:600;color:var(--green);margin-left:3px;font-family:'IBM Plex Mono',monospace}
+
+/* ── Items ────────────────────────────────────────── */
+.items{padding:0}
+
+.item{display:flex;align-items:center;gap:14px;padding:9px 20px;transition:background .1s;cursor:default}
+.item:hover{background:var(--surface-m)}
+.item+.item{border-top:1px solid var(--surface-s)}
+
+.item.picked{background:var(--green-bg);border-left:3px solid var(--green);padding-left:17px}
+.item.picked:hover{background:var(--green-s)}
+.item.picked .i-name{color:var(--green)}
+.item.picked+.item{border-top-color:var(--green-br)}
+
+.item.dim{opacity:.35;pointer-events:none}
+
+.i-info{flex:1;min-width:0}
+.i-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.i-detail{font-size:11.5px;color:var(--ink-3);margin-top:1px;display:flex;align-items:center;gap:8px}
+.i-price{font-family:'IBM Plex Mono',monospace;font-size:11.5px}
+.i-avail{font-size:11px}
+.i-avail.ok{color:var(--green)}
+.i-avail.low{color:var(--amber)}
+.i-avail.no{color:var(--rose)}
+
+.i-action{flex-shrink:0}
+
+.add{padding:5px 14px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--ink-2);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s}
+.add:hover{border-color:var(--accent-br);color:var(--accent-b);background:var(--accent-s)}
+
+.stp{display:inline-flex;align-items:center;border:1px solid var(--green-br);border-radius:var(--radius);overflow:hidden;background:var(--surface)}
+.stp button{width:30px;height:28px;border:none;background:var(--surface);color:var(--ink-2);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s}
+.stp button:hover{background:var(--green-s)}
+.stp .q{width:34px;height:28px;border-left:1px solid var(--green-br);border-right:1px solid var(--green-br);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--green);background:var(--green-bg)}
+
+/* Category header (thin, not clickable) */
+.cat-h{
+  padding:6px 20px;font-size:10px;font-weight:600;
+  letter-spacing:.8px;text-transform:uppercase;
+  color:var(--ink-3);background:var(--surface-s);
+  border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+  font-family:'IBM Plex Sans Condensed',system-ui,sans-serif;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.cat-h:first-child{border-top:none}
+.cat-h .ch-sel{font-size:10px;color:var(--green);font-weight:600;font-family:'IBM Plex Mono',monospace}
+
+/* ── Footer ───────────────────────────────────────── */
+.eq-foot{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-top:1px solid var(--border);background:var(--surface-m)}
+.eq-foot .ef-label{font-size:12.5px;color:var(--ink-2);font-weight:500}
+.eq-foot .ef-label strong{color:var(--ink);font-weight:600}
+.eq-foot .ef-total{font-size:14px;font-weight:600;font-family:'IBM Plex Mono',monospace}
+
+/* ── AI banners ───────────────────────────────────── */
+.ai-msg{margin:0 20px 10px;padding:10px 14px;border-radius:var(--radius);display:flex;align-items:flex-start;gap:10px;font-size:12.5px;line-height:1.5}
+.ai-msg.ok{background:var(--green-s);border:1px solid var(--green-br);color:var(--green)}
+.ai-msg.warn{background:var(--rose-s);border:1px solid var(--rose-br);color:var(--rose)}
+.ai-msg .ai-ico{font-size:15px;flex-shrink:0;margin-top:1px}
+.ai-msg .ai-body{flex:1}
+.ai-msg .ai-title{font-weight:600}
+.ai-msg .ai-sub{font-size:12px;color:var(--ink-2);margin-top:2px}
+.ai-msg .ai-close{background:none;border:none;color:inherit;opacity:.4;cursor:pointer;font-size:16px;padding:0;margin-top:-2px}
+.ai-msg .ai-close:hover{opacity:.7}
+.unmatched-item{display:flex;align-items:center;justify-content:space-between;padding:3px 0;font-size:12px}
+.unmatched-item .u-t{color:var(--ink-2)}
+.unmatched-item .u-a{color:var(--accent-b);cursor:pointer;font-size:11px}
+
+/* ── Summary ──────────────────────────────────────── */
+.summary{position:sticky;top:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.summary-head{padding:14px 16px 12px;border-bottom:1px solid var(--border);font-family:'IBM Plex Sans Condensed',system-ui,sans-serif;font-size:10.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3)}
+.summary-body{padding:14px 16px 16px}
+.s-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12.5px}
+.s-row .s-l{color:var(--ink-2)}
+.s-row .s-v{font-family:'IBM Plex Mono',monospace;font-weight:500}
+.s-row.s-total{border-top:1px dashed var(--border);margin-top:8px;padding-top:10px;font-weight:600;font-size:14px}
+.s-row.s-total .s-l{color:var(--ink)}
+.s-items{margin-top:12px;border-top:1px solid var(--border);padding-top:10px}
+.s-item{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:11.5px}
+.s-item .si-n{color:var(--ink);font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:8px}
+.s-item .si-q{color:var(--ink-3);font-family:'IBM Plex Mono',monospace;font-size:11px;flex-shrink:0}
+
+@media(max-width:900px){.page{grid-template-columns:1fr}.meta-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     SCENE 1 — Full catalog, nothing selected
+     ═══════════════════════════════════════════════════ -->
+<div class="scene" id="s1">
+  <div class="scene-label"><div class="dot" style="background:var(--accent-b)"></div> Начальное состояние</div>
+  <p class="scene-desc">Весь каталог раскрыт сразу. Категории — визуальные разделители, не аккордеоны. Поиск фильтрует, AI-вставка предзаполняет.</p>
+</div>
+
+<div class="wrap">
+  <div class="app">
+    <div class="bar">
+      <div class="bar-left">
+        <a href="#" class="bar-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5m7-7l-7 7 7 7"/></svg>Брони</a>
+        <span class="bar-title">/ Новая бронь</span>
+        <span class="bar-pill">Черновик</span>
+      </div>
+      <div class="bar-right">
+        <button class="b">Отмена</button>
+        <button class="b">Сохранить</button>
+        <button class="b b-primary">На согласование &rarr;</button>
+      </div>
+    </div>
+
+    <div class="page">
+      <div class="left-col">
+        <div class="meta-row">
+          <div class="meta-card"><div class="meta-label">Клиент / Проект</div><div class="meta-val">Мосфильм</div><div class="meta-sub">Сериал &laquo;Свет в окне&raquo;</div></div>
+          <div class="meta-card"><div class="meta-label">Период</div><div class="meta-val">18 апр &mdash; 22 апр 2026</div><div class="meta-sub">5 дней, 4 смены</div></div>
+        </div>
+
+        <div class="eq">
+          <div class="eq-top">
+            <div class="eq-head">
+              <div class="eq-title">Оборудование</div>
+              <div class="eq-stats">0 позиций</div>
+            </div>
+            <div class="smart-input">
+              <textarea placeholder="Поиск или вставьте список от гафера..." rows="1"></textarea>
+              <div class="si-actions">
+                <div class="si-hint">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                  AI
+                </div>
+              </div>
+            </div>
+            <div class="eq-tabs">
+              <div class="tab on">Все</div>
+              <div class="tab">Свет</div>
+              <div class="tab">Камеры</div>
+              <div class="tab">Звук</div>
+              <div class="tab">Штативы</div>
+              <div class="tab">Питание</div>
+              <div class="tab">Расходники</div>
+            </div>
+          </div>
+
+          <div class="items">
+            <!-- СВЕТ -->
+            <div class="cat-h"><span>Свет</span></div>
+            <div class="item"><div class="i-info"><div class="i-name">ARRI SkyPanel S60-C</div><div class="i-detail"><span class="i-price">4 000 &#8381;/день</span><span class="i-avail ok">3 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">ARRI SkyPanel S30-C</div><div class="i-detail"><span class="i-price">2 500 &#8381;/день</span><span class="i-avail ok">5 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">ARRI SkyPanel S120-C</div><div class="i-detail"><span class="i-price">8 000 &#8381;/день</span><span class="i-avail low">1 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Kino Flo 4Bank 4ft</div><div class="i-detail"><span class="i-price">3 000 &#8381;/день</span><span class="i-avail ok">4 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Kino Flo Celeb 450Q</div><div class="i-detail"><span class="i-price">5 500 &#8381;/день</span><span class="i-avail ok">4 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Dedolight DLED4.1</div><div class="i-detail"><span class="i-price">2 500 &#8381;/день</span><span class="i-avail ok">6 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Dedolight DLED7</div><div class="i-detail"><span class="i-price">3 500 &#8381;/день</span><span class="i-avail ok">3 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item dim"><div class="i-info"><div class="i-name">ARRI SkyPanel S360-C</div><div class="i-detail"><span class="i-price">15 000 &#8381;/день</span><span class="i-avail no">нет в наличии</span></div></div><div class="i-action"></div></div>
+
+            <!-- КАМЕРЫ -->
+            <div class="cat-h"><span>Камеры</span></div>
+            <div class="item"><div class="i-info"><div class="i-name">ARRI ALEXA Mini LF</div><div class="i-detail"><span class="i-price">25 000 &#8381;/день</span><span class="i-avail ok">2 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">RED V-RAPTOR XL 8K</div><div class="i-detail"><span class="i-price">20 000 &#8381;/день</span><span class="i-avail low">1 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Sony FX6</div><div class="i-detail"><span class="i-price">12 000 &#8381;/день</span><span class="i-avail ok">3 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Blackmagic URSA Mini Pro 12K</div><div class="i-detail"><span class="i-price">15 000 &#8381;/день</span><span class="i-avail ok">2 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+
+            <!-- ЗВУК -->
+            <div class="cat-h"><span>Звук</span></div>
+            <div class="item"><div class="i-info"><div class="i-name">Sennheiser MKH 416</div><div class="i-detail"><span class="i-price">1 500 &#8381;/день</span><span class="i-avail ok">6 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Sound Devices MixPre-6 II</div><div class="i-detail"><span class="i-price">3 000 &#8381;/день</span><span class="i-avail ok">2 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Rode NTG5</div><div class="i-detail"><span class="i-price">800 &#8381;/день</span><span class="i-avail ok">4 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+
+            <!-- ШТАТИВЫ -->
+            <div class="cat-h"><span>Штативы и стойки</span></div>
+            <div class="item"><div class="i-info"><div class="i-name">C-Stand Avenger A2025D</div><div class="i-detail"><span class="i-price">750 &#8381;/день</span><span class="i-avail ok">10 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">C-Stand Kupo CT-40M</div><div class="i-detail"><span class="i-price">600 &#8381;/день</span><span class="i-avail ok">8 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Manfrotto 1004BAC</div><div class="i-detail"><span class="i-price">500 &#8381;/день</span><span class="i-avail ok">6 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Kupo Grip Arm 40&quot;</div><div class="i-detail"><span class="i-price">400 &#8381;/день</span><span class="i-avail ok">12 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+
+            <!-- ПИТАНИЕ -->
+            <div class="cat-h"><span>Питание и генераторы</span></div>
+            <div class="item"><div class="i-info"><div class="i-name">V-Mount батарея 150Wh</div><div class="i-detail"><span class="i-price">500 &#8381;/день</span><span class="i-avail ok">20 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Anton Bauer Titon Base Kit</div><div class="i-detail"><span class="i-price">1 200 &#8381;/день</span><span class="i-avail ok">6 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Генератор Honda EU30is 3кВт</div><div class="i-detail"><span class="i-price">5 000 &#8381;/день</span><span class="i-avail ok">2 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+          </div>
+
+          <div class="eq-foot">
+            <div class="ef-label">Ничего не выбрано</div>
+            <div class="ef-total" style="color:var(--ink-3)">0 &#8381;</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="summary">
+        <div class="summary-head">Расчёт</div>
+        <div class="summary-body">
+          <div class="s-row"><span class="s-l">Период</span><span class="s-v">5 дней</span></div>
+          <div class="s-row"><span class="s-l">Позиций</span><span class="s-v">0</span></div>
+          <div class="s-row s-total"><span class="s-l">Итого</span><span class="s-v">0 &#8381;</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     SCENE 2 — After AI: items pre-selected in place
+     ═══════════════════════════════════════════════════ -->
+<div class="scene" id="s2">
+  <div class="scene-label"><div class="dot" style="background:var(--green)"></div> После AI-распознавания</div>
+  <p class="scene-desc">Зелёные строки — подобраны автоматически. Количества проставлены. Кладовщик сразу видит весь каталог и может подправить.</p>
+</div>
+
+<div class="wrap">
+  <div class="app">
+    <div class="bar">
+      <div class="bar-left">
+        <a href="#" class="bar-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5m7-7l-7 7 7 7"/></svg>Брони</a>
+        <span class="bar-title">/ Новая бронь</span>
+        <span class="bar-pill">Черновик</span>
+      </div>
+      <div class="bar-right">
+        <button class="b">Отмена</button>
+        <button class="b">Сохранить</button>
+        <button class="b b-primary">На согласование &rarr;</button>
+      </div>
+    </div>
+
+    <div class="page">
+      <div class="left-col">
+        <div class="meta-row">
+          <div class="meta-card"><div class="meta-label">Клиент / Проект</div><div class="meta-val">Мосфильм</div><div class="meta-sub">Сериал &laquo;Свет в окне&raquo;</div></div>
+          <div class="meta-card"><div class="meta-label">Период</div><div class="meta-val">18 апр &mdash; 22 апр 2026</div><div class="meta-sub">5 дней, 4 смены</div></div>
+        </div>
+
+        <div class="eq">
+          <div class="eq-top">
+            <div class="eq-head">
+              <div class="eq-title">Оборудование</div>
+              <div class="eq-stats">4 позиции &middot; 57 500 &#8381;</div>
+            </div>
+            <div class="smart-input">
+              <textarea style="color:var(--ink-3)" disabled>2x ARRI SkyPanel S60, 1x Kino Flo 4Bank, 3x Dedolight DLED4, 4x C-Stand, 1x Генератор 6кВт</textarea>
+              <div class="si-actions">
+                <button class="si-parse" style="background:var(--surface);color:var(--ink-2);border:1px solid var(--border)">Очистить</button>
+              </div>
+            </div>
+            <div class="eq-tabs">
+              <div class="tab on">Все <span class="tc">4</span></div>
+              <div class="tab">Свет <span class="tc">3</span></div>
+              <div class="tab">Камеры</div>
+              <div class="tab">Звук</div>
+              <div class="tab">Штативы <span class="tc">1</span></div>
+              <div class="tab">Питание</div>
+            </div>
+          </div>
+
+          <!-- Banners -->
+          <div style="padding-top:10px">
+            <div class="ai-msg ok">
+              <span class="ai-ico">&#x2714;&#xFE0F;</span>
+              <div class="ai-body">
+                <div class="ai-title">Распознано 4 из 5</div>
+                <div class="ai-sub">Проверьте и скорректируйте при необходимости</div>
+              </div>
+              <button class="ai-close">&times;</button>
+            </div>
+            <div class="ai-msg warn">
+              <span class="ai-ico">&#x26A0;&#xFE0F;</span>
+              <div class="ai-body">
+                <div class="ai-title">Не найдено</div>
+                <div class="unmatched-item"><span class="u-t">&laquo;Генератор 6кВт&raquo;</span><span class="u-a">Добавить вручную</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="items">
+            <!-- СВЕТ -->
+            <div class="cat-h"><span>Свет</span><span class="ch-sel">3 выбрано</span></div>
+            <div class="item picked"><div class="i-info"><div class="i-name">ARRI SkyPanel S60-C</div><div class="i-detail"><span class="i-price">4 000 &#8381;/день</span><span class="i-avail ok">3 доступно</span></div></div><div class="i-action"><div class="stp"><button>&minus;</button><span class="q">2</span><button>+</button></div></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">ARRI SkyPanel S30-C</div><div class="i-detail"><span class="i-price">2 500 &#8381;/день</span><span class="i-avail ok">5 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">ARRI SkyPanel S120-C</div><div class="i-detail"><span class="i-price">8 000 &#8381;/день</span><span class="i-avail low">1 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item picked"><div class="i-info"><div class="i-name">Kino Flo 4Bank 4ft</div><div class="i-detail"><span class="i-price">3 000 &#8381;/день</span><span class="i-avail ok">4 доступно</span></div></div><div class="i-action"><div class="stp"><button>&minus;</button><span class="q">1</span><button>+</button></div></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Kino Flo Celeb 450Q</div><div class="i-detail"><span class="i-price">5 500 &#8381;/день</span><span class="i-avail ok">4 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item picked"><div class="i-info"><div class="i-name">Dedolight DLED4.1</div><div class="i-detail"><span class="i-price">2 500 &#8381;/день</span><span class="i-avail ok">6 доступно</span></div></div><div class="i-action"><div class="stp"><button>&minus;</button><span class="q">3</span><button>+</button></div></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Dedolight DLED7</div><div class="i-detail"><span class="i-price">3 500 &#8381;/день</span><span class="i-avail ok">3 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item dim"><div class="i-info"><div class="i-name">ARRI SkyPanel S360-C</div><div class="i-detail"><span class="i-price">15 000 &#8381;/день</span><span class="i-avail no">нет в наличии</span></div></div><div class="i-action"></div></div>
+
+            <!-- КАМЕРЫ -->
+            <div class="cat-h"><span>Камеры</span></div>
+            <div class="item"><div class="i-info"><div class="i-name">ARRI ALEXA Mini LF</div><div class="i-detail"><span class="i-price">25 000 &#8381;/день</span><span class="i-avail ok">2 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">RED V-RAPTOR XL 8K</div><div class="i-detail"><span class="i-price">20 000 &#8381;/день</span><span class="i-avail low">1 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Sony FX6</div><div class="i-detail"><span class="i-price">12 000 &#8381;/день</span><span class="i-avail ok">3 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Blackmagic URSA Mini Pro 12K</div><div class="i-detail"><span class="i-price">15 000 &#8381;/день</span><span class="i-avail ok">2 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+
+            <!-- ЗВУК -->
+            <div class="cat-h"><span>Звук</span></div>
+            <div class="item"><div class="i-info"><div class="i-name">Sennheiser MKH 416</div><div class="i-detail"><span class="i-price">1 500 &#8381;/день</span><span class="i-avail ok">6 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Sound Devices MixPre-6 II</div><div class="i-detail"><span class="i-price">3 000 &#8381;/день</span><span class="i-avail ok">2 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Rode NTG5</div><div class="i-detail"><span class="i-price">800 &#8381;/день</span><span class="i-avail ok">4 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+
+            <!-- ШТАТИВЫ -->
+            <div class="cat-h"><span>Штативы и стойки</span><span class="ch-sel">1 выбрано</span></div>
+            <div class="item picked"><div class="i-info"><div class="i-name">C-Stand Avenger A2025D</div><div class="i-detail"><span class="i-price">750 &#8381;/день</span><span class="i-avail ok">10 доступно</span></div></div><div class="i-action"><div class="stp"><button>&minus;</button><span class="q">4</span><button>+</button></div></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">C-Stand Kupo CT-40M</div><div class="i-detail"><span class="i-price">600 &#8381;/день</span><span class="i-avail ok">8 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Manfrotto 1004BAC</div><div class="i-detail"><span class="i-price">500 &#8381;/день</span><span class="i-avail ok">6 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Kupo Grip Arm 40&quot;</div><div class="i-detail"><span class="i-price">400 &#8381;/день</span><span class="i-avail ok">12 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+
+            <!-- ПИТАНИЕ -->
+            <div class="cat-h"><span>Питание и генераторы</span></div>
+            <div class="item"><div class="i-info"><div class="i-name">V-Mount батарея 150Wh</div><div class="i-detail"><span class="i-price">500 &#8381;/день</span><span class="i-avail ok">20 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Anton Bauer Titon Base Kit</div><div class="i-detail"><span class="i-price">1 200 &#8381;/день</span><span class="i-avail ok">6 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+            <div class="item"><div class="i-info"><div class="i-name">Генератор Honda EU30is 3кВт</div><div class="i-detail"><span class="i-price">5 000 &#8381;/день</span><span class="i-avail ok">2 доступно</span></div></div><div class="i-action"><button class="add">+ Добавить</button></div></div>
+          </div>
+
+          <div class="eq-foot">
+            <div class="ef-label"><strong>4 позиции</strong> &middot; 11 единиц</div>
+            <div class="ef-total">57 500 &#8381;</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="summary">
+        <div class="summary-head">Расчёт</div>
+        <div class="summary-body">
+          <div class="s-row"><span class="s-l">Период</span><span class="s-v">5 дней</span></div>
+          <div class="s-row"><span class="s-l">Позиций</span><span class="s-v">4</span></div>
+          <div class="s-row"><span class="s-l">Подитог</span><span class="s-v">57 500 &#8381;</span></div>
+          <div class="s-row"><span class="s-l">Скидка 10%</span><span class="s-v">&minus;5 750 &#8381;</span></div>
+          <div class="s-row s-total"><span class="s-l">Итого</span><span class="s-v">51 750 &#8381;</span></div>
+          <div class="s-items">
+            <div class="s-item"><span class="si-n">ARRI SkyPanel S60-C</span><span class="si-q">&times;2</span></div>
+            <div class="s-item"><span class="si-n">Kino Flo 4Bank 4ft</span><span class="si-q">&times;1</span></div>
+            <div class="s-item"><span class="si-n">Dedolight DLED4.1</span><span class="si-q">&times;3</span></div>
+            <div class="s-item"><span class="si-n">C-Stand Avenger A2025D</span><span class="si-q">&times;4</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="height:80px"></div>
+</body>
+</html>
