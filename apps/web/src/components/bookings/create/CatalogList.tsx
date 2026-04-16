@@ -70,7 +70,7 @@ export function CatalogList({
     <div>
       {hasOff && (
         <div>
-          <div className="flex items-center justify-between border-b border-t border-border bg-surface-subtle px-5 py-1.5 font-cond text-[10px] font-semibold uppercase tracking-wider text-ink-3">
+          <div className="flex items-center justify-between border-b border-t border-border bg-surface-subtle px-5 py-2 font-cond text-[10px] font-semibold uppercase tracking-wider text-ink-3">
             <span>Дополнительные позиции</span>
             <span className="font-mono text-emerald">{offCatalogItems.length} вне каталога</span>
           </div>
@@ -125,7 +125,7 @@ export function CatalogList({
         const selCount = selectedByCat.get(category) ?? 0;
         return (
           <div key={category}>
-            <div className="flex items-center justify-between border-b border-t border-border bg-surface-subtle px-5 py-1.5 font-cond text-[10px] font-semibold uppercase tracking-wider text-ink-3">
+            <div className="flex items-center justify-between border-b border-t border-border bg-surface-subtle px-5 py-2 font-cond text-[10px] font-semibold uppercase tracking-wider text-ink-3">
               <span>{category}</span>
               {selCount > 0 && <span className="font-mono text-emerald">{selCount} выбрано</span>}
             </div>
