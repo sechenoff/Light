@@ -63,12 +63,12 @@ const SHORT_MONTHS: Record<string, string> = {
   "09": "Сен", "10": "Окт", "11": "Ноя", "12": "Дек",
 };
 
-function agePill(days: number | null) {
-  if (days === null || days <= 0)
+function agePill(overdueDays: number | null) {
+  if (overdueDays === null || overdueDays <= 0)
     return { label: "По графику", cls: "bg-emerald-soft text-emerald border border-emerald-border" };
-  if (days <= 7)
-    return { label: `Через ${days} дн.`, cls: "bg-amber-soft text-amber border border-amber-border" };
-  return { label: `${days} дней`, cls: "bg-rose-soft text-rose border border-rose-border" };
+  if (overdueDays <= 7)
+    return { label: `${overdueDays} дн.`, cls: "bg-rose-soft text-rose border border-rose-border" };
+  return { label: `${overdueDays} дней`, cls: "bg-rose-soft text-rose border border-rose-border" };
 }
 
 function formatDateCard(dateStr: string | null) {
@@ -178,7 +178,8 @@ export default function FinancePage() {
   const now = new Date();
   const monthName = MONTHS_LOCATIVE[now.getMonth()] ?? "";
   const asOf = data.asOf ? new Date(data.asOf) : now;
-  const asOfStr = `${asOf.getDate()} апр, ${String(asOf.getHours()).padStart(2, "0")}:${String(asOf.getMinutes()).padStart(2, "0")}`;
+  const asOfMonth = SHORT_MONTHS[String(asOf.getMonth() + 1).padStart(2, "0")] ?? "";
+  const asOfStr = `${asOf.getDate()} ${asOfMonth.toLowerCase()}, ${String(asOf.getHours()).padStart(2, "0")}:${String(asOf.getMinutes()).padStart(2, "0")}`;
 
   // Overdue debtors count
   const overdueCount = data.topDebtors.filter(

@@ -295,18 +295,24 @@ export default function ExpensesPage() {
   const [showModal, setShowModal] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchAll = async (cancelled: { v: boolean }) => {
     if (!authorized) return;
-    const from = monthStart(month);
-    const to = monthEnd(month);
-    const [brk, exp] = await Promise.all([
-      apiFetch<BreakdownItem[]>(`/api/finance/expenses-breakdown?from=${from}&to=${to}`),
-      apiFetch<ExpensesResponse>(`/api/expenses?from=${from}&to=${to}&limit=200`),
-    ]);
-    if (!cancelled.v) {
-      setBreakdown(brk);
-      setExpenses(exp.items);
+    try {
+      const from = monthStart(month);
+      const to = monthEnd(month);
+      const [brk, exp] = await Promise.all([
+        apiFetch<BreakdownItem[]>(`/api/finance/expenses-breakdown?from=${from}&to=${to}`),
+        apiFetch<ExpensesResponse>(`/api/expenses?from=${from}&to=${to}&limit=200`),
+      ]);
+      if (!cancelled.v) {
+        setBreakdown(brk);
+        setExpenses(exp.items);
+        setFetchError(null);
+      }
+    } catch (e) {
+      if (!cancelled.v) setFetchError(e instanceof Error ? e.message : "Ошибка загрузки");
     }
   };
 
@@ -328,6 +334,7 @@ export default function ExpensesPage() {
   const nextMonth = () => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1));
 
   if (loading || !authorized) return null;
+  if (fetchError) return <div className="p-8 text-rose text-sm">Ошибка: {fetchError}</div>;
 
   const monthStr = month.toLocaleString("ru-RU", { month: "long", year: "numeric" });
   const grouped = groupBreakdown(breakdown);

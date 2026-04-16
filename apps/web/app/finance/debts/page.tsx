@@ -88,7 +88,7 @@ function computeAgingCounts(debts: ClientDebt[]) {
 
 const STRIPE_CLASSES: Record<AgingBucket, string> = {
   overdue30: "border-l-rose",
-  overdue7: "border-l-[#f87171]",
+  overdue7: "border-l-rose/70",
   soon: "border-l-amber",
   current: "border-l-emerald",
 };
@@ -166,7 +166,7 @@ export default function DebtsPage() {
             <p className="mono-num text-[16px] font-semibold text-rose">{formatRub(totals.overdue30)}</p>
             <p className="text-[11.5px] text-ink-2 mt-0.5">{counts.overdue30} клиент</p>
           </div>
-          <div className="bg-[#fff4f4] px-4 py-3.5">
+          <div className="bg-rose-soft/50 px-4 py-3.5">
             <p className="eyebrow text-ink-3 mb-1.5">Просрочка 1–30 дней</p>
             <p className="mono-num text-[16px] font-semibold text-ink">{formatRub(totals.overdue7)}</p>
             <p className="text-[11.5px] text-ink-2 mt-0.5">{counts.overdue7} клиентов</p>
