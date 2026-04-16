@@ -25,7 +25,7 @@ export function UnmatchedRow({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AvailabilityRow[]>([]);
   const [focusIdx, setFocusIdx] = useState(-1);
-  const [saveAlias, setSaveAlias] = useState(false);
+  const [saveAlias, setSaveAlias] = useState(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 

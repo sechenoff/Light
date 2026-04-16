@@ -35,7 +35,6 @@ type EquipmentCardProps = {
 
   // Footer actions
   onAddManual: () => void;
-  onOpenCatalog: () => void;
 };
 
 export function EquipmentCard({
@@ -56,7 +55,6 @@ export function EquipmentCard({
   onSelectFromCatalog,
   searchCatalog,
   onAddManual,
-  onOpenCatalog,
 }: EquipmentCardProps) {
   const itemCount = items.length;
   const positionLabel = `${itemCount} ${pluralize(itemCount, "позиция", "позиции", "позиций")}`;
@@ -107,14 +105,6 @@ export function EquipmentCard({
           onClick={onAddManual}
         >
           + Добавить позицию вручную
-        </button>
-        <span className="text-ink-3">·</span>
-        <button
-          type="button"
-          className="text-accent-bright hover:underline"
-          onClick={onOpenCatalog}
-        >
-          Открыть каталог
         </button>
       </div>
 
