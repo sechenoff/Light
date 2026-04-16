@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -156,6 +156,7 @@ function BookingNewPage() {
       setQuote(null);
       return;
     }
+    let cancelled = false;
     const timer = setTimeout(async () => {
       setLoadingQuote(true);
       try {
@@ -171,14 +172,14 @@ function BookingNewPage() {
           method: "POST",
           body: JSON.stringify(body),
         });
-        setQuote(data);
+        if (!cancelled) setQuote(data);
       } catch {
-        setQuote(null);
+        if (!cancelled) setQuote(null);
       } finally {
-        setLoadingQuote(false);
+        if (!cancelled) setLoadingQuote(false);
       }
     }, 500);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [clientName, projectName, pickupISO, returnISO, discountPercent, resolvedItems]);
 
   // ── Callbacks ────────────────────────────────────────────────────────────────
@@ -276,13 +277,16 @@ function BookingNewPage() {
     equipment: AvailabilityRow,
     saveAlias: boolean,
   ) {
+    const item = items.find((it) => it.id === itemId);
+    const gafferPhrase = item?.gafferPhrase;
+
     setItems((prev) =>
       prev.map((it) =>
         it.id === itemId
           ? {
               ...it,
               match: {
-                kind: "resolved",
+                kind: "resolved" as const,
                 equipmentId: equipment.equipmentId,
                 catalogName: equipment.name,
                 category: equipment.category,
@@ -295,29 +299,27 @@ function BookingNewPage() {
           : it,
       ),
     );
-    if (saveAlias) {
-      const item = items.find((it) => it.id === itemId);
-      if (item) {
-        apiFetch("/api/admin/slang-learning/propose", {
-          method: "POST",
-          body: JSON.stringify({
-            rawPhrase: item.gafferPhrase,
-            proposedEquipmentId: equipment.equipmentId,
-            proposedEquipmentName: equipment.name,
-            confidence: 1,
-            contextJson: JSON.stringify({ source: "manual_unmatched_learning" }),
-          }),
-        }).catch(() => {});
-      }
+
+    if (saveAlias && gafferPhrase) {
+      apiFetch("/api/admin/slang-learning/propose", {
+        method: "POST",
+        body: JSON.stringify({
+          rawPhrase: gafferPhrase,
+          proposedEquipmentId: equipment.equipmentId,
+          proposedEquipmentName: equipment.name,
+          confidence: 1,
+          contextJson: JSON.stringify({ source: "manual_unmatched_learning" }),
+        }),
+      }).catch(() => {});
     }
   }
 
-  async function searchCatalog(query: string): Promise<AvailabilityRow[]> {
+  const searchCatalog = useCallback(async (query: string): Promise<AvailabilityRow[]> => {
     if (!pickupISO || !returnISO) return [];
     const params = new URLSearchParams({ start: pickupISO, end: returnISO, search: query });
     const data = await apiFetch<{ rows: AvailabilityRow[] }>(`/api/availability?${params}`);
     return data.rows;
-  }
+  }, [pickupISO, returnISO]);
 
   function handleAddManual() {
     const id = `manual-${Date.now()}`;
