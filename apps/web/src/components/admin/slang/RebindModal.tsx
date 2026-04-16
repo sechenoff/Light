@@ -19,10 +19,16 @@ export function RebindModal({ phrase, currentEquipmentId, onRebind, onClose }: P
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const searchCounterRef = useRef(0);
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -30,19 +36,22 @@ export function RebindModal({ phrase, currentEquipmentId, onRebind, onClose }: P
       setResults([]);
       return;
     }
+    const requestId = ++searchCounterRef.current;
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const data = await apiFetch<{ id: string; name: string; category: string }[]>(
+        type EquipmentResponse = { items?: { id: string; name: string; category: string }[] };
+        const data = await apiFetch<EquipmentResponse | { id: string; name: string; category: string }[]>(
           `/api/equipment?search=${encodeURIComponent(search.trim())}`
         );
-        // apiFetch may return { items: [...] } or array directly depending on endpoint
-        const items = Array.isArray(data) ? data : (data as any).items ?? [];
-        setResults(items.map((e: any) => ({ id: e.id, name: e.name, category: e.category })));
+        // Discard stale responses
+        if (requestId !== searchCounterRef.current) return;
+        const items = Array.isArray(data) ? data : (data as EquipmentResponse).items ?? [];
+        setResults(items.map((e) => ({ id: e.id, name: e.name, category: e.category })));
       } catch {
-        setResults([]);
+        if (requestId === searchCounterRef.current) setResults([]);
       } finally {
-        setLoading(false);
+        if (requestId === searchCounterRef.current) setLoading(false);
       }
     }, 300);
 

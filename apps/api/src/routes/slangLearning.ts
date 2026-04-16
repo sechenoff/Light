@@ -113,8 +113,11 @@ router.get("/stats", async (req, res, next) => {
       }),
     ]);
 
-    const accuracyPercent = totalAliases > 0
-      ? Math.round(((totalAliases - manualCount) / totalAliases) * 100)
+    // Accuracy = auto / (auto + manual), excluding SEED from both sides
+    const autoCount = totalAliases - manualCount - await prisma.slangAlias.count({ where: { source: "SEED" } });
+    const learnedTotal = autoCount + manualCount;
+    const accuracyPercent = learnedTotal > 0
+      ? Math.round((autoCount / learnedTotal) * 100)
       : 0;
 
     return res.json({
