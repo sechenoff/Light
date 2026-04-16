@@ -15,6 +15,7 @@ export function QuickSearchBar({ searchCatalog, onSelect, disabled }: QuickSearc
   const [results, setResults] = useState<AvailabilityRow[]>([]);
   const [focusIdx, setFocusIdx] = useState(-1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seqRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const runSearch = useCallback(
@@ -24,9 +25,12 @@ export function QuickSearchBar({ searchCatalog, onSelect, disabled }: QuickSearc
         setFocusIdx(-1);
         return;
       }
+      const seq = ++seqRef.current;
       searchCatalog(q).then((rows) => {
-        setResults(rows);
-        setFocusIdx(-1);
+        if (seq === seqRef.current) {
+          setResults(rows);
+          setFocusIdx(-1);
+        }
       });
     },
     [searchCatalog],

@@ -28,6 +28,7 @@ export function CatalogBrowser({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<AvailabilityRow[] | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchSeqRef = useRef(0);
 
   // Date change key — forces CategoryAccordion to re-mount and re-fetch
   const dateKey = `${pickupISO ?? ""}-${returnISO ?? ""}`;
@@ -35,8 +36,8 @@ export function CatalogBrowser({
   // Load categories once
   useEffect(() => {
     let cancelled = false;
-    apiFetch<string[]>("/api/equipment/categories").then((cats) => {
-      if (!cancelled) setCategories(cats);
+    apiFetch<{ categories: string[] }>("/api/equipment/categories").then((res) => {
+      if (!cancelled) setCategories(res.categories);
     });
     return () => { cancelled = true; };
   }, []);
@@ -74,9 +75,12 @@ export function CatalogBrowser({
         setSearchResults(null);
         return;
       }
+      const seq = ++searchSeqRef.current;
       const params = new URLSearchParams({ start: pickupISO, end: returnISO, search: q });
       const data = await apiFetch<{ rows: AvailabilityRow[] }>(`/api/availability?${params}`);
-      setSearchResults(data.rows);
+      if (seq === searchSeqRef.current) {
+        setSearchResults(data.rows);
+      }
     },
     [pickupISO, returnISO],
   );
