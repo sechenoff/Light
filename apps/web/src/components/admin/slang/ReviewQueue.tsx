@@ -74,19 +74,19 @@ export function ReviewQueue({ candidates, onUpdate }: Props) {
     if (ids.length === 0) return;
     setActing("batch");
     try {
-      await Promise.all(
-        ids.map((id) => {
-          const c = candidates.find((x) => x.id === id)!;
-          return apiFetch(`/api/admin/slang-learning/${id}/approve`, {
-            method: "POST",
-            body: JSON.stringify({ reviewedBy: "admin", equipmentId: c.proposedEquipmentId }),
-          });
-        }),
-      );
+      // Sequential to avoid SQLite SQLITE_BUSY under concurrent writes
+      for (const id of ids) {
+        const c = candidates.find((x) => x.id === id)!;
+        await apiFetch(`/api/admin/slang-learning/${id}/approve`, {
+          method: "POST",
+          body: JSON.stringify({ reviewedBy: "admin", equipmentId: c.proposedEquipmentId }),
+        });
+      }
       setChecked(new Set());
       onUpdate();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Ошибка batch-подтверждения");
+      onUpdate(); // Refresh to show partial progress
     } finally {
       setActing(null);
     }
@@ -97,18 +97,18 @@ export function ReviewQueue({ candidates, onUpdate }: Props) {
     if (ids.length === 0) return;
     setActing("batch");
     try {
-      await Promise.all(
-        ids.map((id) =>
-          apiFetch(`/api/admin/slang-learning/${id}/reject`, {
-            method: "POST",
-            body: JSON.stringify({ reviewedBy: "admin" }),
-          }),
-        ),
-      );
+      // Sequential to avoid SQLite SQLITE_BUSY under concurrent writes
+      for (const id of ids) {
+        await apiFetch(`/api/admin/slang-learning/${id}/reject`, {
+          method: "POST",
+          body: JSON.stringify({ reviewedBy: "admin" }),
+        });
+      }
       setChecked(new Set());
       onUpdate();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Ошибка batch-отклонения");
+      onUpdate(); // Refresh to show partial progress
     } finally {
       setActing(null);
     }

@@ -64,14 +64,12 @@ export default function SlangPage() {
 
   const selectedAlias = selectedId ? aliases.find((a) => a.id === selectedId) ?? null : null;
 
-  // Rebind: delete old alias, then propose with new equipmentId
+  // Rebind: create new alias first, then delete old (safe order — failure leaves duplicate, not data loss)
   async function handleRebind(oldAliasId: string, newEquipmentId: string, _newEquipmentName: string) {
     const alias = aliases.find((a) => a.id === oldAliasId);
     if (!alias) return;
     try {
-      await apiFetch(`/api/admin/slang-learning/aliases/${oldAliasId}`, {
-        method: "DELETE",
-      });
+      // 1. Create new binding first
       await apiFetch("/api/admin/slang-learning/propose", {
         method: "POST",
         body: JSON.stringify({
@@ -81,10 +79,16 @@ export default function SlangPage() {
           contextJson: JSON.stringify({ source: "manual_rebind" }),
         }),
       });
+      // 2. Only delete old after new is confirmed saved
+      await apiFetch(`/api/admin/slang-learning/aliases/${oldAliasId}`, {
+        method: "DELETE",
+      });
       setSelectedId(null);
       triggerRefresh();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Ошибка изменения связи");
+      // Refresh to show current state (new may exist, old may still exist)
+      triggerRefresh();
     }
   }
 
