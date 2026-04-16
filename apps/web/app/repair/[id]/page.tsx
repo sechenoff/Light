@@ -186,22 +186,22 @@ export default function RepairDetailPage() {
   const [workLogSaving, setWorkLogSaving] = useState(false);
   const [workLogError, setWorkLogError] = useState<string | null>(null);
 
-  const loadRepair = useCallback(async () => {
-    let cancelled = false;
-    try {
-      const data = await apiFetch<{ repair: RepairDetail }>(`/api/repairs/${id}`);
-      if (!cancelled) setRepair(data.repair);
-    } catch (err: any) {
-      if (!cancelled) setError(err?.message ?? "Ошибка загрузки");
-    } finally {
-      if (!cancelled) setLoading(false);
-    }
-    return () => { cancelled = true; };
+  const loadRepair = useCallback(() => {
+    apiFetch<{ repair: RepairDetail }>(`/api/repairs/${id}`)
+      .then((data) => setRepair(data.repair))
+      .catch((err: any) => setError(err?.message ?? "Ошибка загрузки"))
+      .finally(() => setLoading(false));
   }, [id]);
 
   useEffect(() => {
-    if (user) loadRepair();
-  }, [user, loadRepair]);
+    if (!user) return;
+    let cancelled = false;
+    apiFetch<{ repair: RepairDetail }>(`/api/repairs/${id}`)
+      .then((data) => { if (!cancelled) setRepair(data.repair); })
+      .catch((err: any) => { if (!cancelled) setError(err?.message ?? "Ошибка загрузки"); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [user, id]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -369,7 +369,7 @@ export default function RepairDetailPage() {
         <div className="bg-surface border border-border rounded-lg p-4">
           <p className="eyebrow mb-2">Причина возврата</p>
           <p className="text-sm text-ink">
-            <span className="font-medium">{repair.createdBy} (кладовщик)</span>
+            <span className="font-medium">{repair.createdBy}</span>
             {", "}
             {formatDate(repair.createdAt)}
             {": «"}
