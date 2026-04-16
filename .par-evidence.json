@@ -1,16 +1,1 @@
-{
-  "sprint": "price-import-redesign",
-  "claude_product": "ACCEPTED",
-  "technical_review": "APPROVE",
-  "provider": "claude-split-focus",
-  "findings_fixed": [
-    "priceDelta displayed with ruble instead of percent (ChangeCard.tsx)",
-    "N+1 SlangAlias queries in matchRow — pre-loaded into Map",
-    "Bulk accept UI/server divergence for flagged rows — re-fetch from server",
-    "decChanged ignored null-to-value transitions — now detects them",
-    "No atomic double-analyze guard — added updateMany with status check"
-  ],
-  "tests": "419/420 pass (1 pre-existing flaky: socket hang up in approval.test.ts)",
-  "build": "next build succeeds",
-  "ts": "2026-04-16T14:30:00Z"
-}
+{"sprint":1,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus-claude","ts":"2026-04-16T22:45:00Z","notes":"Product: NEEDS_FIXES → 3 fixes applied (ResizableContainer clip detection, gradient hint, catalog max-qty). Technical: REQUEST_CHANGES → 3 fixes applied (categories response shape, search race condition, accordion error handling). H2 was already fixed before technical review completed. AI mode card format deferred intentionally (spec Unchanged files section lists EquipmentTable as unchanged)."}
