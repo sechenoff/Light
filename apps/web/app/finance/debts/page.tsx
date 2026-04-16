@@ -4,16 +4,10 @@ import React, { useEffect, useState } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
 import { formatRub } from "../../../src/lib/format";
+import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import type { UserRole } from "../../../src/lib/auth";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
-
-const PAYMENT_STATUS_LABELS: Record<string, string> = {
-  PAID: "Оплачено",
-  PARTIALLY_PAID: "Частично оплачено",
-  NOT_PAID: "Не оплачено",
-  OVERDUE: "Просрочено",
-};
 
 interface DebtProject {
   bookingId: string;
@@ -44,178 +38,287 @@ interface DebtsResponse {
   };
 }
 
-function agingBucket(daysOverdue: number | null): "0-7" | "8-30" | "30+" {
-  if (!daysOverdue || daysOverdue <= 0) return "0-7";
-  if (daysOverdue <= 7) return "0-7";
-  if (daysOverdue <= 30) return "8-30";
-  return "30+";
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+type AgingBucket = "overdue30" | "overdue7" | "soon" | "current";
+
+function getAgingBucket(maxDaysOverdue: number, projects: DebtProject[]): AgingBucket {
+  if (maxDaysOverdue > 30) return "overdue30";
+  if (maxDaysOverdue > 0) return "overdue7";
+  // Check if any project has payment due within 7 days
+  const now = Date.now();
+  for (const p of projects) {
+    if (!p.expectedPaymentDate) continue;
+    const diff = Math.ceil((new Date(p.expectedPaymentDate).getTime() - now) / 86400000);
+    if (diff >= 0 && diff <= 7) return "soon";
+  }
+  return "current";
 }
 
-function computeBuckets(debts: ClientDebt[]) {
-  const buckets: Record<"0-7" | "8-30" | "30+", { count: number; total: number }> = {
-    "0-7": { count: 0, total: 0 },
-    "8-30": { count: 0, total: 0 },
-    "30+": { count: 0, total: 0 },
-  };
-  for (const d of debts) {
-    const bucket = agingBucket(d.maxDaysOverdue);
-    buckets[bucket].count += d.bookingsCount;
-    buckets[bucket].total += Number(d.totalOutstanding);
+function agePillFromDays(days: number | null, projects: DebtProject[]) {
+  if (days !== null && days > 30)
+    return { label: `${days} дней`, cls: "bg-rose-soft text-rose border border-rose-border" };
+  if (days !== null && days > 0)
+    return { label: `${days} дней`, cls: "bg-rose-soft text-rose border border-rose-border" };
+  const now = Date.now();
+  for (const p of projects) {
+    if (!p.expectedPaymentDate) continue;
+    const diff = Math.ceil((new Date(p.expectedPaymentDate).getTime() - now) / 86400000);
+    if (diff >= 0 && diff <= 7)
+      return { label: `Через ${diff} дн.`, cls: "bg-amber-soft text-amber border border-amber-border" };
   }
-  return buckets;
+  return { label: "По графику", cls: "bg-emerald-soft text-emerald border border-emerald-border" };
 }
+
+function formatPayDate(dateStr: string | null): string {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+}
+
+function computeAgingCounts(debts: ClientDebt[]) {
+  const counts = { overdue30: 0, overdue7: 0, soon: 0, current: 0 };
+  const totals = { overdue30: 0, overdue7: 0, soon: 0, current: 0 };
+  for (const d of debts) {
+    const bucket = getAgingBucket(d.maxDaysOverdue, d.projects);
+    counts[bucket]++;
+    totals[bucket] += Number(d.totalOutstanding);
+  }
+  return { counts, totals };
+}
+
+const STRIPE_CLASSES: Record<AgingBucket, string> = {
+  overdue30: "border-l-rose",
+  overdue7: "border-l-[#f87171]",
+  soon: "border-l-amber",
+  current: "border-l-emerald",
+};
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function DebtsPage() {
   const { authorized, loading } = useRequireRole(ALLOWED);
   const [data, setData] = useState<DebtsResponse | null>(null);
-  const [overdueOnly, setOverdueOnly] = useState(false);
-  const [minAmount, setMinAmount] = useState("");
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState<"all" | AgingBucket>("all");
   const [fetching, setFetching] = useState(false);
 
-  const fetchDebts = () => {
+  useEffect(() => {
     if (!authorized) return;
+    let cancelled = false;
     setFetching(true);
-    const params = new URLSearchParams();
-    if (overdueOnly) params.set("overdueOnly", "true");
-    if (minAmount && Number(minAmount) > 0) params.set("minAmount", minAmount);
-    apiFetch<DebtsResponse>(`/api/finance/debts?${params}`)
-      .then(setData)
-      .finally(() => setFetching(false));
-  };
-
-  useEffect(() => { fetchDebts(); }, [authorized, overdueOnly, minAmount]);
-
-  const toggleExpanded = (id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
+    apiFetch<DebtsResponse>("/api/finance/debts")
+      .then((d) => { if (!cancelled) setData(d); })
+      .finally(() => { if (!cancelled) setFetching(false); });
+    return () => { cancelled = true; };
+  }, [authorized]);
 
   if (loading || !authorized) return null;
   if (!data && fetching) return <div className="p-8 text-ink-3 text-sm">Загрузка…</div>;
 
-  const buckets = data ? computeBuckets(data.debts) : null;
+  const { counts, totals } = data ? computeAgingCounts(data.debts) : { counts: { overdue30: 0, overdue7: 0, soon: 0, current: 0 }, totals: { overdue30: 0, overdue7: 0, soon: 0, current: 0 } };
+
+  const overdueCount = (counts.overdue30 ?? 0) + (counts.overdue7 ?? 0);
+
+  // Filter + search
+  const filtered = (data?.debts ?? []).filter((d) => {
+    const bucket = getAgingBucket(d.maxDaysOverdue, d.projects);
+    const matchFilter = activeFilter === "all" || bucket === activeFilter;
+    const q = search.toLowerCase();
+    const matchSearch =
+      !q ||
+      d.clientName.toLowerCase().includes(q) ||
+      d.projects.some((p) => p.projectName.toLowerCase().includes(q));
+    return matchFilter && matchSearch;
+  });
+
+  const debtCount = data?.summary.totalClients ?? data?.debts.length ?? 0;
 
   return (
-    <div className="space-y-6 pb-10">
-      {/* Header */}
-      <div>
-        <p className="eyebrow">Финансы</p>
-        <h1 className="text-2xl font-semibold text-ink mt-1">Дебиторская задолженность</h1>
-      </div>
+    <div className="pb-10">
+      <FinanceTabNav debtCount={debtCount} />
 
-      {/* Aging buckets */}
-      {buckets && (
-        <div className="grid grid-cols-3 gap-3">
-          {(["0-7", "8-30", "30+"] as const).map((key) => (
-            <div key={key} className="bg-surface border border-border rounded-lg p-4 shadow-xs">
-              <p className="eyebrow">{key} дней</p>
-              <p className="mono-num text-xl mt-1 text-ink">{formatRub(buckets[key].total)}</p>
-              <p className="text-xs text-ink-3 mt-0.5">{buckets[key].count} брон.</p>
-            </div>
-          ))}
+      <div className="px-7 py-5">
+        {/* Header */}
+        <div className="flex justify-between items-end mb-4 pb-3.5 border-b border-border">
+          <div>
+            <h1 className="text-[22px] font-semibold text-ink tracking-tight">Должники</h1>
+            <p className="text-xs text-ink-2 mt-0.5">
+              Итого задолженность:{" "}
+              <strong className="mono-num text-rose">{data ? formatRub(data.summary.totalOutstanding) : "—"}</strong>
+              {" · "}{debtCount} клиентов
+              {" · "}{overdueCount} с просрочкой
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button className="px-3.5 py-1.5 text-xs font-medium border border-border-strong bg-surface rounded hover:bg-surface-subtle">
+              Экспорт в XLSX
+            </button>
+            <button className="px-3.5 py-1.5 text-xs font-medium bg-accent text-white rounded border border-accent hover:bg-accent-bright">
+              Отправить напоминания ({overdueCount})
+            </button>
+          </div>
         </div>
-      )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-4 items-center">
-        <label className="flex items-center gap-2 text-sm text-ink-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={overdueOnly}
-            onChange={(e) => setOverdueOnly(e.target.checked)}
-            className="rounded border-border"
-          />
-          Только просроченные
-        </label>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-ink-2">Минимальная сумма:</span>
-          <input
-            type="number"
-            value={minAmount}
-            onChange={(e) => setMinAmount(e.target.value)}
-            placeholder="0"
-            className="border border-border rounded px-2 py-1 text-sm w-32 bg-surface text-ink"
-          />
+        {/* Aging buckets */}
+        <div className="grid grid-cols-4 gap-px mb-5 bg-border border border-border rounded-[6px] overflow-hidden">
+          <div className="bg-rose-soft px-4 py-3.5">
+            <p className="eyebrow text-rose mb-1.5">Просрочка &gt; 30 дней</p>
+            <p className="mono-num text-[16px] font-semibold text-rose">{formatRub(totals.overdue30)}</p>
+            <p className="text-[11.5px] text-ink-2 mt-0.5">{counts.overdue30} клиент</p>
+          </div>
+          <div className="bg-[#fff4f4] px-4 py-3.5">
+            <p className="eyebrow text-ink-3 mb-1.5">Просрочка 1–30 дней</p>
+            <p className="mono-num text-[16px] font-semibold text-ink">{formatRub(totals.overdue7)}</p>
+            <p className="text-[11.5px] text-ink-2 mt-0.5">{counts.overdue7} клиентов</p>
+          </div>
+          <div className="bg-amber-soft px-4 py-3.5">
+            <p className="eyebrow text-amber mb-1.5">Срок через 1–7 дней</p>
+            <p className="mono-num text-[16px] font-semibold text-ink">{formatRub(totals.soon)}</p>
+            <p className="text-[11.5px] text-ink-2 mt-0.5">{counts.soon} клиентов</p>
+          </div>
+          <div className="bg-surface px-4 py-3.5">
+            <p className="eyebrow text-ink-2 mb-1.5">В пределах графика</p>
+            <p className="mono-num text-[16px] font-semibold text-ink">{formatRub(totals.current)}</p>
+            <p className="text-[11.5px] text-ink-2 mt-0.5">{counts.current} клиентов</p>
+          </div>
         </div>
-      </div>
 
-      {/* Table */}
-      {data && (
-        <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
-          <table className="w-full text-sm">
+        {/* Table panel */}
+        <div className="bg-surface border border-border rounded-[6px] overflow-hidden shadow-xs">
+          {/* Filter bar */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-surface-subtle flex-wrap">
+            {([
+              { key: "all", label: "Все", count: data?.debts.length ?? 0 },
+              { key: "overdue30", label: "Просрочка 30+", count: counts.overdue30, cls: "border-rose-border text-rose" },
+              { key: "overdue7", label: "Просрочка", count: counts.overdue7, cls: "border-rose-border text-rose" },
+              { key: "soon", label: "Скоро", count: counts.soon, cls: "border-amber-border text-amber" },
+              { key: "current", label: "По графику", count: counts.current },
+            ] as { key: string; label: string; count: number; cls?: string }[]).map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setActiveFilter(f.key as "all" | AgingBucket)}
+                className={`border rounded-full px-3 py-1 text-[11.5px] font-medium transition-colors ${
+                  activeFilter === f.key
+                    ? "bg-accent text-white border-accent"
+                    : `bg-surface ${f.cls ?? "border-border text-ink-2"} hover:bg-surface-subtle`
+                }`}
+              >
+                {f.label}{" "}
+                <span className="opacity-70 mono-num">{f.count}</span>
+              </button>
+            ))}
+            <div className="flex-1" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск по клиенту или броне"
+              className="bg-surface border border-border rounded px-2.5 py-1 text-xs text-ink-2 min-w-[180px]"
+            />
+            <button className="border border-border bg-transparent rounded px-2 py-1 text-xs text-ink-2 hover:bg-surface-subtle">
+              ⇅ Сортировка
+            </button>
+          </div>
+
+          {/* Table */}
+          <table className="w-full text-[12.5px] border-collapse">
             <thead>
-              <tr className="border-b border-border bg-surface-subtle">
-                <th className="text-left px-4 py-3 text-ink-2 font-medium">Клиент</th>
-                <th className="text-right px-4 py-3 text-ink-2 font-medium">Долг</th>
-                <th className="text-right px-4 py-3 text-ink-2 font-medium">Макс. просрочка</th>
-                <th className="text-right px-4 py-3 text-ink-2 font-medium">Брони</th>
-                <th className="w-8" />
+              <tr>
+                <th className="w-1 p-0" />
+                <th className="text-left px-3.5 py-2.5 bg-surface-subtle border-b border-border eyebrow" style={{ width: "28%" }}>Клиент</th>
+                <th className="text-left px-3.5 py-2.5 bg-surface-subtle border-b border-border eyebrow">Бронь</th>
+                <th className="text-right px-3.5 py-2.5 bg-surface-subtle border-b border-border eyebrow">Должен</th>
+                <th className="px-3.5 py-2.5 bg-surface-subtle border-b border-border eyebrow" style={{ width: "15%" }}>Срок оплаты</th>
+                <th className="px-3.5 py-2.5 bg-surface-subtle border-b border-border eyebrow" style={{ width: "15%" }}>Статус</th>
+                <th className="text-right px-3.5 py-2.5 bg-surface-subtle border-b border-border eyebrow" style={{ width: "14%" }}>Действия</th>
               </tr>
             </thead>
             <tbody>
-              {data.debts.map((d) => (
-                <React.Fragment key={d.clientId}>
-                  <tr
-                    className="border-b border-border hover:bg-surface-subtle cursor-pointer"
-                    onClick={() => toggleExpanded(d.clientId)}
-                  >
-                    <td className="px-4 py-3 font-medium text-ink">{d.clientName}</td>
-                    <td className="px-4 py-3 text-right mono-num text-ink font-medium">
-                      {formatRub(d.totalOutstanding)}
+              {filtered.map((d) => {
+                const bucket = getAgingBucket(d.maxDaysOverdue, d.projects);
+                const pill = agePillFromDays(d.maxDaysOverdue, d.projects);
+                const isOverdue = bucket === "overdue30" || bucket === "overdue7";
+                const isSoon = bucket === "soon";
+                const firstProject = d.projects[0];
+                const payDate = firstProject?.expectedPaymentDate ?? null;
+
+                return (
+                  <tr key={d.clientId} className="border-b border-border hover:bg-surface-subtle cursor-pointer">
+                    <td className={`w-1 p-0 border-l-[3px] ${STRIPE_CLASSES[bucket]}`} />
+                    <td className="px-3.5 py-3 align-middle">
+                      <p className="font-medium text-ink">{d.clientName}</p>
+                      <p className="text-[11px] text-ink-2 mt-0.5">
+                        {d.bookingsCount} {d.bookingsCount === 1 ? "бронь" : "броней"}
+                      </p>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      {d.maxDaysOverdue > 0 ? (
-                        <span className="text-rose">{d.maxDaysOverdue} дн.</span>
+                    <td className="px-3.5 py-3 align-middle">
+                      {firstProject ? (
+                        <>
+                          <p className="text-ink">{firstProject.projectName}</p>
+                          {d.projects.length > 1 && (
+                            <p className="text-[11px] text-ink-2 mt-0.5">+{d.projects.length - 1} ещё</p>
+                          )}
+                        </>
                       ) : (
                         <span className="text-ink-3">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-ink-2">{d.bookingsCount}</td>
-                    <td className="px-4 py-3 text-center text-ink-3">
-                      {expanded.has(d.clientId) ? "▲" : "▼"}
+                    <td className={`px-3.5 py-3 text-right mono-num font-semibold align-middle ${isOverdue ? "text-rose" : isSoon ? "text-amber" : "text-ink"}`}>
+                      {formatRub(d.totalOutstanding)}
+                    </td>
+                    <td className="px-3.5 py-3 align-middle mono-num text-ink-2">
+                      {formatPayDate(payDate)}
+                    </td>
+                    <td className="px-3.5 py-3 align-middle">
+                      <span
+                        className={`text-[10.5px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-[0.04em] ${pill.cls}`}
+                        style={{ fontFamily: "IBM Plex Sans Condensed, sans-serif" }}
+                      >
+                        {pill.label}
+                      </span>
+                    </td>
+                    <td className="px-3.5 py-3 text-right align-middle">
+                      <div className="flex gap-1.5 justify-end">
+                        {isOverdue && (
+                          <>
+                            <button aria-label="Отправить напоминание" className="w-[26px] h-[26px] rounded border border-border bg-surface flex items-center justify-center text-ink-2 hover:bg-surface-subtle text-sm">
+                              ✉
+                            </button>
+                            <button aria-label="Позвонить" className="w-[26px] h-[26px] rounded border border-border bg-surface flex items-center justify-center text-ink-2 hover:bg-surface-subtle text-sm">
+                              ☎
+                            </button>
+                          </>
+                        )}
+                        <a
+                          href={`/bookings?clientId=${d.clientId}`}
+                          aria-label="Открыть"
+                          className="w-[26px] h-[26px] rounded border border-border bg-surface flex items-center justify-center text-ink-2 hover:bg-surface-subtle text-sm font-medium"
+                        >
+                          ›
+                        </a>
+                      </div>
                     </td>
                   </tr>
-                  {expanded.has(d.clientId) && d.projects.map((p) => (
-                    <tr key={p.bookingId} className="bg-surface-subtle border-b border-border">
-                      <td className="px-8 py-2 text-ink-2 text-xs">{p.projectName}</td>
-                      <td className="px-4 py-2 text-right mono-num text-xs text-ink-2">
-                        {formatRub(p.amountOutstanding)}
-                      </td>
-                      <td className="px-4 py-2 text-right text-xs">
-                        {p.daysOverdue !== null && p.daysOverdue > 0 ? (
-                          <span className="text-rose">{p.daysOverdue} дн.</span>
-                        ) : (
-                          <span className="text-ink-3">—</span>
-                        )}
-                      </td>
-                      <td colSpan={2} className="px-4 py-2 text-xs text-ink-3">
-                        {PAYMENT_STATUS_LABELS[p.paymentStatus] ?? p.paymentStatus}
-                      </td>
-                    </tr>
-                  ))}
-                </React.Fragment>
-              ))}
-              {data.debts.length === 0 && (
+                );
+              })}
+              {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-ink-3 text-sm">
-                    Нет задолженностей
+                  <td colSpan={7} className="px-4 py-8 text-center text-ink-3 text-sm">
+                    {data?.debts.length === 0 ? "Нет задолженностей" : "Нет результатов по фильтру"}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-          {data.summary && (
-            <div className="px-4 py-3 border-t border-border bg-surface-subtle flex justify-between text-sm">
-              <span className="text-ink-2">{data.summary.totalClients} клиентов</span>
+
+          {data?.summary && (
+            <div className="px-4 py-3 border-t border-border bg-surface-subtle flex justify-between text-xs text-ink-2">
+              <span>{data.summary.totalClients} клиентов</span>
               <span className="mono-num font-medium text-ink">{formatRub(data.summary.totalOutstanding)}</span>
             </div>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
