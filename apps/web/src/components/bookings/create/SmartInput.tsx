@@ -30,7 +30,7 @@ export function SmartInput({ value, onValueChange, onParse, onClear, parsing, pa
         className={`w-full resize-y rounded border px-3 py-2 pr-28 text-[13px] outline-none transition-colors ${
           parsed
             ? "border-border bg-surface-muted text-ink-3"
-            : "border-border bg-surface focus:border-accent-bright focus:shadow-[0_0_0_3px_rgba(29,78,216,0.08)]"
+            : "border-border bg-surface focus:border-accent-bright focus:shadow-[0_0_0_3px_theme(colors.accent.soft)]"
         } min-h-[40px] max-h-[140px]`}
       />
 

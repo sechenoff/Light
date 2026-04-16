@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { SmartInput } from "./SmartInput";
 import { AiResultBanner } from "./AiResultBanner";
 import { CatalogList } from "./CatalogList";
-import type { AvailabilityRow, CatalogSelectedItem, OffCatalogItem } from "./types";
+import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, OffCatalogItem } from "./types";
 import { formatMoneyRub, pluralize } from "../../../lib/format";
 
 type Props = {
@@ -42,6 +42,7 @@ type Props = {
   onActiveTabChange: (t: string) => void;
 
   shifts: number;
+  adjustments: Map<string, CatalogRowAdjustment>;
 };
 
 export function EquipmentCard({
@@ -72,6 +73,7 @@ export function EquipmentCard({
   activeTab,
   onActiveTabChange,
   shifts,
+  adjustments,
 }: Props) {
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -103,7 +105,7 @@ export function EquipmentCard({
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-surface">
+      <div className="sticky top-12 z-10 bg-surface">
         <div className="flex items-center justify-between px-5 pb-3 pt-4">
           <h2 className="text-[15px] font-semibold">Оборудование</h2>
           <div className="font-mono text-[12px] text-ink-2">
@@ -162,6 +164,7 @@ export function EquipmentCard({
           offCatalogItems={offCatalogItems}
           activeTab={activeTab}
           searchQuery={isAi ? "" : searchQuery}
+          adjustments={adjustments}
           onAdd={onAdd}
           onChangeQty={onChangeQty}
           onRemove={onRemove}

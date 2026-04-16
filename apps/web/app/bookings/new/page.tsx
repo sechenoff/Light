@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -23,6 +23,7 @@ import { CommentCard } from "../../../src/components/bookings/create/CommentCard
 import { SummaryPanel } from "../../../src/components/bookings/create/SummaryPanel";
 import type {
   AvailabilityRow,
+  CatalogRowAdjustment,
   CatalogSelectedItem,
   OffCatalogItem,
   GafferReviewApiResponse,
@@ -68,7 +69,10 @@ function BookingNewPage() {
   const [catalog, setCatalog] = useState<AvailabilityRow[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [selected, setSelected] = useState<Map<string, CatalogSelectedItem>>(new Map());
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
   const [offCatalogItems, setOffCatalogItems] = useState<OffCatalogItem[]>([]);
+  const [adjustments, setAdjustments] = useState<Map<string, CatalogRowAdjustment>>(new Map());
 
   // Search + tabs
   const [searchQuery, setSearchQuery] = useState("");
@@ -98,24 +102,36 @@ function BookingNewPage() {
       .then((res) => {
         if (cancelled) return;
         setCatalog(res.rows);
+        // Compute adjustments and next selected state together (H1/H2)
+        // selectedRef holds the current selected snapshot captured below.
+        const newAdj = new Map<string, CatalogRowAdjustment>();
+        const newSelectedEntries: Array<[string, CatalogSelectedItem]> = [];
+        const toDelete: string[] = [];
+        // NOTE: selectedRef.current is updated synchronously before each render via the ref below
+        for (const [id, sel] of selectedRef.current) {
+          const latest = res.rows.find((r) => r.equipmentId === id);
+          if (!latest) {
+            toDelete.push(id);
+            continue;
+          }
+          const newAvail = Math.max(0, latest.availableQuantity);
+          if (newAvail === 0) {
+            newSelectedEntries.push([id, { ...sel, availableQuantity: 0, dailyPrice: latest.rentalRatePerShift }]);
+            newAdj.set(id, { kind: "unavailable" });
+          } else if (newAvail < sel.quantity) {
+            newSelectedEntries.push([id, { ...sel, quantity: newAvail, availableQuantity: newAvail, dailyPrice: latest.rentalRatePerShift }]);
+            newAdj.set(id, { kind: "clampedDown", previousQty: sel.quantity, newQty: newAvail });
+          } else {
+            newSelectedEntries.push([id, { ...sel, availableQuantity: newAvail, dailyPrice: latest.rentalRatePerShift }]);
+          }
+        }
         setSelected((prev) => {
           const next = new Map(prev);
-          for (const [id, sel] of prev) {
-            const latest = res.rows.find((r) => r.equipmentId === id);
-            if (!latest) {
-              next.delete(id);
-              continue;
-            }
-            const clamped = Math.min(sel.quantity, Math.max(0, latest.availableQuantity));
-            next.set(id, {
-              ...sel,
-              quantity: clamped === 0 ? sel.quantity : clamped,
-              availableQuantity: latest.availableQuantity,
-              dailyPrice: latest.rentalRatePerShift,
-            });
-          }
+          for (const id of toDelete) next.delete(id);
+          for (const [id, v] of newSelectedEntries) next.set(id, v);
           return next;
         });
+        setAdjustments(newAdj);
       })
       .catch(() => {
         if (!cancelled) setCatalog([]);
@@ -129,13 +145,8 @@ function BookingNewPage() {
   }, [pickupISO, returnISO]);
 
   // ── Derived ──
-  const apiItems = useMemo(() => {
-    const cat = Array.from(selected.values()).map((s) => ({ equipmentId: s.equipmentId, quantity: s.quantity }));
-    const off = offCatalogItems.map((o) => ({ name: o.name, quantity: o.quantity }));
-    return [...cat, ...off];
-  }, [selected, offCatalogItems]);
-
-  const resolvedItemsForQuote = useMemo(
+  // C1: only catalog items go to the API (backend schema requires equipmentId)
+  const apiItems = useMemo(
     () => Array.from(selected.values()).map((s) => ({ equipmentId: s.equipmentId, quantity: s.quantity })),
     [selected],
   );
@@ -170,7 +181,7 @@ function BookingNewPage() {
 
   // ── Debounced quote ──
   useEffect(() => {
-    if (!clientName.trim() || resolvedItemsForQuote.length === 0 || !pickupISO || !returnISO) {
+    if (!clientName.trim() || apiItems.length === 0 || !pickupISO || !returnISO) {
       setQuote(null);
       return;
     }
@@ -184,7 +195,7 @@ function BookingNewPage() {
           startDate: pickupISO,
           endDate: returnISO,
           discountPercent: discountPercent || 0,
-          items: resolvedItemsForQuote,
+          items: apiItems,
         };
         const data = await apiFetch<QuoteResponse>("/api/bookings/quote", { method: "POST", body: JSON.stringify(body) });
         if (!cancelled) setQuote(data);
@@ -198,7 +209,7 @@ function BookingNewPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [clientName, projectName, pickupISO, returnISO, discountPercent, resolvedItemsForQuote]);
+  }, [clientName, projectName, pickupISO, returnISO, discountPercent, apiItems]);
 
   // ── Date handlers ──
   function handlePickupChange(v: string) {
@@ -239,7 +250,17 @@ function BookingNewPage() {
     });
   }
 
+  function clearAdjustment(equipmentId: string) {
+    setAdjustments((prev) => {
+      if (!prev.has(equipmentId)) return prev;
+      const next = new Map(prev);
+      next.delete(equipmentId);
+      return next;
+    });
+  }
+
   function handleChangeQty(equipmentId: string, newQty: number) {
+    clearAdjustment(equipmentId);
     setSelected((prev) => {
       const next = new Map(prev);
       const existing = next.get(equipmentId);
@@ -255,6 +276,7 @@ function BookingNewPage() {
   }
 
   function handleRemove(equipmentId: string) {
+    clearAdjustment(equipmentId);
     setSelected((prev) => {
       const next = new Map(prev);
       next.delete(equipmentId);
@@ -371,18 +393,26 @@ function BookingNewPage() {
   async function saveDraft(): Promise<string | null> {
     setSubmitting(true);
     try {
+      // C1: off-catalog items appended to comment — backend doesn't accept items without equipmentId
+      const offCatalogSuffix =
+        offCatalogItems.length > 0
+          ? "\n\nВне каталога:\n" + offCatalogItems.map((o) => `— ${o.name} × ${o.quantity}`).join("\n")
+          : "";
+      const finalComment = (bookingComment.trim() + offCatalogSuffix).trim() || undefined;
+
       const body = {
         client: { name: clientName.trim() },
         projectName: projectName.trim() || "Проект",
         startDate: pickupISO,
         endDate: returnISO,
         discountPercent: discountPercent || 0,
-        comment: bookingComment.trim() || undefined,
+        comment: finalComment,
         items: apiItems,
       };
-      const res = await apiFetch<{ id: string }>("/api/bookings/draft", { method: "POST", body: JSON.stringify(body) });
+      // C2: response shape is { booking: { id } }, not { id }
+      const res = await apiFetch<{ booking: { id: string } }>("/api/bookings/draft", { method: "POST", body: JSON.stringify(body) });
       toast.success("Черновик сохранён");
-      return res.id;
+      return res.booking.id;
     } catch (err: unknown) {
       toast.error((err as { message?: string })?.message ?? "Ошибка сохранения");
       return null;
@@ -440,6 +470,7 @@ function BookingNewPage() {
             catalogLoading={catalogLoading}
             selected={selected}
             offCatalogItems={offCatalogItems}
+            adjustments={adjustments}
             gafferText={gafferText}
             onGafferTextChange={setGafferText}
             parsing={parsing}
