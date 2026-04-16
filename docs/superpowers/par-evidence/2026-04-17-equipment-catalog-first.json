@@ -1,0 +1,17 @@
+{
+  "sprint": "catalog-first-redesign",
+  "branch": "feat/equipment-catalog-first",
+  "claude_product": "NEEDS_FIXES -> ACCEPTED (after fix commit 8559b1b)",
+  "technical_review": "REQUEST_CHANGES -> APPROVE (after fix commit 8559b1b)",
+  "provider": "split-focus (two Claude agents, no secondary)",
+  "fixes_applied": {
+    "C1_off_catalog_zod_reject": "off-catalog items now appended to booking.comment instead of items[]",
+    "C2_response_shape": "saveDraft reads res.booking.id",
+    "H1_silent_qty_corruption": "wired CatalogRowAdjustment through prop chain, computed on date-change",
+    "H2_dead_adjustment_code": "same fix as H1 — adjustment prop now flows EquipmentCard -> CatalogList -> CatalogRow",
+    "H3_hardcoded_rgba": "replaced with theme(colors.accent.soft)",
+    "H4_sticky_overlap": "EquipmentCard inner header uses top-12 to clear breadcrumb"
+  },
+  "tests": "79/79 web, 420/420 api, production build OK",
+  "ts": "2026-04-17T01:10:00Z"
+}
