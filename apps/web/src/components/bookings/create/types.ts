@@ -104,3 +104,26 @@ export type ParseResultCounts = {
 
 /** Equipment input mode switcher */
 export type InputMode = "ai" | "catalog";
+
+/** Catalog-first selection state (in catalog) */
+export type CatalogSelectedItem = {
+  equipmentId: string;
+  name: string;
+  category: string;
+  quantity: number;
+  dailyPrice: string;       // Decimal string from API
+  availableQuantity: number; // latest availability from catalog fetch
+};
+
+/** Off-catalog item (AI-unmatched that user kept, or free-text add) */
+export type OffCatalogItem = {
+  tempId: string;  // client-generated uuid
+  name: string;
+  quantity: number;
+};
+
+/** Ephemeral flags for catalog rows after date change */
+export type CatalogRowAdjustment =
+  | { kind: "ok" }
+  | { kind: "clampedDown"; previousQty: number; newQty: number }
+  | { kind: "unavailable" };
