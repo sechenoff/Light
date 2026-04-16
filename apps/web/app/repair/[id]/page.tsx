@@ -140,13 +140,13 @@ function CloseWithExpenseModal({
         <div className="flex gap-3 justify-end">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm text-ink-2 border border-border rounded-lg hover:bg-surface-2 transition-colors"
+            className="px-4 py-2 text-sm text-ink-2 border border-border rounded-lg hover:bg-surface-muted transition-colors"
           >
             Отмена
           </button>
           <button
             onClick={() => onSkip()}
-            className="px-4 py-2 text-sm text-ink-2 border border-border rounded-lg hover:bg-surface-2 transition-colors"
+            className="px-4 py-2 text-sm text-ink-2 border border-border rounded-lg hover:bg-surface-muted transition-colors"
           >
             Закрыть без расхода
           </button>
@@ -335,7 +335,7 @@ export default function RepairDetailPage() {
   const canAddWorkLog = isActive && ((isTechnician && isAssignedToMe) || isSuperAdmin);
 
   return (
-    <div className="min-h-screen bg-surface-2">
+    <div className="min-h-screen bg-surface-muted">
       {/* Тёмная шапка */}
       <div className="bg-[#0f172a] text-white px-4 py-4">
         <button
@@ -465,7 +465,7 @@ export default function RepairDetailPage() {
               <button
                 type="submit"
                 disabled={workLogSaving}
-                className="w-full h-9 border border-border text-ink-2 text-sm rounded-lg hover:bg-surface-2 disabled:opacity-50 transition-colors"
+                className="w-full h-9 border border-border text-ink-2 text-sm rounded-lg hover:bg-surface-muted disabled:opacity-50 transition-colors"
               >
                 {workLogSaving ? "Сохранение…" : "+ Добавить запись"}
               </button>
@@ -535,7 +535,7 @@ export default function RepairDetailPage() {
               <button
                 onClick={() => handleStatusChange("IN_REPAIR")}
                 disabled={actionLoading}
-                className="flex-1 min-w-[140px] h-11 border border-border text-ink text-sm font-medium rounded-lg hover:bg-surface-2 disabled:opacity-50 transition-colors"
+                className="flex-1 min-w-[140px] h-11 border border-border text-ink text-sm font-medium rounded-lg hover:bg-surface-muted disabled:opacity-50 transition-colors"
               >
                 Снова в работу
               </button>
@@ -583,7 +583,7 @@ export default function RepairDetailPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowWriteOffConfirm(false)}
-                className="flex-1 h-11 border border-border text-ink-2 text-sm rounded-lg hover:bg-surface-2 transition-colors"
+                className="flex-1 h-11 border border-border text-ink-2 text-sm rounded-lg hover:bg-surface-muted transition-colors"
               >
                 Отмена
               </button>

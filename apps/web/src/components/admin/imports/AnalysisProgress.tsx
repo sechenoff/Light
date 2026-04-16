@@ -16,7 +16,7 @@ export function AnalysisProgress({ fileName }: Props) {
       {/* Спиннер */}
       <div className="mb-6 h-12 w-12 animate-spin rounded-full border-[3px] border-border border-t-accent" />
 
-      <div className="mb-1 text-base font-medium text-ink-1">Анализируем файл...</div>
+      <div className="mb-1 text-base font-medium text-ink">Анализируем файл...</div>
       <div className="mb-8 text-sm text-ink-3 truncate max-w-xs">{fileName}</div>
 
       <ul className="space-y-2 text-sm text-ink-2">

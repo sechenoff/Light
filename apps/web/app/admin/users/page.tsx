@@ -186,7 +186,7 @@ export default function AdminUsersPage() {
         <AdminTabNav />
         <div className="mt-6 space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 bg-surface-2 rounded animate-pulse" />
+            <div key={i} className="h-10 bg-surface-muted rounded animate-pulse" />
           ))}
         </div>
       </div>
@@ -271,7 +271,7 @@ export default function AdminUsersPage() {
           onSubmit={handleCreate}
           className="bg-surface rounded-lg border border-border overflow-hidden"
         >
-          <div className="px-4 py-3 bg-surface-2 border-b border-border">
+          <div className="px-4 py-3 bg-surface-muted border-b border-border">
             <span className="eyebrow">Новый пользователь</span>
           </div>
           <div className="p-4 space-y-3">
@@ -351,13 +351,13 @@ export default function AdminUsersPage() {
       {loadingUsers ? (
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-12 bg-surface-2 rounded-lg animate-pulse" />
+            <div key={i} className="h-12 bg-surface-muted rounded-lg animate-pulse" />
           ))}
         </div>
       ) : filtered.length > 0 ? (
         <div className="border border-border rounded-lg overflow-hidden shadow-xs">
           <table className="w-full text-sm">
-            <thead className="bg-surface-2">
+            <thead className="bg-surface-muted">
               <tr>
                 <th className="text-left px-4 py-2.5 eyebrow">Пользователь</th>
                 <th className="text-left px-4 py-2.5 eyebrow">Роль</th>
@@ -370,7 +370,7 @@ export default function AdminUsersPage() {
               {filtered.map((u) => {
                 const colors = roleColor(u.role);
                 return (
-                  <tr key={u.id} className="hover:bg-surface-2 transition-colors">
+                  <tr key={u.id} className="hover:bg-surface-muted transition-colors">
                     {/* Avatar + name */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">

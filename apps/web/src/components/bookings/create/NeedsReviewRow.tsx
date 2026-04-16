@@ -44,7 +44,7 @@ export function NeedsReviewRow({
 
         {/* Name + alias */}
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-ink-1">{interpretedName}</div>
+          <div className="truncate text-sm font-medium text-ink">{interpretedName}</div>
           <div className="truncate text-xs text-ink-3">{gafferPhrase}</div>
         </div>
 
@@ -54,13 +54,13 @@ export function NeedsReviewRow({
           min={1}
           value={quantity}
           onChange={(e) => onQuantityChange(itemId, Number(e.target.value))}
-          className="w-full rounded border border-border bg-surface px-2 py-1 text-sm text-ink-1 focus:border-accent focus:outline-none"
+          className="w-full rounded border border-border bg-surface px-2 py-1 text-sm text-ink focus:border-accent focus:outline-none"
         />
 
         {/* Unit price */}
         <div className="text-right text-sm">
           {unitPrice !== null ? (
-            <span className="mono-num text-ink-1">{formatMoneyRub(unitPrice)} ₽</span>
+            <span className="mono-num text-ink">{formatMoneyRub(unitPrice)} ₽</span>
           ) : (
             <span className="text-amber text-xs">— уточнить →</span>
           )}
@@ -69,7 +69,7 @@ export function NeedsReviewRow({
         {/* Line total */}
         <div className="text-right text-sm">
           {lineTotal !== null ? (
-            <span className="mono-num text-ink-1">{formatMoneyRub(lineTotal)} ₽</span>
+            <span className="mono-num text-ink">{formatMoneyRub(lineTotal)} ₽</span>
           ) : (
             <span className="text-ink-3">—</span>
           )}

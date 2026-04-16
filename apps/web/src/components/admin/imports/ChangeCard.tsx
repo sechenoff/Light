@@ -92,7 +92,7 @@ export function ChangeCard({ row, onAccept, onReject, onRebind }: Props) {
         {/* Основной контент */}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-medium text-ink-1">
+            <span className="truncate text-sm font-medium text-ink">
               {row.equipmentName ?? row.sourceName}
             </span>
             {deltaChip(row)}

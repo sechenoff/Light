@@ -8,11 +8,11 @@ const STATUS_BADGES: Record<string, { label: string; cls: string }> = {
   REVIEW:    { label: "На проверке", cls: "bg-accent-soft text-accent border-accent-border" },
   APPLYING:  { label: "Применяется", cls: "bg-amber-soft text-amber border-amber-border" },
   COMPLETED: { label: "Завершён",    cls: "bg-ok-soft text-ok border-emerald-border" },
-  EXPIRED:   { label: "Истёк",       cls: "bg-surface-2 text-ink-3 border-border" },
+  EXPIRED:   { label: "Истёк",       cls: "bg-surface-muted text-ink-3 border-border" },
 };
 
 function statusBadge(status: string) {
-  const entry = STATUS_BADGES[status] ?? { label: status, cls: "bg-surface-2 text-ink-3 border-border" };
+  const entry = STATUS_BADGES[status] ?? { label: status, cls: "bg-surface-muted text-ink-3 border-border" };
   return (
     <span className={`inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-medium ${entry.cls}`}>
       {entry.label}
@@ -52,7 +52,7 @@ export function SessionHistory({ sessions, onSelect }: Props) {
               key={s.id}
               type="button"
               onClick={() => onSelect(s)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-surface-2 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-surface-muted transition-colors"
             >
               {/* Icon */}
               <span className="shrink-0 text-base" aria-hidden="true">

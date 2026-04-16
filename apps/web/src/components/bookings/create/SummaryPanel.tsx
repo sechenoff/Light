@@ -62,7 +62,7 @@ export function SummaryPanel({
       {/* Big total */}
       <div>
         <div className="flex items-baseline gap-1">
-          <span className="font-mono text-[32px] font-semibold leading-none text-ink-1">
+          <span className="font-mono text-[32px] font-semibold leading-none text-ink">
             {bigTotalFormatted}
           </span>
           <span className="text-[18px] text-ink-3">₽</span>
@@ -76,7 +76,7 @@ export function SummaryPanel({
       <div className="flex flex-col gap-1 text-sm">
         <div className="flex justify-between">
           <span className="text-ink-2">Аренда</span>
-          <span className="mono-num text-ink-1">{formatMoneyRub(subtotal)} ₽</span>
+          <span className="mono-num text-ink">{formatMoneyRub(subtotal)} ₽</span>
         </div>
         {discPct > 0 && (
           <div className="flex justify-between">
@@ -85,8 +85,8 @@ export function SummaryPanel({
           </div>
         )}
         <div className="flex justify-between border-t border-border pt-1 font-semibold">
-          <span className="text-ink-1">Итого</span>
-          <span className="mono-num text-ink-1">{formatMoneyRub(total)} ₽</span>
+          <span className="text-ink">Итого</span>
+          <span className="mono-num text-ink">{formatMoneyRub(total)} ₽</span>
         </div>
       </div>
 
@@ -96,7 +96,7 @@ export function SummaryPanel({
           type="button"
           disabled={!canSubmit}
           onClick={onSubmitForApproval}
-          className="w-full rounded bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-ink-1 disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full rounded bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-ink disabled:cursor-not-allowed disabled:opacity-40"
         >
           Отправить на согласование →
         </button>
@@ -122,7 +122,7 @@ export function SummaryPanel({
                   {badge.symbol}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-ink-1">{check.label}</p>
+                  <p className="text-xs font-medium text-ink">{check.label}</p>
                   <p className="text-xs text-ink-3">{check.detail}</p>
                 </div>
               </li>

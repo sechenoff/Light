@@ -268,7 +268,7 @@ export default function BookingDetailPage() {
       ) : booking ? (
         <div className="mt-4">
           {booking.status === "DRAFT" && booking.rejectionReason && (
-            <div className="mb-4 rounded border-l-4 border-rose bg-rose-soft px-4 py-3 text-sm text-ink-1">
+            <div className="mb-4 rounded border-l-4 border-rose bg-rose-soft px-4 py-3 text-sm text-ink">
               <div className="eyebrow mb-1 text-rose">Отклонено руководителем</div>
               <div className="whitespace-pre-wrap">{booking.rejectionReason}</div>
               <div className="mt-2 text-xs text-ink-3">
@@ -278,7 +278,7 @@ export default function BookingDetailPage() {
           )}
 
           {booking.status === "PENDING_APPROVAL" && (
-            <div className="mb-4 rounded border border-amber bg-amber-soft px-4 py-2 text-sm text-ink-1">
+            <div className="mb-4 rounded border border-amber bg-amber-soft px-4 py-2 text-sm text-ink">
               Бронь на согласовании у руководителя — редактирование временно заблокировано.
             </div>
           )}

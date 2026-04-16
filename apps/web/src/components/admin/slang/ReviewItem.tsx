@@ -31,7 +31,7 @@ export function ReviewItem({ candidate, checked, onCheck, onApprove, onReject, o
   const hasEquipment = !!candidate.proposedEquipmentId;
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 hover:bg-surface-2 transition-colors">
+    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 hover:bg-surface-muted transition-colors">
       <input
         type="checkbox"
         checked={checked}

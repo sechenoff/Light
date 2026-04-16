@@ -68,14 +68,14 @@ export function DetailSidebar({ alias, onDelete, onRebind, onClose }: Props) {
           <button
             onClick={onClose}
             aria-label="Закрыть панель"
-            className="text-ink-3 hover:text-ink hover:bg-surface-2 w-6 h-6 rounded flex items-center justify-center text-lg leading-none"
+            className="text-ink-3 hover:text-ink hover:bg-surface-muted w-6 h-6 rounded flex items-center justify-center text-lg leading-none"
           >
             ×
           </button>
         </div>
 
         {/* Linked equipment */}
-        <div className="rounded-lg bg-surface-2 p-3 flex items-center gap-2.5">
+        <div className="rounded-lg bg-surface-muted p-3 flex items-center gap-2.5">
           <span className="text-ink-3">→</span>
           <div>
             <p className="text-sm font-medium text-ink">{alias.equipment.name}</p>
@@ -109,7 +109,7 @@ export function DetailSidebar({ alias, onDelete, onRebind, onClose }: Props) {
         <div className="flex flex-col gap-2 pt-4 border-t border-border">
           <button
             onClick={() => setShowRebind(true)}
-            className="w-full px-3 py-2 text-sm font-medium border border-border rounded-lg bg-surface hover:bg-surface-2 text-ink transition-colors"
+            className="w-full px-3 py-2 text-sm font-medium border border-border rounded-lg bg-surface hover:bg-surface-muted text-ink transition-colors"
           >
             Изменить связь
           </button>

@@ -36,7 +36,7 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
               "-mb-px px-3.5 py-2.5 text-sm border-b-2 transition-colors flex items-center gap-2",
               isActive
                 ? "text-ink font-medium border-b-2 border-ink bg-surface"
-                : "text-ink-2 border-transparent hover:text-ink hover:bg-surface-2",
+                : "text-ink-2 border-transparent hover:text-ink hover:bg-surface-muted",
             ].join(" ")}
           >
             {tab.label}
@@ -46,7 +46,7 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
                   "mono-num text-[10.5px] px-1.5 py-0.5 rounded-full",
                   isActive
                     ? "bg-accent-soft text-accent"
-                    : "bg-surface-2 text-ink-3",
+                    : "bg-surface-muted text-ink-3",
                 ].join(" ")}
               >
                 {tab.count}

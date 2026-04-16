@@ -71,7 +71,7 @@ export function EquipmentTable({
 
                 {/* Name + alias */}
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-ink-1">{match.catalogName}</div>
+                  <div className="truncate text-sm font-medium text-ink">{match.catalogName}</div>
                   <div className="truncate font-mono text-xs text-ink-3">
                     alias: «{item.gafferPhrase}»
                   </div>
@@ -83,18 +83,18 @@ export function EquipmentTable({
                   min={1}
                   value={item.quantity}
                   onChange={(e) => onQuantityChange(item.id, Number(e.target.value))}
-                  className="w-full rounded border border-border bg-surface px-2 py-1 text-sm text-ink-1 focus:border-accent focus:outline-none font-mono"
+                  className="w-full rounded border border-border bg-surface px-2 py-1 text-sm text-ink focus:border-accent focus:outline-none font-mono"
                   style={{ width: "60px" }}
                 />
 
                 {/* Unit price */}
                 <div className="text-right text-sm">
-                  <span className="mono-num text-ink-1">{formatMoneyRub(unitPrice)} ₽</span>
+                  <span className="mono-num text-ink">{formatMoneyRub(unitPrice)} ₽</span>
                 </div>
 
                 {/* Line total */}
                 <div className="text-right text-sm">
-                  <span className="mono-num text-ink-1">{formatMoneyRub(lineTotal)} ₽</span>
+                  <span className="mono-num text-ink">{formatMoneyRub(lineTotal)} ₽</span>
                 </div>
 
                 {/* Delete */}

@@ -72,7 +72,7 @@ export function DictionaryTable({ aliases, selectedId, onSelect, onExport }: Pro
                 className={[
                   "px-3 py-1.5 text-xs rounded cursor-pointer flex items-center gap-1.5 transition-colors",
                   active
-                    ? "bg-surface-2 text-ink font-medium shadow-xs"
+                    ? "bg-surface-muted text-ink font-medium shadow-xs"
                     : "text-ink-2 hover:text-ink",
                 ].join(" ")}
               >
@@ -80,7 +80,7 @@ export function DictionaryTable({ aliases, selectedId, onSelect, onExport }: Pro
                 {label}
                 <span
                   className={`mono-num text-[10px] px-1.5 py-0.5 rounded-full ${
-                    active ? "bg-accent-soft text-accent" : "bg-surface-2 text-ink-3"
+                    active ? "bg-accent-soft text-accent" : "bg-surface-muted text-ink-3"
                   }`}
                 >
                   {counts[key]}
@@ -109,7 +109,7 @@ export function DictionaryTable({ aliases, selectedId, onSelect, onExport }: Pro
 
       {/* Table */}
       <div className="bg-surface border border-border rounded-lg overflow-hidden">
-        <div className="grid gap-2 px-4 py-2 border-b border-border bg-surface-2 text-[10.5px] uppercase tracking-wider text-ink-3 font-semibold grid-cols-[3px_1.4fr_20px_1.2fr_80px_90px]">
+        <div className="grid gap-2 px-4 py-2 border-b border-border bg-surface-muted text-[10.5px] uppercase tracking-wider text-ink-3 font-semibold grid-cols-[3px_1.4fr_20px_1.2fr_80px_90px]">
           <span />
           <span>Фраза</span>
           <span />
