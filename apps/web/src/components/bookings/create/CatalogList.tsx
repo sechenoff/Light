@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { CatalogRow } from "./CatalogRow";
-import type { AvailabilityRow, CatalogSelectedItem, OffCatalogItem } from "./types";
+import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, OffCatalogItem } from "./types";
 
 type Props = {
   rows: AvailabilityRow[];
@@ -10,6 +10,7 @@ type Props = {
   offCatalogItems: OffCatalogItem[];
   activeTab: string; // "all" or category name
   searchQuery: string;
+  adjustments?: Map<string, CatalogRowAdjustment>;
   onAdd: (row: AvailabilityRow) => void;
   onChangeQty: (equipmentId: string, newQty: number) => void;
   onRemove: (equipmentId: string) => void;
@@ -23,6 +24,7 @@ export function CatalogList({
   offCatalogItems,
   activeTab,
   searchQuery,
+  adjustments,
   onAdd,
   onChangeQty,
   onRemove,
@@ -134,6 +136,7 @@ export function CatalogList({
                   key={row.equipmentId}
                   row={row}
                   selectedQty={sel?.quantity ?? 0}
+                  adjustment={adjustments?.get(row.equipmentId)}
                   onAdd={onAdd}
                   onChangeQty={onChangeQty}
                   onRemove={onRemove}
