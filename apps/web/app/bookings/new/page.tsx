@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { apiFetch } from "../../../src/lib/api";
-import { formatMoneyRub } from "../../../src/lib/format";
+import { formatMoneyRub, pluralize } from "../../../src/lib/format";
+import { toast } from "../../../src/components/ToastProvider";
 import {
   addHoursToDatetimeLocal,
   datetimeLocalToISO,
@@ -54,7 +55,7 @@ function BookingNewPage() {
   const [clientName, setClientName] = useState("");
   const [projectName, setProjectName] = useState("");
   const [bookingComment, setBookingComment] = useState("");
-  const [discountPercent, setDiscountPercent] = useState(50);
+  const [discountPercent, setDiscountPercent] = useState(0);
 
   const [pickupLocal, setPickupLocal] = useState(() =>
     pickupFromSearchParam(startParam, defaultPickupDatetimeLocal()),
@@ -75,7 +76,7 @@ function BookingNewPage() {
   }, [pickupISO, returnISO]);
 
   const shifts = rentalDuration?.shifts ?? 1;
-  const durationTag = rentalDuration ? `${shifts} ${shifts === 1 ? "смена" : shifts <= 4 ? "смены" : "смен"}` : null;
+  const durationTag = rentalDuration ? `${shifts} ${pluralize(shifts, "день", "дня", "дней")}` : null;
   const durationDetail = rentalDuration?.labelShort ?? null;
 
   // Equipment items — single source of truth
@@ -237,7 +238,7 @@ function BookingNewPage() {
   }
 
   function handleQuantityChange(itemId: string, qty: number) {
-    setItems((prev) => prev.map((it) => (it.id === itemId ? { ...it, quantity: qty } : it)));
+    setItems((prev) => prev.map((it) => (it.id === itemId ? { ...it, quantity: Math.max(1, qty) } : it)));
   }
 
   function handleDeleteItem(itemId: string) {
@@ -353,7 +354,7 @@ function BookingNewPage() {
       });
       router.push(`/bookings/${res.booking.id}`);
     } catch (err: any) {
-      alert(err?.message ?? "Ошибка сохранения");
+      toast.error(err?.message ?? "Ошибка сохранения");
     } finally {
       setSubmitting(false);
     }
@@ -382,7 +383,7 @@ function BookingNewPage() {
       });
       router.push(`/bookings/${res.booking.id}`);
     } catch (err: any) {
-      alert(err?.message ?? "Ошибка отправки");
+      toast.error(err?.message ?? "Ошибка отправки");
     } finally {
       setSubmitting(false);
     }
@@ -481,8 +482,19 @@ function BookingNewPage() {
               onSelectFromCatalog={handleSelectFromCatalog}
               searchCatalog={searchCatalog}
               onAddManual={handleAddManual}
-              onOpenCatalog={handleAddManual}
             />
+            {/* Discount */}
+            <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden mb-3.5 px-5 py-3 flex items-center gap-3">
+              <label className="text-[11.5px] text-ink-2 whitespace-nowrap">Скидка, %</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                className="w-20 rounded border border-border-strong px-2 py-1.5 text-[13.5px] text-ink bg-surface font-mono text-right focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
+                value={discountPercent}
+                onChange={(e) => setDiscountPercent(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+              />
+            </div>
             <CommentCard value={bookingComment} onChange={setBookingComment} />
           </div>
           <SummaryPanel
