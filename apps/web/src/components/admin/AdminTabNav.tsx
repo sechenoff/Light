@@ -21,6 +21,7 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
     { href: "/admin/slang", label: "🗣 Словарь сленга", count: counts?.slang },
     { href: "/admin/imports", label: "📑 Импорт прайсов", count: counts?.imports },
     { href: "/admin/settings", label: "⚙️ Настройки" },
+    { href: "/admin/more", label: "🔧 Ещё" },
   ];
 
   return (
