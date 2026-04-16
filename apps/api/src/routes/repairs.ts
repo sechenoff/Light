@@ -132,7 +132,7 @@ repairsRouter.get(
         include: {
           unit: {
             include: {
-              equipment: { select: { name: true, category: true } },
+              equipment: { select: { id: true, name: true, category: true } },
             },
           },
           sourceBooking: {
@@ -148,8 +148,53 @@ repairsRouter.get(
 
       const nextCursor = repairs.length === limit ? repairs[repairs.length - 1].id : null;
 
+      // Обогащение: ближайший конфликт по типу оборудования для активных ремонтов
+      const activeRepairs = repairs.filter(
+        (r) => r.status !== "CLOSED" && r.status !== "WROTE_OFF",
+      );
+      const equipmentIds = [...new Set(activeRepairs.map((r) => r.unit.equipment.id).filter(Boolean))];
+
+      const conflictItems = equipmentIds.length
+        ? await prisma.bookingItem.findMany({
+            where: {
+              equipmentId: { in: equipmentIds },
+              booking: {
+                status: { in: ["CONFIRMED", "PENDING_APPROVAL"] },
+                startDate: { gt: new Date() },
+              },
+            },
+            select: {
+              equipmentId: true,
+              booking: {
+                select: {
+                  startDate: true,
+                  client: { select: { name: true } },
+                },
+              },
+            },
+            orderBy: { booking: { startDate: "asc" } },
+          })
+        : [];
+
+      // Берём ближайшую бронь на каждый equipmentId
+      const conflictMap = new Map<string, { date: string; clientName: string }>();
+      for (const item of conflictItems) {
+        if (!conflictMap.has(item.equipmentId)) {
+          conflictMap.set(item.equipmentId, {
+            date: item.booking.startDate.toISOString(),
+            clientName: item.booking.client?.name ?? "",
+          });
+        }
+      }
+
       res.json({
-        repairs: repairs.map(serializeRepair),
+        repairs: repairs.map((r) => ({
+          ...serializeRepair(r),
+          nextConflict:
+            r.status !== "CLOSED" && r.status !== "WROTE_OFF"
+              ? (conflictMap.get(r.unit.equipment.id) ?? null)
+              : null,
+        })),
         nextCursor,
       });
     } catch (err) {
