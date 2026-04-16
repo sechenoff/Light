@@ -291,18 +291,24 @@ export default function PaymentsPage() {
   const [calendar, setCalendar] = useState<Record<string, CalendarDay>>({});
   const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchAll = async (cancelled: { v: boolean }) => {
     if (!authorized) return;
-    const monthStr = startOfMonth(month);
-    const endDate = endOfMonth(month);
-    const [cal, pay] = await Promise.all([
-      apiFetch<Record<string, CalendarDay>>(`/api/finance/payments-calendar?month=${monthStr}`),
-      apiFetch<PaymentsResponse>(`/api/payments?from=${monthStr}T00:00:00.000Z&to=${endDate.toISOString()}&limit=200`),
-    ]);
-    if (!cancelled.v) {
-      setCalendar(cal);
-      setPayments(pay.items);
+    try {
+      const monthStr = startOfMonth(month);
+      const endDate = endOfMonth(month);
+      const [cal, pay] = await Promise.all([
+        apiFetch<Record<string, CalendarDay>>(`/api/finance/payments-calendar?month=${monthStr}`),
+        apiFetch<PaymentsResponse>(`/api/payments?from=${monthStr}T00:00:00.000Z&to=${endDate.toISOString()}&limit=200`),
+      ]);
+      if (!cancelled.v) {
+        setCalendar(cal);
+        setPayments(pay.items);
+        setFetchError(null);
+      }
+    } catch (e) {
+      if (!cancelled.v) setFetchError(e instanceof Error ? e.message : "Ошибка загрузки");
     }
   };
 
@@ -324,6 +330,7 @@ export default function PaymentsPage() {
   const nextMonth = () => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1));
 
   if (loading || !authorized) return null;
+  if (fetchError) return <div className="p-8 text-rose text-sm">Ошибка: {fetchError}</div>;
 
   // Calendar grid
   const totalDays = daysInMonth(month);
