@@ -92,6 +92,7 @@ REQUIRED_FILES=(
   "apps/web/.next/server/middleware-manifest.json"
   "apps/web/.next/server/app-paths-manifest.json"
   "apps/web/.next/routes-manifest.json"
+  "apps/web/.next/server/app/_not-found/page.js"
 )
 for f in "${REQUIRED_FILES[@]}"; do
   if [ ! -f "$f" ]; then
@@ -101,6 +102,18 @@ for f in "${REQUIRED_FILES[@]}"; do
     exit 1
   fi
 done
+
+# Detect macOS/Finder duplicates (e.g. "app 2/", "chunks 2/") inside .next
+# — these are created by iCloud/Finder sync conflicts and cause chaos because
+# rsync copies both, but Next.js only looks at the canonical name. Spotting
+# this early prevents broken prod builds.
+DUPLICATES="$(find apps/web/.next -type d -regex '.*/[a-z0-9._-]+ [0-9]+' 2>/dev/null | head -3 || true)"
+if [ -n "$DUPLICATES" ]; then
+  red "ERROR: .next contains macOS duplicate directories (iCloud/Finder sync artifact):"
+  echo "$DUPLICATES" | while read -r d; do red "  $d"; done
+  red "Delete them: rm -rf 'apps/web/.next' 'apps/web/node_modules/.cache' && rerun deploy"
+  exit 1
+fi
 
 green "  ✓ build ok, BUILD_ID=$(cat apps/web/.next/BUILD_ID)"
 
@@ -183,8 +196,13 @@ REMOTE_SCRIPT
 
 # ── Rsync build artifacts ─────────────────────────────────────────────────────
 # Note: macOS openrsync doesn't support --info=stats1; keep flags portable.
-blue "▶ Syncing .next/ to server"
-rsync -az --delete apps/web/.next/ "$SERVER:$SERVER_PATH/apps/web/.next/"
+# Also: NUKE server-side .next FIRST (instead of relying on rsync --delete).
+# --delete sometimes leaves orphan empty directories (e.g. "app 2/" macOS
+# duplicates with spaces in names), which caused a prod outage where
+# _not-found/page.js ended up in the duplicate dir.
+blue "▶ Syncing .next/ to server (clean sync, no leftover files)"
+ssh "$SERVER" "rm -rf $SERVER_PATH/apps/web/.next && mkdir -p $SERVER_PATH/apps/web/.next"
+rsync -az apps/web/.next/ "$SERVER:$SERVER_PATH/apps/web/.next/"
 green "  ✓ .next synced"
 
 if [ -d apps/web/public ]; then
