@@ -1,11 +1,10 @@
 {
-  "sprint": "transport-calculator",
+  "sprint": 2,
+  "feature": "tasks-todo",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
-  "provider": "split-focus-claude",
-  "findings": {
-    "product": "concern: TransportCard breakdown only visible after quote loads (no local calc). suggestion: shiftHoursDirty not reset on date change. Both non-blockers.",
-    "technical": "minor: dynamic import in /draft route should be static. minor: showKm derived-state antipattern in TransportCard. No critical or important blocking issues."
-  },
-  "ts": "2026-04-17T12:10:00.000Z"
+  "provider": "split-focus",
+  "ts": "2026-04-17T19:42:00Z",
+  "round": 2,
+  "notes": "Round 1: Product NEEDS_FIXES, Technical REQUEST_CHANGES — 2 HIGH blockers (undo flow broken, /assignable endpoint missing), 2 MEDIUM (focus trap, flame glyph), 3 LOW (URL whitelist, toast.error, urgent-toggle test). All fixed in commit 42a4c41. Round 2: both reviewers pass with only non-blocking LOWs. Polish commit f503fad bumps undo toast to 6s per product reviewer suggestion. 687 tests green (500 api + 123 web + 31 bot + 33 shared)."
 }
