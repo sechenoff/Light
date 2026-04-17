@@ -72,6 +72,11 @@ enum RepairUrgency {
   URGENT
 }
 
+enum TaskStatus {
+  OPEN
+  DONE
+}
+
 enum LeadStatus {
   NEW
   IN_PROGRESS
@@ -730,6 +735,28 @@ model Vehicle {
   updatedAt          DateTime @updatedAt
 
   bookings Booking[]
+}
+
+/// Задача (to-do item)
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus @default(OPEN)
+  urgent      Boolean    @default(false)
+  dueDate     DateTime?  // date-only semantics; stored as Moscow-midnight UTC (see §1.4)
+
+  createdBy   String     // AdminUser.id (no FK, matches Repair convention)
+  assignedTo  String?    // AdminUser.id, null = "unassigned"
+  completedBy String?    // AdminUser.id
+  completedAt DateTime?
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([status, assignedTo])
+  @@index([status, dueDate])
+  @@index([createdBy, status])
 }
 
 /// Аудит-лог изменений критичных сущностей
