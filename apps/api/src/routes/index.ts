@@ -25,6 +25,7 @@ import auditRouter from "./audit";
 import { paymentsRouter } from "./payments";
 import { expensesRouter } from "./expenses";
 import { repairsRouter } from "./repairs";
+import { tasksRouter } from "./tasks";
 import { clientsRouter } from "./clients";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { vehiclesRouter } from "./vehicles";
@@ -121,6 +122,10 @@ router.use("/api/expenses", expensesRouter);
 
 // /api/repairs — SUPER_ADMIN, WAREHOUSE, TECHNICIAN (роли проверяются внутри роутера per-route)
 router.use("/api/repairs", repairsRouter);
+
+// /api/tasks — SUPER_ADMIN, WAREHOUSE, TECHNICIAN (router-level guard; дополнительные per-route проверки внутри tasksRouter)
+// НЕ добавлять в botScopeGuard whitelist — openclaw-* ключи должны получать 403 BOT_SCOPE_FORBIDDEN
+router.use("/api/tasks", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), tasksRouter);
 
 // /api/clients — SUPER_ADMIN, WAREHOUSE (роль проверяется per-route)
 router.use("/api/clients", clientsRouter);
