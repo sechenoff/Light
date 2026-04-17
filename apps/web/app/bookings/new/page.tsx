@@ -600,8 +600,10 @@ function BookingNewPage() {
           <CommentCard value={bookingComment} onChange={setBookingComment} />
         </div>
 
-        {/* Right column: Discount, Summary, Transport — sticky together */}
-        <div className="sticky top-20 flex flex-col gap-3.5 self-start">
+        {/* Right column: Discount, Summary, Transport — sticky together with own scroll.
+            max-h keeps the column within viewport; overflow-y-auto gives independent scroll.
+            pr-1 offsets the scrollbar so content doesn't shift when it appears. */}
+        <div className="sticky top-20 flex max-h-[calc(100vh-6rem)] flex-col gap-3.5 self-start overflow-y-auto pr-1">
           <DiscountCard value={discountPercent} onChange={setDiscountPercent} />
           <SummaryPanel
             quote={quote}
