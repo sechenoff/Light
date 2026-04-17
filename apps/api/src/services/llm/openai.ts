@@ -3,6 +3,16 @@ import { type LlmProvider, type GafferExtractedLine, EXTRACT_PROMPT_REVIEW, norm
 
 const JSON_MODE_SUFFIX = "\n\nОтвет верни в виде JSON-объекта с ключом \"items\" — массивом позиций.";
 
+/**
+ * Некоторые прокси (ChatMock, проксирующий gpt-5.x reasoning-модели из
+ * ChatGPT Plus подписки) возвращают reasoning-трейс в виде `<think>...</think>`
+ * блока ПЕРЕД фактическим JSON-ответом. `JSON.parse` на таком выводе падает.
+ * Срезаем все такие блоки, после этого парсим.
+ */
+function stripReasoningTags(raw: string): string {
+  return raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+}
+
 export class OpenAiLlmProvider implements LlmProvider {
   private client: OpenAI;
   private model: string;
@@ -28,7 +38,9 @@ export class OpenAiLlmProvider implements LlmProvider {
         });
         const content = response.choices[0]?.message?.content ?? "";
         if (!content) return [];
-        const parsed = JSON.parse(content) as unknown;
+        const cleaned = stripReasoningTags(content);
+        if (!cleaned) return [];
+        const parsed = JSON.parse(cleaned) as unknown;
         return normalizeRawLines(parsed);
       } catch (err: unknown) {
         lastError = err;
