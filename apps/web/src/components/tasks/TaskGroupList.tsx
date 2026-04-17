@@ -117,7 +117,7 @@ export function TaskGroupList({
   );
 
   return (
-    <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs divide-y divide-border">
+    <div className="bg-surface border border-border rounded-lg shadow-xs divide-y divide-border">
       {visibleBuckets.map((bucket) => (
         <TaskGroup
           key={bucket}
