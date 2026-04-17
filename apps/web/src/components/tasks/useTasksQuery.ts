@@ -173,6 +173,7 @@ export function useTasksQuery(filter: TaskFilter) {
       try {
         await apiFetch(`/api/tasks/${id}/complete`, { method: "POST" });
         toast.success("Задача выполнена", {
+          durationMs: 6000,
           action: {
             label: "Отменить",
             onClick: () => {
