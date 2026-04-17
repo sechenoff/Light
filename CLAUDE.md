@@ -117,6 +117,16 @@ light-rental-system/
 | `apps/api/src/services/bookingApproval.ts` | Booking approval workflow: `submitForApproval` (DRAFT → PENDING_APPROVAL, clears rejectionReason), `approveBooking` (delegates to `confirmBooking` + audit), `rejectBooking` (required reason, PENDING_APPROVAL → DRAFT + rejectionReason + audit) |
 | `apps/api/src/__tests__/approval.test.ts` | 22 интеграционных теста approval workflow: submit/approve/reject по всем ролям + full reject-resubmit-approve cycle + legacy confirm-bypass регрессия + ?status= Zod-валидация |
 | `apps/web/src/components/bookings/RejectBookingModal.tsx` | Модалка обязательной причины отклонения (min 3 trimmed chars, счётчик, Esc-close, backdrop dismissal, auto-focus textarea) |
+| `apps/api/src/utils/moscowDate.ts` | Moscow TZ helpers: `toMoscowDateString()`, `fromMoscowDateString()`, `moscowTodayStart()`, `addDays()` — single source of truth for date-only task semantics on server |
+| `apps/api/src/services/taskService.ts` | Task CRUD service: `createTask`, `updateTask`, `completeTask`, `reopenTask`, `deleteTask`, `listTasks` — all wrapped in `prisma.$transaction` + `writeAuditEntry` |
+| `apps/api/src/routes/tasks.ts` | Task routes at `/api/tasks`: GET list, POST create, PATCH update, POST complete/reopen, DELETE; Zod validation; `serializeTask` serializer |
+| `apps/web/src/lib/moscowDate.ts` | Client mirror of moscowDate helpers — `toMoscowDateString()`, `fromMoscowDateString()`, `moscowTodayStart()`, `addDays()` |
+| `apps/web/src/components/tasks/useTasksQuery.ts` | Custom hook for main tasks list: fetch, optimistic mutate (create/update/complete/reopen/delete), snapshot rollback, per-id in-flight guard, fire-immediately undo-via-reopen |
+| `apps/web/src/components/tasks/groupTasks.ts` | Pure utility: `bucketOf()` → 5 buckets (overdue/today/thisWeek/later/noDate), `groupTasks()` sorted. All date math in Moscow date-only domain. |
+| `apps/web/src/components/tasks/TaskHistoryPage.tsx` | History page component: pills filter, DONE tasks list (strikethrough, assignee, completedBy, completedAt), "Вернуть" reopen action, id-based cursor pagination "Загрузить ещё" |
+| `apps/web/src/components/day/DayTasksWidget.tsx` | Dashboard widget on `/day` for all 3 roles: fetches `/api/dashboard/today` `myTasks`, shows ≤5 tasks with day chip, optimistic complete, empty state, link to `/tasks?filter=my` |
+| `apps/web/app/tasks/page.tsx` | Tasks main page shell: `useRequireRole` + Suspense wrapper for `<TasksPage />` |
+| `apps/web/app/tasks/history/page.tsx` | Tasks history page shell: `useRequireRole` + Suspense wrapper for `<TaskHistoryPage />` |
 
 ## Commands
 
@@ -187,6 +197,9 @@ npm run seed                  # Seed database
 - **Bot scope guard** — `botScopeGuard` middleware (mounted in `app.ts` after `apiKeyAuth`) enforces whitelist for API keys with prefix `openclaw-`. DELETE is globally blocked. Non-whitelisted routes return 403 `{ code: "BOT_SCOPE_FORBIDDEN" }`. Keys without this prefix pass through without restriction.
 - **Finance debts endpoint** — `GET /api/finance/debts` aggregates `amountOutstanding > 0` bookings (excluding CANCELLED) by client. Supports `?overdueOnly=true` and `?minAmount=N` filters. Service function: `computeDebts()` in `apps/api/src/services/finance.ts`.
 - **dryRun option** — `POST /api/bookings/draft` and `PATCH /api/bookings/:id` accept `dryRun: true` in the request body. When true, validates input, computes estimate via `quoteEstimate()`, and returns a preview without writing to DB. POST returns `{ id: null, status: "DRAFT_PREVIEW", ... }`. PATCH returns the existing booking's projected state.
+- **Task.dueDate — date-only semantics** — stored as Moscow-midnight UTC (`fromMoscowDateString()`), compared via `toMoscowDateString()`. Never compare raw Date objects — always compare the `YYYY-MM-DD` string in Moscow TZ.
+- **Optimistic mutation pattern (Tasks)** — snapshot → apply → reconcile from server; per-id `useRef<Set<string>>` in-flight guard. `completeTask`: fire-immediately undo-via-reopen; toast action "Отменить" has 6 s window.
+- **Task audit actions** — `TASK_CREATE / TASK_UPDATE / TASK_ASSIGN / TASK_COMPLETE / TASK_REOPEN / TASK_DELETE` written in same `$transaction` as mutation; `entityType: "Task"`. `TASK_ASSIGN` is a distinct action when `assignedTo` changes (for audit searchability).
 
 ## UserRole и rolesGuard (Sprint 1)
 
@@ -519,4 +532,45 @@ UI-only canon repaint + ApprovalTimeline + accessibility. Реализовано
 
 Добавлены devDependencies в `apps/web/package.json`: `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/dom`, `@testing-library/jest-dom`, `@vitejs/plugin-react`. Конфигурация: `apps/web/vitest.config.ts`, setup: `apps/web/src/test-setup.ts`. Команда: `npm --workspace=apps/web run test`.
 
-<!-- updated-by-superflow:2026-04-16 -->
+## Tasks Feature (Sprint 3)
+
+Операционный список задач для команды из 3–5 человек: быстрый захват, группировка по сроку, виджет на «Мой день».
+
+### Data model
+
+Prisma model `Task` (новый):
+- `status: TaskStatus` — enum `OPEN | DONE`
+- `urgent: Boolean` — срочный флаг
+- `dueDate: DateTime?` — date-only семантика; хранится как Москва-полночь UTC
+- `createdBy / assignedTo / completedBy: String?` — `AdminUser.id` без FK (как в `Repair`)
+- `completedAt: DateTime?`
+- `AuditEntityType` расширен значением `"Task"`
+
+### Маршруты
+
+- `/tasks` — главный список (`TasksPage.tsx`)
+- `/tasks/history` — история выполненных (`TaskHistoryPage.tsx`)
+- `DayTasksWidget` смонтирован в `DaySuperAdmin`, `DayWarehouse`, `DayTechnician` в `apps/web/app/day/page.tsx` (выше роль-специфичных KPI, ниже `DayAlert`)
+
+### API endpoints
+
+| Маршрут | Метод | Описание |
+|---------|-------|----------|
+| `/api/tasks` | GET | Список задач; query: `filter` (my/all/created-by-me), `status`, `cursor`, `limit` |
+| `/api/tasks` | POST | Создать задачу (все роли) |
+| `/api/tasks/:id` | PATCH | Обновить (creator или SA — контент; assignee — только `urgent`) |
+| `/api/tasks/:id` | DELETE | Удалить (creator или SA → 403 `TASK_DELETE_FORBIDDEN` иначе) |
+| `/api/tasks/:id/complete` | POST | Выполнить (идемпотентно; любая роль) |
+| `/api/tasks/:id/reopen` | POST | Вернуть в работу (идемпотентно) |
+| `/api/dashboard/task-stats` | GET | `{myOpen, myOverdue, myToday, myUrgent}` для текущего пользователя |
+| `/api/dashboard/today` | GET | Включает `myTasks: TaskSummary[]` (до 5, overdue∪today∪urgent-undated) |
+
+### Conventions (дополнение)
+
+- **`Task.dueDate` — date-only semantics.** Хранится как Москва-полночь UTC; сравнивается через `toMoscowDateString()` для TZ-стабильного bucket-ования. Никогда не сравнивать как Date object напрямую.
+- **Optimistic mutation pattern.** Snapshot → optimistic apply → reconcile from server; per-id `useRef<Set<string>>` in-flight guard против дублей. `completeTask`: fire-immediately, toast с «Отменить» (6 с), undo → `reopenTask`.
+- **Audit actions.** `TASK_CREATE / TASK_UPDATE / TASK_ASSIGN / TASK_COMPLETE / TASK_REOPEN / TASK_DELETE` — все пишутся в той же транзакции, что и мутация; `entityType: "Task"`. `TASK_ASSIGN` пишется отдельным action при изменении `assignedTo` (для поиска в аудите).
+- **History fetch.** `TaskHistoryPage` использует локальный `useEffect + useState` с `cancelled`-flag паттерном (не `useTasksQuery` — у него своя filter/optimistic семантика для главной страницы). Пагинация через `cursor` query param, кнопка «Загрузить ещё».
+- **DayTasksWidget.** Самостоятельно фетчит `/api/dashboard/today`, не получает данные через props. Graceful degradation: если `myTasks` отсутствует в ответе — показывает пустое состояние без ошибки.
+
+<!-- updated-by-superflow:2026-04-17 -->
