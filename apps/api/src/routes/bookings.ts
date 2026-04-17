@@ -337,13 +337,22 @@ router.patch("/:id", async (req, res, next) => {
       return;
     }
 
-    if (!["DRAFT", "CONFIRMED"].includes(existing.status)) {
+    const isSuperAdmin = req.adminUser?.role === "SUPER_ADMIN";
+    const allowedStatusesForEdit = isSuperAdmin
+      ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL"]
+      : ["DRAFT", "CONFIRMED"];
+    if (!allowedStatusesForEdit.includes(existing.status)) {
       const reason =
         existing.status === "PENDING_APPROVAL"
-          ? "Бронь на согласовании — редактирование недоступно. Отправьте на доработку через «Отклонить»."
+          ? "Бронь на согласовании — править может только руководитель"
           : "Редактирование доступно для черновиков и подтверждённых броней.";
       throw new HttpError(409, reason, "BOOKING_EDIT_FORBIDDEN");
     }
+
+    // Захватываем исходные данные для аудит-записи (если бронь в статусе PENDING_APPROVAL)
+    const wasInReview = existing.status === "PENDING_APPROVAL";
+    const beforeFinalAmount = existing.finalAmount;
+    const beforeItems = existing.items.map((i: any) => ({ equipmentId: i.equipmentId, quantity: i.quantity }));
 
     let start = existing.startDate;
     let end = existing.endDate;
@@ -393,6 +402,38 @@ router.patch("/:id", async (req, res, next) => {
       console.error("Finance side-effects failed after patch:", financeErr);
     }
 
+    // Если бронь была в статусе PENDING_APPROVAL, пересчитываем суммы напрямую
+    // (rebuildBookingEstimate не обновляет поля на брони, только estimate-snapshot).
+    if (wasInReview) {
+      try {
+        const itemsAfter = body.items
+          ? body.items.map((it: any) => ({ equipmentId: it.equipmentId, quantity: it.quantity }))
+          : existing.items.map((i: any) => ({ equipmentId: i.equipmentId, quantity: i.quantity }));
+        const quote = await quoteEstimate({
+          startDate: start,
+          endDate: end,
+          clientId: existing.clientId,
+          discountPercent: body.discountPercent !== undefined
+            ? body.discountPercent
+            : existing.discountPercent
+              ? Number(existing.discountPercent)
+              : null,
+          items: itemsAfter,
+          transport: null,
+        });
+        await prisma.booking.update({
+          where: { id },
+          data: {
+            totalEstimateAmount: quote.subtotal,
+            discountAmount: quote.discountAmount,
+            finalAmount: quote.totalAfterDiscount,
+          },
+        });
+      } catch {
+        // Не блокируем редактирование, если пересчёт не удался
+      }
+    }
+
     // Перечитываем бронь после пересчёта, чтобы вернуть актуальные суммы.
     const freshBooking = await prisma.booking.findUnique({
       where: { id },
@@ -402,6 +443,24 @@ router.patch("/:id", async (req, res, next) => {
         estimate: { include: { lines: true } },
       },
     });
+
+    // Аудит редактирования брони на согласовании
+    if (wasInReview && req.adminUser?.userId) {
+      const afterFinalAmount = freshBooking?.finalAmount ?? null;
+      const afterItems = freshBooking?.items?.map((i: any) => ({ equipmentId: i.equipmentId, quantity: i.quantity })) ?? [];
+      try {
+        await writeAuditEntry({
+          userId: req.adminUser.userId,
+          action: "BOOKING_EDITED_IN_REVIEW",
+          entityType: "Booking",
+          entityId: id,
+          before: { items: beforeItems, finalAmount: beforeFinalAmount?.toString() ?? null },
+          after: { items: afterItems, finalAmount: afterFinalAmount?.toString() ?? null },
+        });
+      } catch {
+        // Аудит — observability, не блокируем ответ
+      }
+    }
 
     res.json({ booking: serializeBookingForApi(freshBooking as any), warning });
   } catch (err) {

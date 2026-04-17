@@ -440,3 +440,150 @@ describe("MEDIUM 4+5 — stronger audit assertions + resubmit roundtrip", () => 
     expect(audit.map((a: any) => a.action)).toEqual(["BOOKING_SUBMITTED", "BOOKING_REJECTED", "BOOKING_SUBMITTED"]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Новые тесты: persist-quote-on-draft + SA edit during review + audit
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("POST /api/bookings/draft — сохранение суммы при создании", () => {
+  it("создание через HTTP-роут заполняет finalAmount, totalEstimateAmount, discountAmount", async () => {
+    const uid = `${Date.now()}_draft_totals`;
+    // Создаём клиента и оборудование напрямую для изоляции теста
+    const client = await prisma.client.create({ data: { name: `Клиент Тест ${uid}` } });
+    const eq1 = await prisma.equipment.create({
+      data: {
+        importKey: `СВЕТ||НОВЫЙ||${uid}A||`,
+        name: `Прожектор A ${uid}`,
+        category: "Свет",
+        totalQuantity: 10,
+        rentalRatePerShift: 2000,
+      },
+    });
+    const eq2 = await prisma.equipment.create({
+      data: {
+        importKey: `СВЕТ||НОВЫЙ||${uid}B||`,
+        name: `Прожектор B ${uid}`,
+        category: "Свет",
+        totalQuantity: 10,
+        rentalRatePerShift: 1500,
+      },
+    });
+
+    const res = await request(app)
+      .post("/api/bookings/draft")
+      .set(AUTH_WH())
+      .send({
+        client: { name: client.name },
+        projectName: "Тест суммы",
+        startDate: "2026-06-01T10:00:00Z",
+        endDate: "2026-06-03T10:00:00Z",
+        discountPercent: 10,
+        items: [
+          { equipmentId: eq1.id, quantity: 1 },
+          { equipmentId: eq2.id, quantity: 2 },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    const bookingId = res.body.booking?.id ?? res.body.id;
+    expect(bookingId).toBeTruthy();
+
+    const fresh = await prisma.booking.findUnique({ where: { id: bookingId } });
+    expect(Number(fresh!.finalAmount)).toBeGreaterThan(0);
+    expect(Number(fresh!.totalEstimateAmount)).toBeGreaterThan(0);
+    expect(Number(fresh!.discountAmount)).toBeGreaterThan(0);
+  });
+});
+
+describe("PATCH /api/bookings/:id — PENDING_APPROVAL: роль-зависимое редактирование", () => {
+  it("SUPER_ADMIN может редактировать бронь в статусе PENDING_APPROVAL (200)", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+
+    const res = await request(app)
+      .patch(`/api/bookings/${booking.id}`)
+      .set(AUTH_SA())
+      .send({ projectName: "Правка руководителя" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.booking.projectName).toBe("Правка руководителя");
+  });
+
+  it("WAREHOUSE не может редактировать бронь в статусе PENDING_APPROVAL (409)", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "PENDING_APPROVAL" } });
+
+    const res = await request(app)
+      .patch(`/api/bookings/${booking.id}`)
+      .set(AUTH_WH())
+      .send({ projectName: "Попытка склада" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.details).toBe("BOOKING_EDIT_FORBIDDEN");
+  });
+
+  it("SUPER_ADMIN редактирует PENDING_APPROVAL → finalAmount обновляется + пишется BOOKING_EDITED_IN_REVIEW", async () => {
+    const uid = `${Date.now()}_edit_in_review`;
+    const client = await prisma.client.create({ data: { name: `Клиент Ревью ${uid}` } });
+    const eq1 = await prisma.equipment.create({
+      data: {
+        importKey: `СВЕТ||РЕВЬЮ||${uid}A||`,
+        name: `Прибор A ${uid}`,
+        category: "Свет",
+        totalQuantity: 10,
+        rentalRatePerShift: 3000,
+      },
+    });
+    const eq2 = await prisma.equipment.create({
+      data: {
+        importKey: `СВЕТ||РЕВЬЮ||${uid}B||`,
+        name: `Прибор B ${uid}`,
+        category: "Свет",
+        totalQuantity: 10,
+        rentalRatePerShift: 5000,
+      },
+    });
+
+    // Создаём бронь с первым оборудованием
+    const booking = await prisma.booking.create({
+      data: {
+        clientId: client.id,
+        projectName: "Проект ревью",
+        startDate: new Date("2026-07-01T10:00:00Z"),
+        endDate: new Date("2026-07-03T10:00:00Z"),
+        status: "PENDING_APPROVAL",
+        finalAmount: 100,
+        items: { create: [{ equipmentId: eq1.id, quantity: 1 }] },
+      },
+    });
+
+    // SA меняет позиции на более дорогое оборудование
+    const res = await request(app)
+      .patch(`/api/bookings/${booking.id}`)
+      .set(AUTH_SA())
+      .send({ items: [{ equipmentId: eq2.id, quantity: 2 }] });
+
+    expect(res.status).toBe(200);
+
+    // finalAmount должен обновиться
+    const fresh = await prisma.booking.findUnique({ where: { id: booking.id } });
+    expect(Number(fresh!.finalAmount)).toBeGreaterThan(0);
+    // Новая сумма должна быть выше исходных 100 ₽
+    expect(Number(fresh!.finalAmount)).toBeGreaterThan(100);
+
+    // Аудит-запись BOOKING_EDITED_IN_REVIEW должна существовать
+    const auditEntry = await prisma.auditEntry.findFirst({
+      where: { entityType: "Booking", entityId: booking.id, action: "BOOKING_EDITED_IN_REVIEW" },
+    });
+    expect(auditEntry).not.toBeNull();
+
+    // before.finalAmount и after.finalAmount должны отличаться
+    const beforeJson = typeof auditEntry!.before === "string"
+      ? JSON.parse(auditEntry!.before)
+      : auditEntry!.before;
+    const afterJson = typeof auditEntry!.after === "string"
+      ? JSON.parse(auditEntry!.after)
+      : auditEntry!.after;
+    expect(beforeJson.finalAmount).not.toBe(afterJson.finalAmount);
+  });
+});
