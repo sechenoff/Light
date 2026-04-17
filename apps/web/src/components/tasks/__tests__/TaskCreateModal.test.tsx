@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { TaskCreateModal } from "../TaskCreateModal";
 import { toMoscowDateString, addDays } from "../../../lib/moscowDate";
 
@@ -9,10 +9,8 @@ const ASSIGNEE_OPTIONS = [
 ];
 
 describe("TaskCreateModal", () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let onSubmit: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let onClose: any;
+  let onSubmit: Mock;
+  let onClose: Mock;
 
   beforeEach(() => {
     onSubmit = vi.fn().mockResolvedValue(undefined);
