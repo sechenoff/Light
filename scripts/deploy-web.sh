@@ -153,12 +153,20 @@ if $NEED_INSTALL; then
   echo "  ▸ npm ci (may take ~45s, monitor memory)"
   # Use --silent to reduce log noise; --no-audit/--no-fund to skip non-essentials
   if ! npm ci --no-audit --no-fund --silent 2>&1 | tail -3; then
-    echo "  ⚠ npm ci failed or was killed. Attempting recovery."
-    # Most common failure: OOM kill mid-install. Recover by:
-    # 1. Using npm install (slightly less memory-hungry) as fallback
-    npm install --no-audit --no-fund --prefer-offline --silent 2>&1 | tail -3 || {
-      echo "  ⚠ npm install also failed — will try manual symlink repair"
-    }
+    echo "  ⚠ npm ci failed or was killed (likely OOM on 2GB VPS)."
+    echo "  ▸ Cleaning npm tmp dirs (prev OOM leaves half-renamed packages)"
+    # When npm install is killed mid-rename, it leaves ".<pkg>-<hash>" temp
+    # directories. Those make retries fail with ENOTEMPTY on rename. Clean
+    # them first, then try lighter install strategies.
+    find . -path "*/node_modules/.*-[a-zA-Z0-9]*" -maxdepth 6 -type d -exec rm -rf {} + 2>/dev/null || true
+    echo "  ▸ npm install --prefer-offline (lighter than ci)"
+    if ! npm install --no-audit --no-fund --prefer-offline --silent 2>&1 | tail -3; then
+      echo "  ▸ last resort: targeted install of next + @prisma/client"
+      # Clean tmp dirs again before last attempt
+      find . -path "*/node_modules/.*-[a-zA-Z0-9]*" -maxdepth 6 -type d -exec rm -rf {} + 2>/dev/null || true
+      rm -rf node_modules/next 2>/dev/null
+      npm install next@14.2.35 --no-save --prefer-offline --no-audit --no-fund --silent 2>&1 | tail -3 || true
+    fi
   fi
 fi
 
@@ -172,8 +180,12 @@ if [ ! -e node_modules/.bin/next ]; then
     ln -sf ../next/dist/bin/next node_modules/.bin/next
     chmod +x node_modules/next/dist/bin/next
   else
-    echo "  ERROR: node_modules/next/ is missing. Cannot recover without network install."
-    echo "  Retry: ssh $SERVER 'cd /opt/light-rental-system && npm ci'"
+    echo "  ERROR: node_modules/next/dist/bin/next is missing. Manual intervention needed."
+    echo "  SSH to server, then:"
+    echo "    cd /opt/light-rental-system"
+    echo "    find . -path \"*/node_modules/.*-[a-zA-Z0-9]*\" -maxdepth 6 -type d -exec rm -rf {} +"
+    echo "    rm -rf node_modules/next"
+    echo "    npm install next@14.2.35 --no-save --prefer-offline"
     exit 1
   fi
 fi
