@@ -20,6 +20,8 @@ type SummaryPanelProps = {
   offCatalogItems?: OffCatalogItem[];
   selectedVehicleName?: string | null;
   localTransport?: TransportBreakdown | null;
+  onRemoveItem?: (equipmentId: string) => void;
+  onRemoveOffCatalog?: (tempId: string) => void;
 };
 
 const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass: string }> = {
@@ -45,6 +47,8 @@ export function SummaryPanel({
   offCatalogItems,
   selectedVehicleName,
   localTransport,
+  onRemoveItem,
+  onRemoveOffCatalog,
 }: SummaryPanelProps) {
   const equipSubtotal = quote ? Number(quote.equipmentSubtotal ?? quote.subtotal) : localSubtotal;
   const discount = quote ? Number(quote.discountAmount) : localDiscount;
@@ -67,9 +71,20 @@ export function SummaryPanel({
 
   const bigTotalFormatted = Math.round(total).toLocaleString("ru-RU");
 
-  const miniList: Array<{ key: string; name: string; qty: number }> = [];
-  if (selectedItems) for (const s of selectedItems.values()) miniList.push({ key: s.equipmentId, name: s.name, qty: s.quantity });
-  if (offCatalogItems) for (const o of offCatalogItems) miniList.push({ key: o.tempId, name: o.name, qty: o.quantity });
+  type MiniItem =
+    | { kind: "catalog"; key: string; equipmentId: string; name: string; qty: number }
+    | { kind: "off"; key: string; tempId: string; name: string; qty: number };
+  const miniList: MiniItem[] = [];
+  if (selectedItems) {
+    for (const s of selectedItems.values()) {
+      miniList.push({ kind: "catalog", key: s.equipmentId, equipmentId: s.equipmentId, name: s.name, qty: s.quantity });
+    }
+  }
+  if (offCatalogItems) {
+    for (const o of offCatalogItems) {
+      miniList.push({ kind: "off", key: o.tempId, tempId: o.tempId, name: o.name, qty: o.quantity });
+    }
+  }
 
   return (
     <aside className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 shadow-xs">
@@ -128,11 +143,28 @@ export function SummaryPanel({
 
       {/* Mini-list of selected items */}
       {miniList.length > 0 && (
-        <div className="flex flex-col gap-1 border-t border-border pt-3">
+        <div className="flex flex-col gap-0.5 border-t border-border pt-3">
           {miniList.map((it) => (
-            <div key={it.key} className="flex items-center justify-between text-[11.5px]">
+            <div key={it.key} className="group flex items-center gap-2 rounded px-1 py-0.5 text-[11.5px] hover:bg-surface-muted">
               <span className="min-w-0 flex-1 truncate text-ink">{it.name}</span>
-              <span className="ml-2 font-mono text-[11px] text-ink-3">×{it.qty}</span>
+              <span className="font-mono text-[11px] text-ink-3">×{it.qty}</span>
+              {(it.kind === "catalog" ? onRemoveItem : onRemoveOffCatalog) && (
+                <button
+                  type="button"
+                  aria-label={`Удалить ${it.name}`}
+                  title="Удалить из корзины"
+                  onClick={() => {
+                    if (it.kind === "catalog") {
+                      onRemoveItem?.(it.equipmentId);
+                    } else {
+                      onRemoveOffCatalog?.(it.tempId);
+                    }
+                  }}
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-3 opacity-0 transition-all hover:bg-rose-soft hover:text-rose group-hover:opacity-100 focus:opacity-100"
+                >
+                  ×
+                </button>
+              )}
             </div>
           ))}
         </div>

@@ -620,6 +620,8 @@ function BookingNewPage() {
             offCatalogItems={offCatalogItems}
             selectedVehicleName={selectedVehicleId ? (vehicles.find(v => v.id === selectedVehicleId)?.name ?? null) : null}
             localTransport={localTransport}
+            onRemoveItem={handleRemove}
+            onRemoveOffCatalog={handleRemoveOffCatalog}
           />
           <TransportCard
             vehicles={vehicles}
