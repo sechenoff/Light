@@ -108,10 +108,28 @@ export function ReviewItemCard({ item, pickupISO, returnISO, onConfirm, onOffCat
     const top3 = match.candidates.slice(0, 3);
     return (
       <div className="border-l-4 border-amber bg-amber-soft px-4 py-3">
-        <p className="text-[13px] font-medium text-ink">
-          {item.gafferPhrase || item.interpretedName}
-          {quantityBadge}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <p className="min-w-0 text-[13px] font-medium text-ink">
+            {item.gafferPhrase || item.interpretedName}
+            {quantityBadge}
+          </p>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowSearch((s) => !s)}
+              className="rounded border border-border bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-2 hover:text-ink"
+            >
+              Найти другое
+            </button>
+            <button
+              type="button"
+              onClick={() => onSkip(item.reviewId)}
+              className="rounded border border-border bg-surface px-2.5 py-1 text-[12px] text-ink-3 hover:text-ink"
+            >
+              Пропустить
+            </button>
+          </div>
+        </div>
         <ul className="mt-1.5 space-y-1">
           {top3.map((c) => {
             const pct = Math.round(c.confidence * 100);
@@ -146,23 +164,6 @@ export function ReviewItemCard({ item, pickupISO, returnISO, onConfirm, onOffCat
             );
           })}
         </ul>
-        <div className="mt-2 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowSearch((s) => !s)}
-            className="text-[12px] text-accent-bright hover:underline"
-          >
-            Найти другое
-          </button>
-          <span className="text-ink-3">·</span>
-          <button
-            type="button"
-            onClick={() => onSkip(item.reviewId)}
-            className="text-[12px] text-ink-3 hover:text-ink"
-          >
-            Пропустить
-          </button>
-        </div>
         {showSearch && (
           <div className="mt-2">
             <CatalogSearchPopover
@@ -180,42 +181,43 @@ export function ReviewItemCard({ item, pickupISO, returnISO, onConfirm, onOffCat
   // unmatched
   return (
     <div className="border-l-4 border-rose bg-rose-soft px-4 py-3">
-      <p className="text-[13px] font-medium text-ink">
-        {item.gafferPhrase || item.interpretedName}
-        {quantityBadge}
-      </p>
-      <p className="mt-0.5 text-[12px] text-ink-3">Не найдено в каталоге</p>
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setShowSearch((s) => !s)}
-          className="text-[12px] text-accent-bright hover:underline"
-        >
-          🔍 Найти в каталоге
-        </button>
-        <span className="text-ink-3">·</span>
-        <button
-          type="button"
-          onClick={() => onOffCatalog(item.reviewId)}
-          className="text-[12px] text-ink-2 hover:text-ink"
-        >
-          Добавить вне каталога
-        </button>
-        <span className="text-ink-3">·</span>
-        <button
-          type="button"
-          onClick={() => onSkip(item.reviewId)}
-          className="text-[12px] text-ink-3 hover:text-ink"
-        >
-          Пропустить
-        </button>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-ink">
+            {item.gafferPhrase || item.interpretedName}
+            {quantityBadge}
+          </p>
+          <p className="mt-0.5 text-[12px] text-ink-3">Не найдено в каталоге</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowSearch((s) => !s)}
+            className="rounded border border-accent-border bg-surface px-2.5 py-1 text-[12px] font-medium text-accent-bright hover:bg-accent-soft"
+          >
+            🔍 Найти в каталоге
+          </button>
+          <button
+            type="button"
+            onClick={() => onOffCatalog(item.reviewId)}
+            className="rounded border border-border bg-surface px-2.5 py-1 text-[12px] text-ink-2 hover:text-ink"
+          >
+            Добавить вне каталога
+          </button>
+          <button
+            type="button"
+            onClick={() => onSkip(item.reviewId)}
+            className="rounded border border-border bg-surface px-2.5 py-1 text-[12px] text-ink-3 hover:text-ink"
+          >
+            Пропустить
+          </button>
+        </div>
       </div>
       {showSearch && (
         <div className="mt-2">
           <CatalogSearchPopover
             pickupISO={pickupISO}
             returnISO={returnISO}
-            initialQuery={item.interpretedName}
             onSelect={handleSelectFromCatalog}
             onClose={() => setShowSearch(false)}
           />
