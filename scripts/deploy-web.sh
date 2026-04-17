@@ -55,11 +55,28 @@ blue "▶ Building web locally (avoids VPS SIGBUS)"
 # produce an incomplete build (missing pages-manifest.json, etc.) when hitting
 # a stale cache from a different app-router vs pages-router state.
 rm -rf apps/web/.next apps/web/node_modules/.cache
+
+# Force production-safe env vars for the build. Local `.env.local` usually has
+# `NEXT_PUBLIC_API_BASE_URL=http://localhost:4000` for dev — if that leaks into
+# the production bundle, every client-side fetch in production points at the
+# user's own localhost and fails with ERR_CONNECTION_REFUSED. Override to empty
+# so the baked-in URLs are relative (same-origin via nginx).
+export NEXT_PUBLIC_API_BASE_URL=
+export NODE_ENV=production
+
 npm run build -w apps/web > /tmp/lr-web-build.log 2>&1 || {
   red "ERROR: local build failed. Last 30 lines of log:"
   tail -30 /tmp/lr-web-build.log
   exit 1
 }
+
+# Sanity check: verify build DID NOT bake in localhost:4000 anywhere
+if grep -rq "http://localhost:4000\|http://127.0.0.1:4000" apps/web/.next/static/chunks/ 2>/dev/null; then
+  red "ERROR: build contains localhost:4000 in client chunks."
+  red "This means NEXT_PUBLIC_API_BASE_URL leaked from .env.local into the production bundle."
+  red "Check apps/web/.env.local and remove/clear NEXT_PUBLIC_API_BASE_URL."
+  exit 1
+fi
 
 if [ ! -f apps/web/.next/BUILD_ID ]; then
   red "ERROR: build produced no .next/BUILD_ID — something went wrong"
