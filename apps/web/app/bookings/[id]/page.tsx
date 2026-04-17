@@ -239,28 +239,34 @@ export default function BookingDetailPage() {
     }
   }
 
+  const showApprovalView =
+    booking?.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN";
+
   return (
     <div className="p-4">
-      <div className="flex items-center justify-between flex-wrap gap-3 no-print">
-        <SectionHeader
-          eyebrow="Бронирование"
-          title={booking?.displayName || `Бронь: ${id}`}
-        />
-        <div className="flex items-center gap-2 flex-wrap">
-          <Link href="/bookings" className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-muted transition-colors">
-            ← Брони
-          </Link>
-          <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors">
-            Новая бронь
-          </Link>
-          {booking && (
-            <StatusPill
-              variant={statusVariant(booking.status)}
-              label={statusText(booking.status)}
-            />
-          )}
+      {/* Parent top-bar — hidden when ApprovalReviewView is rendered; that view brings its own header */}
+      {!showApprovalView && (
+        <div className="flex items-center justify-between flex-wrap gap-3 no-print">
+          <SectionHeader
+            eyebrow="Бронирование"
+            title={booking?.displayName || `Бронь: ${id}`}
+          />
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link href="/bookings" className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-muted transition-colors">
+              ← Брони
+            </Link>
+            <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors">
+              Новая бронь
+            </Link>
+            {booking && (
+              <StatusPill
+                variant={statusVariant(booking.status)}
+                label={statusText(booking.status)}
+              />
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {loading ? (
         <div className="mt-4 text-ink-3">Загрузка...</div>

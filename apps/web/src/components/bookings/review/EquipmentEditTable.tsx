@@ -1,6 +1,6 @@
 "use client";
 
-import { formatMoneyRub } from "../../../lib/format";
+import { formatMoneyRub, pluralize } from "../../../lib/format";
 import { AddEquipmentSearch } from "./AddEquipmentSearch";
 
 export type EditableItem = {
@@ -74,7 +74,9 @@ export function EquipmentEditTable({
                 <th className="px-4 py-2 text-left font-medium">Наименование</th>
                 <th className="px-4 py-2 text-right font-medium w-28">Цена/день</th>
                 <th className="px-4 py-2 text-center font-medium w-32">Кол-во</th>
-                <th className="px-4 py-2 text-right font-medium w-28">Сумма</th>
+                <th className="px-4 py-2 text-right font-medium w-32">
+                  {shifts > 1 ? `Сумма за ${shifts} ${pluralize(shifts, "день", "дня", "дней")}` : "Сумма"}
+                </th>
                 <th className="w-8" />
               </tr>
             </thead>

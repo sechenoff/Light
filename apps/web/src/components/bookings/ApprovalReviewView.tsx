@@ -302,15 +302,15 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
     ?? `${booking.client.name} · проект «${booking.projectName}»`;
 
   return (
-    <div className="p-4">
-      {/* Top bar */}
+    <div>
+      {/* Breadcrumb + status + role pills (parent page hides its own top-bar in this mode) */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm">
           <Link href="/bookings" className="text-ink-3 hover:text-ink">
             ← Брони
           </Link>
           <span className="text-ink-3">/</span>
-          <span className="text-ink-2 truncate max-w-[200px]">{title}</span>
+          <span className="text-ink-2 truncate max-w-[280px]">{title}</span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <StatusPill variant="warn" label="На согласовании" />
@@ -318,7 +318,7 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
         </div>
       </div>
 
-      {/* Hero */}
+      {/* Hero — amber highlight card with title + primary actions */}
       <div className="mb-5 rounded-lg border border-amber-border bg-amber-soft px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
