@@ -120,7 +120,11 @@ export function EquipmentCard({
             value={gafferText}
             onValueChange={(v) => {
               onGafferTextChange(v);
-              if (!isAi) onSearchQueryChange(v);
+              // Compute AI mode from the NEW value, not from stale state,
+              // otherwise the previous search text lingers in searchQuery
+              // when the user pastes a gaffer list.
+              const nextIsAi = v.includes("\n") || v.length > 40;
+              onSearchQueryChange(nextIsAi ? "" : v);
             }}
             onParse={onParse}
             onClear={onClear}
