@@ -7,22 +7,44 @@ import { createPortal } from "react-dom";
 
 type ToastKind = "error" | "success" | "info";
 
-type Toast = { id: string; kind: ToastKind; msg: string };
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
+type Toast = {
+  id: string;
+  kind: ToastKind;
+  msg: string;
+  action?: ToastAction;
+  durationMs: number;
+};
 
 // ── Singleton event bus ───────────────────────────────────────────────────────
 
 const listeners: Set<(t: Toast) => void> = new Set();
 
-function push(kind: ToastKind, msg: string): void {
+interface PushOptions {
+  action?: ToastAction;
+  durationMs?: number;
+}
+
+function push(kind: ToastKind, msg: string, opts: PushOptions = {}): void {
   const id = Math.random().toString(36).slice(2);
-  const t: Toast = { id, kind, msg };
+  const t: Toast = {
+    id,
+    kind,
+    msg,
+    action: opts.action,
+    durationMs: opts.durationMs ?? 4000,
+  };
   listeners.forEach((fn) => fn(t));
 }
 
 export const toast = {
-  error: (msg: string) => push("error", msg),
-  success: (msg: string) => push("success", msg),
-  info: (msg: string) => push("info", msg),
+  error: (msg: string, opts?: PushOptions) => push("error", msg, opts),
+  success: (msg: string, opts?: PushOptions) => push("success", msg, opts),
+  info: (msg: string, opts?: PushOptions) => push("info", msg, opts),
 };
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -41,7 +63,13 @@ const KIND_ICON_COLOR: Record<ToastKind, string> = {
 
 // ── ToastItem ─────────────────────────────────────────────────────────────────
 
-function ToastItem({ t, onDismiss }: { t: Toast; onDismiss: (id: string) => void }) {
+function ToastItem({
+  t,
+  onDismiss,
+}: {
+  t: Toast;
+  onDismiss: (id: string) => void;
+}) {
   const { stripe } = KIND_STYLES[t.kind];
   const iconColor = KIND_ICON_COLOR[t.kind];
 
@@ -54,6 +82,17 @@ function ToastItem({ t, onDismiss }: { t: Toast; onDismiss: (id: string) => void
         {KIND_STYLES[t.kind].icon}
       </span>
       <span className="text-sm text-ink flex-1">{t.msg}</span>
+      {t.action && (
+        <button
+          onClick={() => {
+            t.action!.onClick();
+            onDismiss(t.id);
+          }}
+          className="shrink-0 text-xs font-semibold text-accent-bright hover:text-accent transition-colors uppercase tracking-wide"
+        >
+          {t.action.label}
+        </button>
+      )}
       <button
         onClick={() => onDismiss(t.id)}
         className="shrink-0 text-ink-3 hover:text-ink transition-colors text-xs leading-none"
@@ -81,7 +120,7 @@ export function ToastProvider() {
       setToasts((prev) => [...prev, t]);
       setTimeout(() => {
         setToasts((prev) => prev.filter((x) => x.id !== t.id));
-      }, 4000);
+      }, t.durationMs);
     };
     listeners.add(handler);
     return () => { listeners.delete(handler); };

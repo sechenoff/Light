@@ -41,7 +41,6 @@ const MSK_NOW = new Date("2026-04-17T10:00:00Z");
 
 describe("bucketOf", () => {
   it("returns 'overdue' for a past dueDate", () => {
-    const task = makeTask({ dueDate: "2026-04-16T21:00:00.000Z" }); // April 16 MSK midnight = April 15 UTC+21
     // We pass a dueDate that is clearly yesterday in Moscow
     const yesterday = makeTask({ dueDate: "2026-04-15T21:00:00.000Z" }); // April 16 MSK midnight
     expect(bucketOf(yesterday, MSK_NOW)).toBe("overdue");
