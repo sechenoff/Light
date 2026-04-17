@@ -205,7 +205,9 @@ export function TaskHistoryPage() {
 
                   {/* Основная информация */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-ink-3 line-through truncate">{task.title}</p>
+                    <p className="text-sm text-ink-3 line-through truncate">
+                      {task.title.trim() ? task.title : <span className="italic">Без названия</span>}
+                    </p>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
                       {assignedName && (
                         <span className="text-xs text-ink-3">
@@ -229,7 +231,7 @@ export function TaskHistoryPage() {
                   <button
                     onClick={() => void reopenTask(task.id)}
                     className="text-xs text-accent hover:underline shrink-0 mt-0.5"
-                    aria-label={`Вернуть задачу «${task.title}» в работу`}
+                    aria-label={`Вернуть задачу «${task.title.trim() || "Без названия"}» в работу`}
                   >
                     Вернуть
                   </button>
