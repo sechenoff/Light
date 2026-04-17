@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useRequireRole } from "../../hooks/useRequireRole";
 import { useTasksQuery, type TaskFilter } from "./useTasksQuery";
 import { TaskFilterPills } from "./TaskFilterPills";
-import { TaskQuickCapture, type TaskQuickCaptureRef } from "./TaskQuickCapture";
 import { TaskGroupList } from "./TaskGroupList";
 import { TaskEditModal } from "./TaskEditModal";
 import { TaskCreateModal } from "./TaskCreateModal";
 import { TaskEmptyState } from "./TaskEmptyState";
 import { apiFetch } from "../../lib/api";
+import { pluralize } from "../../lib/format";
 import type { Task } from "./groupTasks";
 
 // ── Типы ──────────────────────────────────────────────────────────────────────
@@ -28,6 +28,12 @@ function parseFilter(raw: string | null | undefined): TaskFilter {
   }
   return "my";
 }
+
+const FILTER_TITLE: Record<TaskFilter, string> = {
+  my: "Мои задачи",
+  all: "Все задачи",
+  "created-by-me": "Я поставил",
+};
 
 // ── TasksPage ─────────────────────────────────────────────────────────────────
 
@@ -59,8 +65,6 @@ export function TasksPage() {
   const [creating, setCreating] = useState(false);
   const [assigneeOptions, setAssigneeOptions] = useState<AdminUserOption[]>([]);
 
-  const captureRef = useRef<TaskQuickCaptureRef>(null);
-
   // ── Загрузка пользователей для выпадающего списка исполнителей ────────────
   // Используем /assignable (доступно всем 3 ролям), а не /api/admin-users (SA only)
 
@@ -87,19 +91,16 @@ export function TasksPage() {
     router.replace(`/tasks?${params.toString()}`);
   }
 
-  // ── Клавиша N — фокус на поле ввода ──────────────────────────────────────
+  // ── Клавиша N — открыть модалку создания ─────────────────────────────────
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      // Игнорируем, если фокус в INPUT/TEXTAREA или открыт dialog
-      if (
-        e.key !== "n" && e.key !== "N"
-      ) return;
+      if (e.key !== "n" && e.key !== "N") return;
       const tag = (document.activeElement?.tagName ?? "").toUpperCase();
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (document.querySelector("[role=dialog]")) return;
       e.preventDefault();
-      captureRef.current?.focus();
+      setCreating(true);
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
@@ -149,6 +150,20 @@ export function TasksPage() {
     [updateTask],
   );
 
+  // ── Счётчики для подстроки заголовка ─────────────────────────────────────
+
+  const activeCount = tasks.filter((t) => t.status === "OPEN").length;
+  const urgentCount = tasks.filter((t) => t.status === "OPEN" && t.urgent).length;
+
+  function buildCountsLine(): string {
+    if (loading) return "…";
+    if (activeCount === 0) return "пока пусто";
+    const activePart = `${activeCount} ${pluralize(activeCount, "активная", "активные", "активных")}`;
+    if (urgentCount === 0) return activePart;
+    const urgentPart = `${urgentCount} ${pluralize(urgentCount, "срочная", "срочные", "срочных")}`;
+    return `${activePart}, ${urgentPart}`;
+  }
+
   // ── Рендер ────────────────────────────────────────────────────────────────
 
   if (authLoading || !user) {
@@ -163,15 +178,18 @@ export function TasksPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-3xl">
-      {/* Заголовок + кнопка создания */}
-      <div className="flex flex-wrap items-end justify-between gap-2">
+      {/* Заголовок: eyebrow + h1 + кнопка */}
+      <div className="flex items-start justify-between gap-4">
         <div>
           <p className="eyebrow">Задачи</p>
-          <h1 className="text-lg font-semibold text-ink mt-0.5">Мои задачи</h1>
+          <h1 className="text-lg font-semibold text-ink mt-0.5">{FILTER_TITLE[filter]}</h1>
+          <p className="text-xs text-ink-3 mt-0.5">
+            {FILTER_TITLE[filter]} · {buildCountsLine()}
+          </p>
         </div>
         <button
           onClick={() => setCreating(true)}
-          className="bg-accent-bright text-white px-3 py-1.5 rounded text-sm font-medium hover:opacity-90 transition-opacity"
+          className="shrink-0 bg-accent-bright text-white px-3 py-1.5 rounded text-sm font-medium hover:opacity-90 transition-opacity"
         >
           + Создать задачу
         </button>
@@ -180,12 +198,8 @@ export function TasksPage() {
       {/* Фильтры */}
       <TaskFilterPills value={filter} onChange={handleFilterChange} />
 
-      {/* Быстрое добавление */}
-      <TaskQuickCapture
-        ref={captureRef}
-        onSubmit={handleCreate}
-        assigneeOptions={assigneeOptions}
-      />
+      {/* Разделитель */}
+      <hr className="border-border" />
 
       {/* Ошибка */}
       {error && (
@@ -236,7 +250,7 @@ export function TasksPage() {
       {creating && (
         <TaskCreateModal
           onSubmit={async (input) => {
-            await createTask(input);
+            await handleCreate(input);
             setCreating(false);
           }}
           onClose={() => setCreating(false)}

@@ -25,7 +25,7 @@ export function TaskFilterPills({ value, onChange }: TaskFilterPillsProps) {
             aria-pressed={active}
             className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
               active
-                ? "bg-ink text-white border-ink"
+                ? "bg-accent-soft text-accent border-accent-border"
                 : "bg-surface text-ink-2 border-border hover:bg-surface-muted"
             }`}
           >
