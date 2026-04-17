@@ -40,6 +40,26 @@ type BookingRow = {
 };
 
 
+function formatBookingPeriod(startDate: string, endDate: string): string {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const sameDay =
+    start.toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" }) ===
+    end.toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" });
+  if (sameDay) {
+    return (
+      start.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" }) +
+      " — " +
+      end.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" })
+    );
+  }
+  return (
+    start.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", timeZone: "Europe/Moscow" }) +
+    " — " +
+    end.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", timeZone: "Europe/Moscow" })
+  );
+}
+
 function BookingHistoryPageInner() {
   const { user } = useCurrentUser();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
@@ -47,6 +67,8 @@ function BookingHistoryPageInner() {
   const [rows, setRows] = useState<BookingRow[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>(() => searchParams?.get("status") ?? "");
   const [paymentFilter, setPaymentFilter] = useState<string>("");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -153,6 +175,11 @@ function BookingHistoryPageInner() {
 
   const filteredRows = rows.filter((r) => {
     if (paymentFilter && r.paymentStatus !== paymentFilter) return false;
+    if (dateFrom || dateTo) {
+      const startStr = new Date(r.startDate).toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" }); // YYYY-MM-DD
+      if (dateFrom && startStr < dateFrom) return false;
+      if (dateTo && startStr > dateTo) return false;
+    }
     return true;
   });
 
@@ -172,7 +199,31 @@ function BookingHistoryPageInner() {
       <div className="mt-4 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
         <div className="p-3 border-b border-border flex items-center justify-between">
           <p className="eyebrow">Список броней</p>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-ink-3">С</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="text-sm border border-border rounded px-2 py-1 bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              <label className="text-xs text-ink-3">По</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="text-sm border border-border rounded px-2 py-1 bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              {(dateFrom || dateTo) && (
+                <button
+                  onClick={() => { setDateFrom(""); setDateTo(""); }}
+                  className="text-xs text-accent hover:underline"
+                >
+                  Сбросить
+                </button>
+              )}
+            </div>
             <select className="rounded border border-border px-2 py-1 text-xs bg-surface" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="">Все статусы брони</option>
               <option value="DRAFT">Черновик</option>
@@ -196,10 +247,11 @@ function BookingHistoryPageInner() {
           <table className="min-w-[1400px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
-                <th className="text-left px-3 py-2 font-medium">Название</th>
+                <th className="text-left px-3 py-2 font-medium">Дата</th>
+                <th className="text-left px-3 py-2 font-medium">Период</th>
                 <th className="text-left px-3 py-2 font-medium">Клиент</th>
                 <th className="text-left px-3 py-2 font-medium">Проект</th>
-                <th className="text-left px-3 py-2 font-medium">Период</th>
+                <th className="text-left px-3 py-2 font-medium">Название</th>
                 <th className="text-left px-3 py-2 font-medium">Статус</th>
                 <th className="text-left px-3 py-2 font-medium">Ждёт</th>
                 <th className="text-left px-3 py-2 font-medium">Оплата</th>
@@ -210,13 +262,15 @@ function BookingHistoryPageInner() {
             <tbody>
               {filteredRows.map((r) => (
                 <tr key={r.id} className="border-t border-border hover:bg-surface-muted transition-colors">
-                  <td className="px-3 py-2 text-ink">{r.displayName}</td>
+                  <td className="px-3 py-2 text-ink mono-num whitespace-nowrap">
+                    {new Date(r.startDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Moscow" })}
+                  </td>
+                  <td className="px-3 py-2 text-ink-2 whitespace-nowrap mono-num">
+                    {formatBookingPeriod(r.startDate, r.endDate)}
+                  </td>
                   <td className="px-3 py-2 text-ink-2">{r.client.name}</td>
                   <td className="px-3 py-2 text-ink-2">{r.projectName}</td>
-                  <td className="px-3 py-2 text-ink-2 whitespace-nowrap">
-                    {new Date(r.startDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })} —{" "}
-                    {new Date(r.endDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
-                  </td>
+                  <td className="px-3 py-2 text-ink">{r.displayName}</td>
                   <td className="px-3 py-2">
                     <StatusPill
                       variant={statusVariant(r.status)}
@@ -327,7 +381,7 @@ function BookingHistoryPageInner() {
               ))}
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-ink-3" colSpan={9}>
+                  <td className="px-3 py-6 text-center text-ink-3" colSpan={10}>
                     Нет данных
                   </td>
                 </tr>
