@@ -13,8 +13,11 @@ type SummaryPanelProps = {
   shifts: number;
   isLoadingQuote: boolean;
   checks: ValidationCheck[];
-  onSubmitForApproval: () => void;
-  onSaveDraft: () => void;
+  // Create-mode buttons (required when mode="create" or mode not provided)
+  onSubmitForApproval?: () => void;
+  onSaveDraft?: () => void;
+  // Edit-mode button
+  onSaveEdit?: () => void;
   canSubmit: boolean;
   selectedItems?: Map<string, CatalogSelectedItem>;
   offCatalogItems?: OffCatalogItem[];
@@ -22,6 +25,12 @@ type SummaryPanelProps = {
   localTransport?: TransportBreakdown | null;
   onRemoveItem?: (equipmentId: string) => void;
   onRemoveOffCatalog?: (tempId: string) => void;
+  /** Controls which action buttons to render. Defaults to "create". */
+  mode?: "create" | "edit";
+  /** Whether a save/submit action is in progress. */
+  submitting?: boolean;
+  /** Cancel link href (edit mode). */
+  cancelHref?: string;
 };
 
 const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass: string }> = {
@@ -42,6 +51,7 @@ export function SummaryPanel({
   checks,
   onSubmitForApproval,
   onSaveDraft,
+  onSaveEdit,
   canSubmit,
   selectedItems,
   offCatalogItems,
@@ -49,6 +59,9 @@ export function SummaryPanel({
   localTransport,
   onRemoveItem,
   onRemoveOffCatalog,
+  mode = "create",
+  submitting = false,
+  cancelHref,
 }: SummaryPanelProps) {
   const equipSubtotal = quote ? Number(quote.equipmentSubtotal ?? quote.subtotal) : localSubtotal;
   const discount = quote ? Number(quote.discountAmount) : localDiscount;
@@ -171,23 +184,44 @@ export function SummaryPanel({
       )}
 
       {/* Action buttons */}
-      <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          disabled={!canSubmit}
-          onClick={onSubmitForApproval}
-          className="w-full rounded bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-ink disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Отправить на согласование →
-        </button>
-        <button
-          type="button"
-          onClick={onSaveDraft}
-          className="w-full rounded border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink-2 hover:bg-surface-muted"
-        >
-          Сохранить черновик
-        </button>
-      </div>
+      {mode === "edit" ? (
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            disabled={!canSubmit || submitting}
+            onClick={onSaveEdit}
+            className="w-full rounded bg-accent-bright px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {submitting ? "Сохранение…" : "Сохранить изменения"}
+          </button>
+          {cancelHref && (
+            <a
+              href={cancelHref}
+              className="w-full rounded border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink-2 hover:bg-surface-muted text-center"
+            >
+              Отмена
+            </a>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            disabled={!canSubmit}
+            onClick={onSubmitForApproval}
+            className="w-full rounded bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-ink disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Отправить на согласование →
+          </button>
+          <button
+            type="button"
+            onClick={onSaveDraft}
+            className="w-full rounded border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink-2 hover:bg-surface-muted"
+          >
+            Сохранить черновик
+          </button>
+        </div>
+      )}
 
       {/* Validation checks */}
       {checks.length > 0 && (
