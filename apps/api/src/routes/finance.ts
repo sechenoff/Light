@@ -11,6 +11,7 @@ import {
   paymentStatusSyncForAllBookings,
   workbookFromRows,
 } from "../services/finance";
+import { importLegacyBookings } from "../services/legacyBookingImport";
 import { rolesGuard } from "../middleware/rolesGuard";
 
 const router = express.Router();
@@ -339,6 +340,28 @@ router.get("/finance/expenses-breakdown", superAdminOnly, async (req, res, next)
     const query = expensesBreakdownQuerySchema.parse(req.query);
     const breakdown = await computeExpensesBreakdown(new Date(query.from), new Date(query.to));
     res.json(breakdown);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const legacyImportRowSchema = z.object({
+  filename: z.string().min(1),
+  clientName: z.string().refine((s) => s.trim().length > 0, { message: "clientName не может быть пустым" }),
+  date: z.string().datetime(),
+  amount: z.number().positive(),
+});
+
+const legacyImportBodySchema = z.object({
+  rows: z.array(legacyImportRowSchema).min(1),
+});
+
+router.post("/finance/import-legacy-bookings", superAdminOnly, async (req, res, next) => {
+  try {
+    const body = legacyImportBodySchema.parse(req.body);
+    const userId = req.adminUser!.userId;
+    const result = await importLegacyBookings(body.rows, userId);
+    res.json(result);
   } catch (err) {
     next(err);
   }

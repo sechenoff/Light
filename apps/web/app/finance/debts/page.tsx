@@ -2,9 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
+import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { apiFetch } from "../../../src/lib/api";
 import { formatRub } from "../../../src/lib/format";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
+import { LegacyBookingImportModal } from "../../../src/components/finance/LegacyBookingImportModal";
 import type { UserRole } from "../../../src/lib/auth";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
@@ -97,19 +99,25 @@ const STRIPE_CLASSES: Record<AgingBucket, string> = {
 
 export default function DebtsPage() {
   const { authorized, loading } = useRequireRole(ALLOWED);
+  const currentUser = useCurrentUser();
   const [data, setData] = useState<DebtsResponse | null>(null);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | AgingBucket>("all");
   const [fetching, setFetching] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
-  useEffect(() => {
-    if (!authorized) return;
+  function loadDebts() {
     let cancelled = false;
     setFetching(true);
     apiFetch<DebtsResponse>("/api/finance/debts")
       .then((d) => { if (!cancelled) setData(d); })
       .finally(() => { if (!cancelled) setFetching(false); });
     return () => { cancelled = true; };
+  }
+
+  useEffect(() => {
+    if (!authorized) return;
+    return loadDebts();
   }, [authorized]);
 
   if (loading || !authorized) return null;
@@ -150,6 +158,15 @@ export default function DebtsPage() {
             </p>
           </div>
           <div className="flex gap-2">
+            {currentUser?.user?.role === "SUPER_ADMIN" && (
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="px-3.5 py-1.5 text-xs font-medium rounded border border-accent-border bg-accent-soft text-accent-bright hover:bg-accent-border"
+              >
+                + Импортировать смету
+              </button>
+            )}
             <button className="px-3.5 py-1.5 text-xs font-medium border border-border-strong bg-surface rounded hover:bg-surface-subtle">
               Экспорт в XLSX
             </button>
@@ -319,6 +336,11 @@ export default function DebtsPage() {
           )}
         </div>
       </div>
+      <LegacyBookingImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => { setImportOpen(false); loadDebts(); }}
+      />
     </div>
   );
 }
