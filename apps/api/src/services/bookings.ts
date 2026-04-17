@@ -180,7 +180,36 @@ export async function createBookingDraft(args: {
     include: { items: true },
   });
 
-  return booking;
+  // Вычисляем смету и сохраняем суммы на брони сразу при создании,
+  // чтобы SUPER_ADMIN видел реальную стоимость на странице согласования.
+  if (args.items.length > 0) {
+    try {
+      const quote = await quoteEstimate({
+        startDate: args.startDate,
+        endDate: args.endDate,
+        clientId: args.clientId,
+        discountPercent: args.discountPercent ?? null,
+        items: args.items,
+        transport: null,
+      });
+      await prisma.booking.update({
+        where: { id: booking.id },
+        data: {
+          totalEstimateAmount: quote.subtotal,
+          discountAmount: quote.discountAmount,
+          finalAmount: quote.totalAfterDiscount,
+        },
+      });
+    } catch {
+      // Не блокируем создание брони, если пересчёт не удался
+    }
+  }
+
+  const withTotals = await prisma.booking.findUnique({
+    where: { id: booking.id },
+    include: { items: true },
+  });
+  return withTotals!;
 }
 
 /**
