@@ -76,6 +76,16 @@ if $NEED_INSTALL; then
   fi
 fi
 
+# Safety net: ensure critical bin symlinks exist. After OOM-killed npm ci
+# previously, these get wiped; `tsc` is needed for api build below, `next`/
+# `prisma` for other deploy scripts. Cheap to recreate unconditionally.
+mkdir -p node_modules/.bin
+cd node_modules/.bin
+[ -e tsc ] || ln -sf ../typescript/bin/tsc tsc
+[ -e next ] || ln -sf ../next/dist/bin/next next
+[ -e prisma ] || ln -sf ../prisma/build/index.js prisma
+cd /opt/light-rental-system
+
 echo "  ▸ Prisma generate + db push"
 cd apps/api
 npx prisma@6.5.0 generate > /dev/null 2>&1 || echo "  ⚠ prisma generate warnings (proceeding)"
