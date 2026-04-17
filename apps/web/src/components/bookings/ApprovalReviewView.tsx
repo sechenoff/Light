@@ -154,12 +154,14 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
   // Audit timeline
   const [auditItems, setAuditItems] = useState<AuditItem[] | null>(null);
 
-  // Estimate shift count from date range (coarse: ceil hours/8)
+  // Shifts aligned with server's billableShifts24h (1 shift = 1 day = 24h).
+  // Previously used /8, which tripled the count on a 24h booking and showed
+  // the wrong "Сумма за N дней" column header + wrong line totals.
   const shifts = Math.max(
     1,
     Math.ceil(
       (new Date(booking.endDate).getTime() - new Date(booking.startDate).getTime()) /
-        (1000 * 60 * 60 * 8),
+        (1000 * 60 * 60 * 24),
     ),
   );
 
