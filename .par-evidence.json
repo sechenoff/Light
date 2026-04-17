@@ -1,10 +1,10 @@
 {
-  "sprint": 2,
+  "sprint": 3,
   "feature": "tasks-todo",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "ts": "2026-04-17T19:42:00Z",
+  "ts": "2026-04-17T20:24:00Z",
   "round": 2,
-  "notes": "Round 1: Product NEEDS_FIXES, Technical REQUEST_CHANGES — 2 HIGH blockers (undo flow broken, /assignable endpoint missing), 2 MEDIUM (focus trap, flame glyph), 3 LOW (URL whitelist, toast.error, urgent-toggle test). All fixed in commit 42a4c41. Round 2: both reviewers pass with only non-blocking LOWs. Polish commit f503fad bumps undo toast to 6s per product reviewer suggestion. 687 tests green (500 api + 123 web + 31 bot + 33 shared)."
+  "notes": "Round 1: Technical APPROVE with 3 LOW non-blockers. Product NEEDS_FIXES — 1 HIGH (missing 6s undo toast on widget completeTask, fails criterion 13), 2 MEDIUM (ad-hoc Russian pluralization in day chip, non-clickable task rows). Round 2: both HIGH and pluralization MEDIUM fixed in commit 141f1b2 (mirrors useTasksQuery.completeTask pattern + shared pluralize). Clickable-rows MEDIUM deferred per spec §3.10 line 406 which explicitly scopes interactivity to checkbox + footer link. Product reviewer agreed with the deferral on re-review. 511 api + 147 web + bot + shared tests green. tsc clean. No hex, no style={}."
 }
