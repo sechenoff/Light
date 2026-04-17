@@ -54,7 +54,16 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
   const previousStatus = booking.paymentStatus;
   const totalEstimateAmount = booking.estimate ? new Decimal(booking.estimate.subtotal.toString()) : new Decimal(booking.totalEstimateAmount.toString());
   const discountAmount = booking.estimate ? new Decimal(booking.estimate.discountAmount.toString()) : new Decimal(booking.discountAmount.toString());
-  const finalAmount = booking.estimate ? new Decimal(booking.estimate.totalAfterDiscount.toString()) : new Decimal(booking.finalAmount.toString());
+  // Equipment total after discount — from estimate snapshot if present, else from booking's stored values.
+  const equipmentAfterDiscount = booking.estimate
+    ? new Decimal(booking.estimate.totalAfterDiscount.toString())
+    : new Decimal(booking.finalAmount.toString());
+  // Transport is a flat add-on that doesn't participate in the equipment discount.
+  const transportSubtotal = booking.transportSubtotalRub
+    ? new Decimal(booking.transportSubtotalRub.toString())
+    : new Decimal(0);
+  // Final amount = what the client actually pays = equipment-after-discount + transport.
+  const finalAmount = equipmentAfterDiscount.add(transportSubtotal);
   const amountPaid = sumDec(booking.payments.map((p) => p.amount.toString()));
   const amountOutstanding = Decimal.max(finalAmount.sub(amountPaid), new Decimal(0));
   const status = calcBookingPaymentStatus({

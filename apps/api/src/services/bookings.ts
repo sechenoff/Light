@@ -182,6 +182,8 @@ export async function createBookingDraft(args: {
 
   // Вычисляем смету и сохраняем суммы на брони сразу при создании,
   // чтобы SUPER_ADMIN видел реальную стоимость на странице согласования.
+  // finalAmount = equipment-after-discount + transportSubtotal (транспорт
+  // не участвует в скидке, добавляется flat).
   if (args.items.length > 0) {
     try {
       const quote = await quoteEstimate({
@@ -192,12 +194,17 @@ export async function createBookingDraft(args: {
         items: args.items,
         transport: null,
       });
+      const transportSubtotal = args.transport?.transportSubtotalRub
+        ? new Decimal(args.transport.transportSubtotalRub)
+        : new Decimal(0);
+      const equipmentAfterDiscount = new Decimal(quote.totalAfterDiscount);
+      const finalAmount = equipmentAfterDiscount.add(transportSubtotal);
       await prisma.booking.update({
         where: { id: booking.id },
         data: {
           totalEstimateAmount: quote.subtotal,
           discountAmount: quote.discountAmount,
-          finalAmount: quote.totalAfterDiscount,
+          finalAmount: finalAmount.toDecimalPlaces(2).toString(),
         },
       });
     } catch {
