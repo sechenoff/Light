@@ -1,1 +1,11 @@
-{"sprint":1,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus-claude","ts":"2026-04-16T22:45:00Z","notes":"Product: NEEDS_FIXES → 3 fixes applied (ResizableContainer clip detection, gradient hint, catalog max-qty). Technical: REQUEST_CHANGES → 3 fixes applied (categories response shape, search race condition, accordion error handling). H2 was already fixed before technical review completed. AI mode card format deferred intentionally (spec Unchanged files section lists EquipmentTable as unchanged)."}
+{
+  "sprint": "transport-calculator",
+  "claude_product": "ACCEPTED",
+  "technical_review": "APPROVE",
+  "provider": "split-focus-claude",
+  "findings": {
+    "product": "concern: TransportCard breakdown only visible after quote loads (no local calc). suggestion: shiftHoursDirty not reset on date change. Both non-blockers.",
+    "technical": "minor: dynamic import in /draft route should be static. minor: showKm derived-state antipattern in TransportCard. No critical or important blocking issues."
+  },
+  "ts": "2026-04-17T12:10:00.000Z"
+}
