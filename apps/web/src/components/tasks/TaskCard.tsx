@@ -163,7 +163,9 @@ export function TaskCard({
               isDone ? "line-through text-ink-3 opacity-60" : "text-ink"
             }`}
           >
-            {task.title}
+            {task.title.trim() ? task.title : (
+              <span className="italic text-ink-3">Без названия</span>
+            )}
           </span>
         )}
       </div>
