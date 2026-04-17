@@ -121,14 +121,21 @@ export function CatalogList({
         </div>
       )}
 
-      {grouped.map(([category, catRows]) => {
+      {/* When a specific category filter is active, the active chip already
+          communicates which category we're in — hiding the group header
+          removes visual redundancy. Otherwise ("Все" filter), show headers
+          to separate the groups. */}
+      {grouped.map(([category, catRows], idx) => {
         const selCount = selectedByCat.get(category) ?? 0;
+        const showHeader = activeTab === "all";
         return (
-          <div key={category}>
-            <div className="flex items-center justify-between border-b border-t border-border bg-surface-subtle px-5 py-2 font-cond text-[10px] font-semibold uppercase tracking-wider text-ink-3">
-              <span>{category}</span>
-              {selCount > 0 && <span className="font-mono text-emerald">{selCount} выбрано</span>}
-            </div>
+          <div key={category} className={idx === 0 && !showHeader ? "pt-2" : ""}>
+            {showHeader && (
+              <div className="flex items-center justify-between border-b border-t border-border bg-surface-subtle px-5 py-2 font-cond text-[10px] font-semibold uppercase tracking-wider text-ink-3">
+                <span>{category}</span>
+                {selCount > 0 && <span className="font-mono text-emerald">{selCount} выбрано</span>}
+              </div>
+            )}
             {catRows.map((row) => {
               const sel = selected.get(row.equipmentId);
               return (

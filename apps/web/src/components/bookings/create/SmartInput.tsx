@@ -27,14 +27,14 @@ export function SmartInput({ value, onValueChange, onParse, onClear, parsing, pa
         placeholder="Поиск оборудования или вставьте список от гафера..."
         rows={isMulti ? 3 : 1}
         disabled={parsed}
-        className={`w-full resize-y rounded border px-3 py-2 pr-28 text-[13px] outline-none transition-colors ${
+        className={`w-full resize-y rounded border px-3 py-2 pr-32 text-[13px] outline-none transition-colors ${
           parsed
             ? "border-border bg-surface-muted text-ink-3"
             : "border-border bg-surface focus:border-accent-bright focus:shadow-[0_0_0_3px_theme(colors.accent.soft)]"
-        } min-h-[40px] max-h-[140px]`}
+        } min-h-[40px]`}
       />
 
-      <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
+      <div className="absolute right-2 top-2 flex items-center gap-1.5">
         {parsed ? (
           <button
             type="button"
