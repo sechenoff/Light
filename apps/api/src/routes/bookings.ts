@@ -225,6 +225,7 @@ router.get("/:id", async (req, res, next) => {
         client: true,
         items: { include: { equipment: true } },
         estimate: { include: { lines: true } },
+        vehicle: true,
         financeEvents: { orderBy: { createdAt: "desc" }, take: 100 },
         scanSessions: {
           select: {

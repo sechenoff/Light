@@ -1,4 +1,4 @@
-import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ApprovalReviewView } from "../ApprovalReviewView";
 
@@ -31,10 +31,6 @@ const BOOKING = {
   totalEstimateAmount: "50000",
   discountAmount: "5000",
   finalAmount: "45000",
-  amountPaid: "0",
-  amountOutstanding: "45000",
-  paymentStatus: "NOT_PAID" as const,
-  rejectionReason: null,
   client: { id: "cl1", name: "Иванов Иван", phone: null, email: null, comment: null },
   items: [
     {
@@ -52,25 +48,39 @@ const BOOKING = {
         availableQuantity: 3,
       },
     },
-    {
-      id: "item2",
-      equipmentId: "eq2",
-      quantity: 1,
-      equipment: {
-        id: "eq2",
-        name: "Dedolight 150W",
-        category: "Свет",
-        brand: "Dedo",
-        model: null,
-        rentalRatePerShift: "2000",
-        totalQuantity: 4,
-        availableQuantity: 2,
-      },
-    },
   ],
-  estimate: null,
-  financeEvents: [],
-  scanSessions: [],
+  estimate: {
+    id: "est1",
+    shifts: 2,
+    subtotal: "50000",
+    discountPercent: "10",
+    discountAmount: "5000",
+    totalAfterDiscount: "45000",
+    lines: [
+      {
+        id: "ln1",
+        equipmentId: "eq1",
+        categorySnapshot: "Свет",
+        nameSnapshot: "ARRI M18",
+        brandSnapshot: "ARRI",
+        modelSnapshot: "M18",
+        quantity: 2,
+        unitPrice: "5000",
+        lineSum: "20000",
+      },
+      {
+        id: "ln2",
+        equipmentId: "eq2",
+        categorySnapshot: "Свет",
+        nameSnapshot: "Dedolight 150W",
+        brandSnapshot: "Dedo",
+        modelSnapshot: null,
+        quantity: 1,
+        unitPrice: "2000",
+        lineSum: "2000",
+      },
+    ],
+  },
 };
 
 const CURRENT_USER = {
@@ -80,15 +90,15 @@ const CURRENT_USER = {
 };
 
 function mockAuditEmpty() {
-  (global.fetch as any).mockResolvedValue({
+  (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
     ok: true,
     status: 200,
     json: async () => ({ items: [], nextCursor: null }),
-  });
+  } as Response);
 }
 
-describe("ApprovalReviewView", () => {
-  it("renders booking header with client name, project and dates", async () => {
+describe("ApprovalReviewView (read-only)", () => {
+  it("renders booking header with client name, project and dates", () => {
     mockAuditEmpty();
     render(
       <ApprovalReviewView
@@ -97,13 +107,12 @@ describe("ApprovalReviewView", () => {
         currentUser={CURRENT_USER}
       />
     );
-    // client name appears in the title heading
     const heading = screen.getByRole("heading", { level: 1 });
     expect(heading.textContent).toContain("Иванов Иван");
     expect(heading.textContent).toContain("Тестовый проект");
   });
 
-  it("renders equipment table with correct line totals", async () => {
+  it("renders equipment lines from estimate snapshot (read-only)", () => {
     mockAuditEmpty();
     render(
       <ApprovalReviewView
@@ -112,16 +121,15 @@ describe("ApprovalReviewView", () => {
         currentUser={CURRENT_USER}
       />
     );
-    // ARRI M18 should appear in the table
+    // Estimate lines appear
     expect(screen.getByText("ARRI M18")).toBeInTheDocument();
-    // Dedolight too
     expect(screen.getByText("Dedolight 150W")).toBeInTheDocument();
-    // Line total for ARRI M18: 2 × 5000 × 2 shifts = 20000 (or just check the name appears)
-    // Check quantities rendered
-    expect(screen.getAllByRole("button", { name: /\+/ })).not.toHaveLength(0);
+    // NO quantity +/- buttons — this view is read-only
+    const plusButtons = screen.queryAllByRole("button", { name: /\+/ });
+    expect(plusButtons).toHaveLength(0);
   });
 
-  it("renders big final amount from booking.finalAmount", async () => {
+  it("renders big final amount from booking.finalAmount", () => {
     mockAuditEmpty();
     render(
       <ApprovalReviewView
@@ -130,38 +138,13 @@ describe("ApprovalReviewView", () => {
         currentUser={CURRENT_USER}
       />
     );
-    // finalAmount = 45000, should appear in sidebar
-    // formatMoneyRub renders with locale formatting — look for the number
-    const amountElements = screen.getAllByText(/45\s*000|45\.000/);
+    // finalAmount = 45000
+    const amountElements = screen.getAllByText(/45\s*000/);
     expect(amountElements.length).toBeGreaterThan(0);
   });
 
-  it("calls PATCH /api/bookings/:id after stepper increment with debounce", async () => {
-    const patchCalls: { url: string; payload: any }[] = [];
-
-    (global.fetch as any).mockImplementation((url: string, init?: any) => {
-      if (typeof url === "string" && url.includes("/api/bookings/bk1") && init?.method === "PATCH") {
-        patchCalls.push({ url, payload: JSON.parse(init.body) });
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            booking: {
-              ...BOOKING,
-              totalEstimateAmount: "55000",
-              discountAmount: "5500",
-              finalAmount: "49500",
-            },
-          }),
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [], nextCursor: null }),
-      });
-    });
-
+  it("renders Edit link pointing to /bookings/:id/edit", () => {
+    mockAuditEmpty();
     render(
       <ApprovalReviewView
         booking={BOOKING}
@@ -169,21 +152,9 @@ describe("ApprovalReviewView", () => {
         currentUser={CURRENT_USER}
       />
     );
-
-    // Find the first "+" button (increments first item quantity)
-    const plusButtons = screen.getAllByRole("button", { name: /\+/ });
-    fireEvent.click(plusButtons[0]);
-
-    // Wait for debounce (500ms) to fire — use real timers, just wait
-    await waitFor(
-      () => expect(patchCalls.length).toBeGreaterThan(0),
-      { timeout: 1500 },
-    );
-
-    // Payload should have the updated quantity (3, was 2)
-    const lastCall = patchCalls[patchCalls.length - 1];
-    expect(lastCall.payload.items).toBeDefined();
-    const arriItem = lastCall.payload.items.find((i: any) => i.equipmentId === "eq1");
-    expect(arriItem?.quantity).toBe(3);
+    // At least one Edit link should point to the edit page
+    const editLinks = screen.getAllByRole("link", { name: /Редактировать/ });
+    expect(editLinks.length).toBeGreaterThan(0);
+    expect(editLinks[0].getAttribute("href")).toBe("/bookings/bk1/edit");
   });
 });

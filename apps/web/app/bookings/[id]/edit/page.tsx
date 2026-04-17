@@ -11,6 +11,7 @@ import {
   datetimeLocalToISO,
   formatRentalDurationDetails,
 } from "../../../../src/lib/rentalTime";
+import { useCurrentUser } from "../../../../src/hooks/useCurrentUser";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ function splitLocalDateTime(local: string): { date: string; time: string } {
 export default function BookingEditPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { user } = useCurrentUser();
 
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -310,7 +312,12 @@ export default function BookingEditPage() {
       </div>
     );
   }
-  if (!["DRAFT", "CONFIRMED"].includes(booking.status)) {
+  // SUPER_ADMIN can also edit PENDING_APPROVAL bookings (API enforces role).
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const editableStatuses = isSuperAdmin
+    ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL"]
+    : ["DRAFT", "CONFIRMED"];
+  if (!editableStatuses.includes(booking.status)) {
     return (
       <div className="p-8 text-center text-ink-2">
         Редактирование недоступно для статуса «{booking.status}».{" "}

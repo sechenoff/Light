@@ -257,7 +257,7 @@ function BookingHistoryPageInner() {
                       <Link className="text-xs text-accent-bright hover:text-accent font-medium" href={`/bookings/${r.id}`}>
                         Открыть
                       </Link>
-                      {["DRAFT", "CONFIRMED"].includes(r.status) ? (
+                      {(["DRAFT", "CONFIRMED"].includes(r.status) || (r.status === "PENDING_APPROVAL" && isSuperAdmin)) ? (
                         <Link
                           href={`/bookings/${r.id}/edit`}
                           title="Редактировать"

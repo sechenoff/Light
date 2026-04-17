@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -9,11 +9,22 @@ import { formatMoneyRub } from "../../lib/format";
 import { StatusPill } from "../StatusPill";
 import { RoleBadge } from "../RoleBadge";
 import { RejectBookingModal } from "./RejectBookingModal";
-import { EquipmentEditTable, type EditableItem } from "./review/EquipmentEditTable";
 import { toast } from "../ToastProvider";
 import type { CurrentUser } from "../../lib/auth";
 
 // ------------------------------------------------------------------ types ---
+
+type EstimateLine = {
+  id: string;
+  equipmentId: string | null;
+  categorySnapshot: string;
+  nameSnapshot: string;
+  brandSnapshot: string | null;
+  modelSnapshot: string | null;
+  quantity: number;
+  unitPrice: string;
+  lineSum: string;
+};
 
 type BookingForReview = {
   id: string;
@@ -43,6 +54,24 @@ type BookingForReview = {
       availableQuantity: number;
     };
   }>;
+  estimate?: null | {
+    id: string;
+    shifts: number;
+    subtotal: string;
+    discountPercent: string | null;
+    discountAmount: string;
+    totalAfterDiscount: string;
+    lines: EstimateLine[];
+  };
+  // Transport snapshot
+  vehicleId?: string | null;
+  vehicleWithGenerator?: boolean;
+  vehicleShiftHours?: string | null;
+  vehicleSkipOvertime?: boolean;
+  vehicleKmOutsideMkad?: number | null;
+  vehicleTtkEntry?: boolean;
+  transportSubtotalRub?: string | null;
+  vehicle?: { id: string; name: string; slug: string } | null;
 };
 
 type AuditItem = {
@@ -99,28 +128,7 @@ function formatTs(iso: string): string {
   }
 }
 
-// --------------------------------------------------------- debounce hook ---
-
-function useDebouncedCallback<A extends unknown[]>(fn: (...args: A) => void, ms: number) {
-  const timer = useRef<NodeJS.Timeout | null>(null);
-  return useCallback(
-    (...args: A) => {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => fn(...args), ms);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fn, ms],
-  );
-}
-
 // ---------------------------------------------------------- main component ---
-
-type Totals = {
-  totalEstimateAmount: string | null | undefined;
-  discountAmount: string | null | undefined;
-  finalAmount: string | null | undefined;
-  discountPercent: string | null | undefined;
-};
 
 type Props = {
   booking: BookingForReview;
@@ -128,23 +136,15 @@ type Props = {
   currentUser: CurrentUser;
 };
 
-export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
+/**
+ * Read-only summary of a PENDING_APPROVAL booking for the SUPER_ADMIN to
+ * approve or reject. For edits, a "Редактировать" button navigates to the
+ * full /bookings/:id/edit page (same UI as /bookings/new).
+ *
+ * No inline editing here — this is purely a confirmation screen.
+ */
+export function ApprovalReviewView({ booking, onReload: _onReload, currentUser: _currentUser }: Props) {
   const router = useRouter();
-
-  // Local state for editable fields
-  const [items, setItems] = useState<EditableItem[]>(
-    booking.items.map((it) => ({ ...it }))
-  );
-  const [discountPercent, setDiscountPercent] = useState<number>(
-    Number(booking.discountPercent ?? "0") || 0
-  );
-  const [totals, setTotals] = useState<Totals>({
-    totalEstimateAmount: booking.totalEstimateAmount,
-    discountAmount: booking.discountAmount,
-    finalAmount: booking.finalAmount,
-    discountPercent: booking.discountPercent,
-  });
-  const [saving, setSaving] = useState(false);
 
   // Approval actions state
   const [approving, setApproving] = useState(false);
@@ -153,17 +153,6 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
 
   // Audit timeline
   const [auditItems, setAuditItems] = useState<AuditItem[] | null>(null);
-
-  // Shifts aligned with server's billableShifts24h (1 shift = 1 day = 24h).
-  // Previously used /8, which tripled the count on a 24h booking and showed
-  // the wrong "Сумма за N дней" column header + wrong line totals.
-  const shifts = Math.max(
-    1,
-    Math.ceil(
-      (new Date(booking.endDate).getTime() - new Date(booking.startDate).getTime()) /
-        (1000 * 60 * 60 * 24),
-    ),
-  );
 
   // ---- fetch audit timeline ----
   useEffect(() => {
@@ -182,90 +171,6 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [booking.id]);
-
-  // ---- debounced PATCH ----
-  const doPatch = useCallback(
-    async (payload: { items?: Array<{ equipmentId: string; quantity: number }>; discountPercent?: number }) => {
-      setSaving(true);
-      try {
-        const res = await apiFetch<{ booking: BookingForReview & Totals }>(
-          `/api/bookings/${booking.id}`,
-          { method: "PATCH", body: JSON.stringify(payload) },
-        );
-        setTotals({
-          totalEstimateAmount: res.booking.totalEstimateAmount,
-          discountAmount: res.booking.discountAmount,
-          finalAmount: res.booking.finalAmount,
-          discountPercent: res.booking.discountPercent,
-        });
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Не удалось сохранить изменения";
-        toast.error(msg);
-      } finally {
-        setSaving(false);
-      }
-    },
-    [booking.id],
-  );
-
-  const patchDebounced = useDebouncedCallback(doPatch, 500);
-
-  // ---- equipment edit handlers ----
-  function handleChangeQty(equipmentId: string, newQty: number) {
-    const updated = items.map((it) =>
-      it.equipmentId === equipmentId ? { ...it, quantity: Math.max(1, newQty) } : it,
-    );
-    setItems(updated);
-    patchDebounced({ items: updated.map((i) => ({ equipmentId: i.equipmentId, quantity: i.quantity })) });
-  }
-
-  function handleRemove(equipmentId: string) {
-    const updated = items.filter((it) => it.equipmentId !== equipmentId);
-    setItems(updated);
-    patchDebounced({ items: updated.map((i) => ({ equipmentId: i.equipmentId, quantity: i.quantity })) });
-  }
-
-  function handleAdd(row: {
-    equipmentId: string;
-    name: string;
-    category: string;
-    rentalRatePerShift: string;
-    availableQuantity: number;
-    totalQuantity: number;
-  }) {
-    const existing = items.find((it) => it.equipmentId === row.equipmentId);
-    let updated: EditableItem[];
-    if (existing) {
-      updated = items.map((it) =>
-        it.equipmentId === row.equipmentId ? { ...it, quantity: it.quantity + 1 } : it,
-      );
-    } else {
-      const newItem: EditableItem = {
-        id: `temp-${row.equipmentId}`,
-        equipmentId: row.equipmentId,
-        quantity: 1,
-        equipment: {
-          id: row.equipmentId,
-          name: row.name,
-          category: row.category,
-          brand: null,
-          model: null,
-          rentalRatePerShift: row.rentalRatePerShift,
-          totalQuantity: row.totalQuantity,
-          availableQuantity: row.availableQuantity,
-        },
-      };
-      updated = [...items, newItem];
-    }
-    setItems(updated);
-    patchDebounced({ items: updated.map((i) => ({ equipmentId: i.equipmentId, quantity: i.quantity })) });
-  }
-
-  function handleDiscountChange(value: number) {
-    const clamped = Math.max(0, Math.min(100, value));
-    setDiscountPercent(clamped);
-    patchDebounced({ discountPercent: clamped });
-  }
 
   // ---- approve / reject ----
   async function handleApprove() {
@@ -298,6 +203,20 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
 
   const actionsBusy = approving || rejectBusy;
 
+  // Group estimate lines by category for display
+  const lines: EstimateLine[] = booking.estimate?.lines ?? [];
+  const hasEstimate = lines.length > 0;
+  const linesByCategory = new Map<string, EstimateLine[]>();
+  for (const ln of lines) {
+    const list = linesByCategory.get(ln.categorySnapshot) ?? [];
+    list.push(ln);
+    linesByCategory.set(ln.categorySnapshot, list);
+  }
+
+  // Transport display
+  const hasTransport = Boolean(booking.vehicleId && booking.transportSubtotalRub);
+  const transportName = booking.vehicle?.name ?? null;
+
   // ----------------------------------------------------------------------- render ---
 
   const title = booking.displayName
@@ -305,7 +224,7 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
 
   return (
     <div>
-      {/* Breadcrumb + status + role pills (parent page hides its own top-bar in this mode) */}
+      {/* Breadcrumb + status + role pills */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm">
           <Link href="/bookings" className="text-ink-3 hover:text-ink">
@@ -320,7 +239,7 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
         </div>
       </div>
 
-      {/* Hero — amber highlight card with title + primary actions */}
+      {/* Hero — title, dates, + Edit + Reject + Approve buttons */}
       <div className="mb-5 rounded-lg border border-amber-border bg-amber-soft px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -331,7 +250,13 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
               <span className="text-ink-3">отправлено кладовщиком</span>
             </p>
           </div>
-          <div className="flex gap-2 shrink-0">
+          <div className="flex gap-2 shrink-0 flex-wrap">
+            <Link
+              href={`/bookings/${booking.id}/edit`}
+              className="rounded border border-border bg-surface px-4 py-2 text-sm text-ink-2 hover:bg-surface-muted"
+            >
+              ✎ Редактировать
+            </Link>
             <button
               type="button"
               disabled={actionsBusy}
@@ -383,47 +308,51 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
             </div>
           </div>
 
-          {/* Equipment card */}
+          {/* Equipment card — read-only table */}
           <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
             <div className="border-b border-border bg-surface-subtle px-4 py-2.5">
-              <p className="eyebrow">Оборудование</p>
+              <p className="eyebrow">
+                Оборудование
+                {hasEstimate && booking.estimate && booking.estimate.shifts > 1 && (
+                  <span className="ml-2 font-normal text-ink-3">· {booking.estimate.shifts} смен</span>
+                )}
+              </p>
             </div>
-            <EquipmentEditTable
-              items={items}
-              shifts={shifts}
-              startISO={booking.startDate}
-              endISO={booking.endDate}
-              onChangeQty={handleChangeQty}
-              onRemove={handleRemove}
-              onAdd={handleAdd}
-            />
-          </div>
-
-          {/* Discount card */}
-          <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-            <div className="border-b border-border bg-surface-subtle px-4 py-2.5">
-              <p className="eyebrow">Скидка</p>
-            </div>
-            <div className="flex items-center justify-between gap-4 p-4">
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={discountPercent}
-                  onChange={(e) => handleDiscountChange(Number(e.target.value))}
-                  className="w-20 rounded border border-border bg-surface px-2 py-1.5 text-sm text-ink focus:border-accent focus:outline-none"
-                />
-                <span className="text-sm text-ink-2">%</span>
+            {!hasEstimate ? (
+              <div className="px-4 py-6 text-center text-sm text-ink-3">Нет позиций</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-surface-subtle/50 text-xs text-ink-2">
+                      <th className="px-4 py-2 text-left font-medium">Наименование</th>
+                      <th className="px-4 py-2 text-right font-medium w-28">Цена/день</th>
+                      <th className="px-4 py-2 text-center font-medium w-20">Кол-во</th>
+                      <th className="px-4 py-2 text-right font-medium w-28">Сумма</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from(linesByCategory.entries()).map(([cat, catLines]) => (
+                      <>
+                        <tr key={`cat-${cat}`} className="border-t border-border bg-surface-subtle">
+                          <td colSpan={4} className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
+                            {cat}
+                          </td>
+                        </tr>
+                        {catLines.map((ln) => (
+                          <tr key={ln.id} className="border-t border-border">
+                            <td className="px-4 py-2 text-ink font-medium">{ln.nameSnapshot}</td>
+                            <td className="px-4 py-2 text-right mono-num text-ink-2">{formatMoneyRub(ln.unitPrice)} ₽</td>
+                            <td className="px-4 py-2 text-center mono-num text-ink">{ln.quantity}</td>
+                            <td className="px-4 py-2 text-right mono-num font-medium text-ink">{formatMoneyRub(ln.lineSum)} ₽</td>
+                          </tr>
+                        ))}
+                      </>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div className="text-right text-sm">
-                <span className="text-ink-3">−</span>{" "}
-                <span className="font-medium mono-num">
-                  {formatMoneyRub(totals.discountAmount ?? "0")} ₽
-                </span>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Transport card */}
@@ -431,7 +360,33 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
             <div className="border-b border-border bg-surface-subtle px-4 py-2.5">
               <p className="eyebrow">Транспорт</p>
             </div>
-            <div className="p-4 text-sm text-ink-3">—</div>
+            {!hasTransport ? (
+              <div className="p-4 text-sm text-ink-3">Не выбран</div>
+            ) : (
+              <div className="p-4 text-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium text-ink">
+                      {transportName ?? "Транспорт"}
+                      {booking.vehicleWithGenerator && (
+                        <span className="ml-2 rounded bg-amber-soft px-1.5 py-0.5 text-[11px] text-amber">+ генератор</span>
+                      )}
+                    </div>
+                    <div className="mt-1 text-xs text-ink-3 space-x-2">
+                      {booking.vehicleShiftHours && <span>{Number(booking.vehicleShiftHours)} ч.</span>}
+                      {booking.vehicleSkipOvertime && <span>· без переработки</span>}
+                      {booking.vehicleKmOutsideMkad && Number(booking.vehicleKmOutsideMkad) > 0 && (
+                        <span>· {booking.vehicleKmOutsideMkad} км за МКАД</span>
+                      )}
+                      {booking.vehicleTtkEntry && <span>· ТТК</span>}
+                    </div>
+                  </div>
+                  <div className="mono-num text-ink font-medium whitespace-nowrap">
+                    {formatMoneyRub(booking.transportSubtotalRub ?? "0")} ₽
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Comment card */}
@@ -485,49 +440,56 @@ export function ApprovalReviewView({ booking, onReload, currentUser }: Props) {
           </div>
         </div>
 
-        {/* Right column — sticky total sidebar */}
+        {/* Right column — sticky totals + actions */}
         <div className="lg:sticky lg:top-20 h-fit">
           <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
             <div className="border-b border-border bg-surface-subtle px-4 py-2.5">
               <p className="eyebrow">Итог</p>
             </div>
             <div className="p-4">
-              {/* Big amount */}
+              {/* Big final amount */}
               <div className="mb-4 text-center">
                 <div className="text-3xl font-bold mono-num text-ink">
-                  {formatMoneyRub(totals.finalAmount ?? "0")} ₽
+                  {formatMoneyRub(booking.finalAmount ?? "0")} ₽
                 </div>
-                {saving && (
-                  <div className="mt-1 text-xs text-ink-3">сохраняю…</div>
-                )}
               </div>
 
               {/* Breakdown */}
               <div className="space-y-1.5 text-sm border-t border-border pt-3">
                 <div className="flex justify-between">
                   <span className="text-ink-2">Аренда</span>
-                  <span className="mono-num">{formatMoneyRub(totals.totalEstimateAmount ?? "0")} ₽</span>
+                  <span className="mono-num">{formatMoneyRub(booking.totalEstimateAmount ?? "0")} ₽</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-ink-2">Транспорт</span>
-                  <span className="mono-num text-ink-3">—</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-ink-2">
-                    Скидка {totals.discountPercent ? `${totals.discountPercent}%` : ""}
-                  </span>
-                  <span className="mono-num text-rose">
-                    −{formatMoneyRub(totals.discountAmount ?? "0")} ₽
-                  </span>
-                </div>
+                {booking.discountPercent && Number(booking.discountPercent) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-ink-2">Скидка {booking.discountPercent}%</span>
+                    <span className="mono-num text-rose">
+                      −{formatMoneyRub(booking.discountAmount ?? "0")} ₽
+                    </span>
+                  </div>
+                )}
+                {hasTransport && (
+                  <div className="flex justify-between">
+                    <span className="text-ink-2">
+                      Транспорт{transportName ? ` (${transportName})` : ""}
+                    </span>
+                    <span className="mono-num">{formatMoneyRub(booking.transportSubtotalRub ?? "0")} ₽</span>
+                  </div>
+                )}
                 <div className="flex justify-between border-t border-border pt-2 font-semibold">
                   <span>Итого</span>
-                  <span className="mono-num">{formatMoneyRub(totals.finalAmount ?? "0")} ₽</span>
+                  <span className="mono-num">{formatMoneyRub(booking.finalAmount ?? "0")} ₽</span>
                 </div>
               </div>
 
               {/* Duplicate action buttons */}
               <div className="mt-4 flex flex-col gap-2">
+                <Link
+                  href={`/bookings/${booking.id}/edit`}
+                  className="w-full rounded border border-border bg-surface py-2 text-center text-sm text-ink-2 hover:bg-surface-muted"
+                >
+                  ✎ Редактировать
+                </Link>
                 <button
                   type="button"
                   disabled={actionsBusy}
