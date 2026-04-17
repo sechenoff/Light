@@ -159,7 +159,7 @@ export function TasksPage() {
     );
   }
 
-  const isEmpty = !loading && tasks.filter((t) => t.status === "OPEN").length === 0;
+  const isEmpty = !loading && tasks.length === 0;
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-3xl">
