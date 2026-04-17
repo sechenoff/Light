@@ -447,10 +447,10 @@ export function ApprovalReviewView({ booking, onReload: _onReload, currentUser: 
               <p className="eyebrow">Итог</p>
             </div>
             <div className="p-4">
-              {/* Big final amount */}
+              {/* Big final amount — single line, auto-fit if long */}
               <div className="mb-4 text-center">
-                <div className="text-3xl font-bold mono-num text-ink">
-                  {formatMoneyRub(booking.finalAmount ?? "0")} ₽
+                <div className="mono-num font-bold text-ink whitespace-nowrap leading-tight text-[clamp(20px,4.2vw,32px)]">
+                  {formatMoneyRub(booking.finalAmount ?? "0")}&nbsp;₽
                 </div>
               </div>
 

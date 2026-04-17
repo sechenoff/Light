@@ -500,6 +500,14 @@ export async function confirmBooking(bookingId: string) {
       });
     }
 
+    // Remove any existing Estimate first (bookings in PENDING_APPROVAL already
+    // have one from submit-for-approval). Booking ↔ Estimate is a 1-to-1
+    // required relation, so `estimate: { create }` on an existing link throws
+    // P2014. deleteMany handles both cases: estimate exists → delete it (+
+    // cascades lines); estimate absent → no-op. Same transaction keeps it
+    // atomic.
+    await tx.estimate.deleteMany({ where: { bookingId } });
+
     const updated = await tx.booking.update({
       where: { id: bookingId },
       data: {
