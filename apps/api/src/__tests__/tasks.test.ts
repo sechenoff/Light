@@ -752,3 +752,67 @@ describe("GET /api/dashboard/today — включает myTasks", () => {
     expect(Array.isArray(res.body.myTasks)).toBe(true);
   });
 });
+
+// ─── 9. status=ALL — возвращает OPEN и DONE вместе ───────────────────────────
+
+describe("GET /api/tasks?status=ALL", () => {
+  it("возвращает и OPEN, и DONE задачи для filter=my одного пользователя", async () => {
+    // Создаём специального пользователя для изоляции
+    const { hashPassword, signSession } = await import("../services/auth");
+    const hash = await hashPassword("alltest123");
+    const allUser = await prisma.adminUser.create({
+      data: { username: `alltest_${Date.now()}`, passwordHash: hash, role: "SUPER_ADMIN" },
+    });
+    const allToken = signSession({ userId: allUser.id, username: allUser.username, role: "SUPER_ADMIN" });
+    const AUTH_ALL = () => ({ "X-API-Key": "test-key-1", Authorization: `Bearer ${allToken}` });
+
+    // Создаём OPEN задачу для этого пользователя
+    await prisma.task.create({
+      data: {
+        title: "Открытая-ALL",
+        status: "OPEN",
+        urgent: false,
+        createdBy: allUser.id,
+        assignedTo: allUser.id,
+      },
+    });
+
+    // Создаём DONE задачу для этого пользователя
+    await prisma.task.create({
+      data: {
+        title: "Выполненная-ALL",
+        status: "DONE",
+        urgent: false,
+        createdBy: allUser.id,
+        assignedTo: allUser.id,
+        completedAt: new Date(),
+        completedBy: allUser.id,
+      },
+    });
+
+    const res = await request(app)
+      .get("/api/tasks?filter=my&status=ALL&limit=200")
+      .set(AUTH_ALL());
+
+    expect(res.status).toBe(200);
+    const items: any[] = res.body.items;
+
+    const openTask = items.find((t) => t.title === "Открытая-ALL");
+    const doneTask = items.find((t) => t.title === "Выполненная-ALL");
+
+    expect(openTask).toBeDefined();
+    expect(openTask.status).toBe("OPEN");
+    expect(doneTask).toBeDefined();
+    expect(doneTask.status).toBe("DONE");
+  });
+
+  it("status=OPEN (default) не возвращает DONE задачи", async () => {
+    const res = await request(app)
+      .get("/api/tasks?filter=my&status=OPEN&limit=200")
+      .set(AUTH_SA());
+
+    expect(res.status).toBe(200);
+    const items: any[] = res.body.items;
+    expect(items.every((t) => t.status === "OPEN")).toBe(true);
+  });
+});

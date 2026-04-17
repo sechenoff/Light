@@ -47,7 +47,7 @@ const updateTaskSchema = z.object({
 
 const listQuerySchema = z.object({
   filter: z.enum(["my", "all", "created-by-me"]).optional().default("my"),
-  status: z.enum(["OPEN", "DONE"]).optional().default("OPEN"),
+  status: z.enum(["OPEN", "DONE", "ALL"]).optional().default("OPEN"),
   urgent: z.coerce.boolean().optional(),
   overdue: z.coerce.boolean().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional().default(100),

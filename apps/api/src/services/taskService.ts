@@ -279,7 +279,7 @@ export async function deleteTask(id: string, actor: Actor) {
 
 export interface ListTasksInput {
   filter?: "my" | "all" | "created-by-me";
-  status?: TaskStatus;
+  status?: TaskStatus | "ALL";
   urgent?: boolean;
   overdue?: boolean;
   limit?: number;
@@ -307,8 +307,8 @@ export async function listTasks(input: ListTasksInput, actor: Actor) {
   }
   // filter === "all" → no user scope filter
 
-  // Status
-  if (status) where.status = status;
+  // Status — "ALL" means no status filter (return both OPEN and DONE)
+  if (status && status !== "ALL") where.status = status;
 
   // Urgent
   if (urgent !== undefined) where.urgent = urgent;
