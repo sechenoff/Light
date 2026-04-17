@@ -19,6 +19,15 @@ interface AdminUserOption {
   username: string;
 }
 
+const VALID_FILTERS: readonly TaskFilter[] = ["my", "all", "created-by-me"] as const;
+
+function parseFilter(raw: string | null | undefined): TaskFilter {
+  if (raw && (VALID_FILTERS as readonly string[]).includes(raw)) {
+    return raw as TaskFilter;
+  }
+  return "my";
+}
+
 // ── TasksPage ─────────────────────────────────────────────────────────────────
 
 export function TasksPage() {
@@ -30,8 +39,8 @@ export function TasksPage() {
     "TECHNICIAN",
   ]);
 
-  // Фильтр из URL-параметра
-  const initialFilter = (searchParams?.get("filter") ?? "my") as TaskFilter;
+  // Фильтр из URL-параметра (с валидацией whitelist)
+  const initialFilter = parseFilter(searchParams?.get("filter"));
   const [filter, setFilter] = useState<TaskFilter>(initialFilter);
 
   const {
@@ -51,14 +60,17 @@ export function TasksPage() {
   const captureRef = useRef<TaskQuickCaptureRef>(null);
 
   // ── Загрузка пользователей для выпадающего списка исполнителей ────────────
+  // Используем /assignable (доступно всем 3 ролям), а не /api/admin-users (SA only)
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ users: AdminUserOption[] }>("/api/admin-users?limit=50")
+    apiFetch<{ users: AdminUserOption[] }>("/api/admin-users/assignable")
       .then((data) => {
         if (!cancelled) setAssigneeOptions(data.users ?? []);
       })
-      .catch(() => {});
+      .catch(() => {
+        // Отказ не блокирует страницу — задачи без исполнителя всё равно можно создавать
+      });
     return () => {
       cancelled = true;
     };

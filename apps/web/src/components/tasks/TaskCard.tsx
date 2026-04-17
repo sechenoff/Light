@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { StatusPill } from "../StatusPill";
 import type { Task } from "./groupTasks";
 import { toMoscowDateString } from "../../lib/moscowDate";
@@ -67,7 +67,10 @@ export function TaskCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const now = new Date();
+
+  // "now" фиксируем на время жизни компонента — пересчитывать на каждом рендере
+  // незачем (pill меняется только при пересмонтировании списка после refetch).
+  const now = useMemo(() => new Date(), []);
 
   // Sync draft when task changes externally
   useEffect(() => {
@@ -188,13 +191,11 @@ export function TaskCard({
         <button
           onClick={() => onUpdate(task.id, { urgent: !task.urgent })}
           aria-label={task.urgent ? "Снять срочность" : "Пометить срочным"}
-          className={`text-sm transition-colors ${
-            task.urgent
-              ? "text-rose"
-              : "text-ink-3 opacity-0 group-hover:opacity-100"
+          className={`text-sm transition-opacity ${
+            task.urgent ? "" : "opacity-0 group-hover:opacity-100"
           }`}
         >
-          !
+          {task.urgent ? "🔥" : "🕯"}
         </button>
 
         {/* Overflow меню */}

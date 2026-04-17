@@ -81,4 +81,36 @@ describe("TaskCard", () => {
     const card = container.firstChild as HTMLElement;
     expect(card.className).toMatch(/border-rose/);
   });
+
+  it("toggles urgent flag when flame button clicked", () => {
+    const onUpdate = vi.fn();
+    render(
+      <TaskCard
+        task={makeTask({ urgent: false })}
+        onComplete={vi.fn()}
+        onReopen={vi.fn()}
+        onUpdate={onUpdate}
+        onDelete={vi.fn()}
+      />,
+    );
+    const flameBtn = screen.getByRole("button", { name: /Пометить срочным/i });
+    fireEvent.click(flameBtn);
+    expect(onUpdate).toHaveBeenCalledWith("t1", { urgent: true });
+  });
+
+  it("toggles urgent flag off when already urgent", () => {
+    const onUpdate = vi.fn();
+    render(
+      <TaskCard
+        task={makeTask({ urgent: true })}
+        onComplete={vi.fn()}
+        onReopen={vi.fn()}
+        onUpdate={onUpdate}
+        onDelete={vi.fn()}
+      />,
+    );
+    const flameBtn = screen.getByRole("button", { name: /Снять срочность/i });
+    fireEvent.click(flameBtn);
+    expect(onUpdate).toHaveBeenCalledWith("t1", { urgent: false });
+  });
 });

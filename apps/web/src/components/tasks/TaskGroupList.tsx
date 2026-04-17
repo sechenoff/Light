@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { groupTasks, type Task, type TaskBucket } from "./groupTasks";
 import { TaskCard } from "./TaskCard";
 
@@ -108,11 +108,12 @@ export function TaskGroupList({
   onDelete,
   onOpenEdit,
 }: TaskGroupListProps) {
-  const groups = groupTasks(tasks);
+  const groups = useMemo(() => groupTasks(tasks), [tasks]);
 
   // Определяем, какие вёдра показывать: всегда "noDate" (даже пустое); остальные — только если есть задачи
-  const visibleBuckets = BUCKET_ORDER.filter(
-    (b) => groups[b].length > 0 || b === "noDate",
+  const visibleBuckets = useMemo(
+    () => BUCKET_ORDER.filter((b) => groups[b].length > 0 || b === "noDate"),
+    [groups],
   );
 
   return (

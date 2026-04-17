@@ -46,7 +46,7 @@ export const TaskQuickCapture = forwardRef<TaskQuickCaptureRef, TaskQuickCapture
     function handleSubmit() {
       const trimmed = title.trim();
       if (!trimmed) {
-        toast.info("Напиши что сделать");
+        toast.error("Напиши, что сделать — поле не может быть пустым");
         return;
       }
       onSubmit({ title: trimmed, urgent, dueDate, assignedTo });
@@ -203,7 +203,7 @@ export const TaskQuickCapture = forwardRef<TaskQuickCaptureRef, TaskQuickCapture
                 : "bg-surface text-ink-3 border-border hover:bg-surface-muted"
             }`}
           >
-            ! {urgent ? "Срочно" : ""}
+            🔥 {urgent ? "Срочно" : ""}
           </button>
         </div>
       </div>

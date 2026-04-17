@@ -41,16 +41,42 @@ export function TaskEditModal({
   });
 
   const titleRef = useRef<HTMLTextAreaElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // Авто-фокус на заголовке
   useEffect(() => {
     titleRef.current?.focus();
   }, []);
 
-  // Escape закрывает
+  // Escape закрывает + focus trap (Tab циклится внутри модалки)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      // Собираем все focusable элементы внутри модалки
+      const focusable = dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -82,7 +108,10 @@ export function TaskEditModal({
       aria-modal="true"
       aria-label="Редактировать задачу"
     >
-      <div className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-md space-y-4 p-6">
+      <div
+        ref={dialogRef}
+        className="bg-surface border border-border rounded-xl shadow-lg w-full max-w-md space-y-4 p-6"
+      >
         {/* Заголовок модалки */}
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">Редактировать задачу</h2>
@@ -171,7 +200,7 @@ export function TaskEditModal({
             className="w-4 h-4 rounded-sm accent-rose"
           />
           <label htmlFor="edit-urgent" className="text-sm text-ink cursor-pointer select-none">
-            ! Срочно
+            🔥 Срочно
           </label>
         </div>
 

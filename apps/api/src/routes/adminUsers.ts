@@ -5,12 +5,35 @@ import type { Prisma as PrismaNamespace } from "@prisma/client";
 import { prisma } from "../prisma";
 import { hashPassword, normalizeUsername } from "../services/auth";
 import { requireRole } from "../middleware/sessionAuth";
+import { rolesGuard } from "../middleware/rolesGuard";
 import { HttpError } from "../utils/errors";
 import { writeAuditEntry, diffFields } from "../services/audit";
 
 const router = express.Router();
 
-// Все маршруты доступны только SUPER_ADMIN.
+// ──────────────────────────────────────────────
+// GET /assignable — минимальный список пользователей для назначения задач/ремонтов.
+// Доступно всем 3 ролям: WAREHOUSE/TECHNICIAN тоже должны уметь назначать задачи.
+// Безопасный subset: только id+username+role, без passwordHash/timestamps.
+// Размещено ДО router.use(requireRole("SUPER_ADMIN")), чтобы не падать на 403.
+// ──────────────────────────────────────────────
+router.get(
+  "/assignable",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]),
+  async (_req, res, next) => {
+    try {
+      const users = await prisma.adminUser.findMany({
+        select: { id: true, username: true, role: true },
+        orderBy: { username: "asc" },
+      });
+      res.json({ users });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Все остальные маршруты доступны только SUPER_ADMIN.
 router.use(requireRole("SUPER_ADMIN"));
 
 const createSchema = z.object({

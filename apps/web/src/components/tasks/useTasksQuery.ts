@@ -24,11 +24,6 @@ export function useTasksQuery(filter: TaskFilter) {
   // Per-id in-flight guard — useRef avoids re-render churn and stale closures
   const inFlight = useRef<Set<string>>(new Set());
 
-  // Pending undo map: taskId → { timer, prevTasks }
-  const pendingUndo = useRef<Map<string, { timer: ReturnType<typeof setTimeout>; prev: Task[] }>>(
-    new Map(),
-  );
-
   // ── Загрузка ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -79,7 +74,6 @@ export function useTasksQuery(filter: TaskFilter) {
         updatedAt: new Date().toISOString(),
       };
 
-      const prev = tasks;
       setTasks((t) => [...t, optimistic]);
 
       try {
@@ -89,11 +83,11 @@ export function useTasksQuery(filter: TaskFilter) {
         });
         setTasks((t) => t.map((x) => (x.id === tempId ? created : x)));
       } catch (err: any) {
-        setTasks(prev);
+        setTasks((t) => t.filter((x) => x.id !== tempId));
         toast.error(err?.message ?? "Не удалось создать задачу");
       }
     },
-    [tasks],
+    [],
   );
 
   // ── updateTask ──────────────────────────────────────────────────────────────
@@ -103,8 +97,12 @@ export function useTasksQuery(filter: TaskFilter) {
       if (inFlight.current.has(`update-${id}`)) return;
       inFlight.current.add(`update-${id}`);
 
-      const prev = tasks;
-      setTasks((t) => t.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      // Snapshot just the affected task for targeted rollback
+      let snapshot: Task | undefined;
+      setTasks((t) => {
+        snapshot = t.find((x) => x.id === id);
+        return t.map((x) => (x.id === id ? { ...x, ...patch } : x));
+      });
 
       try {
         const updated = await apiFetch<Task>(`/api/tasks/${id}`, {
@@ -113,59 +111,13 @@ export function useTasksQuery(filter: TaskFilter) {
         });
         setTasks((t) => t.map((x) => (x.id === id ? updated : x)));
       } catch (err: any) {
-        setTasks(prev);
+        setTasks((t) =>
+          t.map((x) => (x.id === id && snapshot ? snapshot : x)),
+        );
         toast.error(err?.message ?? "Не удалось обновить задачу");
       } finally {
         inFlight.current.delete(`update-${id}`);
       }
-    },
-    [tasks],
-  );
-
-  // ── completeTask (optimistic + 5s undo window) ───────────────────────────────
-
-  const completeTask = useCallback(
-    async (id: string) => {
-      if (inFlight.current.has(`complete-${id}`)) return;
-      inFlight.current.add(`complete-${id}`);
-
-      const prev = tasks;
-      setTasks((t) =>
-        t.map((x) =>
-          x.id === id
-            ? { ...x, status: "DONE" as const, completedAt: new Date().toISOString() }
-            : x,
-        ),
-      );
-
-      // Сохраняем undo-entry; таймер на 5с отправляет на сервер
-      const timer = setTimeout(async () => {
-        pendingUndo.current.delete(id);
-        inFlight.current.delete(`complete-${id}`);
-        try {
-          await apiFetch(`/api/tasks/${id}/complete`, { method: "POST" });
-        } catch (err: any) {
-          setTasks(prev);
-          toast.error(err?.message ?? "Не удалось выполнить задачу");
-        }
-      }, 5000);
-
-      pendingUndo.current.set(id, { timer, prev });
-      toast.success("Готово — нажмите «Отменить» в меню задачи");
-    },
-    [tasks],
-  );
-
-  // ── undoComplete (вызывается из UI в течение 5с) ────────────────────────────
-
-  const undoComplete = useCallback(
-    (id: string) => {
-      const entry = pendingUndo.current.get(id);
-      if (!entry) return;
-      clearTimeout(entry.timer);
-      pendingUndo.current.delete(id);
-      inFlight.current.delete(`complete-${id}`);
-      setTasks(entry.prev);
     },
     [],
   );
@@ -177,42 +129,89 @@ export function useTasksQuery(filter: TaskFilter) {
       if (inFlight.current.has(`reopen-${id}`)) return;
       inFlight.current.add(`reopen-${id}`);
 
-      const prev = tasks;
-      setTasks((t) =>
-        t.map((x) =>
+      let snapshot: Task | undefined;
+      setTasks((t) => {
+        snapshot = t.find((x) => x.id === id);
+        return t.map((x) =>
           x.id === id
             ? { ...x, status: "OPEN" as const, completedAt: null, completedBy: null }
             : x,
-        ),
-      );
+        );
+      });
 
       try {
         await apiFetch(`/api/tasks/${id}/reopen`, { method: "POST" });
       } catch (err: any) {
-        setTasks(prev);
+        setTasks((t) =>
+          t.map((x) => (x.id === id && snapshot ? snapshot : x)),
+        );
         toast.error(err?.message ?? "Не удалось открыть задачу");
       } finally {
         inFlight.current.delete(`reopen-${id}`);
       }
     },
-    [tasks],
+    [],
+  );
+
+  // ── completeTask (fire-immediately + undo via toast action → reopen) ─────────
+
+  const completeTask = useCallback(
+    async (id: string) => {
+      if (inFlight.current.has(`complete-${id}`)) return;
+      inFlight.current.add(`complete-${id}`);
+
+      let snapshot: Task | undefined;
+      setTasks((t) => {
+        snapshot = t.find((x) => x.id === id);
+        return t.map((x) =>
+          x.id === id
+            ? { ...x, status: "DONE" as const, completedAt: new Date().toISOString() }
+            : x,
+        );
+      });
+
+      try {
+        await apiFetch(`/api/tasks/${id}/complete`, { method: "POST" });
+        toast.success("Задача выполнена", {
+          action: {
+            label: "Отменить",
+            onClick: () => {
+              void reopenTask(id);
+            },
+          },
+        });
+      } catch (err: any) {
+        setTasks((t) =>
+          t.map((x) => (x.id === id && snapshot ? snapshot : x)),
+        );
+        toast.error(err?.message ?? "Не удалось выполнить задачу");
+      } finally {
+        inFlight.current.delete(`complete-${id}`);
+      }
+    },
+    [reopenTask],
   );
 
   // ── deleteTask ──────────────────────────────────────────────────────────────
 
   const deleteTask = useCallback(
     async (id: string) => {
-      const prev = tasks;
-      setTasks((t) => t.filter((x) => x.id !== id));
+      let snapshot: Task | undefined;
+      setTasks((t) => {
+        snapshot = t.find((x) => x.id === id);
+        return t.filter((x) => x.id !== id);
+      });
 
       try {
         await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
       } catch (err: any) {
-        setTasks(prev);
+        if (snapshot) {
+          setTasks((t) => [...t, snapshot!]);
+        }
         toast.error(err?.message ?? "Не удалось удалить задачу");
       }
     },
-    [tasks],
+    [],
   );
 
   return {
@@ -222,7 +221,6 @@ export function useTasksQuery(filter: TaskFilter) {
     createTask,
     updateTask,
     completeTask,
-    undoComplete,
     reopenTask,
     deleteTask,
     setTasks,
