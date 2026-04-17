@@ -15,7 +15,8 @@ type AuditEntityType =
   | "Client"
   | "Repair"
   | "AdminUser"
-  | "Vehicle";
+  | "Vehicle"
+  | "Task";
 
 /**
  * Записывает событие в аудит-лог.
