@@ -13,7 +13,7 @@ import { photoAnalysisRouter } from "./photoAnalysis";
 import { usersRouter } from "./users";
 import { analysesRouter } from "./analyses";
 import { bookingRequestParserRouter } from "./bookingRequestParser";
-import { slangLearningRouter } from "./slangLearning";
+import { slangLearningRouter, proposeAliasHandler } from "./slangLearning";
 import { warehouseRouter } from "./warehouse";
 import { equipmentUnitsRouter } from "./equipmentUnits";
 import { equipmentUnitsGlobalRouter } from "./equipmentUnitsGlobal";
@@ -87,7 +87,14 @@ router.use("/api/analyses", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), analysesRo
 // /api/bookings (parse-gaffer-review и match-equipment) — SUPER_ADMIN, WAREHOUSE
 router.use("/api/bookings", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), bookingRequestParserRouter);
 
-// /api/admin/slang-learning — SUPER_ADMIN only
+// /api/admin/slang-learning/propose — SUPER_ADMIN + WAREHOUSE (warehouse users confirm AI matches)
+// Must be mounted BEFORE the broader slangLearningRouter to take precedence
+router.post(
+  "/api/admin/slang-learning/propose",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  proposeAliasHandler,
+);
+// /api/admin/slang-learning (rest) — SUPER_ADMIN only
 router.use("/api/admin/slang-learning", rolesGuard(["SUPER_ADMIN"]), slangLearningRouter);
 
 // /api/warehouse — обрабатывается отдельно в app.ts через warehousePublicRouter + warehouseScanRouter

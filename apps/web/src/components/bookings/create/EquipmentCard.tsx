@@ -4,8 +4,17 @@ import { useMemo } from "react";
 import { SmartInput } from "./SmartInput";
 import { AiResultBanner } from "./AiResultBanner";
 import { CatalogList } from "./CatalogList";
-import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, OffCatalogItem } from "./types";
+import { ReviewPanel } from "./ReviewPanel";
+import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, OffCatalogItem, PendingReviewItem } from "./types";
 import { formatMoneyRub, pluralize } from "../../../lib/format";
+
+type EquipmentSelection = {
+  equipmentId: string;
+  name: string;
+  category: string;
+  rentalRatePerShift: string;
+  availableQuantity: number;
+};
 
 type Props = {
   catalog: AvailabilityRow[];
@@ -43,6 +52,15 @@ type Props = {
 
   shifts: number;
   adjustments: Map<string, CatalogRowAdjustment>;
+
+  // Review panel
+  pendingReview: PendingReviewItem[];
+  pickupISO: string;
+  returnISO: string;
+  onReviewConfirm: (reviewId: string, equipment: EquipmentSelection, quantity: number) => void;
+  onReviewOffCatalog: (reviewId: string) => void;
+  onReviewSkip: (reviewId: string) => void;
+  onReviewSkipAll: () => void;
 };
 
 export function EquipmentCard({
@@ -74,6 +92,13 @@ export function EquipmentCard({
   onActiveTabChange,
   shifts,
   adjustments,
+  pendingReview,
+  pickupISO,
+  returnISO,
+  onReviewConfirm,
+  onReviewOffCatalog,
+  onReviewSkip,
+  onReviewSkipAll,
 }: Props) {
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -148,16 +173,33 @@ export function EquipmentCard({
         </div>
       </div>
 
-      {/* AI banner */}
-      <AiResultBanner
-        resolved={parseResolved}
-        total={parseTotal}
-        unmatched={unmatchedFromAi}
-        successDismissed={successBannerDismissed}
-        onDismissSuccess={onDismissSuccess}
-        onAddOffCatalog={onAddOffCatalog}
-        onIgnoreUnmatched={onIgnoreUnmatched}
-      />
+      {/* AI banner — no-op when pendingReview is active (parseResolved/parseTotal are zeroed) */}
+      {pendingReview.length === 0 && (
+        <AiResultBanner
+          resolved={parseResolved}
+          total={parseTotal}
+          unmatched={unmatchedFromAi}
+          successDismissed={successBannerDismissed}
+          onDismissSuccess={onDismissSuccess}
+          onAddOffCatalog={onAddOffCatalog}
+          onIgnoreUnmatched={onIgnoreUnmatched}
+        />
+      )}
+
+      {/* Review panel — shown above catalog when AI parse yields items */}
+      {pendingReview.length > 0 && (
+        <div className="mx-5 mb-3 mt-3">
+          <ReviewPanel
+            items={pendingReview}
+            pickupISO={pickupISO}
+            returnISO={returnISO}
+            onConfirm={onReviewConfirm}
+            onOffCatalog={onReviewOffCatalog}
+            onSkip={onReviewSkip}
+            onSkipAll={onReviewSkipAll}
+          />
+        </div>
+      )}
 
       {/* Catalog */}
       {catalogLoading ? (

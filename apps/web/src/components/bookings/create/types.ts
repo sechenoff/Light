@@ -106,3 +106,13 @@ export type CatalogRowAdjustment =
   | { kind: "ok" }
   | { kind: "clampedDown"; previousQty: number; newQty: number }
   | { kind: "unavailable" };
+
+/** Single item in the AI review panel — one per line parsed from gaffer text. */
+export type PendingReviewItem = {
+  reviewId: string;           // Unique (= gaffer response.items[i].id)
+  gafferPhrase: string;
+  interpretedName: string;
+  quantity: number;
+  /** Discriminated union mirroring GafferOrderedMatch. */
+  match: GafferOrderedMatch;
+};

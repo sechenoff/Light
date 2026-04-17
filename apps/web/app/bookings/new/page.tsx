@@ -29,6 +29,7 @@ import type {
   GafferReviewApiResponse,
   QuoteResponse,
   ValidationCheck,
+  PendingReviewItem,
 } from "../../../src/components/bookings/create/types";
 
 function BookingNewPage() {
@@ -86,6 +87,9 @@ function BookingNewPage() {
   const [parseTotal, setParseTotal] = useState(0);
   const [unmatchedFromAi, setUnmatchedFromAi] = useState<string[]>([]);
   const [successBannerDismissed, setSuccessBannerDismissed] = useState(false);
+
+  // Review panel — items waiting for per-item confirmation after AI parse
+  const [pendingReview, setPendingReview] = useState<PendingReviewItem[]>([]);
 
   // Quote
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
@@ -304,67 +308,24 @@ function BookingNewPage() {
         body: JSON.stringify({ requestText: gafferText.trim(), startDate: pickupISO, endDate: returnISO }),
       });
 
-      const resolvedItems: Array<{
-        equipmentId: string;
-        name: string;
-        category: string;
-        quantity: number;
-        dailyPrice: string;
-        availableQuantity: number;
-      }> = [];
-      const unmatched: string[] = [];
+      // Build review items — no silent auto-commit, every line goes through the panel
+      const reviewItems: PendingReviewItem[] = res.items.map((it) => ({
+        reviewId: it.id,
+        gafferPhrase: it.gafferPhrase,
+        interpretedName: it.interpretedName,
+        quantity: it.quantity,
+        match: it.match,
+      }));
+      setPendingReview(reviewItems);
 
-      for (const item of res.items) {
-        if (item.match.kind === "resolved") {
-          resolvedItems.push({
-            equipmentId: item.match.equipmentId,
-            name: item.match.catalogName,
-            category: item.match.category,
-            quantity: item.quantity,
-            dailyPrice: item.match.rentalRatePerShift,
-            availableQuantity: item.match.availableQuantity,
-          });
-        } else if (item.match.kind === "needsReview" && item.match.candidates.length > 0) {
-          const top = item.match.candidates[0];
-          resolvedItems.push({
-            equipmentId: top.equipmentId,
-            name: top.catalogName,
-            category: top.category,
-            quantity: item.quantity,
-            dailyPrice: top.rentalRatePerShift,
-            availableQuantity: top.availableQuantity,
-          });
-        } else {
-          unmatched.push(item.gafferPhrase || item.interpretedName);
-        }
-      }
-
-      setSelected((prev) => {
-        const next = new Map(prev);
-        for (const r of resolvedItems) {
-          next.set(r.equipmentId, {
-            equipmentId: r.equipmentId,
-            name: r.name,
-            category: r.category,
-            quantity: Math.min(r.quantity, r.availableQuantity),
-            dailyPrice: r.dailyPrice,
-            availableQuantity: r.availableQuantity,
-          });
-        }
-        return next;
-      });
-
-      setUnmatchedFromAi(unmatched);
-      setParseResolved(resolvedItems.length);
-      setParseTotal(res.items.length);
-      setSuccessBannerDismissed(false);
-      // Auto-reset the input: user sees the green banner, and the field is
-      // ready for the next query (typed search or a new paste). Also clear
-      // searchQuery so the catalog isn't stuck filtered by the just-parsed
-      // gaffer text.
+      // Clear the input and reset legacy banner state (banner is dead when panel is active)
       setGafferText("");
       setSearchQuery("");
       setParsed(false);
+      setParseResolved(0);
+      setParseTotal(0);
+      setUnmatchedFromAi([]);
+      setSuccessBannerDismissed(true);
     } catch (err: unknown) {
       toast.error((err as { message?: string })?.message ?? "Ошибка AI");
     } finally {
@@ -394,6 +355,68 @@ function BookingNewPage() {
     const tempId = `off-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setOffCatalogItems((prev) => [...prev, { tempId, name: phrase, quantity: 1 }]);
     setUnmatchedFromAi((prev) => prev.filter((p) => p !== phrase));
+  }
+
+  // ── Review panel handlers ──
+  function handleReviewConfirm(
+    reviewId: string,
+    equipment: {
+      equipmentId: string;
+      name: string;
+      category: string;
+      rentalRatePerShift: string;
+      availableQuantity: number;
+    },
+    quantity: number,
+  ) {
+    const item = pendingReview.find((p) => p.reviewId === reviewId);
+    if (!item) return;
+
+    // Add to selected (merge if already there — use requested qty, clamp to available)
+    setSelected((prev) => {
+      const next = new Map(prev);
+      const clamped = Math.max(1, Math.min(quantity, equipment.availableQuantity));
+      next.set(equipment.equipmentId, {
+        equipmentId: equipment.equipmentId,
+        name: equipment.name,
+        category: equipment.category,
+        quantity: clamped,
+        dailyPrice: equipment.rentalRatePerShift,
+        availableQuantity: equipment.availableQuantity,
+      });
+      return next;
+    });
+
+    // Learn the alias (fire-and-forget)
+    apiFetch("/api/admin/slang-learning/propose", {
+      method: "POST",
+      body: JSON.stringify({
+        rawPhrase: item.gafferPhrase || item.interpretedName,
+        proposedEquipmentId: equipment.equipmentId,
+        proposedEquipmentName: equipment.name,
+        confidence: 0.95,
+        contextJson: JSON.stringify({ source: "booking_review", reviewId }),
+      }),
+    }).catch(() => { /* non-blocking */ });
+
+    // Remove from pending
+    setPendingReview((prev) => prev.filter((p) => p.reviewId !== reviewId));
+  }
+
+  function handleReviewOffCatalog(reviewId: string) {
+    const item = pendingReview.find((p) => p.reviewId === reviewId);
+    if (!item) return;
+    const tempId = `off-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setOffCatalogItems((prev) => [...prev, { tempId, name: item.interpretedName || item.gafferPhrase, quantity: item.quantity }]);
+    setPendingReview((prev) => prev.filter((p) => p.reviewId !== reviewId));
+  }
+
+  function handleReviewSkip(reviewId: string) {
+    setPendingReview((prev) => prev.filter((p) => p.reviewId !== reviewId));
+  }
+
+  function handleReviewSkipAll() {
+    setPendingReview([]);
   }
 
   // ── Save / submit ──
@@ -501,6 +524,13 @@ function BookingNewPage() {
             activeTab={activeTab}
             onActiveTabChange={setActiveTab}
             shifts={shifts}
+            pendingReview={pendingReview}
+            pickupISO={pickupISO ?? ""}
+            returnISO={returnISO ?? ""}
+            onReviewConfirm={handleReviewConfirm}
+            onReviewOffCatalog={handleReviewOffCatalog}
+            onReviewSkip={handleReviewSkip}
+            onReviewSkipAll={handleReviewSkipAll}
           />
 
           <div className="flex items-center justify-between rounded-md border border-border bg-surface px-5 py-3 shadow-xs">
