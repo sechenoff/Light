@@ -15,10 +15,11 @@ describe("menuByRole — grouped sections", () => {
     }
   });
 
-  it("SUPER_ADMIN has sections: Главное, Склад, Бронирование, Каталог, Мастерская, Финансы, Система", () => {
+  it("SUPER_ADMIN has sections: Главное, Задачи, Склад, Бронирование, Каталог, Мастерская, Финансы, Система", () => {
     const titles = menuByRole.SUPER_ADMIN.map((s) => s.title);
     expect(titles).toEqual([
       "Главное",
+      "Задачи",
       "Склад",
       "Бронирование",
       "Каталог",
@@ -41,10 +42,11 @@ describe("menuByRole — grouped sections", () => {
     ]);
   });
 
-  it("WAREHOUSE has sections: Главное, Склад, Бронирование, Каталог, Мастерская (no Финансы, no Система)", () => {
+  it("WAREHOUSE has sections: Главное, Задачи, Склад, Бронирование, Каталог, Мастерская (no Финансы, no Система)", () => {
     const titles = menuByRole.WAREHOUSE.map((s) => s.title);
     expect(titles).toEqual([
       "Главное",
+      "Задачи",
       "Склад",
       "Бронирование",
       "Каталог",
@@ -52,9 +54,9 @@ describe("menuByRole — grouped sections", () => {
     ]);
   });
 
-  it("TECHNICIAN has sections: Главное, Мастерская, Каталог only", () => {
+  it("TECHNICIAN has sections: Главное, Задачи, Мастерская, Каталог", () => {
     const titles = menuByRole.TECHNICIAN.map((s) => s.title);
-    expect(titles).toEqual(["Главное", "Мастерская", "Каталог"]);
+    expect(titles).toEqual(["Главное", "Задачи", "Мастерская", "Каталог"]);
   });
 
   it("every item has href, label, and icon", () => {

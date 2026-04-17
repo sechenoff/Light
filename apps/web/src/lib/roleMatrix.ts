@@ -12,6 +12,12 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       ],
     },
     {
+      title: "Задачи",
+      items: [
+        { href: "/tasks", label: "Мои задачи", icon: "tasks" },
+      ],
+    },
+    {
       title: "Склад",
       items: [
         { href: "/warehouse/scan", label: "Выдачи и возвраты", icon: "scan" },
@@ -62,6 +68,12 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       ],
     },
     {
+      title: "Задачи",
+      items: [
+        { href: "/tasks", label: "Мои задачи", icon: "tasks" },
+      ],
+    },
+    {
       title: "Склад",
       items: [
         { href: "/warehouse/scan", label: "Выдачи и возвраты", icon: "scan" },
@@ -93,6 +105,12 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Главное",
       items: [
         { href: "/day", label: "Мой день", icon: "home" },
+      ],
+    },
+    {
+      title: "Задачи",
+      items: [
+        { href: "/tasks", label: "Мои задачи", icon: "tasks" },
       ],
     },
     {

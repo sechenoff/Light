@@ -194,6 +194,19 @@ function IconExpense() {
   );
 }
 
+function IconTasks() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="9" y1="6" x2="20" y2="6" />
+      <line x1="9" y1="12" x2="20" y2="12" />
+      <line x1="9" y1="18" x2="20" y2="18" />
+      <polyline points="4 6 5 7 7 5" />
+      <polyline points="4 12 5 13 7 11" />
+      <polyline points="4 18 5 19 7 17" />
+    </svg>
+  );
+}
+
 // ── Icon map ─────────────────────────────────────────────────────────────────
 
 function iconFor(name: string | undefined): React.ReactNode {
@@ -212,6 +225,7 @@ function iconFor(name: string | undefined): React.ReactNode {
     case "payment":  return <IconPayment />;
     case "expense":  return <IconExpense />;
     case "calc":     return <IconCalc />;
+    case "tasks":    return <IconTasks />;
     default:         return <IconGrid />;
   }
 }
