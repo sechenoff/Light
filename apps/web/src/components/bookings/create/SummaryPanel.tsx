@@ -18,6 +18,7 @@ type SummaryPanelProps = {
   canSubmit: boolean;
   selectedItems?: Map<string, CatalogSelectedItem>;
   offCatalogItems?: OffCatalogItem[];
+  selectedVehicleName?: string | null;
 };
 
 const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass: string }> = {
@@ -41,12 +42,23 @@ export function SummaryPanel({
   canSubmit,
   selectedItems,
   offCatalogItems,
+  selectedVehicleName,
 }: SummaryPanelProps) {
-  const subtotal = quote ? Number(quote.subtotal) : localSubtotal;
+  const equipSubtotal = quote ? Number(quote.equipmentSubtotal ?? quote.subtotal) : localSubtotal;
   const discount = quote ? Number(quote.discountAmount) : localDiscount;
-  const total = quote ? Number(quote.totalAfterDiscount) : localTotal;
+  const equipTotal = quote ? Number(quote.equipmentTotal ?? quote.totalAfterDiscount) : localTotal;
   const discPct = quote ? Number(quote.discountPercent) : discountPercent;
   const effectiveShifts = quote ? quote.shifts : shifts;
+
+  // Transport
+  const transportTotal = quote?.transport ? Number(quote.transport.total) : 0;
+  const vehicleName = selectedVehicleName ?? quote?.transport?.vehicleName ?? null;
+
+  // Grand total
+  const grandTotal = quote?.grandTotal ? Number(quote.grandTotal) : (equipTotal + transportTotal);
+  // Legacy: subtotal for backward compat in display
+  const subtotal = equipSubtotal;
+  const total = grandTotal;
 
   const bigTotalFormatted = Math.round(total).toLocaleString("ru-RU");
 
@@ -80,18 +92,32 @@ export function SummaryPanel({
       {/* Breakdown */}
       <div className="flex flex-col gap-1 text-sm">
         <div className="flex justify-between">
-          <span className="text-ink-2">Аренда</span>
-          <span className="mono-num text-ink">{formatMoneyRub(subtotal)} ₽</span>
+          <span className="text-ink-2">Оборудование</span>
+          <span className="mono-num text-ink">{formatMoneyRub(equipSubtotal)} ₽</span>
         </div>
         {discPct > 0 && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-ink-2">Скидка {discPct}%</span>
+              <span className="mono-num text-rose">−{formatMoneyRub(discount)} ₽</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-ink-2">Оборудование итого</span>
+              <span className="mono-num text-ink">{formatMoneyRub(equipTotal)} ₽</span>
+            </div>
+          </>
+        )}
+        {transportTotal > 0 && (
           <div className="flex justify-between">
-            <span className="text-ink-2">Скидка {discPct}%</span>
-            <span className="mono-num text-rose">−{formatMoneyRub(discount)} ₽</span>
+            <span className="text-ink-2">
+              Транспорт{vehicleName ? ` (${vehicleName})` : ""}
+            </span>
+            <span className="mono-num text-ink">{formatMoneyRub(transportTotal)} ₽</span>
           </div>
         )}
         <div className="flex justify-between border-t border-border pt-1 font-semibold">
           <span className="text-ink">Итого</span>
-          <span className="mono-num text-ink">{formatMoneyRub(total)} ₽</span>
+          <span className="mono-num text-ink">{formatMoneyRub(grandTotal)} ₽</span>
         </div>
       </div>
 

@@ -27,6 +27,7 @@ import { expensesRouter } from "./expenses";
 import { repairsRouter } from "./repairs";
 import { clientsRouter } from "./clients";
 import { rolesGuard } from "../middleware/rolesGuard";
+import { vehiclesRouter } from "./vehicles";
 
 const router = express.Router();
 
@@ -123,5 +124,8 @@ router.use("/api/repairs", repairsRouter);
 
 // /api/clients — SUPER_ADMIN, WAREHOUSE (роль проверяется per-route)
 router.use("/api/clients", clientsRouter);
+
+// /api/vehicles — GET: все аутентифицированные роли; /api/admin/vehicles: SUPER_ADMIN (guard per-route)
+router.use("/api/vehicles", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), vehiclesRouter);
 
 export { router };

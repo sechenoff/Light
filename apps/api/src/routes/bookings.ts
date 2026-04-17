@@ -32,6 +32,15 @@ const bookingItemSchema = z.object({
   quantity: z.number().int().positive(),
 });
 
+const transportSchema = z.object({
+  vehicleId: z.string().min(1),
+  withGenerator: z.boolean().default(false),
+  shiftHours: z.number().int().min(0).default(12),
+  skipOvertime: z.boolean().default(false),
+  kmOutsideMkad: z.number().int().min(0).default(0),
+  ttkEntry: z.boolean().default(false),
+}).optional().nullable();
+
 const bookingCreateSchema = z.object({
   client: z.object({
     name: z.string().min(1),
@@ -54,6 +63,8 @@ const bookingCreateSchema = z.object({
   items: z.array(bookingItemSchema).min(1),
   /** Если true — возвращает превью брони без записи в БД */
   dryRun: z.boolean().optional().default(false),
+  /** Транспорт (опционально) */
+  transport: transportSchema,
 });
 
 const quoteExportSchema = bookingCreateSchema.extend({
@@ -78,6 +89,8 @@ const bookingUpdateSchema = z.object({
     .optional(),
   /** Если true — возвращает превью изменений брони без записи в БД */
   dryRun: z.boolean().optional().default(false),
+  /** Транспорт (опционально) */
+  transport: transportSchema,
 });
 
 const bookingStatusActionSchema = z.object({
@@ -539,6 +552,7 @@ router.post("/quote", async (req, res, next) => {
       clientId: client.id,
       discountPercent: body.discountPercent ?? null,
       items: body.items.map((it) => ({ equipmentId: it.equipmentId, quantity: it.quantity })),
+      transport: body.transport ?? null,
     });
 
     const duration = formatRentalDurationDetails(start, end);
@@ -547,10 +561,19 @@ router.post("/quote", async (req, res, next) => {
       shifts: estimate.shifts,
       totalHours: duration.totalHours,
       durationLabel: duration.labelShort,
-      subtotal: estimate.subtotal.toDecimalPlaces(2).toString(),
+      // Equipment-only fields
+      equipmentSubtotal: estimate.equipmentSubtotal.toFixed(2),
+      equipmentDiscount: estimate.discountAmount.toFixed(2),
+      equipmentTotal: estimate.equipmentTotal.toFixed(2),
+      // Legacy aliases (backward compat)
+      subtotal: estimate.subtotal.toFixed(2),
       discountPercent: estimate.discountPercent.toString(),
-      discountAmount: estimate.discountAmount.toDecimalPlaces(2).toString(),
-      totalAfterDiscount: estimate.totalAfterDiscount.toDecimalPlaces(2).toString(),
+      discountAmount: estimate.discountAmount.toFixed(2),
+      totalAfterDiscount: estimate.totalAfterDiscount.toFixed(2),
+      // Transport
+      transport: estimate.transport ?? null,
+      // Grand total
+      grandTotal: estimate.grandTotal.toFixed(2),
       lines: estimate.lines.map((l) => ({
         equipmentId: l.equipmentId,
         categorySnapshot: l.categorySnapshot,
@@ -743,6 +766,37 @@ router.post("/draft", async (req, res, next) => {
       },
     });
 
+    // Compute transport snapshot if provided
+    let transportSnapshot = null;
+    if (body.transport) {
+      const vehicleForDraft = await prisma.vehicle.findUnique({ where: { id: body.transport.vehicleId } });
+      if (!vehicleForDraft) throw new HttpError(400, `Vehicle not found: ${body.transport.vehicleId}`);
+      const { computeTransportPrice: calcTransport } = await import("../services/transportCalculator");
+      const breakdown = calcTransport({
+        vehicle: {
+          shiftPriceRub: vehicleForDraft.shiftPriceRub.toString(),
+          hasGeneratorOption: vehicleForDraft.hasGeneratorOption,
+          generatorPriceRub: vehicleForDraft.generatorPriceRub?.toString() ?? null,
+          shiftHours: vehicleForDraft.shiftHours,
+          overtimePercent: vehicleForDraft.overtimePercent.toString(),
+        },
+        withGenerator: body.transport.withGenerator,
+        shiftHours: body.transport.shiftHours,
+        skipOvertime: body.transport.skipOvertime,
+        kmOutsideMkad: body.transport.kmOutsideMkad,
+        ttkEntry: body.transport.ttkEntry,
+      });
+      transportSnapshot = {
+        vehicleId: body.transport.vehicleId,
+        withGenerator: body.transport.withGenerator,
+        shiftHours: body.transport.shiftHours,
+        skipOvertime: body.transport.skipOvertime,
+        kmOutsideMkad: body.transport.kmOutsideMkad,
+        ttkEntry: body.transport.ttkEntry,
+        transportSubtotalRub: breakdown.total,
+      };
+    }
+
     const booking = await createBookingDraft({
       clientId: client.id,
       projectName: body.projectName,
@@ -754,6 +808,7 @@ router.post("/draft", async (req, res, next) => {
       estimateOptionalNote: body.estimateOptionalNote ?? null,
       estimateIncludeOptionalInExport: body.estimateIncludeOptionalInExport ?? false,
       items: body.items.map((it) => ({ equipmentId: it.equipmentId, quantity: it.quantity })),
+      transport: transportSnapshot,
     });
 
     res.json({ booking: serializeBookingForApi(booking as any) });

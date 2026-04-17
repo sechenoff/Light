@@ -288,6 +288,16 @@ model Booking {
   estimateOptionalNote            String?
   estimateIncludeOptionalInExport Boolean @default(false)
 
+  /// Transport snapshot — захватывается в момент создания/апдейта
+  vehicleId             String?
+  vehicle               Vehicle?  @relation(fields: [vehicleId], references: [id])
+  vehicleWithGenerator  Boolean   @default(false)
+  vehicleShiftHours     Decimal?
+  vehicleSkipOvertime   Boolean   @default(false)
+  vehicleKmOutsideMkad  Int?
+  vehicleTtkEntry       Boolean   @default(false)
+  transportSubtotalRub  Decimal?
+
   estimate Estimate?
   payments Payment[]
   expenses Expense[]
@@ -702,6 +712,24 @@ model RepairWorkLog {
   loggedAt       DateTime @default(now())
 
   @@index([repairId])
+}
+
+/// Транспортное средство для доставки оборудования
+model Vehicle {
+  id                 String   @id @default(cuid())
+  name               String                    // "Ford", "Фотон", "Ивеко"
+  slug               String   @unique          // "ford", "foton", "iveco"
+  shiftPriceRub      Decimal
+  hasGeneratorOption Boolean  @default(false)
+  generatorPriceRub  Decimal?
+  shiftHours         Int      @default(12)
+  overtimePercent    Decimal  @default(10)
+  displayOrder       Int      @default(0)
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  bookings Booking[]
 }
 
 /// Аудит-лог изменений критичных сущностей

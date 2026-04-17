@@ -37,15 +37,59 @@ export type GafferReviewApiResponse = {
   message?: string;
 };
 
+/** Vehicle row from GET /api/vehicles */
+export type VehicleRow = {
+  id: string;
+  slug: string;
+  name: string;
+  shiftPriceRub: string;
+  hasGeneratorOption: boolean;
+  generatorPriceRub: string | null;
+  shiftHours: number;
+  overtimePercent: string;
+  displayOrder: number;
+};
+
+/** Transport breakdown from quote response */
+export type TransportBreakdown = {
+  vehicleId: string;
+  vehicleName: string;
+  shiftRate: string;
+  overtime: string;
+  overtimeHours: number;
+  km: string;
+  ttk: string;
+  total: string;
+};
+
+/** Transport state on the booking form */
+export type TransportState = {
+  selectedVehicleId: string | null;
+  withGenerator: boolean;
+  shiftHours: number;
+  skipOvertime: boolean;
+  kmOutsideMkad: number;
+  ttkEntry: boolean;
+  shiftHoursDirty: boolean; // true if user manually changed hours
+};
+
 /** Response from POST /api/bookings/quote */
 export type QuoteResponse = {
   shifts: number;
   totalHours?: number;
   durationLabel?: string;
+  // Equipment fields
+  equipmentSubtotal?: string;
+  equipmentDiscount?: string;
+  equipmentTotal?: string;
+  // Legacy aliases (backward compat)
   subtotal: string;
   discountPercent: string;
   discountAmount: string;
   totalAfterDiscount: string;
+  // Transport
+  transport?: TransportBreakdown | null;
+  grandTotal?: string;
   lines: Array<{
     equipmentId: string;
     categorySnapshot: string;

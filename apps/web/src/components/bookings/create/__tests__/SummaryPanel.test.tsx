@@ -87,12 +87,12 @@ describe("SummaryPanel", () => {
 
   it("renders breakdown lines: subtotal, discount, total", () => {
     render(<SummaryPanel {...defaultProps} localSubtotal={10000} localDiscount={1000} localTotal={9000} discountPercent={10} />);
-    // subtotal label
-    expect(screen.getByText(/Аренда/i)).toBeInTheDocument();
+    // subtotal label (renamed from «Аренда» to «Оборудование»)
+    expect(screen.getAllByText(/Оборудование/i).length).toBeGreaterThanOrEqual(1);
     // discount label
     expect(screen.getByText(/Скидка/i)).toBeInTheDocument();
-    // total label
-    expect(screen.getByText(/Итого/i)).toBeInTheDocument();
+    // total label — "Итого" appears in "Оборудование итого" and standalone "Итого"
+    expect(screen.getAllByText(/Итого/i).length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows discount as negative red value", () => {

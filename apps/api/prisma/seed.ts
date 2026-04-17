@@ -190,8 +190,62 @@ async function main() {
   }
 }
 
+async function seedVehicles() {
+  const vehicles = [
+    {
+      slug: "ford",
+      name: "Ford",
+      shiftPriceRub: new Decimal(20000),
+      hasGeneratorOption: false,
+      generatorPriceRub: null,
+      displayOrder: 1,
+    },
+    {
+      slug: "foton",
+      name: "Фотон",
+      shiftPriceRub: new Decimal(25000),
+      hasGeneratorOption: false,
+      generatorPriceRub: null,
+      displayOrder: 2,
+    },
+    {
+      slug: "iveco",
+      name: "Ивеко",
+      shiftPriceRub: new Decimal(24000),
+      hasGeneratorOption: true,
+      generatorPriceRub: new Decimal(25000),
+      displayOrder: 3,
+    },
+  ];
+
+  for (const v of vehicles) {
+    await prisma.vehicle.upsert({
+      where: { slug: v.slug },
+      update: {
+        name: v.name,
+        shiftPriceRub: v.shiftPriceRub.toFixed(2),
+        hasGeneratorOption: v.hasGeneratorOption,
+        generatorPriceRub: v.generatorPriceRub?.toFixed(2) ?? null,
+        displayOrder: v.displayOrder,
+      },
+      create: {
+        slug: v.slug,
+        name: v.name,
+        shiftPriceRub: v.shiftPriceRub.toFixed(2),
+        hasGeneratorOption: v.hasGeneratorOption,
+        generatorPriceRub: v.generatorPriceRub?.toFixed(2) ?? null,
+        displayOrder: v.displayOrder,
+        shiftHours: 12,
+        overtimePercent: new Decimal(10).toFixed(2),
+      },
+    });
+  }
+  console.log("Seeded 3 vehicles: Ford, Фотон, Ивеко");
+}
+
 main()
   .then(async () => {
+    await seedVehicles();
     await prisma.$disconnect();
   })
   .catch(async (e) => {

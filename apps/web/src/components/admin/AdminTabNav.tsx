@@ -20,6 +20,7 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
     { href: "/admin/users", label: "👤 Пользователи", count: counts?.users },
     { href: "/admin/slang", label: "🗣 Словарь сленга", count: counts?.slang },
     { href: "/admin/imports", label: "📑 Импорт прайсов", count: counts?.imports },
+    { href: "/admin/vehicles", label: "🚐 Транспорт" },
     { href: "/admin/settings", label: "⚙️ Настройки" },
     { href: "/admin/more", label: "🔧 Ещё" },
   ];
