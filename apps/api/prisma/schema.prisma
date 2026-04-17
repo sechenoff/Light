@@ -313,6 +313,9 @@ model Booking {
   lead         Lead?
   scanSessions ScanSession[]
 
+  /// Флаг импорта из старых данных: бронь без items, только финансовый остаток
+  isLegacyImport Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   confirmedAt DateTime?
