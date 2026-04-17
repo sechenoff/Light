@@ -127,8 +127,9 @@ export function TaskCard({
   const cardClasses = [
     "flex items-center gap-3 px-4 py-3 border-b border-border bg-surface",
     "hover:bg-surface-muted transition-colors group",
-    task.urgent ? "border-l-4 border-rose" : "",
-    isOverdue ? "bg-rose-soft/40" : "",
+    task.urgent && !isDone ? "border-l-4 border-rose" : "",
+    isOverdue && !isDone ? "bg-rose-soft/40" : "",
+    isDone ? "opacity-60" : "",
   ]
     .filter(Boolean)
     .join(" ");

@@ -31,7 +31,7 @@ export function useTasksQuery(filter: TaskFilter) {
     setLoading(true);
     setError(null);
 
-    apiFetch<TasksListResponse>(`/api/tasks?filter=${filter}&limit=200`)
+    apiFetch<TasksListResponse>(`/api/tasks?filter=${filter}&status=ALL&limit=200`)
       .then((data) => {
         if (cancelled) return;
         setTasks(data.items ?? []);
