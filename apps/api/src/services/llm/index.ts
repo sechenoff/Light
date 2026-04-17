@@ -10,10 +10,14 @@ export function getLlmProvider(): LlmProvider {
   const providerName = (process.env.LLM_PROVIDER || "gemini").toLowerCase();
 
   if (providerName === "openai") {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const baseURL = process.env.OPENAI_BASE_URL;
+    // OPENAI_API_KEY обязателен при обращении к api.openai.com. При использовании
+    // локального прокси (ChatMock и т.п.) OPENAI_BASE_URL указывает на локалхост,
+    // и ключ не нужен — прокси использует свою OAuth-сессию.
+    const apiKey = process.env.OPENAI_API_KEY || (baseURL ? "unused" : "");
     if (!apiKey) throw new Error("OPENAI_API_KEY не задан в env");
     const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-    cached = new OpenAiLlmProvider(apiKey, model);
+    cached = new OpenAiLlmProvider(apiKey, model, baseURL);
     return cached;
   }
 
