@@ -8,6 +8,7 @@ import { TaskFilterPills } from "./TaskFilterPills";
 import { TaskQuickCapture, type TaskQuickCaptureRef } from "./TaskQuickCapture";
 import { TaskGroupList } from "./TaskGroupList";
 import { TaskEditModal } from "./TaskEditModal";
+import { TaskCreateModal } from "./TaskCreateModal";
 import { TaskEmptyState } from "./TaskEmptyState";
 import { apiFetch } from "../../lib/api";
 import type { Task } from "./groupTasks";
@@ -55,6 +56,7 @@ export function TasksPage() {
   } = useTasksQuery(filter);
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [creating, setCreating] = useState(false);
   const [assigneeOptions, setAssigneeOptions] = useState<AdminUserOption[]>([]);
 
   const captureRef = useRef<TaskQuickCaptureRef>(null);
@@ -157,15 +159,22 @@ export function TasksPage() {
     );
   }
 
-  const openTasks = tasks.filter((t) => t.status === "OPEN");
-  const isEmpty = !loading && openTasks.length === 0;
+  const isEmpty = !loading && tasks.filter((t) => t.status === "OPEN").length === 0;
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-3xl">
-      {/* Заголовок */}
-      <div>
-        <p className="eyebrow">Задачи</p>
-        <h1 className="text-lg font-semibold text-ink mt-0.5">Мои задачи</h1>
+      {/* Заголовок + кнопка создания */}
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="eyebrow">Задачи</p>
+          <h1 className="text-lg font-semibold text-ink mt-0.5">Мои задачи</h1>
+        </div>
+        <button
+          onClick={() => setCreating(true)}
+          className="bg-accent-bright text-white px-3 py-1.5 rounded text-sm font-medium hover:opacity-90 transition-opacity"
+        >
+          + Создать задачу
+        </button>
       </div>
 
       {/* Фильтры */}
@@ -201,7 +210,7 @@ export function TasksPage() {
       {/* Список задач */}
       {!loading && !isEmpty && (
         <TaskGroupList
-          tasks={openTasks}
+          tasks={tasks}
           onComplete={handleComplete}
           onReopen={handleReopen}
           onUpdate={handleUpdate}
@@ -220,6 +229,18 @@ export function TasksPage() {
           assigneeOptions={assigneeOptions}
           onSave={handleSaveEdit}
           onClose={() => setEditingTask(null)}
+        />
+      )}
+
+      {/* Модалка создания */}
+      {creating && (
+        <TaskCreateModal
+          onSubmit={async (input) => {
+            await createTask(input);
+            setCreating(false);
+          }}
+          onClose={() => setCreating(false)}
+          assigneeOptions={assigneeOptions}
         />
       )}
     </div>

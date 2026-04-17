@@ -6,6 +6,7 @@ import { apiFetch } from "../../lib/api";
 import { toast } from "../ToastProvider";
 import { toMoscowDateString } from "../../lib/moscowDate";
 import { pluralize } from "../../lib/format";
+import { TaskCreateModal } from "../tasks/TaskCreateModal";
 
 // ── Типы ──────────────────────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ interface TaskSummary {
   title: string;
   dueDate: string | null;
   urgent: boolean;
+  status?: "OPEN" | "DONE";
 }
 
 interface DashboardTodayWithTasks {
@@ -47,12 +49,14 @@ export function DayTasksWidget({ className = "" }: { className?: string }) {
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [openCount, setOpenCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [assigneeOptions, setAssigneeOptions] = useState<Array<{ id: string; username: string }>>([]);
 
   const inFlight = useRef<Set<string>>(new Set());
 
   // ── Загрузка ────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
+  const loadTasks = useCallback(() => {
     let cancelled = false;
     setLoading(true);
 
@@ -80,18 +84,33 @@ export function DayTasksWidget({ className = "" }: { className?: string }) {
     };
   }, []);
 
-  // ── Оптимистичное выполнение ────────────────────────────────────────────────
+  useEffect(() => {
+    const cleanup = loadTasks();
+    return cleanup;
+  }, [loadTasks]);
 
-  const reopenTask = useCallback(async (id: string, snapshot: TaskSummary) => {
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ users: Array<{ id: string; username: string }> }>("/api/admin-users/assignable")
+      .then((d) => {
+        if (!cancelled) setAssigneeOptions(d.users ?? []);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Оптимистичные мутации ────────────────────────────────────────────────────
+
+  const reopenTask = useCallback(async (id: string) => {
     if (inFlight.current.has(`reopen-${id}`)) return;
     inFlight.current.add(`reopen-${id}`);
-    // Возвращаем задачу обратно в список
-    setTasks((prev) => prev.some((t) => t.id === id) ? prev : [snapshot, ...prev]);
+    // Оптимистично отмечаем как OPEN
+    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: "OPEN" as const } : t));
     try {
       await apiFetch(`/api/tasks/${id}/reopen`, { method: "POST" });
     } catch (err: any) {
-      // Сервер отклонил — убираем снова
-      setTasks((prev) => prev.filter((t) => t.id !== id));
+      // Сервер отклонил — откатываем обратно на DONE
+      setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status: "DONE" as const } : t));
       toast.error(err?.message ?? "Не удалось вернуть задачу");
     } finally {
       inFlight.current.delete(`reopen-${id}`);
@@ -103,24 +122,25 @@ export function DayTasksWidget({ className = "" }: { className?: string }) {
     inFlight.current.add(`complete-${id}`);
 
     let snapshot: TaskSummary | undefined;
+    // Оптимистично помечаем как DONE (не удаляем из списка)
     setTasks((prev) => {
       snapshot = prev.find((t) => t.id === id);
-      return prev.filter((t) => t.id !== id);
+      return prev.map((t) => t.id === id ? { ...t, status: "DONE" as const } : t);
     });
 
     try {
       await apiFetch(`/api/tasks/${id}/complete`, { method: "POST" });
       if (snapshot) {
-        const snap = snapshot;
         toast.success("Задача выполнена", {
           durationMs: 6000,
-          action: { label: "Отменить", onClick: () => { void reopenTask(id, snap); } },
+          action: { label: "Отменить", onClick: () => { void reopenTask(id); } },
         });
       }
     } catch (err: any) {
+      // Откат — возвращаем прежний статус
       if (snapshot) {
         const snap = snapshot;
-        setTasks((prev) => (prev.some((t) => t.id === id) ? prev : [snap, ...prev]));
+        setTasks((prev) => prev.map((t) => t.id === id ? snap : t));
       }
       toast.error(err?.message ?? "Не удалось выполнить задачу");
     } finally {
@@ -134,7 +154,16 @@ export function DayTasksWidget({ className = "" }: { className?: string }) {
 
   return (
     <div className={`bg-surface border border-border rounded-lg p-3 ${className}`}>
-      <p className="eyebrow mb-2">МОИ ЗАДАЧИ</p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="eyebrow">МОИ ЗАДАЧИ</p>
+        <button
+          onClick={() => setCreating(true)}
+          aria-label="Создать задачу"
+          className="text-accent hover:text-accent-bright text-base leading-none transition-colors"
+        >
+          +
+        </button>
+      </div>
 
       {loading ? (
         <p className="text-xs text-ink-3">Загрузка…</p>
@@ -144,21 +173,23 @@ export function DayTasksWidget({ className = "" }: { className?: string }) {
         <ul className="divide-y divide-border">
           {visible.map((task) => {
             const chip = dayChip(task);
+            const isDone = task.status === "DONE";
             return (
-              <li key={task.id} className="py-1.5 flex items-center gap-2">
+              <li key={task.id} className={`py-1.5 flex items-center gap-2 ${isDone ? "opacity-60" : ""}`}>
                 <input
                   type="checkbox"
+                  checked={isDone}
                   className="accent-teal w-4 h-4 rounded-sm shrink-0 cursor-pointer"
-                  aria-label="Отметить выполненным"
-                  onChange={() => void completeTask(task.id)}
+                  aria-label={isDone ? "Вернуть в работу" : "Отметить выполненным"}
+                  onChange={() => isDone ? void reopenTask(task.id) : void completeTask(task.id)}
                 />
-                <span className="flex-1 text-sm text-ink truncate">
-                  {task.urgent && (
+                <span className={`flex-1 text-sm truncate ${isDone ? "line-through text-ink-3" : "text-ink"}`}>
+                  {task.urgent && !isDone && (
                     <span className="text-rose font-bold mr-1" aria-label="Срочно">!</span>
                   )}
                   {task.title}
                 </span>
-                {chip.label && (
+                {chip.label && !isDone && (
                   <span className={`text-xs shrink-0 ${chip.className}`}>{chip.label}</span>
                 )}
               </li>
@@ -175,6 +206,23 @@ export function DayTasksWidget({ className = "" }: { className?: string }) {
           Все мои →{openCount !== null ? ` (${openCount} открыто)` : ""}
         </Link>
       </div>
+
+      {/* Модалка создания */}
+      {creating && (
+        <TaskCreateModal
+          onSubmit={async (input) => {
+            await apiFetch("/api/tasks", {
+              method: "POST",
+              body: JSON.stringify(input),
+            });
+            setCreating(false);
+            // Перезагружаем список задач
+            loadTasks();
+          }}
+          onClose={() => setCreating(false)}
+          assigneeOptions={assigneeOptions}
+        />
+      )}
     </div>
   );
 }
