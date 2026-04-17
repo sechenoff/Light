@@ -5,6 +5,8 @@ import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { parseBookingRangeBound } from "../utils/dates";
 import { rolesGuard } from "../middleware/rolesGuard";
+import { moscowTodayStart, addDays } from "../utils/moscowDate";
+import { getMyTasksForToday } from "../services/taskService";
 
 const router = express.Router();
 
@@ -45,7 +47,9 @@ router.get("/today", async (req, res, next) => {
       },
     } as const;
 
-    const [pickupsRaw, returnsRaw, activeRaw] = await Promise.all([
+    const userId = req.adminUser?.userId ?? "";
+
+    const [pickupsRaw, returnsRaw, activeRaw, myTasks] = await Promise.all([
       // Pickups: CONFIRMED брони начинающиеся сегодня
       prisma.booking.findMany({
         where: {
@@ -67,6 +71,8 @@ router.get("/today", async (req, res, next) => {
         where: { status: "ISSUED" },
         include: includeArgs,
       }),
+      // Мои задачи на сегодня (overdue ∪ today ∪ urgent-undated), до 5
+      getMyTasksForToday(userId),
     ]);
 
     function mapBooking(b: typeof pickupsRaw[number]) {
@@ -90,6 +96,7 @@ router.get("/today", async (req, res, next) => {
       pickups: pickupsRaw.map(mapBooking),
       returns: returnsRaw.map(mapBooking),
       active: activeRaw.map(mapBooking),
+      myTasks,
     });
   } catch (err) {
     next(err);
@@ -176,6 +183,45 @@ router.get("/repair-stats", async (_req, res, next) => {
       writtenOffThisMonth,
       spentThisMonth: (expensesAgg._sum.amount?.toString() ?? "0"),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/dashboard/task-stats
+ * Статистика задач для текущего пользователя.
+ *
+ * myOpen — открытые задачи, назначенные на текущего пользователя.
+ * myOverdue — просроченные открытые задачи (dueDate < сегодня по Москве).
+ * myToday — на сегодня: dueDate сегодня по Москве ИЛИ срочные без даты.
+ * myUrgent — все срочные открытые задачи.
+ *
+ * Доступ — все три роли (rolesGuard на router-уровне).
+ */
+router.get("/task-stats", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), async (req, res, next) => {
+  try {
+    const userId = req.adminUser!.userId;
+    const todayStart = moscowTodayStart();
+    const tomorrowStart = addDays(todayStart, 1);
+
+    const [myOpen, myOverdue, myToday, myUrgent] = await Promise.all([
+      prisma.task.count({ where: { status: "OPEN", assignedTo: userId } }),
+      prisma.task.count({ where: { status: "OPEN", assignedTo: userId, dueDate: { lt: todayStart } } }),
+      prisma.task.count({
+        where: {
+          status: "OPEN",
+          assignedTo: userId,
+          OR: [
+            { dueDate: { gte: todayStart, lt: tomorrowStart } }, // due today (Moscow)
+            { dueDate: null, urgent: true },                      // urgent undated → promotes to today
+          ],
+        },
+      }),
+      prisma.task.count({ where: { status: "OPEN", assignedTo: userId, urgent: true } }),
+    ]);
+
+    res.json({ myOpen, myOverdue, myToday, myUrgent });
   } catch (err) {
     next(err);
   }
