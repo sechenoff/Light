@@ -51,7 +51,10 @@ green "  ✓ on main, synced with origin"
 
 # ── Local build ───────────────────────────────────────────────────────────────
 blue "▶ Building web locally (avoids VPS SIGBUS)"
-rm -rf apps/web/.next
+# Clear BOTH .next AND node_modules/.cache — Next.js/webpack caches in .cache can
+# produce an incomplete build (missing pages-manifest.json, etc.) when hitting
+# a stale cache from a different app-router vs pages-router state.
+rm -rf apps/web/.next apps/web/node_modules/.cache
 npm run build -w apps/web > /tmp/lr-web-build.log 2>&1 || {
   red "ERROR: local build failed. Last 30 lines of log:"
   tail -30 /tmp/lr-web-build.log
@@ -63,38 +66,93 @@ if [ ! -f apps/web/.next/BUILD_ID ]; then
   tail -30 /tmp/lr-web-build.log
   exit 1
 fi
+
+# Sanity check: Next.js build MUST include these manifests; missing any of them
+# means the runtime will crash on startup with ENOENT.
+REQUIRED_FILES=(
+  "apps/web/.next/server/pages-manifest.json"
+  "apps/web/.next/server/next-font-manifest.json"
+  "apps/web/.next/server/middleware-manifest.json"
+  "apps/web/.next/server/app-paths-manifest.json"
+  "apps/web/.next/routes-manifest.json"
+)
+for f in "${REQUIRED_FILES[@]}"; do
+  if [ ! -f "$f" ]; then
+    red "ERROR: build incomplete — missing $f"
+    red "This usually means a bad build cache. Clearing and retrying..."
+    rm -rf apps/web/.next apps/web/node_modules/.cache
+    exit 1
+  fi
+done
+
 green "  ✓ build ok, BUILD_ID=$(cat apps/web/.next/BUILD_ID)"
 
-# ── Server: pull + install + prisma + symlink safety ──────────────────────────
-blue "▶ Updating server (git pull + npm ci + prisma generate + .bin/next safety)"
+# ── Server: pull + smart install + prisma + symlink safety ────────────────────
+# Why "smart" install?
+#   Full `npm ci` is ~45s AND peaks at ~1GB RAM which OOMs our 2GB VPS
+#   mid-install, leaving node_modules/ in a broken state. We avoid it when
+#   possible by checking whether package-lock.json changed. Full install only
+#   when the lockfile genuinely moved.
+blue "▶ Updating server (git pull + conditional install + prisma + symlink safety)"
 
 ssh "$SERVER" bash <<'REMOTE_SCRIPT'
 set -euo pipefail
 cd /opt/light-rental-system
 
 echo "  ▸ git fetch + reset"
+# Capture lockfile hash BEFORE pull so we can detect changes
+LOCK_BEFORE=$(sha256sum package-lock.json 2>/dev/null | cut -d' ' -f1 || echo "none")
 git fetch origin --quiet
 git reset --hard origin/main --quiet
+LOCK_AFTER=$(sha256sum package-lock.json 2>/dev/null | cut -d' ' -f1 || echo "none")
 
-echo "  ▸ npm ci (clean install, fixes .bin symlinks)"
-npm ci --no-audit --no-fund --silent 2>&1 | tail -5 || {
-  # Some packages log deprecation warnings on stderr — if ci exit was 0, we're fine
-  echo "  (some warnings from npm, check if fatal)"
-}
+# Decide: do we need to install?
+# Yes if: lockfile changed OR node_modules missing OR next binary missing
+NEED_INSTALL=false
+if [ "$LOCK_BEFORE" != "$LOCK_AFTER" ]; then
+  echo "  ▸ package-lock.json changed — full install needed"
+  NEED_INSTALL=true
+elif [ ! -d node_modules ] || [ ! -e node_modules/.bin/next ] || [ ! -d node_modules/next ]; then
+  echo "  ▸ node_modules incomplete — install needed"
+  NEED_INSTALL=true
+else
+  echo "  ▸ lockfile unchanged, node_modules intact — skipping install"
+fi
 
-# Safety net: npm ci should create .bin/next, but if something goes wrong,
-# recreate it manually. This is cheap insurance against workspace quirks.
+if $NEED_INSTALL; then
+  echo "  ▸ npm ci (may take ~45s, monitor memory)"
+  # Use --silent to reduce log noise; --no-audit/--no-fund to skip non-essentials
+  if ! npm ci --no-audit --no-fund --silent 2>&1 | tail -3; then
+    echo "  ⚠ npm ci failed or was killed. Attempting recovery."
+    # Most common failure: OOM kill mid-install. Recover by:
+    # 1. Using npm install (slightly less memory-hungry) as fallback
+    npm install --no-audit --no-fund --prefer-offline --silent 2>&1 | tail -3 || {
+      echo "  ⚠ npm install also failed — will try manual symlink repair"
+    }
+  fi
+fi
+
+# Safety net: critical binaries must exist. If npm failed partway, manually
+# repair the symlinks we need. This is faster and more reliable than retrying
+# a failing install loop.
 if [ ! -e node_modules/.bin/next ]; then
-  echo "  ⚠ .bin/next missing after npm ci — recreating symlink"
-  ln -sf ../next/dist/bin/next node_modules/.bin/next
-  chmod +x node_modules/next/dist/bin/next
+  if [ -f node_modules/next/dist/bin/next ]; then
+    echo "  ⚠ .bin/next missing — recreating symlink"
+    mkdir -p node_modules/.bin
+    ln -sf ../next/dist/bin/next node_modules/.bin/next
+    chmod +x node_modules/next/dist/bin/next
+  else
+    echo "  ERROR: node_modules/next/ is missing. Cannot recover without network install."
+    echo "  Retry: ssh $SERVER 'cd /opt/light-rental-system && npm ci'"
+    exit 1
+  fi
 fi
 
 if [ ! -e node_modules/.bin/next ]; then
-  echo "  ERROR: cannot create .bin/next even manually. node_modules/next/ may be missing."
-  ls node_modules/next/dist/bin/ 2>&1 | head -5
+  echo "  ERROR: .bin/next still missing after repair attempts"
   exit 1
 fi
+echo "  ✓ next binary ready: $(ls -la node_modules/.bin/next)"
 
 echo "  ▸ prisma generate (safe even if API unchanged)"
 cd apps/api
@@ -107,12 +165,15 @@ echo "  ✓ server ready"
 REMOTE_SCRIPT
 
 # ── Rsync build artifacts ─────────────────────────────────────────────────────
+# Note: macOS openrsync doesn't support --info=stats1; keep flags portable.
 blue "▶ Syncing .next/ to server"
-rsync -az --delete --info=stats1 apps/web/.next/ "$SERVER:$SERVER_PATH/apps/web/.next/" 2>&1 | tail -3
+rsync -az --delete apps/web/.next/ "$SERVER:$SERVER_PATH/apps/web/.next/"
+green "  ✓ .next synced"
 
 if [ -d apps/web/public ]; then
   blue "▶ Syncing public/"
-  rsync -az --delete apps/web/public/ "$SERVER:$SERVER_PATH/apps/web/public/" 2>&1 | tail -1 || true
+  rsync -az --delete apps/web/public/ "$SERVER:$SERVER_PATH/apps/web/public/" || true
+  green "  ✓ public synced"
 fi
 
 # Verify .next/BUILD_ID on server
