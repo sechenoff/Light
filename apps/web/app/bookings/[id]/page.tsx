@@ -13,6 +13,7 @@ import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { RejectBookingModal } from "../../../src/components/bookings/RejectBookingModal";
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
 import { ApprovalContext } from "../../../src/components/bookings/ApprovalContext";
+import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalReviewView";
 import { toast } from "../../../src/components/ToastProvider";
 
 type ScanSession = {
@@ -266,6 +267,23 @@ export default function BookingDetailPage() {
       ) : err ? (
         <div className="mt-4 text-rose">{err}</div>
       ) : booking ? (
+        booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN" ? (
+          <ApprovalReviewView
+            booking={booking}
+            onReload={() => {
+              // Re-fetch booking by re-triggering the effect via a state change
+              const controller = new AbortController();
+              fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"}/api/bookings/${id}`, {
+                signal: controller.signal,
+                credentials: "include",
+              })
+                .then((r) => r.json())
+                .then((data) => setBooking(data.booking))
+                .catch(() => {});
+            }}
+            currentUser={user!}
+          />
+        ) : (
         <div className="mt-4">
           {booking.status === "DRAFT" && booking.rejectionReason && (
             <div className="mb-4 rounded border-l-4 border-rose bg-rose-soft px-4 py-3 text-sm text-ink">
@@ -588,6 +606,7 @@ export default function BookingDetailPage() {
           </div>
           </div>
         </div>
+        )
       ) : (
         <div className="mt-4 text-ink-3">Бронь не найдена.</div>
       )}
