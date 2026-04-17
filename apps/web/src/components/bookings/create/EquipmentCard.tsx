@@ -103,18 +103,19 @@ export function EquipmentCard({
   const isAi = gafferText.includes("\n") || gafferText.length > 40;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
-      {/* Sticky header */}
-      <div className="sticky top-12 z-10 bg-surface">
-        <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
-          <h2 className="text-[15px] font-semibold">Оборудование</h2>
-          <div className="font-mono text-[12px] text-ink-2">
-            {totalPositions} {pluralize(totalPositions, "позиция", "позиции", "позиций")} · {formatMoneyRub(totalPrice)} ₽
-          </div>
-        </div>
+    <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden mb-3.5">
+      {/* Eyebrow header — matches ClientProjectCard / DatesCard style */}
+      <div className="px-5 py-3 border-b border-border bg-surface-muted flex items-center justify-between">
+        <h3 className="eyebrow text-ink">3. Оборудование</h3>
+        <span className="font-mono text-[12px] text-ink-2">
+          {totalPositions} {pluralize(totalPositions, "позиция", "позиции", "позиций")} · {formatMoneyRub(totalPrice)} ₽
+        </span>
+      </div>
 
+      {/* Sticky controls (smart input + tabs) */}
+      <div className="sticky top-12 z-10 bg-surface">
         {/* Smart input */}
-        <div className="px-5 pb-2.5">
+        <div className="px-5 pt-4 pb-2.5">
           <SmartInput
             value={gafferText}
             onValueChange={(v) => {
