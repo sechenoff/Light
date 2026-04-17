@@ -1,7 +1,7 @@
 "use client";
 
 import { formatMoneyRub, pluralize } from "../../../lib/format";
-import type { CatalogSelectedItem, OffCatalogItem, QuoteResponse, ValidationCheck } from "./types";
+import type { CatalogSelectedItem, OffCatalogItem, QuoteResponse, TransportBreakdown, ValidationCheck } from "./types";
 
 type SummaryPanelProps = {
   quote: QuoteResponse | null;
@@ -19,6 +19,7 @@ type SummaryPanelProps = {
   selectedItems?: Map<string, CatalogSelectedItem>;
   offCatalogItems?: OffCatalogItem[];
   selectedVehicleName?: string | null;
+  localTransport?: TransportBreakdown | null;
 };
 
 const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass: string }> = {
@@ -43,6 +44,7 @@ export function SummaryPanel({
   selectedItems,
   offCatalogItems,
   selectedVehicleName,
+  localTransport,
 }: SummaryPanelProps) {
   const equipSubtotal = quote ? Number(quote.equipmentSubtotal ?? quote.subtotal) : localSubtotal;
   const discount = quote ? Number(quote.discountAmount) : localDiscount;
@@ -50,12 +52,15 @@ export function SummaryPanel({
   const discPct = quote ? Number(quote.discountPercent) : discountPercent;
   const effectiveShifts = quote ? quote.shifts : shifts;
 
-  // Transport
-  const transportTotal = quote?.transport ? Number(quote.transport.total) : 0;
-  const vehicleName = selectedVehicleName ?? quote?.transport?.vehicleName ?? null;
+  // Transport: prefer server quote, fallback to local calculation
+  const transport = quote?.transport ?? localTransport ?? null;
+  const transportTotal = transport ? Number(transport.total) : 0;
+  const vehicleName = transport?.vehicleName ?? selectedVehicleName ?? null;
 
-  // Grand total
-  const grandTotal = quote?.grandTotal ? Number(quote.grandTotal) : (equipTotal + transportTotal);
+  // Grand total: prefer server, fallback to local
+  const grandTotal = quote?.grandTotal
+    ? Number(quote.grandTotal)
+    : equipTotal + transportTotal;
   // Legacy: subtotal for backward compat in display
   const subtotal = equipSubtotal;
   const total = grandTotal;
@@ -67,7 +72,7 @@ export function SummaryPanel({
   if (offCatalogItems) for (const o of offCatalogItems) miniList.push({ key: o.tempId, name: o.name, qty: o.quantity });
 
   return (
-    <aside className="sticky top-20 flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 shadow-xs">
+    <aside className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 shadow-xs">
       {/* Header */}
       <div className="flex items-baseline justify-between">
         <p className="eyebrow">Расчёт</p>

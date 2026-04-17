@@ -21,7 +21,9 @@ import { DatesCard } from "../../../src/components/bookings/create/DatesCard";
 import { EquipmentCard } from "../../../src/components/bookings/create/EquipmentCard";
 import { TransportCard } from "../../../src/components/bookings/create/TransportCard";
 import { CommentCard } from "../../../src/components/bookings/create/CommentCard";
+import { DiscountCard } from "../../../src/components/bookings/create/DiscountCard";
 import { SummaryPanel } from "../../../src/components/bookings/create/SummaryPanel";
+import { computeTransportPriceClient } from "../../../src/components/bookings/create/transportClientCalc";
 import type {
   AvailabilityRow,
   CatalogRowAdjustment,
@@ -44,7 +46,7 @@ function BookingNewPage() {
   const [clientName, setClientName] = useState("");
   const [projectName, setProjectName] = useState("");
   const [bookingComment, setBookingComment] = useState("");
-  const [discountPercent, setDiscountPercent] = useState(0);
+  const [discountPercent, setDiscountPercent] = useState(50);
 
   const [pickupLocal, setPickupLocal] = useState(() =>
     pickupFromSearchParam(startParam, defaultPickupDatetimeLocal()),
@@ -225,9 +227,26 @@ function BookingNewPage() {
     };
   }, [selectedVehicleId, withGenerator, shiftHours, skipOvertime, kmOutsideMkad, ttkEntry]);
 
+  // Local transport breakdown for instant feedback (before server quote returns)
+  const localTransport = useMemo(() => {
+    if (!selectedVehicleId) return null;
+    const vehicle = vehicles.find((v) => v.id === selectedVehicleId);
+    if (!vehicle) return null;
+    return computeTransportPriceClient({
+      vehicle,
+      withGenerator,
+      shiftHours,
+      skipOvertime,
+      kmOutsideMkad,
+      ttkEntry,
+    });
+  }, [selectedVehicleId, vehicles, withGenerator, shiftHours, skipOvertime, kmOutsideMkad, ttkEntry]);
+
   // ── Debounced quote ──
   useEffect(() => {
-    if (!clientName.trim() || apiItems.length === 0 || !pickupISO || !returnISO) {
+    // Skip quote if nothing at all to price
+    const hasSomething = apiItems.length > 0 || transportPayload !== null;
+    if (!clientName.trim() || !hasSomething || !pickupISO || !returnISO) {
       setQuote(null);
       return;
     }
@@ -523,6 +542,7 @@ function BookingNewPage() {
       </header>
 
       <div className="mx-auto grid max-w-[1280px] grid-cols-[minmax(0,1fr)_320px] items-start gap-5 px-8 py-7">
+        {/* Left column: Client, Dates, Equipment, Comment */}
         <div className="flex flex-col gap-3.5">
           <ClientProjectCard
             clientName={clientName}
@@ -577,6 +597,30 @@ function BookingNewPage() {
             onReviewSkipAll={handleReviewSkipAll}
           />
 
+          <CommentCard value={bookingComment} onChange={setBookingComment} />
+        </div>
+
+        {/* Right column: Discount, Summary, Transport — sticky together */}
+        <div className="sticky top-20 flex flex-col gap-3.5 self-start">
+          <DiscountCard value={discountPercent} onChange={setDiscountPercent} />
+          <SummaryPanel
+            quote={quote}
+            localSubtotal={localSubtotal}
+            localDiscount={localDiscount}
+            localTotal={localTotal}
+            discountPercent={discountPercent}
+            itemCount={selected.size + offCatalogItems.length}
+            shifts={shifts}
+            isLoadingQuote={loadingQuote}
+            checks={checks}
+            onSubmitForApproval={handleSubmitForApproval}
+            onSaveDraft={handleSaveDraftClick}
+            canSubmit={canSubmit}
+            selectedItems={selected}
+            offCatalogItems={offCatalogItems}
+            selectedVehicleName={selectedVehicleId ? (vehicles.find(v => v.id === selectedVehicleId)?.name ?? null) : null}
+            localTransport={localTransport}
+          />
           <TransportCard
             vehicles={vehicles}
             selectedVehicleId={selectedVehicleId}
@@ -591,41 +635,9 @@ function BookingNewPage() {
             onChangeKm={setKmOutsideMkad}
             ttkEntry={ttkEntry}
             onChangeTtk={setTtkEntry}
-            breakdown={quote?.transport ?? null}
+            breakdown={quote?.transport ?? localTransport}
           />
-
-          <div className="flex items-center justify-between rounded-md border border-border bg-surface px-5 py-3 shadow-xs">
-            <label className="text-[13px] text-ink-2">Скидка, %</label>
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={discountPercent}
-              onChange={(e) => setDiscountPercent(Number(e.target.value))}
-              className="w-20 rounded border border-border px-2 py-1 text-right font-mono"
-            />
-          </div>
-
-          <CommentCard value={bookingComment} onChange={setBookingComment} />
         </div>
-
-        <SummaryPanel
-          quote={quote}
-          localSubtotal={localSubtotal}
-          localDiscount={localDiscount}
-          localTotal={localTotal}
-          discountPercent={discountPercent}
-          itemCount={selected.size + offCatalogItems.length}
-          shifts={shifts}
-          isLoadingQuote={loadingQuote}
-          checks={checks}
-          onSubmitForApproval={handleSubmitForApproval}
-          onSaveDraft={handleSaveDraftClick}
-          canSubmit={canSubmit}
-          selectedItems={selected}
-          offCatalogItems={offCatalogItems}
-          selectedVehicleName={selectedVehicleId ? (vehicles.find(v => v.id === selectedVehicleId)?.name ?? null) : null}
-        />
       </div>
     </div>
   );
