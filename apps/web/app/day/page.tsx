@@ -13,6 +13,7 @@ import { DayKpiCard } from "../../src/components/day/DayKpiCard";
 import { DayOperationsList } from "../../src/components/day/DayOperationsList";
 import type { DayOperation } from "../../src/components/day/DayOperationsList";
 import { DayFooterMetrics } from "../../src/components/day/DayFooterMetrics";
+import { DayTasksWidget } from "../../src/components/day/DayTasksWidget";
 
 // ── SUPER_ADMIN ──────────────────────────────────────────────────────────────
 
@@ -180,6 +181,8 @@ function DaySuperAdmin({ username }: { username: string }) {
           </DayAlert>
         )}
 
+        <DayTasksWidget />
+
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <DayKpiCard
             eyebrow="Сегодня"
@@ -272,6 +275,8 @@ function DayWarehouse({ username }: { username: string }) {
             linkLabel="Все →"
           />
         )}
+
+        <DayTasksWidget />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-surface border border-border rounded-lg p-3">
@@ -453,6 +458,8 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
             </div>
           </div>
         )}
+
+        <DayTasksWidget />
 
         <div className="bg-surface border border-border rounded-lg p-4">
           <div className="flex justify-between items-baseline mb-2">
