@@ -22,7 +22,8 @@ const ProposeBody = z.object({
   contextJson: z.string().optional(),
 });
 
-router.post("/propose", async (req, res, next) => {
+// Extracted handler so it can be re-mounted at a broader role in routes/index.ts
+export const proposeAliasHandler: express.RequestHandler = async (req, res, next) => {
   try {
     const body = ProposeBody.parse(req.body);
     const normalizedPhrase = norm(body.rawPhrase);
@@ -87,7 +88,10 @@ router.post("/propose", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+};
+
+// Keep inline registration so admin router still works when mounted under SUPER_ADMIN guard
+router.post("/propose", proposeAliasHandler);
 
 // ── GET /api/admin/slang-learning/stats ──────────────────────────────────────
 // Returns computed KPIs for the slang dictionary page.
@@ -335,3 +339,4 @@ router.delete("/aliases/:id", async (req, res, next) => {
 });
 
 export { router as slangLearningRouter };
+// proposeAliasHandler is also exported above as a named export
