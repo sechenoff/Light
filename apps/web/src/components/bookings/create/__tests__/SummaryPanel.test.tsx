@@ -160,9 +160,9 @@ describe("SummaryPanel", () => {
     expect(container.querySelector(".text-accent")).toBeTruthy();
   });
 
-  it("has sticky positioning class", () => {
+  it("renders as aside element", () => {
     const { container } = render(<SummaryPanel {...defaultProps} />);
     const root = container.firstChild as HTMLElement;
-    expect(root.className).toMatch(/sticky/);
+    expect(root.tagName.toLowerCase()).toBe("aside");
   });
 });

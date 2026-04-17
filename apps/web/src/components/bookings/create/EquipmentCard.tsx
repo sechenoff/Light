@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { SmartInput } from "./SmartInput";
 import { AiResultBanner } from "./AiResultBanner";
 import { CatalogList } from "./CatalogList";
@@ -127,6 +127,8 @@ export function EquipmentCard({
 
   const isAi = gafferText.includes("\n") || gafferText.length > 40;
 
+  const [catalogExpanded, setCatalogExpanded] = useState(false);
+
   return (
     <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden mb-3.5">
       {/* Eyebrow header — matches ClientProjectCard / DatesCard style */}
@@ -205,19 +207,30 @@ export function EquipmentCard({
       {catalogLoading ? (
         <div className="px-5 py-12 text-center text-[13px] text-ink-3">Загружаю каталог...</div>
       ) : (
-        <CatalogList
-          rows={catalog}
-          selected={selected}
-          offCatalogItems={offCatalogItems}
-          activeTab={activeTab}
-          searchQuery={isAi ? "" : searchQuery}
-          adjustments={adjustments}
-          onAdd={onAdd}
-          onChangeQty={onChangeQty}
-          onRemove={onRemove}
-          onChangeOffCatalogQty={onChangeOffCatalogQty}
-          onRemoveOffCatalog={onRemoveOffCatalog}
-        />
+        <>
+          <div className={catalogExpanded ? "" : "max-h-[300px] overflow-y-auto"}>
+            <CatalogList
+              rows={catalog}
+              selected={selected}
+              offCatalogItems={offCatalogItems}
+              activeTab={activeTab}
+              searchQuery={isAi ? "" : searchQuery}
+              adjustments={adjustments}
+              onAdd={onAdd}
+              onChangeQty={onChangeQty}
+              onRemove={onRemove}
+              onChangeOffCatalogQty={onChangeOffCatalogQty}
+              onRemoveOffCatalog={onRemoveOffCatalog}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setCatalogExpanded(!catalogExpanded)}
+            className="w-full border-t border-border bg-surface-muted py-2 text-[12px] font-medium text-accent-bright hover:bg-surface-subtle"
+          >
+            {catalogExpanded ? "↑ Свернуть каталог" : "↓ Развернуть каталог"}
+          </button>
+        </>
       )}
 
       {/* Footer */}
