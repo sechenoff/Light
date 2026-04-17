@@ -19,6 +19,7 @@ import {
 import { ClientProjectCard } from "../../../src/components/bookings/create/ClientProjectCard";
 import { DatesCard } from "../../../src/components/bookings/create/DatesCard";
 import { EquipmentCard } from "../../../src/components/bookings/create/EquipmentCard";
+import { TransportCard } from "../../../src/components/bookings/create/TransportCard";
 import { CommentCard } from "../../../src/components/bookings/create/CommentCard";
 import { SummaryPanel } from "../../../src/components/bookings/create/SummaryPanel";
 import type {
@@ -30,6 +31,7 @@ import type {
   QuoteResponse,
   ValidationCheck,
   PendingReviewItem,
+  VehicleRow,
 } from "../../../src/components/bookings/create/types";
 
 function BookingNewPage() {
@@ -95,6 +97,33 @@ function BookingNewPage() {
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [loadingQuote, setLoadingQuote] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Transport
+  const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [withGenerator, setWithGenerator] = useState(false);
+  const [shiftHours, setShiftHours] = useState(12);
+  const [shiftHoursDirty, setShiftHoursDirty] = useState(false);
+  const [skipOvertime, setSkipOvertime] = useState(false);
+  const [kmOutsideMkad, setKmOutsideMkad] = useState(0);
+  const [ttkEntry, setTtkEntry] = useState(false);
+
+  // ── Vehicles fetch (once on mount) ──
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ vehicles: VehicleRow[] }>("/api/vehicles")
+      .then((res) => { if (!cancelled) setVehicles(res.vehicles); })
+      .catch(() => { if (!cancelled) setVehicles([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Auto-update shiftHours from rentalDuration if not dirty ──
+  useEffect(() => {
+    if (!shiftHoursDirty && rentalDuration) {
+      const hours = Math.ceil(rentalDuration.totalHours);
+      setShiftHours(Math.max(1, hours));
+    }
+  }, [rentalDuration, shiftHoursDirty]);
 
   // ── Catalog fetch (on dates change) ──
   useEffect(() => {
@@ -183,6 +212,19 @@ function BookingNewPage() {
     clientName.trim() && (selected.size > 0 || offCatalogItems.length > 0) && pickupISO && returnISO && !submitting,
   );
 
+  // Build transport payload for quote/draft
+  const transportPayload = useMemo(() => {
+    if (!selectedVehicleId) return null;
+    return {
+      vehicleId: selectedVehicleId,
+      withGenerator,
+      shiftHours,
+      skipOvertime,
+      kmOutsideMkad,
+      ttkEntry,
+    };
+  }, [selectedVehicleId, withGenerator, shiftHours, skipOvertime, kmOutsideMkad, ttkEntry]);
+
   // ── Debounced quote ──
   useEffect(() => {
     if (!clientName.trim() || apiItems.length === 0 || !pickupISO || !returnISO) {
@@ -200,6 +242,7 @@ function BookingNewPage() {
           endDate: returnISO,
           discountPercent: discountPercent || 0,
           items: apiItems,
+          transport: transportPayload,
         };
         const data = await apiFetch<QuoteResponse>("/api/bookings/quote", { method: "POST", body: JSON.stringify(body) });
         if (!cancelled) setQuote(data);
@@ -213,7 +256,7 @@ function BookingNewPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [clientName, projectName, pickupISO, returnISO, discountPercent, apiItems]);
+  }, [clientName, projectName, pickupISO, returnISO, discountPercent, apiItems, transportPayload]);
 
   // ── Date handlers ──
   function handlePickupChange(v: string) {
@@ -438,6 +481,7 @@ function BookingNewPage() {
         discountPercent: discountPercent || 0,
         comment: finalComment,
         items: apiItems,
+        transport: transportPayload,
       };
       // C2: response shape is { booking: { id } }, not { id }
       const res = await apiFetch<{ booking: { id: string } }>("/api/bookings/draft", { method: "POST", body: JSON.stringify(body) });
@@ -533,6 +577,23 @@ function BookingNewPage() {
             onReviewSkipAll={handleReviewSkipAll}
           />
 
+          <TransportCard
+            vehicles={vehicles}
+            selectedVehicleId={selectedVehicleId}
+            onChangeVehicle={setSelectedVehicleId}
+            withGenerator={withGenerator}
+            onChangeGenerator={setWithGenerator}
+            shiftHours={shiftHours}
+            onChangeShiftHours={(h) => { setShiftHours(h); setShiftHoursDirty(true); }}
+            skipOvertime={skipOvertime}
+            onChangeSkipOvertime={setSkipOvertime}
+            kmOutsideMkad={kmOutsideMkad}
+            onChangeKm={setKmOutsideMkad}
+            ttkEntry={ttkEntry}
+            onChangeTtk={setTtkEntry}
+            breakdown={quote?.transport ?? null}
+          />
+
           <div className="flex items-center justify-between rounded-md border border-border bg-surface px-5 py-3 shadow-xs">
             <label className="text-[13px] text-ink-2">Скидка, %</label>
             <input
@@ -563,6 +624,7 @@ function BookingNewPage() {
           canSubmit={canSubmit}
           selectedItems={selected}
           offCatalogItems={offCatalogItems}
+          selectedVehicleName={selectedVehicleId ? (vehicles.find(v => v.id === selectedVehicleId)?.name ?? null) : null}
         />
       </div>
     </div>

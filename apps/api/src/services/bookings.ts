@@ -6,6 +6,8 @@ import { billableShifts24h, formatExportHourCalculationLine } from "../utils/dat
 import { HttpError } from "../utils/errors";
 import { computeUnitPriceForBookingPeriod } from "./pricing";
 import { getAvailability } from "./availability";
+import { computeTransportPrice } from "./transportCalculator";
+import type { TransportBreakdown } from "./transportCalculator";
 
 const BLOCKING_STATUSES = ["CONFIRMED", "ISSUED"] as const;
 
@@ -25,12 +27,27 @@ export type QuoteLine = {
   pricingMode: "SHIFT" | "TWO_SHIFTS" | "PROJECT";
 };
 
+export type QuoteTransportInput = {
+  vehicleId: string;
+  withGenerator: boolean;
+  shiftHours: number;
+  skipOvertime: boolean;
+  kmOutsideMkad: number;
+  ttkEntry: boolean;
+};
+
+export type QuoteTransportResult = TransportBreakdown & {
+  vehicleId: string;
+  vehicleName: string;
+};
+
 export async function quoteEstimate(args: {
   startDate: Date;
   endDate: Date;
   clientId: string;
   discountPercent?: number | null;
   items: Array<{ equipmentId: string; quantity: number }>;
+  transport?: QuoteTransportInput | null;
 }) {
   const shifts = billableShifts24h(args.startDate, args.endDate);
   const equipment = await prisma.equipment.findMany({
@@ -57,20 +74,64 @@ export async function quoteEstimate(args: {
     };
   });
 
-  const subtotal = sumDec(lines.map((l) => l.lineSum));
+  const equipmentSubtotal = sumDec(lines.map((l) => l.lineSum));
+  // Legacy aliases for backward compat (existing callers use .subtotal / .totalAfterDiscount)
+  const subtotal = equipmentSubtotal;
   const discountPercent = args.discountPercent ? new Decimal(args.discountPercent) : new Decimal(0);
-  const discountAmount = subtotal.mul(discountPercent).div(100);
-  const totalAfterDiscount = subtotal.sub(discountAmount);
+  const discountAmount = equipmentSubtotal.mul(discountPercent).div(100);
+  const equipmentTotal = equipmentSubtotal.sub(discountAmount);
+  // Legacy alias
+  const totalAfterDiscount = equipmentTotal;
+
+  // Transport — isolated from discount
+  let transport: QuoteTransportResult | null = null;
+  if (args.transport) {
+    const vehicle = await prisma.vehicle.findUnique({ where: { id: args.transport.vehicleId } });
+    if (!vehicle) throw new HttpError(400, `Vehicle not found: ${args.transport.vehicleId}`);
+    const breakdown = computeTransportPrice({
+      vehicle: {
+        shiftPriceRub: vehicle.shiftPriceRub.toString(),
+        hasGeneratorOption: vehicle.hasGeneratorOption,
+        generatorPriceRub: vehicle.generatorPriceRub?.toString() ?? null,
+        shiftHours: vehicle.shiftHours,
+        overtimePercent: vehicle.overtimePercent.toString(),
+      },
+      withGenerator: args.transport.withGenerator,
+      shiftHours: args.transport.shiftHours,
+      skipOvertime: args.transport.skipOvertime,
+      kmOutsideMkad: args.transport.kmOutsideMkad,
+      ttkEntry: args.transport.ttkEntry,
+    });
+    transport = { vehicleId: vehicle.id, vehicleName: vehicle.name, ...breakdown };
+  }
+
+  const transportTotal = transport ? new Decimal(transport.total) : new Decimal(0);
+  const grandTotal = equipmentTotal.add(transportTotal);
 
   return {
     shifts,
     lines,
-    subtotal,
+    subtotal,              // legacy alias = equipmentSubtotal
+    equipmentSubtotal,
     discountPercent,
     discountAmount,
-    totalAfterDiscount,
+    equipmentDiscount: discountAmount,
+    totalAfterDiscount,    // legacy alias = equipmentTotal
+    equipmentTotal,
+    transport,
+    grandTotal,
   };
 }
+
+export type BookingTransportSnapshot = {
+  vehicleId: string;
+  withGenerator: boolean;
+  shiftHours: number;
+  skipOvertime: boolean;
+  kmOutsideMkad: number;
+  ttkEntry: boolean;
+  transportSubtotalRub: string;
+};
 
 export async function createBookingDraft(args: {
   clientId: string;
@@ -83,6 +144,7 @@ export async function createBookingDraft(args: {
   estimateOptionalNote?: string | null;
   estimateIncludeOptionalInExport?: boolean;
   items: Array<{ equipmentId: string; quantity: number }>;
+  transport?: BookingTransportSnapshot | null;
 }) {
   if (args.items.length === 0) throw new HttpError(400, "At least one equipment item is required.");
 
@@ -98,6 +160,16 @@ export async function createBookingDraft(args: {
       expectedPaymentDate: args.expectedPaymentDate ?? null,
       estimateOptionalNote: args.estimateOptionalNote?.trim() || null,
       estimateIncludeOptionalInExport: args.estimateIncludeOptionalInExport ?? false,
+      // Transport snapshot
+      vehicleId: args.transport?.vehicleId ?? null,
+      vehicleWithGenerator: args.transport?.withGenerator ?? false,
+      vehicleShiftHours: args.transport?.shiftHours != null ? new Decimal(args.transport.shiftHours) : null,
+      vehicleSkipOvertime: args.transport?.skipOvertime ?? false,
+      vehicleKmOutsideMkad: args.transport?.kmOutsideMkad ?? null,
+      vehicleTtkEntry: args.transport?.ttkEntry ?? false,
+      transportSubtotalRub: args.transport?.transportSubtotalRub != null
+        ? new Decimal(args.transport.transportSubtotalRub)
+        : null,
       items: {
         create: args.items.map((it) => ({
           equipmentId: it.equipmentId,
