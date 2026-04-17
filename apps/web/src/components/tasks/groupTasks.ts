@@ -19,6 +19,7 @@ export interface Task {
   updatedAt: string;
   assignedToUser?: { id: string; username: string } | null;
   createdByUser?: { id: string; username: string } | null;
+  completedByUser?: { id: string; username: string } | null;
 }
 
 // ── bucketOf ──────────────────────────────────────────────────────────────────
