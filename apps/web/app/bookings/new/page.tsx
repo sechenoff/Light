@@ -358,7 +358,13 @@ function BookingNewPage() {
       setParseResolved(resolvedItems.length);
       setParseTotal(res.items.length);
       setSuccessBannerDismissed(false);
-      setParsed(true);
+      // Auto-reset the input: user sees the green banner, and the field is
+      // ready for the next query (typed search or a new paste). Also clear
+      // searchQuery so the catalog isn't stuck filtered by the just-parsed
+      // gaffer text.
+      setGafferText("");
+      setSearchQuery("");
+      setParsed(false);
     } catch (err: unknown) {
       toast.error((err as { message?: string })?.message ?? "Ошибка AI");
     } finally {
@@ -368,6 +374,7 @@ function BookingNewPage() {
 
   function handleClear() {
     setGafferText("");
+    setSearchQuery("");
     setParsed(false);
     setUnmatchedFromAi([]);
     setParseResolved(0);
