@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiFetch } from "../../lib/api";
 import { toast } from "../ToastProvider";
 import { toMoscowDateString } from "../../lib/moscowDate";
+import { pluralize } from "../../lib/format";
 
 // ── Типы ──────────────────────────────────────────────────────────────────────
 
@@ -32,12 +33,12 @@ function dayChip(task: TaskSummary): { label: string; className: string } {
   if (dueStr < todayStr) {
     const ms = now.getTime() - new Date(task.dueDate).getTime();
     const days = Math.max(1, Math.floor(ms / 86_400_000));
-    return { label: `← ${days} ${days === 1 ? "день" : days < 5 ? "дня" : "дней"}`, className: "text-rose font-medium" };
+    return { label: `← ${days} ${pluralize(days, "день", "дня", "дней")}`, className: "text-rose font-medium" };
   }
   if (dueStr === todayStr) return { label: "сегодня", className: "text-amber font-medium" };
   const ms = new Date(task.dueDate).getTime() - now.getTime();
   const days = Math.max(1, Math.ceil(ms / 86_400_000));
-  return { label: `+${days} дн`, className: "text-ink-3" };
+  return { label: `+${days} ${pluralize(days, "день", "дня", "дней")}`, className: "text-ink-3" };
 }
 
 // ── DayTasksWidget ────────────────────────────────────────────────────────────
@@ -81,23 +82,51 @@ export function DayTasksWidget({ className = "" }: { className?: string }) {
 
   // ── Оптимистичное выполнение ────────────────────────────────────────────────
 
-  const completeTask = useCallback(async (id: string) => {
-    if (inFlight.current.has(id)) return;
-    inFlight.current.add(id);
+  const reopenTask = useCallback(async (id: string, snapshot: TaskSummary) => {
+    if (inFlight.current.has(`reopen-${id}`)) return;
+    inFlight.current.add(`reopen-${id}`);
+    // Возвращаем задачу обратно в список
+    setTasks((prev) => prev.some((t) => t.id === id) ? prev : [snapshot, ...prev]);
+    try {
+      await apiFetch(`/api/tasks/${id}/reopen`, { method: "POST" });
+    } catch (err: any) {
+      // Сервер отклонил — убираем снова
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      toast.error(err?.message ?? "Не удалось вернуть задачу");
+    } finally {
+      inFlight.current.delete(`reopen-${id}`);
+    }
+  }, []);
 
-    // Убираем из виджета оптимистично
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+  const completeTask = useCallback(async (id: string) => {
+    if (inFlight.current.has(`complete-${id}`)) return;
+    inFlight.current.add(`complete-${id}`);
+
+    let snapshot: TaskSummary | undefined;
+    setTasks((prev) => {
+      snapshot = prev.find((t) => t.id === id);
+      return prev.filter((t) => t.id !== id);
+    });
 
     try {
       await apiFetch(`/api/tasks/${id}/complete`, { method: "POST" });
+      if (snapshot) {
+        const snap = snapshot;
+        toast.success("Задача выполнена", {
+          durationMs: 6000,
+          action: { label: "Отменить", onClick: () => { void reopenTask(id, snap); } },
+        });
+      }
     } catch (err: any) {
-      // При ошибке — пользователь уже не видит задачу в виджете, показываем тост
+      if (snapshot) {
+        const snap = snapshot;
+        setTasks((prev) => (prev.some((t) => t.id === id) ? prev : [snap, ...prev]));
+      }
       toast.error(err?.message ?? "Не удалось выполнить задачу");
-      // Не восстанавливаем в виджете — пусть перезагрузит страницу
     } finally {
-      inFlight.current.delete(id);
+      inFlight.current.delete(`complete-${id}`);
     }
-  }, []);
+  }, [reopenTask]);
 
   // ── Рендер ──────────────────────────────────────────────────────────────────
 
