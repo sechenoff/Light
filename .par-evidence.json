@@ -1,11 +1,20 @@
 {
-  "sprint": 1,
-  "feature": "custom-line-item-backend",
+  "sprint": 2,
+  "feature": "custom-line-items-web-ui",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "tests": "685/685 passed (apps/api)",
-  "ts": "2026-04-18T13:56:00+03:00",
-  "commit": "2ae5088",
-  "notes": "Custom line items backend — nullable equipmentId + customName/customCategory/customUnitPrice on BookingItem, fixed price (no shifts multiplier), null-safe readers across dashboard/calendar/estimates/warehouseScan/availability. 10 new tests (3 unit + 7 integration). 3 MEDIUM issues from initial review fixed: CUSTOM_LINE_CATEGORY constant export, Decimal.toString() round-trip, out-of-scope tasks files restored."
+  "tests": {
+    "api": "685/685 passed (49 files)",
+    "web": "168/168 passed (24 files)",
+    "tsc": "clean in both apps/api and apps/web (pre-existing formatWaitingTime TS2578 on main, unrelated)"
+  },
+  "ts": "2026-04-18T14:40:00+03:00",
+  "commit": "098a47b",
+  "review_fixes": [
+    "MEDIUM (technical): router.push fallback on submit-for-approval error in BookingForm.tsx — prevents orphan DRAFT when submit fails after saveDraft",
+    "MEDIUM (product): SummaryPanel custom line display changed to mirror CatalogList format (unitPrice × qty = lineSum) — removes unit-price vs line-total ambiguity",
+    "LOW (product): plural 'произвольных позиций' at BookingForm.tsx:330 now uses pluralize() helper"
+  ],
+  "notes": "Sprint 2 web UI: CustomItem type, AddCustomItemModal, EquipmentCard button, BookingForm state + edit hydration + payload integration, CatalogList + SummaryPanel renders, null-safe bookings/[id]/page + ApprovalReviewView/ApprovalContext. All review findings addressed before merge."
 }
