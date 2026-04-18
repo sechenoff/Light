@@ -1,17 +1,18 @@
 {
-  "sprint": "clients-crud",
-  "feature": "clients-crud-and-autocomplete",
+  "sprint": "3D",
+  "feature": "gaffer-crm-polish-mockup-fidelity",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "ts": "2026-04-18T16:14:37+03:00",
+  "ts": "2026-04-18T17:00:00+03:00",
+  "commits_reviewed": ["9b17d0b", "40b503d", "3840c0d"],
   "tests": {
     "api": { "suites": 50, "tests": 705, "status": "passed" },
-    "web": { "suites": 25, "tests": 174, "status": "passed" }
+    "web": { "tsc": "clean except 1 pre-existing unrelated TS2578" }
   },
   "tsc": {
     "api": "clean",
     "web": "pre-existing TS2578 in formatWaitingTime.test.ts only (unchanged on main, unrelated)"
   },
-  "notes": "Feature: SUPER_ADMIN-only CRUD at /admin/clients (search, list, create, edit, delete with FK-safe 409 when bookings exist) + client name autocomplete on /bookings/new (debounced 200 ms, keyboard-navigable combobox with ARIA, '+ Добавить нового клиента' action at bottom when no match).\n\nReview findings (3 HIGH + 3 MED + 1 LOW actionable) all fixed before merge:\n- Product HIGH #1 (data integrity): booking upsert update-branch overwrote existing Client phone/email/comment with null because the booking form only collects name. Patched all 3 call-sites in apps/api/src/routes/bookings.ts with conditional spread so undefined fields are not sent to Prisma.\n- Product HIGH #2 / #3 (UX clarity): ClientAutocomplete now shows 'Будет создан новый клиент' hint (ink-3, aria-live polite) when input has no exact match, and '✓ выбран существующий клиент' (emerald) after the user picks an existing one.\n- Technical HIGH #1 (search correctness): SQLite LIKE is case-sensitive for non-ASCII. Autocomplete now fetches limit=50 superset and filters client-side via toLocaleLowerCase('ru'), so 'АРТ' matches 'арт-пикчерс'.\n- Technical MED #2 (race safety): AbortController cancels in-flight fetches on new input, preventing late responses from clobbering fresher ones.\n- Product MED #4 (canon consistency): /admin/clients delete no longer uses window.confirm. New DeleteConfirmModal follows RejectBookingModal pattern: aria-modal, Esc-close, backdrop dismissal, auto-focus primary action, rose destructive styling.\n- Technical LOW #6 (regression guard): integration test in clients.test.ts asserts sparse PATCH (only name) leaves phone/email/comment untouched at both response and DB level."
+  "notes": "Sprint 3D — Gaffer CRM UI polish to match docs/mockups/gaffer-crm.html 1:1. Covers 9 items: dashboard rebuild, project detail polish, contact card polish, layout month chip, seed scripts, summary API endpoints, and 4 review-fix follow-ups.\n\n1st round review (commit 40b503d):\n- Product ACCEPTED with 3 concerns (2 scope gaps, 1 cosmetic).\n- Technical REQUEST_CHANGES with 1 Important (duplicate payment risk: PaymentForm state not reset after successful submit since refactor to <details> removed implicit unmount).\n\nFixes applied in commit 3840c0d:\n- PaymentForm + AddMemberForm: reset state via useRef<HTMLDetailsElement> + removeAttribute('open') on success, inside try block before onDone() (error path preserves input for retry).\n- Added project-header 3-col money-block (Сумма / Должны мне / Должен я) on /gaffer/projects/[id] to match mockup screen 04 line 1283–1286.\n- Replaced '—' with '+ выпл.' <Link> to /gaffer/projects/{projectId} on team-member contact card non-closed mp-rows (screen 06 fidelity).\n- Removed leading '+ ' from <details> summary labels to avoid double-+ (span toggle already provides +/−).\n\n2nd round technical re-review: APPROVE. All 6 targeted checks passed. 705/705 API tests green.\n\nServer extension: getContactDebtSummary now returns recentPayments (last 10 IN for CLIENT / OUT for TEAM_MEMBER) with tenant-safe filter via project.gafferUserId nested relation — verified by tech reviewer.\n\nDesign canon: IBM Plex + semantic tokens only, no raw hex introduced. All money values use .mono-num, all labels Russian, all status pills use existing StatusPill variants."
 }
