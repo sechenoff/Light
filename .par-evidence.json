@@ -1,1 +1,9 @@
-{"sprint":"2a","claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","ts":"2026-04-18T12:20:00Z"}
+{
+  "sprint": "2B",
+  "claude_product": "ACCEPTED",
+  "technical_review": "APPROVE",
+  "provider": "split-focus",
+  "ts": "2026-04-18T13:00:00Z",
+  "commit": "c4bff76",
+  "notes": "9 fixes applied: login refresh, double toast, clear-field semantics, cleanup patterns, welcome error handling, search flash, a11y, settings resort. 158/158 web tests, build clean."
+}
