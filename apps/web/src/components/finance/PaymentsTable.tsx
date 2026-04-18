@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { formatRub } from "../../lib/format";
 import { QuickPaymentModal } from "./QuickPaymentModal";
-import { StatusCell, statusBgClass } from "./StatusCell";
+import { StatusCell } from "./StatusCell";
 
 export interface OverviewItem {
   id: string;
@@ -60,7 +60,7 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) 
               <th className="text-left px-4 py-3 eyebrow">Клиент</th>
               <th className="text-left px-4 py-3 eyebrow w-[110px]">Проект</th>
               <th className="text-right px-4 py-3 eyebrow">Сумма</th>
-              <th className="text-left px-4 py-3 eyebrow w-[320px] min-w-[320px]">Статус оплаты</th>
+              <th className="text-left px-4 py-3 eyebrow w-[440px] min-w-[440px]">Статус оплаты</th>
             </tr>
           </thead>
           <tbody>
@@ -89,7 +89,7 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) 
                   {formatRub(item.finalAmount)}
                 </td>
                 {/* Status cell — variant C */}
-                <td className={`px-4 py-3 ${statusBgClass(item.paymentStatus)}`}>
+                <td className="px-4 py-3">
                   <StatusCell item={item} onPay={() => setPayingBooking(item)} />
                 </td>
               </tr>
