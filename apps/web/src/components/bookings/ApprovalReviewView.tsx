@@ -41,7 +41,7 @@ type BookingForReview = {
   client: { id: string; name: string; phone: string | null; email: string | null; comment: string | null };
   items: Array<{
     id: string;
-    equipmentId: string;
+    equipmentId: string | null;
     quantity: number;
     equipment: {
       id: string;
@@ -52,7 +52,7 @@ type BookingForReview = {
       rentalRatePerShift: string;
       totalQuantity: number;
       availableQuantity: number;
-    };
+    } | null;
   }>;
   estimate?: null | {
     id: string;

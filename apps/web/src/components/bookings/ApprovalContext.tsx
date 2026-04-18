@@ -23,7 +23,7 @@ type Props = {
   endDate: string;
   itemCount: number;
   comment: string | null;
-  items: Array<{ equipmentId: string; quantity: number; equipment: { name: string } }>;
+  items: Array<{ equipmentId: string | null; quantity: number; equipment: { name: string } | null }>;
 };
 
 export function ApprovalContext({ bookingId: _bookingId, clientId, startDate, endDate, itemCount, comment, items }: Props) {
@@ -33,7 +33,7 @@ export function ApprovalContext({ bookingId: _bookingId, clientId, startDate, en
 
   // Stable key for items to avoid re-fetching on every parent render
   const itemsKey = useMemo(
-    () => items.map((i) => `${i.equipmentId}:${i.quantity}`).join(","),
+    () => items.filter((i) => i.equipmentId != null).map((i) => `${i.equipmentId}:${i.quantity}`).join(","),
     [items]
   );
 
@@ -60,10 +60,11 @@ export function ApprovalContext({ bookingId: _bookingId, clientId, startDate, en
         if (cancelled) return;
         const found: ConflictItem[] = [];
         for (const item of items) {
+          if (item.equipmentId == null) continue; // skip custom items
           const avail = data.rows.find((r) => r.equipmentId === item.equipmentId);
           if (avail && item.quantity > avail.availableQuantity) {
             found.push({
-              equipmentName: item.equipment.name,
+              equipmentName: item.equipment?.name ?? "—",
               requested: item.quantity,
               available: avail.availableQuantity,
             });

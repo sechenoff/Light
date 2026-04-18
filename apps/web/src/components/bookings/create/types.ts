@@ -145,6 +145,14 @@ export type OffCatalogItem = {
   quantity: number;
 };
 
+/** Custom (non-catalog) line item added manually by the user */
+export type CustomItem = {
+  tempId: string;       // client-generated, e.g. `custom-${Date.now()}-${Math.random()}`
+  name: string;
+  unitPrice: number;    // ₽ за всю бронь (не за смену)
+  quantity: number;
+};
+
 /** Ephemeral flags for catalog rows after date change */
 export type CatalogRowAdjustment =
   | { kind: "ok" }

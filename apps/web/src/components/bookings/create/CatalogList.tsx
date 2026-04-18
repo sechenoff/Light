@@ -2,12 +2,14 @@
 
 import { useMemo } from "react";
 import { CatalogRow } from "./CatalogRow";
-import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, OffCatalogItem } from "./types";
+import { formatMoneyRub } from "../../../lib/format";
+import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem } from "./types";
 
 type Props = {
   rows: AvailabilityRow[];
   selected: Map<string, CatalogSelectedItem>;
   offCatalogItems: OffCatalogItem[];
+  customItems?: CustomItem[];
   activeTab: string; // "all" or category name
   searchQuery: string;
   adjustments?: Map<string, CatalogRowAdjustment>;
@@ -16,12 +18,15 @@ type Props = {
   onRemove: (equipmentId: string) => void;
   onChangeOffCatalogQty: (tempId: string, newQty: number) => void;
   onRemoveOffCatalog: (tempId: string) => void;
+  onChangeCustomQty?: (tempId: string, newQty: number) => void;
+  onRemoveCustom?: (tempId: string) => void;
 };
 
 export function CatalogList({
   rows,
   selected,
   offCatalogItems,
+  customItems = [],
   activeTab,
   searchQuery,
   adjustments,
@@ -30,6 +35,8 @@ export function CatalogList({
   onRemove,
   onChangeOffCatalogQty,
   onRemoveOffCatalog,
+  onChangeCustomQty,
+  onRemoveCustom,
 }: Props) {
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -58,7 +65,8 @@ export function CatalogList({
   }, [selected]);
 
   const hasOff = offCatalogItems.length > 0;
-  const isEmpty = filtered.length === 0 && !hasOff;
+  const hasCustom = customItems.length > 0;
+  const isEmpty = filtered.length === 0 && !hasOff && !hasCustom;
 
   if (isEmpty) {
     return (
@@ -68,6 +76,65 @@ export function CatalogList({
 
   return (
     <div>
+      {/* Произвольные позиции */}
+      {hasCustom && (
+        <div>
+          <div className="flex items-center justify-between border-b border-t border-border bg-surface-subtle px-5 py-2 font-cond text-[10px] font-semibold uppercase tracking-wider text-ink-3">
+            <span>Произвольные позиции</span>
+            <span className="font-mono text-indigo">{customItems.length} вне каталога</span>
+          </div>
+          {customItems.map((item) => {
+            const lineSum = item.unitPrice * item.quantity;
+            return (
+              <div
+                key={item.tempId}
+                className="flex items-center gap-3 border-l-[3px] border-l-indigo bg-indigo-soft/40 px-5 py-2.5 hover:bg-indigo-soft/60"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium text-indigo">{item.name}</div>
+                  <div className="mt-0.5 text-[11.5px] text-ink-3">
+                    {formatMoneyRub(item.unitPrice)} ₽ × {item.quantity} = {formatMoneyRub(lineSum)} ₽
+                  </div>
+                </div>
+                <div className="inline-flex items-center overflow-hidden rounded border border-indigo-border bg-surface">
+                  <button
+                    type="button"
+                    aria-label="Уменьшить количество"
+                    onClick={() =>
+                      item.quantity - 1 <= 0
+                        ? onRemoveCustom?.(item.tempId)
+                        : onChangeCustomQty?.(item.tempId, item.quantity - 1)
+                    }
+                    className="flex h-7 w-7 items-center justify-center text-ink-2 hover:bg-indigo-soft"
+                  >
+                    −
+                  </button>
+                  <div className="flex h-7 w-8 items-center justify-center border-x border-indigo-border bg-indigo-soft/30 font-mono text-[12px] font-semibold text-indigo">
+                    {item.quantity}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Увеличить количество"
+                    onClick={() => onChangeCustomQty?.(item.tempId, item.quantity + 1)}
+                    className="flex h-7 w-7 items-center justify-center text-ink-2 hover:bg-indigo-soft"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Удалить позицию"
+                    onClick={() => onRemoveCustom?.(item.tempId)}
+                    className="flex h-7 w-7 items-center justify-center border-l border-indigo-border text-rose hover:bg-rose-soft"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {hasOff && (
         <div>
           <div className="flex items-center justify-between border-b border-t border-border bg-surface-subtle px-5 py-2 font-cond text-[10px] font-semibold uppercase tracking-wider text-ink-3">
