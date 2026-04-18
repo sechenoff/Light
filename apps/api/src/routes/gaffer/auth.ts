@@ -19,7 +19,8 @@ const loginSchema = z.object({
  */
 router.post("/login", async (req, res, next) => {
   try {
-    const { email } = loginSchema.parse(req.body);
+    const { email: rawEmail } = loginSchema.parse(req.body);
+    const email = rawEmail.trim().toLowerCase();
 
     const user = await prisma.gafferUser.upsert({
       where: { email },

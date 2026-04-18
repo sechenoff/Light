@@ -27,7 +27,7 @@ export function signGafferSession(gafferUser: { id: string; email: string }): st
 
 export function verifyGafferSession(token: string): GafferSessionPayload | null {
   try {
-    const decoded = jwt.verify(token, getSecret()) as GafferSessionPayload;
+    const decoded = jwt.verify(token, getSecret(), { algorithms: ["HS256"] }) as GafferSessionPayload;
     if (!decoded?.gafferUserId || !decoded?.email) return null;
     return decoded;
   } catch {
