@@ -1,20 +1,11 @@
 {
-  "sprint": 2,
-  "feature": "custom-line-items-web-ui",
+  "sprint": "3C",
+  "feature": "gaffer-budget-split-and-crew-calc-integration",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "tests": {
-    "api": "685/685 passed (49 files)",
-    "web": "168/168 passed (24 files)",
-    "tsc": "clean in both apps/api and apps/web (pre-existing formatWaitingTime TS2578 on main, unrelated)"
-  },
-  "ts": "2026-04-18T14:40:00+03:00",
-  "commit": "098a47b",
-  "review_fixes": [
-    "MEDIUM (technical): router.push fallback on submit-for-approval error in BookingForm.tsx — prevents orphan DRAFT when submit fails after saveDraft",
-    "MEDIUM (product): SummaryPanel custom line display changed to mirror CatalogList format (unitPrice × qty = lineSum) — removes unit-price vs line-total ambiguity",
-    "LOW (product): plural 'произвольных позиций' at BookingForm.tsx:330 now uses pluralize() helper"
-  ],
-  "notes": "Sprint 2 web UI: CustomItem type, AddCustomItemModal, EquipmentCard button, BookingForm state + edit hydration + payload integration, CatalogList + SummaryPanel renders, null-safe bookings/[id]/page + ApprovalReviewView/ApprovalContext. All review findings addressed before merge."
+  "tests": "25 files / 174 tests passed (apps/web)",
+  "ts": "2026-04-18T19:05:00+03:00",
+  "commit": "058ec30",
+  "notes": "Budget split: clientPlanAmount (бюджет на осветителей) + new lightBudgetAmount (бюджет на свет) → clientTotal computed server-side via Decimal.plus, remainder clamped >=0. Crew calculator at /gaffer/crew-calculator auto-fills via ?crewAmount= query param. Use-as-client flow via ReturnToProjectBanner on contacts/[id]. Fixer commit 058ec30 closed all 6 re-review blockers: F1 form-state loss (sessionStorage draft on both new + edit), F2 duplicate 'Итого бюджет' (first grid cell renamed to 'К получению'), F5 grammar 'созданию проекта', F6 disabled CTA at total=0 with hint, #1 double-? URL bug (sep = includes('?') ? '&' : '?'), #2 open-redirect (startsWith('/gaffer/') guard on all 3 return paths — router.push, back Link, cancel Link). Schema: lightBudgetAmount Decimal @default(0) non-nullable with default, safe for prisma db push on existing rows."
 }
