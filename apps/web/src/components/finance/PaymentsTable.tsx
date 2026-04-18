@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { formatRub } from "../../lib/format";
 import { QuickPaymentModal } from "./QuickPaymentModal";
-import { StatusCell } from "./StatusCell";
+import { StatusCell, statusBgClass } from "./StatusCell";
 
 export interface OverviewItem {
   id: string;
@@ -89,7 +89,7 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) 
                   {formatRub(item.finalAmount)}
                 </td>
                 {/* Status cell — variant C */}
-                <td className="px-4 py-3">
+                <td className={`px-4 py-3 ${statusBgClass(item.paymentStatus)}`}>
                   <StatusCell item={item} onPay={() => setPayingBooking(item)} />
                 </td>
               </tr>
