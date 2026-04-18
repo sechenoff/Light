@@ -451,3 +451,87 @@ export async function getContactDebtSummary(
 ): Promise<ContactDebtSummary> {
   return gafferFetch(`/contacts/${contactId}/debt-summary`);
 }
+
+// ── Contact with aggregates ────────────────────────────────────────────────
+
+export interface GafferContactWithAggregates extends GafferContact {
+  asClientCount: number;
+  asMemberCount: number;
+  projectCount: number;
+  remainingToMe: string;
+  remainingFromMe: string;
+}
+
+export async function listContactsWithAggregates(params?: {
+  type?: "CLIENT" | "TEAM_MEMBER";
+  isArchived?: boolean | "all";
+  search?: string;
+}): Promise<{ items: GafferContactWithAggregates[] }> {
+  const q = new URLSearchParams();
+  if (params?.type) q.set("type", params.type);
+  if (params?.isArchived !== undefined)
+    q.set("isArchived", String(params.isArchived));
+  if (params?.search) q.set("search", params.search);
+  q.set("withAggregates", "true");
+  return gafferFetch(`/contacts?${q.toString()}`);
+}
+
+// ── Contacts summary ───────────────────────────────────────────────────────
+
+export interface GafferContactsSummary {
+  totals: {
+    owedToMe: string;
+    iOwe: string;
+  };
+  counts: {
+    all: number;
+    clients: number;
+    team: number;
+    withDebt: number;
+    archive: number;
+  };
+}
+
+export async function getContactsSummary(): Promise<GafferContactsSummary> {
+  return gafferFetch("/contacts/summary");
+}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+
+export interface GafferDashboardClientDebt {
+  id: string;
+  name: string;
+  remaining: string;
+  projectCount: number;
+  lastPaymentAt: string | null;
+}
+
+export interface GafferDashboardTeamDebt {
+  id: string;
+  name: string;
+  roleLabel: string | null;
+  remaining: string;
+  projectCount: number;
+}
+
+export interface GafferDashboard {
+  kpi: {
+    owedToMe: string;
+    iOwe: string;
+    owedToMeProjectCount: number;
+    owedToMeClientCount: number;
+    iOweProjectCount: number;
+    iOweMemberCount: number;
+  };
+  clientsWithDebt: GafferDashboardClientDebt[];
+  teamWithDebt: GafferDashboardTeamDebt[];
+  meta: {
+    activeProjects: number;
+    archivedProjects: number;
+    lastActivityAt: string | null;
+  };
+}
+
+export async function getDashboard(): Promise<GafferDashboard> {
+  return gafferFetch("/dashboard");
+}

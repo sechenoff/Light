@@ -4,6 +4,7 @@ import { contactsRouter } from "./contacts";
 import { paymentMethodsRouter } from "./paymentMethods";
 import { projectsRouter } from "./projects";
 import { paymentsRouter } from "./payments";
+import { dashboardRouter } from "./dashboard";
 import { gafferAuth } from "../../middleware/gafferAuth";
 
 const router = express.Router();
@@ -12,6 +13,7 @@ const router = express.Router();
 router.use("/auth", gafferAuthRouter);
 
 // остальные маршруты требуют gafferAuth
+router.use("/dashboard", gafferAuth, dashboardRouter);
 router.use("/contacts", gafferAuth, contactsRouter);
 router.use("/payment-methods", gafferAuth, paymentMethodsRouter);
 router.use("/projects", gafferAuth, projectsRouter);

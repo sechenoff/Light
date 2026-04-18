@@ -22,6 +22,7 @@ import {
   unarchiveContact,
   deleteContact,
   getContactDebtSummary,
+  getContactsSummary,
 } from "../../services/gaffer/contactService";
 
 const router = express.Router();
@@ -49,6 +50,10 @@ const listQuerySchema = z.object({
     .transform((v): boolean | "all" => v === "all" ? "all" : v === "true")
     .optional(),
   search: z.string().optional(),
+  withAggregates: z
+    .enum(["true", "false"])
+    .transform((v) => v === "true")
+    .optional(),
 });
 
 // ─── Нормализация telegram ────────────────────────────────────────────────────
@@ -80,8 +85,22 @@ function normalizeOptionalString(value?: string): string | undefined {
 // ─── Маршруты ─────────────────────────────────────────────────────────────────
 
 /**
+ * GET /api/gaffer/contacts/summary
+ * Сводка контактов: totals + counts.
+ * Должен быть ПЕРЕД /:id чтобы не попасть под параметрический маршрут.
+ */
+router.get("/summary", async (req, res, next) => {
+  try {
+    const summary = await getContactsSummary(req);
+    res.json(summary);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/gaffer/contacts
- * Список контактов с фильтрами type / isArchived / search.
+ * Список контактов с фильтрами type / isArchived / search / withAggregates.
  */
 router.get("/", async (req, res, next) => {
   try {

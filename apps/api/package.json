@@ -12,7 +12,8 @@
     "lint": "eslint . --max-warnings=0",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "seed": "prisma db seed"
+    "seed": "prisma db seed",
+    "seed:gaffer": "tsx scripts/seed-gaffer.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
