@@ -3,18 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  listContacts,
-  type GafferContact,
+  listContactsWithAggregates,
+  getContactsSummary,
+  type GafferContactWithAggregates,
+  type GafferContactsSummary,
 } from "../../../src/lib/gafferApi";
+import { formatRub, pluralize } from "../../../src/lib/format";
 
-type FilterChip = "all" | "clients" | "team" | "archive";
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-const CHIPS: { key: FilterChip; label: string }[] = [
-  { key: "all", label: "Все" },
-  { key: "clients", label: "Заказчики" },
-  { key: "team", label: "Команда" },
-  { key: "archive", label: "Архив" },
-];
+type FilterChip = "all" | "clients" | "team" | "with-debt" | "archive";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getInitials(name: string): string {
   return name
@@ -24,24 +24,40 @@ function getInitials(name: string): string {
     .join("");
 }
 
-function ContactCard({ contact }: { contact: GafferContact }) {
+type AvatarVariant = "archive" | "both" | "client" | "team";
+
+function getAvatarVariant(c: GafferContactWithAggregates): AvatarVariant {
+  if (c.isArchived) return "archive";
+  if (c.asClientCount > 0 && c.asMemberCount > 0) return "both";
+  if (c.asClientCount > 0) return "client";
+  if (c.asMemberCount > 0) return "team";
+  // fallback by type
+  return c.type === "CLIENT" ? "client" : "team";
+}
+
+const AVATAR_CLASSES: Record<AvatarVariant, string> = {
+  archive: "bg-slate-soft text-slate border-slate-border",
+  both: "bg-accent-soft text-accent border-accent-border",
+  client: "bg-indigo-soft text-indigo border-indigo-border",
+  team: "bg-teal-soft text-teal border-teal-border",
+};
+
+// ── Contact card ──────────────────────────────────────────────────────────────
+
+function ContactCard({ contact }: { contact: GafferContactWithAggregates }) {
   const initials = getInitials(contact.name);
+  const avatarVariant = getAvatarVariant(contact);
+  const avatarClass = AVATAR_CLASSES[avatarVariant];
   const isArchived = contact.isArchived;
-  const avatarClass =
-    isArchived
-      ? "bg-slate-soft text-slate border-slate-border"
-      : contact.type === "CLIENT"
-        ? "bg-indigo-soft text-indigo border-indigo-border"
-        : "bg-teal-soft text-teal border-teal-border";
-  const typePillVariant =
-    contact.type === "CLIENT"
-      ? { bg: "bg-indigo-soft text-indigo border-indigo-border", label: "Заказчик" }
-      : { bg: "bg-teal-soft text-teal border-teal-border", label: "Команда" };
+
+  const remainingToMe = Number(contact.remainingToMe);
+  const remainingFromMe = Number(contact.remainingFromMe);
+  const hasDebt = remainingToMe > 0 || remainingFromMe > 0;
 
   return (
     <Link
       href={`/gaffer/contacts/${contact.id}`}
-      className={`flex gap-[10px] py-3 border-b border-border items-start hover:bg-[#fafafa] transition-colors px-4 ${isArchived ? "opacity-60" : ""}`}
+      className={`flex gap-[10px] py-3 border-b border-border items-start hover:bg-surface-2 transition-colors px-4 ${isArchived ? "opacity-60" : ""}`}
     >
       {/* Avatar */}
       <div
@@ -55,26 +71,77 @@ function ContactCard({ contact }: { contact: GafferContact }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-2">
           <span className="font-semibold text-[13.5px] text-ink truncate">{contact.name}</span>
-          <div className="flex gap-1 shrink-0">
-            <span
-              className={`inline-flex items-center rounded-full border px-[7px] py-[2px] text-[10px] font-semibold ${typePillVariant.bg}`}
-              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
-            >
-              {typePillVariant.label}
-            </span>
-            {isArchived && (
-              <span
-                className="inline-flex items-center rounded-full border px-[7px] py-[2px] text-[10px] font-semibold bg-slate-soft text-slate border-slate-border"
-                style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
-              >
-                В архиве
+          {/* Debt amount (right side) */}
+          <div className="shrink-0 text-right">
+            {remainingToMe > 0 && (
+              <span className="text-[12px] font-semibold text-rose mono-num">
+                ↑ {formatRub(remainingToMe)}
               </span>
+            )}
+            {remainingFromMe > 0 && remainingToMe === 0 && (
+              <span className="text-[12px] font-semibold text-indigo mono-num">
+                ↓ {formatRub(remainingFromMe)}
+              </span>
+            )}
+            {!hasDebt && contact.projectCount > 0 && (
+              <span className="text-[11px] text-ink-3">сведён</span>
             )}
           </div>
         </div>
+
+        {/* Pills */}
+        <div className="flex flex-wrap gap-1 mt-1">
+          {/* Type pills */}
+          {!isArchived && contact.asClientCount > 0 && (
+            <span
+              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold bg-indigo-soft text-indigo border-indigo-border"
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+            >
+              заказчик
+            </span>
+          )}
+          {!isArchived && contact.asMemberCount > 0 && (
+            <span
+              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold bg-teal-soft text-teal border-teal-border"
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+            >
+              команда
+            </span>
+          )}
+          {!isArchived && contact.asClientCount === 0 && contact.asMemberCount === 0 && (
+            <span
+              className={`inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold ${
+                contact.type === "CLIENT"
+                  ? "bg-indigo-soft text-indigo border-indigo-border"
+                  : "bg-teal-soft text-teal border-teal-border"
+              }`}
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+            >
+              {contact.type === "CLIENT" ? "заказчик" : "команда"}
+            </span>
+          )}
+          {isArchived && (
+            <span
+              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold bg-slate-soft text-slate border-slate-border"
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+            >
+              В архиве
+            </span>
+          )}
+          {contact.projectCount > 0 && (
+            <span
+              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold bg-slate-soft text-slate border-slate-border"
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+            >
+              {contact.projectCount} {pluralize(contact.projectCount, "проект", "проекта", "проектов")}
+            </span>
+          )}
+        </div>
+
+        {/* Meta line */}
         {(contact.phone || contact.telegram) && (
-          <div className="mt-1.5 text-[11.5px] text-ink-3 flex gap-1.5 flex-wrap">
-            {contact.phone && <span>📞 {contact.phone}</span>}
+          <div className="mt-1 text-[11px] text-ink-3 flex gap-1.5 flex-wrap">
+            {contact.phone && <span>{contact.phone}</span>}
             {contact.phone && contact.telegram && <span className="text-border">·</span>}
             {contact.telegram && <span>{contact.telegram}</span>}
           </div>
@@ -96,12 +163,15 @@ function SkeletonCard() {
   );
 }
 
+// ── Main ──────────────────────────────────────────────────────────────────────
+
 export default function GafferContactsPage() {
   const [chip, setChip] = useState<FilterChip>("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [contacts, setContacts] = useState<GafferContact[] | null>(null);
+  const [allContacts, setAllContacts] = useState<GafferContactWithAggregates[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<GafferContactsSummary | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounce search
@@ -111,27 +181,63 @@ export default function GafferContactsPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [search]);
 
+  // Load summary once (chips counts come from this)
+  useEffect(() => {
+    getContactsSummary().then(setSummary).catch(() => {});
+  }, []);
+
+  // Fetch all contacts (both archived and non-archived) with aggregates
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     (async () => {
       try {
-        const params: Parameters<typeof listContacts>[0] = {};
-        if (chip === "clients") { params.type = "CLIENT"; params.isArchived = false; }
-        else if (chip === "team") { params.type = "TEAM_MEMBER"; params.isArchived = false; }
-        else if (chip === "archive") { params.isArchived = true; }
-        else { params.isArchived = false; }
-        if (debouncedSearch) params.search = debouncedSearch;
-        const res = await listContacts(params);
-        if (!cancelled) setContacts(res.items);
+        const res = await listContactsWithAggregates({
+          isArchived: "all",
+          search: debouncedSearch || undefined,
+        });
+        if (!cancelled) setAllContacts(res.items);
       } catch {
-        if (!cancelled) setContacts([]);
+        if (!cancelled) setAllContacts([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [chip, debouncedSearch]);
+  }, [debouncedSearch]);
+
+  // Apply chip filter client-side
+  const getFiltered = (): GafferContactWithAggregates[] => {
+    if (!allContacts) return [];
+    switch (chip) {
+      case "clients":
+        return allContacts.filter((c) => c.type === "CLIENT" && !c.isArchived);
+      case "team":
+        return allContacts.filter((c) => c.type === "TEAM_MEMBER" && !c.isArchived);
+      case "with-debt":
+        return allContacts.filter(
+          (c) => !c.isArchived && (Number(c.remainingToMe) > 0 || Number(c.remainingFromMe) > 0),
+        );
+      case "archive":
+        return allContacts.filter((c) => c.isArchived);
+      default:
+        return allContacts.filter((c) => !c.isArchived);
+    }
+  };
+
+  const contacts = getFiltered();
+
+  // Chip counts from summary
+  const counts = summary?.counts;
+  const CHIPS: { key: FilterChip; label: string }[] = [
+    { key: "all", label: counts ? `Все · ${counts.all}` : "Все" },
+    { key: "clients", label: counts ? `Заказчики · ${counts.clients}` : "Заказчики" },
+    { key: "team", label: counts ? `Команда · ${counts.team}` : "Команда" },
+    { key: "with-debt", label: counts ? `С долгом · ${counts.withDebt}` : "С долгом" },
+    { key: "archive", label: "Архив" },
+  ];
+
+  const totals = summary?.totals;
 
   return (
     <div className="min-h-screen bg-surface">
@@ -146,8 +252,28 @@ export default function GafferContactsPage() {
         </Link>
       </div>
 
+      {/* Summary strip */}
+      {totals && (Number(totals.owedToMe) > 0 || Number(totals.iOwe) > 0) && (
+        <div className="grid grid-cols-2 border-y border-border">
+          <div className="py-2.5 px-4 border-r border-border">
+            <p className="text-[10px] text-ink-3 uppercase tracking-wider"
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+              🟢 Мне должны
+            </p>
+            <p className="text-[14px] font-bold text-rose mono-num">{formatRub(totals.owedToMe)}</p>
+          </div>
+          <div className="py-2.5 px-4">
+            <p className="text-[10px] text-ink-3 uppercase tracking-wider"
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+              🔴 Я должен
+            </p>
+            <p className="text-[14px] font-bold text-indigo mono-num">{formatRub(totals.iOwe)}</p>
+          </div>
+        </div>
+      )}
+
       {/* Search */}
-      <div className="px-4 pb-2">
+      <div className="px-4 py-2">
         <div className="relative">
           <span className="absolute left-[10px] top-1/2 -translate-y-1/2 text-[14px] opacity-60">🔎</span>
           <input
@@ -161,7 +287,7 @@ export default function GafferContactsPage() {
       </div>
 
       {/* Chips filter */}
-      <div className="flex gap-2 px-4 py-2 border-b border-border overflow-x-auto bg-[#fafafa]">
+      <div className="flex gap-2 px-4 py-2 border-b border-border overflow-x-auto bg-surface-2">
         {CHIPS.map((c) => (
           <button
             key={c.key}
@@ -171,6 +297,7 @@ export default function GafferContactsPage() {
                 ? "bg-accent text-white border-accent"
                 : "bg-surface border-border text-ink-2 hover:border-accent-border"
             }`}
+            style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
           >
             {c.label}
           </button>
@@ -179,27 +306,40 @@ export default function GafferContactsPage() {
 
       {/* List */}
       <div>
-        {loading && contacts === null ? (
+        {loading && allContacts === null ? (
           <>
             <SkeletonCard />
             <SkeletonCard />
             <SkeletonCard />
           </>
-        ) : (contacts ?? []).length === 0 ? (
+        ) : contacts.length === 0 ? (
           <div className="text-center text-ink-3 py-10 px-4 text-[13px]">
             <div className="text-4xl mb-3">☺</div>
-            <p className="mb-4">Контактов пока нет</p>
-            <Link
-              href="/gaffer/contacts/new"
-              className="bg-accent-bright hover:bg-accent text-white text-[13px] font-medium rounded px-4 py-2.5 transition-colors inline-block"
-            >
-              + Добавить первый
-            </Link>
+            <p className="mb-4">
+              {chip === "archive" ? "Архивных контактов нет" :
+               chip === "with-debt" ? "Нет контактов с долгом" :
+               "Контактов пока нет"}
+            </p>
+            {chip === "all" && (
+              <Link
+                href="/gaffer/contacts/new"
+                className="bg-accent-bright hover:bg-accent text-white text-[13px] font-medium rounded px-4 py-2.5 transition-colors inline-block"
+              >
+                + Добавить первый
+              </Link>
+            )}
           </div>
         ) : (
-          (contacts ?? []).map((c) => <ContactCard key={c.id} contact={c} />)
+          contacts.map((c) => <ContactCard key={c.id} contact={c} />)
         )}
       </div>
+
+      {/* Footer meta */}
+      {!loading && contacts.length > 0 && (
+        <div className="px-4 pt-3 pb-6 text-center text-[11px] text-ink-3">
+          показано {contacts.length} из {allContacts?.length ?? contacts.length}
+        </div>
+      )}
     </div>
   );
 }

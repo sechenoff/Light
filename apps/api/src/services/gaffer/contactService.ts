@@ -4,6 +4,7 @@
 
 import type { Request } from "express";
 import type { GafferContactType } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
 import { prisma } from "../../prisma";
 import { HttpError } from "../../utils/errors";
 import { gafferWhere, assertGafferTenant } from "./tenant";
@@ -12,6 +13,7 @@ export interface ListContactsOpts {
   type?: GafferContactType;
   isArchived?: boolean | "all";
   search?: string;
+  withAggregates?: boolean;
 }
 
 export interface CreateContactInput {
@@ -34,7 +36,8 @@ export interface UpdateContactInput {
 
 /** Список контактов с опциональными фильтрами. */
 export async function listContacts(req: Request, opts: ListContactsOpts) {
-  const where: Record<string, unknown> = { ...gafferWhere(req) };
+  const { gafferUserId } = gafferWhere(req);
+  const where: Record<string, unknown> = { gafferUserId };
 
   if (opts.type !== undefined) {
     where.type = opts.type;
@@ -51,10 +54,154 @@ export async function listContacts(req: Request, opts: ListContactsOpts) {
     where.name = { contains: opts.search };
   }
 
-  return prisma.gafferContact.findMany({
+  const contacts = await prisma.gafferContact.findMany({
     where,
     orderBy: [{ isArchived: "asc" }, { name: "asc" }],
   });
+
+  if (!opts.withAggregates) {
+    return contacts;
+  }
+
+  // Attach aggregates: load all OPEN projects for this user once
+  const ZERO = new Decimal(0);
+  const openProjects = await prisma.gafferProject.findMany({
+    where: { gafferUserId, status: "OPEN" },
+    include: {
+      members: { select: { contactId: true, plannedAmount: true } },
+      payments: { select: { direction: true, amount: true, memberId: true } },
+    },
+  });
+
+  // Build per-contact aggregates
+  return contacts.map((c) => {
+    const asClientProjects = openProjects.filter((p) => p.clientId === c.id);
+    const asMemberProjects = openProjects.filter((p) =>
+      p.members.some((m) => m.contactId === c.id),
+    );
+
+    // remainingToMe = sum of clientRemaining where contact is client
+    let remainingToMe = ZERO;
+    for (const p of asClientProjects) {
+      const received = p.payments
+        .filter((pay) => pay.direction === "IN")
+        .reduce((acc, pay) => acc.plus(pay.amount), ZERO);
+      const total = new Decimal(p.clientPlanAmount).plus(new Decimal(p.lightBudgetAmount));
+      const raw = total.minus(received);
+      remainingToMe = remainingToMe.plus(raw.gt(ZERO) ? raw : ZERO);
+    }
+
+    // remainingFromMe = sum of member remaining where contact is member
+    let remainingFromMe = ZERO;
+    for (const p of asMemberProjects) {
+      const membership = p.members.find((m) => m.contactId === c.id);
+      if (!membership) continue;
+      const paid = p.payments
+        .filter((pay) => pay.direction === "OUT" && pay.memberId === c.id)
+        .reduce((acc, pay) => acc.plus(pay.amount), ZERO);
+      const raw = new Decimal(membership.plannedAmount).minus(paid);
+      remainingFromMe = remainingFromMe.plus(raw.gt(ZERO) ? raw : ZERO);
+    }
+
+    return {
+      ...c,
+      asClientCount: asClientProjects.length,
+      asMemberCount: asMemberProjects.length,
+      projectCount: asClientProjects.length + asMemberProjects.length,
+      remainingToMe: remainingToMe.toString(),
+      remainingFromMe: remainingFromMe.toString(),
+    };
+  });
+}
+
+/** Сводка контактов: totals + counts по категориям. */
+export async function getContactsSummary(req: Request) {
+  const { gafferUserId } = gafferWhere(req);
+  const ZERO = new Decimal(0);
+
+  const [allContacts, openProjects] = await Promise.all([
+    prisma.gafferContact.findMany({
+      where: { gafferUserId },
+      select: { id: true, type: true, isArchived: true },
+    }),
+    prisma.gafferProject.findMany({
+      where: { gafferUserId, status: "OPEN" },
+      include: {
+        members: { select: { contactId: true, plannedAmount: true } },
+        payments: { select: { direction: true, amount: true, memberId: true } },
+      },
+    }),
+  ]);
+
+  let totalOwedToMe = ZERO;
+  let totalIOwe = ZERO;
+
+  // Per-contact debt computation for counting "withDebt"
+  const contactDebtMap = new Map<string, { toMe: Decimal; fromMe: Decimal }>();
+
+  for (const project of openProjects) {
+    // Client debt
+    const received = project.payments
+      .filter((p) => p.direction === "IN")
+      .reduce((acc, p) => acc.plus(p.amount), ZERO);
+    const clientTotal = new Decimal(project.clientPlanAmount).plus(
+      new Decimal(project.lightBudgetAmount),
+    );
+    const rawClientRem = clientTotal.minus(received);
+    const clientRem = rawClientRem.gt(ZERO) ? rawClientRem : ZERO;
+
+    if (clientRem.gt(ZERO)) {
+      totalOwedToMe = totalOwedToMe.plus(clientRem);
+      const ex = contactDebtMap.get(project.clientId);
+      if (ex) {
+        ex.toMe = ex.toMe.plus(clientRem);
+      } else {
+        contactDebtMap.set(project.clientId, { toMe: clientRem, fromMe: ZERO });
+      }
+    }
+
+    // Member debts
+    for (const member of project.members) {
+      const paid = project.payments
+        .filter((p) => p.direction === "OUT" && p.memberId === member.contactId)
+        .reduce((acc, p) => acc.plus(p.amount), ZERO);
+      const rawMem = new Decimal(member.plannedAmount).minus(paid);
+      const memRem = rawMem.gt(ZERO) ? rawMem : ZERO;
+
+      if (memRem.gt(ZERO)) {
+        totalIOwe = totalIOwe.plus(memRem);
+        const ex = contactDebtMap.get(member.contactId);
+        if (ex) {
+          ex.fromMe = ex.fromMe.plus(memRem);
+        } else {
+          contactDebtMap.set(member.contactId, { toMe: ZERO, fromMe: memRem });
+        }
+      }
+    }
+  }
+
+  const nonArchived = allContacts.filter((c) => !c.isArchived);
+  const archiveCount = allContacts.filter((c) => c.isArchived).length;
+  const clientCount = nonArchived.filter((c) => c.type === "CLIENT").length;
+  const teamCount = nonArchived.filter((c) => c.type === "TEAM_MEMBER").length;
+  const withDebtCount = nonArchived.filter((c) => {
+    const d = contactDebtMap.get(c.id);
+    return d && (d.toMe.gt(ZERO) || d.fromMe.gt(ZERO));
+  }).length;
+
+  return {
+    totals: {
+      owedToMe: totalOwedToMe.toString(),
+      iOwe: totalIOwe.toString(),
+    },
+    counts: {
+      all: nonArchived.length,
+      clients: clientCount,
+      team: teamCount,
+      withDebt: withDebtCount,
+      archive: archiveCount,
+    },
+  };
 }
 
 /** Получить один контакт по id (с проверкой tenant). */
