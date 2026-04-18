@@ -42,11 +42,11 @@ export function serializeBookingForApi(b: BookingWithItemsEquipment) {
     finalAmount: (b as any).finalAmount?.toString?.() ?? (b as any).finalAmount ?? null,
     amountPaid: (b as any).amountPaid?.toString?.() ?? (b as any).amountPaid ?? null,
     amountOutstanding: (b as any).amountOutstanding?.toString?.() ?? (b as any).amountOutstanding ?? null,
-    items: b.items.map((it) =>
-      it.equipment
-        ? { ...it, equipment: serializeEquipmentForJson(it.equipment) }
-        : it,
-    ),
+    items: b.items.map((it) => ({
+      ...it,
+      customUnitPrice: (it as any).customUnitPrice != null ? (it as any).customUnitPrice.toString() : null,
+      equipment: it.equipment ? serializeEquipmentForJson(it.equipment) : null,
+    })),
     estimate: b.estimate ? serializeEstimateForJson(b.estimate) : null,
   };
 }

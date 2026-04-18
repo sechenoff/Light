@@ -97,7 +97,7 @@ export function buildSmetaFromPersistedEstimate(args: {
   };
 }): SmetaExportDocument {
   const quoteLikeLines: QuoteLine[] = args.estimate.lines.map((l) => ({
-    equipmentId: "",
+    equipmentId: null,
     categorySnapshot: l.categorySnapshot,
     nameSnapshot: l.nameSnapshot,
     brandSnapshot: null,
@@ -106,6 +106,7 @@ export function buildSmetaFromPersistedEstimate(args: {
     unitPrice: new Decimal(l.unitPrice.toString()),
     lineSum: new Decimal(l.lineSum.toString()),
     pricingMode: "SHIFT",
+    isCustom: false,
   }));
 
   return buildSmetaExportDocument({

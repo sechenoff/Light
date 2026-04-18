@@ -140,7 +140,7 @@ export async function recordScan(
   | { error: string }
   | {
       scanRecord: { id: string; sessionId: string; equipmentUnitId: string; scannedAt: Date };
-      bookingItem: { id: string; equipmentId: string };
+      bookingItem: { id: string; equipmentId: string | null };
       unit: { id: string; barcode: string | null };
     }
 > {
@@ -267,8 +267,10 @@ export async function completeSession(
       include: { equipmentUnit: true },
     });
 
-    // Карта: equipmentId → bookingItem
-    const bookingItemByEquipmentId = new Map(bookingItems.map((bi) => [bi.equipmentId, bi]));
+    // Карта: equipmentId → bookingItem (произвольные позиции без equipmentId исключаются)
+    const bookingItemByEquipmentId = new Map(
+      bookingItems.filter((bi) => bi.equipmentId != null).map((bi) => [bi.equipmentId, bi]),
+    );
 
     const summary: ReconciliationSummary = {
       scanned: scannedUnitIds.size,
@@ -552,42 +554,44 @@ export async function getSessionWithDetails(sessionId: string): Promise<SessionW
     scannedUnitIdsByEquipmentId.get(eqId)!.add(scan.equipmentUnitId);
   }
 
-  const enrichedItems: SessionBookingItem[] = bookingItems.map((bi) => {
-    const mode = bi.equipment.stockTrackingMode as "COUNT" | "UNIT";
+  const enrichedItems: SessionBookingItem[] = bookingItems
+    .filter((bi) => bi.equipmentId != null && bi.equipment != null)
+    .map((bi) => {
+      const mode = bi.equipment!.stockTrackingMode as "COUNT" | "UNIT";
 
-    if (mode === "COUNT") {
+      if (mode === "COUNT") {
+        return {
+          id: bi.id,
+          equipmentId: bi.equipmentId!,
+          quantity: bi.quantity,
+          equipment: { name: bi.equipment!.name, stockTrackingMode: mode },
+          trackingMode: "COUNT" as const,
+        };
+      }
+
+      // UNIT-позиция
+      const expected = bi.unitReservations.length;
+      const scannedForThisItem = scannedUnitIdsByEquipmentId.get(bi.equipmentId!)?.size ?? 0;
+
+      // Зарезервированные юниты с недоступным статусом (только для ISSUE)
+      const reservedButUnavailable: string[] =
+        session.operation === "ISSUE"
+          ? bi.unitReservations
+              .filter((r) => r.equipmentUnit?.status !== "AVAILABLE")
+              .map((r) => r.equipmentUnitId)
+          : [];
+
       return {
         id: bi.id,
-        equipmentId: bi.equipmentId,
+        equipmentId: bi.equipmentId!,
         quantity: bi.quantity,
-        equipment: { name: bi.equipment.name, stockTrackingMode: mode },
-        trackingMode: "COUNT" as const,
+        equipment: { name: bi.equipment!.name, stockTrackingMode: mode },
+        trackingMode: "UNIT" as const,
+        expected,
+        scanned: scannedForThisItem,
+        reservedButUnavailable,
       };
-    }
-
-    // UNIT-позиция
-    const expected = bi.unitReservations.length;
-    const scannedForThisItem = scannedUnitIdsByEquipmentId.get(bi.equipmentId)?.size ?? 0;
-
-    // Зарезервированные юниты с недоступным статусом (только для ISSUE)
-    const reservedButUnavailable: string[] =
-      session.operation === "ISSUE"
-        ? bi.unitReservations
-            .filter((r) => r.equipmentUnit?.status !== "AVAILABLE")
-            .map((r) => r.equipmentUnitId)
-        : [];
-
-    return {
-      id: bi.id,
-      equipmentId: bi.equipmentId,
-      quantity: bi.quantity,
-      equipment: { name: bi.equipment.name, stockTrackingMode: mode },
-      trackingMode: "UNIT" as const,
-      expected,
-      scanned: scannedForThisItem,
-      reservedButUnavailable,
-    };
-  });
+    });
 
   return {
     session: {

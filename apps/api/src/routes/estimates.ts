@@ -26,7 +26,7 @@ router.get("/:estimateId", async (req, res, next) => {
           discountPercent: estimate.booking.discountPercent?.toString() ?? null,
           items: estimate.booking.items.map((it) => ({
             ...it,
-            equipment: serializeEquipmentForJson(it.equipment),
+            equipment: it.equipment ? serializeEquipmentForJson(it.equipment) : null,
           })),
         },
       },

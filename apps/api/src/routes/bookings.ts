@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
-import { createBookingDraft, confirmBooking, quoteEstimate, rebuildBookingEstimate } from "../services/bookings";
+import { createBookingDraft, confirmBooking, quoteEstimate, rebuildBookingEstimate, CUSTOM_LINE_CATEGORY } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking } from "../services/bookingApproval";
 import { HttpError } from "../utils/errors";
 import {
@@ -27,10 +27,19 @@ const router = express.Router();
 /** YYYY-MM-DD или ISO с временем (как от datetime-local → toISOString()). */
 const bookingRangeStringSchema = z.string().min(10, "Укажите дату/время начала и окончания аренды");
 
-const bookingItemSchema = z.object({
-  equipmentId: z.string().min(1),
-  quantity: z.number().int().positive(),
-});
+const bookingItemSchema = z
+  .object({
+    equipmentId: z.string().min(1).optional(),
+    customName: z.string().min(1).max(200).optional(),
+    customUnitPrice: z.number().positive().max(100_000_000).optional(),
+    quantity: z.number().int().positive(),
+  })
+  .refine(
+    (v) =>
+      (v.equipmentId && !v.customName && v.customUnitPrice === undefined) ||
+      (!v.equipmentId && v.customName && v.customUnitPrice !== undefined),
+    { message: "Укажите либо equipmentId, либо customName + customUnitPrice" },
+  );
 
 const transportSchema = z.object({
   vehicleId: z.string().min(1),
@@ -78,15 +87,7 @@ const bookingUpdateSchema = z.object({
   comment: z.string().optional().nullable(),
   discountPercent: z.number().min(0).max(100).optional().nullable(),
   expectedPaymentDate: z.string().optional().nullable(),
-  items: z
-    .array(
-      z.object({
-        equipmentId: z.string().min(1),
-        quantity: z.number().int().positive(),
-      }),
-    )
-    .min(1)
-    .optional(),
+  items: z.array(bookingItemSchema).min(1).optional(),
   /** Если true — возвращает превью изменений брони без записи в БД */
   dryRun: z.boolean().optional().default(false),
   /** Транспорт (опционально) */
@@ -294,8 +295,8 @@ router.patch("/:id", async (req, res, next) => {
       assertBookingRangeOrder(start, end);
 
       const itemsAfter = body.items
-        ? body.items.map((it) => ({ equipmentId: it.equipmentId, quantity: it.quantity }))
-        : existing.items.map((i) => ({ equipmentId: i.equipmentId, quantity: i.quantity }));
+        ? body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity }))
+        : existing.items.map((i) => ({ equipmentId: i.equipmentId ?? undefined, customName: (i as any).customName ?? undefined, customUnitPrice: (i as any).customUnitPrice != null ? Number((i as any).customUnitPrice.toString()) : undefined, quantity: i.quantity }));
 
       const estimate = await quoteEstimate({
         startDate: start,
@@ -367,8 +368,11 @@ router.patch("/:id", async (req, res, next) => {
         await tx.bookingItem.createMany({
           data: body.items.map((it) => ({
             bookingId: id,
-            equipmentId: it.equipmentId,
+            equipmentId: it.equipmentId ?? null,
             quantity: it.quantity,
+            customName: it.customName ?? null,
+            customUnitPrice: it.customUnitPrice != null ? new Decimal(it.customUnitPrice) : null,
+            customCategory: !it.equipmentId && it.customName ? CUSTOM_LINE_CATEGORY : null,
           })),
         });
       }
@@ -408,8 +412,8 @@ router.patch("/:id", async (req, res, next) => {
     if (wasInReview) {
       try {
         const itemsAfter = body.items
-          ? body.items.map((it: any) => ({ equipmentId: it.equipmentId, quantity: it.quantity }))
-          : existing.items.map((i: any) => ({ equipmentId: i.equipmentId, quantity: i.quantity }));
+          ? body.items.map((it: any) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity }))
+          : existing.items.map((i: any) => ({ equipmentId: i.equipmentId ?? undefined, customName: i.customName ?? undefined, customUnitPrice: i.customUnitPrice != null ? Number(i.customUnitPrice.toString()) : undefined, quantity: i.quantity }));
         const quote = await quoteEstimate({
           startDate: start,
           endDate: end,
@@ -622,7 +626,7 @@ router.post("/quote", async (req, res, next) => {
       endDate: end,
       clientId: client.id,
       discountPercent: body.discountPercent ?? null,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, quantity: it.quantity })),
+      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
       transport: body.transport ?? null,
     });
 
@@ -695,7 +699,7 @@ router.post("/quote/export", async (req, res, next) => {
       endDate: end,
       clientId: client.id,
       discountPercent: body.discountPercent ?? null,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, quantity: it.quantity })),
+      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
     });
 
     const duration = formatRentalDurationDetails(start, end);
@@ -786,7 +790,7 @@ router.post("/draft", async (req, res, next) => {
         endDate: end,
         clientId: clientIdForQuote,
         discountPercent: body.discountPercent ?? null,
-        items: body.items.map((it) => ({ equipmentId: it.equipmentId, quantity: it.quantity })),
+        items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
       });
 
       res.json({
@@ -878,7 +882,7 @@ router.post("/draft", async (req, res, next) => {
       expectedPaymentDate: body.expectedPaymentDate ? new Date(body.expectedPaymentDate) : null,
       estimateOptionalNote: body.estimateOptionalNote ?? null,
       estimateIncludeOptionalInExport: body.estimateIncludeOptionalInExport ?? false,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, quantity: it.quantity })),
+      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
       transport: transportSnapshot,
     });
 

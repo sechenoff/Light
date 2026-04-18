@@ -86,7 +86,7 @@ router.get("/today", async (req, res, next) => {
         finalAmount: b.finalAmount.toString(),
         itemCount: b.items.length,
         items: b.items.map((item) => ({
-          equipmentName: item.equipment.name,
+          equipmentName: item.equipment?.name ?? (item as any).customName ?? "—",
           quantity: item.quantity,
         })),
       };
