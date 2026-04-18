@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { ReturnToProjectBanner } from "../../../../src/components/gaffer/ReturnToProjectBanner";
 import {
   getContact,
   updateContact,
@@ -182,9 +183,15 @@ function DebtSection({ contactId, contactType }: { contactId: string; contactTyp
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function GafferContactDetailPage() {
+function GafferContactDetailContent() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Return-to flow: validate that returnTo is within /gaffer/
+  const rawReturnTo = searchParams.get("returnTo") ?? "";
+  const returnTo = rawReturnTo.startsWith("/gaffer/") ? rawReturnTo : null;
+  const returnLabel = searchParams.get("returnLabel") ?? null;
   const [contact, setContact] = useState<GafferContact | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -379,6 +386,17 @@ export default function GafferContactDetailPage() {
         </div>
       </div>
 
+      {/* Return-to-project CTA banner */}
+      {!editing && (
+        <ReturnToProjectBanner
+          returnTo={returnTo}
+          returnLabel={returnLabel}
+          contactId={id}
+          contactType={contact.type}
+          isArchived={contact.isArchived}
+        />
+      )}
+
       {/* Alert banner */}
       {alertMsg && (
         <div
@@ -542,5 +560,19 @@ export default function GafferContactDetailPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function GafferContactDetailPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-4 space-y-3 animate-pulse">
+        <div className="h-5 bg-border rounded w-1/2" />
+        <div className="h-4 bg-border rounded w-1/3" />
+        <div className="h-4 bg-border rounded w-2/3" />
+      </div>
+    }>
+      <GafferContactDetailContent />
+    </Suspense>
   );
 }
