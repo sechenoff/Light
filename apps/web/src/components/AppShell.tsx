@@ -372,11 +372,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Публичные маршруты без оболочки: логин, калькулятор осветителей, warehouse/scan (свой UI).
+  // Публичные маршруты без оболочки: логин, калькулятор осветителей,
+  // warehouse/scan (свой UI), /gaffer/* (изолированный модуль со своим layout).
   const isStandalone =
     pathname === "/login" ||
     pathname === "/crew-calculator" ||
-    pathname.startsWith("/warehouse/scan");
+    pathname.startsWith("/warehouse/scan") ||
+    pathname.startsWith("/gaffer");
   if (isStandalone) {
     return <>{children}</>;
   }
