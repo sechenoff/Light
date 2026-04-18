@@ -108,9 +108,12 @@ function DebtSection({ contactId, contactType }: { contactId: string; contactTyp
                 </div>
                 <div className="text-right shrink-0">
                   {Number(p.clientRemaining) > 0 ? (
-                    <span className="text-[12px] font-semibold text-rose mono-num">
-                      {formatRub(p.clientRemaining)}
-                    </span>
+                    <div>
+                      <span className="text-[12px] font-semibold text-rose mono-num">
+                        {formatRub(p.clientRemaining)}
+                      </span>
+                      <p className="text-[10.5px] text-ink-3">из {formatRub(p.clientTotal)}</p>
+                    </div>
                   ) : Number(p.clientReceived) > 0 ? (
                     <span className="text-[11px] text-emerald">✓ Оплачено</span>
                   ) : (

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   createProject,
@@ -9,17 +9,29 @@ import {
   GafferApiError,
   type GafferContact,
 } from "../../../../src/lib/gafferApi";
+import { formatRub } from "../../../../src/lib/format";
 import { toast } from "../../../../src/components/ToastProvider";
 
-export default function GafferNewProjectPage() {
+function GafferNewProjectContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [title, setTitle] = useState("");
   const [clientId, setClientId] = useState("");
   const [shootDate, setShootDate] = useState("");
   const [clientPlanAmount, setClientPlanAmount] = useState("0");
+  const [lightBudget, setLightBudget] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Pre-fill clientPlanAmount from crew calculator return
+  useEffect(() => {
+    const crewAmount = searchParams.get("crewAmount");
+    if (crewAmount) {
+      setClientPlanAmount(crewAmount);
+    }
+  }, [searchParams]);
 
   // Clients list
   const [clients, setClients] = useState<GafferContact[] | null>(null);
@@ -39,6 +51,8 @@ export default function GafferNewProjectPage() {
     };
   }, []);
 
+  const totalBudget = Number(clientPlanAmount || 0) + Number(lightBudget || 0);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const errs: Record<string, string> = {};
@@ -57,6 +71,7 @@ export default function GafferNewProjectPage() {
         clientId,
         shootDate,
         clientPlanAmount: clientPlanAmount.trim() || "0",
+        lightBudgetAmount: lightBudget.trim() || "0",
         note: note.trim() || undefined,
       });
       toast.success("Проект создан");
@@ -161,14 +176,14 @@ export default function GafferNewProjectPage() {
           {errors.shootDate && <p className="text-rose text-[11.5px] mt-1">{errors.shootDate}</p>}
         </div>
 
-        {/* Plan amount */}
+        {/* Бюджет на осветителей */}
         <div>
-          <label className="block text-[12px] text-ink-2 mb-1" htmlFor="p-amount">
-            Плановая сумма от заказчика
+          <label className="block text-[12px] text-ink-2 mb-1" htmlFor="p-crew-amount">
+            Бюджет на осветителей
           </label>
           <div className="relative">
             <input
-              id="p-amount"
+              id="p-crew-amount"
               type="number"
               min="0"
               step="1"
@@ -177,6 +192,38 @@ export default function GafferNewProjectPage() {
               className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
             />
             <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">₽</span>
+          </div>
+          {/* Calculator button */}
+          <Link
+            href={`/gaffer/crew-calculator?returnTo=/gaffer/projects/new`}
+            className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-border bg-surface hover:bg-[#fafafa] text-accent-bright text-[12.5px] rounded transition-colors"
+          >
+            🧮 Расчёт стоимости команды осветителей
+          </Link>
+        </div>
+
+        {/* Бюджет на свет */}
+        <div>
+          <label className="block text-[12px] text-ink-2 mb-1" htmlFor="p-light-budget">
+            Бюджет на свет
+          </label>
+          <div className="relative">
+            <input
+              id="p-light-budget"
+              type="number"
+              min="0"
+              step="1"
+              value={lightBudget}
+              onChange={(e) => setLightBudget(e.target.value)}
+              placeholder="0"
+              className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+            />
+            <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">₽</span>
+          </div>
+          {/* Total budget info */}
+          <div className="mt-2 text-[12.5px] text-ink-2">
+            Итого бюджет проекта:{" "}
+            <span className="font-mono font-semibold text-ink">{formatRub(totalBudget)}</span>
           </div>
         </div>
 
@@ -205,5 +252,18 @@ export default function GafferNewProjectPage() {
         </button>
       </form>
     </div>
+  );
+}
+
+export default function GafferNewProjectPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-4 space-y-3 animate-pulse">
+        <div className="h-5 bg-border rounded w-1/2" />
+        <div className="h-4 bg-border rounded w-1/3" />
+      </div>
+    }>
+      <GafferNewProjectContent />
+    </Suspense>
   );
 }
