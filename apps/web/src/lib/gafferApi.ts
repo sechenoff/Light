@@ -273,6 +273,16 @@ export interface GafferPayment {
   member?: GafferProjectMember;
 }
 
+export interface ContactRecentPayment {
+  id: string;
+  direction: "IN" | "OUT";
+  amount: string;
+  paidAt: string;
+  projectId: string;
+  projectTitle: string;
+  comment: string | null;
+}
+
 // Debt summary — discriminated union
 export type ContactDebtSummary =
   | {
@@ -289,6 +299,7 @@ export type ContactDebtSummary =
         clientRemaining: string;
       }>;
       totalClientRemaining: string;
+      recentPayments: ContactRecentPayment[];
     }
   | {
       type: "TEAM_MEMBER";
@@ -303,6 +314,7 @@ export type ContactDebtSummary =
         remaining: string;
       }>;
       totalRemaining: string;
+      recentPayments: ContactRecentPayment[];
     };
 
 export async function listProjects(params?: {

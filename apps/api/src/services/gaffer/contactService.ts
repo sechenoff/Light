@@ -332,10 +332,29 @@ export async function getContactDebtSummary(req: Request, id: string) {
       };
     });
 
+    // Последние 10 входящих платежей от этого клиента
+    const inPayments = await prisma.gafferPayment.findMany({
+      where: { direction: "IN", project: { clientId: id, gafferUserId } },
+      include: { project: { select: { id: true, title: true } } },
+      orderBy: { paidAt: "desc" },
+      take: 10,
+    });
+
+    const recentPayments = inPayments.map((p) => ({
+      id: p.id,
+      direction: "IN" as const,
+      amount: p.amount.toString(),
+      paidAt: p.paidAt,
+      projectId: p.project.id,
+      projectTitle: p.project.title,
+      comment: p.comment,
+    }));
+
     return {
       contact,
       projects: projectSummaries,
       totalClientRemaining: totalClientRemaining.toString(),
+      recentPayments,
     };
   } else {
     // TEAM_MEMBER — загружаем членства
@@ -375,10 +394,29 @@ export async function getContactDebtSummary(req: Request, id: string) {
       }),
     );
 
+    // Последние 10 выплат этому участнику
+    const outPayments = await prisma.gafferPayment.findMany({
+      where: { direction: "OUT", memberId: id, project: { gafferUserId } },
+      include: { project: { select: { id: true, title: true } } },
+      orderBy: { paidAt: "desc" },
+      take: 10,
+    });
+
+    const recentPayments = outPayments.map((p) => ({
+      id: p.id,
+      direction: "OUT" as const,
+      amount: p.amount.toString(),
+      paidAt: p.paidAt,
+      projectId: p.project.id,
+      projectTitle: p.project.title,
+      comment: p.comment,
+    }));
+
     return {
       contact,
       memberships: memberSummaries,
       totalRemaining: totalRemaining.toString(),
+      recentPayments,
     };
   }
 }

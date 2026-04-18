@@ -17,6 +17,7 @@ import {
 } from "../../../../src/lib/gafferApi";
 import { formatRub } from "../../../../src/lib/format";
 import { formatShootDate } from "../../../../src/lib/gafferProjectUtils";
+import { StatusPill } from "../../../../src/components/StatusPill";
 import { toast } from "../../../../src/components/ToastProvider";
 
 function TypePill({ type }: { type: GafferContact["type"] }) {
@@ -61,10 +62,7 @@ function DebtSection({ contactId, contactType }: { contactId: string; contactTyp
   if (debt === null) {
     return (
       <div className="px-4 py-4">
-        <p className="text-[11px] text-ink-3 font-semibold tracking-wider uppercase mb-2"
-          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-          Проекты
-        </p>
+        <p className="eyebrow mb-2">Проекты</p>
         <div className="space-y-2 animate-pulse">
           <div className="h-3.5 bg-border rounded w-1/2" />
           <div className="h-3 bg-border rounded w-2/3" />
@@ -80,101 +78,173 @@ function DebtSection({ contactId, contactType }: { contactId: string; contactTyp
   if (contactType === "CLIENT" && debt.type === "CLIENT") {
     const total = Number(debt.totalClientRemaining);
     return (
-      <div className="px-4 py-4">
-        <p className="text-[11px] text-ink-3 font-semibold tracking-wider uppercase mb-2"
-          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-          Проекты
-        </p>
-        {/* Big total */}
-        <div className="mb-3">
-          <p className="text-[11.5px] text-ink-3 mb-0.5">Суммарно должен мне:</p>
-          <span className={`text-[20px] font-semibold mono-num ${total > 0 ? "text-rose" : "text-ink"}`}>
-            {formatRub(debt.totalClientRemaining)}
-          </span>
-        </div>
-        {/* Project list */}
-        {debt.projects.length === 0 ? (
-          <p className="text-[12.5px] text-ink-3 italic">Проектов ещё нет</p>
-        ) : (
-          <div className="space-y-2">
-            {debt.projects.map((p) => (
-              <Link
-                key={p.id}
-                href={`/gaffer/projects/${p.id}`}
-                className="flex items-center justify-between gap-2 py-2 border-b border-border last:border-0 hover:bg-[#fafafa] transition-colors -mx-4 px-4"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-ink truncate">{p.title}</p>
-                  <p className="text-[11px] text-ink-3">{formatShootDate(p.shootDate)}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  {Number(p.clientRemaining) > 0 ? (
-                    <div>
-                      <span className="text-[12px] font-semibold text-rose mono-num">
-                        {formatRub(p.clientRemaining)}
-                      </span>
-                      <p className="text-[10.5px] text-ink-3">из {formatRub(p.clientTotal)}</p>
-                    </div>
-                  ) : Number(p.clientReceived) > 0 ? (
-                    <span className="text-[11px] text-emerald">✓ Оплачено</span>
-                  ) : (
-                    <span className="text-[11px] text-ink-3">—</span>
-                  )}
-                </div>
-              </Link>
-            ))}
+      <>
+        {/* Debt box */}
+        <div className="px-4 pt-4">
+          <div className="bg-accent-soft border border-accent-border rounded-lg p-3.5">
+            <div className="eyebrow text-accent">Суммарно должен мне</div>
+            <div className={`mono-num text-[26px] font-semibold mt-1 ${total > 0 ? "text-accent" : "text-ink-3"}`}>
+              {formatRub(debt.totalClientRemaining)}
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+
+        {/* Projects section */}
+        <div className="px-4 py-4">
+          <p className="eyebrow mb-2">Проекты клиента · {debt.projects.length}</p>
+          {debt.projects.length === 0 ? (
+            <p className="text-[12.5px] text-ink-3 italic">Проектов ещё нет</p>
+          ) : (
+            <div>
+              {debt.projects.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/gaffer/projects/${p.id}`}
+                  className="flex items-center justify-between gap-2 py-2 border-b border-border last:border-b-0 hover:bg-[#fafafa] transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium text-ink truncate">{p.title}</p>
+                    <p className="text-[11px] text-ink-3">{formatShootDate(p.shootDate)}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {Number(p.clientRemaining) > 0 ? (
+                      <div>
+                        <span className="text-[12px] font-semibold text-rose mono-num">
+                          {formatRub(p.clientRemaining)}
+                        </span>
+                        <p className="text-[10.5px] text-ink-3">из {formatRub(p.clientTotal)}</p>
+                      </div>
+                    ) : Number(p.clientReceived) > 0 ? (
+                      <span className="text-[11px] text-emerald">✓ Оплачено</span>
+                    ) : (
+                      <span className="text-[11px] text-ink-3">—</span>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Recent payments feed */}
+        <div className="px-4 pb-4">
+          <p className="eyebrow mb-2">Поступления от клиента</p>
+          {debt.recentPayments.length === 0 ? (
+            <div className="text-ink-3 text-[12px] italic py-3 text-center">Платежей пока нет</div>
+          ) : (
+            <div>
+              {debt.recentPayments.map((p) => (
+                <div key={p.id} className="grid grid-cols-[auto_1fr_auto] gap-3 items-center py-2 border-b border-border last:border-b-0">
+                  <span className="h-2 w-2 rounded-full bg-emerald shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[11px] text-ink-3 truncate">
+                      {formatShootDate(p.paidAt)} ·{" "}
+                      <Link href={`/gaffer/projects/${p.projectId}`} className="hover:text-accent-bright transition-colors">
+                        {p.projectTitle}
+                      </Link>
+                      {p.comment && ` · ${p.comment}`}
+                    </div>
+                  </div>
+                  <span className="mono-num text-[13px] font-semibold text-emerald shrink-0">
+                    +{formatRub(p.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </>
     );
   }
 
   if (contactType === "TEAM_MEMBER" && debt.type === "TEAM_MEMBER") {
     const total = Number(debt.totalRemaining);
     return (
-      <div className="px-4 py-4">
-        <p className="text-[11px] text-ink-3 font-semibold tracking-wider uppercase mb-2"
-          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-          Проекты
-        </p>
-        {/* Big total */}
-        <div className="mb-3">
-          <p className="text-[11.5px] text-ink-3 mb-0.5">Суммарно я должен:</p>
-          <span className={`text-[20px] font-semibold mono-num ${total > 0 ? "text-amber" : "text-ink"}`}>
-            {formatRub(debt.totalRemaining)}
-          </span>
-        </div>
-        {/* Memberships list */}
-        {debt.memberships.length === 0 ? (
-          <p className="text-[12.5px] text-ink-3 italic">Проектов ещё нет</p>
-        ) : (
-          <div className="space-y-2">
-            {debt.memberships.map((m) => (
-              <Link
-                key={m.projectId}
-                href={`/gaffer/projects/${m.projectId}`}
-                className="flex items-center justify-between gap-2 py-2 border-b border-border last:border-0 hover:bg-[#fafafa] transition-colors -mx-4 px-4"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-ink truncate">{m.projectTitle}</p>
-                  <p className="text-[11px] text-ink-3">
-                    {formatShootDate(m.shootDate)}
-                    {m.roleLabel && ` · ${m.roleLabel}`}
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-[12px] mono-num text-ink">{formatRub(m.plannedAmount)}</p>
-                  {Number(m.remaining) > 0 ? (
-                    <p className="text-[11px] text-amber">осталось {formatRub(m.remaining)}</p>
-                  ) : Number(m.paidToMe) > 0 ? (
-                    <p className="text-[11px] text-emerald">✓ Выплачено</p>
-                  ) : null}
-                </div>
-              </Link>
-            ))}
+      <>
+        {/* Debt box */}
+        <div className="px-4 pt-4">
+          <div className="bg-rose-soft border border-rose-border rounded-lg p-3.5">
+            <div className="eyebrow text-rose">Суммарно я должен</div>
+            <div className={`mono-num text-[26px] font-semibold mt-1 ${total > 0 ? "text-rose" : "text-ink-3"}`}>
+              {formatRub(debt.totalRemaining)}
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+
+        {/* Memberships section */}
+        <div className="px-4 py-4">
+          <p className="eyebrow mb-2">Проекты с его участием · {debt.memberships.length}</p>
+          {debt.memberships.length === 0 ? (
+            <p className="text-[12.5px] text-ink-3 italic">Проектов ещё нет</p>
+          ) : (
+            <div>
+              {debt.memberships.map((m) => {
+                const closed = Number(m.remaining) === 0;
+                return (
+                  <div key={m.projectId} className="py-2 border-b border-border last:border-b-0">
+                    <Link
+                      href={`/gaffer/projects/${m.projectId}`}
+                      className="block text-[13px] font-medium text-ink hover:text-accent-bright transition-colors truncate mb-1"
+                    >
+                      {m.projectTitle}
+                      {m.shootDate && (
+                        <span className="text-ink-3 font-normal ml-1.5 text-[11px]">{formatShootDate(m.shootDate)}</span>
+                      )}
+                    </Link>
+                    <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center text-[12px]">
+                      <div>
+                        <div className="eyebrow">План</div>
+                        <div className="mono-num text-ink">{formatRub(m.plannedAmount)}</div>
+                      </div>
+                      <div>
+                        <div className="eyebrow">Выпл.</div>
+                        <div className="mono-num text-emerald">{formatRub(m.paidToMe)}</div>
+                      </div>
+                      <div>
+                        <div className="eyebrow">Остаток</div>
+                        <div className="mono-num text-indigo">{formatRub(m.remaining)}</div>
+                      </div>
+                      {closed ? (
+                        <StatusPill variant="ok" label="закрыт" />
+                      ) : (
+                        <span className="text-[11px] text-ink-3">—</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Recent payments feed */}
+        <div className="px-4 pb-4">
+          <p className="eyebrow mb-2">Выплаты ему</p>
+          {debt.recentPayments.length === 0 ? (
+            <div className="text-ink-3 text-[12px] italic py-3 text-center">Платежей пока нет</div>
+          ) : (
+            <div>
+              {debt.recentPayments.map((p) => (
+                <div key={p.id} className="grid grid-cols-[auto_1fr_auto] gap-3 items-center py-2 border-b border-border last:border-b-0">
+                  <span className="h-2 w-2 rounded-full bg-rose shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[11px] text-ink-3 truncate">
+                      {formatShootDate(p.paidAt)} ·{" "}
+                      <Link href={`/gaffer/projects/${p.projectId}`} className="hover:text-accent-bright transition-colors">
+                        {p.projectTitle}
+                      </Link>
+                      {p.comment && ` · ${p.comment}`}
+                    </div>
+                  </div>
+                  <span className="mono-num text-[13px] font-semibold text-rose shrink-0">
+                    −{formatRub(p.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </>
     );
   }
 
