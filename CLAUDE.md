@@ -573,4 +573,46 @@ Prisma model `Task` (новый):
 - **History fetch.** `TaskHistoryPage` использует локальный `useEffect + useState` с `cancelled`-flag паттерном (не `useTasksQuery` — у него своя filter/optimistic семантика для главной страницы). Пагинация через `cursor` query param, кнопка «Загрузить ещё».
 - **DayTasksWidget.** Самостоятельно фетчит `/api/dashboard/today`, не получает данные через props. Graceful degradation: если `myTasks` отсутствует в ответе — показывает пустое состояние без ошибки.
 
-<!-- updated-by-superflow:2026-04-17 -->
+## Gaffer CRM — Sprint 2A (Contacts + PaymentMethods API)
+
+### Tenant helper
+
+`apps/api/src/services/gaffer/tenant.ts`:
+- `gafferWhere(req)` → `{ gafferUserId: string }` — строит where-фрагмент. Бросает 401 если `req.gafferUser` отсутствует.
+- `assertGafferTenant<T>(entity, req)` → `T` — бросает 404 если entity null или принадлежит другому tenant'у.
+
+### Contacts API (`/api/gaffer/contacts`)
+
+Сервис: `apps/api/src/services/gaffer/contactService.ts`. Роутер: `apps/api/src/routes/gaffer/contacts.ts`.
+
+| Маршрут | Метод | Действие |
+|---------|-------|----------|
+| `/api/gaffer/contacts` | GET | Список; query: `type`, `isArchived`, `search` |
+| `/api/gaffer/contacts/:id` | GET | Один контакт |
+| `/api/gaffer/contacts` | POST | Создать (`type`, `name`, `phone?`, `telegram?`, `note?`) |
+| `/api/gaffer/contacts/:id` | PATCH | Обновить (partial) |
+| `/api/gaffer/contacts/:id/archive` | POST | Архивировать |
+| `/api/gaffer/contacts/:id/unarchive` | POST | Разархивировать |
+| `/api/gaffer/contacts/:id` | DELETE | Удалить; P2003 → 409 `CONTACT_HAS_RELATIONS` |
+
+Telegram нормализация: если не начинается с `@` — prepend `@`.
+
+### PaymentMethods API (`/api/gaffer/payment-methods`)
+
+Сервис: `apps/api/src/services/gaffer/paymentMethodService.ts`. Роутер: `apps/api/src/routes/gaffer/paymentMethods.ts`.
+
+| Маршрут | Метод | Действие |
+|---------|-------|----------|
+| `/api/gaffer/payment-methods` | GET | Список (isDefault desc → sortOrder asc → name asc) |
+| `/api/gaffer/payment-methods` | POST | Создать (`name`, `isDefault?`); P2002 → 409 `PAYMENT_METHOD_NAME_TAKEN` |
+| `/api/gaffer/payment-methods/:id` | PATCH | Обновить; isDefault=true сбрасывает других в транзакции |
+| `/api/gaffer/payment-methods/:id` | DELETE | Удалить (безопасно — SetNull на GafferPayment.paymentMethodId) |
+| `/api/gaffer/payment-methods/reorder` | POST | Переупорядочить по массиву `ids` (sortOrder = позиция) |
+
+### Конвенции Gaffer CRM
+
+- Все Gaffer-маршруты монтируются на `/api/gaffer` через `router.use("/...", gafferAuth, ...)` в `routes/gaffer/index.ts`. Auth-маршруты (`/auth/*`) без `gafferAuth`.
+- Tenant-изоляция через `gafferWhere(req)` / `assertGafferTenant()` — никакого прямого `req.gafferUser.id` в сервисах без этих хелперов.
+- Ошибки через `HttpError` из `utils/errors.ts`; error-код передаётся как строка в третий параметр (`details`), что соответствует паттерну `res.body.details` в тестах.
+
+<!-- updated-by-superflow:2026-04-18 -->
