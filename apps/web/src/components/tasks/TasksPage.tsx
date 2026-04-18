@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { useRequireRole } from "../../hooks/useRequireRole";
 import { useTasksQuery, type TaskFilter } from "./useTasksQuery";
 import { TaskFilterPills } from "./TaskFilterPills";
@@ -11,6 +12,7 @@ import { TaskCreateModal } from "./TaskCreateModal";
 import { TaskEmptyState } from "./TaskEmptyState";
 import { apiFetch } from "../../lib/api";
 import { pluralize } from "../../lib/format";
+import { toMoscowDateString } from "../../lib/moscowDate";
 import type { Task } from "./groupTasks";
 
 // ── Типы ──────────────────────────────────────────────────────────────────────
@@ -26,7 +28,7 @@ function parseFilter(raw: string | null | undefined): TaskFilter {
   if (raw && (VALID_FILTERS as readonly string[]).includes(raw)) {
     return raw as TaskFilter;
   }
-  return "my";
+  return "all"; // v2: default = "all"
 }
 
 const FILTER_TITLE: Record<TaskFilter, string> = {
@@ -46,7 +48,7 @@ export function TasksPage() {
     "TECHNICIAN",
   ]);
 
-  // Фильтр из URL-параметра (с валидацией whitelist)
+  // Фильтр из URL-параметра
   const initialFilter = parseFilter(searchParams?.get("filter"));
   const [filter, setFilter] = useState<TaskFilter>(initialFilter);
 
@@ -65,8 +67,11 @@ export function TasksPage() {
   const [creating, setCreating] = useState(false);
   const [assigneeOptions, setAssigneeOptions] = useState<AdminUserOption[]>([]);
 
-  // ── Загрузка пользователей для выпадающего списка исполнителей ────────────
-  // Используем /assignable (доступно всем 3 ролям), а не /api/admin-users (SA only)
+  // Клиентские фильтры поверх загруженных задач
+  const [assigneeFilter, setAssigneeFilter] = useState<string>(""); // "" = любой
+  const [urgentOnly, setUrgentOnly] = useState(false);
+
+  // ── Загрузка пользователей ────────────────────────────────────────────────
 
   useEffect(() => {
     let cancelled = false;
@@ -75,7 +80,7 @@ export function TasksPage() {
         if (!cancelled) setAssigneeOptions(data.users ?? []);
       })
       .catch(() => {
-        // Отказ не блокирует страницу — задачи без исполнителя всё равно можно создавать
+        // Не блокирует страницу
       });
     return () => {
       cancelled = true;
@@ -109,7 +114,7 @@ export function TasksPage() {
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleCreate = useCallback(
-    async (input: { title: string; urgent: boolean; dueDate: string | null; assignedTo: string | null }) => {
+    async (input: { title: string; urgent: boolean; dueDate: string | null; assignedTo: string | null; description?: string | null }) => {
       await createTask(input);
     },
     [createTask],
@@ -150,18 +155,50 @@ export function TasksPage() {
     [updateTask],
   );
 
+  // ── Клиентская фильтрация задач ───────────────────────────────────────────
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (assigneeFilter === "__none__" && t.assignedTo !== null) return false;
+      if (assigneeFilter && assigneeFilter !== "__none__" && t.assignedTo !== assigneeFilter) return false;
+      if (urgentOnly && !t.urgent) return false;
+      return true;
+    });
+  }, [tasks, assigneeFilter, urgentOnly]);
+
   // ── Счётчики для подстроки заголовка ─────────────────────────────────────
 
+  const now = useMemo(() => new Date(), []);
+  const todayStr = useMemo(() => toMoscowDateString(now), [now]);
+
   const activeCount = tasks.filter((t) => t.status === "OPEN").length;
+  const overdueCount = tasks.filter(
+    (t) => t.status === "OPEN" && t.dueDate && toMoscowDateString(new Date(t.dueDate)) < todayStr,
+  ).length;
   const urgentCount = tasks.filter((t) => t.status === "OPEN" && t.urgent).length;
+  const doneTodayCount = tasks.filter(
+    (t) =>
+      t.status === "DONE" &&
+      t.completedAt &&
+      now.getTime() - new Date(t.completedAt).getTime() < 24 * 60 * 60 * 1000,
+  ).length;
 
   function buildCountsLine(): string {
     if (loading) return "…";
-    if (activeCount === 0) return "пока пусто";
-    const activePart = `${activeCount} ${pluralize(activeCount, "активная", "активные", "активных")}`;
-    if (urgentCount === 0) return activePart;
-    const urgentPart = `${urgentCount} ${pluralize(urgentCount, "срочная", "срочные", "срочных")}`;
-    return `${activePart}, ${urgentPart}`;
+    const parts: string[] = [];
+    if (activeCount > 0) {
+      parts.push(`${activeCount} ${pluralize(activeCount, "активная", "активные", "активных")}`);
+    }
+    if (overdueCount > 0) {
+      parts.push(`${overdueCount} ${pluralize(overdueCount, "просрочена", "просрочены", "просрочено")}`);
+    }
+    if (urgentCount > 0) {
+      parts.push(`${urgentCount} ${pluralize(urgentCount, "срочная", "срочные", "срочных")}`);
+    }
+    if (doneTodayCount > 0) {
+      parts.push(`${doneTodayCount} ${pluralize(doneTodayCount, "выполнена сегодня", "выполнены сегодня", "выполнено сегодня")}`);
+    }
+    return parts.length > 0 ? parts.join(" · ") : "пока пусто";
   }
 
   // ── Рендер ────────────────────────────────────────────────────────────────
@@ -174,7 +211,7 @@ export function TasksPage() {
     );
   }
 
-  const isEmpty = !loading && tasks.length === 0;
+  const isEmpty = !loading && filteredTasks.length === 0;
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-3xl">
@@ -182,24 +219,62 @@ export function TasksPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="eyebrow">Задачи</p>
-          <h1 className="text-lg font-semibold text-ink mt-0.5">{FILTER_TITLE[filter]}</h1>
-          <p className="text-xs text-ink-3 mt-0.5">
-            {FILTER_TITLE[filter]} · {buildCountsLine()}
+          <h1 className="text-[22px] font-semibold text-ink mt-0.5 tracking-tight">
+            {FILTER_TITLE[filter]}
+          </h1>
+          <p className="text-[13px] text-ink-3 mt-0.5">
+            {buildCountsLine()}
           </p>
         </div>
         <button
           onClick={() => setCreating(true)}
-          className="shrink-0 bg-accent-bright text-white px-3 py-1.5 rounded text-sm font-medium hover:opacity-90 transition-opacity"
+          className="shrink-0 bg-accent-bright text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity inline-flex items-center gap-1.5"
         >
           + Создать задачу
         </button>
       </div>
 
-      {/* Фильтры */}
-      <TaskFilterPills value={filter} onChange={handleFilterChange} />
+      {/* Filter bar */}
+      <div className="bg-surface border border-border rounded-[10px] px-4 py-3 flex justify-between items-center gap-4 flex-wrap">
+        {/* Левые пилюли */}
+        <TaskFilterPills value={filter} onChange={handleFilterChange} />
 
-      {/* Разделитель */}
-      <hr className="border-border" />
+        {/* Правые контролы */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Исполнитель */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-[11px] text-ink-3 uppercase tracking-[0.04em] font-medium">
+              Исполнитель
+            </label>
+            <select
+              value={assigneeFilter}
+              onChange={(e) => setAssigneeFilter(e.target.value)}
+              className="text-[13px] px-2.5 py-1.5 border border-border rounded-md bg-surface text-ink focus:outline-none focus:border-accent"
+            >
+              <option value="">Любой</option>
+              {assigneeOptions.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.username}
+                </option>
+              ))}
+              <option value="__none__">— Никому</option>
+            </select>
+          </div>
+
+          {/* Только срочные */}
+          <button
+            type="button"
+            onClick={() => setUrgentOnly((v) => !v)}
+            className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors ${
+              urgentOnly
+                ? "bg-rose-soft text-rose border-rose-border font-medium"
+                : "bg-surface text-ink-2 border-border hover:border-border-strong"
+            }`}
+          >
+            🔥 Только срочные
+          </button>
+        </div>
+      </div>
 
       {/* Ошибка */}
       {error && (
@@ -213,9 +288,9 @@ export function TasksPage() {
         <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
           {[1, 2, 3].map((i) => (
             <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-0">
-              <div className="w-4 h-4 rounded bg-surface-muted animate-pulse shrink-0" />
+              <div className="w-5 h-5 rounded bg-surface-muted animate-pulse shrink-0" />
               <div className="flex-1 h-4 bg-surface-muted rounded animate-pulse" />
-              <div className="h-4 w-16 bg-surface-muted rounded animate-pulse" />
+              <div className="h-4 w-20 bg-surface-muted rounded animate-pulse" />
             </div>
           ))}
         </div>
@@ -224,7 +299,7 @@ export function TasksPage() {
       {/* Список задач */}
       {!loading && !isEmpty && (
         <TaskGroupList
-          tasks={tasks}
+          tasks={filteredTasks}
           onComplete={handleComplete}
           onReopen={handleReopen}
           onUpdate={handleUpdate}
@@ -235,6 +310,20 @@ export function TasksPage() {
 
       {/* Пустое состояние */}
       {isEmpty && <TaskEmptyState />}
+
+      {/* Архивная прomo-карточка */}
+      <div className="flex justify-between items-center gap-3 mt-5 p-4 bg-surface border border-border rounded-lg">
+        <div className="text-sm">
+          <b className="text-ink font-medium">Архив задач</b>
+          <span className="text-ink-3"> · выполненные старше 24 часов уходят сюда</span>
+        </div>
+        <Link
+          href="/tasks/archive"
+          className="text-sm font-medium px-4 py-2 rounded-md border border-border-strong text-ink hover:bg-surface-muted inline-flex items-center gap-2 whitespace-nowrap"
+        >
+          📁 Открыть архив →
+        </Link>
+      </div>
 
       {/* Модалка редактирования */}
       {editingTask && (
