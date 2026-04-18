@@ -13,7 +13,6 @@ describe("formatWaitingTime", () => {
   });
 
   it("returns null when submittedAt and createdAt are null/undefined", () => {
-    // @ts-expect-error testing null input
     expect(formatWaitingTime(null, null)).toBeNull();
   });
 

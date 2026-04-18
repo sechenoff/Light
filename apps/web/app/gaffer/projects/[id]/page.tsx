@@ -503,7 +503,7 @@ function MemberRow({
           {/* Progress text */}
           <div className="text-[11.5px] text-ink-2 mt-0.5">
             <b className={isClosed ? "text-emerald" : "text-ink"}>{formatRub(paidAmt)}</b>
-            {" / "}{formatRub(plannedAmt)} ₽
+            {" / "}{formatRub(plannedAmt)}
             {isClosed && <span className="ml-1 text-emerald">· закрыт</span>}
             {!isClosed && remaining > 0 && (
               <span className="ml-1 text-amber">· ост. <b>{formatRub(remaining)}</b></span>

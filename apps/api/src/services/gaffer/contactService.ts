@@ -351,6 +351,7 @@ export async function getContactDebtSummary(req: Request, id: string) {
     }));
 
     return {
+      type: "CLIENT" as const,
       contact,
       projects: projectSummaries,
       totalClientRemaining: totalClientRemaining.toString(),
@@ -413,6 +414,7 @@ export async function getContactDebtSummary(req: Request, id: string) {
     }));
 
     return {
+      type: "TEAM_MEMBER" as const,
       contact,
       memberships: memberSummaries,
       totalRemaining: totalRemaining.toString(),

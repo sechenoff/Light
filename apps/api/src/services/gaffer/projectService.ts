@@ -232,13 +232,25 @@ export async function getProject(req: Request, id: string) {
 
   const debts = computeProjectDebts(project as unknown as ProjectWithRelations);
 
+  // Агрегаты по каждому участнику: сколько выплачено и сколько осталось.
+  const ZERO = new Decimal(0);
   return {
     ...project,
     clientPlanAmount: project.clientPlanAmount.toString(),
-    members: project.members.map((m) => ({
-      ...m,
-      plannedAmount: m.plannedAmount.toString(),
-    })),
+    members: project.members.map((m) => {
+      const paid = project.payments
+        .filter((p) => p.direction === "OUT" && p.memberId === m.id)
+        .reduce((acc, p) => acc.plus(p.amount), ZERO);
+      const planned = new Decimal(m.plannedAmount);
+      const raw = planned.minus(paid);
+      const remaining = raw.gt(ZERO) ? raw : ZERO;
+      return {
+        ...m,
+        plannedAmount: m.plannedAmount.toString(),
+        paidToMe: paid.toString(),
+        remaining: remaining.toString(),
+      };
+    }),
     payments: project.payments.map((p) => ({
       ...p,
       amount: p.amount.toString(),
