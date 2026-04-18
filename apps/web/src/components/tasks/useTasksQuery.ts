@@ -77,7 +77,7 @@ export function useTasksQuery(filter: TaskFilter) {
       setTasks((t) => [...t, optimistic]);
 
       try {
-        const created = await apiFetch<Task>("/api/tasks", {
+        const { task: created } = await apiFetch<{ task: Task }>("/api/tasks", {
           method: "POST",
           body: JSON.stringify(input),
         });
@@ -105,7 +105,7 @@ export function useTasksQuery(filter: TaskFilter) {
       });
 
       try {
-        const updated = await apiFetch<Task>(`/api/tasks/${id}`, {
+        const { task: updated } = await apiFetch<{ task: Task }>(`/api/tasks/${id}`, {
           method: "PATCH",
           body: JSON.stringify(patch),
         });
