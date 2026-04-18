@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/finance", label: "Сводка" },
   { href: "/finance/debts", label: "Долги", badgeKey: "debts" as const },
-  { href: "/finance/payments", label: "Поступления" },
+  { href: "/finance/payments-overview", label: "Оплаты" },
   { href: "/finance/expenses", label: "Расходы" },
 ];
 

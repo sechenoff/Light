@@ -29,16 +29,15 @@ describe("menuByRole — grouped sections", () => {
     ]);
   });
 
-  it("SUPER_ADMIN Финансы section has 5 items including /finance/payments-overview", () => {
+  it("SUPER_ADMIN Финансы section has 4 items — no legacy /finance/payments", () => {
     const finance = menuByRole.SUPER_ADMIN.find((s) => s.title === "Финансы");
     expect(finance).toBeDefined();
-    expect(finance!.items).toHaveLength(5);
+    expect(finance!.items).toHaveLength(4);
     const hrefs = finance!.items.map((i) => i.href);
     expect(hrefs).toEqual([
       "/finance",
       "/finance/payments-overview",
       "/finance/debts",
-      "/finance/payments",
       "/finance/expenses",
     ]);
   });
