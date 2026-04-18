@@ -12,6 +12,13 @@ declare global {
       };
       /** Флаг: запрос пришёл от бот-ключа openclaw-*, прошедшего botScopeGuard */
       botAccess?: boolean;
+      /** Gaffer CRM: текущий аутентифицированный пользователь (заполняется gafferAuth) */
+      gafferUser?: {
+        id: string;
+        email: string;
+        name: string | null;
+        onboardingCompletedAt: Date | null;
+      };
     }
   }
 }

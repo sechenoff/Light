@@ -762,6 +762,131 @@ model Task {
   @@index([createdBy, status])
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Gaffer CRM — полностью изолированный суб-продукт (не зависит от AdminUser)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum GafferContactType {
+  CLIENT
+  TEAM_MEMBER
+}
+
+enum GafferProjectStatus {
+  OPEN
+  ARCHIVED
+}
+
+enum GafferPaymentDirection {
+  IN  // от клиента к гафферу
+  OUT // от гаффера к члену команды
+}
+
+model GafferUser {
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  name                  String?
+  onboardingCompletedAt DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  contacts       GafferContact[]
+  projects       GafferProject[]
+  paymentMethods GafferPaymentMethod[]
+}
+
+model GafferContact {
+  id           String            @id @default(cuid())
+  gafferUserId String
+  type         GafferContactType
+  name         String
+  phone        String?
+  telegram     String? // username без @
+  note         String? // свободный текст (роль, напр. "осветитель")
+  isArchived   Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  gafferUser       GafferUser            @relation(fields: [gafferUserId], references: [id], onDelete: Cascade)
+  clientProjects   GafferProject[]       @relation("ProjectClient")
+  memberships      GafferProjectMember[]
+  paymentsAsMember GafferPayment[]       @relation("PaymentMember")
+
+  @@index([gafferUserId, type, isArchived])
+}
+
+model GafferPaymentMethod {
+  id           String   @id @default(cuid())
+  gafferUserId String
+  name         String // "Тинькофф карта", "Сбер карта", "Счёт ИП", "Наличные"
+  isDefault    Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  gafferUser GafferUser      @relation(fields: [gafferUserId], references: [id], onDelete: Cascade)
+  payments   GafferPayment[]
+
+  @@unique([gafferUserId, name])
+  @@index([gafferUserId])
+}
+
+model GafferProject {
+  id               String              @id @default(cuid())
+  gafferUserId     String
+  title            String // "Клип «Синяя волна»"
+  clientId         String
+  shootDate        DateTime // единственная дата съёмки для MVP
+  clientPlanAmount Decimal             @default(0) // план от клиента
+  status           GafferProjectStatus @default(OPEN)
+  note             String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  gafferUser GafferUser            @relation(fields: [gafferUserId], references: [id], onDelete: Cascade)
+  client     GafferContact         @relation("ProjectClient", fields: [clientId], references: [id], onDelete: Restrict)
+  members    GafferProjectMember[]
+  payments   GafferPayment[]
+
+  @@index([gafferUserId, status])
+  @@index([clientId])
+}
+
+model GafferProjectMember {
+  id            String   @id @default(cuid())
+  projectId     String
+  contactId     String
+  plannedAmount Decimal  @default(0)
+  roleLabel     String? // "осветитель, водит грузовик"
+  createdAt     DateTime @default(now())
+
+  project GafferProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contact GafferContact @relation(fields: [contactId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, contactId])
+  @@index([contactId])
+}
+
+model GafferPayment {
+  id              String                 @id @default(cuid())
+  projectId       String
+  direction       GafferPaymentDirection
+  amount          Decimal
+  paidAt          DateTime // date-only семантика, хранится как UTC-полночь
+  paymentMethodId String?
+  memberId        String? // обязателен при direction=OUT, null для IN
+  comment         String?
+  createdAt       DateTime               @default(now())
+
+  project GafferProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  method  GafferPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  member  GafferContact?       @relation("PaymentMember", fields: [memberId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, direction])
+  @@index([memberId])
+  @@index([paidAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// Аудит-лог изменений критичных сущностей
 model AuditEntry {
   id         String    @id @default(cuid())
