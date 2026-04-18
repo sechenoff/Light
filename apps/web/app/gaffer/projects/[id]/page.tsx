@@ -1,0 +1,953 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  getProject,
+  updateProject,
+  archiveProject,
+  unarchiveProject,
+  deleteProject,
+  addProjectMember,
+  updateProjectMember,
+  removeProjectMember,
+  createPayment,
+  updatePayment,
+  deletePayment,
+  listContacts,
+  listPaymentMethods,
+  GafferApiError,
+  type GafferProject,
+  type GafferProjectMember,
+  type GafferPayment,
+  type GafferContact,
+  type GafferPaymentMethod,
+} from "../../../../src/lib/gafferApi";
+import { formatRub } from "../../../../src/lib/format";
+import { formatShootDate } from "../../../../src/lib/gafferProjectUtils";
+import { toast } from "../../../../src/components/ToastProvider";
+
+// ── Status pill ─────────────────────────────────────────────────────────────
+
+function StatusPillComp({ status }: { status: "OPEN" | "ARCHIVED" }) {
+  if (status === "OPEN") {
+    return (
+      <span className="inline-flex items-center rounded-full border px-[8px] py-[2px] text-[10.5px] font-semibold bg-emerald-soft text-emerald border-emerald-border"
+        style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+        Активный
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full border px-[8px] py-[2px] text-[10.5px] font-semibold bg-slate-soft text-slate border-slate-border"
+      style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+      В архиве
+    </span>
+  );
+}
+
+// ── Money helpers ────────────────────────────────────────────────────────────
+
+function Mono({ value, rose }: { value: string | number | undefined | null; rose?: boolean }) {
+  return (
+    <span className={`font-mono text-[13px] ${rose ? "text-rose" : "text-ink"}`}>
+      {formatRub(value ?? 0)}
+    </span>
+  );
+}
+
+// ── Payment form ─────────────────────────────────────────────────────────────
+
+interface PaymentFormData {
+  amount: string;
+  paidAt: string;
+  paymentMethodId: string;
+  comment: string;
+}
+
+function emptyPaymentForm(): PaymentFormData {
+  const today = new Date().toISOString().slice(0, 10);
+  return { amount: "", paidAt: today, paymentMethodId: "", comment: "" };
+}
+
+interface PaymentFormProps {
+  direction: "IN" | "OUT";
+  projectId: string;
+  memberId?: string;
+  methods: GafferPaymentMethod[];
+  onDone: () => void;
+  onCancel: () => void;
+}
+
+function PaymentForm({ direction, projectId, memberId, methods, onDone, onCancel }: PaymentFormProps) {
+  const [form, setForm] = useState<PaymentFormData>(emptyPaymentForm);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.amount || Number(form.amount) <= 0) {
+      setErr("Введите сумму");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      await createPayment({
+        projectId,
+        direction,
+        amount: form.amount,
+        paidAt: form.paidAt,
+        paymentMethodId: form.paymentMethodId || undefined,
+        memberId: memberId || undefined,
+        comment: form.comment.trim() || undefined,
+      });
+      onDone();
+    } catch (e) {
+      if (e instanceof GafferApiError) {
+        if (e.code === "INVALID_AMOUNT") setErr("Некорректная сумма");
+        else if (e.code === "PROJECT_ARCHIVED") setErr("Проект в архиве");
+        else if (e.code === "MEMBER_REQUIRED_FOR_OUT") setErr("Укажите участника для выплаты");
+        else setErr(e.message);
+      } else {
+        setErr("Не удалось сохранить");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-[#fafafa] border border-border rounded p-3 mt-2 space-y-2">
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="block text-[11px] text-ink-3 mb-0.5">Сумма ₽</label>
+          <input
+            autoFocus
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={form.amount}
+            onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+          />
+        </div>
+        <div className="flex-1">
+          <label className="block text-[11px] text-ink-3 mb-0.5">Дата</label>
+          <input
+            type="date"
+            value={form.paidAt}
+            onChange={(e) => setForm((f) => ({ ...f, paidAt: e.target.value }))}
+            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+          />
+        </div>
+      </div>
+      {methods.length > 0 && (
+        <div>
+          <label className="block text-[11px] text-ink-3 mb-0.5">Способ оплаты</label>
+          <select
+            value={form.paymentMethodId}
+            onChange={(e) => setForm((f) => ({ ...f, paymentMethodId: e.target.value }))}
+            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+          >
+            <option value="">— не указан —</option>
+            {methods.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      <div>
+        <label className="block text-[11px] text-ink-3 mb-0.5">Комментарий</label>
+        <input
+          type="text"
+          value={form.comment}
+          onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))}
+          placeholder="Необязательно"
+          className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+        />
+      </div>
+      {err && <p className="text-rose text-[11.5px]">{err}</p>}
+      <div className="flex gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={saving}
+          className="flex-1 bg-accent-bright hover:bg-accent text-white text-[12.5px] font-medium rounded px-3 py-2 transition-colors disabled:opacity-50"
+        >
+          {saving ? "Сохраняем…" : "Добавить"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 bg-surface border border-border text-ink text-[12.5px] rounded px-3 py-2 hover:bg-[#fafafa] transition-colors"
+        >
+          Отмена
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ── Payment row ───────────────────────────────────────────────────────────────
+
+function PaymentRow({
+  payment,
+  methods,
+  onDelete,
+}: {
+  payment: GafferPayment;
+  methods: GafferPaymentMethod[];
+  onDelete: (id: string) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const methodName = methods.find((m) => m.id === payment.paymentMethodId)?.name;
+
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    if (menuOpen) document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [menuOpen]);
+
+  return (
+    <div className="flex items-center gap-2 py-2 border-b border-border last:border-0">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[13px] font-semibold text-ink mono-num">{formatRub(payment.amount)}</span>
+          {methodName && <span className="text-[11px] text-ink-3">{methodName}</span>}
+        </div>
+        <div className="text-[11px] text-ink-3 flex gap-1.5">
+          <span>{formatShootDate(payment.paidAt)}</span>
+          {payment.comment && <span className="truncate">· {payment.comment}</span>}
+        </div>
+      </div>
+      <div className="relative shrink-0" ref={menuRef}>
+        <button
+          onClick={() => setMenuOpen((o) => !o)}
+          className="w-7 h-7 flex items-center justify-center text-ink-3 hover:text-ink rounded text-[16px]"
+          aria-label="Действия с платежом"
+        >
+          ⋯
+        </button>
+        {menuOpen && (
+          <div className="absolute right-0 top-8 bg-surface border border-border rounded-lg shadow-sm z-20 w-36 py-1">
+            <button
+              onClick={() => { setMenuOpen(false); onDelete(payment.id); }}
+              className="w-full text-left px-4 py-2.5 text-[12.5px] text-rose hover:bg-rose-soft transition-colors"
+            >
+              Удалить
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Member row ────────────────────────────────────────────────────────────────
+
+function MemberRow({
+  member,
+  methods,
+  projectId,
+  onUpdate,
+}: {
+  member: GafferProjectMember;
+  methods: GafferPaymentMethod[];
+  projectId: string;
+  onUpdate: () => void;
+}) {
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    if (menuOpen) document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [menuOpen]);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await removeProjectMember(member.id);
+      toast.success("Участник удалён");
+      onUpdate();
+    } catch (e) {
+      if (e instanceof GafferApiError && e.code === "MEMBER_HAS_PAYMENTS") {
+        toast.error("Сначала удалите платежи участника");
+      } else {
+        toast.error("Не удалось удалить участника");
+      }
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  }
+
+  const remaining = Number(member.remaining ?? 0);
+
+  return (
+    <div className="border-b border-border last:border-0 py-2.5">
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-1.5 flex-wrap">
+            <span className="text-[13px] font-semibold text-ink">
+              {member.contact?.name ?? "—"}
+            </span>
+            {member.roleLabel && (
+              <span className="text-[11px] text-ink-3">{member.roleLabel}</span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[11.5px] text-ink-2">
+            <span>План: {formatRub(member.plannedAmount)}</span>
+            <span>Выплачено: {formatRub(member.paidToMe ?? 0)}</span>
+            {remaining > 0 && (
+              <span className="text-amber font-medium">Осталось: {formatRub(remaining)}</span>
+            )}
+            {remaining === 0 && Number(member.plannedAmount) > 0 && (
+              <span className="text-emerald">✓ Выплачено</span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setShowPaymentForm((v) => !v)}
+            className="text-[11.5px] text-accent-bright hover:text-accent border border-accent-border rounded px-2 py-1 transition-colors"
+          >
+            + выплата
+          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              className="w-7 h-7 flex items-center justify-center text-ink-3 hover:text-ink rounded text-[16px]"
+              aria-label="Действия с участником"
+            >
+              ⋯
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-8 bg-surface border border-border rounded-lg shadow-sm z-20 w-40 py-1">
+                <button
+                  onClick={() => { setMenuOpen(false); setShowDeleteModal(true); }}
+                  className="w-full text-left px-4 py-2.5 text-[12.5px] text-rose hover:bg-rose-soft transition-colors"
+                >
+                  Удалить
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {showPaymentForm && (
+        <PaymentForm
+          direction="OUT"
+          projectId={projectId}
+          memberId={member.id}
+          methods={methods}
+          onDone={() => { setShowPaymentForm(false); onUpdate(); }}
+          onCancel={() => setShowPaymentForm(false)}
+        />
+      )}
+
+      {/* Delete confirm modal */}
+      {showDeleteModal && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDeleteModal(false); }}
+        >
+          <div className="bg-surface rounded-lg shadow-xl p-5 w-full max-w-sm">
+            <h3 className="text-[15px] font-semibold text-ink mb-2">Удалить участника?</h3>
+            <p className="text-[13px] text-ink-2 mb-5">
+              Удалить <span className="font-medium text-ink">{member.contact?.name}</span> из проекта?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 bg-rose hover:bg-rose/90 text-white font-medium rounded px-4 py-2.5 text-[13px] disabled:opacity-50 transition-colors"
+              >
+                {deleting ? "Удаляем…" : "Удалить"}
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 bg-surface border border-border text-ink rounded px-4 py-2.5 text-[13px] hover:bg-[#fafafa] transition-colors"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Add member form ────────────────────────────────────────────────────────────
+
+function AddMemberForm({
+  projectId,
+  methods,
+  onDone,
+  onCancel,
+}: {
+  projectId: string;
+  methods: GafferPaymentMethod[];
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [teamContacts, setTeamContacts] = useState<GafferContact[] | null>(null);
+  const [contactId, setContactId] = useState("");
+  const [plannedAmount, setPlannedAmount] = useState("0");
+  const [roleLabel, setRoleLabel] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await listContacts({ type: "TEAM_MEMBER", isArchived: false });
+        if (!cancelled) setTeamContacts(res.items);
+      } catch {
+        if (!cancelled) setTeamContacts([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Suppress unused variable warning — methods prop reserved for future payment integration
+  void methods;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!contactId) { setErr("Выберите участника"); return; }
+    setSaving(true);
+    setErr(null);
+    try {
+      await addProjectMember(projectId, {
+        contactId,
+        plannedAmount: plannedAmount || "0",
+        roleLabel: roleLabel.trim() || undefined,
+      });
+      onDone();
+    } catch (e) {
+      if (e instanceof GafferApiError) {
+        if (e.code === "MEMBER_ALREADY_IN_PROJECT") setErr("Участник уже в проекте");
+        else if (e.code === "MEMBER_ARCHIVED") setErr("Этот контакт в архиве");
+        else if (e.code === "INVALID_MEMBER_TYPE") setErr("Контакт должен быть типа «Команда»");
+        else setErr(e.message);
+      } else {
+        setErr("Не удалось добавить");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-[#fafafa] border border-border rounded p-3 mt-2 space-y-2">
+      <div>
+        <label className="block text-[11px] text-ink-3 mb-0.5">Участник</label>
+        {teamContacts === null ? (
+          <div className="h-[34px] bg-border rounded animate-pulse" />
+        ) : (
+          <select
+            value={contactId}
+            onChange={(e) => setContactId(e.target.value)}
+            autoFocus
+            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+          >
+            <option value="">— Выберите —</option>
+            {teamContacts.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="block text-[11px] text-ink-3 mb-0.5">Роль</label>
+          <input
+            type="text"
+            value={roleLabel}
+            onChange={(e) => setRoleLabel(e.target.value)}
+            placeholder="Оператор, АС…"
+            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+          />
+        </div>
+        <div className="flex-1">
+          <label className="block text-[11px] text-ink-3 mb-0.5">Сумма ₽</label>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={plannedAmount}
+            onChange={(e) => setPlannedAmount(e.target.value)}
+            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+          />
+        </div>
+      </div>
+      {err && <p className="text-rose text-[11.5px]">{err}</p>}
+      <div className="flex gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={saving}
+          className="flex-1 bg-accent-bright hover:bg-accent text-white text-[12.5px] font-medium rounded px-3 py-2 transition-colors disabled:opacity-50"
+        >
+          {saving ? "Добавляем…" : "Добавить"}
+        </button>
+        <button type="button" onClick={onCancel}
+          className="flex-1 bg-surface border border-border text-ink text-[12.5px] rounded px-3 py-2 hover:bg-[#fafafa] transition-colors">
+          Отмена
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function GafferProjectDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+
+  const [project, setProject] = useState<GafferProject | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [methods, setMethods] = useState<GafferPaymentMethod[]>([]);
+
+  // Edit mode
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editShootDate, setEditShootDate] = useState("");
+  const [editClientPlan, setEditClientPlan] = useState("0");
+  const [editNote, setEditNote] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
+  // Forms
+  const [showInPaymentForm, setShowInPaymentForm] = useState(false);
+  const [showAddMemberForm, setShowAddMemberForm] = useState(false);
+
+  // Menu
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Modals
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Load project + methods
+  async function load() {
+    try {
+      const [projRes, methodsRes] = await Promise.all([
+        getProject(id),
+        listPaymentMethods().catch(() => ({ items: [] })),
+      ]);
+      setProject(projRes.project);
+      setMethods(methodsRes.items);
+    } catch (e) {
+      if (e instanceof GafferApiError && e.status === 404) setNotFound(true);
+      else setNotFound(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const [projRes, methodsRes] = await Promise.all([
+          getProject(id),
+          listPaymentMethods().catch(() => ({ items: [] })),
+        ]);
+        if (!cancelled) {
+          setProject(projRes.project);
+          setMethods(methodsRes.items);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          if (e instanceof GafferApiError && e.status === 404) setNotFound(true);
+          else setNotFound(true);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id]);
+
+  // Start editing
+  function startEdit() {
+    if (!project) return;
+    setEditTitle(project.title);
+    setEditShootDate(project.shootDate?.slice(0, 10) ?? "");
+    setEditClientPlan(project.clientPlanAmount ?? "0");
+    setEditNote(project.note ?? "");
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    if (!project) return;
+    setEditSaving(true);
+    try {
+      await updateProject(id, {
+        title: editTitle.trim(),
+        shootDate: editShootDate,
+        clientPlanAmount: editClientPlan || "0",
+        note: editNote.trim() || "",
+      });
+      setEditing(false);
+      await load();
+      toast.success("Проект обновлён");
+    } catch (e) {
+      toast.error(e instanceof GafferApiError ? e.message : "Ошибка сохранения");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function handleArchiveToggle() {
+    if (!project) return;
+    setMenuOpen(false);
+    try {
+      const res = project.status === "ARCHIVED"
+        ? await unarchiveProject(id)
+        : await archiveProject(id);
+      setProject(res.project);
+      toast.success(res.project.status === "ARCHIVED" ? "Проект в архиве" : "Проект восстановлен");
+    } catch (e) {
+      toast.error(e instanceof GafferApiError ? e.message : "Ошибка");
+    }
+  }
+
+  async function handleDelete() {
+    setDeleteLoading(true);
+    try {
+      await deleteProject(id);
+      toast.success("Проект удалён");
+      router.push("/gaffer/projects");
+    } catch (e) {
+      toast.error(e instanceof GafferApiError ? e.message : "Ошибка удаления");
+    } finally {
+      setDeleteLoading(false);
+      setShowDeleteModal(false);
+    }
+  }
+
+  async function handleDeletePayment(paymentId: string) {
+    try {
+      await deletePayment(paymentId);
+      toast.success("Платёж удалён");
+      await load();
+    } catch {
+      toast.error("Не удалось удалить платёж");
+    }
+  }
+
+  // Close menu on outside click
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    if (menuOpen) document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [menuOpen]);
+
+  if (loading) {
+    return (
+      <div className="p-4 space-y-3 animate-pulse">
+        <div className="h-5 bg-border rounded w-1/2" />
+        <div className="h-4 bg-border rounded w-1/3" />
+        <div className="h-4 bg-border rounded w-2/3" />
+      </div>
+    );
+  }
+
+  if (notFound || !project) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-ink-3 mb-4">Проект не найден</p>
+        <Link href="/gaffer/projects" className="text-accent-bright">← Все проекты</Link>
+      </div>
+    );
+  }
+
+  const inPayments = (project.payments ?? []).filter((p) => p.direction === "IN");
+
+  return (
+    <div className="min-h-screen bg-surface pb-10">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link href="/gaffer/projects" className="text-accent-bright hover:text-accent transition-colors text-[13px] shrink-0">
+            ← Назад
+          </Link>
+          <StatusPillComp status={project.status} />
+        </div>
+        <div className="flex items-center gap-2">
+          {!editing && (
+            <button
+              onClick={startEdit}
+              className="text-[13px] text-accent-bright hover:text-accent transition-colors font-medium"
+            >
+              Редактировать
+            </button>
+          )}
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              className="w-8 h-8 flex items-center justify-center text-ink-3 hover:text-ink rounded text-[18px]"
+              aria-label="Действия с проектом"
+            >
+              ⋯
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-9 bg-surface border border-border rounded-lg shadow-sm z-20 w-44 py-1">
+                <button
+                  onClick={handleArchiveToggle}
+                  className="w-full text-left px-4 py-2.5 text-[13px] text-ink hover:bg-[#fafafa] transition-colors"
+                >
+                  {project.status === "ARCHIVED" ? "Из архива" : "В архив"}
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); setShowDeleteModal(true); }}
+                  className="w-full text-left px-4 py-2.5 text-[13px] text-rose hover:bg-rose-soft transition-colors"
+                >
+                  Удалить
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Edit form */}
+      {editing ? (
+        <div className="px-4 py-5 space-y-4">
+          <div>
+            <label className="block text-[12px] text-ink-2 mb-1">Название *</label>
+            <input
+              autoFocus
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              maxLength={100}
+              className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] text-ink-2 mb-1">Дата съёмки</label>
+            <input
+              type="date"
+              value={editShootDate}
+              onChange={(e) => setEditShootDate(e.target.value)}
+              className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] text-ink-2 mb-1">Плановая сумма ₽</label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={editClientPlan}
+              onChange={(e) => setEditClientPlan(e.target.value)}
+              className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] text-ink-2 mb-1">Заметка</label>
+            <textarea
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              rows={3}
+              className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright resize-none"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={editSaving || !editTitle.trim()}
+              className="flex-1 bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-2.5 text-[13px] transition-colors disabled:opacity-50"
+            >
+              {editSaving ? "Сохраняем…" : "Сохранить"}
+            </button>
+            <button
+              onClick={() => setEditing(false)}
+              className="flex-1 bg-surface border border-border text-ink rounded px-4 py-2.5 text-[13px] hover:bg-[#fafafa] transition-colors"
+            >
+              Отменить
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="divide-y divide-border">
+          {/* Title + meta */}
+          <div className="px-4 py-4">
+            <h2 className="text-[18px] font-semibold text-ink mb-1">{project.title}</h2>
+            <div className="flex items-center gap-2 flex-wrap text-[12px] text-ink-2">
+              {project.client && (
+                <Link
+                  href={`/gaffer/contacts/${project.clientId}`}
+                  className="text-accent-bright hover:text-accent transition-colors"
+                >
+                  {project.client.name}
+                </Link>
+              )}
+              {project.shootDate && (
+                <span className="text-ink-3">· {formatShootDate(project.shootDate)}</span>
+              )}
+            </div>
+            {project.note && (
+              <p className="mt-2 text-[12.5px] text-ink-2 leading-relaxed whitespace-pre-wrap">
+                {project.note}
+              </p>
+            )}
+          </div>
+
+          {/* От заказчика */}
+          <div className="px-4 py-4">
+            <p className="eyebrow mb-3">От заказчика</p>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="text-center">
+                <p className="text-[10.5px] text-ink-3 mb-0.5">План</p>
+                <Mono value={project.clientPlanAmount} />
+              </div>
+              <div className="text-center">
+                <p className="text-[10.5px] text-ink-3 mb-0.5">Получено</p>
+                <Mono value={project.clientReceived} />
+              </div>
+              <div className="text-center">
+                <p className="text-[10.5px] text-ink-3 mb-0.5">Остаток</p>
+                <Mono value={project.clientRemaining} rose={Number(project.clientRemaining ?? 0) > 0} />
+              </div>
+            </div>
+
+            {/* IN payments */}
+            {inPayments.length > 0 && (
+              <div className="mb-3">
+                {inPayments.map((p) => (
+                  <PaymentRow
+                    key={p.id}
+                    payment={p}
+                    methods={methods}
+                    onDelete={handleDeletePayment}
+                  />
+                ))}
+              </div>
+            )}
+
+            {!showInPaymentForm ? (
+              <button
+                onClick={() => setShowInPaymentForm(true)}
+                className="text-[12.5px] text-accent-bright hover:text-accent border border-accent-border rounded px-3 py-1.5 transition-colors"
+              >
+                + Поступление
+              </button>
+            ) : (
+              <PaymentForm
+                direction="IN"
+                projectId={id}
+                methods={methods}
+                onDone={() => { setShowInPaymentForm(false); load(); }}
+                onCancel={() => setShowInPaymentForm(false)}
+              />
+            )}
+          </div>
+
+          {/* Команда */}
+          <div className="px-4 py-4">
+            <p className="eyebrow mb-3">Команда</p>
+
+            {/* Totals */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="text-center">
+                <p className="text-[10.5px] text-ink-3 mb-0.5">План</p>
+                <Mono value={project.teamPlanTotal} />
+              </div>
+              <div className="text-center">
+                <p className="text-[10.5px] text-ink-3 mb-0.5">Выплачено</p>
+                <Mono value={project.teamPaidTotal} />
+              </div>
+              <div className="text-center">
+                <p className="text-[10.5px] text-ink-3 mb-0.5">Остаток</p>
+                <Mono value={project.teamRemaining} rose={Number(project.teamRemaining ?? 0) > 0} />
+              </div>
+            </div>
+
+            {/* Members */}
+            {(project.members ?? []).length > 0 && (
+              <div className="mb-3">
+                {(project.members ?? []).map((m) => (
+                  <MemberRow
+                    key={m.id}
+                    member={m}
+                    methods={methods}
+                    projectId={id}
+                    onUpdate={load}
+                  />
+                ))}
+              </div>
+            )}
+
+            {!showAddMemberForm ? (
+              <button
+                onClick={() => setShowAddMemberForm(true)}
+                className="text-[12.5px] text-accent-bright hover:text-accent border border-accent-border rounded px-3 py-1.5 transition-colors"
+              >
+                + Участник
+              </button>
+            ) : (
+              <AddMemberForm
+                projectId={id}
+                methods={methods}
+                onDone={() => { setShowAddMemberForm(false); load(); }}
+                onCancel={() => setShowAddMemberForm(false)}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete project modal */}
+      {showDeleteModal && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDeleteModal(false); }}
+        >
+          <div className="bg-surface rounded-lg shadow-xl p-5 w-full max-w-sm">
+            <h3 className="text-[15px] font-semibold text-ink mb-2">Удалить проект?</h3>
+            <p className="text-[13px] text-ink-2 mb-5">
+              Вы собираетесь удалить <span className="font-medium text-ink">{project.title}</span>. Это действие нельзя отменить.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleDelete}
+                disabled={deleteLoading}
+                className="flex-1 bg-rose hover:bg-rose/90 text-white font-medium rounded px-4 py-2.5 text-[13px] disabled:opacity-50 transition-colors"
+              >
+                {deleteLoading ? "Удаляем…" : "Удалить"}
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 bg-surface border border-border text-ink rounded px-4 py-2.5 text-[13px] hover:bg-[#fafafa] transition-colors"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

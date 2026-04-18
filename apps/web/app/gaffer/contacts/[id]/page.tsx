@@ -9,9 +9,13 @@ import {
   archiveContact,
   unarchiveContact,
   deleteContact,
+  getContactDebtSummary,
   GafferApiError,
   type GafferContact,
+  type ContactDebtSummary,
 } from "../../../../src/lib/gafferApi";
+import { formatRub } from "../../../../src/lib/format";
+import { formatShootDate } from "../../../../src/lib/gafferProjectUtils";
 import { toast } from "../../../../src/components/ToastProvider";
 
 function TypePill({ type }: { type: GafferContact["type"] }) {
@@ -34,6 +38,146 @@ function TypePill({ type }: { type: GafferContact["type"] }) {
     </span>
   );
 }
+
+// ── Debt section ──────────────────────────────────────────────────────────────
+
+function DebtSection({ contactId, contactType }: { contactId: string; contactType: GafferContact["type"] }) {
+  const [debt, setDebt] = useState<ContactDebtSummary | null | "error">(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getContactDebtSummary(contactId);
+        if (!cancelled) setDebt(res);
+      } catch {
+        if (!cancelled) setDebt("error");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [contactId]);
+
+  if (debt === null) {
+    return (
+      <div className="px-4 py-4">
+        <p className="text-[11px] text-ink-3 font-semibold tracking-wider uppercase mb-2"
+          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+          Проекты
+        </p>
+        <div className="space-y-2 animate-pulse">
+          <div className="h-3.5 bg-border rounded w-1/2" />
+          <div className="h-3 bg-border rounded w-2/3" />
+        </div>
+      </div>
+    );
+  }
+
+  if (debt === "error") {
+    return null; // silent failure
+  }
+
+  if (contactType === "CLIENT" && debt.type === "CLIENT") {
+    const total = Number(debt.totalClientRemaining);
+    return (
+      <div className="px-4 py-4">
+        <p className="text-[11px] text-ink-3 font-semibold tracking-wider uppercase mb-2"
+          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+          Проекты
+        </p>
+        {/* Big total */}
+        <div className="mb-3">
+          <p className="text-[11.5px] text-ink-3 mb-0.5">Суммарно должен мне:</p>
+          <span className={`text-[20px] font-semibold mono-num ${total > 0 ? "text-rose" : "text-ink"}`}>
+            {formatRub(debt.totalClientRemaining)}
+          </span>
+        </div>
+        {/* Project list */}
+        {debt.projects.length === 0 ? (
+          <p className="text-[12.5px] text-ink-3 italic">Проектов ещё нет</p>
+        ) : (
+          <div className="space-y-2">
+            {debt.projects.map((p) => (
+              <Link
+                key={p.id}
+                href={`/gaffer/projects/${p.id}`}
+                className="flex items-center justify-between gap-2 py-2 border-b border-border last:border-0 hover:bg-[#fafafa] transition-colors -mx-4 px-4"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-medium text-ink truncate">{p.title}</p>
+                  <p className="text-[11px] text-ink-3">{formatShootDate(p.shootDate)}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  {Number(p.clientRemaining) > 0 ? (
+                    <span className="text-[12px] font-semibold text-rose mono-num">
+                      {formatRub(p.clientRemaining)}
+                    </span>
+                  ) : Number(p.clientReceived) > 0 ? (
+                    <span className="text-[11px] text-emerald">✓ Оплачено</span>
+                  ) : (
+                    <span className="text-[11px] text-ink-3">—</span>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (contactType === "TEAM_MEMBER" && debt.type === "TEAM_MEMBER") {
+    const total = Number(debt.totalRemaining);
+    return (
+      <div className="px-4 py-4">
+        <p className="text-[11px] text-ink-3 font-semibold tracking-wider uppercase mb-2"
+          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+          Проекты
+        </p>
+        {/* Big total */}
+        <div className="mb-3">
+          <p className="text-[11.5px] text-ink-3 mb-0.5">Суммарно я должен:</p>
+          <span className={`text-[20px] font-semibold mono-num ${total > 0 ? "text-amber" : "text-ink"}`}>
+            {formatRub(debt.totalRemaining)}
+          </span>
+        </div>
+        {/* Memberships list */}
+        {debt.memberships.length === 0 ? (
+          <p className="text-[12.5px] text-ink-3 italic">Проектов ещё нет</p>
+        ) : (
+          <div className="space-y-2">
+            {debt.memberships.map((m) => (
+              <Link
+                key={m.projectId}
+                href={`/gaffer/projects/${m.projectId}`}
+                className="flex items-center justify-between gap-2 py-2 border-b border-border last:border-0 hover:bg-[#fafafa] transition-colors -mx-4 px-4"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-medium text-ink truncate">{m.projectTitle}</p>
+                  <p className="text-[11px] text-ink-3">
+                    {formatShootDate(m.shootDate)}
+                    {m.roleLabel && ` · ${m.roleLabel}`}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-[12px] mono-num text-ink">{formatRub(m.plannedAmount)}</p>
+                  {Number(m.remaining) > 0 ? (
+                    <p className="text-[11px] text-amber">осталось {formatRub(m.remaining)}</p>
+                  ) : Number(m.paidToMe) > 0 ? (
+                    <p className="text-[11px] text-emerald">✓ Выплачено</p>
+                  ) : null}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function GafferContactDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -358,13 +502,8 @@ export default function GafferContactDetailPage() {
             </div>
           )}
 
-          {/* Projects stub */}
-          <div className="px-4 py-4">
-            <p className="text-[11px] text-ink-3 font-semibold tracking-wider uppercase mb-1.5" style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-              Проекты
-            </p>
-            <p className="text-[12.5px] text-ink-3 italic">Проекты появятся после Sprint 3</p>
-          </div>
+          {/* Debt section */}
+          <DebtSection contactId={id} contactType={contact.type} />
         </div>
       )}
 
