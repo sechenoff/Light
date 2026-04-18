@@ -294,7 +294,7 @@ export function TaskArchivePage() {
   // ── Рендер ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl">
+    <div className="p-4 md:p-6 w-full">
       {/* Хлебные крошки */}
       <div className="text-xs text-ink-3 mb-2.5">
         <Link href="/tasks" className="text-accent font-medium hover:underline">

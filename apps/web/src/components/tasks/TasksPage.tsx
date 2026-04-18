@@ -214,7 +214,7 @@ export function TasksPage() {
   const isEmpty = !loading && filteredTasks.length === 0;
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-3xl">
+    <div className="p-4 md:p-6 space-y-4 w-full">
       {/* Заголовок: eyebrow + h1 + кнопка */}
       <div className="flex items-start justify-between gap-4">
         <div>
