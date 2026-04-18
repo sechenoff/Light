@@ -1,5 +1,6 @@
 import express from "express";
 import { z } from "zod";
+import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
 import {
@@ -13,6 +14,12 @@ import {
 } from "../services/finance";
 import { importLegacyBookings } from "../services/legacyBookingImport";
 import { rolesGuard } from "../middleware/rolesGuard";
+import { buildBookingHumanName } from "../utils/bookingName";
+import {
+  fromMoscowDateString,
+  toMoscowDateString,
+  moscowTodayStart,
+} from "../utils/moscowDate";
 
 const router = express.Router();
 
@@ -362,6 +369,323 @@ router.post("/finance/import-legacy-bookings", superAdminOnly, async (req, res, 
     const userId = req.adminUser!.userId;
     const result = await importLegacyBookings(body.rows, userId);
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/finance/payments-overview ───────────────────────────────────────
+
+const bookingPaymentStatusValues = ["NOT_PAID", "PARTIALLY_PAID", "PAID", "OVERDUE"] as const;
+const bookingStatusValues = ["DRAFT", "PENDING_APPROVAL", "CONFIRMED", "ISSUED", "RETURNED", "CANCELLED"] as const;
+
+const paymentsOverviewQuerySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from: YYYY-MM-DD").optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "to: YYYY-MM-DD").optional(),
+  clientId: z.string().optional(),
+  amountMin: z.coerce.number().nonnegative().optional(),
+  amountMax: z.coerce.number().positive().optional(),
+  /** Comma-separated BookingPaymentStatus values */
+  paymentStatus: z.string().optional(),
+  /** Single BookingStatus — default: exclude CANCELLED */
+  status: z.enum(bookingStatusValues).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  /** ID of last item on previous page */
+  cursor: z.string().optional(),
+});
+
+router.get("/finance/payments-overview", superAdminOnly, async (req, res, next) => {
+  try {
+    const q = paymentsOverviewQuerySchema.parse(req.query);
+
+    // Build payment status filter
+    const requestedPaymentStatuses = q.paymentStatus
+      ? (q.paymentStatus
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => bookingPaymentStatusValues.includes(s as typeof bookingPaymentStatusValues[number]))
+        )
+      : null;
+
+    // Build base where clause
+    const baseWhere: Record<string, unknown> = {};
+
+    // Date range filter: startDate
+    if (q.from || q.to) {
+      const dateFilter: Record<string, Date> = {};
+      if (q.from) dateFilter.gte = fromMoscowDateString(q.from);
+      if (q.to) {
+        // end of day in Moscow: add 1 day, subtract 1 ms
+        const toStart = fromMoscowDateString(q.to);
+        dateFilter.lte = new Date(toStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+      }
+      baseWhere.startDate = dateFilter;
+    }
+
+    // Client filter
+    if (q.clientId) baseWhere.clientId = q.clientId;
+
+    // Amount range filter on finalAmount
+    if (q.amountMin !== undefined || q.amountMax !== undefined) {
+      const amtFilter: Record<string, Decimal> = {};
+      if (q.amountMin !== undefined) amtFilter.gte = new Decimal(q.amountMin);
+      if (q.amountMax !== undefined) amtFilter.lte = new Decimal(q.amountMax);
+      baseWhere.finalAmount = amtFilter;
+    }
+
+    // Payment status filter
+    if (requestedPaymentStatuses && requestedPaymentStatuses.length > 0) {
+      baseWhere.paymentStatus = { in: requestedPaymentStatuses };
+    }
+
+    // Booking status filter — exclude CANCELLED by default
+    if (q.status) {
+      baseWhere.status = q.status;
+    } else {
+      baseWhere.status = { not: "CANCELLED" };
+    }
+
+    // Cursor-based pagination: stable sort by (startDate DESC, id DESC)
+    const cursorWhere: Record<string, unknown> = {};
+    if (q.cursor) {
+      // cursor = base64-encoded JSON { startDate: ISO, id: string }
+      try {
+        const decoded = JSON.parse(Buffer.from(q.cursor, "base64").toString("utf8")) as {
+          startDate: string;
+          id: string;
+        };
+        cursorWhere.OR = [
+          { startDate: { lt: new Date(decoded.startDate) } },
+          { startDate: new Date(decoded.startDate), id: { lt: decoded.id } },
+        ];
+      } catch {
+        // Invalid cursor — ignore, return from beginning
+      }
+    }
+
+    const pageWhere = { ...baseWhere, ...cursorWhere };
+
+    // Fetch one extra to determine if there is a next page
+    const bookings = await prisma.booking.findMany({
+      where: pageWhere,
+      include: {
+        client: { select: { id: true, name: true } },
+      },
+      orderBy: [{ startDate: "desc" }, { id: "desc" }],
+      take: q.limit + 1,
+    });
+
+    const hasMore = bookings.length > q.limit;
+    const page = hasMore ? bookings.slice(0, q.limit) : bookings;
+
+    // Compute totals over entire filtered set (without pagination)
+    const agg = await prisma.booking.aggregate({
+      where: baseWhere,
+      _count: { id: true },
+      _sum: { finalAmount: true, amountPaid: true, amountOutstanding: true },
+    });
+
+    const totalBilled = agg._sum.finalAmount ?? new Decimal(0);
+    const totalPaid = agg._sum.amountPaid ?? new Decimal(0);
+    const totalOutstanding = agg._sum.amountOutstanding ?? new Decimal(0);
+    const totalCount = agg._count.id;
+    const averageAmount = totalCount > 0
+      ? totalBilled.div(totalCount).toDecimalPlaces(0)
+      : new Decimal(0);
+
+    // Compute overdueDays per item
+    const today = moscowTodayStart();
+    const todayStr = toMoscowDateString(today);
+
+    const items = page.map((b) => {
+      let overdueDays = 0;
+      if (b.paymentStatus !== "PAID") {
+        const endStr = toMoscowDateString(b.endDate);
+        if (endStr < todayStr) {
+          const diffMs = today.getTime() - fromMoscowDateString(endStr).getTime();
+          overdueDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+        }
+      }
+
+      return {
+        id: b.id,
+        startDate: b.startDate.toISOString(),
+        endDate: b.endDate.toISOString(),
+        client: { id: b.client.id, name: b.client.name },
+        projectName: b.projectName,
+        displayName: buildBookingHumanName({
+          startDate: b.startDate,
+          clientName: b.client.name,
+          totalAfterDiscount: b.finalAmount.toString(),
+        }),
+        finalAmount: b.finalAmount.toString(),
+        amountPaid: b.amountPaid.toString(),
+        amountOutstanding: b.amountOutstanding.toString(),
+        paymentStatus: b.paymentStatus,
+        status: b.status,
+        overdueDays,
+      };
+    });
+
+    // Build next cursor
+    let nextCursor: string | null = null;
+    if (hasMore && page.length > 0) {
+      const last = page[page.length - 1];
+      nextCursor = Buffer.from(
+        JSON.stringify({ startDate: last.startDate.toISOString(), id: last.id })
+      ).toString("base64");
+    }
+
+    res.json({
+      items,
+      totals: {
+        count: totalCount,
+        billed: totalBilled.toString(),
+        paid: totalPaid.toString(),
+        outstanding: totalOutstanding.toString(),
+        averageAmount: averageAmount.toString(),
+      },
+      nextCursor,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/finance/payments-by-client ──────────────────────────────────────
+
+const paymentsByClientQuerySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from: YYYY-MM-DD").optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "to: YYYY-MM-DD").optional(),
+  amountMin: z.coerce.number().nonnegative().optional(),
+  amountMax: z.coerce.number().positive().optional(),
+  paymentStatus: z.string().optional(),
+  onlyWithDebt: z.enum(["true", "false"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  search: z.string().optional(),
+});
+
+router.get("/finance/payments-by-client", superAdminOnly, async (req, res, next) => {
+  try {
+    const q = paymentsByClientQuerySchema.parse(req.query);
+
+    const requestedPaymentStatuses = q.paymentStatus
+      ? (q.paymentStatus
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => bookingPaymentStatusValues.includes(s as typeof bookingPaymentStatusValues[number]))
+        )
+      : null;
+
+    const bookingWhere: Record<string, unknown> = {
+      status: { not: "CANCELLED" },
+    };
+
+    if (q.from || q.to) {
+      const dateFilter: Record<string, Date> = {};
+      if (q.from) dateFilter.gte = fromMoscowDateString(q.from);
+      if (q.to) {
+        const toStart = fromMoscowDateString(q.to);
+        dateFilter.lte = new Date(toStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+      }
+      bookingWhere.startDate = dateFilter;
+    }
+
+    if (q.amountMin !== undefined || q.amountMax !== undefined) {
+      const amtFilter: Record<string, Decimal> = {};
+      if (q.amountMin !== undefined) amtFilter.gte = new Decimal(q.amountMin);
+      if (q.amountMax !== undefined) amtFilter.lte = new Decimal(q.amountMax);
+      bookingWhere.finalAmount = amtFilter;
+    }
+
+    if (requestedPaymentStatuses && requestedPaymentStatuses.length > 0) {
+      bookingWhere.paymentStatus = { in: requestedPaymentStatuses };
+    }
+
+    // Aggregate by clientId
+    const grouped = await prisma.booking.groupBy({
+      by: ["clientId"],
+      where: bookingWhere,
+      _count: { id: true },
+      _sum: { finalAmount: true, amountPaid: true, amountOutstanding: true },
+      _max: { startDate: true },
+    });
+
+    // Fetch client names
+    const clientIds = grouped.map((g: { clientId: string }) => g.clientId);
+    const clients = clientIds.length > 0
+      ? await prisma.client.findMany({
+          where: {
+            id: { in: clientIds },
+            ...(q.search ? { name: { contains: q.search } } : {}),
+          },
+          select: { id: true, name: true },
+        })
+      : [];
+
+    const clientMap = new Map<string, { id: string; name: string }>(
+      clients.map((c: { id: string; name: string }) => [c.id, c])
+    );
+
+    type GroupRow = {
+      clientId: string;
+      _count: { id: number };
+      _sum: { finalAmount: Decimal | null; amountPaid: Decimal | null; amountOutstanding: Decimal | null };
+      _max: { startDate: Date | null };
+    };
+
+    // Build per-client rows
+    let rows = grouped
+      .filter((g: GroupRow) => clientMap.has(g.clientId))
+      .map((g: GroupRow) => {
+        const client = clientMap.get(g.clientId)!;
+        const totalBilled = g._sum.finalAmount ?? new Decimal(0);
+        const totalPaid = g._sum.amountPaid ?? new Decimal(0);
+        const totalOutstanding = g._sum.amountOutstanding ?? new Decimal(0);
+
+        return {
+          id: client.id,
+          name: client.name,
+          bookingCount: g._count.id,
+          lastBookingDate: g._max.startDate?.toISOString() ?? null,
+          totalBilled: totalBilled.toString(),
+          totalPaid: totalPaid.toString(),
+          totalOutstanding: totalOutstanding.toString(),
+          _outstandingNum: Number(totalOutstanding.toString()),
+          _billedNum: Number(totalBilled.toString()),
+          _paidNum: Number(totalPaid.toString()),
+        };
+      });
+
+    // Filter onlyWithDebt
+    if (q.onlyWithDebt === "true") {
+      rows = rows.filter((r: typeof rows[number]) => r._outstandingNum > 0);
+    }
+
+    // Sort by totalOutstanding DESC, take limit
+    rows.sort((a: typeof rows[number], b: typeof rows[number]) => b._outstandingNum - a._outstandingNum);
+    const limited = rows.slice(0, q.limit);
+
+    // Totals across all rows (not just limited)
+    const totalBilledSum = rows.reduce((acc: number, r: typeof rows[number]) => acc + r._billedNum, 0);
+    const totalPaidSum = rows.reduce((acc: number, r: typeof rows[number]) => acc + r._paidNum, 0);
+    const totalOutstandingSum = rows.reduce((acc: number, r: typeof rows[number]) => acc + r._outstandingNum, 0);
+    const clientCount = rows.length;
+    const averageDebt = clientCount > 0 ? (totalOutstandingSum / clientCount) : 0;
+
+    // Strip internal numeric helpers
+    const clientsOut = limited.map(({ _outstandingNum: _, _billedNum: __, _paidNum: ___, ...rest }: typeof rows[number]) => rest);
+
+    res.json({
+      clients: clientsOut,
+      totals: {
+        clientCount,
+        billed: new Decimal(totalBilledSum).toString(),
+        paid: new Decimal(totalPaidSum).toString(),
+        outstanding: new Decimal(totalOutstandingSum).toString(),
+        averageDebt: new Decimal(averageDebt).toDecimalPlaces(0).toString(),
+      },
+    });
   } catch (err) {
     next(err);
   }
