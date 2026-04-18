@@ -231,6 +231,37 @@ describe("PATCH /api/clients/:id", () => {
     expect(res.status).toBe(409);
     expect(res.body.details).toBe("CLIENT_NAME_TAKEN");
   });
+
+  it("sparse PATCH with only name leaves phone/email/comment untouched", async () => {
+    // Regression guard: conditional spread in PATCH handler must NOT overwrite
+    // unspecified fields with null. This mirrors the Booking-upsert bug that
+    // autocomplete could have regressed.
+    const client = await prisma.client.create({
+      data: {
+        name: "Сохранить Данные",
+        phone: "+7 999 111 22 33",
+        email: "keep@example.com",
+        comment: "не трогай меня",
+      },
+    });
+
+    const res = await request(app)
+      .patch(`/api/clients/${client.id}`)
+      .set(AUTH_SA())
+      .send({ name: "Сохранить Данные — переименовано" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.client.name).toBe("Сохранить Данные — переименовано");
+    expect(res.body.client.phone).toBe("+7 999 111 22 33");
+    expect(res.body.client.email).toBe("keep@example.com");
+    expect(res.body.client.comment).toBe("не трогай меня");
+
+    // Verify in DB as well (not just the response).
+    const dbClient = await prisma.client.findUnique({ where: { id: client.id } });
+    expect(dbClient?.phone).toBe("+7 999 111 22 33");
+    expect(dbClient?.email).toBe("keep@example.com");
+    expect(dbClient?.comment).toBe("не трогай меня");
+  });
 });
 
 describe("DELETE /api/clients/:id", () => {
