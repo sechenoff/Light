@@ -207,7 +207,12 @@ function DebtSection({ contactId, contactType }: { contactId: string; contactTyp
                       {closed ? (
                         <StatusPill variant="ok" label="закрыт" />
                       ) : (
-                        <span className="text-[11px] text-ink-3">—</span>
+                        <Link
+                          href={`/gaffer/projects/${m.projectId}`}
+                          className="px-2 py-1 text-[11px] font-semibold rounded border border-accent text-accent bg-surface hover:bg-accent-soft transition-colors whitespace-nowrap"
+                        >
+                          + выпл.
+                        </Link>
                       )}
                     </div>
                   </div>
