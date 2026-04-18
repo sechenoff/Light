@@ -331,3 +331,112 @@ describe("Cross-tenant изоляция (контакты)", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("Тип контакта — запрет изменения", () => {
+  let clientId: string;
+
+  beforeAll(async () => {
+    const res = await postA("/api/gaffer/contacts")
+      .send({ type: "CLIENT", name: "Клиент для типа" });
+    clientId = res.body.contact.id as string;
+  });
+
+  it("PATCH с type=TEAM_MEMBER → type не меняется, контакт остаётся CLIENT", async () => {
+    // type dropped from updateContactSchema — extra field is stripped by Zod
+    const res = await patchA(`/api/gaffer/contacts/${clientId}`)
+      .send({ type: "TEAM_MEMBER", name: "Обновлённое имя" });
+
+    // Either 200 with type unchanged, or 400 — either way type must not flip
+    if (res.status === 200) {
+      expect(res.body.contact.type).toBe("CLIENT");
+    }
+
+    // Verify stored type via GET
+    const get = await getA(`/api/gaffer/contacts/${clientId}`);
+    expect(get.body.contact.type).toBe("CLIENT");
+  });
+});
+
+describe("Нормализация Telegram", () => {
+  it("https://t.me/ivanov → @ivanov", async () => {
+    const res = await postA("/api/gaffer/contacts")
+      .send({ type: "CLIENT", name: "Иванов URL", telegram: "https://t.me/ivanov" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.contact.telegram).toBe("@ivanov");
+  });
+
+  it("t.me/petrov → @petrov", async () => {
+    const res = await postA("/api/gaffer/contacts")
+      .send({ type: "CLIENT", name: "Петров tme", telegram: "t.me/petrov" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.contact.telegram).toBe("@petrov");
+  });
+
+  it("@@sidorov → @sidorov (два @ схлопываются)", async () => {
+    const res = await postA("/api/gaffer/contacts")
+      .send({ type: "CLIENT", name: "Сидоров двойной", telegram: "@@sidorov" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.contact.telegram).toBe("@sidorov");
+  });
+
+  it("@ab → 400 INVALID_TELEGRAM (слишком короткий username)", async () => {
+    const res = await postA("/api/gaffer/contacts")
+      .send({ type: "CLIENT", name: "Короткий логин", telegram: "@ab" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details).toBe("INVALID_TELEGRAM");
+  });
+
+  it("'invalid username' (пробел) → 400 INVALID_TELEGRAM", async () => {
+    const res = await postA("/api/gaffer/contacts")
+      .send({ type: "CLIENT", name: "Пробел в логине", telegram: "invalid username" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details).toBe("INVALID_TELEGRAM");
+  });
+});
+
+describe("Фильтр isArchived по умолчанию", () => {
+  let archivedId: string;
+  let activeId: string;
+
+  beforeAll(async () => {
+    const r1 = await postA("/api/gaffer/contacts")
+      .send({ type: "CLIENT", name: "Активный для дефолт-фильтра" });
+    activeId = r1.body.contact.id as string;
+
+    const r2 = await postA("/api/gaffer/contacts")
+      .send({ type: "CLIENT", name: "Архивный для дефолт-фильтра" });
+    archivedId = r2.body.contact.id as string;
+    await postA(`/api/gaffer/contacts/${archivedId}/archive`);
+  });
+
+  it("GET без isArchived → возвращает только неархивных", async () => {
+    const res = await getA("/api/gaffer/contacts");
+    expect(res.status).toBe(200);
+
+    const ids = res.body.items.map((c: any) => c.id);
+    expect(ids).toContain(activeId);
+    expect(ids).not.toContain(archivedId);
+  });
+
+  it("GET ?isArchived=all → возвращает и архивных, и активных", async () => {
+    const res = await getA("/api/gaffer/contacts?isArchived=all");
+    expect(res.status).toBe(200);
+
+    const ids = res.body.items.map((c: any) => c.id);
+    expect(ids).toContain(activeId);
+    expect(ids).toContain(archivedId);
+  });
+});
+
+describe("PATCH несуществующего контакта", () => {
+  it("PATCH /contacts/nonexistent → 404", async () => {
+    const res = await patchA("/api/gaffer/contacts/nonexistent-id-xyz")
+      .send({ name: "Новое имя" });
+    expect(res.status).toBe(404);
+  });
+});

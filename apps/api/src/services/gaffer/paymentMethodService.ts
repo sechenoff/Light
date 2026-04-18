@@ -5,7 +5,7 @@
 import type { Request } from "express";
 import { prisma } from "../../prisma";
 import { HttpError } from "../../utils/errors";
-import { gafferWhere, assertGafferTenant } from "./tenant";
+import { gafferWhere } from "./tenant";
 
 export interface CreatePaymentMethodInput {
   name: string;
@@ -60,8 +60,6 @@ export async function updatePaymentMethod(
   data: UpdatePaymentMethodInput,
 ) {
   const { gafferUserId } = gafferWhere(req);
-  const existing = await prisma.gafferPaymentMethod.findUnique({ where: { id } });
-  assertGafferTenant(existing, req);
 
   try {
     return await prisma.$transaction(async (tx) => {
@@ -71,16 +69,24 @@ export async function updatePaymentMethod(
           data: { isDefault: false },
         });
       }
-      return tx.gafferPaymentMethod.update({
-        where: { id },
+
+      const result = await tx.gafferPaymentMethod.updateMany({
+        where: { id, gafferUserId },
         data: {
           ...(data.name !== undefined && { name: data.name.trim() }),
           ...(data.isDefault !== undefined && { isDefault: data.isDefault }),
           ...(data.sortOrder !== undefined && { sortOrder: data.sortOrder }),
         },
       });
+
+      if (result.count === 0) {
+        throw new HttpError(404, "Способ оплаты не найден", "NOT_FOUND");
+      }
+
+      return tx.gafferPaymentMethod.findUnique({ where: { id } }) as Promise<NonNullable<Awaited<ReturnType<typeof tx.gafferPaymentMethod.findUnique>>>>;
     });
   } catch (err: unknown) {
+    if (err instanceof HttpError) throw err;
     const e = err as { code?: string };
     if (e?.code === "P2002") {
       throw new HttpError(409, "Способ оплаты с таким именем уже существует", "PAYMENT_METHOD_NAME_TAKEN");
@@ -91,10 +97,15 @@ export async function updatePaymentMethod(
 
 /** Удалить способ оплаты. GafferPayment.paymentMethodId — SetNull, удаление безопасно. */
 export async function deletePaymentMethod(req: Request, id: string) {
-  const existing = await prisma.gafferPaymentMethod.findUnique({ where: { id } });
-  assertGafferTenant(existing, req);
+  const { gafferUserId } = gafferWhere(req);
 
-  await prisma.gafferPaymentMethod.delete({ where: { id } });
+  const result = await prisma.gafferPaymentMethod.deleteMany({
+    where: { id, gafferUserId },
+  });
+
+  if (result.count === 0) {
+    throw new HttpError(404, "Способ оплаты не найден", "NOT_FOUND");
+  }
 }
 
 /**
@@ -104,22 +115,16 @@ export async function deletePaymentMethod(req: Request, id: string) {
 export async function reorderPaymentMethods(req: Request, ids: string[]) {
   const { gafferUserId } = gafferWhere(req);
 
-  // Проверяем, что все ids принадлежат tenant'у
-  const methods = await prisma.gafferPaymentMethod.findMany({
-    where: { id: { in: ids }, gafferUserId },
-    select: { id: true },
-  });
-
-  if (methods.length !== ids.length) {
-    throw new HttpError(400, "Один или несколько способов оплаты не найдены", "NOT_FOUND");
-  }
-
-  await prisma.$transaction(
-    ids.map((id, index) =>
-      prisma.gafferPaymentMethod.update({
-        where: { id },
+  await prisma.$transaction(async (tx) => {
+    for (let index = 0; index < ids.length; index++) {
+      const id = ids[index];
+      const result = await tx.gafferPaymentMethod.updateMany({
+        where: { id, gafferUserId },
         data: { sortOrder: index },
-      }),
-    ),
-  );
+      });
+      if (result.count !== 1) {
+        throw new HttpError(400, "Один или несколько способов оплаты не найдены", "NOT_FOUND");
+      }
+    }
+  });
 }
