@@ -217,3 +217,231 @@ export async function reorderPaymentMethods(
     body: JSON.stringify({ ids }),
   });
 }
+
+// ── Projects ───────────────────────────────────────────────────────────────
+
+export interface GafferProject {
+  id: string;
+  title: string;
+  status: "OPEN" | "ARCHIVED";
+  shootDate: string; // ISO date string
+  clientPlanAmount: string; // Decimal as string
+  note?: string | null;
+  gafferUserId: string;
+  clientId: string;
+  createdAt: string;
+  updatedAt: string;
+  // Aggregates (returned on list + detail)
+  clientReceived?: string;
+  clientRemaining?: string;
+  teamPlanTotal?: string;
+  teamPaidTotal?: string;
+  teamRemaining?: string;
+  // Relations (on detail)
+  client?: GafferContact;
+  members?: GafferProjectMember[];
+  payments?: GafferPayment[];
+}
+
+export interface GafferProjectMember {
+  id: string;
+  projectId: string;
+  contactId: string;
+  plannedAmount: string; // Decimal as string
+  roleLabel?: string | null;
+  paidToMe?: string; // Decimal as string, computed aggregate
+  remaining?: string; // Decimal as string
+  contact?: GafferContact;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GafferPayment {
+  id: string;
+  projectId: string;
+  direction: "IN" | "OUT";
+  amount: string; // Decimal as string
+  paidAt: string; // ISO date string
+  paymentMethodId?: string | null;
+  memberId?: string | null;
+  comment?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  paymentMethod?: GafferPaymentMethod;
+  member?: GafferProjectMember;
+}
+
+// Debt summary — discriminated union
+export type ContactDebtSummary =
+  | {
+      type: "CLIENT";
+      projects: Array<{
+        id: string;
+        title: string;
+        shootDate: string;
+        status: "OPEN" | "ARCHIVED";
+        clientPlanAmount: string;
+        clientReceived: string;
+        clientRemaining: string;
+      }>;
+      totalClientRemaining: string;
+    }
+  | {
+      type: "TEAM_MEMBER";
+      memberships: Array<{
+        projectId: string;
+        projectTitle: string;
+        shootDate: string;
+        status: "OPEN" | "ARCHIVED";
+        roleLabel?: string | null;
+        plannedAmount: string;
+        paidToMe: string;
+        remaining: string;
+      }>;
+      totalRemaining: string;
+    };
+
+export async function listProjects(params?: {
+  status?: "OPEN" | "ARCHIVED";
+  search?: string;
+  clientId?: string;
+  memberContactId?: string;
+}): Promise<{ items: GafferProject[] }> {
+  const q = new URLSearchParams();
+  if (params?.status) q.set("status", params.status);
+  if (params?.search) q.set("search", params.search);
+  if (params?.clientId) q.set("clientId", params.clientId);
+  if (params?.memberContactId) q.set("memberContactId", params.memberContactId);
+  const qs = q.toString() ? `?${q.toString()}` : "";
+  return gafferFetch(`/projects${qs}`);
+}
+
+export async function getProject(id: string): Promise<{ project: GafferProject }> {
+  return gafferFetch(`/projects/${id}`);
+}
+
+export async function createProject(data: {
+  title: string;
+  clientId: string;
+  shootDate: string;
+  clientPlanAmount: string | number;
+  note?: string;
+}): Promise<{ project: GafferProject }> {
+  return gafferFetch("/projects", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateProject(
+  id: string,
+  data: {
+    title?: string;
+    clientId?: string;
+    shootDate?: string;
+    clientPlanAmount?: string | number;
+    note?: string;
+  },
+): Promise<{ project: GafferProject }> {
+  return gafferFetch(`/projects/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function archiveProject(id: string): Promise<{ project: GafferProject }> {
+  return gafferFetch(`/projects/${id}/archive`, { method: "POST" });
+}
+
+export async function unarchiveProject(id: string): Promise<{ project: GafferProject }> {
+  return gafferFetch(`/projects/${id}/unarchive`, { method: "POST" });
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  return gafferFetch(`/projects/${id}`, { method: "DELETE" });
+}
+
+// ── Project members ────────────────────────────────────────────────────────
+
+export async function addProjectMember(
+  projectId: string,
+  data: { contactId: string; plannedAmount: string | number; roleLabel?: string },
+): Promise<{ member: GafferProjectMember }> {
+  return gafferFetch(`/projects/${projectId}/members`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateProjectMember(
+  memberId: string,
+  data: { plannedAmount?: string | number; roleLabel?: string },
+): Promise<{ member: GafferProjectMember }> {
+  return gafferFetch(`/projects/members/${memberId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function removeProjectMember(memberId: string): Promise<void> {
+  return gafferFetch(`/projects/members/${memberId}`, { method: "DELETE" });
+}
+
+// ── Payments ───────────────────────────────────────────────────────────────
+
+export async function listPayments(params?: {
+  projectId?: string;
+  memberContactId?: string;
+  from?: string;
+  to?: string;
+}): Promise<{ items: GafferPayment[] }> {
+  const q = new URLSearchParams();
+  if (params?.projectId) q.set("projectId", params.projectId);
+  if (params?.memberContactId) q.set("memberContactId", params.memberContactId);
+  if (params?.from) q.set("from", params.from);
+  if (params?.to) q.set("to", params.to);
+  const qs = q.toString() ? `?${q.toString()}` : "";
+  return gafferFetch(`/payments${qs}`);
+}
+
+export async function createPayment(data: {
+  projectId: string;
+  direction: "IN" | "OUT";
+  amount: string | number;
+  paidAt: string;
+  paymentMethodId?: string;
+  memberId?: string;
+  comment?: string;
+}): Promise<{ payment: GafferPayment }> {
+  return gafferFetch("/payments", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updatePayment(
+  id: string,
+  data: {
+    amount?: string | number;
+    paidAt?: string;
+    paymentMethodId?: string | null;
+    comment?: string;
+  },
+): Promise<{ payment: GafferPayment }> {
+  return gafferFetch(`/payments/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePayment(id: string): Promise<void> {
+  return gafferFetch(`/payments/${id}`, { method: "DELETE" });
+}
+
+// ── Contact debt summary ───────────────────────────────────────────────────
+
+export async function getContactDebtSummary(
+  contactId: string,
+): Promise<ContactDebtSummary> {
+  return gafferFetch(`/contacts/${contactId}/debt-summary`);
+}
