@@ -5,7 +5,7 @@ import { apiFetch } from "../../lib/api";
 import { formatRub } from "../../lib/format";
 import { StatusPill } from "../StatusPill";
 import { QuickPaymentModal } from "./QuickPaymentModal";
-import { StatusCell, statusBgClass } from "./StatusCell";
+import { StatusCell } from "./StatusCell";
 import type { OverviewItem } from "./PaymentsTable";
 import type { PaymentsFilter } from "./PaymentsFilterBar";
 
@@ -203,7 +203,7 @@ export function PaymentsByClient({ filter }: Props) {
                           <th className="text-left px-5 py-2 eyebrow">Дата</th>
                           <th className="text-left px-4 py-2 eyebrow w-[110px]">Проект</th>
                           <th className="text-right px-4 py-2 eyebrow">Сумма</th>
-                          <th className="text-left px-4 py-2 eyebrow w-[320px] min-w-[320px]">Статус оплаты</th>
+                          <th className="text-left px-4 py-2 eyebrow w-[440px] min-w-[440px]">Статус оплаты</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -216,7 +216,7 @@ export function PaymentsByClient({ filter }: Props) {
                             <td className="px-4 py-2.5 text-right mono-num font-medium text-ink whitespace-nowrap">
                               {formatRub(b.finalAmount)}
                             </td>
-                            <td className={`px-4 py-2.5 ${statusBgClass(b.paymentStatus)}`}>
+                            <td className="px-4 py-2.5">
                               <StatusCell item={b} onPay={() => setPayingBooking(b)} />
                             </td>
                           </tr>
