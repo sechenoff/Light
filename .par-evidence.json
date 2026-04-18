@@ -1,1 +1,11 @@
-{"sprint":"3B","claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","ts":"2026-04-18T00:00:00Z","notes":"Product re-review after fixes (member edit + payment edit + PROJECT_ARCHIVED mapping + load() guard) commit 2746d96"}
+{
+  "sprint": 1,
+  "feature": "custom-line-item-backend",
+  "claude_product": "ACCEPTED",
+  "technical_review": "APPROVE",
+  "provider": "split-focus",
+  "tests": "685/685 passed (apps/api)",
+  "ts": "2026-04-18T13:56:00+03:00",
+  "commit": "2ae5088",
+  "notes": "Custom line items backend — nullable equipmentId + customName/customCategory/customUnitPrice on BookingItem, fixed price (no shifts multiplier), null-safe readers across dashboard/calendar/estimates/warehouseScan/availability. 10 new tests (3 unit + 7 integration). 3 MEDIUM issues from initial review fixed: CUSTOM_LINE_CATEGORY constant export, Decimal.toString() round-trip, out-of-scope tasks files restored."
+}
