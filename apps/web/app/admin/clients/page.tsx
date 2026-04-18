@@ -195,6 +195,75 @@ function ClientModal({ open, mode, initial = {}, onClose, onSaved }: ClientModal
   );
 }
 
+// ─── Delete Confirmation Modal ───────────────────────────────────────────────
+
+type DeleteModalProps = {
+  open: boolean;
+  clientName: string;
+  loading: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+};
+
+function DeleteConfirmModal({ open, clientName, loading, onConfirm, onClose }: DeleteModalProps) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    // Auto-focus the primary action so Enter confirms (Esc cancels).
+    setTimeout(() => confirmRef.current?.focus(), 50);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !loading) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, loading, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      onClick={() => !loading && onClose()}
+      aria-modal="true"
+      role="dialog"
+      aria-labelledby="delete-client-title"
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-surface p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="delete-client-title" className="text-[17px] font-semibold text-ink mb-2">
+          Удалить клиента?
+        </h2>
+        <p className="text-[13.5px] text-ink-2 mb-5">
+          Клиент <span className="font-medium text-ink">«{clientName}»</span> будет удалён навсегда.
+          Это действие нельзя отменить.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-soft disabled:opacity-50"
+          >
+            Отмена
+          </button>
+          <button
+            ref={confirmRef}
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="rounded bg-rose px-4 py-2 text-sm text-white hover:bg-rose/90 disabled:opacity-50"
+          >
+            {loading ? "Удаляю…" : "Удалить"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function AdminClientsPage() {
@@ -204,6 +273,8 @@ export default function AdminClientsPage() {
   const [fetching, setFetching] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Client | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchClients = async (q: string) => {
@@ -233,12 +304,22 @@ export default function AdminClientsPage() {
     }, 200);
   };
 
-  const handleDelete = async (client: Client) => {
-    const confirmed = window.confirm(`Удалить клиента «${client.name}»? Это действие нельзя отменить.`);
-    if (!confirmed) return;
+  const requestDelete = (client: Client) => {
+    setDeleteTarget(client);
+  };
+
+  const cancelDelete = () => {
+    if (deleting) return;
+    setDeleteTarget(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/api/clients/${client.id}`, { method: "DELETE" });
+      await apiFetch(`/api/clients/${deleteTarget.id}`, { method: "DELETE" });
       toast.success("Клиент удалён");
+      setDeleteTarget(null);
       void fetchClients(search);
     } catch (e: any) {
       if (e?.details === "CLIENT_HAS_BOOKINGS") {
@@ -246,6 +327,8 @@ export default function AdminClientsPage() {
       } else {
         toast.error(e?.message ?? "Ошибка при удалении");
       }
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -353,7 +436,7 @@ export default function AdminClientsPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDelete(client)}
+                        onClick={() => requestDelete(client)}
                         disabled={client.bookingCount > 0}
                         title={
                           client.bookingCount > 0
@@ -380,6 +463,14 @@ export default function AdminClientsPage() {
         initial={editTarget ?? {}}
         onClose={closeModal}
         onSaved={handleSaved}
+      />
+
+      <DeleteConfirmModal
+        open={deleteTarget !== null}
+        clientName={deleteTarget?.name ?? ""}
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onClose={cancelDelete}
       />
     </div>
   );

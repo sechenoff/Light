@@ -609,9 +609,12 @@ router.post("/quote", async (req, res, next) => {
     const client = await prisma.client.upsert({
       where: { name: body.client.name.trim() },
       update: {
-        phone: body.client.phone ?? null,
-        email: body.client.email ?? null,
-        comment: body.client.comment ?? null,
+        // Conditional spread: only write fields that were explicitly provided.
+        // Prevents the booking form (which only collects `name`) from wiping
+        // existing phone/email/comment on a Client when autocomplete is used.
+        ...(body.client.phone !== undefined ? { phone: body.client.phone } : {}),
+        ...(body.client.email !== undefined ? { email: body.client.email } : {}),
+        ...(body.client.comment !== undefined ? { comment: body.client.comment } : {}),
       },
       create: {
         name: body.client.name.trim(),
@@ -682,9 +685,12 @@ router.post("/quote/export", async (req, res, next) => {
     const client = await prisma.client.upsert({
       where: { name: body.client.name.trim() },
       update: {
-        phone: body.client.phone ?? null,
-        email: body.client.email ?? null,
-        comment: body.client.comment ?? null,
+        // Conditional spread: only write fields that were explicitly provided.
+        // Prevents the booking form (which only collects `name`) from wiping
+        // existing phone/email/comment on a Client when autocomplete is used.
+        ...(body.client.phone !== undefined ? { phone: body.client.phone } : {}),
+        ...(body.client.email !== undefined ? { email: body.client.email } : {}),
+        ...(body.client.comment !== undefined ? { comment: body.client.comment } : {}),
       },
       create: {
         name: body.client.name.trim(),
@@ -829,9 +835,12 @@ router.post("/draft", async (req, res, next) => {
     const client = await prisma.client.upsert({
       where: { name: body.client.name.trim() },
       update: {
-        phone: body.client.phone ?? null,
-        email: body.client.email ?? null,
-        comment: body.client.comment ?? null,
+        // Conditional spread: only write fields that were explicitly provided.
+        // Prevents the booking form (which only collects `name`) from wiping
+        // existing phone/email/comment on a Client when autocomplete is used.
+        ...(body.client.phone !== undefined ? { phone: body.client.phone } : {}),
+        ...(body.client.email !== undefined ? { email: body.client.email } : {}),
+        ...(body.client.comment !== undefined ? { comment: body.client.comment } : {}),
       },
       create: {
         name: body.client.name.trim(),

@@ -1,11 +1,17 @@
 {
-  "sprint": "3C",
-  "feature": "gaffer-budget-split-and-crew-calc-integration",
+  "sprint": "clients-crud",
+  "feature": "clients-crud-and-autocomplete",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "tests": "25 files / 174 tests passed (apps/web)",
-  "ts": "2026-04-18T19:05:00+03:00",
-  "commit": "058ec30",
-  "notes": "Budget split: clientPlanAmount (бюджет на осветителей) + new lightBudgetAmount (бюджет на свет) → clientTotal computed server-side via Decimal.plus, remainder clamped >=0. Crew calculator at /gaffer/crew-calculator auto-fills via ?crewAmount= query param. Use-as-client flow via ReturnToProjectBanner on contacts/[id]. Fixer commit 058ec30 closed all 6 re-review blockers: F1 form-state loss (sessionStorage draft on both new + edit), F2 duplicate 'Итого бюджет' (first grid cell renamed to 'К получению'), F5 grammar 'созданию проекта', F6 disabled CTA at total=0 with hint, #1 double-? URL bug (sep = includes('?') ? '&' : '?'), #2 open-redirect (startsWith('/gaffer/') guard on all 3 return paths — router.push, back Link, cancel Link). Schema: lightBudgetAmount Decimal @default(0) non-nullable with default, safe for prisma db push on existing rows."
+  "ts": "2026-04-18T16:14:37+03:00",
+  "tests": {
+    "api": { "suites": 50, "tests": 705, "status": "passed" },
+    "web": { "suites": 25, "tests": 174, "status": "passed" }
+  },
+  "tsc": {
+    "api": "clean",
+    "web": "pre-existing TS2578 in formatWaitingTime.test.ts only (unchanged on main, unrelated)"
+  },
+  "notes": "Feature: SUPER_ADMIN-only CRUD at /admin/clients (search, list, create, edit, delete with FK-safe 409 when bookings exist) + client name autocomplete on /bookings/new (debounced 200 ms, keyboard-navigable combobox with ARIA, '+ Добавить нового клиента' action at bottom when no match).\n\nReview findings (3 HIGH + 3 MED + 1 LOW actionable) all fixed before merge:\n- Product HIGH #1 (data integrity): booking upsert update-branch overwrote existing Client phone/email/comment with null because the booking form only collects name. Patched all 3 call-sites in apps/api/src/routes/bookings.ts with conditional spread so undefined fields are not sent to Prisma.\n- Product HIGH #2 / #3 (UX clarity): ClientAutocomplete now shows 'Будет создан новый клиент' hint (ink-3, aria-live polite) when input has no exact match, and '✓ выбран существующий клиент' (emerald) after the user picks an existing one.\n- Technical HIGH #1 (search correctness): SQLite LIKE is case-sensitive for non-ASCII. Autocomplete now fetches limit=50 superset and filters client-side via toLocaleLowerCase('ru'), so 'АРТ' matches 'арт-пикчерс'.\n- Technical MED #2 (race safety): AbortController cancels in-flight fetches on new input, preventing late responses from clobbering fresher ones.\n- Product MED #4 (canon consistency): /admin/clients delete no longer uses window.confirm. New DeleteConfirmModal follows RejectBookingModal pattern: aria-modal, Esc-close, backdrop dismissal, auto-focus primary action, rose destructive styling.\n- Technical LOW #6 (regression guard): integration test in clients.test.ts asserts sparse PATCH (only name) leaves phone/email/comment untouched at both response and DB level."
 }
