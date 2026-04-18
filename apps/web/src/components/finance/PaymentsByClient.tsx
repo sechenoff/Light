@@ -5,6 +5,7 @@ import { apiFetch } from "../../lib/api";
 import { formatRub } from "../../lib/format";
 import { StatusPill } from "../StatusPill";
 import { QuickPaymentModal } from "./QuickPaymentModal";
+import { StatusCell } from "./StatusCell";
 import type { OverviewItem } from "./PaymentsTable";
 import type { PaymentsFilter } from "./PaymentsFilterBar";
 
@@ -202,9 +203,7 @@ export function PaymentsByClient({ filter }: Props) {
                           <th className="text-left px-5 py-2 eyebrow">Дата</th>
                           <th className="text-left px-4 py-2 eyebrow">Проект</th>
                           <th className="text-right px-4 py-2 eyebrow">Сумма</th>
-                          <th className="text-right px-4 py-2 eyebrow">Оплачено</th>
-                          <th className="px-4 py-2 eyebrow">Статус</th>
-                          <th className="w-8" />
+                          <th className="text-left px-4 py-2 eyebrow w-[220px]">Статус оплаты</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -217,35 +216,8 @@ export function PaymentsByClient({ filter }: Props) {
                             <td className="px-4 py-2.5 text-right mono-num font-medium text-ink whitespace-nowrap">
                               {formatRub(b.finalAmount)}
                             </td>
-                            <td className="px-4 py-2.5 text-right mono-num whitespace-nowrap">
-                              <span className={Number(b.amountOutstanding) > 0 ? "text-amber" : "text-emerald"}>
-                                {formatRub(b.amountPaid)}
-                              </span>
-                            </td>
                             <td className="px-4 py-2.5">
-                              <StatusPill
-                                variant={
-                                  b.paymentStatus === "PAID" ? "ok" :
-                                  b.paymentStatus === "PARTIALLY_PAID" ? "warn" :
-                                  b.paymentStatus === "OVERDUE" ? "alert" : "none"
-                                }
-                                label={
-                                  b.paymentStatus === "PAID" ? "Оплачено" :
-                                  b.paymentStatus === "PARTIALLY_PAID" ? "Частично" :
-                                  b.paymentStatus === "OVERDUE" ? "Просрочено" : "Не оплачено"
-                                }
-                              />
-                            </td>
-                            <td className="px-3 py-2.5">
-                              {b.paymentStatus !== "PAID" && (
-                                <button
-                                  onClick={() => setPayingBooking(b)}
-                                  aria-label="Добавить платёж"
-                                  className="text-accent hover:text-accent-bright font-medium"
-                                >
-                                  +₽
-                                </button>
-                              )}
+                              <StatusCell item={b} onPay={() => setPayingBooking(b)} />
                             </td>
                           </tr>
                         ))}
