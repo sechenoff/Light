@@ -76,11 +76,12 @@ interface PaymentFormProps {
   projectId: string;
   memberId?: string;
   methods: GafferPaymentMethod[];
+  isArchived?: boolean;
   onDone: () => void;
   onCancel: () => void;
 }
 
-function PaymentForm({ direction, projectId, memberId, methods, onDone, onCancel }: PaymentFormProps) {
+function PaymentForm({ direction, projectId, memberId, methods, isArchived, onDone, onCancel }: PaymentFormProps) {
   const [form, setForm] = useState<PaymentFormData>(emptyPaymentForm);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -107,7 +108,7 @@ function PaymentForm({ direction, projectId, memberId, methods, onDone, onCancel
     } catch (e) {
       if (e instanceof GafferApiError) {
         if (e.code === "INVALID_AMOUNT") setErr("Некорректная сумма");
-        else if (e.code === "PROJECT_ARCHIVED") setErr("Проект в архиве");
+        else if (e.code === "PROJECT_ARCHIVED") setErr("Проект в архиве — изменения недоступны");
         else if (e.code === "MEMBER_REQUIRED_FOR_OUT") setErr("Укажите участника для выплаты");
         else setErr(e.message);
       } else {
@@ -172,7 +173,7 @@ function PaymentForm({ direction, projectId, memberId, methods, onDone, onCancel
       <div className="flex gap-2 pt-1">
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || isArchived}
           className="flex-1 bg-accent-bright hover:bg-accent text-white text-[12.5px] font-medium rounded px-3 py-2 transition-colors disabled:opacity-50"
         >
           {saving ? "Сохраняем…" : "Добавить"}
@@ -195,12 +196,21 @@ function PaymentRow({
   payment,
   methods,
   onDelete,
+  onUpdate,
 }: {
   payment: GafferPayment;
   methods: GafferPaymentMethod[];
   onDelete: (id: string) => void;
+  onUpdate: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editAmount, setEditAmount] = useState("");
+  const [editPaidAt, setEditPaidAt] = useState("");
+  const [editMethodId, setEditMethodId] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editErr, setEditErr] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const methodName = methods.find((m) => m.id === payment.paymentMethodId)?.name;
 
@@ -212,37 +222,157 @@ function PaymentRow({
     return () => document.removeEventListener("mousedown", handle);
   }, [menuOpen]);
 
+  function startEdit() {
+    setEditAmount(String(Number(payment.amount)));
+    setEditPaidAt(payment.paidAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10));
+    setEditMethodId(payment.paymentMethodId ?? "");
+    setEditNote(payment.comment ?? "");
+    setEditErr(null);
+    setShowEditForm(true);
+    setMenuOpen(false);
+  }
+
+  async function handleEditSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editAmount || Number(editAmount) <= 0) {
+      setEditErr("Введите сумму");
+      return;
+    }
+    setEditSaving(true);
+    setEditErr(null);
+    try {
+      await updatePayment(payment.id, {
+        amount: editAmount,
+        paidAt: editPaidAt,
+        paymentMethodId: editMethodId || undefined,
+        comment: editNote.trim() || undefined,
+      });
+      toast.success("Платёж обновлён");
+      setShowEditForm(false);
+      onUpdate();
+    } catch (e) {
+      if (e instanceof GafferApiError) {
+        if (e.code === "PROJECT_ARCHIVED") setEditErr("Проект в архиве — изменения недоступны");
+        else setEditErr(e.message);
+      } else {
+        setEditErr("Не удалось сохранить");
+      }
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   return (
-    <div className="flex items-center gap-2 py-2 border-b border-border last:border-0">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-[13px] font-semibold text-ink mono-num">{formatRub(payment.amount)}</span>
-          {methodName && <span className="text-[11px] text-ink-3">{methodName}</span>}
+    <div className="border-b border-border last:border-0">
+      <div className="flex items-center gap-2 py-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[13px] font-semibold text-ink mono-num">{formatRub(payment.amount)}</span>
+            {methodName && <span className="text-[11px] text-ink-3">{methodName}</span>}
+          </div>
+          <div className="text-[11px] text-ink-3 flex gap-1.5">
+            <span>{formatShootDate(payment.paidAt)}</span>
+            {payment.comment && <span className="truncate">· {payment.comment}</span>}
+          </div>
         </div>
-        <div className="text-[11px] text-ink-3 flex gap-1.5">
-          <span>{formatShootDate(payment.paidAt)}</span>
-          {payment.comment && <span className="truncate">· {payment.comment}</span>}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={startEdit}
+            className="w-7 h-7 flex items-center justify-center text-ink-3 hover:text-ink rounded text-[14px]"
+            aria-label="Редактировать платёж"
+          >
+            ✎
+          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              className="w-7 h-7 flex items-center justify-center text-ink-3 hover:text-ink rounded text-[16px]"
+              aria-label="Действия с платежом"
+            >
+              ⋯
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-8 bg-surface border border-border rounded-lg shadow-sm z-20 w-36 py-1">
+                <button
+                  onClick={() => { setMenuOpen(false); onDelete(payment.id); }}
+                  className="w-full text-left px-4 py-2.5 text-[12.5px] text-rose hover:bg-rose-soft transition-colors"
+                >
+                  Удалить
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-      <div className="relative shrink-0" ref={menuRef}>
-        <button
-          onClick={() => setMenuOpen((o) => !o)}
-          className="w-7 h-7 flex items-center justify-center text-ink-3 hover:text-ink rounded text-[16px]"
-          aria-label="Действия с платежом"
-        >
-          ⋯
-        </button>
-        {menuOpen && (
-          <div className="absolute right-0 top-8 bg-surface border border-border rounded-lg shadow-sm z-20 w-36 py-1">
+      {showEditForm && (
+        <form onSubmit={handleEditSave} className="bg-[#fafafa] border border-border rounded p-3 mb-2 space-y-2">
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-[11px] text-ink-3 mb-0.5">Сумма ₽</label>
+              <input
+                autoFocus
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[11px] text-ink-3 mb-0.5">Дата</label>
+              <input
+                type="date"
+                value={editPaidAt}
+                onChange={(e) => setEditPaidAt(e.target.value)}
+                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+              />
+            </div>
+          </div>
+          {methods.length > 0 && (
+            <div>
+              <label className="block text-[11px] text-ink-3 mb-0.5">Способ оплаты</label>
+              <select
+                value={editMethodId}
+                onChange={(e) => setEditMethodId(e.target.value)}
+                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+              >
+                <option value="">— не указан —</option>
+                {methods.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="block text-[11px] text-ink-3 mb-0.5">Комментарий</label>
+            <input
+              type="text"
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="Необязательно"
+              className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+            />
+          </div>
+          {editErr && <p className="text-rose text-[11.5px]">{editErr}</p>}
+          <div className="flex gap-2 pt-1">
             <button
-              onClick={() => { setMenuOpen(false); onDelete(payment.id); }}
-              className="w-full text-left px-4 py-2.5 text-[12.5px] text-rose hover:bg-rose-soft transition-colors"
+              type="submit"
+              disabled={editSaving}
+              className="flex-1 bg-accent-bright hover:bg-accent text-white text-[12.5px] font-medium rounded px-3 py-2 transition-colors disabled:opacity-50"
             >
-              Удалить
+              {editSaving ? "Сохраняем…" : "Сохранить"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowEditForm(false)}
+              className="flex-1 bg-surface border border-border text-ink text-[12.5px] rounded px-3 py-2 hover:bg-[#fafafa] transition-colors"
+            >
+              Отмена
             </button>
           </div>
-        )}
-      </div>
+        </form>
+      )}
     </div>
   );
 }
@@ -253,18 +383,61 @@ function MemberRow({
   member,
   methods,
   projectId,
+  isArchived,
   onUpdate,
 }: {
   member: GafferProjectMember;
   methods: GafferPaymentMethod[];
   projectId: string;
+  isArchived?: boolean;
   onUpdate: () => void;
 }) {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editPlannedAmount, setEditPlannedAmount] = useState("");
+  const [editRoleLabel, setEditRoleLabel] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editErr, setEditErr] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  function startEdit() {
+    setEditPlannedAmount(String(Number(member.plannedAmount ?? 0)));
+    setEditRoleLabel(member.roleLabel ?? "");
+    setEditErr(null);
+    setShowEditForm(true);
+    setMenuOpen(false);
+  }
+
+  async function handleEditSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editPlannedAmount || Number(editPlannedAmount) < 0) {
+      setEditErr("Введите корректную сумму");
+      return;
+    }
+    setEditSaving(true);
+    setEditErr(null);
+    try {
+      await updateProjectMember(member.id, {
+        plannedAmount: editPlannedAmount,
+        roleLabel: editRoleLabel.trim() || undefined,
+      });
+      toast.success("Участник обновлён");
+      setShowEditForm(false);
+      onUpdate();
+    } catch (e) {
+      if (e instanceof GafferApiError) {
+        if (e.code === "PROJECT_ARCHIVED") setEditErr("Проект в архиве — изменения недоступны");
+        else setEditErr(e.message);
+      } else {
+        setEditErr("Не удалось сохранить");
+      }
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   useEffect(() => {
     function handle(e: MouseEvent) {
@@ -325,6 +498,13 @@ function MemberRow({
           >
             + выплата
           </button>
+          <button
+            onClick={startEdit}
+            className="w-7 h-7 flex items-center justify-center text-ink-3 hover:text-ink rounded text-[14px]"
+            aria-label="Редактировать участника"
+          >
+            ✎
+          </button>
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((o) => !o)}
@@ -347,12 +527,59 @@ function MemberRow({
         </div>
       </div>
 
+      {showEditForm && (
+        <form onSubmit={handleEditSave} className="bg-[#fafafa] border border-border rounded p-3 mt-2 space-y-2">
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-[11px] text-ink-3 mb-0.5">Роль</label>
+              <input
+                autoFocus
+                type="text"
+                value={editRoleLabel}
+                onChange={(e) => setEditRoleLabel(e.target.value)}
+                placeholder="Оператор, АС…"
+                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[11px] text-ink-3 mb-0.5">Сумма ₽</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={editPlannedAmount}
+                onChange={(e) => setEditPlannedAmount(e.target.value)}
+                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+              />
+            </div>
+          </div>
+          {editErr && <p className="text-rose text-[11.5px]">{editErr}</p>}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={editSaving}
+              className="flex-1 bg-accent-bright hover:bg-accent text-white text-[12.5px] font-medium rounded px-3 py-2 transition-colors disabled:opacity-50"
+            >
+              {editSaving ? "Сохраняем…" : "Сохранить"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowEditForm(false)}
+              className="flex-1 bg-surface border border-border text-ink text-[12.5px] rounded px-3 py-2 hover:bg-[#fafafa] transition-colors"
+            >
+              Отмена
+            </button>
+          </div>
+        </form>
+      )}
+
       {showPaymentForm && (
         <PaymentForm
           direction="OUT"
           projectId={projectId}
           memberId={member.id}
           methods={methods}
+          isArchived={isArchived}
           onDone={() => { setShowPaymentForm(false); onUpdate(); }}
           onCancel={() => setShowPaymentForm(false)}
         />
@@ -396,11 +623,13 @@ function MemberRow({
 function AddMemberForm({
   projectId,
   methods,
+  isArchived,
   onDone,
   onCancel,
 }: {
   projectId: string;
   methods: GafferPaymentMethod[];
+  isArchived?: boolean;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -444,6 +673,7 @@ function AddMemberForm({
         if (e.code === "MEMBER_ALREADY_IN_PROJECT") setErr("Участник уже в проекте");
         else if (e.code === "MEMBER_ARCHIVED") setErr("Этот контакт в архиве");
         else if (e.code === "INVALID_MEMBER_TYPE") setErr("Контакт должен быть типа «Команда»");
+        else if (e.code === "PROJECT_ARCHIVED") setErr("Проект в архиве — изменения недоступны");
         else setErr(e.message);
       } else {
         setErr("Не удалось добавить");
@@ -500,7 +730,7 @@ function AddMemberForm({
       <div className="flex gap-2 pt-1">
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || isArchived}
           className="flex-1 bg-accent-bright hover:bg-accent text-white text-[12.5px] font-medium rounded px-3 py-2 transition-colors disabled:opacity-50"
         >
           {saving ? "Добавляем…" : "Добавить"}
@@ -524,6 +754,7 @@ export default function GafferProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [methods, setMethods] = useState<GafferPaymentMethod[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Edit mode
   const [editing, setEditing] = useState(false);
@@ -544,23 +775,6 @@ export default function GafferProjectDetailPage() {
   // Modals
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-
-  // Load project + methods
-  async function load() {
-    try {
-      const [projRes, methodsRes] = await Promise.all([
-        getProject(id),
-        listPaymentMethods().catch(() => ({ items: [] })),
-      ]);
-      setProject(projRes.project);
-      setMethods(methodsRes.items);
-    } catch (e) {
-      if (e instanceof GafferApiError && e.status === 404) setNotFound(true);
-      else setNotFound(true);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   useEffect(() => {
     let cancelled = false;
@@ -585,7 +799,7 @@ export default function GafferProjectDetailPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, refreshKey]);
 
   // Start editing
   function startEdit() {
@@ -608,7 +822,7 @@ export default function GafferProjectDetailPage() {
         note: editNote.trim() || "",
       });
       setEditing(false);
-      await load();
+      setRefreshKey((k) => k + 1);
       toast.success("Проект обновлён");
     } catch (e) {
       toast.error(e instanceof GafferApiError ? e.message : "Ошибка сохранения");
@@ -649,7 +863,7 @@ export default function GafferProjectDetailPage() {
     try {
       await deletePayment(paymentId);
       toast.success("Платёж удалён");
-      await load();
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error("Не удалось удалить платёж");
     }
@@ -842,6 +1056,7 @@ export default function GafferProjectDetailPage() {
                     payment={p}
                     methods={methods}
                     onDelete={handleDeletePayment}
+                    onUpdate={() => setRefreshKey((k) => k + 1)}
                   />
                 ))}
               </div>
@@ -859,7 +1074,8 @@ export default function GafferProjectDetailPage() {
                 direction="IN"
                 projectId={id}
                 methods={methods}
-                onDone={() => { setShowInPaymentForm(false); load(); }}
+                isArchived={project.status === "ARCHIVED"}
+                onDone={() => { setShowInPaymentForm(false); setRefreshKey((k) => k + 1); }}
                 onCancel={() => setShowInPaymentForm(false)}
               />
             )}
@@ -894,7 +1110,8 @@ export default function GafferProjectDetailPage() {
                     member={m}
                     methods={methods}
                     projectId={id}
-                    onUpdate={load}
+                    isArchived={project.status === "ARCHIVED"}
+                    onUpdate={() => setRefreshKey((k) => k + 1)}
                   />
                 ))}
               </div>
@@ -911,7 +1128,8 @@ export default function GafferProjectDetailPage() {
               <AddMemberForm
                 projectId={id}
                 methods={methods}
-                onDone={() => { setShowAddMemberForm(false); load(); }}
+                isArchived={project.status === "ARCHIVED"}
+                onDone={() => { setShowAddMemberForm(false); setRefreshKey((k) => k + 1); }}
                 onCancel={() => setShowAddMemberForm(false)}
               />
             )}
