@@ -524,6 +524,7 @@ router.get("/finance/payments-overview", superAdminOnly, async (req, res, next) 
         paymentStatus: b.paymentStatus,
         status: b.status,
         overdueDays,
+        isLegacyImport: b.isLegacyImport,
       };
     });
 

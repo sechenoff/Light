@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatRub } from "../../lib/format";
 import { QuickPaymentModal } from "./QuickPaymentModal";
+import { BookingQuickEditModal } from "./BookingQuickEditModal";
 import { StatusCell } from "./StatusCell";
 
 export interface OverviewItem {
@@ -18,6 +19,7 @@ export interface OverviewItem {
   paymentStatus: string;
   status: string;
   overdueDays: number;
+  isLegacyImport: boolean;
 }
 
 export const PAYMENT_STATUS_LABELS: Record<string, string> = {
@@ -34,8 +36,19 @@ interface Props {
   onRefresh: () => void;
 }
 
+/**
+ * Нормализует projectName для компактного отображения в объединённой графе «Клиент / проект».
+ * Для legacy-импортов срезает префикс «Импорт: » и расширение файла (.xlsx/.xls/.csv).
+ */
+function displayProjectName(projectName: string): string {
+  let name = projectName.replace(/^Импорт:\s*/i, "").trim();
+  name = name.replace(/\.(xlsx|xls|csv)$/i, "");
+  return name || projectName;
+}
+
 export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) {
   const [payingBooking, setPayingBooking] = useState<OverviewItem | null>(null);
+  const [editingBooking, setEditingBooking] = useState<OverviewItem | null>(null);
 
   if (loading && items.length === 0) {
     return (
@@ -57,17 +70,17 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) 
             <tr className="border-b border-border bg-surface-subtle">
               <th className="text-left px-4 py-3 eyebrow">Дата</th>
               <th className="text-left px-4 py-3 eyebrow">Период</th>
-              <th className="text-left px-4 py-3 eyebrow">Клиент</th>
-              <th className="text-left px-4 py-3 eyebrow w-[110px]">Проект</th>
-              <th className="text-right px-4 py-3 eyebrow">Сумма</th>
+              <th className="text-left px-4 py-3 eyebrow">Клиент / проект</th>
+              <th className="text-right pl-4 pr-8 py-3 eyebrow w-[140px]">Сумма</th>
               <th className="text-left px-4 py-3 eyebrow w-[440px] min-w-[440px]">Статус оплаты</th>
+              <th className="px-2 py-3 w-[40px]"></th>
             </tr>
           </thead>
           <tbody>
             {items.map((item) => (
               <tr key={item.id} className="border-b border-border last:border-0 hover:bg-surface-subtle">
                 {/* Start date */}
-                <td className="px-4 py-3 text-ink-2 mono-num text-xs whitespace-nowrap">
+                <td className="px-4 py-3 text-ink font-semibold mono-num text-xs whitespace-nowrap">
                   {new Date(item.startDate).toLocaleDateString("ru-RU")}
                 </td>
                 {/* Period */}
@@ -76,21 +89,41 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) 
                   {" — "}
                   {new Date(item.endDate).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
                 </td>
-                {/* Client */}
-                <td className="px-4 py-3 text-ink font-medium max-w-[160px] truncate">
-                  {item.client.name}
+                {/* Client / project — merged */}
+                <td className="px-4 py-3 max-w-[280px] truncate" title={`${item.client.name} / ${item.projectName}`}>
+                  <span className="text-ink font-medium">{item.client.name}</span>
+                  <span className="text-ink-3 mx-1">/</span>
+                  <span className="text-ink-2">{displayProjectName(item.projectName)}</span>
                 </td>
-                {/* Project */}
-                <td className="px-4 py-3 text-ink-2 text-xs max-w-[110px] truncate">
-                  {item.projectName}
-                </td>
-                {/* Amount */}
-                <td className="px-4 py-3 text-right mono-num font-medium text-ink whitespace-nowrap">
+                {/* Amount — сдвинуто левее через pr-8 */}
+                <td className="pl-4 pr-8 py-3 text-right mono-num font-medium text-ink whitespace-nowrap">
                   {formatRub(item.finalAmount)}
                 </td>
                 {/* Status cell — variant C */}
                 <td className="px-4 py-3">
                   <StatusCell item={item} onPay={() => setPayingBooking(item)} />
+                </td>
+                {/* Edit action */}
+                <td className="px-2 py-3 text-center">
+                  <button
+                    onClick={() => setEditingBooking(item)}
+                    aria-label="Редактировать бронь"
+                    title="Редактировать клиента, проект, сумму"
+                    className="p-1.5 rounded text-ink-3 hover:text-accent hover:bg-accent-soft transition-colors"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="w-4 h-4"
+                    >
+                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                    </svg>
+                  </button>
                 </td>
               </tr>
             ))}
@@ -116,6 +149,17 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) 
           onClose={() => setPayingBooking(null)}
           onSaved={() => {
             setPayingBooking(null);
+            onRefresh();
+          }}
+        />
+      )}
+
+      {editingBooking && (
+        <BookingQuickEditModal
+          booking={editingBooking}
+          onClose={() => setEditingBooking(null)}
+          onSaved={() => {
+            setEditingBooking(null);
             onRefresh();
           }}
         />

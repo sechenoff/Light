@@ -17,7 +17,7 @@ import { buildQuoteXml } from "../services/quoteExport";
 import { buildSmetaExportDocument, writeSmetaPdf, writeSmetaXlsx } from "../services/smetaExport";
 import { formatExportHourCalculationLine } from "../utils/dates";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
-import { createFinanceEvent, recomputeBookingFinance } from "../services/finance";
+import { calcBookingPaymentStatus, createFinanceEvent, recomputeBookingFinance } from "../services/finance";
 import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { writeAuditEntry, diffFields } from "../services/audit";
@@ -927,6 +927,117 @@ const backdateSchema = z.object({
   startDate: bookingRangeStringSchema.optional(),
   endDate: bookingRangeStringSchema.optional(),
   reason: z.string().min(1, "Укажите причину изменения дат"),
+});
+
+const financeCorrectionsSchema = z
+  .object({
+    clientId: z.string().min(1).optional(),
+    projectName: z.string().min(1).optional(),
+    finalAmount: z.coerce.number().nonnegative().optional(),
+  })
+  .refine((v) => v.clientId !== undefined || v.projectName !== undefined || v.finalAmount !== undefined, {
+    message: "Укажите хотя бы одно поле для изменения",
+  });
+
+/**
+ * PATCH /api/bookings/:id/finance-corrections
+ * Быстрые финансовые корректировки на странице /finance/payments-overview.
+ * Разрешает точечно менять клиента, проект и (для legacy-импортов) итоговую сумму брони.
+ * Доступ: только SUPER_ADMIN. Пишет AuditEntry.
+ */
+router.patch("/:id/finance-corrections", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const body = financeCorrectionsSchema.parse(req.body);
+
+    if (!req.adminUser) {
+      throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+    }
+    const { userId } = req.adminUser;
+
+    const existing = await prisma.booking.findUnique({
+      where: { id },
+      include: { client: true },
+    });
+    if (!existing) throw new HttpError(404, "Бронь не найдена");
+
+    if (body.finalAmount !== undefined && !existing.isLegacyImport) {
+      throw new HttpError(
+        409,
+        "Ручное изменение итоговой суммы разрешено только для legacy-импортов. Откройте карточку брони и отредактируйте смету.",
+        "FINANCE_OVERRIDE_FORBIDDEN",
+      );
+    }
+
+    let nextClient = existing.client;
+    if (body.clientId && body.clientId !== existing.clientId) {
+      const candidate = await prisma.client.findUnique({ where: { id: body.clientId } });
+      if (!candidate) throw new HttpError(404, "Клиент не найден", "CLIENT_NOT_FOUND");
+      nextClient = candidate;
+    }
+
+    const updateData: Prisma.BookingUpdateInput = {};
+    if (body.clientId && body.clientId !== existing.clientId) {
+      updateData.client = { connect: { id: body.clientId } };
+    }
+    if (body.projectName !== undefined) {
+      updateData.projectName = body.projectName.trim();
+    }
+
+    if (body.finalAmount !== undefined) {
+      const finalDec = new Decimal(body.finalAmount).toDecimalPlaces(2);
+      const amountPaidDec = new Decimal(existing.amountPaid.toString());
+      const outstandingDec = Decimal.max(finalDec.sub(amountPaidDec), new Decimal(0));
+      const paymentStatus = calcBookingPaymentStatus({
+        finalAmount: finalDec,
+        amountPaid: amountPaidDec,
+        expectedPaymentDate: existing.expectedPaymentDate,
+      });
+      updateData.totalEstimateAmount = finalDec.toString();
+      updateData.finalAmount = finalDec.toString();
+      updateData.amountOutstanding = outstandingDec.toString();
+      updateData.paymentStatus = paymentStatus;
+      updateData.isFullyPaid = paymentStatus === "PAID";
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.update({
+        where: { id },
+        data: updateData,
+        include: { client: true, items: { include: { equipment: true } }, estimate: { include: { lines: true } } },
+      });
+
+      await writeAuditEntry({
+        tx,
+        userId,
+        action: "BOOKING_CORRECTED",
+        entityType: "Booking",
+        entityId: id,
+        before: diffFields({
+          clientId: existing.clientId,
+          clientName: existing.client.name,
+          projectName: existing.projectName,
+          finalAmount: existing.finalAmount.toString(),
+          amountOutstanding: existing.amountOutstanding.toString(),
+          paymentStatus: existing.paymentStatus,
+        }),
+        after: diffFields({
+          clientId: booking.clientId,
+          clientName: nextClient.name,
+          projectName: booking.projectName,
+          finalAmount: booking.finalAmount.toString(),
+          amountOutstanding: booking.amountOutstanding.toString(),
+          paymentStatus: booking.paymentStatus,
+        }),
+      });
+
+      return booking;
+    });
+
+    res.json({ booking: serializeBookingForApi(updated as any) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 /** PATCH /api/bookings/:id/backdate — смена дат задним числом (только SUPER_ADMIN). Пишет AuditEntry. */
