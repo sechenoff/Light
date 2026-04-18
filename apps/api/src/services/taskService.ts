@@ -40,6 +40,42 @@ export async function validateAssignee(
   }
 }
 
+// ─── enrichTasksWithUsers ─────────────────────────────────────────────────────
+
+/**
+ * Joins AdminUser rows for createdBy/assignedTo/completedBy (no FK in schema).
+ * Returns tasks with `createdByUser`, `assignedToUser`, `completedByUser` populated.
+ */
+export async function enrichTasksWithUsers<
+  T extends { createdBy: string; assignedTo: string | null; completedBy: string | null },
+>(tasks: T[]): Promise<Array<T & {
+  createdByUser: { id: string; username: string } | null;
+  assignedToUser: { id: string; username: string } | null;
+  completedByUser: { id: string; username: string } | null;
+}>> {
+  if (tasks.length === 0) return [] as any;
+  const ids = new Set<string>();
+  for (const t of tasks) {
+    if (t.createdBy) ids.add(t.createdBy);
+    if (t.assignedTo) ids.add(t.assignedTo);
+    if (t.completedBy) ids.add(t.completedBy);
+  }
+  const users =
+    ids.size > 0
+      ? await prisma.adminUser.findMany({
+          where: { id: { in: Array.from(ids) } },
+          select: { id: true, username: true },
+        })
+      : [];
+  const userMap = new Map(users.map((u) => [u.id, u]));
+  return tasks.map((t) => ({
+    ...t,
+    createdByUser: userMap.get(t.createdBy) ?? null,
+    assignedToUser: t.assignedTo ? (userMap.get(t.assignedTo) ?? null) : null,
+    completedByUser: t.completedBy ? (userMap.get(t.completedBy) ?? null) : null,
+  })) as any;
+}
+
 // ─── createTask ───────────────────────────────────────────────────────────────
 
 export interface CreateTaskInput {
@@ -332,8 +368,9 @@ export async function listTasks(input: ListTasksInput, actor: Actor) {
   });
 
   const nextCursor = tasks.length === limit ? tasks[tasks.length - 1].id : null;
+  const enriched = await enrichTasksWithUsers(tasks);
 
-  return { items: tasks, nextCursor };
+  return { items: enriched, nextCursor };
 }
 
 // ─── getTask (single) ─────────────────────────────────────────────────────────

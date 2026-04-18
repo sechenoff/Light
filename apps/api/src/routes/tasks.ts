@@ -21,7 +21,15 @@ import {
   deleteTask,
   listTasks,
   getTask,
+  enrichTasksWithUsers,
 } from "../services/taskService";
+
+async function enrichOne<T extends { createdBy: string; assignedTo: string | null; completedBy: string | null }>(
+  task: T,
+): Promise<any> {
+  const [enriched] = await enrichTasksWithUsers([task]);
+  return enriched;
+}
 
 export const tasksRouter = express.Router();
 
@@ -96,7 +104,7 @@ tasksRouter.post(
       const body = createTaskSchema.parse(req.body);
       const actor = { userId: req.adminUser!.userId, role: req.adminUser!.role as any };
       const task = await createTask(body, actor);
-      res.status(201).json({ task: serializeTask(task) });
+      res.status(201).json({ task: serializeTask(await enrichOne(task)) });
     } catch (err) {
       next(err);
     }
@@ -128,7 +136,7 @@ tasksRouter.patch(
       const body = updateTaskSchema.parse(req.body);
       const actor = { userId: req.adminUser!.userId, role: req.adminUser!.role as any };
       const task = await updateTask(req.params.id, body, actor);
-      res.json({ task: serializeTask(task) });
+      res.json({ task: serializeTask(await enrichOne(task)) });
     } catch (err) {
       next(err);
     }
@@ -144,7 +152,7 @@ tasksRouter.post(
     try {
       const actor = { userId: req.adminUser!.userId, role: req.adminUser!.role as any };
       const task = await completeTask(req.params.id, actor);
-      res.json({ task: serializeTask(task) });
+      res.json({ task: serializeTask(await enrichOne(task)) });
     } catch (err) {
       next(err);
     }
@@ -160,7 +168,7 @@ tasksRouter.post(
     try {
       const actor = { userId: req.adminUser!.userId, role: req.adminUser!.role as any };
       const task = await reopenTask(req.params.id, actor);
-      res.json({ task: serializeTask(task) });
+      res.json({ task: serializeTask(await enrichOne(task)) });
     } catch (err) {
       next(err);
     }

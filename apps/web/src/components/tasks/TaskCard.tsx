@@ -187,9 +187,19 @@ export function TaskCard({
             {task.urgent && !isDone && (
               <span className="text-rose font-bold mr-2">!</span>
             )}
-            {task.title.trim() ? task.title : (
+            {task.title?.trim() ? task.title : (
               <span className="italic text-ink-3">Без названия</span>
             )}
+          </p>
+        )}
+        {/* Описание — если есть */}
+        {task.description?.trim() && !editingTitle && (
+          <p
+            className={`text-[13px] mt-0.5 leading-snug whitespace-pre-wrap ${
+              isDone ? "line-through text-ink-3" : "text-ink-2"
+            }`}
+          >
+            {task.description}
           </p>
         )}
         {/* Мета: поставил + дата создания */}

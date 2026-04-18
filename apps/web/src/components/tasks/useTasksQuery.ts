@@ -57,6 +57,7 @@ export function useTasksQuery(filter: TaskFilter) {
       urgent?: boolean;
       dueDate?: string | null;
       assignedTo?: string | null;
+      description?: string | null;
     }) => {
       const tempId = `temp-${Date.now()}`;
       const optimistic: Task = {
@@ -65,7 +66,7 @@ export function useTasksQuery(filter: TaskFilter) {
         status: "OPEN",
         urgent: input.urgent ?? false,
         dueDate: input.dueDate ?? null,
-        description: null,
+        description: input.description ?? null,
         createdBy: "",
         assignedTo: input.assignedTo ?? null,
         completedBy: null,
