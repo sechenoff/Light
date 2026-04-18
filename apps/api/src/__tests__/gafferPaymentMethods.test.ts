@@ -271,3 +271,44 @@ describe("Cross-tenant изоляция (payment-methods)", () => {
     }
   });
 });
+
+describe("PATCH/DELETE несуществующих способов оплаты", () => {
+  it("PATCH /payment-methods/nonexistent → 404", async () => {
+    const res = await patchA("/api/gaffer/payment-methods/nonexistent-id-xyz")
+      .send({ name: "Новое имя" });
+    expect(res.status).toBe(404);
+  });
+
+  it("DELETE /payment-methods/nonexistent → 404", async () => {
+    const res = await deleteA("/api/gaffer/payment-methods/nonexistent-id-xyz");
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("Reorder: чужой id не влияет на его sortOrder", () => {
+  it("Tenant A reorder с чужим id → 400; sortOrder способа tenant B не меняется", async () => {
+    // Создаём метод у tenant B
+    const bRes = await postB("/api/gaffer/payment-methods")
+      .send({ name: "Метод Б для изоляции reorder" });
+    const foreignId = bRes.body.item.id as string;
+
+    // Получаем исходный sortOrder у B
+    const beforeList = await getB("/api/gaffer/payment-methods");
+    const bItemBefore = beforeList.body.items.find((m: any) => m.id === foreignId);
+
+    // Tenant A пытается переставить: один свой + один чужой
+    const aRes = await postA("/api/gaffer/payment-methods")
+      .send({ name: "Мой метод для reorder изоляции" });
+    const myId = aRes.body.item.id as string;
+
+    const reorderRes = await postA("/api/gaffer/payment-methods/reorder")
+      .send({ ids: [myId, foreignId] });
+
+    expect(reorderRes.status).toBe(400);
+
+    // Убедиться, что sortOrder у метода Б не изменился
+    const afterList = await getB("/api/gaffer/payment-methods");
+    const bItemAfter = afterList.body.items.find((m: any) => m.id === foreignId);
+    expect(bItemAfter.sortOrder).toBe(bItemBefore.sortOrder);
+  });
+});

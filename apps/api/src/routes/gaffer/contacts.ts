@@ -12,6 +12,7 @@
 
 import express from "express";
 import { z } from "zod";
+import { HttpError } from "../../utils/errors";
 import {
   listContacts,
   getContact,
@@ -38,14 +39,13 @@ const createContactSchema = z.object({
 
 const updateContactSchema = createContactSchema
   .partial()
-  .omit({ type: true })
-  .extend({ type: contactTypeSchema.optional() });
+  .omit({ type: true });
 
 const listQuerySchema = z.object({
   type: contactTypeSchema.optional(),
   isArchived: z
-    .enum(["true", "false"])
-    .transform((v) => v === "true")
+    .enum(["true", "false", "all"])
+    .transform((v): boolean | "all" => v === "all" ? "all" : v === "true")
     .optional(),
   search: z.string().optional(),
 });
@@ -56,7 +56,18 @@ function normalizeTelegram(value?: string): string | undefined {
   if (!value) return undefined;
   const trimmed = value.trim();
   if (!trimmed) return undefined;
-  return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+
+  // Strip URL prefixes (case-insensitive): https://t.me/, http://t.me/, t.me/
+  let clean = trimmed.replace(/^https?:\/\/t\.me\//i, "").replace(/^t\.me\//i, "");
+
+  // Strip leading @ signs (possibly multiple)
+  clean = clean.replace(/^@+/, "");
+
+  if (!/^[A-Za-z0-9_]{3,32}$/.test(clean)) {
+    throw new HttpError(400, "Некорректный Telegram-логин", "INVALID_TELEGRAM");
+  }
+
+  return `@${clean}`;
 }
 
 function normalizeOptionalString(value?: string): string | undefined {
@@ -119,7 +130,6 @@ router.patch("/:id", async (req, res, next) => {
   try {
     const body = updateContactSchema.parse(req.body);
     const contact = await updateContact(req, req.params.id, {
-      ...(body.type !== undefined && { type: body.type }),
       ...(body.name !== undefined && { name: body.name }),
       ...(body.phone !== undefined && { phone: normalizeOptionalString(body.phone) ?? null }),
       ...(body.telegram !== undefined && { telegram: normalizeTelegram(body.telegram) ?? null }),
