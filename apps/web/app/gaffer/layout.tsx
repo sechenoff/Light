@@ -60,6 +60,11 @@ function GafferShell({ children }: { children: React.ReactNode }) {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          {pathname === "/gaffer" && (
+            <span className="bg-accent-soft text-accent border border-accent-border rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize">
+              {new Date().toLocaleDateString("ru-RU", { month: "long" })}
+            </span>
+          )}
           <Link
             href="/gaffer/settings"
             className="text-accent-border hover:text-white transition-colors text-xs"

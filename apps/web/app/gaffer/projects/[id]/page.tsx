@@ -119,78 +119,111 @@ function PaymentForm({ direction, projectId, memberId, methods, isArchived, onDo
     }
   }
 
+  const summaryLabel = direction === "IN" ? "+ Новое поступление" : "+ Новая выплата";
+
   return (
-    <form onSubmit={handleSubmit} className="bg-[#fafafa] border border-border rounded p-3 mt-2 space-y-2">
-      <div className="flex gap-2">
-        <div className="flex-1">
-          <label className="block text-[11px] text-ink-3 mb-0.5">Сумма ₽</label>
-          <input
-            autoFocus
-            type="number"
-            min="0.01"
-            step="0.01"
-            value={form.amount}
-            onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
-          />
-        </div>
-        <div className="flex-1">
-          <label className="block text-[11px] text-ink-3 mb-0.5">Дата</label>
-          <input
-            type="date"
-            value={form.paidAt}
-            onChange={(e) => setForm((f) => ({ ...f, paidAt: e.target.value }))}
-            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
-          />
-        </div>
+    <details className="group border border-dashed border-border rounded-md bg-accent-soft overflow-hidden mt-2">
+      <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-accent flex items-center gap-1 list-none">
+        <span className="text-[14px] leading-none group-open:hidden">+</span>
+        <span className="text-[14px] leading-none hidden group-open:inline">−</span>
+        {summaryLabel}
+      </summary>
+      <div className="px-3 pb-3 pt-1 border-t border-dashed border-border">
+        <form onSubmit={handleSubmit} className="space-y-2 mt-1">
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-[11px] text-ink-3 mb-0.5">Сумма ₽</label>
+              <input
+                autoFocus
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.amount}
+                onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[11px] text-ink-3 mb-0.5">Дата</label>
+              <input
+                type="date"
+                value={form.paidAt}
+                onChange={(e) => setForm((f) => ({ ...f, paidAt: e.target.value }))}
+                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+              />
+            </div>
+          </div>
+          {methods.length > 0 && (
+            <div>
+              <label className="block text-[11px] text-ink-3 mb-1">Способ оплаты</label>
+              <div className="flex flex-wrap gap-1.5">
+                {methods.map((m) => {
+                  const active = form.paymentMethodId === m.id;
+                  return (
+                    <label
+                      key={m.id}
+                      className={`cursor-pointer px-2.5 py-1 rounded-full border text-[11px] font-semibold transition ${active ? "bg-accent-bright text-white border-accent-bright" : "bg-surface text-ink-2 border-border hover:border-accent"}`}
+                    >
+                      <input
+                        type="radio"
+                        className="sr-only"
+                        name={`pay-method-${direction}-${projectId}`}
+                        checked={active}
+                        onChange={() => setForm((f) => ({ ...f, paymentMethodId: m.id }))}
+                      />
+                      {m.name}
+                    </label>
+                  );
+                })}
+                <label
+                  className={`cursor-pointer px-2.5 py-1 rounded-full border text-[11px] font-semibold transition ${form.paymentMethodId === "" ? "bg-accent-bright text-white border-accent-bright" : "bg-surface text-ink-2 border-border hover:border-accent"}`}
+                >
+                  <input
+                    type="radio"
+                    className="sr-only"
+                    name={`pay-method-${direction}-${projectId}`}
+                    checked={form.paymentMethodId === ""}
+                    onChange={() => setForm((f) => ({ ...f, paymentMethodId: "" }))}
+                  />
+                  — не указан —
+                </label>
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="block text-[11px] text-ink-3 mb-0.5">Комментарий</label>
+            <input
+              type="text"
+              value={form.comment}
+              onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))}
+              placeholder="Необязательно"
+              className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+            />
+          </div>
+          {err && <p className="text-rose text-[11.5px]">{err}</p>}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={saving || isArchived}
+              className="flex-1 bg-accent-bright hover:bg-accent text-white text-[12.5px] font-medium rounded px-3 py-2 transition-colors disabled:opacity-50"
+            >
+              {saving ? "Сохраняем…" : "Добавить"}
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 bg-surface border border-border text-ink text-[12.5px] rounded px-3 py-2 hover:bg-[#fafafa] transition-colors"
+            >
+              Отмена
+            </button>
+          </div>
+        </form>
       </div>
-      {methods.length > 0 && (
-        <div>
-          <label className="block text-[11px] text-ink-3 mb-0.5">Способ оплаты</label>
-          <select
-            value={form.paymentMethodId}
-            onChange={(e) => setForm((f) => ({ ...f, paymentMethodId: e.target.value }))}
-            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
-          >
-            <option value="">— не указан —</option>
-            {methods.map((m) => (
-              <option key={m.id} value={m.id}>{m.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
-      <div>
-        <label className="block text-[11px] text-ink-3 mb-0.5">Комментарий</label>
-        <input
-          type="text"
-          value={form.comment}
-          onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))}
-          placeholder="Необязательно"
-          className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
-        />
-      </div>
-      {err && <p className="text-rose text-[11.5px]">{err}</p>}
-      <div className="flex gap-2 pt-1">
-        <button
-          type="submit"
-          disabled={saving || isArchived}
-          className="flex-1 bg-accent-bright hover:bg-accent text-white text-[12.5px] font-medium rounded px-3 py-2 transition-colors disabled:opacity-50"
-        >
-          {saving ? "Сохраняем…" : "Добавить"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex-1 bg-surface border border-border text-ink text-[12.5px] rounded px-3 py-2 hover:bg-[#fafafa] transition-colors"
-        >
-          Отмена
-        </button>
-      </div>
-    </form>
+    </details>
   );
 }
 
-// ── Payment row ───────────────────────────────────────────────────────────────
+// ── Payment row (feed-row layout) ─────────────────────────────────────────────
 
 function PaymentRow({
   payment,
@@ -203,7 +236,6 @@ function PaymentRow({
   onDelete: (id: string) => void;
   onUpdate: () => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [editAmount, setEditAmount] = useState("");
   const [editPaidAt, setEditPaidAt] = useState("");
@@ -211,16 +243,8 @@ function PaymentRow({
   const [editNote, setEditNote] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [editErr, setEditErr] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const methodName = methods.find((m) => m.id === payment.paymentMethodId)?.name;
-
-  useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    }
-    if (menuOpen) document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [menuOpen]);
+  const isIN = payment.direction === "IN";
 
   function startEdit() {
     setEditAmount(String(Number(payment.amount)));
@@ -229,7 +253,6 @@ function PaymentRow({
     setEditNote(payment.comment ?? "");
     setEditErr(null);
     setShowEditForm(true);
-    setMenuOpen(false);
   }
 
   async function handleEditSave(e: React.FormEvent) {
@@ -263,16 +286,18 @@ function PaymentRow({
   }
 
   return (
-    <div className="border-b border-border last:border-0">
-      <div className="flex items-center gap-2 py-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-[13px] font-semibold text-ink mono-num">{formatRub(payment.amount)}</span>
-            {methodName && <span className="text-[11px] text-ink-3">{methodName}</span>}
-          </div>
-          <div className="text-[11px] text-ink-3 flex gap-1.5">
-            <span>{formatShootDate(payment.paidAt)}</span>
-            {payment.comment && <span className="truncate">· {payment.comment}</span>}
+    <div className="border-b border-border last:border-b-0">
+      {/* feed-row */}
+      <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-center py-2">
+        <span className={`h-2 w-2 rounded-full shrink-0 ${isIN ? "bg-emerald" : "bg-rose"}`} />
+        <div className="min-w-0">
+          <span className={`text-[13px] font-semibold mono-num ${isIN ? "text-emerald" : "text-rose"}`}>
+            {isIN ? "+" : "−"}{formatRub(payment.amount)}
+          </span>
+          <div className="text-[11px] text-ink-3 truncate">
+            {formatShootDate(payment.paidAt)}
+            {methodName && ` · ${methodName}`}
+            {payment.comment && ` · ${payment.comment}`}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -283,25 +308,13 @@ function PaymentRow({
           >
             ✎
           </button>
-          <div className="relative" ref={menuRef}>
-            <button
-              onClick={() => setMenuOpen((o) => !o)}
-              className="w-7 h-7 flex items-center justify-center text-ink-3 hover:text-ink rounded text-[16px]"
-              aria-label="Действия с платежом"
-            >
-              ⋯
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-8 bg-surface border border-border rounded-lg shadow-sm z-20 w-36 py-1">
-                <button
-                  onClick={() => { setMenuOpen(false); onDelete(payment.id); }}
-                  className="w-full text-left px-4 py-2.5 text-[12.5px] text-rose hover:bg-rose-soft transition-colors"
-                >
-                  Удалить
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => onDelete(payment.id)}
+            className="w-7 h-7 flex items-center justify-center text-ink-3 hover:text-rose rounded text-[14px]"
+            aria-label="Удалить платёж"
+          >
+            ×
+          </button>
         </div>
       </div>
       {showEditForm && (
@@ -466,11 +479,16 @@ function MemberRow({
   }
 
   const remaining = Number(member.remaining ?? 0);
+  const plannedAmt = Number(member.plannedAmount ?? 0);
+  const paidAmt = Number(member.paidToMe ?? 0);
+  const isClosed = plannedAmt > 0 && remaining === 0;
+  const pct = plannedAmt > 0 ? Math.min(100, Math.round(paidAmt / plannedAmt * 100)) : 0;
 
   return (
     <div className="border-b border-border last:border-0 py-2.5">
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
+          {/* Name + role */}
           <div className="flex items-baseline gap-1.5 flex-wrap">
             <span className="text-[13px] font-semibold text-ink">
               {member.contact?.name ?? "—"}
@@ -479,25 +497,38 @@ function MemberRow({
               <span className="text-[11px] text-ink-3">{member.roleLabel}</span>
             )}
           </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[11.5px] text-ink-2">
-            <span>План: {formatRub(member.plannedAmount)}</span>
-            <span>Выплачено: {formatRub(member.paidToMe ?? 0)}</span>
-            {remaining > 0 && (
-              <span className="text-amber font-medium">Осталось: {formatRub(remaining)}</span>
+          {/* Progress text */}
+          <div className="text-[11.5px] text-ink-2 mt-0.5">
+            <b className={isClosed ? "text-emerald" : "text-ink"}>{formatRub(paidAmt)}</b>
+            {" / "}{formatRub(plannedAmt)} ₽
+            {isClosed && <span className="ml-1 text-emerald">· закрыт</span>}
+            {!isClosed && remaining > 0 && (
+              <span className="ml-1 text-amber">· ост. <b>{formatRub(remaining)}</b></span>
             )}
-            {remaining === 0 && Number(member.plannedAmount) > 0 && (
-              <span className="text-emerald">✓ Выплачено</span>
-            )}
+          </div>
+          {/* Progress bar */}
+          <div className="h-1.5 rounded-full bg-slate-soft overflow-hidden mt-1">
+            <div
+              className="h-full bg-emerald transition-all"
+              style={{ width: `${pct}%` }}
+            />
           </div>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={() => setShowPaymentForm((v) => !v)}
-            className="text-[11.5px] text-accent-bright hover:text-accent border border-accent-border rounded px-2 py-1 transition-colors"
-          >
-            + выплата
-          </button>
+        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+          {isClosed ? (
+            <span className="inline-flex items-center rounded-full border px-[8px] py-[2px] text-[10.5px] font-semibold bg-emerald-soft text-emerald border-emerald-border"
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+              оплачено
+            </span>
+          ) : (
+            <button
+              onClick={() => setShowPaymentForm((v) => !v)}
+              className="text-[11.5px] text-accent-bright hover:text-accent border border-accent-border rounded px-2 py-1 transition-colors"
+            >
+              + выплата
+            </button>
+          )}
           <button
             onClick={startEdit}
             className="w-7 h-7 flex items-center justify-center text-ink-3 hover:text-ink rounded text-[14px]"
@@ -684,63 +715,72 @@ function AddMemberForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-[#fafafa] border border-border rounded p-3 mt-2 space-y-2">
-      <div>
-        <label className="block text-[11px] text-ink-3 mb-0.5">Участник</label>
-        {teamContacts === null ? (
-          <div className="h-[34px] bg-border rounded animate-pulse" />
-        ) : (
-          <select
-            value={contactId}
-            onChange={(e) => setContactId(e.target.value)}
-            autoFocus
-            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
-          >
-            <option value="">— Выберите —</option>
-            {teamContacts.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        )}
+    <details className="group border border-dashed border-border rounded-md bg-accent-soft overflow-hidden mt-2">
+      <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-accent flex items-center gap-1 list-none">
+        <span className="text-[14px] leading-none group-open:hidden">+</span>
+        <span className="text-[14px] leading-none hidden group-open:inline">−</span>
+        + Добавить участника
+      </summary>
+      <div className="px-3 pb-3 pt-1 border-t border-dashed border-border">
+        <form onSubmit={handleSubmit} className="space-y-2 mt-1">
+          <div>
+            <label className="block text-[11px] text-ink-3 mb-0.5">Участник</label>
+            {teamContacts === null ? (
+              <div className="h-[34px] bg-border rounded animate-pulse" />
+            ) : (
+              <select
+                value={contactId}
+                onChange={(e) => setContactId(e.target.value)}
+                autoFocus
+                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+              >
+                <option value="">— Выберите —</option>
+                {teamContacts.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-[11px] text-ink-3 mb-0.5">Роль</label>
+              <input
+                type="text"
+                value={roleLabel}
+                onChange={(e) => setRoleLabel(e.target.value)}
+                placeholder="Оператор, АС…"
+                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[11px] text-ink-3 mb-0.5">Сумма ₽</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={plannedAmount}
+                onChange={(e) => setPlannedAmount(e.target.value)}
+                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+              />
+            </div>
+          </div>
+          {err && <p className="text-rose text-[11.5px]">{err}</p>}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={saving || isArchived}
+              className="flex-1 bg-accent-bright hover:bg-accent text-white text-[12.5px] font-medium rounded px-3 py-2 transition-colors disabled:opacity-50"
+            >
+              {saving ? "Добавляем…" : "Добавить"}
+            </button>
+            <button type="button" onClick={onCancel}
+              className="flex-1 bg-surface border border-border text-ink text-[12.5px] rounded px-3 py-2 hover:bg-[#fafafa] transition-colors">
+              Отмена
+            </button>
+          </div>
+        </form>
       </div>
-      <div className="flex gap-2">
-        <div className="flex-1">
-          <label className="block text-[11px] text-ink-3 mb-0.5">Роль</label>
-          <input
-            type="text"
-            value={roleLabel}
-            onChange={(e) => setRoleLabel(e.target.value)}
-            placeholder="Оператор, АС…"
-            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
-          />
-        </div>
-        <div className="flex-1">
-          <label className="block text-[11px] text-ink-3 mb-0.5">Сумма ₽</label>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={plannedAmount}
-            onChange={(e) => setPlannedAmount(e.target.value)}
-            className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
-          />
-        </div>
-      </div>
-      {err && <p className="text-rose text-[11.5px]">{err}</p>}
-      <div className="flex gap-2 pt-1">
-        <button
-          type="submit"
-          disabled={saving || isArchived}
-          className="flex-1 bg-accent-bright hover:bg-accent text-white text-[12.5px] font-medium rounded px-3 py-2 transition-colors disabled:opacity-50"
-        >
-          {saving ? "Добавляем…" : "Добавить"}
-        </button>
-        <button type="button" onClick={onCancel}
-          className="flex-1 bg-surface border border-border text-ink text-[12.5px] rounded px-3 py-2 hover:bg-[#fafafa] transition-colors">
-          Отмена
-        </button>
-      </div>
-    </form>
+    </details>
   );
 }
 
@@ -766,9 +806,7 @@ function GafferProjectDetailContent() {
   const [editNote, setEditNote] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
-  // Forms
-  const [showInPaymentForm, setShowInPaymentForm] = useState(false);
-  const [showAddMemberForm, setShowAddMemberForm] = useState(false);
+  // Forms — now handled by <details> elements (always-available)
 
   // Menu
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1099,7 +1137,14 @@ function GafferProjectDetailContent() {
 
           {/* От заказчика */}
           <div className="px-4 py-4">
-            <p className="eyebrow mb-3">От заказчика</p>
+            <div className="flex items-baseline justify-between mb-3">
+              <p className="eyebrow">От заказчика</p>
+              {Number(project.clientRemaining ?? 0) > 0 && (
+                <span className="text-[11.5px] text-ink-3 mono-num">
+                  остаток <b className="text-rose">{formatRub(project.clientRemaining)}</b>
+                </span>
+              )}
+            </div>
             {/* Budget breakdown */}
             <div className="space-y-0.5 mb-3 text-[12px] text-ink-2">
               <div className="flex justify-between">
@@ -1115,22 +1160,26 @@ function GafferProjectDetailContent() {
                 <Mono value={project.clientTotal ?? project.clientPlanAmount} />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              <div className="text-center">
-                <p className="text-[10.5px] text-ink-3 mb-0.5">К получению</p>
-                <Mono value={project.clientTotal ?? project.clientPlanAmount} />
+
+            {/* money-block */}
+            <div className="grid grid-cols-3 border border-border rounded-md overflow-hidden bg-surface mb-3">
+              <div className="p-2.5 border-r border-border text-center">
+                <div className="eyebrow mb-0.5">К получению</div>
+                <div className="mono-num text-[15px] font-semibold text-ink">{formatRub(project.clientTotal ?? project.clientPlanAmount)}</div>
               </div>
-              <div className="text-center">
-                <p className="text-[10.5px] text-ink-3 mb-0.5">Получено</p>
-                <Mono value={project.clientReceived} />
+              <div className="p-2.5 border-r border-border text-center">
+                <div className="eyebrow mb-0.5">Получено</div>
+                <div className="mono-num text-[15px] font-semibold text-emerald">{formatRub(project.clientReceived)}</div>
               </div>
-              <div className="text-center">
-                <p className="text-[10.5px] text-ink-3 mb-0.5">Остаток</p>
-                <Mono value={project.clientRemaining} rose={Number(project.clientRemaining ?? 0) > 0} />
+              <div className="p-2.5 text-center">
+                <div className="eyebrow mb-0.5">Остаток</div>
+                <div className={`mono-num text-[15px] font-semibold ${Number(project.clientRemaining ?? 0) > 0 ? "text-rose" : "text-ink"}`}>
+                  {formatRub(project.clientRemaining)}
+                </div>
               </div>
             </div>
 
-            {/* IN payments */}
+            {/* IN payments as feed-row */}
             {inPayments.length > 0 && (
               <div className="mb-3">
                 {inPayments.map((p) => (
@@ -1145,42 +1194,49 @@ function GafferProjectDetailContent() {
               </div>
             )}
 
-            {!showInPaymentForm ? (
-              <button
-                onClick={() => setShowInPaymentForm(true)}
-                className="text-[12.5px] text-accent-bright hover:text-accent border border-accent-border rounded px-3 py-1.5 transition-colors"
-              >
-                + Поступление
-              </button>
-            ) : (
-              <PaymentForm
-                direction="IN"
-                projectId={id}
-                methods={methods}
-                isArchived={project.status === "ARCHIVED"}
-                onDone={() => { setShowInPaymentForm(false); setRefreshKey((k) => k + 1); }}
-                onCancel={() => setShowInPaymentForm(false)}
-              />
-            )}
+            <PaymentForm
+              direction="IN"
+              projectId={id}
+              methods={methods}
+              isArchived={project.status === "ARCHIVED"}
+              onDone={() => { setRefreshKey((k) => k + 1); }}
+              onCancel={() => {}}
+            />
           </div>
 
           {/* Команда */}
           <div className="px-4 py-4">
-            <p className="eyebrow mb-3">Команда</p>
+            {/* Section header with subtitle */}
+            {(() => {
+              const teamPlan = Number(project.teamPlanTotal ?? 0);
+              const teamPaid = Number(project.teamPaidTotal ?? 0);
+              const teamRem = Number(project.teamRemaining ?? 0);
+              const teamPct = teamPlan > 0 ? Math.round(teamPaid / teamPlan * 100) : 0;
+              return (
+                <div className="flex items-baseline justify-between mb-3">
+                  <p className="eyebrow">Команда</p>
+                  {teamPlan > 0 && (
+                    <span className="eyebrow">закрыто {teamPct}% · ост. {formatRub(teamRem)}</span>
+                  )}
+                </div>
+              );
+            })()}
 
-            {/* Totals */}
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              <div className="text-center">
-                <p className="text-[10.5px] text-ink-3 mb-0.5">План</p>
-                <Mono value={project.teamPlanTotal} />
+            {/* money-block for team */}
+            <div className="grid grid-cols-3 border border-border rounded-md overflow-hidden bg-surface mb-3">
+              <div className="p-2.5 border-r border-border text-center">
+                <div className="eyebrow mb-0.5">План команде</div>
+                <div className="mono-num text-[15px] font-semibold text-ink">{formatRub(project.teamPlanTotal)}</div>
               </div>
-              <div className="text-center">
-                <p className="text-[10.5px] text-ink-3 mb-0.5">Выплачено</p>
-                <Mono value={project.teamPaidTotal} />
+              <div className="p-2.5 border-r border-border text-center">
+                <div className="eyebrow mb-0.5">Выплачено</div>
+                <div className="mono-num text-[15px] font-semibold text-emerald">{formatRub(project.teamPaidTotal)}</div>
               </div>
-              <div className="text-center">
-                <p className="text-[10.5px] text-ink-3 mb-0.5">Остаток</p>
-                <Mono value={project.teamRemaining} rose={Number(project.teamRemaining ?? 0) > 0} />
+              <div className="p-2.5 text-center">
+                <div className="eyebrow mb-0.5">Остаток</div>
+                <div className={`mono-num text-[15px] font-semibold ${Number(project.teamRemaining ?? 0) > 0 ? "text-indigo" : "text-ink"}`}>
+                  {formatRub(project.teamRemaining)}
+                </div>
               </div>
             </div>
 
@@ -1200,22 +1256,13 @@ function GafferProjectDetailContent() {
               </div>
             )}
 
-            {!showAddMemberForm ? (
-              <button
-                onClick={() => setShowAddMemberForm(true)}
-                className="text-[12.5px] text-accent-bright hover:text-accent border border-accent-border rounded px-3 py-1.5 transition-colors"
-              >
-                + Участник
-              </button>
-            ) : (
-              <AddMemberForm
-                projectId={id}
-                methods={methods}
-                isArchived={project.status === "ARCHIVED"}
-                onDone={() => { setShowAddMemberForm(false); setRefreshKey((k) => k + 1); }}
-                onCancel={() => setShowAddMemberForm(false)}
-              />
-            )}
+            <AddMemberForm
+              projectId={id}
+              methods={methods}
+              isArchived={project.status === "ARCHIVED"}
+              onDone={() => { setRefreshKey((k) => k + 1); }}
+              onCancel={() => {}}
+            />
           </div>
         </div>
       )}
