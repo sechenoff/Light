@@ -1,20 +1,39 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createContact, GafferApiError } from "../../../../src/lib/gafferApi";
 import { toast } from "../../../../src/components/ToastProvider";
 
-export default function GafferNewContactPage() {
+function GafferNewContactContent() {
   const router = useRouter();
-  const [type, setType] = useState<"CLIENT" | "TEAM_MEMBER">("CLIENT");
+  const searchParams = useSearchParams();
+
+  // Pre-set type from query param (e.g. ?type=CLIENT from project creation flow)
+  const typeParam = searchParams.get("type");
+  const initialType: "CLIENT" | "TEAM_MEMBER" =
+    typeParam === "TEAM_MEMBER" ? "TEAM_MEMBER" : "CLIENT";
+
+  // Return-to flow params (validated on use — only /gaffer/* allowed)
+  const rawReturnTo = searchParams.get("returnTo") ?? "";
+  const returnLabel = searchParams.get("returnLabel") ?? "";
+  const safeReturnTo = rawReturnTo.startsWith("/gaffer/") ? rawReturnTo : "";
+
+  const [type, setType] = useState<"CLIENT" | "TEAM_MEMBER">(initialType);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [telegram, setTelegram] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Sync type if searchParams change (e.g. hydration)
+  useEffect(() => {
+    const t = searchParams.get("type");
+    if (t === "TEAM_MEMBER") setType("TEAM_MEMBER");
+    else if (t === "CLIENT") setType("CLIENT");
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,7 +48,15 @@ export default function GafferNewContactPage() {
         note: note.trim() || undefined,
       });
       toast.success("Контакт создан");
-      router.push(`/gaffer/contacts/${res.contact.id}`);
+      // Build redirect URL, propagating returnTo/returnLabel if present
+      let redirectUrl = `/gaffer/contacts/${res.contact.id}`;
+      if (safeReturnTo) {
+        const params = new URLSearchParams();
+        params.set("returnTo", safeReturnTo);
+        if (returnLabel) params.set("returnLabel", returnLabel);
+        redirectUrl = `${redirectUrl}?${params.toString()}`;
+      }
+      router.push(redirectUrl);
     } catch (err) {
       if (err instanceof GafferApiError) {
         if (err.code === "INVALID_TELEGRAM") {
@@ -153,5 +180,18 @@ export default function GafferNewContactPage() {
         </button>
       </form>
     </div>
+  );
+}
+
+export default function GafferNewContactPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-4 space-y-3 animate-pulse">
+        <div className="h-5 bg-border rounded w-1/2" />
+        <div className="h-4 bg-border rounded w-1/3" />
+      </div>
+    }>
+      <GafferNewContactContent />
+    </Suspense>
   );
 }

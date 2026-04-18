@@ -33,6 +33,9 @@ function GafferNewProjectContent() {
     }
   }, [searchParams]);
 
+  // Pre-select client from contact-creation return flow (?clientId=...)
+  const preselectedClientId = searchParams.get("clientId") ?? "";
+
   // Clients list
   const [clients, setClients] = useState<GafferContact[] | null>(null);
 
@@ -41,7 +44,13 @@ function GafferNewProjectContent() {
     (async () => {
       try {
         const res = await listContacts({ type: "CLIENT", isArchived: false });
-        if (!cancelled) setClients(res.items);
+        if (!cancelled) {
+          setClients(res.items);
+          // Pre-select if ?clientId= is in URL and the contact is in the list
+          if (preselectedClientId && res.items.some((c) => c.id === preselectedClientId)) {
+            setClientId(preselectedClientId);
+          }
+        }
       } catch {
         if (!cancelled) setClients([]);
       }
@@ -49,6 +58,7 @@ function GafferNewProjectContent() {
     return () => {
       cancelled = true;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const totalBudget = Number(clientPlanAmount || 0) + Number(lightBudget || 0);
@@ -151,10 +161,10 @@ function GafferNewProjectContent() {
           <p className="text-[11px] text-ink-3 mt-1">
             Нужного заказчика нет?{" "}
             <Link
-              href="/gaffer/contacts/new?type=CLIENT"
+              href="/gaffer/contacts/new?type=CLIENT&returnTo=%2Fgaffer%2Fprojects%2Fnew&returnLabel=%D1%81%D0%BE%D0%B7%D0%B4%D0%B0%D0%BD%D0%B8%D0%B5+%D0%BF%D1%80%D0%BE%D0%B5%D0%BA%D1%82%D0%B0"
               className="text-accent-bright hover:text-accent"
             >
-              Создать контакт
+              + Создать нового заказчика
             </Link>
           </p>
         </div>
