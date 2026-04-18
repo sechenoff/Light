@@ -113,7 +113,8 @@ const DEFAULT_COUNTS: CountState = {
 function GafferCrewCalculatorContent() {
   const router = useRouter();
   const params = useSearchParams();
-  const returnTo = params.get("returnTo") ?? "/gaffer/projects/new";
+  const rawReturnTo = params.get("returnTo") ?? "/gaffer/projects/new";
+  const safeReturnTo = rawReturnTo.startsWith("/gaffer/") ? rawReturnTo : "/gaffer/projects/new";
 
   const [counts, setCounts] = useState<CountState>(DEFAULT_COUNTS);
   const [hoursRaw, setHoursRaw] = useState("");
@@ -146,7 +147,8 @@ function GafferCrewCalculatorContent() {
 
   function handleUse() {
     const amount = Math.round(grandTotal);
-    router.push(`${returnTo}?crewAmount=${amount}`);
+    const sep = safeReturnTo.includes("?") ? "&" : "?";
+    router.push(`${safeReturnTo}${sep}crewAmount=${amount}`);
   }
 
   const hasResult = result.lines.length > 0;
@@ -155,7 +157,7 @@ function GafferCrewCalculatorContent() {
     <div className="min-h-screen bg-surface pb-28">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-border">
-        <Link href={returnTo} className="text-accent-bright hover:text-accent transition-colors text-[13px] shrink-0">
+        <Link href={safeReturnTo} className="text-accent-bright hover:text-accent transition-colors text-[13px] shrink-0">
           ← Назад
         </Link>
         <div className="min-w-0">
@@ -317,16 +319,19 @@ function GafferCrewCalculatorContent() {
             Использовать сумму {formatRub(grandTotal)}
           </button>
         ) : (
-          <button
-            type="button"
-            disabled
-            className="flex-1 bg-accent-bright text-white font-medium rounded px-4 py-3 text-[14px] opacity-40 cursor-not-allowed"
-          >
-            Использовать сумму
-          </button>
+          <div className="flex-1 flex flex-col gap-1">
+            <button
+              type="button"
+              disabled
+              className="w-full bg-accent-bright text-white font-medium rounded px-4 py-3 text-[14px] opacity-40 cursor-not-allowed"
+            >
+              Использовать сумму
+            </button>
+            <p className="text-xs text-ink-3 text-center">Укажите часы и состав команды, чтобы использовать сумму</p>
+          </div>
         )}
         <Link
-          href={returnTo}
+          href={safeReturnTo}
           className="px-4 py-3 text-[14px] text-ink-2 border border-border rounded hover:bg-[#fafafa] transition-colors"
         >
           Отмена

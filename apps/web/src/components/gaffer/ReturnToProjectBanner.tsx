@@ -24,7 +24,7 @@ export function ReturnToProjectBanner({ returnTo, returnLabel, contactId, contac
   if (contactType !== "CLIENT") return null;
   if (isArchived) return null;
 
-  const label = returnLabel || "создание проекта";
+  const label = returnLabel || "созданию проекта";
 
   function handleUse() {
     router.push(`${returnTo}?clientId=${contactId}`);

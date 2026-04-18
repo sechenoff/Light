@@ -803,14 +803,32 @@ function GafferProjectDetailContent() {
     return () => { cancelled = true; };
   }, [id, refreshKey]);
 
-  // Read crewAmount from URL (returned from crew calculator) — prefill editClientPlan
+  // Read crewAmount from URL (returned from crew calculator) — restore draft + prefill editClientPlan
   useEffect(() => {
     const crewAmount = searchParams.get("crewAmount");
     const editMode = searchParams.get("edit");
-    if (crewAmount && editMode === "1" && project) {
-      setEditClientPlan(crewAmount);
+    if (editMode === "1" && project) {
+      const draftKey = `gaffer:projects-edit:${id}:draft`;
+      const raw = sessionStorage.getItem(draftKey);
+      if (raw) {
+        try {
+          const draft = JSON.parse(raw);
+          setEditTitle(draft.editTitle ?? project.title);
+          setEditShootDate(draft.editShootDate ?? (project.shootDate?.slice(0, 10) ?? ""));
+          setEditLightBudget(draft.editLightBudget ?? (project.lightBudgetAmount ?? "0"));
+          setEditNote(draft.editNote ?? (project.note ?? ""));
+          setEditClientPlan(crewAmount ? crewAmount : (draft.editClientPlan ?? (project.clientPlanAmount ?? "0")));
+        } catch {
+          // malformed — fall back to project data
+          if (crewAmount) setEditClientPlan(crewAmount);
+        }
+        sessionStorage.removeItem(draftKey);
+      } else if (crewAmount) {
+        setEditClientPlan(crewAmount);
+      }
       setEditing(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, project]);
 
   // Start editing
@@ -995,12 +1013,19 @@ function GafferProjectDetailContent() {
               />
               <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">₽</span>
             </div>
-            <Link
-              href={`/gaffer/crew-calculator?returnTo=/gaffer/projects/${id}%3Fedit%3D1`}
+            <button
+              type="button"
+              onClick={() => {
+                const draftKey = `gaffer:projects-edit:${id}:draft`;
+                sessionStorage.setItem(draftKey, JSON.stringify({
+                  editTitle, editShootDate, editClientPlan, editLightBudget, editNote,
+                }));
+                router.push(`/gaffer/crew-calculator?returnTo=/gaffer/projects/${id}%3Fedit%3D1`);
+              }}
               className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-border bg-surface hover:bg-[#fafafa] text-accent-bright text-[12.5px] rounded transition-colors"
             >
               🧮 Расчёт стоимости команды осветителей
-            </Link>
+            </button>
           </div>
           <div>
             <label className="block text-[12px] text-ink-2 mb-1">Бюджет на свет ₽</label>
@@ -1092,7 +1117,7 @@ function GafferProjectDetailContent() {
             </div>
             <div className="grid grid-cols-3 gap-2 mb-3">
               <div className="text-center">
-                <p className="text-[10.5px] text-ink-3 mb-0.5">Итого бюджет</p>
+                <p className="text-[10.5px] text-ink-3 mb-0.5">К получению</p>
                 <Mono value={project.clientTotal ?? project.clientPlanAmount} />
               </div>
               <div className="text-center">
