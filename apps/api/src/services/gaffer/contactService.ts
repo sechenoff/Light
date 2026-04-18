@@ -167,7 +167,8 @@ export async function getContactDebtSummary(req: Request, id: string) {
         .filter((pay) => pay.direction === "IN")
         .reduce((acc, pay) => acc.plus(pay.amount), ZERO);
 
-      const raw = new Decimal(p.clientPlanAmount).minus(clientReceived);
+      const clientTotal = new Decimal(p.clientPlanAmount).plus(new Decimal(p.lightBudgetAmount));
+      const raw = clientTotal.minus(clientReceived);
       const clientRemaining = raw.gt(ZERO) ? raw : ZERO;
       totalClientRemaining = totalClientRemaining.plus(clientRemaining);
 
@@ -177,6 +178,8 @@ export async function getContactDebtSummary(req: Request, id: string) {
         shootDate: p.shootDate,
         status: p.status,
         clientPlanAmount: p.clientPlanAmount.toString(),
+        lightBudgetAmount: p.lightBudgetAmount.toString(),
+        clientTotal: clientTotal.toString(),
         clientReceived: clientReceived.toString(),
         clientRemaining: clientRemaining.toString(),
       };

@@ -23,6 +23,7 @@ export interface CreateProjectInput {
   clientId: string;
   shootDate: Date;
   clientPlanAmount?: string | number;
+  lightBudgetAmount?: string | number;
   note?: string;
 }
 
@@ -31,6 +32,7 @@ export interface UpdateProjectInput {
   clientId?: string;
   shootDate?: Date;
   clientPlanAmount?: string | number;
+  lightBudgetAmount?: string | number;
   note?: string | null;
 }
 
@@ -43,6 +45,7 @@ type ProjectWithRelations = {
   clientId: string;
   shootDate: Date;
   clientPlanAmount: Decimal;
+  lightBudgetAmount: Decimal;
   status: GafferProjectStatus;
   note: string | null;
   createdAt: Date;
@@ -68,7 +71,9 @@ type ProjectWithRelations = {
 
 export interface ProjectDebtAggregates {
   clientReceived: string;
+  clientTotal: string;
   clientRemaining: string;
+  lightBudgetAmount: string;
   teamPlanTotal: string;
   teamPaidTotal: string;
   teamRemaining: string;
@@ -86,8 +91,11 @@ export function computeProjectDebts(project: ProjectWithRelations): ProjectDebtA
     .filter((p) => p.direction === "IN")
     .reduce((acc, p) => acc.plus(p.amount), ZERO);
 
-  // clientRemaining = max(0, clientPlanAmount - clientReceived)
-  const rawClientRemaining = new Decimal(project.clientPlanAmount).minus(clientReceived);
+  // clientTotal = clientPlanAmount + lightBudgetAmount
+  const clientTotal = new Decimal(project.clientPlanAmount).plus(new Decimal(project.lightBudgetAmount));
+
+  // clientRemaining = max(0, clientTotal - clientReceived)
+  const rawClientRemaining = clientTotal.minus(clientReceived);
   const clientRemaining = rawClientRemaining.gt(ZERO) ? rawClientRemaining : ZERO;
 
   // teamPlanTotal = сумма plannedAmount всех участников
@@ -107,7 +115,9 @@ export function computeProjectDebts(project: ProjectWithRelations): ProjectDebtA
 
   return {
     clientReceived: clientReceived.toString(),
+    clientTotal: clientTotal.toString(),
     clientRemaining: clientRemaining.toString(),
+    lightBudgetAmount: new Decimal(project.lightBudgetAmount).toString(),
     teamPlanTotal: teamPlanTotal.toString(),
     teamPaidTotal: teamPaidTotal.toString(),
     teamRemaining: teamRemaining.toString(),
@@ -201,6 +211,7 @@ export async function listProjects(req: Request, opts: ListProjectsOpts) {
   return projects.map((p) => ({
     ...p,
     clientPlanAmount: p.clientPlanAmount.toString(),
+    lightBudgetAmount: p.lightBudgetAmount.toString(),
     members: undefined, // убираем из ответа — заменяем агрегатами
     payments: undefined,
     ...computeProjectDebts(p as ProjectWithRelations),
@@ -225,6 +236,7 @@ export async function getProject(req: Request, id: string) {
   return {
     ...project,
     clientPlanAmount: project.clientPlanAmount.toString(),
+    lightBudgetAmount: project.lightBudgetAmount.toString(),
     members: project.members.map((m) => ({
       ...m,
       plannedAmount: m.plannedAmount.toString(),
@@ -252,6 +264,9 @@ export async function createProject(req: Request, data: CreateProjectInput) {
       clientPlanAmount: data.clientPlanAmount !== undefined
         ? new Decimal(data.clientPlanAmount)
         : new Decimal(0),
+      lightBudgetAmount: data.lightBudgetAmount !== undefined
+        ? new Decimal(data.lightBudgetAmount)
+        : new Decimal(0),
       note: data.note?.trim() ?? null,
     },
   });
@@ -259,6 +274,7 @@ export async function createProject(req: Request, data: CreateProjectInput) {
   return {
     ...project,
     clientPlanAmount: project.clientPlanAmount.toString(),
+    lightBudgetAmount: project.lightBudgetAmount.toString(),
   };
 }
 
@@ -277,6 +293,9 @@ export async function updateProject(req: Request, id: string, data: UpdateProjec
   if (data.clientPlanAmount !== undefined) {
     updateData.clientPlanAmount = new Decimal(data.clientPlanAmount);
   }
+  if (data.lightBudgetAmount !== undefined) {
+    updateData.lightBudgetAmount = new Decimal(data.lightBudgetAmount);
+  }
   if (data.note !== undefined) updateData.note = data.note?.trim() ?? null;
 
   const result = await prisma.gafferProject.updateMany({
@@ -291,7 +310,7 @@ export async function updateProject(req: Request, id: string, data: UpdateProjec
   const updated = await prisma.gafferProject.findUnique({ where: { id } });
   if (!updated) throw new HttpError(404, "Проект не найден", "NOT_FOUND");
 
-  return { ...updated, clientPlanAmount: updated.clientPlanAmount.toString() };
+  return { ...updated, clientPlanAmount: updated.clientPlanAmount.toString(), lightBudgetAmount: updated.lightBudgetAmount.toString() };
 }
 
 /** Архивировать проект. */
@@ -306,7 +325,7 @@ export async function archiveProject(req: Request, id: string) {
   const project = await prisma.gafferProject.findFirst({ where: { id, gafferUserId } });
   if (!project) throw new HttpError(404, "Проект не найден", "NOT_FOUND");
 
-  return { ...project, clientPlanAmount: project.clientPlanAmount.toString() };
+  return { ...project, clientPlanAmount: project.clientPlanAmount.toString(), lightBudgetAmount: project.lightBudgetAmount.toString() };
 }
 
 /** Разархивировать проект. */
@@ -321,7 +340,7 @@ export async function unarchiveProject(req: Request, id: string) {
   const project = await prisma.gafferProject.findFirst({ where: { id, gafferUserId } });
   if (!project) throw new HttpError(404, "Проект не найден", "NOT_FOUND");
 
-  return { ...project, clientPlanAmount: project.clientPlanAmount.toString() };
+  return { ...project, clientPlanAmount: project.clientPlanAmount.toString(), lightBudgetAmount: project.lightBudgetAmount.toString() };
 }
 
 /** Удалить проект. Cascade удаляет участников и платежи. */

@@ -581,3 +581,58 @@ describe("Фильтр по clientId и memberContactId", () => {
     expect(res.body.items.some((p: Record<string, unknown>) => p.id === projectId)).toBe(true);
   });
 });
+
+// ─── lightBudgetAmount ────────────────────────────────────────────────────────
+
+describe("lightBudgetAmount", () => {
+  it("POST создаёт проект с lightBudgetAmount, GET возвращает его", async () => {
+    const clientId = await createClientA("Клиент для lightBudget");
+    const res = await postA("/api/gaffer/projects").send({
+      title: "Проект с бюджетом на свет",
+      clientId,
+      shootDate: "2026-03-01",
+      clientPlanAmount: "30000",
+      lightBudgetAmount: "20000",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.project.lightBudgetAmount).toBe("20000");
+
+    const get = await getA(`/api/gaffer/projects/${res.body.project.id as string}`);
+    expect(get.status).toBe(200);
+    expect(get.body.project.lightBudgetAmount).toBe("20000");
+  });
+
+  it("PATCH обновляет lightBudgetAmount", async () => {
+    const p = await createProjectA({ title: "Обновить lightBudget" });
+    const res = await patchA(`/api/gaffer/projects/${p.id}`)
+      .send({ lightBudgetAmount: "55000" });
+    expect(res.status).toBe(200);
+    expect(res.body.project.lightBudgetAmount).toBe("55000");
+  });
+
+  it("clientRemaining = max(0, clientPlanAmount + lightBudgetAmount - IN payments)", async () => {
+    const clientId = await createClientA("Клиент для суммарного долга");
+    const res = await postA("/api/gaffer/projects").send({
+      title: "Проект суммарный бюджет",
+      clientId,
+      shootDate: "2026-04-01",
+      clientPlanAmount: "50000",
+      lightBudgetAmount: "30000",
+    });
+    const projectId = res.body.project.id as string;
+
+    // Вносим IN-платёж 40000
+    await postA("/api/gaffer/payments").send({
+      projectId,
+      direction: "IN",
+      amount: "40000",
+      paidAt: "2026-04-02",
+    });
+
+    const get = await getA(`/api/gaffer/projects/${projectId}`);
+    expect(get.status).toBe(200);
+    // clientTotal = 50000 + 30000 = 80000; remaining = 80000 - 40000 = 40000
+    expect(get.body.project.clientTotal).toBe("80000");
+    expect(get.body.project.clientRemaining).toBe("40000");
+  });
+});

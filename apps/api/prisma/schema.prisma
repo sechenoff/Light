@@ -842,8 +842,9 @@ model GafferProject {
   title            String // "Клип «Синяя волна»"
   clientId         String
   shootDate        DateTime // единственная дата съёмки для MVP
-  clientPlanAmount Decimal             @default(0) // план от клиента
-  status           GafferProjectStatus @default(OPEN)
+  clientPlanAmount  Decimal             @default(0) // бюджет на осветителей (crew)
+  lightBudgetAmount Decimal             @default(0) // бюджет на свет (rental gear)
+  status            GafferProjectStatus @default(OPEN)
   note             String?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt

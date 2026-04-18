@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   getProject,
@@ -746,9 +746,10 @@ function AddMemberForm({
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function GafferProjectDetailPage() {
+function GafferProjectDetailContent() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [project, setProject] = useState<GafferProject | null>(null);
   const [loading, setLoading] = useState(true);
@@ -761,6 +762,7 @@ export default function GafferProjectDetailPage() {
   const [editTitle, setEditTitle] = useState("");
   const [editShootDate, setEditShootDate] = useState("");
   const [editClientPlan, setEditClientPlan] = useState("0");
+  const [editLightBudget, setEditLightBudget] = useState("0");
   const [editNote, setEditNote] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
@@ -801,12 +803,23 @@ export default function GafferProjectDetailPage() {
     return () => { cancelled = true; };
   }, [id, refreshKey]);
 
+  // Read crewAmount from URL (returned from crew calculator) — prefill editClientPlan
+  useEffect(() => {
+    const crewAmount = searchParams.get("crewAmount");
+    const editMode = searchParams.get("edit");
+    if (crewAmount && editMode === "1" && project) {
+      setEditClientPlan(crewAmount);
+      setEditing(true);
+    }
+  }, [searchParams, project]);
+
   // Start editing
   function startEdit() {
     if (!project) return;
     setEditTitle(project.title);
     setEditShootDate(project.shootDate?.slice(0, 10) ?? "");
     setEditClientPlan(project.clientPlanAmount ?? "0");
+    setEditLightBudget(project.lightBudgetAmount ?? "0");
     setEditNote(project.note ?? "");
     setEditing(true);
   }
@@ -819,6 +832,7 @@ export default function GafferProjectDetailPage() {
         title: editTitle.trim(),
         shootDate: editShootDate,
         clientPlanAmount: editClientPlan || "0",
+        lightBudgetAmount: editLightBudget || "0",
         note: editNote.trim() || "",
       });
       setEditing(false);
@@ -969,15 +983,44 @@ export default function GafferProjectDetailPage() {
             />
           </div>
           <div>
-            <label className="block text-[12px] text-ink-2 mb-1">Плановая сумма ₽</label>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={editClientPlan}
-              onChange={(e) => setEditClientPlan(e.target.value)}
-              className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
-            />
+            <label className="block text-[12px] text-ink-2 mb-1">Бюджет на осветителей ₽</label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={editClientPlan}
+                onChange={(e) => setEditClientPlan(e.target.value)}
+                className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+              />
+              <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">₽</span>
+            </div>
+            <Link
+              href={`/gaffer/crew-calculator?returnTo=/gaffer/projects/${id}%3Fedit%3D1`}
+              className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-border bg-surface hover:bg-[#fafafa] text-accent-bright text-[12.5px] rounded transition-colors"
+            >
+              🧮 Расчёт стоимости команды осветителей
+            </Link>
+          </div>
+          <div>
+            <label className="block text-[12px] text-ink-2 mb-1">Бюджет на свет ₽</label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={editLightBudget}
+                onChange={(e) => setEditLightBudget(e.target.value)}
+                className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+              />
+              <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">₽</span>
+            </div>
+            <div className="mt-1.5 text-[12px] text-ink-2">
+              Итого бюджет:{" "}
+              <span className="font-mono font-semibold text-ink">
+                {formatRub(Number(editClientPlan || 0) + Number(editLightBudget || 0))}
+              </span>
+            </div>
           </div>
           <div>
             <label className="block text-[12px] text-ink-2 mb-1">Заметка</label>
@@ -1032,10 +1075,25 @@ export default function GafferProjectDetailPage() {
           {/* От заказчика */}
           <div className="px-4 py-4">
             <p className="eyebrow mb-3">От заказчика</p>
+            {/* Budget breakdown */}
+            <div className="space-y-0.5 mb-3 text-[12px] text-ink-2">
+              <div className="flex justify-between">
+                <span>Бюджет на осветителей</span>
+                <Mono value={project.clientPlanAmount} />
+              </div>
+              <div className="flex justify-between">
+                <span>Бюджет на свет</span>
+                <Mono value={project.lightBudgetAmount} />
+              </div>
+              <div className="flex justify-between font-semibold text-ink pt-1 border-t border-border mt-1">
+                <span>Итого бюджет</span>
+                <Mono value={project.clientTotal ?? project.clientPlanAmount} />
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-2 mb-3">
               <div className="text-center">
-                <p className="text-[10.5px] text-ink-3 mb-0.5">План</p>
-                <Mono value={project.clientPlanAmount} />
+                <p className="text-[10.5px] text-ink-3 mb-0.5">Итого бюджет</p>
+                <Mono value={project.clientTotal ?? project.clientPlanAmount} />
               </div>
               <div className="text-center">
                 <p className="text-[10.5px] text-ink-3 mb-0.5">Получено</p>
@@ -1167,5 +1225,19 @@ export default function GafferProjectDetailPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function GafferProjectDetailPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-4 space-y-3 animate-pulse">
+        <div className="h-5 bg-border rounded w-1/2" />
+        <div className="h-4 bg-border rounded w-1/3" />
+        <div className="h-4 bg-border rounded w-2/3" />
+      </div>
+    }>
+      <GafferProjectDetailContent />
+    </Suspense>
   );
 }

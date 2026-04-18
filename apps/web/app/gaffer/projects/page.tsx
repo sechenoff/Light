@@ -32,7 +32,7 @@ function DebtPill({ label, colorClass }: { label: string; colorClass: string }) 
 
 function ProjectCard({ project }: { project: GafferProject }) {
   const clientPill = clientDebtVariant(
-    project.clientPlanAmount ?? "0",
+    project.clientTotal ?? project.clientPlanAmount ?? "0",
     project.clientRemaining ?? "0",
   );
   const teamPill = teamDebtVariant(

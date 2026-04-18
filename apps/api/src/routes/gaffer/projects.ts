@@ -48,6 +48,7 @@ const createProjectSchema = z.object({
   clientId: z.string().min(1, "Клиент обязателен"),
   shootDate: z.string().min(1, "Дата съёмки обязательна").transform((v) => new Date(v)),
   clientPlanAmount: z.union([z.string(), z.number()]).optional(),
+  lightBudgetAmount: z.union([z.string(), z.number()]).optional(),
   note: z.string().trim().max(1000).optional(),
 });
 
@@ -56,6 +57,7 @@ const updateProjectSchema = z.object({
   clientId: z.string().min(1).optional(),
   shootDate: z.string().transform((v) => new Date(v)).optional(),
   clientPlanAmount: z.union([z.string(), z.number()]).optional(),
+  lightBudgetAmount: z.union([z.string(), z.number()]).optional(),
   note: z.string().trim().max(1000).nullable().optional(),
 });
 

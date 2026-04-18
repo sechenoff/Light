@@ -225,7 +225,8 @@ export interface GafferProject {
   title: string;
   status: "OPEN" | "ARCHIVED";
   shootDate: string; // ISO date string
-  clientPlanAmount: string; // Decimal as string
+  clientPlanAmount: string; // Decimal as string — бюджет на осветителей
+  lightBudgetAmount: string; // Decimal as string — бюджет на свет
   note?: string | null;
   gafferUserId: string;
   clientId: string;
@@ -233,6 +234,7 @@ export interface GafferProject {
   updatedAt: string;
   // Aggregates (returned on list + detail)
   clientReceived?: string;
+  clientTotal?: string;
   clientRemaining?: string;
   teamPlanTotal?: string;
   teamPaidTotal?: string;
@@ -281,6 +283,8 @@ export type ContactDebtSummary =
         shootDate: string;
         status: "OPEN" | "ARCHIVED";
         clientPlanAmount: string;
+        lightBudgetAmount: string;
+        clientTotal: string;
         clientReceived: string;
         clientRemaining: string;
       }>;
@@ -324,7 +328,8 @@ export async function createProject(data: {
   title: string;
   clientId: string;
   shootDate: string;
-  clientPlanAmount: string | number;
+  clientPlanAmount?: string | number;
+  lightBudgetAmount?: string | number;
   note?: string;
 }): Promise<{ project: GafferProject }> {
   return gafferFetch("/projects", {
@@ -340,6 +345,7 @@ export async function updateProject(
     clientId?: string;
     shootDate?: string;
     clientPlanAmount?: string | number;
+    lightBudgetAmount?: string | number;
     note?: string;
   },
 ): Promise<{ project: GafferProject }> {
