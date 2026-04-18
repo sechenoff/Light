@@ -2,7 +2,7 @@ import { toMoscowDateString, addDays } from "../../lib/moscowDate";
 
 // ── Типы ──────────────────────────────────────────────────────────────────────
 
-export type TaskBucket = "overdue" | "today" | "thisWeek" | "later" | "noDate" | "doneToday";
+export type TaskBucket = "overdue" | "today" | "tomorrow" | "thisWeek" | "later" | "noDate" | "doneToday";
 
 export interface Task {
   id: string;
@@ -43,6 +43,8 @@ export function bucketOf(task: Task, now: Date): TaskBucket {
     const dueStr = toMoscowDateString(new Date(task.dueDate));
     if (dueStr < todayStr) return "overdue";
     if (dueStr === todayStr) return "today";
+    const tomorrowStr = toMoscowDateString(addDays(now, 1));
+    if (dueStr === tomorrowStr) return "tomorrow";
     const inSevenStr = toMoscowDateString(addDays(now, 7));
     if (dueStr < inSevenStr) return "thisWeek";
     return "later";
@@ -65,6 +67,7 @@ export function groupTasks(
   const groups: Record<TaskBucket, Task[]> = {
     overdue: [],
     today: [],
+    tomorrow: [],
     thisWeek: [],
     later: [],
     noDate: [],

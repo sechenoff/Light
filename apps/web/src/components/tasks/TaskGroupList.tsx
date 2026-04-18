@@ -15,6 +15,7 @@ const BUCKET_META: Record<
 > = {
   overdue:   { label: "Просрочено",       colorClass: "text-rose" },
   today:     { label: "Сегодня",          colorClass: "text-amber" },
+  tomorrow:  { label: "Завтра",           colorClass: "text-amber" },
   thisWeek:  { label: "На этой неделе",   colorClass: "text-teal" },
   later:     { label: "Позже",            colorClass: "text-slate" },
   noDate:    { label: "Без даты",         colorClass: "text-ink-3" },
@@ -22,7 +23,7 @@ const BUCKET_META: Record<
 };
 
 // OPEN buckets in display order; doneToday rendered last with its own divider
-const OPEN_BUCKET_ORDER: TaskBucket[] = ["overdue", "today", "thisWeek", "later", "noDate"];
+const OPEN_BUCKET_ORDER: TaskBucket[] = ["overdue", "today", "tomorrow", "thisWeek", "later", "noDate"];
 
 // ── TaskGroup ─────────────────────────────────────────────────────────────────
 
@@ -49,10 +50,10 @@ function TaskGroup({
     <div>
       {/* Заголовок группы — всегда развёрнут, без кнопки */}
       <div
-        className="flex items-center gap-2 px-4 py-1.5
-          text-left bg-surface-muted border-b border-border"
+        className="flex items-baseline gap-2.5 pt-3.5 pb-2 px-5
+          text-left border-b border-border"
       >
-        <h3 className={`flex-1 text-[11px] font-semibold uppercase tracking-wider ${meta.colorClass}`}>
+        <h3 className={`flex-1 font-mono text-[11px] font-semibold uppercase tracking-[0.07em] ${meta.colorClass}`}>
           {meta.label}
         </h3>
         <span className="text-[11px] font-mono text-ink-3">{tasks.length}</span>

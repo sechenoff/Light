@@ -52,6 +52,12 @@ describe("bucketOf", () => {
     expect(bucketOf(task, MSK_NOW)).toBe("today");
   });
 
+  it("returns 'tomorrow' for dueDate = today + 1 in MSK", () => {
+    // +1 day from 2026-04-17: April 18 MSK = 2026-04-17T21:00:00Z
+    const task = makeTask({ dueDate: "2026-04-17T21:00:00.000Z" });
+    expect(bucketOf(task, MSK_NOW)).toBe("tomorrow");
+  });
+
   it("returns 'thisWeek' for dueDate within next 7 days", () => {
     // +3 days from 2026-04-17: April 20 MSK = 2026-04-19T21:00:00Z
     const task = makeTask({ dueDate: "2026-04-19T21:00:00.000Z" });
@@ -144,13 +150,15 @@ describe("groupTasks", () => {
   it("routes each task to the correct bucket", () => {
     const overdue = makeTask({ id: "overdue", dueDate: "2026-04-15T21:00:00.000Z" }); // April 16 MSK
     const today = makeTask({ id: "today", dueDate: "2026-04-16T21:00:00.000Z" });    // April 17 MSK
+    const tomorrow = makeTask({ id: "tom", dueDate: "2026-04-17T21:00:00.000Z" });   // April 18 MSK
     const thisWeek = makeTask({ id: "week", dueDate: "2026-04-19T21:00:00.000Z" });  // April 20 MSK
     const later = makeTask({ id: "later", dueDate: "2026-04-26T21:00:00.000Z" });    // April 27 MSK
     const noDate = makeTask({ id: "nodate" });
 
-    const groups = groupTasks([overdue, today, thisWeek, later, noDate], MSK_NOW);
+    const groups = groupTasks([overdue, today, tomorrow, thisWeek, later, noDate], MSK_NOW);
     expect(groups.overdue.map((t) => t.id)).toContain("overdue");
     expect(groups.today.map((t) => t.id)).toContain("today");
+    expect(groups.tomorrow.map((t) => t.id)).toContain("tom");
     expect(groups.thisWeek.map((t) => t.id)).toContain("week");
     expect(groups.later.map((t) => t.id)).toContain("later");
     expect(groups.noDate.map((t) => t.id)).toContain("nodate");

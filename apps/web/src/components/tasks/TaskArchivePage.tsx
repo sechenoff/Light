@@ -73,37 +73,54 @@ function computeStats(tasks: Task[], now: Date) {
     (t) => t.completedAt && new Date(t.completedAt) >= monthStart,
   ).length;
 
+  // Среднее количество в день за этот месяц (к прошедшим дням)
+  const daysElapsed = Math.max(1, Math.floor((now.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+  const monthlyAvgPerDay = thisMonth > 0 ? thisMonth / daysElapsed : 0;
+
   // Лидер месяца — тот, кто выполнил больше всего за этот месяц
-  const completedByMap = new Map<string, { name: string; count: number }>();
+  const completedByMap = new Map<string, { id: string; name: string; count: number }>();
   for (const t of tasks) {
     if (!t.completedAt || new Date(t.completedAt) < monthStart) continue;
     const uid = t.completedBy ?? "";
     const name = t.completedByUser?.username ?? uid;
     if (!uid) continue;
-    const entry = completedByMap.get(uid) ?? { name, count: 0 };
+    const entry = completedByMap.get(uid) ?? { id: uid, name, count: 0 };
     entry.count += 1;
     completedByMap.set(uid, entry);
   }
+  let topLeaderId = "";
   let topLeader = "";
   let topCount = 0;
   for (const [, v] of completedByMap) {
     if (v.count > topCount) {
       topCount = v.count;
       topLeader = v.name;
+      topLeaderId = v.id;
     }
   }
 
-  // Среднее время закрытия (в часах), считаем от createdAt до completedAt
+  // Среднее время закрытия (в днях), считаем от createdAt до completedAt
   const withBoth = tasks.filter((t) => t.createdAt && t.completedAt);
-  let avgHours: number | null = null;
+  let avgDays: number | null = null;
   if (withBoth.length > 0) {
     const totalMs = withBoth.reduce((sum, t) => {
       return sum + (new Date(t.completedAt!).getTime() - new Date(t.createdAt).getTime());
     }, 0);
-    avgHours = Math.round(totalMs / withBoth.length / (1000 * 60 * 60));
+    avgDays = totalMs / withBoth.length / (1000 * 60 * 60 * 24);
   }
 
-  return { total, thisMonth, topLeader, topCount, avgHours };
+  return { total, thisMonth, monthlyAvgPerDay, topLeaderId, topLeader, topCount, avgDays };
+}
+
+// ── Детерминированный цвет аватарки для лидера месяца ─────────────────────────
+// Повторяет логику TaskAssigneePill, чтобы кружок был тем же, что на главной
+const AVATAR_BG_CLASSES = ["bg-teal", "bg-amber", "bg-indigo", "bg-rose", "bg-emerald"];
+function leaderAvatarColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) & 0xffff;
+  }
+  return AVATAR_BG_CLASSES[hash % AVATAR_BG_CLASSES.length];
 }
 
 // ── TaskArchivePage ───────────────────────────────────────────────────────────
@@ -292,8 +309,9 @@ export function TaskArchivePage() {
         <h1 className="text-[22px] font-semibold text-ink mt-0.5 tracking-tight">
           Архив выполненных
         </h1>
-        <p className="text-[13px] text-ink-2 mt-1">
-          Выполненные задачи сохраняются здесь и доступны для поиска
+        <p className="text-[13px] text-ink-2 mt-1 max-w-[760px] leading-[1.65]">
+          Задачи, выполненные более 24 часов назад. Фильтруй по датам, исполнителю или тексту.
+          Нужно вернуть что-то в работу — наведи на строку и нажми «Вернуть».
         </p>
       </div>
 
@@ -304,36 +322,54 @@ export function TaskArchivePage() {
             <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium">
               Выполнено всего
             </span>
-            <span className="text-[22px] font-mono font-medium text-ink tabular-nums">
+            <span className="text-[22px] font-mono font-medium text-emerald tabular-nums">
               {stats.total}
             </span>
+            <span className="text-[11px] text-ink-3">за всё время</span>
           </div>
           <div className="px-5 py-4 border-r border-border flex flex-col gap-1">
             <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium">
               За этот месяц
             </span>
-            <span className="text-[22px] font-mono font-medium text-emerald tabular-nums">
+            <span className="text-[22px] font-mono font-medium text-ink tabular-nums">
               {stats.thisMonth}
+            </span>
+            <span className="text-[11px] text-ink-3">
+              {stats.monthlyAvgPerDay > 0
+                ? `в среднем ${stats.monthlyAvgPerDay.toFixed(1)} в день`
+                : "пока ничего"}
             </span>
           </div>
           <div className="px-5 py-4 border-r border-border flex flex-col gap-1">
             <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium">
               Лидер месяца
             </span>
-            <span className="text-[22px] font-mono font-medium text-ink tabular-nums truncate">
-              {stats.topLeader || "—"}
-            </span>
+            {stats.topLeader ? (
+              <span className="text-[15px] font-medium text-ink flex items-center gap-2 min-w-0">
+                <span
+                  className={`w-[26px] h-[26px] rounded-full ${leaderAvatarColor(stats.topLeaderId)} text-white text-xs font-semibold flex items-center justify-center shrink-0`}
+                >
+                  {stats.topLeader.charAt(0).toUpperCase()}
+                </span>
+                <span className="truncate">{stats.topLeader}</span>
+              </span>
+            ) : (
+              <span className="text-[22px] font-mono font-medium text-ink-3 tabular-nums">—</span>
+            )}
             {stats.topCount > 0 && (
-              <span className="text-[11px] text-ink-3">{stats.topCount} задач</span>
+              <span className="text-[11px] text-ink-3">
+                {stats.topCount} {stats.topCount === 1 ? "задача" : stats.topCount < 5 ? "задачи" : "задач"} из {stats.thisMonth}
+              </span>
             )}
           </div>
           <div className="px-5 py-4 flex flex-col gap-1">
             <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium">
-              Среднее время
+              Среднее время закрытия
             </span>
             <span className="text-[22px] font-mono font-medium text-ink tabular-nums">
-              {stats.avgHours !== null ? `${stats.avgHours}ч` : "—"}
+              {stats.avgDays !== null ? `${stats.avgDays.toFixed(1)} д` : "—"}
             </span>
+            <span className="text-[11px] text-ink-3">от создания до выполнения</span>
           </div>
         </div>
       )}
@@ -477,7 +513,7 @@ function ArchiveTaskRow({
   const creator = task.createdByUser;
 
   return (
-    <div className="grid grid-cols-[22px_1fr_auto_auto_auto] gap-3.5 items-center px-5 py-3 opacity-85 hover:bg-surface-muted hover:opacity-100 transition-all group">
+    <div className="grid grid-cols-[22px_1fr_auto_auto_auto_auto] gap-3.5 items-center px-5 py-3 opacity-85 hover:bg-surface-muted hover:opacity-100 transition-all group">
       {/* Зелёная галочка */}
       <span className="w-5 h-5 rounded-[6px] bg-emerald border-2 border-emerald text-white text-xs font-bold flex items-center justify-center shrink-0">
         ✓
@@ -512,10 +548,18 @@ function ArchiveTaskRow({
       <button
         onClick={() => void onReopen(task.id)}
         aria-label={`Вернуть задачу «${task.title.trim() || "Без названия"}» в работу`}
-        className="text-xs font-medium px-2.5 py-1.5 rounded-md border border-border bg-surface text-ink-2 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 whitespace-nowrap"
+        className="text-xs font-medium px-2.5 py-1.5 rounded-md border border-border bg-surface text-ink-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent-soft hover:text-accent-bright hover:border-accent-border inline-flex items-center gap-1 whitespace-nowrap"
       >
         ↩ Вернуть
       </button>
+
+      {/* Row-menu — появляется при hover */}
+      <span
+        aria-hidden="true"
+        className="text-base text-ink-3 px-1.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity select-none"
+      >
+        ⋯
+      </span>
     </div>
   );
 }
