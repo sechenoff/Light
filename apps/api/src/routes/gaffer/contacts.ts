@@ -21,6 +21,7 @@ import {
   archiveContact,
   unarchiveContact,
   deleteContact,
+  getContactDebtSummary,
 } from "../../services/gaffer/contactService";
 
 const router = express.Router();
@@ -160,6 +161,20 @@ router.post("/:id/unarchive", async (req, res, next) => {
   try {
     const contact = await unarchiveContact(req, req.params.id);
     res.json({ contact });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/gaffer/contacts/:id/debt-summary
+ * Сводка долга: для CLIENT — проекты + clientRemaining, для TEAM_MEMBER — членства + remaining.
+ * Должен быть ДО /:id, но Express сам правильно разрешает /:id/debt-summary vs /:id.
+ */
+router.get("/:id/debt-summary", async (req, res, next) => {
+  try {
+    const summary = await getContactDebtSummary(req, req.params.id);
+    res.json(summary);
   } catch (err) {
     next(err);
   }
