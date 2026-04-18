@@ -12,6 +12,17 @@ import {
 import { formatRub } from "../../../../src/lib/format";
 import { toast } from "../../../../src/components/ToastProvider";
 
+const DRAFT_KEY = "gaffer:projects-new:draft";
+
+interface NewProjectDraft {
+  title: string;
+  clientId: string;
+  shootDate: string;
+  clientPlanAmount: string;
+  lightBudget: string;
+  note: string;
+}
+
 function GafferNewProjectContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -25,13 +36,30 @@ function GafferNewProjectContent() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Pre-fill clientPlanAmount from crew calculator return
+  // Restore draft from sessionStorage on mount (after calculator round-trip or cancel)
   useEffect(() => {
     const crewAmount = searchParams.get("crewAmount");
-    if (crewAmount) {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (raw) {
+      try {
+        const draft: NewProjectDraft = JSON.parse(raw);
+        setTitle(draft.title);
+        setClientId(draft.clientId);
+        setShootDate(draft.shootDate);
+        setLightBudget(draft.lightBudget);
+        setNote(draft.note);
+        // Apply crewAmount override only when returning from calculator
+        setClientPlanAmount(crewAmount ? crewAmount : draft.clientPlanAmount);
+      } catch {
+        // malformed draft — ignore
+      }
+      sessionStorage.removeItem(DRAFT_KEY);
+    } else if (crewAmount) {
+      // no draft but crewAmount present — prefill amount only
       setClientPlanAmount(crewAmount);
     }
-  }, [searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Pre-select client from contact-creation return flow (?clientId=...)
   const preselectedClientId = searchParams.get("clientId") ?? "";
@@ -161,7 +189,7 @@ function GafferNewProjectContent() {
           <p className="text-[11px] text-ink-3 mt-1">
             Нужного заказчика нет?{" "}
             <Link
-              href="/gaffer/contacts/new?type=CLIENT&returnTo=%2Fgaffer%2Fprojects%2Fnew&returnLabel=%D1%81%D0%BE%D0%B7%D0%B4%D0%B0%D0%BD%D0%B8%D0%B5+%D0%BF%D1%80%D0%BE%D0%B5%D0%BA%D1%82%D0%B0"
+              href="/gaffer/contacts/new?type=CLIENT&returnTo=%2Fgaffer%2Fprojects%2Fnew&returnLabel=%D1%81%D0%BE%D0%B7%D0%B4%D0%B0%D0%BD%D0%B8%D1%8E+%D0%BF%D1%80%D0%BE%D0%B5%D0%BA%D1%82%D0%B0"
               className="text-accent-bright hover:text-accent"
             >
               + Создать нового заказчика
@@ -204,12 +232,17 @@ function GafferNewProjectContent() {
             <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">₽</span>
           </div>
           {/* Calculator button */}
-          <Link
-            href={`/gaffer/crew-calculator?returnTo=/gaffer/projects/new`}
+          <button
+            type="button"
+            onClick={() => {
+              const draft: NewProjectDraft = { title, clientId, shootDate, clientPlanAmount, lightBudget, note };
+              sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+              router.push("/gaffer/crew-calculator?returnTo=/gaffer/projects/new");
+            }}
             className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-border bg-surface hover:bg-[#fafafa] text-accent-bright text-[12.5px] rounded transition-colors"
           >
             🧮 Расчёт стоимости команды осветителей
-          </Link>
+          </button>
         </div>
 
         {/* Бюджет на свет */}
