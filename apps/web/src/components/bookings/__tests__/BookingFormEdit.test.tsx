@@ -49,6 +49,9 @@ const BOOKING: BookingDetail = {
       id: "item-1",
       equipmentId: "eq-1",
       quantity: 2,
+      customName: null,
+      customUnitPrice: null,
+      customCategory: null,
       equipment: {
         id: "eq-1",
         name: "Arri SkyPanel S60",
@@ -62,6 +65,9 @@ const BOOKING: BookingDetail = {
       id: "item-2",
       equipmentId: "eq-2",
       quantity: 1,
+      customName: null,
+      customUnitPrice: null,
+      customCategory: null,
       equipment: {
         id: "eq-2",
         name: "Godox SL200",

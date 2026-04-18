@@ -1,7 +1,7 @@
 "use client";
 
 import { formatMoneyRub, pluralize } from "../../../lib/format";
-import type { CatalogSelectedItem, OffCatalogItem, QuoteResponse, TransportBreakdown, ValidationCheck } from "./types";
+import type { CatalogSelectedItem, CustomItem, OffCatalogItem, QuoteResponse, TransportBreakdown, ValidationCheck } from "./types";
 
 type SummaryPanelProps = {
   quote: QuoteResponse | null;
@@ -21,10 +21,12 @@ type SummaryPanelProps = {
   canSubmit: boolean;
   selectedItems?: Map<string, CatalogSelectedItem>;
   offCatalogItems?: OffCatalogItem[];
+  customItems?: CustomItem[];
   selectedVehicleName?: string | null;
   localTransport?: TransportBreakdown | null;
   onRemoveItem?: (equipmentId: string) => void;
   onRemoveOffCatalog?: (tempId: string) => void;
+  onRemoveCustom?: (tempId: string) => void;
   /** Controls which action buttons to render. Defaults to "create". */
   mode?: "create" | "edit";
   /** Whether a save/submit action is in progress. */
@@ -55,10 +57,12 @@ export function SummaryPanel({
   canSubmit,
   selectedItems,
   offCatalogItems,
+  customItems,
   selectedVehicleName,
   localTransport,
   onRemoveItem,
   onRemoveOffCatalog,
+  onRemoveCustom,
   mode = "create",
   submitting = false,
   cancelHref,
@@ -86,7 +90,8 @@ export function SummaryPanel({
 
   type MiniItem =
     | { kind: "catalog"; key: string; equipmentId: string; name: string; qty: number }
-    | { kind: "off"; key: string; tempId: string; name: string; qty: number };
+    | { kind: "off"; key: string; tempId: string; name: string; qty: number }
+    | { kind: "custom"; key: string; tempId: string; name: string; qty: number; unitPrice: number };
   const miniList: MiniItem[] = [];
   if (selectedItems) {
     for (const s of selectedItems.values()) {
@@ -96,6 +101,11 @@ export function SummaryPanel({
   if (offCatalogItems) {
     for (const o of offCatalogItems) {
       miniList.push({ kind: "off", key: o.tempId, tempId: o.tempId, name: o.name, qty: o.quantity });
+    }
+  }
+  if (customItems) {
+    for (const c of customItems) {
+      miniList.push({ kind: "custom", key: c.tempId, tempId: c.tempId, name: c.name, qty: c.quantity, unitPrice: c.unitPrice });
     }
   }
 
@@ -160,8 +170,12 @@ export function SummaryPanel({
           {miniList.map((it) => (
             <div key={it.key} className="group flex items-center gap-2 rounded px-1 py-0.5 text-[11.5px] hover:bg-surface-muted">
               <span className="min-w-0 flex-1 truncate text-ink">{it.name}</span>
-              <span className="font-mono text-[11px] text-ink-3">×{it.qty}</span>
-              {(it.kind === "catalog" ? onRemoveItem : onRemoveOffCatalog) && (
+              {it.kind === "custom" ? (
+                <span className="font-mono text-[11px] text-ink-3">{formatMoneyRub(it.unitPrice)} × {it.qty} = {formatMoneyRub(it.unitPrice * it.qty)} ₽</span>
+              ) : (
+                <span className="font-mono text-[11px] text-ink-3">×{it.qty}</span>
+              )}
+              {(it.kind === "catalog" ? onRemoveItem : it.kind === "off" ? onRemoveOffCatalog : onRemoveCustom) && (
                 <button
                   type="button"
                   aria-label={`Удалить ${it.name}`}
@@ -169,8 +183,10 @@ export function SummaryPanel({
                   onClick={() => {
                     if (it.kind === "catalog") {
                       onRemoveItem?.(it.equipmentId);
-                    } else {
+                    } else if (it.kind === "off") {
                       onRemoveOffCatalog?.(it.tempId);
+                    } else {
+                      onRemoveCustom?.(it.tempId);
                     }
                   }}
                   className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-3 opacity-0 transition-all hover:bg-rose-soft hover:text-rose group-hover:opacity-100 focus:opacity-100"

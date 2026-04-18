@@ -54,7 +54,15 @@ type BookingDetail = {
     createdAt: string;
   }>;
   client: { id: string; name: string; phone: string | null; email: string | null; comment: string | null };
-  items: Array<{ id: string; equipmentId: string; quantity: number; equipment: any }>;
+  items: Array<{
+    id: string;
+    equipmentId: string | null;
+    quantity: number;
+    customName?: string | null;
+    customCategory?: string | null;
+    customUnitPrice?: string | null;
+    equipment: any;
+  }>;
   estimate: null | {
     id: string;
     currency: string;
@@ -383,11 +391,11 @@ export default function BookingDetailPage() {
                 <tbody>
                   {booking.items.map((it) => (
                     <tr key={it.id} className="border-t border-border">
-                      <td className="px-3 py-2 text-ink-2">{it.equipment.category}</td>
+                      <td className="px-3 py-2 text-ink-2">{it.equipment?.category ?? it.customCategory ?? "—"}</td>
                       <td className="px-3 py-2">
-                        <div className="font-medium text-ink">{it.equipment.name}</div>
+                        <div className="font-medium text-ink">{it.equipment?.name ?? it.customName ?? "—"}</div>
                         <div className="text-xs text-ink-3">
-                          {it.equipment.brand ? it.equipment.brand : ""} {it.equipment.model ? `· ${it.equipment.model}` : ""}
+                          {it.equipment?.brand ? it.equipment.brand : ""} {it.equipment?.model ? `· ${it.equipment.model}` : ""}
                         </div>
                       </td>
                       <td className="px-3 py-2 font-medium text-right mono-num">{it.quantity}</td>

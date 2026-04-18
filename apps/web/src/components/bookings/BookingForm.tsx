@@ -24,10 +24,12 @@ import { CommentCard } from "./create/CommentCard";
 import { DiscountCard } from "./create/DiscountCard";
 import { SummaryPanel } from "./create/SummaryPanel";
 import { computeTransportPriceClient } from "./create/transportClientCalc";
+import { AddCustomItemModal } from "./create/AddCustomItemModal";
 import type {
   AvailabilityRow,
   CatalogRowAdjustment,
   CatalogSelectedItem,
+  CustomItem,
   OffCatalogItem,
   GafferReviewApiResponse,
   QuoteResponse,
@@ -59,8 +61,11 @@ export type BookingDetail = {
   client: { id: string; name: string; phone: string | null; email?: string | null };
   items: Array<{
     id: string;
-    equipmentId: string;
+    equipmentId: string | null;
     quantity: number;
+    customName: string | null;
+    customUnitPrice: string | null;
+    customCategory: string | null;
     equipment: {
       id: string;
       name: string;
@@ -68,7 +73,7 @@ export type BookingDetail = {
       brand: string | null;
       model: string | null;
       rentalRatePerShift: string;
-    };
+    } | null;
   }>;
 };
 
@@ -143,11 +148,13 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   const [catalog, setCatalog] = useState<AvailabilityRow[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
 
-  // Build initial selected map from booking items when editing
+  // Build initial selected map from booking items when editing (catalog items only)
   const [selected, setSelected] = useState<Map<string, CatalogSelectedItem>>(() => {
     if (!isEdit || !initialBooking) return new Map();
     const m = new Map<string, CatalogSelectedItem>();
     for (const it of initialBooking.items) {
+      if (it.equipmentId == null) continue; // skip custom items
+      if (!it.equipment) continue;
       m.set(it.equipmentId, {
         equipmentId: it.equipmentId,
         name: it.equipment.name,
@@ -164,6 +171,20 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
 
   const [offCatalogItems, setOffCatalogItems] = useState<OffCatalogItem[]>([]);
   const [adjustments, setAdjustments] = useState<Map<string, CatalogRowAdjustment>>(new Map());
+
+  // Custom (non-catalog) items — initialized from booking items without equipmentId
+  const [customItems, setCustomItems] = useState<CustomItem[]>(() => {
+    if (!isEdit || !initialBooking) return [];
+    return initialBooking.items
+      .filter((it) => it.equipmentId == null)
+      .map((it) => ({
+        tempId: `custom-${it.id}`,
+        name: it.customName ?? "",
+        unitPrice: Number(it.customUnitPrice ?? 0),
+        quantity: it.quantity,
+      }));
+  });
+  const [customModalOpen, setCustomModalOpen] = useState(false);
 
   // Search + tabs
   const [searchQuery, setSearchQuery] = useState("");
@@ -286,8 +307,9 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   const localSubtotal = useMemo(() => {
     let sum = 0;
     for (const s of selected.values()) sum += Number(s.dailyPrice) * s.quantity * shifts;
+    for (const c of customItems) sum += c.unitPrice * c.quantity;
     return sum;
-  }, [selected, shifts]);
+  }, [selected, shifts, customItems]);
 
   const clampedDiscount = Math.max(0, Math.min(100, discountPercent || 0));
   const localDiscount = (localSubtotal * clampedDiscount) / 100;
@@ -295,7 +317,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
 
   const checks = useMemo<ValidationCheck[]>(() => {
     const list: ValidationCheck[] = [];
-    if (selected.size > 0 && offCatalogItems.length === 0 && unmatchedFromAi.length === 0) {
+    if (selected.size > 0 && offCatalogItems.length === 0 && customItems.length === 0 && unmatchedFromAi.length === 0) {
       list.push({ type: "ok", label: "Все позиции распознаны", detail: "" });
     }
     if (unmatchedFromAi.length > 0) {
@@ -304,11 +326,14 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     if (offCatalogItems.length > 0) {
       list.push({ type: "tip", label: `${offCatalogItems.length} вне каталога`, detail: "позиции сохранятся с ручным описанием" });
     }
+    if (customItems.length > 0) {
+      list.push({ type: "tip", label: `${customItems.length} ${pluralize(customItems.length, "произвольная позиция", "произвольные позиции", "произвольных позиций")}`, detail: "услуги, расходники, субаренда" });
+    }
     return list;
-  }, [selected, offCatalogItems, unmatchedFromAi]);
+  }, [selected, offCatalogItems, customItems, unmatchedFromAi]);
 
   const canSubmit = Boolean(
-    clientName.trim() && (selected.size > 0 || offCatalogItems.length > 0) && pickupISO && returnISO && !submitting,
+    clientName.trim() && (selected.size > 0 || offCatalogItems.length > 0 || customItems.length > 0) && pickupISO && returnISO && !submitting,
   );
 
   const transportPayload = useMemo(() => {
@@ -339,7 +364,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
 
   // ── Debounced quote ──
   useEffect(() => {
-    const hasSomething = apiItems.length > 0 || transportPayload !== null;
+    const hasSomething = apiItems.length > 0 || customItems.length > 0 || transportPayload !== null;
     if (!clientName.trim() || !hasSomething || !pickupISO || !returnISO) {
       setQuote(null);
       return;
@@ -348,13 +373,21 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     const timer = setTimeout(async () => {
       setLoadingQuote(true);
       try {
+        const items = [
+          ...apiItems,
+          ...customItems.map((c) => ({
+            customName: c.name,
+            customUnitPrice: c.unitPrice,
+            quantity: c.quantity,
+          })),
+        ];
         const body = {
           client: { name: clientName.trim() },
           projectName: projectName.trim() || "Проект",
           startDate: pickupISO,
           endDate: returnISO,
           discountPercent: discountPercent || 0,
-          items: apiItems,
+          items,
           transport: transportPayload,
         };
         const data = await apiFetch<QuoteResponse>("/api/bookings/quote", { method: "POST", body: JSON.stringify(body) });
@@ -366,7 +399,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
       }
     }, 500);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [clientName, projectName, pickupISO, returnISO, discountPercent, apiItems, transportPayload]);
+  }, [clientName, projectName, pickupISO, returnISO, discountPercent, apiItems, customItems, transportPayload]);
 
   // ── Date handlers ──
   function handlePickupChange(v: string) {
@@ -449,6 +482,22 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
 
   function handleRemoveOffCatalog(tempId: string) {
     setOffCatalogItems((prev) => prev.filter((it) => it.tempId !== tempId));
+  }
+
+  // ── Custom item handlers ──
+  function handleAddCustom(payload: { name: string; unitPrice: number; quantity: number }) {
+    const tempId = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setCustomItems((prev) => [...prev, { tempId, ...payload }]);
+  }
+
+  function handleChangeCustomQty(tempId: string, qty: number) {
+    setCustomItems((prev) =>
+      prev.map((it) => (it.tempId === tempId ? { ...it, quantity: Math.max(1, qty) } : it)),
+    );
+  }
+
+  function handleRemoveCustom(tempId: string) {
+    setCustomItems((prev) => prev.filter((it) => it.tempId !== tempId));
   }
 
   // ── AI handlers ──
@@ -566,6 +615,14 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
           ? "\n\nВне каталога:\n" + offCatalogItems.map((o) => `— ${o.name} × ${o.quantity}`).join("\n")
           : "";
       const finalComment = (bookingComment.trim() + offCatalogSuffix).trim() || undefined;
+      const items = [
+        ...apiItems,
+        ...customItems.map((c) => ({
+          customName: c.name,
+          customUnitPrice: c.unitPrice,
+          quantity: c.quantity,
+        })),
+      ];
       const body = {
         client: { name: clientName.trim() },
         projectName: projectName.trim() || "Проект",
@@ -573,7 +630,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
         endDate: returnISO,
         discountPercent: discountPercent || 0,
         comment: finalComment,
-        items: apiItems,
+        items,
         transport: transportPayload,
       };
       const res = await apiFetch<{ booking: { id: string } }>("/api/bookings/draft", { method: "POST", body: JSON.stringify(body) });
@@ -601,6 +658,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
       router.push(`/bookings/${id}`);
     } catch (err: unknown) {
       toast.error((err as { message?: string })?.message ?? "Ошибка отправки");
+      router.push(`/bookings/${id}`);
     }
   }
 
@@ -614,6 +672,14 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
           ? "\n\nВне каталога:\n" + offCatalogItems.map((o) => `— ${o.name} × ${o.quantity}`).join("\n")
           : "";
       const finalComment = (bookingComment.trim() + offCatalogSuffix).trim() || null;
+      const items = [
+        ...apiItems,
+        ...customItems.map((c) => ({
+          customName: c.name,
+          customUnitPrice: c.unitPrice,
+          quantity: c.quantity,
+        })),
+      ];
       const body = {
         client: { name: clientName.trim() },
         projectName: projectName.trim() || "Проект",
@@ -621,7 +687,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
         endDate: returnISO,
         discountPercent: clampedDiscount,
         comment: finalComment,
-        items: apiItems,
+        items,
         transport: transportPayload,
       };
       await apiFetch(`/api/bookings/${bookingId}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -690,6 +756,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
             catalogLoading={catalogLoading}
             selected={selected}
             offCatalogItems={offCatalogItems}
+            customItems={customItems}
             adjustments={adjustments}
             gafferText={gafferText}
             onGafferTextChange={setGafferText}
@@ -709,6 +776,9 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
             onRemove={handleRemove}
             onChangeOffCatalogQty={handleChangeOffCatalogQty}
             onRemoveOffCatalog={handleRemoveOffCatalog}
+            onChangeCustomQty={handleChangeCustomQty}
+            onRemoveCustom={handleRemoveCustom}
+            onOpenCustomModal={() => setCustomModalOpen(true)}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             activeTab={activeTab}
@@ -735,7 +805,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
             localDiscount={localDiscount}
             localTotal={localTotal}
             discountPercent={discountPercent}
-            itemCount={selected.size + offCatalogItems.length}
+            itemCount={selected.size + offCatalogItems.length + customItems.length}
             shifts={shifts}
             isLoadingQuote={loadingQuote}
             checks={checks}
@@ -745,10 +815,12 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
             canSubmit={canSubmit}
             selectedItems={selected}
             offCatalogItems={offCatalogItems}
+            customItems={customItems}
             selectedVehicleName={selectedVehicleId ? (vehicles.find(v => v.id === selectedVehicleId)?.name ?? null) : null}
             localTransport={localTransport}
             onRemoveItem={handleRemove}
             onRemoveOffCatalog={handleRemoveOffCatalog}
+            onRemoveCustom={handleRemoveCustom}
             mode={mode}
             submitting={submitting}
             cancelHref={isEdit ? `/bookings/${bookingId}` : undefined}
@@ -771,6 +843,13 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
           />
         </div>
       </div>
+
+      {/* Custom item modal */}
+      <AddCustomItemModal
+        isOpen={customModalOpen}
+        onClose={() => setCustomModalOpen(false)}
+        onAdd={handleAddCustom}
+      />
     </div>
   );
 }

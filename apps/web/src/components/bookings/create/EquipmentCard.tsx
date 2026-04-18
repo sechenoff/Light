@@ -5,7 +5,7 @@ import { SmartInput } from "./SmartInput";
 import { AiResultBanner } from "./AiResultBanner";
 import { CatalogList } from "./CatalogList";
 import { ReviewPanel } from "./ReviewPanel";
-import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, OffCatalogItem, PendingReviewItem } from "./types";
+import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem, PendingReviewItem } from "./types";
 import { formatMoneyRub, pluralize } from "../../../lib/format";
 
 type EquipmentSelection = {
@@ -21,6 +21,7 @@ type Props = {
   catalogLoading: boolean;
   selected: Map<string, CatalogSelectedItem>;
   offCatalogItems: OffCatalogItem[];
+  customItems?: CustomItem[];
 
   // Smart input / AI
   gafferText: string;
@@ -43,6 +44,11 @@ type Props = {
   onRemove: (equipmentId: string) => void;
   onChangeOffCatalogQty: (tempId: string, newQty: number) => void;
   onRemoveOffCatalog: (tempId: string) => void;
+  onChangeCustomQty?: (tempId: string, newQty: number) => void;
+  onRemoveCustom?: (tempId: string) => void;
+
+  // Custom item modal
+  onOpenCustomModal: () => void;
 
   // Search + tab state (controlled)
   searchQuery: string;
@@ -68,6 +74,7 @@ export function EquipmentCard({
   catalogLoading,
   selected,
   offCatalogItems,
+  customItems = [],
   gafferText,
   onGafferTextChange,
   parsing,
@@ -86,6 +93,9 @@ export function EquipmentCard({
   onRemove,
   onChangeOffCatalogQty,
   onRemoveOffCatalog,
+  onChangeCustomQty,
+  onRemoveCustom,
+  onOpenCustomModal,
   searchQuery,
   onSearchQueryChange,
   activeTab,
@@ -112,10 +122,11 @@ export function EquipmentCard({
     return map;
   }, [selected]);
 
-  const totalPositions = selected.size + offCatalogItems.length;
+  const totalPositions = selected.size + offCatalogItems.length + customItems.length;
   const totalUnits =
     Array.from(selected.values()).reduce((acc, it) => acc + it.quantity, 0) +
-    offCatalogItems.reduce((acc, it) => acc + it.quantity, 0);
+    offCatalogItems.reduce((acc, it) => acc + it.quantity, 0) +
+    customItems.reduce((acc, it) => acc + it.quantity, 0);
 
   const totalPrice = useMemo(() => {
     let sum = 0;
@@ -158,6 +169,15 @@ export function EquipmentCard({
             parsing={parsing}
             parsed={parsed}
           />
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={onOpenCustomModal}
+              className="rounded border border-border bg-surface px-3 py-1 text-[12.5px] text-ink-2 hover:bg-surface-muted hover:text-ink"
+            >
+              + Произвольная позиция
+            </button>
+          </div>
         </div>
 
         {/* Category chips */}
@@ -213,6 +233,7 @@ export function EquipmentCard({
               rows={catalog}
               selected={selected}
               offCatalogItems={offCatalogItems}
+              customItems={customItems}
               activeTab={activeTab}
               searchQuery={isAi ? "" : searchQuery}
               adjustments={adjustments}
@@ -221,6 +242,8 @@ export function EquipmentCard({
               onRemove={onRemove}
               onChangeOffCatalogQty={onChangeOffCatalogQty}
               onRemoveOffCatalog={onRemoveOffCatalog}
+              onChangeCustomQty={onChangeCustomQty}
+              onRemoveCustom={onRemoveCustom}
             />
           </div>
           <button
