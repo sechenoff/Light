@@ -211,7 +211,6 @@ export async function listProjects(req: Request, opts: ListProjectsOpts) {
   return projects.map((p) => ({
     ...p,
     clientPlanAmount: p.clientPlanAmount.toString(),
-    lightBudgetAmount: p.lightBudgetAmount.toString(),
     members: undefined, // убираем из ответа — заменяем агрегатами
     payments: undefined,
     ...computeProjectDebts(p as ProjectWithRelations),
@@ -236,7 +235,6 @@ export async function getProject(req: Request, id: string) {
   return {
     ...project,
     clientPlanAmount: project.clientPlanAmount.toString(),
-    lightBudgetAmount: project.lightBudgetAmount.toString(),
     members: project.members.map((m) => ({
       ...m,
       plannedAmount: m.plannedAmount.toString(),
