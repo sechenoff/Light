@@ -8,6 +8,7 @@ import type { NextRequest } from "next/server";
  *   /                 — лендинг
  *   /crew-calculator  — калькулятор осветителей
  *   /login            — страница входа
+ *   /gaffer/*         — изолированный модуль Gaffer CRM (своя auth через GafferUserProvider)
  *   /api/auth/*       — login/logout/me (проверяется внутри API)
  *   /api/*            — проксируется отдельно; защита на уровне Express
  *   /_next/*, favicon.ico, публичные ассеты — пропускаются
@@ -28,6 +29,7 @@ function isPublic(pathname: string): boolean {
   if (pathname.startsWith("/_next/")) return true;
   if (pathname === "/favicon.ico") return true;
   if (pathname.startsWith("/warehouse/scan")) return true; // PIN-авторизация внутри
+  if (pathname.startsWith("/gaffer")) return true; // отдельный модуль со своей auth-логикой в layout
   return false;
 }
 
