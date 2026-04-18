@@ -85,6 +85,7 @@ function PaymentForm({ direction, projectId, memberId, methods, isArchived, onDo
   const [form, setForm] = useState<PaymentFormData>(emptyPaymentForm);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -104,6 +105,8 @@ function PaymentForm({ direction, projectId, memberId, methods, isArchived, onDo
         memberId: memberId || undefined,
         comment: form.comment.trim() || undefined,
       });
+      setForm(emptyPaymentForm());
+      detailsRef.current?.removeAttribute("open");
       onDone();
     } catch (e) {
       if (e instanceof GafferApiError) {
@@ -119,10 +122,10 @@ function PaymentForm({ direction, projectId, memberId, methods, isArchived, onDo
     }
   }
 
-  const summaryLabel = direction === "IN" ? "+ Новое поступление" : "+ Новая выплата";
+  const summaryLabel = direction === "IN" ? "Новое поступление" : "Новая выплата";
 
   return (
-    <details className="group border border-dashed border-border rounded-md bg-accent-soft overflow-hidden mt-2">
+    <details ref={detailsRef} className="group border border-dashed border-border rounded-md bg-accent-soft overflow-hidden mt-2">
       <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-accent flex items-center gap-1 list-none">
         <span className="text-[14px] leading-none group-open:hidden">+</span>
         <span className="text-[14px] leading-none hidden group-open:inline">−</span>
@@ -670,6 +673,7 @@ function AddMemberForm({
   const [roleLabel, setRoleLabel] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -694,10 +698,14 @@ function AddMemberForm({
     setErr(null);
     try {
       await addProjectMember(projectId, {
-        contactId,
+        contactId: contactId,
         plannedAmount: plannedAmount || "0",
         roleLabel: roleLabel.trim() || undefined,
       });
+      setContactId("");
+      setPlannedAmount("0");
+      setRoleLabel("");
+      detailsRef.current?.removeAttribute("open");
       onDone();
     } catch (e) {
       if (e instanceof GafferApiError) {
@@ -715,11 +723,11 @@ function AddMemberForm({
   }
 
   return (
-    <details className="group border border-dashed border-border rounded-md bg-accent-soft overflow-hidden mt-2">
+    <details ref={detailsRef} className="group border border-dashed border-border rounded-md bg-accent-soft overflow-hidden mt-2">
       <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-accent flex items-center gap-1 list-none">
         <span className="text-[14px] leading-none group-open:hidden">+</span>
         <span className="text-[14px] leading-none hidden group-open:inline">−</span>
-        + Добавить участника
+        Добавить участника
       </summary>
       <div className="px-3 pb-3 pt-1 border-t border-dashed border-border">
         <form onSubmit={handleSubmit} className="space-y-2 mt-1">
@@ -1133,6 +1141,24 @@ function GafferProjectDetailContent() {
                 {project.note}
               </p>
             )}
+          </div>
+
+          {/* Project summary money-block (screen 04) */}
+          <div className="px-4 py-3">
+            <div className="grid grid-cols-3 border border-border rounded-md overflow-hidden bg-surface mb-3">
+              <div className="p-2.5 border-r border-border text-center">
+                <div className="eyebrow">Сумма</div>
+                <div className="mono-num text-[15px] font-semibold mt-1">{formatRub(project.clientTotal ?? project.clientPlanAmount)}</div>
+              </div>
+              <div className="p-2.5 border-r border-border text-center">
+                <div className="eyebrow">Должны мне</div>
+                <div className="mono-num text-[15px] font-semibold text-rose mt-1">{formatRub(project.clientRemaining)}</div>
+              </div>
+              <div className="p-2.5 text-center">
+                <div className="eyebrow">Должен я</div>
+                <div className="mono-num text-[15px] font-semibold text-indigo mt-1">{formatRub(project.teamRemaining)}</div>
+              </div>
+            </div>
           </div>
 
           {/* От заказчика */}
