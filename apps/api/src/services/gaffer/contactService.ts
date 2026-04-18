@@ -131,6 +131,108 @@ export async function unarchiveContact(req: Request, id: string) {
   return prisma.gafferContact.findUnique({ where: { id } }) as Promise<NonNullable<Awaited<ReturnType<typeof prisma.gafferContact.findUnique>>>>;
 }
 
+/** Сводка долга по контакту.
+ * Для CLIENT — список проектов с clientRemaining + totalClientRemaining.
+ * Для TEAM_MEMBER — список членств с paidToMe/remaining + totalRemaining.
+ */
+export async function getContactDebtSummary(req: Request, id: string) {
+  const { gafferUserId } = gafferWhere(req);
+
+  const contact = await prisma.gafferContact.findFirst({
+    where: { id, gafferUserId },
+  });
+
+  if (!contact) {
+    throw new HttpError(404, "Контакт не найден", "NOT_FOUND");
+  }
+
+  const { Decimal } = await import("@prisma/client/runtime/library");
+  const ZERO = new Decimal(0);
+
+  if (contact.type === "CLIENT") {
+    // Загружаем все проекты клиента с платежами и участниками
+    const projects = await prisma.gafferProject.findMany({
+      where: { clientId: id, gafferUserId },
+      include: {
+        members: { select: { plannedAmount: true } },
+        payments: { select: { direction: true, amount: true, memberId: true } },
+      },
+      orderBy: { shootDate: "desc" },
+    });
+
+    let totalClientRemaining = ZERO;
+
+    const projectSummaries = projects.map((p) => {
+      const clientReceived = p.payments
+        .filter((pay) => pay.direction === "IN")
+        .reduce((acc, pay) => acc.plus(pay.amount), ZERO);
+
+      const raw = new Decimal(p.clientPlanAmount).minus(clientReceived);
+      const clientRemaining = raw.gt(ZERO) ? raw : ZERO;
+      totalClientRemaining = totalClientRemaining.plus(clientRemaining);
+
+      return {
+        id: p.id,
+        title: p.title,
+        shootDate: p.shootDate,
+        status: p.status,
+        clientPlanAmount: p.clientPlanAmount.toString(),
+        clientReceived: clientReceived.toString(),
+        clientRemaining: clientRemaining.toString(),
+      };
+    });
+
+    return {
+      contact,
+      projects: projectSummaries,
+      totalClientRemaining: totalClientRemaining.toString(),
+    };
+  } else {
+    // TEAM_MEMBER — загружаем членства
+    const memberships = await prisma.gafferProjectMember.findMany({
+      where: { contactId: id, project: { gafferUserId } },
+      include: {
+        project: true,
+      },
+    });
+
+    let totalRemaining = ZERO;
+
+    const memberSummaries = await Promise.all(
+      memberships.map(async (m) => {
+        // OUT-платежи для этого участника в этом проекте
+        const payments = await prisma.gafferPayment.findMany({
+          where: { projectId: m.projectId, memberId: m.contactId, direction: "OUT" },
+          select: { amount: true },
+        });
+
+        const paidToMe = payments.reduce((acc, p) => acc.plus(p.amount), ZERO);
+        const raw = new Decimal(m.plannedAmount).minus(paidToMe);
+        const remaining = raw.gt(ZERO) ? raw : ZERO;
+        totalRemaining = totalRemaining.plus(remaining);
+
+        return {
+          memberId: m.id,
+          projectId: m.projectId,
+          projectTitle: m.project.title,
+          shootDate: m.project.shootDate,
+          status: m.project.status,
+          roleLabel: m.roleLabel,
+          plannedAmount: m.plannedAmount.toString(),
+          paidToMe: paidToMe.toString(),
+          remaining: remaining.toString(),
+        };
+      }),
+    );
+
+    return {
+      contact,
+      memberships: memberSummaries,
+      totalRemaining: totalRemaining.toString(),
+    };
+  }
+}
+
 /** Удалить контакт. Если есть связанные проекты или членства — 409. */
 export async function deleteContact(req: Request, id: string) {
   const { gafferUserId } = gafferWhere(req);
