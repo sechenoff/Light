@@ -7,7 +7,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   gafferMe,
   gafferLogout,
@@ -36,6 +36,7 @@ export function GafferUserProvider({
   const [user, setUser] = useState<GafferUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -45,14 +46,16 @@ export function GafferUserProvider({
     } catch (e) {
       if (e instanceof GafferApiError && e.status === 401) {
         setUser(null);
-        router.push("/gaffer/login");
+        if (pathname !== "/gaffer/login") {
+          router.push("/gaffer/login");
+        }
       } else {
         setUser(null);
       }
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, pathname]);
 
   const logout = useCallback(async () => {
     try {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -62,30 +62,30 @@ export default function GafferContactDetailPage() {
   // Alert banner (inline)
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    try {
-      const res = await getContact(id);
-      if (!cancelled) {
-        setContact(res.contact);
-        setEditName(res.contact.name);
-        setEditPhone(res.contact.phone ?? "");
-        setEditTelegram(res.contact.telegram ?? "");
-        setEditNote(res.contact.note ?? "");
+    (async () => {
+      try {
+        const res = await getContact(id);
+        if (!cancelled) {
+          setContact(res.contact);
+          setEditName(res.contact.name);
+          setEditPhone(res.contact.phone ?? "");
+          setEditTelegram(res.contact.telegram ?? "");
+          setEditNote(res.contact.note ?? "");
+        }
+      } catch (e) {
+        if (!cancelled) {
+          if (e instanceof GafferApiError && e.status === 404) setNotFound(true);
+          else setNotFound(true);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch (e) {
-      if (!cancelled) {
-        if (e instanceof GafferApiError && e.status === 404) setNotFound(true);
-        else setNotFound(true);
-      }
-    } finally {
-      if (!cancelled) setLoading(false);
-    }
+    })();
     return () => { cancelled = true; };
   }, [id]);
-
-  useEffect(() => { load(); }, [load]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -105,9 +105,9 @@ export default function GafferContactDetailPage() {
     try {
       const res = await updateContact(id, {
         name: editName.trim(),
-        phone: editPhone.trim() || undefined,
-        telegram: editTelegram.trim() || undefined,
-        note: editNote.trim() || undefined,
+        phone: editPhone.trim(),
+        telegram: editTelegram.trim(),
+        note: editNote.trim(),
       });
       setContact(res.contact);
       setEditing(false);
