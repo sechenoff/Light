@@ -238,8 +238,9 @@ export async function getProject(req: Request, id: string) {
     ...project,
     clientPlanAmount: project.clientPlanAmount.toString(),
     members: project.members.map((m) => {
+      // GafferPayment.memberId → GafferContact.id (FK), не GafferProjectMember.id.
       const paid = project.payments
-        .filter((p) => p.direction === "OUT" && p.memberId === m.id)
+        .filter((p) => p.direction === "OUT" && p.memberId === m.contactId)
         .reduce((acc, p) => acc.plus(p.amount), ZERO);
       const planned = new Decimal(m.plannedAmount);
       const raw = planned.minus(paid);
