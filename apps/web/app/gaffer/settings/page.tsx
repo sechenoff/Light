@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   listPaymentMethods,
   createPaymentMethod,
@@ -98,29 +98,33 @@ export default function GafferSettingsPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const load = useCallback(async () => {
+  function load() {
     let cancelled = false;
     setLoading(true);
-    try {
-      const res = await listPaymentMethods();
-      if (!cancelled) setMethods(res.items);
-    } catch {
-      // ignore
-    } finally {
-      if (!cancelled) setLoading(false);
-    }
+    (async () => {
+      try {
+        const res = await listPaymentMethods();
+        if (!cancelled) setMethods(res.items);
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
-  }, []);
+  }
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => load(), []);
 
   async function handleUpdate(id: string, data: { name?: string; isDefault?: boolean }) {
     try {
       const res = await updatePaymentMethod(id, data);
-      setMethods((prev) => prev.map((m) => {
-        if (data.isDefault) return m.id === id ? res.paymentMethod : { ...m, isDefault: false };
-        return m.id === id ? res.paymentMethod : m;
-      }));
+      if (data.isDefault) {
+        // Re-fetch to get correct server ordering (isDefault desc → sortOrder asc → name asc)
+        load();
+      } else {
+        setMethods((prev) => prev.map((m) => m.id === id ? res.paymentMethod : m));
+      }
     } catch (err) {
       if (err instanceof GafferApiError && err.code === "PAYMENT_METHOD_NAME_TAKEN") {
         toast.error("Метод с таким названием уже существует");
@@ -220,9 +224,10 @@ export default function GafferSettingsPage() {
             <button
               type="submit"
               disabled={creating || !newName.trim()}
+              aria-label="Добавить способ оплаты"
               className="bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-[9px] text-[13px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
             >
-              {creating ? "…" : "+"}
+              {creating ? "…" : "+ Добавить"}
             </button>
           </div>
           {createError && (

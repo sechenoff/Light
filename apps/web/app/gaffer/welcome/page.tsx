@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { completeOnboarding } from "../../../src/lib/gafferApi";
 import { useGafferUser } from "../../../src/components/gaffer/GafferUserContext";
+import { toast } from "../../../src/components/ToastProvider";
 
 export default function GafferWelcomePage() {
   const { user, loading, refresh } = useGafferUser();
   const router = useRouter();
+  const [submitting, setSubmitting] = useState(false);
 
   // If already onboarded — skip to dashboard
   useEffect(() => {
@@ -17,15 +19,29 @@ export default function GafferWelcomePage() {
   }, [loading, user, router]);
 
   async function handleStart() {
-    await completeOnboarding();
-    await refresh();
-    router.push("/gaffer/projects");
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await completeOnboarding();
+      await refresh();
+      router.push("/gaffer/projects");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Не удалось завершить настройку");
+      setSubmitting(false);
+    }
   }
 
   async function handleSkip() {
-    await completeOnboarding();
-    await refresh();
-    router.push("/gaffer");
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await completeOnboarding();
+      await refresh();
+      router.push("/gaffer");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Не удалось завершить настройку");
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -89,9 +105,10 @@ export default function GafferWelcomePage() {
       <div className="px-5 pb-[22px] grid gap-2">
         <button
           onClick={handleStart}
-          className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-[12px] text-[14px] transition-colors flex items-center justify-center"
+          disabled={submitting}
+          className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-[12px] text-[14px] transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Создать первый проект
+          {submitting ? "Загружаем…" : "Создать первый проект"}
         </button>
       </div>
 
@@ -99,7 +116,8 @@ export default function GafferWelcomePage() {
       <div className="text-center pb-[22px] text-[12px] text-ink-3">
         <button
           onClick={handleSkip}
-          className="text-accent-bright hover:text-accent transition-colors"
+          disabled={submitting}
+          className="text-accent-bright hover:text-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Пропустить и открыть дашборд
         </button>

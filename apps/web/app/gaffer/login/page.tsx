@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { gafferLogin, GafferApiError } from "../../../src/lib/gafferApi";
+import { useGafferUser } from "../../../src/components/gaffer/GafferUserContext";
 
 export default function GafferLoginPage() {
   const router = useRouter();
+  const { refresh } = useGafferUser();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,6 +18,7 @@ export default function GafferLoginPage() {
     setLoading(true);
     try {
       const res = await gafferLogin(email.trim());
+      await refresh();
       if (res.user.onboardingCompletedAt) {
         router.push("/gaffer");
       } else {

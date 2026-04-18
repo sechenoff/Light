@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   listContacts,
@@ -100,7 +100,7 @@ export default function GafferContactsPage() {
   const [chip, setChip] = useState<FilterChip>("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [contacts, setContacts] = useState<GafferContact[]>([]);
+  const [contacts, setContacts] = useState<GafferContact[] | null>(null);
   const [loading, setLoading] = useState(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -111,29 +111,27 @@ export default function GafferContactsPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [search]);
 
-  const fetchContacts = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
     let cancelled = false;
-    try {
-      const params: Parameters<typeof listContacts>[0] = {};
-      if (chip === "clients") { params.type = "CLIENT"; params.isArchived = false; }
-      else if (chip === "team") { params.type = "TEAM_MEMBER"; params.isArchived = false; }
-      else if (chip === "archive") { params.isArchived = true; }
-      else { params.isArchived = false; }
-      if (debouncedSearch) params.search = debouncedSearch;
-      const res = await listContacts(params);
-      if (!cancelled) setContacts(res.items);
-    } catch {
-      if (!cancelled) setContacts([]);
-    } finally {
-      if (!cancelled) setLoading(false);
-    }
+    setLoading(true);
+    (async () => {
+      try {
+        const params: Parameters<typeof listContacts>[0] = {};
+        if (chip === "clients") { params.type = "CLIENT"; params.isArchived = false; }
+        else if (chip === "team") { params.type = "TEAM_MEMBER"; params.isArchived = false; }
+        else if (chip === "archive") { params.isArchived = true; }
+        else { params.isArchived = false; }
+        if (debouncedSearch) params.search = debouncedSearch;
+        const res = await listContacts(params);
+        if (!cancelled) setContacts(res.items);
+      } catch {
+        if (!cancelled) setContacts([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, [chip, debouncedSearch]);
-
-  useEffect(() => {
-    fetchContacts();
-  }, [fetchContacts]);
 
   return (
     <div className="min-h-screen bg-surface">
@@ -181,13 +179,13 @@ export default function GafferContactsPage() {
 
       {/* List */}
       <div>
-        {loading ? (
+        {loading && contacts === null ? (
           <>
             <SkeletonCard />
             <SkeletonCard />
             <SkeletonCard />
           </>
-        ) : contacts.length === 0 ? (
+        ) : (contacts ?? []).length === 0 ? (
           <div className="text-center text-ink-3 py-10 px-4 text-[13px]">
             <div className="text-4xl mb-3">☺</div>
             <p className="mb-4">Контактов пока нет</p>
@@ -199,7 +197,7 @@ export default function GafferContactsPage() {
             </Link>
           </div>
         ) : (
-          contacts.map((c) => <ContactCard key={c.id} contact={c} />)
+          (contacts ?? []).map((c) => <ContactCard key={c.id} contact={c} />)
         )}
       </div>
     </div>

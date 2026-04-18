@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { GafferUserProvider, useGafferUser } from "../../src/components/gaffer/GafferUserContext";
-import { ToastProvider } from "../../src/components/ToastProvider";
 
 // Public paths that don't require auth guard
 const PUBLIC_PATHS = ["/gaffer/login"];
@@ -65,6 +64,7 @@ function GafferShell({ children }: { children: React.ReactNode }) {
             href="/gaffer/settings"
             className="text-accent-border hover:text-white transition-colors text-xs"
             title="Настройки"
+            aria-label="Настройки"
           >
             ⚙️
           </Link>
@@ -134,7 +134,6 @@ export default function GafferLayout({
   return (
     <GafferUserProvider>
       <GafferShell>{children}</GafferShell>
-      <ToastProvider />
     </GafferUserProvider>
   );
 }
