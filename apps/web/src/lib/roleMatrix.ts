@@ -56,6 +56,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Система",
       items: [
         { href: "/admin", label: "Админка", icon: "settings" },
+        { href: "/admin/clients", label: "Клиенты", icon: "people" },
         { href: "/crew-calculator", label: "Калькулятор", icon: "calc" },
       ],
     },
