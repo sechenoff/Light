@@ -8,6 +8,11 @@ const ASSIGNEE_OPTIONS = [
   { id: "u2", username: "bob" },
 ];
 
+// Helper to get the title textarea (v2 has a different placeholder)
+function getTitleTextarea() {
+  return screen.getByPlaceholderText(/например.*починить/i) as HTMLTextAreaElement;
+}
+
 describe("TaskCreateModal", () => {
   let onSubmit: Mock;
   let onClose: Mock;
@@ -17,7 +22,7 @@ describe("TaskCreateModal", () => {
     onClose = vi.fn();
   });
 
-  it("renders with «Долгосрочная задача» as the default active pill (dueDate=null on submit)", async () => {
+  it("renders with «Без даты» as the default active pill (dueDate=null on submit)", async () => {
     render(
       <TaskCreateModal
         onSubmit={onSubmit}
@@ -26,14 +31,14 @@ describe("TaskCreateModal", () => {
       />
     );
 
-    // Default active pill text visible
-    expect(screen.getByText(/долгосрочная задача/i)).toBeInTheDocument();
+    // Default active pill text visible (v2: renamed from «Долгосрочная задача»)
+    expect(screen.getByText(/без даты/i)).toBeInTheDocument();
 
     // Enter a title and submit
-    const textarea = screen.getByPlaceholderText(/что сделать/i);
+    const textarea = getTitleTextarea();
     fireEvent.change(textarea, { target: { value: "Починить машину" } });
 
-    const submitBtn = screen.getByRole("button", { name: /создать/i });
+    const submitBtn = screen.getByRole("button", { name: /создать задачу/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
@@ -51,12 +56,12 @@ describe("TaskCreateModal", () => {
       />
     );
 
-    const textarea = screen.getByPlaceholderText(/что сделать/i);
+    const textarea = getTitleTextarea();
     fireEvent.change(textarea, { target: { value: "Задача на завтра" } });
 
     fireEvent.click(screen.getByText(/^завтра$/i));
 
-    const submitBtn = screen.getByRole("button", { name: /создать/i });
+    const submitBtn = screen.getByRole("button", { name: /создать задачу/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
@@ -65,7 +70,7 @@ describe("TaskCreateModal", () => {
     expect(arg.dueDate).toBe(expectedDate);
   });
 
-  it("clicking «Выбрать дату…» reveals date input and picking a date submits that value", async () => {
+  it("clicking «📅 Другая дата» reveals date input and picking a date submits that value", async () => {
     render(
       <TaskCreateModal
         onSubmit={onSubmit}
@@ -74,22 +79,19 @@ describe("TaskCreateModal", () => {
       />
     );
 
-    const textarea = screen.getByPlaceholderText(/что сделать/i);
+    const textarea = getTitleTextarea();
     fireEvent.change(textarea, { target: { value: "Задача с датой" } });
 
-    // Click the "Выбрать дату" pill
-    fireEvent.click(screen.getByText(/выбрать дату/i));
+    // Click the "📅 Другая дата" pill (v2 uses emoji + "Другая дата")
+    fireEvent.click(screen.getByText(/другая дата/i));
 
-    // Date input should appear
-    const dateInput = screen.getByRole("textbox", { hidden: true }) as HTMLInputElement
-      || document.querySelector('input[type="date"]') as HTMLInputElement;
-    // Try querying the input directly since type="date" won't be role="textbox"
+    // Date input should appear inside the accent-soft box
     const dateInputEl = document.querySelector('input[type="date"]') as HTMLInputElement;
     expect(dateInputEl).not.toBeNull();
 
     fireEvent.change(dateInputEl, { target: { value: "2026-06-15" } });
 
-    const submitBtn = screen.getByRole("button", { name: /создать/i });
+    const submitBtn = screen.getByRole("button", { name: /создать задачу/i });
     fireEvent.click(submitBtn);
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
@@ -119,12 +121,12 @@ describe("TaskCreateModal", () => {
       />
     );
 
-    const submitBtn = screen.getByRole("button", { name: /создать/i });
+    const submitBtn = screen.getByRole("button", { name: /создать задачу/i });
     // No text entered — button should be disabled
     expect(submitBtn).toBeDisabled();
 
     // Enter whitespace-only — still disabled
-    const textarea = screen.getByPlaceholderText(/что сделать/i);
+    const textarea = getTitleTextarea();
     fireEvent.change(textarea, { target: { value: "   " } });
     expect(submitBtn).toBeDisabled();
 
