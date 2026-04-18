@@ -1,9 +1,1 @@
-{
-  "sprint": "3A",
-  "claude_product": "ACCEPTED",
-  "technical_review": "APPROVE",
-  "provider": "split-focus",
-  "ts": "2026-04-18T13:30:00Z",
-  "commit": "fccc414",
-  "notes": "Projects/Members/Payments API + debt aggregates. 93 new tests, 675/675 green. 5 LOW findings (N+1 in debt-summary, cosmetic) — not blocking, track for Sprint 3B/polish."
-}
+{"sprint":"3B","claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","ts":"2026-04-18T00:00:00Z","notes":"Product re-review after fixes (member edit + payment edit + PROJECT_ARCHIVED mapping + load() guard) commit 2746d96"}
