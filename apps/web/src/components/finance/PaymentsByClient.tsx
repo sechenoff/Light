@@ -5,7 +5,7 @@ import { apiFetch } from "../../lib/api";
 import { formatRub } from "../../lib/format";
 import { StatusPill } from "../StatusPill";
 import { QuickPaymentModal } from "./QuickPaymentModal";
-import { StatusCell } from "./StatusCell";
+import { StatusCell, statusBgClass } from "./StatusCell";
 import type { OverviewItem } from "./PaymentsTable";
 import type { PaymentsFilter } from "./PaymentsFilterBar";
 
@@ -216,7 +216,7 @@ export function PaymentsByClient({ filter }: Props) {
                             <td className="px-4 py-2.5 text-right mono-num font-medium text-ink whitespace-nowrap">
                               {formatRub(b.finalAmount)}
                             </td>
-                            <td className="px-4 py-2.5">
+                            <td className={`px-4 py-2.5 ${statusBgClass(b.paymentStatus)}`}>
                               <StatusCell item={b} onPay={() => setPayingBooking(b)} />
                             </td>
                           </tr>

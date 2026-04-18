@@ -3,6 +3,12 @@
 import { formatRub, pluralize } from "../../lib/format";
 import type { OverviewItem } from "./PaymentsTable";
 
+export function statusBgClass(paymentStatus: string): string {
+  if (paymentStatus === "PAID") return "bg-emerald-soft";
+  if (paymentStatus === "PARTIALLY_PAID") return "bg-amber-soft";
+  return "bg-rose-soft"; // NOT_PAID, OVERDUE, or anything else
+}
+
 export const BOOKING_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Черновик",
   PENDING_APPROVAL: "На согласовании",
