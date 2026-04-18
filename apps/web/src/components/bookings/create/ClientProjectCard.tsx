@@ -1,5 +1,7 @@
 "use client";
 
+import { ClientAutocomplete } from "./ClientAutocomplete";
+
 type ClientProjectCardProps = {
   clientName: string;
   onClientNameChange: (v: string) => void;
@@ -43,30 +45,11 @@ export function ClientProjectCard({
               <span className="text-xs text-ink-3 italic ml-1">нельзя изменить</span>
             </div>
           ) : (
-            <>
-              {clientName.trim() ? (
-                <div className="inline-flex items-center gap-2.5 px-1.5 py-1.5 pr-2.5 bg-surface-muted border border-border rounded mb-2">
-                  <span className="w-6 h-6 rounded-sm bg-ink text-white text-[11px] font-semibold font-mono flex items-center justify-center">
-                    {initials || "?"}
-                  </span>
-                  <span className="text-[13px] text-ink font-medium">{clientName.trim()}</span>
-                  <button
-                    type="button"
-                    className="text-ink-3 hover:text-ink text-sm leading-none px-1"
-                    onClick={() => onClientNameChange("")}
-                    aria-label="Очистить клиента"
-                  >
-                    x
-                  </button>
-                </div>
-              ) : null}
-              <input
-                className="w-full rounded border border-border-strong px-3 py-2 text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
-                value={clientName}
-                onChange={(e) => onClientNameChange(e.target.value)}
-                placeholder="Название компании / заказчика"
-              />
-            </>
+            <ClientAutocomplete
+              value={clientName}
+              onChange={onClientNameChange}
+              placeholder="Название компании / заказчика"
+            />
           )}
         </div>
 
