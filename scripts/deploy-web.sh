@@ -217,6 +217,30 @@ ssh "$SERVER" "rm -rf $SERVER_PATH/apps/web/.next && mkdir -p $SERVER_PATH/apps/
 rsync -az apps/web/.next/ "$SERVER:$SERVER_PATH/apps/web/.next/"
 green "  ✓ .next synced"
 
+# ── Rewrite absolute source paths in RSC manifests ────────────────────────────
+# Next.js bakes the build-time absolute path into `*_client-reference-manifest.js`
+# and `*.nft.json` files. When we build locally at /Users/.../light-rental-system
+# and deploy to /opt/light-rental-system, those baked paths don't resolve on the
+# VPS and SSR crashes with "Could not find module in React Client Manifest".
+# Fix: sed-replace the local prefix with the server prefix post-rsync.
+if [ "$ROOT" != "$SERVER_PATH" ]; then
+  blue "▶ Rewriting baked paths: $ROOT → $SERVER_PATH"
+  ssh "$SERVER" bash <<REMOTE_SED
+set -euo pipefail
+cd $SERVER_PATH/apps/web/.next
+# grep-then-sed is faster than blind sed-on-every-file and avoids touching mtimes
+# of files that don't need changes.
+FILES=\$(grep -rl "$ROOT" . 2>/dev/null || true)
+if [ -z "\$FILES" ]; then
+  echo "  ✓ no baked local paths (build was already server-relative)"
+else
+  COUNT=\$(echo "\$FILES" | wc -l | tr -d ' ')
+  echo "\$FILES" | xargs sed -i "s|$ROOT|$SERVER_PATH|g"
+  echo "  ✓ rewrote \$COUNT file(s)"
+fi
+REMOTE_SED
+fi
+
 if [ -d apps/web/public ]; then
   blue "▶ Syncing public/"
   rsync -az --delete apps/web/public/ "$SERVER:$SERVER_PATH/apps/web/public/" || true
