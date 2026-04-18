@@ -1,0 +1,1172 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Должники v2.0 — варианты редизайна</title>
+<style>
+  :root {
+    --ink: #0f172a;
+    --ink-2: #475569;
+    --ink-3: #94a3b8;
+    --surface: #ffffff;
+    --surface-muted: #f8fafc;
+    --surface-deep: #f1f5f9;
+    --surface-subtle: #f9fbfd;
+    --border: #e2e8f0;
+    --border-strong: #cbd5e1;
+    --accent: #6366f1;
+    --accent-soft: #eef2ff;
+    --accent-border: #c7d2fe;
+    --accent-bright: #4338ca;
+
+    --rose: #dc2626;
+    --rose-soft: #fee2e2;
+    --rose-border: #fecaca;
+    --rose-whisper: #fef5f5;
+
+    --amber: #c97b02;
+    --amber-soft: #fef3c7;
+    --amber-border: #fde68a;
+    --amber-whisper: #fffbf0;
+
+    --emerald: #059669;
+    --emerald-soft: #d1fae5;
+    --emerald-border: #a7f3d0;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--surface-muted);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .shell { max-width: 1460px; margin: 0 auto; padding: 28px 32px 120px; }
+  .eyebrow {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    text-transform: uppercase;
+  }
+  .mono-num { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+  h1 { font-size: 22px; font-weight: 600; margin: 2px 0 8px; }
+  p.sub { font-size: 13px; color: var(--ink-2); margin: 0 0 30px; max-width: 860px; line-height: 1.65; }
+  h2 { font-size: 16px; font-weight: 600; margin: 0; color: var(--ink); }
+
+  .variant {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 26px 26px;
+    margin-bottom: 26px;
+    box-shadow: 0 1px 2px rgba(15,23,42,.03);
+  }
+  .variant-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .variant-head .letter {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-bright);
+    background: var(--accent-soft);
+    padding: 3px 9px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
+  .variant-tagline {
+    font-size: 12.5px;
+    color: var(--ink-2);
+    margin: 0 0 18px;
+    line-height: 1.65;
+    max-width: 900px;
+  }
+  .variant-tagline b { color: var(--ink); font-weight: 600; }
+
+  /* ========= SHARED PAGE CHROME (симуляция) ========= */
+  .page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .page-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .page-sub { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+  .page-sub b { color: var(--rose); font-weight: 600; }
+  .page-actions { display: flex; gap: 8px; }
+  .btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.soft { background: var(--accent-soft); color: var(--accent-bright); border-color: var(--accent-border); }
+
+  /* Aging buckets strip */
+  .buckets {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 18px;
+  }
+  .bucket { background: var(--surface); padding: 12px 14px; }
+  .bucket.red { background: var(--rose-soft); }
+  .bucket.redsoft { background: var(--rose-whisper); }
+  .bucket.amber { background: var(--amber-soft); }
+  .bucket .k { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+  .bucket.red .k { color: var(--rose); }
+  .bucket.amber .k { color: var(--amber); }
+  .bucket .v { font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 600; margin-top: 4px; }
+  .bucket.red .v { color: var(--rose); }
+  .bucket .meta { font-size: 11px; color: var(--ink-2); margin-top: 2px; }
+
+  /* Filter bar */
+  .filterbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    border-radius: 8px 8px 0 0;
+    border-bottom: 0;
+    flex-wrap: wrap;
+  }
+  .pill {
+    padding: 4px 11px;
+    font-size: 11.5px;
+    font-weight: 500;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .pill.red { color: var(--rose); border-color: var(--rose-border); }
+  .pill.amber { color: var(--amber); border-color: var(--amber-border); }
+  .pill .cnt { opacity: 0.7; font-family: 'IBM Plex Mono', monospace; margin-left: 4px; }
+  .search {
+    margin-left: auto;
+    padding: 4px 10px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    min-width: 200px;
+    background: var(--surface);
+    color: var(--ink-2);
+  }
+
+  /* Table shell reused */
+  table.mock {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-top: 0;
+    background: var(--surface);
+  }
+  table.mock thead {
+    background: var(--surface-deep);
+    color: var(--ink-2);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  table.mock th {
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 500;
+    border-bottom: 1px solid var(--border);
+  }
+  table.mock th.num, table.mock td.num { text-align: right; }
+  table.mock tbody td {
+    padding: 13px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  table.mock tbody tr:last-child td { border-bottom: 0; }
+
+  .client-cell { display: flex; align-items: center; gap: 10px; }
+  .avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .av-a { background: #d1fae5; color: #047857; }
+  .av-b { background: #dbeafe; color: #1e40af; }
+  .av-c { background: #fef3c7; color: #92400e; }
+  .av-d { background: #fee2e2; color: #991b1b; }
+  .av-e { background: #ede9fe; color: #5b21b6; }
+
+  .caret {
+    display: inline-block;
+    width: 14px;
+    color: var(--ink-3);
+    transition: transform .15s ease;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+  }
+  .open .caret { transform: rotate(90deg); color: var(--ink-2); }
+
+  .age-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 10.5px;
+    font-weight: 600;
+    border-radius: 999px;
+    font-family: 'IBM Plex Sans Condensed', sans-serif;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .age-chip.red { background: var(--rose-soft); color: var(--rose); border: 1px solid var(--rose-border); }
+  .age-chip.amber { background: var(--amber-soft); color: var(--amber); border: 1px solid var(--amber-border); }
+  .age-chip.green { background: var(--emerald-soft); color: var(--emerald); border: 1px solid var(--emerald-border); }
+
+  .stripe-left { border-left: 3px solid transparent; }
+  .stripe-red { border-left-color: var(--rose); }
+  .stripe-amber { border-left-color: var(--amber); }
+  .stripe-green { border-left-color: var(--emerald); }
+
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px; height: 26px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink-2);
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .icon-btn:hover { background: var(--surface-subtle); color: var(--ink); }
+
+  .amt-strong { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .amt-red { color: var(--rose); }
+  .amt-amber { color: var(--amber); }
+  .amt-ink { color: var(--ink); }
+  .muted { color: var(--ink-3); }
+
+  /* ========= V1: Классический табличный аккордеон ========= */
+  .v1 .row-client { cursor: pointer; }
+  .v1 .row-client:hover td { background: var(--surface-subtle); }
+  .v1 .row-client.open td { background: var(--accent-soft); }
+  .v1 .projects-host td {
+    padding: 0 !important;
+    background: var(--surface-subtle);
+    border-bottom: 1px solid var(--border);
+  }
+  .v1 table.sub {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  .v1 table.sub th {
+    text-align: left;
+    padding: 8px 14px 8px 52px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+    background: var(--surface-deep);
+    border-bottom: 1px solid var(--border);
+  }
+  .v1 table.sub th.num { text-align: right; padding-right: 14px; }
+  .v1 table.sub td {
+    padding: 10px 14px 10px 52px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .v1 table.sub td.num { text-align: right; padding-right: 14px; }
+  .v1 table.sub tr:last-child td { border-bottom: 0; }
+  .v1 table.sub tr:hover td { background: var(--surface); }
+
+  /* ========= V2: Карточный список ========= */
+  .v2 .cards { display: flex; flex-direction: column; gap: 10px; }
+  .v2 .card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    overflow: hidden;
+    transition: box-shadow .15s;
+  }
+  .v2 .card.open { box-shadow: 0 4px 16px rgba(15,23,42,.06); border-color: var(--accent-border); }
+  .v2 .card-head {
+    display: grid;
+    grid-template-columns: 20px 1fr auto auto auto;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 18px;
+    cursor: pointer;
+  }
+  .v2 .card-head:hover { background: var(--surface-subtle); }
+  .v2 .card.open .card-head { background: var(--accent-soft); border-bottom: 1px solid var(--accent-border); }
+  .v2 .card-id { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .v2 .card-meta { font-size: 11.5px; color: var(--ink-2); margin-top: 2px; }
+  .v2 .card-amt { text-align: right; }
+  .v2 .card-amt .big { font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--rose); }
+  .v2 .card-amt .sub { font-size: 11px; color: var(--ink-3); }
+  .v2 .card-body {
+    padding: 4px 18px 14px 56px;
+    background: var(--surface-subtle);
+    border-top: 1px solid var(--border);
+  }
+  .v2 .proj-row {
+    display: grid;
+    grid-template-columns: 1fr 140px 140px auto;
+    gap: 14px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--border);
+    font-size: 12.5px;
+  }
+  .v2 .proj-row:last-child { border-bottom: 0; }
+  .v2 .proj-name { color: var(--ink); }
+  .v2 .proj-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+
+  /* ========= V3: Master-detail (split pane) ========= */
+  .v3 .split {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 480px;
+  }
+  .v3 .master { background: var(--surface); overflow: hidden; }
+  .v3 .master-head {
+    padding: 10px 14px;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    background: var(--surface-deep);
+    border-bottom: 1px solid var(--border);
+  }
+  .v3 .master-item {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+  .v3 .master-item:hover { background: var(--surface-subtle); }
+  .v3 .master-item.active { background: var(--accent-soft); border-left-color: var(--accent); }
+  .v3 .master-item .name { font-size: 13px; font-weight: 500; color: var(--ink); }
+  .v3 .master-item .meta { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+  .v3 .master-item .amt { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: var(--rose); }
+
+  .v3 .detail { background: var(--surface); padding: 20px 24px; }
+  .v3 .detail-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .v3 .detail-title { font-size: 17px; font-weight: 600; color: var(--ink); }
+  .v3 .detail-sub { font-size: 12px; color: var(--ink-2); margin-top: 3px; }
+  .v3 .detail-totals { text-align: right; }
+  .v3 .detail-totals .t-big { font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: var(--rose); }
+  .v3 .detail-totals .t-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+  .v3 .proj-grid { display: flex; flex-direction: column; gap: 6px; }
+  .v3 .proj-card {
+    display: grid;
+    grid-template-columns: 4px 1fr 120px 110px auto;
+    gap: 14px;
+    align-items: center;
+    padding: 12px 14px 12px 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+  .v3 .proj-card .strip { width: 4px; height: 40px; background: var(--rose); border-radius: 2px 0 0 2px; align-self: stretch; }
+  .v3 .proj-card.amber .strip { background: var(--amber); }
+  .v3 .proj-card.green .strip { background: var(--emerald); }
+  .v3 .proj-card .pn { font-size: 13px; color: var(--ink); font-weight: 500; }
+  .v3 .proj-card .pm { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+
+  /* ========= V4: Группировка по просрочке (stacked accordion) ========= */
+  .v4 .group { margin-bottom: 10px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .v4 .group-head {
+    display: grid;
+    grid-template-columns: 20px 1fr auto auto;
+    gap: 14px;
+    padding: 12px 16px;
+    align-items: center;
+    background: var(--surface-subtle);
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+  }
+  .v4 .group.red .group-head { background: var(--rose-whisper); }
+  .v4 .group.amber .group-head { background: var(--amber-whisper); }
+  .v4 .group-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .v4 .group-title .tag { display: inline-block; margin-left: 8px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; }
+  .v4 .group.red .group-title .tag { background: var(--rose-soft); color: var(--rose); }
+  .v4 .group.amber .group-title .tag { background: var(--amber-soft); color: var(--amber); }
+  .v4 .group-amt { font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 600; color: var(--rose); }
+  .v4 .group-cnt { font-size: 11.5px; color: var(--ink-2); font-family: 'IBM Plex Mono', monospace; }
+  .v4 .group-row {
+    display: grid;
+    grid-template-columns: 20px 28px 1fr auto 110px auto;
+    gap: 14px;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .v4 .group-row:last-child { border-bottom: 0; }
+  .v4 .group-row:hover { background: var(--surface-subtle); }
+  .v4 .group-row.open { background: var(--accent-soft); }
+  .v4 .proj-list {
+    padding: 2px 16px 12px 78px;
+    background: var(--surface-subtle);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .v4 .proj-list-row {
+    display: grid;
+    grid-template-columns: 1fr 120px 110px auto;
+    gap: 14px;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--border);
+    align-items: center;
+  }
+  .v4 .proj-list-row:last-child { border-bottom: 0; }
+
+  /* ========= V5: Компактные строки с mini-bar ========= */
+  .v5 .rows { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .v5 .row {
+    display: grid;
+    grid-template-columns: 20px 28px 1fr 160px 120px 110px auto;
+    gap: 14px;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .v5 .row:last-of-type { border-bottom: 0; }
+  .v5 .row:hover { background: var(--surface-subtle); }
+  .v5 .row.open { background: var(--accent-soft); }
+  .v5 .bar {
+    height: 6px;
+    background: var(--rose-soft);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  .v5 .bar .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--emerald); }
+  .v5 .bar-meta { font-size: 10.5px; color: var(--ink-3); margin-top: 4px; font-family: 'IBM Plex Mono', monospace; }
+  .v5 .subrow-host {
+    padding: 6px 16px 14px 80px;
+    background: var(--surface-subtle);
+    border-bottom: 1px solid var(--border);
+  }
+  .v5 .subrow {
+    display: grid;
+    grid-template-columns: 1fr 160px 120px 110px auto;
+    gap: 14px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--border);
+    font-size: 12.5px;
+  }
+  .v5 .subrow:last-child { border-bottom: 0; }
+
+  /* Side notes */
+  .side-note { font-size: 12px; color: var(--ink-2); line-height: 1.75; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border); }
+  .side-note .plus { color: var(--emerald); font-weight: 700; }
+  .side-note .minus { color: var(--rose); font-weight: 700; }
+
+  /* TOC */
+  .toc { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .toc a {
+    padding: 5px 11px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    text-decoration: none;
+    color: var(--ink-2);
+    background: var(--surface);
+  }
+  .toc a:hover { border-color: var(--accent); color: var(--accent-bright); }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="eyebrow">Финансы · Должники · v2.0</div>
+  <h1>Должники — пять вариантов редизайна</h1>
+  <p class="sub">
+    Задача: <b>убрать графу «Статус»</b> (дублирует цветную полоску и возрастной чип) и сделать
+    <b>аккордеон на должнике</b> — при нажатии разворачивается список всех его проектов.
+    Ниже пять вариантов структуры раздела целиком: от минимально-инвазивного табличного аккордеона
+    до master-detail и группировки по просрочке. На одних и тех же данных — 4 клиента, 7 проектов.
+  </p>
+
+  <div class="toc">
+    <a href="#v1">1 · Табличный аккордеон</a>
+    <a href="#v2">2 · Карточный список</a>
+    <a href="#v3">3 · Master-detail</a>
+    <a href="#v4">4 · Группы по просрочке</a>
+    <a href="#v5">5 · Строки с mini-bar</a>
+  </div>
+
+  <!-- ========================= V1 ========================= -->
+  <div class="variant v1" id="v1">
+    <div class="variant-head"><h2>Табличный аккордеон — минимальная инвазивность</h2><span class="letter">1</span></div>
+    <p class="variant-tagline">
+      Текущая таблица, <b>минус графа «Статус»</b>. Клик на строке клиента раскрывает
+      встроенную под-таблицу его проектов (с отступом 52 px). Срочность — полоска слева
+      + один возрастной чип. <b>Ближайший путь от текущего макета.</b>
+    </p>
+
+    <!-- Page chrome -->
+    <div class="page-head">
+      <div>
+        <div class="page-title">Должники</div>
+        <div class="page-sub">Итого задолженность: <b class="mono-num">486 700 ₽</b> · 4 клиентов · 3 с просрочкой</div>
+      </div>
+      <div class="page-actions">
+        <button class="btn soft">+ Импортировать смету</button>
+        <button class="btn">Экспорт в XLSX</button>
+        <button class="btn primary">Отправить напоминания (3)</button>
+      </div>
+    </div>
+
+    <div class="buckets">
+      <div class="bucket red"><div class="k">Просрочка &gt; 30 дней</div><div class="v">154 000 ₽</div><div class="meta">1 клиент</div></div>
+      <div class="bucket redsoft"><div class="k">Просрочка 1–30 дней</div><div class="v">210 700 ₽</div><div class="meta">2 клиента</div></div>
+      <div class="bucket amber"><div class="k">Срок через 1–7 дней</div><div class="v">64 500 ₽</div><div class="meta">1 клиент</div></div>
+      <div class="bucket"><div class="k">В пределах графика</div><div class="v">57 500 ₽</div><div class="meta">1 клиент</div></div>
+    </div>
+
+    <div class="filterbar">
+      <button class="pill active">Все <span class="cnt">4</span></button>
+      <button class="pill red">Просрочка 30+ <span class="cnt">1</span></button>
+      <button class="pill red">Просрочка <span class="cnt">2</span></button>
+      <button class="pill amber">Скоро <span class="cnt">1</span></button>
+      <button class="pill">По графику <span class="cnt">1</span></button>
+      <input class="search" placeholder="Поиск по клиенту или проекту">
+      <button class="btn">⇅ Сортировка</button>
+    </div>
+
+    <table class="mock">
+      <thead>
+        <tr>
+          <th style="width:28%">Клиент</th>
+          <th>Проекты</th>
+          <th class="num" style="width:14%">Должен</th>
+          <th style="width:16%">Срок ближайшей оплаты</th>
+          <th style="width:14%" class="num">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Client 1: open -->
+        <tr class="row-client open stripe-left stripe-red">
+          <td><div class="client-cell"><span class="caret">▸</span><span class="avatar av-d">К</span><div><div style="font-weight:500">Клип Studios</div><div style="font-size:11px;color:var(--ink-3)">3 проекта · ИП</div></div></div></td>
+          <td style="color:var(--ink-2);font-size:12px">Выезд комплект · Клип «Вечер» · HMI&nbsp;6K</td>
+          <td class="num"><span class="amt-strong amt-red">154 000 ₽</span></td>
+          <td class="mono-num muted">5 апреля</td>
+          <td class="num"><span class="age-chip red">13 дней</span> <a class="icon-btn" title="Напомнить">✉</a> <a class="icon-btn" title="Позвонить">☎</a></td>
+        </tr>
+        <tr class="projects-host">
+          <td colspan="5">
+            <table class="sub">
+              <thead><tr><th>Проект</th><th>Срок оплаты</th><th class="num">Должен</th><th class="num">&nbsp;</th></tr></thead>
+              <tbody>
+                <tr><td>Выезд комплект</td><td class="mono-num muted">5 апреля <span class="age-chip red">13 дн</span></td><td class="num"><span class="amt-strong amt-red">67 000 ₽</span></td><td class="num"><a class="icon-btn">›</a></td></tr>
+                <tr><td>Клип «Вечер»</td><td class="mono-num muted">1 апреля <span class="age-chip red">17 дн</span></td><td class="num"><span class="amt-strong amt-red">45 000 ₽</span></td><td class="num"><a class="icon-btn">›</a></td></tr>
+                <tr><td>HMI 6K × 1 сутки</td><td class="mono-num muted">12 апреля <span class="age-chip red">6 дн</span></td><td class="num"><span class="amt-strong amt-red">42 000 ₽</span></td><td class="num"><a class="icon-btn">›</a></td></tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Client 2: collapsed -->
+        <tr class="row-client stripe-left stripe-red">
+          <td><div class="client-cell"><span class="caret">▸</span><span class="avatar av-b">М</span><div><div style="font-weight:500">Мосфильм</div><div style="font-size:11px;color:var(--ink-3)">2 проекта · ООО</div></div></div></td>
+          <td style="color:var(--ink-2);font-size:12px">HMI 6K × 3 · Павильон 12</td>
+          <td class="num"><span class="amt-strong amt-red">210 700 ₽</span></td>
+          <td class="mono-num muted">10 апреля</td>
+          <td class="num"><span class="age-chip red">8 дней</span> <a class="icon-btn">✉</a> <a class="icon-btn">☎</a></td>
+        </tr>
+
+        <!-- Client 3: collapsed, amber -->
+        <tr class="row-client stripe-left stripe-amber">
+          <td><div class="client-cell"><span class="caret">▸</span><span class="avatar av-c">П</span><div><div style="font-weight:500">Петров И. С.</div><div style="font-size:11px;color:var(--ink-3)">1 проект · Физ.&nbsp;лицо</div></div></div></td>
+          <td style="color:var(--ink-2);font-size:12px">Съёмка «Рассвет»</td>
+          <td class="num"><span class="amt-strong amt-amber">64 500 ₽</span></td>
+          <td class="mono-num muted">23 апреля</td>
+          <td class="num"><span class="age-chip amber">Через 5 дн.</span> <a class="icon-btn">›</a></td>
+        </tr>
+
+        <!-- Client 4: collapsed, current -->
+        <tr class="row-client stripe-left stripe-green">
+          <td><div class="client-cell"><span class="caret">▸</span><span class="avatar av-a">Р</span><div><div style="font-weight:500">Ромашка</div><div style="font-size:11px;color:var(--ink-3)">1 проект · ИП</div></div></div></td>
+          <td style="color:var(--ink-2);font-size:12px">Выезд HMI 18K</td>
+          <td class="num"><span class="amt-strong amt-ink">57 500 ₽</span></td>
+          <td class="mono-num muted">30 апреля</td>
+          <td class="num"><span class="age-chip green">По графику</span> <a class="icon-btn">›</a></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="side-note">
+      <span class="plus">+</span> минимум изменений от текущей реализации, меньше риска;
+      <span class="plus">+</span> сохраняется плотность, 20+ строк на экране;
+      <span class="minus">−</span> «Проекты» в свёрнутой строке — просто имена через точку, без сумм;
+      <span class="minus">−</span> под-таблица visually конкурирует с шапкой, нужно аккуратно подобрать тон фона.
+    </p>
+  </div>
+
+  <!-- ========================= V2 ========================= -->
+  <div class="variant v2" id="v2">
+    <div class="variant-head"><h2>Карточный список — каждый должник = карточка</h2><span class="letter">2</span></div>
+    <p class="variant-tagline">
+      Отказываемся от табличной сетки. Каждый должник — карточка со скруглёнными углами,
+      сумма и возрастной чип в правом верхнем углу, клик по карточке раскрывает проекты
+      внутри карточки. <b>Дышит, меньше визуального шума</b>, но на экран умещается ~8–10 карточек.
+    </p>
+
+    <div class="page-head">
+      <div>
+        <div class="page-title">Должники</div>
+        <div class="page-sub">Итого задолженность: <b class="mono-num">486 700 ₽</b> · 4 клиентов · 3 с просрочкой</div>
+      </div>
+      <div class="page-actions">
+        <button class="btn soft">+ Импортировать смету</button>
+        <button class="btn">Экспорт в XLSX</button>
+        <button class="btn primary">Отправить напоминания (3)</button>
+      </div>
+    </div>
+
+    <div class="buckets" style="margin-bottom:16px">
+      <div class="bucket red"><div class="k">Просрочка &gt; 30 дней</div><div class="v">154 000 ₽</div><div class="meta">1 клиент</div></div>
+      <div class="bucket redsoft"><div class="k">Просрочка 1–30 дней</div><div class="v">210 700 ₽</div><div class="meta">2 клиента</div></div>
+      <div class="bucket amber"><div class="k">Срок через 1–7 дней</div><div class="v">64 500 ₽</div><div class="meta">1 клиент</div></div>
+      <div class="bucket"><div class="k">В пределах графика</div><div class="v">57 500 ₽</div><div class="meta">1 клиент</div></div>
+    </div>
+
+    <div class="filterbar" style="border-radius:8px;border-bottom:1px solid var(--border);margin-bottom:12px">
+      <button class="pill active">Все <span class="cnt">4</span></button>
+      <button class="pill red">Просрочка <span class="cnt">3</span></button>
+      <button class="pill amber">Скоро <span class="cnt">1</span></button>
+      <input class="search" placeholder="Поиск">
+    </div>
+
+    <div class="cards">
+      <!-- Card 1 open -->
+      <div class="card open">
+        <div class="card-head">
+          <span class="caret" style="transform:rotate(90deg)">▸</span>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="avatar av-d">К</span>
+            <div>
+              <div class="card-id">Клип Studios</div>
+              <div class="card-meta">3 проекта · ИП · последняя бронь 5 апреля</div>
+            </div>
+          </div>
+          <span class="age-chip red">Просрочка 13 дн</span>
+          <div class="card-amt"><div class="big">154 000 ₽</div><div class="sub">задолженность</div></div>
+          <div style="display:flex;gap:6px"><a class="icon-btn">✉</a><a class="icon-btn">☎</a></div>
+        </div>
+        <div class="card-body">
+          <div class="proj-row">
+            <div><div class="proj-name">Выезд комплект</div><div class="proj-meta">№ 2041 · возвращено · смета на 112 000 ₽</div></div>
+            <div class="mono-num muted">5 апреля · <span style="color:var(--rose)">просрочено 13 дн</span></div>
+            <div class="num"><span class="amt-strong amt-red">67 000 ₽</span></div>
+            <a class="icon-btn">›</a>
+          </div>
+          <div class="proj-row">
+            <div><div class="proj-name">Клип «Вечер»</div><div class="proj-meta">№ 2029 · возвращено · смета на 95 000 ₽</div></div>
+            <div class="mono-num muted">1 апреля · <span style="color:var(--rose)">просрочено 17 дн</span></div>
+            <div class="num"><span class="amt-strong amt-red">45 000 ₽</span></div>
+            <a class="icon-btn">›</a>
+          </div>
+          <div class="proj-row">
+            <div><div class="proj-name">HMI 6K × 1 сутки</div><div class="proj-meta">№ 2055 · возвращено · смета на 42 000 ₽</div></div>
+            <div class="mono-num muted">12 апреля · <span style="color:var(--rose)">просрочено 6 дн</span></div>
+            <div class="num"><span class="amt-strong amt-red">42 000 ₽</span></div>
+            <a class="icon-btn">›</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 2 collapsed -->
+      <div class="card">
+        <div class="card-head">
+          <span class="caret">▸</span>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="avatar av-b">М</span>
+            <div>
+              <div class="card-id">Мосфильм</div>
+              <div class="card-meta">2 проекта · ООО · последняя бронь 10 апреля</div>
+            </div>
+          </div>
+          <span class="age-chip red">Просрочка 8 дн</span>
+          <div class="card-amt"><div class="big">210 700 ₽</div><div class="sub">задолженность</div></div>
+          <div style="display:flex;gap:6px"><a class="icon-btn">✉</a><a class="icon-btn">☎</a></div>
+        </div>
+      </div>
+
+      <!-- Card 3 collapsed amber -->
+      <div class="card">
+        <div class="card-head">
+          <span class="caret">▸</span>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="avatar av-c">П</span>
+            <div>
+              <div class="card-id">Петров И. С.</div>
+              <div class="card-meta">1 проект · Физ. лицо · срок 23 апреля</div>
+            </div>
+          </div>
+          <span class="age-chip amber">Через 5 дн.</span>
+          <div class="card-amt"><div class="big" style="color:var(--amber)">64 500 ₽</div><div class="sub">задолженность</div></div>
+          <div style="display:flex;gap:6px"><a class="icon-btn">›</a></div>
+        </div>
+      </div>
+
+      <!-- Card 4 collapsed green -->
+      <div class="card">
+        <div class="card-head">
+          <span class="caret">▸</span>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="avatar av-a">Р</span>
+            <div>
+              <div class="card-id">Ромашка</div>
+              <div class="card-meta">1 проект · ИП · срок 30 апреля</div>
+            </div>
+          </div>
+          <span class="age-chip green">По графику</span>
+          <div class="card-amt"><div class="big" style="color:var(--ink)">57 500 ₽</div><div class="sub">ожидается</div></div>
+          <div style="display:flex;gap:6px"><a class="icon-btn">›</a></div>
+        </div>
+      </div>
+    </div>
+
+    <p class="side-note">
+      <span class="plus">+</span> каждый клиент читается как «субъект», не «строка»;
+      <span class="plus">+</span> больше воздуха, хорошо под mobile/narrow;
+      <span class="plus">+</span> вся ключевая информация (сумма, срок, действия) видна без раскрытия;
+      <span class="minus">−</span> плотность меньше — на FullHD умещается ~8–10 карточек против 20+ строк;
+      <span class="minus">−</span> сортировка по сумме/имени визуально менее очевидна без шапки таблицы.
+    </p>
+  </div>
+
+  <!-- ========================= V3 ========================= -->
+  <div class="variant v3" id="v3">
+    <div class="variant-head"><h2>Master-detail — список слева, карточка проектов справа</h2><span class="letter">3</span></div>
+    <p class="variant-tagline">
+      Слева — компактный список должников (только имя + сумма + чип). Справа — детальная карточка
+      выбранного клиента со всеми его проектами. <b>Лучший UX для звонков/напоминаний</b>: ты
+      переходишь от клиента к клиенту, а правая панель держит весь контекст. Аккордеон заменён
+      на отдельную панель.
+    </p>
+
+    <div class="page-head">
+      <div>
+        <div class="page-title">Должники</div>
+        <div class="page-sub">Итого задолженность: <b class="mono-num">486 700 ₽</b> · 4 клиентов · 3 с просрочкой</div>
+      </div>
+      <div class="page-actions">
+        <button class="btn soft">+ Импортировать смету</button>
+        <button class="btn">Экспорт</button>
+        <button class="btn primary">Отправить напоминания (3)</button>
+      </div>
+    </div>
+
+    <div class="filterbar" style="border-radius:8px;border-bottom:1px solid var(--border);margin-bottom:12px">
+      <button class="pill active">Все <span class="cnt">4</span></button>
+      <button class="pill red">Просрочка <span class="cnt">3</span></button>
+      <button class="pill amber">Скоро <span class="cnt">1</span></button>
+      <input class="search" placeholder="Поиск">
+    </div>
+
+    <div class="split">
+      <div class="master">
+        <div class="master-head">Должники · 4</div>
+        <div class="master-item active">
+          <span class="avatar av-d">К</span>
+          <div><div class="name">Клип Studios</div><div class="meta">3 проекта · просрочка 13 дн</div></div>
+          <div class="amt">154 000 ₽</div>
+        </div>
+        <div class="master-item">
+          <span class="avatar av-b">М</span>
+          <div><div class="name">Мосфильм</div><div class="meta">2 проекта · просрочка 8 дн</div></div>
+          <div class="amt">210 700 ₽</div>
+        </div>
+        <div class="master-item">
+          <span class="avatar av-c">П</span>
+          <div><div class="name">Петров И. С.</div><div class="meta">1 проект · через 5 дн</div></div>
+          <div class="amt" style="color:var(--amber)">64 500 ₽</div>
+        </div>
+        <div class="master-item">
+          <span class="avatar av-a">Р</span>
+          <div><div class="name">Ромашка</div><div class="meta">1 проект · по графику</div></div>
+          <div class="amt" style="color:var(--ink)">57 500 ₽</div>
+        </div>
+      </div>
+      <div class="detail">
+        <div class="detail-head">
+          <div>
+            <div class="detail-title">Клип Studios</div>
+            <div class="detail-sub">ИП · +7&nbsp;999&nbsp;111‑22‑33 · klip@studio.ru · 3 активных проекта</div>
+            <div style="margin-top:10px"><span class="age-chip red">Просрочка 13 дн</span></div>
+          </div>
+          <div class="detail-totals">
+            <div class="t-big">154 000 ₽</div>
+            <div class="t-sub">задолженность</div>
+            <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:12px">
+              <button class="btn">☎ Позвонить</button>
+              <button class="btn primary">✉ Напомнить</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="eyebrow" style="margin-bottom:10px">Проекты с задолженностью</div>
+        <div class="proj-grid">
+          <div class="proj-card">
+            <div class="strip"></div>
+            <div><div class="pn">Выезд комплект</div><div class="pm">Бронь № 2041 · возвращено · смета 112 000 ₽</div></div>
+            <div class="mono-num muted" style="font-size:12px">5 апреля</div>
+            <div class="num amt-strong amt-red">67 000 ₽</div>
+            <a class="icon-btn">›</a>
+          </div>
+          <div class="proj-card">
+            <div class="strip"></div>
+            <div><div class="pn">Клип «Вечер»</div><div class="pm">Бронь № 2029 · возвращено · смета 95 000 ₽</div></div>
+            <div class="mono-num muted" style="font-size:12px">1 апреля</div>
+            <div class="num amt-strong amt-red">45 000 ₽</div>
+            <a class="icon-btn">›</a>
+          </div>
+          <div class="proj-card">
+            <div class="strip"></div>
+            <div><div class="pn">HMI 6K × 1 сутки</div><div class="pm">Бронь № 2055 · возвращено · смета 42 000 ₽</div></div>
+            <div class="mono-num muted" style="font-size:12px">12 апреля</div>
+            <div class="num amt-strong amt-red">42 000 ₽</div>
+            <a class="icon-btn">›</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="side-note">
+      <span class="plus">+</span> лучшая эргономика для сценария «обзвон по списку»;
+      <span class="plus">+</span> правая панель может нести контакты, историю платежей, примечания;
+      <span class="plus">+</span> удобно под десктоп/планшет (хорошо использует ширину ≥ 1280 px);
+      <span class="minus">−</span> на mobile левая панель исчезает — нужен fallback (drawer или табличный вариант);
+      <span class="minus">−</span> нельзя сравнивать проекты разных клиентов рядом;
+      <span class="minus">−</span> самый большой объём работ — отдельная compound-компонента.
+    </p>
+  </div>
+
+  <!-- ========================= V4 ========================= -->
+  <div class="variant v4" id="v4">
+    <div class="variant-head"><h2>Группы по просрочке — двойной аккордеон</h2><span class="letter">4</span></div>
+    <p class="variant-tagline">
+      Вместо четырёх карточек-баджей сверху — четыре сворачиваемые <b>группы</b> по aging-бакетам.
+      Внутри каждой группы — строки должников, которые сами раскрываются в список проектов.
+      «Цветная шапка» группы = визуальный якорь, сортировка по приоритету встроена в структуру.
+      <b>Подходит, когда в работе одновременно &gt; 20–30 клиентов.</b>
+    </p>
+
+    <div class="page-head">
+      <div>
+        <div class="page-title">Должники</div>
+        <div class="page-sub">Итого задолженность: <b class="mono-num">486 700 ₽</b> · 4 клиентов · 3 с просрочкой</div>
+      </div>
+      <div class="page-actions">
+        <button class="btn soft">+ Импортировать смету</button>
+        <button class="btn">Экспорт</button>
+        <button class="btn primary">Отправить напоминания (3)</button>
+      </div>
+    </div>
+
+    <div class="filterbar" style="border-radius:8px;border-bottom:1px solid var(--border);margin-bottom:12px">
+      <button class="pill active">Все <span class="cnt">4</span></button>
+      <input class="search" placeholder="Поиск по клиенту или проекту">
+      <button class="btn">⇅ По сумме</button>
+    </div>
+
+    <!-- Group red -->
+    <div class="group red">
+      <div class="group-head">
+        <span class="caret" style="transform:rotate(90deg)">▸</span>
+        <div class="group-title">Просрочка более 7 дней <span class="tag">критично</span></div>
+        <div class="group-cnt">2 клиента · 5 проектов</div>
+        <div class="group-amt">364 700 ₽</div>
+      </div>
+
+      <!-- open row -->
+      <div class="group-row open">
+        <span class="caret" style="transform:rotate(90deg)">▸</span>
+        <span class="avatar av-d">К</span>
+        <div><div style="font-weight:500">Клип Studios</div><div style="font-size:11px;color:var(--ink-3)">3 проекта · просрочка 13 дн</div></div>
+        <div><span class="age-chip red">13 дней</span></div>
+        <div class="mono-num muted">5 апреля</div>
+        <div style="display:flex;gap:6px;justify-self:end"><span class="amt-strong amt-red">154 000 ₽</span> <a class="icon-btn">✉</a> <a class="icon-btn">☎</a></div>
+      </div>
+      <div class="proj-list">
+        <div class="proj-list-row">
+          <div><div style="color:var(--ink)">Выезд комплект</div><div style="font-size:11px;color:var(--ink-3)">№ 2041 · возвращено</div></div>
+          <div class="mono-num muted">5 апреля · <span style="color:var(--rose)">13 дн</span></div>
+          <div class="num amt-strong amt-red">67 000 ₽</div>
+          <a class="icon-btn">›</a>
+        </div>
+        <div class="proj-list-row">
+          <div><div style="color:var(--ink)">Клип «Вечер»</div><div style="font-size:11px;color:var(--ink-3)">№ 2029 · возвращено</div></div>
+          <div class="mono-num muted">1 апреля · <span style="color:var(--rose)">17 дн</span></div>
+          <div class="num amt-strong amt-red">45 000 ₽</div>
+          <a class="icon-btn">›</a>
+        </div>
+        <div class="proj-list-row">
+          <div><div style="color:var(--ink)">HMI 6K × 1 сутки</div><div style="font-size:11px;color:var(--ink-3)">№ 2055 · возвращено</div></div>
+          <div class="mono-num muted">12 апреля · <span style="color:var(--rose)">6 дн</span></div>
+          <div class="num amt-strong amt-red">42 000 ₽</div>
+          <a class="icon-btn">›</a>
+        </div>
+      </div>
+
+      <!-- collapsed row -->
+      <div class="group-row">
+        <span class="caret">▸</span>
+        <span class="avatar av-b">М</span>
+        <div><div style="font-weight:500">Мосфильм</div><div style="font-size:11px;color:var(--ink-3)">2 проекта · просрочка 8 дн</div></div>
+        <div><span class="age-chip red">8 дней</span></div>
+        <div class="mono-num muted">10 апреля</div>
+        <div style="display:flex;gap:6px;justify-self:end"><span class="amt-strong amt-red">210 700 ₽</span> <a class="icon-btn">✉</a> <a class="icon-btn">☎</a></div>
+      </div>
+    </div>
+
+    <!-- Group amber -->
+    <div class="group amber">
+      <div class="group-head">
+        <span class="caret" style="transform:rotate(90deg)">▸</span>
+        <div class="group-title">Срок через 1–7 дней <span class="tag">скоро</span></div>
+        <div class="group-cnt">1 клиент · 1 проект</div>
+        <div class="group-amt" style="color:var(--amber)">64 500 ₽</div>
+      </div>
+      <div class="group-row">
+        <span class="caret">▸</span>
+        <span class="avatar av-c">П</span>
+        <div><div style="font-weight:500">Петров И. С.</div><div style="font-size:11px;color:var(--ink-3)">1 проект · срок через 5 дн</div></div>
+        <div><span class="age-chip amber">Через 5 дн.</span></div>
+        <div class="mono-num muted">23 апреля</div>
+        <div style="display:flex;gap:6px;justify-self:end"><span class="amt-strong amt-amber">64 500 ₽</span> <a class="icon-btn">›</a></div>
+      </div>
+    </div>
+
+    <!-- Group normal -->
+    <div class="group">
+      <div class="group-head">
+        <span class="caret">▸</span>
+        <div class="group-title">В пределах графика</div>
+        <div class="group-cnt">1 клиент · 1 проект</div>
+        <div class="group-amt" style="color:var(--ink)">57 500 ₽</div>
+      </div>
+    </div>
+
+    <p class="side-note">
+      <span class="plus">+</span> приоритизация вшита в иерархию: глаз сначала падает на «критично»;
+      <span class="plus">+</span> мягкий фон группы заменяет полоску слева и возрастной чип, экономя место;
+      <span class="plus">+</span> хорошо масштабируется на 30+ клиентов — группы компактно сворачиваются;
+      <span class="minus">−</span> два уровня вложенности — легко заблудиться на mobile;
+      <span class="minus">−</span> кейс «клиент в двух группах одновременно» (разные проекты с разной просрочкой) невозможен — выбираем агрегат по худшему.
+    </p>
+  </div>
+
+  <!-- ========================= V5 ========================= -->
+  <div class="variant v5" id="v5">
+    <div class="variant-head"><h2>Строки с mini-bar — оплачено/должен визуально</h2><span class="letter">5</span></div>
+    <p class="variant-tagline">
+      Табличная плотность сохранена, но для каждого должника добавлена <b>мини-шкала оплаты</b>
+      (зелёный = поступило, розовый = осталось) — мгновенная визуальная оценка «насколько проект
+      недоплачен». Графа «Статус» удалена, срочность — в возрастном чипе. Клик раскрывает
+      проекты, каждый с собственной мини-шкалой.
+    </p>
+
+    <div class="page-head">
+      <div>
+        <div class="page-title">Должники</div>
+        <div class="page-sub">Итого задолженность: <b class="mono-num">486 700 ₽</b> · 4 клиентов · 3 с просрочкой</div>
+      </div>
+      <div class="page-actions">
+        <button class="btn soft">+ Импортировать смету</button>
+        <button class="btn">Экспорт</button>
+        <button class="btn primary">Отправить напоминания (3)</button>
+      </div>
+    </div>
+
+    <div class="buckets">
+      <div class="bucket red"><div class="k">Просрочка &gt; 30 дней</div><div class="v">154 000 ₽</div><div class="meta">1 клиент</div></div>
+      <div class="bucket redsoft"><div class="k">Просрочка 1–30 дней</div><div class="v">210 700 ₽</div><div class="meta">2 клиента</div></div>
+      <div class="bucket amber"><div class="k">Срок через 1–7 дней</div><div class="v">64 500 ₽</div><div class="meta">1 клиент</div></div>
+      <div class="bucket"><div class="k">В пределах графика</div><div class="v">57 500 ₽</div><div class="meta">1 клиент</div></div>
+    </div>
+
+    <div class="filterbar">
+      <button class="pill active">Все <span class="cnt">4</span></button>
+      <button class="pill red">Просрочка <span class="cnt">3</span></button>
+      <button class="pill amber">Скоро <span class="cnt">1</span></button>
+      <input class="search" placeholder="Поиск">
+    </div>
+
+    <div class="rows">
+      <!-- open row -->
+      <div class="row open">
+        <span class="caret" style="transform:rotate(90deg)">▸</span>
+        <span class="avatar av-d">К</span>
+        <div>
+          <div style="font-weight:500">Клип Studios</div>
+          <div style="font-size:11px;color:var(--ink-3)">3 проекта · ИП</div>
+        </div>
+        <div>
+          <div class="bar"><div class="fill" style="width:22%"></div></div>
+          <div class="bar-meta">оплачено 43 500 ₽ из 197 500 ₽</div>
+        </div>
+        <div><span class="age-chip red">13 дней</span></div>
+        <div class="mono-num amt-strong amt-red num" style="text-align:right">154 000 ₽</div>
+        <div style="display:flex;gap:6px"><a class="icon-btn">✉</a><a class="icon-btn">☎</a></div>
+      </div>
+      <div class="subrow-host">
+        <div class="subrow">
+          <div><div style="color:var(--ink)">Выезд комплект</div><div style="font-size:11px;color:var(--ink-3)">№ 2041 · возвращено</div></div>
+          <div><div class="bar"><div class="fill" style="width:40%"></div></div><div class="bar-meta">45 000 ₽ из 112 000 ₽</div></div>
+          <div class="mono-num muted">5 апреля · <span style="color:var(--rose)">13 дн</span></div>
+          <div class="num amt-strong amt-red">67 000 ₽</div>
+          <a class="icon-btn">›</a>
+        </div>
+        <div class="subrow">
+          <div><div style="color:var(--ink)">Клип «Вечер»</div><div style="font-size:11px;color:var(--ink-3)">№ 2029 · возвращено</div></div>
+          <div><div class="bar"><div class="fill" style="width:53%"></div></div><div class="bar-meta">50 000 ₽ из 95 000 ₽</div></div>
+          <div class="mono-num muted">1 апреля · <span style="color:var(--rose)">17 дн</span></div>
+          <div class="num amt-strong amt-red">45 000 ₽</div>
+          <a class="icon-btn">›</a>
+        </div>
+        <div class="subrow">
+          <div><div style="color:var(--ink)">HMI 6K × 1 сутки</div><div style="font-size:11px;color:var(--ink-3)">№ 2055 · возвращено</div></div>
+          <div><div class="bar"><div class="fill" style="width:0%"></div></div><div class="bar-meta">0 ₽ из 42 000 ₽</div></div>
+          <div class="mono-num muted">12 апреля · <span style="color:var(--rose)">6 дн</span></div>
+          <div class="num amt-strong amt-red">42 000 ₽</div>
+          <a class="icon-btn">›</a>
+        </div>
+      </div>
+
+      <!-- collapsed -->
+      <div class="row">
+        <span class="caret">▸</span>
+        <span class="avatar av-b">М</span>
+        <div>
+          <div style="font-weight:500">Мосфильм</div>
+          <div style="font-size:11px;color:var(--ink-3)">2 проекта · ООО</div>
+        </div>
+        <div>
+          <div class="bar"><div class="fill" style="width:38%"></div></div>
+          <div class="bar-meta">оплачено 130 300 ₽ из 341 000 ₽</div>
+        </div>
+        <div><span class="age-chip red">8 дней</span></div>
+        <div class="mono-num amt-strong amt-red num" style="text-align:right">210 700 ₽</div>
+        <div style="display:flex;gap:6px"><a class="icon-btn">✉</a><a class="icon-btn">☎</a></div>
+      </div>
+
+      <div class="row">
+        <span class="caret">▸</span>
+        <span class="avatar av-c">П</span>
+        <div>
+          <div style="font-weight:500">Петров И. С.</div>
+          <div style="font-size:11px;color:var(--ink-3)">1 проект · Физ. лицо</div>
+        </div>
+        <div>
+          <div class="bar"><div class="fill" style="width:50%"></div></div>
+          <div class="bar-meta">оплачено 64 500 ₽ из 129 000 ₽</div>
+        </div>
+        <div><span class="age-chip amber">Через 5 дн.</span></div>
+        <div class="mono-num amt-strong amt-amber num" style="text-align:right">64 500 ₽</div>
+        <div style="display:flex;gap:6px"><a class="icon-btn">›</a></div>
+      </div>
+
+      <div class="row">
+        <span class="caret">▸</span>
+        <span class="avatar av-a">Р</span>
+        <div>
+          <div style="font-weight:500">Ромашка</div>
+          <div style="font-size:11px;color:var(--ink-3)">1 проект · ИП</div>
+        </div>
+        <div>
+          <div class="bar"><div class="fill" style="width:50%"></div></div>
+          <div class="bar-meta">оплачено 57 500 ₽ из 115 000 ₽</div>
+        </div>
+        <div><span class="age-chip green">По графику</span></div>
+        <div class="mono-num amt-strong amt-ink num" style="text-align:right">57 500 ₽</div>
+        <div style="display:flex;gap:6px"><a class="icon-btn">›</a></div>
+      </div>
+    </div>
+
+    <p class="side-note">
+      <span class="plus">+</span> мгновенная оценка «на сколько недоплачено» — не нужно считать проценты в уме;
+      <span class="plus">+</span> мини-шкала заменяет и статус, и прогресс, и повод для разговора;
+      <span class="plus">+</span> плотность таблицы сохранена;
+      <span class="minus">−</span> нужен дополнительный API-payload (<code>amountPaid</code>, <code>amountTotal</code>) — сейчас эндпоинт возвращает только <code>amountOutstanding</code>;
+      <span class="minus">−</span> мини-шкала съедает ~160 px по ширине — на mobile показываем без неё.
+    </p>
+  </div>
+
+  <!-- Comparison footer -->
+  <div class="variant">
+    <div class="variant-head"><h2>Какой выбрать — краткая матрица</h2><span class="letter">Σ</span></div>
+    <table class="mock" style="border-top:1px solid var(--border)">
+      <thead>
+        <tr>
+          <th style="width:24%">Вариант</th>
+          <th>Сильная сторона</th>
+          <th style="width:18%">Сложность реализации</th>
+          <th style="width:18%">Мобильный режим</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><b>1 · Табличный аккордеон</b></td><td>Минимум изменений от текущей страницы</td><td class="muted">низкая (1 сессия)</td><td>сворачиваемая под-таблица</td></tr>
+        <tr><td><b>2 · Карточный список</b></td><td>Дыхание + читается «как субъекты»</td><td class="muted">средняя</td><td>естественный flow</td></tr>
+        <tr><td><b>3 · Master-detail</b></td><td>Лучший UX под «обзвон по списку»</td><td class="muted">высокая</td><td>нужен drawer-fallback</td></tr>
+        <tr><td><b>4 · Группы по просрочке</b></td><td>Масштаб 30+ клиентов, приоритет вшит</td><td class="muted">средняя</td><td>риск двойной вложенности</td></tr>
+        <tr><td><b>5 · Строки с mini-bar</b></td><td>Мгновенная оценка «недоплаты»</td><td class="muted">средняя + backend</td><td>шкалу прячем</td></tr>
+      </tbody>
+    </table>
+    <p class="side-note" style="border-top:0;padding-top:0;margin-top:14px">
+      <b>Рекомендация.</b> Как ближайший шаг — <b>вариант 1</b> (быстро, безопасно, покрывает обе задачи
+      пользователя). Если видим, что клиент возвращается к странице чаще одного раза в день и база
+      должников растёт — переход на <b>4</b> (группы) или <b>5</b> (mini-bar). Вариант <b>3</b>
+      (master-detail) — отдельный проект, имеет смысл, когда пойдёт история платежей и заметки.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
