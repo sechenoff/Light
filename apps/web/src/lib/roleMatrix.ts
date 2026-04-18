@@ -49,7 +49,6 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
         { href: "/finance", label: "Обзор", icon: "money" },
         { href: "/finance/payments-overview", label: "Оплаты", icon: "receipt" },
         { href: "/finance/debts", label: "Долги", icon: "alert" },
-        { href: "/finance/payments", label: "Поступления", icon: "payment" },
         { href: "/finance/expenses", label: "Расходы", icon: "expense" },
       ],
     },
