@@ -81,7 +81,7 @@ router.get("/", async (req, res, next) => {
     // Фильтрация по категории и поиску
     const filteredBookings = bookings.filter((b) => {
       if (q.category) {
-        const hasCategory = b.items.some((item) => item.equipment.category === q.category);
+        const hasCategory = b.items.some((item) => item.equipment?.category === q.category);
         if (!hasCategory) return false;
       }
       if (searchLower) {
@@ -112,6 +112,9 @@ router.get("/", async (req, res, next) => {
 
     for (const booking of filteredBookings) {
       for (const item of booking.items) {
+        // Произвольные позиции не занимают ресурсы склада — пропускаем
+        if (!item.equipmentId || !item.equipment) continue;
+
         // Фильтрация по категории на уровне айтема
         if (q.category && item.equipment.category !== q.category) continue;
 

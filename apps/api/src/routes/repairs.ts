@@ -179,6 +179,7 @@ repairsRouter.get(
       // Берём ближайшую бронь на каждый equipmentId
       const conflictMap = new Map<string, { date: string; clientName: string }>();
       for (const item of conflictItems) {
+        if (!item.equipmentId) continue;
         if (!conflictMap.has(item.equipmentId)) {
           conflictMap.set(item.equipmentId, {
             date: item.booking.startDate.toISOString(),

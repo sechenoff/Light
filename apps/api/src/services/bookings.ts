@@ -11,12 +11,14 @@ import type { TransportBreakdown } from "./transportCalculator";
 
 const BLOCKING_STATUSES = ["CONFIRMED", "ISSUED"] as const;
 
+export const CUSTOM_LINE_CATEGORY = "Произвольная позиция";
+
 function sumDec(values: Decimal[]) {
   return values.reduce((acc, v) => acc.add(v), new Decimal(0));
 }
 
 export type QuoteLine = {
-  equipmentId: string;
+  equipmentId: string | null;
   categorySnapshot: string;
   nameSnapshot: string;
   brandSnapshot: string | null;
@@ -24,7 +26,8 @@ export type QuoteLine = {
   quantity: number;
   unitPrice: Decimal;
   lineSum: Decimal;
-  pricingMode: "SHIFT" | "TWO_SHIFTS" | "PROJECT";
+  pricingMode: "SHIFT" | "TWO_SHIFTS" | "PROJECT" | "CUSTOM";
+  isCustom: boolean;
 };
 
 export type QuoteTransportInput = {
@@ -46,17 +49,21 @@ export async function quoteEstimate(args: {
   endDate: Date;
   clientId: string;
   discountPercent?: number | null;
-  items: Array<{ equipmentId: string; quantity: number }>;
+  items: Array<{ equipmentId?: string; customName?: string; customUnitPrice?: number; quantity: number }>;
   transport?: QuoteTransportInput | null;
 }) {
   const shifts = billableShifts24h(args.startDate, args.endDate);
+
+  const catalogItems = args.items.filter((i) => i.equipmentId);
+  const customItems = args.items.filter((i) => !i.equipmentId && i.customName && i.customUnitPrice !== undefined);
+
   const equipment = await prisma.equipment.findMany({
-    where: { id: { in: args.items.map((i) => i.equipmentId) } },
+    where: { id: { in: catalogItems.map((i) => i.equipmentId!) } },
   });
   const equipmentById = new Map(equipment.map((e) => [e.id, e]));
 
-  const lines: QuoteLine[] = args.items.map((item) => {
-    const eq = equipmentById.get(item.equipmentId);
+  const catalogLines: QuoteLine[] = catalogItems.map((item) => {
+    const eq = equipmentById.get(item.equipmentId!);
     if (!eq) throw new HttpError(400, `Equipment not found: ${item.equipmentId}`);
     const { unitPrice, mode } = computeUnitPriceForBookingPeriod({ equipment: eq, shifts });
     const quantity = item.quantity;
@@ -71,8 +78,28 @@ export async function quoteEstimate(args: {
       unitPrice,
       lineSum,
       pricingMode: mode,
+      isCustom: false,
     };
   });
+
+  const customLines: QuoteLine[] = customItems.map((item) => {
+    const unitPrice = new Decimal(item.customUnitPrice!);
+    const lineSum = unitPrice.mul(item.quantity);
+    return {
+      equipmentId: null,
+      categorySnapshot: CUSTOM_LINE_CATEGORY,
+      nameSnapshot: item.customName!,
+      brandSnapshot: null,
+      modelSnapshot: null,
+      quantity: item.quantity,
+      unitPrice,
+      lineSum,
+      pricingMode: "CUSTOM",
+      isCustom: true,
+    };
+  });
+
+  const lines: QuoteLine[] = [...catalogLines, ...customLines];
 
   const equipmentSubtotal = sumDec(lines.map((l) => l.lineSum));
   // Legacy aliases for backward compat (existing callers use .subtotal / .totalAfterDiscount)
@@ -143,7 +170,7 @@ export async function createBookingDraft(args: {
   expectedPaymentDate?: Date | null;
   estimateOptionalNote?: string | null;
   estimateIncludeOptionalInExport?: boolean;
-  items: Array<{ equipmentId: string; quantity: number }>;
+  items: Array<{ equipmentId?: string; customName?: string; customUnitPrice?: number; quantity: number }>;
   transport?: BookingTransportSnapshot | null;
 }) {
   if (args.items.length === 0) throw new HttpError(400, "At least one equipment item is required.");
@@ -171,10 +198,17 @@ export async function createBookingDraft(args: {
         ? new Decimal(args.transport.transportSubtotalRub)
         : null,
       items: {
-        create: args.items.map((it) => ({
-          equipmentId: it.equipmentId,
-          quantity: it.quantity,
-        })),
+        create: args.items.map((it) => {
+          if (it.equipmentId) {
+            return { equipmentId: it.equipmentId, quantity: it.quantity };
+          }
+          return {
+            quantity: it.quantity,
+            customName: it.customName,
+            customUnitPrice: it.customUnitPrice != null ? new Decimal(it.customUnitPrice) : undefined,
+            customCategory: CUSTOM_LINE_CATEGORY,
+          };
+        }),
       },
     },
     include: { items: true },
@@ -239,7 +273,7 @@ export async function rebuildBookingEstimate(bookingId: string) {
     const shifts = billableShifts24h(booking.startDate, booking.endDate);
 
     const lines: Array<{
-      equipmentId: string;
+      equipmentId: string | null;
       categorySnapshot: string;
       nameSnapshot: string;
       brandSnapshot: string | null;
@@ -248,13 +282,27 @@ export async function rebuildBookingEstimate(bookingId: string) {
       unitPrice: Decimal;
       lineSum: Decimal;
     }> = booking.items.map((it) => {
-      const { unitPrice } = computeUnitPriceForBookingPeriod({ equipment: it.equipment, shifts });
+      if (it.equipmentId != null && it.equipment != null) {
+        const { unitPrice } = computeUnitPriceForBookingPeriod({ equipment: it.equipment, shifts });
+        return {
+          equipmentId: it.equipmentId,
+          categorySnapshot: it.equipment.category,
+          nameSnapshot: it.equipment.name,
+          brandSnapshot: it.equipment.brand,
+          modelSnapshot: it.equipment.model,
+          quantity: it.quantity,
+          unitPrice,
+          lineSum: unitPrice.mul(it.quantity),
+        };
+      }
+      // Произвольная позиция — фиксированная цена без умножения на shifts
+      const unitPrice = new Decimal(it.customUnitPrice!.toString());
       return {
-        equipmentId: it.equipmentId,
-        categorySnapshot: it.equipment.category,
-        nameSnapshot: it.equipment.name,
-        brandSnapshot: it.equipment.brand,
-        modelSnapshot: it.equipment.model,
+        equipmentId: null,
+        categorySnapshot: it.customCategory ?? CUSTOM_LINE_CATEGORY,
+        nameSnapshot: it.customName!,
+        brandSnapshot: null,
+        modelSnapshot: null,
         quantity: it.quantity,
         unitPrice,
         lineSum: unitPrice.mul(it.quantity),
@@ -323,8 +371,11 @@ export async function confirmBooking(bookingId: string) {
     if (booking.status === "CONFIRMED" || booking.status === "ISSUED") return booking;
     if (booking.items.length === 0) throw new HttpError(400, "Booking items are empty.");
 
-    const requestedItems = booking.items.map((it) => ({
-      equipmentId: it.equipmentId,
+    // Только каталожные позиции участвуют в проверке доступности и резервировании
+    const catalogBookingItems = booking.items.filter((it) => it.equipmentId != null);
+
+    const requestedItems = catalogBookingItems.map((it) => ({
+      equipmentId: it.equipmentId!,
       quantity: it.quantity,
     }));
 
@@ -394,19 +445,35 @@ export async function confirmBooking(bookingId: string) {
     }> = [];
 
     for (const it of booking.items) {
-      const { unitPrice } = computeUnitPriceForBookingPeriod({ equipment: it.equipment, shifts });
-      const lineSum = unitPrice.mul(it.quantity);
-      lines.push({
-        equipmentId: it.equipmentId,
-        categorySnapshot: it.equipment.category,
-        nameSnapshot: it.equipment.name,
-        brandSnapshot: it.equipment.brand,
-        modelSnapshot: it.equipment.model,
-        quantity: it.quantity,
-        unitPrice,
-        lineSum,
-        estimateLineCreate: null,
-      });
+      if (it.equipmentId != null && it.equipment != null) {
+        const { unitPrice } = computeUnitPriceForBookingPeriod({ equipment: it.equipment, shifts });
+        const lineSum = unitPrice.mul(it.quantity);
+        lines.push({
+          equipmentId: it.equipmentId,
+          categorySnapshot: it.equipment.category,
+          nameSnapshot: it.equipment.name,
+          brandSnapshot: it.equipment.brand,
+          modelSnapshot: it.equipment.model,
+          quantity: it.quantity,
+          unitPrice,
+          lineSum,
+          estimateLineCreate: null,
+        });
+      } else {
+        // Произвольная позиция — фиксированная цена без умножения на shifts
+        const unitPrice = new Decimal(it.customUnitPrice!.toString());
+        lines.push({
+          equipmentId: null,
+          categorySnapshot: it.customCategory ?? CUSTOM_LINE_CATEGORY,
+          nameSnapshot: it.customName!,
+          brandSnapshot: null,
+          modelSnapshot: null,
+          quantity: it.quantity,
+          unitPrice,
+          lineSum: unitPrice.mul(it.quantity),
+          estimateLineCreate: null,
+        });
+      }
     }
 
     const subtotal = sumDec(lines.map((l) => l.lineSum));
@@ -432,7 +499,7 @@ export async function confirmBooking(bookingId: string) {
       const overlappingBookingItems = await tx.bookingItem.findMany({
         where: {
           bookingId: { in: overlappingBookingIds },
-          equipmentId: { in: requestedItems.map((i) => i.equipmentId) },
+          equipmentId: { in: requestedItems.map((i) => i.equipmentId), not: null },
         },
         select: { id: true, equipmentId: true },
       });
@@ -483,6 +550,7 @@ export async function confirmBooking(bookingId: string) {
     // We lock by updating equipment rows would be ideal, but Prisma/SQLite doesn't support fine locks.
     // Transaction scope is enough since we validate conflicts with fresh availability before reserving.
     for (const it of booking.items) {
+      if (!it.equipmentId || !it.equipment) continue;
       if (it.equipment.stockTrackingMode !== "UNIT") continue;
       const alreadyReserved = bookedReservedUnitsByEquipmentId.get(it.equipmentId) ?? new Set<string>();
       const availableUnits = await tx.equipmentUnit.findMany({

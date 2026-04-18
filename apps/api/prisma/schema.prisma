@@ -401,15 +401,22 @@ model BookingFinanceEvent {
   @@index([createdAt])
 }
 
+// Инвариант: либо equipmentId != null (каталожная позиция),
+// либо customName + customUnitPrice заполнены (произвольная позиция).
 model BookingItem {
   id          String   @id @default(cuid())
   bookingId   String
-  equipmentId String
+  equipmentId String?
 
   quantity Int
 
-  booking Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  equipment Equipment  @relation(fields: [equipmentId], references: [id])
+  // Поля произвольной позиции (заполняются при отсутствии equipmentId)
+  customName      String?
+  customCategory  String?
+  customUnitPrice Decimal?
+
+  booking Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  equipment Equipment? @relation(fields: [equipmentId], references: [id])
 
   unitReservations BookingItemUnit[]
 

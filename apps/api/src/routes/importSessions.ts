@@ -154,7 +154,7 @@ importSessionsRouter.get("/:id/rows", async (req, res, next) => {
         distinct: ["equipmentId"],
       });
       for (const b of activeBookings) {
-        activeBookingSet.add(b.equipmentId);
+        if (b.equipmentId) activeBookingSet.add(b.equipmentId);
       }
     }
 

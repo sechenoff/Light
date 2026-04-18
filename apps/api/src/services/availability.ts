@@ -114,13 +114,16 @@ export async function getAvailability(args: {
   // Count-based occupancy: sum BookingItem.quantity.
   const occupiedCountByEquipment = new Map<string, number>();
   for (const bi of bookingItems) {
+    if (!bi.equipmentId) continue;
     occupiedCountByEquipment.set(bi.equipmentId, (occupiedCountByEquipment.get(bi.equipmentId) ?? 0) + bi.quantity);
   }
 
   // Unit-based occupancy: count distinct reserved equipment units via BookingItemUnit.
   const bookingItemIds = bookingItems.map((b) => b.id);
   const bookingItemIdToEquipmentId = new Map<string, string>();
-  for (const bi of bookingItems) bookingItemIdToEquipmentId.set(bi.id, bi.equipmentId);
+  for (const bi of bookingItems) {
+    if (bi.equipmentId) bookingItemIdToEquipmentId.set(bi.id, bi.equipmentId);
+  }
 
   const occupiedUnitsByEquipment = new Map<string, Set<string>>();
   if (bookingItemIds.length > 0) {
