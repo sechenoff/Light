@@ -82,7 +82,7 @@ describe("TaskCard", () => {
     expect(card.className).toMatch(/border-rose/);
   });
 
-  it("toggles urgent flag when flame button clicked", () => {
+  it("toggles urgent flag via ⋯ menu when not urgent", () => {
     const onUpdate = vi.fn();
     render(
       <TaskCard
@@ -93,12 +93,16 @@ describe("TaskCard", () => {
         onDelete={vi.fn()}
       />,
     );
-    const flameBtn = screen.getByRole("button", { name: /Пометить срочным/i });
-    fireEvent.click(flameBtn);
+    // Open the ⋯ menu first
+    const menuBtn = screen.getByRole("button", { name: /Действия с задачей/i });
+    fireEvent.click(menuBtn);
+    // Now click the urgent menu item
+    const urgentBtn = screen.getByRole("button", { name: /Пометить срочным/i });
+    fireEvent.click(urgentBtn);
     expect(onUpdate).toHaveBeenCalledWith("t1", { urgent: true });
   });
 
-  it("toggles urgent flag off when already urgent", () => {
+  it("toggles urgent flag off via ⋯ menu when already urgent", () => {
     const onUpdate = vi.fn();
     render(
       <TaskCard
@@ -109,8 +113,12 @@ describe("TaskCard", () => {
         onDelete={vi.fn()}
       />,
     );
-    const flameBtn = screen.getByRole("button", { name: /Снять срочность/i });
-    fireEvent.click(flameBtn);
+    // Open the ⋯ menu first
+    const menuBtn = screen.getByRole("button", { name: /Действия с задачей/i });
+    fireEvent.click(menuBtn);
+    // Now click the urgent menu item
+    const urgentBtn = screen.getByRole("button", { name: /Снять срочность/i });
+    fireEvent.click(urgentBtn);
     expect(onUpdate).toHaveBeenCalledWith("t1", { urgent: false });
   });
 });

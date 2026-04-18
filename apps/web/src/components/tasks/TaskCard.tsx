@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { StatusPill } from "../StatusPill";
+import { TaskAssigneePill } from "./TaskAssigneePill";
 import type { Task } from "./groupTasks";
 import { toMoscowDateString } from "../../lib/moscowDate";
 
@@ -20,6 +21,19 @@ function formatDueDate(dueDate: string): string {
   }
 }
 
+function formatCreatedAt(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("ru-RU", {
+      day: "numeric",
+      month: "numeric",
+      timeZone: "Europe/Moscow",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 function dueDateVariant(
   dueDate: string | null,
   now: Date,
@@ -34,11 +48,6 @@ function dueDateVariant(
   const diffDays = diffMs / (1000 * 60 * 60 * 24);
   if (diffDays <= 3) return "warn";
   return "info";
-}
-
-function initials(username: string | null | undefined): string {
-  if (!username) return "?";
-  return username.charAt(0).toUpperCase();
 }
 
 // ── TaskCard ──────────────────────────────────────────────────────────────────
@@ -68,8 +77,7 @@ export function TaskCard({
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // "now" фиксируем на время жизни компонента — пересчитывать на каждом рендере
-  // незачем (pill меняется только при пересмонтировании списка после refetch).
+  // "now" фиксируем на время жизни компонента
   const now = useMemo(() => new Date(), []);
 
   // Sync draft when task changes externally
@@ -123,30 +131,43 @@ export function TaskCard({
   const isDone = task.status === "DONE";
   const pillVariant = dueDateVariant(task.dueDate, now);
   const assignee = task.assignedToUser;
+  const creator = task.createdByUser;
 
   const cardClasses = [
-    "flex items-center gap-3 px-4 py-3 border-b border-border bg-surface",
+    "grid grid-cols-[28px_1fr_auto_auto_auto] gap-4 items-center py-3.5 px-5 border-b border-border bg-surface",
     "hover:bg-surface-muted transition-colors group",
     task.urgent && !isDone ? "border-l-4 border-rose" : "",
     isOverdue && !isDone ? "bg-rose-soft/40" : "",
-    isDone ? "opacity-60" : "",
+    isDone ? "opacity-55" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
     <div className={cardClasses}>
-      {/* Чекбокс */}
-      <input
-        type="checkbox"
-        checked={isDone}
-        onChange={handleCheckbox}
-        aria-label="Отметить выполненным"
-        className="shrink-0 w-4 h-4 rounded-sm accent-teal cursor-pointer"
-      />
+      {/* Чекбокс — 22px, border-2, checked=teal */}
+      <span className="flex items-center justify-center">
+        <button
+          role="checkbox"
+          aria-checked={isDone}
+          onClick={handleCheckbox}
+          aria-label="Отметить выполненным"
+          className={`w-[22px] h-[22px] rounded-[6px] border-2 flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+            isDone
+              ? "bg-teal border-teal text-white"
+              : "bg-surface border-border-strong hover:border-teal"
+          }`}
+        >
+          {isDone && (
+            <svg width="12" height="10" viewBox="0 0 12 10" fill="none" aria-hidden>
+              <path d="M1 5l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </button>
+      </span>
 
-      {/* Заголовок */}
-      <div className="flex-1 min-w-0">
+      {/* Заголовок + мета */}
+      <div className="min-w-0">
         {editingTitle ? (
           <input
             ref={inputRef}
@@ -154,87 +175,89 @@ export function TaskCard({
             onChange={(e) => setTitleDraft(e.target.value)}
             onBlur={handleTitleSave}
             onKeyDown={handleTitleKeyDown}
-            className="w-full text-sm text-ink bg-surface-muted rounded px-1 py-0.5 border border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            className="w-full text-[15px] text-ink bg-surface-muted rounded px-1 py-0.5 border border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           />
         ) : (
-          <span
+          <p
             onClick={() => !isDone && setEditingTitle(true)}
-            className={`text-sm cursor-text select-none ${
-              isDone ? "line-through text-ink-3 opacity-60" : "text-ink"
+            className={`text-[15px] font-medium leading-snug cursor-text select-none ${
+              isDone ? "line-through text-ink-3" : "text-ink"
             }`}
           >
+            {task.urgent && !isDone && (
+              <span className="text-rose font-bold mr-2">!</span>
+            )}
             {task.title.trim() ? task.title : (
               <span className="italic text-ink-3">Без названия</span>
             )}
-          </span>
+          </p>
+        )}
+        {/* Мета: поставил + дата создания */}
+        {creator && (
+          <p className="text-xs text-ink-3 mt-0.5">
+            поставил <b className="text-ink-2 font-medium">{creator.username}</b>
+            {" · "}
+            {formatCreatedAt(task.createdAt)}
+          </p>
         )}
       </div>
 
-      {/* Правый блок: аватар + дата + срочность + меню */}
-      <div className="flex items-center gap-2 shrink-0">
-        {/* Аватар исполнителя */}
-        {assignee && (
-          <span
-            title={assignee.username}
-            className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent-soft text-accent text-xs font-semibold cursor-default"
-          >
-            {initials(assignee.username)}
-          </span>
-        )}
+      {/* Исполнитель */}
+      <TaskAssigneePill user={assignee} />
 
-        {/* Дата */}
+      {/* Дата */}
+      <span>
         {task.dueDate ? (
           <StatusPill
             variant={pillVariant}
             label={formatDueDate(task.dueDate)}
           />
         ) : null}
+      </span>
 
-        {/* Срочность */}
+      {/* Overflow меню */}
+      <div className="relative" ref={menuRef}>
         <button
-          onClick={() => onUpdate(task.id, { urgent: !task.urgent })}
-          aria-label={task.urgent ? "Снять срочность" : "Пометить срочным"}
-          className={`text-sm transition-opacity ${
-            task.urgent ? "" : "opacity-0 group-hover:opacity-100"
-          }`}
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-label="Действия с задачей"
+          className="text-ink-3 hover:text-ink transition-colors opacity-0 group-hover:opacity-100 text-base leading-none px-0.5"
         >
-          {task.urgent ? "🔥" : "🕯"}
+          ⋯
         </button>
-
-        {/* Overflow меню */}
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label="Действия с задачей"
-            className="text-ink-3 hover:text-ink transition-colors opacity-0 group-hover:opacity-100 text-base leading-none px-0.5"
-          >
-            ⋯
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-6 z-50 bg-surface border border-border rounded-lg shadow-sm min-w-[180px] py-1 text-sm">
-              {onOpenEdit && (
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onOpenEdit(task);
-                  }}
-                  className="w-full text-left px-4 py-2 hover:bg-surface-muted text-ink transition-colors"
-                >
-                  Редактировать детали
-                </button>
-              )}
+        {menuOpen && (
+          <div className="absolute right-0 top-6 z-50 bg-surface border border-border rounded-lg shadow-sm min-w-[200px] py-1 text-sm">
+            {onOpenEdit && (
               <button
                 onClick={() => {
                   setMenuOpen(false);
-                  onDelete(task.id);
+                  onOpenEdit(task);
                 }}
-                className="w-full text-left px-4 py-2 hover:bg-rose-soft text-rose transition-colors"
+                className="w-full text-left px-4 py-2 hover:bg-surface-muted text-ink transition-colors"
               >
-                Удалить
+                Редактировать детали
               </button>
-            </div>
-          )}
-        </div>
+            )}
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                onUpdate(task.id, { urgent: !task.urgent });
+              }}
+              aria-label={task.urgent ? "Снять срочность" : "Пометить срочным"}
+              className="w-full text-left px-4 py-2 hover:bg-surface-muted text-ink transition-colors"
+            >
+              {task.urgent ? "Снять срочность" : "Пометить срочным"}
+            </button>
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                onDelete(task.id);
+              }}
+              className="w-full text-left px-4 py-2 hover:bg-rose-soft text-rose transition-colors"
+            >
+              Удалить
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -119,6 +119,28 @@ describe("groupTasks", () => {
     expect(groups.noDate[1].id).toBe("older");
   });
 
+  it("groups DONE+recent task into doneToday bucket", () => {
+    const task = makeTask({
+      id: "recent-done",
+      status: "DONE",
+      completedAt: "2026-04-17T08:00:00Z", // 11:00 MSK, within 24h of NOW
+    });
+    const groups = groupTasks([task], MSK_NOW);
+    expect(groups.doneToday).toHaveLength(1);
+    expect(groups.doneToday[0].id).toBe("recent-done");
+  });
+
+  it("old DONE tasks go into noDate bucket, not doneToday", () => {
+    const task = makeTask({
+      id: "old-done",
+      status: "DONE",
+      completedAt: "2026-04-14T08:00:00Z", // > 24h ago
+    });
+    const groups = groupTasks([task], MSK_NOW);
+    expect(groups.doneToday).toHaveLength(0);
+    expect(groups.noDate).toHaveLength(1);
+  });
+
   it("routes each task to the correct bucket", () => {
     const overdue = makeTask({ id: "overdue", dueDate: "2026-04-15T21:00:00.000Z" }); // April 16 MSK
     const today = makeTask({ id: "today", dueDate: "2026-04-16T21:00:00.000Z" });    // April 17 MSK
