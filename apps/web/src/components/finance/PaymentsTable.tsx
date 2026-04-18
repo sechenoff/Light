@@ -58,9 +58,9 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) 
               <th className="text-left px-4 py-3 eyebrow">Дата</th>
               <th className="text-left px-4 py-3 eyebrow">Период</th>
               <th className="text-left px-4 py-3 eyebrow">Клиент</th>
-              <th className="text-left px-4 py-3 eyebrow">Проект</th>
+              <th className="text-left px-4 py-3 eyebrow w-[110px]">Проект</th>
               <th className="text-right px-4 py-3 eyebrow">Сумма</th>
-              <th className="text-left px-4 py-3 eyebrow w-[220px]">Статус оплаты</th>
+              <th className="text-left px-4 py-3 eyebrow w-[320px] min-w-[320px]">Статус оплаты</th>
             </tr>
           </thead>
           <tbody>
@@ -81,7 +81,7 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) 
                   {item.client.name}
                 </td>
                 {/* Project */}
-                <td className="px-4 py-3 text-ink-2 text-xs max-w-[140px] truncate">
+                <td className="px-4 py-3 text-ink-2 text-xs max-w-[110px] truncate">
                   {item.projectName}
                 </td>
                 {/* Amount */}

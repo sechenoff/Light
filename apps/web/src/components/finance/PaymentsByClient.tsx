@@ -201,9 +201,9 @@ export function PaymentsByClient({ filter }: Props) {
                       <thead>
                         <tr className="border-b border-border">
                           <th className="text-left px-5 py-2 eyebrow">Дата</th>
-                          <th className="text-left px-4 py-2 eyebrow">Проект</th>
+                          <th className="text-left px-4 py-2 eyebrow w-[110px]">Проект</th>
                           <th className="text-right px-4 py-2 eyebrow">Сумма</th>
-                          <th className="text-left px-4 py-2 eyebrow w-[220px]">Статус оплаты</th>
+                          <th className="text-left px-4 py-2 eyebrow w-[320px] min-w-[320px]">Статус оплаты</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -212,7 +212,7 @@ export function PaymentsByClient({ filter }: Props) {
                             <td className="px-5 py-2.5 text-ink-2 mono-num whitespace-nowrap">
                               {new Date(b.startDate).toLocaleDateString("ru-RU")}
                             </td>
-                            <td className="px-4 py-2.5 text-ink max-w-[180px] truncate">{b.projectName}</td>
+                            <td className="px-4 py-2.5 text-ink max-w-[110px] truncate">{b.projectName}</td>
                             <td className="px-4 py-2.5 text-right mono-num font-medium text-ink whitespace-nowrap">
                               {formatRub(b.finalAmount)}
                             </td>
