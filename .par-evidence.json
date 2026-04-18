@@ -1,10 +1,1 @@
-{
-  "sprint": 3,
-  "feature": "tasks-todo",
-  "claude_product": "ACCEPTED",
-  "technical_review": "APPROVE",
-  "provider": "split-focus",
-  "ts": "2026-04-17T20:24:00Z",
-  "round": 2,
-  "notes": "Round 1: Technical APPROVE with 3 LOW non-blockers. Product NEEDS_FIXES — 1 HIGH (missing 6s undo toast on widget completeTask, fails criterion 13), 2 MEDIUM (ad-hoc Russian pluralization in day chip, non-clickable task rows). Round 2: both HIGH and pluralization MEDIUM fixed in commit 141f1b2 (mirrors useTasksQuery.completeTask pattern + shared pluralize). Clickable-rows MEDIUM deferred per spec §3.10 line 406 which explicitly scopes interactivity to checkbox + footer link. Product reviewer agreed with the deferral on re-review. 511 api + 147 web + bot + shared tests green. tsc clean. No hex, no style={}."
-}
+{"sprint":1,"claude_product":"ACCEPTED","technical_review":"APPROVE","provider":"split-focus","ts":"2026-04-18T12:00:00Z"}
