@@ -5,10 +5,13 @@ import Link from "next/link";
 import {
   listContactsWithAggregates,
   getContactsSummary,
+  deleteContact,
+  GafferApiError,
   type GafferContactWithAggregates,
   type GafferContactsSummary,
 } from "../../../src/lib/gafferApi";
 import { formatRub, pluralize } from "../../../src/lib/format";
+import { toast } from "../../../src/components/ToastProvider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,7 +47,13 @@ const AVATAR_CLASSES: Record<AvatarVariant, string> = {
 
 // ── Contact card ──────────────────────────────────────────────────────────────
 
-function ContactCard({ contact }: { contact: GafferContactWithAggregates }) {
+function ContactCard({
+  contact,
+  onDeleted,
+}: {
+  contact: GafferContactWithAggregates;
+  onDeleted: (id: string) => void;
+}) {
   const initials = getInitials(contact.name);
   const avatarVariant = getAvatarVariant(contact);
   const avatarClass = AVATAR_CLASSES[avatarVariant];
@@ -54,100 +63,194 @@ function ContactCard({ contact }: { contact: GafferContactWithAggregates }) {
   const remainingFromMe = Number(contact.remainingFromMe);
   const hasDebt = remainingToMe > 0 || remainingFromMe > 0;
 
-  return (
-    <Link
-      href={`/gaffer/contacts/${contact.id}`}
-      className={`flex gap-[10px] py-3 border-b border-border items-start hover:bg-surface-2 transition-colors px-4 ${isArchived ? "opacity-60" : ""}`}
-    >
-      {/* Avatar */}
-      <div
-        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border text-[12px] font-semibold ${avatarClass}`}
-        style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", letterSpacing: "0.4px" }}
-      >
-        {initials}
-      </div>
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="font-semibold text-[13.5px] text-ink truncate">{contact.name}</span>
-          {/* Debt amount (right side) */}
-          <div className="shrink-0 text-right">
-            {remainingToMe > 0 && (
-              <span className="text-[12px] font-semibold text-rose mono-num">
-                ↑ {formatRub(remainingToMe)}
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [menuOpen]);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await deleteContact(contact.id);
+      toast.success("Контакт удалён");
+      onDeleted(contact.id);
+    } catch (err) {
+      if (err instanceof GafferApiError && err.code === "CONTACT_HAS_RELATIONS") {
+        toast.error("Контакт используется в проектах — сначала отвяжите его.");
+      } else {
+        toast.error(err instanceof GafferApiError ? err.message : "Ошибка удаления");
+      }
+    } finally {
+      setDeleting(false);
+      setConfirmOpen(false);
+    }
+  }
+
+  return (
+    <div className={`relative border-b border-border hover:bg-surface-2 transition-colors ${isArchived ? "opacity-60" : ""}`}>
+      <Link
+        href={`/gaffer/contacts/${contact.id}`}
+        className="flex gap-[10px] py-3 items-start px-4 pr-12"
+      >
+        {/* Avatar */}
+        <div
+          className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border text-[12px] font-semibold ${avatarClass}`}
+          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", letterSpacing: "0.4px" }}
+        >
+          {initials}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="font-semibold text-[13.5px] text-ink truncate">{contact.name}</span>
+            {/* Debt amount (right side) */}
+            <div className="shrink-0 text-right">
+              {remainingToMe > 0 && (
+                <span className="text-[12px] font-semibold text-rose mono-num">
+                  ↑ {formatRub(remainingToMe)}
+                </span>
+              )}
+              {remainingFromMe > 0 && remainingToMe === 0 && (
+                <span className="text-[12px] font-semibold text-indigo mono-num">
+                  ↓ {formatRub(remainingFromMe)}
+                </span>
+              )}
+              {!hasDebt && contact.projectCount > 0 && (
+                <span className="text-[11px] text-ink-3">сведён</span>
+              )}
+            </div>
+          </div>
+
+          {/* Pills */}
+          <div className="flex flex-wrap gap-1 mt-1">
+            {/* Type pills */}
+            {!isArchived && contact.asClientCount > 0 && (
+              <span
+                className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-indigo-soft text-indigo border-indigo-border"
+                style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+              >
+                заказчик
               </span>
             )}
-            {remainingFromMe > 0 && remainingToMe === 0 && (
-              <span className="text-[12px] font-semibold text-indigo mono-num">
-                ↓ {formatRub(remainingFromMe)}
+            {!isArchived && contact.asMemberCount > 0 && (
+              <span
+                className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-teal-soft text-teal border-teal-border"
+                style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+              >
+                команда
               </span>
             )}
-            {!hasDebt && contact.projectCount > 0 && (
-              <span className="text-[11px] text-ink-3">сведён</span>
+            {!isArchived && contact.asClientCount === 0 && contact.asMemberCount === 0 && (
+              <span
+                className={`inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                  contact.type === "CLIENT"
+                    ? "bg-indigo-soft text-indigo border-indigo-border"
+                    : "bg-teal-soft text-teal border-teal-border"
+                }`}
+                style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+              >
+                {contact.type === "CLIENT" ? "заказчик" : "команда"}
+              </span>
+            )}
+            {isArchived && (
+              <span
+                className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-slate-soft text-slate border-slate-border"
+                style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+              >
+                в архиве
+              </span>
+            )}
+            {contact.projectCount > 0 && (
+              <span
+                className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-slate-soft text-slate border-slate-border"
+                style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+              >
+                {contact.projectCount} {pluralize(contact.projectCount, "проект", "проекта", "проектов")}
+              </span>
             )}
           </div>
-        </div>
 
-        {/* Pills */}
-        <div className="flex flex-wrap gap-1 mt-1">
-          {/* Type pills */}
-          {!isArchived && contact.asClientCount > 0 && (
-            <span
-              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-indigo-soft text-indigo border-indigo-border"
-              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
-            >
-              заказчик
-            </span>
-          )}
-          {!isArchived && contact.asMemberCount > 0 && (
-            <span
-              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-teal-soft text-teal border-teal-border"
-              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
-            >
-              команда
-            </span>
-          )}
-          {!isArchived && contact.asClientCount === 0 && contact.asMemberCount === 0 && (
-            <span
-              className={`inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] ${
-                contact.type === "CLIENT"
-                  ? "bg-indigo-soft text-indigo border-indigo-border"
-                  : "bg-teal-soft text-teal border-teal-border"
-              }`}
-              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
-            >
-              {contact.type === "CLIENT" ? "заказчик" : "команда"}
-            </span>
-          )}
-          {isArchived && (
-            <span
-              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-slate-soft text-slate border-slate-border"
-              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
-            >
-              в архиве
-            </span>
-          )}
-          {contact.projectCount > 0 && (
-            <span
-              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-slate-soft text-slate border-slate-border"
-              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
-            >
-              {contact.projectCount} {pluralize(contact.projectCount, "проект", "проекта", "проектов")}
-            </span>
+          {/* Meta line */}
+          {(contact.phone || contact.telegram) && (
+            <div className="mt-1 text-[11px] text-ink-3 flex gap-1.5 flex-wrap">
+              {contact.phone && <span>{contact.phone}</span>}
+              {contact.phone && contact.telegram && <span className="text-border">·</span>}
+              {contact.telegram && <span>{contact.telegram}</span>}
+            </div>
           )}
         </div>
+      </Link>
 
-        {/* Meta line */}
-        {(contact.phone || contact.telegram) && (
-          <div className="mt-1 text-[11px] text-ink-3 flex gap-1.5 flex-wrap">
-            {contact.phone && <span>{contact.phone}</span>}
-            {contact.phone && contact.telegram && <span className="text-border">·</span>}
-            {contact.telegram && <span>{contact.telegram}</span>}
+      {/* Actions menu (outside Link to avoid nested interactive elements) */}
+      <div ref={menuRef} className="absolute top-2 right-2 z-10">
+        <button
+          type="button"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-label="Действия"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          className="w-8 h-8 flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface rounded text-[18px] leading-none"
+        >
+          ⋯
+        </button>
+        {menuOpen && (
+          <div role="menu" className="absolute right-0 top-9 bg-surface border border-border rounded-lg shadow-sm w-36 py-1">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setMenuOpen(false); setConfirmOpen(true); }}
+              className="w-full text-left px-4 py-2.5 text-[13px] text-rose hover:bg-rose-soft transition-colors"
+            >
+              Удалить
+            </button>
           </div>
         )}
       </div>
-    </Link>
+
+      {/* Delete confirmation modal */}
+      {confirmOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget && !deleting) setConfirmOpen(false); }}
+        >
+          <div className="bg-surface rounded-lg shadow-xl p-5 w-full max-w-sm">
+            <h3 className="text-[15px] font-semibold text-ink mb-2">Удалить контакт?</h3>
+            <p className="text-[13px] text-ink-2 mb-5">
+              Вы собираетесь удалить <span className="font-medium text-ink">{contact.name}</span>. Это действие нельзя отменить.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 bg-rose hover:bg-rose/90 text-white font-medium rounded px-4 py-2.5 text-[13px] transition-colors disabled:opacity-50"
+              >
+                {deleting ? "Удаляем…" : "Удалить"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                disabled={deleting}
+                className="flex-1 bg-surface border border-border text-ink rounded px-4 py-2.5 text-[13px] hover:bg-[#fafafa] transition-colors disabled:opacity-50"
+              >
+                Отменить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -330,7 +433,16 @@ export default function GafferContactsPage() {
             )}
           </div>
         ) : (
-          contacts.map((c) => <ContactCard key={c.id} contact={c} />)
+          contacts.map((c) => (
+            <ContactCard
+              key={c.id}
+              contact={c}
+              onDeleted={(id) => {
+                setAllContacts((prev) => (prev ? prev.filter((x) => x.id !== id) : prev));
+                getContactsSummary().then(setSummary).catch(() => {});
+              }}
+            />
+          ))
         )}
       </div>
 
