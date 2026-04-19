@@ -214,6 +214,7 @@ export async function getContactsSummary(req: Request) {
   const archiveCount = allContacts.filter((c) => c.isArchived).length;
   const clientCount = nonArchived.filter((c) => c.type === "CLIENT").length;
   const teamCount = nonArchived.filter((c) => c.type === "TEAM_MEMBER").length;
+  const vendorCount = nonArchived.filter((c) => c.type === "VENDOR").length;
   const withDebtCount = nonArchived.filter((c) => {
     const d = contactDebtMap.get(c.id);
     return d && (d.toMe.gt(ZERO) || d.fromMe.gt(ZERO));
@@ -228,6 +229,7 @@ export async function getContactsSummary(req: Request) {
       all: nonArchived.length,
       clients: clientCount,
       team: teamCount,
+      vendors: vendorCount,
       withDebt: withDebtCount,
       archive: archiveCount,
     },
@@ -462,7 +464,7 @@ export async function getContactDebtSummary(req: Request, id: string) {
     }));
 
     return {
-      type: "TEAM_MEMBER" as const,
+      type: contact.type === "VENDOR" ? ("VENDOR" as const) : ("TEAM_MEMBER" as const),
       contact: serializeContact(contact),
       memberships: memberSummaries,
       totalRemaining: totalRemaining.toString(),

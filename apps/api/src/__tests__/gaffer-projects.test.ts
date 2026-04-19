@@ -196,3 +196,113 @@ describe("createProject with members", () => {
     expect(count).toBe(0);
   });
 });
+
+// ─── VENDOR-контакты в проектах ───────────────────────────────────────────────
+
+describe("VENDOR-контакт: создание и добавление в проект", () => {
+  it("POST /contacts создаёт контакт с type=VENDOR", async () => {
+    const res = await post("/api/gaffer/contacts").send({
+      type: "VENDOR",
+      name: "Арта Рент",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.contact.type).toBe("VENDOR");
+    expect(res.body.contact.name).toBe("Арта Рент");
+  });
+
+  it("GET /contacts?type=VENDOR возвращает только VENDOR-контакты", async () => {
+    const resV = await post("/api/gaffer/contacts").send({ type: "VENDOR", name: "Рентал Фильтр" });
+    const vendorId = resV.body.contact.id as string;
+
+    const res = await request(app).get("/api/gaffer/contacts?type=VENDOR")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const ids = res.body.items.map((c: { id: string }) => c.id);
+    expect(ids).toContain(vendorId);
+    for (const c of res.body.items) {
+      expect(c.type).toBe("VENDOR");
+    }
+  });
+
+  it("GET /contacts/summary содержит счётчик vendors > 0", async () => {
+    await post("/api/gaffer/contacts").send({ type: "VENDOR", name: "Рентал Саммари" });
+
+    const res = await request(app).get("/api/gaffer/contacts/summary")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(typeof res.body.counts.vendors).toBe("number");
+    expect(res.body.counts.vendors).toBeGreaterThan(0);
+  });
+
+  it("POST /:id/members добавляет VENDOR-контакт в проект", async () => {
+    const clientId = await createClient("Заказчик рентала");
+    const projectRes = await post("/api/gaffer/projects").send({
+      title: "Проект с ренталом",
+      clientId,
+      shootDate: "2025-10-01",
+      clientPlanAmount: "60000",
+    });
+    const projectId = projectRes.body.project.id as string;
+
+    const vendorRes = await post("/api/gaffer/contacts").send({ type: "VENDOR", name: "Свет Про" });
+    const vendorId = vendorRes.body.contact.id as string;
+
+    const memberRes = await post(`/api/gaffer/projects/${projectId}/members`).send({
+      contactId: vendorId,
+      plannedAmount: "20000",
+    });
+
+    expect(memberRes.status).toBe(200);
+    expect(memberRes.body.member.contactId).toBe(vendorId);
+    expect(memberRes.body.member.plannedAmount).toBe("20000");
+  });
+
+  it("POST /:id/members с CLIENT → 400 INVALID_MEMBER_TYPE", async () => {
+    const clientId = await createClient("Клиент-не-рентал");
+    const projectRes = await post("/api/gaffer/projects").send({
+      title: "Проект CLIENT-reject",
+      clientId,
+      shootDate: "2025-10-02",
+    });
+    const projectId = projectRes.body.project.id as string;
+
+    const res = await post(`/api/gaffer/projects/${projectId}/members`).send({
+      contactId: clientId,
+      plannedAmount: "5000",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details).toBe("INVALID_MEMBER_TYPE");
+  });
+
+  it("OUT-платёж для VENDOR-участника создаётся успешно", async () => {
+    const clientId = await createClient("Заказчик OUT-платежа");
+    const projectRes = await post("/api/gaffer/projects").send({
+      title: "Проект OUT-рентал",
+      clientId,
+      shootDate: "2025-10-03",
+      clientPlanAmount: "50000",
+    });
+    const projectId = projectRes.body.project.id as string;
+
+    const vendorRes = await post("/api/gaffer/contacts").send({ type: "VENDOR", name: "Арта Рент OUT" });
+    const vendorId = vendorRes.body.contact.id as string;
+
+    await post(`/api/gaffer/projects/${projectId}/members`).send({
+      contactId: vendorId,
+      plannedAmount: "15000",
+    });
+
+    const payRes = await post("/api/gaffer/payments").send({
+      projectId,
+      direction: "OUT",
+      amount: "8000",
+      paidAt: "2025-10-04",
+      memberId: vendorId,
+    });
+
+    expect(payRes.status).toBe(200);
+    expect(payRes.body.payment.memberId).toBe(vendorId);
+    expect(payRes.body.payment.amount).toBe("8000");
+  });
+});
