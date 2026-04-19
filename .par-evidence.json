@@ -1,23 +1,26 @@
 {
-  "sprint": "gaffer-project-new-form",
-  "feature": "gaffer-project-creation-wizard-screen-8",
-  "claude_product": "ACCEPTED",
+  "sprint": "gaffer-wizard-polish",
+  "feature": "mockup-fidelity-polish-screen-8",
+  "governance": "light",
+  "claude_product": "SKIPPED",
   "technical_review": "APPROVE",
-  "provider": "split-focus",
-  "ts": "2026-04-19T13:55:00+03:00",
-  "commits_reviewed": ["bf98ad6", "fb60838", "ed1aa69"],
+  "provider": "single-reviewer",
+  "reviewer_model": "opus (standard-code-reviewer)",
+  "commits_reviewed": ["5ae508e"],
+  "ts": "2026-04-19T14:25:00+03:00",
+  "scope": {
+    "files_touched": 1,
+    "file": "apps/web/app/gaffer/projects/new/page.tsx",
+    "lines_changed": "~40"
+  },
+  "fixes": [
+    "Step 1 new-client form: 2×2 grid + «Название / ФИО» + «Комментарий» labels + «Создать и выбрать» + «Отмена» ghost button — aligns with mockup lines 2082-2099",
+    "Step 4 rental label: «Сумма ренталу за свет» → «Сумма от рентала за оборудование» — aligns with mockup line 2152",
+    "«свой» pills: onClick handlers added to bulkShifts/bulkHours — now correctly clear bulk override without destroying per-member values"
+  ],
   "tests": {
-    "api": { "suites": 51, "tests": 709, "status": "passed" },
-    "tsc": { "api": "clean", "web": "clean" }
+    "web": { "status": "passed", "files": 25, "tests": 174 },
+    "tsc": { "web": "clean" }
   },
-  "review_rounds": {
-    "round1": {
-      "product": "ACCEPTED (5 MEDIUM UX polish items, non-blocking)",
-      "technical": "REQUEST_CHANGES (2 HIGH: H1 Decimal input validation, H2 TOCTOU on member validation; 2 MEDIUM: M1 dup contactId, M2 invalid date; 1 LOW: cross-tenant test)"
-    },
-    "round2": {
-      "technical": "APPROVE — all 5 findings FIXED in commit ed1aa69; no new issues; TypeScript clean on api+web"
-    }
-  },
-  "notes": "Sprint реализует экран 8 мокапа docs/mockups/gaffer-crm.html (lines 2055-2434) — 6-шаговый визард создания проекта с пикером команды, переработками и расчётом маржи.\n\nScope: schema extension (5 полей на GafferContact), Zod-схемы, transactional createProject с членами, shared decimalString-helper, full-page rewrite /gaffer/projects/new.\n\nFixes round 2 (ed1aa69):\n- H1: новый apps/api/src/utils/decimalString.ts — Zod refine '/^\\d+(\\.\\d+)?$/' + ≤1B cap; применён к clientPlanAmount/lightBudgetAmount/plannedAmount/всем 4 rate fields.\n- H2: валидация contactId участников перенесена INSIDE prisma.$transaction через tx.gafferContact.findMany({gafferUserId, type:'TEAM_MEMBER', isArchived:false}).\n- M1: .refine() dedup на members array.\n- M2: .refine(d => !isNaN(d.getTime())) после .transform() на shootDate (create+update).\n- M3: roleLabel max aligned к 100 везде.\n- L1: 4-й integration-test с cross-tenant attack на gaffer-projects.test.ts."
+  "review_notes": "APPROVE. Cancel button properly closes <details> via controlled `open` prop (ref assignment is redundant-but-harmless defensive code). «свой» pill setters only flip the bulk flag without touching selectedMembers, so no user data is destroyed. All new styling uses canon tokens (border-border, text-ink-2, rose). Mockup fidelity restored with minimal, surgical edits to a single file."
 }
