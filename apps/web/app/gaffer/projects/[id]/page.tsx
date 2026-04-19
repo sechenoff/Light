@@ -16,6 +16,7 @@ import {
   updatePayment,
   deletePayment,
   createContact,
+  deleteContact,
   listContacts,
   listContactsWithAggregates,
   listPaymentMethods,
@@ -39,6 +40,7 @@ import {
   SummaryRow,
   type SelectedMember,
 } from "../../../../src/components/gaffer/projectWizardShared";
+import { MemberNumberField } from "../../../../src/components/gaffer/MemberNumberField";
 
 // ── Status pill ─────────────────────────────────────────────────────────────
 
@@ -681,6 +683,13 @@ function AddMemberForm({
 
   const isVendor = contactType === "VENDOR";
 
+  // Vendor-only: mode toggle between picking existing vs creating a new rental inline.
+  // Team members have their own rate-rich creation flow in the wizard, so not duplicated here.
+  const [mode, setMode] = useState<"existing" | "new">("existing");
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newTelegram, setNewTelegram] = useState("");
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -697,20 +706,90 @@ function AddMemberForm({
   // Suppress unused variable warning — methods prop reserved for future payment integration
   void methods;
 
+  function resetAll() {
+    setContactId("");
+    setPlannedAmount("0");
+    setRoleLabel("");
+    setNewName("");
+    setNewPhone("");
+    setNewTelegram("");
+    setMode("existing");
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setErr(null);
+
+    // Mode B — create a new rental first, then add it to the project.
+    // Reuse an existing VENDOR if the trimmed name already matches one in the
+    // already-loaded list — contactService does not enforce name uniqueness,
+    // so without this check we'd create duplicates every time the user retries.
+    if (isVendor && mode === "new") {
+      const trimmedName = newName.trim();
+      if (!trimmedName) {
+        setErr("Введите название рентала");
+        return;
+      }
+      setSaving(true);
+      const existing = (contacts ?? []).find(
+        (c) => c.name.trim().toLowerCase() === trimmedName.toLowerCase(),
+      );
+      let createdId: string | null = null;
+      try {
+        let targetContactId: string;
+        if (existing) {
+          targetContactId = existing.id;
+        } else {
+          const created = await createContact({
+            type: "VENDOR",
+            name: trimmedName,
+            phone: newPhone.trim() || undefined,
+            telegram: newTelegram.trim() || undefined,
+          });
+          createdId = created.contact.id;
+          targetContactId = createdId;
+        }
+        await addProjectMember(projectId, {
+          contactId: targetContactId,
+          plannedAmount: plannedAmount || "0",
+        });
+        resetAll();
+        detailsRef.current?.removeAttribute("open");
+        onDone();
+      } catch (e) {
+        // Best-effort cleanup: if addProjectMember failed AFTER we created a
+        // fresh VENDOR, roll it back so we don't pollute the contact list.
+        // Fire-and-forget — user-facing error takes priority over cleanup result.
+        if (createdId) {
+          deleteContact(createdId).catch(() => {
+            /* ignore — orphan is better than blocking the user on a second error */
+          });
+        }
+        if (e instanceof GafferApiError) {
+          if (e.code === "MEMBER_ALREADY_IN_PROJECT") setErr("Рентал уже добавлен в проект");
+          else if (e.code === "MEMBER_ARCHIVED") setErr("Этот контакт в архиве");
+          else if (e.code === "INVALID_MEMBER_TYPE") setErr("Контакт не является ренталом");
+          else if (e.code === "PROJECT_ARCHIVED") setErr("Проект в архиве — изменения недоступны");
+          else setErr(e.message);
+        } else {
+          setErr("Не удалось создать рентал");
+        }
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // Mode A — pick an existing contact.
     if (!contactId) { setErr(isVendor ? "Выберите рентал" : "Выберите участника"); return; }
     setSaving(true);
-    setErr(null);
     try {
       await addProjectMember(projectId, {
         contactId: contactId,
         plannedAmount: plannedAmount || "0",
         roleLabel: roleLabel.trim() || undefined,
       });
-      setContactId("");
-      setPlannedAmount("0");
-      setRoleLabel("");
+      resetAll();
       detailsRef.current?.removeAttribute("open");
       onDone();
     } catch (e) {
@@ -731,6 +810,24 @@ function AddMemberForm({
   const summaryLabel = isVendor ? "Добавить рентал" : "Добавить участника";
   const selectLabel = isVendor ? "Рентал" : "Участник";
 
+  // Tab button helpers
+  function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={
+          "flex-1 text-[11.5px] font-semibold rounded px-2 py-1.5 transition-colors " +
+          (active
+            ? "bg-accent text-white"
+            : "bg-transparent text-ink-2 hover:bg-surface")
+        }
+      >
+        {children}
+      </button>
+    );
+  }
+
   return (
     <details ref={detailsRef} className="group border border-dashed border-border rounded-md bg-accent-soft overflow-hidden mt-2">
       <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-accent flex items-center gap-1 list-none">
@@ -739,25 +836,90 @@ function AddMemberForm({
         {summaryLabel}
       </summary>
       <div className="px-3 pb-3 pt-1 border-t border-dashed border-border">
-        <form onSubmit={handleSubmit} className="space-y-2 mt-1">
-          <div>
-            <label className="block text-[11px] text-ink-3 mb-0.5">{selectLabel}</label>
-            {contacts === null ? (
-              <div className="h-[34px] bg-border rounded animate-pulse" />
-            ) : (
-              <select
-                value={contactId}
-                onChange={(e) => setContactId(e.target.value)}
-                autoFocus
-                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
-              >
-                <option value="">— Выберите —</option>
-                {contacts.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            )}
+        {isVendor && (
+          <div className="flex gap-1 bg-surface border border-border rounded p-0.5 mt-2">
+            <TabBtn active={mode === "existing"} onClick={() => { setMode("existing"); setErr(null); }}>
+              Из списка
+            </TabBtn>
+            <TabBtn active={mode === "new"} onClick={() => { setMode("new"); setErr(null); }}>
+              + Новый рентал
+            </TabBtn>
           </div>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-2 mt-2">
+          {/* MODE A — existing contact */}
+          {(!isVendor || mode === "existing") && (
+            <div>
+              <label className="block text-[11px] text-ink-3 mb-0.5">{selectLabel}</label>
+              {contacts === null ? (
+                <div className="h-[34px] bg-border rounded animate-pulse" />
+              ) : contacts.length === 0 && isVendor ? (
+                <p className="text-[12px] text-ink-2 px-2 py-2 bg-surface border border-border rounded">
+                  Ренталов ещё нет. Переключитесь на{" "}
+                  <button
+                    type="button"
+                    onClick={() => setMode("new")}
+                    className="text-accent-bright font-semibold underline"
+                  >
+                    «+ Новый рентал»
+                  </button>.
+                </p>
+              ) : (
+                <select
+                  value={contactId}
+                  onChange={(e) => setContactId(e.target.value)}
+                  autoFocus
+                  className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+                >
+                  <option value="">— Выберите —</option>
+                  {contacts.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* MODE B — create a new rental inline (VENDOR only) */}
+          {isVendor && mode === "new" && (
+            <div className="space-y-2">
+              <div>
+                <label className="block text-[11px] text-ink-3 mb-0.5">Название рентала *</label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  autoFocus
+                  placeholder="напр. SvetoBaza"
+                  className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-[11px] text-ink-3 mb-0.5">Телефон</label>
+                  <input
+                    type="tel"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    placeholder="+7 999 ..."
+                    className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-[11px] text-ink-3 mb-0.5">Телеграм</label>
+                  <input
+                    type="text"
+                    value={newTelegram}
+                    onChange={(e) => setNewTelegram(e.target.value)}
+                    placeholder="@handle"
+                    className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Shared row — role (only for team member) + planned amount */}
           <div className="flex gap-2">
             {!isVendor && (
               <div className="flex-1">
@@ -790,9 +952,11 @@ function AddMemberForm({
               disabled={saving || isArchived}
               className="flex-1 bg-accent-bright hover:bg-accent text-white text-[12.5px] font-medium rounded px-3 py-2 transition-colors disabled:opacity-50"
             >
-              {saving ? "Добавляем…" : "Добавить"}
+              {saving
+                ? (isVendor && mode === "new" ? "Создаём…" : "Добавляем…")
+                : (isVendor && mode === "new" ? "Создать и добавить" : "Добавить")}
             </button>
-            <button type="button" onClick={onCancel}
+            <button type="button" onClick={() => { resetAll(); onCancel(); }}
               className="flex-1 bg-surface border border-border text-ink text-[12.5px] rounded px-3 py-2 hover:bg-[#fafafa] transition-colors">
               Отмена
             </button>
@@ -1685,40 +1849,30 @@ function GafferProjectDetailContent() {
                                 </div>
                               </div>
                               <div className="mt-2 grid grid-cols-2 gap-2">
-                                <label className="text-[11.5px] text-ink-2">
-                                  Смен
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    step={1}
-                                    value={m.shifts}
-                                    onChange={(e) =>
-                                      editUpdateMemberField(
-                                        m.contactId,
-                                        "shifts",
-                                        Math.max(0, Number(e.target.value)),
-                                      )
-                                    }
-                                    className="block w-full mt-0.5 px-2 py-1 border border-border rounded text-[13px] bg-surface text-ink mono-num focus:ring-2 focus:ring-accent-border"
-                                  />
-                                </label>
-                                <label className="text-[11.5px] text-ink-2">
-                                  Часов
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    step={1}
-                                    value={m.hours}
-                                    onChange={(e) =>
-                                      editUpdateMemberField(
-                                        m.contactId,
-                                        "hours",
-                                        Math.max(0, Number(e.target.value)),
-                                      )
-                                    }
-                                    className="block w-full mt-0.5 px-2 py-1 border border-border rounded text-[13px] bg-surface text-ink mono-num focus:ring-2 focus:ring-accent-border"
-                                  />
-                                </label>
+                                <MemberNumberField
+                                  label="Смен"
+                                  value={m.shifts}
+                                  onChange={(n) =>
+                                    editUpdateMemberField(
+                                      m.contactId,
+                                      "shifts",
+                                      n,
+                                    )
+                                  }
+                                  ariaLabel={`Смен — ${m.contactId}`}
+                                />
+                                <MemberNumberField
+                                  label="Часов"
+                                  value={m.hours}
+                                  onChange={(n) =>
+                                    editUpdateMemberField(
+                                      m.contactId,
+                                      "hours",
+                                      n,
+                                    )
+                                  }
+                                  ariaLabel={`Часов — ${m.contactId}`}
+                                />
                               </div>
                             </div>
                           );

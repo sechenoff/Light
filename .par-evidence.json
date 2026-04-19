@@ -1,54 +1,9 @@
 {
-  "sprint": "gaffer-project-new-vendor-picker",
-  "feature": "multi-vendor-picker-on-project-creation-step-4",
-  "governance": "light",
-  "claude_product": "APPROVE",
+  "sprint": "3C",
+  "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
-  "provider": "split-focus",
-  "reviewer_models": {
-    "product": "opus (standard-product-reviewer, medium effort)",
-    "technical": "opus (standard-code-reviewer, medium effort)"
-  },
-  "ts": "2026-04-19T15:45:00Z",
-  "scope": {
-    "description": "Replace single lightBudgetAmount number input on Step 4 of /gaffer/projects/new with a multi-vendor picker. Each selected VENDOR contact gets its own per-row planned amount. Vendors are submitted as project members alongside team; sum of vendor amounts is sent as lightBudgetAmount for backward compat. Project detail page (unchanged) already renders vendor aggregates via vendorPlanTotal/vendorPaidTotal/vendorRemaining shipped in prior sprint.",
-    "commits": [
-      "6c1f91f — feat(gaffer): multi-vendor picker на шаге 4 создания проекта",
-      "cd32a42 — fix(gaffer): не отбрасывать ренталы с plannedAmount=0 из payload"
-    ],
-    "files_changed": [
-      "apps/web/app/gaffer/projects/new/page.tsx",
-      "apps/web/tsconfig.tsbuildinfo"
-    ],
-    "backend_changes": "none — all backend plumbing already in place from prior sprints (VENDOR enum, createProject accepts mixed members, server splits aggregates by contact type, tenant isolation via gafferWhere)",
-    "frontend_changes": "new vendor picker grid + inline create form + per-vendor amount rows + auto-summed total on Step 4; Step 6 Итог «Должен ренталу» row shows vendor count via pluralize; lightBudgetAmount derived from vendor sum"
-  },
-  "review_passes": [
-    {
-      "pass": 1,
-      "product_verdict": "APPROVE",
-      "technical_verdict": "APPROVE",
-      "findings": {
-        "critical": 0,
-        "high": 0,
-        "medium": 1,
-        "low": 5
-      },
-      "medium_addressed_in_fix": [
-        "Product MEDIUM: vendors with plannedAmount=0 silently filtered from payload → fixed in cd32a42 by removing the filter entirely (gaffer can lock in rental set now, fill amounts later on detail page)"
-      ],
-      "low_deferred": [
-        "Product LOW: deselect requires scrolling back to the vendor grid (same UX as team — consistent pre-existing pattern)",
-        "Product LOW: empty-state copy for tenants with no VENDOR contacts (consistent with team pattern)",
-        "Technical LOW: lightBudgetAmount state is now dead weight (only written by draft restore) — safe but could be pruned in a cleanup sprint",
-        "Technical LOW: crew-calculator round-trip silently drops selectedVendors (pre-existing limitation of NewProjectDraft — also drops selectedMembers, consistent)",
-        "Technical LOW: four independent useEffect blocks could be collapsed (readable as-is)"
-      ],
-      "ts": "2026-04-19T15:40:00Z"
-    }
-  ],
-  "verification": {
-    "tsc_web": "PASS (npx tsc --noEmit -p apps/web/tsconfig.json → 0 errors)",
-    "tests": "N/A — UI-only mirror of existing team-picker pattern; backend plumbing unchanged and covered by prior sprint tests"
-  }
+  "provider": "split-focus-light-mode",
+  "reviewer_agent": "standard-code-reviewer (opus)",
+  "notes": "Light-mode sprint (scoped bug-fix + inline feature + mockup). Single technical reviewer suffices per superflow-enforcement.md. Initial REQUEST_CHANGES, rerun after fixes = APPROVE. 184/184 tests pass, tsc clean.",
+  "ts": "2026-04-20T00:46:00Z"
 }

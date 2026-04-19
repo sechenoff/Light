@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · Bulk-presets строка «Часов» — 3 варианта</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --accent: #1e3a8a;
+    --accent-bright: #1d4ed8;
+    --accent-soft: #eff6ff;
+    --accent-border: #bfdbfe;
+
+    --teal: #0f766e;    --teal-soft: #ccfbf1;    --teal-border: #99f6e4;
+    --amber: #a16207;   --amber-soft: #fef3c7;   --amber-border: #fde68a;
+    --rose: #9f1239;    --rose-soft: #ffe4e6;    --rose-border: #fecdd3;
+    --indigo: #4338ca;  --indigo-soft: #e0e7ff;  --indigo-border: #c7d2fe;
+    --slate: #334155;   --slate-soft: #f1f5f9;   --slate-border: #cbd5e1;
+    --emerald: #047857; --emerald-soft: #d1fae5; --emerald-border: #a7f3d0;
+
+    --ok: #15803d;   --ok-soft: #dcfce7;
+    --warn: #a16207; --warn-soft: #fef9c3;
+
+    --ink:  #09090b;
+    --ink-2: #52525b;
+    --ink-3: #a1a1aa;
+
+    --surface: #ffffff;
+    --surface-2: #fafafa;
+    --border: #e4e4e7;
+
+    --shadow-xs: 0 1px 0 rgba(9,9,11,.03);
+    --shadow-sm: 0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02);
+  }
+
+  body {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink);
+    background: var(--surface-2);
+    margin: 0 auto; padding: 32px 20px 80px;
+    max-width: 1280px;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  p.lead { color: var(--ink-2); margin: 0 0 28px; font-size: 14px; max-width: 680px; }
+
+  .eyebrow {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .mono-num {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  .variants {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
+    gap: 32px 24px;
+  }
+  .variant { min-width: 0; }
+  .variant-hd { margin-bottom: 10px; }
+  .variant-hd .tag {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px;
+    border: 1px solid var(--accent-border);
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 4px;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .variant-hd .tag.ref { background: var(--slate-soft); color: var(--slate); border-color: var(--slate-border); }
+  .variant-hd h3 {
+    display: inline;
+    font-size: 15px; font-weight: 600;
+    color: var(--ink);
+  }
+  .variant-hd p {
+    margin: 6px 0 0;
+    color: var(--ink-2);
+    font-size: 12.5px;
+  }
+
+  /* ───── Phone frame ───── */
+  .frame {
+    width: 390px;
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+  .phone-chrome {
+    height: 28px;
+    background: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .phone-chrome::before {
+    content: ""; display: block;
+    width: 80px; height: 4px;
+    background: #3f3f46; border-radius: 99px;
+  }
+  .frame-body { padding: 14px 16px 18px; }
+
+  /* ───── Wizard step header ───── */
+  .wiz-step {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 10px;
+  }
+  .wiz-step .num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; font-weight: 600;
+  }
+  .wiz-step .title {
+    font-weight: 600; font-size: 14px;
+  }
+  .wiz-step .sub {
+    color: var(--ink-3); font-size: 11.5px;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+  }
+
+  /* ───── Bulk-presets strip (the thing under redesign) ───── */
+  .bulk-strip {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .bulk-row {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 8px;
+  }
+  .bulk-row + .bulk-row { margin-top: 8px; }
+  .bulk-row .label {
+    font-size: 10.5px; font-weight: 600;
+    color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .5px;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    width: 44px;
+  }
+
+  /* Pills (used in Смен-row and the reference Часов-row) */
+  .pill-btn {
+    display: inline-flex; align-items: center;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 12px; font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink-2);
+    cursor: pointer;
+    letter-spacing: .3px;
+    min-width: 34px; justify-content: center;
+  }
+  .pill-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .pill-btn.svoy {
+    border-style: dashed;
+    color: var(--ink-2);
+  }
+  .pill-btn.svoy.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
+    border-style: solid;
+  }
+
+  /* ───── Variant A — inline input under "свой" ───── */
+  .svoy-input-row {
+    display: flex; align-items: baseline; gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+  }
+  .svoy-input-row label {
+    font-size: 11px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+  }
+  .svoy-input-row input {
+    width: 64px;
+    padding: 6px 8px;
+    border: 1px solid var(--accent-border);
+    border-radius: 4px;
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--surface);
+    text-align: center;
+  }
+  .svoy-input-row input:focus {
+    outline: 2px solid var(--accent-border);
+    outline-offset: 1px;
+  }
+  .svoy-input-row .unit {
+    font-size: 12.5px;
+    color: var(--ink-2);
+  }
+  .svoy-input-row .hint {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+  }
+
+  /* ───── Variant B — slider ───── */
+  .slider-row {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .slider-row .slider-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px;
+  }
+  .slider-row .slider-head .label {
+    font-size: 10.5px; font-weight: 600;
+    color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .5px;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+  }
+  .slider-row .slider-head .val {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 16px; font-weight: 600;
+    color: var(--accent);
+  }
+  .slider-row .slider-head .val .unit {
+    font-size: 11.5px; color: var(--ink-3);
+    margin-left: 4px;
+  }
+  .slider-track {
+    position: relative;
+    height: 28px;
+    padding: 11px 0;
+  }
+  .slider-track .rail {
+    position: absolute;
+    top: 50%; left: 0; right: 0;
+    height: 4px;
+    background: var(--border);
+    border-radius: 999px;
+    transform: translateY(-50%);
+  }
+  .slider-track .fill {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    height: 4px;
+    background: var(--accent-bright);
+    border-radius: 999px;
+    transform: translateY(-50%);
+  }
+  .slider-track .thumb {
+    position: absolute;
+    top: 50%;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--accent-bright);
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    transform: translate(-50%, -50%);
+  }
+  .slider-marks {
+    display: flex; justify-content: space-between;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-top: 2px;
+    padding: 0 2px;
+  }
+  .slider-marks span.active {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* ───── Variant C — pills + slider underneath ───── */
+  .combo-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 10px 0 8px;
+  }
+  .combo-note {
+    font-size: 10.5px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    margin-bottom: 6px;
+  }
+
+  /* ───── Member card preview (unchanged, for context) ───── */
+  .member-table-hd {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    margin-top: 12px;
+  }
+  .member-table-hd .eyebrow { color: var(--ink-3); }
+  .member-table-hd .hint {
+    font-size: 10.5px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+  }
+  .member-card {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    background: var(--surface);
+  }
+  .member-card .hd {
+    display: flex; justify-content: space-between; gap: 8px;
+    align-items: baseline;
+  }
+  .member-card .hd .name { font-weight: 600; font-size: 13px; }
+  .member-card .hd .rate { font-size: 11px; color: var(--ink-3); }
+  .member-card .hd .total {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600; font-size: 14px;
+  }
+  .member-card .sh {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin-top: 8px;
+  }
+  .member-card .sh label {
+    font-size: 10.5px; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .5px;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+  }
+  .member-card .sh input {
+    display: block;
+    width: 100%; margin-top: 2px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--surface);
+  }
+
+  /* Comparison footer */
+  .compare {
+    margin-top: 40px;
+    padding: 20px 22px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .compare h2 {
+    font-size: 15px; font-weight: 600;
+    margin: 0 0 12px;
+  }
+  .compare table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  .compare th, .compare td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .compare th {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--ink-3);
+    background: var(--surface-2);
+  }
+  .compare td code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .compare td.plus { color: var(--emerald); }
+  .compare td.minus { color: var(--rose); }
+</style>
+</head>
+<body>
+
+<h1>Bulk-presets строка «Часов» · 3 варианта</h1>
+<p class="lead">
+  Раздел 5 «Команда» на <code>/gaffer/projects/new</code> и <code>/gaffer/projects/[id]</code>.
+  Сейчас блок выбора часов — пилюли 10 / 12 / 14 / 16 / свой. При нажатии «свой» ничего
+  не происходит визуально, пользователь должен догадаться вводить часы в персональной
+  таблице ниже. Варианты ниже — предложения, как улучшить UX этой строки.
+</p>
+
+<div class="variants">
+
+  <!-- ═══════════════════════ REFERENCE (как сейчас в продакшне) ═══════════════════════ -->
+  <div class="variant">
+    <div class="variant-hd">
+      <span class="tag ref">сейчас</span>
+      <h3>Текущее состояние</h3>
+      <p>«Свой» — просто снимает пресет. Пользователь должен сам догадаться, что часы можно
+      отредактировать в таблице ниже.</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="wiz-step">
+          <div class="num">5</div>
+          <div>
+            <div class="title">Команда</div>
+            <div class="sub">смены и часы</div>
+          </div>
+        </div>
+
+        <div class="bulk-strip">
+          <div class="bulk-row">
+            <span class="label">Смен</span>
+            <button class="pill-btn">1</button>
+            <button class="pill-btn active">2</button>
+            <button class="pill-btn">3</button>
+            <button class="pill-btn svoy">свой</button>
+          </div>
+          <div class="bulk-row">
+            <span class="label">Часов</span>
+            <button class="pill-btn">10</button>
+            <button class="pill-btn">12</button>
+            <button class="pill-btn">14</button>
+            <button class="pill-btn">16</button>
+            <button class="pill-btn svoy active">свой</button>
+          </div>
+        </div>
+
+        <div class="member-table-hd">
+          <span class="eyebrow">Смены участников</span>
+          <span class="hint">часы можно поменять индивидуально</span>
+        </div>
+        <div class="member-card">
+          <div class="hd">
+            <div>
+              <div class="name">Артём И.</div>
+              <div class="rate">Гаффер · 6 000 ₽/смена</div>
+            </div>
+            <div class="total mono-num">18 000 ₽</div>
+          </div>
+          <div class="sh">
+            <label>Смен<input value="2"></label>
+            <label>Часов<input value="" placeholder="12"></label>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ VARIANT A — inline input ═══════════════════════ -->
+  <div class="variant">
+    <div class="variant-hd">
+      <span class="tag">A</span>
+      <h3>Инлайн-инпут под «свой»</h3>
+      <p>Нажатие «свой» раскрывает строку с число-полем. Значение сразу применяется ко всем
+      участникам. Минимум вертикального места, знакомый паттерн.</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="wiz-step">
+          <div class="num">5</div>
+          <div>
+            <div class="title">Команда</div>
+            <div class="sub">смены и часы</div>
+          </div>
+        </div>
+
+        <div class="bulk-strip">
+          <div class="bulk-row">
+            <span class="label">Смен</span>
+            <button class="pill-btn">1</button>
+            <button class="pill-btn active">2</button>
+            <button class="pill-btn">3</button>
+            <button class="pill-btn svoy">свой</button>
+          </div>
+          <div class="bulk-row">
+            <span class="label">Часов</span>
+            <button class="pill-btn">10</button>
+            <button class="pill-btn">12</button>
+            <button class="pill-btn">14</button>
+            <button class="pill-btn">16</button>
+            <button class="pill-btn svoy active">свой</button>
+          </div>
+
+          <!-- Появляется при активном "свой" -->
+          <div class="svoy-input-row">
+            <label>Сколько</label>
+            <input type="number" value="13">
+            <span class="unit">часов на смену</span>
+            <span class="hint">применится ко всем</span>
+          </div>
+        </div>
+
+        <div class="member-table-hd">
+          <span class="eyebrow">Смены участников</span>
+          <span class="hint">часы применены</span>
+        </div>
+        <div class="member-card">
+          <div class="hd">
+            <div>
+              <div class="name">Артём И.</div>
+              <div class="rate">Гаффер · 6 000 ₽/смена</div>
+            </div>
+            <div class="total mono-num">19 500 ₽</div>
+          </div>
+          <div class="sh">
+            <label>Смен<input value="2"></label>
+            <label>Часов<input value="13"></label>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ VARIANT B — slider ═══════════════════════ -->
+  <div class="variant">
+    <div class="variant-hd">
+      <span class="tag">B</span>
+      <h3>Ползунок вместо пилюль</h3>
+      <p>Смены — пилюли 1/2/3/свой (как сейчас). Часы — слайдер 8…18 с шагом 1. Значение
+      показывается крупно, якоря 10/12/14/16 подсвечиваются. Жест привычен на мобиле.</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="wiz-step">
+          <div class="num">5</div>
+          <div>
+            <div class="title">Команда</div>
+            <div class="sub">смены и часы</div>
+          </div>
+        </div>
+
+        <div class="bulk-strip">
+          <div class="bulk-row">
+            <span class="label">Смен</span>
+            <button class="pill-btn">1</button>
+            <button class="pill-btn active">2</button>
+            <button class="pill-btn">3</button>
+            <button class="pill-btn svoy">свой</button>
+          </div>
+
+          <div class="combo-divider"></div>
+
+          <div class="slider-row">
+            <div class="slider-head">
+              <span class="label">Часов на смену</span>
+              <span class="val"><span class="mono-num">13</span><span class="unit">ч</span></span>
+            </div>
+            <div class="slider-track">
+              <div class="rail"></div>
+              <div class="fill" style="width: 50%"></div>
+              <div class="thumb" style="left: 50%"></div>
+            </div>
+            <div class="slider-marks">
+              <span>8</span>
+              <span>10</span>
+              <span>12</span>
+              <span class="active">13</span>
+              <span>14</span>
+              <span>16</span>
+              <span>18</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="member-table-hd">
+          <span class="eyebrow">Смены участников</span>
+          <span class="hint">тонкая подстройка</span>
+        </div>
+        <div class="member-card">
+          <div class="hd">
+            <div>
+              <div class="name">Артём И.</div>
+              <div class="rate">Гаффер · 6 000 ₽/смена</div>
+            </div>
+            <div class="total mono-num">19 500 ₽</div>
+          </div>
+          <div class="sh">
+            <label>Смен<input value="2"></label>
+            <label>Часов<input value="13"></label>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ VARIANT C — pills + slider ═══════════════════════ -->
+  <div class="variant">
+    <div class="variant-hd">
+      <span class="tag">C</span>
+      <h3>Комбо: пилюли-якоря + слайдер</h3>
+      <p>Пилюли 10/12/14/16 задают якоря одним тапом, слайдер ниже — для точной подстройки.
+      Двойной интерфейс: быстрый выбор на частые значения + плавный на редкие.</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="wiz-step">
+          <div class="num">5</div>
+          <div>
+            <div class="title">Команда</div>
+            <div class="sub">смены и часы</div>
+          </div>
+        </div>
+
+        <div class="bulk-strip">
+          <div class="bulk-row">
+            <span class="label">Смен</span>
+            <button class="pill-btn">1</button>
+            <button class="pill-btn active">2</button>
+            <button class="pill-btn">3</button>
+            <button class="pill-btn svoy">свой</button>
+          </div>
+
+          <div class="combo-divider"></div>
+
+          <div class="combo-note">Часов на смену</div>
+          <div class="bulk-row" style="margin-top: 0;">
+            <button class="pill-btn">10</button>
+            <button class="pill-btn">12</button>
+            <button class="pill-btn">14</button>
+            <button class="pill-btn">16</button>
+          </div>
+
+          <div class="slider-row" style="margin-top: 10px;">
+            <div class="slider-head">
+              <span class="label">или точно</span>
+              <span class="val"><span class="mono-num">13</span><span class="unit">ч</span></span>
+            </div>
+            <div class="slider-track">
+              <div class="rail"></div>
+              <div class="fill" style="width: 50%"></div>
+              <div class="thumb" style="left: 50%"></div>
+            </div>
+            <div class="slider-marks">
+              <span>8</span>
+              <span>10</span>
+              <span>12</span>
+              <span class="active">13</span>
+              <span>14</span>
+              <span>16</span>
+              <span>18</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="member-table-hd">
+          <span class="eyebrow">Смены участников</span>
+          <span class="hint">можно ещё точечно</span>
+        </div>
+        <div class="member-card">
+          <div class="hd">
+            <div>
+              <div class="name">Артём И.</div>
+              <div class="rate">Гаффер · 6 000 ₽/смена</div>
+            </div>
+            <div class="total mono-num">19 500 ₽</div>
+          </div>
+          <div class="sh">
+            <label>Смен<input value="2"></label>
+            <label>Часов<input value="13"></label>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════ Compare table ═══════════════════════ -->
+<div class="compare">
+  <h2>Сравнение</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Вариант</th>
+        <th>Вертикальное место</th>
+        <th>Скорость на мобиле</th>
+        <th>Диапазон значений</th>
+        <th>Плюсы</th>
+        <th>Минусы</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>Сейчас</b></td>
+        <td>~48 px</td>
+        <td>быстро — на частых</td>
+        <td>только 10/12/14/16 или «как-то сам разберись»</td>
+        <td class="plus">компактно, привычно</td>
+        <td class="minus">«свой» визуально не работает — ловушка</td>
+      </tr>
+      <tr>
+        <td><b>A · инпут</b></td>
+        <td>~88 px (когда раскрыт)</td>
+        <td>быстро — цифры клавиатуры</td>
+        <td>любое целое 0-99</td>
+        <td class="plus">точное значение, клавиатурный ввод</td>
+        <td class="minus">вертикальный скачок при раскрытии</td>
+      </tr>
+      <tr>
+        <td><b>B · слайдер</b></td>
+        <td>~96 px (всегда)</td>
+        <td>средне — нужен точный тап</td>
+        <td>8-18 непрерывно</td>
+        <td class="plus">визуально живо, хороший жест на мобиле, всегда виден диапазон</td>
+        <td class="minus">выше; не даст 20ч+ без расширения; тап не всегда попадает</td>
+      </tr>
+      <tr>
+        <td><b>C · комбо</b></td>
+        <td>~150 px</td>
+        <td>быстро — на якорях, плавно — между</td>
+        <td>8-18 + якоря 10/12/14/16</td>
+        <td class="plus">лучший из обоих миров</td>
+        <td class="minus">самый высокий, два элемента управления одним значением</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>
