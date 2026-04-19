@@ -67,12 +67,15 @@ async function main() {
     process.exit(1);
   }
 
-  // Backup БД перед изменениями
-  // DATABASE_URL вида "file:./prisma/dev.db" — путь относительно cwd (apps/api/).
-  const rawDbPath = (process.env.DATABASE_URL?.replace(/^file:/, "") ?? "./prisma/dev.db");
-  // Резолвим относительно cwd (скрипт запускается из apps/api/)
-  const absoluteDbPath = path.resolve(process.cwd(), rawDbPath);
-  const backupsDir = path.resolve(process.cwd(), "prisma/backups");
+  // Backup БД перед изменениями.
+  // Prisma резолвит относительные пути DATABASE_URL относительно директории schema.prisma
+  // (для этого проекта — apps/api/prisma/). На проде DATABASE_URL="file:./prod.db" → apps/api/prisma/prod.db.
+  const schemaDir = path.resolve(process.cwd(), "prisma");
+  const rawDbPath = (process.env.DATABASE_URL?.replace(/^file:/, "") ?? "./dev.db");
+  const absoluteDbPath = path.isAbsolute(rawDbPath)
+    ? rawDbPath
+    : path.resolve(schemaDir, rawDbPath);
+  const backupsDir = path.resolve(schemaDir, "backups");
 
   console.log(`\nФайл БД: ${absoluteDbPath}`);
 
