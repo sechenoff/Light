@@ -77,6 +77,7 @@ function DebtSection({ contactId, contactType }: { contactId: string; contactTyp
 
   if (contactType === "CLIENT" && debt.type === "CLIENT") {
     const total = Number(debt.totalClientRemaining);
+    const lastPayment = debt.recentPayments[0];
     return (
       <>
         {/* Debt box */}
@@ -85,6 +86,16 @@ function DebtSection({ contactId, contactType }: { contactId: string; contactTyp
             <div className="eyebrow text-accent">Суммарно должен мне</div>
             <div className={`mono-num text-[26px] font-semibold mt-1 ${total > 0 ? "text-accent" : "text-ink-3"}`}>
               {formatRub(debt.totalClientRemaining)}
+            </div>
+            <div className="text-[11.5px] text-ink-3 mt-1.5">
+              {debt.projects.length} {debt.projects.length === 1 ? "проект" : debt.projects.length < 5 ? "проекта" : "проектов"}
+              {lastPayment && (
+                <>
+                  {" · последний платёж "}
+                  <span className="mono-num">{formatRub(lastPayment.amount)}</span>
+                  {" · "}{formatShootDate(lastPayment.paidAt)}
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -159,6 +170,7 @@ function DebtSection({ contactId, contactType }: { contactId: string; contactTyp
 
   if (contactType === "TEAM_MEMBER" && debt.type === "TEAM_MEMBER") {
     const total = Number(debt.totalRemaining);
+    const lastPayment = debt.recentPayments[0];
     return (
       <>
         {/* Debt box */}
@@ -167,6 +179,16 @@ function DebtSection({ contactId, contactType }: { contactId: string; contactTyp
             <div className="eyebrow text-rose">Суммарно я должен</div>
             <div className={`mono-num text-[26px] font-semibold mt-1 ${total > 0 ? "text-rose" : "text-ink-3"}`}>
               {formatRub(debt.totalRemaining)}
+            </div>
+            <div className="text-[11.5px] text-ink-3 mt-1.5">
+              {debt.memberships.length} {debt.memberships.length === 1 ? "проект" : debt.memberships.length < 5 ? "проекта" : "проектов"}
+              {lastPayment && (
+                <>
+                  {" · последняя выплата "}
+                  <span className="mono-num">{formatRub(lastPayment.amount)}</span>
+                  {" · "}{formatShootDate(lastPayment.paidAt)}
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -410,8 +432,12 @@ function GafferContactDetailContent() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border">
         <div className="flex items-center gap-3">
-          <Link href="/gaffer/contacts" className="text-accent-bright hover:text-accent transition-colors text-[13px]">
-            ← Назад
+          <Link
+            href="/gaffer/contacts"
+            className="text-accent-bright hover:text-accent transition-colors text-[11px] font-semibold tracking-[1.4px] uppercase"
+            style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+          >
+            ← Контакты
           </Link>
           <TypePill type={contact.type} />
           {contact.isArchived && (

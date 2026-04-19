@@ -33,16 +33,16 @@ import { toast } from "../../../../src/components/ToastProvider";
 function StatusPillComp({ status }: { status: "OPEN" | "ARCHIVED" }) {
   if (status === "OPEN") {
     return (
-      <span className="inline-flex items-center rounded-full border px-[8px] py-[2px] text-[10.5px] font-semibold bg-emerald-soft text-emerald border-emerald-border"
+      <span className="inline-flex items-center rounded-full border px-[8px] py-[2px] text-[10.5px] font-semibold bg-amber-soft text-amber border-amber-border uppercase tracking-[0.08em]"
         style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-        Активный
+        открыт
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center rounded-full border px-[8px] py-[2px] text-[10.5px] font-semibold bg-slate-soft text-slate border-slate-border"
+    <span className="inline-flex items-center rounded-full border px-[8px] py-[2px] text-[10.5px] font-semibold bg-slate-soft text-slate border-slate-border uppercase tracking-[0.08em]"
       style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-      В архиве
+      в архиве
     </span>
   );
 }
@@ -982,8 +982,12 @@ function GafferProjectDetailContent() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border">
         <div className="flex items-center gap-3 min-w-0">
-          <Link href="/gaffer/projects" className="text-accent-bright hover:text-accent transition-colors text-[13px] shrink-0">
-            ← Назад
+          <Link
+            href="/gaffer/projects"
+            className="text-accent-bright hover:text-accent transition-colors text-[11px] font-semibold tracking-[1.4px] uppercase shrink-0"
+            style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+          >
+            ← Проекты
           </Link>
           <StatusPillComp status={project.status} />
         </div>

@@ -47,52 +47,159 @@ function GafferShell({ children }: { children: React.ReactNode }) {
   // Not authenticated — nothing to render while redirect happens
   if (!user) return null;
 
+  const userInitials = (user.email || "?").slice(0, 2).toUpperCase();
+
   return (
-    <div className="min-h-screen bg-[#fafafa] flex flex-col">
-      {/* Top header */}
-      <header className="bg-accent text-white flex items-center justify-between px-4 py-3 shrink-0">
-        <div className="flex items-center gap-3">
-          <span
-            className="font-sans font-semibold text-sm tracking-wide"
-            style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", letterSpacing: "1.8px", textTransform: "uppercase", fontSize: "12px" }}
-          >
-            <span className="text-white font-bold tracking-normal text-[14px] normal-case mr-1" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>Гаффер</span>CRM
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          {pathname === "/gaffer" && (
-            <span className="bg-accent-soft text-accent border border-accent-border rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize">
-              {new Date().toLocaleDateString("ru-RU", { month: "long" })}
+    <div className="min-h-screen bg-[#fafafa] flex flex-col md:flex-row">
+      {/* Sidebar on desktop (>= 768px) */}
+      <GafferSidebar
+        pathname={pathname}
+        userEmail={user.email}
+        userInitials={userInitials}
+        onLogout={logout}
+      />
+
+      {/* Mobile column: top header + main + bottom tabbar */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top header — mobile only */}
+        <header className="md:hidden bg-accent text-white flex items-center justify-between px-4 py-3 shrink-0">
+          <div className="flex items-center gap-3">
+            <span
+              className="font-sans font-semibold text-sm tracking-wide"
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", letterSpacing: "1.8px", textTransform: "uppercase", fontSize: "12px" }}
+            >
+              <span className="text-white font-bold tracking-normal text-[14px] normal-case mr-1" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>Гаффер</span>CRM
             </span>
-          )}
-          <Link
-            href="/gaffer/settings"
-            className="text-accent-border hover:text-white transition-colors text-xs"
-            title="Настройки"
-            aria-label="Настройки"
-          >
-            ⚙️
-          </Link>
-          <span className="text-accent-border text-xs hidden sm:block truncate max-w-[140px]">
-            {user.email}
-          </span>
-          <button
-            onClick={logout}
-            className="text-accent-border hover:text-white transition-colors text-xs whitespace-nowrap"
-          >
-            Выйти
-          </button>
-        </div>
-      </header>
+          </div>
+          <div className="flex items-center gap-3">
+            {pathname === "/gaffer" && (
+              <span className="bg-accent-soft text-accent border border-accent-border rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize">
+                {new Date().toLocaleDateString("ru-RU", { month: "long" })}
+              </span>
+            )}
+            <Link
+              href="/gaffer/settings"
+              className="text-accent-border hover:text-white transition-colors text-xs"
+              title="Настройки"
+              aria-label="Настройки"
+            >
+              ⚙️
+            </Link>
+            <span className="bg-accent-soft text-accent w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold">
+              {userInitials}
+            </span>
+            <button
+              onClick={logout}
+              className="text-accent-border hover:text-white transition-colors text-xs whitespace-nowrap"
+              aria-label="Выйти"
+            >
+              Выйти
+            </button>
+          </div>
+        </header>
 
-      {/* Main content area */}
-      <main className="flex-1 max-w-[480px] mx-auto w-full pb-20 px-0">
-        {children}
-      </main>
+        {/* Main content area: 480px on mobile, wider on desktop */}
+        <main className="flex-1 w-full pb-20 md:pb-8 px-0 md:px-8 mx-auto max-w-[480px] md:max-w-[960px]">
+          {children}
+        </main>
+      </div>
 
-      {/* Bottom tabbar (mobile) / top nav (desktop >= 768px) */}
+      {/* Bottom tabbar — mobile only */}
       <GafferTabbar pathname={pathname} />
     </div>
+  );
+}
+
+function GafferSidebar({
+  pathname,
+  userEmail,
+  userInitials,
+  onLogout,
+}: {
+  pathname: string;
+  userEmail: string;
+  userInitials: string;
+  onLogout: () => void;
+}) {
+  const tabs = [
+    { href: "/gaffer", label: "Дашборд", icon: "◉" },
+    { href: "/gaffer/projects", label: "Проекты", icon: "▤" },
+    { href: "/gaffer/contacts", label: "Контакты", icon: "☺" },
+  ];
+
+  function isActive(href: string) {
+    if (href === "/gaffer") return pathname === "/gaffer";
+    return pathname.startsWith(href);
+  }
+
+  return (
+    <aside
+      className="hidden md:flex md:flex-col md:w-[240px] md:shrink-0 md:bg-accent md:text-white md:min-h-screen md:border-r md:border-white/10"
+      aria-label="Боковая навигация"
+    >
+      {/* Brand */}
+      <div className="px-5 py-5 border-b border-white/10">
+        <div
+          className="text-[11px] font-semibold tracking-[1.8px] uppercase text-accent-border"
+          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+        >
+          Light Rental
+        </div>
+        <div
+          className="mt-1 text-[16px] font-bold text-white"
+          style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
+        >
+          Гаффер <span className="text-accent-border font-semibold">CRM</span>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 px-3 py-4 space-y-1">
+        {tabs.map((tab) => {
+          const active = isActive(tab.href);
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-[13px] font-semibold tracking-wide transition-colors ${
+                active
+                  ? "bg-white/10 text-white"
+                  : "text-accent-border hover:bg-white/5 hover:text-white"
+              }`}
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+            >
+              <span className="text-[18px] w-5 text-center">{tab.icon}</span>
+              <span className="uppercase tracking-[0.08em]">{tab.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Footer: user + logout */}
+      <div className="px-3 py-4 border-t border-white/10 space-y-2">
+        <Link
+          href="/gaffer/settings"
+          className="flex items-center gap-3 px-3 py-2 rounded-md text-[12px] text-accent-border hover:bg-white/5 hover:text-white transition-colors"
+        >
+          <span className="text-[14px]">⚙️</span>
+          <span>Настройки</span>
+        </Link>
+        <div className="flex items-center gap-3 px-3 py-2">
+          <span className="bg-white/10 text-white w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0">
+            {userInitials}
+          </span>
+          <span className="text-[11px] text-accent-border truncate flex-1" title={userEmail}>
+            {userEmail}
+          </span>
+        </div>
+        <button
+          onClick={onLogout}
+          className="w-full text-left px-3 py-2 rounded-md text-[12px] text-accent-border hover:bg-white/5 hover:text-white transition-colors"
+        >
+          Выйти →
+        </button>
+      </div>
+    </aside>
   );
 }
 
@@ -109,7 +216,7 @@ function GafferTabbar({ pathname }: { pathname: string }) {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 border-t border-border bg-surface z-40 md:static md:border-t-0 md:border-b md:border-border md:order-first">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-surface z-40">
       <div className="grid grid-cols-3 max-w-[480px] mx-auto">
         {tabs.map((tab) => (
           <Link

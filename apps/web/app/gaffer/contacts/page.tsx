@@ -94,7 +94,7 @@ function ContactCard({ contact }: { contact: GafferContactWithAggregates }) {
           {/* Type pills */}
           {!isArchived && contact.asClientCount > 0 && (
             <span
-              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold bg-indigo-soft text-indigo border-indigo-border"
+              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-indigo-soft text-indigo border-indigo-border"
               style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
             >
               заказчик
@@ -102,7 +102,7 @@ function ContactCard({ contact }: { contact: GafferContactWithAggregates }) {
           )}
           {!isArchived && contact.asMemberCount > 0 && (
             <span
-              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold bg-teal-soft text-teal border-teal-border"
+              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-teal-soft text-teal border-teal-border"
               style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
             >
               команда
@@ -110,7 +110,7 @@ function ContactCard({ contact }: { contact: GafferContactWithAggregates }) {
           )}
           {!isArchived && contact.asClientCount === 0 && contact.asMemberCount === 0 && (
             <span
-              className={`inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold ${
+              className={`inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] ${
                 contact.type === "CLIENT"
                   ? "bg-indigo-soft text-indigo border-indigo-border"
                   : "bg-teal-soft text-teal border-teal-border"
@@ -122,15 +122,15 @@ function ContactCard({ contact }: { contact: GafferContactWithAggregates }) {
           )}
           {isArchived && (
             <span
-              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold bg-slate-soft text-slate border-slate-border"
+              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-slate-soft text-slate border-slate-border"
               style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
             >
-              В архиве
+              в архиве
             </span>
           )}
           {contact.projectCount > 0 && (
             <span
-              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold bg-slate-soft text-slate border-slate-border"
+              className="inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] bg-slate-soft text-slate border-slate-border"
               style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
             >
               {contact.projectCount} {pluralize(contact.projectCount, "проект", "проекта", "проектов")}
@@ -248,7 +248,7 @@ export default function GafferContactsPage() {
           href="/gaffer/contacts/new"
           className="bg-accent-bright hover:bg-accent text-white text-[13px] font-medium rounded px-3 py-[7px] transition-colors"
         >
-          + Добавить
+          + Новый
         </Link>
       </div>
 

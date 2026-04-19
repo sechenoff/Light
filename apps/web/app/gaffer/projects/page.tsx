@@ -70,8 +70,8 @@ function ProjectCard({ project }: { project: GafferProject }) {
       </div>
       {/* Meta */}
       <p className="text-[11.5px] text-ink-3 mb-2 truncate">
-        {project.client?.name && <span>{project.client.name} · </span>}
-        {formatShootDate(project.shootDate)}
+        <span>{project.client?.name ?? "— без клиента"}</span>
+        <span> · {formatShootDate(project.shootDate)}</span>
         {sumFrom > 0 && (
           <span> · {formatRub(sumFrom)}</span>
         )}
@@ -243,7 +243,7 @@ export default function GafferProjectsPage() {
         <h1 className="text-[17px] font-semibold text-ink tracking-tight">Проекты</h1>
         <Link
           href="/gaffer/projects/new"
-          className="bg-accent-bright hover:bg-accent text-white text-[13px] font-medium rounded px-3 py-[7px] transition-colors"
+          className="hidden md:inline-flex bg-accent-bright hover:bg-accent text-white text-[13px] font-medium rounded px-3 py-[7px] transition-colors"
         >
           + Создать
         </Link>
