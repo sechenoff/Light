@@ -551,12 +551,12 @@ function GafferNewProjectContent() {
             roleLabel: contact?.roleLabel ?? undefined,
           };
         });
-      const vendorPayload = selectedVendors
-        .filter((v) => v.plannedAmount > 0)
-        .map((v) => ({
-          contactId: v.contactId,
-          plannedAmount: String(v.plannedAmount),
-        }));
+      // Do NOT filter vendors by amount: gaffer may lock in the set of rentals
+      // now and fill amounts later on the project detail page.
+      const vendorPayload = selectedVendors.map((v) => ({
+        contactId: v.contactId,
+        plannedAmount: String(v.plannedAmount),
+      }));
       const membersPayload = [...teamPayload, ...vendorPayload];
 
       const res = await createProject({
