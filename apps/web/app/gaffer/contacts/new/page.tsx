@@ -288,12 +288,11 @@ function GafferNewContactContent() {
     setLoading(true);
     try {
       const res = await createContact({
-        type: "TEAM_MEMBER",
+        type: "VENDOR",
         name: name.trim(),
         phone: phone.trim() || undefined,
         telegram: telegram.trim() || undefined,
         note: note.trim() || undefined,
-        roleLabel: "Рентал",
       });
       toast.success("Рентал создан");
       redirectAfterCreate(res.contact.id);

@@ -648,16 +648,18 @@ function AddMemberForm({
   projectId,
   methods,
   isArchived,
+  contactType,
   onDone,
   onCancel,
 }: {
   projectId: string;
   methods: GafferPaymentMethod[];
   isArchived?: boolean;
+  contactType: "TEAM_MEMBER" | "VENDOR";
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const [teamContacts, setTeamContacts] = useState<GafferContact[] | null>(null);
+  const [contacts, setContacts] = useState<GafferContact[] | null>(null);
   const [contactId, setContactId] = useState("");
   const [plannedAmount, setPlannedAmount] = useState("0");
   const [roleLabel, setRoleLabel] = useState("");
@@ -665,25 +667,27 @@ function AddMemberForm({
   const [err, setErr] = useState<string | null>(null);
   const detailsRef = useRef<HTMLDetailsElement>(null);
 
+  const isVendor = contactType === "VENDOR";
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await listContacts({ type: "TEAM_MEMBER", isArchived: false });
-        if (!cancelled) setTeamContacts(res.items);
+        const res = await listContacts({ type: contactType, isArchived: false });
+        if (!cancelled) setContacts(res.items);
       } catch {
-        if (!cancelled) setTeamContacts([]);
+        if (!cancelled) setContacts([]);
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [contactType]);
 
   // Suppress unused variable warning — methods prop reserved for future payment integration
   void methods;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!contactId) { setErr("Выберите участника"); return; }
+    if (!contactId) { setErr(isVendor ? "Выберите рентал" : "Выберите участника"); return; }
     setSaving(true);
     setErr(null);
     try {
@@ -699,9 +703,9 @@ function AddMemberForm({
       onDone();
     } catch (e) {
       if (e instanceof GafferApiError) {
-        if (e.code === "MEMBER_ALREADY_IN_PROJECT") setErr("Участник уже в проекте");
+        if (e.code === "MEMBER_ALREADY_IN_PROJECT") setErr(isVendor ? "Рентал уже добавлен в проект" : "Участник уже в проекте");
         else if (e.code === "MEMBER_ARCHIVED") setErr("Этот контакт в архиве");
-        else if (e.code === "INVALID_MEMBER_TYPE") setErr("Контакт должен быть типа «Команда»");
+        else if (e.code === "INVALID_MEMBER_TYPE") setErr(isVendor ? "Контакт не является ренталом" : "Контакт должен быть типа «Команда»");
         else if (e.code === "PROJECT_ARCHIVED") setErr("Проект в архиве — изменения недоступны");
         else setErr(e.message);
       } else {
@@ -712,18 +716,21 @@ function AddMemberForm({
     }
   }
 
+  const summaryLabel = isVendor ? "Добавить рентал" : "Добавить участника";
+  const selectLabel = isVendor ? "Рентал" : "Участник";
+
   return (
     <details ref={detailsRef} className="group border border-dashed border-border rounded-md bg-accent-soft overflow-hidden mt-2">
       <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-semibold text-accent flex items-center gap-1 list-none">
         <span className="text-[14px] leading-none group-open:hidden">+</span>
         <span className="text-[14px] leading-none hidden group-open:inline">−</span>
-        Добавить участника
+        {summaryLabel}
       </summary>
       <div className="px-3 pb-3 pt-1 border-t border-dashed border-border">
         <form onSubmit={handleSubmit} className="space-y-2 mt-1">
           <div>
-            <label className="block text-[11px] text-ink-3 mb-0.5">Участник</label>
-            {teamContacts === null ? (
+            <label className="block text-[11px] text-ink-3 mb-0.5">{selectLabel}</label>
+            {contacts === null ? (
               <div className="h-[34px] bg-border rounded animate-pulse" />
             ) : (
               <select
@@ -733,23 +740,25 @@ function AddMemberForm({
                 className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
               >
                 <option value="">— Выберите —</option>
-                {teamContacts.map((c) => (
+                {contacts.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             )}
           </div>
           <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="block text-[11px] text-ink-3 mb-0.5">Роль</label>
-              <input
-                type="text"
-                value={roleLabel}
-                onChange={(e) => setRoleLabel(e.target.value)}
-                placeholder="Оператор, АС…"
-                className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
-              />
-            </div>
+            {!isVendor && (
+              <div className="flex-1">
+                <label className="block text-[11px] text-ink-3 mb-0.5">Роль</label>
+                <input
+                  type="text"
+                  value={roleLabel}
+                  onChange={(e) => setRoleLabel(e.target.value)}
+                  placeholder="Оператор, АС…"
+                  className="w-full px-2 py-1.5 border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent-border"
+                />
+              </div>
+            )}
             <div className="flex-1">
               <label className="block text-[11px] text-ink-3 mb-0.5">Сумма ₽</label>
               <input
@@ -967,6 +976,16 @@ function GafferProjectDetailContent() {
 
   const inPayments = (project.payments ?? []).filter((p) => p.direction === "IN");
 
+  const allMembers = project.members ?? [];
+  const vendorMembers = allMembers.filter((m) => m.contact?.type === "VENDOR");
+  // Team members: rows whose contact is TEAM_MEMBER, or rows without a resolved contact (optimistic)
+  const teamMembersFiltered = allMembers.filter((m) => m.contact?.type === "TEAM_MEMBER" || !m.contact?.type);
+
+  // Vendor financial aggregates
+  const vendorPlanTotal = vendorMembers.reduce((acc, m) => acc + Number(m.plannedAmount ?? 0), 0);
+  const vendorPaidTotal = vendorMembers.reduce((acc, m) => acc + Number(m.paidToMe ?? 0), 0);
+  const vendorRemaining = vendorPlanTotal - vendorPaidTotal;
+
   return (
     <div className="min-h-screen bg-surface pb-10">
       {/* Header */}
@@ -1133,7 +1152,7 @@ function GafferProjectDetailContent() {
 
           {/* Project summary money-block (screen 04) */}
           <div className="px-4 py-3">
-            <div className="grid grid-cols-3 border border-border rounded-md overflow-hidden bg-surface mb-3">
+            <div className={`grid border border-border rounded-md overflow-hidden bg-surface mb-3 ${vendorRemaining > 0 ? "grid-cols-4" : "grid-cols-3"}`}>
               <div className="p-2.5 border-r border-border text-center">
                 <div className="eyebrow">Сумма</div>
                 <div className="mono-num text-[15px] font-semibold mt-1">{formatRub(project.clientTotal ?? project.clientPlanAmount)}</div>
@@ -1142,10 +1161,16 @@ function GafferProjectDetailContent() {
                 <div className="eyebrow">Должны мне</div>
                 <div className="mono-num text-[15px] font-semibold text-rose mt-1">{formatRub(project.clientRemaining)}</div>
               </div>
-              <div className="p-2.5 text-center">
+              <div className={`p-2.5 text-center ${vendorRemaining > 0 ? "border-r border-border" : ""}`}>
                 <div className="eyebrow">Должен я</div>
                 <div className="mono-num text-[15px] font-semibold text-indigo mt-1">{formatRub(project.teamRemaining)}</div>
               </div>
+              {vendorRemaining > 0 && (
+                <div className="p-2.5 text-center">
+                  <div className="eyebrow">Должен ренталу</div>
+                  <div className="mono-num text-[15px] font-semibold text-amber mt-1">{formatRub(String(vendorRemaining))}</div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1238,10 +1263,10 @@ function GafferProjectDetailContent() {
               </div>
             </div>
 
-            {/* Members */}
-            {(project.members ?? []).length > 0 && (
+            {/* Team members (TEAM_MEMBER only) */}
+            {teamMembersFiltered.length > 0 && (
               <div className="mb-3">
-                {(project.members ?? []).map((m) => (
+                {teamMembersFiltered.map((m) => (
                   <MemberRow
                     key={m.id}
                     member={m}
@@ -1258,6 +1283,62 @@ function GafferProjectDetailContent() {
               projectId={id}
               methods={methods}
               isArchived={project.status === "ARCHIVED"}
+              contactType="TEAM_MEMBER"
+              onDone={() => { setRefreshKey((k) => k + 1); }}
+              onCancel={() => {}}
+            />
+          </div>
+
+          {/* Аренда света */}
+          <div className="px-4 py-4">
+            <div className="flex items-baseline justify-between mb-3">
+              <p className="eyebrow">Аренда света</p>
+              {vendorPlanTotal > 0 && (
+                <span className="eyebrow">ост. {formatRub(String(vendorRemaining > 0 ? vendorRemaining : 0))}</span>
+              )}
+            </div>
+
+            {/* money-block for vendors */}
+            {vendorPlanTotal > 0 && (
+              <div className="grid grid-cols-3 border border-border rounded-md overflow-hidden bg-surface mb-3">
+                <div className="p-2.5 border-r border-border text-center">
+                  <div className="eyebrow mb-0.5">Бюджет</div>
+                  <div className="mono-num text-[15px] font-semibold text-ink">{formatRub(String(vendorPlanTotal))}</div>
+                </div>
+                <div className="p-2.5 border-r border-border text-center">
+                  <div className="eyebrow mb-0.5">Выплачено</div>
+                  <div className="mono-num text-[15px] font-semibold text-emerald">{formatRub(String(vendorPaidTotal))}</div>
+                </div>
+                <div className="p-2.5 text-center">
+                  <div className="eyebrow mb-0.5">Остаток</div>
+                  <div className={`mono-num text-[15px] font-semibold ${vendorRemaining > 0 ? "text-amber" : "text-ink"}`}>
+                    {formatRub(String(vendorRemaining > 0 ? vendorRemaining : 0))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Vendor members */}
+            {vendorMembers.length > 0 && (
+              <div className="mb-3">
+                {vendorMembers.map((m) => (
+                  <MemberRow
+                    key={m.id}
+                    member={m}
+                    methods={methods}
+                    projectId={id}
+                    isArchived={project.status === "ARCHIVED"}
+                    onUpdate={() => setRefreshKey((k) => k + 1)}
+                  />
+                ))}
+              </div>
+            )}
+
+            <AddMemberForm
+              projectId={id}
+              methods={methods}
+              isArchived={project.status === "ARCHIVED"}
+              contactType="VENDOR"
               onDone={() => { setRefreshKey((k) => k + 1); }}
               onCancel={() => {}}
             />

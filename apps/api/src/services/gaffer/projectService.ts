@@ -280,7 +280,7 @@ export async function createProject(req: Request, data: CreateProjectInput) {
         where: {
           id: { in: memberContactIds },
           gafferUserId,
-          type: "TEAM_MEMBER",
+          type: { in: ["TEAM_MEMBER", "VENDOR"] },
           isArchived: false,
         },
         select: { id: true },

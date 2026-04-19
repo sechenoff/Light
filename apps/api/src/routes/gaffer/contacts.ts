@@ -30,7 +30,7 @@ const router = express.Router();
 
 // ─── Zod-схемы ───────────────────────────────────────────────────────────────
 
-const contactTypeSchema = z.enum(["CLIENT", "TEAM_MEMBER"]);
+const contactTypeSchema = z.enum(["CLIENT", "TEAM_MEMBER", "VENDOR"]);
 
 const rateFieldSchema = decimalString.optional();
 

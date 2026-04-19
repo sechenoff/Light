@@ -41,8 +41,8 @@ export async function addMember(req: Request, projectId: string, data: AddMember
   if (!contact) {
     throw new HttpError(404, "Контакт не найден", "NOT_FOUND");
   }
-  if (contact.type !== "TEAM_MEMBER") {
-    throw new HttpError(400, "Контакт должен быть типа TEAM_MEMBER", "INVALID_MEMBER_TYPE");
+  if (contact.type !== "TEAM_MEMBER" && contact.type !== "VENDOR") {
+    throw new HttpError(400, "Контакт должен быть участником команды или ренталом", "INVALID_MEMBER_TYPE");
   }
   if (contact.isArchived) {
     throw new HttpError(400, "Нельзя добавить архивный контакт в проект", "MEMBER_ARCHIVED");

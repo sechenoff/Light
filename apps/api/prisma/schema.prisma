@@ -776,6 +776,7 @@ model Task {
 enum GafferContactType {
   CLIENT
   TEAM_MEMBER
+  VENDOR
 }
 
 enum GafferProjectStatus {

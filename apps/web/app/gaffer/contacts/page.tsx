@@ -15,7 +15,7 @@ import { toast } from "../../../src/components/ToastProvider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type FilterChip = "all" | "clients" | "team" | "with-debt" | "archive";
+type FilterChip = "all" | "clients" | "team" | "vendors" | "with-debt" | "archive";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ function getInitials(name: string): string {
     .join("");
 }
 
-type AvatarVariant = "archive" | "both" | "client" | "team";
+type AvatarVariant = "archive" | "both" | "client" | "team" | "vendor";
 
 function getAvatarVariant(c: GafferContactWithAggregates): AvatarVariant {
   if (c.isArchived) return "archive";
@@ -35,7 +35,9 @@ function getAvatarVariant(c: GafferContactWithAggregates): AvatarVariant {
   if (c.asClientCount > 0) return "client";
   if (c.asMemberCount > 0) return "team";
   // fallback by type
-  return c.type === "CLIENT" ? "client" : "team";
+  if (c.type === "CLIENT") return "client";
+  if (c.type === "VENDOR") return "vendor";
+  return "team";
 }
 
 const AVATAR_CLASSES: Record<AvatarVariant, string> = {
@@ -43,6 +45,7 @@ const AVATAR_CLASSES: Record<AvatarVariant, string> = {
   both: "bg-accent-soft text-accent border-accent-border",
   client: "bg-indigo-soft text-indigo border-indigo-border",
   team: "bg-teal-soft text-teal border-teal-border",
+  vendor: "bg-amber-soft text-amber border-amber-border",
 };
 
 // ── Contact card ──────────────────────────────────────────────────────────────
@@ -156,11 +159,13 @@ function ContactCard({
                 className={`inline-flex items-center rounded-full border px-[7px] py-[1px] text-[10px] font-semibold uppercase tracking-[0.08em] ${
                   contact.type === "CLIENT"
                     ? "bg-indigo-soft text-indigo border-indigo-border"
+                    : contact.type === "VENDOR"
+                    ? "bg-amber-soft text-amber border-amber-border"
                     : "bg-teal-soft text-teal border-teal-border"
                 }`}
                 style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
               >
-                {contact.type === "CLIENT" ? "заказчик" : "команда"}
+                {contact.type === "CLIENT" ? "заказчик" : contact.type === "VENDOR" ? "рентал" : "команда"}
               </span>
             )}
             {isArchived && (
@@ -317,6 +322,8 @@ export default function GafferContactsPage() {
         return allContacts.filter((c) => c.type === "CLIENT" && !c.isArchived);
       case "team":
         return allContacts.filter((c) => c.type === "TEAM_MEMBER" && !c.isArchived);
+      case "vendors":
+        return allContacts.filter((c) => c.type === "VENDOR" && !c.isArchived);
       case "with-debt":
         return allContacts.filter(
           (c) => !c.isArchived && (Number(c.remainingToMe) > 0 || Number(c.remainingFromMe) > 0),
@@ -336,6 +343,7 @@ export default function GafferContactsPage() {
     { key: "all", label: counts ? `Все · ${counts.all}` : "Все" },
     { key: "clients", label: counts ? `Заказчики · ${counts.clients}` : "Заказчики" },
     { key: "team", label: counts ? `Команда · ${counts.team}` : "Команда" },
+    { key: "vendors", label: counts ? `Ренталы · ${counts.vendors}` : "Ренталы" },
     { key: "with-debt", label: counts ? `С долгом · ${counts.withDebt}` : "С долгом" },
     { key: "archive", label: "Архив" },
   ];
@@ -421,6 +429,7 @@ export default function GafferContactsPage() {
             <p className="mb-4">
               {chip === "archive" ? "Архивных контактов нет" :
                chip === "with-debt" ? "Нет контактов с долгом" :
+               chip === "vendors" ? "Ренталов пока нет" :
                "Контактов пока нет"}
             </p>
             {chip === "all" && (

@@ -12,7 +12,7 @@ export interface GafferUser {
 
 export interface GafferContact {
   id: string;
-  type: "CLIENT" | "TEAM_MEMBER";
+  type: "CLIENT" | "TEAM_MEMBER" | "VENDOR";
   name: string;
   phone?: string | null;
   telegram?: string | null;
@@ -150,7 +150,7 @@ export async function completeOnboarding(): Promise<{ user: GafferUser }> {
 // ── Contacts ───────────────────────────────────────────────────────────────
 
 export async function listContacts(params?: {
-  type?: "CLIENT" | "TEAM_MEMBER";
+  type?: "CLIENT" | "TEAM_MEMBER" | "VENDOR";
   isArchived?: boolean | "all";
   search?: string;
 }): Promise<{ items: GafferContact[] }> {
@@ -168,7 +168,7 @@ export async function getContact(id: string): Promise<{ contact: GafferContact }
 }
 
 export async function createContact(data: {
-  type: "CLIENT" | "TEAM_MEMBER";
+  type: "CLIENT" | "TEAM_MEMBER" | "VENDOR";
   name: string;
   phone?: string;
   telegram?: string;
@@ -346,7 +346,7 @@ export type ContactDebtSummary =
       recentPayments: ContactRecentPayment[];
     }
   | {
-      type: "TEAM_MEMBER";
+      type: "TEAM_MEMBER" | "VENDOR";
       memberships: Array<{
         projectId: string;
         projectTitle: string;
@@ -544,6 +544,7 @@ export interface GafferContactsSummary {
     all: number;
     clients: number;
     team: number;
+    vendors: number;
     withDebt: number;
     archive: number;
   };
