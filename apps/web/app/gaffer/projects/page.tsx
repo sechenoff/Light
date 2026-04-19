@@ -7,9 +7,18 @@ import {
   type GafferProject,
 } from "../../../src/lib/gafferApi";
 import { formatRub, pluralize } from "../../../src/lib/format";
-import {
-  formatShootDate,
-} from "../../../src/lib/gafferProjectUtils";
+
+// Короткая дата для карточки проекта: «15 апреля» (без года, если текущий).
+function formatCardDate(date: string | null | undefined): string {
+  if (!date) return "";
+  const d = new Date(date.includes("T") ? date : `${date}T00:00:00`);
+  if (isNaN(d.getTime())) return "";
+  const currentYear = new Date().getFullYear();
+  const opts: Intl.DateTimeFormatOptions = d.getFullYear() === currentYear
+    ? { day: "numeric", month: "long" }
+    : { day: "numeric", month: "long", year: "numeric" };
+  return new Intl.DateTimeFormat("ru-RU", opts).format(d);
+}
 
 // ── Chip types ────────────────────────────────────────────────────────────────
 
@@ -53,73 +62,77 @@ function ProjectCard({ project }: { project: GafferProject }) {
   const clientRem = Number(project.clientRemaining ?? "0");
   const teamRem = Number(project.teamRemaining ?? "0");
   const clientTotal = project.clientTotal ?? project.clientPlanAmount ?? "0";
-  const teamPlanTotal = project.teamPlanTotal ?? "0";
 
   const sumFrom = Number(project.clientPlanAmount) + Number(project.lightBudgetAmount ?? "0");
+  const clientName = project.client?.name ?? "без клиента";
 
   return (
     <Link
       href={`/gaffer/projects/${project.id}`}
-      className="block px-4 pt-3 pb-2.5 border-b border-border hover:bg-surface-2 transition-colors"
+      className="block rounded-lg border border-border bg-surface shadow-xs px-[14px] py-3 hover:border-accent-border transition-colors"
     >
-      {/* Title + date */}
-      <div className="flex items-start justify-between gap-2 mb-0.5">
-        <h4 className="font-bold text-[13.5px] text-ink leading-snug flex-1 min-w-0">
-          {project.title}
-        </h4>
-      </div>
-      {/* Meta */}
-      <p className="text-[11.5px] text-ink-3 mb-2 truncate">
-        <span>{project.client?.name ?? "— без клиента"}</span>
-        <span> · {formatShootDate(project.shootDate)}</span>
+      {/* Title */}
+      <h4 className="font-semibold text-[14px] text-ink leading-snug">
+        {project.title}
+      </h4>
+      {/* Meta: client · date · sum */}
+      <p className="text-[11.5px] text-ink-2 mt-0.5 truncate">
+        <span>{clientName}</span>
+        <span> · {formatCardDate(project.shootDate)}</span>
         {sumFrom > 0 && (
-          <span> · {formatRub(sumFrom)}</span>
+          <span> · <span className="mono-num">{formatRub(sumFrom)}</span></span>
         )}
       </p>
 
-      {/* Metrics 3-col */}
-      <div className="grid grid-cols-3 border border-border rounded overflow-hidden mb-2 text-center">
-        <div className="py-1.5 px-1 border-r border-border">
-          <p className="text-[9.5px] text-ink-3 uppercase tracking-wider"
-            style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+      {/* Metrics: 3 columns with dashed top border, no outer box */}
+      <div className="flex gap-[14px] mt-2.5 pt-2.5 border-t border-dashed border-border text-[12px]">
+        <div className="flex flex-col">
+          <span
+            className="text-[10.5px] text-ink-3 uppercase tracking-wider"
+            style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+          >
             От клиента
-          </p>
-          <p className="text-[12px] font-semibold text-ink mono-num">
-            {formatRub(clientTotal)}
-          </p>
+          </span>
+          <span className="mono-num font-semibold text-ink">
+            {formatRub(clientTotal).replace(" ₽", "")}
+          </span>
         </div>
-        <div className="py-1.5 px-1 border-r border-border">
-          <p className="text-[9.5px] text-rose uppercase tracking-wider"
-            style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+        <div className="flex flex-col">
+          <span
+            className="text-[10.5px] text-ink-3 uppercase tracking-wider"
+            style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+          >
             Должны мне
-          </p>
-          <p className={`text-[12px] font-semibold mono-num ${clientRem > 0 ? "text-rose" : "text-ink-3"}`}>
-            {clientRem > 0 ? formatRub(clientRem) : "—"}
-          </p>
+          </span>
+          <span className={`mono-num font-semibold ${clientRem > 0 ? "text-rose" : "text-ink"}`}>
+            {clientRem > 0 ? formatRub(clientRem).replace(" ₽", "") : "0"}
+          </span>
         </div>
-        <div className="py-1.5 px-1">
-          <p className="text-[9.5px] text-indigo uppercase tracking-wider"
-            style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+        <div className="flex flex-col">
+          <span
+            className="text-[10.5px] text-ink-3 uppercase tracking-wider"
+            style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+          >
             Должен я
-          </p>
-          <p className={`text-[12px] font-semibold mono-num ${teamRem > 0 ? "text-indigo" : "text-ink-3"}`}>
-            {teamRem > 0 ? formatRub(teamRem) : "—"}
-          </p>
+          </span>
+          <span className={`mono-num font-semibold ${teamRem > 0 ? "text-indigo" : "text-ink"}`}>
+            {teamRem > 0 ? formatRub(teamRem).replace(" ₽", "") : "0"}
+          </span>
         </div>
       </div>
 
-      {/* Status tags */}
-      <div className="flex flex-wrap gap-1.5">
+      {/* Status pills: solid top border separator */}
+      <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2.5 border-t border-border">
         <StatusPill status={project.status} />
         {clientRem > 0 && (
           <DebtTag
-            label={`долг клиента: ${formatRub(clientRem)}`}
+            label="долг клиента"
             colorClass="bg-rose-soft text-rose border-rose-border"
           />
         )}
         {teamRem > 0 && (
           <DebtTag
-            label={`команде: ${formatRub(Number(teamPlanTotal) > 0 ? teamRem : 0)}`}
+            label="долг команде"
             colorClass="bg-indigo-soft text-indigo border-indigo-border"
           />
         )}
@@ -130,18 +143,15 @@ function ProjectCard({ project }: { project: GafferProject }) {
 
 function SkeletonCard() {
   return (
-    <div className="px-4 py-3 border-b border-border animate-pulse">
-      <div className="flex items-center justify-between mb-1.5">
-        <div className="h-3.5 bg-border rounded w-2/5" />
-        <div className="h-3 bg-border rounded w-1/5" />
+    <div className="rounded-lg border border-border bg-surface shadow-xs px-[14px] py-3 animate-pulse">
+      <div className="h-3.5 bg-border rounded w-2/5 mb-1.5" />
+      <div className="h-3 bg-border rounded w-1/2 mb-2.5" />
+      <div className="flex gap-[14px] pt-2.5 border-t border-dashed border-border mb-2.5">
+        <div className="h-8 bg-border rounded flex-1" />
+        <div className="h-8 bg-border rounded flex-1" />
+        <div className="h-8 bg-border rounded flex-1" />
       </div>
-      <div className="h-3 bg-border rounded w-1/3 mb-2" />
-      <div className="grid grid-cols-3 gap-1 mb-2">
-        <div className="h-8 bg-border rounded" />
-        <div className="h-8 bg-border rounded" />
-        <div className="h-8 bg-border rounded" />
-      </div>
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 pt-2.5 border-t border-border">
         <div className="h-4 bg-border rounded-full w-16" />
       </div>
     </div>
@@ -238,24 +248,24 @@ export default function GafferProjectsPage() {
 
   return (
     <div className="min-h-screen bg-surface">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-3">
+      {/* Header — desktop only (mobile follows canon: straight into search) */}
+      <div className="hidden md:flex items-center justify-between px-4 pt-4 pb-3">
         <h1 className="text-[17px] font-semibold text-ink tracking-tight">Проекты</h1>
         <Link
           href="/gaffer/projects/new"
-          className="hidden md:inline-flex bg-accent-bright hover:bg-accent text-white text-[13px] font-medium rounded px-3 py-[7px] transition-colors"
+          className="inline-flex bg-accent-bright hover:bg-accent text-white text-[13px] font-medium rounded px-3 py-[7px] transition-colors"
         >
           + Создать
         </Link>
       </div>
 
       {/* Search */}
-      <div className="px-4 pb-2">
+      <div className="px-4 pt-4 md:pt-0 pb-2">
         <div className="relative">
           <span className="absolute left-[10px] top-1/2 -translate-y-1/2 text-[14px] opacity-60">🔎</span>
           <input
             type="search"
-            placeholder="Поиск по названию…"
+            placeholder="Поиск по проекту, клиенту…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
@@ -263,8 +273,8 @@ export default function GafferProjectsPage() {
         </div>
       </div>
 
-      {/* Chips */}
-      <div className="flex gap-2 px-4 py-2 border-b border-border overflow-x-auto bg-surface-2">
+      {/* Chips — wrap on mobile so «Архив» не уезжает за край */}
+      <div className="flex flex-wrap gap-2 px-4 py-2 border-b border-border bg-surface-2">
         {CHIPS.map((c) => (
           <button
             key={c.key}
@@ -281,8 +291,8 @@ export default function GafferProjectsPage() {
         ))}
       </div>
 
-      {/* List */}
-      <div className="pb-24">
+      {/* List — discrete cards with gutter */}
+      <div className="px-4 pt-4 pb-[112px] md:pb-8 space-y-2.5">
         {isLoading ? (
           <>
             <SkeletonCard />
@@ -290,7 +300,7 @@ export default function GafferProjectsPage() {
             <SkeletonCard />
           </>
         ) : projects === null || projects.length === 0 ? (
-          <div className="text-center text-ink-3 py-10 px-4 text-[13px]">
+          <div className="text-center text-ink-3 py-10 text-[13px]">
             <div className="text-4xl mb-3">▤</div>
             <p className="mb-4">
               {chip === "archive" ? "Архивных проектов нет" :
@@ -312,21 +322,22 @@ export default function GafferProjectsPage() {
         )}
       </div>
 
-      {/* FAB */}
-      <Link
-        href="/gaffer/projects/new"
-        className="fixed bottom-20 right-4 w-12 h-12 bg-accent-bright text-white rounded-full flex items-center justify-center text-xl shadow-lg hover:bg-accent transition-colors z-30 md:hidden"
-        aria-label="Создать проект"
-      >
-        +
-      </Link>
-
       {/* Counts for projects */}
       {!isLoading && projects !== null && projects.length > 0 && (
-        <div className="pb-2 text-center text-[11px] text-ink-3">
+        <div className="pb-2 text-center text-[11px] text-ink-3 md:block hidden">
           {pluralize(projects.length, "проект", "проекта", "проектов")}: {projects.length}
         </div>
       )}
+
+      {/* Bottom CTA — mobile only, above tabbar (replaces FAB, matches canon) */}
+      <div className="md:hidden fixed bottom-[54px] left-0 right-0 max-w-[480px] mx-auto px-4 py-3 bg-surface border-t border-border z-30">
+        <Link
+          href="/gaffer/projects/new"
+          className="flex items-center justify-center w-full bg-accent-bright hover:bg-accent text-white text-[14px] font-medium rounded py-3 transition-colors"
+        >
+          + Новый проект
+        </Link>
+      </div>
     </div>
   );
 }
