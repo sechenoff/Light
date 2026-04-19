@@ -15,18 +15,30 @@ import {
   createPayment,
   updatePayment,
   deletePayment,
+  createContact,
   listContacts,
+  listContactsWithAggregates,
   listPaymentMethods,
   GafferApiError,
   type GafferProject,
   type GafferProjectMember,
   type GafferPayment,
   type GafferContact,
+  type GafferContactWithAggregates,
   type GafferPaymentMethod,
 } from "../../../../src/lib/gafferApi";
-import { formatRub } from "../../../../src/lib/format";
+import { formatRub, pluralize } from "../../../../src/lib/format";
 import { formatShootDate } from "../../../../src/lib/gafferProjectUtils";
 import { toast } from "../../../../src/components/ToastProvider";
+import {
+  ROLE_OPTIONS,
+  calcMemberCost,
+  deriveOtRates,
+  WizardStep,
+  Pill,
+  SummaryRow,
+  type SelectedMember,
+} from "../../../../src/components/gaffer/projectWizardShared";
 
 // ── Status pill ─────────────────────────────────────────────────────────────
 
@@ -804,14 +816,30 @@ function GafferProjectDetailContent() {
   const [methods, setMethods] = useState<GafferPaymentMethod[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Edit mode
+  // Edit mode — full wizard mirror
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
+  const [editClientId, setEditClientId] = useState("");
   const [editShootDate, setEditShootDate] = useState("");
   const [editClientPlan, setEditClientPlan] = useState("0");
   const [editLightBudget, setEditLightBudget] = useState("0");
   const [editNote, setEditNote] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+
+  // Team picker state
+  const [editClients, setEditClients] = useState<GafferContactWithAggregates[] | null>(null);
+  const [editTeamContacts, setEditTeamContacts] = useState<GafferContact[] | null>(null);
+  const [editSelectedMembers, setEditSelectedMembers] = useState<SelectedMember[]>([]);
+  const [editLockedContactIds, setEditLockedContactIds] = useState<Set<string>>(new Set());
+  const [editBulkShifts, setEditBulkShifts] = useState<number | null>(1);
+  const [editBulkHours, setEditBulkHours] = useState<number | null>(10);
+  const [editAddMemberOpen, setEditAddMemberOpen] = useState(false);
+  const [editNewMemberName, setEditNewMemberName] = useState("");
+  const [editNewMemberRole, setEditNewMemberRole] = useState<string>(ROLE_OPTIONS[0]);
+  const [editNewMemberShiftRate, setEditNewMemberShiftRate] = useState("");
+  const [editNewMemberContact, setEditNewMemberContact] = useState("");
+  const [editSavingMember, setEditSavingMember] = useState(false);
 
   // Forms — now handled by <details> elements (always-available)
 
@@ -855,16 +883,17 @@ function GafferProjectDetailContent() {
     if (editMode === "1" && project) {
       const draftKey = `gaffer:projects-edit:${id}:draft`;
       const raw = sessionStorage.getItem(draftKey);
+      seedEditFromProject(project);
       if (raw) {
         try {
           const draft = JSON.parse(raw);
-          setEditTitle(draft.editTitle ?? project.title);
-          setEditShootDate(draft.editShootDate ?? (project.shootDate?.slice(0, 10) ?? ""));
-          setEditLightBudget(draft.editLightBudget ?? (project.lightBudgetAmount ?? "0"));
-          setEditNote(draft.editNote ?? (project.note ?? ""));
-          setEditClientPlan(crewAmount ? crewAmount : (draft.editClientPlan ?? (project.clientPlanAmount ?? "0")));
+          if (draft.editTitle !== undefined) setEditTitle(draft.editTitle);
+          if (draft.editClientId !== undefined) setEditClientId(draft.editClientId);
+          if (draft.editShootDate !== undefined) setEditShootDate(draft.editShootDate);
+          if (draft.editLightBudget !== undefined) setEditLightBudget(draft.editLightBudget);
+          if (draft.editNote !== undefined) setEditNote(draft.editNote);
+          setEditClientPlan(crewAmount ? crewAmount : (draft.editClientPlan ?? project.clientPlanAmount ?? "0"));
         } catch {
-          // malformed — fall back to project data
           if (crewAmount) setEditClientPlan(crewAmount);
         }
         sessionStorage.removeItem(draftKey);
@@ -876,31 +905,271 @@ function GafferProjectDetailContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, project]);
 
+  // ── Load clients + team contacts when entering edit mode ──
+  useEffect(() => {
+    if (!editing) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await listContactsWithAggregates({ type: "CLIENT", isArchived: false });
+        if (!cancelled) setEditClients(res.items);
+      } catch {
+        if (!cancelled) setEditClients([]);
+      }
+    })();
+    (async () => {
+      try {
+        const res = await listContacts({ type: "TEAM_MEMBER", isArchived: false });
+        if (!cancelled) setEditTeamContacts(res.items);
+      } catch {
+        if (!cancelled) setEditTeamContacts([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [editing]);
+
+  function seedEditFromProject(p: GafferProject) {
+    setEditTitle(p.title);
+    setEditClientId(p.clientId ?? "");
+    setEditShootDate(p.shootDate?.slice(0, 10) ?? "");
+    setEditClientPlan(p.clientPlanAmount ?? "0");
+    setEditLightBudget(p.lightBudgetAmount ?? "0");
+    setEditNote(p.note ?? "");
+
+    // Seed selected members from current TEAM_MEMBER rows; default shifts=1, hours=10
+    const teamRows = (p.members ?? []).filter((m) => m.contact?.type === "TEAM_MEMBER");
+    const seeded: SelectedMember[] = teamRows.map((m) => ({
+      memberId: m.id,
+      contactId: m.contactId,
+      shifts: 1,
+      hours: 10,
+      plannedAmount: Number(m.plannedAmount ?? 0),
+    }));
+    setEditSelectedMembers(seeded);
+
+    // Locked = members with any outgoing payments (paidToMe > 0)
+    const locked = new Set<string>();
+    for (const m of teamRows) {
+      if (Number(m.paidToMe ?? 0) > 0) locked.add(m.contactId);
+    }
+    setEditLockedContactIds(locked);
+
+    setEditBulkShifts(1);
+    setEditBulkHours(10);
+    setEditErrors({});
+  }
+
   // Start editing
   function startEdit() {
     if (!project) return;
-    setEditTitle(project.title);
-    setEditShootDate(project.shootDate?.slice(0, 10) ?? "");
-    setEditClientPlan(project.clientPlanAmount ?? "0");
-    setEditLightBudget(project.lightBudgetAmount ?? "0");
-    setEditNote(project.note ?? "");
+    seedEditFromProject(project);
     setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setEditAddMemberOpen(false);
+    setEditErrors({});
+  }
+
+  // ── Team pill toggle ──
+  function editToggleMember(contactId: string) {
+    if (editLockedContactIds.has(contactId)) {
+      const isSelected = editSelectedMembers.some((m) => m.contactId === contactId);
+      if (isSelected) {
+        toast.error("Нельзя убрать — у участника есть выплаты по проекту");
+        return;
+      }
+    }
+    setEditSelectedMembers((prev) => {
+      if (prev.some((m) => m.contactId === contactId)) {
+        return prev.filter((m) => m.contactId !== contactId);
+      }
+      const contact = editTeamContacts?.find((c) => c.id === contactId);
+      if (!contact) return prev;
+      const shifts = editBulkShifts ?? 1;
+      const hours = editBulkHours ?? 10;
+      const { total } = calcMemberCost(
+        +contact.shiftRate,
+        +contact.overtimeTier1Rate,
+        +contact.overtimeTier2Rate,
+        +contact.overtimeTier3Rate,
+        shifts,
+        hours,
+      );
+      return [...prev, { contactId, shifts, hours, plannedAmount: total }];
+    });
+  }
+
+  function editRecomputeMember(m: SelectedMember): SelectedMember {
+    const contact = editTeamContacts?.find((c) => c.id === m.contactId);
+    if (!contact) return m;
+    const { total } = calcMemberCost(
+      +contact.shiftRate,
+      +contact.overtimeTier1Rate,
+      +contact.overtimeTier2Rate,
+      +contact.overtimeTier3Rate,
+      m.shifts,
+      m.hours,
+    );
+    return { ...m, plannedAmount: total };
+  }
+
+  function editApplyBulkShifts(n: number) {
+    setEditBulkShifts(n);
+    setEditSelectedMembers((prev) => prev.map((m) => editRecomputeMember({ ...m, shifts: n })));
+  }
+
+  function editApplyBulkHours(n: number) {
+    setEditBulkHours(n);
+    setEditSelectedMembers((prev) => prev.map((m) => editRecomputeMember({ ...m, hours: n })));
+  }
+
+  function editUpdateMemberField(
+    contactId: string,
+    field: "shifts" | "hours",
+    value: number,
+  ) {
+    setEditSelectedMembers((prev) =>
+      prev.map((m) => {
+        if (m.contactId !== contactId) return m;
+        return editRecomputeMember({ ...m, [field]: value });
+      }),
+    );
+    if (field === "shifts") setEditBulkShifts(null);
+    if (field === "hours") setEditBulkHours(null);
+  }
+
+  async function handleEditCreateMember(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editNewMemberName.trim() || !editNewMemberShiftRate.trim()) return;
+    setEditSavingMember(true);
+    try {
+      const shiftRate = Number(editNewMemberShiftRate) || 0;
+      const otRates = deriveOtRates(shiftRate);
+      const contactVal = editNewMemberContact.trim();
+      const isTg = contactVal.startsWith("@");
+      const res = await createContact({
+        type: "TEAM_MEMBER",
+        name: editNewMemberName.trim(),
+        phone: !isTg && contactVal ? contactVal : undefined,
+        telegram: isTg ? contactVal : undefined,
+        shiftRate: String(shiftRate),
+        overtimeTier1Rate: String(otRates.overtimeTier1Rate),
+        overtimeTier2Rate: String(otRates.overtimeTier2Rate),
+        overtimeTier3Rate: String(otRates.overtimeTier3Rate),
+        roleLabel: editNewMemberRole || null,
+      });
+      toast.success("Осветитель добавлен");
+      setEditTeamContacts((prev) => (prev ? [...prev, res.contact] : [res.contact]));
+      const shifts = editBulkShifts ?? 1;
+      const hours = editBulkHours ?? 10;
+      const { total } = calcMemberCost(
+        shiftRate,
+        otRates.overtimeTier1Rate,
+        otRates.overtimeTier2Rate,
+        otRates.overtimeTier3Rate,
+        shifts,
+        hours,
+      );
+      setEditSelectedMembers((prev) => [
+        ...prev,
+        { contactId: res.contact.id, shifts, hours, plannedAmount: total },
+      ]);
+      setEditNewMemberName("");
+      setEditNewMemberRole(ROLE_OPTIONS[0]);
+      setEditNewMemberShiftRate("");
+      setEditNewMemberContact("");
+      setEditAddMemberOpen(false);
+    } catch (err) {
+      if (err instanceof GafferApiError) toast.error(err.message);
+      else toast.error("Не удалось добавить осветителя");
+    } finally {
+      setEditSavingMember(false);
+    }
   }
 
   async function handleSave() {
     if (!project) return;
+    const errs: Record<string, string> = {};
+    if (!editTitle.trim()) errs.title = "Укажите название";
+    if (!editClientId) errs.clientId = "Выберите заказчика";
+    if (!editShootDate) errs.shootDate = "Укажите дату съёмки";
+    if (Object.keys(errs).length) {
+      setEditErrors(errs);
+      return;
+    }
+    setEditErrors({});
     setEditSaving(true);
+
     try {
       await updateProject(id, {
         title: editTitle.trim(),
+        clientId: editClientId,
         shootDate: editShootDate,
         clientPlanAmount: editClientPlan || "0",
         lightBudgetAmount: editLightBudget || "0",
         note: editNote.trim() || "",
       });
+
+      // ── Team member diff ──
+      const existingTeamRows = (project.members ?? []).filter(
+        (m) => m.contact?.type === "TEAM_MEMBER",
+      );
+      const existingByContactId = new Map(existingTeamRows.map((m) => [m.contactId, m]));
+      const selectedByContactId = new Map(editSelectedMembers.map((m) => [m.contactId, m]));
+
+      const removalFailures: string[] = [];
+
+      // 1. Remove rows that are no longer selected
+      for (const row of existingTeamRows) {
+        if (!selectedByContactId.has(row.contactId)) {
+          try {
+            await removeProjectMember(row.id);
+          } catch (e) {
+            if (e instanceof GafferApiError && e.code === "MEMBER_HAS_PAYMENTS") {
+              removalFailures.push(row.contact?.name ?? "участник");
+            } else {
+              throw e;
+            }
+          }
+        }
+      }
+
+      // 2. Add new selected members
+      for (const sel of editSelectedMembers) {
+        if (!existingByContactId.has(sel.contactId)) {
+          const contact = editTeamContacts?.find((c) => c.id === sel.contactId);
+          await addProjectMember(id, {
+            contactId: sel.contactId,
+            plannedAmount: String(sel.plannedAmount),
+            roleLabel: contact?.roleLabel ?? undefined,
+          });
+        }
+      }
+
+      // 3. Update existing rows whose plannedAmount has changed
+      for (const sel of editSelectedMembers) {
+        const existing = existingByContactId.get(sel.contactId);
+        if (!existing) continue;
+        const existingAmt = Number(existing.plannedAmount ?? 0);
+        if (existingAmt !== sel.plannedAmount) {
+          await updateProjectMember(existing.id, {
+            plannedAmount: String(sel.plannedAmount),
+          });
+        }
+      }
+
       setEditing(false);
       setRefreshKey((k) => k + 1);
-      toast.success("Проект обновлён");
+
+      if (removalFailures.length > 0) {
+        toast.error(
+          `Не удалось убрать: ${removalFailures.join(", ")} — есть выплаты по проекту`,
+        );
+      } else {
+        toast.success("Проект обновлён");
+      }
     } catch (e) {
       toast.error(e instanceof GafferApiError ? e.message : "Ошибка сохранения");
     } finally {
@@ -1037,94 +1306,498 @@ function GafferProjectDetailContent() {
         </div>
       </div>
 
-      {/* Edit form */}
+      {/* Edit form — mirrors the /projects/new wizard */}
       {editing ? (
-        <div className="px-4 py-5 space-y-4">
-          <div>
-            <label className="block text-[12px] text-ink-2 mb-1">Название *</label>
-            <input
-              autoFocus
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              maxLength={100}
-              className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
-            />
-          </div>
-          <div>
-            <label className="block text-[12px] text-ink-2 mb-1">Дата съёмки</label>
-            <input
-              type="date"
-              value={editShootDate}
-              onChange={(e) => setEditShootDate(e.target.value)}
-              className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
-            />
-          </div>
-          <div>
-            <label className="block text-[12px] text-ink-2 mb-1">Договорная сумма с заказчиком ₽</label>
-            <div className="relative">
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={editClientPlan}
-                onChange={(e) => setEditClientPlan(e.target.value)}
-                className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
-              />
-              <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">₽</span>
+        (() => {
+          const inputClass =
+            "w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright";
+          const inputErrorClass =
+            "w-full px-[11px] py-[9px] border border-rose-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border";
+          const sectionClass = "mx-4 mb-4 border border-border rounded bg-surface p-4";
+
+          const teamTotal = editSelectedMembers.reduce((s, m) => s + m.plannedAmount, 0);
+          const clientPlan = Number(editClientPlan) || 0;
+          const lightBudget = Number(editLightBudget) || 0;
+          const margin = clientPlan - lightBudget - teamTotal;
+          const totalShifts = editSelectedMembers.reduce((s, m) => s + m.shifts, 0);
+
+          function clientOptionLabel(c: GafferContactWithAggregates): string {
+            const parts: string[] = [c.name];
+            if (c.projectCount > 0) {
+              parts.push(
+                `${c.projectCount} ${pluralize(c.projectCount, "проект", "проекта", "проектов")}`,
+              );
+            }
+            if (c.remainingToMe !== "0" && Number(c.remainingToMe) > 0) {
+              parts.push(`долг ${formatRub(+c.remainingToMe)}`);
+            }
+            return parts.join(" · ");
+          }
+
+          return (
+            <div className="pb-20">
+              {/* ═══════ STEP 1 — Клиент ═══════ */}
+              <WizardStep n={1} title="Клиент" subtitle="кто платит за съёмку" />
+              <section className={sectionClass}>
+                {editClients === null ? (
+                  <div className="h-[39px] bg-border rounded animate-pulse" />
+                ) : (
+                  <select
+                    value={editClientId}
+                    onChange={(e) => setEditClientId(e.target.value)}
+                    className={editErrors.clientId ? inputErrorClass : inputClass}
+                  >
+                    <option value="">— Выберите заказчика —</option>
+                    {editClients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {clientOptionLabel(c)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {editErrors.clientId && (
+                  <p className="text-rose text-[11.5px] mt-1">{editErrors.clientId}</p>
+                )}
+              </section>
+
+              {/* ═══════ STEP 2 — Проект ═══════ */}
+              <WizardStep n={2} title="Проект" subtitle="название и дата" />
+              <section className={sectionClass}>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                      Название <span className="text-rose">*</span>
+                    </label>
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      maxLength={100}
+                      className={editErrors.title ? inputErrorClass : inputClass}
+                    />
+                    {editErrors.title && (
+                      <p className="text-rose text-[11.5px] mt-0.5">{editErrors.title}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                      Дата съёмки <span className="text-rose">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={editShootDate}
+                      onChange={(e) => setEditShootDate(e.target.value)}
+                      className={editErrors.shootDate ? inputErrorClass : inputClass}
+                    />
+                    {editErrors.shootDate && (
+                      <p className="text-rose text-[11.5px] mt-0.5">{editErrors.shootDate}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-2.5">
+                  <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                    Комментарий (необязательно)
+                  </label>
+                  <textarea
+                    value={editNote}
+                    onChange={(e) => setEditNote(e.target.value)}
+                    rows={2}
+                    className={`${inputClass} resize-none`}
+                  />
+                </div>
+              </section>
+
+              {/* ═══════ STEP 3 — Сумма от клиента ═══════ */}
+              <WizardStep n={3} title="Сумма от клиента" subtitle="общая договорённость" />
+              <section className={sectionClass}>
+                <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                  Договорная сумма с заказчиком (что получу за проект)
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={editClientPlan}
+                    onChange={(e) => setEditClientPlan(e.target.value)}
+                    className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[16px] font-semibold mono-num bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+                  />
+                  <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">
+                    ₽
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[11.5px] text-ink-3">
+                  Это не прибыль — из неё гаффер платит ренталу за свет и команде за смены. Остаток — маржа.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const draftKey = `gaffer:projects-edit:${id}:draft`;
+                    sessionStorage.setItem(
+                      draftKey,
+                      JSON.stringify({
+                        editTitle,
+                        editClientId,
+                        editShootDate,
+                        editClientPlan,
+                        editLightBudget,
+                        editNote,
+                      }),
+                    );
+                    router.push(
+                      `/gaffer/crew-calculator?returnTo=/gaffer/projects/${id}%3Fedit%3D1`,
+                    );
+                  }}
+                  className="mt-2.5 w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-border bg-surface hover:bg-[#fafafa] text-accent-bright text-[12.5px] rounded transition-colors"
+                >
+                  Калькулятор команды осветителей
+                </button>
+              </section>
+
+              {/* ═══════ STEP 4 — Аренда света ═══════ */}
+              <WizardStep n={4} title="Аренда света" subtitle="сколько посчитали в ренталe" />
+              <section className={sectionClass}>
+                <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                  Сумма от рентала за оборудование
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={editLightBudget}
+                    onChange={(e) => setEditLightBudget(e.target.value)}
+                    placeholder="0"
+                    className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[16px] font-semibold mono-num bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+                  />
+                  <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">
+                    ₽
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[11.5px] text-ink-3">
+                  Ренталы-участники редактируются ниже, в карточке проекта.
+                </p>
+              </section>
+
+              {/* ═══════ STEP 5 — Команда ═══════ */}
+              <WizardStep n={5} title="Команда" subtitle="кто работает на смене" />
+              <section className={sectionClass}>
+                {editTeamContacts === null ? (
+                  <div className="h-20 bg-border rounded animate-pulse" />
+                ) : (
+                  <>
+                    {/* Team contact grid — clickable pills */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {editTeamContacts.map((c) => {
+                        const isSelected = editSelectedMembers.some((m) => m.contactId === c.id);
+                        const isLocked = editLockedContactIds.has(c.id);
+                        const cardClass = isSelected
+                          ? isLocked
+                            ? "border-amber-border bg-amber-soft"
+                            : "border-accent-bright bg-accent-soft"
+                          : "border-border bg-surface hover:bg-[#fafafa]";
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => editToggleMember(c.id)}
+                            className={`text-left rounded-md p-2.5 border transition-colors ${cardClass}`}
+                            title={isLocked ? "У участника есть выплаты — нельзя убрать" : undefined}
+                          >
+                            <div className="flex items-baseline justify-between gap-2">
+                              <div className="text-[13px] font-semibold text-ink">{c.name}</div>
+                              {isLocked && (
+                                <span className="text-[10.5px] text-amber font-semibold uppercase tracking-wide">
+                                  с выплатами
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11.5px] text-ink-3">{c.roleLabel || "—"}</div>
+                            <div className="text-[11.5px] text-ink-2 mono-num">
+                              {formatRub(+c.shiftRate)} / смена
+                            </div>
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => setEditAddMemberOpen(true)}
+                        className="text-[12.5px] text-accent-bright rounded-md border border-dashed border-accent-border bg-surface hover:bg-accent-soft p-2.5 text-left"
+                      >
+                        + Новый осветитель
+                      </button>
+                    </div>
+
+                    {/* Inline new member form */}
+                    {editAddMemberOpen && (
+                      <div className="mt-3 border border-border rounded-md p-3 space-y-2.5 bg-surface">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px] font-semibold text-ink">Новый осветитель</span>
+                          <button
+                            type="button"
+                            onClick={() => setEditAddMemberOpen(false)}
+                            className="text-ink-3 hover:text-ink text-[14px]"
+                            aria-label="Закрыть форму"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div>
+                          <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                            Имя <span className="text-rose">*</span>
+                          </label>
+                          <input
+                            value={editNewMemberName}
+                            onChange={(e) => setEditNewMemberName(e.target.value)}
+                            placeholder="Алексей Смирнов"
+                            className={inputClass}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11.5px] text-ink-2 mb-0.5">Роль</label>
+                          <select
+                            value={editNewMemberRole}
+                            onChange={(e) => setEditNewMemberRole(e.target.value)}
+                            className={inputClass}
+                          >
+                            {ROLE_OPTIONS.map((r) => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                            Ставка за смену (10 ч) <span className="text-rose">*</span>
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              step="100"
+                              value={editNewMemberShiftRate}
+                              onChange={(e) => setEditNewMemberShiftRate(e.target.value)}
+                              placeholder="5000"
+                              className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[13.5px] mono-num bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+                            />
+                            <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">
+                              ₽
+                            </span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                            Телефон или @telegram
+                          </label>
+                          <input
+                            value={editNewMemberContact}
+                            onChange={(e) => setEditNewMemberContact(e.target.value)}
+                            placeholder="+7 999 ... или @handle"
+                            className={inputClass}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={
+                            editSavingMember || !editNewMemberName.trim() || !editNewMemberShiftRate.trim()
+                          }
+                          onClick={handleEditCreateMember}
+                          className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-3 py-2 text-[13px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {editSavingMember ? "Сохраняем…" : "Добавить осветителя"}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Bulk presets strip */}
+                    <div className="mt-4 bg-surface-2 border border-border rounded-md p-3 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] text-ink-3 uppercase tracking-wide">Смен</span>
+                        {[1, 2, 3].map((n) => (
+                          <Pill
+                            key={n}
+                            active={editBulkShifts === n}
+                            onClick={() => editApplyBulkShifts(n)}
+                          >
+                            {n}
+                          </Pill>
+                        ))}
+                        <Pill active={editBulkShifts === null} onClick={() => setEditBulkShifts(null)}>
+                          свой
+                        </Pill>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] text-ink-3 uppercase tracking-wide">Часов</span>
+                        {[10, 12, 14, 16].map((n) => (
+                          <Pill
+                            key={n}
+                            active={editBulkHours === n}
+                            onClick={() => editApplyBulkHours(n)}
+                          >
+                            {n}
+                          </Pill>
+                        ))}
+                        <Pill active={editBulkHours === null} onClick={() => setEditBulkHours(null)}>
+                          свой
+                        </Pill>
+                      </div>
+                    </div>
+
+                    {/* Per-member table */}
+                    {editSelectedMembers.length > 0 && (
+                      <div className="mt-3 border border-border rounded-md overflow-hidden bg-surface">
+                        <div className="flex items-baseline justify-between px-3 py-2 bg-surface-2 border-b border-border">
+                          <span className="eyebrow">Смены участников</span>
+                          <span className="text-[11px] text-ink-3">
+                            часы можно поменять индивидуально
+                          </span>
+                        </div>
+                        {editSelectedMembers.map((m) => {
+                          const contact = editTeamContacts.find((c) => c.id === m.contactId);
+                          if (!contact) return null;
+                          const { otText } = calcMemberCost(
+                            +contact.shiftRate,
+                            +contact.overtimeTier1Rate,
+                            +contact.overtimeTier2Rate,
+                            +contact.overtimeTier3Rate,
+                            m.shifts,
+                            m.hours,
+                          );
+                          return (
+                            <div
+                              key={m.contactId}
+                              className="px-3 py-2.5 border-b border-border last:border-b-0"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-[13px] font-semibold text-ink">
+                                    {contact.name}
+                                  </div>
+                                  <div className="text-[11.5px] text-ink-3">
+                                    {contact.roleLabel || "—"} · {formatRub(+contact.shiftRate)}/смена
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <div className="text-[13.5px] font-semibold text-ink mono-num">
+                                    {formatRub(m.plannedAmount)}
+                                  </div>
+                                  {otText && (
+                                    <div className="text-[11px] text-ink-3">{otText}</div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="mt-2 grid grid-cols-2 gap-2">
+                                <label className="text-[11.5px] text-ink-2">
+                                  Смен
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    value={m.shifts}
+                                    onChange={(e) =>
+                                      editUpdateMemberField(
+                                        m.contactId,
+                                        "shifts",
+                                        Math.max(0, Number(e.target.value)),
+                                      )
+                                    }
+                                    className="block w-full mt-0.5 px-2 py-1 border border-border rounded text-[13px] bg-surface text-ink mono-num focus:ring-2 focus:ring-accent-border"
+                                  />
+                                </label>
+                                <label className="text-[11.5px] text-ink-2">
+                                  Часов
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    value={m.hours}
+                                    onChange={(e) =>
+                                      editUpdateMemberField(
+                                        m.contactId,
+                                        "hours",
+                                        Math.max(0, Number(e.target.value)),
+                                      )
+                                    }
+                                    className="block w-full mt-0.5 px-2 py-1 border border-border rounded text-[13px] bg-surface text-ink mono-num focus:ring-2 focus:ring-accent-border"
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* OT callout */}
+                    <div className="mt-3 bg-amber-soft border border-amber-border rounded-md px-3 py-2.5 text-[11.5px] text-amber">
+                      <b>Переработки:</b> первые 8 ч сверх смены — тир 1 (×1 ставки часа), следующие
+                      6 ч — тир 2 (×2), далее — тир 3 (×4). Те же формулы, что в общем калькуляторе
+                      гаффера.
+                    </div>
+                  </>
+                )}
+              </section>
+
+              {/* ═══════ STEP 6 — Итог ═══════ */}
+              <WizardStep n={6} title="Итог" subtitle="что сложилось" />
+              <section className={sectionClass}>
+                <div className="border border-border rounded-md overflow-hidden bg-surface">
+                  <SummaryRow
+                    label="От клиента"
+                    sub="договорная сумма"
+                    value={formatRub(clientPlan)}
+                    tone="neutral"
+                    big
+                  />
+                  <SummaryRow
+                    label="Должен ренталу"
+                    sub="аренда света"
+                    value={`− ${formatRub(lightBudget)}`}
+                    tone="rose"
+                  />
+                  <SummaryRow
+                    label="Должен команде"
+                    sub={
+                      editSelectedMembers.length > 0
+                        ? `${editSelectedMembers.length} чел. · ${totalShifts} ${pluralize(
+                            totalShifts,
+                            "смена",
+                            "смены",
+                            "смен",
+                          )}`
+                        : "команда не выбрана"
+                    }
+                    value={`− ${formatRub(teamTotal)}`}
+                    tone="rose"
+                  />
+                  <SummaryRow
+                    label="Моя маржа"
+                    sub="после всех выплат"
+                    value={formatRub(margin)}
+                    tone={margin < 0 ? "rose" : "emerald"}
+                  />
+                </div>
+              </section>
+
+              {/* ═══════ Sticky action bar ═══════ */}
+              <div className="sticky bottom-0 inset-x-0 px-4 py-3 bg-surface border-t border-border flex items-center gap-2 z-10">
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  className="flex-1 text-center px-4 py-2.5 border border-border rounded text-[13.5px] text-ink hover:bg-[#fafafa]"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={editSaving || !editTitle.trim()}
+                  className="flex-1 bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-2.5 text-[13.5px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {editSaving ? "Сохраняем…" : "Сохранить"}
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const draftKey = `gaffer:projects-edit:${id}:draft`;
-                sessionStorage.setItem(draftKey, JSON.stringify({
-                  editTitle, editShootDate, editClientPlan, editLightBudget, editNote,
-                }));
-                router.push(`/gaffer/crew-calculator?returnTo=/gaffer/projects/${id}%3Fedit%3D1`);
-              }}
-              className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-border bg-surface hover:bg-[#fafafa] text-accent-bright text-[12.5px] rounded transition-colors"
-            >
-              🧮 Расчёт стоимости команды осветителей
-            </button>
-          </div>
-          <div>
-            <label className="block text-[12px] text-ink-2 mb-1">Бюджет на свет ₽</label>
-            <div className="relative">
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={editLightBudget}
-                onChange={(e) => setEditLightBudget(e.target.value)}
-                className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
-              />
-              <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">₽</span>
-            </div>
-          </div>
-          <div>
-            <label className="block text-[12px] text-ink-2 mb-1">Заметка</label>
-            <textarea
-              value={editNote}
-              onChange={(e) => setEditNote(e.target.value)}
-              rows={3}
-              className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright resize-none"
-            />
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              disabled={editSaving || !editTitle.trim()}
-              className="flex-1 bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-2.5 text-[13px] transition-colors disabled:opacity-50"
-            >
-              {editSaving ? "Сохраняем…" : "Сохранить"}
-            </button>
-            <button
-              onClick={() => setEditing(false)}
-              className="flex-1 bg-surface border border-border text-ink rounded px-4 py-2.5 text-[13px] hover:bg-[#fafafa] transition-colors"
-            >
-              Отменить
-            </button>
-          </div>
-        </div>
+          );
+        })()
       ) : (
         <div className="divide-y divide-border">
           {/* Title + meta */}
@@ -1278,15 +1951,6 @@ function GafferProjectDetailContent() {
                 ))}
               </div>
             )}
-
-            <AddMemberForm
-              projectId={id}
-              methods={methods}
-              isArchived={project.status === "ARCHIVED"}
-              contactType="TEAM_MEMBER"
-              onDone={() => { setRefreshKey((k) => k + 1); }}
-              onCancel={() => {}}
-            />
           </div>
 
           {/* Аренда света */}

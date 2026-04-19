@@ -14,19 +14,19 @@ import {
 } from "../../../../src/lib/gafferApi";
 import { formatRub, pluralize } from "../../../../src/lib/format";
 import { toast } from "../../../../src/components/ToastProvider";
+import {
+  ROLE_OPTIONS,
+  calcMemberCost,
+  deriveOtRates,
+  WizardStep,
+  Pill,
+  SummaryRow,
+  type SelectedMember,
+} from "../../../../src/components/gaffer/projectWizardShared";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const DRAFT_KEY = "gaffer:projects-new:draft";
-
-const ROLE_OPTIONS = [
-  "Осветитель / Grip",
-  "Best Boy",
-  "Key Grip",
-  "Пультовик",
-  "DIT",
-  "Gaffer",
-] as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,137 +37,6 @@ interface NewProjectDraft {
   clientPlanAmount: string;
   lightBudgetAmount: string;
   note: string;
-}
-
-interface SelectedMember {
-  contactId: string;
-  shifts: number;
-  hours: number;
-  plannedAmount: number;
-}
-
-interface SelectedVendor {
-  contactId: string;
-  plannedAmount: number;
-}
-
-// ─── Cost computation helper ──────────────────────────────────────────────────
-
-function calcMemberCost(
-  shiftRate: number,
-  ot1Rate: number,
-  ot2Rate: number,
-  ot3Rate: number,
-  shifts: number,
-  hoursPerShift: number,
-): { total: number; otText: string | null } {
-  const BASE = 10;
-  const T1_MAX = 8;
-  const T2_MAX = 14; // cumulative: tier 2 covers hours 9–14 = 6 hours
-  const otPerShift = Math.max(0, hoursPerShift - BASE);
-  const ot1 = Math.min(otPerShift, T1_MAX);
-  const ot2 = Math.min(Math.max(0, otPerShift - T1_MAX), T2_MAX - T1_MAX);
-  const ot3 = Math.max(0, otPerShift - T2_MAX);
-  const perShift = shiftRate + Math.round(ot1 * ot1Rate + ot2 * ot2Rate + ot3 * ot3Rate);
-  const total = Math.round(perShift * shifts);
-  if (otPerShift === 0) return { total, otText: null };
-  const tier = ot3 > 0 ? 3 : ot2 > 0 ? 2 : 1;
-  const otText = `+${otPerShift} ч ОТ · тир ${tier}`;
-  return { total, otText };
-}
-
-function deriveOtRates(shiftRate: number): {
-  overtimeTier1Rate: number;
-  overtimeTier2Rate: number;
-  overtimeTier3Rate: number;
-} {
-  const hourRate = Math.round(shiftRate / 10);
-  return {
-    overtimeTier1Rate: hourRate,
-    overtimeTier2Rate: hourRate * 2,
-    overtimeTier3Rate: hourRate * 4,
-  };
-}
-
-// ─── Small UI components ──────────────────────────────────────────────────────
-
-function WizardStep({
-  n,
-  title,
-  subtitle,
-}: {
-  n: number;
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <div className="flex items-baseline gap-3 px-4 pt-6 pb-2">
-      <span className="w-6 h-6 rounded-full bg-accent-bright text-white text-[12px] font-bold flex items-center justify-center shrink-0">
-        {n}
-      </span>
-      <h2 className="text-[15px] font-semibold text-ink">{title}</h2>
-      <span className="text-[11.5px] text-ink-3">{subtitle}</span>
-    </div>
-  );
-}
-
-function Pill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick?: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-2.5 py-1 rounded text-[12px] font-medium border transition-colors ${
-        active
-          ? "bg-accent-bright text-white border-accent-bright"
-          : "bg-surface text-ink-2 border-border hover:bg-[#fafafa]"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function SummaryRow({
-  label,
-  sub,
-  value,
-  tone = "neutral",
-  big = false,
-}: {
-  label: string;
-  sub?: string;
-  value: string;
-  tone?: "neutral" | "rose" | "emerald";
-  big?: boolean;
-}) {
-  const isEmerald = tone === "emerald";
-  return (
-    <div
-      className={`px-3 py-2.5 flex items-center justify-between border-b border-border last:border-b-0 ${
-        isEmerald ? "bg-emerald-soft border-t border-emerald-border" : ""
-      }`}
-    >
-      <div>
-        <div className="text-[13px] font-medium text-ink">{label}</div>
-        {sub && <div className="text-[11px] text-ink-3">{sub}</div>}
-      </div>
-      <div
-        className={`mono-num font-semibold ${big ? "text-[16px]" : "text-[13.5px]"} ${
-          tone === "rose" ? "text-rose" : tone === "emerald" ? "text-emerald" : "text-ink"
-        }`}
-      >
-        {value}
-      </div>
-    </div>
-  );
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
@@ -208,15 +77,6 @@ function GafferNewProjectContent() {
   const [newMemberShiftRate, setNewMemberShiftRate] = useState("");
   const [newMemberContact, setNewMemberContact] = useState(""); // phone or @telegram
   const [savingMember, setSavingMember] = useState(false);
-
-  // ── Step 4: vendors (rentals) ──
-  const [selectedVendors, setSelectedVendors] = useState<SelectedVendor[]>([]);
-  const [vendorContacts, setVendorContacts] = useState<GafferContact[] | null>(null);
-  const [addVendorOpen, setAddVendorOpen] = useState(false);
-  const [newVendorName, setNewVendorName] = useState("");
-  const [newVendorContact, setNewVendorContact] = useState(""); // phone or @telegram
-  const [savingVendor, setSavingVendor] = useState(false);
-
   const clientFormRef = useRef<HTMLDetailsElement>(null);
   const memberFormRef = useRef<HTMLDetailsElement>(null);
 
@@ -280,22 +140,6 @@ function GafferNewProjectContent() {
         if (!cancelled) setTeamContacts(res.items);
       } catch {
         if (!cancelled) setTeamContacts([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // ── Load vendor contacts ──
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await listContacts({ type: "VENDOR", isArchived: false });
-        if (!cancelled) setVendorContacts(res.items);
-      } catch {
-        if (!cancelled) setVendorContacts([]);
       }
     })();
     return () => {
@@ -473,55 +317,10 @@ function GafferNewProjectContent() {
     }
   }
 
-  // ── Vendor toggle ──
-  function toggleVendor(contactId: string) {
-    setSelectedVendors((prev) => {
-      if (prev.some((v) => v.contactId === contactId)) {
-        return prev.filter((v) => v.contactId !== contactId);
-      }
-      return [...prev, { contactId, plannedAmount: 0 }];
-    });
-  }
-
-  function updateVendorAmount(contactId: string, amount: number) {
-    setSelectedVendors((prev) =>
-      prev.map((v) => (v.contactId === contactId ? { ...v, plannedAmount: amount } : v)),
-    );
-  }
-
-  // ── Create inline vendor ──
-  async function handleCreateVendor(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newVendorName.trim()) return;
-    setSavingVendor(true);
-    try {
-      const contactVal = newVendorContact.trim();
-      const isTg = contactVal.startsWith("@");
-      const res = await createContact({
-        type: "VENDOR",
-        name: newVendorName.trim(),
-        phone: !isTg && contactVal ? contactVal : undefined,
-        telegram: isTg ? contactVal : undefined,
-      });
-      toast.success("Рентал добавлен");
-      setVendorContacts((prev) => (prev ? [...prev, res.contact] : [res.contact]));
-      setSelectedVendors((prev) => [...prev, { contactId: res.contact.id, plannedAmount: 0 }]);
-      setNewVendorName("");
-      setNewVendorContact("");
-      setAddVendorOpen(false);
-    } catch (err) {
-      if (err instanceof GafferApiError) toast.error(err.message);
-      else toast.error("Не удалось добавить рентал");
-    } finally {
-      setSavingVendor(false);
-    }
-  }
-
   // ── Computed values ──
   const teamTotal = selectedMembers.reduce((s, m) => s + m.plannedAmount, 0);
-  const vendorTotal = selectedVendors.reduce((s, v) => s + v.plannedAmount, 0);
   const clientPlan = Number(clientPlanAmount) || 0;
-  const lightBudget = vendorTotal; // derived from rental picker
+  const lightBudget = Number(lightBudgetAmount) || 0;
   const margin = clientPlan - lightBudget - teamTotal;
   const totalShifts = selectedMembers.reduce((s, m) => s + m.shifts, 0);
 
@@ -541,7 +340,7 @@ function GafferNewProjectContent() {
     setErrors({});
     setLoading(true);
     try {
-      const teamPayload = selectedMembers
+      const membersPayload = selectedMembers
         .filter((m) => m.shifts > 0 && m.hours > 0)
         .map((m) => {
           const contact = teamContacts?.find((c) => c.id === m.contactId);
@@ -551,20 +350,13 @@ function GafferNewProjectContent() {
             roleLabel: contact?.roleLabel ?? undefined,
           };
         });
-      // Do NOT filter vendors by amount: gaffer may lock in the set of rentals
-      // now and fill amounts later on the project detail page.
-      const vendorPayload = selectedVendors.map((v) => ({
-        contactId: v.contactId,
-        plannedAmount: String(v.plannedAmount),
-      }));
-      const membersPayload = [...teamPayload, ...vendorPayload];
 
       const res = await createProject({
         title: title.trim(),
         clientId,
         shootDate,
         clientPlanAmount: clientPlanAmount.trim() || "0",
-        lightBudgetAmount: String(vendorTotal),
+        lightBudgetAmount: lightBudgetAmount.trim() || "0",
         note: note.trim() || undefined,
         members: membersPayload.length > 0 ? membersPayload : undefined,
       });
@@ -800,159 +592,36 @@ function GafferNewProjectContent() {
         </section>
 
         {/* ═══════════════════════════════ STEP 4 — Аренда света ══════════ */}
-        <WizardStep n={4} title="Аренда света" subtitle="рентал(ы) и сколько им заплатить" />
+        <WizardStep n={4} title="Аренда света" subtitle="сколько посчитали в ренталe" />
         <section className={sectionClass}>
-          {vendorContacts === null ? (
-            <div className="h-20 bg-border rounded animate-pulse" />
-          ) : (
-            <>
-              {/* Vendor contact grid */}
-              <div className="grid grid-cols-2 gap-2">
-                {vendorContacts.map((c) => {
-                  const isSelected = selectedVendors.some((v) => v.contactId === c.id);
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => toggleVendor(c.id)}
-                      className={`text-left rounded-md p-2.5 border transition-colors ${
-                        isSelected
-                          ? "border-accent-bright bg-accent-soft"
-                          : "border-border bg-surface hover:bg-[#fafafa]"
-                      }`}
-                    >
-                      <div className="text-[13px] font-semibold text-ink">{c.name}</div>
-                      <div className="text-[11.5px] text-ink-3">
-                        {c.phone || c.telegram || "—"}
-                      </div>
-                    </button>
-                  );
-                })}
-                {/* Add new vendor button */}
-                <button
-                  type="button"
-                  onClick={() => setAddVendorOpen(true)}
-                  className="text-[12.5px] text-accent-bright rounded-md border border-dashed border-accent-border bg-surface hover:bg-accent-soft p-2.5 text-left"
-                >
-                  + Новый рентал
-                </button>
-              </div>
-
-              {/* Inline new vendor form */}
-              {addVendorOpen && (
-                <div className="mt-3 border border-border rounded-md p-3 space-y-2.5 bg-surface">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] font-semibold text-ink">Новый рентал</span>
-                    <button
-                      type="button"
-                      onClick={() => setAddVendorOpen(false)}
-                      className="text-ink-3 hover:text-ink text-[14px]"
-                      aria-label="Закрыть форму"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div>
-                    <label className="block text-[11.5px] text-ink-2 mb-0.5">
-                      Название <span className="text-rose">*</span>
-                    </label>
-                    <input
-                      value={newVendorName}
-                      onChange={(e) => setNewVendorName(e.target.value)}
-                      placeholder="Напр. Svetobaza"
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11.5px] text-ink-2 mb-0.5">
-                      Телефон или @telegram
-                    </label>
-                    <input
-                      value={newVendorContact}
-                      onChange={(e) => setNewVendorContact(e.target.value)}
-                      placeholder="+7 999 ... или @handle"
-                      className={inputClass}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    disabled={savingVendor || !newVendorName.trim()}
-                    onClick={handleCreateVendor}
-                    className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-3 py-2 text-[13px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {savingVendor ? "Сохраняем…" : "Добавить рентал"}
-                  </button>
-                </div>
-              )}
-
-              {/* Per-vendor amount rows */}
-              {selectedVendors.length > 0 && (
-                <div className="mt-3 border border-border rounded-md overflow-hidden bg-surface">
-                  <div className="flex items-baseline justify-between px-3 py-2 bg-surface-2 border-b border-border">
-                    <span className="eyebrow">Суммы ренталов</span>
-                    <span className="text-[11px] text-ink-3">
-                      введите сумму для каждого
-                    </span>
-                  </div>
-                  {selectedVendors.map((v) => {
-                    const contact = vendorContacts.find((c) => c.id === v.contactId);
-                    if (!contact) return null;
-                    return (
-                      <div
-                        key={v.contactId}
-                        className="px-3 py-2.5 border-b border-border last:border-b-0"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[13px] font-semibold text-ink truncate">
-                              {contact.name}
-                            </div>
-                            <div className="text-[11.5px] text-ink-3 truncate">
-                              {contact.phone || contact.telegram || "—"}
-                            </div>
-                          </div>
-                          <div className="relative shrink-0 w-[140px]">
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={v.plannedAmount || ""}
-                              onChange={(e) =>
-                                updateVendorAmount(
-                                  v.contactId,
-                                  Math.max(0, Number(e.target.value) || 0),
-                                )
-                              }
-                              placeholder="0"
-                              className="w-full px-2 py-1.5 pr-6 border border-border rounded text-[13.5px] mono-num bg-surface text-ink text-right focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
-                            />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-3 text-[12px]">
-                              ₽
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {/* Sum row */}
-                  <div className="px-3 py-2 bg-surface-2 border-t border-border flex items-center justify-between">
-                    <span className="text-[12px] font-medium text-ink-2">
-                      Итого по ренталам
-                    </span>
-                    <span className="text-[14px] font-semibold text-ink mono-num">
-                      {formatRub(vendorTotal)}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {selectedVendors.length === 0 && !addVendorOpen && (
-                <p className="mt-2 text-[11.5px] text-ink-3">
-                  Один или несколько ренталов. Сумма по каждому — что им заплатить за оборудование.
-                </p>
-              )}
-            </>
-          )}
+          <label className="block text-[11.5px] text-ink-2 mb-0.5">
+            Сумма от рентала за оборудование
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={lightBudgetAmount}
+              onChange={(e) => setLightBudgetAmount(e.target.value)}
+              placeholder="0"
+              className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[16px] font-semibold mono-num bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+            />
+            <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">
+              ₽
+            </span>
+          </div>
+          <p className="mt-1.5 text-[11.5px] text-ink-3">
+            Один рентал = одна строка. Если свет из двух мест — два платежа в карточке проекта после создания.
+          </p>
+          <details className="mt-2.5">
+            <summary className="cursor-pointer text-[12px] text-ink-3 select-none">
+              Прикрепить смету рентала (файл появится в V2)
+            </summary>
+            <p className="mt-2 text-[11.5px] text-ink-3 italic">
+              Загрузка файлов будет доступна в следующей версии.
+            </p>
+          </details>
         </section>
 
         {/* ═══════════════════════════════ STEP 5 — Команда ═══════════════ */}
@@ -1212,16 +881,7 @@ function GafferNewProjectContent() {
             />
             <SummaryRow
               label="Должен ренталу"
-              sub={
-                selectedVendors.length > 0
-                  ? `${selectedVendors.length} ${pluralize(
-                      selectedVendors.length,
-                      "рентал",
-                      "рентала",
-                      "ренталов",
-                    )}`
-                  : "рентал не выбран"
-              }
+              sub="аренда света"
               value={`− ${formatRub(lightBudget)}`}
               tone="rose"
             />
