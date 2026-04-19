@@ -47,16 +47,6 @@ function StatusPillComp({ status }: { status: "OPEN" | "ARCHIVED" }) {
   );
 }
 
-// ── Money helpers ────────────────────────────────────────────────────────────
-
-function Mono({ value, rose }: { value: string | number | undefined | null; rose?: boolean }) {
-  return (
-    <span className={`font-mono text-[13px] ${rose ? "text-rose" : "text-ink"}`}>
-      {formatRub(value ?? 0)}
-    </span>
-  );
-}
-
 // ── Payment form ─────────────────────────────────────────────────────────────
 
 interface PaymentFormData {
@@ -1051,7 +1041,7 @@ function GafferProjectDetailContent() {
             />
           </div>
           <div>
-            <label className="block text-[12px] text-ink-2 mb-1">Бюджет на осветителей ₽</label>
+            <label className="block text-[12px] text-ink-2 mb-1">Договорная сумма с заказчиком ₽</label>
             <div className="relative">
               <input
                 type="number"
@@ -1089,12 +1079,6 @@ function GafferProjectDetailContent() {
                 className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
               />
               <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">₽</span>
-            </div>
-            <div className="mt-1.5 text-[12px] text-ink-2">
-              Итого бюджет:{" "}
-              <span className="font-mono font-semibold text-ink">
-                {formatRub(Number(editClientPlan || 0) + Number(editLightBudget || 0))}
-              </span>
             </div>
           </div>
           <div>
@@ -1175,22 +1159,6 @@ function GafferProjectDetailContent() {
                 </span>
               )}
             </div>
-            {/* Budget breakdown */}
-            <div className="space-y-0.5 mb-3 text-[12px] text-ink-2">
-              <div className="flex justify-between">
-                <span>Бюджет на осветителей</span>
-                <Mono value={project.clientPlanAmount} />
-              </div>
-              <div className="flex justify-between">
-                <span>Бюджет на свет</span>
-                <Mono value={project.lightBudgetAmount} />
-              </div>
-              <div className="flex justify-between font-semibold text-ink pt-1 border-t border-border mt-1">
-                <span>Итого бюджет</span>
-                <Mono value={project.clientTotal ?? project.clientPlanAmount} />
-              </div>
-            </div>
-
             {/* money-block */}
             <div className="grid grid-cols-3 border border-border rounded-md overflow-hidden bg-surface mb-3">
               <div className="p-2.5 border-r border-border text-center">

@@ -118,7 +118,7 @@ export async function listContacts(req: Request, opts: ListContactsOpts) {
       const received = p.payments
         .filter((pay) => pay.direction === "IN")
         .reduce((acc, pay) => acc.plus(pay.amount), ZERO);
-      const total = new Decimal(p.clientPlanAmount).plus(new Decimal(p.lightBudgetAmount));
+      const total = new Decimal(p.clientPlanAmount);
       const raw = total.minus(received);
       remainingToMe = remainingToMe.plus(raw.gt(ZERO) ? raw : ZERO);
     }
@@ -176,9 +176,7 @@ export async function getContactsSummary(req: Request) {
     const received = project.payments
       .filter((p) => p.direction === "IN")
       .reduce((acc, p) => acc.plus(p.amount), ZERO);
-    const clientTotal = new Decimal(project.clientPlanAmount).plus(
-      new Decimal(project.lightBudgetAmount),
-    );
+    const clientTotal = new Decimal(project.clientPlanAmount);
     const rawClientRem = clientTotal.minus(received);
     const clientRem = rawClientRem.gt(ZERO) ? rawClientRem : ZERO;
 
@@ -364,7 +362,7 @@ export async function getContactDebtSummary(req: Request, id: string) {
         .filter((pay) => pay.direction === "IN")
         .reduce((acc, pay) => acc.plus(pay.amount), ZERO);
 
-      const clientTotal = new Decimal(p.clientPlanAmount).plus(new Decimal(p.lightBudgetAmount));
+      const clientTotal = new Decimal(p.clientPlanAmount);
       const raw = clientTotal.minus(clientReceived);
       const clientRemaining = raw.gt(ZERO) ? raw : ZERO;
       totalClientRemaining = totalClientRemaining.plus(clientRemaining);
