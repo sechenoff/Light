@@ -37,6 +37,7 @@ import {
   deriveOtRates,
   WizardStep,
   Pill,
+  HoursSlider,
   SummaryRow,
   type SelectedMember,
 } from "../../../../src/components/gaffer/projectWizardShared";
@@ -1772,7 +1773,7 @@ function GafferProjectDetailContent() {
                     )}
 
                     {/* Bulk presets strip */}
-                    <div className="mt-4 bg-surface-2 border border-border rounded-md p-3 space-y-2">
+                    <div className="mt-4 bg-surface-2 border border-border rounded-md p-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] text-ink-3 uppercase tracking-wide">Смен</span>
                         {[1, 2, 3].map((n) => (
@@ -1788,21 +1789,8 @@ function GafferProjectDetailContent() {
                           свой
                         </Pill>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] text-ink-3 uppercase tracking-wide">Часов</span>
-                        {[10, 12, 14, 16].map((n) => (
-                          <Pill
-                            key={n}
-                            active={editBulkHours === n}
-                            onClick={() => editApplyBulkHours(n)}
-                          >
-                            {n}
-                          </Pill>
-                        ))}
-                        <Pill active={editBulkHours === null} onClick={() => setEditBulkHours(null)}>
-                          свой
-                        </Pill>
-                      </div>
+                      <div className="h-px bg-border -mx-3 my-2.5" />
+                      <HoursSlider value={editBulkHours} onChange={editApplyBulkHours} />
                     </div>
 
                     {/* Per-member table */}

@@ -20,6 +20,7 @@ import {
   deriveOtRates,
   WizardStep,
   Pill,
+  HoursSlider,
   SummaryRow,
   type SelectedMember,
 } from "../../../../src/components/gaffer/projectWizardShared";
@@ -753,7 +754,7 @@ function GafferNewProjectContent() {
               )}
 
               {/* Bulk presets strip */}
-              <div className="mt-4 bg-surface-2 border border-border rounded-md p-3 space-y-2">
+              <div className="mt-4 bg-surface-2 border border-border rounded-md p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[11px] text-ink-3 uppercase tracking-wide">Смен</span>
                   {[1, 2, 3].map((n) => (
@@ -763,15 +764,8 @@ function GafferNewProjectContent() {
                   ))}
                   <Pill active={bulkShifts === null} onClick={() => setBulkShifts(null)}>свой</Pill>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] text-ink-3 uppercase tracking-wide">Часов</span>
-                  {[10, 12, 14, 16].map((n) => (
-                    <Pill key={n} active={bulkHours === n} onClick={() => applyBulkHours(n)}>
-                      {n}
-                    </Pill>
-                  ))}
-                  <Pill active={bulkHours === null} onClick={() => setBulkHours(null)}>свой</Pill>
-                </div>
+                <div className="h-px bg-border -mx-3 my-2.5" />
+                <HoursSlider value={bulkHours} onChange={applyBulkHours} />
               </div>
 
               {/* Per-member shift table */}
