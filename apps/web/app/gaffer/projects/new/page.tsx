@@ -23,6 +23,7 @@ import {
   SummaryRow,
   type SelectedMember,
 } from "../../../../src/components/gaffer/projectWizardShared";
+import { MemberNumberField } from "../../../../src/components/gaffer/MemberNumberField";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -817,40 +818,22 @@ function GafferNewProjectContent() {
                           </div>
                         </div>
                         <div className="mt-2 grid grid-cols-2 gap-2">
-                          <label className="text-[11.5px] text-ink-2">
-                            Смен
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={m.shifts}
-                              onChange={(e) =>
-                                updateMemberField(
-                                  m.contactId,
-                                  "shifts",
-                                  Math.max(0, Number(e.target.value)),
-                                )
-                              }
-                              className="block w-full mt-0.5 px-2 py-1 border border-border rounded text-[13px] bg-surface text-ink mono-num focus:ring-2 focus:ring-accent-border"
-                            />
-                          </label>
-                          <label className="text-[11.5px] text-ink-2">
-                            Часов
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={m.hours}
-                              onChange={(e) =>
-                                updateMemberField(
-                                  m.contactId,
-                                  "hours",
-                                  Math.max(0, Number(e.target.value)),
-                                )
-                              }
-                              className="block w-full mt-0.5 px-2 py-1 border border-border rounded text-[13px] bg-surface text-ink mono-num focus:ring-2 focus:ring-accent-border"
-                            />
-                          </label>
+                          <MemberNumberField
+                            label="Смен"
+                            value={m.shifts}
+                            onChange={(n) =>
+                              updateMemberField(m.contactId, "shifts", n)
+                            }
+                            ariaLabel={`Смен — ${m.contactId}`}
+                          />
+                          <MemberNumberField
+                            label="Часов"
+                            value={m.hours}
+                            onChange={(n) =>
+                              updateMemberField(m.contactId, "hours", n)
+                            }
+                            ariaLabel={`Часов — ${m.contactId}`}
+                          />
                         </div>
                       </div>
                     );
