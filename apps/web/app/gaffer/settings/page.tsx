@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   listPaymentMethods,
   createPaymentMethod,
@@ -86,6 +87,7 @@ function PaymentMethodRow({
 }
 
 export default function GafferSettingsPage() {
+  const router = useRouter();
   const [methods, setMethods] = useState<GafferPaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -97,6 +99,11 @@ export default function GafferSettingsPage() {
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  function handleDone() {
+    toast.success("Настройки сохранены");
+    router.push("/gaffer");
+  }
 
   function load() {
     let cancelled = false;
@@ -234,6 +241,21 @@ export default function GafferSettingsPage() {
             <p className="text-rose text-[11.5px] mt-1">{createError}</p>
           )}
         </form>
+
+        {/* Save / Done CTA — изменения автосохраняются по мере редактирования */}
+        <div className="mt-6 pt-4 border-t border-border">
+          <button
+            type="button"
+            onClick={handleDone}
+            aria-label="Сохранить и вернуться на дашборд"
+            className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-3 text-[14px] transition-colors"
+          >
+            Сохранить
+          </button>
+          <p className="text-[11px] text-ink-3 mt-2 text-center">
+            Изменения сохраняются автоматически при редактировании
+          </p>
+        </div>
       </div>
 
       {/* Delete confirm modal */}
