@@ -792,6 +792,9 @@ model GafferUser {
   id                    String    @id @default(cuid())
   email                 String    @unique
   name                  String?
+  passwordHash          String?
+  authProvider          String    @default("PASSWORD") // PASSWORD | GOOGLE | TELEGRAM
+  providerSubject       String? // Google `sub` или Telegram user_id (для будущих OAuth-провайдеров)
   onboardingCompletedAt DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt

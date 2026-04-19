@@ -4,35 +4,38 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  gafferLogin,
-  gafferForgotPassword,
+  gafferRegister,
   gafferOAuthGoogle,
   gafferOAuthTelegram,
   GafferApiError,
 } from "../../../src/lib/gafferApi";
 import { useGafferUser } from "../../../src/components/gaffer/GafferUserContext";
 import { toast } from "../../../src/components/ToastProvider";
-import { ForgotPasswordModal } from "../../../src/components/gaffer/ForgotPasswordModal";
 import { GafferAuthCard, GoogleIcon, TelegramIcon } from "../../../src/components/gaffer/GafferAuthCard";
 
-export default function GafferLoginPage() {
+export default function GafferRegisterPage() {
   const router = useRouter();
   const { refresh } = useGafferUser();
 
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [oauthBusy, setOauthBusy] = useState<"google" | "telegram" | null>(null);
-  const [showForgot, setShowForgot] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      const res = await gafferLogin(email.trim(), password || undefined);
+      const res = await gafferRegister({
+        email: email.trim(),
+        password,
+        name: name.trim() || undefined,
+      });
       await refresh();
+      toast.success("Аккаунт создан");
       if (res.user.onboardingCompletedAt) {
         router.push("/gaffer");
       } else {
@@ -42,7 +45,7 @@ export default function GafferLoginPage() {
       if (err instanceof GafferApiError) {
         setError(err.message);
       } else {
-        setError("Не удалось войти. Попробуйте ещё раз.");
+        setError("Не удалось зарегистрироваться. Попробуйте ещё раз.");
       }
     } finally {
       setLoading(false);
@@ -57,7 +60,6 @@ export default function GafferLoginPage() {
       } else {
         await gafferOAuthTelegram();
       }
-      // Стаб никогда не вернёт ok, но если sprint-5 включит реальный флоу — попадём сюда
       await refresh();
       router.push("/gaffer");
     } catch (err) {
@@ -71,17 +73,33 @@ export default function GafferLoginPage() {
     }
   }
 
+  const canSubmit = email.trim().length > 0 && password.length >= 6;
+
   return (
-    <GafferAuthCard activeTab="gaffer" subtitle="Гаффер · личный кабинет">
+    <GafferAuthCard activeTab="gaffer" subtitle="Гаффер · регистрация">
       <form onSubmit={handleSubmit} className="space-y-0">
-        <label className="block text-[12px] text-ink-2 mb-1" htmlFor="gaffer-email">
+        <label className="block text-[12px] text-ink-2 mb-1" htmlFor="reg-name">
+          Имя
+        </label>
+        <input
+          id="reg-name"
+          type="text"
+          autoFocus
+          autoComplete="given-name"
+          placeholder="Кирилл"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          disabled={loading}
+          className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright disabled:opacity-60 mb-[14px]"
+        />
+
+        <label className="block text-[12px] text-ink-2 mb-1" htmlFor="reg-email">
           E-mail
         </label>
         <input
-          id="gaffer-email"
+          id="reg-email"
           type="email"
           required
-          autoFocus
           autoComplete="email"
           placeholder="name@studio.ru"
           value={email}
@@ -90,29 +108,21 @@ export default function GafferLoginPage() {
           className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright disabled:opacity-60 mb-[14px]"
         />
 
-        <label className="block text-[12px] text-ink-2 mb-1" htmlFor="gaffer-password">
+        <label className="block text-[12px] text-ink-2 mb-1" htmlFor="reg-password">
           Пароль
         </label>
         <input
-          id="gaffer-password"
+          id="reg-password"
           type="password"
-          autoComplete="current-password"
-          placeholder="•••••••••"
+          required
+          autoComplete="new-password"
+          placeholder="минимум 6 символов"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={loading}
-          className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright disabled:opacity-60"
+          minLength={6}
+          className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright disabled:opacity-60 mb-[14px]"
         />
-
-        <div className="flex justify-end mt-[6px] mb-[14px]">
-          <button
-            type="button"
-            onClick={() => setShowForgot(true)}
-            className="text-[12px] text-accent-bright hover:underline"
-          >
-            Забыли пароль?
-          </button>
-        </div>
 
         {error && (
           <p className="text-rose text-[12px] mb-3" role="alert">
@@ -122,10 +132,10 @@ export default function GafferLoginPage() {
 
         <button
           type="submit"
-          disabled={loading || !email.trim()}
+          disabled={loading || !canSubmit}
           className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-[11px] text-[14px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
         >
-          {loading ? "Вход..." : "Войти"}
+          {loading ? "Создаём аккаунт..." : "Зарегистрироваться"}
         </button>
 
         {/* Divider */}
@@ -143,11 +153,11 @@ export default function GafferLoginPage() {
           type="button"
           onClick={() => handleOAuth("google")}
           disabled={oauthBusy !== null}
-          aria-label="Войти через Google"
+          aria-label="Зарегистрироваться через Google"
           className="w-full flex items-center justify-center gap-[10px] py-[10px] mb-2 border border-border rounded-[6px] bg-surface font-medium text-[13px] text-ink hover:bg-[#fafafa] transition-colors disabled:opacity-60 disabled:cursor-wait"
         >
           <GoogleIcon />
-          {oauthBusy === "google" ? "Открываем Google..." : "Войти через Google"}
+          {oauthBusy === "google" ? "Открываем Google..." : "Через Google"}
         </button>
 
         {/* Telegram */}
@@ -155,36 +165,24 @@ export default function GafferLoginPage() {
           type="button"
           onClick={() => handleOAuth("telegram")}
           disabled={oauthBusy !== null}
-          aria-label="Войти через Telegram"
+          aria-label="Зарегистрироваться через Telegram"
           className="w-full flex items-center justify-center gap-[10px] py-[10px] border border-border rounded-[6px] bg-surface font-medium text-[13px] text-[#2ca5e0] hover:bg-[#fafafa] transition-colors disabled:opacity-60 disabled:cursor-wait"
         >
           <TelegramIcon />
-          {oauthBusy === "telegram" ? "Открываем Telegram..." : "Войти через Telegram"}
+          {oauthBusy === "telegram" ? "Открываем Telegram..." : "Через Telegram"}
         </button>
 
-        {/* Register link */}
+        {/* Login link */}
         <div className="text-center text-[12px] text-ink-2 mt-[18px]">
-          Нет аккаунта?{" "}
+          Уже есть аккаунт?{" "}
           <Link
-            href="/gaffer/register"
+            href="/gaffer/login"
             className="text-accent-bright font-medium hover:underline"
           >
-            Зарегистрироваться →
+            Войти →
           </Link>
         </div>
       </form>
-
-      {showForgot && (
-        <ForgotPasswordModal
-          initialEmail={email}
-          onClose={() => setShowForgot(false)}
-          onSubmit={async (mail) => {
-            const res = await gafferForgotPassword(mail);
-            toast.success(res.message);
-            setShowForgot(false);
-          }}
-        />
-      )}
     </GafferAuthCard>
   );
 }

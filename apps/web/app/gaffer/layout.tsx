@@ -6,7 +6,7 @@ import Link from "next/link";
 import { GafferUserProvider, useGafferUser } from "../../src/components/gaffer/GafferUserContext";
 
 // Public paths that don't require auth guard
-const PUBLIC_PATHS = ["/gaffer/login"];
+const PUBLIC_PATHS = ["/gaffer/login", "/gaffer/register"];
 
 function GafferShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useGafferUser();

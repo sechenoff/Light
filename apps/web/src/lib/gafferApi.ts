@@ -94,11 +94,40 @@ export async function gafferFetch<T>(
 
 export async function gafferLogin(
   email: string,
-): Promise<{ user: GafferUser; token: string }> {
+  password?: string,
+): Promise<{ user: GafferUser; token: string; legacy?: boolean }> {
   return gafferFetch("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(password ? { email, password } : { email }),
+  });
+}
+
+export async function gafferRegister(data: {
+  email: string;
+  password: string;
+  name?: string;
+}): Promise<{ user: GafferUser; token: string }> {
+  return gafferFetch("/auth/register", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function gafferForgotPassword(
+  email: string,
+): Promise<{ ok: boolean; message: string }> {
+  return gafferFetch("/auth/forgot-password", {
     method: "POST",
     body: JSON.stringify({ email }),
   });
+}
+
+export async function gafferOAuthGoogle(): Promise<{ ok: true }> {
+  return gafferFetch("/auth/oauth/google", { method: "POST" });
+}
+
+export async function gafferOAuthTelegram(): Promise<{ ok: true }> {
+  return gafferFetch("/auth/oauth/telegram", { method: "POST" });
 }
 
 export async function gafferLogout(): Promise<void> {
