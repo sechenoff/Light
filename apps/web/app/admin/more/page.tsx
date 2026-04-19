@@ -1513,7 +1513,7 @@ function BarcodesTab() {
   return (
     <div>
       {/* Stats bar */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <div className="bg-surface rounded-lg p-3 text-center">
           <div className="text-lg font-semibold">{stats.total}</div>
           <div className="text-xs text-ink-2">Всего единиц</div>

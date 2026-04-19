@@ -723,7 +723,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
 
   return (
     <div>
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-surface px-8 py-3 shadow-xs">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-surface px-4 md:px-8 py-3 shadow-xs">
         <div className="flex items-center gap-3 text-[13px]">
           {breadcrumb}
         </div>
@@ -732,7 +732,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
         )}
       </header>
 
-      <div className="mx-auto grid max-w-[1280px] grid-cols-[minmax(0,1fr)_320px] items-start gap-5 px-8 py-7">
+      <div className="mx-auto grid max-w-[1280px] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] items-start gap-5 px-4 py-5 md:px-8 md:py-7">
         {/* Left column: Client, Dates, Equipment, Comment */}
         <div className="flex flex-col gap-3.5">
           <ClientProjectCard

@@ -317,7 +317,7 @@ export function TaskArchivePage() {
 
       {/* Stats strip */}
       {!loading && (
-        <div className="grid grid-cols-4 bg-surface border border-border rounded-[10px] overflow-hidden mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 bg-surface border border-border rounded-[10px] overflow-hidden mb-4">
           <div className="px-5 py-4 border-r border-border flex flex-col gap-1">
             <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium">
               Выполнено всего
