@@ -1,42 +1,212 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   createProject,
+  createContact,
   listContacts,
+  listContactsWithAggregates,
   GafferApiError,
   type GafferContact,
+  type GafferContactWithAggregates,
 } from "../../../../src/lib/gafferApi";
-import { formatRub } from "../../../../src/lib/format";
+import { formatRub, pluralize } from "../../../../src/lib/format";
 import { toast } from "../../../../src/components/ToastProvider";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const DRAFT_KEY = "gaffer:projects-new:draft";
+
+const ROLE_OPTIONS = [
+  "Осветитель / Grip",
+  "Best Boy",
+  "Key Grip",
+  "Пультовик",
+  "DIT",
+  "Gaffer",
+] as const;
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface NewProjectDraft {
   title: string;
   clientId: string;
   shootDate: string;
   clientPlanAmount: string;
-  lightBudget: string;
+  lightBudgetAmount: string;
   note: string;
 }
+
+interface SelectedMember {
+  contactId: string;
+  shifts: number;
+  hours: number;
+  plannedAmount: number;
+}
+
+// ─── Cost computation helper ──────────────────────────────────────────────────
+
+function calcMemberCost(
+  shiftRate: number,
+  ot1Rate: number,
+  ot2Rate: number,
+  ot3Rate: number,
+  shifts: number,
+  hoursPerShift: number,
+): { total: number; otText: string | null } {
+  const BASE = 10;
+  const T1_MAX = 8;
+  const T2_MAX = 14; // cumulative: tier 2 covers hours 9–14 = 6 hours
+  const otPerShift = Math.max(0, hoursPerShift - BASE);
+  const ot1 = Math.min(otPerShift, T1_MAX);
+  const ot2 = Math.min(Math.max(0, otPerShift - T1_MAX), T2_MAX - T1_MAX);
+  const ot3 = Math.max(0, otPerShift - T2_MAX);
+  const perShift = shiftRate + Math.round(ot1 * ot1Rate + ot2 * ot2Rate + ot3 * ot3Rate);
+  const total = Math.round(perShift * shifts);
+  if (otPerShift === 0) return { total, otText: null };
+  const tier = ot3 > 0 ? 3 : ot2 > 0 ? 2 : 1;
+  const otText = `+${otPerShift} ч ОТ · тир ${tier}`;
+  return { total, otText };
+}
+
+function deriveOtRates(shiftRate: number): {
+  overtimeTier1Rate: number;
+  overtimeTier2Rate: number;
+  overtimeTier3Rate: number;
+} {
+  const hourRate = Math.round(shiftRate / 10);
+  return {
+    overtimeTier1Rate: hourRate,
+    overtimeTier2Rate: hourRate * 2,
+    overtimeTier3Rate: hourRate * 4,
+  };
+}
+
+// ─── Small UI components ──────────────────────────────────────────────────────
+
+function WizardStep({
+  n,
+  title,
+  subtitle,
+}: {
+  n: number;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="flex items-baseline gap-3 px-4 pt-6 pb-2">
+      <span className="w-6 h-6 rounded-full bg-accent-bright text-white text-[12px] font-bold flex items-center justify-center shrink-0">
+        {n}
+      </span>
+      <h2 className="text-[15px] font-semibold text-ink">{title}</h2>
+      <span className="text-[11.5px] text-ink-3">{subtitle}</span>
+    </div>
+  );
+}
+
+function Pill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-2.5 py-1 rounded text-[12px] font-medium border transition-colors ${
+        active
+          ? "bg-accent-bright text-white border-accent-bright"
+          : "bg-surface text-ink-2 border-border hover:bg-[#fafafa]"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SummaryRow({
+  label,
+  sub,
+  value,
+  tone = "neutral",
+  big = false,
+}: {
+  label: string;
+  sub?: string;
+  value: string;
+  tone?: "neutral" | "rose" | "emerald";
+  big?: boolean;
+}) {
+  const isEmerald = tone === "emerald";
+  return (
+    <div
+      className={`px-3 py-2.5 flex items-center justify-between border-b border-border last:border-b-0 ${
+        isEmerald ? "bg-emerald-soft border-t border-emerald-border" : ""
+      }`}
+    >
+      <div>
+        <div className="text-[13px] font-medium text-ink">{label}</div>
+        {sub && <div className="text-[11px] text-ink-3">{sub}</div>}
+      </div>
+      <div
+        className={`mono-num font-semibold ${big ? "text-[16px]" : "text-[13.5px]"} ${
+          tone === "rose" ? "text-rose" : tone === "emerald" ? "text-emerald" : "text-ink"
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
 
 function GafferNewProjectContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // ── Form state ──
   const [title, setTitle] = useState("");
   const [clientId, setClientId] = useState("");
   const [shootDate, setShootDate] = useState("");
   const [clientPlanAmount, setClientPlanAmount] = useState("0");
-  const [lightBudget, setLightBudget] = useState("");
+  const [lightBudgetAmount, setLightBudgetAmount] = useState("0");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Restore draft from sessionStorage on mount (after calculator round-trip or cancel)
+  // ── Data ──
+  const [clients, setClients] = useState<GafferContactWithAggregates[] | null>(null);
+  const [teamContacts, setTeamContacts] = useState<GafferContact[] | null>(null);
+
+  // ── Step 1: inline new client form ──
+  const [clientFormOpen, setClientFormOpen] = useState(false);
+  const [newClientName, setNewClientName] = useState("");
+  const [newClientPhone, setNewClientPhone] = useState("");
+  const [newClientTelegram, setNewClientTelegram] = useState("");
+  const [newClientNote, setNewClientNote] = useState("");
+  const [savingClient, setSavingClient] = useState(false);
+
+  // ── Step 5: team ──
+  const [selectedMembers, setSelectedMembers] = useState<SelectedMember[]>([]);
+  const [bulkShifts, setBulkShifts] = useState<number | null>(1);
+  const [bulkHours, setBulkHours] = useState<number | null>(10);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState<string>(ROLE_OPTIONS[0]);
+  const [newMemberShiftRate, setNewMemberShiftRate] = useState("");
+  const [newMemberContact, setNewMemberContact] = useState(""); // phone or @telegram
+  const [savingMember, setSavingMember] = useState(false);
+  const clientFormRef = useRef<HTMLDetailsElement>(null);
+  const memberFormRef = useRef<HTMLDetailsElement>(null);
+
+  // ── Restore draft from sessionStorage on mount ──
   useEffect(() => {
     const crewAmount = searchParams.get("crewAmount");
     const raw = sessionStorage.getItem(DRAFT_KEY);
@@ -46,36 +216,34 @@ function GafferNewProjectContent() {
         setTitle(draft.title);
         setClientId(draft.clientId);
         setShootDate(draft.shootDate);
-        setLightBudget(draft.lightBudget);
+        setLightBudgetAmount(draft.lightBudgetAmount);
         setNote(draft.note);
-        // Apply crewAmount override only when returning from calculator
         setClientPlanAmount(crewAmount ? crewAmount : draft.clientPlanAmount);
       } catch {
         // malformed draft — ignore
       }
       sessionStorage.removeItem(DRAFT_KEY);
     } else if (crewAmount) {
-      // no draft but crewAmount present — prefill amount only
       setClientPlanAmount(crewAmount);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pre-select client from contact-creation return flow (?clientId=...)
+  // ── Pre-select client from ?clientId= param ──
   const preselectedClientId = searchParams.get("clientId") ?? "";
 
-  // Clients list
-  const [clients, setClients] = useState<GafferContact[] | null>(null);
-
+  // ── Load clients ──
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await listContacts({ type: "CLIENT", isArchived: false });
+        const res = await listContactsWithAggregates({ type: "CLIENT", isArchived: false });
         if (!cancelled) {
           setClients(res.items);
-          // Pre-select if ?clientId= is in URL and the contact is in the list
-          if (preselectedClientId && res.items.some((c) => c.id === preselectedClientId)) {
+          if (
+            preselectedClientId &&
+            res.items.some((c) => c.id === preselectedClientId)
+          ) {
             setClientId(preselectedClientId);
           }
         }
@@ -86,11 +254,205 @@ function GafferNewProjectContent() {
     return () => {
       cancelled = true;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const totalBudget = Number(clientPlanAmount || 0) + Number(lightBudget || 0);
+  // ── Load team contacts ──
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await listContacts({ type: "TEAM_MEMBER", isArchived: false });
+        if (!cancelled) setTeamContacts(res.items);
+      } catch {
+        if (!cancelled) setTeamContacts([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
+  // ── Client dropdown label helper ──
+  function clientOptionLabel(c: GafferContactWithAggregates): string {
+    const parts: string[] = [c.name];
+    if (c.projectCount > 0) {
+      parts.push(
+        `${c.projectCount} ${pluralize(c.projectCount, "проект", "проекта", "проектов")}`,
+      );
+    }
+    if (c.remainingToMe !== "0" && Number(c.remainingToMe) > 0) {
+      parts.push(`долг ${formatRub(+c.remainingToMe)}`);
+    }
+    return parts.join(" · ");
+  }
+
+  // ── Create inline client ──
+  async function handleCreateClient(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newClientName.trim()) return;
+    setSavingClient(true);
+    try {
+      const phoneVal = newClientPhone.trim() || undefined;
+      const tgVal = newClientTelegram.trim() || undefined;
+      const res = await createContact({
+        type: "CLIENT",
+        name: newClientName.trim(),
+        phone: phoneVal,
+        telegram: tgVal,
+        note: newClientNote.trim() || undefined,
+      });
+      toast.success("Клиент создан");
+      // Refresh clients list and select the new one
+      setClients((prev) => {
+        const newItem: GafferContactWithAggregates = {
+          ...res.contact,
+          asClientCount: 0,
+          asMemberCount: 0,
+          projectCount: 0,
+          remainingToMe: "0",
+          remainingFromMe: "0",
+        };
+        return prev ? [...prev, newItem] : [newItem];
+      });
+      setClientId(res.contact.id);
+      // Reset and close form
+      setNewClientName("");
+      setNewClientPhone("");
+      setNewClientTelegram("");
+      setNewClientNote("");
+      setClientFormOpen(false);
+    } catch (err) {
+      if (err instanceof GafferApiError) toast.error(err.message);
+      else toast.error("Не удалось создать клиента");
+    } finally {
+      setSavingClient(false);
+    }
+  }
+
+  // ── Team member toggle ──
+  function toggleMember(contactId: string) {
+    setSelectedMembers((prev) => {
+      if (prev.some((m) => m.contactId === contactId)) {
+        return prev.filter((m) => m.contactId !== contactId);
+      }
+      // Add with current bulk defaults
+      const contact = teamContacts?.find((c) => c.id === contactId);
+      if (!contact) return prev;
+      const shifts = bulkShifts ?? 1;
+      const hours = bulkHours ?? 10;
+      const { total } = calcMemberCost(
+        +contact.shiftRate,
+        +contact.overtimeTier1Rate,
+        +contact.overtimeTier2Rate,
+        +contact.overtimeTier3Rate,
+        shifts,
+        hours,
+      );
+      return [...prev, { contactId, shifts, hours, plannedAmount: total }];
+    });
+  }
+
+  function recomputeMember(m: SelectedMember): SelectedMember {
+    const contact = teamContacts?.find((c) => c.id === m.contactId);
+    if (!contact) return m;
+    const { total } = calcMemberCost(
+      +contact.shiftRate,
+      +contact.overtimeTier1Rate,
+      +contact.overtimeTier2Rate,
+      +contact.overtimeTier3Rate,
+      m.shifts,
+      m.hours,
+    );
+    return { ...m, plannedAmount: total };
+  }
+
+  function applyBulkShifts(n: number) {
+    setBulkShifts(n);
+    setSelectedMembers((prev) =>
+      prev.map((m) => recomputeMember({ ...m, shifts: n })),
+    );
+  }
+
+  function applyBulkHours(n: number) {
+    setBulkHours(n);
+    setSelectedMembers((prev) =>
+      prev.map((m) => recomputeMember({ ...m, hours: n })),
+    );
+  }
+
+  function updateMemberField(
+    contactId: string,
+    field: "shifts" | "hours",
+    value: number,
+  ) {
+    setSelectedMembers((prev) =>
+      prev.map((m) => {
+        if (m.contactId !== contactId) return m;
+        const updated = { ...m, [field]: value };
+        return recomputeMember(updated);
+      }),
+    );
+    if (field === "shifts") setBulkShifts(null);
+    if (field === "hours") setBulkHours(null);
+  }
+
+  // ── Create inline team member ──
+  async function handleCreateMember(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newMemberName.trim() || !newMemberShiftRate.trim()) return;
+    setSavingMember(true);
+    try {
+      const shiftRate = Number(newMemberShiftRate) || 0;
+      const otRates = deriveOtRates(shiftRate);
+      // Parse phone/telegram: if starts with @ → telegram, else phone
+      const contactVal = newMemberContact.trim();
+      const isTg = contactVal.startsWith("@");
+      const res = await createContact({
+        type: "TEAM_MEMBER",
+        name: newMemberName.trim(),
+        phone: !isTg && contactVal ? contactVal : undefined,
+        telegram: isTg ? contactVal : undefined,
+        shiftRate: String(shiftRate),
+        overtimeTier1Rate: String(otRates.overtimeTier1Rate),
+        overtimeTier2Rate: String(otRates.overtimeTier2Rate),
+        overtimeTier3Rate: String(otRates.overtimeTier3Rate),
+        roleLabel: newMemberRole || null,
+      });
+      toast.success("Осветитель добавлен");
+      setTeamContacts((prev) => (prev ? [...prev, res.contact] : [res.contact]));
+      // Auto-select
+      const shifts = bulkShifts ?? 1;
+      const hours = bulkHours ?? 10;
+      const { total } = calcMemberCost(shiftRate, otRates.overtimeTier1Rate, otRates.overtimeTier2Rate, otRates.overtimeTier3Rate, shifts, hours);
+      setSelectedMembers((prev) => [
+        ...prev,
+        { contactId: res.contact.id, shifts, hours, plannedAmount: total },
+      ]);
+      // Reset
+      setNewMemberName("");
+      setNewMemberRole(ROLE_OPTIONS[0]);
+      setNewMemberShiftRate("");
+      setNewMemberContact("");
+      setAddMemberOpen(false);
+    } catch (err) {
+      if (err instanceof GafferApiError) toast.error(err.message);
+      else toast.error("Не удалось добавить осветителя");
+    } finally {
+      setSavingMember(false);
+    }
+  }
+
+  // ── Computed values ──
+  const teamTotal = selectedMembers.reduce((s, m) => s + m.plannedAmount, 0);
+  const clientPlan = Number(clientPlanAmount) || 0;
+  const lightBudget = Number(lightBudgetAmount) || 0;
+  const margin = clientPlan - lightBudget - teamTotal;
+  const totalShifts = selectedMembers.reduce((s, m) => s + m.shifts, 0);
+
+  const canSubmit = Boolean(title.trim() && clientId && shootDate);
+
+  // ── Submit ──
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const errs: Record<string, string> = {};
@@ -104,13 +466,25 @@ function GafferNewProjectContent() {
     setErrors({});
     setLoading(true);
     try {
+      const membersPayload = selectedMembers
+        .filter((m) => m.shifts > 0 && m.hours > 0)
+        .map((m) => {
+          const contact = teamContacts?.find((c) => c.id === m.contactId);
+          return {
+            contactId: m.contactId,
+            plannedAmount: String(m.plannedAmount),
+            roleLabel: contact?.roleLabel ?? undefined,
+          };
+        });
+
       const res = await createProject({
         title: title.trim(),
         clientId,
         shootDate,
         clientPlanAmount: clientPlanAmount.trim() || "0",
-        lightBudgetAmount: lightBudget.trim() || "0",
+        lightBudgetAmount: lightBudgetAmount.trim() || "0",
         note: note.trim() || undefined,
+        members: membersPayload.length > 0 ? membersPayload : undefined,
       });
       toast.success("Проект создан");
       router.push(`/gaffer/projects/${res.project.id}`);
@@ -131,168 +505,538 @@ function GafferNewProjectContent() {
     }
   }
 
+  const inputClass =
+    "w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright";
+  const inputErrorClass =
+    "w-full px-[11px] py-[9px] border border-rose-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border";
+  const sectionClass = "mx-4 mb-4 border border-border rounded bg-surface p-4";
+
   return (
-    <div className="min-h-screen bg-surface">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-border">
-        <Link href="/gaffer/projects" className="text-accent-bright hover:text-accent transition-colors text-[13px]">
-          ← Назад
+    <div className="min-h-screen bg-surface pb-20">
+      {/* ─── Top bar ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-surface">
+        <Link
+          href="/gaffer/projects"
+          className="text-accent-bright hover:text-accent text-[13px] font-medium"
+        >
+          ← Проекты
         </Link>
-        <h1 className="text-[17px] font-semibold text-ink">Новый проект</h1>
+        <div className="w-7 h-7 rounded-full bg-accent-soft text-accent text-[11px] font-semibold flex items-center justify-center">
+          КЛ
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="px-4 py-5 space-y-4">
-        {/* Title */}
-        <div>
-          <label className="block text-[12px] text-ink-2 mb-1" htmlFor="p-title">
-            Название <span className="text-rose">*</span>
-          </label>
-          <input
-            id="p-title"
-            autoFocus
-            maxLength={100}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Рекламная съёмка Ромашка"
-            className={`w-full px-[11px] py-[9px] border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright ${
-              errors.title ? "border-rose-border" : "border-border"
-            }`}
-          />
-          {errors.title && <p className="text-rose text-[11.5px] mt-1">{errors.title}</p>}
-        </div>
-
-        {/* Client select */}
-        <div>
-          <label className="block text-[12px] text-ink-2 mb-1" htmlFor="p-client">
-            Заказчик <span className="text-rose">*</span>
-          </label>
+      <form onSubmit={handleSubmit}>
+        {/* ═══════════════════════════════ STEP 1 — Клиент ═══════════════ */}
+        <WizardStep n={1} title="Клиент" subtitle="кто платит за съёмку" />
+        <section className={sectionClass}>
           {clients === null ? (
             <div className="h-[39px] bg-border rounded animate-pulse" />
           ) : (
             <select
-              id="p-client"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
-              className={`w-full px-[11px] py-[9px] border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright ${
-                errors.clientId ? "border-rose-border" : "border-border"
-              }`}
+              className={errors.clientId ? inputErrorClass : inputClass}
             >
               <option value="">— Выберите заказчика —</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name}
+                  {clientOptionLabel(c)}
                 </option>
               ))}
             </select>
           )}
-          {errors.clientId && <p className="text-rose text-[11.5px] mt-1">{errors.clientId}</p>}
-          <p className="text-[11px] text-ink-3 mt-1">
-            Нужного заказчика нет?{" "}
-            <Link
-              href="/gaffer/contacts/new?type=CLIENT&returnTo=%2Fgaffer%2Fprojects%2Fnew&returnLabel=%D1%81%D0%BE%D0%B7%D0%B4%D0%B0%D0%BD%D0%B8%D1%8E+%D0%BF%D1%80%D0%BE%D0%B5%D0%BA%D1%82%D0%B0"
-              className="text-accent-bright hover:text-accent"
-            >
-              + Создать нового заказчика
-            </Link>
-          </p>
-        </div>
+          {errors.clientId && (
+            <p className="text-rose text-[11.5px] mt-1">{errors.clientId}</p>
+          )}
 
-        {/* Shoot date */}
-        <div>
-          <label className="block text-[12px] text-ink-2 mb-1" htmlFor="p-date">
-            Дата съёмки <span className="text-rose">*</span>
-          </label>
-          <input
-            id="p-date"
-            type="date"
-            value={shootDate}
-            onChange={(e) => setShootDate(e.target.value)}
-            className={`w-full px-[11px] py-[9px] border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright ${
-              errors.shootDate ? "border-rose-border" : "border-border"
-            }`}
-          />
-          {errors.shootDate && <p className="text-rose text-[11.5px] mt-1">{errors.shootDate}</p>}
-        </div>
+          {/* Inline new client form */}
+          <details
+            ref={clientFormRef}
+            open={clientFormOpen}
+            onToggle={(e) => setClientFormOpen((e.target as HTMLDetailsElement).open)}
+            className="mt-3"
+          >
+            <summary className="cursor-pointer text-[12.5px] text-accent-bright font-medium select-none">
+              + Новый клиент
+            </summary>
+            <div className="mt-3 space-y-2.5">
+              <div>
+                <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                  Имя <span className="text-rose">*</span>
+                </label>
+                <input
+                  value={newClientName}
+                  onChange={(e) => setNewClientName(e.target.value)}
+                  placeholder="ООО Производство"
+                  className={inputClass}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11.5px] text-ink-2 mb-0.5">Телефон</label>
+                  <input
+                    value={newClientPhone}
+                    onChange={(e) => setNewClientPhone(e.target.value)}
+                    placeholder="+7 999 999-99-99"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11.5px] text-ink-2 mb-0.5">Telegram</label>
+                  <input
+                    value={newClientTelegram}
+                    onChange={(e) => setNewClientTelegram(e.target.value)}
+                    placeholder="@username"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11.5px] text-ink-2 mb-0.5">Заметка</label>
+                <input
+                  value={newClientNote}
+                  onChange={(e) => setNewClientNote(e.target.value)}
+                  placeholder="Рекламный продакшен"
+                  className={inputClass}
+                />
+              </div>
+              <button
+                type="button"
+                disabled={savingClient || !newClientName.trim()}
+                onClick={handleCreateClient}
+                className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-3 py-2 text-[13px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {savingClient ? "Сохраняем…" : "Создать клиента"}
+              </button>
+            </div>
+          </details>
+        </section>
 
-        {/* Бюджет на осветителей */}
-        <div>
-          <label className="block text-[12px] text-ink-2 mb-1" htmlFor="p-crew-amount">
-            Бюджет на осветителей
+        {/* ═══════════════════════════════ STEP 2 — Проект ════════════════ */}
+        <WizardStep n={2} title="Проект" subtitle="название и дата" />
+        <section className={sectionClass}>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                Название <span className="text-rose">*</span>
+              </label>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Клип «Синяя волна»"
+                maxLength={100}
+                className={errors.title ? inputErrorClass : inputClass}
+              />
+              {errors.title && (
+                <p className="text-rose text-[11.5px] mt-0.5">{errors.title}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                Дата съёмки <span className="text-rose">*</span>
+              </label>
+              <input
+                type="date"
+                value={shootDate}
+                onChange={(e) => setShootDate(e.target.value)}
+                className={errors.shootDate ? inputErrorClass : inputClass}
+              />
+              {errors.shootDate && (
+                <p className="text-rose text-[11.5px] mt-0.5">{errors.shootDate}</p>
+              )}
+            </div>
+          </div>
+          <div className="mt-2.5">
+            <label className="block text-[11.5px] text-ink-2 mb-0.5">
+              Комментарий (необязательно)
+            </label>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Любая дополнительная информация…"
+              className={inputClass}
+            />
+          </div>
+        </section>
+
+        {/* ═══════════════════════════════ STEP 3 — Сумма от клиента ══════ */}
+        <WizardStep n={3} title="Сумма от клиента" subtitle="общая договорённость" />
+        <section className={sectionClass}>
+          <label className="block text-[11.5px] text-ink-2 mb-0.5">
+            Договорная сумма с заказчиком (что получу за проект)
           </label>
           <div className="relative">
             <input
-              id="p-crew-amount"
               type="number"
               min="0"
               step="1"
               value={clientPlanAmount}
               onChange={(e) => setClientPlanAmount(e.target.value)}
-              className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+              className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[16px] font-semibold mono-num bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
             />
-            <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">₽</span>
+            <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">
+              ₽
+            </span>
           </div>
-          {/* Calculator button */}
+          <p className="mt-1.5 text-[11.5px] text-ink-3">
+            Это не прибыль — из неё гаффер платит ренталу за свет и команде за смены. Остаток — маржа.
+          </p>
+          {/* Calculator roundtrip button */}
           <button
             type="button"
             onClick={() => {
-              const draft: NewProjectDraft = { title, clientId, shootDate, clientPlanAmount, lightBudget, note };
+              const draft: NewProjectDraft = {
+                title,
+                clientId,
+                shootDate,
+                clientPlanAmount,
+                lightBudgetAmount,
+                note,
+              };
               sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
               router.push("/gaffer/crew-calculator?returnTo=/gaffer/projects/new");
             }}
-            className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-border bg-surface hover:bg-[#fafafa] text-accent-bright text-[12.5px] rounded transition-colors"
+            className="mt-2.5 w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-border bg-surface hover:bg-[#fafafa] text-accent-bright text-[12.5px] rounded transition-colors"
           >
-            🧮 Расчёт стоимости команды осветителей
+            Калькулятор команды осветителей
           </button>
-        </div>
+        </section>
 
-        {/* Бюджет на свет */}
-        <div>
-          <label className="block text-[12px] text-ink-2 mb-1" htmlFor="p-light-budget">
-            Бюджет на свет
+        {/* ═══════════════════════════════ STEP 4 — Аренда света ══════════ */}
+        <WizardStep n={4} title="Аренда света" subtitle="сколько посчитали в ренталe" />
+        <section className={sectionClass}>
+          <label className="block text-[11.5px] text-ink-2 mb-0.5">
+            Сумма ренталу за свет
           </label>
           <div className="relative">
             <input
-              id="p-light-budget"
               type="number"
               min="0"
               step="1"
-              value={lightBudget}
-              onChange={(e) => setLightBudget(e.target.value)}
+              value={lightBudgetAmount}
+              onChange={(e) => setLightBudgetAmount(e.target.value)}
               placeholder="0"
-              className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+              className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[16px] font-semibold mono-num bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
             />
-            <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">₽</span>
+            <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">
+              ₽
+            </span>
           </div>
-          {/* Total budget info */}
-          <div className="mt-2 text-[12.5px] text-ink-2">
-            Итого бюджет проекта:{" "}
-            <span className="font-mono font-semibold text-ink">{formatRub(totalBudget)}</span>
+          <p className="mt-1.5 text-[11.5px] text-ink-3">
+            Один рентал = одна строка. Если свет из двух мест — два платежа в карточке проекта после создания.
+          </p>
+          <details className="mt-2.5">
+            <summary className="cursor-pointer text-[12px] text-ink-3 select-none">
+              Прикрепить смету рентала (файл появится в V2)
+            </summary>
+            <p className="mt-2 text-[11.5px] text-ink-3 italic">
+              Загрузка файлов будет доступна в следующей версии.
+            </p>
+          </details>
+        </section>
+
+        {/* ═══════════════════════════════ STEP 5 — Команда ═══════════════ */}
+        <WizardStep n={5} title="Команда" subtitle="кто работает на смене" />
+        <section className={sectionClass}>
+          {teamContacts === null ? (
+            <div className="h-20 bg-border rounded animate-pulse" />
+          ) : (
+            <>
+              {/* Team contact grid */}
+              <div className="grid grid-cols-2 gap-2">
+                {teamContacts.map((c) => {
+                  const isSelected = selectedMembers.some((m) => m.contactId === c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggleMember(c.id)}
+                      className={`text-left rounded-md p-2.5 border transition-colors ${
+                        isSelected
+                          ? "border-accent-bright bg-accent-soft"
+                          : "border-border bg-surface hover:bg-[#fafafa]"
+                      }`}
+                    >
+                      <div className="text-[13px] font-semibold text-ink">{c.name}</div>
+                      <div className="text-[11.5px] text-ink-3">{c.roleLabel || "—"}</div>
+                      <div className="text-[11.5px] text-ink-2 mono-num">
+                        {formatRub(+c.shiftRate)} / смена
+                      </div>
+                    </button>
+                  );
+                })}
+                {/* Add new member button */}
+                <button
+                  type="button"
+                  onClick={() => setAddMemberOpen(true)}
+                  className="text-[12.5px] text-accent-bright rounded-md border border-dashed border-accent-border bg-surface hover:bg-accent-soft p-2.5 text-left"
+                >
+                  + Новый осветитель
+                </button>
+              </div>
+
+              {/* Inline new member form */}
+              {addMemberOpen && (
+                <div className="mt-3 border border-border rounded-md p-3 space-y-2.5 bg-surface">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] font-semibold text-ink">Новый осветитель</span>
+                    <button
+                      type="button"
+                      onClick={() => setAddMemberOpen(false)}
+                      className="text-ink-3 hover:text-ink text-[14px]"
+                      aria-label="Закрыть форму"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                      Имя <span className="text-rose">*</span>
+                    </label>
+                    <input
+                      value={newMemberName}
+                      onChange={(e) => setNewMemberName(e.target.value)}
+                      placeholder="Алексей Смирнов"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11.5px] text-ink-2 mb-0.5">Роль</label>
+                    <select
+                      value={newMemberRole}
+                      onChange={(e) => setNewMemberRole(e.target.value)}
+                      className={inputClass}
+                    >
+                      {ROLE_OPTIONS.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                      Ставка за смену (10 ч) <span className="text-rose">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        value={newMemberShiftRate}
+                        onChange={(e) => setNewMemberShiftRate(e.target.value)}
+                        placeholder="5000"
+                        className="w-full px-[11px] py-[9px] pr-7 border border-border rounded text-[13.5px] mono-num bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+                      />
+                      <span className="absolute right-[11px] top-1/2 -translate-y-1/2 text-ink-3 text-[13px]">
+                        ₽
+                      </span>
+                    </div>
+                    {newMemberShiftRate && Number(newMemberShiftRate) > 0 && (
+                      <p className="mt-0.5 text-[11px] text-ink-3">
+                        ОТ: тир 1 = {formatRub(Math.round(Number(newMemberShiftRate) / 10))}/ч,
+                        тир 2 = {formatRub(Math.round(Number(newMemberShiftRate) / 10) * 2)}/ч,
+                        тир 3 = {formatRub(Math.round(Number(newMemberShiftRate) / 10) * 4)}/ч
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                      Телефон или @telegram
+                    </label>
+                    <input
+                      value={newMemberContact}
+                      onChange={(e) => setNewMemberContact(e.target.value)}
+                      placeholder="+7 999 ... или @handle"
+                      className={inputClass}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={savingMember || !newMemberName.trim() || !newMemberShiftRate.trim()}
+                    onClick={handleCreateMember}
+                    className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-3 py-2 text-[13px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {savingMember ? "Сохраняем…" : "Добавить осветителя"}
+                  </button>
+                </div>
+              )}
+
+              {/* Bulk presets strip */}
+              <div className="mt-4 bg-surface-2 border border-border rounded-md p-3 flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-ink-3 uppercase tracking-wide">Смен</span>
+                {[1, 2, 3].map((n) => (
+                  <Pill key={n} active={bulkShifts === n} onClick={() => applyBulkShifts(n)}>
+                    {n}
+                  </Pill>
+                ))}
+                <Pill active={bulkShifts === null}>свой</Pill>
+                <span className="text-[11px] text-ink-3 uppercase tracking-wide ml-2">Часов</span>
+                {[10, 12, 14, 16].map((n) => (
+                  <Pill key={n} active={bulkHours === n} onClick={() => applyBulkHours(n)}>
+                    {n}
+                  </Pill>
+                ))}
+                <Pill active={bulkHours === null}>свой</Pill>
+              </div>
+
+              {/* Per-member shift table */}
+              {selectedMembers.length > 0 && (
+                <div className="mt-3 border border-border rounded-md overflow-hidden bg-surface">
+                  <div className="flex items-baseline justify-between px-3 py-2 bg-surface-2 border-b border-border">
+                    <span className="eyebrow">Смены участников</span>
+                    <span className="text-[11px] text-ink-3">
+                      часы можно поменять индивидуально
+                    </span>
+                  </div>
+                  {selectedMembers.map((m) => {
+                    const contact = teamContacts.find((c) => c.id === m.contactId);
+                    if (!contact) return null;
+                    const { otText } = calcMemberCost(
+                      +contact.shiftRate,
+                      +contact.overtimeTier1Rate,
+                      +contact.overtimeTier2Rate,
+                      +contact.overtimeTier3Rate,
+                      m.shifts,
+                      m.hours,
+                    );
+                    return (
+                      <div
+                        key={m.contactId}
+                        className="px-3 py-2.5 border-b border-border last:border-b-0"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[13px] font-semibold text-ink">
+                              {contact.name}
+                            </div>
+                            <div className="text-[11.5px] text-ink-3">
+                              {contact.roleLabel || "—"} · {formatRub(+contact.shiftRate)}/смена
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-[13.5px] font-semibold text-ink mono-num">
+                              {formatRub(m.plannedAmount)}
+                            </div>
+                            {otText && (
+                              <div className="text-[11px] text-ink-3">{otText}</div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <label className="text-[11.5px] text-ink-2">
+                            Смен
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={m.shifts}
+                              onChange={(e) =>
+                                updateMemberField(
+                                  m.contactId,
+                                  "shifts",
+                                  Math.max(0, Number(e.target.value)),
+                                )
+                              }
+                              className="block w-full mt-0.5 px-2 py-1 border border-border rounded text-[13px] bg-surface text-ink mono-num focus:ring-2 focus:ring-accent-border"
+                            />
+                          </label>
+                          <label className="text-[11.5px] text-ink-2">
+                            Часов
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={m.hours}
+                              onChange={(e) =>
+                                updateMemberField(
+                                  m.contactId,
+                                  "hours",
+                                  Math.max(0, Number(e.target.value)),
+                                )
+                              }
+                              className="block w-full mt-0.5 px-2 py-1 border border-border rounded text-[13px] bg-surface text-ink mono-num focus:ring-2 focus:ring-accent-border"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* OT callout */}
+              <div className="mt-3 bg-amber-soft border border-amber-border rounded-md px-3 py-2.5 text-[11.5px] text-amber">
+                <b>Переработки:</b> первые 8 ч сверх смены — тир 1 (×1 ставки часа), следующие
+                6 ч — тир 2 (×2), далее — тир 3 (×4). Те же формулы, что в общем калькуляторе
+                гаффера.
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* ═══════════════════════════════ STEP 6 — Итог ═══════════════════ */}
+        <WizardStep n={6} title="Итог" subtitle="что сложилось" />
+        <section className={sectionClass}>
+          <div className="border border-border rounded-md overflow-hidden bg-surface">
+            <SummaryRow
+              label="От клиента"
+              sub="договорная сумма"
+              value={formatRub(clientPlan)}
+              tone="neutral"
+              big
+            />
+            <SummaryRow
+              label="Должен ренталу"
+              sub="аренда света"
+              value={`− ${formatRub(lightBudget)}`}
+              tone="rose"
+            />
+            <SummaryRow
+              label="Должен команде"
+              sub={
+                selectedMembers.length > 0
+                  ? `${selectedMembers.length} чел. · ${totalShifts} ${pluralize(
+                      totalShifts,
+                      "смена",
+                      "смены",
+                      "смен",
+                    )}`
+                  : "команда не выбрана"
+              }
+              value={`− ${formatRub(teamTotal)}`}
+              tone="rose"
+            />
+            <SummaryRow
+              label="Моя маржа"
+              sub="после всех выплат"
+              value={formatRub(margin)}
+              tone={margin < 0 ? "rose" : "emerald"}
+            />
           </div>
-        </div>
+          <p className="mt-2 text-[11.5px] text-ink-3">
+            Маржа пересчитывается вживую при изменении смен, часов или состава команды.
+            После создания проекта суммы уйдут в дашборд.
+          </p>
+        </section>
 
-        {/* Note */}
-        <div>
-          <label className="block text-[12px] text-ink-2 mb-1" htmlFor="p-note">
-            Заметка
-          </label>
-          <textarea
-            id="p-note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-            placeholder="Любая дополнительная информация…"
-            className="w-full px-[11px] py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright resize-none"
-          />
+        {/* ═══════════════════════════════ Sticky action bar ═══════════════ */}
+        <div className="sticky bottom-0 inset-x-0 px-4 py-3 bg-surface border-t border-border flex items-center gap-2">
+          <Link
+            href="/gaffer/projects"
+            className="flex-1 text-center px-4 py-2.5 border border-border rounded text-[13.5px] text-ink hover:bg-[#fafafa]"
+          >
+            Отмена
+          </Link>
+          <button
+            type="submit"
+            disabled={loading || !canSubmit}
+            className="flex-1 bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-2.5 text-[13.5px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? "Создаём…" : "Создать проект"}
+          </button>
         </div>
-
-        {/* Submit */}
-        <button
-          type="submit"
-          disabled={loading || !title.trim()}
-          className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-3 text-[14px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? "Создаём…" : "Создать проект"}
-        </button>
       </form>
     </div>
   );
@@ -300,12 +1044,14 @@ function GafferNewProjectContent() {
 
 export default function GafferNewProjectPage() {
   return (
-    <Suspense fallback={
-      <div className="p-4 space-y-3 animate-pulse">
-        <div className="h-5 bg-border rounded w-1/2" />
-        <div className="h-4 bg-border rounded w-1/3" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="p-4 space-y-3 animate-pulse">
+          <div className="h-5 bg-border rounded w-1/2" />
+          <div className="h-4 bg-border rounded w-1/3" />
+        </div>
+      }
+    >
       <GafferNewProjectContent />
     </Suspense>
   );

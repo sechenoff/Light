@@ -25,6 +25,11 @@ export interface CreateProjectInput {
   clientPlanAmount?: string | number;
   lightBudgetAmount?: string | number;
   note?: string;
+  members?: Array<{
+    contactId: string;
+    plannedAmount: string | number;
+    roleLabel?: string;
+  }>;
 }
 
 export interface UpdateProjectInput {
@@ -266,26 +271,70 @@ export async function createProject(req: Request, data: CreateProjectInput) {
 
   await validateClientContact(gafferUserId, data.clientId, "create");
 
-  const project = await prisma.gafferProject.create({
-    data: {
-      gafferUserId,
-      title: data.title.trim(),
-      clientId: data.clientId,
-      shootDate: data.shootDate,
-      clientPlanAmount: data.clientPlanAmount !== undefined
-        ? new Decimal(data.clientPlanAmount)
-        : new Decimal(0),
-      lightBudgetAmount: data.lightBudgetAmount !== undefined
-        ? new Decimal(data.lightBudgetAmount)
-        : new Decimal(0),
-      note: data.note?.trim() ?? null,
-    },
+  // Validate members before starting transaction
+  if (data.members && data.members.length > 0) {
+    for (const m of data.members) {
+      const contact = await prisma.gafferContact.findFirst({
+        where: { id: m.contactId, gafferUserId },
+      });
+      if (!contact || contact.type !== "TEAM_MEMBER" || contact.isArchived) {
+        throw new HttpError(
+          400,
+          "Контакт участника не найден, не является членом команды или архивирован",
+          "INVALID_MEMBER_CONTACT",
+        );
+      }
+    }
+  }
+
+  const project = await prisma.$transaction(async (tx) => {
+    const created = await tx.gafferProject.create({
+      data: {
+        gafferUserId,
+        title: data.title.trim(),
+        clientId: data.clientId,
+        shootDate: data.shootDate,
+        clientPlanAmount: data.clientPlanAmount !== undefined
+          ? new Decimal(data.clientPlanAmount)
+          : new Decimal(0),
+        lightBudgetAmount: data.lightBudgetAmount !== undefined
+          ? new Decimal(data.lightBudgetAmount)
+          : new Decimal(0),
+        note: data.note?.trim() ?? null,
+      },
+      include: {
+        members: true,
+      },
+    });
+
+    if (data.members && data.members.length > 0) {
+      await tx.gafferProjectMember.createMany({
+        data: data.members.map((m) => ({
+          projectId: created.id,
+          contactId: m.contactId,
+          plannedAmount: new Decimal(m.plannedAmount),
+          roleLabel: m.roleLabel ?? null,
+        })),
+      });
+    }
+
+    // Return with populated members
+    return tx.gafferProject.findUnique({
+      where: { id: created.id },
+      include: { members: true },
+    });
   });
+
+  if (!project) throw new HttpError(500, "Не удалось создать проект", "INTERNAL_ERROR");
 
   return {
     ...project,
     clientPlanAmount: project.clientPlanAmount.toString(),
     lightBudgetAmount: project.lightBudgetAmount.toString(),
+    members: project.members.map((m) => ({
+      ...m,
+      plannedAmount: m.plannedAmount.toString(),
+    })),
   };
 }
 

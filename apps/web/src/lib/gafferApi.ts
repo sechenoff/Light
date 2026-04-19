@@ -21,6 +21,11 @@ export interface GafferContact {
   gafferUserId: string;
   createdAt: string;
   updatedAt: string;
+  shiftRate: string;          // Decimal as string
+  overtimeTier1Rate: string;  // Decimal as string
+  overtimeTier2Rate: string;  // Decimal as string
+  overtimeTier3Rate: string;  // Decimal as string
+  roleLabel?: string | null;
 }
 
 export interface GafferPaymentMethod {
@@ -168,6 +173,11 @@ export async function createContact(data: {
   phone?: string;
   telegram?: string;
   note?: string;
+  shiftRate?: string | number;
+  overtimeTier1Rate?: string | number;
+  overtimeTier2Rate?: string | number;
+  overtimeTier3Rate?: string | number;
+  roleLabel?: string | null;
 }): Promise<{ contact: GafferContact }> {
   return gafferFetch("/contacts", {
     method: "POST",
@@ -182,6 +192,11 @@ export async function updateContact(
     phone?: string;
     telegram?: string;
     note?: string;
+    shiftRate?: string | number;
+    overtimeTier1Rate?: string | number;
+    overtimeTier2Rate?: string | number;
+    overtimeTier3Rate?: string | number;
+    roleLabel?: string | null;
   },
 ): Promise<{ contact: GafferContact }> {
   return gafferFetch(`/contacts/${id}`, {
@@ -372,6 +387,7 @@ export async function createProject(data: {
   clientPlanAmount?: string | number;
   lightBudgetAmount?: string | number;
   note?: string;
+  members?: Array<{ contactId: string; plannedAmount: string | number; roleLabel?: string }>;
 }): Promise<{ project: GafferProject }> {
   return gafferFetch("/projects", {
     method: "POST",

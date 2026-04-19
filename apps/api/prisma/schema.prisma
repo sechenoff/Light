@@ -816,6 +816,12 @@ model GafferContact {
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
+  shiftRate           Decimal @default(0)    // базовая ставка за смену (10 ч)
+  overtimeTier1Rate   Decimal @default(0)    // тариф за час переработки, 1–8 ч сверх смены
+  overtimeTier2Rate   Decimal @default(0)    // тариф за час, 9–14 ч сверх смены
+  overtimeTier3Rate   Decimal @default(0)    // тариф за час, 15+ ч сверх смены
+  roleLabel           String?                // "Best Boy", "Key Grip", "Gaffer", "Осветитель / Grip", "Пультовик", "DIT"
+
   gafferUser       GafferUser            @relation(fields: [gafferUserId], references: [id], onDelete: Cascade)
   clientProjects   GafferProject[]       @relation("ProjectClient")
   memberships      GafferProjectMember[]

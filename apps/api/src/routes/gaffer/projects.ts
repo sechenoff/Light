@@ -50,6 +50,11 @@ const createProjectSchema = z.object({
   clientPlanAmount: z.union([z.string(), z.number()]).optional(),
   lightBudgetAmount: z.union([z.string(), z.number()]).optional(),
   note: z.string().trim().max(1000).optional(),
+  members: z.array(z.object({
+    contactId: z.string().min(1),
+    plannedAmount: z.union([z.string(), z.number()]),
+    roleLabel: z.string().trim().max(200).optional(),
+  })).max(50).optional(),
 });
 
 const updateProjectSchema = z.object({
