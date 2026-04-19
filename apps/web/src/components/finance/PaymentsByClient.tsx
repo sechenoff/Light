@@ -232,7 +232,7 @@ export function PaymentsByClient({ filter }: Props) {
       </div>
 
       {/* Totals footer */}
-      <div className="mt-5 grid grid-cols-4 divide-x divide-border border border-border rounded-lg bg-surface shadow-xs">
+      <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border border-border rounded-lg bg-surface shadow-xs">
         <div className="px-4 py-3">
           <p className="eyebrow mb-0.5">Клиентов</p>
           <p className="text-lg font-semibold text-ink mono-num">{data.totals.clientCount}</p>

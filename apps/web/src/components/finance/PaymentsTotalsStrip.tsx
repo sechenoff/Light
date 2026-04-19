@@ -12,7 +12,7 @@ interface Props {
 
 export function PaymentsTotalsStrip({ billed, paid, outstanding, averageAmount, count }: Props) {
   return (
-    <div className="grid grid-cols-4 divide-x divide-border border border-border rounded-lg bg-surface shadow-xs mb-5">
+    <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border border-border rounded-lg bg-surface shadow-xs mb-5">
       <TotalsCell
         eyebrow="Начислено"
         value={formatRub(billed)}

@@ -14,7 +14,7 @@ export function HowItWorks() {
         <span className="text-[11px] transition-transform group-open:rotate-90">▸</span>
         Как работает авто-обучение
       </summary>
-      <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-border">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 pt-4 border-t border-border">
         {steps.map((s) => (
           <div key={s.num} className="text-center text-xs text-ink-2">
             <div className="text-2xl mb-2">{s.icon}</div>

@@ -248,7 +248,7 @@ export default function DebtsPage() {
         </div>
 
         {/* Aging buckets */}
-        <div className="grid grid-cols-4 gap-px mb-5 bg-border border border-border rounded-[6px] overflow-hidden">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px mb-5 bg-border border border-border rounded-[6px] overflow-hidden">
           <div className="bg-rose-soft px-4 py-3.5">
             <p className="eyebrow text-rose mb-1.5">Просрочка &gt; 30 дней</p>
             <p className="mono-num text-[16px] font-semibold text-rose">{formatRub(totals.overdue30)}</p>
