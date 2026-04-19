@@ -1,26 +1,47 @@
 {
-  "sprint": "gaffer-wizard-polish",
-  "feature": "mockup-fidelity-polish-screen-8",
+  "sprint": "gaffer-edit-rate",
+  "feature": "edit-rate-page-for-team-member-contact",
   "governance": "light",
   "claude_product": "SKIPPED",
   "technical_review": "APPROVE",
   "provider": "single-reviewer",
   "reviewer_model": "opus (standard-code-reviewer)",
-  "commits_reviewed": ["5ae508e"],
-  "ts": "2026-04-19T14:25:00+03:00",
+  "ts": "2026-04-19T12:17:44Z",
   "scope": {
-    "files_touched": 1,
-    "file": "apps/web/app/gaffer/projects/new/page.tsx",
-    "lines_changed": "~40"
+    "new_files": [
+      "apps/web/app/gaffer/contacts/[id]/edit-rate/page.tsx"
+    ],
+    "modified_files": [
+      "apps/web/app/gaffer/contacts/[id]/page.tsx"
+    ],
+    "approx_lines_added": 430,
+    "backend_changes": "none (Prisma schema + service + route + client were already in main)"
   },
-  "fixes": [
-    "Step 1 new-client form: 2×2 grid + «Название / ФИО» + «Комментарий» labels + «Создать и выбрать» + «Отмена» ghost button — aligns with mockup lines 2082-2099",
-    "Step 4 rental label: «Сумма ренталу за свет» → «Сумма от рентала за оборудование» — aligns with mockup line 2152",
-    "«свой» pills: onClick handlers added to bulkShifts/bulkHours — now correctly clear bulk override without destroying per-member values"
+  "review_passes": [
+    {
+      "verdict": "NEEDS_FIXES",
+      "findings": [
+        "H1: loading flash (not-found fallback rendered for 1 frame) when CLIENT id redirects to view screen",
+        "H2: archived contact — inputs remained editable despite banner promise; only <select> and save button were disabled"
+      ],
+      "ts": "2026-04-19T12:05:00Z"
+    },
+    {
+      "verdict": "APPROVE",
+      "findings": [],
+      "ts": "2026-04-19T12:17:44Z"
+    }
   ],
-  "tests": {
-    "web": { "status": "passed", "files": 25, "tests": 174 },
-    "tsc": { "web": "clean" }
-  },
-  "review_notes": "APPROVE. Cancel button properly closes <details> via controlled `open` prop (ref assignment is redundant-but-harmless defensive code). «свой» pill setters only flip the bulk flag without touching selectedMembers, so no user data is destroyed. All new styling uses canon tokens (border-border, text-ink-2, rose). Mockup fidelity restored with minimal, surgical edits to a single file."
+  "fixes_applied": [
+    "H1: `redirecting` flag in load useEffect, gates setLoading(false) in finally — skeleton persists until navigation",
+    "H2: RateInput accepts `disabled`, threaded into all 4 rate fields + added `disabled:opacity-50 disabled:cursor-not-allowed` affordance",
+    "M4 (accessibility bonus): all inputs have `id`, all labels have `htmlFor`; OT tier labels converted from <div> to <label>",
+    "L2 (bonus): separate 5xx/network error path with toast; 404 still silent fallback",
+    "JSX literal fix: placeholder={\"14\\u00A0000\"} with curly braces so \\u00A0 evaluates to NBSP"
+  ],
+  "verification": {
+    "tsc": "PASS (npx tsc --noEmit → exit 0)",
+    "tests": "174/174 passed (web + shared, per implementer report)",
+    "design_canon": "no hex outside #fafafa; only inline style is fontFamily (IBM Plex); all semantic tokens"
+  }
 }
