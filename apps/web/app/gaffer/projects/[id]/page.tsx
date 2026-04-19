@@ -601,7 +601,7 @@ function MemberRow({
         <PaymentForm
           direction="OUT"
           projectId={projectId}
-          memberId={member.id}
+          memberId={member.contactId}
           methods={methods}
           isArchived={isArchived}
           onDone={() => { setShowPaymentForm(false); onUpdate(); }}
