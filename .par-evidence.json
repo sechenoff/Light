@@ -1,9 +1,9 @@
 {
-  "sprint": "3C",
+  "sprint": "3D",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus-light-mode",
   "reviewer_agent": "standard-code-reviewer (opus)",
-  "notes": "Light-mode sprint (scoped bug-fix + inline feature + mockup). Single technical reviewer suffices per superflow-enforcement.md. Initial REQUEST_CHANGES, rerun after fixes = APPROVE. 184/184 tests pass, tsc clean.",
-  "ts": "2026-04-20T00:46:00Z"
+  "notes": "Light-mode cosmetic sprint: swap Часов pill row for continuous slider (range 10-30, mockup variant B). Reusable HoursSlider in projectWizardShared.tsx. One reviewer finding (bg-white → bg-surface) fixed inline before push. tsc clean, no API/schema/logic changes, zero regression risk.",
+  "ts": "2026-04-20T02:30:00Z"
 }
