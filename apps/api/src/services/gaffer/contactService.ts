@@ -22,6 +22,11 @@ export interface CreateContactInput {
   phone?: string;
   telegram?: string;
   note?: string;
+  shiftRate?: string | number;
+  overtimeTier1Rate?: string | number;
+  overtimeTier2Rate?: string | number;
+  overtimeTier3Rate?: string | number;
+  roleLabel?: string | null;
 }
 
 export interface UpdateContactInput {
@@ -29,10 +34,37 @@ export interface UpdateContactInput {
   phone?: string | null;
   telegram?: string | null;
   note?: string | null;
+  shiftRate?: string | number;
+  overtimeTier1Rate?: string | number;
+  overtimeTier2Rate?: string | number;
+  overtimeTier3Rate?: string | number;
+  roleLabel?: string | null;
 }
 
 // MVP: search uses Prisma `contains` which compiles to SQLite LIKE — case-sensitive for
 // Cyrillic. Acceptable for small tenants. Track: add nameLower denorm column if > 100 contacts/tenant.
+
+/** Сериализует Decimal-поля контакта в строки для JSON-ответа. */
+function serializeContact<T extends {
+  shiftRate: Decimal;
+  overtimeTier1Rate: Decimal;
+  overtimeTier2Rate: Decimal;
+  overtimeTier3Rate: Decimal;
+}>(contact: T): Omit<T, "shiftRate" | "overtimeTier1Rate" | "overtimeTier2Rate" | "overtimeTier3Rate"> & {
+  shiftRate: string;
+  overtimeTier1Rate: string;
+  overtimeTier2Rate: string;
+  overtimeTier3Rate: string;
+} {
+  const { shiftRate, overtimeTier1Rate, overtimeTier2Rate, overtimeTier3Rate, ...rest } = contact;
+  return {
+    ...rest,
+    shiftRate: shiftRate.toString(),
+    overtimeTier1Rate: overtimeTier1Rate.toString(),
+    overtimeTier2Rate: overtimeTier2Rate.toString(),
+    overtimeTier3Rate: overtimeTier3Rate.toString(),
+  };
+}
 
 /** Список контактов с опциональными фильтрами. */
 export async function listContacts(req: Request, opts: ListContactsOpts) {
@@ -60,7 +92,7 @@ export async function listContacts(req: Request, opts: ListContactsOpts) {
   });
 
   if (!opts.withAggregates) {
-    return contacts;
+    return contacts.map(serializeContact);
   }
 
   // Attach aggregates: load all OPEN projects for this user once
@@ -104,7 +136,7 @@ export async function listContacts(req: Request, opts: ListContactsOpts) {
     }
 
     return {
-      ...c,
+      ...serializeContact(c),
       asClientCount: asClientProjects.length,
       asMemberCount: asMemberProjects.length,
       projectCount: asClientProjects.length + asMemberProjects.length,
@@ -207,13 +239,14 @@ export async function getContactsSummary(req: Request) {
 /** Получить один контакт по id (с проверкой tenant). */
 export async function getContact(req: Request, id: string) {
   const contact = await prisma.gafferContact.findUnique({ where: { id } });
-  return assertGafferTenant(contact, req);
+  const verified = assertGafferTenant(contact, req);
+  return serializeContact(verified);
 }
 
 /** Создать новый контакт. */
 export async function createContact(req: Request, data: CreateContactInput) {
   const { gafferUserId } = gafferWhere(req);
-  return prisma.gafferContact.create({
+  const contact = await prisma.gafferContact.create({
     data: {
       gafferUserId,
       type: data.type,
@@ -221,8 +254,14 @@ export async function createContact(req: Request, data: CreateContactInput) {
       phone: data.phone ?? null,
       telegram: data.telegram ?? null,
       note: data.note ?? null,
+      shiftRate: data.shiftRate !== undefined ? new Decimal(data.shiftRate) : new Decimal(0),
+      overtimeTier1Rate: data.overtimeTier1Rate !== undefined ? new Decimal(data.overtimeTier1Rate) : new Decimal(0),
+      overtimeTier2Rate: data.overtimeTier2Rate !== undefined ? new Decimal(data.overtimeTier2Rate) : new Decimal(0),
+      overtimeTier3Rate: data.overtimeTier3Rate !== undefined ? new Decimal(data.overtimeTier3Rate) : new Decimal(0),
+      roleLabel: data.roleLabel ?? null,
     },
   });
+  return serializeContact(contact);
 }
 
 /** Частичное обновление контакта. */
@@ -236,6 +275,11 @@ export async function updateContact(req: Request, id: string, data: UpdateContac
       ...(data.phone !== undefined && { phone: data.phone }),
       ...(data.telegram !== undefined && { telegram: data.telegram }),
       ...(data.note !== undefined && { note: data.note }),
+      ...(data.shiftRate !== undefined && { shiftRate: new Decimal(data.shiftRate) }),
+      ...(data.overtimeTier1Rate !== undefined && { overtimeTier1Rate: new Decimal(data.overtimeTier1Rate) }),
+      ...(data.overtimeTier2Rate !== undefined && { overtimeTier2Rate: new Decimal(data.overtimeTier2Rate) }),
+      ...(data.overtimeTier3Rate !== undefined && { overtimeTier3Rate: new Decimal(data.overtimeTier3Rate) }),
+      ...(data.roleLabel !== undefined && { roleLabel: data.roleLabel }),
     },
   });
 
@@ -243,7 +287,9 @@ export async function updateContact(req: Request, id: string, data: UpdateContac
     throw new HttpError(404, "Контакт не найден", "NOT_FOUND");
   }
 
-  return prisma.gafferContact.findUnique({ where: { id } }) as Promise<NonNullable<Awaited<ReturnType<typeof prisma.gafferContact.findUnique>>>>;
+  const updated = await prisma.gafferContact.findUnique({ where: { id } });
+  if (!updated) throw new HttpError(404, "Контакт не найден", "NOT_FOUND");
+  return serializeContact(updated);
 }
 
 /** Архивировать контакт. */
@@ -259,7 +305,9 @@ export async function archiveContact(req: Request, id: string) {
     throw new HttpError(404, "Контакт не найден", "NOT_FOUND");
   }
 
-  return prisma.gafferContact.findUnique({ where: { id } }) as Promise<NonNullable<Awaited<ReturnType<typeof prisma.gafferContact.findUnique>>>>;
+  const updated = await prisma.gafferContact.findUnique({ where: { id } });
+  if (!updated) throw new HttpError(404, "Контакт не найден", "NOT_FOUND");
+  return serializeContact(updated);
 }
 
 /** Разархивировать контакт. */
@@ -275,7 +323,9 @@ export async function unarchiveContact(req: Request, id: string) {
     throw new HttpError(404, "Контакт не найден", "NOT_FOUND");
   }
 
-  return prisma.gafferContact.findUnique({ where: { id } }) as Promise<NonNullable<Awaited<ReturnType<typeof prisma.gafferContact.findUnique>>>>;
+  const updated = await prisma.gafferContact.findUnique({ where: { id } });
+  if (!updated) throw new HttpError(404, "Контакт не найден", "NOT_FOUND");
+  return serializeContact(updated);
 }
 
 /** Сводка долга по контакту.

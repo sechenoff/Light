@@ -31,12 +31,19 @@ const router = express.Router();
 
 const contactTypeSchema = z.enum(["CLIENT", "TEAM_MEMBER"]);
 
+const rateFieldSchema = z.union([z.string(), z.number()]).optional();
+
 const createContactSchema = z.object({
   type: contactTypeSchema,
   name: z.string().trim().min(1, "Имя обязательно").max(100),
   phone: z.string().trim().max(50).optional(),
   telegram: z.string().trim().max(100).optional(),
   note: z.string().trim().max(500).optional(),
+  shiftRate: rateFieldSchema,
+  overtimeTier1Rate: rateFieldSchema,
+  overtimeTier2Rate: rateFieldSchema,
+  overtimeTier3Rate: rateFieldSchema,
+  roleLabel: z.string().trim().max(100).nullable().optional(),
 });
 
 const updateContactSchema = createContactSchema
@@ -136,6 +143,11 @@ router.post("/", async (req, res, next) => {
       phone: normalizeOptionalString(body.phone),
       telegram: normalizeTelegram(body.telegram),
       note: normalizeOptionalString(body.note),
+      shiftRate: body.shiftRate,
+      overtimeTier1Rate: body.overtimeTier1Rate,
+      overtimeTier2Rate: body.overtimeTier2Rate,
+      overtimeTier3Rate: body.overtimeTier3Rate,
+      roleLabel: body.roleLabel,
     });
     res.json({ contact });
   } catch (err) {
@@ -154,6 +166,11 @@ router.patch("/:id", async (req, res, next) => {
       ...(body.phone !== undefined && { phone: normalizeOptionalString(body.phone) ?? null }),
       ...(body.telegram !== undefined && { telegram: normalizeTelegram(body.telegram) ?? null }),
       ...(body.note !== undefined && { note: normalizeOptionalString(body.note) ?? null }),
+      ...(body.shiftRate !== undefined && { shiftRate: body.shiftRate }),
+      ...(body.overtimeTier1Rate !== undefined && { overtimeTier1Rate: body.overtimeTier1Rate }),
+      ...(body.overtimeTier2Rate !== undefined && { overtimeTier2Rate: body.overtimeTier2Rate }),
+      ...(body.overtimeTier3Rate !== undefined && { overtimeTier3Rate: body.overtimeTier3Rate }),
+      ...(body.roleLabel !== undefined && { roleLabel: body.roleLabel }),
     });
     res.json({ contact });
   } catch (err) {
