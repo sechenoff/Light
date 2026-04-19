@@ -15,6 +15,7 @@
 
 import express from "express";
 import { z } from "zod";
+import { decimalString } from "../../utils/decimalString";
 import {
   listProjects,
   getProject,
@@ -46,35 +47,52 @@ const listQuerySchema = z.object({
 const createProjectSchema = z.object({
   title: z.string().trim().min(1, "Название обязательно").max(200),
   clientId: z.string().min(1, "Клиент обязателен"),
-  shootDate: z.string().min(1, "Дата съёмки обязательна").transform((v) => new Date(v)),
-  clientPlanAmount: z.union([z.string(), z.number()]).optional(),
-  lightBudgetAmount: z.union([z.string(), z.number()]).optional(),
+  shootDate: z
+    .string()
+    .min(1, "Дата съёмки обязательна")
+    .transform((v) => new Date(v))
+    .refine((d) => !isNaN(d.getTime()), { message: "Некорректная дата съёмки" }),
+  clientPlanAmount: decimalString.optional(),
+  lightBudgetAmount: decimalString.optional(),
   note: z.string().trim().max(1000).optional(),
-  members: z.array(z.object({
-    contactId: z.string().min(1),
-    plannedAmount: z.union([z.string(), z.number()]),
-    roleLabel: z.string().trim().max(200).optional(),
-  })).max(50).optional(),
+  members: z
+    .array(
+      z.object({
+        contactId: z.string().min(1),
+        plannedAmount: decimalString,
+        roleLabel: z.string().trim().max(100).nullable().optional(),
+      }),
+    )
+    .max(50)
+    .refine(
+      (arr) => new Set(arr.map((m) => m.contactId)).size === arr.length,
+      { message: "Дубликаты участников не допускаются" },
+    )
+    .optional(),
 });
 
 const updateProjectSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   clientId: z.string().min(1).optional(),
-  shootDate: z.string().transform((v) => new Date(v)).optional(),
-  clientPlanAmount: z.union([z.string(), z.number()]).optional(),
-  lightBudgetAmount: z.union([z.string(), z.number()]).optional(),
+  shootDate: z
+    .string()
+    .transform((v) => new Date(v))
+    .refine((d) => !isNaN(d.getTime()), { message: "Некорректная дата съёмки" })
+    .optional(),
+  clientPlanAmount: decimalString.optional(),
+  lightBudgetAmount: decimalString.optional(),
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
 const addMemberSchema = z.object({
   contactId: z.string().min(1, "Контакт обязателен"),
-  plannedAmount: z.union([z.string(), z.number()]).optional(),
-  roleLabel: z.string().trim().max(200).optional(),
+  plannedAmount: decimalString.optional(),
+  roleLabel: z.string().trim().max(100).optional(),
 });
 
 const updateMemberSchema = z.object({
-  plannedAmount: z.union([z.string(), z.number()]).optional(),
-  roleLabel: z.string().trim().max(200).nullable().optional(),
+  plannedAmount: decimalString.optional(),
+  roleLabel: z.string().trim().max(100).nullable().optional(),
 });
 
 // ─── Члены команды (до /:id чтобы /members/:memberId не конфликтовал) ────────

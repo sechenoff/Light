@@ -13,6 +13,7 @@
 import express from "express";
 import { z } from "zod";
 import { HttpError } from "../../utils/errors";
+import { decimalString } from "../../utils/decimalString";
 import {
   listContacts,
   getContact,
@@ -31,7 +32,7 @@ const router = express.Router();
 
 const contactTypeSchema = z.enum(["CLIENT", "TEAM_MEMBER"]);
 
-const rateFieldSchema = z.union([z.string(), z.number()]).optional();
+const rateFieldSchema = decimalString.optional();
 
 const createContactSchema = z.object({
   type: contactTypeSchema,
