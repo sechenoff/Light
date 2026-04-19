@@ -28,7 +28,7 @@ export interface CreateProjectInput {
   members?: Array<{
     contactId: string;
     plannedAmount: string | number;
-    roleLabel?: string;
+    roleLabel?: string | null;
   }>;
 }
 
@@ -271,23 +271,29 @@ export async function createProject(req: Request, data: CreateProjectInput) {
 
   await validateClientContact(gafferUserId, data.clientId, "create");
 
-  // Validate members before starting transaction
-  if (data.members && data.members.length > 0) {
-    for (const m of data.members) {
-      const contact = await prisma.gafferContact.findFirst({
-        where: { id: m.contactId, gafferUserId },
+  const memberContactIds = (data.members ?? []).map((m) => m.contactId);
+
+  const project = await prisma.$transaction(async (tx) => {
+    // Validate members inside transaction to prevent TOCTOU race
+    if (memberContactIds.length > 0) {
+      const validContacts = await tx.gafferContact.findMany({
+        where: {
+          id: { in: memberContactIds },
+          gafferUserId,
+          type: "TEAM_MEMBER",
+          isArchived: false,
+        },
+        select: { id: true },
       });
-      if (!contact || contact.type !== "TEAM_MEMBER" || contact.isArchived) {
+      if (validContacts.length !== memberContactIds.length) {
         throw new HttpError(
           400,
-          "Контакт участника не найден, не является членом команды или архивирован",
+          "Один или несколько участников не найдены или недоступны",
           "INVALID_MEMBER_CONTACT",
         );
       }
     }
-  }
 
-  const project = await prisma.$transaction(async (tx) => {
     const created = await tx.gafferProject.create({
       data: {
         gafferUserId,

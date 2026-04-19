@@ -4,6 +4,7 @@
  * 1. Успешное создание проекта с 2 участниками — ответ содержит members[].
  * 2. Создание с contactId, принадлежащим типу CLIENT → 400 INVALID_MEMBER_CONTACT.
  * 3. Создание с несуществующим contactId → 400 INVALID_MEMBER_CONTACT.
+ * 4. Создание с contactId из другого tenant'а → 400 INVALID_MEMBER_CONTACT (cross-tenant attack).
  */
 
 import path from "path";
@@ -29,6 +30,7 @@ process.env.WAREHOUSE_SECRET = "test-warehouse-secret-gaffer2";
 
 let app: Express;
 let token: string;
+let tokenB: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -44,11 +46,17 @@ beforeAll(async () => {
   const mod = await import("../app");
   app = mod.app;
 
-  // Register gaffer user and obtain token
+  // Register gaffer user A and obtain token
   const loginRes = await request(app)
     .post("/api/gaffer/auth/login")
     .send({ email: "members-test@example.com" });
   token = loginRes.body.token as string;
+
+  // Register gaffer user B (second tenant) and obtain token
+  const loginResB = await request(app)
+    .post("/api/gaffer/auth/login")
+    .send({ email: "members-test-b@example.com" });
+  tokenB = loginResB.body.token as string;
 });
 
 afterAll(async () => {
@@ -68,11 +76,11 @@ afterAll(async () => {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function auth() {
-  return request(app).post("").set("Authorization", `Bearer ${token}`);
-}
 function post(url: string) {
   return request(app).post(url).set("Authorization", `Bearer ${token}`);
+}
+function postB(url: string) {
+  return request(app).post(url).set("Authorization", `Bearer ${tokenB}`);
 }
 
 async function createClient(name = "Заказчик Альфа") {
@@ -154,5 +162,37 @@ describe("createProject with members", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.details).toBe("INVALID_MEMBER_CONTACT");
+  });
+
+  it("отклоняет cross-tenant атаку: contactId из tenant B нельзя использовать в tenant A → 400 INVALID_MEMBER_CONTACT", async () => {
+    // Создаём TEAM_MEMBER в tenant B
+    const resMemberB = await postB("/api/gaffer/contacts").send({
+      type: "TEAM_MEMBER",
+      name: "Участник из Tenant B",
+      shiftRate: "3000",
+    });
+    expect(resMemberB.status).toBe(200);
+    const memberBId = resMemberB.body.contact.id as string;
+
+    // Создаём CLIENT в tenant A
+    const clientId = await createClient("Заказчик для cross-tenant теста");
+
+    // Tenant A пытается использовать contactId из tenant B в members[]
+    const res = await post("/api/gaffer/projects").send({
+      title: "Cross-tenant атака",
+      clientId,
+      shootDate: "2025-07-01",
+      members: [{ contactId: memberBId, plannedAmount: "5000" }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details).toBe("INVALID_MEMBER_CONTACT");
+
+    // Убеждаемся, что проект НЕ был создан
+    const { prisma } = await import("../prisma");
+    const count = await prisma.gafferProject.count({
+      where: { title: "Cross-tenant атака" },
+    });
+    expect(count).toBe(0);
   });
 });
