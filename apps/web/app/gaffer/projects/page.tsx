@@ -63,7 +63,7 @@ function ProjectCard({ project }: { project: GafferProject }) {
   const teamRem = Number(project.teamRemaining ?? "0");
   const clientTotal = project.clientTotal ?? project.clientPlanAmount ?? "0";
 
-  const sumFrom = Number(project.clientPlanAmount) + Number(project.lightBudgetAmount ?? "0");
+  const sumFrom = Number(clientTotal);
   const clientName = project.client?.name ?? "без клиента";
 
   return (
