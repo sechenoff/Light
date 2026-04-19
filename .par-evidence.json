@@ -1,18 +1,23 @@
 {
-  "sprint": "3D",
-  "feature": "gaffer-crm-polish-mockup-fidelity",
+  "sprint": "gaffer-project-new-form",
+  "feature": "gaffer-project-creation-wizard-screen-8",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "ts": "2026-04-18T17:00:00+03:00",
-  "commits_reviewed": ["9b17d0b", "40b503d", "3840c0d"],
+  "ts": "2026-04-19T13:55:00+03:00",
+  "commits_reviewed": ["bf98ad6", "fb60838", "ed1aa69"],
   "tests": {
-    "api": { "suites": 50, "tests": 705, "status": "passed" },
-    "web": { "tsc": "clean except 1 pre-existing unrelated TS2578" }
+    "api": { "suites": 51, "tests": 709, "status": "passed" },
+    "tsc": { "api": "clean", "web": "clean" }
   },
-  "tsc": {
-    "api": "clean",
-    "web": "pre-existing TS2578 in formatWaitingTime.test.ts only (unchanged on main, unrelated)"
+  "review_rounds": {
+    "round1": {
+      "product": "ACCEPTED (5 MEDIUM UX polish items, non-blocking)",
+      "technical": "REQUEST_CHANGES (2 HIGH: H1 Decimal input validation, H2 TOCTOU on member validation; 2 MEDIUM: M1 dup contactId, M2 invalid date; 1 LOW: cross-tenant test)"
+    },
+    "round2": {
+      "technical": "APPROVE — all 5 findings FIXED in commit ed1aa69; no new issues; TypeScript clean on api+web"
+    }
   },
-  "notes": "Sprint 3D — Gaffer CRM UI polish to match docs/mockups/gaffer-crm.html 1:1. Covers 9 items: dashboard rebuild, project detail polish, contact card polish, layout month chip, seed scripts, summary API endpoints, and 4 review-fix follow-ups.\n\n1st round review (commit 40b503d):\n- Product ACCEPTED with 3 concerns (2 scope gaps, 1 cosmetic).\n- Technical REQUEST_CHANGES with 1 Important (duplicate payment risk: PaymentForm state not reset after successful submit since refactor to <details> removed implicit unmount).\n\nFixes applied in commit 3840c0d:\n- PaymentForm + AddMemberForm: reset state via useRef<HTMLDetailsElement> + removeAttribute('open') on success, inside try block before onDone() (error path preserves input for retry).\n- Added project-header 3-col money-block (Сумма / Должны мне / Должен я) on /gaffer/projects/[id] to match mockup screen 04 line 1283–1286.\n- Replaced '—' with '+ выпл.' <Link> to /gaffer/projects/{projectId} on team-member contact card non-closed mp-rows (screen 06 fidelity).\n- Removed leading '+ ' from <details> summary labels to avoid double-+ (span toggle already provides +/−).\n\n2nd round technical re-review: APPROVE. All 6 targeted checks passed. 705/705 API tests green.\n\nServer extension: getContactDebtSummary now returns recentPayments (last 10 IN for CLIENT / OUT for TEAM_MEMBER) with tenant-safe filter via project.gafferUserId nested relation — verified by tech reviewer.\n\nDesign canon: IBM Plex + semantic tokens only, no raw hex introduced. All money values use .mono-num, all labels Russian, all status pills use existing StatusPill variants."
+  "notes": "Sprint реализует экран 8 мокапа docs/mockups/gaffer-crm.html (lines 2055-2434) — 6-шаговый визард создания проекта с пикером команды, переработками и расчётом маржи.\n\nScope: schema extension (5 полей на GafferContact), Zod-схемы, transactional createProject с членами, shared decimalString-helper, full-page rewrite /gaffer/projects/new.\n\nFixes round 2 (ed1aa69):\n- H1: новый apps/api/src/utils/decimalString.ts — Zod refine '/^\\d+(\\.\\d+)?$/' + ≤1B cap; применён к clientPlanAmount/lightBudgetAmount/plannedAmount/всем 4 rate fields.\n- H2: валидация contactId участников перенесена INSIDE prisma.$transaction через tx.gafferContact.findMany({gafferUserId, type:'TEAM_MEMBER', isArchived:false}).\n- M1: .refine() dedup на members array.\n- M2: .refine(d => !isNaN(d.getTime())) после .transform() на shootDate (create+update).\n- M3: roleLabel max aligned к 100 везде.\n- L1: 4-й integration-test с cross-tenant attack на gaffer-projects.test.ts."
 }
