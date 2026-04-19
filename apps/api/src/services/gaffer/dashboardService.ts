@@ -16,6 +16,7 @@ export interface DashboardKpi {
   owedToMeClientCount: number;
   iOweProjectCount: number;
   iOweMemberCount: number;
+  iOweVendorCount: number;
 }
 
 export interface DashboardClientDebt {
@@ -34,6 +35,15 @@ export interface DashboardTeamDebt {
   projectCount: number;
 }
 
+export interface DashboardVendorDebt {
+  id: string;
+  name: string;
+  roleLabel: string | null;
+  remaining: string;
+  projectCount: number;
+  lastPaymentAt: string | null;
+}
+
 export interface DashboardMeta {
   activeProjects: number;
   archivedProjects: number;
@@ -44,6 +54,7 @@ export interface GafferDashboardData {
   kpi: DashboardKpi;
   clientsWithDebt: DashboardClientDebt[];
   teamWithDebt: DashboardTeamDebt[];
+  vendorsWithDebt: DashboardVendorDebt[];
   meta: DashboardMeta;
 }
 
@@ -85,6 +96,7 @@ export async function getDashboard(req: Request): Promise<GafferDashboardData> {
   const owedToMeClientIds = new Set<string>();
   let iOweProjectCount = 0;
   const iOweMemberContactIds = new Set<string>();
+  const iOweVendorContactIds = new Set<string>();
 
   // Для clientsWithDebt
   const clientDebtMap = new Map<
@@ -92,10 +104,22 @@ export async function getDashboard(req: Request): Promise<GafferDashboardData> {
     { name: string; remaining: Decimal; projectCount: number; lastPaymentAt: Date | null }
   >();
 
-  // Для teamWithDebt: contactId → { name, roleLabel, remaining, projectCount }
-  const memberDebtMap = new Map<
+  // Для teamWithDebt: contactId (TEAM_MEMBER) → { name, roleLabel, remaining, projectCount }
+  const teamDebtMap = new Map<
     string,
     { name: string; roleLabel: string | null; remaining: Decimal; projectCount: number }
+  >();
+
+  // Для vendorsWithDebt: contactId (VENDOR) → { name, roleLabel, remaining, projectCount, lastPaymentAt }
+  const vendorDebtMap = new Map<
+    string,
+    {
+      name: string;
+      roleLabel: string | null;
+      remaining: Decimal;
+      projectCount: number;
+      lastPaymentAt: Date | null;
+    }
   >();
 
   let lastActivityAt: Date | null = null;
@@ -106,9 +130,11 @@ export async function getDashboard(req: Request): Promise<GafferDashboardData> {
 
     const clientRem = new Decimal(debts.clientRemaining);
     const teamRem = new Decimal(debts.teamRemaining);
+    const vendorRem = new Decimal(debts.vendorRemaining);
+    const projectIOwe = teamRem.plus(vendorRem);
 
     totalOwedToMe = totalOwedToMe.plus(clientRem);
-    totalIOwe = totalIOwe.plus(teamRem);
+    totalIOwe = totalIOwe.plus(projectIOwe);
 
     if (clientRem.gt(ZERO)) {
       owedToMeProjectCount++;
@@ -143,12 +169,14 @@ export async function getDashboard(req: Request): Promise<GafferDashboardData> {
       }
     }
 
-    // Team debt per member
-    if (teamRem.gt(ZERO)) {
+    // Per-member debt (TEAM_MEMBER + VENDOR, partitioned by contact.type)
+    if (projectIOwe.gt(ZERO)) {
       iOweProjectCount++;
 
-      // Per-member remaining within this project
       for (const member of project.members) {
+        const type = member.contact?.type;
+        if (type !== "TEAM_MEMBER" && type !== "VENDOR") continue;
+
         const memberPayments = project.payments.filter(
           (p) => p.direction === "OUT" && p.memberId === member.contactId,
         );
@@ -156,20 +184,41 @@ export async function getDashboard(req: Request): Promise<GafferDashboardData> {
         const planned = new Decimal(member.plannedAmount);
         const rawRem = planned.minus(paid);
         const memberRem = rawRem.gt(ZERO) ? rawRem : ZERO;
+        if (memberRem.lte(ZERO)) continue;
 
-        if (memberRem.gt(ZERO)) {
+        if (type === "TEAM_MEMBER") {
           iOweMemberContactIds.add(member.contactId);
-          const ex = memberDebtMap.get(member.contactId);
+          const ex = teamDebtMap.get(member.contactId);
           if (ex) {
             ex.remaining = ex.remaining.plus(memberRem);
             ex.projectCount++;
-            // Keep roleLabel from most-recent membership (first encountered since sorted desc)
           } else {
-            memberDebtMap.set(member.contactId, {
+            teamDebtMap.set(member.contactId, {
               name: member.contact.name,
               roleLabel: member.roleLabel,
               remaining: memberRem,
               projectCount: 1,
+            });
+          }
+        } else {
+          iOweVendorContactIds.add(member.contactId);
+          const lastOut = memberPayments.sort(
+            (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+          )[0];
+          const ex = vendorDebtMap.get(member.contactId);
+          if (ex) {
+            ex.remaining = ex.remaining.plus(memberRem);
+            ex.projectCount++;
+            if (lastOut && (!ex.lastPaymentAt || lastOut.createdAt > ex.lastPaymentAt)) {
+              ex.lastPaymentAt = lastOut.createdAt;
+            }
+          } else {
+            vendorDebtMap.set(member.contactId, {
+              name: member.contact.name,
+              roleLabel: member.roleLabel,
+              remaining: memberRem,
+              projectCount: 1,
+              lastPaymentAt: lastOut?.createdAt ?? null,
             });
           }
         }
@@ -189,13 +238,24 @@ export async function getDashboard(req: Request): Promise<GafferDashboardData> {
     }))
     .sort((a, b) => new Decimal(b.remaining).comparedTo(new Decimal(a.remaining)));
 
-  const teamWithDebt: DashboardTeamDebt[] = Array.from(memberDebtMap.entries())
+  const teamWithDebt: DashboardTeamDebt[] = Array.from(teamDebtMap.entries())
     .map(([id, v]) => ({
       id,
       name: v.name,
       roleLabel: v.roleLabel,
       remaining: v.remaining.toString(),
       projectCount: v.projectCount,
+    }))
+    .sort((a, b) => new Decimal(b.remaining).comparedTo(new Decimal(a.remaining)));
+
+  const vendorsWithDebt: DashboardVendorDebt[] = Array.from(vendorDebtMap.entries())
+    .map(([id, v]) => ({
+      id,
+      name: v.name,
+      roleLabel: v.roleLabel,
+      remaining: v.remaining.toString(),
+      projectCount: v.projectCount,
+      lastPaymentAt: v.lastPaymentAt ? v.lastPaymentAt.toISOString() : null,
     }))
     .sort((a, b) => new Decimal(b.remaining).comparedTo(new Decimal(a.remaining)));
 
@@ -214,9 +274,11 @@ export async function getDashboard(req: Request): Promise<GafferDashboardData> {
       owedToMeClientCount: owedToMeClientIds.size,
       iOweProjectCount,
       iOweMemberCount: iOweMemberContactIds.size,
+      iOweVendorCount: iOweVendorContactIds.size,
     },
     clientsWithDebt,
     teamWithDebt,
+    vendorsWithDebt,
     meta: {
       activeProjects: openProjects.length,
       archivedProjects: archivedCount,

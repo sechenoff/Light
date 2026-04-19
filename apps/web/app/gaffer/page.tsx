@@ -7,6 +7,7 @@ import {
   type GafferDashboard,
   type GafferDashboardClientDebt,
   type GafferDashboardTeamDebt,
+  type GafferDashboardVendorDebt,
 } from "../../src/lib/gafferApi";
 import { formatRub, pluralize, MONTHS_LOCATIVE } from "../../src/lib/format";
 import { toast } from "../../src/components/ToastProvider";
@@ -94,6 +95,11 @@ function KpiPair({ kpi }: { kpi: GafferDashboard["kpi"] }) {
               {pluralize(kpi.iOweMemberCount, "человеку", "человекам", "человекам")}
             </>
           )}
+          {kpi.iOweVendorCount > 0 && (
+            <> · {kpi.iOweVendorCount}{" "}
+              {pluralize(kpi.iOweVendorCount, "ренталу", "ренталам", "ренталам")}
+            </>
+          )}
         </p>
       </div>
     </div>
@@ -119,6 +125,31 @@ function ClientDebtRow({ item }: { item: GafferDashboardClientDebt }) {
         </p>
       </div>
       <span className="text-[13.5px] font-semibold text-rose mono-num shrink-0">
+        {formatRub(item.remaining)}
+      </span>
+    </Link>
+  );
+}
+
+// ── Vendor debt list row ──────────────────────────────────────────────────────
+
+function VendorDebtRow({ item }: { item: GafferDashboardVendorDebt }) {
+  return (
+    <Link
+      href={`/gaffer/contacts/${item.id}`}
+      className="flex items-center justify-between gap-2 py-2.5 px-4 border-b border-border last:border-0 hover:bg-surface-2 transition-colors"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-semibold text-ink truncate">{item.name}</p>
+        <p className="text-[11px] text-ink-3 mt-0.5">
+          {item.projectCount}{" "}
+          {pluralize(item.projectCount, "проект", "проекта", "проектов")}
+          {item.lastPaymentAt && (
+            <> · последняя выплата {formatPaymentDate(item.lastPaymentAt)}</>
+          )}
+        </p>
+      </div>
+      <span className="text-[13.5px] font-semibold text-amber mono-num shrink-0">
         {formatRub(item.remaining)}
       </span>
     </Link>
@@ -229,6 +260,31 @@ export default function GafferDashboardPage() {
               ) : (
                 data.teamWithDebt.map((item) => (
                   <TeamDebtRow key={item.id} item={item} />
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Ренталы с долгом */}
+          <div className="mt-3">
+            <div className="px-4 pb-1.5 flex items-baseline justify-between">
+              <p className="text-[11px] font-semibold tracking-wider text-ink-3 uppercase"
+                style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+                Ренталы с долгом
+              </p>
+              <p className="text-[10.5px] text-ink-3">
+                {data.vendorsWithDebt.length}{" "}
+                {pluralize(data.vendorsWithDebt.length, "рентал", "рентала", "ренталов")}
+              </p>
+            </div>
+            <div className="bg-surface border-y border-border">
+              {data.vendorsWithDebt.length === 0 ? (
+                <div className="py-5 text-center text-[12.5px] text-ink-3 px-4">
+                  Все расчёты сведены 👌
+                </div>
+              ) : (
+                data.vendorsWithDebt.map((item) => (
+                  <VendorDebtRow key={item.id} item={item} />
                 ))
               )}
             </div>

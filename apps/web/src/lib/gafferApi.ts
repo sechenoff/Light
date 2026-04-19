@@ -575,6 +575,15 @@ export interface GafferDashboardTeamDebt {
   projectCount: number;
 }
 
+export interface GafferDashboardVendorDebt {
+  id: string;
+  name: string;
+  roleLabel: string | null;
+  remaining: string;
+  projectCount: number;
+  lastPaymentAt: string | null;
+}
+
 export interface GafferDashboard {
   kpi: {
     owedToMe: string;
@@ -583,9 +592,11 @@ export interface GafferDashboard {
     owedToMeClientCount: number;
     iOweProjectCount: number;
     iOweMemberCount: number;
+    iOweVendorCount: number;
   };
   clientsWithDebt: GafferDashboardClientDebt[];
   teamWithDebt: GafferDashboardTeamDebt[];
+  vendorsWithDebt: GafferDashboardVendorDebt[];
   meta: {
     activeProjects: number;
     archivedProjects: number;
