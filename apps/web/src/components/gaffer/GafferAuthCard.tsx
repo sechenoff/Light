@@ -21,9 +21,9 @@ export function GafferAuthCard({
       style={{ minHeight: "640px" }}
     >
       {/* Brand */}
-      <div className="text-center mb-7">
+      <div className="text-center mb-9">
         <div
-          className="text-white font-semibold text-[22px] tracking-tight mb-1"
+          className="text-white font-semibold text-[22px] tracking-tight mb-[6px]"
           style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
         >
           Light Rental
@@ -39,13 +39,13 @@ export function GafferAuthCard({
       {/* Card */}
       <div
         className="w-full bg-surface rounded-lg overflow-hidden shadow-[0_14px_28px_rgba(9,9,11,.22)] border border-white/10"
-        style={{ maxWidth: "340px" }}
+        style={{ maxWidth: "360px" }}
       >
         {/* Tabs */}
         <div className="grid grid-cols-2 border-b border-border bg-[#fafafa]">
           <Link
             href="/login"
-            className={`py-3 text-center text-[12px] font-semibold tracking-[1.2px] uppercase border-b-2 transition-colors ${
+            className={`py-[14px] text-center text-[12px] font-semibold tracking-[1.2px] uppercase border-b-2 transition-colors ${
               activeTab === "employee"
                 ? "text-accent border-accent-bright bg-surface"
                 : "text-ink-3 border-transparent hover:text-ink"
@@ -57,7 +57,7 @@ export function GafferAuthCard({
           <button
             type="button"
             disabled
-            className={`py-3 text-center text-[12px] font-semibold tracking-[1.2px] uppercase border-b-2 ${
+            className={`py-[14px] text-center text-[12px] font-semibold tracking-[1.2px] uppercase border-b-2 ${
               activeTab === "gaffer"
                 ? "text-accent border-accent-bright bg-surface"
                 : "text-ink-3 border-transparent"
@@ -69,7 +69,7 @@ export function GafferAuthCard({
         </div>
 
         {/* Body */}
-        <div className="p-[22px]">{children}</div>
+        <div className="px-[26px] py-[28px]">{children}</div>
       </div>
     </div>
   );
