@@ -469,6 +469,14 @@ function GafferContactDetailContent() {
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-9 bg-surface border border-border rounded-lg shadow-sm z-20 w-44 py-1">
+                {contact.type === "TEAM_MEMBER" && !contact.isArchived && (
+                  <button
+                    onClick={() => { router.push(`/gaffer/contacts/${id}/edit-rate`); setMenuOpen(false); }}
+                    className="w-full text-left px-4 py-2.5 text-[13px] text-ink hover:bg-[#fafafa] transition-colors"
+                  >
+                    Настроить ставку
+                  </button>
+                )}
                 <button
                   onClick={handleArchiveToggle}
                   className="w-full text-left px-4 py-2.5 text-[13px] text-ink hover:bg-[#fafafa] transition-colors"
@@ -585,7 +593,20 @@ function GafferContactDetailContent() {
         <div className="divide-y divide-border">
           {/* Name & contacts */}
           <div className="px-4 py-4">
-            <h2 className="text-[18px] font-semibold text-ink mb-3">{contact.name}</h2>
+            <p
+              className="eyebrow mb-1"
+              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+            >
+              {contact.type === "TEAM_MEMBER" ? "Профиль осветителя" : "Карточка заказчика"}
+            </p>
+            <h2 className="text-[18px] font-semibold text-ink mb-1.5">{contact.name}</h2>
+            {contact.type === "TEAM_MEMBER" && (contact.roleLabel || contact.telegram || contact.phone) && (
+              <p className="text-[12.5px] text-ink-3 mb-2.5">
+                {[contact.roleLabel, contact.telegram, contact.phone]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
             {(contact.phone || contact.telegram) && (
               <div className="space-y-2">
                 {contact.phone && (
