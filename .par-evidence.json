@@ -1,45 +1,78 @@
 {
-  "sprint": "responsive-iphone",
-  "feature": "mobile-first-ui-fixes",
+  "sprint": "gaffer-project-rentals",
+  "feature": "vendor-contact-type-and-light-rental-section",
   "governance": "light",
-  "claude_product": "SKIPPED",
+  "claude_product": "APPROVE",
   "technical_review": "APPROVE",
-  "provider": "single-reviewer",
-  "reviewer_model": "opus (standard-code-reviewer, medium effort)",
-  "ts": "2026-04-19T12:50:00Z",
+  "provider": "split-focus",
+  "reviewer_models": {
+    "product": "opus (standard-product-reviewer, medium effort)",
+    "technical": "opus (standard-code-reviewer, medium effort)"
+  },
+  "ts": "2026-04-19T14:58:29Z",
   "scope": {
-    "description": "7 Tailwind-правок для iPhone 390px viewport. Frontend-only, zero logic changes.",
-    "files_changed": [
-      "apps/web/src/components/bookings/BookingForm.tsx",
-      "apps/web/app/finance/debts/page.tsx",
-      "apps/web/src/components/finance/PaymentsTotalsStrip.tsx",
-      "apps/web/src/components/finance/PaymentsByClient.tsx",
-      "apps/web/src/components/tasks/TaskArchivePage.tsx",
-      "apps/web/app/admin/more/page.tsx",
-      "apps/web/src/components/admin/slang/HowItWorks.tsx"
+    "description": "New VENDOR contact type for light-rental vendors. GafferProjectMember reused for vendor associations. New «Аренда света» section on project detail page with multi-vendor support. Server-side debt aggregates split into team-only and vendor-only. Migration script for legacy roleLabel='Рентал' contacts.",
+    "commits": [
+      "d38669a — feat(gaffer): picker на /gaffer/contacts/new — Заказчик / Осветитель / Рентал",
+      "0b0c577 — feat(gaffer): add VENDOR contact type for light rental vendors",
+      "60a57e1 — fix(gaffer): split team/vendor debt aggregates + migration safety"
     ],
-    "approx_lines_changed": 14,
-    "backend_changes": "none"
+    "files_changed_in_fix_commit": [
+      "apps/api/prisma/schema.prisma",
+      "apps/api/src/routes/gaffer/contacts.ts",
+      "apps/api/src/services/gaffer/contactService.ts",
+      "apps/api/src/services/gaffer/projectMemberService.ts",
+      "apps/api/src/services/gaffer/projectService.ts",
+      "apps/api/src/__tests__/gaffer-projects.test.ts",
+      "apps/api/scripts/migrate-rental-teammembers-to-vendor.ts",
+      "apps/web/app/gaffer/contacts/new/page.tsx",
+      "apps/web/app/gaffer/contacts/page.tsx",
+      "apps/web/app/gaffer/projects/[id]/page.tsx",
+      "apps/web/src/lib/gafferApi.ts"
+    ],
+    "backend_changes": "new VENDOR enum value, split-by-type aggregates in computeProjectDebts, cross-tenant test, migration script",
+    "frontend_changes": "Аренда света section on project detail, vendor tab on contacts, mobile grid (2×2 <md, 4 ≥md)"
   },
   "review_passes": [
     {
-      "verdict": "APPROVE",
+      "pass": 1,
+      "product_verdict": "NEEDS_FIXES",
+      "technical_verdict": "REQUEST_CHANGES",
+      "high_findings": [
+        "Double-count: teamPlanTotal/teamPaidTotal/teamRemaining summed across TEAM_MEMBER+VENDOR, «Должен я» included vendor debt (product+technical)",
+        "grid-cols-4 at 390px iPhone clipped «Должен ренталу» label (product)",
+        "Migration LIKE '%ental%' over-matches Latin words (dental, Oriental) (technical)",
+        "Migration backup path resolved incorrectly — silently skipped, destructive UPDATE ran without backup (technical)"
+      ],
+      "ts": "2026-04-19T13:30:00Z"
+    },
+    {
+      "pass": 2,
+      "product_verdict": "APPROVE",
+      "technical_verdict": "APPROVE",
       "findings": {
         "critical": 0,
         "high": 0,
-        "medium": 0,
-        "low": 2
+        "medium": 1,
+        "low": 5
       },
-      "low_findings_deferred": [
-        "divide-x артефакт на 2-колоночном mobile grid в PaymentsTotalsStrip/PaymentsByClient — визуально минорно",
-        "border-r на 2-й ячейке TaskArchivePage на mobile совпадает с контейнерной рамкой — незаметно"
+      "medium_deferred": [
+        "Migration still global-across-tenants in single UPDATE — acceptable for one-off operator-run script, could add --tenant filter"
       ],
-      "ts": "2026-04-19T12:50:00Z"
+      "low_deferred": [
+        "Top tile labels diverge from original spec («Сумма», «Должны мне» vs «Доход за проект», «Получено») — pre-existing, unchanged by this sprint",
+        "Strict team-type filter assumes server always returns contact.type — safe today, no optimistic adds exist",
+        "Orphan OUT-payments with null memberId fall into teamPaidTotal as backward-compat — documented trade-off",
+        "Legacy members with unexpected contact.type silently dropped from both plan totals — enum-level non-null makes this unreachable today",
+        "contact?.type typed as plain string instead of GafferContactType enum — 30s tightening opportunity"
+      ],
+      "ts": "2026-04-19T14:58:29Z"
     }
   ],
   "verification": {
-    "tsc": "PASS (npx tsc --noEmit → 0 errors)",
-    "tests": "PASS (709 API + 31 bot + 33 shared = 773 tests in isolation)",
-    "design_canon": "no hex, semantic tokens only, no font-family changes"
+    "tsc_api": "PASS (npx tsc --noEmit -p apps/api/tsconfig.json → 0 errors)",
+    "tsc_web": "PASS (npx tsc --noEmit -p apps/web/tsconfig.json → 0 errors)",
+    "tests": "PASS (gaffer-projects.test.ts: 11/11 in isolation; full gaffer suite: 166/166 with --no-file-parallelism)",
+    "cross_tenant_attack_test": "added for VENDOR on addMember endpoint"
   }
 }
