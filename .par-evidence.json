@@ -1,6 +1,6 @@
 {
-  "sprint": "gaffer-project-rentals",
-  "feature": "vendor-contact-type-and-light-rental-section",
+  "sprint": "gaffer-project-new-vendor-picker",
+  "feature": "multi-vendor-picker-on-project-creation-step-4",
   "governance": "light",
   "claude_product": "APPROVE",
   "technical_review": "APPROVE",
@@ -9,45 +9,23 @@
     "product": "opus (standard-product-reviewer, medium effort)",
     "technical": "opus (standard-code-reviewer, medium effort)"
   },
-  "ts": "2026-04-19T14:58:29Z",
+  "ts": "2026-04-19T15:45:00Z",
   "scope": {
-    "description": "New VENDOR contact type for light-rental vendors. GafferProjectMember reused for vendor associations. New «Аренда света» section on project detail page with multi-vendor support. Server-side debt aggregates split into team-only and vendor-only. Migration script for legacy roleLabel='Рентал' contacts.",
+    "description": "Replace single lightBudgetAmount number input on Step 4 of /gaffer/projects/new with a multi-vendor picker. Each selected VENDOR contact gets its own per-row planned amount. Vendors are submitted as project members alongside team; sum of vendor amounts is sent as lightBudgetAmount for backward compat. Project detail page (unchanged) already renders vendor aggregates via vendorPlanTotal/vendorPaidTotal/vendorRemaining shipped in prior sprint.",
     "commits": [
-      "d38669a — feat(gaffer): picker на /gaffer/contacts/new — Заказчик / Осветитель / Рентал",
-      "0b0c577 — feat(gaffer): add VENDOR contact type for light rental vendors",
-      "60a57e1 — fix(gaffer): split team/vendor debt aggregates + migration safety"
+      "6c1f91f — feat(gaffer): multi-vendor picker на шаге 4 создания проекта",
+      "cd32a42 — fix(gaffer): не отбрасывать ренталы с plannedAmount=0 из payload"
     ],
-    "files_changed_in_fix_commit": [
-      "apps/api/prisma/schema.prisma",
-      "apps/api/src/routes/gaffer/contacts.ts",
-      "apps/api/src/services/gaffer/contactService.ts",
-      "apps/api/src/services/gaffer/projectMemberService.ts",
-      "apps/api/src/services/gaffer/projectService.ts",
-      "apps/api/src/__tests__/gaffer-projects.test.ts",
-      "apps/api/scripts/migrate-rental-teammembers-to-vendor.ts",
-      "apps/web/app/gaffer/contacts/new/page.tsx",
-      "apps/web/app/gaffer/contacts/page.tsx",
-      "apps/web/app/gaffer/projects/[id]/page.tsx",
-      "apps/web/src/lib/gafferApi.ts"
+    "files_changed": [
+      "apps/web/app/gaffer/projects/new/page.tsx",
+      "apps/web/tsconfig.tsbuildinfo"
     ],
-    "backend_changes": "new VENDOR enum value, split-by-type aggregates in computeProjectDebts, cross-tenant test, migration script",
-    "frontend_changes": "Аренда света section on project detail, vendor tab on contacts, mobile grid (2×2 <md, 4 ≥md)"
+    "backend_changes": "none — all backend plumbing already in place from prior sprints (VENDOR enum, createProject accepts mixed members, server splits aggregates by contact type, tenant isolation via gafferWhere)",
+    "frontend_changes": "new vendor picker grid + inline create form + per-vendor amount rows + auto-summed total on Step 4; Step 6 Итог «Должен ренталу» row shows vendor count via pluralize; lightBudgetAmount derived from vendor sum"
   },
   "review_passes": [
     {
       "pass": 1,
-      "product_verdict": "NEEDS_FIXES",
-      "technical_verdict": "REQUEST_CHANGES",
-      "high_findings": [
-        "Double-count: teamPlanTotal/teamPaidTotal/teamRemaining summed across TEAM_MEMBER+VENDOR, «Должен я» included vendor debt (product+technical)",
-        "grid-cols-4 at 390px iPhone clipped «Должен ренталу» label (product)",
-        "Migration LIKE '%ental%' over-matches Latin words (dental, Oriental) (technical)",
-        "Migration backup path resolved incorrectly — silently skipped, destructive UPDATE ran without backup (technical)"
-      ],
-      "ts": "2026-04-19T13:30:00Z"
-    },
-    {
-      "pass": 2,
       "product_verdict": "APPROVE",
       "technical_verdict": "APPROVE",
       "findings": {
@@ -56,23 +34,21 @@
         "medium": 1,
         "low": 5
       },
-      "medium_deferred": [
-        "Migration still global-across-tenants in single UPDATE — acceptable for one-off operator-run script, could add --tenant filter"
+      "medium_addressed_in_fix": [
+        "Product MEDIUM: vendors with plannedAmount=0 silently filtered from payload → fixed in cd32a42 by removing the filter entirely (gaffer can lock in rental set now, fill amounts later on detail page)"
       ],
       "low_deferred": [
-        "Top tile labels diverge from original spec («Сумма», «Должны мне» vs «Доход за проект», «Получено») — pre-existing, unchanged by this sprint",
-        "Strict team-type filter assumes server always returns contact.type — safe today, no optimistic adds exist",
-        "Orphan OUT-payments with null memberId fall into teamPaidTotal as backward-compat — documented trade-off",
-        "Legacy members with unexpected contact.type silently dropped from both plan totals — enum-level non-null makes this unreachable today",
-        "contact?.type typed as plain string instead of GafferContactType enum — 30s tightening opportunity"
+        "Product LOW: deselect requires scrolling back to the vendor grid (same UX as team — consistent pre-existing pattern)",
+        "Product LOW: empty-state copy for tenants with no VENDOR contacts (consistent with team pattern)",
+        "Technical LOW: lightBudgetAmount state is now dead weight (only written by draft restore) — safe but could be pruned in a cleanup sprint",
+        "Technical LOW: crew-calculator round-trip silently drops selectedVendors (pre-existing limitation of NewProjectDraft — also drops selectedMembers, consistent)",
+        "Technical LOW: four independent useEffect blocks could be collapsed (readable as-is)"
       ],
-      "ts": "2026-04-19T14:58:29Z"
+      "ts": "2026-04-19T15:40:00Z"
     }
   ],
   "verification": {
-    "tsc_api": "PASS (npx tsc --noEmit -p apps/api/tsconfig.json → 0 errors)",
     "tsc_web": "PASS (npx tsc --noEmit -p apps/web/tsconfig.json → 0 errors)",
-    "tests": "PASS (gaffer-projects.test.ts: 11/11 in isolation; full gaffer suite: 166/166 with --no-file-parallelism)",
-    "cross_tenant_attack_test": "added for VENDOR on addMember endpoint"
+    "tests": "N/A — UI-only mirror of existing team-picker pattern; backend plumbing unchanged and covered by prior sprint tests"
   }
 }
