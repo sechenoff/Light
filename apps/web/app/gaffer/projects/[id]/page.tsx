@@ -977,14 +977,14 @@ function GafferProjectDetailContent() {
   const inPayments = (project.payments ?? []).filter((p) => p.direction === "IN");
 
   const allMembers = project.members ?? [];
+  // Strict type filter — only rows with explicit contact.type to prevent cross-section leakage
   const vendorMembers = allMembers.filter((m) => m.contact?.type === "VENDOR");
-  // Team members: rows whose contact is TEAM_MEMBER, or rows without a resolved contact (optimistic)
-  const teamMembersFiltered = allMembers.filter((m) => m.contact?.type === "TEAM_MEMBER" || !m.contact?.type);
+  const teamMembersFiltered = allMembers.filter((m) => m.contact?.type === "TEAM_MEMBER");
 
-  // Vendor financial aggregates
-  const vendorPlanTotal = vendorMembers.reduce((acc, m) => acc + Number(m.plannedAmount ?? 0), 0);
-  const vendorPaidTotal = vendorMembers.reduce((acc, m) => acc + Number(m.paidToMe ?? 0), 0);
-  const vendorRemaining = vendorPlanTotal - vendorPaidTotal;
+  // Use server-computed vendor aggregates (avoids double-counting with team totals)
+  const vendorPlanTotal = Number(project.vendorPlanTotal ?? 0);
+  const vendorPaidTotal = Number(project.vendorPaidTotal ?? 0);
+  const vendorRemaining = Number(project.vendorRemaining ?? 0);
 
   return (
     <div className="min-h-screen bg-surface pb-10">
@@ -1152,7 +1152,7 @@ function GafferProjectDetailContent() {
 
           {/* Project summary money-block (screen 04) */}
           <div className="px-4 py-3">
-            <div className={`grid border border-border rounded-md overflow-hidden bg-surface mb-3 ${vendorRemaining > 0 ? "grid-cols-4" : "grid-cols-3"}`}>
+            <div className={`grid border border-border rounded-md overflow-hidden bg-surface mb-3 ${vendorRemaining > 0 ? "grid-cols-2 md:grid-cols-4" : "grid-cols-3"}`}>
               <div className="p-2.5 border-r border-border text-center">
                 <div className="eyebrow">Сумма</div>
                 <div className="mono-num text-[15px] font-semibold mt-1">{formatRub(project.clientTotal ?? project.clientPlanAmount)}</div>

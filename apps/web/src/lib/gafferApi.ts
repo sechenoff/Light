@@ -283,6 +283,9 @@ export interface GafferProject {
   teamPlanTotal?: string;
   teamPaidTotal?: string;
   teamRemaining?: string;
+  vendorPlanTotal?: string;
+  vendorPaidTotal?: string;
+  vendorRemaining?: string;
   // Relations (on detail)
   client?: GafferContact;
   members?: GafferProjectMember[];

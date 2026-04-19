@@ -60,6 +60,7 @@ type ProjectWithRelations = {
     plannedAmount: Decimal;
     contactId: string;
     roleLabel: string | null;
+    contact?: { type?: string } | null;
     [key: string]: unknown;
   }>;
   payments: Array<{
@@ -82,6 +83,9 @@ export interface ProjectDebtAggregates {
   teamPlanTotal: string;
   teamPaidTotal: string;
   teamRemaining: string;
+  vendorPlanTotal: string;
+  vendorPaidTotal: string;
+  vendorRemaining: string;
 }
 
 /**
@@ -103,20 +107,53 @@ export function computeProjectDebts(project: ProjectWithRelations): ProjectDebtA
   const rawClientRemaining = clientTotal.minus(clientReceived);
   const clientRemaining = rawClientRemaining.gt(ZERO) ? rawClientRemaining : ZERO;
 
-  // teamPlanTotal = сумма plannedAmount всех участников
-  const teamPlanTotal = project.members.reduce(
+  // Разделяем участников по типу контакта
+  const teamMembers = project.members.filter((m) => m.contact?.type === "TEAM_MEMBER");
+  const vendorMembers = project.members.filter((m) => m.contact?.type === "VENDOR");
+
+  // Карта memberId → тип для партиционирования OUT-платежей
+  // GafferPayment.memberId === GafferContact.id (не GafferProjectMember.id)
+  const memberTypeById = new Map<string, "TEAM_MEMBER" | "VENDOR">();
+  for (const m of project.members) {
+    const t = m.contact?.type;
+    if (t === "TEAM_MEMBER" || t === "VENDOR") {
+      memberTypeById.set(m.contactId, t);
+    }
+  }
+
+  // teamPlanTotal = сумма plannedAmount только TEAM_MEMBER-участников
+  const teamPlanTotal = teamMembers.reduce(
     (acc, m) => acc.plus(m.plannedAmount),
     ZERO,
   );
 
-  // teamPaidTotal = сумма OUT-платежей
-  const teamPaidTotal = project.payments
-    .filter((p) => p.direction === "OUT")
-    .reduce((acc, p) => acc.plus(p.amount), ZERO);
+  // vendorPlanTotal = сумма plannedAmount только VENDOR-участников
+  const vendorPlanTotal = vendorMembers.reduce(
+    (acc, m) => acc.plus(m.plannedAmount),
+    ZERO,
+  );
+
+  // Разделяем OUT-платежи по типу memberId
+  let teamPaidTotal = ZERO;
+  let vendorPaidTotal = ZERO;
+  for (const p of project.payments) {
+    if (p.direction !== "OUT") continue;
+    const resolvedType = p.memberId ? memberTypeById.get(p.memberId) : undefined;
+    if (resolvedType === "VENDOR") {
+      vendorPaidTotal = vendorPaidTotal.plus(p.amount);
+    } else {
+      // TEAM_MEMBER, null memberId, or unresolved → backward compat
+      teamPaidTotal = teamPaidTotal.plus(p.amount);
+    }
+  }
 
   // teamRemaining = max(0, teamPlanTotal - teamPaidTotal)
   const rawTeamRemaining = teamPlanTotal.minus(teamPaidTotal);
   const teamRemaining = rawTeamRemaining.gt(ZERO) ? rawTeamRemaining : ZERO;
+
+  // vendorRemaining = max(0, vendorPlanTotal - vendorPaidTotal)
+  const rawVendorRemaining = vendorPlanTotal.minus(vendorPaidTotal);
+  const vendorRemaining = rawVendorRemaining.gt(ZERO) ? rawVendorRemaining : ZERO;
 
   return {
     clientReceived: clientReceived.toString(),
@@ -126,6 +163,9 @@ export function computeProjectDebts(project: ProjectWithRelations): ProjectDebtA
     teamPlanTotal: teamPlanTotal.toString(),
     teamPaidTotal: teamPaidTotal.toString(),
     teamRemaining: teamRemaining.toString(),
+    vendorPlanTotal: vendorPlanTotal.toString(),
+    vendorPaidTotal: vendorPaidTotal.toString(),
+    vendorRemaining: vendorRemaining.toString(),
   };
 }
 
@@ -160,7 +200,11 @@ async function validateClientContact(
 
 const listIncludes = {
   members: {
-    select: { plannedAmount: true },
+    select: {
+      plannedAmount: true,
+      contactId: true,
+      contact: { select: { type: true } },
+    },
   },
   payments: {
     select: { direction: true, amount: true, memberId: true },
