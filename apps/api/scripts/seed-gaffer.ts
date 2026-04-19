@@ -172,7 +172,8 @@ async function seedUser(email: string, name: string) {
   });
 
   // ── Project 1: Клип «Синяя волна» ─────────────────────────────────────────
-  // clientTotal = 100000 + 150000 = 250000
+  // clientTotal = clientPlanAmount = 250000 (договорная сумма с заказчиком)
+  // lightBudgetAmount = 150000 (что гаффер должен ренталу — вычитается из дохода)
   // clientReceived = 70000 → clientRemaining = 180000
   // teamPlan = 60000+50000+20000 = 130000, teamPaid = 20000+30000+20000 = 70000 → teamRemaining = 60000
 
@@ -182,7 +183,7 @@ async function seedUser(email: string, name: string) {
       title: "Клип «Синяя волна»",
       clientId: romashka.id,
       shootDate: new Date("2026-04-15"),
-      clientPlanAmount: new Decimal(100000),
+      clientPlanAmount: new Decimal(250000),
       lightBudgetAmount: new Decimal(150000),
       status: "OPEN",
     },
@@ -256,7 +257,8 @@ async function seedUser(email: string, name: string) {
   void m1_sergey; void m1_alexey; void m1_pavel;
 
   // ── Project 2: Коммерческий «Маркет·ТВ» ──────────────────────────────────
-  // clientTotal = 40000 + 50000 = 90000, clientReceived=0 → clientRemaining=90000
+  // clientTotal = clientPlanAmount = 90000 (договорная сумма), clientReceived=0 → clientRemaining=90000
+  // lightBudgetAmount = 50000 (долг ренталу)
 
   await prisma.gafferProject.create({
     data: {
@@ -264,14 +266,15 @@ async function seedUser(email: string, name: string) {
       title: "Коммерческий «Маркет·ТВ»",
       clientId: thirdFloor.id,
       shootDate: new Date("2026-04-08"),
-      clientPlanAmount: new Decimal(40000),
+      clientPlanAmount: new Decimal(90000),
       lightBudgetAmount: new Decimal(50000),
       status: "OPEN",
     },
   });
 
   // ── Project 3: Съёмка «Коллекция весна» ───────────────────────────────────
-  // clientTotal = 60000 + 60000 = 120000, clientReceived=60000+60000=120000 → clientRemaining=0
+  // clientTotal = clientPlanAmount = 120000 (договорная сумма), clientReceived=60000+60000=120000 → clientRemaining=0
+  // lightBudgetAmount = 60000 (долг ренталу)
   // team: Сергей=40000 paid 20000 → rem 20000, Дмитрий=25000 paid 0 → rem 25000, Анна=12000 paid 0 → rem 12000
 
   const proj3 = await prisma.gafferProject.create({
@@ -280,7 +283,7 @@ async function seedUser(email: string, name: string) {
       title: "Съёмка «Коллекция весна»",
       clientId: romashka.id,
       shootDate: new Date("2026-04-02"),
-      clientPlanAmount: new Decimal(60000),
+      clientPlanAmount: new Decimal(120000),
       lightBudgetAmount: new Decimal(60000),
       status: "OPEN",
     },
@@ -324,7 +327,8 @@ async function seedUser(email: string, name: string) {
   });
 
   // ── Project 4: Мероприятие «Премьера» ────────────────────────────────────
-  // clientTotal = 30000 + 30000 = 60000, clientReceived=60000 → clientRemaining=0
+  // clientTotal = clientPlanAmount = 60000 (договорная сумма), clientReceived=60000 → clientRemaining=0
+  // lightBudgetAmount = 30000 (долг ренталу)
   // Сергей=30000 paid 30000 → rem 0
 
   const proj4 = await prisma.gafferProject.create({
@@ -333,7 +337,7 @@ async function seedUser(email: string, name: string) {
       title: "Мероприятие «Премьера»",
       clientId: ivanov.id,
       shootDate: new Date("2026-03-28"),
-      clientPlanAmount: new Decimal(30000),
+      clientPlanAmount: new Decimal(60000),
       lightBudgetAmount: new Decimal(30000),
       status: "OPEN",
     },

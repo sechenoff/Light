@@ -851,8 +851,8 @@ model GafferProject {
   title            String // "Клип «Синяя волна»"
   clientId         String
   shootDate        DateTime // единственная дата съёмки для MVP
-  clientPlanAmount  Decimal             @default(0) // бюджет на осветителей (crew)
-  lightBudgetAmount Decimal             @default(0) // бюджет на свет (rental gear)
+  clientPlanAmount  Decimal             @default(0) // договорная сумма с заказчиком — полный доход гаффера за проект
+  lightBudgetAmount Decimal             @default(0) // бюджет на свет (rental gear) — вычитается из дохода
   status            GafferProjectStatus @default(OPEN)
   note             String?
   createdAt        DateTime            @default(now())

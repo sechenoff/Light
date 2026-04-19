@@ -610,7 +610,7 @@ describe("lightBudgetAmount", () => {
     expect(res.body.project.lightBudgetAmount).toBe("55000");
   });
 
-  it("clientRemaining = max(0, clientPlanAmount + lightBudgetAmount - IN payments)", async () => {
+  it("clientTotal = clientPlanAmount, не зависит от lightBudgetAmount", async () => {
     const clientId = await createClientA("Клиент для суммарного долга");
     const res = await postA("/api/gaffer/projects").send({
       title: "Проект суммарный бюджет",
@@ -631,8 +631,9 @@ describe("lightBudgetAmount", () => {
 
     const get = await getA(`/api/gaffer/projects/${projectId}`);
     expect(get.status).toBe(200);
-    // clientTotal = 50000 + 30000 = 80000; remaining = 80000 - 40000 = 40000
-    expect(get.body.project.clientTotal).toBe("80000");
-    expect(get.body.project.clientRemaining).toBe("40000");
+    // clientTotal = clientPlanAmount = 50000 (lightBudgetAmount не входит в доход — это стоимость)
+    // clientRemaining = 50000 - 40000 = 10000
+    expect(get.body.project.clientTotal).toBe("50000");
+    expect(get.body.project.clientRemaining).toBe("10000");
   });
 });

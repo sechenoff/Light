@@ -96,8 +96,8 @@ export function computeProjectDebts(project: ProjectWithRelations): ProjectDebtA
     .filter((p) => p.direction === "IN")
     .reduce((acc, p) => acc.plus(p.amount), ZERO);
 
-  // clientTotal = clientPlanAmount + lightBudgetAmount
-  const clientTotal = new Decimal(project.clientPlanAmount).plus(new Decimal(project.lightBudgetAmount));
+  // clientTotal = clientPlanAmount (договорная сумма с заказчиком — доход за проект)
+  const clientTotal = new Decimal(project.clientPlanAmount);
 
   // clientRemaining = max(0, clientTotal - clientReceived)
   const rawClientRemaining = clientTotal.minus(clientReceived);
