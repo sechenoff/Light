@@ -561,18 +561,18 @@ function GafferNewProjectContent() {
               + Новый клиент
             </summary>
             <div className="mt-3 space-y-2.5">
-              <div>
-                <label className="block text-[11.5px] text-ink-2 mb-0.5">
-                  Имя <span className="text-rose">*</span>
-                </label>
-                <input
-                  value={newClientName}
-                  onChange={(e) => setNewClientName(e.target.value)}
-                  placeholder="ООО Производство"
-                  className={inputClass}
-                />
-              </div>
               <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11.5px] text-ink-2 mb-0.5">
+                    Название / ФИО <span className="text-rose">*</span>
+                  </label>
+                  <input
+                    value={newClientName}
+                    onChange={(e) => setNewClientName(e.target.value)}
+                    placeholder="Напр. Синий Кит Медиа"
+                    className={inputClass}
+                  />
+                </div>
                 <div>
                   <label className="block text-[11.5px] text-ink-2 mb-0.5">Телефон</label>
                   <input
@@ -582,6 +582,8 @@ function GafferNewProjectContent() {
                     className={inputClass}
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[11.5px] text-ink-2 mb-0.5">Telegram</label>
                   <input
@@ -591,24 +593,36 @@ function GafferNewProjectContent() {
                     className={inputClass}
                   />
                 </div>
+                <div>
+                  <label className="block text-[11.5px] text-ink-2 mb-0.5">Комментарий</label>
+                  <input
+                    value={newClientNote}
+                    onChange={(e) => setNewClientNote(e.target.value)}
+                    placeholder="на кого работает, продюсер…"
+                    className={inputClass}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-[11.5px] text-ink-2 mb-0.5">Заметка</label>
-                <input
-                  value={newClientNote}
-                  onChange={(e) => setNewClientNote(e.target.value)}
-                  placeholder="Рекламный продакшен"
-                  className={inputClass}
-                />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientFormOpen(false);
+                    if (clientFormRef.current) clientFormRef.current.open = false;
+                  }}
+                  className="px-3 py-2 text-[13px] text-ink-2 hover:text-ink rounded transition-colors"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={savingClient || !newClientName.trim()}
+                  onClick={handleCreateClient}
+                  className="bg-accent-bright hover:bg-accent text-white font-medium rounded px-3 py-2 text-[13px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {savingClient ? "Сохраняем…" : "Создать и выбрать"}
+                </button>
               </div>
-              <button
-                type="button"
-                disabled={savingClient || !newClientName.trim()}
-                onClick={handleCreateClient}
-                className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-3 py-2 text-[13px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {savingClient ? "Сохраняем…" : "Создать клиента"}
-              </button>
             </div>
           </details>
         </section>
@@ -707,7 +721,7 @@ function GafferNewProjectContent() {
         <WizardStep n={4} title="Аренда света" subtitle="сколько посчитали в ренталe" />
         <section className={sectionClass}>
           <label className="block text-[11.5px] text-ink-2 mb-0.5">
-            Сумма ренталу за свет
+            Сумма от рентала за оборудование
           </label>
           <div className="relative">
             <input
@@ -871,14 +885,14 @@ function GafferNewProjectContent() {
                     {n}
                   </Pill>
                 ))}
-                <Pill active={bulkShifts === null}>свой</Pill>
+                <Pill active={bulkShifts === null} onClick={() => setBulkShifts(null)}>свой</Pill>
                 <span className="text-[11px] text-ink-3 uppercase tracking-wide ml-2">Часов</span>
                 {[10, 12, 14, 16].map((n) => (
                   <Pill key={n} active={bulkHours === n} onClick={() => applyBulkHours(n)}>
                     {n}
                   </Pill>
                 ))}
-                <Pill active={bulkHours === null}>свой</Pill>
+                <Pill active={bulkHours === null} onClick={() => setBulkHours(null)}>свой</Pill>
               </div>
 
               {/* Per-member shift table */}
