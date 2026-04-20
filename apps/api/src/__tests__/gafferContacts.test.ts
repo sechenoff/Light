@@ -440,3 +440,44 @@ describe("PATCH несуществующего контакта", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("Rate card fields", () => {
+  it("Test A — persists rateCardId + rateCardPosition + shiftHours on create", async () => {
+    const res = await postA("/api/gaffer/contacts")
+      .send({ type: "TEAM_MEMBER", name: "Гаффер с рейткардом", rateCardId: "rates_2024", rateCardPosition: "gaffer", shiftHours: 10 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.contact.rateCardId).toBe("rates_2024");
+    expect(res.body.contact.rateCardPosition).toBe("gaffer");
+    expect(res.body.contact.shiftHours).toBe(10);
+  });
+
+  it("Test B — normalizes rateCardId='custom' → null on create", async () => {
+    const res = await postA("/api/gaffer/contacts")
+      .send({ type: "TEAM_MEMBER", name: "Кастом рейткард", rateCardId: "custom", rateCardPosition: "gaffer" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.contact.rateCardId).toBeNull();
+    expect(res.body.contact.rateCardPosition).toBeNull();
+  });
+
+  it("Test C — PATCH updates rate-card fields and can clear them", async () => {
+    const created = await postA("/api/gaffer/contacts")
+      .send({ type: "TEAM_MEMBER", name: "Участник для патча", rateCardId: "rates_2024", rateCardPosition: "key_grip", shiftHours: 12 });
+    const id = created.body.contact.id as string;
+
+    const res = await patchA(`/api/gaffer/contacts/${id}`)
+      .send({ rateCardId: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body.contact.rateCardId).toBeNull();
+    expect(res.body.contact.rateCardPosition).toBeNull();
+  });
+
+  it("Test D — rejects invalid rateCardId", async () => {
+    const res = await postA("/api/gaffer/contacts")
+      .send({ type: "TEAM_MEMBER", name: "Неверный рейткард", rateCardId: "bogus" });
+
+    expect(res.status).toBe(400);
+  });
+});

@@ -6,6 +6,14 @@ import Link from "next/link";
 import { ROLES } from "@light-rental/shared";
 import { createContact, GafferApiError } from "../../../../src/lib/gafferApi";
 import { toast } from "../../../../src/components/ToastProvider";
+import { Segmented, Eyebrow } from "../../../../src/components/gaffer/designSystem";
+import {
+  RATE_CARDS,
+  getRateCard,
+  listPositions,
+  type RateCardId,
+  type RateCardPositionKey,
+} from "@light-rental/shared";
 
 type Step = "picker" | "client" | "crew" | "rental";
 
@@ -38,12 +46,14 @@ function RateInput({
   onChange,
   placeholder,
   smaller,
+  disabled,
 }: {
   id?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   smaller?: boolean;
+  disabled?: boolean;
 }) {
   const padding = smaller ? "px-[11px] py-[7px]" : "px-[11px] py-[9px]";
   return (
@@ -54,8 +64,9 @@ function RateInput({
         inputMode="numeric"
         value={value}
         placeholder={placeholder ?? "0"}
+        disabled={disabled}
         onChange={(e) => onChange(sanitizeInput(e.target.value))}
-        className={`w-full ${padding} border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright mono-num pr-7`}
+        className={`w-full ${padding} border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright mono-num pr-7 disabled:opacity-50 disabled:cursor-not-allowed`}
       />
       <span className="absolute right-2.5 text-[12px] text-ink-3 pointer-events-none select-none">₽</span>
     </div>
@@ -184,6 +195,8 @@ function GafferNewContactContent() {
   const [tier1Str, setTier1Str] = useState("");
   const [tier2Str, setTier2Str] = useState("");
   const [tier3Str, setTier3Str] = useState("");
+  const [cardId, setCardId] = useState<RateCardId>("custom");
+  const [positionKey, setPositionKey] = useState<RateCardPositionKey | "">("");
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -253,11 +266,15 @@ function GafferNewContactContent() {
     e.preventDefault();
     setErrors({});
 
-    const preset = ROLES.find((r) => r.id === roleId);
+    const rateCardIdToSend: RateCardId = cardId;
+    const rateCardPositionToSend =
+      cardId === "custom" ? null : (positionKey || null);
     const resolvedLabel =
-      roleId === "OTHER"
+      cardId !== "custom" && positionKey
+        ? RATE_CARDS[cardId as Exclude<RateCardId, "custom">].positions[positionKey as RateCardPositionKey].label
+        : roleId === "OTHER"
         ? customRoleLabel.trim() || null
-        : preset?.label ?? null;
+        : ROLES.find((r) => r.id === roleId)?.label ?? null;
 
     setLoading(true);
     try {
@@ -272,6 +289,9 @@ function GafferNewContactContent() {
         overtimeTier1Rate: String(parseDisplayRate(tier1Str)),
         overtimeTier2Rate: String(parseDisplayRate(tier2Str)),
         overtimeTier3Rate: String(parseDisplayRate(tier3Str)),
+        rateCardId: rateCardIdToSend,
+        rateCardPosition: rateCardPositionToSend,
+        shiftHours: 10,
       });
       toast.success("Осветитель создан");
       redirectAfterCreate(res.contact.id);
@@ -457,40 +477,98 @@ function GafferNewContactContent() {
             placeholder="Иван Петров"
           />
 
-          {/* Specialty */}
+          {/* Rate card picker */}
           <div>
-            <label className="block text-[12px] text-ink-2 mb-1" htmlFor="c-role">
-              Специальность
-            </label>
-            <select
-              id="c-role"
-              value={roleId}
-              onChange={(e) => handleRoleSelect(e.target.value)}
-              className="w-full px-[11px] py-[9px] border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
-            >
-              <option value="">— не выбрано —</option>
-              {ROLES.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-              <option value="OTHER">Другое…</option>
-            </select>
-            {roleId && roleId !== "OTHER" && (
-              <p className="text-[11px] text-ink-3 mt-1">
-                Ставки подставлены из пресета — можно изменить ниже.
-              </p>
-            )}
+            <Eyebrow>Тарифная сетка</Eyebrow>
+            <div className="mt-1.5">
+              <Segmented<RateCardId>
+                options={[
+                  { id: "rates_2024", label: "Тариф 2024" },
+                  { id: "rates_2026", label: "Тариф 2026" },
+                  { id: "custom", label: "Вручную" },
+                ]}
+                value={cardId}
+                onChange={(id) => {
+                  setCardId(id);
+                  if (id === "custom") {
+                    setPositionKey("");
+                    // preserve current values — don't wipe
+                  }
+                }}
+              />
+            </div>
           </div>
 
-          {roleId === "OTHER" && (
-            <TextField
-              id="c-role-custom"
-              label="Название специальности"
-              value={customRoleLabel}
-              onChange={setCustomRoleLabel}
-              placeholder="Например: DIT, дрон-оператор"
-            />
+          {/* Specialty — card-mode: position picker; custom-mode: ROLES select */}
+          {cardId !== "custom" ? (
+            <div>
+              <label className="block text-[12px] text-ink-2 mb-1" htmlFor="c-position">
+                Позиция
+              </label>
+              <select
+                id="c-position"
+                value={positionKey}
+                onChange={(e) => {
+                  const key = e.target.value as RateCardPositionKey | "";
+                  setPositionKey(key);
+                  if (key) {
+                    const card = getRateCard(cardId);
+                    if (card) {
+                      const data = card.positions[key as RateCardPositionKey];
+                      setShiftRateStr(formatThousands(data.shiftRate));
+                      setTier1Str(formatThousands(data.ot1Rate));
+                      setTier2Str(formatThousands(data.ot2Rate));
+                      setTier3Str(formatThousands(data.ot3Rate));
+                    }
+                  }
+                }}
+                className="w-full px-[11px] py-[9px] border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+              >
+                <option value="">— выберите позицию —</option>
+                {listPositions(getRateCard(cardId)!).map(({ key, label }) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-[12px] text-ink-2 mb-1" htmlFor="c-role">
+                  Специальность
+                </label>
+                <select
+                  id="c-role"
+                  value={roleId}
+                  onChange={(e) => handleRoleSelect(e.target.value)}
+                  className="w-full px-[11px] py-[9px] border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
+                >
+                  <option value="">— не выбрано —</option>
+                  {ROLES.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                  <option value="OTHER">Другое…</option>
+                </select>
+                {roleId && roleId !== "OTHER" && (
+                  <p className="text-[11px] text-ink-3 mt-1">
+                    Ставки подставлены из пресета — можно изменить ниже.
+                  </p>
+                )}
+              </div>
+
+              {roleId === "OTHER" && (
+                <TextField
+                  id="c-role-custom"
+                  label="Название специальности"
+                  value={customRoleLabel}
+                  onChange={setCustomRoleLabel}
+                  placeholder="Например: DIT, дрон-оператор"
+                />
+              )}
+            </>
           )}
 
           <TextField
@@ -528,6 +606,7 @@ function GafferNewContactContent() {
                 value={shiftRateStr}
                 onChange={setShiftRateStr}
                 placeholder={"14\u00A0000"}
+                disabled={cardId !== "custom"}
               />
             </div>
           </div>
@@ -548,21 +627,21 @@ function GafferNewContactContent() {
                   <p className="text-[12px] text-ink-2 font-medium">Тир 1</p>
                   <small className="text-ink-3 text-[10px]">1–8 ч</small>
                 </label>
-                <RateInput id="c-rate-tier1" value={tier1Str} onChange={setTier1Str} smaller />
+                <RateInput id="c-rate-tier1" value={tier1Str} onChange={setTier1Str} smaller disabled={cardId !== "custom"} />
               </div>
               <div className="grid grid-cols-[80px_1fr] gap-2.5 items-center">
                 <label htmlFor="c-rate-tier2" className="cursor-pointer">
                   <p className="text-[12px] text-ink-2 font-medium">Тир 2</p>
                   <small className="text-ink-3 text-[10px]">9–14 ч</small>
                 </label>
-                <RateInput id="c-rate-tier2" value={tier2Str} onChange={setTier2Str} smaller />
+                <RateInput id="c-rate-tier2" value={tier2Str} onChange={setTier2Str} smaller disabled={cardId !== "custom"} />
               </div>
               <div className="grid grid-cols-[80px_1fr] gap-2.5 items-center">
                 <label htmlFor="c-rate-tier3" className="cursor-pointer">
                   <p className="text-[12px] text-ink-2 font-medium">Тир 3</p>
                   <small className="text-ink-3 text-[10px]">15+ ч</small>
                 </label>
-                <RateInput id="c-rate-tier3" value={tier3Str} onChange={setTier3Str} smaller />
+                <RateInput id="c-rate-tier3" value={tier3Str} onChange={setTier3Str} smaller disabled={cardId !== "custom"} />
               </div>
             </div>
             <div className="px-3 py-2.5 bg-accent-soft border-t border-accent-border text-[11.5px] text-accent">
@@ -585,7 +664,7 @@ function GafferNewContactContent() {
 
           <button
             type="submit"
-            disabled={loading || !name.trim()}
+            disabled={loading || !name.trim() || (cardId !== "custom" && !positionKey)}
             className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-3 text-[14px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Создаём…" : "Создать осветителя"}

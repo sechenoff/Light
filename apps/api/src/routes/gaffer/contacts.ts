@@ -45,6 +45,9 @@ const createContactSchema = z.object({
   overtimeTier2Rate: rateFieldSchema,
   overtimeTier3Rate: rateFieldSchema,
   roleLabel: z.string().trim().max(100).nullable().optional(),
+  rateCardId: z.enum(["rates_2024", "rates_2026", "custom"]).nullable().optional(),
+  rateCardPosition: z.enum(["gaffer", "key_grip", "best_boy", "programmer", "grip"]).nullable().optional(),
+  shiftHours: z.number().int().min(0).max(24).nullable().optional(),
 });
 
 const updateContactSchema = createContactSchema
@@ -138,6 +141,9 @@ router.get("/:id", async (req, res, next) => {
 router.post("/", async (req, res, next) => {
   try {
     const body = createContactSchema.parse(req.body);
+    // Normalize: 'custom' rateCardId → null; if rateCardId is null, also null out rateCardPosition
+    const normalizedRateCardId = body.rateCardId === "custom" ? null : (body.rateCardId ?? null);
+    const normalizedRateCardPosition = normalizedRateCardId === null ? null : (body.rateCardPosition ?? null);
     const contact = await createContact(req, {
       type: body.type,
       name: body.name,
@@ -149,6 +155,9 @@ router.post("/", async (req, res, next) => {
       overtimeTier2Rate: body.overtimeTier2Rate,
       overtimeTier3Rate: body.overtimeTier3Rate,
       roleLabel: body.roleLabel,
+      rateCardId: normalizedRateCardId,
+      rateCardPosition: normalizedRateCardPosition,
+      shiftHours: body.shiftHours ?? null,
     });
     res.json({ contact });
   } catch (err) {
@@ -162,6 +171,20 @@ router.post("/", async (req, res, next) => {
 router.patch("/:id", async (req, res, next) => {
   try {
     const body = updateContactSchema.parse(req.body);
+    // Normalize rateCardId: 'custom' → null; if null, also null out rateCardPosition
+    let patchRateCardId: string | null | undefined = undefined;
+    let patchRateCardPosition: string | null | undefined = undefined;
+    if (body.rateCardId !== undefined) {
+      patchRateCardId = body.rateCardId === "custom" ? null : body.rateCardId;
+      // If clearing rateCardId, also clear rateCardPosition
+      if (patchRateCardId === null) {
+        patchRateCardPosition = null;
+      } else if (body.rateCardPosition !== undefined) {
+        patchRateCardPosition = body.rateCardPosition;
+      }
+    } else if (body.rateCardPosition !== undefined) {
+      patchRateCardPosition = body.rateCardPosition;
+    }
     const contact = await updateContact(req, req.params.id, {
       ...(body.name !== undefined && { name: body.name }),
       ...(body.phone !== undefined && { phone: normalizeOptionalString(body.phone) ?? null }),
@@ -172,6 +195,9 @@ router.patch("/:id", async (req, res, next) => {
       ...(body.overtimeTier2Rate !== undefined && { overtimeTier2Rate: body.overtimeTier2Rate }),
       ...(body.overtimeTier3Rate !== undefined && { overtimeTier3Rate: body.overtimeTier3Rate }),
       ...(body.roleLabel !== undefined && { roleLabel: body.roleLabel }),
+      ...(patchRateCardId !== undefined && { rateCardId: patchRateCardId }),
+      ...(patchRateCardPosition !== undefined && { rateCardPosition: patchRateCardPosition }),
+      ...(body.shiftHours !== undefined && { shiftHours: body.shiftHours }),
     });
     res.json({ contact });
   } catch (err) {
