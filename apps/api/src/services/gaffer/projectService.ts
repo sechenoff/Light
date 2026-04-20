@@ -438,7 +438,7 @@ export async function archiveProject(req: Request, id: string) {
   // Canon §04: блокируем архивацию при открытых остатках.
   // Проверяем clientRemaining, teamRemaining и vendorRemaining (VENDOR добавлен
   // после написания канона; смысл тот же — не прятать открытые деньги).
-  const debts = computeProjectDebts(projectWithRelations as ProjectWithRelations);
+  const debts = computeProjectDebts(projectWithRelations as unknown as ProjectWithRelations);
   const ZERO = new Decimal(0);
   const hasDebts =
     new Decimal(debts.clientRemaining).gt(ZERO) ||
