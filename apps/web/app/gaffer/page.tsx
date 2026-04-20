@@ -182,7 +182,7 @@ function UpcomingObligationsPanel({
                     {formatPaymentDate(row.dueAt)}
                   </span>
                   <span className="text-[10px] text-gaffer-fg-muted">
-                    через {days} д
+                    {days === 0 ? "сегодня" : days < 0 ? "просрочено" : `через ${days} д`}
                   </span>
                 </div>
                 {/* Counterparty */}
@@ -190,7 +190,7 @@ function UpcomingObligationsPanel({
                   <div className="text-sm text-gaffer-fg truncate">
                     {row.contactName}{" "}
                     <span className="text-gaffer-fg-muted text-xs">
-                      · {CATEGORY_LABELS[row.projectCode] ?? "Клиент"}
+                      · {CATEGORY_LABELS[row.category]}
                     </span>
                   </div>
                   <div className="text-[10px] font-mono text-gaffer-fg-subtle">
@@ -380,17 +380,20 @@ export default function GafferDashboardPage() {
         <div>
           <Eyebrow>Гафер · {formatGreetDate(now)}</Eyebrow>
           <H1Title>Доброе {greetWord}, {userName}</H1Title>
-          <H1Subtitle>
-            По {activeProjects} активным проектам · {openObligationCount} открытых обязательств
-          </H1Subtitle>
+          {data && (
+            <H1Subtitle>
+              По {activeProjects} активным проектам · {openObligationCount} открытых обязательств
+            </H1Subtitle>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0 mt-1">
           <button
             disabled
             title="Скоро"
-            className="text-gaffer-fg-muted bg-gaffer-bg-sub border border-gaffer-border rounded-md px-3 py-1.5 text-sm cursor-not-allowed opacity-60"
+            className="inline-flex items-center gap-1.5 text-gaffer-fg-muted bg-gaffer-bg-sub border border-gaffer-border rounded-md px-3 py-1.5 text-sm cursor-not-allowed opacity-60"
           >
             Все долги
+            <span className="text-[10px] uppercase tracking-wide bg-gaffer-bg-sub border border-gaffer-border rounded px-1 py-0.5 leading-none">скоро</span>
           </button>
           <Link
             href="/gaffer/projects/new"

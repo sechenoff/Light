@@ -596,6 +596,7 @@ export interface GafferDashboardOverdueIncomingRow {
 
 export interface GafferDashboardUpcomingObligationRow {
   kind: "IN" | "OUT";
+  category: "client" | "crew" | "rental";
   projectId: string;
   projectCode: string;
   projectTitle: string;
