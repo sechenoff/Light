@@ -1,0 +1,2450 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · Гаффер CRM (учёт съёмок, долгов и выплат)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --accent: #1e3a8a;
+    --accent-bright: #1d4ed8;
+    --accent-soft: #eff6ff;
+    --accent-border: #bfdbfe;
+
+    --teal: #0f766e;    --teal-soft: #ccfbf1;    --teal-border: #99f6e4;
+    --amber: #a16207;   --amber-soft: #fef3c7;   --amber-border: #fde68a;
+    --rose: #9f1239;    --rose-soft: #ffe4e6;    --rose-border: #fecdd3;
+    --indigo: #4338ca;  --indigo-soft: #e0e7ff;  --indigo-border: #c7d2fe;
+    --slate: #334155;   --slate-soft: #f1f5f9;   --slate-border: #cbd5e1;
+    --emerald: #047857; --emerald-soft: #d1fae5; --emerald-border: #a7f3d0;
+
+    --ok: #15803d;   --ok-soft: #dcfce7;
+    --warn: #a16207; --warn-soft: #fef9c3;
+
+    --ink:  #09090b;
+    --ink-2: #52525b;
+    --ink-3: #a1a1aa;
+
+    --surface: #ffffff;
+    --surface-2: #fafafa;
+    --border: #e4e4e7;
+
+    --shadow-xs: 0 1px 0 rgba(9,9,11,.03);
+    --shadow-sm: 0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02);
+  }
+
+  body.gaffer-canon {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink);
+    background: var(--surface-2);
+  }
+  body.gaffer-canon h1, body.gaffer-canon h2, body.gaffer-canon h3 {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .eyebrow {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .mono-num {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  /* Frame: device mockup column */
+  .frame-row { margin: 28px 0 14px; }
+  .frame-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+    margin-bottom: 10px;
+    letter-spacing: .4px;
+  }
+  .frame-label b { color: var(--ink); font-weight: 600; }
+
+  .frame {
+    width: 390px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    font-family: "IBM Plex Sans", sans-serif;
+  }
+  .frame.wide { width: 960px; max-width: 100%; }
+  .frame.medium { width: 720px; }
+
+  .phone-chrome {
+    height: 28px;
+    background: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .phone-chrome::before {
+    content: "";
+    width: 110px; height: 6px;
+    background: #27272a;
+    border-radius: 999px;
+  }
+  .frame-body { background: var(--surface); }
+
+  /* Status pills */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: .6px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .pill.ok    { background: var(--ok-soft);    color: var(--ok);      border-color: #bbf7d0; }
+  .pill.warn  { background: var(--amber-soft); color: var(--amber);   border-color: var(--amber-border); }
+  .pill.alert { background: var(--rose-soft);  color: var(--rose);    border-color: var(--rose-border); }
+  .pill.info  { background: var(--indigo-soft);color: var(--indigo);  border-color: var(--indigo-border); }
+  .pill.teal  { background: var(--teal-soft);  color: var(--teal);    border-color: var(--teal-border); }
+  .pill.slate { background: var(--slate-soft); color: var(--slate);   border-color: var(--slate-border); }
+
+  /* Buttons */
+  .btn {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 13px; font-weight: 500;
+    padding: 8px 14px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-primary { background: var(--accent-bright); color: #fff; }
+  .btn-primary:hover { background: var(--accent); }
+  .btn-ghost { background: var(--surface); color: var(--ink); border-color: var(--border); }
+  .btn-danger { background: var(--surface); color: var(--rose); border-color: var(--rose-border); }
+  .btn-sm { font-size: 12px; padding: 5px 10px; }
+  .btn-block { width: 100%; justify-content: center; padding: 11px; }
+
+  /* Inputs */
+  .input, .textarea {
+    width: 100%;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 13.5px;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .input:focus, .textarea:focus { outline: 2px solid var(--accent-border); border-color: var(--accent-bright); }
+  .field-label { display: block; font-size: 12px; color: var(--ink-2); margin-bottom: 4px; }
+
+  /* Chips (filters) */
+  .chip {
+    font-size: 12px; font-weight: 500;
+    padding: 6px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink-2);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* Section utility */
+  .section { padding: 16px; border-bottom: 1px solid var(--border); }
+  .section:last-child { border-bottom: none; }
+  .section-title { font-weight: 600; font-size: 13.5px; color: var(--ink); }
+
+  /* Gaffer header (inside app, not login) */
+  .gaffer-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--accent);
+    color: #fff;
+  }
+  .gaffer-topbar .brand {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-weight: 600; letter-spacing: 1.8px; font-size: 12px;
+    text-transform: uppercase;
+  }
+  .gaffer-topbar .brand b { color: #fff; letter-spacing: .4px; text-transform: none; font-size: 14px; margin-right: 8px; }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent-bright); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-weight: 600; font-size: 12px;
+  }
+
+  /* Mobile tabbar */
+  .tabbar {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .bottom-cta {
+    padding: 10px 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+  .bottom-cta .btn { width: 100%; justify-content: center; padding: 12px; font-size: 14px; }
+  .tabbar a {
+    padding: 10px 0 12px;
+    text-align: center;
+    font-size: 11px; color: var(--ink-3);
+    text-decoration: none;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    letter-spacing: .8px; text-transform: uppercase; font-weight: 600;
+  }
+  .tabbar a .ic { display: block; font-size: 18px; margin-bottom: 2px; letter-spacing: 0; }
+  .tabbar a.active { color: var(--accent-bright); }
+
+  /* KPI pair cards */
+  .kpi-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .kpi {
+    border-radius: 10px;
+    padding: 14px 14px 16px;
+    border: 1px solid;
+  }
+  .kpi.owed-to-me { background: var(--emerald-soft); border-color: var(--emerald-border); }
+  .kpi.i-owe      { background: var(--rose-soft);    border-color: var(--rose-border); }
+  .kpi .eyebrow { margin-bottom: 8px; }
+  .kpi.owed-to-me .eyebrow { color: var(--emerald); }
+  .kpi.i-owe     .eyebrow  { color: var(--rose); }
+  .kpi .value {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: -.2px;
+  }
+  .kpi.owed-to-me .value { color: var(--emerald); }
+  .kpi.i-owe     .value  { color: var(--rose); }
+  .kpi .sub { font-size: 11px; color: var(--ink-2); margin-top: 4px; }
+
+  /* Lists */
+  .list-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  .list-row:last-child { border-bottom: none; }
+  .list-row .who { display: flex; flex-direction: column; min-width: 0; }
+  .list-row .who b { font-weight: 600; font-size: 13.5px; color: var(--ink); }
+  .list-row .who small { color: var(--ink-3); font-size: 11.5px; }
+  .list-row .amount { color: var(--rose); font-family: "IBM Plex Mono", monospace; font-weight: 600; font-size: 13.5px; }
+  .list-row .amount.pos { color: var(--emerald); }
+
+  /* Project card */
+  .proj-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow-xs);
+  }
+  .proj-card + .proj-card { margin-top: 10px; }
+  .proj-card .head h4 { font-size: 14px; margin: 0; font-weight: 600; }
+  .proj-card .meta { font-size: 11.5px; color: var(--ink-2); margin-top: 2px; }
+  .proj-card .metrics {
+    display: flex; gap: 14px; margin-top: 10px;
+    padding-top: 10px; border-top: 1px dashed var(--border);
+    font-size: 12px;
+  }
+  .proj-card .metrics div { display: flex; flex-direction: column; }
+  .proj-card .metrics .k { color: var(--ink-3); font-size: 10.5px; letter-spacing: .5px; text-transform: uppercase; font-family: "IBM Plex Sans Condensed", sans-serif; }
+  .proj-card .metrics .v { font-family: "IBM Plex Mono", monospace; font-weight: 600; }
+  .proj-card .metrics .v.debt-client { color: var(--rose); }
+  .proj-card .metrics .v.debt-team { color: var(--indigo); }
+  .proj-card .foot {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 6px; flex-wrap: wrap;
+    align-items: center;
+  }
+
+  /* FAB */
+  .fab-wrap { position: relative; }
+  .fab {
+    position: absolute; right: 14px; bottom: 72px;
+    background: var(--accent-bright); color: #fff;
+    width: 48px; height: 48px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 300;
+    box-shadow: 0 6px 14px rgba(29,78,216,.35);
+    border: none; cursor: pointer;
+  }
+
+  /* Table */
+  table.crm {
+    width: 100%; border-collapse: collapse;
+    font-size: 12.5px;
+    font-family: "IBM Plex Sans", sans-serif;
+  }
+  table.crm th {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    text-transform: uppercase; letter-spacing: .8px;
+    font-size: 10.5px; color: var(--ink-3); font-weight: 600;
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  table.crm td {
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--ink);
+    vertical-align: middle;
+  }
+  table.crm td.num { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; text-align: right; font-weight: 500; }
+  table.crm td.num.debt-client { color: var(--rose); }
+  table.crm td.num.debt-team { color: var(--indigo); }
+  table.crm tr:last-child td { border-bottom: none; }
+
+  /* Payment target chips (screen 04 — Поступление form) */
+  .pay-target {
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .pay-chip {
+    display: inline-flex; align-items: center;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 12px; font-weight: 500;
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    background: var(--surface);
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: border-color .12s, background .12s, color .12s;
+  }
+  .pay-chip input { display: none; }
+  .pay-chip:hover { border-color: var(--accent-border); }
+  .pay-chip.active {
+    background: var(--accent-bright);
+    color: #fff;
+    border-color: var(--accent-bright);
+  }
+
+  /* Team list — progress-bar rows (screen 04) */
+  .team-list { margin-top: 6px; }
+  .tm-row {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .tm-row:last-child { border-bottom: none; }
+  .tm-hd {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px; margin-bottom: 6px;
+  }
+  .tm-name { font-weight: 600; font-size: 13.5px; }
+  .tm-role {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .tm-bar {
+    height: 6px; border-radius: 99px;
+    background: var(--slate-soft);
+    overflow: hidden; margin: 6px 0;
+  }
+  .tm-fill {
+    height: 100%;
+    background: var(--emerald);
+    border-radius: 99px;
+  }
+  .tm-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-top: 6px;
+  }
+  .tm-progress {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 11.5px; color: var(--ink-2);
+  }
+  .tm-progress b { color: var(--indigo); font-weight: 600; }
+  .tm-row.closed .tm-progress b { color: var(--emerald); }
+
+  /* Member-projects (screen 6): labels-over-values grid */
+  .mp-list { margin-top: 6px; }
+  .mp-row {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .mp-row:last-child { border-bottom: none; }
+  .mp-hd {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 8px; margin-bottom: 8px;
+  }
+  .mp-name { font-weight: 600; font-size: 13.5px; }
+  .mp-date {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; color: var(--ink-3);
+  }
+  .mp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 6px 10px;
+    align-items: end;
+  }
+  .mp-cell { min-width: 0; }
+  .mp-cell .k {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: .5px; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .mp-cell .v {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px; font-weight: 600;
+    color: var(--ink);
+  }
+  .mp-cell .v.paid { color: var(--emerald); }
+  .mp-cell .v.debt { color: var(--indigo); }
+  .mp-row.closed .mp-cell .v.debt { color: var(--emerald); }
+  .mp-closed-tag {
+    color: var(--ink-3); font-size: 11px;
+    align-self: center;
+  }
+
+  /* Inline details form */
+  details.inline {
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    margin-top: 10px;
+    background: var(--accent-soft);
+  }
+  details.inline > summary {
+    list-style: none; cursor: pointer;
+    padding: 9px 12px;
+    font-size: 12.5px; font-weight: 500;
+    color: var(--accent-bright);
+  }
+  details.inline > summary::-webkit-details-marker { display: none; }
+  details.inline > summary::before { content: "+ "; font-weight: 600; }
+  details.inline[open] > summary::before { content: "− "; }
+  details.inline .form-body,
+  .new-income .form-body {
+    padding: 4px 12px 12px;
+    display: grid; gap: 8px;
+  }
+  details.inline .form-row,
+  .new-income .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .new-income {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+  }
+  .new-income .form-body { padding: 0; }
+
+  /* Payment feed row */
+  .feed-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+  }
+  .feed-row:last-child { border-bottom: none; }
+  .feed-row .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .feed-row .dot.in  { background: var(--emerald); }
+  .feed-row .dot.out { background: var(--rose); }
+  .feed-row time { color: var(--ink-3); font-family: "IBM Plex Mono", monospace; font-size: 11.5px; }
+  .feed-row .descr b { font-weight: 600; }
+  .feed-row .descr small { color: var(--ink-3); display: block; font-size: 11px; }
+  .feed-row .amt { font-family: "IBM Plex Mono", monospace; font-weight: 600; }
+  .feed-row .amt.in  { color: var(--emerald); }
+  .feed-row .amt.out { color: var(--rose); }
+  .feed-row .rm {
+    background: none; border: none; cursor: pointer;
+    color: var(--ink-3); font-size: 14px;
+  }
+  .feed-row .rm:hover { color: var(--rose); }
+
+  /* Empty state */
+  .empty {
+    text-align: center; color: var(--ink-3);
+    padding: 32px 16px;
+    font-size: 13px;
+  }
+
+  /* Login background */
+  .login-screen {
+    background: var(--accent);
+    padding: 56px 20px;
+    min-height: 640px;
+    display: flex; flex-direction: column; align-items: center;
+    color: #fff;
+  }
+  .login-brand {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600; font-size: 22px; letter-spacing: .2px;
+    margin-bottom: 4px; color: #fff;
+  }
+  .login-sub {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--accent-border);
+    margin-bottom: 26px;
+  }
+  .login-card {
+    width: 100%; max-width: 340px;
+    background: var(--surface);
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.1);
+    box-shadow: 0 14px 28px rgba(9,9,11,.22);
+    overflow: hidden;
+    color: var(--ink);
+  }
+  .login-tabs {
+    display: grid; grid-template-columns: 1fr 1fr;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .login-tabs button {
+    padding: 12px 0;
+    background: none; border: none;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 12px; font-weight: 600; letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--ink-3); cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .login-tabs button.active {
+    color: var(--accent); border-bottom-color: var(--accent-bright);
+    background: var(--surface);
+  }
+  .login-body { padding: 22px 22px 22px; }
+  .login-hint {
+    font-size: 11.5px; color: var(--ink-3); text-align: center; margin-top: 14px;
+  }
+  .login-divider {
+    display: flex; align-items: center; gap: 10px;
+    margin: 18px 0 14px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; font-weight: 600;
+    letter-spacing: 1.2px; text-transform: uppercase;
+  }
+  .login-divider::before,
+  .login-divider::after {
+    content: ""; flex: 1;
+    border-top: 1px solid var(--border);
+  }
+  .oauth-btn {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; width: 100%;
+    padding: 10px 12px; margin-bottom: 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 500; font-size: 13px;
+    color: var(--ink); cursor: pointer;
+    transition: border-color .12s, background .12s;
+  }
+  .oauth-btn:hover { border-color: var(--accent-border); background: var(--accent-soft); }
+  .oauth-btn .oicon {
+    width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 15px;
+  }
+  .oauth-btn.tg { color: #2ca5e0; }
+  .login-footer-link {
+    margin-top: 18px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--ink-2);
+  }
+  .login-footer-link a {
+    color: var(--accent-bright);
+    text-decoration: none;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  /* Welcome / onboarding */
+  .welcome-hero {
+    background: var(--accent);
+    padding: 44px 24px 32px;
+    color: #fff;
+    text-align: center;
+  }
+  .welcome-hero .wave {
+    font-size: 40px; line-height: 1; margin-bottom: 14px;
+  }
+  .welcome-hero h2 {
+    font-size: 22px; font-weight: 600; margin: 0 0 6px; color: #fff;
+    letter-spacing: -.2px;
+  }
+  .welcome-hero p {
+    margin: 0; color: var(--accent-border);
+    font-size: 13px; line-height: 1.5;
+  }
+  .welcome-steps {
+    padding: 22px 20px 16px;
+    display: grid; gap: 14px;
+  }
+  .welcome-step {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 12px;
+    align-items: start;
+  }
+  .welcome-step .w-num {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px; font-weight: 600;
+    flex-shrink: 0;
+  }
+  .welcome-step .w-body h4 {
+    font-size: 14px; font-weight: 600;
+    margin: 4px 0 2px;
+  }
+  .welcome-step .w-body p {
+    font-size: 12.5px; color: var(--ink-2);
+    margin: 0; line-height: 1.5;
+  }
+  .welcome-tips {
+    margin: 4px 20px 18px;
+    padding: 12px 14px;
+    background: var(--emerald-soft);
+    border: 1px solid var(--emerald-border);
+    border-radius: 8px;
+    font-size: 12px; color: var(--emerald);
+    line-height: 1.5;
+  }
+  .welcome-tips b { font-weight: 600; }
+  .welcome-cta {
+    padding: 0 20px 22px;
+    display: grid; gap: 8px;
+  }
+  .welcome-skip {
+    text-align: center;
+    font-size: 12px; color: var(--ink-3);
+    padding-bottom: 22px;
+  }
+  .welcome-skip a {
+    color: var(--accent-bright); cursor: pointer;
+    text-decoration: none;
+  }
+
+  /* Dashboard header greeting */
+  .gaffer-greet {
+    padding: 14px 16px 12px;
+    background: var(--ink);
+    color: #fff;
+  }
+  .gaffer-greet b { color: #fff; font-weight: 600; }
+  .gaffer-greet .date {
+    font-size: 11.5px; color: #a1a1aa; margin-top: 2px;
+    font-family: "IBM Plex Mono", monospace; letter-spacing: .2px;
+  }
+
+  /* Summary footer */
+  .footer-meta {
+    padding: 12px 16px;
+    font-size: 11.5px; color: var(--ink-3);
+    border-top: 1px dashed var(--border);
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    letter-spacing: .4px;
+  }
+
+  /* Search input */
+  .search {
+    position: relative;
+  }
+  .search input {
+    padding-left: 34px;
+  }
+  .search::before {
+    content: "🔎";
+    position: absolute; left: 10px; top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px; opacity: .6;
+  }
+
+  /* Project header summary box */
+  .money-block {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .money-block > div { padding: 10px 12px; border-right: 1px solid var(--border); }
+  .money-block > div:last-child { border-right: none; }
+  .money-block .k { font-size: 10.5px; letter-spacing: .5px; text-transform: uppercase; color: var(--ink-3); font-family: "IBM Plex Sans Condensed", sans-serif; font-weight: 600; }
+  .money-block .v { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 15px; margin-top: 2px; }
+  .money-block .v.rose { color: var(--rose); }
+  .money-block .v.emerald { color: var(--emerald); }
+  .money-block .v.indigo { color: var(--indigo); }
+
+  /* Desktop layout for wide frames */
+  .layout-desktop {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: 520px;
+  }
+  .sidebar {
+    background: var(--surface-2);
+    border-right: 1px solid var(--border);
+    padding: 22px 14px 14px;
+  }
+  .sidebar .brand {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 12px; letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 4px;
+  }
+  .sidebar .brand b { display: block; font-size: 18px; letter-spacing: .2px; text-transform: none; color: var(--accent); margin-top: 2px; font-weight: 600; }
+  .sidebar nav { margin-top: 24px; display: flex; flex-direction: column; gap: 2px; }
+  .sidebar nav a {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    border-radius: 4px;
+    font-size: 13px; font-weight: 500;
+    text-decoration: none; color: var(--ink-2);
+  }
+  .sidebar nav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .sidebar nav a .ic { font-size: 15px; }
+  .main { padding: 24px; overflow: auto; }
+
+  /* Contacts filter bar */
+  .filter-bar {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+
+  /* Roles pills grouped */
+  .roles-cluster { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+
+  /* Mobile contact card — компактная плитка, всё помещается в 390px */
+  .contact-card {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 10px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: start;
+  }
+  .contact-card .c-top {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px;
+  }
+  .contact-card .c-top .c-name { flex: 1 1 auto; min-width: 0; }
+  .contact-card:first-child { padding-top: 6px; }
+  .contact-card:last-child { border-bottom: none; padding-bottom: 6px; }
+  .contact-card .avatar-init {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: .4px;
+  }
+  .contact-card .avatar-init.client { background: var(--indigo-soft); color: var(--indigo); border: 1px solid var(--indigo-border); }
+  .contact-card .avatar-init.team   { background: var(--teal-soft);   color: var(--teal);   border: 1px solid var(--teal-border); }
+  .contact-card .avatar-init.both   { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border); }
+  .contact-card .avatar-init.archive{ background: var(--slate-soft);  color: var(--slate);  border: 1px solid var(--slate-border); }
+  .contact-card .c-main { min-width: 0; }
+  .contact-card .c-name {
+    font-weight: 600; font-size: 13.5px; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .contact-card .c-pills {
+    display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;
+  }
+  .contact-card .c-pills .pill { padding: 2px 7px; font-size: 10px; }
+  .contact-card .c-meta {
+    margin-top: 6px;
+    font-size: 11.5px; color: var(--ink-3);
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .contact-card .c-meta span { white-space: nowrap; }
+  .contact-card .c-meta .sep { color: var(--border); }
+  .contact-card .c-amount {
+    flex: 0 0 auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    display: inline-flex; align-items: baseline; gap: 5px;
+  }
+  .contact-card .c-amount .arrow {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px; letter-spacing: .4px;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .contact-card .c-amount .val { font-size: 12.5px; font-weight: 600; }
+  .contact-card .c-amount.to-me   .arrow, .contact-card .c-amount.to-me   .val { color: var(--rose); }
+  .contact-card .c-amount.from-me .arrow, .contact-card .c-amount.from-me .val { color: var(--indigo); }
+  .contact-card .c-amount.settled .arrow, .contact-card .c-amount.settled .val { color: var(--ink-3); font-weight: 500; }
+
+  /* Sticky header block for mobile list: compact sum */
+  .contacts-mobile-summary {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 10px 16px 14px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .contacts-mobile-summary .cell {
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .contacts-mobile-summary .cell .k {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px; letter-spacing: .8px; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+  }
+  .contacts-mobile-summary .cell .v {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600; font-size: 14px; margin-top: 2px;
+  }
+  .contacts-mobile-summary .cell.to-me   .v { color: var(--rose); }
+  .contacts-mobile-summary .cell.from-me .v { color: var(--indigo); }
+
+  /* Utility */
+  .flex-between { display: flex; justify-content: space-between; align-items: center; }
+  .muted { color: var(--ink-2); }
+  .rose { color: var(--rose); }
+  .emerald { color: var(--emerald); }
+  .indigo { color: var(--indigo); }
+  .mb-8 { margin-bottom: 8px; } .mb-12 { margin-bottom: 12px; } .mb-16 { margin-bottom: 16px; }
+  .mt-6 { margin-top: 6px; } .mt-10 { margin-top: 10px; } .mt-12 { margin-top: 12px; } .mt-16 { margin-top: 16px; }
+
+  /* Wrapper headings */
+  .screen-heading {
+    display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px;
+  }
+  .screen-heading h3 { margin: 0; font-size: 17px; }
+  .screen-heading .idx {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--accent-bright);
+    border: 1px solid var(--accent-border);
+    padding: 1px 7px; border-radius: 4px; background: var(--accent-soft);
+  }
+  .screen-desc { color: var(--ink-2); font-size: 13px; margin-bottom: 14px; max-width: 640px; }
+</style>
+</head>
+<body class="gaffer-canon">
+
+<h1 style="font-family:'IBM Plex Sans',sans-serif;font-weight:700">Гаффер CRM — мокап</h1>
+<p class="subtitle" style="color:var(--ink-2);font-family:'IBM Plex Sans',sans-serif">
+  Отдельный модуль: учёт съёмок, долгов и выплат (MVP). Вход — с главной <code>/login</code> через вкладку «Гаффер». Префикс маршрутов — <code>/gaffer</code>. Все экраны в каноне IBM Plex + business-blue. 8 скринов ниже, мобайл-ферст (390 px); для списков показан также desktop-вариант.
+</p>
+
+<!-- ═════════════════════════════════════════════ -->
+<!-- 1. LOGIN                                        -->
+<!-- ═════════════════════════════════════════════ -->
+<section class="frame-row">
+  <div class="screen-heading"><span class="idx">01</span><h3>Вход с главной страницы — переключатель «Сотрудник / Гаффер»</h3></div>
+  <p class="screen-desc">Единая страница <code>/login</code>. Две вкладки поверх одной карточки. Вкладка «Сотрудник» — существующая форма (логин + пароль). Вкладка «Гаффер» — одно поле «Пароль доступа» (Bearer/Basic, один пользователь на MVP).</p>
+  <div class="frame-label">mobile · 390 px · <b>/login</b> · вкладка «Гаффер» активна</div>
+
+  <div class="frame">
+    <div class="phone-chrome"></div>
+    <div class="login-screen">
+      <div class="login-brand">Light Rental</div>
+      <div class="login-sub">Гаффер · личный кабинет</div>
+
+      <div class="login-card">
+        <div class="login-tabs">
+          <button type="button">Сотрудник</button>
+          <button type="button" class="active">Гаффер</button>
+        </div>
+        <div class="login-body">
+          <label class="field-label" for="gaffer-email">E-mail</label>
+          <input id="gaffer-email" class="input" type="email" placeholder="name@studio.ru" value="kirill@lightrental.ru" style="margin-bottom:10px">
+
+          <label class="field-label" for="gaffer-pass">Пароль</label>
+          <input id="gaffer-pass" class="input" type="password" placeholder="•••••••••" value="••••••••">
+
+          <div style="text-align:right;margin-top:6px">
+            <a style="color:var(--accent-bright);font-size:11.5px;text-decoration:none;cursor:pointer">Забыли пароль?</a>
+          </div>
+
+          <button class="btn btn-primary btn-block" style="margin-top:14px">Войти</button>
+
+          <div class="login-divider">или</div>
+
+          <button class="oauth-btn">
+            <span class="oicon">
+              <svg viewBox="0 0 18 18" width="16" height="16"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.26-.17-1.84H9v3.48h4.84a4.14 4.14 0 01-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.02-3.7H.96v2.34A9 9 0 009 18z"/><path fill="#FBBC05" d="M3.98 10.72a5.4 5.4 0 010-3.44V4.94H.96a9 9 0 000 8.12l3.02-2.34z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58A9 9 0 009 0 9 9 0 00.96 4.94l3.02 2.34C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+            </span>
+            Войти через Google
+          </button>
+
+          <button class="oauth-btn tg">
+            <span class="oicon">
+              <svg viewBox="0 0 18 18" width="16" height="16"><circle cx="9" cy="9" r="9" fill="#2CA5E0"/><path fill="#fff" d="M13.54 5.2 11.9 12.9c-.13.55-.47.68-.95.42l-2.6-1.92-1.26 1.2c-.14.14-.26.26-.52.26l.18-2.62 4.78-4.32c.21-.18-.04-.28-.32-.1L5.3 9.54l-2.56-.8c-.56-.18-.57-.56.12-.83L12.82 4.4c.46-.16.87.11.72.8z"/></svg>
+            </span>
+            Войти через Telegram
+          </button>
+
+          <div class="login-footer-link">
+            Нет аккаунта? <a>Зарегистрироваться →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════════════ -->
+<!-- 1b. REGISTRATION                                -->
+<!-- ═════════════════════════════════════════════ -->
+<section class="frame-row">
+  <div class="screen-heading"><span class="idx">01b</span><h3>Регистрация гаффера</h3></div>
+  <p class="screen-desc">Три способа завести аккаунт: e-mail + пароль, Google OAuth или Telegram Login Widget. Соц-входы даны первыми — один тап и ты внутри. Email-форма сворачивается в три поля: имя, почта, пароль.</p>
+  <div class="frame-label">mobile · 390 px · <b>/register</b> (вкладка «Гаффер»)</div>
+
+  <div class="frame">
+    <div class="phone-chrome"></div>
+    <div class="login-screen">
+      <div class="login-brand">Light Rental</div>
+      <div class="login-sub">Гаффер · регистрация</div>
+
+      <div class="login-card">
+        <div class="login-tabs">
+          <button type="button">Сотрудник</button>
+          <button type="button" class="active">Гаффер</button>
+        </div>
+        <div class="login-body">
+
+          <button class="oauth-btn">
+            <span class="oicon">
+              <svg viewBox="0 0 18 18" width="16" height="16"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.26-.17-1.84H9v3.48h4.84a4.14 4.14 0 01-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.02-3.7H.96v2.34A9 9 0 009 18z"/><path fill="#FBBC05" d="M3.98 10.72a5.4 5.4 0 010-3.44V4.94H.96a9 9 0 000 8.12l3.02-2.34z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58A9 9 0 009 0 9 9 0 00.96 4.94l3.02 2.34C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+            </span>
+            Продолжить через Google
+          </button>
+
+          <button class="oauth-btn tg">
+            <span class="oicon">
+              <svg viewBox="0 0 18 18" width="16" height="16"><circle cx="9" cy="9" r="9" fill="#2CA5E0"/><path fill="#fff" d="M13.54 5.2 11.9 12.9c-.13.55-.47.68-.95.42l-2.6-1.92-1.26 1.2c-.14.14-.26.26-.52.26l.18-2.62 4.78-4.32c.21-.18-.04-.28-.32-.1L5.3 9.54l-2.56-.8c-.56-.18-.57-.56.12-.83L12.82 4.4c.46-.16.87.11.72.8z"/></svg>
+            </span>
+            Продолжить через Telegram
+          </button>
+
+          <div class="login-divider">или по e-mail</div>
+
+          <label class="field-label" for="reg-name">Как к вам обращаться</label>
+          <input id="reg-name" class="input" placeholder="Кирилл Леонидов" style="margin-bottom:10px">
+
+          <label class="field-label" for="reg-email">E-mail</label>
+          <input id="reg-email" class="input" type="email" placeholder="name@studio.ru" style="margin-bottom:10px">
+
+          <label class="field-label" for="reg-pass">Пароль</label>
+          <input id="reg-pass" class="input" type="password" placeholder="не короче 8 символов">
+
+          <button class="btn btn-primary btn-block" style="margin-top:14px">Создать аккаунт</button>
+
+          <div class="login-hint" style="line-height:1.5">
+            Нажимая «Создать аккаунт», вы соглашаетесь с <a style="color:var(--accent-bright)">условиями</a> и <a style="color:var(--accent-bright)">политикой&nbsp;конфиденциальности</a>.
+          </div>
+
+          <div class="login-footer-link">
+            Уже есть аккаунт? <a>Войти →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════════════ -->
+<!-- 1c. WELCOME / ONBOARDING                        -->
+<!-- ═════════════════════════════════════════════ -->
+<section class="frame-row">
+  <div class="screen-heading"><span class="idx">01c</span><h3>Приветственный экран нового пользователя</h3></div>
+  <p class="screen-desc">Показывается один раз — сразу после регистрации. Кратко объясняет, что умеет сервис и как им пользоваться: 3 шага — завести проект, записывать поступления и выплаты, следить за долгами. Внизу основная CTA «Создать первый проект» и ссылка «Пропустить».</p>
+  <div class="frame-label">mobile · 390 px · <b>/gaffer/welcome</b> (первый запуск)</div>
+
+  <div class="frame">
+    <div class="phone-chrome"></div>
+
+    <div class="welcome-hero">
+      <div class="wave">👋</div>
+      <h2>Привет, Кирилл!</h2>
+      <p>Это простой учёт съёмок, долгов и выплат.<br>Разберёмся за минуту — три шага ниже.</p>
+    </div>
+
+    <div class="welcome-steps">
+
+      <div class="welcome-step">
+        <div class="w-num">1</div>
+        <div class="w-body">
+          <h4>Заведите проект на съёмку</h4>
+          <p>Название, заказчик, дата, сумма от клиента. Добавьте участников команды и сколько каждому должны — вся съёмка на одной карточке.</p>
+        </div>
+      </div>
+
+      <div class="welcome-step">
+        <div class="w-num">2</div>
+        <div class="w-body">
+          <h4>Записывайте поступления и выплаты</h4>
+          <p>Пришёл перевод от заказчика — нажали «+ поступление». Выплатили команде — отметили «+ выплата». Всё на карточке проекта, никаких таблиц.</p>
+        </div>
+      </div>
+
+      <div class="welcome-step">
+        <div class="w-num">3</div>
+        <div class="w-body">
+          <h4>Смотрите долги на дашборде</h4>
+          <p>Два больших числа: сколько вам должны 🟢 и сколько должны вы 🔴. Кликаете по любому — видите список проектов и людей.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="welcome-tips">
+      <b>Совет.</b> Начните с одного текущего проекта — забивать старые необязательно. Программа полезна с первого дня.
+    </div>
+
+    <div class="welcome-cta">
+      <button class="btn btn-primary btn-block">Создать первый проект</button>
+    </div>
+
+    <div class="welcome-skip">
+      <a>Пропустить и открыть дашборд</a>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════════════ -->
+<!-- 2. DASHBOARD                                    -->
+<!-- ═════════════════════════════════════════════ -->
+<section class="frame-row">
+  <div class="screen-heading"><span class="idx">02</span><h3>Дашборд — «Мне должны / Я должен»</h3></div>
+  <p class="screen-desc">Две KPI-карточки с главными числами. Ниже — два списка с кликабельными строками: заказчики с долгом ко мне, команда с долгом от меня. Пустое состояние: «Все расчёты сведены 👌».</p>
+  <div class="frame-label">mobile · 390 px · <b>/gaffer</b></div>
+
+  <div class="frame">
+    <div class="phone-chrome"></div>
+    <div class="frame-body">
+
+      <div class="gaffer-topbar">
+        <div class="brand"><b>Гаффер</b>CRM</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="eyebrow" style="color:var(--accent-border);letter-spacing:1.2px">Апрель</span>
+          <div class="avatar">КЛ</div>
+        </div>
+      </div>
+
+      <div class="gaffer-greet">
+        <b>Пятница, 18 апреля</b> · доброе утро 👋
+        <div class="date">обновлено 09:42 · 4 активных проекта</div>
+      </div>
+
+      <div class="section">
+        <div class="kpi-pair">
+          <div class="kpi owed-to-me">
+            <div class="eyebrow">🟢 мне должны</div>
+            <div class="value">320 000 ₽</div>
+            <div class="sub">по 3 проектам · 2 заказчика</div>
+          </div>
+          <div class="kpi i-owe">
+            <div class="eyebrow">🔴 я должен</div>
+            <div class="value">148 000 ₽</div>
+            <div class="sub">по 4 проектам · 5 человек</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Заказчики с долгом</span>
+          <span class="muted" style="font-size:11.5px">сортировка по сумме</span>
+        </div>
+        <div class="list-row">
+          <div class="who"><b>Ромашка Продакшн</b><small>2 проекта · последний платёж 02.04</small></div>
+          <span class="amount">180 000 ₽</span>
+        </div>
+        <div class="list-row">
+          <div class="who"><b>Студия Третий Этаж</b><small>1 проект · без платежей</small></div>
+          <span class="amount">90 000 ₽</span>
+        </div>
+        <div class="list-row">
+          <div class="who"><b>Иванов И. (частный)</b><small>1 проект · частично оплачен</small></div>
+          <span class="amount">50 000 ₽</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Команда с долгом</span>
+          <span class="muted" style="font-size:11.5px">5 человек</span>
+        </div>
+        <div class="list-row">
+          <div class="who"><b>Сергей Петров</b><small>осветитель · 3 проекта</small></div>
+          <span class="amount">60 000 ₽</span>
+        </div>
+        <div class="list-row">
+          <div class="who"><b>Алексей Морозов</b><small>бригадир · 2 проекта</small></div>
+          <span class="amount">45 000 ₽</span>
+        </div>
+        <div class="list-row">
+          <div class="who"><b>Дмитрий К.</b><small>осветитель · 1 проект</small></div>
+          <span class="amount">25 000 ₽</span>
+        </div>
+        <div class="list-row">
+          <div class="who"><b>Анна Л.</b><small>DIT · 1 проект</small></div>
+          <span class="amount">12 000 ₽</span>
+        </div>
+        <div class="list-row">
+          <div class="who"><b>Павел Т.</b><small>разнорабочий · 1 проект</small></div>
+          <span class="amount">6 000 ₽</span>
+        </div>
+      </div>
+
+      <div class="footer-meta">
+        4 активных · 12 архивных · последняя активность — сегодня 09:42
+      </div>
+
+      <div class="tabbar">
+        <a class="active"><span class="ic">◉</span>Дашборд</a>
+        <a><span class="ic">▤</span>Проекты</a>
+        <a><span class="ic">☺</span>Контакты</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════════════ -->
+<!-- 3. PROJECTS LIST                                -->
+<!-- ═════════════════════════════════════════════ -->
+<section class="frame-row">
+  <div class="screen-heading"><span class="idx">03</span><h3>Список проектов</h3></div>
+  <p class="screen-desc">Чипсы-фильтры + поиск + карточки. Каждая карточка показывает 3 метрики: сумма от клиента, долг клиента, долг команде. Статус-пилюля справа. Плавающий FAB «+ Новый проект».</p>
+  <div class="frame-label">mobile · 390 px · <b>/gaffer/projects</b></div>
+
+  <div class="frame fab-wrap">
+    <div class="phone-chrome"></div>
+    <div class="frame-body">
+      <div class="gaffer-topbar">
+        <div class="brand"><b>Гаффер</b>CRM</div>
+        <div class="avatar">КЛ</div>
+      </div>
+
+      <div class="section" style="padding-bottom:10px">
+        <div class="search">
+          <input class="input" placeholder="Поиск по проекту, клиенту…">
+        </div>
+      </div>
+
+      <div class="filter-bar" style="border-top:none">
+        <span class="chip active">Все · 4</span>
+        <span class="chip">С долгом клиента · 3</span>
+        <span class="chip">С долгом команде · 4</span>
+        <span class="chip">Архив</span>
+      </div>
+
+      <div class="section">
+        <div class="proj-card">
+          <div class="head">
+            <h4>Клип «Синяя волна»</h4>
+            <div class="meta">Ромашка Продакшн · 15 апреля · <span class="mono-num">250 000 ₽</span></div>
+          </div>
+          <div class="metrics">
+            <div><span class="k">От клиента</span><span class="v mono-num">250 000</span></div>
+            <div><span class="k">Должны мне</span><span class="v mono-num debt-client">180 000</span></div>
+            <div><span class="k">Должен я</span><span class="v mono-num debt-team">60 000</span></div>
+          </div>
+          <div class="foot">
+            <span class="pill warn">открыт</span>
+            <span class="pill alert">долг клиента</span>
+            <span class="pill info">долг команде</span>
+          </div>
+        </div>
+
+        <div class="proj-card">
+          <div class="head">
+            <h4>Коммерческий «Маркет·ТВ»</h4>
+            <div class="meta">Студия Третий Этаж · 08 апреля · <span class="mono-num">90 000 ₽</span></div>
+          </div>
+          <div class="metrics">
+            <div><span class="k">От клиента</span><span class="v mono-num">90 000</span></div>
+            <div><span class="k">Должны мне</span><span class="v mono-num debt-client">90 000</span></div>
+            <div><span class="k">Должен я</span><span class="v mono-num">0</span></div>
+          </div>
+          <div class="foot">
+            <span class="pill warn">открыт</span>
+            <span class="pill alert">долг клиента</span>
+          </div>
+        </div>
+
+        <div class="proj-card">
+          <div class="head">
+            <h4>Съёмка «Коллекция весна»</h4>
+            <div class="meta">Ромашка Продакшн · 02 апреля · <span class="mono-num">120 000 ₽</span></div>
+          </div>
+          <div class="metrics">
+            <div><span class="k">От клиента</span><span class="v mono-num">120 000</span></div>
+            <div><span class="k">Должны мне</span><span class="v mono-num">0</span></div>
+            <div><span class="k">Должен я</span><span class="v mono-num debt-team">45 000</span></div>
+          </div>
+          <div class="foot">
+            <span class="pill warn">открыт</span>
+            <span class="pill info">долг команде</span>
+          </div>
+        </div>
+
+        <div class="proj-card">
+          <div class="head">
+            <h4>Мероприятие «Премьера»</h4>
+            <div class="meta">Иванов И. · 28 марта · <span class="mono-num">60 000 ₽</span></div>
+          </div>
+          <div class="metrics">
+            <div><span class="k">От клиента</span><span class="v mono-num">60 000</span></div>
+            <div><span class="k">Должны мне</span><span class="v mono-num">0</span></div>
+            <div><span class="k">Должен я</span><span class="v mono-num">0</span></div>
+          </div>
+          <div class="foot">
+            <span class="pill ok">закрыт</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottom-cta">
+        <button class="btn btn-primary">+ Новый проект</button>
+      </div>
+
+      <div class="tabbar">
+        <a><span class="ic">◉</span>Дашборд</a>
+        <a class="active"><span class="ic">▤</span>Проекты</a>
+        <a><span class="ic">☺</span>Контакты</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════════════ -->
+<!-- 4. PROJECT CARD                                 -->
+<!-- ═════════════════════════════════════════════ -->
+<section class="frame-row">
+  <div class="screen-heading"><span class="idx">04</span><h3>Карточка проекта</h3></div>
+  <p class="screen-desc">Шапка с суммой · блок «От заказчика» (план / получено / остаток + платежи + inline-форма «+ Поступление») · блок «Команда» (таблица участников + inline-форма «+ Выплата»). Кнопка «Архивировать» неактивна, пока оба долга > 0.</p>
+  <div class="frame-label">mobile · 390 px · <b>/gaffer/projects/:id</b></div>
+
+  <div class="frame">
+    <div class="phone-chrome"></div>
+    <div class="frame-body">
+      <div class="gaffer-topbar">
+        <div class="brand" style="display:flex;align-items:center;gap:8px">
+          <span style="color:var(--accent-border);cursor:pointer">← Проекты</span>
+        </div>
+        <div class="avatar">КЛ</div>
+      </div>
+
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Проект</span>
+          <span class="pill warn">открыт</span>
+        </div>
+        <h3 style="margin:0 0 2px;font-size:18px">Клип «Синяя волна»</h3>
+        <div class="muted" style="font-size:12.5px">Ромашка Продакшн · 15 апреля 2026</div>
+
+        <div class="money-block mt-12">
+          <div><div class="k">Сумма</div><div class="v">250 000 ₽</div></div>
+          <div><div class="k">Должны мне</div><div class="v rose">180 000 ₽</div></div>
+          <div><div class="k">Должен я</div><div class="v indigo">60 000 ₽</div></div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm">Редактировать</button>
+          <button class="btn btn-ghost btn-sm" disabled style="opacity:.5">Архивировать (долги ≠ 0)</button>
+        </div>
+      </div>
+
+      <!-- Block: from client -->
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Поступления от заказчика</span>
+          <span class="muted mono-num" style="font-size:11.5px">остаток <b style="color:var(--rose)">180 000 ₽</b></span>
+        </div>
+
+        <div class="mt-12">
+          <div class="feed-row">
+            <span class="dot in"></span>
+            <div class="descr"><b>+70 000 ₽</b><small>частичная предоплата · Тинькофф карта</small></div>
+            <time>02.04</time>
+            <button class="rm" aria-label="Удалить">×</button>
+          </div>
+        </div>
+
+        <div class="new-income">
+          <div class="form-body">
+            <div class="form-row">
+              <div>
+                <label class="field-label">Сумма</label>
+                <input class="input" placeholder="0 ₽">
+              </div>
+              <div>
+                <label class="field-label">Дата</label>
+                <input class="input" type="date" value="2026-04-18">
+              </div>
+            </div>
+            <div>
+              <label class="field-label">Куда пришли деньги</label>
+              <div class="pay-target">
+                <label class="pay-chip active"><input type="radio" name="pt" checked>Тинькофф карта</label>
+                <label class="pay-chip"><input type="radio" name="pt">Сбер карта</label>
+                <label class="pay-chip"><input type="radio" name="pt">Счёт ИП</label>
+                <label class="pay-chip"><input type="radio" name="pt">Наличные</label>
+              </div>
+            </div>
+            <div>
+              <label class="field-label">Комментарий (необязательно)</label>
+              <input class="input" placeholder="аванс, назначение платежа…">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+              <button class="btn btn-primary btn-sm">Записать поступление</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Block: team -->
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Команда</span>
+          <span class="muted mono-num" style="font-size:11.5px">закрыто 54 % · ост. 60 000 ₽</span>
+        </div>
+
+        <div class="team-list">
+          <div class="tm-row">
+            <div class="tm-hd">
+              <span class="tm-name">Сергей Петров</span>
+              <span class="tm-role">осветитель</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:33%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">20 000 / 60 000 · ост. <b>40 000 ₽</b></span>
+              <button class="btn btn-primary btn-sm">+ выплата</button>
+            </div>
+          </div>
+
+          <div class="tm-row">
+            <div class="tm-hd">
+              <span class="tm-name">Алексей Морозов</span>
+              <span class="tm-role">бригадир</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:60%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">30 000 / 50 000 · ост. <b>20 000 ₽</b></span>
+              <button class="btn btn-primary btn-sm">+ выплата</button>
+            </div>
+          </div>
+
+          <div class="tm-row closed">
+            <div class="tm-hd">
+              <span class="tm-name">Павел Т.</span>
+              <span class="tm-role">разнорабочий</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:100%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">20 000 / 20 000 · <b>закрыт</b></span>
+              <span class="pill ok">оплачено</span>
+            </div>
+          </div>
+        </div>
+
+        <details class="inline">
+          <summary>Добавить участника</summary>
+          <div class="form-body">
+            <div class="form-row">
+              <div>
+                <label class="field-label">Контакт</label>
+                <input class="input" placeholder="Начните вводить имя…">
+              </div>
+              <div>
+                <label class="field-label">Сумма к оплате</label>
+                <input class="input" placeholder="0 ₽">
+              </div>
+            </div>
+            <div>
+              <label class="field-label">Комментарий</label>
+              <input class="input" placeholder="роль на съёмке, условия…">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="btn btn-ghost btn-sm">Отмена</button>
+              <button class="btn btn-primary btn-sm">Добавить в команду</button>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="footer-meta">
+        создан 15.04 · последнее изменение сегодня · 1 поступление · 3 участника · 2 выплаты
+      </div>
+
+      <div class="tabbar">
+        <a><span class="ic">◉</span>Дашборд</a>
+        <a class="active"><span class="ic">▤</span>Проекты</a>
+        <a><span class="ic">☺</span>Контакты</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════════════ -->
+<!-- 5. CLIENT CARD                                  -->
+<!-- ═════════════════════════════════════════════ -->
+<section class="frame-row">
+  <div class="screen-heading"><span class="idx">05</span><h3>Карточка клиента</h3></div>
+  <p class="screen-desc">Имя, контакты, роли. Один крупный показатель «Суммарно должен мне». Список проектов с долгом по каждому. Лента всех платежей этого клиента (только «поступления», `direction='in'`).</p>
+  <div class="frame-label">mobile · 390 px · <b>/gaffer/contacts/:id</b> (роль «заказчик»)</div>
+
+  <div class="frame">
+    <div class="phone-chrome"></div>
+    <div class="frame-body">
+      <div class="gaffer-topbar">
+        <div class="brand"><span style="color:var(--accent-border);cursor:pointer">← Контакты</span></div>
+        <div class="avatar">КЛ</div>
+      </div>
+
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Заказчик</span>
+          <div class="roles-cluster">
+            <span class="pill info">заказчик</span>
+          </div>
+        </div>
+        <h3 style="margin:0 0 2px;font-size:18px">Ромашка Продакшн</h3>
+        <div class="muted" style="font-size:12.5px">
+          📞 <a href="tel:+79001234567" style="color:var(--accent-bright);text-decoration:none">+7 900 123-45-67</a>
+          · ✈ <a style="color:var(--accent-bright);text-decoration:none">@romashka_prod</a>
+        </div>
+        <div class="mt-12" style="background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:14px">
+          <div class="eyebrow" style="color:var(--accent)">Суммарно должен мне</div>
+          <div class="mono-num" style="font-size:26px;color:var(--accent);font-weight:600;margin-top:4px">180 000 ₽</div>
+          <div class="muted" style="font-size:11.5px;margin-top:2px">2 проекта из 3 не закрыты · средний цикл оплаты 24 дня</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="eyebrow">Проекты клиента · 3</span>
+        <div class="mt-10">
+          <div class="list-row">
+            <div class="who">
+              <b>Клип «Синяя волна»</b>
+              <small>15 апреля · 250 000 ₽ · получено 70 000</small>
+            </div>
+            <span class="amount">180 000 ₽</span>
+          </div>
+          <div class="list-row">
+            <div class="who">
+              <b>Съёмка «Коллекция весна»</b>
+              <small>02 апреля · 120 000 ₽ · оплачено полностью</small>
+            </div>
+            <span class="amount pos">0 ₽</span>
+          </div>
+          <div class="list-row">
+            <div class="who">
+              <b>Клип «Осень·19»</b>
+              <small>архив · 11.11.2025</small>
+            </div>
+            <span class="amount pos">0 ₽</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="eyebrow">Поступления от клиента</span>
+        <div class="mt-10">
+          <div class="feed-row">
+            <span class="dot in"></span>
+            <div class="descr"><b>+70 000 ₽</b><small>Клип «Синяя волна» · предоплата</small></div>
+            <time>02.04</time>
+            <span></span>
+          </div>
+          <div class="feed-row">
+            <span class="dot in"></span>
+            <div class="descr"><b>+120 000 ₽</b><small>Съёмка «Коллекция весна» · закрытие</small></div>
+            <time>12.04</time>
+            <span></span>
+          </div>
+          <div class="feed-row">
+            <span class="dot in"></span>
+            <div class="descr"><b>+60 000 ₽</b><small>Съёмка «Коллекция весна» · аванс</small></div>
+            <time>30.03</time>
+            <span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabbar">
+        <a><span class="ic">◉</span>Дашборд</a>
+        <a><span class="ic">▤</span>Проекты</a>
+        <a class="active"><span class="ic">☺</span>Контакты</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════════════ -->
+<!-- 6. TEAM-MEMBER CARD                             -->
+<!-- ═════════════════════════════════════════════ -->
+<section class="frame-row">
+  <div class="screen-heading"><span class="idx">06</span><h3>Карточка участника команды</h3></div>
+  <p class="screen-desc">Зеркальный экран карточки клиента, но со стороны «я ему должен». Один крупный показатель «Суммарно я должен», список проектов с его участием (план / выплачено / остаток), лента выплат (`direction='out'`).</p>
+  <div class="frame-label">mobile · 390 px · <b>/gaffer/contacts/:id</b> (роль «команда»)</div>
+
+  <div class="frame">
+    <div class="phone-chrome"></div>
+    <div class="frame-body">
+      <div class="gaffer-topbar">
+        <div class="brand"><span style="color:var(--accent-border);cursor:pointer">← Контакты</span></div>
+        <div class="avatar">КЛ</div>
+      </div>
+
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Участник команды</span>
+          <div class="roles-cluster">
+            <span class="pill teal">команда</span>
+          </div>
+        </div>
+        <h3 style="margin:0 0 2px;font-size:18px">Сергей Петров</h3>
+        <div class="muted" style="font-size:12.5px">
+          📞 <a style="color:var(--accent-bright);text-decoration:none">+7 909 987-65-43</a>
+          · ✈ <a style="color:var(--accent-bright);text-decoration:none">@petrov_light</a>
+          · осветитель, водит грузовик
+        </div>
+        <div class="mt-12" style="background:var(--rose-soft);border:1px solid var(--rose-border);border-radius:8px;padding:14px">
+          <div class="eyebrow" style="color:var(--rose)">Суммарно я должен</div>
+          <div class="mono-num" style="font-size:26px;color:var(--rose);font-weight:600;margin-top:4px">60 000 ₽</div>
+          <div class="muted" style="font-size:11.5px;margin-top:2px">по 3 проектам · последняя выплата 08.04</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="eyebrow">Проекты с его участием · 3</span>
+        <div class="mp-list">
+          <div class="mp-row">
+            <div class="mp-hd">
+              <span class="mp-name">Клип «Синяя волна»</span>
+              <span class="mp-date">15.04</span>
+            </div>
+            <div class="mp-grid">
+              <div class="mp-cell"><div class="k">План</div><div class="v">60 000</div></div>
+              <div class="mp-cell"><div class="k">Выпл.</div><div class="v paid">20 000</div></div>
+              <div class="mp-cell"><div class="k">Остаток</div><div class="v debt">40 000</div></div>
+              <button class="btn btn-primary btn-sm">+ выпл.</button>
+            </div>
+          </div>
+
+          <div class="mp-row">
+            <div class="mp-hd">
+              <span class="mp-name">Съёмка «Коллекция весна»</span>
+              <span class="mp-date">02.04</span>
+            </div>
+            <div class="mp-grid">
+              <div class="mp-cell"><div class="k">План</div><div class="v">40 000</div></div>
+              <div class="mp-cell"><div class="k">Выпл.</div><div class="v paid">20 000</div></div>
+              <div class="mp-cell"><div class="k">Остаток</div><div class="v debt">20 000</div></div>
+              <button class="btn btn-primary btn-sm">+ выпл.</button>
+            </div>
+          </div>
+
+          <div class="mp-row closed">
+            <div class="mp-hd">
+              <span class="mp-name">Мероприятие «Премьера»</span>
+              <span class="mp-date">28.03</span>
+            </div>
+            <div class="mp-grid">
+              <div class="mp-cell"><div class="k">План</div><div class="v">30 000</div></div>
+              <div class="mp-cell"><div class="k">Выпл.</div><div class="v paid">30 000</div></div>
+              <div class="mp-cell"><div class="k">Остаток</div><div class="v debt">0</div></div>
+              <span class="mp-closed-tag">закрыт</span>
+            </div>
+          </div>
+        </div>
+
+        <details class="inline">
+          <summary>Выплата без привязки к одному проекту</summary>
+          <div class="form-body">
+            <div class="form-row">
+              <div>
+                <label class="field-label">Проект</label>
+                <select class="input">
+                  <option>Клип «Синяя волна» (40 000 остаток)</option>
+                  <option>Съёмка «Коллекция весна» (20 000 остаток)</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label">Сумма</label>
+                <input class="input" placeholder="0 ₽">
+              </div>
+            </div>
+            <div class="form-row">
+              <div>
+                <label class="field-label">Дата</label>
+                <input class="input" type="date" value="2026-04-18">
+              </div>
+              <div>
+                <label class="field-label">Комментарий</label>
+                <input class="input" placeholder="способ, назначение…">
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="btn btn-ghost btn-sm">Отмена</button>
+              <button class="btn btn-primary btn-sm">Записать выплату</button>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="section">
+        <span class="eyebrow">Выплаты ему</span>
+        <div class="mt-10">
+          <div class="feed-row">
+            <span class="dot out"></span>
+            <div class="descr"><b>−30 000 ₽</b><small>Мероприятие «Премьера» · закрытие</small></div>
+            <time>08.04</time>
+            <button class="rm" aria-label="Удалить">×</button>
+          </div>
+          <div class="feed-row">
+            <span class="dot out"></span>
+            <div class="descr"><b>−20 000 ₽</b><small>Клип «Синяя волна» · предоплата</small></div>
+            <time>15.04</time>
+            <button class="rm" aria-label="Удалить">×</button>
+          </div>
+          <div class="feed-row">
+            <span class="dot out"></span>
+            <div class="descr"><b>−20 000 ₽</b><small>Коллекция весна · частично</small></div>
+            <time>04.04</time>
+            <button class="rm" aria-label="Удалить">×</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabbar">
+        <a><span class="ic">◉</span>Дашборд</a>
+        <a><span class="ic">▤</span>Проекты</a>
+        <a class="active"><span class="ic">☺</span>Контакты</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════════════ -->
+<!-- 7. CONTACTS DIRECTORY                           -->
+<!-- ═════════════════════════════════════════════ -->
+<section class="frame-row">
+  <div class="screen-heading"><span class="idx">07</span><h3>Справочник контактов</h3></div>
+  <p class="screen-desc">Единая картотека заказчиков и команды. Один контакт может совмещать роли («заказчик + команда»). Сверху — сводка по долгам в обе стороны, поиск + фильтр по роли, дальше — карточки со всеми полями (имя, роли, контакты, долг).</p>
+  <div class="frame-label">mobile · 390 px · <b>/gaffer/contacts</b></div>
+
+  <div class="frame">
+    <div class="phone-chrome"></div>
+    <div class="frame-body">
+      <div class="gaffer-topbar">
+        <div class="brand"><b>Контакты</b></div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-sm" style="background:var(--accent-bright);color:#fff;border:none">+ Новый</button>
+          <div class="avatar">КЛ</div>
+        </div>
+      </div>
+
+      <!-- Компактная сводка по долгам -->
+      <div class="contacts-mobile-summary">
+        <div class="cell to-me">
+          <div class="k">🟢 Мне должны</div>
+          <div class="v">320 000 ₽</div>
+        </div>
+        <div class="cell from-me">
+          <div class="k">🔴 Я должен</div>
+          <div class="v">148 000 ₽</div>
+        </div>
+      </div>
+
+      <div class="section" style="padding:10px 16px 8px">
+        <div class="search"><input class="input" placeholder="Поиск по имени, телефону, @tg…"></div>
+      </div>
+      <div class="filter-bar" style="border-top:none;padding-top:0;padding-bottom:10px">
+        <span class="chip active">Все · 18</span>
+        <span class="chip">Заказчики · 7</span>
+        <span class="chip">Команда · 13</span>
+        <span class="chip">С долгом · 8</span>
+        <span class="chip">Архив</span>
+      </div>
+
+      <div class="section" style="padding:0 16px">
+
+        <div class="contact-card">
+          <div class="avatar-init client">РП</div>
+          <div class="c-main">
+            <div class="c-top">
+              <div class="c-name">Ромашка Продакшн</div>
+              <div class="c-amount to-me"><span class="arrow">↑</span><span class="val">180 000 ₽</span></div>
+            </div>
+            <div class="c-pills">
+              <span class="pill info">заказчик</span>
+              <span class="pill slate">3 проекта</span>
+            </div>
+            <div class="c-meta">
+              <span>+7 900 123-45-67</span>
+              <span class="sep">·</span>
+              <span>@romashka_prod</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="contact-card">
+          <div class="avatar-init both">АМ</div>
+          <div class="c-main">
+            <div class="c-top">
+              <div class="c-name">Алексей Морозов</div>
+              <div class="c-amount from-me"><span class="arrow">↓</span><span class="val">45 000 ₽</span></div>
+            </div>
+            <div class="c-pills">
+              <span class="pill teal">команда</span>
+              <span class="pill info">заказчик</span>
+              <span class="pill slate">4 проекта</span>
+            </div>
+            <div class="c-meta">
+              <span>+7 915 222-44-55</span>
+              <span class="sep">·</span>
+              <span>@morozov_pro</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="contact-card">
+          <div class="avatar-init team">СП</div>
+          <div class="c-main">
+            <div class="c-top">
+              <div class="c-name">Сергей Петров</div>
+              <div class="c-amount from-me"><span class="arrow">↓</span><span class="val">60 000 ₽</span></div>
+            </div>
+            <div class="c-pills">
+              <span class="pill teal">команда</span>
+              <span class="pill slate">Best Boy</span>
+              <span class="pill slate">3 проекта</span>
+            </div>
+            <div class="c-meta">
+              <span>+7 909 987-65-43</span>
+              <span class="sep">·</span>
+              <span>@petrov_light</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="contact-card">
+          <div class="avatar-init client">ИИ</div>
+          <div class="c-main">
+            <div class="c-top">
+              <div class="c-name">Иванов И. (частный)</div>
+              <div class="c-amount to-me"><span class="arrow">↑</span><span class="val">50 000 ₽</span></div>
+            </div>
+            <div class="c-pills">
+              <span class="pill info">заказчик</span>
+              <span class="pill slate">2 проекта</span>
+            </div>
+            <div class="c-meta">
+              <span>+7 921 111-22-33</span>
+              <span class="sep">·</span>
+              <span>@ivanov_i</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="contact-card">
+          <div class="avatar-init team">ДК</div>
+          <div class="c-main">
+            <div class="c-top">
+              <div class="c-name">Дмитрий К.</div>
+              <div class="c-amount from-me"><span class="arrow">↓</span><span class="val">25 000 ₽</span></div>
+            </div>
+            <div class="c-pills">
+              <span class="pill teal">команда</span>
+              <span class="pill slate">Осветитель</span>
+              <span class="pill slate">1 проект</span>
+            </div>
+            <div class="c-meta">
+              <span>@dim_k</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="contact-card">
+          <div class="avatar-init archive">ИС</div>
+          <div class="c-main">
+            <div class="c-top">
+              <div class="c-name">Иван Сидоров</div>
+              <div class="c-amount settled"><span class="val">сведён</span></div>
+            </div>
+            <div class="c-pills">
+              <span class="pill slate">архив</span>
+              <span class="pill slate">0 проектов</span>
+            </div>
+            <div class="c-meta">
+              <span>+7 905 001-02-03</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="footer-meta" style="text-align:center">
+        показано 6 из 18 · <a style="color:var(--accent-bright);cursor:pointer">показать ещё</a>
+      </div>
+
+      <div class="tabbar">
+        <a><span class="ic">◉</span>Дашборд</a>
+        <a><span class="ic">▤</span>Проекты</a>
+        <a class="active"><span class="ic">☺</span>Контакты</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════════════ -->
+<!-- 8. PROJECT CREATE                               -->
+<!-- ═════════════════════════════════════════════ -->
+<style>
+  /* Crew picker styles — локальны для скрина 08 */
+  .wizard-step {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px;
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--accent-border);
+  }
+  .wizard-step .num {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; font-weight: 600;
+  }
+  .wizard-step .t { font-weight: 600; font-size: 13px; color: var(--accent); }
+  .wizard-step .s { color: var(--ink-2); font-size: 11.5px; margin-left: auto; }
+
+  /* Team grid: each crew chip = button with name + rate */
+  .crew-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .crew-chip {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    cursor: pointer;
+    text-align: left;
+    transition: all .12s;
+  }
+  .crew-chip:hover { border-color: var(--accent-bright); }
+  .crew-chip.selected {
+    background: var(--accent-soft);
+    border-color: var(--accent-bright);
+    box-shadow: 0 0 0 2px rgba(29,78,216,.18);
+  }
+  .crew-chip .name { font-weight: 600; font-size: 13px; color: var(--ink); display: flex; justify-content: space-between; align-items: center; }
+  .crew-chip.selected .name::after {
+    content: "✓"; color: var(--accent-bright); font-size: 14px; font-weight: 600;
+  }
+  .crew-chip .role { font-size: 11px; color: var(--ink-2); font-family: "IBM Plex Sans Condensed", sans-serif; text-transform: uppercase; letter-spacing: .6px; }
+  .crew-chip .rate { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--accent-bright); font-weight: 600; margin-top: 2px; }
+  .crew-chip.new {
+    background: var(--surface-2);
+    border-style: dashed;
+    color: var(--accent-bright);
+    justify-content: center;
+    align-items: center;
+    min-height: 62px;
+    font-weight: 500;
+    font-size: 13px;
+  }
+  .crew-chip.new:hover { background: var(--accent-soft); }
+
+  /* Per-member shift configurator — flex-стек, без grid-переполнений */
+  .shift-row {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .shift-row:last-child { border-bottom: none; }
+  .shift-row .top {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .shift-row .m-head { flex: 1 1 auto; min-width: 0; }
+  .shift-row .mname {
+    font-weight: 600; font-size: 13px; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .shift-row .mrole {
+    color: var(--ink-3); font-size: 10.5px;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    text-transform: uppercase; letter-spacing: .5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .shift-row .sub {
+    flex: 0 0 auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13.5px;
+    font-weight: 600;
+    text-align: right;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .shift-row .sub small {
+    display: block; color: var(--ink-3); font-weight: 400; font-size: 10px;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    letter-spacing: .3px;
+    white-space: nowrap;
+  }
+  .shift-row .m-inputs {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+  .shift-row .m-inputs .ifield {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .shift-row .m-inputs .ifield label {
+    font-size: 10px; letter-spacing: .4px; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    flex: 0 0 auto;
+  }
+  .shift-row .m-inputs .ifield input {
+    flex: 1 1 0; min-width: 0; width: 100%;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px; font-weight: 500;
+    padding: 3px 4px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    text-align: center;
+    background: var(--surface);
+    box-sizing: border-box;
+  }
+
+  /* Totals summary */
+  .totals-grid {
+    display: grid; gap: 8px;
+    margin-top: 12px;
+  }
+  .totals-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 10px 14px;
+    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .totals-row.big {
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+  }
+  .totals-row.profit.positive { background: var(--emerald-soft); border-color: var(--emerald-border); }
+  .totals-row.profit.positive .v { color: var(--emerald); }
+  .totals-row .l { font-size: 12.5px; color: var(--ink-2); }
+  .totals-row .l b { color: var(--ink); font-weight: 600; display: block; margin-bottom: 2px; font-size: 13.5px; }
+  .totals-row .v { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 16px; }
+  .totals-row.big .v { color: var(--accent); font-size: 18px; }
+
+  /* Crew calc preset strip — двухрядный grid, не переполняется */
+  .calc-strip {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    row-gap: 6px; column-gap: 8px;
+    padding: 10px;
+    background: var(--slate-soft);
+    border: 1px dashed var(--slate-border);
+    border-radius: 6px;
+    margin-top: 8px;
+    color: var(--ink-2);
+    align-items: center;
+  }
+  .calc-strip .lbl {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    text-transform: uppercase; letter-spacing: .8px;
+    font-size: 10.5px; font-weight: 600;
+    color: var(--slate);
+  }
+  .calc-strip .row {
+    display: flex; gap: 5px; flex-wrap: wrap;
+  }
+  .calc-preset {
+    padding: 3px 8px;
+    border: 1px solid var(--slate-border);
+    border-radius: 999px;
+    background: var(--surface);
+    cursor: pointer;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .calc-preset.active { background: var(--slate); color: #fff; border-color: var(--slate); }
+
+  /* OT breakdown callout */
+  .ot-callout {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--amber-border);
+    background: var(--amber-soft);
+    border-radius: 6px;
+    font-size: 11.5px;
+    color: var(--amber);
+  }
+  .ot-callout b { color: var(--amber); }
+
+  /* Sticky summary bar on mobile frame */
+  .sticky-save {
+    position: sticky; bottom: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    box-shadow: 0 -4px 10px rgba(9,9,11,.04);
+    display: flex; gap: 8px;
+  }
+  .sticky-save .btn { flex: 1; }
+</style>
+
+<section class="frame-row">
+  <div class="screen-heading"><span class="idx">08</span><h3>Создание проекта — пошаговая форма с пикером команды и калькулятором переработок</h3></div>
+  <p class="screen-desc">
+    Гаффер заполняет проект за один экран: клиент · проект · сумма от клиента · аренда света (из рентала) · команда. Осветители выбираются тапом из своей постоянной команды — никакого ручного ввода ФИО. У каждого — личная ставка (шифт + переработки трёх тиров, те же формулы, что в общем калькуляторе <code>packages/shared</code>). Итог считается вживую: «получу от клиента − заплачу ренталу − заплачу команде = моя маржа».
+  </p>
+  <div class="frame-label">mobile · 390 px · <b>/gaffer/projects/new</b></div>
+
+  <div class="frame">
+    <div class="phone-chrome"></div>
+    <div class="frame-body">
+      <div class="gaffer-topbar">
+        <div class="brand"><span style="color:var(--accent-border);cursor:pointer">← Проекты</span></div>
+        <div class="avatar">КЛ</div>
+      </div>
+
+      <!-- Step 1: client -->
+      <div class="wizard-step">
+        <span class="num">1</span>
+        <span class="t">Клиент</span>
+        <span class="s">кто платит за съёмку</span>
+      </div>
+      <div class="section">
+        <label class="field-label">Заказчик</label>
+        <select class="input">
+          <option>Ромашка Продакшн &nbsp;&nbsp; · 3 проекта · долг 180 000 ₽</option>
+          <option>Студия Третий Этаж · 1 проект · долг 90 000 ₽</option>
+          <option>Иванов И. (частный) · 2 проекта · долг 50 000 ₽</option>
+          <option>— —</option>
+        </select>
+        <details class="inline">
+          <summary>Новый клиент</summary>
+          <div class="form-body">
+            <div class="form-row">
+              <div><label class="field-label">Название / ФИО</label><input class="input" placeholder="Напр. Синий Кит Медиа"></div>
+              <div><label class="field-label">Телефон</label><input class="input" placeholder="+7 …"></div>
+            </div>
+            <div class="form-row">
+              <div><label class="field-label">Telegram</label><input class="input" placeholder="@handle"></div>
+              <div><label class="field-label">Комментарий</label><input class="input" placeholder="на кого работает, продюсер…"></div>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="btn btn-ghost btn-sm">Отмена</button>
+              <button class="btn btn-primary btn-sm">Создать и выбрать</button>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Step 2: project meta -->
+      <div class="wizard-step">
+        <span class="num">2</span>
+        <span class="t">Проект</span>
+        <span class="s">название и дата</span>
+      </div>
+      <div class="section">
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label class="field-label">Название</label>
+            <input class="input" value="Клип «Тёплый свет»">
+          </div>
+          <div>
+            <label class="field-label">Дата съёмки</label>
+            <input class="input" type="date" value="2026-05-14">
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <label class="field-label">Комментарий (необязательно)</label>
+          <input class="input" placeholder="локация, формат, кто режиссёр…">
+        </div>
+      </div>
+
+      <!-- Step 3: money from client -->
+      <div class="wizard-step">
+        <span class="num">3</span>
+        <span class="t">Сумма от клиента</span>
+        <span class="s">общая договорённость</span>
+      </div>
+      <div class="section">
+        <label class="field-label">Договорная сумма с заказчиком (что получу за проект)</label>
+        <input class="input mono-num" value="380 000 ₽" style="font-size:16px;font-weight:600">
+        <div class="muted" style="font-size:11.5px;margin-top:6px">
+          Это <b>не</b> прибыль — из неё гаффер платит ренталу за свет и команде за смены. Остаток — маржа.
+        </div>
+      </div>
+
+      <!-- Step 4: rental light cost -->
+      <div class="wizard-step">
+        <span class="num">4</span>
+        <span class="t">Аренда света</span>
+        <span class="s">сколько посчитали в ренталe</span>
+      </div>
+      <div class="section">
+        <label class="field-label">Сумма от рентала за оборудование</label>
+        <input class="input mono-num" value="140 000 ₽" style="font-size:16px;font-weight:600">
+        <div class="muted" style="font-size:11.5px;margin-top:6px">
+          Один рентал = одна строка. Если свет из двух мест — два платежа в карточке проекта после создания.
+        </div>
+        <details class="inline">
+          <summary>Прикрепить смету рентала (файл появится в V2)</summary>
+          <div class="form-body muted" style="font-size:12px">В MVP сметы не прикрепляем — только сумма. Реальный PDF можно оставить в переписке с ренталом.</div>
+        </details>
+      </div>
+
+      <!-- Step 5: team -->
+      <div class="wizard-step">
+        <span class="num">5</span>
+        <span class="t">Команда</span>
+        <span class="s">кто работает на смене</span>
+      </div>
+      <div class="section">
+        <label class="field-label">Моя команда — выбери кликом</label>
+        <div class="crew-grid">
+          <button class="crew-chip selected">
+            <div class="name">Сергей Петров</div>
+            <div class="role">Best Boy</div>
+            <div class="rate">14 000 ₽ / смена</div>
+          </button>
+          <button class="crew-chip selected">
+            <div class="name">Алексей Морозов</div>
+            <div class="role">Key Grip</div>
+            <div class="rate">14 000 ₽ / смена</div>
+          </button>
+          <button class="crew-chip selected">
+            <div class="name">Дмитрий К.</div>
+            <div class="role">Осветитель</div>
+            <div class="rate">12 000 ₽ / смена</div>
+          </button>
+          <button class="crew-chip">
+            <div class="name">Павел Т.</div>
+            <div class="role">Осветитель</div>
+            <div class="rate">12 000 ₽ / смена</div>
+          </button>
+          <button class="crew-chip">
+            <div class="name">Анна Л.</div>
+            <div class="role">DIT</div>
+            <div class="rate">15 000 ₽ / смена</div>
+          </button>
+          <button class="crew-chip new">+ Новый осветитель</button>
+        </div>
+
+        <!-- New crew inline form -->
+        <details class="inline">
+          <summary>Добавить нового в мою команду (появится навсегда)</summary>
+          <div class="form-body">
+            <div class="form-row">
+              <div><label class="field-label">Имя</label><input class="input" placeholder="Иван Григорьев"></div>
+              <div><label class="field-label">Роль</label>
+                <select class="input">
+                  <option>Осветитель / Grip</option>
+                  <option>Best Boy</option>
+                  <option>Key Grip</option>
+                  <option>Пультовик</option>
+                  <option>DIT</option>
+                  <option>Gaffer</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div><label class="field-label">Ставка за смену (10 ч)</label><input class="input mono-num" placeholder="12 000 ₽"></div>
+              <div><label class="field-label">Телефон / Telegram</label><input class="input" placeholder="+7 … / @handle"></div>
+            </div>
+            <div class="muted" style="font-size:11.5px">
+              Ставку можно поменять на любом следующем проекте — в команде сохранится последняя. Переработки считаются от ставки автоматически (тиры 1–8 / 9–14 / 15+ ч).
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="btn btn-ghost btn-sm">Отмена</button>
+              <button class="btn btn-primary btn-sm">Создать и добавить в проект</button>
+            </div>
+          </div>
+        </details>
+
+        <!-- Crew calculator preset -->
+        <div class="calc-strip" style="margin-top:14px">
+          <span class="lbl">Смен</span>
+          <div class="row">
+            <span class="calc-preset active">1</span>
+            <span class="calc-preset">2</span>
+            <span class="calc-preset">3</span>
+            <span class="calc-preset">свой</span>
+          </div>
+          <span class="lbl">Часов</span>
+          <div class="row">
+            <span class="calc-preset">10</span>
+            <span class="calc-preset active">12</span>
+            <span class="calc-preset">14</span>
+            <span class="calc-preset">16</span>
+            <span class="calc-preset">свой</span>
+          </div>
+        </div>
+
+        <!-- Per-member shift table -->
+        <div style="margin-top:14px;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--surface)">
+          <div style="padding:10px 12px;background:var(--surface-2);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:baseline">
+            <span class="eyebrow">Смены участников</span>
+            <span class="muted" style="font-size:11px">часы можно поменять индивидуально</span>
+          </div>
+          <div style="padding:4px 12px">
+            <div class="shift-row">
+              <div class="top">
+                <div class="m-head">
+                  <div class="mname">Сергей Петров</div>
+                  <div class="mrole">Best Boy · 14 000 ₽/смена</div>
+                </div>
+                <div class="sub">16 400 ₽<small>+2 ч ОТ · тир 1</small></div>
+              </div>
+              <div class="m-inputs">
+                <div class="ifield"><label>Смен</label><input class="mono-num" value="1"></div>
+                <div class="ifield"><label>Часов</label><input class="mono-num" value="12"></div>
+              </div>
+            </div>
+            <div class="shift-row">
+              <div class="top">
+                <div class="m-head">
+                  <div class="mname">Алексей Морозов</div>
+                  <div class="mrole">Key Grip · 14 000 ₽/смена</div>
+                </div>
+                <div class="sub">26 800 ₽<small>+4 ч ОТ · тир 1</small></div>
+              </div>
+              <div class="m-inputs">
+                <div class="ifield"><label>Смен</label><input class="mono-num" value="1"></div>
+                <div class="ifield"><label>Часов</label><input class="mono-num" value="14"></div>
+              </div>
+            </div>
+            <div class="shift-row">
+              <div class="top">
+                <div class="m-head">
+                  <div class="mname">Дмитрий К.</div>
+                  <div class="mrole">Осветитель · 12 000 ₽/смена</div>
+                </div>
+                <div class="sub">17 200 ₽<small>+2 ч ОТ · тир 1</small></div>
+              </div>
+              <div class="m-inputs">
+                <div class="ifield"><label>Смен</label><input class="mono-num" value="1"></div>
+                <div class="ifield"><label>Часов</label><input class="mono-num" value="12"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ot-callout">
+          <b>Переработки:</b> первые 8 ч сверх смены — тир 1 (×1 ставки часа), следующие 6 ч — тир 2 (×2), далее — тир 3 (×4). Те же формулы, что в общем калькуляторе гаффера.
+        </div>
+      </div>
+
+      <!-- Step 6: totals -->
+      <div class="wizard-step">
+        <span class="num">6</span>
+        <span class="t">Итог</span>
+        <span class="s">что сложилось</span>
+      </div>
+      <div class="section">
+        <div class="totals-grid">
+          <div class="totals-row big">
+            <div class="l"><b>От клиента</b>договорная сумма</div>
+            <div class="v">380 000 ₽</div>
+          </div>
+          <div class="totals-row">
+            <div class="l"><b>Должен ренталу</b>аренда света</div>
+            <div class="v rose">− 140 000 ₽</div>
+          </div>
+          <div class="totals-row">
+            <div class="l"><b>Должен команде</b>3 человека · 1 смена</div>
+            <div class="v rose">− 60 400 ₽</div>
+          </div>
+          <div class="totals-row profit positive">
+            <div class="l"><b>Моя маржа</b>после всех выплат</div>
+            <div class="v">179 600 ₽</div>
+          </div>
+        </div>
+        <div class="muted" style="font-size:11.5px;margin-top:10px">
+          Маржа пересчитывается вживую при изменении смен, часов или состава команды. После создания проекта суммы уйдут в дашборд — «мне должны 380 000», «я должен 200 400» (ренталу + команде).
+        </div>
+      </div>
+
+      <div class="sticky-save">
+        <button class="btn btn-ghost">Отмена</button>
+        <button class="btn btn-primary">Создать проект</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Companion: team directory editing rate -->
+  <div class="frame-label" style="margin-top:28px">mobile · 390 px · <b>/gaffer/contacts/:id/edit-rate</b> — профиль осветителя, правка ставки</div>
+  <div class="frame">
+    <div class="phone-chrome"></div>
+    <div class="frame-body">
+      <div class="gaffer-topbar">
+        <div class="brand"><span style="color:var(--accent-border);cursor:pointer">← Команда</span></div>
+        <div class="avatar">КЛ</div>
+      </div>
+
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Профиль осветителя</span>
+          <span class="pill teal">команда</span>
+        </div>
+        <h3 style="margin:0 0 2px;font-size:18px">Сергей Петров</h3>
+        <div class="muted" style="font-size:12.5px">Best Boy · @petrov_light · +7 909 987-65-43</div>
+      </div>
+
+      <div class="section">
+        <span class="eyebrow">Ставка по умолчанию</span>
+        <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <label class="field-label">Смена (до 10 ч)</label>
+            <input class="input mono-num" value="14 000 ₽">
+          </div>
+          <div>
+            <label class="field-label">Роль (для быстрого пресета)</label>
+            <select class="input">
+              <option>Best Boy</option>
+              <option>Key Grip</option>
+              <option>Gaffer</option>
+              <option>Осветитель / Grip</option>
+              <option>Пультовик</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+          <div style="padding:9px 12px;background:var(--surface-2);border-bottom:1px solid var(--border)" class="eyebrow">Переработка · ставка за час</div>
+          <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+            <div style="display:grid;grid-template-columns:80px 1fr;align-items:center;gap:10px">
+              <label class="field-label" style="margin:0">Тир 1<br><small style="color:var(--ink-3);font-size:10px">1–8 ч</small></label>
+              <input class="input mono-num" value="3 200 ₽" style="padding:7px 11px">
+            </div>
+            <div style="display:grid;grid-template-columns:80px 1fr;align-items:center;gap:10px">
+              <label class="field-label" style="margin:0">Тир 2<br><small style="color:var(--ink-3);font-size:10px">9–14 ч</small></label>
+              <input class="input mono-num" value="6 400 ₽" style="padding:7px 11px">
+            </div>
+            <div style="display:grid;grid-template-columns:80px 1fr;align-items:center;gap:10px">
+              <label class="field-label" style="margin:0">Тир 3<br><small style="color:var(--ink-3);font-size:10px">15+ ч</small></label>
+              <input class="input mono-num" value="12 800 ₽" style="padding:7px 11px">
+            </div>
+          </div>
+          <div style="padding:9px 12px;background:var(--accent-soft);border-top:1px solid var(--accent-border);font-size:11.5px;color:var(--accent)">
+            Пример при 14 ч: 14 000 + (4 × 3 200) = <b class="mono-num">26 800 ₽</b>
+          </div>
+        </div>
+
+        <div class="muted" style="font-size:11.5px;margin-top:10px">
+          Ставка применится ко <b>всем будущим</b> проектам. Уже созданные проекты сохраняют свои суммы как снимок — не пересчитываются.
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="eyebrow">История на моих проектах · 3</span>
+        <div class="mt-10">
+          <div class="list-row">
+            <div class="who"><b>Клип «Синяя волна»</b><small>15.04 · 1 смена · 12 ч</small></div>
+            <span class="amount">16 400 ₽</span>
+          </div>
+          <div class="list-row">
+            <div class="who"><b>Съёмка «Коллекция весна»</b><small>02.04 · 2 смены</small></div>
+            <span class="amount">28 000 ₽</span>
+          </div>
+          <div class="list-row">
+            <div class="who"><b>Мероприятие «Премьера»</b><small>28.03 · 1 смена</small></div>
+            <span class="amount pos">выплачено</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sticky-save">
+        <button class="btn btn-ghost">Отмена</button>
+        <button class="btn btn-primary">Сохранить ставку</button>
+      </div>
+
+      <div class="tabbar">
+        <a><span class="ic">◉</span>Дашборд</a>
+        <a class="active"><span class="ic">▤</span>Проекты</a>
+        <a><span class="ic">☺</span>Контакты</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- Design notes footer -->
+<section class="frame-row" style="margin-top:40px">
+  <div class="screen-heading"><span class="idx">∞</span><h3>Соответствие канону</h3></div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px;max-width:820px">
+    <ul style="margin:0;padding-left:20px;line-height:1.8;font-size:13px;color:var(--ink-2)">
+      <li><b>Шрифты:</b> IBM Plex Sans (интерфейс), IBM Plex Sans Condensed (eyebrow, pill, брендинг), IBM Plex Mono (суммы, даты, коды).</li>
+      <li><b>Цвета:</b> только токены из <code>docs/design-system.md</code> — accent <code>#1e3a8a</code>, accent-bright <code>#1d4ed8</code>, семантические teal / amber / rose / indigo / emerald / slate. Ни одного hex вне палитры.</li>
+      <li><b>StatusPill:</b> <span class="pill ok">ok</span> — проект закрыт · <span class="pill warn">warn</span> — открыт · <span class="pill alert">alert</span> — долг клиента · <span class="pill info">info</span> — долг команде или роль «заказчик» · <span class="pill teal">teal</span> — роль «команда» · <span class="pill slate">slate</span> — архив.</li>
+      <li><b>Mobile-first:</b> основной кадр 390 px. Тяжёлые списки (контакты) дополнительно показаны в desktop-сетке с сайдбаром.</li>
+      <li><b>Навигация:</b> префикс <code>/gaffer</code>, три раздела (Дашборд / Проекты / Контакты). Таббар снизу на мобиле, сайдбар слева на десктопе.</li>
+      <li><b>Формы:</b> «+ Поступление», «+ Выплата», «+ Участник» — inline-<code>&lt;details&gt;</code>, раскрываются прямо в секции (не модалки).</li>
+      <li><b>Валюта:</b> только RUB, формат <code class="mono-num">180 000 ₽</code> с неразрывным разделителем тысяч.</li>
+    </ul>
+  </div>
+</section>
+
+</body>
+</html>

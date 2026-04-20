@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · Карточка проекта (экран 04) — 3 варианта CTA «+ Поступление»</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --accent: #1e3a8a;
+    --accent-bright: #1d4ed8;
+    --accent-soft: #eff6ff;
+    --accent-border: #bfdbfe;
+
+    --teal: #0f766e;    --teal-soft: #ccfbf1;    --teal-border: #99f6e4;
+    --amber: #a16207;   --amber-soft: #fef3c7;   --amber-border: #fde68a;
+    --rose: #9f1239;    --rose-soft: #ffe4e6;    --rose-border: #fecdd3;
+    --indigo: #4338ca;  --indigo-soft: #e0e7ff;  --indigo-border: #c7d2fe;
+    --slate: #334155;   --slate-soft: #f1f5f9;   --slate-border: #cbd5e1;
+    --emerald: #047857; --emerald-soft: #d1fae5; --emerald-border: #a7f3d0;
+
+    --ok: #15803d;   --ok-soft: #dcfce7;
+    --warn: #a16207; --warn-soft: #fef9c3;
+
+    --ink:  #09090b;
+    --ink-2: #52525b;
+    --ink-3: #a1a1aa;
+
+    --surface: #ffffff;
+    --surface-2: #fafafa;
+    --border: #e4e4e7;
+
+    --shadow-xs: 0 1px 0 rgba(9,9,11,.03);
+    --shadow-sm: 0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02);
+  }
+
+  body {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 13.5px; line-height: 1.6;
+    color: var(--ink);
+    background: var(--surface-2);
+    margin: 0 auto; padding: 32px 20px 80px;
+    max-width: 1400px;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  p.lead { color: var(--ink-2); margin: 0 0 24px; font-size: 14px; max-width: 780px; }
+
+  .eyebrow {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .mono-num {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+  .muted { color: var(--ink-2); }
+  .emerald { color: var(--emerald); }
+
+  .variants {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 28px 24px;
+  }
+  .variant { min-width: 0; }
+  .variant-hd { margin-bottom: 10px; }
+  .variant-hd .tag {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px;
+    border: 1px solid var(--accent-border);
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 4px;
+    margin-right: 8px;
+  }
+  .variant-hd h3 { display: inline; font-size: 15px; font-weight: 600; color: var(--ink); }
+  .variant-hd p { margin: 6px 0 0; color: var(--ink-2); font-size: 12.5px; max-width: 420px; }
+
+  .frame {
+    width: 390px; max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+  .phone-chrome {
+    height: 28px; background: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .phone-chrome::before {
+    content: ""; display: block;
+    width: 80px; height: 4px;
+    background: #3f3f46; border-radius: 99px;
+  }
+  .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav .back { color: var(--accent-bright); font-size: 13px; cursor: pointer; }
+  .nav .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; font-weight: 600;
+  }
+
+  .section { padding: 16px; border-bottom: 1px solid var(--border); }
+  .section:last-of-type { border-bottom: none; }
+
+  .flex-between {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .mb-8 { margin-bottom: 8px; }
+
+  .proj-title { margin: 0; font-size: 18px; font-weight: 600; }
+  .proj-sub { color: var(--ink-2); font-size: 12.5px; margin-top: 2px; }
+
+  /* Pills */
+  .pill {
+    display: inline-flex; align-items: center;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .4px;
+    padding: 2px 8px; border-radius: 4px;
+    border: 1px solid transparent;
+  }
+  .pill.warn  { background: var(--warn-soft); color: var(--warn); border-color: var(--amber-border); }
+  .pill.ok    { background: var(--ok-soft);   color: var(--ok);   border-color: var(--emerald-border); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 500; font-size: 12px;
+    border-radius: 4px; padding: 7px 12px;
+    cursor: pointer; border: 1px solid transparent;
+    background: transparent; color: var(--ink);
+    white-space: nowrap; gap: 4px;
+  }
+  .btn-primary { background: var(--accent-bright); color: #fff; border-color: var(--accent-bright); }
+  .btn-ghost   { background: var(--surface); color: var(--accent-bright); border-color: var(--accent-border); }
+  .btn-sm      { font-size: 11.5px; padding: 5px 9px; }
+  .btn-xs      { font-size: 11px; padding: 4px 8px; }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+  /* ═══ KPI triad (Variant A header) ═══ */
+  .triad {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 0; margin-top: 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+  .triad > div {
+    padding: 10px 12px;
+    border-right: 1px solid var(--border);
+  }
+  .triad > div:last-child { border-right: none; }
+  .triad .k {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .5px;
+    color: var(--ink-3);
+    margin-bottom: 2px;
+  }
+  .triad .v {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600; font-size: 14px;
+    color: var(--ink);
+  }
+  .triad .to-me   .v { color: var(--rose); }
+  .triad .from-me .v { color: var(--indigo); }
+
+  /* Variant 2 — tappable Должны мне */
+  .triad .tap {
+    cursor: pointer;
+    position: relative;
+  }
+  .triad .tap:hover { background: var(--accent-soft); }
+  .triad .tap::after {
+    content: "›";
+    position: absolute; top: 8px; right: 6px;
+    color: var(--accent-bright);
+    font-weight: 600; font-size: 14px;
+  }
+
+  /* Actions row */
+  .actions {
+    display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;
+  }
+
+  /* ═══ Feed rows ═══ */
+  .feed {
+    margin-top: 10px;
+  }
+  .feed-row {
+    display: grid; grid-template-columns: 10px 1fr auto 18px;
+    gap: 8px; align-items: baseline;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .feed-row:last-child { border-bottom: none; }
+  .feed-row .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    margin-top: 6px;
+  }
+  .feed-row .dot.in  { background: var(--emerald); }
+  .feed-row .descr b { font-family: "IBM Plex Mono", monospace; font-weight: 600; color: var(--emerald); }
+  .feed-row .descr small { display: block; color: var(--ink-2); font-size: 11.5px; }
+  .feed-row time {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11.5px; color: var(--ink-3);
+  }
+  .feed-row .rm {
+    background: transparent; border: none; color: var(--ink-3);
+    cursor: pointer; font-size: 14px; padding: 0;
+  }
+
+  /* Money line under section heading */
+  .sum-line {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11.5px; color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ═══ Team list ═══ */
+  .team-list { margin-top: 6px; }
+  .tm-row {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .tm-row:last-child { border-bottom: none; }
+  .tm-hd {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px; margin-bottom: 4px;
+  }
+  .tm-name { font-weight: 600; font-size: 13.5px; }
+  .tm-role {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .tm-bar {
+    height: 6px; border-radius: 99px;
+    background: var(--slate-soft);
+    overflow: hidden; margin: 6px 0;
+  }
+  .tm-fill {
+    height: 100%; background: var(--emerald); border-radius: 99px;
+  }
+  .tm-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-top: 6px;
+  }
+  .tm-progress {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 11.5px; color: var(--ink-2);
+  }
+  .tm-progress b { color: var(--indigo); font-weight: 600; }
+  .tm-row.closed .tm-progress b { color: var(--emerald); }
+
+  /* ═══ Inline details ═══ */
+  details.inline {
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    margin-top: 10px;
+    background: var(--accent-soft);
+  }
+  details.inline > summary {
+    list-style: none; cursor: pointer;
+    padding: 9px 12px;
+    font-size: 12.5px; font-weight: 500;
+    color: var(--accent-bright);
+  }
+  details.inline > summary::-webkit-details-marker { display: none; }
+  details.inline > summary::before { content: "+ "; font-weight: 600; }
+  details.inline[open] > summary::before { content: "− "; }
+  details.inline[open] {
+    border-style: solid;
+    border-color: var(--accent-border);
+  }
+  details.inline .form-body {
+    padding: 4px 12px 12px;
+    display: grid; gap: 8px;
+  }
+  details.inline .form-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .field-label {
+    display: block; font-size: 11px; color: var(--ink-2); margin-bottom: 3px;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    text-transform: uppercase; letter-spacing: .5px; font-weight: 600;
+  }
+  .input {
+    width: 100%;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 13px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--ink);
+  }
+
+  /* ═══ Tabbar ═══ */
+  .tabbar {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .tabbar a {
+    padding: 10px 0 12px;
+    text-align: center;
+    font-size: 11px; color: var(--ink-3);
+    text-decoration: none;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    letter-spacing: .8px; text-transform: uppercase; font-weight: 600;
+  }
+  .tabbar a .ic { display: block; font-size: 18px; margin-bottom: 2px; }
+  .tabbar a.active { color: var(--accent-bright); }
+
+  /* ═══ Variant 2 — section header plus ═══ */
+  .section-hd-plus {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-bottom: 8px;
+  }
+  .section-hd-plus .mini-add {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .5px;
+    color: var(--accent-bright);
+    padding: 4px 10px;
+    border: 1px solid var(--accent-border);
+    border-radius: 99px;
+    background: var(--accent-soft);
+    cursor: pointer;
+  }
+  .section-hd-plus .mini-add::before { content: "+ "; font-weight: 700; }
+
+  /* ═══ Variant 3 — sticky bottom CTA ═══ */
+  .sticky-cta {
+    position: sticky; bottom: 0;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 12px rgba(9,9,11,.04);
+    display: flex; gap: 8px;
+  }
+  .sticky-cta .btn { flex: 1 1 auto; padding: 11px; font-size: 13px; }
+
+  .verdict {
+    margin-top: 14px;
+    font-size: 12px; color: var(--ink-2);
+    font-family: "IBM Plex Mono", monospace;
+    padding: 8px 10px;
+    border-left: 2px solid var(--accent-bright);
+    background: var(--accent-soft);
+    border-radius: 0 4px 4px 0;
+    line-height: 1.5;
+  }
+  .verdict b { color: var(--ink); font-weight: 600; }
+
+  .anchor-hint {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px; color: var(--accent-bright);
+    letter-spacing: .4px;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Карточка проекта (экран 04) — полный разрез · 3 варианта CTA</h1>
+<p class="lead">Полная вёрстка экрана с выбранной шапкой-триадой (вариант A). Ниже — 3 способа разместить CTA «+ Поступление», чтобы быстрее логнуть оплату от клиента. Форма ввода во всех вариантах одна и та же — внутри блока «От заказчика» (single source of truth). Кнопки — только разные входы в неё.</p>
+
+<div class="variants">
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- V1 — CTA в ряду actions                          -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="variant">
+    <div class="variant-hd">
+      <span class="tag">V1</span><h3>CTA в ряду действий (рекомендую)</h3>
+      <p>«+ Поступление» — primary-кнопка в actions-row сразу под KPI. Редактировать / Архивировать — ghost. Тап скроллит к блоку «От заказчика» и раскрывает форму.</p>
+    </div>
+
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="nav"><span class="back">← Проекты</span><span class="avatar">КЛ</span></div>
+
+      <!-- HEADER -->
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Проект</span>
+          <span class="pill warn">открыт</span>
+        </div>
+        <h3 class="proj-title">Клип «Синяя волна»</h3>
+        <div class="proj-sub">Ромашка Продакшн · 15 апреля 2026</div>
+
+        <div class="triad">
+          <div>
+            <div class="k">Сумма</div>
+            <div class="v">250 000 ₽</div>
+          </div>
+          <div class="to-me">
+            <div class="k">Должны мне</div>
+            <div class="v">180 000 ₽</div>
+          </div>
+          <div class="from-me">
+            <div class="k">Должен я</div>
+            <div class="v">60 000 ₽</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-primary">+ Поступление</button>
+          <button class="btn btn-ghost btn-sm">Редактировать</button>
+          <button class="btn btn-ghost btn-sm" disabled>Архивировать</button>
+        </div>
+      </div>
+
+      <!-- FROM CLIENT -->
+      <div class="section" id="v1-from-client">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">От заказчика</span>
+          <span class="sum-line">получено 70 000 / 250 000</span>
+        </div>
+
+        <div class="feed">
+          <div class="feed-row">
+            <span class="dot in"></span>
+            <div class="descr"><b>+70 000 ₽</b><small>частичная предоплата · перевод на карту</small></div>
+            <time>02.04</time>
+            <button class="rm" aria-label="Удалить">×</button>
+          </div>
+        </div>
+
+        <details class="inline" open>
+          <summary>Поступление</summary>
+          <div class="form-body">
+            <div class="form-row">
+              <div>
+                <label class="field-label">Сумма</label>
+                <input class="input" placeholder="0 ₽">
+              </div>
+              <div>
+                <label class="field-label">Дата</label>
+                <input class="input" type="date" value="2026-04-18">
+              </div>
+            </div>
+            <div>
+              <label class="field-label">Комментарий</label>
+              <input class="input" placeholder="назначение, способ оплаты…">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="btn btn-ghost btn-sm">Отмена</button>
+              <button class="btn btn-primary btn-sm">Записать</button>
+            </div>
+          </div>
+        </details>
+        <div class="anchor-hint">↑ сюда скроллит тап по «+ Поступление» в шапке</div>
+      </div>
+
+      <!-- TEAM -->
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Команда</span>
+          <span class="sum-line">закрыто 54 % · ост. 60 000 ₽</span>
+        </div>
+        <div class="team-list">
+          <div class="tm-row">
+            <div class="tm-hd">
+              <span class="tm-name">Сергей Петров</span>
+              <span class="tm-role">осветитель</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:33%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">20 000 / 60 000 · ост. <b>40 000 ₽</b></span>
+              <button class="btn btn-primary btn-sm">+ выплата</button>
+            </div>
+          </div>
+          <div class="tm-row">
+            <div class="tm-hd">
+              <span class="tm-name">Алексей Морозов</span>
+              <span class="tm-role">бригадир</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:60%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">30 000 / 50 000 · ост. <b>20 000 ₽</b></span>
+              <button class="btn btn-primary btn-sm">+ выплата</button>
+            </div>
+          </div>
+          <div class="tm-row closed">
+            <div class="tm-hd">
+              <span class="tm-name">Павел Т.</span>
+              <span class="tm-role">разнорабочий</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:100%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">20 000 / 20 000 · <b>закрыт</b></span>
+              <span class="pill ok">оплачено</span>
+            </div>
+          </div>
+        </div>
+        <details class="inline"><summary>Добавить участника</summary></details>
+      </div>
+
+      <div class="tabbar">
+        <a><span class="ic">◉</span>Дашборд</a>
+        <a class="active"><span class="ic">▤</span>Проекты</a>
+        <a><span class="ic">☺</span>Контакты</a>
+      </div>
+    </div>
+    <div class="verdict"><b>Плюсы:</b> primary-CTA сразу после KPI, естественный flow «увидел долг → логнул платёж». Shapka выглядит активной, но без визуального шума. <b>Минусы:</b> три кнопки в ряду могут переноситься на две строки (Редактировать + Архивировать — длинные). Можно сократить «Архивировать» до иконки.</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- V2 — плюс в section header                       -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="variant">
+    <div class="variant-hd">
+      <span class="tag">V2</span><h3>«+» на заголовке блока</h3>
+      <p>Shapka стерильная — только KPI + ghost-actions. Плюс-кнопка справа от заголовка «От заказчика» и «Команда» — inline, раскрывает форму на месте. Параллелизм: каждая секция сама управляет своим вводом.</p>
+    </div>
+
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="nav"><span class="back">← Проекты</span><span class="avatar">КЛ</span></div>
+
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Проект</span>
+          <span class="pill warn">открыт</span>
+        </div>
+        <h3 class="proj-title">Клип «Синяя волна»</h3>
+        <div class="proj-sub">Ромашка Продакшн · 15 апреля 2026</div>
+
+        <div class="triad">
+          <div>
+            <div class="k">Сумма</div>
+            <div class="v">250 000 ₽</div>
+          </div>
+          <div class="to-me">
+            <div class="k">Должны мне</div>
+            <div class="v">180 000 ₽</div>
+          </div>
+          <div class="from-me">
+            <div class="k">Должен я</div>
+            <div class="v">60 000 ₽</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-ghost btn-sm">Редактировать</button>
+          <button class="btn btn-ghost btn-sm" disabled>Архивировать</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-hd-plus">
+          <span class="eyebrow">От заказчика</span>
+          <button class="mini-add">Поступление</button>
+        </div>
+        <div class="sum-line" style="margin-bottom:6px">получено 70 000 / 250 000</div>
+
+        <div class="feed">
+          <div class="feed-row">
+            <span class="dot in"></span>
+            <div class="descr"><b>+70 000 ₽</b><small>частичная предоплата · перевод на карту</small></div>
+            <time>02.04</time>
+            <button class="rm" aria-label="Удалить">×</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-hd-plus">
+          <span class="eyebrow">Команда</span>
+          <button class="mini-add">Участник</button>
+        </div>
+        <div class="sum-line" style="margin-bottom:6px">закрыто 54 % · ост. 60 000 ₽</div>
+
+        <div class="team-list">
+          <div class="tm-row">
+            <div class="tm-hd">
+              <span class="tm-name">Сергей Петров</span>
+              <span class="tm-role">осветитель</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:33%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">20 000 / 60 000 · ост. <b>40 000 ₽</b></span>
+              <button class="btn btn-primary btn-sm">+ выплата</button>
+            </div>
+          </div>
+          <div class="tm-row">
+            <div class="tm-hd">
+              <span class="tm-name">Алексей Морозов</span>
+              <span class="tm-role">бригадир</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:60%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">30 000 / 50 000 · ост. <b>20 000 ₽</b></span>
+              <button class="btn btn-primary btn-sm">+ выплата</button>
+            </div>
+          </div>
+          <div class="tm-row closed">
+            <div class="tm-hd">
+              <span class="tm-name">Павел Т.</span>
+              <span class="tm-role">разнорабочий</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:100%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">20 000 / 20 000 · <b>закрыт</b></span>
+              <span class="pill ok">оплачено</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabbar">
+        <a><span class="ic">◉</span>Дашборд</a>
+        <a class="active"><span class="ic">▤</span>Проекты</a>
+        <a><span class="ic">☺</span>Контакты</a>
+      </div>
+    </div>
+    <div class="verdict"><b>Плюсы:</b> ментально чище — каждая секция сама управляет своим вводом, нет «магической» кнопки-ссылки. Shapka минималистичная. <b>Минусы:</b> всё равно надо доскроллить до блока «От заказчика» глазами — экономии в тапах нет. Пилюля-кнопка меньше primary CTA по визуальному весу.</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- V3 — Sticky bottom CTA                           -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="variant">
+    <div class="variant-hd">
+      <span class="tag">V3</span><h3>Sticky CTA над таббаром</h3>
+      <p>Кнопка «+ Поступление» закреплена снизу экрана, всегда под большим пальцем. Не важно, куда ты скроллил — тап всегда доступен. Раскрывает форму в «От заказчика».</p>
+    </div>
+
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="nav"><span class="back">← Проекты</span><span class="avatar">КЛ</span></div>
+
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Проект</span>
+          <span class="pill warn">открыт</span>
+        </div>
+        <h3 class="proj-title">Клип «Синяя волна»</h3>
+        <div class="proj-sub">Ромашка Продакшн · 15 апреля 2026</div>
+
+        <div class="triad">
+          <div>
+            <div class="k">Сумма</div>
+            <div class="v">250 000 ₽</div>
+          </div>
+          <div class="to-me">
+            <div class="k">Должны мне</div>
+            <div class="v">180 000 ₽</div>
+          </div>
+          <div class="from-me">
+            <div class="k">Должен я</div>
+            <div class="v">60 000 ₽</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-ghost btn-sm">Редактировать</button>
+          <button class="btn btn-ghost btn-sm" disabled>Архивировать</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">От заказчика</span>
+          <span class="sum-line">получено 70 000 / 250 000</span>
+        </div>
+        <div class="feed">
+          <div class="feed-row">
+            <span class="dot in"></span>
+            <div class="descr"><b>+70 000 ₽</b><small>частичная предоплата · перевод на карту</small></div>
+            <time>02.04</time>
+            <button class="rm" aria-label="Удалить">×</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="flex-between mb-8">
+          <span class="eyebrow">Команда</span>
+          <span class="sum-line">закрыто 54 % · ост. 60 000 ₽</span>
+        </div>
+        <div class="team-list">
+          <div class="tm-row">
+            <div class="tm-hd">
+              <span class="tm-name">Сергей Петров</span>
+              <span class="tm-role">осветитель</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:33%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">20 000 / 60 000 · ост. <b>40 000 ₽</b></span>
+              <button class="btn btn-primary btn-sm">+ выплата</button>
+            </div>
+          </div>
+          <div class="tm-row">
+            <div class="tm-hd">
+              <span class="tm-name">Алексей Морозов</span>
+              <span class="tm-role">бригадир</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:60%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">30 000 / 50 000 · ост. <b>20 000 ₽</b></span>
+              <button class="btn btn-primary btn-sm">+ выплата</button>
+            </div>
+          </div>
+          <div class="tm-row closed">
+            <div class="tm-hd">
+              <span class="tm-name">Павел Т.</span>
+              <span class="tm-role">разнорабочий</span>
+            </div>
+            <div class="tm-bar"><div class="tm-fill" style="width:100%"></div></div>
+            <div class="tm-foot">
+              <span class="tm-progress">20 000 / 20 000 · <b>закрыт</b></span>
+              <span class="pill ok">оплачено</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sticky-cta">
+        <button class="btn btn-primary">+ Поступление</button>
+      </div>
+
+      <div class="tabbar">
+        <a><span class="ic">◉</span>Дашборд</a>
+        <a class="active"><span class="ic">▤</span>Проекты</a>
+        <a><span class="ic">☺</span>Контакты</a>
+      </div>
+    </div>
+    <div class="verdict"><b>Плюсы:</b> всегда достижимо большим пальцем, независимо от скролла. Лучшая эргономика на мобиле. <b>Минусы:</b> съедает ~45 px над таббаром (всего ~90 px нижних элементов). Visually-heavy низ. Не ясно, что кнопка относится именно к клиенту, а не ко всему проекту.</div>
+  </div>
+
+</div>
+
+</body>
+</html>
