@@ -5,177 +5,339 @@ import Link from "next/link";
 import {
   getDashboard,
   type GafferDashboard,
-  type GafferDashboardClientDebt,
-  type GafferDashboardTeamDebt,
-  type GafferDashboardVendorDebt,
+  type GafferDashboardOverdueIncomingRow,
+  type GafferDashboardUpcomingObligationRow,
+  type GafferDashboardAtRiskProjectRow,
 } from "../../src/lib/gafferApi";
-import { formatRub, pluralize, MONTHS_LOCATIVE } from "../../src/lib/format";
+import { formatRub, MONTHS_LOCATIVE } from "../../src/lib/format";
 import { toast } from "../../src/components/ToastProvider";
+import { useGafferUser } from "../../src/components/gaffer/GafferUserContext";
+import {
+  Panel,
+  PanelTitle,
+  KPI,
+  Tag,
+  BalanceBar,
+  Donut,
+  Eyebrow,
+  H1Title,
+  H1Subtitle,
+} from "../../src/components/gaffer/designSystem";
 
-// ── Localisation helpers ────────────────────────────────────────────────────
+// ── Localisation helpers ─────────────────────────────────────────────────────
 
-const WEEKDAYS = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
+const WEEKDAYS_LC = [
+  "воскресенье",
+  "понедельник",
+  "вторник",
+  "среда",
+  "четверг",
+  "пятница",
+  "суббота",
+];
+
+const MONTHS_NOM = [
+  "января", "февраля", "марта", "апреля", "мая", "июня",
+  "июля", "августа", "сентября", "октября", "ноября", "декабря",
+];
 
 function formatGreetDate(date: Date): string {
+  const weekday = WEEKDAYS_LC[date.getDay()];
   const day = date.getDate();
-  const month = MONTHS_LOCATIVE[date.getMonth()];
-  const weekday = WEEKDAYS[date.getDay()];
+  const month = MONTHS_NOM[date.getMonth()];
   return `${weekday}, ${day} ${month}`;
 }
 
-function formatUpdateTime(date: Date): string {
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+function greetingWord(hour: number): string {
+  if (hour >= 5 && hour < 12) return "утро";
+  if (hour >= 12 && hour < 18) return "день";
+  return "вечер";
 }
 
-function formatLastActivity(isoStr: string | null): string {
-  if (!isoStr) return "—";
-  const d = new Date(isoStr);
-  const day = d.getDate();
-  const month = d.toLocaleString("ru-RU", { month: "long" });
-  return `${day} ${month}`;
-}
-
-function formatPaymentDate(isoStr: string | null): string {
-  if (!isoStr) return "—";
+function formatPaymentDate(isoStr: string): string {
   const d = new Date(isoStr);
   return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-// ── Skeleton ─────────────────────────────────────────────────────────────────
+function daysUntil(isoStr: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(isoStr);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  client: "Клиент",
+  crew: "Осветитель",
+  rental: "Рентал",
+};
+
+// ── Skeleton ──────────────────────────────────────────────────────────────────
 
 function Skeleton() {
   return (
-    <div className="animate-pulse space-y-3 px-4 pt-4">
-      <div className="h-5 bg-border rounded w-2/3" />
-      <div className="h-12 bg-border rounded" />
-      <div className="h-8 bg-border rounded mt-4" />
-      <div className="h-8 bg-border rounded" />
-    </div>
-  );
-}
-
-// ── KPI pair ──────────────────────────────────────────────────────────────────
-
-function KpiPair({ kpi }: { kpi: GafferDashboard["kpi"] }) {
-  return (
-    <div className="grid grid-cols-2 gap-2 px-4 pt-4 pb-2">
-      {/* Мне должны */}
-      <div className="bg-emerald-soft border border-emerald-border rounded-lg p-3">
-        <p className="text-[10px] font-semibold tracking-wider text-emerald uppercase mb-1"
-          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-          🟢 Мне должны
-        </p>
-        <p className="text-[20px] font-bold text-emerald mono-num leading-tight">
-          {formatRub(kpi.owedToMe)}
-        </p>
-        <p className="text-[10.5px] text-emerald/80 mt-1 leading-snug">
-          по {kpi.owedToMeProjectCount}{" "}
-          {pluralize(kpi.owedToMeProjectCount, "проекту", "проектам", "проектам")}
-          {kpi.owedToMeClientCount > 0 && (
-            <> · {kpi.owedToMeClientCount}{" "}
-              {pluralize(kpi.owedToMeClientCount, "заказчик", "заказчика", "заказчиков")}
-            </>
-          )}
-        </p>
-      </div>
-      {/* Я должен */}
-      <div className="bg-rose-soft border border-rose-border rounded-lg p-3">
-        <p className="text-[10px] font-semibold tracking-wider text-rose uppercase mb-1"
-          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-          🔴 Я должен
-        </p>
-        <p className="text-[20px] font-bold text-rose mono-num leading-tight">
-          {formatRub(kpi.iOwe)}
-        </p>
-        <p className="text-[10.5px] text-rose/80 mt-1 leading-snug">
-          по {kpi.iOweProjectCount}{" "}
-          {pluralize(kpi.iOweProjectCount, "проекту", "проектам", "проектам")}
-          {kpi.iOweMemberCount > 0 && (
-            <> · {kpi.iOweMemberCount}{" "}
-              {pluralize(kpi.iOweMemberCount, "человеку", "человекам", "человекам")}
-            </>
-          )}
-          {kpi.iOweVendorCount > 0 && (
-            <> · {kpi.iOweVendorCount}{" "}
-              {pluralize(kpi.iOweVendorCount, "ренталу", "ренталам", "ренталам")}
-            </>
-          )}
-        </p>
+    <div className="animate-pulse space-y-4 p-6">
+      <div className="h-6 bg-gaffer-bg-sub rounded w-1/2" />
+      <div className="h-10 bg-gaffer-bg-sub rounded w-2/3" />
+      <div className="grid grid-cols-4 gap-3 mt-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-24 bg-gaffer-bg-sub rounded-md" />
+        ))}
       </div>
     </div>
   );
 }
 
-// ── Client debt list row ──────────────────────────────────────────────────────
+// ── Panel 1: Overdue incoming ─────────────────────────────────────────────────
 
-function ClientDebtRow({ item }: { item: GafferDashboardClientDebt }) {
+function OverdueIncomingPanel({
+  rows,
+}: {
+  rows: GafferDashboardOverdueIncomingRow[];
+}) {
+  function handleReminder(projectCode: string) {
+    toast.info(`AI-напоминание для ${projectCode} в разработке`);
+  }
+
   return (
-    <Link
-      href={`/gaffer/contacts/${item.id}`}
-      className="flex items-center justify-between gap-2 py-2.5 px-4 border-b border-border last:border-0 hover:bg-surface-2 transition-colors"
-    >
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold text-ink truncate">{item.name}</p>
-        <p className="text-[11px] text-ink-3 mt-0.5">
-          {item.projectCount}{" "}
-          {pluralize(item.projectCount, "проект", "проекта", "проектов")}
-          {item.lastPaymentAt && (
-            <> · последний платёж {formatPaymentDate(item.lastPaymentAt)}</>
-          )}
-        </p>
+    <Panel className="flex flex-col">
+      <PanelTitle count={rows.length}>Просрочено · мне не заплатили</PanelTitle>
+      <div className="border-t border-gaffer-divider">
+        {rows.length === 0 ? (
+          <div className="py-8 text-center">
+            <div className="text-sm font-medium text-gaffer-fg">Всё в порядке</div>
+            <div className="text-xs text-gaffer-fg-muted mt-1">
+              Нет просроченных входящих оплат
+            </div>
+          </div>
+        ) : (
+          rows.map((row) => (
+            <div
+              key={row.projectId}
+              className="flex items-center justify-between py-2 px-3 border-b border-gaffer-divider last:border-0 gap-2"
+            >
+              {/* Left */}
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-xs text-gaffer-fg-subtle font-mono">
+                  {row.projectCode}
+                </span>
+                <span className="text-sm text-gaffer-fg truncate">
+                  {row.projectTitle}
+                </span>
+                <span className="text-xs text-gaffer-fg-muted">{row.clientName}</span>
+              </div>
+              {/* Middle */}
+              <Tag tone="neg">+{row.overdueDays} дн</Tag>
+              {/* Right */}
+              <div className="text-right shrink-0">
+                <span className="block text-sm text-gaffer-neg font-mono font-semibold">
+                  {formatRub(row.remaining)}
+                </span>
+                <button
+                  className="block text-xs text-gaffer-accent underline mt-0.5"
+                  onClick={() => handleReminder(row.projectCode)}
+                  type="button"
+                >
+                  Напомнить
+                </button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
-      <span className="text-[13.5px] font-semibold text-rose mono-num shrink-0">
-        {formatRub(item.remaining)}
-      </span>
-    </Link>
+    </Panel>
   );
 }
 
-// ── Vendor debt list row ──────────────────────────────────────────────────────
+// ── Panel 2: Upcoming obligations ─────────────────────────────────────────────
 
-function VendorDebtRow({ item }: { item: GafferDashboardVendorDebt }) {
+function UpcomingObligationsPanel({
+  rows,
+}: {
+  rows: GafferDashboardUpcomingObligationRow[];
+}) {
   return (
-    <Link
-      href={`/gaffer/contacts/${item.id}`}
-      className="flex items-center justify-between gap-2 py-2.5 px-4 border-b border-border last:border-0 hover:bg-surface-2 transition-colors"
-    >
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold text-ink truncate">{item.name}</p>
-        <p className="text-[11px] text-ink-3 mt-0.5">
-          {item.projectCount}{" "}
-          {pluralize(item.projectCount, "проект", "проекта", "проектов")}
-          {item.lastPaymentAt && (
-            <> · последняя выплата {formatPaymentDate(item.lastPaymentAt)}</>
-          )}
-        </p>
+    <Panel className="flex flex-col">
+      <PanelTitle count={rows.length}>Ближайшие платежи</PanelTitle>
+      <div className="border-t border-gaffer-divider">
+        {rows.length === 0 ? (
+          <div className="py-8 text-center">
+            <div className="text-xs text-gaffer-fg-muted">
+              Нет платежей в ближайшие 14 дней
+            </div>
+          </div>
+        ) : (
+          rows.map((row, i) => {
+            const days = daysUntil(row.dueAt);
+            const isIn = row.kind === "IN";
+            return (
+              <div
+                key={`${row.projectId}-${i}`}
+                className="flex items-center gap-3 py-2 px-3 border-b border-gaffer-divider last:border-0"
+              >
+                {/* Date badge */}
+                <div className="flex flex-col w-14 shrink-0">
+                  <span className="text-xs font-mono font-semibold text-gaffer-fg">
+                    {formatPaymentDate(row.dueAt)}
+                  </span>
+                  <span className="text-[10px] text-gaffer-fg-muted">
+                    через {days} д
+                  </span>
+                </div>
+                {/* Counterparty */}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-gaffer-fg truncate">
+                    {row.contactName}{" "}
+                    <span className="text-gaffer-fg-muted text-xs">
+                      · {CATEGORY_LABELS[row.projectCode] ?? "Клиент"}
+                    </span>
+                  </div>
+                  <div className="text-[10px] font-mono text-gaffer-fg-subtle">
+                    {row.projectCode}
+                  </div>
+                </div>
+                {/* Amount */}
+                <span
+                  className={`text-sm font-mono font-semibold shrink-0 ${
+                    isIn ? "text-gaffer-pos" : "text-gaffer-neg"
+                  }`}
+                >
+                  {isIn ? "+" : "−"}
+                  {formatRub(row.remaining)}
+                </span>
+              </div>
+            );
+          })
+        )}
       </div>
-      <span className="text-[13.5px] font-semibold text-amber mono-num shrink-0">
-        {formatRub(item.remaining)}
-      </span>
-    </Link>
+    </Panel>
   );
 }
 
-// ── Team debt list row ────────────────────────────────────────────────────────
+// ── Panel 3: At-risk projects ─────────────────────────────────────────────────
 
-function TeamDebtRow({ item }: { item: GafferDashboardTeamDebt }) {
+function AtRiskProjectsPanel({
+  rows,
+}: {
+  rows: GafferDashboardAtRiskProjectRow[];
+}) {
   return (
-    <Link
-      href={`/gaffer/contacts/${item.id}`}
-      className="flex items-center justify-between gap-2 py-2.5 px-4 border-b border-border last:border-0 hover:bg-surface-2 transition-colors"
-    >
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold text-ink truncate">{item.name}</p>
-        <p className="text-[11px] text-ink-3 mt-0.5">
-          {item.roleLabel && <span className="mr-1.5">{item.roleLabel}</span>}
-          {item.projectCount}{" "}
-          {pluralize(item.projectCount, "проект", "проекта", "проектов")}
-        </p>
+    <Panel className="flex flex-col">
+      <PanelTitle count={rows.length}>Проекты в зоне риска</PanelTitle>
+      <div className="border-t border-gaffer-divider">
+        {rows.length === 0 ? (
+          <div className="py-8 text-center">
+            <div className="text-xs text-gaffer-fg-muted">Нет проектов в зоне риска</div>
+          </div>
+        ) : (
+          rows.map((row) => (
+            <div
+              key={row.projectId}
+              className="px-3 py-3 border-b border-gaffer-divider last:border-0"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gaffer-fg truncate flex-1 pr-2">
+                  {row.projectTitle}
+                </span>
+                <span className="text-sm font-mono font-semibold text-gaffer-neg shrink-0">
+                  {formatRub(row.remainingIn)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-mono text-gaffer-fg-subtle">
+                  {row.projectCode}
+                </span>
+                <span className="text-xs text-gaffer-fg-muted">{row.clientName}</span>
+              </div>
+              <div className="mt-2">
+                <BalanceBar
+                  received={parseFloat(row.received)}
+                  paid={parseFloat(row.paid)}
+                  remaining={parseFloat(row.remaining)}
+                  total={parseFloat(row.total)}
+                />
+              </div>
+            </div>
+          ))
+        )}
       </div>
-      <span className="text-[13.5px] font-semibold text-indigo mono-num shrink-0">
-        {formatRub(item.remaining)}
-      </span>
-    </Link>
+    </Panel>
+  );
+}
+
+// ── Panel 4: Debt structure ───────────────────────────────────────────────────
+
+function DebtStructurePanel({
+  debtStructure,
+}: {
+  debtStructure: GafferDashboard["debtStructure"];
+}) {
+  const vendorVal = parseFloat(debtStructure.vendorOutSum);
+  const teamVal = parseFloat(debtStructure.teamOutSum);
+
+  const segments = [
+    { value: vendorVal, color: "var(--gaffer-accent)", label: "Ренталам" },
+    { value: teamVal, color: "var(--gaffer-warn)", label: "Осветителям" },
+  ];
+
+  return (
+    <Panel className="flex flex-col">
+      <PanelTitle>Структура долгов</PanelTitle>
+      <div className="border-t border-gaffer-divider p-3">
+        <div className="flex gap-6 items-start">
+          <Donut size={120} thickness={18} segments={segments} />
+          <div className="flex flex-col gap-2 flex-1">
+            {/* Legend */}
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-sm text-gaffer-fg">
+                <span
+                  className="w-2 h-2 rounded-sm shrink-0"
+                  style={{ background: "var(--gaffer-accent)" }}
+                />
+                Ренталам
+              </span>
+              <span className="text-sm font-mono text-gaffer-fg">
+                {formatRub(debtStructure.vendorOutSum)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-sm text-gaffer-fg">
+                <span
+                  className="w-2 h-2 rounded-sm shrink-0"
+                  style={{ background: "var(--gaffer-warn)" }}
+                />
+                Осветителям
+              </span>
+              <span className="text-sm font-mono text-gaffer-fg">
+                {formatRub(debtStructure.teamOutSum)}
+              </span>
+            </div>
+            {/* Stats */}
+            <div className="border-t border-gaffer-divider pt-2 mt-1 space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-gaffer-fg-muted">Закрыто проектов</span>
+                <span className="font-mono text-gaffer-fg">
+                  {debtStructure.closedProjectCount}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gaffer-fg-muted">В работе</span>
+                <span className="font-mono text-gaffer-fg">
+                  {debtStructure.inProgressProjectCount}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gaffer-fg-muted">Просрочено</span>
+                <span className="font-mono text-gaffer-neg">
+                  {debtStructure.overdueProjectCount}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Panel>
   );
 }
 
@@ -184,124 +346,125 @@ function TeamDebtRow({ item }: { item: GafferDashboardTeamDebt }) {
 export default function GafferDashboardPage() {
   const [data, setData] = useState<GafferDashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const { user } = useGafferUser();
   const now = new Date();
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     getDashboard()
-      .then((d) => { if (!cancelled) setData(d); })
-      .catch(() => { if (!cancelled) toast.error("Не удалось загрузить дашборд"); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .then((d) => {
+        if (!cancelled) setData(d);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Не удалось загрузить дашборд");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const activeCount = data?.meta.activeProjects ?? 0;
+  const greetWord = greetingWord(now.getHours());
+  const userName = user?.name || "Дмитрий";
+  const activeProjects = data?.meta.activeProjects ?? 0;
+  const openObligationCount = data?.kpi.openObligationCount ?? 0;
+  const cashGap14d = data ? parseFloat(data.kpi.cashGap14d) : 0;
 
   return (
-    <div className="min-h-screen bg-surface">
-      {/* Greet bar */}
-      <div className="bg-ink text-white px-4 py-4">
-        <p className="text-[17px] font-semibold mb-0.5">
-          {formatGreetDate(now)} · доброе утро 👋
-        </p>
-        <p className="text-[11.5px] text-white/60">
-          обновлено {formatUpdateTime(now)} · {activeCount}{" "}
-          {pluralize(activeCount, "активный проект", "активных проекта", "активных проектов")}
-        </p>
+    <div className="min-h-screen bg-gaffer-bg px-4 py-6 md:px-6">
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <Eyebrow>Гафер · {formatGreetDate(now)}</Eyebrow>
+          <H1Title>Доброе {greetWord}, {userName}</H1Title>
+          <H1Subtitle>
+            По {activeProjects} активным проектам · {openObligationCount} открытых обязательств
+          </H1Subtitle>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 mt-1">
+          <button
+            disabled
+            title="Скоро"
+            className="text-gaffer-fg-muted bg-gaffer-bg-sub border border-gaffer-border rounded-md px-3 py-1.5 text-sm cursor-not-allowed opacity-60"
+          >
+            Все долги
+          </button>
+          <Link
+            href="/gaffer/projects/new"
+            className="bg-gaffer-accent text-gaffer-accent-fg rounded-md px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            + Новый проект
+          </Link>
+        </div>
       </div>
 
       {loading ? (
         <Skeleton />
       ) : data ? (
         <>
-          {/* KPI */}
-          <KpiPair kpi={data.kpi} />
-
-          {/* Заказчики с долгом */}
-          <div className="mt-3">
-            <div className="px-4 pb-1.5 flex items-baseline justify-between">
-              <p className="text-[11px] font-semibold tracking-wider text-ink-3 uppercase"
-                style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-                Заказчики с долгом
-              </p>
-              <p className="text-[10.5px] text-ink-3">сортировка по сумме</p>
-            </div>
-            <div className="bg-surface border-y border-border">
-              {data.clientsWithDebt.length === 0 ? (
-                <div className="py-5 text-center text-[12.5px] text-ink-3 px-4">
-                  Все расчёты сведены 👌
-                </div>
-              ) : (
-                data.clientsWithDebt.map((item) => (
-                  <ClientDebtRow key={item.id} item={item} />
-                ))
-              )}
-            </div>
+          {/* KPI row */}
+          <div className="grid grid-cols-4 gap-3 mb-6 max-[780px]:grid-cols-2 max-[430px]:grid-cols-1">
+            <KPI
+              tone="pos"
+              label="Мне должны"
+              value={formatRub(data.kpi.owedToMe)}
+              sub={
+                <>
+                  из них просрочено{" "}
+                  <span className="text-gaffer-neg font-medium">
+                    {formatRub(data.kpi.overdueIncomingSum)}
+                  </span>
+                </>
+              }
+            />
+            <KPI
+              tone="neg"
+              label="Я должен"
+              value={formatRub(data.kpi.iOwe)}
+              sub={
+                <>
+                  к выплате в 14 дней{" "}
+                  <span className="font-medium">
+                    {formatRub(data.kpi.dueSoonOutgoingSum)}
+                  </span>
+                </>
+              }
+            />
+            <KPI
+              tone="default"
+              label="Свободные деньги"
+              value={formatRub(data.kpi.freeCash)}
+              sub="факт. сальдо по кассе"
+            />
+            <KPI
+              tone={cashGap14d < 0 ? "warn" : "default"}
+              label="Прогноз на 14 дней"
+              value={
+                cashGap14d >= 0
+                  ? `+${formatRub(data.kpi.cashGap14d)}`
+                  : formatRub(data.kpi.cashGap14d)
+              }
+              sub="свободно + ожидается − платежи"
+            />
           </div>
 
-          {/* Команда с долгом */}
-          <div className="mt-3">
-            <div className="px-4 pb-1.5 flex items-baseline justify-between">
-              <p className="text-[11px] font-semibold tracking-wider text-ink-3 uppercase"
-                style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-                Команда с долгом
-              </p>
-              <p className="text-[10.5px] text-ink-3">
-                {data.teamWithDebt.length}{" "}
-                {pluralize(data.teamWithDebt.length, "человек", "человека", "человек")}
-              </p>
-            </div>
-            <div className="bg-surface border-y border-border">
-              {data.teamWithDebt.length === 0 ? (
-                <div className="py-5 text-center text-[12.5px] text-ink-3 px-4">
-                  Все выплачено 👌
-                </div>
-              ) : (
-                data.teamWithDebt.map((item) => (
-                  <TeamDebtRow key={item.id} item={item} />
-                ))
-              )}
-            </div>
+          {/* Panel grid — top row */}
+          <div className="grid grid-cols-2 gap-4 mb-4 max-[780px]:grid-cols-1">
+            <OverdueIncomingPanel rows={data.overdueIncoming} />
+            <UpcomingObligationsPanel rows={data.upcomingObligations} />
           </div>
 
-          {/* Ренталы с долгом */}
-          <div className="mt-3">
-            <div className="px-4 pb-1.5 flex items-baseline justify-between">
-              <p className="text-[11px] font-semibold tracking-wider text-ink-3 uppercase"
-                style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
-                Ренталы с долгом
-              </p>
-              <p className="text-[10.5px] text-ink-3">
-                {data.vendorsWithDebt.length}{" "}
-                {pluralize(data.vendorsWithDebt.length, "рентал", "рентала", "ренталов")}
-              </p>
-            </div>
-            <div className="bg-surface border-y border-border">
-              {data.vendorsWithDebt.length === 0 ? (
-                <div className="py-5 text-center text-[12.5px] text-ink-3 px-4">
-                  Все расчёты сведены 👌
-                </div>
-              ) : (
-                data.vendorsWithDebt.map((item) => (
-                  <VendorDebtRow key={item.id} item={item} />
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Footer meta */}
-          <div className="mx-4 mt-4 pt-3 border-t border-dashed border-border">
-            <p className="text-[11.5px] text-ink-3">
-              {data.meta.activeProjects} активных · {data.meta.archivedProjects} архивных
-              {data.meta.lastActivityAt && (
-                <> · последняя активность — {formatLastActivity(data.meta.lastActivityAt)}</>
-              )}
-            </p>
+          {/* Panel grid — bottom row */}
+          <div className="grid grid-cols-2 gap-4 max-[780px]:grid-cols-1">
+            <AtRiskProjectsPanel rows={data.atRiskProjects} />
+            <DebtStructurePanel debtStructure={data.debtStructure} />
           </div>
         </>
       ) : (
-        <div className="py-12 text-center text-ink-3 text-[13px] px-4">
+        <div className="py-12 text-center text-gaffer-fg-muted text-sm px-4">
           <div className="text-4xl mb-3">📊</div>
           <p>Не удалось загрузить данные дашборда</p>
         </div>

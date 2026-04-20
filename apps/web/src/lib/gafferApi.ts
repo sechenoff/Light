@@ -584,6 +584,48 @@ export interface GafferDashboardVendorDebt {
   lastPaymentAt: string | null;
 }
 
+export interface GafferDashboardOverdueIncomingRow {
+  projectId: string;
+  projectCode: string;
+  projectTitle: string;
+  clientId: string;
+  clientName: string;
+  remaining: string;
+  overdueDays: number;
+}
+
+export interface GafferDashboardUpcomingObligationRow {
+  kind: "IN" | "OUT";
+  projectId: string;
+  projectCode: string;
+  projectTitle: string;
+  contactId: string;
+  contactName: string;
+  remaining: string;
+  dueAt: string;
+}
+
+export interface GafferDashboardAtRiskProjectRow {
+  projectId: string;
+  projectCode: string;
+  projectTitle: string;
+  clientId: string;
+  clientName: string;
+  received: string;
+  paid: string;
+  remaining: string;
+  total: string;
+  remainingIn: string;
+}
+
+export interface GafferDashboardDebtStructure {
+  vendorOutSum: string;
+  teamOutSum: string;
+  closedProjectCount: number;
+  inProgressProjectCount: number;
+  overdueProjectCount: number;
+}
+
 export interface GafferDashboard {
   kpi: {
     owedToMe: string;
@@ -593,6 +635,14 @@ export interface GafferDashboard {
     iOweProjectCount: number;
     iOweMemberCount: number;
     iOweVendorCount: number;
+    // Extended (Task 1.4)
+    overdueIncomingSum: string;
+    dueSoonIncomingSum: string;
+    dueSoonOutgoingSum: string;
+    freeCash: string;
+    cashGap14d: string;
+    openObligationCount: number;
+    overdueProjectCount: number;
   };
   clientsWithDebt: GafferDashboardClientDebt[];
   teamWithDebt: GafferDashboardTeamDebt[];
@@ -602,6 +652,11 @@ export interface GafferDashboard {
     archivedProjects: number;
     lastActivityAt: string | null;
   };
+  // Extended arrays (Task 1.4)
+  overdueIncoming: GafferDashboardOverdueIncomingRow[];
+  upcomingObligations: GafferDashboardUpcomingObligationRow[];
+  atRiskProjects: GafferDashboardAtRiskProjectRow[];
+  debtStructure: GafferDashboardDebtStructure;
 }
 
 export async function getDashboard(): Promise<GafferDashboard> {

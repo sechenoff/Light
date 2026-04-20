@@ -50,62 +50,64 @@ function GafferShell({ children }: { children: React.ReactNode }) {
   const userInitials = (user.email || "?").slice(0, 2).toUpperCase();
 
   return (
-    <div className="min-h-screen bg-[#fafafa] flex flex-col md:flex-row">
-      {/* Sidebar on desktop (>= 768px) */}
-      <GafferSidebar
-        pathname={pathname}
-        userEmail={user.email}
-        userInitials={userInitials}
-        onLogout={logout}
-      />
+    <div className="gaffer-root" data-theme="light">
+      <div className="min-h-screen bg-[#fafafa] flex flex-col md:flex-row">
+        {/* Sidebar on desktop (>= 768px) */}
+        <GafferSidebar
+          pathname={pathname}
+          userEmail={user.email}
+          userInitials={userInitials}
+          onLogout={logout}
+        />
 
-      {/* Mobile column: top header + main + bottom tabbar */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top header — mobile only */}
-        <header className="md:hidden bg-accent text-white flex items-center justify-between px-4 py-3 shrink-0">
-          <div className="flex items-center gap-3">
-            <span
-              className="font-sans font-semibold text-sm tracking-wide"
-              style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", letterSpacing: "1.8px", textTransform: "uppercase", fontSize: "12px" }}
-            >
-              <span className="text-white font-bold tracking-normal text-[14px] normal-case mr-1" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>Гаффер</span>CRM
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            {pathname === "/gaffer" && (
-              <span className="bg-accent-soft text-accent border border-accent-border rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize">
-                {new Date().toLocaleDateString("ru-RU", { month: "long" })}
+        {/* Mobile column: top header + main + bottom tabbar */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Top header — mobile only */}
+          <header className="md:hidden bg-accent text-white flex items-center justify-between px-4 py-3 shrink-0">
+            <div className="flex items-center gap-3">
+              <span
+                className="font-sans font-semibold text-sm tracking-wide"
+                style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", letterSpacing: "1.8px", textTransform: "uppercase", fontSize: "12px" }}
+              >
+                <span className="text-white font-bold tracking-normal text-[14px] normal-case mr-1" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>Гаффер</span>CRM
               </span>
-            )}
-            <Link
-              href="/gaffer/settings"
-              className="text-accent-border hover:text-white transition-colors text-xs"
-              title="Настройки"
-              aria-label="Настройки"
-            >
-              ⚙️
-            </Link>
-            <span className="bg-accent-soft text-accent w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold">
-              {userInitials}
-            </span>
-            <button
-              onClick={logout}
-              className="text-accent-border hover:text-white transition-colors text-xs whitespace-nowrap"
-              aria-label="Выйти"
-            >
-              Выйти
-            </button>
-          </div>
-        </header>
+            </div>
+            <div className="flex items-center gap-3">
+              {pathname === "/gaffer" && (
+                <span className="bg-accent-soft text-accent border border-accent-border rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize">
+                  {new Date().toLocaleDateString("ru-RU", { month: "long" })}
+                </span>
+              )}
+              <Link
+                href="/gaffer/settings"
+                className="text-accent-border hover:text-white transition-colors text-xs"
+                title="Настройки"
+                aria-label="Настройки"
+              >
+                ⚙️
+              </Link>
+              <span className="bg-accent-soft text-accent w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold">
+                {userInitials}
+              </span>
+              <button
+                onClick={logout}
+                className="text-accent-border hover:text-white transition-colors text-xs whitespace-nowrap"
+                aria-label="Выйти"
+              >
+                Выйти
+              </button>
+            </div>
+          </header>
 
-        {/* Main content area: 480px on mobile, wider on desktop */}
-        <main className="flex-1 w-full pb-20 md:pb-8 px-0 md:px-8 mx-auto max-w-[480px] md:max-w-[960px]">
-          {children}
-        </main>
+          {/* Main content area: 480px on mobile, wider on desktop */}
+          <main className="flex-1 w-full pb-20 md:pb-8 px-0 md:px-8 mx-auto max-w-[480px] md:max-w-[960px]">
+            {children}
+          </main>
+        </div>
+
+        {/* Bottom tabbar — mobile only */}
+        <GafferTabbar pathname={pathname} />
       </div>
-
-      {/* Bottom tabbar — mobile only */}
-      <GafferTabbar pathname={pathname} />
     </div>
   );
 }
@@ -173,6 +175,16 @@ function GafferSidebar({
             </Link>
           );
         })}
+        {/* Обязательства — disabled stub until Sprint 3 */}
+        <span
+          title="Скоро"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-md text-[13px] font-semibold tracking-wide text-accent-border/40 cursor-not-allowed select-none"
+          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+          aria-disabled="true"
+        >
+          <span className="text-[18px] w-5 text-center">⚖</span>
+          <span className="uppercase tracking-[0.08em]">Обязательства</span>
+        </span>
       </nav>
 
       {/* Footer: user + logout */}
@@ -217,7 +229,7 @@ function GafferTabbar({ pathname }: { pathname: string }) {
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-surface z-40">
-      <div className="grid grid-cols-3 max-w-[480px] mx-auto">
+      <div className="grid grid-cols-4 max-w-[480px] mx-auto">
         {tabs.map((tab) => (
           <Link
             key={tab.href}
@@ -233,6 +245,16 @@ function GafferTabbar({ pathname }: { pathname: string }) {
             {tab.label}
           </Link>
         ))}
+        {/* Долги — disabled stub until Sprint 3 */}
+        <span
+          title="Скоро"
+          className="flex flex-col items-center py-2.5 pb-3 text-[11px] font-semibold tracking-[0.08em] uppercase text-ink-3/40 cursor-not-allowed select-none"
+          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+          aria-disabled="true"
+        >
+          <span className="text-[18px] mb-0.5 tracking-normal">⚖</span>
+          Долги
+        </span>
       </div>
     </nav>
   );

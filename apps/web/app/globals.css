@@ -30,3 +30,102 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* ── Gaffer design tokens ───────────────────────────────────────────────────
+   Scoped to .gaffer-root so they don't bleed into existing :root variables.
+   ─────────────────────────────────────────────────────────────────────── */
+
+.gaffer-root {
+  /* Backgrounds */
+  --gaffer-bg:          #fcfcfc;
+  --gaffer-bg-sub:      #f5f5f4;
+  --gaffer-bg-hover:    #f0efec;
+  --gaffer-bg-panel:    #ffffff;
+
+  /* Borders & dividers */
+  --gaffer-border:        #e7e5e0;
+  --gaffer-border-strong: #d8d5cf;
+  --gaffer-divider:       #eeece7;
+
+  /* Foreground */
+  --gaffer-fg:        #18171a;
+  --gaffer-fg-muted:  #6b6863;
+  --gaffer-fg-subtle: #9b978f;
+
+  /* Accent — indigo */
+  --gaffer-accent:      #4f46e5;
+  --gaffer-accent-soft: #eef0ff;
+  --gaffer-accent-fg:   #ffffff;
+
+  /* Semantic: positive / negative / warn / info */
+  --gaffer-pos:       #0f7a4d;
+  --gaffer-pos-soft:  #e3f4eb;
+  --gaffer-neg:       #b42318;
+  --gaffer-neg-soft:  #fbe9e6;
+  --gaffer-warn:      #b45309;
+  --gaffer-warn-soft: #fdf1dc;
+  --gaffer-info:      #1d5d9b;
+  --gaffer-info-soft: #e4eef8;
+
+  /* Radii */
+  --gaffer-radius-sm: 4px;
+  --gaffer-radius:    6px;
+  --gaffer-radius-md: 8px;
+  --gaffer-radius-lg: 12px;
+
+  /* Shadows */
+  --gaffer-shadow-sm: 0 1px 2px rgba(17, 16, 15, 0.04), 0 1px 1px rgba(17, 16, 15, 0.03);
+  --gaffer-shadow-md: 0 2px 4px rgba(17, 16, 15, 0.04), 0 8px 16px rgba(17, 16, 15, 0.06);
+  --gaffer-shadow-lg: 0 8px 24px rgba(17, 16, 15, 0.08), 0 24px 48px rgba(17, 16, 15, 0.10);
+
+  /* Font sizes (comfortable density default) */
+  --gaffer-fs-base: 13px;
+  --gaffer-fs-sm:   12px;
+  --gaffer-fs-xs:   11px;
+  --gaffer-fs-lg:   15px;
+  --gaffer-fs-xl:   20px;
+  --gaffer-fs-2xl:  28px;
+  --gaffer-fs-3xl:  34px;
+}
+
+[data-theme="dark"] .gaffer-root {
+  --gaffer-bg:          #111113;
+  --gaffer-bg-sub:      #16161a;
+  --gaffer-bg-hover:    #1d1d22;
+  --gaffer-bg-panel:    #18181c;
+
+  --gaffer-border:        #27272c;
+  --gaffer-border-strong: #34343a;
+  --gaffer-divider:       #222227;
+
+  --gaffer-fg:        #ececed;
+  --gaffer-fg-muted:  #a1a1a6;
+  --gaffer-fg-subtle: #6a6a70;
+
+  --gaffer-accent:      #818cf8;
+  --gaffer-accent-soft: #242449;
+  --gaffer-accent-fg:   #0b0b0e;
+
+  --gaffer-pos:       #4ade80;
+  --gaffer-pos-soft:  #103725;
+  --gaffer-neg:       #f87171;
+  --gaffer-neg-soft:  #3b1b1b;
+  --gaffer-warn:      #fbbf24;
+  --gaffer-warn-soft: #3a2a0e;
+  --gaffer-info:      #60a5fa;
+  --gaffer-info-soft: #12294a;
+
+  --gaffer-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --gaffer-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 16px rgba(0, 0, 0, 0.35);
+  --gaffer-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 24px 48px rgba(0, 0, 0, 0.6);
+}
+
+[data-density="compact"] .gaffer-root {
+  --gaffer-fs-base: 12px;
+  --gaffer-fs-sm:   11px;
+  --gaffer-fs-xs:   10px;
+  --gaffer-fs-lg:   14px;
+  --gaffer-fs-xl:   18px;
+  --gaffer-fs-2xl:  24px;
+  --gaffer-fs-3xl:  30px;
+}
