@@ -152,7 +152,6 @@ function Step1({ name, onNext }: { name: string | null; onNext: () => void }) {
   return (
     <>
       <div className="text-center px-6 pt-7 pb-5">
-        <div className="text-[40px] leading-none mb-[14px]">👋</div>
         <h2
           className="text-[22px] font-semibold text-ink tracking-tight mb-1.5"
           style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
