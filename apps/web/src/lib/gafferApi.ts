@@ -699,15 +699,22 @@ export type GafferObligationsFilter = {
   sort?: "dueAt" | "remaining" | "overdueDays";
 };
 
+export type ObligationsSummary = {
+  iOwe: string;
+  owedToMe: string;
+  overdueCount: number;
+  openCount: number;
+  totalCount: number;
+};
+
 export async function listObligations(
   filters: GafferObligationsFilter = {},
-): Promise<GafferObligationView[]> {
+): Promise<{ items: GafferObligationView[]; summary: ObligationsSummary }> {
   const q = new URLSearchParams();
   if (filters.direction) q.set("direction", filters.direction);
   if (filters.category) q.set("category", filters.category);
   if (filters.status) q.set("status", filters.status);
   if (filters.sort) q.set("sort", filters.sort);
   const qs = q.toString() ? `?${q.toString()}` : "";
-  const result = await gafferFetch<{ items: GafferObligationView[] }>(`/obligations${qs}`);
-  return result.items;
+  return gafferFetch<{ items: GafferObligationView[]; summary: ObligationsSummary }>(`/obligations${qs}`);
 }

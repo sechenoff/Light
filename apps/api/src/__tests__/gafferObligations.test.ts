@@ -340,6 +340,61 @@ describe("GET /api/gaffer/obligations", () => {
     });
   });
 
+  // ── Test 13: Global summary unaffected by filters ────────────────────────
+
+  it("13. returns global summary unaffected by direction/status filters", async () => {
+    // Seed a fresh isolated context for this test:
+    // 2 IN rows remaining 50000+30000, 1 OUT remaining 10000, 1 paid IN (remaining=0)
+    const summaryClientA = await createClient(tokenB, "Summary Client IN-1");
+    const summaryClientB = await createClient(tokenB, "Summary Client IN-2");
+    const summaryClientC = await createClient(tokenB, "Summary Client IN-paid");
+    const summaryMemberContact = await createContact(tokenB, "Summary Member OUT", "TEAM_MEMBER");
+
+    const proj1 = await createProject(tokenB, summaryClientA, "Summary Proj IN-1", {
+      clientPlanAmount: "50000",
+    });
+    const proj2 = await createProject(tokenB, summaryClientB, "Summary Proj IN-2", {
+      clientPlanAmount: "30000",
+    });
+    const proj3 = await createProject(tokenB, summaryClientC, "Summary Proj IN-paid", {
+      clientPlanAmount: "20000",
+    });
+    // Pay proj3 in full → status=paid, remaining=0
+    await createPayment(tokenB, proj3, "IN", "20000");
+
+    // OUT row: proj1 + member
+    await addMember(tokenB, proj1, summaryMemberContact, "10000");
+
+    // Call with filter direction=IN&status=active — items should only return IN non-paid rows
+    const res = await getB("/api/gaffer/obligations?direction=IN&status=active");
+    expect(res.status).toBe(200);
+
+    // Filtered items: only IN active rows for tokenB user
+    // proj1 IN remaining=50000 (active), proj2 IN remaining=30000 (active), proj3 IN remaining=0 (paid, filtered out)
+    const items = res.body.items as Array<{ direction: string; remaining: string; status: string }>;
+    const inActiveItems = items.filter((i) => i.direction === "IN" && i.status !== "paid");
+    expect(inActiveItems.length).toBeGreaterThanOrEqual(2);
+
+    // Global summary must include ALL rows for this user (both direction, all statuses)
+    const s = res.body.summary as {
+      owedToMe: string;
+      iOwe: string;
+      openCount: number;
+      overdueCount: number;
+      totalCount: number;
+    };
+    expect(s).toBeDefined();
+
+    // owedToMe = sum of remaining for ALL IN rows (50000+30000+0=80000)
+    expect(Number(s.owedToMe)).toBeGreaterThanOrEqual(80000);
+    // iOwe = sum of remaining for ALL OUT rows (10000)
+    expect(Number(s.iOwe)).toBeGreaterThanOrEqual(10000);
+    // totalCount includes paid row → at least 4 rows (3 IN + 1 OUT)
+    expect(s.totalCount).toBeGreaterThanOrEqual(4);
+    // openCount excludes paid rows → at least 3 (2 IN active + 1 OUT active)
+    expect(s.openCount).toBeGreaterThanOrEqual(3);
+  });
+
   // ── Test 7: Filter status=overdue ─────────────────────────────────────────
 
   it("7. filter status=overdue: overdue rows have overdueDays>0; others filtered out", async () => {

@@ -7,6 +7,7 @@ import {
   listObligations,
   type GafferObligationView,
   type GafferObligationsFilter,
+  type ObligationsSummary,
 } from "../../../src/lib/gafferApi";
 import { formatRub } from "../../../src/lib/format";
 import {
@@ -14,7 +15,6 @@ import {
   KPI,
   Segmented,
   Tag,
-  BalanceBar,
   Eyebrow,
   H1Title,
   H1Subtitle,
@@ -36,6 +36,33 @@ function formatAmount(value: string): string {
 
 function formatDate(isoStr: string): string {
   return format(new Date(isoStr), "dd.MM.yyyy");
+}
+
+// ── Local progress bar (2-segment, replaces BalanceBar for mobile cards) ─────
+
+function ProgressBar({
+  percent,
+  ariaLabel,
+}: {
+  percent: number;
+  ariaLabel: string;
+}) {
+  const clamped = Math.min(100, Math.max(0, percent));
+  return (
+    <div
+      className="h-1.5 w-full bg-border rounded overflow-hidden"
+      role="progressbar"
+      aria-label={ariaLabel}
+      aria-valuenow={Math.round(clamped)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+    >
+      <div
+        className="h-full bg-gaffer-pos rounded"
+        style={{ width: `${clamped}%` }}
+      />
+    </div>
+  );
 }
 
 // ── Skeleton ─────────────────────────────────────────────────────────────────
@@ -206,12 +233,20 @@ function MobileCard({
 
       {/* Progress bar */}
       {hasProgress && (
-        <BalanceBar
-          received={paid}
-          paid={0}
-          remaining={remaining}
-          total={sum}
+        <ProgressBar
+          percent={sum > 0 ? (paid / sum) * 100 : 0}
+          ariaLabel={
+            item.direction === "IN"
+              ? `Оплачено клиентом ${paid} из ${sum}, осталось ${remaining}`
+              : `Выплачено ${paid} из ${sum}, осталось ${remaining}`
+          }
         />
+      )}
+      {hasProgress && (
+        <div className="text-[11px] text-gaffer-fg-muted">
+          Остаток:{" "}
+          <span className="font-semibold">{formatAmount(item.remaining)}</span>
+        </div>
       )}
     </div>
   );
@@ -241,6 +276,7 @@ export default function ObligationsPage() {
   const router = useRouter();
 
   const [items, setItems] = useState<GafferObligationView[]>([]);
+  const [summary, setSummary] = useState<ObligationsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -260,9 +296,10 @@ export default function ObligationsPage() {
     if (category !== "all") filters.category = category;
 
     listObligations(filters)
-      .then((data) => {
+      .then((res) => {
         if (!controller.signal.aborted) {
-          setItems(data);
+          setItems(res.items);
+          setSummary(res.summary);
         }
       })
       .catch((err: unknown) => {
@@ -284,20 +321,8 @@ export default function ObligationsPage() {
     };
   }, [direction, category, status]);
 
-  // Derived summary
-  const owedToMe = items
-    .filter((i) => i.direction === "IN")
-    .reduce((s, i) => s + Number(i.remaining), 0);
-  const iOwe = items
-    .filter((i) => i.direction === "OUT")
-    .reduce((s, i) => s + Number(i.remaining), 0);
-  const overdueCount = items.filter((i) => i.status === "overdue").length;
-
-  const openCount = items.filter(
-    (i) => i.status === "open" || i.status === "partial" || i.status === "overdue",
-  ).length;
-
-  const summaryLine = `${openCount} открытых · ${overdueCount} просрочено`;
+  // KPI values from global summary (unaffected by active filters)
+  const summaryLine = `${summary?.openCount ?? 0} открытых · ${summary?.overdueCount ?? 0} просрочено`;
 
   function goToProject(projectId: string) {
     router.push("/gaffer/projects/" + projectId);
@@ -324,17 +349,17 @@ export default function ObligationsPage() {
         <KPI
           tone="pos"
           label="Мне должны"
-          value={formatAmount(String(owedToMe))}
+          value={formatAmount(summary?.owedToMe ?? "0")}
         />
         <KPI
           tone="neg"
           label="Я должен"
-          value={formatAmount(String(iOwe))}
+          value={formatAmount(summary?.iOwe ?? "0")}
         />
         <KPI
           tone="warn"
           label="Просрочено"
-          value={String(overdueCount)}
+          value={String(summary?.overdueCount ?? 0)}
         />
       </div>
 
@@ -349,6 +374,7 @@ export default function ObligationsPage() {
             ]}
             value={direction}
             onChange={setDirection}
+            fullWidth
           />
         </div>
         <div className="w-full">
@@ -361,6 +387,7 @@ export default function ObligationsPage() {
             ]}
             value={category}
             onChange={setCategory}
+            fullWidth
           />
         </div>
         <div className="w-full">
@@ -372,6 +399,7 @@ export default function ObligationsPage() {
             ]}
             value={status}
             onChange={setStatus}
+            fullWidth
           />
         </div>
       </div>
