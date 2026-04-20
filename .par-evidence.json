@@ -1,11 +1,11 @@
 {
-  "sprint": 1,
+  "sprint": 2,
   "feature": "gaffer-crm-design-parity",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
   "governance_mode": "standard",
-  "review_rounds": 2,
-  "notes": "Round 1: Product NEEDS_FIXES (1 BLOCKER category label + 2 MAJOR + 2 MINOR), Technical APPROVE with MINOR/NIT. Round 2 after fix commit 9e0b9ad: Product ACCEPTED. Technical verdict carried over (as any call they flagged was addressed in the fix commit).",
+  "review_rounds": 1,
+  "notes": "Product ACCEPTED_WITH_NITS — all 40 RATE_CARDS numeric fields cross-checked against canonical 2024+2026 PDFs; picker UX verified (labels, order, auto-fill, Вручную fallback, submit guards, server 'custom'→null normalization). Technical APPROVE_WITH_NITS — progressiveOtCost formula verified (6 worked examples hand-checked), tenant isolation preserved, zod contract clean; 3 MINOR findings, none blocker: (1) PATCH orphan rateCardPosition defensive hardening (unreachable from UI, deferred); (2) hardcoded shiftHours:10 forward-compat debt (deferred); (3) edit-rate save button missing position-required guard — FIXED in commit 304059b.",
   "ts": "2026-04-20"
 }
