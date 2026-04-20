@@ -127,6 +127,7 @@ function GafferSidebar({
     { href: "/gaffer", label: "Дашборд", icon: "◉" },
     { href: "/gaffer/projects", label: "Проекты", icon: "▤" },
     { href: "/gaffer/contacts", label: "Контакты", icon: "☺" },
+    { href: "/gaffer/obligations", label: "Обязательства", icon: "⚖" },
   ];
 
   function isActive(href: string) {
@@ -175,16 +176,6 @@ function GafferSidebar({
             </Link>
           );
         })}
-        {/* Обязательства — disabled stub until Sprint 3 */}
-        <span
-          title="Скоро"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-md text-[13px] font-semibold tracking-wide text-accent-border/40 cursor-not-allowed select-none"
-          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
-          aria-disabled="true"
-        >
-          <span className="text-[18px] w-5 text-center">⚖</span>
-          <span className="uppercase tracking-[0.08em]">Обязательства</span>
-        </span>
       </nav>
 
       {/* Footer: user + logout */}
@@ -220,6 +211,7 @@ function GafferTabbar({ pathname }: { pathname: string }) {
     { href: "/gaffer", label: "Дашборд", icon: "◉" },
     { href: "/gaffer/projects", label: "Проекты", icon: "▤" },
     { href: "/gaffer/contacts", label: "Контакты", icon: "☺" },
+    { href: "/gaffer/obligations", label: "Долги", icon: "⚖" },
   ];
 
   function isActive(href: string) {
@@ -245,16 +237,6 @@ function GafferTabbar({ pathname }: { pathname: string }) {
             {tab.label}
           </Link>
         ))}
-        {/* Долги — disabled stub until Sprint 3 */}
-        <span
-          title="Скоро"
-          className="flex flex-col items-center py-2.5 pb-3 text-[11px] font-semibold tracking-[0.08em] uppercase text-ink-3/40 cursor-not-allowed select-none"
-          style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
-          aria-disabled="true"
-        >
-          <span className="text-[18px] mb-0.5 tracking-normal">⚖</span>
-          Долги
-        </span>
       </div>
     </nav>
   );

@@ -672,3 +672,42 @@ export interface GafferDashboard {
 export async function getDashboard(): Promise<GafferDashboard> {
   return gafferFetch("/dashboard");
 }
+
+// ── Obligations ────────────────────────────────────────────────────────────
+
+export type GafferObligationView = {
+  id: string;
+  direction: "IN" | "OUT";
+  category: "client" | "crew" | "rental";
+  counterpartyId: string;
+  counterpartyName: string;
+  projectId: string;
+  projectCode: string;
+  projectTitle: string;
+  sum: string;
+  paid: string;
+  remaining: string;
+  dueAt: string | null;
+  overdueDays: number | null;
+  status: "open" | "partial" | "paid" | "overdue";
+};
+
+export type GafferObligationsFilter = {
+  direction?: "IN" | "OUT";
+  category?: "client" | "crew" | "rental";
+  status?: "open" | "partial" | "paid" | "overdue" | "active";
+  sort?: "dueAt" | "remaining" | "overdueDays";
+};
+
+export async function listObligations(
+  filters: GafferObligationsFilter = {},
+): Promise<GafferObligationView[]> {
+  const q = new URLSearchParams();
+  if (filters.direction) q.set("direction", filters.direction);
+  if (filters.category) q.set("category", filters.category);
+  if (filters.status) q.set("status", filters.status);
+  if (filters.sort) q.set("sort", filters.sort);
+  const qs = q.toString() ? `?${q.toString()}` : "";
+  const result = await gafferFetch<{ items: GafferObligationView[] }>(`/obligations${qs}`);
+  return result.items;
+}
