@@ -18,7 +18,6 @@ export function GafferAuthCard({
   return (
     <div
       className="min-h-screen flex flex-col items-center bg-accent pt-14 px-5 pb-8"
-      style={{ minHeight: "640px" }}
     >
       {/* Brand */}
       <div className="text-center mb-9">
