@@ -223,6 +223,15 @@ Visual consistency: good. Layout is clean, typography consistent with rest of ap
 
 ---
 
+---
+
+## Post-investigation (Sprint 2 Wave B)
+
+**Screen 01b — `/gaffer/register` — audit false positive.**
+`apps/web/middleware.ts` line 32 already has `if (pathname.startsWith("/gaffer")) return true;` which passes all `/gaffer/*` routes without a session cookie. `apps/web/app/gaffer/layout.tsx` line 9 lists `"/gaffer/register"` in `PUBLIC_PATHS`, so the client-side auth guard also skips the redirect. The register page uses `<GafferAuthCard>` with distinct content (Name field, "Зарегистрироваться" button, `gafferRegister` submit handler). The byte-identical screenshots in the audit were caused by the Playwright script hitting the route before auth cookies were propagated — not by a real redirect. **No code fix needed.**
+
+---
+
 ## Deferred (out of Sprint 2 scope)
 
 - Avatar initials chip in desktop top-bar (affects all screens) — requires layout-level changes to `apps/web/app/gaffer/layout.tsx`.
@@ -230,3 +239,17 @@ Visual consistency: good. Layout is clean, typography consistent with rest of ap
 - "ПРОЕКТ" eyebrow label on project card header — pure cosmetic.
 - Obligations "Осветитель" pill inconsistency.
 - Welcome page emoji vs plain text heading.
+
+---
+
+## After-fix summary (Sprint 2 Wave B)
+
+| Fix | Status | Before → After |
+|-----|--------|----------------|
+| Fix 1 — `/gaffer/register` investigation | FALSE POSITIVE — no code change | Audit script artifact; middleware already whitelists `/gaffer/*` |
+| Fix 2 — KPI colored variant | DONE | `designSystem.tsx`: added `colored?: boolean` prop; `page.tsx`: "Мне должны" and "Я должен" now use `colored` + full bg-gaffer-pos-soft / bg-gaffer-neg-soft cards |
+| Fix 3 — AuthCard full-height blue desktop | DONE | `GafferAuthCard.tsx:22`: removed `style={{ minHeight: "640px" }}` override; `min-h-screen` class now applies correctly |
+| Fix 4 — Client KPI subtext avgPaymentCycleDays | BLOCKED | `avgPaymentCycleDays` field absent from `GafferContact` DTO in `gafferApi.ts`; adding API fields is out of surgical scope |
+| Fix 5 — Team KPI subtext lastPayoutDate | BLOCKED | `lastPayoutDate`/`lastPayoutAt` absent from DTO in `gafferApi.ts`; out of surgical scope |
+| Fix 6 — Contacts search placeholder | DONE | `contacts/page.tsx:392`: `"Поиск по имени, телефону…"` → `"Поиск по имени, телефону, @tg…"` |
+| Fix 7 — Welcome emoji | DONE | `welcome/page.tsx:155`: removed `<div className="text-[40px]...">👋</div>` |
