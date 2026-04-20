@@ -240,7 +240,8 @@ describe("Список проектов", () => {
   let projectId: string;
 
   beforeAll(async () => {
-    const p = await createProjectA({ title: "Список: проект А" });
+    // clientPlanAmount: "0" чтобы не было долга и тест на архивный статус мог архивировать проект
+    const p = await createProjectA({ title: "Список: проект А", clientPlanAmount: "0" });
     projectId = p.id;
   });
 
@@ -378,7 +379,8 @@ describe("Архивация проектов", () => {
   let projectId: string;
 
   beforeAll(async () => {
-    const p = await createProjectA({ title: "Для архивации" });
+    // clientPlanAmount: "0" чтобы не было долга клиента и архивация не блокировалась
+    const p = await createProjectA({ title: "Для архивации", clientPlanAmount: "0" });
     projectId = p.id;
   });
 

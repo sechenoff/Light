@@ -249,10 +249,27 @@ describe("Создание OUT-платежа", () => {
 
   it("POST OUT для архивного проекта → 400 PROJECT_ARCHIVED", async () => {
     const clientId = await createClientA("Клиент арх. проект");
-    const archivedProjectId = await createProjectA(clientId, "Архивный проект");
+    // clientPlanAmount: "0" чтобы не было долга клиента при архивации
+    const res0 = await postA("/api/gaffer/projects").send({
+      title: "Архивный проект",
+      clientId,
+      shootDate: "2025-08-01",
+      clientPlanAmount: "0",
+    });
+    expect(res0.status).toBe(200);
+    const archivedProjectId = res0.body.project.id as string;
     const mId = await createMemberA("Техник арх.");
     await addMemberA(archivedProjectId, mId);
-    await postA(`/api/gaffer/projects/${archivedProjectId}/archive`);
+    // Закрываем долг участника перед архивацией
+    await postA("/api/gaffer/payments").send({
+      projectId: archivedProjectId,
+      direction: "OUT",
+      amount: "30000",
+      paidAt: "2025-08-02",
+      memberId: mId,
+    });
+    const archRes = await postA(`/api/gaffer/projects/${archivedProjectId}/archive`);
+    expect(archRes.status).toBe(200);
 
     const res = await postA("/api/gaffer/payments").send({
       projectId: archivedProjectId,
