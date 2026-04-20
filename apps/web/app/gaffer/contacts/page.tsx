@@ -389,7 +389,7 @@ export default function GafferContactsPage() {
           <span className="absolute left-[10px] top-1/2 -translate-y-1/2 text-[14px] opacity-60">🔎</span>
           <input
             type="search"
-            placeholder="Поиск по имени, телефону…"
+            placeholder="Поиск по имени, телефону, @tg…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-[9px] border border-border rounded text-[13.5px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright"
