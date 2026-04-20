@@ -1,11 +1,11 @@
 {
-  "sprint": 1,
+  "sprint": 2,
   "feature": "gaffer-canon-parity",
   "claude_product": "SKIPPED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
   "governance_mode": "light",
   "review_rounds": 1,
-  "notes": "Light governance — single technical reviewer (standard-code-reviewer, opus) covering product/spec fit + technical correctness in one pass. Verdict APPROVE. Nits: tech-debt cast on projectService.ts:441 mirrors pre-existing pattern (acceptable); TOCTOU window between debt check and updateMany (acceptable for single-user SaaS, future $transaction); gafferProjectArchive tests lack combined-debt scenarios (isolation coverage sufficient). All 5 defense-in-depth layers verified — UI disabled + tooltip + handler guard + server 409 + Russian toast. Canon §04 satisfied and extended to vendorRemaining. Tests: API 755/755 (750 baseline + 5 new), web 201/201, tsc web clean, tsc api only pre-existing projectService.ts:265 error.",
+  "notes": "Light governance — single technical reviewer (standard-code-reviewer, opus) covering product/spec fit + technical correctness in one pass. Verdict APPROVE, no blockers. Sprint 2 delivers: (Wave A) Playwright canon-parity audit — 75 screenshots across 9 routes x 3 widths + 5 mockup oracles; parity-report.md with 23 drift items (2 P0 reclassified as audit artifacts, 11 P1, 10 P2); (Wave B) 5 surgical fixes — KPI colored variant (dashboard §02), AuthCard full-viewport at desktop (§01), contacts search placeholder (+@tg, §07), welcome-page emoji removal (§01c), plus register-page investigation note. Tokens verified real (bg-gaffer-pos-soft / bg-gaffer-neg-soft in tailwind.config.js:85-88 + globals.css:61-64). Blocked items: avgPaymentCycleDays and lastPayoutDate legitimately absent from GafferContact DTO — deferred to Sprint 3+ API work. Tests: API 755/755 (unchanged from Sprint 1 baseline), web 201/201 (unchanged), tsc web no new errors. Drift count after fixes: ~5 P1 (down from ~10), remainder out of surgical scope.",
   "ts": "2026-04-20"
 }
