@@ -33,6 +33,21 @@ export type GafferObligationsFilter = {
   sort?: "dueAt" | "remaining" | "overdueDays";
 };
 
+/**
+ * Global snapshot of obligations across all rows (unfiltered).
+ * - iOwe / owedToMe: sum of `remaining` over all OUT / IN rows respectively.
+ * - openCount: count of rows with status in (open | partial | overdue).
+ * - overdueCount: count of rows with status = overdue.
+ * - totalCount: count of ALL rows including paid ones.
+ */
+export type ObligationsSummary = {
+  iOwe: string;
+  owedToMe: string;
+  overdueCount: number;
+  openCount: number;
+  totalCount: number;
+};
+
 function deriveProjectCode(projectId: string): string {
   return "G-" + projectId.slice(0, 8).toUpperCase();
 }
@@ -63,7 +78,7 @@ function deriveOverdueDays(
 export async function listObligations(
   req: Request,
   filters: GafferObligationsFilter = {},
-): Promise<{ items: GafferObligationView[] }> {
+): Promise<{ items: GafferObligationView[]; summary: ObligationsSummary }> {
   const { gafferUserId } = gafferWhere(req);
   const ZERO = new Decimal(0);
   const now = new Date();
@@ -140,7 +155,7 @@ export async function listObligations(
       const rawRem = memberSum.minus(memberPaid);
       const memberRem = rawRem.gt(ZERO) ? rawRem : ZERO;
 
-      const memberDueAt = (member as unknown as { dueAt?: Date | null }).dueAt ?? null;
+      const memberDueAt = member.dueAt ?? null;
       const category: "crew" | "rental" = contactType === "VENDOR" ? "rental" : "crew";
 
       const status = deriveStatus(memberPaid, memberRem, memberDueAt, now);
@@ -164,6 +179,22 @@ export async function listObligations(
       });
     }
   }
+
+  // ── Compute global summary (unfiltered) ───────────────────────────────────────
+
+  const summaryOwedToMe = obligations
+    .filter((o) => o.direction === "IN")
+    .reduce((acc, o) => acc.plus(new Decimal(o.remaining)), ZERO);
+  const summaryIOwe = obligations
+    .filter((o) => o.direction === "OUT")
+    .reduce((acc, o) => acc.plus(new Decimal(o.remaining)), ZERO);
+  const summary: ObligationsSummary = {
+    owedToMe: summaryOwedToMe.toString(),
+    iOwe: summaryIOwe.toString(),
+    overdueCount: obligations.filter((o) => o.status === "overdue").length,
+    openCount: obligations.filter((o) => o.status !== "paid").length,
+    totalCount: obligations.length,
+  };
 
   // ── Apply filters ──────────────────────────────────────────────────────────
 
@@ -208,5 +239,5 @@ export async function listObligations(
     });
   }
 
-  return { items: filtered };
+  return { items: filtered, summary };
 }

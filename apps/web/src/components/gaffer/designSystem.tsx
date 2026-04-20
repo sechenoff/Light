@@ -104,15 +104,23 @@ export interface SegmentedProps<T extends string> {
   options: SegmentedOption<T>[];
   value: T;
   onChange: (id: T) => void;
+  /** When true, container takes full width and each option stretches equally. */
+  fullWidth?: boolean;
 }
 
 export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  fullWidth = false,
 }: SegmentedProps<T>) {
   return (
-    <div className="inline-flex gap-0.5 p-0.5 bg-gaffer-bg-sub rounded-md">
+    <div
+      className={cx(
+        "gap-0.5 p-0.5 bg-gaffer-bg-sub rounded-md",
+        fullWidth ? "flex w-full" : "inline-flex",
+      )}
+    >
       {options.map((opt) => {
         const active = opt.id === value;
         return (
@@ -122,6 +130,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(opt.id)}
             className={cx(
               "px-3 py-1 text-sm rounded transition-colors",
+              fullWidth ? "flex-1 justify-center" : "",
               active
                 ? "bg-gaffer-bg-panel border border-gaffer-border-strong shadow-sm text-gaffer-fg font-medium"
                 : "bg-transparent text-gaffer-fg-muted hover:text-gaffer-fg",
