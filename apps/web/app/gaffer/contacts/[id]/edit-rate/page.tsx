@@ -451,7 +451,7 @@ function EditRateContent() {
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving || isArchived}
+          disabled={saving || isArchived || (cardId !== "custom" && !positionKey)}
           className="flex-1 bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-2.5 text-[13px] transition-colors disabled:opacity-50"
         >
           {saving ? "Сохраняем…" : "Сохранить ставку"}
