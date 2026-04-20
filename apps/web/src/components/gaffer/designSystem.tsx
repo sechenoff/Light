@@ -61,6 +61,8 @@ export interface KpiProps {
   value: React.ReactNode;
   sub?: React.ReactNode;
   tone?: KpiTone;
+  /** When true, the card gets a full colored background matching the tone (pos → green-soft, neg → rose-soft). */
+  colored?: boolean;
 }
 
 const kpiAccentVar: Record<KpiTone, string> = {
@@ -70,7 +72,33 @@ const kpiAccentVar: Record<KpiTone, string> = {
   warn: "var(--gaffer-warn)",
 };
 
-export function KPI({ label, value, sub, tone = "default" }: KpiProps) {
+const kpiColoredBg: Partial<Record<KpiTone, string>> = {
+  pos: "bg-gaffer-pos-soft border-gaffer-pos/30",
+  neg: "bg-gaffer-neg-soft border-gaffer-neg/30",
+};
+
+const kpiColoredLabel: Partial<Record<KpiTone, string>> = {
+  pos: "text-gaffer-pos",
+  neg: "text-gaffer-neg",
+};
+
+export function KPI({ label, value, sub, tone = "default", colored = false }: KpiProps) {
+  if (colored && (tone === "pos" || tone === "neg")) {
+    const bgClass = kpiColoredBg[tone] ?? "";
+    const textClass = kpiColoredLabel[tone] ?? "text-gaffer-fg";
+    return (
+      <div className={`rounded-md border p-3 ${bgClass}`}>
+        <div className={`text-xs font-semibold uppercase tracking-wide mb-1 ${textClass}`}>{label}</div>
+        <div className={`font-mono text-[28px] leading-none font-semibold ${textClass}`}>
+          {value}
+        </div>
+        {sub != null && (
+          <div className={`text-xs mt-1 opacity-70 ${textClass}`}>{sub}</div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <Panel className="overflow-hidden">
       <div className="flex">
