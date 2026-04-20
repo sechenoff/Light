@@ -1,11 +1,11 @@
 {
-  "sprint": 3,
-  "feature": "gaffer-crm-design-parity",
-  "claude_product": "ACCEPTED",
+  "sprint": 1,
+  "feature": "gaffer-canon-parity",
+  "claude_product": "SKIPPED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "governance_mode": "standard",
-  "review_rounds": 2,
-  "notes": "Round 1 — Product NEEDS_FIXES (5 findings: P1 filter-reactive KPIs BLOCKER, P2 mobile Segmented overflow, P3 BalanceBar aria-label wrong for OUT, P4 `as unknown as` dueAt cast, P5 density nit ACCEPTED). Technical APPROVE_WITH_NITS (4 MINORs: M1 same cast as P4, M2 listObligations envelope mismatch, M3 same BalanceBar as P3, M4 hardcoded test dates — deferred per brief). Fix commit c1afd26 addressed P1/P2/P3/P4/M1/M2/M3 in one pass. Round 2 — Product re-review ACCEPTED, all 4 flagged issues RESOLVED with file:line evidence. Technical not re-reviewed (APPROVE is a pass verdict, Rule 3 — re-review only flagging agent). Verification — API tests 750/750, web tests 201/201, tsc apps/api clean (only pre-existing projectService.ts:265 unrelated), tsc apps/web clean, Next.js build green.",
+  "governance_mode": "light",
+  "review_rounds": 1,
+  "notes": "Light governance — single technical reviewer (standard-code-reviewer, opus) covering product/spec fit + technical correctness in one pass. Verdict APPROVE. Nits: tech-debt cast on projectService.ts:441 mirrors pre-existing pattern (acceptable); TOCTOU window between debt check and updateMany (acceptable for single-user SaaS, future $transaction); gafferProjectArchive tests lack combined-debt scenarios (isolation coverage sufficient). All 5 defense-in-depth layers verified — UI disabled + tooltip + handler guard + server 409 + Russian toast. Canon §04 satisfied and extended to vendorRemaining. Tests: API 755/755 (750 baseline + 5 new), web 201/201, tsc web clean, tsc api only pre-existing projectService.ts:265 error.",
   "ts": "2026-04-20"
 }
