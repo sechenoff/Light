@@ -817,6 +817,9 @@ model GafferContact {
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
+  shiftHours          Int?    @default(10)   // продолжительность смены в часах (по умолчанию 10)
+  rateCardId          String?               // ссылка на внешний рейт-кард (опционально)
+  rateCardPosition    String?               // должность в рейт-карде
   shiftRate           Decimal @default(0)    // базовая ставка за смену (10 ч)
   overtimeTier1Rate   Decimal @default(0)    // тариф за час переработки, 1–8 ч сверх смены
   overtimeTier2Rate   Decimal @default(0)    // тариф за час, 9–14 ч сверх смены
@@ -853,6 +856,7 @@ model GafferProject {
   clientId         String
   shootDate        DateTime // единственная дата съёмки для MVP
   clientPlanAmount  Decimal             @default(0) // договорная сумма с заказчиком — полный доход гаффера за проект
+  clientDueAt       DateTime?
   lightBudgetAmount Decimal             @default(0) // бюджет на свет (rental gear) — вычитается из дохода
   status            GafferProjectStatus @default(OPEN)
   note             String?
@@ -873,6 +877,7 @@ model GafferProjectMember {
   projectId     String
   contactId     String
   plannedAmount Decimal  @default(0)
+  dueAt         DateTime?
   roleLabel     String? // "осветитель, водит грузовик"
   createdAt     DateTime @default(now())
 
