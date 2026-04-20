@@ -1344,6 +1344,7 @@ function GafferProjectDetailContent() {
 
   async function handleArchiveToggle() {
     if (!project) return;
+    if (!canArchive) return;
     setMenuOpen(false);
     try {
       const res = project.status === "ARCHIVED"
@@ -1352,7 +1353,11 @@ function GafferProjectDetailContent() {
       setProject(res.project);
       toast.success(res.project.status === "ARCHIVED" ? "Проект в архиве" : "Проект восстановлен");
     } catch (e) {
-      toast.error(e instanceof GafferApiError ? e.message : "Ошибка");
+      if (e instanceof GafferApiError && e.code === "PROJECT_HAS_DEBTS") {
+        toast.error("Нельзя: есть открытые остатки");
+      } else {
+        toast.error(e instanceof GafferApiError ? e.message : "Ошибка");
+      }
     }
   }
 
@@ -1408,6 +1413,12 @@ function GafferProjectDetailContent() {
     );
   }
 
+  const hasOpenDebts =
+    Number(project.clientRemaining ?? 0) > 0 ||
+    Number(project.teamRemaining ?? 0) > 0 ||
+    Number(project.vendorRemaining ?? 0) > 0;
+  const canArchive = project.status === "ARCHIVED" || !hasOpenDebts;
+
   const inPayments = (project.payments ?? []).filter((p) => p.direction === "IN");
 
   const allMembers = project.members ?? [];
@@ -1455,7 +1466,13 @@ function GafferProjectDetailContent() {
               <div className="absolute right-0 top-9 bg-surface border border-border rounded-lg shadow-sm z-20 w-44 py-1">
                 <button
                   onClick={handleArchiveToggle}
-                  className="w-full text-left px-4 py-2.5 text-[13px] text-ink hover:bg-[#fafafa] transition-colors"
+                  disabled={!canArchive}
+                  title={!canArchive ? "Нельзя: есть открытые остатки" : undefined}
+                  className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors ${
+                    canArchive
+                      ? "text-ink hover:bg-[#fafafa]"
+                      : "text-ink-3 cursor-not-allowed"
+                  }`}
                 >
                   {project.status === "ARCHIVED" ? "Из архива" : "В архив"}
                 </button>
