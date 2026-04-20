@@ -8,6 +8,20 @@ export {
 } from "./crewRates";
 export type { RoleId, RoleConfig, OvertimeTiers } from "./crewRates";
 
+// ─── rateCards ────────────────────────────────────────────────────────────────
+export {
+  RATE_CARDS,
+  getRateCard,
+  listPositions,
+  progressiveOtCost,
+} from "./rateCards";
+export type {
+  RateCardId,
+  RateCardPositionKey,
+  RateCardPositionData,
+  RateCard,
+} from "./rateCards";
+
 // ─── crewCalculator ───────────────────────────────────────────────────────────
 export {
   splitHours,

@@ -27,6 +27,9 @@ export interface CreateContactInput {
   overtimeTier2Rate?: string | number;
   overtimeTier3Rate?: string | number;
   roleLabel?: string | null;
+  rateCardId?: string | null;
+  rateCardPosition?: string | null;
+  shiftHours?: number | null;
 }
 
 export interface UpdateContactInput {
@@ -39,6 +42,9 @@ export interface UpdateContactInput {
   overtimeTier2Rate?: string | number;
   overtimeTier3Rate?: string | number;
   roleLabel?: string | null;
+  rateCardId?: string | null;
+  rateCardPosition?: string | null;
+  shiftHours?: number | null;
 }
 
 // MVP: search uses Prisma `contains` which compiles to SQLite LIKE — case-sensitive for
@@ -259,6 +265,9 @@ export async function createContact(req: Request, data: CreateContactInput) {
       overtimeTier2Rate: data.overtimeTier2Rate !== undefined ? new Decimal(data.overtimeTier2Rate) : new Decimal(0),
       overtimeTier3Rate: data.overtimeTier3Rate !== undefined ? new Decimal(data.overtimeTier3Rate) : new Decimal(0),
       roleLabel: data.roleLabel ?? null,
+      rateCardId: data.rateCardId ?? null,
+      rateCardPosition: data.rateCardPosition ?? null,
+      shiftHours: data.shiftHours ?? null,
     },
   });
   return serializeContact(contact);
@@ -280,6 +289,9 @@ export async function updateContact(req: Request, id: string, data: UpdateContac
       ...(data.overtimeTier2Rate !== undefined && { overtimeTier2Rate: new Decimal(data.overtimeTier2Rate) }),
       ...(data.overtimeTier3Rate !== undefined && { overtimeTier3Rate: new Decimal(data.overtimeTier3Rate) }),
       ...(data.roleLabel !== undefined && { roleLabel: data.roleLabel }),
+      ...(data.rateCardId !== undefined && { rateCardId: data.rateCardId }),
+      ...(data.rateCardPosition !== undefined && { rateCardPosition: data.rateCardPosition }),
+      ...(data.shiftHours !== undefined && { shiftHours: data.shiftHours }),
     },
   });
 

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ROLES, type RoleConfig } from "@light-rental/shared";
+import { ROLES, getRateCard, listPositions, type RateCardId, type RateCardPositionKey } from "@light-rental/shared";
 import {
   getContact,
   updateContact,
@@ -11,6 +11,7 @@ import {
   type GafferContact,
 } from "../../../../../src/lib/gafferApi";
 import { toast } from "../../../../../src/components/ToastProvider";
+import { Segmented, Eyebrow } from "../../../../../src/components/gaffer/designSystem";
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -114,6 +115,10 @@ function EditRateContent() {
   const [tier3Str, setTier3Str] = useState("");
   const [roleLabel, setRoleLabel] = useState<string | null>(null);
 
+  // Rate-card picker state
+  const [cardId, setCardId] = useState<RateCardId>("custom");
+  const [positionKey, setPositionKey] = useState<RateCardPositionKey | "">("");
+
   // Derived numeric values for the formula preview
   const shiftRate = parseDisplayRate(shiftRateStr);
   const tier1 = parseDisplayRate(tier1Str);
@@ -148,6 +153,9 @@ function EditRateContent() {
           setTier2Str(t2 > 0 ? formatThousands(t2) : "");
           setTier3Str(t3 > 0 ? formatThousands(t3) : "");
           setRoleLabel(c.roleLabel ?? null);
+          // Initialize rate-card picker
+          setCardId(c.rateCardId ?? "custom");
+          setPositionKey(c.rateCardPosition ?? "");
         }
       } catch (e) {
         if (!cancelled) {
@@ -165,6 +173,20 @@ function EditRateContent() {
     })();
     return () => { cancelled = true; };
   }, [id, router]);
+
+  // Auto-fill rates when a (card, position) pair is selected
+  useEffect(() => {
+    if (cardId === "custom" || !positionKey) return;
+    const card = getRateCard(cardId);
+    if (!card) return;
+    const data = card.positions[positionKey as RateCardPositionKey];
+    if (!data) return;
+    setShiftRateStr(formatThousands(data.shiftRate));
+    setTier1Str(formatThousands(data.ot1Rate));
+    setTier2Str(formatThousands(data.ot2Rate));
+    setTier3Str(formatThousands(data.ot3Rate));
+    setRoleLabel(data.label);
+  }, [cardId, positionKey]);
 
   // Detect which preset role (if any) currently matches the 4 rate fields
   const matchedRoleId = useMemo(() => {
@@ -207,6 +229,9 @@ function EditRateContent() {
         overtimeTier2Rate: String(parseDisplayRate(tier2Str)),
         overtimeTier3Rate: String(parseDisplayRate(tier3Str)),
         roleLabel: roleLabel ?? null,
+        rateCardId: cardId,
+        rateCardPosition: cardId === "custom" ? null : (positionKey || null),
+        shiftHours: 10,
       });
       toast.success("Ставка сохранена");
       router.push(`/gaffer/contacts/${id}`);
@@ -269,6 +294,22 @@ function EditRateContent() {
           </div>
         )}
 
+        {/* Rate-card picker */}
+        <div>
+          <Eyebrow>Тарифная сетка</Eyebrow>
+          <div className="mt-2">
+            <Segmented<RateCardId>
+              options={[
+                { id: "rates_2024", label: "Тариф 2024" },
+                { id: "rates_2026", label: "Тариф 2026" },
+                { id: "custom",     label: "Вручную"    },
+              ]}
+              value={cardId}
+              onChange={setCardId}
+            />
+          </div>
+        </div>
+
         {/* Profile section */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
@@ -302,26 +343,43 @@ function EditRateContent() {
                 value={shiftRateStr}
                 onChange={setShiftRateStr}
                 placeholder={"14\u00A0000"}
-                disabled={isArchived}
+                disabled={isArchived || cardId !== "custom"}
               />
             </div>
-            {/* Role preset select */}
+            {/* Role / position select */}
             <div>
-              <label htmlFor="edit-rate-role" className="block text-[12px] text-ink-2 mb-1">Роль (пресет)</label>
-              <select
-                id="edit-rate-role"
-                value={matchedRoleId}
-                onChange={(e) => handleRoleSelect(e.target.value)}
-                disabled={isArchived}
-                className="w-full px-[11px] py-[9px] border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="">— свой вариант —</option>
-                {ROLES.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
+              <label htmlFor="edit-rate-role" className="block text-[12px] text-ink-2 mb-1">
+                {cardId !== "custom" ? "Позиция" : "Роль (пресет)"}
+              </label>
+              {cardId !== "custom" ? (
+                <select
+                  id="edit-rate-role"
+                  value={positionKey}
+                  onChange={(e) => setPositionKey(e.target.value as RateCardPositionKey | "")}
+                  disabled={isArchived}
+                  className="w-full px-[11px] py-[9px] border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">— выберите —</option>
+                  {listPositions(getRateCard(cardId)!).map((p) => (
+                    <option key={p.key} value={p.key}>{p.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  id="edit-rate-role"
+                  value={matchedRoleId}
+                  onChange={(e) => handleRoleSelect(e.target.value)}
+                  disabled={isArchived}
+                  className="w-full px-[11px] py-[9px] border border-border rounded text-[13px] bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-border focus:border-accent-bright disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">— свой вариант —</option>
+                  {ROLES.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
         </div>
@@ -345,7 +403,7 @@ function EditRateContent() {
                 <p className="text-[12px] text-ink-2 font-medium">Тир 1</p>
                 <small className="text-ink-3 text-[10px]">1–8 ч</small>
               </label>
-              <RateInput id="edit-rate-tier1" value={tier1Str} onChange={setTier1Str} smaller disabled={isArchived} />
+              <RateInput id="edit-rate-tier1" value={tier1Str} onChange={setTier1Str} smaller disabled={isArchived || cardId !== "custom"} />
             </div>
             {/* Tier 2 */}
             <div className="grid grid-cols-[80px_1fr] gap-2.5 items-center">
@@ -353,7 +411,7 @@ function EditRateContent() {
                 <p className="text-[12px] text-ink-2 font-medium">Тир 2</p>
                 <small className="text-ink-3 text-[10px]">9–14 ч</small>
               </label>
-              <RateInput id="edit-rate-tier2" value={tier2Str} onChange={setTier2Str} smaller disabled={isArchived} />
+              <RateInput id="edit-rate-tier2" value={tier2Str} onChange={setTier2Str} smaller disabled={isArchived || cardId !== "custom"} />
             </div>
             {/* Tier 3 */}
             <div className="grid grid-cols-[80px_1fr] gap-2.5 items-center">
@@ -361,7 +419,7 @@ function EditRateContent() {
                 <p className="text-[12px] text-ink-2 font-medium">Тир 3</p>
                 <small className="text-ink-3 text-[10px]">15+ ч</small>
               </label>
-              <RateInput id="edit-rate-tier3" value={tier3Str} onChange={setTier3Str} smaller disabled={isArchived} />
+              <RateInput id="edit-rate-tier3" value={tier3Str} onChange={setTier3Str} smaller disabled={isArchived || cardId !== "custom"} />
             </div>
           </div>
           {/* Formula footer */}

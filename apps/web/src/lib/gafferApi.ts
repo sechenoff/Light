@@ -26,6 +26,9 @@ export interface GafferContact {
   overtimeTier2Rate: string;  // Decimal as string
   overtimeTier3Rate: string;  // Decimal as string
   roleLabel?: string | null;
+  shiftHours?: number | null;
+  rateCardId?: "rates_2024" | "rates_2026" | null;
+  rateCardPosition?: "gaffer" | "key_grip" | "best_boy" | "programmer" | "grip" | null;
 }
 
 export interface GafferPaymentMethod {
@@ -178,6 +181,9 @@ export async function createContact(data: {
   overtimeTier2Rate?: string | number;
   overtimeTier3Rate?: string | number;
   roleLabel?: string | null;
+  shiftHours?: number | null;
+  rateCardId?: "rates_2024" | "rates_2026" | "custom" | null;
+  rateCardPosition?: "gaffer" | "key_grip" | "best_boy" | "programmer" | "grip" | null;
 }): Promise<{ contact: GafferContact }> {
   return gafferFetch("/contacts", {
     method: "POST",
@@ -197,6 +203,9 @@ export async function updateContact(
     overtimeTier2Rate?: string | number;
     overtimeTier3Rate?: string | number;
     roleLabel?: string | null;
+    shiftHours?: number | null;
+    rateCardId?: "rates_2024" | "rates_2026" | "custom" | null;
+    rateCardPosition?: "gaffer" | "key_grip" | "best_boy" | "programmer" | "grip" | null;
   },
 ): Promise<{ contact: GafferContact }> {
   return gafferFetch(`/contacts/${id}`, {
