@@ -387,14 +387,12 @@ export default function GafferDashboardPage() {
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0 mt-1">
-          <button
-            disabled
-            title="Скоро"
-            className="inline-flex items-center gap-1.5 text-gaffer-fg-muted bg-gaffer-bg-sub border border-gaffer-border rounded-md px-3 py-1.5 text-sm cursor-not-allowed opacity-60"
+          <Link
+            href="/gaffer/obligations"
+            className="inline-flex items-center gap-1.5 text-gaffer-fg bg-gaffer-bg-sub border border-gaffer-border rounded-md px-3 py-1.5 text-sm hover:bg-gaffer-bg-panel transition-colors"
           >
             Все долги
-            <span className="text-[10px] uppercase tracking-wide bg-gaffer-bg-sub border border-gaffer-border rounded px-1 py-0.5 leading-none">скоро</span>
-          </button>
+          </Link>
           <Link
             href="/gaffer/projects/new"
             className="bg-gaffer-accent text-gaffer-accent-fg rounded-md px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity"
