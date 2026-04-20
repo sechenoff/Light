@@ -427,6 +427,32 @@ export async function updateProject(req: Request, id: string, data: UpdateProjec
 export async function archiveProject(req: Request, id: string) {
   const { gafferUserId } = gafferWhere(req);
 
+  // Загружаем проект с платежами и участниками для расчёта остатков.
+  const projectWithRelations = await prisma.gafferProject.findFirst({
+    where: { id, gafferUserId },
+    include: listIncludes,
+  });
+
+  if (!projectWithRelations) throw new HttpError(404, "Проект не найден", "NOT_FOUND");
+
+  // Canon §04: блокируем архивацию при открытых остатках.
+  // Проверяем clientRemaining, teamRemaining и vendorRemaining (VENDOR добавлен
+  // после написания канона; смысл тот же — не прятать открытые деньги).
+  const debts = computeProjectDebts(projectWithRelations as ProjectWithRelations);
+  const ZERO = new Decimal(0);
+  const hasDebts =
+    new Decimal(debts.clientRemaining).gt(ZERO) ||
+    new Decimal(debts.teamRemaining).gt(ZERO) ||
+    new Decimal(debts.vendorRemaining).gt(ZERO);
+
+  if (hasDebts) {
+    throw new HttpError(
+      409,
+      "Нельзя архивировать проект с открытыми остатками",
+      "PROJECT_HAS_DEBTS",
+    );
+  }
+
   await prisma.gafferProject.updateMany({
     where: { id, gafferUserId },
     data: { status: "ARCHIVED" },
