@@ -1,9 +1,11 @@
 {
-  "sprint": "3D",
+  "sprint": 1,
+  "feature": "gaffer-crm-design-parity",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
-  "provider": "split-focus-light-mode",
-  "reviewer_agent": "standard-code-reviewer (opus)",
-  "notes": "Light-mode cosmetic sprint: swap Часов pill row for continuous slider (range 10-30, mockup variant B). Reusable HoursSlider in projectWizardShared.tsx. One reviewer finding (bg-white → bg-surface) fixed inline before push. tsc clean, no API/schema/logic changes, zero regression risk.",
-  "ts": "2026-04-20T02:30:00Z"
+  "provider": "split-focus",
+  "governance_mode": "standard",
+  "review_rounds": 2,
+  "notes": "Round 1: Product NEEDS_FIXES (1 BLOCKER category label + 2 MAJOR + 2 MINOR), Technical APPROVE with MINOR/NIT. Round 2 after fix commit 9e0b9ad: Product ACCEPTED. Technical verdict carried over (as any call they flagged was addressed in the fix commit).",
+  "ts": "2026-04-20"
 }
