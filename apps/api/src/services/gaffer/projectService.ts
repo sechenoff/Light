@@ -43,7 +43,7 @@ export interface UpdateProjectInput {
 
 // ─── Тип проекта с платежами и участниками ────────────────────────────────────
 
-type ProjectWithRelations = {
+export type ProjectWithRelations = {
   id: string;
   gafferUserId: string;
   title: string;

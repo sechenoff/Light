@@ -7,7 +7,7 @@ import type { Request } from "express";
 import { Decimal } from "@prisma/client/runtime/library";
 import { prisma } from "../../prisma";
 import { gafferWhere } from "./tenant";
-import { computeProjectDebts } from "./projectService";
+import { computeProjectDebts, type ProjectWithRelations } from "./projectService";
 
 export interface DashboardKpi {
   owedToMe: string;
@@ -70,6 +70,7 @@ export interface OverdueIncomingRow {
 
 export interface UpcomingObligationRow {
   kind: "IN" | "OUT";
+  category: "client" | "crew" | "rental";
   projectId: string;
   projectCode: string;
   projectTitle: string;
@@ -211,8 +212,7 @@ export async function getDashboard(req: Request): Promise<GafferDashboardData> {
   let lastActivityAt: Date | null = null;
 
   for (const project of openProjects) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const debts = computeProjectDebts(project as any);
+    const debts = computeProjectDebts(project as unknown as ProjectWithRelations);
 
     const clientRem = new Decimal(debts.clientRemaining);
     const teamRem = new Decimal(debts.teamRemaining);
@@ -280,6 +280,7 @@ export async function getDashboard(req: Request): Promise<GafferDashboardData> {
         dueSoonIncomingSum = dueSoonIncomingSum.plus(clientRem);
         upcomingObligationsRaw.push({
           kind: "IN",
+          category: "client",
           projectId: project.id,
           projectCode: deriveProjectCode(project.id),
           projectTitle: project.title,
@@ -373,6 +374,7 @@ export async function getDashboard(req: Request): Promise<GafferDashboardData> {
             dueSoonOutgoingSum = dueSoonOutgoingSum.plus(memberRem);
             upcomingObligationsRaw.push({
               kind: "OUT",
+              category: member.contact?.type === "VENDOR" ? "rental" : "crew",
               projectId: project.id,
               projectCode: deriveProjectCode(project.id),
               projectTitle: project.title,

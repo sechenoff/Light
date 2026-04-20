@@ -179,7 +179,7 @@ export function BalanceBar({ received, paid, remaining, total }: BalanceBarProps
   const r = Math.max(0, received);
   const p = Math.max(0, paid);
   const rem = Math.max(0, remaining);
-  const denom = Math.max(1, total || r + p + rem);
+  const denom = Math.max(1, total, r + p + rem);
 
   const rW = (r / denom) * 100;
   const pW = (p / denom) * 100;
