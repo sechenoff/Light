@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · Блок «Команда» — 4 варианта вёрстки</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --accent: #1e3a8a;
+    --accent-bright: #1d4ed8;
+    --accent-soft: #eff6ff;
+    --accent-border: #bfdbfe;
+
+    --teal: #0f766e;    --teal-soft: #ccfbf1;    --teal-border: #99f6e4;
+    --amber: #a16207;   --amber-soft: #fef3c7;   --amber-border: #fde68a;
+    --rose: #9f1239;    --rose-soft: #ffe4e6;    --rose-border: #fecdd3;
+    --indigo: #4338ca;  --indigo-soft: #e0e7ff;  --indigo-border: #c7d2fe;
+    --slate: #334155;   --slate-soft: #f1f5f9;   --slate-border: #cbd5e1;
+    --emerald: #047857; --emerald-soft: #d1fae5; --emerald-border: #a7f3d0;
+
+    --ok: #15803d;   --ok-soft: #dcfce7;
+    --warn: #a16207; --warn-soft: #fef9c3;
+
+    --ink:  #09090b;
+    --ink-2: #52525b;
+    --ink-3: #a1a1aa;
+
+    --surface: #ffffff;
+    --surface-2: #fafafa;
+    --border: #e4e4e7;
+
+    --shadow-xs: 0 1px 0 rgba(9,9,11,.03);
+    --shadow-sm: 0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02);
+  }
+
+  body {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink);
+    background: var(--surface-2);
+    margin: 0; padding: 32px 20px 80px;
+    max-width: 1280px; margin: 0 auto;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  p.lead { color: var(--ink-2); margin: 0 0 24px; font-size: 14px; max-width: 680px; }
+
+  .eyebrow {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .mono-num {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  .variants {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
+    gap: 28px 24px;
+  }
+  .variant { min-width: 0; }
+  .variant-hd {
+    margin-bottom: 10px;
+  }
+  .variant-hd .tag {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px;
+    border: 1px solid var(--accent-border);
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 4px;
+    margin-right: 8px;
+  }
+  .variant-hd h3 {
+    display: inline;
+    font-size: 15px; font-weight: 600;
+    color: var(--ink);
+  }
+  .variant-hd p {
+    margin: 6px 0 0;
+    color: var(--ink-2);
+    font-size: 12.5px;
+  }
+
+  .frame {
+    width: 390px;
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+  .phone-chrome {
+    height: 28px;
+    background: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .phone-chrome::before {
+    content: ""; display: block;
+    width: 80px; height: 4px;
+    background: #3f3f46; border-radius: 99px;
+  }
+  .frame-body { padding: 14px 16px 18px; }
+
+  /* Mimic project card shell so variants read in context */
+  .proj-hd {
+    border-bottom: 1px dashed var(--border);
+    padding-bottom: 12px; margin-bottom: 14px;
+  }
+  .proj-hd .title { font-weight: 600; font-size: 15px; }
+  .proj-hd .sub { color: var(--ink-2); font-size: 12px; margin-top: 2px; }
+
+  .section-hd {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 10px; gap: 8px;
+  }
+  .section-hd .sum {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+  }
+  .section-hd .sum b { color: var(--ink); font-weight: 600; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 500; font-size: 12px;
+    border-radius: 4px; padding: 6px 10px;
+    cursor: pointer; border: 1px solid transparent;
+    background: transparent; color: var(--ink);
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent-bright); color: #fff; border-color: var(--accent-bright); }
+  .btn-ghost { background: var(--surface); color: var(--accent-bright); border-color: var(--accent-border); }
+  .btn-xs { font-size: 11px; padding: 4px 8px; }
+
+  .pill {
+    display: inline-flex; align-items: center;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .4px;
+    padding: 2px 7px; border-radius: 4px;
+    border: 1px solid transparent;
+  }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); border-color: var(--emerald-border); }
+
+  .muted { color: var(--ink-2); }
+  .emerald { color: var(--emerald); }
+  .debt-team { color: var(--indigo); }
+
+  /* ─────────────────────────────────────────── */
+  /* A. CARD-ROW  (avatar + stacked rows)        */
+  /* ─────────────────────────────────────────── */
+  .A .mcard {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .A .mcard:last-of-type { border-bottom: none; }
+  .A .mcard .hd {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px;
+  }
+  .A .mcard .hd .name { font-weight: 600; font-size: 13.5px; }
+  .A .mcard .hd .role {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .A .mcard .row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 8px; margin-top: 8px; align-items: end;
+  }
+  .A .mcard .row .cell { min-width: 0; }
+  .A .mcard .row .cell .k {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px; font-weight: 600;
+    color: var(--ink-3); text-transform: uppercase;
+    letter-spacing: .5px;
+    margin-bottom: 1px;
+  }
+  .A .mcard .row .cell .v {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px; font-weight: 600;
+    color: var(--ink);
+  }
+  .A .mcard .row .cell.plan  .v { color: var(--ink); font-weight: 500; }
+  .A .mcard .row .cell.paid  .v { color: var(--emerald); }
+  .A .mcard .row .cell.rest  .v { color: var(--indigo); }
+  .A .mcard .row .cell.rest.closed .v { color: var(--emerald); }
+
+  /* ─────────────────────────────────────────── */
+  /* B. PROGRESS BAR                             */
+  /* ─────────────────────────────────────────── */
+  .B .mrow {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .B .mrow:last-of-type { border-bottom: none; }
+  .B .mrow .hd {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px; margin-bottom: 6px;
+  }
+  .B .mrow .hd .name { font-weight: 600; }
+  .B .mrow .hd .role {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .B .mrow .bar {
+    height: 6px; border-radius: 99px;
+    background: var(--slate-soft);
+    overflow: hidden; margin: 6px 0;
+  }
+  .B .mrow .bar .fill {
+    height: 100%;
+    background: var(--emerald);
+    border-radius: 99px;
+  }
+  .B .mrow.closed .bar .fill { background: var(--emerald); }
+  .B .mrow .foot {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-top: 6px;
+  }
+  .B .mrow .foot .progress {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11.5px; color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .B .mrow .foot .progress b {
+    color: var(--indigo); font-weight: 600;
+  }
+  .B .mrow.closed .foot .progress b { color: var(--emerald); }
+
+  /* ─────────────────────────────────────────── */
+  /* C. SINGLE LINE + DETAILS                    */
+  /* ─────────────────────────────────────────── */
+  .C .one {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .C .one:last-of-type { border-bottom: none; }
+  .C .one .top {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px;
+  }
+  .C .one .top .left { min-width: 0; flex: 1 1 auto; }
+  .C .one .top .name { font-weight: 600; font-size: 13.5px; }
+  .C .one .top .role {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .5px;
+    margin-left: 6px;
+  }
+  .C .one .top .amt {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 13.5px; font-weight: 600;
+    color: var(--indigo); white-space: nowrap;
+  }
+  .C .one.closed .top .amt { color: var(--emerald); }
+  .C .one .top .btn { flex: 0 0 auto; }
+  .C .one details { margin-top: 4px; }
+  .C .one details summary {
+    cursor: pointer; list-style: none;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; color: var(--accent-bright);
+    text-transform: uppercase; letter-spacing: .4px;
+    padding: 4px 0;
+  }
+  .C .one details summary::-webkit-details-marker { display: none; }
+  .C .one details summary::before { content: "+ подробнее"; }
+  .C .one details[open] summary::before { content: "− свернуть"; }
+  .C .one .inside {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px; color: var(--ink-2);
+    padding: 4px 0 2px;
+    display: flex; gap: 14px; flex-wrap: wrap;
+  }
+  .C .one .inside span b { color: var(--ink); font-weight: 600; }
+  .C .one .actions-row {
+    display: flex; gap: 6px; margin-top: 6px;
+  }
+
+  /* ─────────────────────────────────────────── */
+  /* D. COMPACT TABLE (4 cols, merged paid/plan) */
+  /* ─────────────────────────────────────────── */
+  .D table {
+    border-collapse: collapse; width: 100%;
+    font-size: 12.5px;
+  }
+  .D thead th {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .5px;
+    color: var(--ink-3);
+    text-align: left;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .D thead th.num { text-align: right; }
+  .D tbody td {
+    padding: 10px 6px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .D tbody tr:last-child td { border-bottom: none; }
+  .D td.num {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .D td .name { font-weight: 600; }
+  .D td .role { font-size: 11px; color: var(--ink-3); display: block; margin-top: 1px; }
+  .D td .combo b { color: var(--emerald); font-weight: 600; }
+  .D td .combo .slash { color: var(--ink-3); margin: 0 2px; }
+  .D td.rest { color: var(--indigo); font-weight: 600; }
+  .D td.rest.closed { color: var(--emerald); }
+  .D td.act { text-align: right; white-space: nowrap; }
+
+  /* ─────────────────────────────────────────── */
+  /* TLDR hint row under each variant            */
+  .verdict {
+    margin-top: 14px;
+    font-size: 12px; color: var(--ink-2);
+    font-family: "IBM Plex Mono", monospace;
+    padding: 8px 10px;
+    border-left: 2px solid var(--accent-bright);
+    background: var(--accent-soft);
+    border-radius: 0 4px 4px 0;
+    line-height: 1.45;
+  }
+  .verdict b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>Блок «Команда» в карточке проекта — 4 варианта</h1>
+<p class="lead">Контекст: экран 04 (карточка проекта) в мобильном режиме 390 px. Сейчас 5-колоночная таблица «Имя / План / Выпл. / Остаток / Кнопка» слишком плотная. Ниже — 4 альтернативы с одинаковыми данными (Сергей Петров — осветитель, Алексей Морозов — бригадир, Павел Т. — разнорабочий; третий закрыт).</p>
+
+<div class="variants">
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- VARIANT A — CARD ROW                             -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="variant A">
+    <div class="variant-hd">
+      <span class="tag">A</span><h3>Карточки-строки (рекомендую)</h3>
+      <p>Имя+роль сверху, три числа в ряд ниже, кнопка справа. Сохраняет всю информацию без сжатия.</p>
+    </div>
+
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="proj-hd">
+          <div class="title">Клип «Тёплый свет»</div>
+          <div class="sub muted">Ромашка Продакшн · 14.05.2026 · 380 000 ₽</div>
+        </div>
+        <div class="section-hd">
+          <span class="eyebrow">Команда</span>
+          <span class="sum">план <b>130k</b> · выпл. <b>70k</b> · ост. <b>60k</b></span>
+        </div>
+
+        <div class="mcard">
+          <div class="hd">
+            <span class="name">Сергей Петров</span>
+            <span class="role">осветитель</span>
+          </div>
+          <div class="row">
+            <div class="cell plan">
+              <div class="k">План</div><div class="v">60 000</div>
+            </div>
+            <div class="cell paid">
+              <div class="k">Выпл.</div><div class="v">20 000</div>
+            </div>
+            <div class="cell rest">
+              <div class="k">Остаток</div><div class="v">40 000</div>
+            </div>
+            <div class="cell">
+              <button class="btn btn-primary btn-xs">+ выпл.</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="mcard">
+          <div class="hd">
+            <span class="name">Алексей Морозов</span>
+            <span class="role">бригадир</span>
+          </div>
+          <div class="row">
+            <div class="cell plan">
+              <div class="k">План</div><div class="v">50 000</div>
+            </div>
+            <div class="cell paid">
+              <div class="k">Выпл.</div><div class="v">30 000</div>
+            </div>
+            <div class="cell rest">
+              <div class="k">Остаток</div><div class="v">20 000</div>
+            </div>
+            <div class="cell">
+              <button class="btn btn-primary btn-xs">+ выпл.</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="mcard">
+          <div class="hd">
+            <span class="name">Павел Т.</span>
+            <span class="role">разнорабочий</span>
+          </div>
+          <div class="row">
+            <div class="cell plan">
+              <div class="k">План</div><div class="v">20 000</div>
+            </div>
+            <div class="cell paid">
+              <div class="k">Выпл.</div><div class="v">20 000</div>
+            </div>
+            <div class="cell rest closed">
+              <div class="k">Остаток</div><div class="v">0</div>
+            </div>
+            <div class="cell">
+              <span class="pill ok">оплачено</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="verdict"><b>Плюсы:</b> все три числа видны, имя не конкурирует с колонками, кнопка естественно садится справа. <b>Минусы:</b> каждая строка высокая — 3–4 участника занимают много экрана.</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- VARIANT B — PROGRESS BAR                         -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="variant B">
+    <div class="variant-hd">
+      <span class="tag">B</span><h3>Прогресс-бар</h3>
+      <p>Имя сверху, thin bar «выплачено/план», под баром — коротко «выпл. N / план M» + остаток + кнопка.</p>
+    </div>
+
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="proj-hd">
+          <div class="title">Клип «Тёплый свет»</div>
+          <div class="sub muted">Ромашка Продакшн · 14.05.2026 · 380 000 ₽</div>
+        </div>
+        <div class="section-hd">
+          <span class="eyebrow">Команда</span>
+          <span class="sum">закрыто <b>54 %</b></span>
+        </div>
+
+        <div class="mrow">
+          <div class="hd">
+            <span class="name">Сергей Петров</span>
+            <span class="role">осветитель</span>
+          </div>
+          <div class="bar"><div class="fill" style="width:33%"></div></div>
+          <div class="foot">
+            <span class="progress">20 000 / 60 000 · ост. <b>40 000 ₽</b></span>
+            <button class="btn btn-primary btn-xs">+ выпл.</button>
+          </div>
+        </div>
+
+        <div class="mrow">
+          <div class="hd">
+            <span class="name">Алексей Морозов</span>
+            <span class="role">бригадир</span>
+          </div>
+          <div class="bar"><div class="fill" style="width:60%"></div></div>
+          <div class="foot">
+            <span class="progress">30 000 / 50 000 · ост. <b>20 000 ₽</b></span>
+            <button class="btn btn-primary btn-xs">+ выпл.</button>
+          </div>
+        </div>
+
+        <div class="mrow closed">
+          <div class="hd">
+            <span class="name">Павел Т.</span>
+            <span class="role">разнорабочий</span>
+          </div>
+          <div class="bar"><div class="fill" style="width:100%"></div></div>
+          <div class="foot">
+            <span class="progress">20 000 / 20 000 · <b>закрыт</b></span>
+            <span class="pill ok">оплачено</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="verdict"><b>Плюсы:</b> мгновенно видно, кто на сколько закрыт — можно сканировать глазом. <b>Минусы:</b> бар — декоративный элемент, может казаться избыточным в деловом канона; числа мельче чем в A.</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- VARIANT C — SINGLE LINE + DETAILS                -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="variant C">
+    <div class="variant-hd">
+      <span class="tag">C</span><h3>Одна строка + раскрытие</h3>
+      <p>«Имя · остаток · [+ выплата]» в одну строку. План и выплачено скрыты за «подробнее».</p>
+    </div>
+
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="proj-hd">
+          <div class="title">Клип «Тёплый свет»</div>
+          <div class="sub muted">Ромашка Продакшн · 14.05.2026 · 380 000 ₽</div>
+        </div>
+        <div class="section-hd">
+          <span class="eyebrow">Команда · 3</span>
+          <span class="sum">остаток <b>60 000 ₽</b></span>
+        </div>
+
+        <div class="one">
+          <div class="top">
+            <div class="left">
+              <span class="name">Сергей Петров</span><span class="role">осветитель</span>
+            </div>
+            <span class="amt">40 000 ₽</span>
+            <button class="btn btn-primary btn-xs">+ выпл.</button>
+          </div>
+          <details>
+            <summary></summary>
+            <div class="inside">
+              <span>план <b>60 000</b></span>
+              <span>выплачено <b>20 000</b></span>
+            </div>
+          </details>
+        </div>
+
+        <div class="one">
+          <div class="top">
+            <div class="left">
+              <span class="name">Алексей Морозов</span><span class="role">бригадир</span>
+            </div>
+            <span class="amt">20 000 ₽</span>
+            <button class="btn btn-primary btn-xs">+ выпл.</button>
+          </div>
+          <details>
+            <summary></summary>
+            <div class="inside">
+              <span>план <b>50 000</b></span>
+              <span>выплачено <b>30 000</b></span>
+            </div>
+          </details>
+        </div>
+
+        <div class="one closed">
+          <div class="top">
+            <div class="left">
+              <span class="name">Павел Т.</span><span class="role">разнорабочий</span>
+            </div>
+            <span class="amt">закрыт</span>
+            <span class="pill ok">оплачено</span>
+          </div>
+          <details>
+            <summary></summary>
+            <div class="inside">
+              <span>план <b>20 000</b></span>
+              <span>выплачено <b>20 000</b></span>
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+    <div class="verdict"><b>Плюсы:</b> максимально компактно, 6–8 участников легко помещается на экране. <b>Минусы:</b> скан-видимость прогресса теряется — чтобы понять «сколько выплачено», нужен тап.</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- VARIANT D — COMPACT TABLE (merged)               -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="variant D">
+    <div class="variant-hd">
+      <span class="tag">D</span><h3>Сжатая таблица (план/выпл. — в одной ячейке)</h3>
+      <p>4 колонки вместо 5. «Выпл/План» через слэш в одной ячейке, остаток отдельно. Таблица остаётся, но дышит.</p>
+    </div>
+
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="proj-hd">
+          <div class="title">Клип «Тёплый свет»</div>
+          <div class="sub muted">Ромашка Продакшн · 14.05.2026 · 380 000 ₽</div>
+        </div>
+        <div class="section-hd">
+          <span class="eyebrow">Команда</span>
+          <span class="sum">план <b>130k</b> · ост. <b>60k</b></span>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Имя</th>
+              <th class="num">Выпл./План</th>
+              <th class="num">Ост.</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <span class="name">Сергей Петров</span>
+                <span class="role">осветитель</span>
+              </td>
+              <td class="num combo"><b>20k</b><span class="slash">/</span>60k</td>
+              <td class="num rest">40 000</td>
+              <td class="act"><button class="btn btn-primary btn-xs">+</button></td>
+            </tr>
+            <tr>
+              <td>
+                <span class="name">Алексей Морозов</span>
+                <span class="role">бригадир</span>
+              </td>
+              <td class="num combo"><b>30k</b><span class="slash">/</span>50k</td>
+              <td class="num rest">20 000</td>
+              <td class="act"><button class="btn btn-primary btn-xs">+</button></td>
+            </tr>
+            <tr>
+              <td>
+                <span class="name">Павел Т.</span>
+                <span class="role">разнорабочий</span>
+              </td>
+              <td class="num combo"><b>20k</b><span class="slash">/</span>20k</td>
+              <td class="num rest closed">0</td>
+              <td class="act"><span class="pill ok">✓</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="verdict"><b>Плюсы:</b> таблица знакома, плотно, быстрый сравнительный скан. <b>Минусы:</b> кнопка превратилась в иконку «+» — менее явно, чем «+ выплата». Числа сокращены (20k), некоторые пользователи могут пропустить.</div>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · Шапка карточки проекта — 4 варианта</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --accent: #1e3a8a;
+    --accent-bright: #1d4ed8;
+    --accent-soft: #eff6ff;
+    --accent-border: #bfdbfe;
+
+    --teal: #0f766e;    --teal-soft: #ccfbf1;    --teal-border: #99f6e4;
+    --amber: #a16207;   --amber-soft: #fef3c7;   --amber-border: #fde68a;
+    --rose: #9f1239;    --rose-soft: #ffe4e6;    --rose-border: #fecdd3;
+    --indigo: #4338ca;  --indigo-soft: #e0e7ff;  --indigo-border: #c7d2fe;
+    --slate: #334155;   --slate-soft: #f1f5f9;   --slate-border: #cbd5e1;
+    --emerald: #047857; --emerald-soft: #d1fae5; --emerald-border: #a7f3d0;
+
+    --ok: #15803d;   --ok-soft: #dcfce7;
+    --warn: #a16207; --warn-soft: #fef9c3;
+
+    --ink:  #09090b;
+    --ink-2: #52525b;
+    --ink-3: #a1a1aa;
+
+    --surface: #ffffff;
+    --surface-2: #fafafa;
+    --border: #e4e4e7;
+
+    --shadow-xs: 0 1px 0 rgba(9,9,11,.03);
+    --shadow-sm: 0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02);
+  }
+
+  body {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink);
+    background: var(--surface-2);
+    margin: 0 auto; padding: 32px 20px 80px;
+    max-width: 1280px;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  p.lead { color: var(--ink-2); margin: 0 0 24px; font-size: 14px; max-width: 720px; }
+
+  .eyebrow {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .mono-num {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  .variants {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
+    gap: 28px 24px;
+  }
+  .variant { min-width: 0; }
+  .variant-hd { margin-bottom: 10px; }
+  .variant-hd .tag {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px;
+    border: 1px solid var(--accent-border);
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 4px;
+    margin-right: 8px;
+  }
+  .variant-hd h3 { display: inline; font-size: 15px; font-weight: 600; color: var(--ink); }
+  .variant-hd p { margin: 6px 0 0; color: var(--ink-2); font-size: 12.5px; }
+
+  .frame {
+    width: 390px; max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+  .phone-chrome {
+    height: 28px; background: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .phone-chrome::before {
+    content: ""; display: block;
+    width: 80px; height: 4px;
+    background: #3f3f46; border-radius: 99px;
+  }
+  .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav .back { color: var(--accent-bright); font-size: 13px; cursor: pointer; }
+  .nav .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; font-weight: 600;
+  }
+
+  .section { padding: 16px; border-bottom: 1px solid var(--border); }
+
+  .pill {
+    display: inline-flex; align-items: center;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .4px;
+    padding: 2px 8px; border-radius: 4px;
+    border: 1px solid transparent;
+  }
+  .pill.warn  { background: var(--warn-soft); color: var(--warn); border-color: var(--amber-border); }
+  .pill.ok    { background: var(--ok-soft);   color: var(--ok);   border-color: var(--emerald-border); }
+  .pill.alert { background: var(--rose-soft); color: var(--rose); border-color: var(--rose-border); }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 500; font-size: 12px;
+    border-radius: 4px; padding: 6px 10px;
+    cursor: pointer; border: 1px solid transparent;
+    background: transparent; color: var(--ink);
+    white-space: nowrap;
+  }
+  .btn-ghost { background: var(--surface); color: var(--accent-bright); border-color: var(--accent-border); }
+
+  .muted { color: var(--ink-2); }
+
+  .proj-hd-top {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 8px; gap: 8px;
+  }
+  .proj-title { margin: 0; font-size: 18px; font-weight: 600; }
+  .proj-sub { color: var(--ink-2); font-size: 12.5px; margin-top: 2px; }
+
+  .actions {
+    display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;
+  }
+  .actions .btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+  /* ═════════════════════════════════════════════════ */
+  /* A. THREE-KPI TRIAD (baseline)                     */
+  /* ═════════════════════════════════════════════════ */
+  .A .triad {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px; margin-top: 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+  }
+  .A .triad > div {
+    padding: 10px 12px;
+    border-right: 1px solid var(--border);
+  }
+  .A .triad > div:last-child { border-right: none; }
+  .A .triad .k {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .5px;
+    color: var(--ink-3);
+    margin-bottom: 2px;
+  }
+  .A .triad .v {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600; font-size: 14px;
+    color: var(--ink);
+  }
+  .A .triad .to-me  .v { color: var(--rose); }
+  .A .triad .from-me .v { color: var(--indigo); }
+
+  /* ═════════════════════════════════════════════════ */
+  /* B. HERO CONTRACT + DUAL BALANCE PAIR               */
+  /* ═════════════════════════════════════════════════ */
+  .B .hero {
+    padding: 4px 0 10px;
+    border-bottom: 1px dashed var(--border);
+    margin-bottom: 12px;
+  }
+  .B .hero .lbl {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .6px;
+    color: var(--ink-3);
+  }
+  .B .hero .amt {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 26px; font-weight: 600;
+    color: var(--ink);
+    line-height: 1.05;
+    margin-top: 2px;
+  }
+  .B .hero .sub {
+    color: var(--ink-2); font-size: 11.5px;
+    margin-top: 2px;
+  }
+  .B .pair {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .B .pair > div {
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .B .pair .me-in  { background: var(--rose-soft);  border: 1px solid var(--rose-border); }
+  .B .pair .me-out { background: var(--indigo-soft); border: 1px solid var(--indigo-border); }
+  .B .pair .k {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .5px;
+    margin-bottom: 4px;
+  }
+  .B .pair .me-in  .k { color: var(--rose); }
+  .B .pair .me-out .k { color: var(--indigo); }
+  .B .pair .v {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700; font-size: 17px;
+  }
+  .B .pair .me-in  .v { color: var(--rose); }
+  .B .pair .me-out .v { color: var(--indigo); }
+  .B .pair .delta {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px; color: var(--ink-2);
+    margin-top: 4px;
+  }
+
+  /* ═════════════════════════════════════════════════ */
+  /* C. MARGIN FIRST + COLLAPSIBLE DETAIL               */
+  /* ═════════════════════════════════════════════════ */
+  .C .margin-card {
+    padding: 14px;
+    border-radius: 8px;
+    background: var(--emerald-soft);
+    border: 1px solid var(--emerald-border);
+    margin-top: 14px;
+  }
+  .C .margin-card .k {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .6px;
+    color: var(--emerald);
+  }
+  .C .margin-card .v {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700; font-size: 22px;
+    color: var(--emerald);
+    margin-top: 2px; line-height: 1.1;
+  }
+  .C .margin-card .hint {
+    color: var(--ink-2); font-size: 11.5px; margin-top: 4px;
+  }
+  .C .breakdown {
+    margin-top: 12px;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    display: grid; gap: 6px;
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 12.5px;
+  }
+  .C .breakdown .line {
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .C .breakdown .line .k { color: var(--ink-2); font-family: "IBM Plex Sans", sans-serif; }
+  .C .breakdown .line.client .v { color: var(--rose); font-weight: 600; }
+  .C .breakdown .line.owe    .v { color: var(--indigo); font-weight: 600; }
+  .C .breakdown .line.total  .v { color: var(--ink); font-weight: 600; }
+
+  /* ═════════════════════════════════════════════════ */
+  /* D. BALANCE BAR (who holds the money)               */
+  /* ═════════════════════════════════════════════════ */
+  .D .balance {
+    margin-top: 14px;
+    padding: 12px 0 0;
+  }
+  .D .balance .meta {
+    display: flex; justify-content: space-between;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .D .balance .meta .in  { color: var(--rose); }
+  .D .balance .meta .out { color: var(--indigo); }
+  .D .balance .bar {
+    display: flex; height: 10px;
+    border-radius: 99px; overflow: hidden;
+    margin-top: 6px;
+    background: var(--slate-soft);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .D .balance .bar .b-in  { background: var(--rose); }
+  .D .balance .bar .b-out { background: var(--indigo); }
+  .D .balance .nums {
+    display: flex; justify-content: space-between;
+    margin-top: 8px;
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 15px; font-weight: 600;
+  }
+  .D .balance .nums .in  { color: var(--rose); }
+  .D .balance .nums .out { color: var(--indigo); }
+  .D .balance .contract {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+    font-size: 12px; color: var(--ink-2);
+  }
+  .D .balance .contract b {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600; color: var(--ink);
+    font-size: 14px;
+  }
+
+  /* Verdict strip */
+  .verdict {
+    margin-top: 14px;
+    font-size: 12px; color: var(--ink-2);
+    font-family: "IBM Plex Mono", monospace;
+    padding: 8px 10px;
+    border-left: 2px solid var(--accent-bright);
+    background: var(--accent-soft);
+    border-radius: 0 4px 4px 0;
+    line-height: 1.5;
+  }
+  .verdict b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>Шапка карточки проекта — 4 варианта</h1>
+<p class="lead">Задача: убрать дублирование цифр (сейчас «должны мне» повторяется в шапке и в блоке «От заказчика»). Шапка должна показать только три опорных числа: <b>сумма проекта</b>, <b>должны мне</b> (клиент не доплатил), <b>должен я</b> (рентал + команда, за вычетом уже выплаченного). Данные одинаковые во всех вариантах: проект «Клип „Синяя волна"» на 250 000 ₽, клиент внёс 70 000 → должны мне 180 000; команде запланировано 130 000, выплачено 70 000 → должен я 60 000.</p>
+
+<div class="variants">
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- VARIANT A — KPI TRIAD                            -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="variant A">
+    <div class="variant-hd">
+      <span class="tag">A</span><h3>Три KPI в ряд</h3>
+      <p>Самый скромный: три равных ячейки, rose для «должны мне», indigo для «должен я». Минимальная перестройка.</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="nav"><span class="back">← Проекты</span><span class="avatar">КЛ</span></div>
+      <div class="section">
+        <div class="proj-hd-top">
+          <span class="eyebrow">Проект</span>
+          <span class="pill warn">открыт</span>
+        </div>
+        <h3 class="proj-title">Клип «Синяя волна»</h3>
+        <div class="proj-sub">Ромашка Продакшн · 15 апреля 2026</div>
+
+        <div class="triad">
+          <div>
+            <div class="k">Сумма</div>
+            <div class="v">250 000 ₽</div>
+          </div>
+          <div class="to-me">
+            <div class="k">Должны мне</div>
+            <div class="v">180 000 ₽</div>
+          </div>
+          <div class="from-me">
+            <div class="k">Должен я</div>
+            <div class="v">60 000 ₽</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-ghost">Редактировать</button>
+          <button class="btn btn-ghost" disabled>Архивировать (долги ≠ 0)</button>
+        </div>
+      </div>
+    </div>
+    <div class="verdict"><b>Плюсы:</b> знакомо, компактно, все три числа равновесны. <b>Минусы:</b> при 390 px «180 000 ₽» впритык к границе ячейки; визуально не ясно, какое число «главное».</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- VARIANT B — HERO + DUAL PAIR                     -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="variant B">
+    <div class="variant-hd">
+      <span class="tag">B</span><h3>Сумма крупно + пара «мне / я»</h3>
+      <p>Контракт — герой-число. Под ним — две контрастные карточки «должны мне» (rose) vs «должен я» (indigo). Повторяет паттерн дашборда.</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="nav"><span class="back">← Проекты</span><span class="avatar">КЛ</span></div>
+      <div class="section">
+        <div class="proj-hd-top">
+          <span class="eyebrow">Проект</span>
+          <span class="pill warn">открыт</span>
+        </div>
+        <h3 class="proj-title">Клип «Синяя волна»</h3>
+        <div class="proj-sub">Ромашка Продакшн · 15 апреля 2026</div>
+
+        <div class="hero" style="margin-top:14px">
+          <div class="lbl">Сумма проекта</div>
+          <div class="amt">250 000 ₽</div>
+          <div class="sub">получено 70 000 · команде план 130 000</div>
+        </div>
+
+        <div class="pair">
+          <div class="me-in">
+            <div class="k">🔴 Должны мне</div>
+            <div class="v">180 000 ₽</div>
+            <div class="delta">от клиента</div>
+          </div>
+          <div class="me-out">
+            <div class="k">🔵 Должен я</div>
+            <div class="v">60 000 ₽</div>
+            <div class="delta">команде</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-ghost">Редактировать</button>
+          <button class="btn btn-ghost" disabled>Архивировать (долги ≠ 0)</button>
+        </div>
+      </div>
+    </div>
+    <div class="verdict"><b>Плюсы:</b> сумма проекта мгновенно считывается; пара «мне ↔ я» визуально эмоциональна и понятна. Согласуется с главным экраном. <b>Минусы:</b> блок выше остальных — около 220 px в высоту.</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- VARIANT C — MARGIN FIRST                         -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="variant C">
+    <div class="variant-hd">
+      <span class="tag">C</span><h3>Фокус на марже</h3>
+      <p>На первом плане — чистая маржа проекта (что останется после всех платежей). Остальные три числа — ниже, в одной колонке как разбор.</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="nav"><span class="back">← Проекты</span><span class="avatar">КЛ</span></div>
+      <div class="section">
+        <div class="proj-hd-top">
+          <span class="eyebrow">Проект</span>
+          <span class="pill warn">открыт</span>
+        </div>
+        <h3 class="proj-title">Клип «Синяя волна»</h3>
+        <div class="proj-sub">Ромашка Продакшн · 15 апреля 2026</div>
+
+        <div class="margin-card">
+          <div class="k">Ожидаемая маржа</div>
+          <div class="v">+120 000 ₽</div>
+          <div class="hint">после всех поступлений от клиента и выплат команде</div>
+        </div>
+
+        <div class="breakdown">
+          <div class="line total">
+            <span class="k">Сумма по договору</span>
+            <span class="v">250 000 ₽</span>
+          </div>
+          <div class="line client">
+            <span class="k">Должны мне (клиент)</span>
+            <span class="v">180 000 ₽</span>
+          </div>
+          <div class="line owe">
+            <span class="k">Должен я (команда)</span>
+            <span class="v">60 000 ₽</span>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-ghost">Редактировать</button>
+          <button class="btn btn-ghost" disabled>Архивировать (долги ≠ 0)</button>
+        </div>
+      </div>
+    </div>
+    <div class="verdict"><b>Плюсы:</b> главный бизнес-вопрос «сколько я заработаю» отвечается сразу. Три опорных числа — аккуратно под ним. <b>Минусы:</b> в MVP по ТЗ маржи нет — это расчётное поле, требует добавить логику. Также маржа сейчас = 250k − 130k = 120k (если нет расходов на рентал в этом примере).</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- VARIANT D — BALANCE BAR                          -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="variant D">
+    <div class="variant-hd">
+      <span class="tag">D</span><h3>Баланс-шкала</h3>
+      <p>Одна двухцветная полоса: слева (rose) — что должны мне, справа (indigo) — что должен я. Числа читаются визуально по длине сегмента.</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="nav"><span class="back">← Проекты</span><span class="avatar">КЛ</span></div>
+      <div class="section">
+        <div class="proj-hd-top">
+          <span class="eyebrow">Проект</span>
+          <span class="pill warn">открыт</span>
+        </div>
+        <h3 class="proj-title">Клип «Синяя волна»</h3>
+        <div class="proj-sub">Ромашка Продакшн · 15 апреля 2026</div>
+
+        <div class="balance">
+          <div class="meta">
+            <span class="in">🔴 Должны мне</span>
+            <span class="out">🔵 Должен я</span>
+          </div>
+          <div class="bar">
+            <div class="b-in"  style="flex: 180"></div>
+            <div class="b-out" style="flex:  60"></div>
+          </div>
+          <div class="nums">
+            <span class="in">180 000 ₽</span>
+            <span class="out">60 000 ₽</span>
+          </div>
+
+          <div class="contract">
+            <span>Сумма проекта</span>
+            <b>250 000 ₽</b>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-ghost">Редактировать</button>
+          <button class="btn btn-ghost" disabled>Архивировать (долги ≠ 0)</button>
+        </div>
+      </div>
+    </div>
+    <div class="verdict"><b>Плюсы:</b> необычное и информативное решение — сразу видно пропорции «где деньги»; пропорции обновляются при каждом платеже. <b>Минусы:</b> бар декоративен, может выглядеть как «индикатор» у пользователей, привыкших к ERP; сумма контракта — отодвинута на второй план.</div>
+  </div>
+
+</div>
+
+</body>
+</html>

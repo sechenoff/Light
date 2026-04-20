@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · Карточка участника — блок «Проекты с его участием»</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --accent: #1e3a8a;
+    --accent-bright: #1d4ed8;
+    --accent-soft: #eff6ff;
+    --accent-border: #bfdbfe;
+
+    --teal: #0f766e;    --teal-soft: #ccfbf1;    --teal-border: #99f6e4;
+    --amber: #a16207;   --amber-soft: #fef3c7;   --amber-border: #fde68a;
+    --rose: #9f1239;    --rose-soft: #ffe4e6;    --rose-border: #fecdd3;
+    --indigo: #4338ca;  --indigo-soft: #e0e7ff;  --indigo-border: #c7d2fe;
+    --slate: #334155;   --slate-soft: #f1f5f9;   --slate-border: #cbd5e1;
+    --emerald: #047857; --emerald-soft: #d1fae5; --emerald-border: #a7f3d0;
+
+    --ok: #15803d;   --ok-soft: #dcfce7;
+
+    --ink:  #09090b;
+    --ink-2: #52525b;
+    --ink-3: #a1a1aa;
+
+    --surface: #ffffff;
+    --surface-2: #fafafa;
+    --border: #e4e4e7;
+
+    --shadow-xs: 0 1px 0 rgba(9,9,11,.03);
+    --shadow-sm: 0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02);
+  }
+
+  body {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink);
+    background: var(--surface-2);
+    margin: 0 auto; padding: 32px 20px 80px;
+    max-width: 1280px;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  p.lead { color: var(--ink-2); margin: 0 0 24px; font-size: 14px; max-width: 720px; }
+
+  .eyebrow {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .mono-num {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  .variants {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
+    gap: 32px 24px;
+  }
+  .variant { min-width: 0; }
+  .variant-hd { margin-bottom: 10px; }
+  .variant-hd .tag {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px;
+    border: 1px solid var(--accent-border);
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 4px;
+    margin-right: 8px;
+  }
+  .variant-hd h3 {
+    display: inline;
+    font-size: 15px; font-weight: 600;
+    color: var(--ink);
+  }
+  .variant-hd p {
+    margin: 6px 0 0;
+    color: var(--ink-2);
+    font-size: 12.5px;
+  }
+
+  .frame {
+    width: 390px;
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+  .phone-chrome {
+    height: 28px;
+    background: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .phone-chrome::before {
+    content: ""; display: block;
+    width: 80px; height: 4px;
+    background: #3f3f46; border-radius: 99px;
+  }
+  .frame-body { padding: 14px 16px 18px; }
+
+  /* Тонкая имитация предыдущей секции (Суммарно я должен), чтобы контекст читался */
+  .proj-hd {
+    border-bottom: 1px dashed var(--border);
+    padding-bottom: 12px; margin-bottom: 14px;
+  }
+  .proj-hd .title { font-weight: 600; font-size: 15px; }
+  .proj-hd .sub { color: var(--ink-2); font-size: 12px; margin-top: 2px; }
+
+  .section-hd {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 10px; gap: 8px;
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 500; font-size: 12px;
+    border-radius: 4px; padding: 6px 10px;
+    cursor: pointer; border: 1px solid transparent;
+    background: transparent; color: var(--ink);
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent-bright); color: #fff; border-color: var(--accent-bright); }
+  .btn-ghost { background: var(--surface); color: var(--accent-bright); border-color: var(--accent-border); }
+  .btn-xs { font-size: 11px; padding: 4px 8px; }
+  .btn-sm { font-size: 12px; padding: 5px 10px; }
+
+  .muted { color: var(--ink-2); }
+  .emerald { color: var(--emerald); }
+  .debt-team { color: var(--indigo); }
+
+  .verdict {
+    margin-top: 10px; padding: 8px 10px;
+    background: var(--surface-2);
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    font-size: 11.5px; color: var(--ink-2);
+  }
+  .verdict b { color: var(--ink); }
+  .verdict.win { border-color: var(--emerald-border); background: var(--emerald-soft); }
+  .verdict.win b { color: var(--emerald); }
+
+  /* ─────────────────────────────────────────── */
+  /* A. PROGRESS-BAR (mirror screen 4 team block) */
+  /* ─────────────────────────────────────────── */
+  .A .p-row {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .A .p-row:last-of-type { border-bottom: none; }
+  .A .p-hd {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px;
+  }
+  .A .p-hd .name { font-weight: 600; font-size: 13.5px; }
+  .A .p-hd .date {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; color: var(--ink-3);
+  }
+  .A .bar {
+    height: 6px; border-radius: 99px;
+    background: var(--slate-soft);
+    margin: 8px 0 6px;
+    overflow: hidden;
+  }
+  .A .fill { height: 100%; background: var(--emerald); border-radius: 99px; }
+  .A .fill.full { background: var(--ok); }
+  .A .p-ft {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
+  }
+  .A .progress {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 11.5px; color: var(--ink-2);
+  }
+  .A .progress b { color: var(--indigo); font-weight: 600; }
+  .A .p-row.done .progress b { color: var(--emerald); }
+
+  /* ─────────────────────────────────────────── */
+  /* B. TWO-COLUMN BIG OSTATOK                    */
+  /* ─────────────────────────────────────────── */
+  .B .p-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .B .p-row:last-of-type { border-bottom: none; }
+  .B .p-row .left { min-width: 0; }
+  .B .p-row .name { font-weight: 600; font-size: 13.5px; }
+  .B .p-row .meta {
+    display: flex; gap: 10px; align-items: baseline;
+    color: var(--ink-3); font-size: 11.5px;
+    margin-top: 2px;
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .B .p-row .meta .paid { color: var(--emerald); }
+  .B .p-row .right {
+    display: flex; flex-direction: column; align-items: flex-end;
+    gap: 4px;
+  }
+  .B .p-row .ost-lbl {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: .5px; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .B .p-row .ost-val {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 15px; font-weight: 600;
+    color: var(--indigo);
+  }
+  .B .p-row.done .ost-val { color: var(--emerald); }
+
+  /* ─────────────────────────────────────────── */
+  /* C. CHEVRON LIST (ostatok-only + expandable) */
+  /* ─────────────────────────────────────────── */
+  .C details {
+    border-bottom: 1px solid var(--border);
+  }
+  .C details:last-of-type { border-bottom: none; }
+  .C summary {
+    list-style: none;
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+    align-items: center;
+    padding: 12px 0;
+    cursor: pointer;
+  }
+  .C summary::-webkit-details-marker { display: none; }
+  .C .ttl { min-width: 0; }
+  .C .ttl .name { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .C .ttl .date { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-3); }
+  .C .ost {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 14px; font-weight: 600;
+    padding: 3px 8px; border-radius: 4px;
+    background: var(--indigo-soft); color: var(--indigo);
+    border: 1px solid var(--indigo-border);
+    white-space: nowrap;
+  }
+  .C details.done .ost { background: var(--ok-soft); color: var(--ok); border-color: var(--emerald-border); }
+  .C .chev {
+    width: 16px; height: 16px;
+    color: var(--ink-3);
+    transition: transform .15s;
+  }
+  .C details[open] .chev { transform: rotate(180deg); }
+  .C .expand {
+    padding: 2px 0 14px;
+    display: grid;
+    gap: 8px;
+  }
+  .C .expand .kv {
+    display: flex; justify-content: space-between;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+  }
+  .C .expand .kv .k { color: var(--ink-3); }
+  .C .expand .kv .v { color: var(--ink); font-weight: 500; }
+  .C .expand .kv .v.paid { color: var(--emerald); }
+  .C .expand .kv .v.debt { color: var(--indigo); font-weight: 600; }
+  .C .expand .row-btn { text-align: right; margin-top: 4px; }
+
+  /* ─────────────────────────────────────────── */
+  /* D. STACKED (label-over-value, no table)      */
+  /* ─────────────────────────────────────────── */
+  .D .p-row {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .D .p-row:last-of-type { border-bottom: none; }
+  .D .p-hd {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 8px; margin-bottom: 8px;
+  }
+  .D .p-hd .name { font-weight: 600; font-size: 13.5px; }
+  .D .p-hd .date {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; color: var(--ink-3);
+  }
+  .D .grid3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 6px 10px;
+    align-items: end;
+  }
+  .D .cell { min-width: 0; }
+  .D .cell .k {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: .5px; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .D .cell .v {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px; font-weight: 600;
+    color: var(--ink);
+  }
+  .D .cell .v.paid { color: var(--emerald); }
+  .D .cell .v.debt { color: var(--indigo); }
+  .D .p-row.done .cell .v.debt { color: var(--emerald); }
+</style>
+</head>
+<body>
+
+<h1>Блок «Проекты с его участием» — 4 варианта вёрстки</h1>
+<p class="lead">
+  Сейчас на экране 6 стоит 4-колоночная таблица (Проект · План · Выпл. · Остаток). На 390px длинные названия проектов ломаются, суммы сжимаются в нечитаемые столбцы. Ниже — 4 альтернативных раскладки: от знакомого progress-bar (такой же, как в командном блоке карточки проекта) до expandable-списка, где по умолчанию видно только «остаток я должен».
+</p>
+
+<div class="variants">
+
+  <!-- ═════════ VARIANT A — PROGRESS BAR ═════════ -->
+  <div class="variant A">
+    <div class="variant-hd">
+      <span class="tag">A</span>
+      <h3>Карточки с progress-bar</h3>
+      <p>Зеркало блока «Команда» из карточки проекта. Название + дата, полоса прогресса «выплачено / план», под ней одна строка-сводка и кнопка «+ выплата». Визуально единит два экрана (проект ↔ участник).</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="proj-hd">
+          <div class="title">Сергей Петров · осветитель</div>
+          <div class="sub">Суммарно я должен <b style="color:var(--rose)">60 000 ₽</b> по 3 проектам</div>
+        </div>
+
+        <div class="section-hd">
+          <span class="eyebrow">Проекты с его участием · 3</span>
+        </div>
+
+        <div class="p-row">
+          <div class="p-hd">
+            <span class="name">Клип «Синяя волна»</span>
+            <span class="date">15.04</span>
+          </div>
+          <div class="bar"><div class="fill" style="width:33%"></div></div>
+          <div class="p-ft">
+            <span class="progress">20 000 / 60 000 · ост. <b>40 000 ₽</b></span>
+            <button class="btn btn-primary btn-xs">+ выплата</button>
+          </div>
+        </div>
+
+        <div class="p-row">
+          <div class="p-hd">
+            <span class="name">Съёмка «Коллекция весна»</span>
+            <span class="date">02.04</span>
+          </div>
+          <div class="bar"><div class="fill" style="width:50%"></div></div>
+          <div class="p-ft">
+            <span class="progress">20 000 / 40 000 · ост. <b>20 000 ₽</b></span>
+            <button class="btn btn-primary btn-xs">+ выплата</button>
+          </div>
+        </div>
+
+        <div class="p-row done">
+          <div class="p-hd">
+            <span class="name">Мероприятие «Премьера»</span>
+            <span class="date">28.03</span>
+          </div>
+          <div class="bar"><div class="fill full" style="width:100%"></div></div>
+          <div class="p-ft">
+            <span class="progress">30 000 / 30 000 · ост. <b>0 ₽</b></span>
+            <span class="muted" style="font-size:11px">закрыт</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="verdict win">
+      <b>Плюс:</b> одинаковый язык с карточкой проекта, длинные названия не ломают раскладку, кнопка «+ выплата» всегда под рукой. <b>Минус:</b> одна строка на 4 числа, на очень длинных названиях компактность падает.
+    </div>
+  </div>
+
+  <!-- ═════════ VARIANT B — TWO-COLUMN BIG OSTATOK ═════════ -->
+  <div class="variant B">
+    <div class="variant-hd">
+      <span class="tag">B</span>
+      <h3>Двухколоночный: слева контекст, справа крупный остаток</h3>
+      <p>Слева — проект/дата/мелкая пара план/выплачено (моноширинным). Справа — крупный индиго-остаток. Быстро сканируется «кому сколько должен», детали читаются вторично.</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="proj-hd">
+          <div class="title">Сергей Петров · осветитель</div>
+          <div class="sub">Суммарно я должен <b style="color:var(--rose)">60 000 ₽</b> по 3 проектам</div>
+        </div>
+
+        <div class="section-hd">
+          <span class="eyebrow">Проекты с его участием · 3</span>
+        </div>
+
+        <div class="p-row">
+          <div class="left">
+            <div class="name">Клип «Синяя волна»</div>
+            <div class="meta">
+              <span>15.04</span>
+              <span>план 60 000</span>
+              <span class="paid">выпл. 20 000</span>
+            </div>
+          </div>
+          <div class="right">
+            <span class="ost-lbl">Остаток</span>
+            <span class="ost-val">40 000 ₽</span>
+          </div>
+        </div>
+
+        <div class="p-row">
+          <div class="left">
+            <div class="name">Съёмка «Коллекция весна»</div>
+            <div class="meta">
+              <span>02.04</span>
+              <span>план 40 000</span>
+              <span class="paid">выпл. 20 000</span>
+            </div>
+          </div>
+          <div class="right">
+            <span class="ost-lbl">Остаток</span>
+            <span class="ost-val">20 000 ₽</span>
+          </div>
+        </div>
+
+        <div class="p-row done">
+          <div class="left">
+            <div class="name">Мероприятие «Премьера»</div>
+            <div class="meta">
+              <span>28.03</span>
+              <span>план 30 000</span>
+              <span class="paid">выпл. 30 000</span>
+            </div>
+          </div>
+          <div class="right">
+            <span class="ost-lbl">Закрыт</span>
+            <span class="ost-val">0 ₽</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="verdict">
+      <b>Плюс:</b> остаток читается мгновенно, нет лишнего UI. <b>Минус:</b> нет кнопки «+ выплата» в строке (делается через общую кнопку или свайпом), длинная пара план/выплачено в узкой полосе всё ещё может упираться.
+    </div>
+  </div>
+
+  <!-- ═════════ VARIANT C — CHEVRON LIST ═════════ -->
+  <div class="variant C">
+    <div class="variant-hd">
+      <span class="tag">C</span>
+      <h3>Свёрнутый список: только остаток, тап — подробности</h3>
+      <p>В закрытом состоянии одна строка: название + chip «остаток». По тапу — полный разбор: план/выплачено/остаток + inline «+ выплата». Самый компактный вариант — хорош, если проектов много (7–10+).</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="proj-hd">
+          <div class="title">Сергей Петров · осветитель</div>
+          <div class="sub">Суммарно я должен <b style="color:var(--rose)">60 000 ₽</b> по 3 проектам</div>
+        </div>
+
+        <div class="section-hd">
+          <span class="eyebrow">Проекты с его участием · 3</span>
+        </div>
+
+        <details open>
+          <summary>
+            <div class="ttl">
+              <div class="name">Клип «Синяя волна»</div>
+              <div class="date">15.04</div>
+            </div>
+            <span class="ost">40 000 ₽</span>
+            <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+          </summary>
+          <div class="expand">
+            <div class="kv"><span class="k">План</span><span class="v">60 000 ₽</span></div>
+            <div class="kv"><span class="k">Выплачено</span><span class="v paid">20 000 ₽</span></div>
+            <div class="kv"><span class="k">Остаток</span><span class="v debt">40 000 ₽</span></div>
+            <div class="row-btn"><button class="btn btn-primary btn-xs">+ выплата</button></div>
+          </div>
+        </details>
+
+        <details>
+          <summary>
+            <div class="ttl">
+              <div class="name">Съёмка «Коллекция весна»</div>
+              <div class="date">02.04</div>
+            </div>
+            <span class="ost">20 000 ₽</span>
+            <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+          </summary>
+        </details>
+
+        <details class="done">
+          <summary>
+            <div class="ttl">
+              <div class="name">Мероприятие «Премьера»</div>
+              <div class="date">28.03</div>
+            </div>
+            <span class="ost">0 ₽</span>
+            <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+          </summary>
+        </details>
+      </div>
+    </div>
+    <div class="verdict">
+      <b>Плюс:</b> максимально плотно, всегда видно «кому остался долг», длинные списки не утомляют. <b>Минус:</b> нужен лишний тап, чтобы увидеть план/выплачено; +выплата спрятана в раскрытом состоянии.
+    </div>
+  </div>
+
+  <!-- ═════════ VARIANT D — STACKED LABELS ═════════ -->
+  <div class="variant D">
+    <div class="variant-hd">
+      <span class="tag">D</span>
+      <h3>Метка-над-значением, без progress-bar</h3>
+      <p>Тот же смысл, что у A, но без полосы: заголовок + сетка 3 ячейки (план/выпл./остаток) с маленькой uppercase-меткой сверху. Визуально строже, ближе к таблице, но без её жёсткости.</p>
+    </div>
+    <div class="frame">
+      <div class="phone-chrome"></div>
+      <div class="frame-body">
+        <div class="proj-hd">
+          <div class="title">Сергей Петров · осветитель</div>
+          <div class="sub">Суммарно я должен <b style="color:var(--rose)">60 000 ₽</b> по 3 проектам</div>
+        </div>
+
+        <div class="section-hd">
+          <span class="eyebrow">Проекты с его участием · 3</span>
+        </div>
+
+        <div class="p-row">
+          <div class="p-hd">
+            <span class="name">Клип «Синяя волна»</span>
+            <span class="date">15.04</span>
+          </div>
+          <div class="grid3">
+            <div class="cell"><div class="k">План</div><div class="v">60 000</div></div>
+            <div class="cell"><div class="k">Выпл.</div><div class="v paid">20 000</div></div>
+            <div class="cell"><div class="k">Остаток</div><div class="v debt">40 000</div></div>
+            <button class="btn btn-primary btn-xs">+ выпл.</button>
+          </div>
+        </div>
+
+        <div class="p-row">
+          <div class="p-hd">
+            <span class="name">Съёмка «Коллекция весна»</span>
+            <span class="date">02.04</span>
+          </div>
+          <div class="grid3">
+            <div class="cell"><div class="k">План</div><div class="v">40 000</div></div>
+            <div class="cell"><div class="k">Выпл.</div><div class="v paid">20 000</div></div>
+            <div class="cell"><div class="k">Остаток</div><div class="v debt">20 000</div></div>
+            <button class="btn btn-primary btn-xs">+ выпл.</button>
+          </div>
+        </div>
+
+        <div class="p-row done">
+          <div class="p-hd">
+            <span class="name">Мероприятие «Премьера»</span>
+            <span class="date">28.03</span>
+          </div>
+          <div class="grid3">
+            <div class="cell"><div class="k">План</div><div class="v">30 000</div></div>
+            <div class="cell"><div class="k">Выпл.</div><div class="v paid">30 000</div></div>
+            <div class="cell"><div class="k">Остаток</div><div class="v debt">0</div></div>
+            <span class="muted" style="font-size:11px;align-self:center">закрыт</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="verdict">
+      <b>Плюс:</b> все три числа видны сразу, без bar-графики; строже чем A. <b>Минус:</b> кнопка «+выпл.» сокращённая (узкая ячейка), нет визуального прогресса.
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
