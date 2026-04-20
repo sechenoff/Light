@@ -410,6 +410,7 @@ export default function GafferDashboardPage() {
           <div className="grid grid-cols-4 gap-3 mb-6 max-[780px]:grid-cols-2 max-[430px]:grid-cols-1">
             <KPI
               tone="pos"
+              colored
               label="Мне должны"
               value={formatRub(data.kpi.owedToMe)}
               sub={
@@ -423,6 +424,7 @@ export default function GafferDashboardPage() {
             />
             <KPI
               tone="neg"
+              colored
               label="Я должен"
               value={formatRub(data.kpi.iOwe)}
               sub={
