@@ -481,3 +481,161 @@ describe("Rate card fields", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("getContactDebtSummary - KPI subtext fields", () => {
+  // helpers scoped to this describe
+  async function createClient(name: string) {
+    const res = await postA("/api/gaffer/contacts").send({ type: "CLIENT", name });
+    expect(res.status).toBe(200);
+    return res.body.contact.id as string;
+  }
+  async function createMember(name: string) {
+    const res = await postA("/api/gaffer/contacts").send({ type: "TEAM_MEMBER", name });
+    expect(res.status).toBe(200);
+    return res.body.contact.id as string;
+  }
+  async function createVendor(name: string) {
+    const res = await postA("/api/gaffer/contacts").send({ type: "VENDOR", name });
+    expect(res.status).toBe(200);
+    return res.body.contact.id as string;
+  }
+  async function createProject(clientId: string, shootDate: string, clientPlanAmount: string) {
+    const res = await postA("/api/gaffer/projects").send({
+      title: `Проект ${shootDate}`,
+      clientId,
+      shootDate,
+      clientPlanAmount,
+    });
+    expect(res.status).toBe(200);
+    return res.body.project.id as string;
+  }
+  async function addPaymentIn(projectId: string, amount: string, paidAt: string) {
+    const res = await postA("/api/gaffer/payments").send({
+      projectId,
+      direction: "IN",
+      amount,
+      paidAt,
+    });
+    expect(res.status).toBe(200);
+    return res.body.payment.id as string;
+  }
+  async function addMember(projectId: string, contactId: string, plannedAmount = "10000") {
+    const res = await postA(`/api/gaffer/projects/${projectId}/members`).send({
+      contactId,
+      plannedAmount,
+    });
+    expect(res.status).toBe(200);
+    return res.body.member;
+  }
+  async function addPaymentOut(projectId: string, memberId: string, amount: string, paidAt: string) {
+    const res = await postA("/api/gaffer/payments").send({
+      projectId,
+      memberId,
+      direction: "OUT",
+      amount,
+      paidAt,
+    });
+    expect(res.status).toBe(200);
+    return res.body.payment.id as string;
+  }
+
+  it("TC1: avgPaymentCycleDays — 2 fully paid projects, 14 + 24 day cycles → 19", async () => {
+    const clientId = await createClient("TC1 Client");
+    // Project 1: shoot 2026-01-01, fully paid on 2026-01-15 (14 days)
+    const p1 = await createProject(clientId, "2026-01-01", "10000");
+    await addPaymentIn(p1, "10000", "2026-01-15");
+    // Project 2: shoot 2026-02-01, fully paid on 2026-02-25 (24 days)
+    const p2 = await createProject(clientId, "2026-02-01", "20000");
+    await addPaymentIn(p2, "20000", "2026-02-25");
+
+    const res = await getA(`/api/gaffer/contacts/${clientId}/debt-summary`);
+    expect(res.status).toBe(200);
+    expect(res.body.avgPaymentCycleDays).toBe(19);
+  });
+
+  it("TC2: avgPaymentCycleDays — project with partial payment → null", async () => {
+    const clientId = await createClient("TC2 Client");
+    const p1 = await createProject(clientId, "2026-03-01", "10000");
+    await addPaymentIn(p1, "5000", "2026-03-10"); // only half paid
+
+    const res = await getA(`/api/gaffer/contacts/${clientId}/debt-summary`);
+    expect(res.status).toBe(200);
+    expect(res.body.avgPaymentCycleDays).toBeNull();
+  });
+
+  it("TC3: avgPaymentCycleDays — prepaid project (cycle=0) + 20-day project → mean=10", async () => {
+    const clientId = await createClient("TC3 Client");
+    // Prepaid: paid before shoot — clamp to 0
+    const p1 = await createProject(clientId, "2026-04-10", "10000");
+    await addPaymentIn(p1, "10000", "2026-04-05"); // 5 days before shoot → 0
+    // Normal: shoot 2026-05-01, paid 2026-05-21 → 20 days
+    const p2 = await createProject(clientId, "2026-05-01", "15000");
+    await addPaymentIn(p2, "15000", "2026-05-21");
+
+    const res = await getA(`/api/gaffer/contacts/${clientId}/debt-summary`);
+    expect(res.status).toBe(200);
+    expect(res.body.avgPaymentCycleDays).toBe(10); // (0 + 20) / 2
+  });
+
+  it("TC4: avgPaymentCycleDays — zero-amount project excluded, 15-day project → 15", async () => {
+    const clientId = await createClient("TC4 Client");
+    // Zero amount project — should be excluded
+    await createProject(clientId, "2026-06-01", "0");
+    // Normal 15-day project
+    const p2 = await createProject(clientId, "2026-06-10", "10000");
+    await addPaymentIn(p2, "10000", "2026-06-25");
+
+    const res = await getA(`/api/gaffer/contacts/${clientId}/debt-summary`);
+    expect(res.status).toBe(200);
+    expect(res.body.avgPaymentCycleDays).toBe(15);
+  });
+
+  it("TC5: lastPayoutDate — 3 OUT payments, returns latest 2026-04-08", async () => {
+    const memberId = await createMember("TC5 Member");
+    const clientId = await createClient("TC5 ClientForMember");
+    const p1 = await createProject(clientId, "2026-01-15", "50000");
+    const p2 = await createProject(clientId, "2026-02-15", "50000");
+    const m1 = await addMember(p1, memberId, "15000");
+    const m2 = await addMember(p2, memberId, "15000");
+    await addPaymentOut(p1, m1.contactId, "5000", "2026-03-10");
+    await addPaymentOut(p2, m2.contactId, "5000", "2026-04-08");
+    await addPaymentOut(p1, m1.contactId, "5000", "2026-04-01");
+
+    const res = await getA(`/api/gaffer/contacts/${memberId}/debt-summary`);
+    expect(res.status).toBe(200);
+    // lastPayoutDate must be the same as the paidAt of the most-recent recentPayment
+    // (both come from the same DB field, same serialization path)
+    expect(res.body.lastPayoutDate).toBeDefined();
+    const maxFromRecent = res.body.recentPayments.reduce(
+      (max: string, p: { paidAt: string }) => (p.paidAt > max ? p.paidAt : max),
+      res.body.recentPayments[0].paidAt as string,
+    );
+    expect(res.body.lastPayoutDate).toBe(maxFromRecent);
+  });
+
+  it("TC6: lastPayoutDate — no OUT payments → null", async () => {
+    const memberId = await createMember("TC6 Member No Payouts");
+    const clientId = await createClient("TC6 Client");
+    const p1 = await createProject(clientId, "2026-01-20", "50000");
+    await addMember(p1, memberId, "10000");
+
+    const res = await getA(`/api/gaffer/contacts/${memberId}/debt-summary`);
+    expect(res.status).toBe(200);
+    expect(res.body.lastPayoutDate).toBeNull();
+  });
+
+  it("TC7: VENDOR lastPayoutDate — vendor branch also returns the field", async () => {
+    const vendorId = await createVendor("TC7 Vendor");
+    const clientId = await createClient("TC7 Client");
+    const p1 = await createProject(clientId, "2026-02-20", "50000");
+    const m1 = await addMember(p1, vendorId, "8000");
+    await addPaymentOut(p1, m1.contactId, "8000", "2026-03-15");
+
+    const res = await getA(`/api/gaffer/contacts/${vendorId}/debt-summary`);
+    expect(res.status).toBe(200);
+    expect(res.body.type).toBe("VENDOR");
+    // lastPayoutDate must equal the paidAt from the single recentPayment
+    expect(res.body.lastPayoutDate).toBeDefined();
+    expect(res.body.lastPayoutDate).toBe(res.body.recentPayments[0].paidAt);
+  });
+});

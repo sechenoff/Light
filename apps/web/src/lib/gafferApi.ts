@@ -356,6 +356,7 @@ export type ContactDebtSummary =
       }>;
       totalClientRemaining: string;
       recentPayments: ContactRecentPayment[];
+      avgPaymentCycleDays: number | null;
     }
   | {
       type: "TEAM_MEMBER" | "VENDOR";
@@ -371,6 +372,7 @@ export type ContactDebtSummary =
       }>;
       totalRemaining: string;
       recentPayments: ContactRecentPayment[];
+      lastPayoutDate: string | null;
     };
 
 export async function listProjects(params?: {
