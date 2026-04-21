@@ -1454,6 +1454,18 @@ function GafferProjectDetailContent() {
               Редактировать
             </button>
           )}
+          <button
+            onClick={handleArchiveToggle}
+            disabled={!canArchive}
+            title={!canArchive ? "Нельзя: есть открытые остатки" : undefined}
+            className={`text-[13px] font-medium transition-colors ${
+              canArchive
+                ? "text-accent-bright hover:text-accent"
+                : "text-ink-3 cursor-not-allowed"
+            }`}
+          >
+            {project.status === "ARCHIVED" ? "Из архива" : "Архивировать"}
+          </button>
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((o) => !o)}
@@ -1464,18 +1476,6 @@ function GafferProjectDetailContent() {
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-9 bg-surface border border-border rounded-lg shadow-sm z-20 w-44 py-1">
-                <button
-                  onClick={handleArchiveToggle}
-                  disabled={!canArchive}
-                  title={!canArchive ? "Нельзя: есть открытые остатки" : undefined}
-                  className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors ${
-                    canArchive
-                      ? "text-ink hover:bg-[#fafafa]"
-                      : "text-ink-3 cursor-not-allowed"
-                  }`}
-                >
-                  {project.status === "ARCHIVED" ? "Из архива" : "В архив"}
-                </button>
                 <button
                   onClick={() => { setMenuOpen(false); setShowDeleteModal(true); }}
                   className="w-full text-left px-4 py-2.5 text-[13px] text-rose hover:bg-rose-soft transition-colors"
@@ -1961,6 +1961,7 @@ function GafferProjectDetailContent() {
         <div className="divide-y divide-border">
           {/* Title + meta */}
           <div className="px-4 py-4">
+            <div className="text-[10.5px] font-semibold tracking-[1.4px] uppercase text-ink-3 mb-1.5">Проект</div>
             <h2 className="text-[18px] font-semibold text-ink mb-1">{project.title}</h2>
             <div className="flex items-center gap-2 flex-wrap text-[12px] text-ink-2">
               {project.client && (
