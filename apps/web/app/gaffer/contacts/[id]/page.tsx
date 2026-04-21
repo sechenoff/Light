@@ -15,7 +15,7 @@ import {
   type GafferContact,
   type ContactDebtSummary,
 } from "../../../../src/lib/gafferApi";
-import { formatRub } from "../../../../src/lib/format";
+import { formatRub, pluralize } from "../../../../src/lib/format";
 import { formatShootDate } from "../../../../src/lib/gafferProjectUtils";
 import { StatusPill } from "../../../../src/components/StatusPill";
 import { toast } from "../../../../src/components/ToastProvider";
@@ -88,14 +88,19 @@ function DebtSection({ contactId, contactType }: { contactId: string; contactTyp
               {formatRub(debt.totalClientRemaining)}
             </div>
             <div className="text-[11.5px] text-ink-3 mt-1.5">
-              {debt.projects.length} {debt.projects.length === 1 ? "проект" : debt.projects.length < 5 ? "проекта" : "проектов"}
-              {lastPayment && (
-                <>
-                  {" · последний платёж "}
-                  <span className="mono-num">{formatRub(lastPayment.amount)}</span>
-                  {" · "}{formatShootDate(lastPayment.paidAt)}
-                </>
-              )}
+              {(() => {
+                const M = debt.projects.length;
+                const N = debt.projects.filter(
+                  (p) => p.status === "OPEN" && Number(p.clientRemaining) > 0,
+                ).length;
+                const projectsText = M > 0
+                  ? `${N} ${pluralize(N, "проект", "проекта", "проектов")} из ${M} не закрыт${N === 1 ? "" : N >= 2 && N <= 4 ? "ы" : "ы"}`
+                  : `${M} ${pluralize(M, "проект", "проекта", "проектов")}`;
+                const cycleText = debt.avgPaymentCycleDays !== null
+                  ? ` · средний цикл оплаты ${debt.avgPaymentCycleDays} ${pluralize(debt.avgPaymentCycleDays, "день", "дня", "дней")}`
+                  : "";
+                return projectsText + cycleText;
+              })()}
             </div>
           </div>
         </div>
@@ -181,14 +186,15 @@ function DebtSection({ contactId, contactType }: { contactId: string; contactTyp
               {formatRub(debt.totalRemaining)}
             </div>
             <div className="text-[11.5px] text-ink-3 mt-1.5">
-              {debt.memberships.length} {debt.memberships.length === 1 ? "проект" : debt.memberships.length < 5 ? "проекта" : "проектов"}
-              {lastPayment && (
-                <>
-                  {" · последняя выплата "}
-                  <span className="mono-num">{formatRub(lastPayment.amount)}</span>
-                  {" · "}{formatShootDate(lastPayment.paidAt)}
-                </>
-              )}
+              {(() => {
+                const N = debt.memberships.length;
+                if (N === 0) return "Проектов ещё нет";
+                const byText = `по ${N} ${pluralize(N, "проекту", "проектам", "проектам")}`;
+                const payoutText = debt.lastPayoutDate !== null
+                  ? ` · последняя выплата ${new Date(debt.lastPayoutDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })}`
+                  : "";
+                return byText + payoutText;
+              })()}
             </div>
           </div>
         </div>
