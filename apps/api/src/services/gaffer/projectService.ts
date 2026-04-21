@@ -262,7 +262,7 @@ export async function listProjects(req: Request, opts: ListProjectsOpts) {
     clientPlanAmount: p.clientPlanAmount.toString(),
     members: undefined, // убираем из ответа — заменяем агрегатами
     payments: undefined,
-    ...computeProjectDebts(p as ProjectWithRelations),
+    ...computeProjectDebts(p as unknown as ProjectWithRelations),
   }));
 }
 
