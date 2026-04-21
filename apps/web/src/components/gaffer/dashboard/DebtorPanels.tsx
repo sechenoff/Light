@@ -16,8 +16,11 @@ import type {
 // ── Helper ────────────────────────────────────────────────────────────────────
 
 function formatDayMonth(isoStr: string): string {
+  // Use UTC to avoid local-timezone off-by-one on Z-suffixed ISO strings
+  // (API serializes Prisma Date as UTC; formatting in local tz shifts days
+  // for users west of UTC).
   const d = new Date(isoStr);
-  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return `${String(d.getUTCDate()).padStart(2, "0")}.${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 // ── ClientsWithDebtPanel ──────────────────────────────────────────────────────
