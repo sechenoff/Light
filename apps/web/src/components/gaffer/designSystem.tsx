@@ -34,9 +34,11 @@ export interface PanelTitleProps {
   children: React.ReactNode;
   icon?: React.ReactNode;
   count?: number;
+  /** Free-form right-side hint text (e.g. "сортировка по сумме", "5 человек"). */
+  rightHint?: string;
 }
 
-export function PanelTitle({ children, icon, count }: PanelTitleProps) {
+export function PanelTitle({ children, icon, count, rightHint }: PanelTitleProps) {
   return (
     <div className="flex items-center gap-2 px-3 py-2">
       {icon != null && (
@@ -45,6 +47,9 @@ export function PanelTitle({ children, icon, count }: PanelTitleProps) {
       <span className="flex-1 text-sm font-medium text-gaffer-fg">
         {children}
       </span>
+      {rightHint != null && (
+        <span className="text-xs text-gaffer-fg-muted">{rightHint}</span>
+      )}
       {count != null && (
         <Tag tone="neutral">{count}</Tag>
       )}

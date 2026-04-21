@@ -10,6 +10,10 @@ import {
   type GafferDashboardAtRiskProjectRow,
 } from "../../src/lib/gafferApi";
 import { formatRub, MONTHS_LOCATIVE } from "../../src/lib/format";
+import {
+  ClientsWithDebtPanel,
+  TeamWithDebtPanel,
+} from "../../src/components/gaffer/dashboard/DebtorPanels";
 import { toast } from "../../src/components/ToastProvider";
 import { useGafferUser } from "../../src/components/gaffer/GafferUserContext";
 import {
@@ -452,6 +456,12 @@ export default function GafferDashboardPage() {
               }
               sub="свободно + ожидается − платежи"
             />
+          </div>
+
+          {/* Debtor list panels — inserted per canon §02 between KPI row and analytic panels */}
+          <div className="grid grid-cols-2 gap-4 mb-4 max-[780px]:grid-cols-1">
+            <ClientsWithDebtPanel rows={data.clientsWithDebt} />
+            <TeamWithDebtPanel team={data.teamWithDebt} vendors={data.vendorsWithDebt} />
           </div>
 
           {/* Panel grid — top row */}
