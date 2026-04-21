@@ -31,6 +31,16 @@ function TypePill({ type }: { type: GafferContact["type"] }) {
       </span>
     );
   }
+  if (type === "VENDOR") {
+    return (
+      <span
+        className="inline-flex items-center rounded-full border px-[9px] py-[3px] text-[11px] font-semibold bg-amber-soft text-amber border-amber-border"
+        style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
+      >
+        Рентал
+      </span>
+    );
+  }
   return (
     <span
       className="inline-flex items-center rounded-full border px-[9px] py-[3px] text-[11px] font-semibold bg-teal-soft text-teal border-teal-border"
@@ -603,7 +613,13 @@ function GafferContactDetailContent() {
               className="eyebrow mb-1"
               style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}
             >
-              {contact.type === "TEAM_MEMBER" ? "Профиль осветителя" : "Карточка заказчика"}
+              {contact.type === "CLIENT"
+                ? "Карточка заказчика"
+                : contact.type === "VENDOR"
+                  ? "Карточка рентала"
+                  : contact.type === "TEAM_MEMBER"
+                    ? "Участник команды"
+                    : ""}
             </p>
             <h2 className="text-[18px] font-semibold text-ink mb-1.5">{contact.name}</h2>
             {contact.type === "TEAM_MEMBER" && (contact.roleLabel || contact.telegram || contact.phone) && (

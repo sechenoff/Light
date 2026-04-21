@@ -99,6 +99,16 @@ function GafferShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
+          {/* Desktop top strip — avatar chip, right-aligned */}
+          <div className="hidden md:flex items-center justify-end gap-3 px-8 py-3 border-b border-border bg-surface shrink-0">
+            <span
+              className="bg-accent-soft text-accent w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold"
+              title={user.email}
+            >
+              {userInitials}
+            </span>
+          </div>
+
           {/* Main content area: 480px on mobile, wider on desktop */}
           <main className="flex-1 w-full pb-20 md:pb-8 px-0 md:px-8 mx-auto max-w-[480px] md:max-w-[960px]">
             {children}
