@@ -1,14 +1,14 @@
 {
   "sprint": 1,
-  "feature": "gaffer-dashboard-debtor-panels",
+  "feature": "gaffer-project-header-archive",
   "parent_epic": "gaffer-design-canon-parity",
   "governance_mode": "light",
   "claude_product": "SKIPPED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
   "reviewer_agent": "standard-code-reviewer",
-  "findings": {"critical": 0, "high": 0, "medium": 1, "low": 2, "nits": 2},
-  "medium_fixes_applied": ["UTC-safe formatDayMonth (ca40d1c)"],
-  "tests": {"api": "762/762 passing", "web": "207/207 passing", "tsc": "clean"},
-  "ts": "2026-04-21T09:57:00Z"
+  "findings": {"critical": 0, "high": 0, "medium": 0, "low": 0, "nits": 1},
+  "nit_dismissed": "Button label 'Архивировать' matches canon (parity-report.md:104 quotes mockup label verbatim); old overflow label 'В архив' was the drift, not the fix.",
+  "tests": {"web": "207/207 passing", "tsc": "clean"},
+  "ts": "2026-04-21T10:05:00Z"
 }
