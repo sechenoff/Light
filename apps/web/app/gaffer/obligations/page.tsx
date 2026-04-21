@@ -81,11 +81,11 @@ function Skeleton() {
 
 const CATEGORY_META: Record<
   "client" | "crew" | "rental",
-  { label: string; tone: "pos" | "neg" | "warn" | "info" | "neutral" }
+  { label: string; tone: "pos" | "neg" | "warn" | "info" | "neutral" | "teal" | "amber" }
 > = {
   client: { label: "Клиент", tone: "info" },
-  rental: { label: "Рентал", tone: "neutral" },
-  crew: { label: "Осветитель", tone: "neutral" },
+  rental: { label: "Рентал", tone: "amber" },
+  crew: { label: "Осветитель", tone: "teal" },
 };
 
 const STATUS_META: Record<

@@ -179,7 +179,7 @@ export function Segmented<T extends string>({
 
 // ── Tag ───────────────────────────────────────────────────────────────────────
 
-export type TagTone = "pos" | "neg" | "warn" | "info" | "neutral";
+export type TagTone = "pos" | "neg" | "warn" | "info" | "neutral" | "teal" | "amber";
 
 export interface TagProps {
   tone: TagTone;
@@ -192,6 +192,8 @@ const tagClasses: Record<TagTone, string> = {
   warn: "bg-gaffer-warn-soft text-gaffer-warn",
   info: "bg-gaffer-info-soft text-gaffer-info",
   neutral: "bg-gaffer-bg-sub text-gaffer-fg-muted",
+  teal: "bg-teal-soft text-teal",
+  amber: "bg-amber-soft text-amber",
 };
 
 export function Tag({ tone, children }: TagProps) {
