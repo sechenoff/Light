@@ -1,9 +1,9 @@
 {
   "sprint": 1,
-  "feature": "gaffer-canon-polish",
+  "feature": "gitignore-tsbuildinfo-chore",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
-  "provider": "split-focus",
-  "ts": "2026-04-21T08:00:00+00:00",
-  "verdict_rationale": "Unified review (APPROVE): three small cosmetic-only fixes from 2026-04-20 canon audit — desktop top-bar avatar chip, 3-way contact eyebrow wording (CLIENT/TEAM_MEMBER/VENDOR), obligations category pills (teal/amber). tsc clean. Web vitest 207/207 green. One medium visual amber/amber note in obligations rows deferred (non-blocking). Nit on exhaustive eyebrow switch addressed in-commit."
+  "provider": "self-reviewed",
+  "ts": "2026-04-21T11:30:00+00:00",
+  "verdict_rationale": "Chore-level cleanup — 2-line change: gitignore adds `**/tsconfig.tsbuildinfo`, removes tracked auto-gen file. Zero logic impact. Fresh rebase of stale PR #50. Self-reviewed given trivial surface and no runtime effect."
 }
