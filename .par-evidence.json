@@ -1,14 +1,9 @@
 {
   "sprint": 1,
-  "feature": "gaffer-project-header-archive",
-  "parent_epic": "gaffer-design-canon-parity",
-  "governance_mode": "light",
-  "claude_product": "SKIPPED",
+  "feature": "gaffer-canon-polish",
+  "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "reviewer_agent": "standard-code-reviewer",
-  "findings": {"critical": 0, "high": 0, "medium": 0, "low": 0, "nits": 1},
-  "nit_dismissed": "Button label 'Архивировать' matches canon (parity-report.md:104 quotes mockup label verbatim); old overflow label 'В архив' was the drift, not the fix.",
-  "tests": {"web": "207/207 passing", "tsc": "clean"},
-  "ts": "2026-04-21T10:05:00Z"
+  "ts": "2026-04-21T08:00:00+00:00",
+  "verdict_rationale": "Unified review (APPROVE): three small cosmetic-only fixes from 2026-04-20 canon audit — desktop top-bar avatar chip, 3-way contact eyebrow wording (CLIENT/TEAM_MEMBER/VENDOR), obligations category pills (teal/amber). tsc clean. Web vitest 207/207 green. One medium visual amber/amber note in obligations rows deferred (non-blocking). Nit on exhaustive eyebrow switch addressed in-commit."
 }
