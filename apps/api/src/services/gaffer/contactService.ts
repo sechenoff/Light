@@ -364,7 +364,7 @@ export async function getContactDebtSummary(req: Request, id: string) {
       where: { clientId: id, gafferUserId },
       include: {
         members: { select: { plannedAmount: true } },
-        payments: { select: { direction: true, amount: true, memberId: true } },
+        payments: { select: { direction: true, amount: true, memberId: true, paidAt: true } },
       },
       orderBy: { shootDate: "desc" },
     });
@@ -394,6 +394,31 @@ export async function getContactDebtSummary(req: Request, id: string) {
       };
     });
 
+    // Compute avgPaymentCycleDays across fully-paid projects
+    const MS_PER_DAY = 86_400_000;
+    const cycleDays: number[] = [];
+    for (const p of projects) {
+      const planAmount = new Decimal(p.clientPlanAmount);
+      if (planAmount.lte(ZERO)) continue; // exclude zero-amount projects
+      const inPayments = p.payments.filter((pay) => pay.direction === "IN");
+      const totalIn = inPayments.reduce((acc, pay) => acc.plus(pay.amount), ZERO);
+      if (totalIn.lt(planAmount)) continue; // not fully paid
+      // Find the last IN payment date
+      const lastPayDate = inPayments.reduce<Date | null>((max, pay) => {
+        const d = new Date(pay.paidAt);
+        return max === null || d > max ? d : max;
+      }, null);
+      if (lastPayDate === null) continue;
+      const shootMs = new Date(p.shootDate).getTime();
+      const payMs = lastPayDate.getTime();
+      const rawDays = Math.round((payMs - shootMs) / MS_PER_DAY);
+      cycleDays.push(Math.max(0, rawDays));
+    }
+    const avgPaymentCycleDays =
+      cycleDays.length > 0
+        ? Math.round(cycleDays.reduce((a, b) => a + b, 0) / cycleDays.length)
+        : null;
+
     // Последние 10 входящих платежей от этого клиента
     const inPayments = await prisma.gafferPayment.findMany({
       where: { direction: "IN", project: { clientId: id, gafferUserId } },
@@ -418,6 +443,7 @@ export async function getContactDebtSummary(req: Request, id: string) {
       projects: projectSummaries,
       totalClientRemaining: totalClientRemaining.toString(),
       recentPayments,
+      avgPaymentCycleDays,
     };
   } else {
     // TEAM_MEMBER — загружаем членства
@@ -475,12 +501,19 @@ export async function getContactDebtSummary(req: Request, id: string) {
       comment: p.comment,
     }));
 
+    // Compute lastPayoutDate: max paidAt across all OUT payments for this contact.
+    // outPayments is already ordered by paidAt desc, so the first item is the latest.
+    // Return the raw paidAt value (same as recentPayments serialization path).
+    const lastPayoutDate: Date | null =
+      outPayments.length > 0 ? outPayments[0].paidAt : null;
+
     return {
       type: contact.type === "VENDOR" ? ("VENDOR" as const) : ("TEAM_MEMBER" as const),
       contact: serializeContact(contact),
       memberships: memberSummaries,
       totalRemaining: totalRemaining.toString(),
       recentPayments,
+      lastPayoutDate,
     };
   }
 }
