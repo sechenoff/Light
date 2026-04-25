@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cancel-with-deposit · 3 ветки</title>
+<link rel="stylesheet" href="../shell.css">
+<link rel="stylesheet" href="_canon.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  .num-cell { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+  .modal-frame { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; box-shadow: 0 8px 24px rgba(0,0,0,.06); }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .modal-header h4 { margin: 0; }
+  .stepbar { display: flex; gap: 6px; margin-bottom: 16px; }
+  .step { flex: 1; height: 4px; background: var(--border); border-radius: 2px; }
+  .step.active { background: var(--accent-bright); }
+  .branch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 18px; }
+  .branch { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+  .branch.refund { border-top: 4px solid var(--emerald); }
+  .branch.hold { border-top: 4px solid var(--accent-bright); }
+  .branch.forfeit { border-top: 4px solid var(--rose); }
+  .branch h3 { margin: 0 0 4px; }
+  .branch .when { color: var(--ink-2); font-size: 13px; margin-bottom: 14px; }
+  .branch ol { padding-left: 18px; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
+  .branch ol code { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .branch .tag { display: inline-block; }
+  .radio-line { display: flex; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+  .radio-line.active { border-color: var(--accent-bright); background: var(--accent-soft); }
+  .radio-line .dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--ink-3); flex-shrink: 0; margin-top: 2px; }
+  .radio-line.active .dot { border-color: var(--accent-bright); background: var(--accent-bright); box-shadow: inset 0 0 0 3px var(--surface); }
+  .input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--surface); font-family: inherit; width: 100%; box-sizing: border-box; }
+  .input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .field-label { font-size: 12px; color: var(--ink-2); margin-bottom: 4px; display: block; font-weight: 500; }
+  .audit-line { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-2); padding: 6px 10px; background: var(--surface-2); border-radius: 6px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<a href="index.html" class="btn-ghost btn btn-sm" style="padding-left:0">← Все экраны</a>
+<div class="eyebrow" style="margin-top: 12px;">flow · /bookings/[id]</div>
+<h1>Cancel с депозитом — 3 ветки</h1>
+<p class="subtitle">Самый частый РФ-кейс: клиент внёс депозит, потом отменил съёмку. Wizard на 3 шага. Каждая ветка — отдельный audit-action и отдельный финальный state.</p>
+
+<!-- Trigger demo -->
+<div class="ribbon">
+  <span style="font-size: 18px;">⚠️</span>
+  <div class="ribbon-text">
+    <strong>Триггер:</strong> на <code>/bookings/[id]</code> SUPER_ADMIN жмёт «Отменить бронь». Если <code>Σ payments &gt; 0</code> — открывается <code>CancelWithDepositModal</code>. Если депозита нет — обычная отмена.
+  </div>
+</div>
+
+<!-- Step 1: choose branch -->
+<h2 style="margin-top: 32px;">Шаг 1 — выбор ветки</h2>
+<p class="hint">Один экран на 3 опции. SA знает свою policy — выбирает в один клик.</p>
+
+<div class="modal-frame" style="max-width: 560px; margin: 14px 0 22px;">
+  <div class="modal-header">
+    <h4>Отмена брони #B-2186 · Ромашка Продакшн</h4>
+    <button class="icon-btn" aria-label="Закрыть" style="border:none;">×</button>
+  </div>
+  <div class="stepbar"><div class="step active"></div><div class="step"></div><div class="step"></div></div>
+
+  <p style="margin-bottom: 14px; color: var(--ink-2);">У клиента <strong>30 000 ₽</strong> уже получено по этой броне. Что делаем с деньгами?</p>
+
+  <div class="radio-line active">
+    <div class="dot"></div>
+    <div>
+      <strong>Полный возврат клиенту</strong>
+      <div class="hint muted">30 000 ₽ возвращаются на тот же или указанный method. Запись Refund + audit.</div>
+    </div>
+  </div>
+  <div class="radio-line">
+    <div class="dot"></div>
+    <div>
+      <strong>Удержать как кредит на следующую бронь</strong>
+      <div class="hint muted">Деньги остаются у нас. Создаётся CreditNote клиента — применить можно при создании новой брони.</div>
+    </div>
+  </div>
+  <div class="radio-line">
+    <div class="dot"></div>
+    <div>
+      <strong>Удержать как штраф (forfeit)</strong>
+      <div class="hint muted">Платёж становится «удержанным» и попадает в KPI «Получено». Booking → CANCELLED.</div>
+    </div>
+  </div>
+
+  <div style="display:flex; justify-content: space-between; margin-top: 16px;">
+    <button class="btn">Закрыть</button>
+    <button class="btn btn-primary">Далее →</button>
+  </div>
+</div>
+
+<!-- Three branches side-by-side -->
+<div class="eyebrow">Шаг 2–3 · параллельные ветки</div>
+<h2 style="margin-bottom: 6px;">Три ветки detail</h2>
+
+<div class="branch-grid">
+
+  <!-- Branch A: Refund -->
+  <div class="branch refund">
+    <span class="tag" style="background: var(--emerald-soft); color: var(--emerald); border-color: #6ee7b7;">A · Возврат</span>
+    <h3 style="margin-top: 8px;">Полный возврат</h3>
+    <div class="when">Клиент уведомил заранее (≥7 дней) или съёмка сорвана по нашей вине. VIP-клиент.</div>
+
+    <div class="modal-frame" style="padding: 14px; margin-bottom: 14px;">
+      <div class="stepbar"><div class="step"></div><div class="step active"></div><div class="step"></div></div>
+      <strong style="font-size: 13px;">Параметры возврата</strong>
+      <div class="input-row" style="margin-top: 10px;">
+        <div>
+          <label class="field-label">Сумма</label>
+          <input class="input num-cell" value="30 000 ₽">
+        </div>
+        <div>
+          <label class="field-label">Method</label>
+          <select class="input">
+            <option>💵 Наличные</option>
+            <option selected>🏦 Перевод (как поступил)</option>
+            <option>💳 Карта</option>
+          </select>
+        </div>
+      </div>
+      <label class="field-label">Причина (мин 3 симв.)</label>
+      <textarea class="input" rows="2" placeholder="клиент перенёс проект, возврат по нашей policy"></textarea>
+      <button class="btn btn-primary" style="margin-top: 12px; width: 100%; justify-content: center; background: var(--emerald); border-color: var(--emerald);">Оформить возврат</button>
+    </div>
+
+    <strong style="font-size: 12px;">Финальное состояние:</strong>
+    <ul style="font-size: 12px; padding-left: 18px; color: var(--ink-2);">
+      <li>Booking → <code>CANCELLED</code></li>
+      <li>Refund запись (30 000 ₽)</li>
+      <li>Σ payments − Σ refunds = <strong>0 ₽</strong></li>
+      <li>В KPI «Получено» — net 0 за период</li>
+    </ul>
+    <div class="audit-line">audit · BOOKING_CANCELLED_REFUND_FULL · PAYMENT_REFUNDED · reason</div>
+  </div>
+
+  <!-- Branch B: Hold as credit -->
+  <div class="branch hold">
+    <span class="tag" style="background: var(--accent-soft); color: var(--accent-bright); border-color: #bfdbfe;">B · Кредит</span>
+    <h3 style="margin-top: 8px;">Удержать как кредит</h3>
+    <div class="when">Клиент попросил перенести съёмку. Деньги физически остаются у нас, привязаны к будущей броне.</div>
+
+    <div class="modal-frame" style="padding: 14px; margin-bottom: 14px;">
+      <div class="stepbar"><div class="step"></div><div class="step active"></div><div class="step"></div></div>
+      <strong style="font-size: 13px;">Куда применить кредит</strong>
+      <div class="radio-line active" style="margin-top: 10px; padding: 8px;">
+        <div class="dot"></div>
+        <div>
+          <strong style="font-size: 12px;">К существующей броне</strong>
+          <select class="input" style="margin-top: 6px;">
+            <option>Бронь #B-2240 · «Питерский нуар» сезон 3 · 12 мая</option>
+            <option>Бронь #B-2245 · «Серая зона» · 20 мая</option>
+          </select>
+        </div>
+      </div>
+      <div class="radio-line" style="padding: 8px;">
+        <div class="dot"></div>
+        <div>
+          <strong style="font-size: 12px;">Сохранить как открытый кредит</strong>
+          <div class="hint">Применить при создании следующей брони этого клиента.</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="margin-top: 12px; width: 100%; justify-content: center;">Создать кредит-ноту</button>
+    </div>
+
+    <strong style="font-size: 12px;">Финальное состояние:</strong>
+    <ul style="font-size: 12px; padding-left: 18px; color: var(--ink-2);">
+      <li>Booking → <code>CANCELLED</code></li>
+      <li>Payment остаётся (не refund'ится)</li>
+      <li><code>CreditNote</code> · 30 000 ₽ · OPEN | APPLIED</li>
+      <li>В UI клиента: «Кредит 30 000 ₽ доступен»</li>
+    </ul>
+    <div class="audit-line">audit · BOOKING_CANCELLED_CREDIT_HOLD · creditNoteId</div>
+  </div>
+
+  <!-- Branch C: Forfeit -->
+  <div class="branch forfeit">
+    <span class="tag" style="background: var(--rose-soft); color: var(--rose); border-color: var(--rose-border);">C · Штраф</span>
+    <h3 style="margin-top: 8px;">Удержать как штраф</h3>
+    <div class="when">Поздняя отмена. Policy организации — депозит не возвращается.</div>
+
+    <div class="modal-frame" style="padding: 14px; margin-bottom: 14px;">
+      <div class="stepbar"><div class="step"></div><div class="step active"></div><div class="step"></div></div>
+      <strong style="font-size: 13px;">Подтверждение удержания</strong>
+      <div style="margin-top: 10px;">
+        <div style="background: var(--rose-soft); padding: 10px; border-radius: 8px; border: 1px solid var(--rose-border); font-size: 12px; margin-bottom: 10px;">
+          ⚠ Удержание 30 000 ₽. Клиент не получает возврат. В отчётности появляется как доход.
+        </div>
+        <label class="field-label">Причина удержания (мин 3)</label>
+        <textarea class="input" rows="2" placeholder="отмена за 1 день до съёмки, согласно п.4.2 договора"></textarea>
+        <label style="display: flex; gap: 6px; align-items: center; margin-top: 10px; font-size: 12px;">
+          <input type="checkbox"> Уведомить клиента <span class="hint">(Phase 3+)</span>
+        </label>
+      </div>
+      <button class="btn btn-primary" style="margin-top: 12px; width: 100%; justify-content: center; background: var(--rose); border-color: var(--rose);">Удержать как штраф</button>
+    </div>
+
+    <strong style="font-size: 12px;">Финальное состояние:</strong>
+    <ul style="font-size: 12px; padding-left: 18px; color: var(--ink-2);">
+      <li>Booking → <code>CANCELLED</code></li>
+      <li>Payment остаётся, помечен <code>forfeitedAt</code></li>
+      <li>На /finance/payments badge «Удержан» (warn)</li>
+      <li>В KPI «Получено» учитывается отдельной категорией «Удержанные депозиты»</li>
+    </ul>
+    <div class="audit-line">audit · BOOKING_CANCELLED_FORFEIT · forfeitedAmount · reason</div>
+  </div>
+
+</div>
+
+<!-- After: where to see it -->
+<h2 style="margin-top: 36px;">Шаг 3 — confirmation + где найти потом</h2>
+<div class="panel">
+  <table class="tbl">
+    <thead>
+      <tr><th>Ветка</th><th>На /bookings/[id]</th><th>На /finance/payments</th><th>На /finance/debts</th><th>На /clients/[id]</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong style="color: var(--emerald);">A · Возврат</strong></td>
+        <td>Бронь CANCELLED · хронология показывает refund event</td>
+        <td>Две строки: оригинальный +30k и возврат −30k</td>
+        <td>Клиент исчезает (нет outstanding)</td>
+        <td>История: «возврат 30k за #B-2186»</td>
+      </tr>
+      <tr>
+        <td><strong style="color: var(--accent-bright);">B · Кредит</strong></td>
+        <td>Бронь CANCELLED · badge «Применён к B-2240»</td>
+        <td>Без изменений (платёж не refund'нут)</td>
+        <td>Без изменений</td>
+        <td>Badge «Кредит 30 000 ₽ · применён 12 мая» / «доступен»</td>
+      </tr>
+      <tr>
+        <td><strong style="color: var(--rose);">C · Штраф</strong></td>
+        <td>Бронь CANCELLED · хронология показывает forfeit event</td>
+        <td>Платёж со статусом «Удержан» (warn)</td>
+        <td>Без изменений</td>
+        <td>История: «удержан депозит за #B-2186 · отмена за 1 день»</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p class="hint" style="margin-top: 14px;">CreditNote применяется автоматически при создании новой брони этого клиента: SA видит чекбокс «Применить кредит 30 000 ₽» — при подтверждении создаётся <code>Payment</code> с <code>creditNoteRef</code>, CreditNote → APPLIED. Отдельный audit-action <code>BOOKING_CREDIT_APPLIED</code>.</p>
+
+</div>
+<!-- updated-by-superflow:2026-04-25 -->
+</body>
+</html>

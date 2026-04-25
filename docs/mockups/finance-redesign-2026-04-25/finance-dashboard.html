@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>/finance · дашборд</title>
+<link rel="stylesheet" href="../shell.css">
+<link rel="stylesheet" href="_canon.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="page">
+
+<div class="title-bar">
+  <a href="index.html" class="btn-ghost btn btn-sm" style="padding-left:0">← Все экраны</a>
+  <div class="eyebrow" style="margin-top: 12px;">/finance</div>
+  <h1>Финансы — дашборд</h1>
+  <p class="subtitle">«Всё ок ли с деньгами прямо сейчас?» — за 3 секунды. Period-фильтр работает; KPI кликабельны и дрилятся в отфильтрованные списки.</p>
+</div>
+
+<!-- Period selector + actions -->
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 18px; flex-wrap: wrap;">
+  <div class="period-tabs">
+    <button>Сегодня</button>
+    <button>7 дней</button>
+    <button class="active">30 дней</button>
+    <button>Квартал</button>
+    <button>Год</button>
+    <button>Кастом</button>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a class="btn btn-primary">+ Записать платёж</a>
+    <a class="btn">+ Создать счёт</a>
+  </div>
+</div>
+
+<!-- KPI strip -->
+<div class="kpi-grid">
+  <div class="kpi ok">
+    <div class="eyebrow">Получено</div>
+    <div class="value">1 245 000 ₽</div>
+    <div class="delta">+12 % к прошлому месяцу</div>
+    <svg class="spark spark-svg" viewBox="0 0 120 28" preserveAspectRatio="none">
+      <polyline fill="none" stroke="#047857" stroke-width="1.5" points="0,22 12,18 24,20 36,14 48,16 60,10 72,12 84,7 96,9 108,5 120,3"/>
+    </svg>
+  </div>
+  <div class="kpi">
+    <div class="eyebrow">Расходы</div>
+    <div class="value" style="color: var(--ink);">−324 800 ₽</div>
+    <div class="delta">из них Запчасти 142k</div>
+    <svg class="spark spark-svg" viewBox="0 0 120 28" preserveAspectRatio="none">
+      <polyline fill="none" stroke="#52525b" stroke-width="1.5" points="0,18 12,16 24,20 36,18 48,14 60,16 72,12 84,16 96,11 108,14 120,12"/>
+    </svg>
+  </div>
+  <div class="kpi alert">
+    <div class="eyebrow">Задолженность</div>
+    <div class="value">340 500 ₽</div>
+    <div class="delta">3 клиента просрочены</div>
+    <svg class="spark spark-svg" viewBox="0 0 120 28" preserveAspectRatio="none">
+      <polyline fill="none" stroke="#9f1239" stroke-width="1.5" points="0,16 12,17 24,15 36,18 48,16 60,19 72,17 84,21 96,19 108,22 120,20"/>
+    </svg>
+  </div>
+  <div class="kpi ok">
+    <div class="eyebrow">Прибыль (период)</div>
+    <div class="value">920 200 ₽</div>
+    <div class="delta">маржа 73,9 %</div>
+    <svg class="spark spark-svg" viewBox="0 0 120 28" preserveAspectRatio="none">
+      <polyline fill="none" stroke="#047857" stroke-width="1.5" points="0,20 12,17 24,18 36,12 48,14 60,9 72,11 84,5 96,8 108,4 120,2"/>
+    </svg>
+  </div>
+</div>
+
+<div class="demo-wrap">
+
+  <!-- Left column -->
+  <div>
+
+    <!-- Action ribbon -->
+    <div class="ribbon">
+      <span style="font-size: 18px;">⚡</span>
+      <div class="ribbon-text"><strong>Сегодня сделать:</strong> 2 счёта просрочены ≥ 7 дней · 1 платёж не привязан к счёту</div>
+      <a class="btn btn-sm">Открыть</a>
+    </div>
+
+    <!-- Top debtors -->
+    <div class="panel">
+      <div class="panel-title">
+        <h3>Топ-должники</h3>
+        <a class="btn-ghost btn btn-sm">Все долги →</a>
+      </div>
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Клиент</th>
+            <th>Сумма</th>
+            <th>Старейший</th>
+            <th>Статус</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Ромашка Продакшн</strong></td>
+            <td class="mono-num">142 000 ₽</td>
+            <td class="mono-num">14 дней</td>
+            <td><span class="pill pill-alert">Просрочен</span></td>
+            <td><a class="btn btn-sm">₽ Платёж</a></td>
+          </tr>
+          <tr>
+            <td><strong>Мосфильм-Сервис</strong></td>
+            <td class="mono-num">98 500 ₽</td>
+            <td class="mono-num">8 дней</td>
+            <td><span class="pill pill-warn">Срок прошёл</span></td>
+            <td><a class="btn btn-sm">₽ Платёж</a></td>
+          </tr>
+          <tr>
+            <td><strong>Студия «Луна»</strong></td>
+            <td class="mono-num">52 000 ₽</td>
+            <td class="mono-num">3 дня</td>
+            <td><span class="pill pill-info">Выставлен</span></td>
+            <td><a class="btn btn-sm">₽ Платёж</a></td>
+          </tr>
+          <tr>
+            <td><strong>ИП Петров А.С.</strong></td>
+            <td class="mono-num">28 000 ₽</td>
+            <td class="mono-num">2 дня</td>
+            <td><span class="pill pill-info">Выставлен</span></td>
+            <td><a class="btn btn-sm">₽ Платёж</a></td>
+          </tr>
+          <tr>
+            <td><strong>Movie Lab Group</strong></td>
+            <td class="mono-num">20 000 ₽</td>
+            <td class="mono-num">1 день</td>
+            <td><span class="pill pill-info">Выставлен</span></td>
+            <td><a class="btn btn-sm">₽ Платёж</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- Right column -->
+  <div>
+    <!-- Activity feed -->
+    <div class="panel">
+      <div class="panel-title">
+        <h3>Последняя активность</h3>
+        <span class="muted hint">за 24 ч</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13px;">
+        <div style="display:flex; gap:10px;">
+          <span style="font-size: 16px;">💰</span>
+          <div>
+            <div><strong class="money-in">+30 000 ₽</strong> · наличные · от Ромашка Продакшн</div>
+            <div class="muted hint">25 апр, 14:32 · принял Игорь К.</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <span style="font-size: 16px;">📄</span>
+          <div>
+            <div>Скачан счёт <span class="tag">LR-2026-0042</span> · Мосфильм-Сервис</div>
+            <div class="muted hint">25 апр, 13:18 · Анна З.</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <span style="font-size: 16px;">💳</span>
+          <div>
+            <div><strong class="money-in">+14 500 ₽</strong> · карта · от ИП Петров А.С.</div>
+            <div class="muted hint">25 апр, 11:04 · принял Игорь К.</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <span style="font-size: 16px;">🛠</span>
+          <div>
+            <div><strong class="money-out">−4 200 ₽</strong> · Запчасти · ремонт #R-128</div>
+            <div class="muted hint">25 апр, 10:21 · Сергей М.</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <span style="font-size: 16px;">↩</span>
+          <div>
+            <div><span class="pill pill-warn">Возврат</span> <strong class="money-out">−10 000 ₽</strong> · перевод · Студия «Луна»</div>
+            <div class="muted hint">24 апр, 18:45 · Анна З. — частичный refund</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <span style="font-size: 16px;">📄</span>
+          <div>
+            <div>Создан счёт <span class="tag">LR-2026-0043</span> · Студия «Луна»</div>
+            <div class="muted hint">24 апр, 16:30 · Анна З.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Mobile section -->
+<div style="margin-top: 36px;">
+  <div class="section-header">
+    <div>
+      <div class="eyebrow">Mobile · 390px</div>
+      <h2>Дашборд на телефоне</h2>
+    </div>
+  </div>
+  <div class="mobile">
+    <div class="m-header">📱 light-rental.ru/finance</div>
+    <div class="m-body">
+      <div class="eyebrow">Финансы</div>
+      <h3 style="margin-bottom: 14px;">30 дней</h3>
+      <div class="period-tabs" style="margin-bottom: 14px; flex-wrap: wrap; max-width: 100%;">
+        <button>Сегодня</button>
+        <button>7д</button>
+        <button class="active">30д</button>
+        <button>Квартал</button>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+        <div class="kpi ok" style="padding: 12px;">
+          <div class="eyebrow">Получено</div>
+          <div class="value" style="font-size: 18px;">1,2 М ₽</div>
+        </div>
+        <div class="kpi alert" style="padding: 12px;">
+          <div class="eyebrow">Долги</div>
+          <div class="value" style="font-size: 18px;">340k</div>
+        </div>
+        <div class="kpi" style="padding: 12px;">
+          <div class="eyebrow">Расходы</div>
+          <div class="value" style="font-size: 18px; color: var(--ink);">−325k</div>
+        </div>
+        <div class="kpi ok" style="padding: 12px;">
+          <div class="eyebrow">Прибыль</div>
+          <div class="value" style="font-size: 18px;">920k</div>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px;">
+        <a class="btn btn-primary btn-sm" style="justify-content: center;">+ Платёж</a>
+        <a class="btn btn-sm" style="justify-content: center;">+ Счёт</a>
+      </div>
+      <div class="ribbon" style="padding: 10px 12px; margin-bottom: 14px;">
+        <span style="font-size: 14px;">⚡</span>
+        <div style="font-size: 12px;">2 счёта просрочены</div>
+      </div>
+      <div class="eyebrow" style="margin-bottom: 8px;">Топ-должники</div>
+      <div style="font-size: 13px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display:flex; justify-content: space-between;"><strong>Ромашка Продакшн</strong> <span class="mono-num pill pill-alert">142 000 ₽</span></div>
+        <div style="display:flex; justify-content: space-between;"><strong>Мосфильм-Сервис</strong> <span class="mono-num pill pill-warn">98 500 ₽</span></div>
+        <div style="display:flex; justify-content: space-between;"><strong>Студия «Луна»</strong> <span class="mono-num pill pill-info">52 000 ₽</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<!-- updated-by-superflow:2026-04-25 -->
+</body>
+</html>

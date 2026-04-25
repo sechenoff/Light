@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>/bookings/[id] · финансовый блок (главное)</title>
+<link rel="stylesheet" href="../shell.css">
+<link rel="stylesheet" href="_canon.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  .num-cell { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+  .booking-frame { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 22px; }
+  .booking-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .booking-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+  .summary-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; padding: 14px; background: var(--surface-2); border-radius: 10px; }
+  .summary-cell .label { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+  .summary-cell .value { font-family: "IBM Plex Mono", monospace; font-size: 22px; font-weight: 600; }
+  .cta-row { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .timeline { display: flex; flex-direction: column; gap: 12px; padding-left: 28px; position: relative; }
+  .timeline::before { content: ''; position: absolute; left: 11px; top: 6px; bottom: 6px; width: 1.5px; background: var(--border); }
+  .timeline-event { position: relative; }
+  .timeline-event::before { content: ''; position: absolute; left: -24px; top: 4px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent-bright); }
+  .timeline-event.done::before { background: var(--emerald); border-color: var(--emerald); }
+  .timeline-event.draft::before { background: var(--surface); border-color: var(--ink-3); }
+  .timeline-event.refund::before { background: var(--amber); border-color: var(--amber); }
+  details summary { cursor: pointer; padding: 10px 14px; background: var(--surface-2); border-radius: 8px; font-weight: 500; list-style: none; }
+  details summary::after { content: '▾'; float: right; color: var(--ink-3); }
+  details[open] summary::after { content: '▴'; }
+  details > div { padding: 14px; }
+  .dual-pills { display: inline-flex; gap: 6px; }
+  .row-line { padding: 10px 0; border-bottom: 1px solid var(--slate-soft); display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+  .row-line:last-child { border-bottom: none; }
+  .row-line.voided { color: var(--ink-3); text-decoration: line-through; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<a href="index.html" class="btn-ghost btn btn-sm" style="padding-left:0">← Все экраны</a>
+<div class="eyebrow" style="margin-top: 12px; color: var(--accent-bright);">/bookings/[id] · финансовый блок · ГЛАВНОЕ</div>
+<h1>Финансы на карточке брони</h1>
+<p class="subtitle">Booking — единственный источник правды о деньгах конкретной сделки. Здесь живут CTA «Скачать счёт PDF» и «Скачать акт PDF» — главная боль founder'а закрыта в Phase 1, ещё до модели Invoice.</p>
+
+<!-- Desktop view -->
+<div class="eyebrow">Desktop · 1280</div>
+<h2 style="margin-bottom: 14px;">Бронь #B-2186 · «Питерский нуар» · Ромашка Продакшн</h2>
+
+<div class="booking-frame">
+
+  <!-- Header -->
+  <div class="booking-header">
+    <div>
+      <div class="eyebrow">Финансы по броне</div>
+      <h3 style="margin: 4px 0;">Частично оплачена</h3>
+      <div class="booking-meta">
+        <span class="pill pill-info">Бронь · Возвращена</span>
+        <span class="pill pill-warn">Деньги · Частично оплачен</span>
+      </div>
+    </div>
+    <div style="text-align: right;">
+      <div class="muted hint">15 апр — 18 апр (4 дня)</div>
+      <div class="muted hint">создано Анной З. · 02 апр</div>
+    </div>
+  </div>
+
+  <!-- Summary row -->
+  <div class="summary-row">
+    <div class="summary-cell">
+      <div class="label">Сумма брони</div>
+      <div class="value">142 000 ₽</div>
+    </div>
+    <div class="summary-cell">
+      <div class="label">Получено</div>
+      <div class="value" style="color: var(--emerald);">100 000 ₽</div>
+    </div>
+    <div class="summary-cell">
+      <div class="label">Остаток</div>
+      <div class="value" style="color: var(--rose);">42 000 ₽</div>
+    </div>
+  </div>
+
+  <!-- CTA row -->
+  <div class="cta-row">
+    <a class="btn btn-primary">+ Записать платёж</a>
+    <a class="btn">📄 Скачать счёт PDF</a>
+    <a class="btn">📄 Скачать акт PDF</a>
+    <a class="btn-ghost btn">+ Создать счёт <span class="muted hint" style="font-size: 10px; margin-left: 4px;">Phase 2</span></a>
+  </div>
+
+  <!-- Invoices section (Phase 2) -->
+  <h4 style="margin-top: 8px; margin-bottom: 10px;">Счета</h4>
+  <div class="panel" style="padding: 0; margin-top: 0; margin-bottom: 18px;">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>№</th>
+          <th>Тип</th>
+          <th>Сумма</th>
+          <th>Оплачено</th>
+          <th>Срок</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag">LR-2026-0028</span></td>
+          <td>Предоплата 30%</td>
+          <td class="num-cell">42 000 ₽</td>
+          <td class="num-cell">42 000 ₽</td>
+          <td class="num-cell">10 апр</td>
+          <td><span class="pill pill-ok">Оплачен</span></td>
+          <td>
+            <div style="display: flex; gap: 4px;">
+              <a class="btn btn-sm">📄 PDF</a>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="tag">LR-2026-0042</span></td>
+          <td>Остаток 70%</td>
+          <td class="num-cell">100 000 ₽</td>
+          <td class="num-cell">58 000 ₽</td>
+          <td class="num-cell" style="color: var(--rose);">11 апр<br><span class="hint">14 дн.</span></td>
+          <td><span class="pill pill-warn">Частично оплачен</span></td>
+          <td>
+            <div style="display: flex; gap: 4px;">
+              <a class="btn btn-sm btn-primary">₽ Платёж</a>
+              <a class="btn btn-sm">📄 PDF</a>
+              <a class="btn btn-sm">⊘</a>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Payments section -->
+  <h4 style="margin-bottom: 10px;">Платежи</h4>
+  <div style="margin-bottom: 18px;">
+    <div class="row-line">
+      <div>
+        <strong class="money-in">+42 000 ₽</strong> · 💵 Наличные
+        <div class="muted hint">10 апр, 14:30 · принял Игорь К. · к счёту LR-2026-0028</div>
+      </div>
+      <div style="display: flex; gap: 4px;">
+        <a class="btn btn-sm">↩ Возврат</a>
+        <a class="btn btn-sm" style="color: var(--rose);">⊘</a>
+      </div>
+    </div>
+    <div class="row-line">
+      <div>
+        <strong class="money-in">+58 000 ₽</strong> · 🏦 Перевод
+        <div class="muted hint">18 апр, 11:20 · принял Анна З. · к счёту LR-2026-0042</div>
+      </div>
+      <div style="display: flex; gap: 4px;">
+        <a class="btn btn-sm">↩ Возврат</a>
+        <a class="btn btn-sm" style="color: var(--rose);">⊘</a>
+      </div>
+    </div>
+    <div class="row-line voided">
+      <div>
+        +25 000 ₽ · 🏦 Перевод
+        <div class="hint">15 апр · аннулирован 16 апр · «опечатка в реквизитах»</div>
+      </div>
+      <div></div>
+    </div>
+  </div>
+
+  <!-- Timeline (collapsible) -->
+  <details style="margin-bottom: 14px;">
+    <summary>📊 Хронология денег <span class="muted hint" style="font-weight: 400;">— 6 событий</span></summary>
+    <div>
+      <div class="timeline">
+        <div class="timeline-event done">
+          <strong>💰 Получено 58 000 ₽ переводом</strong>
+          <div class="muted hint">18 апр, 11:20 · Анна З. · к счёту LR-2026-0042</div>
+        </div>
+        <div class="timeline-event done">
+          <strong>📄 Счёт LR-2026-0042 выставлен на 100 000 ₽</strong>
+          <div class="muted hint">11 апр, 09:00 · Анна З. · срок 11 апр</div>
+        </div>
+        <div class="timeline-event done">
+          <strong>💰 Получено 42 000 ₽ наличными — депозит</strong>
+          <div class="muted hint">10 апр, 14:30 · Игорь К. · к счёту LR-2026-0028</div>
+        </div>
+        <div class="timeline-event done">
+          <strong>📄 Счёт LR-2026-0028 выставлен на 42 000 ₽ (предоплата 30%)</strong>
+          <div class="muted hint">02 апр, 17:45 · Анна З.</div>
+        </div>
+        <div class="timeline-event">
+          <strong>✅ Бронь подтверждена</strong>
+          <div class="muted hint">02 апр, 17:32 · Анна З.</div>
+        </div>
+        <div class="timeline-event draft">
+          <strong>📝 Бронь создана</strong>
+          <div class="muted hint">02 апр, 16:00 · Анна З.</div>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <!-- Linked expenses (SA only) -->
+  <details>
+    <summary>🛒 Связанные расходы <span class="muted hint" style="font-weight: 400;">— SUPER_ADMIN only · маржа 137 100 ₽ (96.5%)</span></summary>
+    <div>
+      <div class="row-line">
+        <div>🚗 Доставка комплекта · −2 500 ₽</div>
+        <div class="muted hint">24 апр · утверждён</div>
+      </div>
+      <div class="row-line">
+        <div>🔧 Замена кабеля XLR · −2 400 ₽</div>
+        <div class="muted hint">22 апр · ремонт R-119 · утверждён</div>
+      </div>
+    </div>
+  </details>
+
+</div>
+
+<!-- Phase 1 fallback note -->
+<div class="ribbon">
+  <span style="font-size: 18px;">ℹ️</span>
+  <div class="ribbon-text">
+    <strong>В Phase 1</strong> секция «Счета» скрыта (модели <code>Invoice</code> ещё нет). На её месте — кнопка «Скачать счёт PDF» генерит черновик из <code>Booking.finalAmount</code> + реквизитов организации (ENV).
+    Phase 2 — реальные Invoice со статусами и CTA «Создать счёт».
+  </div>
+</div>
+
+<!-- Mobile section — critical -->
+<div style="margin-top: 40px;">
+  <div class="eyebrow">Mobile · 390px · sticky-bottom CTA</div>
+  <h2>На телефоне: WAREHOUSE и SA flow</h2>
+  <p class="hint" style="margin-bottom: 18px;">Шапка + сводка всегда видны. Primary action «Записать платёж / Счёт PDF / Акт PDF» — sticky bottom, в одну строку. Остальные секции collapsible.</p>
+
+  <div class="mobile-row">
+
+    <!-- Mobile A: SUPER_ADMIN view -->
+    <div class="mobile">
+      <div class="m-header">📱 SA · /bookings/B-2186</div>
+      <div class="m-body">
+        <div class="eyebrow">Бронь #B-2186</div>
+        <strong style="font-size: 16px;">Ромашка Продакшн</strong>
+        <div class="muted hint" style="margin: 4px 0 12px;">«Питерский нуар» · 15–18 апр</div>
+
+        <div class="dual-pills" style="margin-bottom: 12px;">
+          <span class="pill pill-info" style="font-size: 11px;">Бронь · Возвращена</span>
+          <span class="pill pill-warn" style="font-size: 11px;">Деньги · Частично</span>
+        </div>
+
+        <div style="background: var(--surface-2); border-radius: 10px; padding: 12px; margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px; color: var(--ink-2);">
+            <span>Сумма</span>
+            <span class="num-cell">142 000 ₽</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
+            <span>Получено</span>
+            <span class="num-cell" style="color: var(--emerald); font-weight: 500;">100 000 ₽</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding-top: 6px; border-top: 1px solid var(--border); font-size: 14px; font-weight: 600;">
+            <span>Остаток</span>
+            <span class="num-cell" style="color: var(--rose);">42 000 ₽</span>
+          </div>
+        </div>
+
+        <details open style="margin-bottom: 12px;">
+          <summary>Платежи (3)</summary>
+          <div style="font-size: 12px;">
+            <div class="row-line" style="padding: 8px 0;">
+              <div>+42 000 ₽ · 💵 нал<div class="muted hint">10 апр · Игорь К.</div></div>
+            </div>
+            <div class="row-line" style="padding: 8px 0;">
+              <div>+58 000 ₽ · 🏦 перевод<div class="muted hint">18 апр · Анна З.</div></div>
+            </div>
+            <div class="row-line voided" style="padding: 8px 0;">
+              <div>+25 000 ₽ · аннулирован<div class="hint">опечатка</div></div>
+            </div>
+          </div>
+        </details>
+
+        <details>
+          <summary>Хронология денег</summary>
+          <div class="muted hint" style="padding: 8px 0;">6 событий · клик чтобы развернуть</div>
+        </details>
+
+      </div>
+      <!-- Sticky bottom -->
+      <div class="sticky-bottom">
+        <a class="btn btn-primary btn-sm">₽ Платёж</a>
+        <a class="btn btn-sm">📄 Счёт</a>
+        <a class="btn btn-sm">📄 Акт</a>
+      </div>
+    </div>
+
+    <!-- Mobile B: WAREHOUSE view (limits) -->
+    <div class="mobile">
+      <div class="m-header">📱 WAREHOUSE · /bookings/B-2186</div>
+      <div class="m-body">
+        <div class="eyebrow">Бронь #B-2186</div>
+        <strong style="font-size: 16px;">Ромашка Продакшн</strong>
+        <div class="muted hint" style="margin: 4px 0 12px;">«Питерский нуар» · 15–18 апр</div>
+
+        <div class="dual-pills" style="margin-bottom: 12px;">
+          <span class="pill pill-info" style="font-size: 11px;">Бронь · Возвращена</span>
+          <span class="pill pill-warn" style="font-size: 11px;">Остаток 42 000 ₽</span>
+        </div>
+
+        <div style="background: var(--surface-2); border-radius: 10px; padding: 12px; margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; padding-top: 6px; font-size: 14px; font-weight: 600;">
+            <span>Остаток</span>
+            <span class="num-cell" style="color: var(--rose);">42 000 ₽</span>
+          </div>
+        </div>
+
+        <div style="background: var(--accent-soft); border: 1px solid #bfdbfe; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px; color: var(--accent-bright);">
+          <strong>WAREHOUSE-доступ:</strong> только наличные/карта · до 100 000 ₽ за операцию
+        </div>
+
+        <details>
+          <summary>Платежи (2)</summary>
+          <div style="font-size: 12px; padding: 8px 0;" class="muted hint">только мои операции (Игорь К.)</div>
+        </details>
+
+        <p class="hint muted" style="margin-top: 14px;">Хронология денег и связанные расходы видны только SUPER_ADMIN.</p>
+
+      </div>
+      <div class="sticky-bottom">
+        <a class="btn btn-primary btn-sm" style="flex:2">₽ Принять оплату</a>
+        <a class="btn btn-sm">📄 Акт</a>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+</div>
+<!-- updated-by-superflow:2026-04-25 -->
+</body>
+</html>

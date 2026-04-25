@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>/finance/debts · дебиторка</title>
+<link rel="stylesheet" href="../shell.css">
+<link rel="stylesheet" href="_canon.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  .aging { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 18px; font-size: 13px; }
+  .aging th { padding: 14px 16px; text-align: left; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-3); font-weight: 600; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+  .aging td { padding: 14px 16px; border-bottom: 1px solid var(--slate-soft); vertical-align: middle; }
+  .aging tr:last-child td { border-bottom: none; }
+  .aging-cell { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; cursor: pointer; }
+  .aging-cell.b0 { background: var(--surface-2); color: var(--ink-2); }
+  .aging-cell.b1 { background: #fef9c3; color: #854d0e; }
+  .aging-cell.b2 { background: #fef3c7; color: #92400e; font-weight: 500; }
+  .aging-cell.b3 { background: #ffedd5; color: #9a3412; font-weight: 500; }
+  .aging-cell.b4 { background: var(--rose-soft); color: var(--rose); font-weight: 600; }
+  .aging-cell.empty { color: var(--ink-3); }
+  .aging-totals { background: #1e293b; color: #fff; }
+  .aging-totals td { color: #fff; font-weight: 500; border-bottom: none; }
+  .toggle { display: inline-flex; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .toggle button { background: var(--surface); border: 0; padding: 7px 12px; font-size: 12px; cursor: pointer; color: var(--ink-2); font-family: inherit; }
+  .toggle button.active { background: var(--accent-bright); color: #fff; }
+  .legend { display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--ink-2); margin-bottom: 14px; flex-wrap: wrap; }
+  .legend-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+  .ldot { display: inline-flex; align-items: center; gap: 4px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<a href="index.html" class="btn-ghost btn btn-sm" style="padding-left:0">← Все экраны</a>
+<div class="eyebrow" style="margin-top: 12px;">/finance/debts</div>
+<h1>Дебиторка</h1>
+<p class="subtitle">Кому позвонить сегодня — за один взгляд. Цветной светофор по бакетам просрочки. Drill-down: клик в ячейку → конкретные счета этого бакета. В Phase 2 наполняется через <code>Invoice.dueDate</code>.</p>
+
+<!-- Filter row -->
+<div style="display: flex; gap: 14px; margin-bottom: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+  <div style="display: flex; gap: 10px; align-items: center;">
+    <input type="text" class="input" style="padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; min-width: 240px;" placeholder="🔍 Контрагент или проект…">
+    <div class="toggle">
+      <button>Все с остатком</button>
+      <button class="active">Только просроченные</button>
+    </div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a class="btn">📊 Экспорт XLSX</a>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <span><strong>Светофор просрочки:</strong></span>
+  <span class="ldot"><span class="legend-swatch" style="background: var(--surface-2);"></span> Текущая</span>
+  <span class="ldot"><span class="legend-swatch" style="background: #fef9c3;"></span> 1–30 дн.</span>
+  <span class="ldot"><span class="legend-swatch" style="background: #fef3c7;"></span> 31–60</span>
+  <span class="ldot"><span class="legend-swatch" style="background: #ffedd5;"></span> 61–90</span>
+  <span class="ldot"><span class="legend-swatch" style="background: var(--rose-soft);"></span> 90+ безнадёжно</span>
+</div>
+
+<!-- Aging table -->
+<table class="aging">
+  <thead>
+    <tr>
+      <th>Контрагент</th>
+      <th style="text-align: right;">Текущая</th>
+      <th style="text-align: right;">1–30 дн.</th>
+      <th style="text-align: right;">31–60</th>
+      <th style="text-align: right;">61–90</th>
+      <th style="text-align: right;">90+</th>
+      <th style="text-align: right;">Итого</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <strong>Ромашка Продакшн</strong>
+        <div class="muted hint">2 счёта · крупнейший должник</div>
+      </td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell b1" style="text-align: right;">42 000 ₽</td>
+      <td class="aging-cell b2" style="text-align: right;">100 000 ₽</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell" style="text-align: right; font-weight: 600;">142 000 ₽</td>
+      <td>
+        <div style="display: flex; gap: 4px;">
+          <a class="btn btn-sm">₽ Платёж</a>
+          <a class="btn btn-sm" href="tel:+79161112233" aria-label="Позвонить">📞</a>
+          <a class="btn btn-sm" href="mailto:accounts@romashka.ru" aria-label="Написать">✉</a>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Мосфильм-Сервис</strong>
+        <div class="muted hint">1 счёт · LR-2026-0043</div>
+      </td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell b1" style="text-align: right;">98 500 ₽</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell" style="text-align: right; font-weight: 600;">98 500 ₽</td>
+      <td>
+        <div style="display: flex; gap: 4px;">
+          <a class="btn btn-sm">₽ Платёж</a>
+          <a class="btn btn-sm">📞</a>
+          <a class="btn btn-sm">✉</a>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Студия «Луна»</strong>
+        <div class="muted hint">1 счёт · LR-2026-0044 · текущий</div>
+      </td>
+      <td class="aging-cell b0" style="text-align: right;">52 000 ₽</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell" style="text-align: right; font-weight: 600;">52 000 ₽</td>
+      <td>
+        <div style="display: flex; gap: 4px;">
+          <a class="btn btn-sm">₽ Платёж</a>
+          <a class="btn btn-sm">📞</a>
+          <a class="btn btn-sm">✉</a>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <strong>ИП Петров А.С.</strong>
+        <div class="muted hint">1 счёт · частично оплачен</div>
+      </td>
+      <td class="aging-cell b0" style="text-align: right;">13 500 ₽</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell" style="text-align: right; font-weight: 600;">13 500 ₽</td>
+      <td>
+        <div style="display: flex; gap: 4px;">
+          <a class="btn btn-sm">₽ Платёж</a>
+          <a class="btn btn-sm">📞</a>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Old Studio Ltd</strong>
+        <div class="muted hint">legacy · pre-cutoff</div>
+      </td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell empty" style="text-align: right;">—</td>
+      <td class="aging-cell b3" style="text-align: right;">25 000 ₽</td>
+      <td class="aging-cell b4" style="text-align: right;">9 500 ₽</td>
+      <td class="aging-cell" style="text-align: right; font-weight: 600;">34 500 ₽</td>
+      <td>
+        <div style="display: flex; gap: 4px;">
+          <a class="btn btn-sm">📞</a>
+          <a class="btn btn-sm">✉</a>
+        </div>
+      </td>
+    </tr>
+    <tr class="aging-totals">
+      <td><strong>Итого</strong></td>
+      <td class="num-cell" style="text-align: right;">65 500 ₽</td>
+      <td class="num-cell" style="text-align: right;">140 500 ₽</td>
+      <td class="num-cell" style="text-align: right;">100 000 ₽</td>
+      <td class="num-cell" style="text-align: right;">25 000 ₽</td>
+      <td class="num-cell" style="text-align: right;">9 500 ₽</td>
+      <td class="num-cell" style="text-align: right; font-size: 15px;"><strong>340 500 ₽</strong></td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<p class="hint">«Связаться» открывает <code>tel:</code> / <code>mailto:</code> через системный обработчик. Email-шаблоны напоминаний — Phase 3. Кнопка-пустышка «Отправить напоминания» удалена в Phase 1. Legacy-брони (pre-cutoff) показываются с пометкой; aging для них считается по <code>booking.endDate + grace_period</code>, для post-cutoff — по <code>Invoice.dueDate</code>.</p>
+
+<!-- Mobile -->
+<div style="margin-top: 36px;">
+  <div class="eyebrow">Mobile · 390px</div>
+  <h2>Дебиторка на телефоне</h2>
+  <p class="hint">Аккордеон по бакетам — каждый бакет — карточка. Альтернатива horizontal-scroll: мобильная вертикальная развёртка по приоритету просрочки.</p>
+  <div class="mobile">
+    <div class="m-header">📱 light-rental.ru/finance/debts</div>
+    <div class="m-body">
+      <h3 style="margin-bottom: 4px;">Дебиторка</h3>
+      <div class="muted hint" style="margin-bottom: 14px;">всего 340 500 ₽ · 5 контрагентов</div>
+      <div class="toggle" style="margin-bottom: 14px;">
+        <button>Все</button>
+        <button class="active">Просрочены</button>
+      </div>
+
+      <!-- Bucket card 90+ -->
+      <div style="border: 1px solid var(--rose-border); border-radius: 10px; padding: 12px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="color: var(--rose);">90+ безнадёжно</strong>
+          <span class="num-cell" style="color: var(--rose); font-weight: 600;">9 500 ₽</span>
+        </div>
+        <div style="margin-top: 8px; font-size: 12px;">Old Studio Ltd</div>
+      </div>
+      <!-- Bucket 61-90 -->
+      <div style="border: 1px solid #fed7aa; border-radius: 10px; padding: 12px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="color: #9a3412;">61–90 дней</strong>
+          <span class="num-cell" style="font-weight: 600;">25 000 ₽</span>
+        </div>
+        <div style="margin-top: 8px; font-size: 12px;">Old Studio Ltd</div>
+      </div>
+      <!-- Bucket 31-60 -->
+      <div style="border: 1px solid #fcd34d; border-radius: 10px; padding: 12px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="color: #92400e;">31–60 дней</strong>
+          <span class="num-cell" style="font-weight: 600;">100 000 ₽</span>
+        </div>
+        <div style="margin-top: 8px; font-size: 12px;">Ромашка Продакшн</div>
+      </div>
+      <!-- Bucket 1-30 -->
+      <div style="border: 1px solid #fde68a; border-radius: 10px; padding: 12px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="color: #854d0e;">1–30 дней</strong>
+          <span class="num-cell" style="font-weight: 600;">140 500 ₽</span>
+        </div>
+        <div style="margin-top: 8px; font-size: 12px;">Ромашка Продакшн · Мосфильм-Сервис</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<!-- updated-by-superflow:2026-04-25 -->
+</body>
+</html>
