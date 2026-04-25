@@ -29,6 +29,10 @@ import { tasksRouter } from "./tasks";
 import { clientsRouter } from "./clients";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { vehiclesRouter } from "./vehicles";
+import { invoicesRouter } from "./invoices";
+import { refundsRouter } from "./refunds";
+import { creditNotesRouter } from "./creditNotes";
+import { organizationSettingsRouter } from "./organizationSettings";
 
 const router = express.Router();
 
@@ -132,5 +136,18 @@ router.use("/api/clients", clientsRouter);
 
 // /api/vehicles — GET: все аутентифицированные роли; /api/admin/vehicles: SUPER_ADMIN (guard per-route)
 router.use("/api/vehicles", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), vehiclesRouter);
+
+// Finance Phase 2 routes
+// /api/invoices — POST/PATCH/issue/void: SA only; GET: SA + WH
+router.use("/api/invoices", invoicesRouter);
+
+// /api/refunds — POST: SA only; GET: SA + WH
+router.use("/api/refunds", refundsRouter);
+
+// /api/credit-notes — POST/apply: SA only; GET: SA + WH
+router.use("/api/credit-notes", creditNotesRouter);
+
+// /api/settings — GET/PATCH organization: SA only
+router.use("/api/settings", organizationSettingsRouter);
 
 export { router };

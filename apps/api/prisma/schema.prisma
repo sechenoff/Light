@@ -77,6 +77,22 @@ enum TaskStatus {
   DONE
 }
 
+enum InvoiceKind {
+  FULL
+  DEPOSIT
+  BALANCE
+  CORRECTION
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIAL_PAID
+  PAID
+  OVERDUE
+  VOID
+}
+
 enum LeadStatus {
   NEW
   IN_PROGRESS
@@ -316,6 +332,11 @@ model Booking {
   /// Флаг импорта из старых данных: бронь без items, только финансовый остаток
   isLegacyImport Boolean @default(false)
 
+  /// Флаг dual-mode финансов: true = pre-cutoff (старая логика Payment напрямую), false = post-cutoff (Invoice-слой)
+  legacyFinance Boolean @default(true)
+
+  invoices       Invoice[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   confirmedAt DateTime?
@@ -349,6 +370,15 @@ model Payment {
   note        String?        // примечание (замена comment)
   createdBy   String?        // AdminUser.id
 
+  /// Finance Phase 2: привязка к Invoice + soft-void
+  invoiceId   String?
+  invoice     Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  voidedAt    DateTime?
+  voidedBy    String?   // AdminUser.id
+  voidReason  String?
+
+  refunds     Refund[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -358,6 +388,7 @@ model Payment {
   @@index([plannedPaymentDate])
   @@index([paymentDate])
   @@index([receivedAt])
+  @@index([invoiceId])
 }
 
 model Expense {
@@ -770,6 +801,100 @@ model Task {
   @@index([status, assignedTo])
   @@index([status, dueDate])
   @@index([createdBy, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Finance Phase 2 models
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Счёт (Invoice) — финансовый документ-обязательство, привязанный к броне.
+/// Нумерация: LR-YYYY-NNNN (настраивается через OrganizationSettings.invoiceNumberPrefix).
+model Invoice {
+  id          String        @id @default(cuid())
+  number      String        @unique  // LR-2026-0042
+  bookingId   String
+  booking     Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  kind        InvoiceKind   // FULL | DEPOSIT | BALANCE | CORRECTION
+  status      InvoiceStatus // DRAFT | ISSUED | PARTIAL_PAID | PAID | OVERDUE | VOID
+  total       Decimal
+  paidAmount  Decimal       @default(0)
+  dueDate     DateTime?
+  issuedAt    DateTime?
+  voidedAt    DateTime?
+  voidedBy    String?       // AdminUser.id
+  voidReason  String?
+  notes       String?
+  createdBy   String        // AdminUser.id
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  payments    Payment[]
+  refunds     Refund[]
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([number])
+}
+
+/// Возврат денег клиенту. Привязан к Payment и/или Invoice.
+model Refund {
+  id          String        @id @default(cuid())
+  invoiceId   String?
+  invoice     Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  paymentId   String?
+  payment     Payment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  bookingId   String?       // для cancel-with-deposit до Invoice
+  amount      Decimal
+  reason      String
+  method      PaymentMethod // переиспользуем существующий enum
+  refundedAt  DateTime
+  createdBy   String        // AdminUser.id
+  createdAt   DateTime      @default(now())
+
+  @@index([invoiceId])
+  @@index([bookingId])
+  @@index([paymentId])
+}
+
+/// Кредит-нота — удержанный депозит как кредит на будущую бронь.
+/// Создаётся в cancel-with-deposit flow при выборе ветки «удержать как кредит».
+model CreditNote {
+  id                 String    @id @default(cuid())
+  contactClientId    String    // Client.id
+  bookingId          String?   // origin booking (отменённая с депозитом)
+  amount             Decimal
+  remaining          Decimal   // изначально = amount; уменьшается при применении
+  reason             String
+  appliedToBookingId String?   // когда применили к следующей броне
+  appliedAt          DateTime?
+  createdBy          String    // AdminUser.id
+  createdAt          DateTime  @default(now())
+  expiresAt          DateTime?
+
+  @@index([contactClientId])
+  @@index([bookingId])
+  @@index([appliedToBookingId])
+}
+
+/// Настройки организации — синглтон (id = "singleton").
+/// Хранит реквизиты для PDF-счетов и настройки нумерации.
+model OrganizationSettings {
+  id                   String   @id @default("singleton")
+  legalName            String   @default("")
+  inn                  String   @default("")
+  kpp                  String?
+  bankName             String?
+  bankBik              String?
+  rschet               String?
+  kschet               String?
+  address              String?
+  phone                String?
+  email                String?
+  invoiceNumberPrefix  String   @default("LR")
+  /// Дата отсечения: брони до cutoff → legacyFinance=true, после → false
+  migrationCutoffAt    DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

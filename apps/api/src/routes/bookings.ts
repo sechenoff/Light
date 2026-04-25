@@ -1214,6 +1214,21 @@ router.get(
         });
       }
 
+      // Finance Phase 2: если бронь post-cutoff (legacyFinance=false) и есть Invoice — перенаправляем
+      if (!booking.legacyFinance) {
+        const existingInvoice = await prisma.invoice.findFirst({
+          where: { bookingId: booking.id, status: { not: "VOID" } },
+          orderBy: { createdAt: "desc" },
+        });
+        if (existingInvoice) {
+          // Сообщаем клиенту использовать /api/invoices/:id/pdf
+          throw new HttpError(409, "Используйте /api/invoices/:id/pdf для этой брони", {
+            code: "USE_INVOICE_PDF",
+            invoiceId: existingInvoice.id,
+          });
+        }
+      }
+
       const org = readOrgFromEnv();
       const invoiceNumber = `LR-DRAFT-${booking.id.slice(0, 8).toUpperCase()}`;
       const invoiceDate = new Date().toLocaleDateString("ru-RU");

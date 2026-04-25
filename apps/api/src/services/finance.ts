@@ -43,6 +43,7 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
       payments: {
         where: {
           direction: "INCOME",
+          voidedAt: null, // Исключаем аннулированные платежи (Finance Phase 2)
           OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }],
         },
         select: { amount: true, paymentDate: true, createdAt: true },
@@ -134,11 +135,11 @@ export async function dashboardMetrics() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const [todayIncome, weekIncome, monthIncome, expectedPayments, overdueBookings, allBookings, expensesMonth, allExpenses, allIncome] = await Promise.all([
-    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", paymentDate: { gte: dayStart } }, select: { amount: true } }),
-    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", paymentDate: { gte: weekStart } }, select: { amount: true } }),
-    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", paymentDate: { gte: monthStart } }, select: { amount: true } }),
+    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", voidedAt: null, paymentDate: { gte: dayStart } }, select: { amount: true } }),
+    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", voidedAt: null, paymentDate: { gte: weekStart } }, select: { amount: true } }),
+    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", voidedAt: null, paymentDate: { gte: monthStart } }, select: { amount: true } }),
     prisma.payment.findMany({
-      where: { direction: "INCOME", status: "PLANNED", plannedPaymentDate: { not: null } },
+      where: { direction: "INCOME", status: "PLANNED", voidedAt: null, plannedPaymentDate: { not: null } },
       include: { booking: { include: { client: true } } },
       orderBy: { plannedPaymentDate: "asc" },
       take: 20,
@@ -152,7 +153,7 @@ export async function dashboardMetrics() {
     prisma.booking.findMany({ where: { status: { not: "CANCELLED" } }, select: { amountOutstanding: true, paymentStatus: true } }),
     prisma.expense.findMany({ where: { expenseDate: { gte: monthStart } }, select: { amount: true } }),
     prisma.expense.findMany({ select: { amount: true } }),
-    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED" }, select: { amount: true } }),
+    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", voidedAt: null }, select: { amount: true } }),
   ]);
 
   const incomeToday = sumDec(todayIncome.map((x) => x.amount.toString()));
@@ -244,6 +245,7 @@ async function computeMonthlyTrend(asOf: Date) {
         prisma.payment.aggregate({
           where: {
             direction: "INCOME",
+            voidedAt: null,
             AND: [
               { OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }] },
               { OR: [{ receivedAt: { gte: start, lt: nextStart } }, { paymentDate: { gte: start, lt: nextStart } }] },
@@ -286,6 +288,7 @@ export async function computeFinanceDashboard(asOf: Date = new Date()) {
     prisma.payment.aggregate({
       where: {
         direction: "INCOME",
+        voidedAt: null,
         OR: [
           { receivedAt: { gte: monthS, lt: monthNextS } },
           { AND: [{ receivedAt: null }, { paymentDate: { gte: monthS, lt: monthNextS } }, { status: "RECEIVED" }] },
@@ -387,6 +390,7 @@ export async function computePaymentsCalendar(monthStart: Date): Promise<Record<
     prisma.payment.findMany({
       where: {
         direction: "INCOME",
+        voidedAt: null,
         AND: [
           { OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }] },
           { OR: [{ receivedAt: { gte: monthStart, lt: monthNextStart } }, { paymentDate: { gte: monthStart, lt: monthNextStart } }] },
@@ -595,5 +599,65 @@ export async function computeDebts(
       asOf: now.toISOString(),
     },
   };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Finance Phase 2: Aging buckets
+// ──────────────────────────────────────────────────────────────────────────────
+
+export interface AgingBucket {
+  label: string;
+  minDays: number;
+  maxDays: number | null;
+  total: string;
+  invoiceCount: number;
+}
+
+/**
+ * Возвращает aging-buckets по Invoice.dueDate только для post-cutoff броней.
+ * Buckets: текущие (≤0), 1-30, 31-60, 61-90, >90 дней просрочки.
+ */
+export async function computeAging(asOf: Date = new Date()): Promise<AgingBucket[]> {
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      status: { in: ["ISSUED", "PARTIAL_PAID", "OVERDUE"] },
+      dueDate: { not: null },
+      booking: { legacyFinance: false },
+    },
+    select: {
+      dueDate: true,
+      total: true,
+      paidAmount: true,
+    },
+  });
+
+  const buckets: AgingBucket[] = [
+    { label: "Текущие", minDays: Number.NEGATIVE_INFINITY, maxDays: 0, total: "0", invoiceCount: 0 },
+    { label: "1–30 дней", minDays: 1, maxDays: 30, total: "0", invoiceCount: 0 },
+    { label: "31–60 дней", minDays: 31, maxDays: 60, total: "0", invoiceCount: 0 },
+    { label: "61–90 дней", minDays: 61, maxDays: 90, total: "0", invoiceCount: 0 },
+    { label: "Свыше 90 дней", minDays: 91, maxDays: null, total: "0", invoiceCount: 0 },
+  ];
+
+  for (const inv of invoices) {
+    if (!inv.dueDate) continue;
+    const outstanding = new Decimal(inv.total.toString()).sub(new Decimal(inv.paidAmount.toString()));
+    if (outstanding.lessThanOrEqualTo(0)) continue;
+
+    const daysOverdue = Math.floor((asOf.getTime() - inv.dueDate.getTime()) / 86400000);
+
+    const bucket = buckets.find((b) => {
+      if (b.maxDays === null) return daysOverdue >= b.minDays;
+      if (b.minDays === Number.NEGATIVE_INFINITY) return daysOverdue <= b.maxDays;
+      return daysOverdue >= b.minDays && daysOverdue <= b.maxDays;
+    });
+
+    if (bucket) {
+      bucket.total = new Decimal(bucket.total).add(outstanding).toFixed(2);
+      bucket.invoiceCount++;
+    }
+  }
+
+  return buckets;
 }
 
