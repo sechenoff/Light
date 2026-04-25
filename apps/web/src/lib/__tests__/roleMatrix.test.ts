@@ -15,7 +15,7 @@ describe("menuByRole — grouped sections", () => {
     }
   });
 
-  it("SUPER_ADMIN has sections: Главное, Задачи, Склад, Бронирование, Каталог, Мастерская, Финансы, Система", () => {
+  it("SUPER_ADMIN has sections: Главное, Задачи, Склад, Бронирование, Каталог, Мастерская, Финансы, Настройки, Система", () => {
     const titles = menuByRole.SUPER_ADMIN.map((s) => s.title);
     expect(titles).toEqual([
       "Главное",
@@ -25,17 +25,19 @@ describe("menuByRole — grouped sections", () => {
       "Каталог",
       "Мастерская",
       "Финансы",
+      "Настройки",
       "Система",
     ]);
   });
 
-  it("SUPER_ADMIN Финансы section has 4 items — unified /finance/payments", () => {
+  it("SUPER_ADMIN Финансы section has 5 items including /finance/invoices", () => {
     const finance = menuByRole.SUPER_ADMIN.find((s) => s.title === "Финансы");
     expect(finance).toBeDefined();
-    expect(finance!.items).toHaveLength(4);
+    expect(finance!.items).toHaveLength(5);
     const hrefs = finance!.items.map((i) => i.href);
     expect(hrefs).toEqual([
       "/finance",
+      "/finance/invoices",
       "/finance/payments",
       "/finance/debts",
       "/finance/expenses",

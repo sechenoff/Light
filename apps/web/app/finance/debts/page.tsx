@@ -33,6 +33,14 @@ interface ClientDebt {
   projects: DebtProject[];
 }
 
+interface InvoiceAgingBucket {
+  label: string;
+  minDays: number;
+  maxDays: number | null;
+  total: string;
+  invoiceCount: number;
+}
+
 interface DebtsResponse {
   debts: ClientDebt[];
   summary: {
@@ -41,6 +49,7 @@ interface DebtsResponse {
     totalOverdue: string;
     asOf: string;
   };
+  aging?: InvoiceAgingBucket[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -175,7 +184,8 @@ function DebtsPageInner() {
   function loadDebts() {
     let cancelled = false;
     setFetching(true);
-    apiFetch<DebtsResponse>("/api/finance/debts")
+    // Finance Phase 2: запрашиваем aging-бакеты по Invoice.dueDate вместе с legacy долгами
+    apiFetch<DebtsResponse>("/api/finance/debts?withAging=true")
       .then((d) => { if (!cancelled) setData(d); })
       .finally(() => { if (!cancelled) setFetching(false); });
     return () => { cancelled = true; };
@@ -263,6 +273,64 @@ function DebtsPageInner() {
           </div>
         </div>
 
+        {/* Phase 2 aging buckets (по счетам Invoice) */}
+        {data?.aging && (data.aging as InvoiceAgingBucket[]).some((b) => Number(b.total) > 0) && (
+          <div className="mb-6">
+            <div className="eyebrow text-ink-3 mb-2">По счетам (после миграции)</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border border-border rounded-lg overflow-hidden bg-surface border-separate border-spacing-0" style={{ minWidth: 580 }}>
+                <thead className="bg-surface-2">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3">Бакет</th>
+                    <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-ink-3">Счетов</th>
+                    <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-ink-3">Сумма</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.aging as InvoiceAgingBucket[]).map((bucket, idx) => {
+                    const amt = Number(bucket.total);
+                    const rowClasses = [
+                      "text-ink-2",
+                      "text-[#854d0e]",
+                      "text-[#92400e] font-medium",
+                      "text-[#9a3412] font-medium",
+                      "text-rose font-semibold",
+                    ][idx] ?? "text-ink";
+                    const bgClasses = [
+                      "bg-surface-2",
+                      "bg-[#fef9c3]",
+                      "bg-[#fef3c7]",
+                      "bg-[#ffedd5]",
+                      "bg-rose-soft",
+                    ][idx] ?? "bg-surface";
+                    return (
+                      <tr key={bucket.label} className="border-t border-slate-soft">
+                        <td className="px-4 py-3 text-ink-2 text-sm">{bucket.label}</td>
+                        <td className={`px-4 py-3 text-right mono-num ${bgClasses}`}>
+                          {bucket.invoiceCount > 0 ? (
+                            <span className={rowClasses}>{bucket.invoiceCount}</span>
+                          ) : (
+                            <span className="text-ink-3">—</span>
+                          )}
+                        </td>
+                        <td className={`px-4 py-3 text-right mono-num ${bgClasses}`}>
+                          {amt > 0 ? (
+                            <span className={rowClasses}>{formatRub(amt)}</span>
+                          ) : (
+                            <span className="text-ink-3">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Legacy aging buckets (по booking.amountOutstanding) */}
+        <div className="eyebrow text-ink-3 mb-2">Legacy брони (до миграции)</div>
         {/* Aging buckets */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-px mb-5 bg-border border border-border rounded-[6px] overflow-hidden">
           <div className="bg-rose-soft px-4 py-3.5">
