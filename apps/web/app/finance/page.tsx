@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
 import { apiFetch } from "../../src/lib/api";
 import { formatRub, MONTHS_LOCATIVE } from "../../src/lib/format";
 import { FinanceTabNav } from "../../src/components/finance/FinanceTabNav";
+import { PeriodSelector } from "../../src/components/finance/PeriodSelector";
+import { derivePeriodRange, type PeriodKey } from "../../src/lib/periodUtils";
 import type { UserRole } from "../../src/lib/auth";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
@@ -126,7 +129,7 @@ function TrendChart({ trend }: { trend: TrendEntry[] }) {
       <div className="flex gap-4 text-[11.5px] text-ink-2 mt-1">
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald" />
-          Выручка
+          Получено
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate" />
@@ -144,14 +147,16 @@ export default function FinancePage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [debtCount, setDebtCount] = useState<number | undefined>(undefined);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [period, setPeriod] = useState<PeriodKey>("month");
 
   useEffect(() => {
     if (!authorized) return;
     let cancelled = false;
+    const range = derivePeriodRange(period);
     (async () => {
       try {
         const [dash, debts] = await Promise.all([
-          apiFetch<Dashboard>("/api/finance/dashboard"),
+          apiFetch<Dashboard>(`/api/finance/dashboard?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`),
           apiFetch<DebtsResponse>("/api/finance/debts"),
         ]);
         if (!cancelled) {
@@ -163,7 +168,7 @@ export default function FinancePage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [authorized]);
+  }, [authorized, period]);
 
   if (loading || !authorized) return null;
   if (dataError) return <div className="p-8 text-rose text-sm">Ошибка: {dataError}</div>;
@@ -210,43 +215,30 @@ export default function FinancePage() {
             </p>
           </div>
           <div className="flex gap-2.5">
-            <div className="flex items-center gap-1.5 bg-surface-subtle border border-border rounded p-1">
-              {["Сегодня", "Неделя", "Месяц", "Квартал", "Год"].map((lbl) => (
-                <button
-                  key={lbl}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
-                    lbl === "Месяц"
-                      ? "bg-surface text-ink shadow-xs"
-                      : "text-ink-2 hover:text-ink"
-                  }`}
-                >
-                  {lbl}
-                </button>
-              ))}
-            </div>
+            <PeriodSelector value={period} onChange={setPeriod} />
           </div>
         </div>
 
         {/* KPI row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5">
-          {/* Долги */}
-          <div className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs">
+          {/* Дебиторка */}
+          <Link href={`/finance/debts`} className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs hover:bg-surface-subtle transition-colors block">
             <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-rose" />
-            <p className="eyebrow mb-2">Кто должен</p>
+            <p className="eyebrow mb-2">Задолженность</p>
             <p className="mono-num text-2xl font-semibold text-ink leading-tight">{formatRub(data.totalOutstanding)}</p>
             <p className="text-[11.5px] text-ink-2 mt-1.5">
               {debtCount ?? "—"} клиентов, из них{" "}
               <strong className="text-rose">{overdueCount} просрочки</strong>
             </p>
             <span className="inline-flex items-center gap-1 text-[11px] font-medium mt-2.5 px-[7px] py-0.5 rounded-full bg-rose-soft text-rose">
-              ▲ задолженность
+              ▲ дебиторка
             </span>
-          </div>
+          </Link>
 
           {/* Ожидается */}
-          <div className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs">
+          <Link href={`/finance/payments?period=${period}`} className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs hover:bg-surface-subtle transition-colors block">
             <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-amber" />
-            <p className="eyebrow mb-2">Когда оплатят</p>
+            <p className="eyebrow mb-2">Ожидается</p>
             <p className="mono-num text-2xl font-semibold text-ink leading-tight">{formatRub(upcomingTotal)}</p>
             <p className="text-[11.5px] text-ink-2 mt-1.5">
               ожидается за 7 дней · {data.upcomingWeek.length} платежей
@@ -254,29 +246,29 @@ export default function FinancePage() {
             <span className="inline-flex items-center gap-1 text-[11px] font-medium mt-2.5 px-[7px] py-0.5 rounded-full bg-slate-soft text-slate">
               {data.upcomingWeek.length} платежей в очереди
             </span>
-          </div>
+          </Link>
 
-          {/* Выручка */}
-          <div className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs">
+          {/* Получено */}
+          <Link href={`/finance/payments?period=${period}`} className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs hover:bg-surface-subtle transition-colors block">
             <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald" />
-            <p className="eyebrow mb-2">Сколько заработал</p>
+            <p className="eyebrow mb-2">Получено</p>
             <p className="mono-num text-2xl font-semibold text-ink leading-tight">{formatRub(data.earnedThisMonth)}</p>
-            <p className="text-[11.5px] text-ink-2 mt-1.5">выручка за месяц</p>
+            <p className="text-[11.5px] text-ink-2 mt-1.5">приход за период</p>
             <span className="inline-flex items-center gap-1 text-[11px] font-medium mt-2.5 px-[7px] py-0.5 rounded-full bg-emerald-soft text-emerald">
-              ▲ выручка
+              ▲ получено
             </span>
-          </div>
+          </Link>
 
           {/* Расходы */}
-          <div className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs">
+          <Link href={`/finance/expenses?period=${period}`} className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs hover:bg-surface-subtle transition-colors block">
             <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-slate" />
-            <p className="eyebrow mb-2">Сколько потратил</p>
+            <p className="eyebrow mb-2">Расходы</p>
             <p className="mono-num text-2xl font-semibold text-ink leading-tight">{formatRub(data.spentThisMonth)}</p>
-            <p className="text-[11.5px] text-ink-2 mt-1.5">операции за месяц</p>
+            <p className="text-[11.5px] text-ink-2 mt-1.5">операции за период</p>
             <span className="inline-flex items-center gap-1 text-[11px] font-medium mt-2.5 px-[7px] py-0.5 rounded-full bg-slate-soft text-slate">
               расходы
             </span>
-          </div>
+          </Link>
         </div>
 
         {/* Net result strip */}

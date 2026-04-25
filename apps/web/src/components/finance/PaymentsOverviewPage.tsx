@@ -8,6 +8,8 @@ import { PaymentsTotalsStrip } from "./PaymentsTotalsStrip";
 import { PaymentsTable, type OverviewItem } from "./PaymentsTable";
 import { PaymentsByClient } from "./PaymentsByClient";
 import { FinanceTabNav } from "./FinanceTabNav";
+import { PeriodSelector } from "./PeriodSelector";
+import { derivePeriodRange, type PeriodKey } from "../../lib/periodUtils";
 
 type ViewTab = "table" | "clients";
 
@@ -46,6 +48,10 @@ export function PaymentsOverviewPage() {
   const tabParam = searchParams.get("view") === "clients" ? "clients" : "table";
   const [view, setViewState] = useState<ViewTab>(tabParam);
 
+  // Period selector
+  const initialPeriod = (searchParams.get("period") as PeriodKey | null) ?? "month";
+  const [period, setPeriod] = useState<PeriodKey>(initialPeriod);
+
   function setView(v: ViewTab) {
     setViewState(v);
     const params = new URLSearchParams(searchParams.toString());
@@ -53,9 +59,21 @@ export function PaymentsOverviewPage() {
     router.replace(`?${params.toString()}`);
   }
 
+  function handlePeriodChange(p: PeriodKey) {
+    setPeriod(p);
+    const range = derivePeriodRange(p);
+    setFilter((prev) => ({ ...prev, from: range.from, to: range.to }));
+    setItems([]);
+    setNextCursor(null);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("period", p);
+    router.replace(`?${params.toString()}`);
+  }
+
+  const initialRange = derivePeriodRange(initialPeriod);
   const [filter, setFilter] = useState<PaymentsFilter>({
-    from: "",
-    to: "",
+    from: initialRange.from,
+    to: initialRange.to,
     clientId: "",
     amountMin: "",
     amountMax: "",
@@ -125,7 +143,7 @@ export function PaymentsOverviewPage() {
         <div className="flex items-end justify-between mb-5 pb-4 border-b border-border">
           <div>
             <p className="eyebrow mb-1">Финансы</p>
-            <h1 className="text-[22px] font-semibold text-ink tracking-tight">Оплаты</h1>
+            <h1 className="text-[22px] font-semibold text-ink tracking-tight">Платежи</h1>
             {totals && view === "table" && (
               <p className="text-xs text-ink-2 mt-1">
                 {totals.count} {totals.count === 1 ? "бронь" : totals.count <= 4 ? "брони" : "броней"}
@@ -133,28 +151,31 @@ export function PaymentsOverviewPage() {
             )}
           </div>
 
-          {/* Tab switcher */}
-          <div className="flex border border-border rounded-lg overflow-hidden bg-surface-subtle">
-            <button
-              onClick={() => setView("table")}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                view === "table"
-                  ? "bg-accent-soft text-accent border-r border-accent-border"
-                  : "text-ink-2 hover:text-ink border-r border-border"
-              }`}
-            >
-              Таблица броней
-            </button>
-            <button
-              onClick={() => setView("clients")}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                view === "clients"
-                  ? "bg-accent-soft text-accent"
-                  : "text-ink-2 hover:text-ink"
-              }`}
-            >
-              По клиентам
-            </button>
+          <div className="flex items-center gap-2">
+            <PeriodSelector value={period} onChange={handlePeriodChange} />
+            {/* Tab switcher */}
+            <div className="flex border border-border rounded-lg overflow-hidden bg-surface-subtle">
+              <button
+                onClick={() => setView("table")}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  view === "table"
+                    ? "bg-accent-soft text-accent border-r border-accent-border"
+                    : "text-ink-2 hover:text-ink border-r border-border"
+                }`}
+              >
+                Таблица броней
+              </button>
+              <button
+                onClick={() => setView("clients")}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  view === "clients"
+                    ? "bg-accent-soft text-accent"
+                    : "text-ink-2 hover:text-ink"
+                }`}
+              >
+                По клиентам
+              </button>
+            </div>
           </div>
         </div>
 
