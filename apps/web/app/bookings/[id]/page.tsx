@@ -131,12 +131,9 @@ export default function BookingDetailPage() {
     async function load() {
       setLoading(true);
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"}/api/bookings/${id}`, {
+        const data = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${id}`, {
           signal: controller.signal,
-          credentials: "include",
         });
-        if (!res.ok) throw new Error(`Не удалось открыть заказ (${res.status})`);
-        const data = await res.json();
         if (!isActive) return;
         setBooking(data.booking);
       } catch (e: any) {
@@ -178,10 +175,8 @@ export default function BookingDetailPage() {
       alert("Некорректная сумма");
       return;
     }
-    await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"}/api/payments`, {
+    await apiFetch(`/api/payments`, {
       method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         bookingId: booking.id,
         amount,
@@ -189,9 +184,7 @@ export default function BookingDetailPage() {
         receivedAt: new Date().toISOString(),
       }),
     });
-    const fresh = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"}/api/bookings/${booking.id}`, {
-      credentials: "include",
-    }).then((r) => r.json());
+    const fresh = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${booking.id}`);
     setBooking(fresh.booking);
   }
 

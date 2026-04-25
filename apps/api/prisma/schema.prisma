@@ -323,6 +323,9 @@ model Booking {
   @@index([startDate])
   @@index([endDate])
   @@index([status])
+  @@index([clientId])
+  @@index([expectedPaymentDate])
+  @@index([paymentStatus])
 }
 
 model Payment {
@@ -925,4 +928,5 @@ model AuditEntry {
   @@index([userId])
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([entityType, createdAt])
 }

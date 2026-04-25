@@ -456,32 +456,40 @@ export async function getContactDebtSummary(req: Request, id: string) {
 
     let totalRemaining = ZERO;
 
-    const memberSummaries = await Promise.all(
-      memberships.map(async (m) => {
-        // OUT-платежи для этого участника в этом проекте
-        const payments = await prisma.gafferPayment.findMany({
-          where: { projectId: m.projectId, memberId: m.contactId, direction: "OUT" },
-          select: { amount: true },
-        });
-
-        const paidToMe = payments.reduce((acc, p) => acc.plus(p.amount), ZERO);
-        const raw = new Decimal(m.plannedAmount).minus(paidToMe);
-        const remaining = raw.gt(ZERO) ? raw : ZERO;
-        totalRemaining = totalRemaining.plus(remaining);
-
-        return {
-          memberId: m.id,
-          projectId: m.projectId,
-          projectTitle: m.project.title,
-          shootDate: m.project.shootDate,
-          status: m.project.status,
-          roleLabel: m.roleLabel,
-          plannedAmount: m.plannedAmount.toString(),
-          paidToMe: paidToMe.toString(),
-          remaining: remaining.toString(),
-        };
-      }),
+    // Одним запросом получаем суммы OUT-платежей по всем проектам участника
+    const projectIds = memberships.map((m) => m.projectId);
+    const paymentsByProject = await prisma.gafferPayment.groupBy({
+      by: ["projectId"],
+      where: {
+        projectId: { in: projectIds },
+        memberId: id,
+        direction: "OUT",
+        project: { gafferUserId },
+      },
+      _sum: { amount: true },
+    });
+    const paidByProject = new Map(
+      paymentsByProject.map((p) => [p.projectId, p._sum.amount ?? new Decimal(0)]),
     );
+
+    const memberSummaries = memberships.map((m) => {
+      const paidToMe = paidByProject.get(m.projectId) ?? ZERO;
+      const raw = new Decimal(m.plannedAmount).minus(paidToMe);
+      const remaining = raw.gt(ZERO) ? raw : ZERO;
+      totalRemaining = totalRemaining.plus(remaining);
+
+      return {
+        memberId: m.id,
+        projectId: m.projectId,
+        projectTitle: m.project.title,
+        shootDate: m.project.shootDate,
+        status: m.project.status,
+        roleLabel: m.roleLabel,
+        plannedAmount: m.plannedAmount.toString(),
+        paidToMe: paidToMe.toString(),
+        remaining: remaining.toString(),
+      };
+    });
 
     // Последние 10 выплат этому участнику
     const outPayments = await prisma.gafferPayment.findMany({
