@@ -9,7 +9,8 @@ interface Props {
 
 export function PeriodSelector({ value, onChange }: Props) {
   return (
-    <div className="flex items-center gap-1 bg-surface-subtle border border-border rounded p-1">
+    // C-MED3: overflow-x-auto + flex-nowrap prevents period pills wrapping on mobile
+    <div className="flex items-center gap-1 bg-surface-subtle border border-border rounded p-1 overflow-x-auto flex-nowrap">
       {PERIOD_OPTIONS.map((key) => (
         <button
           key={key}

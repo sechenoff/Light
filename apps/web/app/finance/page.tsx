@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
 import { apiFetch } from "../../src/lib/api";
-import { formatRub, MONTHS_LOCATIVE } from "../../src/lib/format";
+import { formatRub } from "../../src/lib/format";
+
+// C-MED1: nominative month names for header display (locative forms require preposition "в")
+const MONTHS_NOMINATIVE = [
+  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+] as const;
 import { FinanceTabNav } from "../../src/components/finance/FinanceTabNav";
 import { PeriodSelector } from "../../src/components/finance/PeriodSelector";
 import { derivePeriodRange, type PeriodKey } from "../../src/lib/periodUtils";
@@ -142,12 +149,25 @@ function TrendChart({ trend }: { trend: TrendEntry[] }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function FinancePage() {
+function FinancePageInner() {
   const { authorized, loading } = useRequireRole(ALLOWED);
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [data, setData] = useState<Dashboard | null>(null);
   const [debtCount, setDebtCount] = useState<number | undefined>(undefined);
   const [dataError, setDataError] = useState<string | null>(null);
-  const [period, setPeriod] = useState<PeriodKey>("month");
+  // A2: initialise period from URL ?period= param
+  const [period, setPeriod] = useState<PeriodKey>(
+    (searchParams.get("period") as PeriodKey | null) ?? "month"
+  );
+
+  // A2: persist period to URL on change (C4: prevents stale/empty state on reload)
+  function handlePeriodChange(p: PeriodKey) {
+    setPeriod(p);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("period", p);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }
 
   useEffect(() => {
     if (!authorized) return;
@@ -181,7 +201,8 @@ export default function FinancePage() {
   const netAbs = Math.abs(net);
 
   const now = new Date();
-  const monthName = MONTHS_LOCATIVE[now.getMonth()] ?? "";
+  // C-MED1: use nominative month name (locative "апреле" needs preposition "в")
+  const monthName = MONTHS_NOMINATIVE[now.getMonth()] ?? "";
   const asOf = data.asOf ? new Date(data.asOf) : now;
   const asOfMonth = SHORT_MONTHS[String(asOf.getMonth() + 1).padStart(2, "0")] ?? "";
   const asOfStr = `${asOf.getDate()} ${asOfMonth.toLowerCase()}, ${String(asOf.getHours()).padStart(2, "0")}:${String(asOf.getMinutes()).padStart(2, "0")}`;
@@ -206,7 +227,7 @@ export default function FinancePage() {
           <div>
             <h1 className="text-[22px] font-semibold text-ink tracking-tight">Финансы</h1>
             <p className="text-xs text-ink-2 mt-0.5">
-              {monthName.charAt(0).toUpperCase() + monthName.slice(1)} {now.getFullYear()}
+              {monthName} {now.getFullYear()}
               {" · данные обновлены "}{asOfStr}
               {" · "}
               <span className="inline-flex items-center gap-1 bg-indigo-soft text-indigo border border-indigo-border rounded-full px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wider">
@@ -215,7 +236,7 @@ export default function FinancePage() {
             </p>
           </div>
           <div className="flex gap-2.5">
-            <PeriodSelector value={period} onChange={setPeriod} />
+            <PeriodSelector value={period} onChange={handlePeriodChange} />
           </div>
         </div>
 
@@ -353,6 +374,11 @@ export default function FinancePage() {
           </div>
         </div>
 
+        {/* TODO(phase2): B3 — Recent activity feed (8 events from AuditEntry):
+            fetch GET /api/audit?entityType=Payment&limit=8 and render
+            a feed of payment received / expense added / PDF downloaded events.
+            Each event: who · when · amount. */}
+
         {/* Upcoming payments panel */}
         <div className="bg-surface border border-border rounded-[6px] overflow-hidden shadow-xs">
           <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
@@ -396,5 +422,13 @@ export default function FinancePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function FinancePage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-ink-3 text-sm">Загрузка…</div>}>
+      <FinancePageInner />
+    </Suspense>
   );
 }

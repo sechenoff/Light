@@ -10,6 +10,10 @@ interface Props {
   count: number;
 }
 
+// TODO(phase2): B1 — add per-method chips (Наличные / Карта / Перевод / Онлайн) with running totals.
+// Each chip should filter the PaymentsTable by method. API needs to expose per-method totals
+// in the /api/finance/payments-overview response (add methodBreakdown: { method, total }[]).
+
 export function PaymentsTotalsStrip({ billed, paid, outstanding, averageAmount, count }: Props) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border border-border rounded-lg bg-surface shadow-xs mb-5">

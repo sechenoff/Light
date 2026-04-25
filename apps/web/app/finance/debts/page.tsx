@@ -419,7 +419,11 @@ function DebtsPageInner() {
                       className="flex gap-1.5 justify-end"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {/* TODO Phase 2: add phone/email to computeDebts API response, then show tel/mailto links here */}
+                      {/* TODO(phase2): B5 — tel:/mailto: stack per row. computeDebts API needs to include
+                          client.phone and client.email in response. Then render:
+                          {d.phone && <a href={`tel:${d.phone}`}>📞</a>}
+                          {d.email && <a href={`mailto:${d.email}`}>✉</a>}
+                          Depends on API change to expose client contact fields. */}
                       <a
                         href={`/bookings?clientId=${d.clientId}`}
                         aria-label="Открыть брони клиента"
