@@ -129,7 +129,7 @@ function TrendChart({ trend }: { trend: TrendEntry[] }) {
       <div className="flex gap-4 text-[11.5px] text-ink-2 mt-1">
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald" />
-          Получено
+          Приход
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate" />
@@ -248,14 +248,14 @@ export default function FinancePage() {
             </span>
           </Link>
 
-          {/* Получено */}
+          {/* Приход */}
           <Link href={`/finance/payments?period=${period}`} className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs hover:bg-surface-subtle transition-colors block">
             <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald" />
-            <p className="eyebrow mb-2">Получено</p>
+            <p className="eyebrow mb-2">Приход</p>
             <p className="mono-num text-2xl font-semibold text-ink leading-tight">{formatRub(data.earnedThisMonth)}</p>
-            <p className="text-[11.5px] text-ink-2 mt-1.5">приход за период</p>
+            <p className="text-[11.5px] text-ink-2 mt-1.5">поступлений за период</p>
             <span className="inline-flex items-center gap-1 text-[11px] font-medium mt-2.5 px-[7px] py-0.5 rounded-full bg-emerald-soft text-emerald">
-              ▲ получено
+              ▲ оплачено
             </span>
           </Link>
 
@@ -292,12 +292,26 @@ export default function FinancePage() {
           {/* Trend chart panel */}
           <div className="bg-surface border border-border rounded-[6px] overflow-hidden shadow-xs">
             <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
-              <h3 className="text-[13.5px] font-semibold text-ink">Доходы и расходы по месяцам</h3>
+              <h3 className="text-[13.5px] font-semibold text-ink">Приход и расходы по месяцам</h3>
             </div>
             {data.trend.length > 0 ? (
               <TrendChart trend={data.trend} />
             ) : (
-              <div className="p-5 text-sm text-ink-3">Нет данных</div>
+              <div className="px-5 py-10 text-center bg-accent-soft">
+                <p className="eyebrow mb-1">Финансы</p>
+                <p className="text-[14px] font-medium text-ink mb-1">
+                  За выбранный период нет финансовых событий
+                </p>
+                <p className="text-sm text-ink-2">
+                  Попробуйте{" "}
+                  <button
+                    onClick={() => setPeriod("year")}
+                    className="text-accent-bright underline hover:no-underline"
+                  >
+                    «Год»
+                  </button>
+                </p>
+              </div>
             )}
           </div>
 

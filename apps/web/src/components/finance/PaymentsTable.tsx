@@ -34,6 +34,8 @@ interface Props {
   loading: boolean;
   onLoadMore: (() => void) | null;
   onRefresh: () => void;
+  /** T7: callback to open RecordPaymentModal when list is empty */
+  onRecordPayment?: () => void;
 }
 
 /**
@@ -46,7 +48,7 @@ function displayProjectName(projectName: string): string {
   return name || projectName;
 }
 
-export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) {
+export function PaymentsTable({ items, loading, onLoadMore, onRefresh, onRecordPayment }: Props) {
   const [payingBooking, setPayingBooking] = useState<OverviewItem | null>(null);
   const [editingBooking, setEditingBooking] = useState<OverviewItem | null>(null);
 
@@ -58,7 +60,19 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) 
 
   if (!loading && items.length === 0) {
     return (
-      <div className="py-12 text-center text-ink-3 text-sm">Нет броней по выбранным фильтрам</div>
+      <div className="py-14 text-center bg-accent-soft border border-accent-border rounded-lg">
+        <p className="eyebrow mb-2">Платежи</p>
+        <p className="text-[15px] font-medium text-ink mb-1">Платежей пока нет</p>
+        <p className="text-sm text-ink-2 mb-4">Нет данных по выбранным фильтрам</p>
+        {onRecordPayment && (
+          <button
+            onClick={onRecordPayment}
+            className="px-4 py-2 text-sm bg-accent-bright text-white rounded hover:bg-accent transition-colors"
+          >
+            Записать первый платёж →
+          </button>
+        )}
+      </div>
     );
   }
 

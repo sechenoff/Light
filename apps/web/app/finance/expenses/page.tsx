@@ -472,12 +472,29 @@ function ExpensesPageInner() {
                         <p className="text-[11px] text-ink-2 mt-0.5">{e.booking.projectName}</p>
                       )}
                     </td>
+                    {/* T15: linked badges for repair and booking */}
                     <td className="px-3.5 py-3 align-middle text-ink-2">
-                      {e.linkedRepairId ? (
-                        <span className="text-xs">Ремонт</span>
-                      ) : (
-                        <span className="text-xs">—</span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {e.linkedRepairId && (
+                          <a
+                            href={`/repair/${e.linkedRepairId}`}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border bg-slate-soft text-slate border-slate-border hover:bg-slate-border transition-colors whitespace-nowrap"
+                          >
+                            🔧 Ремонт #{e.linkedRepairId.slice(-6)}
+                          </a>
+                        )}
+                        {e.bookingId && !e.linkedRepairId && (
+                          <a
+                            href={`/bookings/${e.bookingId}`}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border bg-slate-soft text-slate border-slate-border hover:bg-slate-border transition-colors whitespace-nowrap"
+                          >
+                            📋 Бронь #{e.bookingId.slice(-6)}
+                          </a>
+                        )}
+                        {!e.linkedRepairId && !e.bookingId && (
+                          <span className="text-xs text-ink-3">—</span>
+                        )}
+                      </div>
                     </td>
                     <td className={`px-3.5 py-3 text-right mono-num font-semibold align-middle ${meta.tailwind}`}>
                       {formatRub(e.amount)}
@@ -507,8 +524,21 @@ function ExpensesPageInner() {
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-ink-3 text-sm">
-                    {expenses.length === 0 ? "Нет расходов за этот месяц" : "Нет результатов по фильтру"}
+                  <td colSpan={6} className="px-4 py-12 text-center">
+                    {expenses.length === 0 ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <p className="eyebrow">Расходы</p>
+                        <p className="text-[15px] font-medium text-ink">Расходов за период нет</p>
+                        <button
+                          onClick={() => setShowModal(true)}
+                          className="mt-1 px-4 py-2 text-sm bg-accent-bright text-white rounded hover:bg-accent transition-colors"
+                        >
+                          Записать расход →
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-ink-3">Нет результатов по фильтру</p>
+                    )}
                   </td>
                 </tr>
               )}

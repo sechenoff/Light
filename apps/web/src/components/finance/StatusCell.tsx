@@ -63,7 +63,7 @@ export function StatusCell({ item, onPay }: Props) {
           )}
         </div>
         <span className="text-[11px] text-ink-2 mono-num">
-          {isPaid && <>{formatRub(item.finalAmount)} · принят</>}
+          {isPaid && <>{formatRub(item.finalAmount)} · оплачено</>}
           {isPartial && (
             <>
               оплачено{" "}
