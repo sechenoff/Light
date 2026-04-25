@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Финансы · редизайн 2026-04-25 · обзор</title>
+<link rel="stylesheet" href="../shell.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif; background: #f8fafc; color: #09090b; max-width: 1200px; }
+  h1, h2, h3, h4 { font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif; letter-spacing: -0.01em; color: #09090b; }
+  .eyebrow { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #a1a1aa; font-weight: 600; margin-bottom: 6px; }
+  .hero { background: linear-gradient(180deg, #1e3a8a 0%, #1d4ed8 100%); color: #fff; padding: 36px 32px; border-radius: 14px; margin-bottom: 28px; }
+  .hero h1 { color: #fff; font-size: 32px; margin: 0 0 6px; }
+  .hero .lede { color: #dbeafe; font-size: 15px; max-width: 720px; line-height: 1.55; }
+  .hero .meta { display: flex; gap: 18px; margin-top: 18px; font-size: 13px; color: #bfdbfe; }
+  .hero .meta strong { color: #fff; font-weight: 600; }
+  .principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 24px 0 36px; }
+  .principle { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; }
+  .principle .num { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: #eff6ff; color: #1d4ed8; font-weight: 700; font-size: 13px; margin-bottom: 10px; font-family: "IBM Plex Mono", monospace; }
+  .principle h4 { margin: 0 0 6px; font-size: 14px; }
+  .principle p { margin: 0; color: #52525b; font-size: 13px; line-height: 1.5; }
+  .ba-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 36px; }
+  .ba-table th, .ba-table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #f1f5f9; font-size: 13px; vertical-align: top; }
+  .ba-table th { background: #f8fafc; color: #52525b; font-weight: 600; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+  .ba-table td.before { color: #9f1239; }
+  .ba-table td.after { color: #047857; font-weight: 500; }
+  .ba-table tr:last-child td { border-bottom: none; }
+  .pages { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 18px; }
+  .page-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 18px 16px; text-decoration: none; color: inherit; transition: border-color .12s, box-shadow .12s; display: block; }
+  .page-card:hover { border-color: #1d4ed8; box-shadow: 0 4px 14px rgba(29, 78, 216, .08); }
+  .page-card .badge { display: inline-block; background: #eff6ff; color: #1d4ed8; padding: 3px 8px; border-radius: 4px; font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 500; margin-bottom: 8px; }
+  .page-card h4 { margin: 0 0 6px; font-size: 15px; }
+  .page-card p { margin: 0; color: #52525b; font-size: 13px; line-height: 1.5; }
+  .phasing { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 24px 0; }
+  .phase { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; }
+  .phase h4 { margin: 0 0 4px; font-size: 14px; }
+  .phase .sub { color: #a1a1aa; font-size: 12px; margin-bottom: 10px; }
+  .phase ul { margin: 0; padding-left: 18px; font-size: 13px; color: #52525b; line-height: 1.6; }
+  .phase.p1 { border-top: 3px solid #047857; }
+  .phase.p2 { border-top: 3px solid #1d4ed8; }
+  .phase.p3 { border-top: 3px solid #a16207; }
+  .footer-note { background: #fef3c7; border: 1px solid #fcd34d; padding: 14px 16px; border-radius: 10px; font-size: 13px; color: #78350f; margin-top: 28px; }
+  section { margin-bottom: 36px; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="eyebrow" style="color: #bfdbfe;">Финансы · редизайн</div>
+  <h1>Деньги — как таймлайн на броне, а не вторая система</h1>
+  <p class="lede">Объединяем 5 разрозненных финансовых страниц, добавляем PDF Счёт и PDF Акт (главная боль founder'а), вводим модель Invoice с aging и cancel-with-deposit. WAREHOUSE получает ограниченный доступ к приёму нала на сканере.</p>
+  <div class="meta">
+    <span><strong>3 фазы</strong> · Phase 1 без миграций</span>
+    <span><strong>9 экранов</strong> в этом мокапе</span>
+    <span><strong>25 апреля 2026</strong></span>
+  </div>
+</div>
+
+<section>
+  <div class="eyebrow">Принципы редизайна</div>
+  <h2>5 решений, которые держат всё вместе</h2>
+  <div class="principles">
+    <div class="principle">
+      <span class="num">1</span>
+      <h4>Booking — источник правды</h4>
+      <p>Финансовый блок живёт на карточке брони. <code>/finance/*</code> — агрегации и фильтры, не вторая система.</p>
+    </div>
+    <div class="principle">
+      <span class="num">2</span>
+      <h4>PDF Счёт + Акт в Phase 1</h4>
+      <p>Главная боль founder'а — не «нет Invoice», а «нет документа для бухгалтера клиента». Шипим первым делом.</p>
+    </div>
+    <div class="principle">
+      <span class="num">3</span>
+      <h4>Иммутабельный платёж</h4>
+      <p>Никакого редактирования. Ошибка → void + create. Возврат → отдельная Refund-запись. Audit на каждое движение.</p>
+    </div>
+    <div class="principle">
+      <span class="num">4</span>
+      <h4>WH — узкий доступ с лимитами</h4>
+      <p>Только cash/card-terminal, до 100 000 ₽, на бронях ISSUED|RETURNED. Документировано в матрице прав.</p>
+    </div>
+    <div class="principle">
+      <span class="num">5</span>
+      <h4>Cancel-with-deposit — три ветки</h4>
+      <p>Возврат / удержать как кредит / удержать как штраф. Каждая — явный wizard и отдельный audit-action.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">До → После</div>
+  <h2>Главные сдвиги</h2>
+  <table class="ba-table">
+    <thead>
+      <tr>
+        <th style="width: 24%;">Что</th>
+        <th style="width: 38%;">Сейчас</th>
+        <th style="width: 38%;">После</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Платежи</strong></td>
+        <td class="before">Две страницы (legacy + overview), три модалки добавления, prompt() на броне</td>
+        <td class="after">Одна <code>/finance/payments</code> с per-method chips и единой <code>RecordPaymentModal</code></td>
+      </tr>
+      <tr>
+        <td><strong>Документ для клиента</strong></td>
+        <td class="before">Только PDF/XLSX <em>сметы</em>. Счёт и акт — вручную в Word</td>
+        <td class="after">«Скачать счёт PDF» / «Скачать акт PDF» прямо на броне в Phase 1</td>
+      </tr>
+      <tr>
+        <td><strong>Aging / дебиторка</strong></td>
+        <td class="before">Bucket'ы пустые потому что <code>expectedPaymentDate</code> не вводится в UI</td>
+        <td class="after">Phase 2: bucket'ы наполнены через <code>Invoice.dueDate</code> со светофором</td>
+      </tr>
+      <tr>
+        <td><strong>WAREHOUSE на сканере</strong></td>
+        <td class="before">Видит сумму брони, кнопка «Добавить платёж» возвращает 403 в тишине</td>
+        <td class="after">Принимает нал прямо на <code>/warehouse/scan</code> после выдачи (cash/card, ≤100k)</td>
+      </tr>
+      <tr>
+        <td><strong>Удаление платежа</strong></td>
+        <td class="before">confirm() → delete; пересчёт молча; нет аудита причины</td>
+        <td class="after">Аннулировать (void) + required reason min 3; запись в audit; платёж видим серым</td>
+      </tr>
+      <tr>
+        <td><strong>Cancel с депозитом</strong></td>
+        <td class="before">Не описано в UI. Founder делает «через void + ручной возврат»</td>
+        <td class="after">Wizard 3 шага: возврат / удержать как кредит / удержать как штраф</td>
+      </tr>
+      <tr>
+        <td><strong>Терминология</strong></td>
+        <td class="before">«Выручка» / «заработал» / «получено» в трёх местах = три разных значения</td>
+        <td class="after">Canonical glossary в <code>financeTerms.ts</code>; «Получено» — единственное</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <div class="eyebrow">Экраны мокапа</div>
+  <h2>9 страниц</h2>
+  <div class="pages">
+    <a class="page-card" href="finance-dashboard.html">
+      <span class="badge">/finance</span>
+      <h4>Дашборд</h4>
+      <p>4 KPI · период-фильтр · top-debtors · activity feed · CTA-ribbon. Desktop + mobile.</p>
+    </a>
+    <a class="page-card" href="finance-invoices.html">
+      <span class="badge">/finance/invoices</span>
+      <h4>Счета (Phase 2)</h4>
+      <p>Tabs по статусам · поиск · bulk-issue · per-row actions · нумерация LR-2026-NNNN.</p>
+    </a>
+    <a class="page-card" href="finance-debts.html">
+      <span class="badge">/finance/debts</span>
+      <h4>Дебиторка (aging)</h4>
+      <p>5-bucket таблица со светофором · per-row «связаться» · sortable · XLSX export.</p>
+    </a>
+    <a class="page-card" href="finance-payments.html">
+      <span class="badge">/finance/payments</span>
+      <h4>Платежи (объединённые)</h4>
+      <p>Per-method chips · фильтры · void/refund · sortable. Закрывает дубль legacy/overview.</p>
+    </a>
+    <a class="page-card" href="finance-expenses.html">
+      <span class="badge">/finance/expenses</span>
+      <h4>Расходы</h4>
+      <p>Approved vs pending split · category pills · linked-to-booking/repair badges.</p>
+    </a>
+    <a class="page-card" href="booking-finance-block.html" style="border-color:#1d4ed8; box-shadow: 0 0 0 1px #1d4ed8;">
+      <span class="badge" style="background: #1d4ed8; color: #fff;">/bookings/[id] · MAIN</span>
+      <h4>Финансовый блок брони</h4>
+      <p>Самый важный экран. Шапка · сводка · CTA · платежи · хронология · sticky-bottom mobile.</p>
+    </a>
+    <a class="page-card" href="cancel-with-deposit-flow.html">
+      <span class="badge">flow</span>
+      <h4>Cancel с депозитом</h4>
+      <p>3 ветки side-by-side: возврат / удержать как кредит / удержать как штраф.</p>
+    </a>
+    <a class="page-card" href="mobile-overview.html">
+      <span class="badge">390px</span>
+      <h4>Mobile-обзор</h4>
+      <p>Composite — все ключевые экраны на телефонной ширине. WH-flow и cancel-flow на 390px.</p>
+    </a>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">План внедрения</div>
+  <h2>3 фазы</h2>
+  <div class="phasing">
+    <div class="phase p1">
+      <h4>Phase 1 — без миграций</h4>
+      <div class="sub">~1 спринт · 1 PR · 16 коммитов</div>
+      <ul>
+        <li>Объединить <code>/finance/payments</code> × <code>/finance/payments-overview</code></li>
+        <li>Единая <code>RecordPaymentModal</code></li>
+        <li>Role-gate + WH-limits middleware</li>
+        <li><strong>PDF Счёт + PDF Акт</strong> через новый <code>documentExport/</code></li>
+        <li>Period-selector рабочий</li>
+        <li>Удалить «Удалить платёж» из UI</li>
+        <li>Terminology pass + glossary</li>
+      </ul>
+    </div>
+    <div class="phase p2">
+      <h4>Phase 2 — Invoice + aging</h4>
+      <div class="sub">2–3 спринта · schema migration</div>
+      <ul>
+        <li>Модели <code>Invoice</code>, <code>Refund</code>, <code>CreditNote</code></li>
+        <li>Numbering <code>LR-YYYY-NNNN</code></li>
+        <li>Dual-mode legacy (без backfill подделок)</li>
+        <li>Aging-buckets со светофором</li>
+        <li>Cancel-with-deposit wizard (3 ветки)</li>
+        <li><code>/settings/organization</code> с реквизитами</li>
+        <li>Sticky-bottom CTA на mobile брони</li>
+      </ul>
+    </div>
+    <div class="phase p3">
+      <h4>Phase 3 — Polish</h4>
+      <div class="sub">по требованию · post-MVP</div>
+      <ul>
+        <li>Forecast-widget (подтверждённый pipeline)</li>
+        <li>File upload на расход</li>
+        <li>Email/SMS-напоминания</li>
+        <li>Cash reconciliation (закрытие смены)</li>
+        <li>Импорт CSV из Тинькофф</li>
+        <li>DB-категории расходов</li>
+        <li>Margin sparkline на броне</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<div class="footer-note">
+  <strong>Out-of-scope</strong> явно: фискальные чеки, УПД, синхронизация с 1С, multi-currency, Bot endpoints на финансы, ML-forecast, КЭП. Out-of-scope для всех трёх фаз — отдельный проект если потребуется.
+</div>
+
+<!-- updated-by-superflow:2026-04-25 -->
+</body>
+</html>

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>/finance/invoices · счета</title>
+<link rel="stylesheet" href="../shell.css">
+<link rel="stylesheet" href="_canon.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; flex-wrap: wrap; }
+  .tabs button { background: transparent; border: 0; padding: 10px 14px; cursor: pointer; font-size: 13px; color: var(--ink-2); border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: inherit; display: flex; align-items: center; gap: 6px; }
+  .tabs button.active { color: var(--accent-bright); border-bottom-color: var(--accent-bright); font-weight: 500; }
+  .tabs .count { background: var(--surface-2); border: 1px solid var(--border); padding: 0 6px; border-radius: 4px; font-size: 11px; color: var(--ink-2); font-family: "IBM Plex Mono", monospace; }
+  .tabs button.active .count { background: var(--accent-soft); border-color: #bfdbfe; color: var(--accent-bright); }
+  .filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--surface); font-family: inherit; min-width: 200px; }
+  .num-cell { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+  .row-actions { display: flex; gap: 4px; }
+  .icon-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+  .icon-btn:hover { border-color: var(--accent-bright); color: var(--accent-bright); }
+  .checkbox { width: 14px; height: 14px; }
+  .bulk-bar { background: var(--accent-soft); border: 1px solid #bfdbfe; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; display: flex; align-items: center; gap: 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<a href="index.html" class="btn-ghost btn btn-sm" style="padding-left:0">← Все экраны</a>
+<div class="eyebrow" style="margin-top: 12px;">/finance/invoices · Phase 2</div>
+<h1>Счета</h1>
+<p class="subtitle">Все счета с tabs по статусам, поиском, bulk-actions. Нумерация LR-YYYY-NNNN с year-reset, race-protection через transaction + retry.</p>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button>К выставлению <span class="count">3</span></button>
+  <button class="active">Выставлено <span class="count">12</span></button>
+  <button>Частично <span class="count">2</span></button>
+  <button>Оплачено <span class="count">38</span></button>
+  <button>Просрочено <span class="count" style="background:var(--rose-soft);color:var(--rose);border-color:var(--rose-border)">3</span></button>
+  <button>Аннулированные <span class="count">1</span></button>
+</div>
+
+<!-- Filter bar + CTA -->
+<div class="filter-bar" style="justify-content: space-between;">
+  <div style="display:flex; gap: 10px; flex-wrap: wrap;">
+    <input type="text" class="input" placeholder="🔍 № счёта, клиент, проект…">
+    <div class="period-tabs">
+      <button>7 дней</button>
+      <button class="active">30 дней</button>
+      <button>Квартал</button>
+      <button>Год</button>
+    </div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a class="btn">📊 Экспорт XLSX</a>
+    <a class="btn btn-primary">+ Создать счёт</a>
+  </div>
+</div>
+
+<!-- Bulk bar (visible когда что-то выбрано — здесь для демо) -->
+<div class="bulk-bar">
+  <input type="checkbox" class="checkbox" checked>
+  <span><strong>2 счёта</strong> выбрано</span>
+  <a class="btn btn-sm btn-primary">Выставить выбранные</a>
+  <a class="btn btn-sm">Скачать все PDF</a>
+  <span style="margin-left:auto" class="hint muted">Действие применится только к черновикам</span>
+</div>
+
+<!-- Invoices table -->
+<div class="panel" style="padding: 0; overflow: hidden;">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th style="width: 32px;"><input type="checkbox" class="checkbox"></th>
+        <th>№ счёта</th>
+        <th>Клиент</th>
+        <th>Бронь</th>
+        <th>Тип</th>
+        <th>Сумма</th>
+        <th>Оплачено</th>
+        <th>Остаток</th>
+        <th>Срок</th>
+        <th>Статус</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><input type="checkbox" class="checkbox"></td>
+        <td><span class="tag">LR-2026-0042</span></td>
+        <td><strong>Ромашка Продакшн</strong><br><span class="muted hint">«Питерский нуар» · сезон 2</span></td>
+        <td><a class="btn-ghost btn btn-sm">#B-2186</a></td>
+        <td>Полный</td>
+        <td class="num-cell">142 000 ₽</td>
+        <td class="num-cell">0 ₽</td>
+        <td class="num-cell"><strong>142 000 ₽</strong></td>
+        <td class="num-cell">11 апр<br><span class="muted hint">14 дн. проср.</span></td>
+        <td><span class="pill pill-alert">Просрочен</span></td>
+        <td>
+          <div class="row-actions">
+            <button class="icon-btn" aria-label="Записать платёж">₽</button>
+            <button class="icon-btn" aria-label="Скачать PDF">📄</button>
+            <button class="icon-btn" aria-label="Меню">⋯</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td><input type="checkbox" class="checkbox" checked></td>
+        <td><span class="tag">LR-2026-0043</span></td>
+        <td><strong>Мосфильм-Сервис</strong><br><span class="muted hint">Доксериал «Города»</span></td>
+        <td><a class="btn-ghost btn btn-sm">#B-2191</a></td>
+        <td>Предоплата 30%</td>
+        <td class="num-cell">98 500 ₽</td>
+        <td class="num-cell">0 ₽</td>
+        <td class="num-cell"><strong>98 500 ₽</strong></td>
+        <td class="num-cell">17 апр<br><span class="muted hint">8 дн. проср.</span></td>
+        <td><span class="pill pill-alert">Просрочен</span></td>
+        <td>
+          <div class="row-actions">
+            <button class="icon-btn">₽</button>
+            <button class="icon-btn">📄</button>
+            <button class="icon-btn">⋯</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td><input type="checkbox" class="checkbox" checked></td>
+        <td><span class="tag">LR-2026-0044</span></td>
+        <td><strong>Студия «Луна»</strong></td>
+        <td><a class="btn-ghost btn btn-sm">#B-2204</a></td>
+        <td>Остаток 70%</td>
+        <td class="num-cell">52 000 ₽</td>
+        <td class="num-cell">0 ₽</td>
+        <td class="num-cell"><strong>52 000 ₽</strong></td>
+        <td class="num-cell">28 апр</td>
+        <td><span class="pill pill-info">Выставлен</span></td>
+        <td>
+          <div class="row-actions">
+            <button class="icon-btn">₽</button>
+            <button class="icon-btn">📄</button>
+            <button class="icon-btn">⋯</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td><input type="checkbox" class="checkbox"></td>
+        <td><span class="tag">LR-2026-0045</span></td>
+        <td><strong>ИП Петров А.С.</strong></td>
+        <td><a class="btn-ghost btn btn-sm">#B-2210</a></td>
+        <td>Полный</td>
+        <td class="num-cell">28 000 ₽</td>
+        <td class="num-cell">14 500 ₽</td>
+        <td class="num-cell"><strong>13 500 ₽</strong></td>
+        <td class="num-cell">02 мая</td>
+        <td><span class="pill pill-warn">Частично оплачен</span></td>
+        <td>
+          <div class="row-actions">
+            <button class="icon-btn">₽</button>
+            <button class="icon-btn">📄</button>
+            <button class="icon-btn">⋯</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td><input type="checkbox" class="checkbox"></td>
+        <td><span class="tag">LR-2026-0040</span></td>
+        <td><strong>Movie Lab Group</strong></td>
+        <td><a class="btn-ghost btn btn-sm">#B-2179</a></td>
+        <td>Предоплата 50%</td>
+        <td class="num-cell">75 000 ₽</td>
+        <td class="num-cell">75 000 ₽</td>
+        <td class="num-cell">0 ₽</td>
+        <td class="num-cell">10 апр</td>
+        <td><span class="pill pill-ok">Оплачен</span></td>
+        <td>
+          <div class="row-actions">
+            <button class="icon-btn">📄</button>
+            <button class="icon-btn">⋯</button>
+          </div>
+        </td>
+      </tr>
+      <tr style="background: var(--surface-2); color: var(--ink-3);">
+        <td><input type="checkbox" class="checkbox" disabled></td>
+        <td><span class="tag" style="text-decoration: line-through;">LR-2026-0038</span></td>
+        <td>Old Studio Ltd</td>
+        <td><a class="btn-ghost btn btn-sm">#B-2168</a></td>
+        <td>Полный</td>
+        <td class="num-cell" style="text-decoration: line-through;">42 000 ₽</td>
+        <td class="num-cell">—</td>
+        <td class="num-cell">—</td>
+        <td class="num-cell">—</td>
+        <td><span class="pill pill-none">Аннулирован</span></td>
+        <td><span class="muted hint">опечатка в реквизитах</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p class="hint" style="margin-top: 14px;">Все подсчёты <code>paidAmount</code> — computed (sum payments where !voidedAt) − sum refunds. Аннулированные счета сохраняют номер навсегда (ФНС-friendly).</p>
+
+<!-- Mobile -->
+<div style="margin-top: 36px;">
+  <div class="eyebrow">Mobile · 390px</div>
+  <h2>Список счетов на телефоне</h2>
+  <div class="mobile">
+    <div class="m-header">📱 light-rental.ru/finance/invoices</div>
+    <div class="m-body">
+      <h3 style="margin-bottom: 8px;">Счета</h3>
+      <div style="display:flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; font-size: 12px;">
+        <span class="pill pill-alert">Просрочено · 3</span>
+        <span class="pill pill-info">Выставлено · 12</span>
+        <span class="pill pill-ok">Оплачено · 38</span>
+      </div>
+      <input type="text" class="input" style="width: 100%; margin-bottom: 14px;" placeholder="🔍 поиск">
+      <!-- Card list -->
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="border: 1px solid var(--rose-border); background: var(--rose-soft); border-radius: 10px; padding: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span class="tag">LR-2026-0042</span>
+            <span class="pill pill-alert">Просрочен</span>
+          </div>
+          <strong>Ромашка Продакшн</strong>
+          <div class="muted hint" style="margin: 4px 0;">Полный · срок 11 апр</div>
+          <div class="num-cell" style="font-size: 18px; font-weight: 600;">142 000 ₽</div>
+          <div style="display: flex; gap: 6px; margin-top: 10px;">
+            <a class="btn btn-primary btn-sm" style="flex:1;">₽ Платёж</a>
+            <a class="btn btn-sm">📄 PDF</a>
+          </div>
+        </div>
+        <div style="border: 1px solid var(--rose-border); background: var(--rose-soft); border-radius: 10px; padding: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span class="tag">LR-2026-0043</span>
+            <span class="pill pill-alert">Просрочен</span>
+          </div>
+          <strong>Мосфильм-Сервис</strong>
+          <div class="muted hint" style="margin: 4px 0;">Предоплата 30% · срок 17 апр</div>
+          <div class="num-cell" style="font-size: 18px; font-weight: 600;">98 500 ₽</div>
+          <div style="display: flex; gap: 6px; margin-top: 10px;">
+            <a class="btn btn-primary btn-sm" style="flex:1;">₽ Платёж</a>
+            <a class="btn btn-sm">📄 PDF</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<!-- updated-by-superflow:2026-04-25 -->
+</body>
+</html>

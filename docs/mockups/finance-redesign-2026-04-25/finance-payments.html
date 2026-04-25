@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>/finance/payments · платежи (объединённые)</title>
+<link rel="stylesheet" href="../shell.css">
+<link rel="stylesheet" href="_canon.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  .input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--surface); font-family: inherit; min-width: 160px; }
+  select.input { padding-right: 28px; }
+  .icon-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+  .icon-btn:hover { border-color: var(--accent-bright); color: var(--accent-bright); }
+  .icon-btn.danger:hover { border-color: var(--rose); color: var(--rose); }
+  .row-voided { color: var(--ink-3); }
+  .row-voided .num-cell { text-decoration: line-through; }
+  .num-cell { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<a href="index.html" class="btn-ghost btn btn-sm" style="padding-left:0">← Все экраны</a>
+<div class="eyebrow" style="margin-top: 12px;">/finance/payments</div>
+<h1>Платежи</h1>
+<p class="subtitle">Объединённая страница (legacy и overview слились в одну). Per-method chips для сверки кассы. Платёж иммутабелен: ошибка → void + create; возврат → отдельная Refund-запись.</p>
+
+<!-- Top: period + CTA -->
+<div style="display:flex; align-items:center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
+  <div class="period-tabs">
+    <button class="active">Сегодня</button>
+    <button>7 дней</button>
+    <button>30 дней</button>
+    <button>Квартал</button>
+    <button>Кастом</button>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a class="btn">📊 Экспорт XLSX</a>
+    <a class="btn btn-primary">+ Записать платёж</a>
+  </div>
+</div>
+
+<!-- Method chips -->
+<div class="chips" style="margin-bottom: 18px;">
+  <div class="chip active">
+    <span>Все</span><strong>184 500 ₽</strong>
+  </div>
+  <div class="chip">
+    <span>Наличные</span><strong style="color: var(--emerald);">120 000 ₽</strong>
+  </div>
+  <div class="chip">
+    <span>Карта (терминал)</span><strong style="color: var(--accent-bright);">14 500 ₽</strong>
+  </div>
+  <div class="chip">
+    <span>Перевод</span><strong style="color: var(--slate);">50 000 ₽</strong>
+  </div>
+  <div class="chip">
+    <span>Онлайн</span><strong>0 ₽</strong>
+  </div>
+  <div class="chip">
+    <span>Возвраты</span><strong style="color: var(--rose);">−10 000 ₽</strong>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;">
+  <input class="input" placeholder="🔍 клиент, бронь, № счёта">
+  <select class="input">
+    <option>Все типы</option>
+    <option>Приход</option>
+    <option>Возврат</option>
+  </select>
+  <select class="input">
+    <option>Все методы</option>
+    <option>Наличные</option>
+    <option>Карта</option>
+    <option>Перевод</option>
+    <option>Онлайн</option>
+  </select>
+  <label style="display:flex; align-items:center; gap: 6px; font-size: 13px; color: var(--ink-2); padding: 4px 0;">
+    <input type="checkbox"> Включить аннулированные
+  </label>
+</div>
+
+<!-- Table -->
+<div class="panel" style="padding: 0; overflow: hidden;">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>Дата · время</th>
+        <th>Клиент</th>
+        <th>Бронь</th>
+        <th>Счёт</th>
+        <th>Метод</th>
+        <th style="text-align: right;">Сумма</th>
+        <th>Кто принял</th>
+        <th>Статус</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="num-cell">25 апр<br><span class="muted hint">14:32</span></td>
+        <td><strong>Ромашка Продакшн</strong></td>
+        <td><a class="btn-ghost btn btn-sm">#B-2186</a></td>
+        <td><span class="tag">LR-2026-0042</span></td>
+        <td>💵 Наличные</td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-in">+30 000 ₽</strong></td>
+        <td>Игорь К.<br><span class="muted hint">WAREHOUSE</span></td>
+        <td><span class="pill pill-ok">Получен</span></td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="icon-btn" aria-label="Возврат">↩</button>
+            <button class="icon-btn danger" aria-label="Аннулировать">⊘</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="num-cell">25 апр<br><span class="muted hint">11:04</span></td>
+        <td><strong>ИП Петров А.С.</strong></td>
+        <td><a class="btn-ghost btn btn-sm">#B-2210</a></td>
+        <td><span class="tag">LR-2026-0045</span></td>
+        <td>💳 Карта</td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-in">+14 500 ₽</strong></td>
+        <td>Игорь К.<br><span class="muted hint">WAREHOUSE</span></td>
+        <td><span class="pill pill-ok">Получен</span></td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="icon-btn">↩</button>
+            <button class="icon-btn danger">⊘</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="num-cell">25 апр<br><span class="muted hint">09:18</span></td>
+        <td><strong>Movie Lab Group</strong></td>
+        <td><a class="btn-ghost btn btn-sm">#B-2179</a></td>
+        <td><span class="tag">LR-2026-0040</span></td>
+        <td>🏦 Перевод</td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-in">+50 000 ₽</strong></td>
+        <td>Анна З.<br><span class="muted hint">SUPER_ADMIN</span></td>
+        <td><span class="pill pill-ok">Получен</span></td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="icon-btn">↩</button>
+            <button class="icon-btn danger">⊘</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="num-cell">24 апр<br><span class="muted hint">18:45</span></td>
+        <td><strong>Студия «Луна»</strong></td>
+        <td><a class="btn-ghost btn btn-sm">#B-2204</a></td>
+        <td><span class="tag">LR-2026-0044</span></td>
+        <td>🏦 Перевод</td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-out">−10 000 ₽</strong></td>
+        <td>Анна З.</td>
+        <td><span class="pill pill-warn">Возврат</span></td>
+        <td>
+          <span class="hint muted">частичный · 24 апр</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="num-cell">24 апр<br><span class="muted hint">15:00</span></td>
+        <td><strong>Студия «Луна»</strong></td>
+        <td><a class="btn-ghost btn btn-sm">#B-2204</a></td>
+        <td><span class="tag">LR-2026-0044</span></td>
+        <td>🏦 Перевод</td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-in">+90 000 ₽</strong></td>
+        <td>Анна З.</td>
+        <td><span class="pill pill-ok">Получен</span></td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="icon-btn">↩</button>
+            <button class="icon-btn danger">⊘</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="num-cell">25 апр<br><span class="muted hint">10:21</span></td>
+        <td><strong>Movie Lab Group</strong></td>
+        <td><a class="btn-ghost btn btn-sm">#B-2179</a></td>
+        <td><span class="tag">LR-2026-0040</span></td>
+        <td>💵 Наличные</td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-in">+90 000 ₽</strong></td>
+        <td>Игорь К.</td>
+        <td><span class="pill pill-ok">Получен</span></td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="icon-btn">↩</button>
+            <button class="icon-btn danger">⊘</button>
+          </div>
+        </td>
+      </tr>
+      <tr class="row-voided">
+        <td class="num-cell">23 апр<br><span class="muted hint">11:00</span></td>
+        <td>Movie Lab Group</td>
+        <td>#B-2179</td>
+        <td><span class="tag" style="text-decoration: line-through;">LR-2026-0040</span></td>
+        <td>🏦 Перевод</td>
+        <td class="num-cell" style="text-align: right;">+90 000 ₽</td>
+        <td>Анна З.</td>
+        <td><span class="pill pill-none">Аннулирован</span></td>
+        <td>
+          <span class="hint">опечатка в реквизитах</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p class="hint" style="margin-top: 14px;">Сверка кассы: фильтр «Наличные» + период «Сегодня» → chip <code>120 000 ₽</code> = физическая касса. Voided платежи показываются серым с зачёркиванием — но только при включённом checkbox «Включить аннулированные».</p>
+
+<!-- Mobile -->
+<div style="margin-top: 36px;">
+  <div class="eyebrow">Mobile · 390px</div>
+  <h2>Платежи на телефоне</h2>
+  <div class="mobile">
+    <div class="m-header">📱 light-rental.ru/finance/payments</div>
+    <div class="m-body">
+      <div class="eyebrow">Платежи · сегодня</div>
+      <h3 class="num-cell" style="font-size: 28px; margin-bottom: 4px;">184 500 ₽</h3>
+      <div class="muted hint" style="margin-bottom: 12px;">5 поступлений · 1 возврат</div>
+
+      <!-- Method chips horizontal scroll -->
+      <div style="display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; padding-bottom: 4px;">
+        <div class="chip active" style="white-space: nowrap; padding: 6px 10px;"><span style="font-size: 10px;">Все</span><strong style="font-size: 12px;">184 500</strong></div>
+        <div class="chip" style="white-space: nowrap; padding: 6px 10px;"><span style="font-size: 10px;">Нал</span><strong style="font-size: 12px; color: var(--emerald);">120 000</strong></div>
+        <div class="chip" style="white-space: nowrap; padding: 6px 10px;"><span style="font-size: 10px;">Карта</span><strong style="font-size: 12px;">14 500</strong></div>
+        <div class="chip" style="white-space: nowrap; padding: 6px 10px;"><span style="font-size: 10px;">Перевод</span><strong style="font-size: 12px;">50 000</strong></div>
+      </div>
+
+      <!-- Card list -->
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="border: 1px solid var(--border); border-radius: 10px; padding: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong>Ромашка Продакшн</strong>
+            <span class="num-cell money-in" style="font-weight: 600;">+30 000 ₽</span>
+          </div>
+          <div class="muted hint" style="margin-top: 4px;">💵 Наличные · 14:32 · Игорь К.</div>
+        </div>
+        <div style="border: 1px solid var(--border); border-radius: 10px; padding: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong>ИП Петров А.С.</strong>
+            <span class="num-cell money-in" style="font-weight: 600;">+14 500 ₽</span>
+          </div>
+          <div class="muted hint" style="margin-top: 4px;">💳 Карта · 11:04 · Игорь К.</div>
+        </div>
+        <div style="border: 1px solid var(--amber-soft); border-radius: 10px; padding: 10px; background: var(--amber-soft);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong>Студия «Луна»</strong>
+            <span class="num-cell money-out" style="font-weight: 600;">−10 000 ₽</span>
+          </div>
+          <div class="muted hint" style="margin-top: 4px;">↩ Возврат · 24 апр · Анна З.</div>
+        </div>
+      </div>
+
+      <a class="btn btn-primary" style="display: block; text-align: center; margin-top: 16px;">+ Записать платёж</a>
+    </div>
+  </div>
+</div>
+
+</div>
+<!-- updated-by-superflow:2026-04-25 -->
+</body>
+</html>

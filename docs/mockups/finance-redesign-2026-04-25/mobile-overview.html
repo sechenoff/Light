@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mobile · все ключевые экраны</title>
+<link rel="stylesheet" href="../shell.css">
+<link rel="stylesheet" href="_canon.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  .num-cell { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(390px, 1fr)); gap: 22px; align-items: start; }
+  .input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--surface); width: 100%; box-sizing: border-box; }
+  .field-label { font-size: 12px; color: var(--ink-2); margin-bottom: 4px; display: block; font-weight: 500; }
+  .row-line { padding: 8px 0; border-bottom: 1px solid var(--slate-soft); display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<a href="index.html" class="btn-ghost btn btn-sm" style="padding-left:0">← Все экраны</a>
+<div class="eyebrow" style="margin-top: 12px;">390px · composite</div>
+<h1>Mobile-обзор</h1>
+<p class="subtitle">Все ключевые экраны на одной странице — telephone-сценарии для WAREHOUSE и SA. Цель: убедиться, что primary action на каждом экране попадается без 5 свайпов.</p>
+
+<div class="grid">
+
+  <!-- 1. Dashboard -->
+  <div>
+    <div class="eyebrow" style="margin-bottom: 8px;">/finance · дашборд</div>
+    <div class="mobile">
+      <div class="m-header">📱 SA · /finance</div>
+      <div class="m-body">
+        <div class="eyebrow">Финансы · 30 дней</div>
+        <h3 style="margin: 4px 0 12px;">Обзор</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px;">
+          <div class="kpi ok" style="padding: 10px;">
+            <div class="eyebrow">Получено</div>
+            <div class="value" style="font-size: 16px;">1,2 М ₽</div>
+          </div>
+          <div class="kpi alert" style="padding: 10px;">
+            <div class="eyebrow">Долги</div>
+            <div class="value" style="font-size: 16px;">340k</div>
+          </div>
+        </div>
+        <a class="btn btn-primary" style="display: block; text-align: center; margin-bottom: 8px;">+ Записать платёж</a>
+        <a class="btn" style="display: block; text-align: center;">+ Создать счёт</a>
+        <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);">
+          <div class="eyebrow" style="margin-bottom: 8px;">Топ-должники</div>
+          <div class="row-line"><strong>Ромашка</strong><span class="num-cell" style="color:var(--rose); font-weight:500;">142k</span></div>
+          <div class="row-line"><strong>Мосфильм</strong><span class="num-cell" style="color:var(--rose); font-weight:500;">98k</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Booking SA -->
+  <div>
+    <div class="eyebrow" style="margin-bottom: 8px;">/bookings/[id] · SA · sticky bottom</div>
+    <div class="mobile">
+      <div class="m-header">📱 SA · /bookings/B-2186</div>
+      <div class="m-body">
+        <div class="eyebrow">Бронь #B-2186</div>
+        <strong>Ромашка Продакшн</strong>
+        <div class="muted hint" style="margin: 4px 0 12px;">«Питерский нуар»</div>
+        <span class="pill pill-info" style="font-size: 11px; margin-right: 4px;">Возвращена</span>
+        <span class="pill pill-warn" style="font-size: 11px;">Частично</span>
+
+        <div style="background: var(--surface-2); border-radius: 10px; padding: 12px; margin-top: 14px;">
+          <div class="row-line" style="border:none; padding: 4px 0;"><span>Сумма</span><span class="num-cell">142 000 ₽</span></div>
+          <div class="row-line" style="border:none; padding: 4px 0;"><span>Получено</span><span class="num-cell" style="color: var(--emerald);">100 000 ₽</span></div>
+          <div class="row-line" style="border:none; padding: 4px 0; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 8px; font-weight: 600;"><span>Остаток</span><span class="num-cell" style="color: var(--rose);">42 000 ₽</span></div>
+        </div>
+      </div>
+      <div class="sticky-bottom">
+        <a class="btn btn-primary btn-sm">₽ Платёж</a>
+        <a class="btn btn-sm">📄 Счёт</a>
+        <a class="btn btn-sm">📄 Акт</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Booking WH -->
+  <div>
+    <div class="eyebrow" style="margin-bottom: 8px;">/bookings/[id] · WAREHOUSE</div>
+    <div class="mobile">
+      <div class="m-header">📱 WH · /bookings/B-2186</div>
+      <div class="m-body">
+        <div class="eyebrow">Бронь #B-2186</div>
+        <strong>Ромашка Продакшн</strong>
+        <div class="muted hint" style="margin: 4px 0 12px;">«Питерский нуар»</div>
+        <span class="pill pill-info" style="font-size: 11px; margin-right: 4px;">Возвращена</span>
+        <span class="pill pill-warn" style="font-size: 11px;">Остаток 42 000 ₽</span>
+        <div style="background: var(--accent-soft); border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 10px; margin-top: 14px; font-size: 11px; color: var(--accent-bright);">
+          <strong>Лимиты WH:</strong> только нал/карта · ≤ 100 000 ₽
+        </div>
+        <div style="background: var(--surface-2); border-radius: 10px; padding: 12px; margin-top: 12px;">
+          <div class="row-line" style="border:none; padding: 4px 0; font-weight: 600;"><span>Остаток</span><span class="num-cell" style="color: var(--rose);">42 000 ₽</span></div>
+        </div>
+      </div>
+      <div class="sticky-bottom">
+        <a class="btn btn-primary btn-sm" style="flex: 2;">₽ Принять оплату</a>
+        <a class="btn btn-sm">📄 Акт</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. RecordPaymentModal -->
+  <div>
+    <div class="eyebrow" style="margin-bottom: 8px;">RecordPaymentModal · единая</div>
+    <div class="mobile">
+      <div class="m-header">📱 модалка · /bookings/B-2186</div>
+      <div class="m-body">
+        <h3 style="margin: 0 0 4px;">Записать платёж</h3>
+        <div class="muted hint" style="margin-bottom: 14px;">Бронь #B-2186 · Ромашка Продакшн</div>
+
+        <label class="field-label">Сумма</label>
+        <input class="input num-cell" value="42 000 ₽" style="margin-bottom: 10px;">
+
+        <label class="field-label">Метод</label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px;">
+          <button class="btn btn-sm" style="background: var(--accent-soft); color: var(--accent-bright); border-color: #bfdbfe;">💵 Наличные</button>
+          <button class="btn btn-sm">💳 Карта</button>
+          <button class="btn btn-sm" disabled style="opacity: 0.45;">🏦 Перевод</button>
+          <button class="btn btn-sm" disabled style="opacity: 0.45;">🌐 Онлайн</button>
+        </div>
+        <div class="hint muted" style="font-size: 10px; margin-bottom: 10px;">WAREHOUSE — только нал/карта</div>
+
+        <label class="field-label">Дата получения</label>
+        <input class="input" value="25 апреля 2026" style="margin-bottom: 10px;">
+
+        <label class="field-label">Примечание (опц.)</label>
+        <textarea class="input" rows="2" placeholder="клиент принёс наличными при возврате"></textarea>
+
+        <a class="btn btn-primary" style="display: block; text-align: center; margin-top: 14px;">Записать платёж</a>
+        <a class="btn" style="display: block; text-align: center; margin-top: 6px;">Отмена</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Cancel-with-deposit modal -->
+  <div>
+    <div class="eyebrow" style="margin-bottom: 8px;">Cancel-with-deposit · шаг 1</div>
+    <div class="mobile">
+      <div class="m-header">📱 /bookings/B-2186 · отмена</div>
+      <div class="m-body">
+        <h3 style="margin: 0 0 4px;">Отменить бронь</h3>
+        <div class="muted hint" style="margin-bottom: 14px;">У клиента <strong>30 000 ₽</strong> уже получено</div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="border: 2px solid var(--accent-bright); background: var(--accent-soft); border-radius: 10px; padding: 12px;">
+            <strong>Полный возврат</strong>
+            <div class="hint" style="color: var(--ink-2);">30 000 ₽ возвращаются на ту же карту/нал</div>
+          </div>
+          <div style="border: 1px solid var(--border); border-radius: 10px; padding: 12px;">
+            <strong>Удержать как кредит</strong>
+            <div class="hint">На следующую бронь клиента</div>
+          </div>
+          <div style="border: 1px solid var(--border); border-radius: 10px; padding: 12px;">
+            <strong>Удержать как штраф</strong>
+            <div class="hint">Поздняя отмена · депозит не возвращается</div>
+          </div>
+        </div>
+
+        <a class="btn btn-primary" style="display: block; text-align: center; margin-top: 14px;">Далее →</a>
+        <a class="btn" style="display: block; text-align: center; margin-top: 6px;">Закрыть</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Warehouse scan: post-issue payment -->
+  <div>
+    <div class="eyebrow" style="margin-bottom: 8px;">/warehouse/scan · после выдачи · WH-flow</div>
+    <div class="mobile">
+      <div class="m-header">📱 WH · /warehouse/scan · 4/4</div>
+      <div class="m-body">
+        <div class="eyebrow" style="color: var(--emerald);">✓ Выдача завершена</div>
+        <h3 style="margin: 4px 0 14px;">Бронь #B-2186 · 12 ед.</h3>
+
+        <div style="background: var(--emerald-soft); border: 1px solid #6ee7b7; border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+          <div class="muted hint" style="color: var(--emerald);">К получению</div>
+          <div class="num-cell" style="font-size: 24px; font-weight: 600; color: var(--emerald); margin-top: 4px;">42 000 ₽</div>
+          <div class="hint" style="color: var(--emerald); margin-top: 4px;">Остаток по броне</div>
+        </div>
+
+        <a class="btn btn-primary" style="display: block; text-align: center; padding: 12px; margin-bottom: 8px; font-size: 14px;">₽ Принять оплату при выдаче</a>
+        <a class="btn" style="display: block; text-align: center;">Закрыть выдачу без оплаты</a>
+
+        <p class="hint muted" style="margin-top: 14px; font-size: 11px;">Открывает <code>RecordPaymentModal</code> с preset = 42 000 ₽, methods cash/card.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. Payments list -->
+  <div>
+    <div class="eyebrow" style="margin-bottom: 8px;">/finance/payments · сверка кассы</div>
+    <div class="mobile">
+      <div class="m-header">📱 SA · /finance/payments</div>
+      <div class="m-body">
+        <div class="eyebrow">Платежи · сегодня</div>
+        <h3 class="num-cell" style="font-size: 26px; margin-bottom: 4px;">184 500 ₽</h3>
+        <div class="muted hint" style="margin-bottom: 12px;">5 поступлений · 1 возврат</div>
+
+        <div style="display: flex; gap: 4px; overflow-x: auto; margin-bottom: 14px; padding-bottom: 4px;">
+          <div class="chip active" style="white-space: nowrap; padding: 4px 8px;"><span style="font-size: 9px;">Все</span><strong style="font-size: 11px;">184k</strong></div>
+          <div class="chip" style="white-space: nowrap; padding: 4px 8px;"><span style="font-size: 9px;">Нал</span><strong style="font-size: 11px; color: var(--emerald);">120k</strong></div>
+          <div class="chip" style="white-space: nowrap; padding: 4px 8px;"><span style="font-size: 9px;">Карта</span><strong style="font-size: 11px;">14k</strong></div>
+          <div class="chip" style="white-space: nowrap; padding: 4px 8px;"><span style="font-size: 9px;">Перевод</span><strong style="font-size: 11px;">50k</strong></div>
+        </div>
+
+        <div class="row-line">
+          <div><strong>Ромашка</strong><div class="muted hint">💵 14:32 · Игорь</div></div>
+          <span class="num-cell" style="color: var(--emerald); font-weight: 500;">+30 000 ₽</span>
+        </div>
+        <div class="row-line">
+          <div><strong>ИП Петров</strong><div class="muted hint">💳 11:04 · Игорь</div></div>
+          <span class="num-cell" style="color: var(--emerald); font-weight: 500;">+14 500 ₽</span>
+        </div>
+        <div class="row-line" style="background: var(--amber-soft); padding: 8px;">
+          <div><strong>Студия «Луна»</strong><div class="muted hint">↩ возврат · Анна</div></div>
+          <span class="num-cell" style="color: var(--rose); font-weight: 500;">−10 000 ₽</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. Aging mobile -->
+  <div>
+    <div class="eyebrow" style="margin-bottom: 8px;">/finance/debts · aging-bucket-аккордеон</div>
+    <div class="mobile">
+      <div class="m-header">📱 SA · /finance/debts</div>
+      <div class="m-body">
+        <h3 style="margin-bottom: 4px;">Дебиторка</h3>
+        <div class="muted hint" style="margin-bottom: 14px;">340 500 ₽ · 5 контрагентов</div>
+
+        <div style="border: 1px solid var(--rose-border); border-radius: 10px; padding: 12px; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between;"><strong style="color: var(--rose);">90+ безнадёжно</strong><span class="num-cell" style="color: var(--rose); font-weight: 600;">9 500 ₽</span></div>
+          <div class="hint" style="margin-top: 4px;">Old Studio Ltd</div>
+        </div>
+        <div style="border: 1px solid #fed7aa; border-radius: 10px; padding: 12px; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between;"><strong style="color: #9a3412;">61–90</strong><span class="num-cell" style="font-weight: 600;">25 000 ₽</span></div>
+          <div class="hint" style="margin-top: 4px;">Old Studio Ltd</div>
+        </div>
+        <div style="border: 1px solid #fcd34d; border-radius: 10px; padding: 12px; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between;"><strong style="color: #92400e;">31–60</strong><span class="num-cell" style="font-weight: 600;">100 000 ₽</span></div>
+          <div class="hint" style="margin-top: 4px;">Ромашка Продакшн</div>
+        </div>
+        <div style="border: 1px solid #fde68a; border-radius: 10px; padding: 12px;">
+          <div style="display: flex; justify-content: space-between;"><strong style="color: #854d0e;">1–30</strong><span class="num-cell" style="font-weight: 600;">140 500 ₽</span></div>
+          <div class="hint" style="margin-top: 4px;">Ромашка · Мосфильм</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="hint" style="margin-top: 28px;">На каждом экране primary action либо в верхней области (одна кнопка), либо в sticky-bottom (3 кнопки). WAREHOUSE никогда не видит CTA «Скачать счёт PDF» по чужой броне — только по той, на которой работает в данный момент.</p>
+
+</div>
+<!-- updated-by-superflow:2026-04-25 -->
+</body>
+</html>

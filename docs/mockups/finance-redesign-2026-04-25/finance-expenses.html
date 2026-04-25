@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>/finance/expenses · расходы</title>
+<link rel="stylesheet" href="../shell.css">
+<link rel="stylesheet" href="_canon.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  .input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--surface); font-family: inherit; min-width: 200px; }
+  .num-cell { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+  .icon-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+  .cat-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .cat-pill { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 12px; cursor: pointer; color: var(--ink-2); }
+  .cat-pill.active { background: var(--accent-soft); color: var(--accent-bright); border-color: #bfdbfe; }
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr 320px; gap: 14px; margin-bottom: 18px; }
+  .summary-card { padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  .summary-card.pending { border-color: var(--amber-soft); background: var(--amber-soft); }
+  .donut { display:flex; align-items:center; gap: 12px; }
+  .donut-svg { width: 110px; height: 110px; }
+  .donut-legend { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); }
+  .donut-legend .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .badge-link { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--accent-soft); color: var(--accent-bright); border-radius: 4px; font-size: 11px; text-decoration: none; font-family: "IBM Plex Mono", monospace; }
+  .badge-link.repair { background: var(--amber-soft); color: var(--amber); }
+  .row-pending { background: #fffbeb; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<a href="index.html" class="btn-ghost btn btn-sm" style="padding-left:0">← Все экраны</a>
+<div class="eyebrow" style="margin-top: 12px;">/finance/expenses</div>
+<h1>Расходы</h1>
+<p class="subtitle">Учёт исходящих платежей. Привязка к ремонтам и (новое в Phase 2) — к броням. Approve-flow остаётся как есть; кликабельные badge для drill-down.</p>
+
+<!-- Header row: period + add -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
+  <div class="period-tabs">
+    <button>Сегодня</button>
+    <button>7 дней</button>
+    <button class="active">30 дней</button>
+    <button>Квартал</button>
+    <button>Год</button>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a class="btn">📊 Экспорт XLSX</a>
+    <a class="btn btn-primary">+ Записать расход</a>
+  </div>
+</div>
+
+<!-- Summary -->
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="eyebrow">Утверждено за период</div>
+    <div class="num-cell" style="font-size: 24px; font-weight: 600; color: var(--rose); margin: 4px 0;">−324 800 ₽</div>
+    <div class="muted hint">12 операций</div>
+  </div>
+  <div class="summary-card pending">
+    <div class="eyebrow" style="color: var(--amber);">Ждут утверждения</div>
+    <div class="num-cell" style="font-size: 24px; font-weight: 600; color: var(--amber); margin: 4px 0;">42 700 ₽</div>
+    <div class="hint" style="color: var(--amber);">3 операции — открыть фильтр</div>
+  </div>
+  <div class="summary-card">
+    <div class="eyebrow" style="margin-bottom: 8px;">Распределение</div>
+    <div class="donut">
+      <svg class="donut-svg" viewBox="0 0 36 36">
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#fef3c7" stroke-width="3.5"/>
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#a16207" stroke-width="3.5" stroke-dasharray="44 100" stroke-dashoffset="0"/>
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#0f766e" stroke-width="3.5" stroke-dasharray="22 100" stroke-dashoffset="-44"/>
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#1d4ed8" stroke-width="3.5" stroke-dasharray="18 100" stroke-dashoffset="-66"/>
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#52525b" stroke-width="3.5" stroke-dasharray="16 100" stroke-dashoffset="-84"/>
+      </svg>
+      <div class="donut-legend">
+        <span><span class="swatch" style="background: #a16207;"></span>Запчасти 142k</span>
+        <span><span class="swatch" style="background: #0f766e;"></span>Транспорт 71k</span>
+        <span><span class="swatch" style="background: #1d4ed8;"></span>Зарплата 60k</span>
+        <span><span class="swatch" style="background: #52525b;"></span>Прочее 51k</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Filter row -->
+<div style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
+  <input type="text" class="input" placeholder="🔍 описание, привязка…">
+  <div class="cat-pills" style="margin-bottom: 0;">
+    <button class="cat-pill active">Все</button>
+    <button class="cat-pill">🔧 Запчасти</button>
+    <button class="cat-pill">🚗 Транспорт</button>
+    <button class="cat-pill">💼 Зарплата</button>
+    <button class="cat-pill">🛒 Закупка</button>
+    <button class="cat-pill">📦 Прочее</button>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="panel" style="padding: 0; overflow: hidden;">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>Дата</th>
+        <th>Категория</th>
+        <th>Описание</th>
+        <th>Привязка</th>
+        <th>Документ</th>
+        <th style="text-align: right;">Сумма</th>
+        <th>Статус</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="row-pending">
+        <td class="num-cell">25 апр</td>
+        <td>🔧 Запчасти</td>
+        <td>Лампа Aputure 600d Pro · 1 шт.</td>
+        <td><a class="badge-link repair">🛠 R-128</a></td>
+        <td><a class="btn-ghost btn btn-sm">📎 чек.jpg</a></td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-out">−4 200 ₽</strong></td>
+        <td><span class="pill pill-warn">Ждёт утв.</span></td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="icon-btn" aria-label="Утвердить" style="border-color: var(--emerald); color: var(--emerald);">✓</button>
+            <button class="icon-btn" aria-label="Редактировать">✎</button>
+            <button class="icon-btn" aria-label="Удалить" style="color: var(--rose);">🗑</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="num-cell">24 апр</td>
+        <td>🚗 Транспорт</td>
+        <td>Доставка комплекта на студию</td>
+        <td><a class="badge-link">📦 #B-2186</a></td>
+        <td><span class="muted hint">—</span></td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-out">−2 500 ₽</strong></td>
+        <td><span class="pill pill-ok">Утверждён</span></td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="icon-btn">📄</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="num-cell">22 апр</td>
+        <td>🔧 Запчасти</td>
+        <td>Кабель XLR 5m · 4 шт.</td>
+        <td><a class="badge-link repair">🛠 R-119</a></td>
+        <td><a class="btn-ghost btn btn-sm">📎 ozon.pdf</a></td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-out">−6 800 ₽</strong></td>
+        <td><span class="pill pill-ok">Утверждён</span></td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="icon-btn">📄</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="num-cell">20 апр</td>
+        <td>💼 Зарплата</td>
+        <td>Игорь К. · 1–15 апр</td>
+        <td><span class="muted hint">—</span></td>
+        <td><span class="muted hint">—</span></td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-out">−30 000 ₽</strong></td>
+        <td><span class="pill pill-ok">Утверждён</span></td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="icon-btn">📄</button>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td class="num-cell">18 апр</td>
+        <td>🛒 Закупка</td>
+        <td>Кейсы для светодиодной панели · 2 шт.</td>
+        <td><span class="muted hint">—</span></td>
+        <td><a class="btn-ghost btn btn-sm">📎 ozon.pdf</a></td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-out">−18 600 ₽</strong></td>
+        <td><span class="pill pill-ok">Утверждён</span></td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="icon-btn">📄</button>
+          </div>
+        </td>
+      </tr>
+      <tr style="background: var(--amber-soft);">
+        <td class="num-cell">15 апр</td>
+        <td>🔧 Запчасти</td>
+        <td>Объектив 50mm — без указания ремонта</td>
+        <td><span class="pill pill-warn" style="font-size: 10px;">⚠ Не привязан</span></td>
+        <td><span class="muted hint">—</span></td>
+        <td class="num-cell" style="text-align: right;"><strong class="money-out">−4 500 ₽</strong></td>
+        <td><span class="pill pill-warn">Ждёт утв.</span></td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="icon-btn" style="border-color: var(--emerald); color: var(--emerald);">✓</button>
+            <button class="icon-btn">✎</button>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p class="hint" style="margin-top: 14px;">Расходы в категории 🔧 Запчасти БЕЗ привязки к ремонту получают амбер-знак ⚠. Approved + linked-to-closed-repair — read-only, чтобы не ломать историю.</p>
+
+<!-- Mobile -->
+<div style="margin-top: 36px;">
+  <div class="eyebrow">Mobile · 390px</div>
+  <h2>Расходы на телефоне</h2>
+  <div class="mobile">
+    <div class="m-header">📱 light-rental.ru/finance/expenses</div>
+    <div class="m-body">
+      <div class="eyebrow">Расходы · 30 дней</div>
+      <h3 class="num-cell" style="color: var(--rose); font-size: 26px; margin-bottom: 4px;">−324 800 ₽</h3>
+      <div class="muted hint" style="margin-bottom: 14px;">12 утверждено · 3 ждут</div>
+      <div style="display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; padding-bottom: 4px;">
+        <button class="cat-pill active" style="white-space: nowrap;">Все</button>
+        <button class="cat-pill" style="white-space: nowrap;">🔧 Запчасти</button>
+        <button class="cat-pill" style="white-space: nowrap;">🚗 Транспорт</button>
+        <button class="cat-pill" style="white-space: nowrap;">💼 Зарплата</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="border: 1px solid #fcd34d; background: #fffbeb; border-radius: 10px; padding: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: start;">
+            <div>
+              <strong>Лампа Aputure 600d Pro</strong>
+              <div class="muted hint" style="margin-top: 2px;">25 апр · <a class="badge-link repair">🛠 R-128</a></div>
+            </div>
+            <span class="num-cell" style="color: var(--rose); font-weight: 600;">−4 200 ₽</span>
+          </div>
+          <div style="margin-top: 8px; display: flex; gap: 6px;">
+            <span class="pill pill-warn" style="font-size: 10px;">Ждёт утв.</span>
+            <a class="btn btn-sm" style="margin-left:auto; padding: 3px 8px; font-size: 11px; border-color: var(--emerald); color: var(--emerald);">✓ Утвердить</a>
+          </div>
+        </div>
+        <div style="border: 1px solid var(--border); border-radius: 10px; padding: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: start;">
+            <div>
+              <strong>Доставка</strong>
+              <div class="muted hint" style="margin-top: 2px;">24 апр · <a class="badge-link">📦 #B-2186</a></div>
+            </div>
+            <span class="num-cell" style="color: var(--rose); font-weight: 600;">−2 500 ₽</span>
+          </div>
+        </div>
+      </div>
+      <a class="btn btn-primary" style="display: block; text-align: center; margin-top: 16px;">+ Записать расход</a>
+    </div>
+  </div>
+</div>
+
+</div>
+<!-- updated-by-superflow:2026-04-25 -->
+</body>
+</html>
