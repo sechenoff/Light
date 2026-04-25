@@ -50,7 +50,10 @@ export function RecordPaymentModal({
   const [bookingId, setBookingId] = useState(defaultBookingId ?? "");
   const [amount, setAmount] = useState(bookingContext?.amountOutstanding ?? "");
   const [method, setMethod] = useState(defaultMethod);
-  const [receivedAt, setReceivedAt] = useState(() => new Date().toISOString().slice(0, 16));
+  // Swedish locale даёт "YYYY-MM-DD HH:mm:ss" — заменяем пробел на T и берём первые 16 символов
+  const [receivedAt, setReceivedAt] = useState(() =>
+    new Date().toLocaleString("sv-SE", { hour12: false }).replace(" ", "T").slice(0, 16),
+  );
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [bookings, setBookings] = useState<BookingOption[]>([]);
@@ -90,7 +93,7 @@ export function RecordPaymentModal({
       setBookingId(defaultBookingId ?? "");
       setAmount(bookingContext?.amountOutstanding ?? "");
       setMethod(defaultMethod);
-      setReceivedAt(new Date().toISOString().slice(0, 16));
+      setReceivedAt(new Date().toLocaleString("sv-SE", { hour12: false }).replace(" ", "T").slice(0, 16));
       setNote("");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,12 +119,22 @@ export function RecordPaymentModal({
       toast.success("Платёж зафиксирован");
       onCreated();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Ошибка сохранения";
-      // Специфичная ошибка лимита WH
-      if (msg.includes("PAYMENT_LIMIT_EXCEEDED") || msg.includes("лимит")) {
-        toast.error(`Превышен лимит: ${msg}`);
+      // Проверяем структурированный код из details.code
+      const details = (e as any)?.details;
+      const code = typeof details === "object" && details !== null ? (details as any).code : undefined;
+      const field = typeof details === "object" && details !== null ? (details as any).field : undefined;
+      if (code === "PAYMENT_LIMIT_EXCEEDED") {
+        if (field === "amount") {
+          toast.error("Сумма больше лимита 100 000 ₽");
+        } else if (field === "method") {
+          toast.error("Этот метод недоступен для вашей роли");
+        } else if (field === "bookingStatus") {
+          toast.error("Бронь не выдана — оплату принять нельзя");
+        } else {
+          toast.error("Превышен лимит платежа для кладовщика");
+        }
       } else {
-        toast.error(msg);
+        toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
       }
     } finally {
       setSaving(false);

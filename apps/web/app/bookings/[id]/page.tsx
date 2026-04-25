@@ -47,6 +47,14 @@ type BookingDetail = {
   amountOutstanding?: string | null;
   expectedPaymentDate?: string | null;
   paymentComment?: string | null;
+  payments?: Array<{
+    id: string;
+    amount: string;
+    method: string | null;
+    receivedAt: string | null;
+    direction: string;
+    note: string | null;
+  }>;
   financeEvents?: Array<{
     id: string;
     eventType: string;
@@ -102,6 +110,16 @@ function statusText(s: BookingDetail["status"]) {
       return "Возвращено";
     case "CANCELLED":
       return "Отменено";
+  }
+}
+
+function paymentMethodLabel(method: string | null): string {
+  switch (method) {
+    case "CASH": return "Наличные";
+    case "CARD": return "Карта";
+    case "BANK_TRANSFER": return "Перевод";
+    case "OTHER": return "Другое";
+    default: return method ?? "—";
   }
 }
 
@@ -499,11 +517,44 @@ export default function BookingDetailPage() {
                   </div>
                   <div><span className="text-ink-3">Плановая дата платежа:</span> <span className="font-medium">{booking.expectedPaymentDate ? new Date(booking.expectedPaymentDate).toLocaleDateString("ru-RU") : "—"}</span></div>
 
+                  {/* Список платежей — Платежи */}
+                  {(booking.payments ?? []).length > 0 && (
+                    <div className="pt-2 mt-2 border-t border-border">
+                      <p className="eyebrow mb-2">Платежи</p>
+                      <div className="space-y-1">
+                        {(booking.payments ?? []).map((p) => (
+                          <div key={p.id} className="flex items-center justify-between gap-2 text-sm py-1">
+                            <div className="flex items-center gap-2 text-ink-2 min-w-0">
+                              <span className="text-xs text-ink-3">
+                                {p.receivedAt ? new Date(p.receivedAt).toLocaleDateString("ru-RU") : "—"}
+                              </span>
+                              <span>{paymentMethodLabel(p.method)}</span>
+                              {p.note && <span className="text-xs text-ink-3 truncate">{p.note}</span>}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="font-medium mono-num">{formatMoneyRub(p.amount)}</span>
+                              {user?.role === "SUPER_ADMIN" && (
+                                <button
+                                  className="text-xs text-rose hover:underline"
+                                  onClick={() => setVoidPaymentId(p.id)}
+                                >
+                                  Аннулировать
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* CTA row — role-gated (T3) */}
                   <div className="pt-2 flex flex-wrap gap-2">
-                    {/* Записать платёж: SA всегда, WH только при ISSUED|RETURNED */}
+                    {/* Записать платёж: SA всегда, WH только при ISSUED|RETURNED и остатке > 0 */}
                     {(user?.role === "SUPER_ADMIN" ||
-                      (user?.role === "WAREHOUSE" && (booking.status === "ISSUED" || booking.status === "RETURNED"))
+                      (user?.role === "WAREHOUSE" &&
+                        (booking.status === "ISSUED" || booking.status === "RETURNED") &&
+                        Number(booking.amountOutstanding ?? "0") > 0)
                     ) && (
                       <button
                         className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-subtle transition-colors"
