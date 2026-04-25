@@ -10,12 +10,14 @@ import {
 } from "../services/invoiceService";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
-import { renderInvoicePdf, readOrgFromEnv, type InvoiceLine } from "../services/documentExport/invoice/renderInvoicePdf";
+import { renderInvoicePdf, coalesceWithEnv, type InvoiceLine } from "../services/documentExport/invoice/renderInvoicePdf";
 import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
+import { getSettings } from "../services/organizationService";
 
 const router = express.Router();
 
 const invoiceKindEnum = z.enum(["FULL", "DEPOSIT", "BALANCE", "CORRECTION"]);
+const invoiceStatusEnum = z.enum(["DRAFT", "ISSUED", "PARTIAL_PAID", "PAID", "OVERDUE", "VOID"]);
 
 const createSchema = z.object({
   bookingId: z.string().min(1),
@@ -69,15 +71,23 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
   try {
     const { status, bookingId, limit, offset } = req.query;
 
+    // M1: Zod validation for ?status= (comma-separated InvoiceStatus values)
     const where: Record<string, unknown> = {};
     if (status) {
-      const statuses = (status as string).split(",");
-      where.status = { in: statuses };
+      const rawStatuses = (status as string).split(",").map((s) => s.trim());
+      // Validate each status value
+      for (const s of rawStatuses) {
+        const parsed = invoiceStatusEnum.safeParse(s);
+        if (!parsed.success) {
+          throw new HttpError(400, `Недопустимый статус счёта: "${s}"`, "INVALID_STATUS_FILTER");
+        }
+      }
+      where.status = { in: rawStatuses };
     }
     if (bookingId) where.bookingId = bookingId as string;
 
-    const take = Math.min(parseInt(limit as string) || 50, 200);
-    const skip = parseInt(offset as string) || 0;
+    const take = Math.min(parseInt(limit as string, 10) || 50, 200); // L2: explicit radix 10
+    const skip = parseInt(offset as string, 10) || 0;
 
     const [items, total] = await Promise.all([
       prisma.invoice.findMany({
@@ -98,7 +108,24 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
       prisma.invoice.count({ where }),
     ]);
 
-    res.json({ items, total });
+    // H6: Derive displayStatus on read — non-terminal invoices with dueDate < now → OVERDUE.
+    // No DB write; cron-based recomputation deferred to Phase 3.
+    // TODO Phase 3: Заменить на cron-job, который периодически вызывает recomputeInvoiceStatus
+    // для всех просроченных счетов и обновляет статус в БД.
+    const now = Date.now();
+    const itemsWithDisplayStatus = items.map((inv) => {
+      let displayStatus = inv.status;
+      if (
+        inv.status === "ISSUED" &&
+        inv.dueDate &&
+        inv.dueDate.getTime() < now
+      ) {
+        displayStatus = "OVERDUE";
+      }
+      return { ...inv, displayStatus };
+    });
+
+    res.json({ items: itemsWithDisplayStatus, total });
   } catch (err) {
     next(err);
   }
@@ -214,7 +241,8 @@ router.get("/:id/pdf", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res
     }
 
     const booking = invoice.booking;
-    const org = readOrgFromEnv();
+    const orgSettings = await getSettings();
+    const org = coalesceWithEnv(orgSettings);
 
     const invoiceNumber = invoice.number;
     const invoiceDate = invoice.issuedAt

@@ -93,7 +93,7 @@ function rub(value: string): string {
   return `${n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`;
 }
 
-/** Читает реквизиты организации из ENV */
+/** Читает реквизиты организации из ENV (фолбэк при пустых полях в БД) */
 export function readOrgFromEnv(): OrgDetails {
   return {
     name: process.env.ORG_NAME ?? "ООО «Световое оборудование»",
@@ -105,6 +105,41 @@ export function readOrgFromEnv(): OrgDetails {
     bik: process.env.ORG_BIK ?? "044525000",
     rschet: process.env.ORG_RSCHET ?? "40702810000000000000",
     kschet: process.env.ORG_KSCHET ?? "30101810000000000000",
+  };
+}
+
+/**
+ * Объединяет данные OrganizationSettings из БД с ENV-фолбэками.
+ * Приоритет: БД (если поле непустое) → ENV → хардкод-дефолт.
+ *
+ * Использовать как источник реквизитов при генерации PDF вместо readOrgFromEnv().
+ * ENV-переменные становятся фолбэком при первичном развёртывании (до заполнения БД).
+ */
+export function coalesceWithEnv(
+  orgSettings: {
+    legalName?: string | null;
+    inn?: string | null;
+    kpp?: string | null;
+    address?: string | null;
+    phone?: string | null;
+    bankName?: string | null;
+    bankBik?: string | null;
+    rschet?: string | null;
+    kschet?: string | null;
+  } | null,
+): OrgDetails {
+  const env = readOrgFromEnv();
+  const s = orgSettings ?? {};
+  return {
+    name: (s.legalName && s.legalName.trim()) ? s.legalName.trim() : env.name,
+    inn: (s.inn && s.inn.trim()) ? s.inn.trim() : env.inn,
+    kpp: (s.kpp && s.kpp.trim()) ? s.kpp.trim() : env.kpp,
+    address: (s.address && s.address.trim()) ? s.address.trim() : env.address,
+    phone: (s.phone && s.phone.trim()) ? s.phone.trim() : env.phone,
+    bank: (s.bankName && s.bankName.trim()) ? s.bankName.trim() : env.bank,
+    bik: (s.bankBik && s.bankBik.trim()) ? s.bankBik.trim() : env.bik,
+    rschet: (s.rschet && s.rschet.trim()) ? s.rschet.trim() : env.rschet,
+    kschet: (s.kschet && s.kschet.trim()) ? s.kschet.trim() : env.kschet,
   };
 }
 

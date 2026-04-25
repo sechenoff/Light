@@ -44,7 +44,8 @@ describe("menuByRole — grouped sections", () => {
     ]);
   });
 
-  it("WAREHOUSE has sections: Главное, Задачи, Склад, Бронирование, Каталог, Мастерская (no Финансы, no Система)", () => {
+  it("WAREHOUSE has sections: Главное, Задачи, Склад, Бронирование, Каталог, Мастерская, Финансы (no Система)", () => {
+    // L1: WAREHOUSE теперь видит Финансы→Счета в режиме read-only (без CTAs создания/выпуска/аннулирования)
     const titles = menuByRole.WAREHOUSE.map((s) => s.title);
     expect(titles).toEqual([
       "Главное",
@@ -53,7 +54,16 @@ describe("menuByRole — grouped sections", () => {
       "Бронирование",
       "Каталог",
       "Мастерская",
+      "Финансы",
     ]);
+  });
+
+  it("WAREHOUSE Финансы section has only /finance/invoices (read-only, no full finance)", () => {
+    // L1: WAREHOUSE видит только Счета, без Обзора/Платежей/Дебиторки/Расходов
+    const finance = menuByRole.WAREHOUSE.find((s) => s.title === "Финансы");
+    expect(finance).toBeDefined();
+    expect(finance!.items).toHaveLength(1);
+    expect(finance!.items[0].href).toBe("/finance/invoices");
   });
 
   it("TECHNICIAN has sections: Главное, Задачи, Мастерская, Каталог", () => {

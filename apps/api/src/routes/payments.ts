@@ -18,6 +18,8 @@ const createSchema = z.object({
   method: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]),
   receivedAt: z.string().datetime(),
   note: z.string().optional(),
+  /** Привязать платёж к конкретному счёту Invoice. Счёт не должен быть аннулирован. */
+  invoiceId: z.string().optional(),
 });
 
 const patchSchema = createSchema.partial().omit({ bookingId: true });
@@ -64,6 +66,7 @@ router.post("/", async (req, res, next) => {
       note: body.note,
       createdBy: userId,
       creatorRole: role,
+      invoiceId: body.invoiceId,
     });
     res.status(201).json({ payment: { ...payment, amount: payment.amount.toString() } });
   } catch (err) {

@@ -69,38 +69,36 @@ describe("CancelWithDepositModal", () => {
   });
 
   it("shows confirm button on step 3 and calls cancel API on commit with refund", async () => {
+    // H5: cancel-with-deposit is now a single atomic API call
     const onCancelled = vi.fn();
 
-    // Mock POST /api/refunds
-    (global.fetch as any)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        json: async () => ({ id: "r1" }),
-      })
-      // Mock POST /api/bookings/:id/status
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ booking: { status: "CANCELLED" } }),
-      });
+    // Mock POST /api/bookings/:id/cancel-with-deposit (single atomic endpoint)
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ booking: { status: "CANCELLED" }, refund: { id: "r1" } }),
+    });
 
     render(<CancelWithDepositModal {...DEFAULT_PROPS} onCancelled={onCancelled} />);
 
-    // Step 1: fill refund reason in step 2
+    // Step 1 → step 2: fill refund reason
     fireEvent.click(screen.getByRole("button", { name: "Далее →" }));
-    // Step 2 refund — fill reason
     fireEvent.change(
       screen.getByPlaceholderText("Отмена съёмки клиентом"),
       { target: { value: "Клиент отказался" } }
     );
     fireEvent.click(screen.getByRole("button", { name: "Далее →" }));
-    // Step 3
+    // Step 3: confirm
     const confirmBtn = screen.getByRole("button", { name: "Подтвердить отмену" });
     fireEvent.click(confirmBtn);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledTimes(2);
+      // Single API call instead of two separate (refund + cancel)
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/bookings/booking-1/cancel-with-deposit"),
+        expect.objectContaining({ method: "POST" }),
+      );
       expect(onCancelled).toHaveBeenCalled();
     });
   });

@@ -25,6 +25,7 @@ let saToken: string;
 let whToken: string;
 let saUserId: string;
 
+// Shared booking for tests that don't need FULL-invoice uniqueness
 let bookingId: string;
 let clientId: string;
 
@@ -58,7 +59,7 @@ beforeAll(async () => {
   });
   whToken = signSession({ userId: wh.id, username: wh.username, role: "WAREHOUSE" });
 
-  // Create test client and booking
+  // Create test client and shared booking
   const client = await prisma.client.create({ data: { name: `inv-test-client-${Date.now()}` } });
   clientId = client.id;
 
@@ -73,6 +74,13 @@ beforeAll(async () => {
     },
   });
   bookingId = booking.id;
+
+  // Create OrganizationSettings for numbering
+  await prisma.organizationSettings.upsert({
+    where: { id: "singleton" },
+    create: { id: "singleton", legalName: "ООО Тест", inn: "1234567890", invoiceNumberPrefix: "TEST" },
+    update: {},
+  });
 });
 
 afterAll(async () => {
@@ -87,6 +95,21 @@ afterAll(async () => {
 
 function SA() { return { "X-API-Key": "test-key-inv", Authorization: `Bearer ${saToken}` }; }
 function WH() { return { "X-API-Key": "test-key-inv", Authorization: `Bearer ${whToken}` }; }
+
+/** Creates a fresh booking with legacyFinance=false, returns its id */
+async function freshBookingId(): Promise<string> {
+  const b = await prisma.booking.create({
+    data: {
+      clientId,
+      projectName: `test-booking-${Date.now()}-${Math.random()}`,
+      startDate: new Date("2026-06-01"),
+      endDate: new Date("2026-06-03"),
+      finalAmount: "50000",
+      legacyFinance: false,
+    },
+  });
+  return b.id;
+}
 
 describe("POST /api/invoices", () => {
   it("SA: создаёт DRAFT счёт для существующей брони", async () => {
@@ -105,10 +128,11 @@ describe("POST /api/invoices", () => {
   });
 
   it("SA: DEPOSIT требует total", async () => {
+    const bId = await freshBookingId();
     const res = await request(app)
       .post("/api/invoices")
       .set(SA())
-      .send({ bookingId, kind: "DEPOSIT" }); // no total
+      .send({ bookingId: bId, kind: "DEPOSIT" }); // no total
 
     expect(res.status).toBe(400);
   });
@@ -125,10 +149,11 @@ describe("POST /api/invoices", () => {
   });
 
   it("WH: не может создавать счета → 403", async () => {
+    const bId = await freshBookingId();
     const res = await request(app)
       .post("/api/invoices")
       .set(WH())
-      .send({ bookingId, kind: "FULL" });
+      .send({ bookingId: bId, kind: "DEPOSIT", total: 1000 });
 
     expect(res.status).toBe(403);
   });
@@ -141,21 +166,67 @@ describe("POST /api/invoices", () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("H1: legacyFinance=true → 409 LEGACY_BOOKING", async () => {
+    const legacyBooking = await prisma.booking.create({
+      data: {
+        clientId,
+        projectName: "Legacy booking",
+        startDate: new Date("2025-01-01"),
+        endDate: new Date("2025-01-03"),
+        finalAmount: "10000",
+        legacyFinance: true, // legacy
+      },
+    });
+    const res = await request(app)
+      .post("/api/invoices")
+      .set(SA())
+      .send({ bookingId: legacyBooking.id, kind: "FULL" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.details).toBe("LEGACY_BOOKING");
+  });
+
+  it("H1: FULL invoice duplicate → 409 FULL_INVOICE_EXISTS", async () => {
+    const bId = await freshBookingId();
+    // Create first FULL invoice
+    await request(app).post("/api/invoices").set(SA()).send({ bookingId: bId, kind: "FULL" });
+    // Try second FULL invoice
+    const res = await request(app).post("/api/invoices").set(SA()).send({ bookingId: bId, kind: "FULL" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.details).toBe("FULL_INVOICE_EXISTS");
+  });
+
+  it("H1: CANCELLED booking → 409 BOOKING_CANCELLED", async () => {
+    const cancelledBooking = await prisma.booking.create({
+      data: {
+        clientId,
+        projectName: "Cancelled booking",
+        startDate: new Date("2025-03-01"),
+        endDate: new Date("2025-03-03"),
+        finalAmount: "5000",
+        legacyFinance: false,
+        status: "CANCELLED",
+      },
+    });
+    const res = await request(app)
+      .post("/api/invoices")
+      .set(SA())
+      .send({ bookingId: cancelledBooking.id, kind: "DEPOSIT", total: 1000 });
+
+    expect(res.status).toBe(409);
+    expect(res.body.details).toBe("BOOKING_CANCELLED");
+  });
 });
 
 describe("POST /api/invoices/:id/issue", () => {
   it("SA: выставляет счёт DRAFT → ISSUED с реальным номером", async () => {
-    // Создаём OrganizationSettings для нумерации
-    await prisma.organizationSettings.upsert({
-      where: { id: "singleton" },
-      create: { id: "singleton", legalName: "ООО Тест", inn: "1234567890", invoiceNumberPrefix: "TEST" },
-      update: {},
-    });
-
+    const bId = await freshBookingId();
     const create = await request(app)
       .post("/api/invoices")
       .set(SA())
-      .send({ bookingId, kind: "FULL" });
+      .send({ bookingId: bId, kind: "FULL" });
 
     const invoiceId = create.body.id;
     expect(create.status).toBe(201);
@@ -171,10 +242,11 @@ describe("POST /api/invoices/:id/issue", () => {
   });
 
   it("WH: не может выставлять счета → 403", async () => {
+    const bId = await freshBookingId();
     const create = await request(app)
       .post("/api/invoices")
       .set(SA())
-      .send({ bookingId, kind: "FULL" });
+      .send({ bookingId: bId, kind: "FULL" });
 
     const res = await request(app)
       .post(`/api/invoices/${create.body.id}/issue`)
@@ -183,11 +255,12 @@ describe("POST /api/invoices/:id/issue", () => {
     expect(res.status).toBe(403);
   });
 
-  it("повторный issue уже выставленного счёта → 409", async () => {
+  it("L3: повторный issue уже выставленного счёта → 200 идемпотентно", async () => {
+    const bId = await freshBookingId();
     const create = await request(app)
       .post("/api/invoices")
       .set(SA())
-      .send({ bookingId, kind: "FULL" });
+      .send({ bookingId: bId, kind: "FULL" });
 
     await request(app).post(`/api/invoices/${create.body.id}/issue`).set(SA());
 
@@ -195,16 +268,19 @@ describe("POST /api/invoices/:id/issue", () => {
       .post(`/api/invoices/${create.body.id}/issue`)
       .set(SA());
 
-    expect(res.status).toBe(409);
+    // L3: idempotent — already ISSUED returns 200, not 409
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("ISSUED");
   });
 });
 
 describe("POST /api/invoices/:id/void", () => {
   it("SA: аннулирует счёт с причиной", async () => {
+    const bId = await freshBookingId();
     const create = await request(app)
       .post("/api/invoices")
       .set(SA())
-      .send({ bookingId, kind: "FULL" });
+      .send({ bookingId: bId, kind: "FULL" });
 
     const invoiceId = create.body.id;
 
@@ -220,10 +296,11 @@ describe("POST /api/invoices/:id/void", () => {
   });
 
   it("пустая причина → 400", async () => {
+    const bId = await freshBookingId();
     const create = await request(app)
       .post("/api/invoices")
       .set(SA())
-      .send({ bookingId, kind: "FULL" });
+      .send({ bookingId: bId, kind: "FULL" });
 
     const res = await request(app)
       .post(`/api/invoices/${create.body.id}/void`)
@@ -234,10 +311,11 @@ describe("POST /api/invoices/:id/void", () => {
   });
 
   it("повторное аннулирование → 409", async () => {
+    const bId = await freshBookingId();
     const create = await request(app)
       .post("/api/invoices")
       .set(SA())
-      .send({ bookingId, kind: "FULL" });
+      .send({ bookingId: bId, kind: "FULL" });
 
     await request(app).post(`/api/invoices/${create.body.id}/void`).set(SA()).send({ reason: "Тест аннулирования" });
 
@@ -271,14 +349,30 @@ describe("GET /api/invoices", () => {
       expect(inv.bookingId).toBe(bookingId);
     }
   });
+
+  it("M1: невалидный ?status= → 400 INVALID_STATUS_FILTER", async () => {
+    const res = await request(app).get("/api/invoices?status=INVALID_STATUS").set(SA());
+    expect(res.status).toBe(400);
+    expect(res.body.details).toBe("INVALID_STATUS_FILTER");
+  });
+
+  it("M1: валидный ?status=DRAFT → 200", async () => {
+    const res = await request(app).get("/api/invoices?status=DRAFT").set(SA());
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+    for (const inv of res.body.items) {
+      expect(["DRAFT", "OVERDUE"].includes(inv.displayStatus ?? inv.status)).toBe(true);
+    }
+  });
 });
 
 describe("GET /api/invoices/:id", () => {
   it("SA: получает один счёт с платежами и возвратами", async () => {
+    const bId = await freshBookingId();
     const create = await request(app)
       .post("/api/invoices")
       .set(SA())
-      .send({ bookingId, kind: "FULL" });
+      .send({ bookingId: bId, kind: "FULL" });
 
     const res = await request(app).get(`/api/invoices/${create.body.id}`).set(SA());
 
@@ -296,10 +390,11 @@ describe("GET /api/invoices/:id", () => {
 
 describe("PATCH /api/invoices/:id", () => {
   it("SA: обновляет DRAFT счёт", async () => {
+    const bId = await freshBookingId();
     const create = await request(app)
       .post("/api/invoices")
       .set(SA())
-      .send({ bookingId, kind: "DEPOSIT", total: 30000 });
+      .send({ bookingId: bId, kind: "DEPOSIT", total: 30000 });
 
     const res = await request(app)
       .patch(`/api/invoices/${create.body.id}`)
@@ -312,10 +407,11 @@ describe("PATCH /api/invoices/:id", () => {
   });
 
   it("нельзя редактировать выставленный счёт → 409", async () => {
+    const bId = await freshBookingId();
     const create = await request(app)
       .post("/api/invoices")
       .set(SA())
-      .send({ bookingId, kind: "FULL" });
+      .send({ bookingId: bId, kind: "FULL" });
 
     await request(app).post(`/api/invoices/${create.body.id}/issue`).set(SA());
 

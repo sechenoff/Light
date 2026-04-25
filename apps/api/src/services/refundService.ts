@@ -39,19 +39,21 @@ export async function createRefund(args: CreateRefundArgs, userId: string) {
     throw new HttpError(400, "Сумма возврата должна быть больше 0", "REFUND_AMOUNT_INVALID");
   }
 
-  // Проверяем существование invoice, если задан
-  if (args.invoiceId) {
-    const inv = await prisma.invoice.findUnique({ where: { id: args.invoiceId } });
-    if (!inv) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
-  }
-
-  // Проверяем существование payment, если задан
-  if (args.paymentId) {
-    const pay = await prisma.payment.findUnique({ where: { id: args.paymentId } });
-    if (!pay) throw new HttpError(404, "Платёж не найден", "PAYMENT_NOT_FOUND");
-  }
-
+  // H3: Проверки существования invoice/payment перенесены ВНУТРЬ транзакции
+  // для закрытия race window (concurrent delete между check и create).
   return prisma.$transaction(async (tx) => {
+    // Проверяем существование invoice, если задан
+    if (args.invoiceId) {
+      const inv = await tx.invoice.findUnique({ where: { id: args.invoiceId }, select: { id: true } });
+      if (!inv) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
+    }
+
+    // Проверяем существование payment, если задан
+    if (args.paymentId) {
+      const pay = await tx.payment.findUnique({ where: { id: args.paymentId }, select: { id: true } });
+      if (!pay) throw new HttpError(404, "Платёж не найден", "PAYMENT_NOT_FOUND");
+    }
+
     const refund = await tx.refund.create({
       data: {
         invoiceId: args.invoiceId ?? null,

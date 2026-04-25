@@ -3,6 +3,8 @@ import { Decimal } from "decimal.js";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { writeAuditEntry, diffFields } from "./audit";
+import { recomputeBookingFinance } from "./finance";
+import { recomputeInvoiceStatus } from "./invoiceService";
 
 type TxClient = Omit<
   Prisma.TransactionClient,
@@ -52,7 +54,7 @@ export async function createCreditNote(args: CreateCreditNoteArgs, userId: strin
       tx: tx as TxClient,
       userId,
       action: "CREDIT_NOTE_CREATE",
-      entityType: "Payment",
+      entityType: "CreditNote",
       entityId: note.id,
       before: null,
       after: diffFields({
@@ -101,14 +103,71 @@ export async function applyCreditNote(noteId: string, applyToBookingId: string, 
       },
     });
 
+    // Ищем первый открытый счёт у брони для привязки синтетического платежа
+    const openInvoice = await tx.invoice.findFirst({
+      where: {
+        bookingId: applyToBookingId,
+        status: { in: ["DRAFT", "ISSUED", "PARTIAL_PAID", "OVERDUE"] },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+
+    // Создаём синтетический платёж на сумму кредит-ноты
+    // Метод OTHER используется для типа CREDIT_NOTE — добавление enum CREDIT_NOTE отложено до Phase 3
+    const syntheticPayment = await tx.payment.create({
+      data: {
+        bookingId: applyToBookingId,
+        amount: remaining.toDecimalPlaces(2).toString(),
+        method: "OTHER",
+        paymentMethod: "OTHER",
+        receivedAt: now,
+        paymentDate: now,
+        note: `Кредит-нота ${noteId}: ${note.reason}`,
+        comment: `Кредит-нота ${noteId}: ${note.reason}`,
+        createdBy: userId,
+        invoiceId: openInvoice?.id ?? null,
+        direction: "INCOME",
+        status: "RECEIVED",
+      },
+    });
+
+    // Пересчитываем финансы брони
+    await recomputeBookingFinance(applyToBookingId, tx as TxClient);
+
+    // Пересчитываем статус счёта, если привязан
+    if (openInvoice) {
+      await recomputeInvoiceStatus(openInvoice.id, tx as TxClient);
+    }
+
     await writeAuditEntry({
       tx: tx as TxClient,
       userId,
       action: "CREDIT_NOTE_APPLY",
-      entityType: "Payment",
+      entityType: "CreditNote",
       entityId: noteId,
       before: diffFields({ remaining: note.remaining.toString(), appliedToBookingId: null } as Record<string, unknown>),
-      after: diffFields({ remaining: "0", appliedToBookingId: applyToBookingId, appliedAt: now.toISOString() } as Record<string, unknown>),
+      after: diffFields({
+        remaining: "0",
+        appliedToBookingId: applyToBookingId,
+        appliedAt: now.toISOString(),
+        syntheticPaymentId: syntheticPayment.id,
+      } as Record<string, unknown>),
+    });
+
+    await writeAuditEntry({
+      tx: tx as TxClient,
+      userId,
+      action: "PAYMENT_CREATE_FROM_CREDIT",
+      entityType: "CreditNote",
+      entityId: syntheticPayment.id,
+      before: null,
+      after: diffFields({
+        creditNoteId: noteId,
+        bookingId: applyToBookingId,
+        amount: remaining.toString(),
+        invoiceId: openInvoice?.id ?? null,
+      } as Record<string, unknown>),
     });
 
     return updated;

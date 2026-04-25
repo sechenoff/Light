@@ -16,7 +16,12 @@ type AuditEntityType =
   | "Repair"
   | "AdminUser"
   | "Vehicle"
-  | "Task";
+  | "Task"
+  // L4: Finance Phase 2 entities
+  | "Invoice"
+  | "Refund"
+  | "CreditNote"
+  | "OrgSettings";
 
 /**
  * Записывает событие в аудит-лог.
