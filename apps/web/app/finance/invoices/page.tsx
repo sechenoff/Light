@@ -12,6 +12,7 @@ import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { CreateInvoiceModal } from "../../../src/components/finance/CreateInvoiceModal";
 import { VoidInvoiceModal } from "../../../src/components/finance/VoidInvoiceModal";
 import { toast } from "../../../src/components/ToastProvider";
+import { FINANCE_TERMS } from "../../../src/lib/financeTerms";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,41 @@ interface InvoicesResponse {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+type PeriodKey = "today" | "7d" | "30d" | "quarter" | "year" | "all";
+
+const PERIOD_OPTIONS: Array<{ key: PeriodKey; label: string }> = [
+  { key: "today", label: "Сегодня" },
+  { key: "7d", label: "7 дней" },
+  { key: "30d", label: "30 дней" },
+  { key: "quarter", label: "Квартал" },
+  { key: "year", label: "Год" },
+  { key: "all", label: "Все" },
+];
+
+function periodToDates(period: PeriodKey): { createdAfter?: string; createdBefore?: string } {
+  if (period === "all") return {};
+  const now = new Date();
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  const start = new Date(now);
+  if (period === "today") {
+    start.setHours(0, 0, 0, 0);
+  } else if (period === "7d") {
+    start.setDate(start.getDate() - 6);
+    start.setHours(0, 0, 0, 0);
+  } else if (period === "30d") {
+    start.setDate(start.getDate() - 29);
+    start.setHours(0, 0, 0, 0);
+  } else if (period === "quarter") {
+    start.setDate(start.getDate() - 90);
+    start.setHours(0, 0, 0, 0);
+  } else if (period === "year") {
+    start.setFullYear(start.getFullYear() - 1);
+    start.setHours(0, 0, 0, 0);
+  }
+  return { createdAfter: start.toISOString(), createdBefore: end.toISOString() };
+}
 
 const STATUS_TABS: Array<{ key: InvoiceStatus | "ALL"; label: string }> = [
   { key: "ALL", label: "Все" },
@@ -70,13 +106,14 @@ function statusVariant(s: InvoiceStatus): "view" | "info" | "warn" | "ok" | "ale
 }
 
 function statusLabel(s: InvoiceStatus): string {
+  // D10: Use canonical financeTerms for consistent terminology
   switch (s) {
-    case "DRAFT": return "Черновик";
-    case "ISSUED": return "Выставлен";
-    case "PARTIAL_PAID": return "Частично";
-    case "PAID": return "Оплачен";
-    case "OVERDUE": return "Просрочен";
-    case "VOID": return "Аннулирован";
+    case "DRAFT": return FINANCE_TERMS.draft;      // «Черновик»
+    case "ISSUED": return FINANCE_TERMS.billed;    // «Выставлено»
+    case "PARTIAL_PAID": return FINANCE_TERMS.partial; // «Частично оплачено»
+    case "PAID": return FINANCE_TERMS.paid;        // «Оплачено»
+    case "OVERDUE": return FINANCE_TERMS.overdue;  // «Просрочено»
+    case "VOID": return FINANCE_TERMS.void;        // «Аннулирован»
   }
 }
 
@@ -105,6 +142,10 @@ function InvoicesPage() {
     (searchParams.get("status") as InvoiceStatus | "ALL") ?? "ALL"
   );
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
+  // D9: Period selector
+  const [period, setPeriod] = useState<PeriodKey>(
+    (searchParams.get("period") as PeriodKey) ?? "all"
+  );
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -124,6 +165,10 @@ function InvoicesPage() {
       if (statusTab !== "ALL") params.set("status", statusTab);
       if (search.trim()) params.set("search", search.trim());
       params.set("limit", "100");
+      // D9: Period filter
+      const { createdAfter, createdBefore } = periodToDates(period);
+      if (createdAfter) params.set("createdAfter", createdAfter);
+      if (createdBefore) params.set("createdBefore", createdBefore);
       const data = await apiFetch<InvoicesResponse>(`/api/invoices?${params}`);
       setInvoices(data.items);
       setTotal(data.total);
@@ -132,7 +177,7 @@ function InvoicesPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusTab, search]);
+  }, [statusTab, search, period]);
 
   useEffect(() => {
     load();
@@ -241,14 +286,32 @@ function InvoicesPage() {
             <p className="eyebrow text-ink-3">Финансы</p>
             <h1 className="text-xl font-semibold text-ink mt-1">Счета</h1>
           </div>
-          {isSA && (
-            <button
-              onClick={() => setCreateOpen(true)}
-              className="px-4 py-2 text-sm bg-accent-bright text-white rounded hover:opacity-90 font-medium"
-            >
-              + Создать счёт
-            </button>
-          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* D9: Period selector */}
+            <div className="flex gap-0.5 bg-surface border border-border rounded p-0.5">
+              {PERIOD_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setPeriod(opt.key)}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
+                    period === opt.key
+                      ? "bg-accent text-white"
+                      : "text-ink-2 hover:bg-surface-subtle"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {isSA && (
+              <button
+                onClick={() => setCreateOpen(true)}
+                className="px-4 py-2 text-sm bg-accent-bright text-white rounded hover:opacity-90 font-medium"
+              >
+                + Создать счёт
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Status tabs */}

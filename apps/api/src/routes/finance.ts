@@ -5,6 +5,7 @@ import Decimal from "decimal.js";
 import { prisma } from "../prisma";
 import {
   computeAging,
+  computeAgingPerClient,
   computeDebts,
   computeExpensesBreakdown,
   computeFinanceDashboard,
@@ -51,9 +52,10 @@ router.get("/finance/debts", superAdminOnly, async (req, res, next) => {
       minAmount: query.minAmount,
     });
     // Finance Phase 2: опционально включаем aging-бакеты по Invoice.dueDate
+    // D6: Теперь возвращаем как сводку так и per-client матрицу
     if (query.withAging === "true") {
-      const aging = await computeAging();
-      res.json({ ...result, aging });
+      const agingData = await computeAgingPerClient();
+      res.json({ ...result, aging: agingData.summary, agingPerClient: agingData.perClient });
       return;
     }
     res.json(result);
