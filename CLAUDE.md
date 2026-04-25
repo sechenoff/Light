@@ -238,8 +238,26 @@ Middleware `rolesGuard(allowed: UserRole[])` в `apps/api/src/middleware/rolesGu
 | POST/PATCH/DELETE /api/equipment/:id/units | ✓ | ✓ | ✗ |
 | GET /api/equipment-units, /api/equipment-units/lookup | ✓ | ✓ | ✓ |
 | POST /api/equipment-units/labels | ✓ | ✓ | ✗ |
+| POST /api/payments (с ограничениями) | ✓ | ✓* | ✗ |
+| GET/PATCH/DELETE /api/payments | ✓ | ✗ | ✗ |
+| GET /api/bookings/:id/invoice.pdf | ✓ | ✓ | ✗ |
+| GET /api/bookings/:id/act.pdf | ✓ | ✓ | ✗ |
 
 Примечание: `/api/warehouse/auth` и `/api/warehouse/workers/names` остаются публичными (без `rolesGuard`).
+
+### WH-финансовые лимиты (Finance Phase 1)
+
+*\* WAREHOUSE может создавать платежи только при соблюдении трёх условий (функция `validateWhLimits` в `paymentService.ts`):
+
+| Условие | Ограничение |
+|---------|-------------|
+| Метод оплаты | Только `CASH` или `CARD` (не `BANK_TRANSFER`, не `OTHER`) |
+| Сумма | ≤ 100 000 ₽ за один платёж |
+| Статус брони | Только `ISSUED` или `RETURNED` |
+
+Нарушение любого условия → `403 PAYMENT_LIMIT_EXCEEDED` с полем `details: { field, limit, actual }`.
+SUPER_ADMIN обходит все лимиты.
+Успешный WH-платёж записывает `PAYMENT_CREATE_BY_WH` в `AuditEntry` (вместо `PAYMENT_CREATE`).
 
 ### Аудит-сервис
 
