@@ -478,7 +478,7 @@ export default function BookingDetailPage() {
                   <div><span className="text-ink-3">Сумма сметы:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.totalEstimateAmount ?? "0")}</span></div>
                   <div><span className="text-ink-3">Скидка:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.discountAmount ?? "0")}</span></div>
                   <div><span className="text-ink-3">Итог:</span> <span className="font-semibold mono-num">{formatMoneyRub(booking.finalAmount ?? "0")}</span></div>
-                  <div><span className="text-ink-3">Получено:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.amountPaid ?? "0")}</span></div>
+                  <div><span className="text-ink-3">Оплачено:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.amountPaid ?? "0")}</span></div>
                   <div><span className="text-ink-3">Остаток к оплате:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.amountOutstanding ?? "0")}</span></div>
                   <div className="flex items-center gap-2">
                     <span className="text-ink-3">Статус оплаты:</span>

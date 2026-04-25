@@ -220,6 +220,7 @@ export function PaymentsOverviewPage() {
             loading={loading}
             onLoadMore={nextCursor ? () => fetchOverview(true, nextCursor) : null}
             onRefresh={() => fetchOverview(false)}
+            onRecordPayment={() => setRecordPaymentOpen(true)}
           />
         ) : (
           <PaymentsByClient filter={filter} />

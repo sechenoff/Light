@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { apiFetch } from "../../../src/lib/api";
@@ -157,9 +159,12 @@ function projectDateLabel(p: DebtProject): { text: string; tone: "rose" | "amber
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function DebtsPage() {
+function DebtsPageInner() {
   const { authorized, loading } = useRequireRole(ALLOWED);
   const currentUser = useCurrentUser();
+  const searchParams = useSearchParams();
+  // T16: «Импорт смет» скрыт по умолчанию. Показывать при ?legacy=1 (фича Phase 2 заменит нормальным UX)
+  const legacyMode = searchParams.get("legacy") === "1";
   const [data, setData] = useState<DebtsResponse | null>(null);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | AgingBucket>("all");
@@ -229,7 +234,8 @@ export default function DebtsPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            {currentUser?.user?.role === "SUPER_ADMIN" && (
+            {/* T16: импорт скрыт за ?legacy=1 — Phase 2 заменит нормальным Invoice UX */}
+            {legacyMode && currentUser?.user?.role === "SUPER_ADMIN" && (
               <button
                 type="button"
                 onClick={() => setImportOpen(true)}
@@ -238,12 +244,22 @@ export default function DebtsPage() {
                 + Импортировать смету
               </button>
             )}
-            <button className="px-3.5 py-1.5 text-xs font-medium border border-border-strong bg-surface rounded hover:bg-surface-subtle">
+            {/* T14: рабочий экспорт XLSX через GET /api/finance/debts.xlsx */}
+            <button
+              onClick={() => {
+                const params = new URLSearchParams();
+                // TODO Phase 2: pass overdueOnly / minAmount filters when filter UI is added
+                const url = `/api/finance/debts.xlsx${params.toString() ? `?${params}` : ""}`;
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "debts.xlsx";
+                a.click();
+              }}
+              className="px-3.5 py-1.5 text-xs font-medium border border-border bg-surface rounded hover:bg-surface-subtle"
+            >
               Экспорт в XLSX
             </button>
-            <button className="px-3.5 py-1.5 text-xs font-medium bg-accent text-white rounded border border-accent hover:bg-accent-bright">
-              Отправить напоминания ({overdueCount})
-            </button>
+            {/* T14: «Отправить напоминания» убрана — Phase 3 добавит реальные напоминания */}
           </div>
         </div>
 
@@ -311,10 +327,19 @@ export default function DebtsPage() {
           />
         </div>
 
-        {/* Cards list */}
+        {/* Cards list — T7: canonical empty states */}
         {filtered.length === 0 ? (
-          <div className="bg-surface border border-border rounded-[8px] px-4 py-10 text-center text-ink-3 text-sm">
-            {data?.debts.length === 0 ? "Нет задолженностей" : "Нет результатов по фильтру"}
+          <div className="bg-accent-soft border border-accent-border rounded-[8px] px-4 py-14 text-center">
+            {data?.debts.length === 0 ? (
+              <>
+                <p className="text-2xl mb-2">🎉</p>
+                <p className="eyebrow mb-1">Должники</p>
+                <p className="text-[15px] font-medium text-ink mb-1">Долгов нет</p>
+                <p className="text-sm text-ink-2">Все клиенты закрыли свои брони.</p>
+              </>
+            ) : (
+              <p className="text-sm text-ink-3">Нет результатов по выбранному фильтру</p>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-2.5">
@@ -389,32 +414,15 @@ export default function DebtsPage() {
                       <div className="text-[11px] text-ink-3">задолженность</div>
                     </div>
 
-                    {/* Actions */}
+                    {/* Actions — T13: tel/mailto links when data available */}
                     <div
                       className="flex gap-1.5 justify-end"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {isOverdue && (
-                        <>
-                          <button
-                            type="button"
-                            aria-label="Отправить напоминание"
-                            className="w-[28px] h-[28px] rounded border border-border bg-surface flex items-center justify-center text-ink-2 hover:bg-surface-subtle text-sm"
-                          >
-                            ✉
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="Позвонить"
-                            className="w-[28px] h-[28px] rounded border border-border bg-surface flex items-center justify-center text-ink-2 hover:bg-surface-subtle text-sm"
-                          >
-                            ☎
-                          </button>
-                        </>
-                      )}
+                      {/* TODO Phase 2: add phone/email to computeDebts API response, then show tel/mailto links here */}
                       <a
                         href={`/bookings?clientId=${d.clientId}`}
-                        aria-label="Открыть карточку клиента"
+                        aria-label="Открыть брони клиента"
                         className="w-[28px] h-[28px] rounded border border-border bg-surface flex items-center justify-center text-ink-2 hover:bg-surface-subtle text-sm font-medium"
                       >
                         ›
@@ -484,5 +492,13 @@ export default function DebtsPage() {
         onImported={() => { setImportOpen(false); loadDebts(); }}
       />
     </div>
+  );
+}
+
+export default function DebtsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-ink-3 text-sm">Загрузка…</div>}>
+      <DebtsPageInner />
+    </Suspense>
   );
 }
