@@ -78,13 +78,6 @@ export function DayTasksWidget({
         if (!cancelled) setLoading(false);
       });
 
-    // Отдельный запрос для подсчёта «открытых»
-    apiFetch<{ myOpen: number }>("/api/dashboard/task-stats")
-      .then((d) => {
-        if (!cancelled) setOpenCount(d.myOpen);
-      })
-      .catch(() => {});
-
     return () => {
       cancelled = true;
     };
@@ -100,6 +93,17 @@ export function DayTasksWidget({
     const cleanup = loadTasks();
     return cleanup;
   }, [dashboard, loadTasks]);
+
+  // task-stats всегда загружается независимо от наличия dashboard prop
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ myOpen: number }>("/api/dashboard/task-stats")
+      .then((d) => {
+        if (!cancelled) setOpenCount(d.myOpen);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
