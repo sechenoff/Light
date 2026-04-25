@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
@@ -284,9 +284,18 @@ const FILTER_PILLS: { key: FilterKey; label: string }[] = [
 
 function ExpensesPageInner() {
   const { authorized, loading } = useRequireRole(ALLOWED);
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialPeriod = (searchParams.get("period") as PeriodKey | null) ?? "month";
   const [period, setPeriod] = useState<PeriodKey>(initialPeriod);
+
+  // A2: persist period to URL on change
+  function handlePeriodChange(p: PeriodKey) {
+    setPeriod(p);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("period", p);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }
   const [breakdown, setBreakdown] = useState<BreakdownItem[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -361,7 +370,7 @@ function ExpensesPageInner() {
             </p>
           </div>
           <div className="flex gap-2">
-            <PeriodSelector value={period} onChange={setPeriod} />
+            <PeriodSelector value={period} onChange={handlePeriodChange} />
             <button
               onClick={() => setShowModal(true)}
               className="px-3.5 py-1.5 text-xs font-medium bg-accent text-white rounded border border-accent hover:bg-accent-bright"
@@ -370,6 +379,12 @@ function ExpensesPageInner() {
             </button>
           </div>
         </div>
+
+        {/* TODO(phase2): B4 — Approved vs Pending KPI split.
+            Add two summary cards above the donut: «Утверждено за период» (sum of approved expenses)
+            and «Ожидает утверждения (N)» (amber, count of !approved). Clicking pending card filters table.
+            Also add inline ✓ approve button per row for SA: PATCH /api/expenses/:id {approved: true}.
+            Currently there is no approve endpoint — needs to be added in Phase 2. */}
 
         {/* Donut + categories panel */}
         <div className="bg-surface border border-border rounded-[6px] overflow-hidden shadow-xs mb-4">
