@@ -54,6 +54,69 @@ router.get("/finance/debts", superAdminOnly, async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/finance/debts.xlsx
+ * Экспорт дебиторской задолженности в XLSX.
+ * Те же фильтры что и у /finance/debts: ?overdueOnly, ?minAmount.
+ * Колонки: Клиент, Контакт, Сумма долга, Дата ожидаемой оплаты, Просрочка (дней), Бронь №
+ */
+router.get("/finance/debts.xlsx", superAdminOnly, async (req, res, next) => {
+  try {
+    await paymentStatusSyncForAllBookings();
+    const query = debtsQuerySchema.parse(req.query);
+    const result = await computeDebts({
+      overdueOnly: query.overdueOnly === "true",
+      minAmount: query.minAmount,
+    });
+
+    // Разворачиваем агрегацию по клиентам в строки по проектам/броням
+    const rows: Array<Array<string | number>> = [];
+    for (const debt of result.debts) {
+      for (const project of debt.projects) {
+        rows.push([
+          debt.clientName,
+          "", // Контакт (email/phone) — Client.phone недоступен через computeDebts; фронт добавит в Phase 2
+          Number(project.amountOutstanding),
+          project.expectedPaymentDate
+            ? project.expectedPaymentDate.toLocaleDateString("ru-RU")
+            : "—",
+          project.daysOverdue !== null ? project.daysOverdue : 0,
+          project.bookingId,
+        ]);
+      }
+    }
+
+    const headers = [
+      "Клиент",
+      "Контакт",
+      "Сумма долга",
+      "Дата ожидаемой оплаты",
+      "Просрочка (дней)",
+      "Бронь №",
+    ];
+
+    const buf = await workbookFromRows({
+      sheetName: "Дебиторка",
+      headers,
+      rows,
+    });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const nodeBuf = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="Дебиторка_${dateStr}.xlsx"; filename*=UTF-8''${encodeURIComponent(`Дебиторка_${dateStr}.xlsx`)}`,
+    );
+    res.end(nodeBuf);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/receivables", superAdminOnly, async (_req, res, next) => {
   try {
     await paymentStatusSyncForAllBookings();
