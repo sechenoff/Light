@@ -49,10 +49,17 @@ export function useCurrentUser(): {
   logout: () => Promise<void>;
 } {
   const router = useRouter();
-  const [user, setUser] = useState<CurrentUser | null>(() => readLocal());
+  // C6: always start with null to avoid SSR/CSR hydration mismatch.
+  // localStorage is read in the useEffect below (client-only).
+  const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Fast-path: read localStorage immediately so sidebar doesn't flash empty.
+    // This runs client-side only, after hydration — no SSR mismatch.
+    const local = readLocal();
+    if (local) setUser(local);
+
     let cancelled = false;
     async function sync() {
       try {
