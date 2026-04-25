@@ -44,18 +44,24 @@ export async function createRefund(args: CreateRefundArgs, userId: string) {
   return prisma.$transaction(async (tx) => {
     // Проверяем существование invoice и D8: валидируем, что возврат не превышает оплаченную сумму
     if (args.invoiceId) {
-      const inv = await tx.invoice.findUnique({ where: { id: args.invoiceId }, select: { id: true, paidAmount: true } });
+      const inv = await tx.invoice.findUnique({ where: { id: args.invoiceId }, select: { id: true } });
       if (!inv) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
 
-      // D8: Проверяем, что сумма возврата не превышает оплаченную сумму по счёту
-      // (с учётом уже существующих возвратов по этому счёту)
-      const existingRefundsSum = await tx.refund.aggregate({
-        where: { invoiceId: args.invoiceId },
-        _sum: { amount: true },
-      });
-      const alreadyRefunded = new Decimal((existingRefundsSum._sum.amount ?? 0).toString());
-      const paidAmount = new Decimal(inv.paidAmount.toString());
-      const available = paidAmount.sub(alreadyRefunded);
+      // D8: Вычисляем фактически полученную сумму по счёту из платежей (а не из кеша paidAmount)
+      // чтобы не зависеть от своевременности обновления paidAmount.
+      const [paymentsSum, refundsSum] = await Promise.all([
+        tx.payment.aggregate({
+          where: { invoiceId: args.invoiceId, voidedAt: null, direction: "INCOME" },
+          _sum: { amount: true },
+        }),
+        tx.refund.aggregate({
+          where: { invoiceId: args.invoiceId },
+          _sum: { amount: true },
+        }),
+      ]);
+      const received = new Decimal((paymentsSum._sum.amount ?? 0).toString());
+      const alreadyRefunded = new Decimal((refundsSum._sum.amount ?? 0).toString());
+      const available = received.sub(alreadyRefunded);
       if (amount.gt(available)) {
         throw new HttpError(422, `Сумма возврата (${amount}) превышает доступную к возврату (${available.toFixed(2)})`, "REFUND_EXCEEDS_PAID_AMOUNT");
       }
