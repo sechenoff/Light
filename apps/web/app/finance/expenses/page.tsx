@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
 import { formatRub } from "../../../src/lib/format";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
+import { PeriodSelector } from "../../../src/components/finance/PeriodSelector";
+import { derivePeriodRange, type PeriodKey } from "../../../src/lib/periodUtils";
 import type { UserRole } from "../../../src/lib/auth";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
@@ -265,15 +269,6 @@ function AddExpenseModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function monthStart(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01T00:00:00.000Z`;
-}
-
-function monthEnd(d: Date): string {
-  const e = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
-  return e.toISOString();
-}
-
 type FilterKey = "all" | GroupKey;
 
 const FILTER_PILLS: { key: FilterKey; label: string }[] = [
@@ -287,9 +282,11 @@ const FILTER_PILLS: { key: FilterKey; label: string }[] = [
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function ExpensesPage() {
+function ExpensesPageInner() {
   const { authorized, loading } = useRequireRole(ALLOWED);
-  const [month, setMonth] = useState(() => new Date());
+  const searchParams = useSearchParams();
+  const initialPeriod = (searchParams.get("period") as PeriodKey | null) ?? "month";
+  const [period, setPeriod] = useState<PeriodKey>(initialPeriod);
   const [breakdown, setBreakdown] = useState<BreakdownItem[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -300,11 +297,10 @@ export default function ExpensesPage() {
   const fetchAll = async (cancelled: { v: boolean }) => {
     if (!authorized) return;
     try {
-      const from = monthStart(month);
-      const to = monthEnd(month);
+      const range = derivePeriodRange(period);
       const [brk, exp] = await Promise.all([
-        apiFetch<BreakdownItem[]>(`/api/finance/expenses-breakdown?from=${from}&to=${to}`),
-        apiFetch<ExpensesResponse>(`/api/expenses?from=${from}&to=${to}&limit=200`),
+        apiFetch<BreakdownItem[]>(`/api/finance/expenses-breakdown?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`),
+        apiFetch<ExpensesResponse>(`/api/expenses?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}&limit=200`),
       ]);
       if (!cancelled.v) {
         setBreakdown(brk);
@@ -321,7 +317,7 @@ export default function ExpensesPage() {
     fetchAll(cancelled);
     return () => { cancelled.v = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authorized, month]);
+  }, [authorized, period]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Удалить расход?")) return;
@@ -330,13 +326,9 @@ export default function ExpensesPage() {
     await fetchAll(cancelled);
   };
 
-  const prevMonth = () => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1));
-  const nextMonth = () => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1));
-
   if (loading || !authorized) return null;
   if (fetchError) return <div className="p-8 text-rose text-sm">Ошибка: {fetchError}</div>;
 
-  const monthStr = month.toLocaleString("ru-RU", { month: "long", year: "numeric" });
   const grouped = groupBreakdown(breakdown);
   const total = grouped.reduce((s, g) => s + g.total, 0);
   const opCount = grouped.reduce((s, g) => s + g.count, 0);
@@ -363,29 +355,13 @@ export default function ExpensesPage() {
           <div>
             <h1 className="text-[22px] font-semibold text-ink tracking-tight">Расходы</h1>
             <p className="text-xs text-ink-2 mt-0.5">
-              За {monthStr.toLowerCase()} потрачено{" "}
+              Потрачено за период:{" "}
               <strong className="mono-num text-slate">{formatRub(total)}</strong>
               {" · "}{opCount} операций
             </p>
           </div>
           <div className="flex gap-2">
-            <div className="flex items-center gap-1.5 bg-surface-subtle border border-border rounded p-1">
-              {["Неделя", "Месяц", "Квартал", "Год"].map((lbl) => (
-                <button
-                  key={lbl}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
-                    lbl === "Месяц" ? "bg-surface text-ink shadow-xs" : "text-ink-2 hover:text-ink"
-                  }`}
-                >
-                  {lbl}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-1.5 border border-border rounded p-1">
-              <button onClick={prevMonth} aria-label="Предыдущий месяц" className="px-2 py-1 text-xs text-ink-2 hover:text-ink">‹</button>
-              <span className="text-xs font-medium text-ink capitalize">{monthStr}</span>
-              <button onClick={nextMonth} aria-label="Следующий месяц" className="px-2 py-1 text-xs text-ink-2 hover:text-ink">›</button>
-            </div>
+            <PeriodSelector value={period} onChange={setPeriod} />
             <button
               onClick={() => setShowModal(true)}
               className="px-3.5 py-1.5 text-xs font-medium bg-accent text-white rounded border border-accent hover:bg-accent-bright"
@@ -398,7 +374,7 @@ export default function ExpensesPage() {
         {/* Donut + categories panel */}
         <div className="bg-surface border border-border rounded-[6px] overflow-hidden shadow-xs mb-4">
           <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
-            <h3 className="text-[13.5px] font-semibold text-ink">Структура расходов за {monthStr.toLowerCase()}</h3>
+            <h3 className="text-[13.5px] font-semibold text-ink">Структура расходов за период</h3>
           </div>
 
           <div className="grid gap-5 px-5 py-5 pb-3.5 border-b border-border" style={{ gridTemplateColumns: "200px 1fr" }}>
@@ -552,5 +528,13 @@ export default function ExpensesPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function ExpensesPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-ink-3">Загрузка…</div>}>
+      <ExpensesPageInner />
+    </Suspense>
   );
 }
