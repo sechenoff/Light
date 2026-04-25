@@ -12,6 +12,7 @@ import { FinanceTabNav } from "./FinanceTabNav";
 import { PeriodSelector } from "./PeriodSelector";
 import { RecordPaymentModal } from "./RecordPaymentModal";
 import { derivePeriodRange, type PeriodKey } from "../../lib/periodUtils";
+import { toMoscowDateString } from "../../lib/moscowDate";
 
 type ViewTab = "table" | "clients";
 
@@ -27,11 +28,23 @@ interface OverviewResponse {
   nextCursor: string | null;
 }
 
+/** Converts an ISO datetime string or YYYY-MM-DD to YYYY-MM-DD in Moscow TZ. */
+function toDateParam(isoOrDate: string): string {
+  try {
+    // If already YYYY-MM-DD, return as-is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(isoOrDate)) return isoOrDate;
+    return toMoscowDateString(new Date(isoOrDate));
+  } catch {
+    return isoOrDate;
+  }
+}
+
 function buildOverviewQuery(filter: PaymentsFilter, cursor?: string): string {
   const params = new URLSearchParams();
   params.set("limit", "50");
-  if (filter.from) params.set("from", filter.from);
-  if (filter.to) params.set("to", filter.to);
+  // C1: server expects YYYY-MM-DD, derivePeriodRange returns ISO datetime
+  if (filter.from) params.set("from", toDateParam(filter.from));
+  if (filter.to) params.set("to", toDateParam(filter.to));
   if (filter.clientId) params.set("clientId", filter.clientId);
   if (filter.amountMin) params.set("amountMin", filter.amountMin);
   if (filter.amountMax) params.set("amountMax", filter.amountMax);

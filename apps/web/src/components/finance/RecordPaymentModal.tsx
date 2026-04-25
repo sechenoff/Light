@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { formatRub } from "../../lib/format";
 import { toast } from "../ToastProvider";
+import { toMoscowDateString } from "../../lib/moscowDate";
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: "Наличные",
@@ -50,10 +51,17 @@ export function RecordPaymentModal({
   const [bookingId, setBookingId] = useState(defaultBookingId ?? "");
   const [amount, setAmount] = useState(bookingContext?.amountOutstanding ?? "");
   const [method, setMethod] = useState(defaultMethod);
-  // Swedish locale даёт "YYYY-MM-DD HH:mm:ss" — заменяем пробел на T и берём первые 16 символов
-  const [receivedAt, setReceivedAt] = useState(() =>
-    new Date().toLocaleString("sv-SE", { hour12: false }).replace(" ", "T").slice(0, 16),
-  );
+  // A3: Use Moscow TZ for default receivedAt — platform standardises on MSK.
+  // Format YYYY-MM-DDTHH:mm for datetime-local input, computed in Moscow TZ.
+  const [receivedAt, setReceivedAt] = useState(() => {
+    const now = new Date();
+    const datePart = toMoscowDateString(now); // YYYY-MM-DD in Moscow TZ
+    // Hours and minutes in Moscow TZ (UTC+3)
+    const mskNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+    const hh = String(mskNow.getUTCHours()).padStart(2, "0");
+    const mm = String(mskNow.getUTCMinutes()).padStart(2, "0");
+    return `${datePart}T${hh}:${mm}`;
+  });
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [bookings, setBookings] = useState<BookingOption[]>([]);
@@ -78,11 +86,24 @@ export function RecordPaymentModal({
   }, [open, onClose]);
 
   // Load bookings list when no defaultBookingId
+  // C2: server Zod enum rejects comma-separated; fetch 3 separate requests and merge.
   useEffect(() => {
     if (!open || defaultBookingId) return;
     let cancelled = false;
-    apiFetch<{ bookings: BookingOption[] }>("/api/bookings?status=CONFIRMED,ISSUED,RETURNED&limit=100")
-      .then((r) => { if (!cancelled) setBookings(r.bookings ?? []); })
+    Promise.all([
+      apiFetch<{ bookings: BookingOption[] }>("/api/bookings?status=CONFIRMED&limit=100"),
+      apiFetch<{ bookings: BookingOption[] }>("/api/bookings?status=ISSUED&limit=100"),
+      apiFetch<{ bookings: BookingOption[] }>("/api/bookings?status=RETURNED&limit=100"),
+    ])
+      .then(([c, i, r]) => {
+        if (cancelled) return;
+        const all = [
+          ...(c.bookings ?? []),
+          ...(i.bookings ?? []),
+          ...(r.bookings ?? []),
+        ];
+        setBookings(all);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [open, defaultBookingId]);
@@ -93,7 +114,13 @@ export function RecordPaymentModal({
       setBookingId(defaultBookingId ?? "");
       setAmount(bookingContext?.amountOutstanding ?? "");
       setMethod(defaultMethod);
-      setReceivedAt(new Date().toLocaleString("sv-SE", { hour12: false }).replace(" ", "T").slice(0, 16));
+      // A3: Moscow TZ default
+      const now = new Date();
+      const datePart = toMoscowDateString(now);
+      const mskNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+      const hh = String(mskNow.getUTCHours()).padStart(2, "0");
+      const mm = String(mskNow.getUTCMinutes()).padStart(2, "0");
+      setReceivedAt(`${datePart}T${hh}:${mm}`);
       setNote("");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
