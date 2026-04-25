@@ -106,13 +106,14 @@ describe("/api/payments", () => {
     expect(res.body.details).toBe("UNAUTHENTICATED");
   });
 
-  it("403 FORBIDDEN_BY_ROLE — WAREHOUSE не может создавать платежи", async () => {
+  it("403 PAYMENT_LIMIT_EXCEEDED — WAREHOUSE не может создавать платежи на CONFIRMED брони", async () => {
+    // Бронь в статусе CONFIRMED — WH-лимит отклоняет (допустимые: ISSUED, RETURNED)
     const res = await request(app)
       .post("/api/payments")
       .set(authHeaders(warehouseToken))
       .send({ bookingId, amount: 1000, method: "CASH", receivedAt: new Date().toISOString() });
     expect(res.status).toBe(403);
-    expect(res.body.details).toBe("FORBIDDEN_BY_ROLE");
+    expect(res.body.details).toMatchObject({ field: "bookingStatus" });
   });
 
   it("400 Zod validation — отсутствует amount", async () => {
