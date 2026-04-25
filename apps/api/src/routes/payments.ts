@@ -99,10 +99,16 @@ router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   }
 });
 
+const voidSchema = z.object({
+  reason: z.string().trim().min(3),
+});
+
 router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const userId = req.adminUser!.userId;
-    await paymentService.deletePayment(req.params.id, userId);
+    const body = voidSchema.safeParse(req.body);
+    const reason = body.success ? body.data.reason : undefined;
+    await paymentService.deletePayment(req.params.id, userId, reason);
     res.json({ ok: true });
   } catch (err) {
     next(err);
