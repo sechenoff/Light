@@ -1,9 +1,14 @@
 {
-  "sprint": 1,
-  "feature": "gitignore-tsbuildinfo-chore",
+  "sprint": "perf-phase-a",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
-  "provider": "self-reviewed",
-  "ts": "2026-04-21T11:30:00+00:00",
-  "verdict_rationale": "Chore-level cleanup — 2-line change: gitignore adds `**/tsconfig.tsbuildinfo`, removes tracked auto-gen file. Zero logic impact. Fresh rebase of stale PR #50. Self-reviewed given trivial surface and no runtime effect."
+  "provider": "split-focus",
+  "ts": "2026-04-25T00:00:00Z",
+  "notes": [
+    "Backend audit + frontend audit identified 25+ findings; Phase A applied top 9 surgical wins.",
+    "Initial product review NEEDS_FIXES on openCount regression (DayTasksWidget skipped /task-stats when dashboard prop supplied).",
+    "Fix commit 9d01aa4 split task-stats fetch into independent useEffect.",
+    "Re-review: product ACCEPTED, technical APPROVE.",
+    "Pre-existing LOW issues (Russian error message regression in apiFetch, redundant @@index([createdAt])) deferred to follow-up."
+  ]
 }
