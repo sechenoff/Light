@@ -1248,7 +1248,14 @@ router.post(
         throw new HttpError(400, "Для ветки CREDIT необходимо поле credit", "CREDIT_REQUIRED");
       }
 
-      const result = await prisma.$transaction(async (tx) => {
+      // D8: Валидация — сумма возврата не может превышать фактически полученный депозит
+      if (body.disposition === "REFUND" && body.refund) {
+        if (new Decimal(body.refund.amount).gt(depositTotal)) {
+          throw new HttpError(400, "Сумма возврата превышает депозит", "REFUND_EXCEEDS_DEPOSIT");
+        }
+      }
+
+      await prisma.$transaction(async (tx) => {
         type TxClientLocal = Omit<
           Prisma.TransactionClient,
           "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends" | "$use"
@@ -1314,10 +1321,13 @@ router.post(
         }
 
         // Отменяем бронь
-        const cancelled = await tx.booking.update({
+        await tx.booking.update({
           where: { id: booking.id },
           data: { status: "CANCELLED" },
         });
+
+        // D5: Пересчитываем финансовые агрегаты после отмены (amountPaid, amountOutstanding, paymentStatus)
+        await recomputeBookingFinance(booking.id, tx as TxClientLocal);
 
         // Единая аудит-запись объединяющего события
         await writeAuditEntry({
@@ -1329,9 +1339,18 @@ router.post(
           before: diffFields({ status: booking.status, depositTotal: depositTotal.toString() } as Record<string, unknown>),
           after: diffFields({ status: "CANCELLED", disposition: body.disposition } as Record<string, unknown>),
         });
-
-        return cancelled;
       });
+
+      // D1: Re-fetch с полными relation-ами после транзакции — tx.booking.update не включает items
+      const result = await prisma.booking.findUnique({
+        where: { id: req.params.id },
+        include: {
+          client: true,
+          items: { include: { equipment: true } },
+          estimate: { include: { lines: true } },
+        },
+      });
+      if (!result) throw new HttpError(404, "Бронь не найдена после отмены", "BOOKING_NOT_FOUND");
 
       res.json({ booking: serializeBookingForApi(result as any) });
     } catch (err) {

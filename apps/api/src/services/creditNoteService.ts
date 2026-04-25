@@ -78,30 +78,31 @@ export async function applyCreditNote(noteId: string, applyToBookingId: string, 
   const note = await prisma.creditNote.findUnique({ where: { id: noteId } });
   if (!note) throw new HttpError(404, "Кредит-нота не найдена", "CREDIT_NOTE_NOT_FOUND");
 
-  const remaining = new Decimal(note.remaining.toString());
-  if (remaining.lessThanOrEqualTo(0)) {
-    throw new HttpError(409, "Кредит-нота уже применена (remaining = 0)", "CREDIT_NOTE_EXHAUSTED");
-  }
-
-  if (note.appliedToBookingId) {
-    throw new HttpError(409, "Кредит-нота уже применена к другой броне", "CREDIT_NOTE_ALREADY_APPLIED");
-  }
-
-  // Проверяем наличие брони
+  // Проверяем наличие брони до транзакции (не требует атомарности)
   const booking = await prisma.booking.findUnique({ where: { id: applyToBookingId } });
   if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
 
   const now = new Date();
 
   return prisma.$transaction(async (tx) => {
-    const updated = await tx.creditNote.update({
-      where: { id: noteId },
+    // D4: Атомарный conditional update — защита от race condition при параллельных вызовах.
+    // updateMany возвращает count: 0 если запись уже применена (appliedAt != null ИЛИ remaining <= 0).
+    const noteUpdate = await tx.creditNote.updateMany({
+      where: { id: noteId, appliedAt: null, remaining: { gt: 0 } },
       data: {
         remaining: "0",
         appliedToBookingId: applyToBookingId,
         appliedAt: now,
       },
     });
+    if (noteUpdate.count === 0) {
+      throw new HttpError(409, "Кредит-нота уже применена", "CREDIT_NOTE_ALREADY_APPLIED");
+    }
+
+    const updated = await tx.creditNote.findUnique({ where: { id: noteId } });
+    if (!updated) throw new HttpError(404, "Кредит-нота не найдена", "CREDIT_NOTE_NOT_FOUND");
+
+    const remaining = new Decimal(note.remaining.toString());
 
     // Ищем первый открытый счёт у брони для привязки синтетического платежа
     const openInvoice = await tx.invoice.findFirst({
@@ -114,13 +115,13 @@ export async function applyCreditNote(noteId: string, applyToBookingId: string, 
     });
 
     // Создаём синтетический платёж на сумму кредит-ноты
-    // Метод OTHER используется для типа CREDIT_NOTE — добавление enum CREDIT_NOTE отложено до Phase 3
+    // D7: Используем CREDIT_NOTE как отдельный метод для корректной аналитики по способам оплаты
     const syntheticPayment = await tx.payment.create({
       data: {
         bookingId: applyToBookingId,
         amount: remaining.toDecimalPlaces(2).toString(),
-        method: "OTHER",
-        paymentMethod: "OTHER",
+        method: "CREDIT_NOTE",
+        paymentMethod: "CREDIT_NOTE",
         receivedAt: now,
         paymentDate: now,
         note: `Кредит-нота ${noteId}: ${note.reason}`,
