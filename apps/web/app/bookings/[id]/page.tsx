@@ -517,6 +517,14 @@ export default function BookingDetailPage() {
                   </div>
                   <div><span className="text-ink-3">Плановая дата платежа:</span> <span className="font-medium">{booking.expectedPaymentDate ? new Date(booking.expectedPaymentDate).toLocaleDateString("ru-RU") : "—"}</span></div>
 
+                  {/* TODO(phase2): B7 — «Хронология денег» collapsible section (P4).
+                      Reverse-chronological timeline: счёт сгенерирован → депозит получен → выдано → возврат.
+                      Source: Payment[] + AuditEntry filtered to BOOKING_CONFIRMED, PAYMENT_CREATE, BOOKING_ISSUED etc.
+                      Default collapsed <details>. */}
+                  {/* TODO(phase2): B7 — «Связанные расходы» collapsible (SA-only, P8).
+                      Read-only list of Expense where linkedBookingId = booking.id.
+                      Margin = finalAmount - sum(approved expenses). */}
+
                   {/* Список платежей — Платежи */}
                   {(booking.payments ?? []).length > 0 && (
                     <div className="pt-2 mt-2 border-t border-border">
@@ -550,11 +558,12 @@ export default function BookingDetailPage() {
 
                   {/* CTA row — role-gated (T3) */}
                   <div className="pt-2 flex flex-wrap gap-2">
-                    {/* Записать платёж: SA всегда, WH только при ISSUED|RETURNED и остатке > 0 */}
+                    {/* Записать платёж: SA всегда; WH при ISSUED|RETURNED (остаток > 0 или не известен) */}
+                    {/* C3: outstanding=null means finance not computed yet; show button so WH can record payment */}
                     {(user?.role === "SUPER_ADMIN" ||
                       (user?.role === "WAREHOUSE" &&
                         (booking.status === "ISSUED" || booking.status === "RETURNED") &&
-                        Number(booking.amountOutstanding ?? "0") > 0)
+                        (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
                     ) && (
                       <button
                         className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-subtle transition-colors"
@@ -565,10 +574,11 @@ export default function BookingDetailPage() {
                     )}
 
                     {/* Скачать счёт PDF (T10) — доступен SA и WH */}
+                    {/* A1: use apiFetch-based download() to respect NEXT_PUBLIC_API_BASE_URL and auth cookies */}
                     {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
                       <button
                         className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-subtle transition-colors"
-                        onClick={() => window.open(`/api/bookings/${booking.id}/invoice.pdf`, "_blank")}
+                        onClick={() => download(`/api/bookings/${booking.id}/invoice.pdf`, `Счёт_${booking.id}.pdf`)}
                       >
                         Скачать счёт PDF
                       </button>
@@ -586,7 +596,7 @@ export default function BookingDetailPage() {
                           }`}
                           title={canAct ? "" : "Доступно после возврата и закрытия долга"}
                           disabled={!canAct}
-                          onClick={canAct ? () => window.open(`/api/bookings/${booking.id}/act.pdf`, "_blank") : undefined}
+                          onClick={canAct ? () => download(`/api/bookings/${booking.id}/act.pdf`, `Акт_${booking.id}.pdf`) : undefined}
                         >
                           Скачать акт PDF
                         </button>
@@ -697,6 +707,47 @@ export default function BookingDetailPage() {
       ) : (
         <div className="mt-4 text-ink-3">Бронь не найдена.</div>
       )}
+      {/* B2: Mobile-only sticky bottom CTA (390px). Mirrors the inline CTAs in the finance block. */}
+      {booking && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") &&
+        booking.status !== "CANCELLED" && booking.status !== "DRAFT" && booking.status !== "PENDING_APPROVAL" && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex gap-2 px-3 py-3 bg-surface border-t border-border shadow-lg no-print">
+          {/* ₽ Платёж */}
+          {(user?.role === "SUPER_ADMIN" ||
+            ((booking.status === "ISSUED" || booking.status === "RETURNED") &&
+              (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
+          ) && (
+            <button
+              className="flex-1 rounded border border-border px-2 py-2.5 text-sm font-medium hover:bg-surface-subtle transition-colors"
+              onClick={() => setPaymentModalOpen(true)}
+            >
+              ₽ Платёж
+            </button>
+          )}
+          {/* PDF Счёт */}
+          <button
+            className="flex-1 rounded border border-border px-2 py-2.5 text-sm font-medium hover:bg-surface-subtle transition-colors"
+            onClick={() => download(`/api/bookings/${booking.id}/invoice.pdf`, `Счёт_${booking.id}.pdf`)}
+          >
+            PDF Счёт
+          </button>
+          {/* PDF Акт */}
+          {(() => {
+            const canAct = booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0;
+            return (
+              <button
+                className={`flex-1 rounded border px-2 py-2.5 text-sm font-medium transition-colors ${
+                  canAct ? "border-border hover:bg-surface-subtle" : "border-border text-ink-3 opacity-50 cursor-not-allowed"
+                }`}
+                disabled={!canAct}
+                onClick={canAct ? () => download(`/api/bookings/${booking.id}/act.pdf`, `Акт_${booking.id}.pdf`) : undefined}
+              >
+                PDF Акт
+              </button>
+            );
+          })()}
+        </div>
+      )}
+
       {/* RecordPaymentModal — T2 */}
       {booking && (
         <RecordPaymentModal
