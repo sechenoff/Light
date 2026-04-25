@@ -29,6 +29,7 @@ export function validateWhLimits(
   // Проверка метода оплаты
   if (!WH_ALLOWED_METHODS.includes(paymentInput.method)) {
     throw new HttpError(403, "Нарушение лимитов WAREHOUSE: недопустимый метод оплаты", {
+      code: "PAYMENT_LIMIT_EXCEEDED",
       field: "method",
       limit: WH_ALLOWED_METHODS,
       actual: paymentInput.method,
@@ -38,6 +39,7 @@ export function validateWhLimits(
   // Проверка суммы
   if (paymentInput.amount.greaterThan(WH_MAX_AMOUNT)) {
     throw new HttpError(403, "Нарушение лимитов WAREHOUSE: сумма превышает лимит", {
+      code: "PAYMENT_LIMIT_EXCEEDED",
       field: "amount",
       limit: WH_MAX_AMOUNT,
       actual: paymentInput.amount.toNumber(),
@@ -47,6 +49,7 @@ export function validateWhLimits(
   // Проверка статуса брони
   if (!WH_ALLOWED_BOOKING_STATUSES.includes(booking.status)) {
     throw new HttpError(403, "Нарушение лимитов WAREHOUSE: недопустимый статус брони", {
+      code: "PAYMENT_LIMIT_EXCEEDED",
       field: "bookingStatus",
       limit: WH_ALLOWED_BOOKING_STATUSES,
       actual: booking.status,
@@ -164,7 +167,7 @@ export async function updatePayment(
   });
 }
 
-export async function deletePayment(id: string, userId: string): Promise<void> {
+export async function deletePayment(id: string, userId: string, reason?: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const before = await tx.payment.findUniqueOrThrow({ where: { id } });
 
@@ -178,7 +181,11 @@ export async function deletePayment(id: string, userId: string): Promise<void> {
       action: "PAYMENT_DELETE",
       entityType: "Payment",
       entityId: id,
-      before: diffFields({ ...before, amount: before.amount.toString() } as Record<string, unknown>),
+      before: diffFields({
+        ...before,
+        amount: before.amount.toString(),
+        ...(reason ? { voidReason: reason } : {}),
+      } as Record<string, unknown>),
       after: null,
     });
   });
