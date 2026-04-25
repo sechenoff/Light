@@ -21,6 +21,8 @@ import { calcBookingPaymentStatus, createFinanceEvent, recomputeBookingFinance }
 import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { writeAuditEntry, diffFields } from "../services/audit";
+import { renderInvoicePdf, readOrgFromEnv, type InvoiceLine } from "../services/documentExport/invoice/renderInvoicePdf";
+import { renderActPdf, type ActLine } from "../services/documentExport/act/renderActPdf";
 
 const router = express.Router();
 
@@ -1168,6 +1170,160 @@ router.post(
       const body = rejectSchema.parse(req.body);
       const updated = await rejectBooking(req.params.id, req.adminUser.userId, body.reason);
       res.json({ booking: serializeBookingForApi(updated as any) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── GET /api/bookings/:id/invoice.pdf ─────────────────────────────────────────
+
+router.get(
+  "/:id/invoice.pdf",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  async (req, res, next) => {
+    try {
+      const booking = await prisma.booking.findUnique({
+        where: { id: req.params.id },
+        include: {
+          client: true,
+          estimate: { include: { lines: true } },
+          items: { include: { equipment: true } },
+        },
+      });
+      if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+
+      const org = readOrgFromEnv();
+      const invoiceNumber = `LR-DRAFT-${booking.id.slice(0, 8).toUpperCase()}`;
+      const invoiceDate = new Date().toLocaleDateString("ru-RU");
+
+      // Строки берём из estimate.lines если есть, иначе из booking.items
+      let lines: InvoiceLine[];
+      let subtotal: string;
+      let discountPercent: string | null = null;
+      let discountAmount: string | null = null;
+      let totalAfterDiscount: string;
+
+      if (booking.estimate) {
+        lines = booking.estimate.lines.map((l, i) => ({
+          index: i + 1,
+          name: l.nameSnapshot,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice.toString(),
+          lineSum: l.lineSum.toString(),
+        }));
+        subtotal = booking.estimate.subtotal.toString();
+        if (booking.estimate.discountPercent && new Decimal(booking.estimate.discountPercent.toString()).greaterThan(0)) {
+          discountPercent = booking.estimate.discountPercent.toString();
+          discountAmount = booking.estimate.discountAmount.toString();
+        }
+        totalAfterDiscount = booking.estimate.totalAfterDiscount.toString();
+      } else {
+        lines = booking.items.map((item, i) => {
+          const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
+          const lineSum = new Decimal(rate.toString()).mul(item.quantity);
+          return {
+            index: i + 1,
+            name: item.equipment?.name ?? item.customName ?? "—",
+            quantity: item.quantity,
+            unitPrice: rate.toString(),
+            lineSum: lineSum.toString(),
+          };
+        });
+        subtotal = booking.finalAmount.toString();
+        totalAfterDiscount = booking.finalAmount.toString();
+      }
+
+      const pdfBuf = renderInvoicePdf(
+        { invoiceNumber, invoiceDate, clientName: booking.client.name, lines, subtotal, discountPercent, discountAmount, totalAfterDiscount },
+        org,
+      );
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filename = `Счёт_${booking.id.slice(0, 8)}_${dateStr}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", buildAttachmentContentDisposition(filename, "invoice.pdf"));
+      res.end(pdfBuf);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── GET /api/bookings/:id/act.pdf ─────────────────────────────────────────────
+
+router.get(
+  "/:id/act.pdf",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  async (req, res, next) => {
+    try {
+      const booking = await prisma.booking.findUnique({
+        where: { id: req.params.id },
+        include: {
+          client: true,
+          estimate: { include: { lines: true } },
+          items: { include: { equipment: true } },
+        },
+      });
+      if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+
+      // Акт доступен только при RETURNED и нулевой задолженности
+      if (booking.status !== "RETURNED") {
+        throw new HttpError(409, "Акт недоступен: бронь не завершена", {
+          code: "ACT_NOT_AVAILABLE",
+          reason: "BOOKING_NOT_RETURNED",
+          actual: booking.status,
+        });
+      }
+      if (new Decimal(booking.amountOutstanding.toString()).greaterThan(0)) {
+        throw new HttpError(409, "Акт недоступен: есть задолженность", {
+          code: "ACT_NOT_AVAILABLE",
+          reason: "OUTSTANDING_DEBT",
+          amountOutstanding: booking.amountOutstanding.toString(),
+        });
+      }
+
+      const org = readOrgFromEnv();
+      const actNumber = `LR-ACT-${booking.id.slice(0, 8).toUpperCase()}`;
+      const actDate = new Date().toLocaleDateString("ru-RU");
+
+      let actLines: ActLine[];
+      let totalAmount: string;
+
+      if (booking.estimate) {
+        actLines = booking.estimate.lines.map((l, i) => ({
+          index: i + 1,
+          name: l.nameSnapshot,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice.toString(),
+          lineSum: l.lineSum.toString(),
+        }));
+        totalAmount = booking.estimate.totalAfterDiscount.toString();
+      } else {
+        actLines = booking.items.map((item, i) => {
+          const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
+          const lineSum = new Decimal(rate.toString()).mul(item.quantity);
+          return {
+            index: i + 1,
+            name: item.equipment?.name ?? item.customName ?? "—",
+            quantity: item.quantity,
+            unitPrice: rate.toString(),
+            lineSum: lineSum.toString(),
+          };
+        });
+        totalAmount = booking.finalAmount.toString();
+      }
+
+      const pdfBuf = renderActPdf(
+        { actNumber, actDate, clientName: booking.client.name, lines: actLines, totalAmount },
+        org,
+      );
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filename = `Акт_${booking.id.slice(0, 8)}_${dateStr}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", buildAttachmentContentDisposition(filename, "act.pdf"));
+      res.end(pdfBuf);
     } catch (err) {
       next(err);
     }
