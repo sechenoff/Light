@@ -50,7 +50,7 @@ const PERIOD_OPTIONS: Array<{ key: PeriodKey; label: string }> = [
   { key: "30d", label: "30 дней" },
   { key: "quarter", label: "Квартал" },
   { key: "year", label: "Год" },
-  { key: "all", label: "Все" },
+  { key: "all", label: "За всё время" },
 ];
 
 function periodToDates(period: PeriodKey): { createdAfter?: string; createdBefore?: string } {
