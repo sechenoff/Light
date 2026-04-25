@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
 
@@ -28,13 +28,15 @@ type AuditResponse = {
 // ── JSON diff renderer ────────────────────────────────────────────────────────
 
 function JsonDiff({ label, value, colorClass }: { label: string; value: string | null; colorClass: string }) {
-  if (!value) return null;
-  let pretty: string;
-  try {
-    pretty = JSON.stringify(JSON.parse(value), null, 2);
-  } catch {
-    pretty = value;
-  }
+  const pretty = useMemo(() => {
+    if (!value) return value;
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return value;
+    }
+  }, [value]);
+  if (!pretty) return null;
   return (
     <div className={`rounded p-2 ${colorClass}`}>
       <p className="text-[10px] font-semibold uppercase tracking-wider mb-1 opacity-70">{label}</p>

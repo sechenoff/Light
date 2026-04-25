@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -173,7 +173,7 @@ function BookingHistoryPageInner() {
     }
   }
 
-  const filteredRows = rows.filter((r) => {
+  const filteredRows = useMemo(() => rows.filter((r) => {
     if (paymentFilter && r.paymentStatus !== paymentFilter) return false;
     if (dateFrom || dateTo) {
       const startStr = new Date(r.startDate).toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" }); // YYYY-MM-DD
@@ -181,7 +181,7 @@ function BookingHistoryPageInner() {
       if (dateTo && startStr > dateTo) return false;
     }
     return true;
-  });
+  }), [rows, paymentFilter, dateFrom, dateTo]);
 
 
   return (

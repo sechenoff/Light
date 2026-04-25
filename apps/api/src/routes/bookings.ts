@@ -428,13 +428,9 @@ router.patch("/:id", async (req, res, next) => {
         });
         // finalAmount = equipment-after-discount + transportSubtotal.
         // Transport is on the booking (vehicleId + transportSubtotalRub) —
-        // read current value since PATCH doesn't change transport in v1.
-        const currentBooking = await prisma.booking.findUnique({
-          where: { id },
-          select: { transportSubtotalRub: true },
-        });
-        const transportSubtotal = currentBooking?.transportSubtotalRub
-          ? new Decimal(currentBooking.transportSubtotalRub.toString())
+        // use current value from `existing` since PATCH doesn't change transport in v1.
+        const transportSubtotal = existing.transportSubtotalRub
+          ? new Decimal(existing.transportSubtotalRub.toString())
           : new Decimal(0);
         const finalAmount = new Decimal(quote.totalAfterDiscount).add(transportSubtotal);
         await prisma.booking.update({

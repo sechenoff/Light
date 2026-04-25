@@ -52,6 +52,7 @@ interface DashboardToday {
     itemCount: number;
   }>;
   active: Array<{ id: string }>;
+  myTasks?: Array<{ id: string; title: string; dueDate: string | null; urgent: boolean; status?: "OPEN" | "DONE" }>;
 }
 
 interface PendingApprovalsResponse {
@@ -181,7 +182,7 @@ function DaySuperAdmin({ username }: { username: string }) {
           </DayAlert>
         )}
 
-        <DayTasksWidget />
+        <DayTasksWidget dashboard={dashboard} />
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <DayKpiCard
@@ -276,7 +277,7 @@ function DayWarehouse({ username }: { username: string }) {
           />
         )}
 
-        <DayTasksWidget />
+        <DayTasksWidget dashboard={dashboard} />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-surface border border-border rounded-lg p-3">

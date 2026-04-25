@@ -45,10 +45,16 @@ function dayChip(task: TaskSummary): { label: string; className: string } {
 
 // ── DayTasksWidget ────────────────────────────────────────────────────────────
 
-export function DayTasksWidget({ className = "" }: { className?: string }) {
+export function DayTasksWidget({
+  className = "",
+  dashboard,
+}: {
+  className?: string;
+  dashboard?: DashboardTodayWithTasks | null;
+}) {
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [openCount, setOpenCount] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(dashboard === undefined);
   const [creating, setCreating] = useState(false);
   const [assigneeOptions, setAssigneeOptions] = useState<Array<{ id: string; username: string }>>([]);
 
@@ -84,10 +90,16 @@ export function DayTasksWidget({ className = "" }: { className?: string }) {
     };
   }, []);
 
+  // Если dashboard передан как prop — берём myTasks из него, не делаем отдельный запрос
   useEffect(() => {
+    if (dashboard !== undefined) {
+      setTasks(dashboard?.myTasks ?? []);
+      setLoading(false);
+      return;
+    }
     const cleanup = loadTasks();
     return cleanup;
-  }, [loadTasks]);
+  }, [dashboard, loadTasks]);
 
   useEffect(() => {
     let cancelled = false;

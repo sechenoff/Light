@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useDeferredValue } from "react";
 import Link from "next/link";
 
 import { apiFetch } from "../../src/lib/api";
@@ -111,6 +111,7 @@ export default function EquipmentPage() {
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(addHoursToDatetimeLocal(defaultStart, 24));
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [categories, setCategories] = useState<string[]>([]);
 
@@ -136,7 +137,7 @@ export default function EquipmentPage() {
       setCatalogError(null);
       try {
         const params = new URLSearchParams();
-        if (search.trim()) params.set("search", search.trim());
+        if (deferredSearch.trim()) params.set("search", deferredSearch.trim());
         if (category) params.set("category", category);
         const q = params.toString() ? `?${params.toString()}` : "";
         const data = await apiFetch<{ equipments: CatalogRow[] }>(`/api/equipment${q}`, {
@@ -152,7 +153,7 @@ export default function EquipmentPage() {
     }
     load();
     return () => controller.abort();
-  }, [search, category]);
+  }, [deferredSearch, category]);
 
   // Load availability overlay (non-blocking — catalog shows regardless)
   useEffect(() => {

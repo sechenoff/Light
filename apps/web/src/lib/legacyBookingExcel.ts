@@ -1,5 +1,3 @@
-import * as XLSX from "xlsx";
-
 export type ExcelAmountResult = {
   amount: number | null;
   source: "Сумма сметы со скидкой" | "ИТОГО" | "unknown";
@@ -18,6 +16,7 @@ export type ExcelAmountResult = {
  * Итерация строк — снизу вверх.
  */
 export async function parseLegacyExcelAmount(file: File): Promise<ExcelAmountResult> {
+  const XLSX = await import("xlsx");
   const arrayBuffer = await file.arrayBuffer();
   const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: "array" });
 
