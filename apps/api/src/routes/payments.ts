@@ -103,12 +103,34 @@ const voidSchema = z.object({
   reason: z.string().trim().min(3),
 });
 
-router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+/**
+ * POST /api/payments/:id/void — SA only
+ * Soft-void платежа с обязательной причиной.
+ * Finance Phase 2 — новый паттерн. DELETE ниже — deprecated.
+ */
+router.post("/:id/void", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const userId = req.adminUser!.userId;
     const body = voidSchema.safeParse(req.body);
-    const reason = body.success ? body.data.reason : undefined;
-    await paymentService.deletePayment(req.params.id, userId, reason);
+    const reason = body.success ? body.data.reason : "Аннулирован через POST /void";
+    await paymentService.voidPayment(req.params.id, userId, reason);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/payments/:id — DEPRECATED
+ * Перенаправляет на voidPayment. В Phase 3 будет удалён.
+ */
+router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    console.warn("[DEPRECATED] DELETE /api/payments/:id вызван — используйте POST /api/payments/:id/void");
+    const userId = req.adminUser!.userId;
+    const body = voidSchema.safeParse(req.body);
+    const reason = body.success ? body.data.reason : "Удалено через legacy DELETE endpoint";
+    await paymentService.voidPayment(req.params.id, userId, reason);
     res.json({ ok: true });
   } catch (err) {
     next(err);

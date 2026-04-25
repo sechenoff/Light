@@ -167,28 +167,58 @@ export async function updatePayment(
   });
 }
 
-export async function deletePayment(id: string, userId: string, reason?: string): Promise<void> {
+/**
+ * Мягкое аннулирование платежа (soft-void).
+ * Устанавливает voidedAt / voidedBy / voidReason вместо физического удаления.
+ * Пересчитывает финансы брони — voidedAt платежи исключаются из суммы.
+ */
+export async function voidPayment(id: string, userId: string, reason?: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const before = await tx.payment.findUniqueOrThrow({ where: { id } });
 
-    await tx.payment.delete({ where: { id } });
+    if (before.voidedAt) {
+      // Уже аннулирован — идемпотентно
+      return;
+    }
+
+    const now = new Date();
+    await tx.payment.update({
+      where: { id },
+      data: {
+        voidedAt: now,
+        voidedBy: userId,
+        voidReason: reason?.trim() ?? "Аннулирован",
+      },
+    });
 
     if (before.bookingId) await recomputeBookingFinance(before.bookingId, tx as TxClient);
 
     await writeAuditEntry({
       tx: tx as TxClient,
       userId,
-      action: "PAYMENT_DELETE",
+      action: "PAYMENT_VOID",
       entityType: "Payment",
       entityId: id,
       before: diffFields({
         ...before,
         amount: before.amount.toString(),
-        ...(reason ? { voidReason: reason } : {}),
       } as Record<string, unknown>),
-      after: null,
+      after: diffFields({
+        voidedAt: now.toISOString(),
+        voidedBy: userId,
+        voidReason: reason?.trim() ?? "Аннулирован",
+      } as Record<string, unknown>),
     });
   });
+}
+
+/**
+ * @deprecated Используйте voidPayment. Этот метод оставлен для совместимости.
+ * В Phase 3 будет удалён.
+ */
+export async function deletePayment(id: string, userId: string, reason?: string): Promise<void> {
+  console.warn("[DEPRECATED] deletePayment вызван — перенаправляю на voidPayment. Используйте voidPayment напрямую.");
+  return voidPayment(id, userId, reason ?? "Удалено через legacy deletePayment");
 }
 
 export interface ListPaymentsArgs {
@@ -199,6 +229,8 @@ export interface ListPaymentsArgs {
   to?: Date;
   limit?: number;
   offset?: number;
+  /** Включить аннулированные платежи в результат. По умолчанию false. */
+  includeVoided?: boolean;
 }
 
 export async function listPayments(args: ListPaymentsArgs) {
@@ -209,6 +241,11 @@ export async function listPayments(args: ListPaymentsArgs) {
     { direction: "INCOME" },
     { OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }] },
   ];
+
+  // Исключаем аннулированные, если не запрошено иное (Finance Phase 2)
+  if (!args.includeVoided) {
+    andClauses.push({ voidedAt: null });
+  }
 
   if (args.bookingId) andClauses.push({ bookingId: args.bookingId });
   if (args.method) andClauses.push({ method: args.method });

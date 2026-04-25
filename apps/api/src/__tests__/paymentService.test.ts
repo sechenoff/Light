@@ -125,7 +125,7 @@ describe("createPayment", () => {
 });
 
 describe("deletePayment", () => {
-  it("удаляет платёж и пересчитывает амounts брони", async () => {
+  it("аннулирует платёж (soft-void) через deprecated deletePayment и пересчитывает суммы брони", async () => {
     const { createPayment, deletePayment } = await import("../services/paymentService");
 
     const payment = await createPayment({
@@ -146,13 +146,19 @@ describe("deletePayment", () => {
 
     expect(paidAfter).toBeCloseTo(paidBefore - 10000, 0);
 
-    // Audit entry for delete
+    // Finance Phase 2: deletePayment delegates to voidPayment — audit writes PAYMENT_VOID
     const auditEntry = await prisma.auditEntry.findFirst({
-      where: { action: "PAYMENT_DELETE", entityType: "Payment", entityId: payment.id },
+      where: { action: "PAYMENT_VOID", entityType: "Payment", entityId: payment.id },
     });
     expect(auditEntry).toBeTruthy();
     expect(auditEntry.before).toBeTruthy();
-    expect(auditEntry.after).toBeNull();
+    // Soft-void: after is not null (contains voidedAt etc.)
+    expect(auditEntry.after).toBeTruthy();
+
+    // Payment record still exists (soft-void, not hard delete)
+    const voidedPayment = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(voidedPayment).toBeTruthy();
+    expect(voidedPayment.voidedAt).toBeTruthy();
   });
 });
 
