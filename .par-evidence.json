@@ -1,15 +1,17 @@
 {
-  "sprint": "finance-phase-1",
+  "sprint": "finance-phase-2",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus + 4-agent-qa",
-  "ts": "2026-04-25T20:00:00Z",
+  "ts": "2026-04-26T00:00:00Z",
   "notes": [
-    "Phase 1 Finance Redesign: 16 specced tasks (T1-T16) + 9 PAR fixes + 12 user-QA fixes.",
-    "Standard PAR (product+technical Opus) flagged 9 issues incl. 2 HIGH (PDF empty buffer + DejaVu font path) — fixed.",
-    "User-requested 4-agent QA pipeline: Agent A (functional) SHIP_READY 0 CRIT/HIGH, Agent B (conformance) 72% fidelity 7 HIGH (5 deferred Phase 2), Agent C (browser) 6 HIGH runtime bugs.",
-    "Agent D consolidated and applied 12 must-fix items + 5 TODO(phase2) markers for deferred mockup elements.",
-    "Final gates: tsc api+web clean; api 781 tests pass; web 207 tests pass.",
-    "Phase 2 deferrals (TODO comments inline): per-method chips, recent activity feed, expenses approved/pending split, tel/mailto stack, booking timeline. Will land with Invoice model in Phase 2."
+    "Phase 2 Finance Redesign: 13 backend tasks + 7 frontend tasks per spec.",
+    "Backend: Invoice/Refund/CreditNote/OrganizationSettings models (additive schema), numberingService LR-YYYY-NNNN, soft-void on Payment, dual-mode legacy/post-cutoff, cancel-with-deposit composite endpoint.",
+    "Frontend: /finance/invoices, /finance/debts aging buckets, /settings/organization, /bookings/[id] Invoices section, 5 modals (CreateInvoice/Refund/CancelWithDeposit/CreditNoteApply/VoidInvoice).",
+    "Standard PAR (product+technical) flagged 3 CRITICAL + 8 HIGH — all closed in fix commit 70d9e23.",
+    "User-requested 4-agent QA: Agent A (functional) NEEDS_FIXES 4 HIGH, Agent B (conformance) 80% fidelity 3 HIGH, Agent C (browser) FAIL 1 BLOCKER + 1 HIGH.",
+    "Agent D consolidated 11 priority fixes across 4 commits (9996573, 2185edf, 3404691, plus per-client aging matrix backend in 9996573).",
+    "Final gates: tsc api+web clean; 829 API tests + 224 web tests all green.",
+    "Phase 3 deferrals (TODO comments inline): tel/mailto on /finance/debts (needs API expose phone/email), Хронология денег + Связанные расходы on /bookings/[id], WH PDF access scoped to own bookings (no ownership concept yet), forecast widget, bank reconcile."
   ]
 }
