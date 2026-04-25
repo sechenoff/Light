@@ -69,6 +69,7 @@ export async function updateSettings(
       update: data as Prisma.OrganizationSettingsUpdateInput,
     });
 
+    // D11: Пишем полный diff всех полей (было только 3 из 12)
     await writeAuditEntry({
       tx: tx as TxClient,
       userId,
@@ -78,12 +79,30 @@ export async function updateSettings(
       before: diffFields({
         legalName: before.legalName,
         inn: before.inn,
+        kpp: before.kpp,
+        bankName: before.bankName,
+        bankBik: before.bankBik,
+        rschet: before.rschet,
+        kschet: before.kschet,
+        address: before.address,
+        phone: before.phone,
+        email: before.email,
         invoiceNumberPrefix: before.invoiceNumberPrefix,
+        migrationCutoffAt: before.migrationCutoffAt?.toISOString() ?? null,
       } as Record<string, unknown>),
       after: diffFields({
         legalName: updated.legalName,
         inn: updated.inn,
+        kpp: updated.kpp,
+        bankName: updated.bankName,
+        bankBik: updated.bankBik,
+        rschet: updated.rschet,
+        kschet: updated.kschet,
+        address: updated.address,
+        phone: updated.phone,
+        email: updated.email,
         invoiceNumberPrefix: updated.invoiceNumberPrefix,
+        migrationCutoffAt: updated.migrationCutoffAt?.toISOString() ?? null,
       } as Record<string, unknown>),
     });
 

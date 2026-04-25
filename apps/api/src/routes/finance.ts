@@ -161,6 +161,7 @@ router.get("/profit", superAdminOnly, async (req, res, next) => {
     const whereIncome = {
       direction: "INCOME" as const,
       status: "RECEIVED" as const,
+      voidedAt: null, // D3: исключаем аннулированные платежи
       ...(from || to ? { paymentDate: { gte: from, lte: to } } : {}),
     };
     const whereExpenses = from || to ? { expenseDate: { gte: from, lte: to } } : {};
@@ -217,7 +218,7 @@ router.get("/profit", superAdminOnly, async (req, res, next) => {
 router.get("/cashflow", superAdminOnly, async (req, res, next) => {
   try {
     const [payments, expenses] = await Promise.all([
-      prisma.payment.findMany({ include: { booking: { include: { client: true } } } }),
+      prisma.payment.findMany({ where: { voidedAt: null }, include: { booking: { include: { client: true } } } }), // D3: исключаем аннулированные
       prisma.expense.findMany({ include: { booking: { include: { client: true } } } }),
     ]);
     const paymentRows = payments.map((p) => ({
@@ -263,7 +264,7 @@ router.get("/cashflow", superAdminOnly, async (req, res, next) => {
 
 router.get("/finance/export/payments.xlsx", superAdminOnly, async (_req, res, next) => {
   try {
-    const payments = await prisma.payment.findMany({ include: { booking: { include: { client: true } } }, orderBy: { createdAt: "desc" } });
+    const payments = await prisma.payment.findMany({ where: { voidedAt: null }, include: { booking: { include: { client: true } } }, orderBy: { createdAt: "desc" } }); // D3: исключаем аннулированные
     const buf = await workbookFromRows({
       sheetName: "Payments",
       headers: ["Дата", "Клиент", "Проект", "Бронь", "Сумма", "Статус", "Способ", "Комментарий"],
@@ -289,7 +290,7 @@ router.get("/finance/export/payments.xlsx", superAdminOnly, async (_req, res, ne
 
 router.get("/finance/export/payments.csv", superAdminOnly, async (_req, res, next) => {
   try {
-    const payments = await prisma.payment.findMany({ include: { booking: { include: { client: true } } }, orderBy: { createdAt: "desc" } });
+    const payments = await prisma.payment.findMany({ where: { voidedAt: null }, include: { booking: { include: { client: true } } }, orderBy: { createdAt: "desc" } }); // D3: исключаем аннулированные
     const lines = [
       ["date", "client", "project", "bookingId", "amount", "status", "method", "comment"].join(","),
       ...payments.map((p) =>
