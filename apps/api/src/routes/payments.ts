@@ -8,8 +8,9 @@ import * as paymentService from "../services/paymentService";
 
 const router = Router();
 
-// Все маршруты — только SUPER_ADMIN
-router.use(rolesGuard(["SUPER_ADMIN"]));
+// POST /api/payments — SUPER_ADMIN и WAREHOUSE (WAREHOUSE с ограничениями — см. validateWhLimits в paymentService)
+// GET/PATCH/DELETE — только SUPER_ADMIN (применяется per-route ниже)
+router.use(rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]));
 
 const createSchema = z.object({
   bookingId: z.string().min(1),
@@ -31,7 +32,8 @@ const listQuerySchema = z.object({
   offset: z.coerce.number().min(0).optional(),
 });
 
-router.get("/", async (req, res, next) => {
+// Чтение и список — только SUPER_ADMIN
+router.get("/", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const query = listQuerySchema.parse(req.query);
     const result = await paymentService.listPayments({
@@ -48,10 +50,12 @@ router.get("/", async (req, res, next) => {
   }
 });
 
+// Создание платежа — SUPER_ADMIN и WAREHOUSE (ограничения проверяются в paymentService.validateWhLimits)
 router.post("/", async (req, res, next) => {
   try {
     const body = createSchema.parse(req.body);
     const userId = req.adminUser!.userId;
+    const role = req.adminUser!.role;
     const payment = await paymentService.createPayment({
       bookingId: body.bookingId,
       amount: new Decimal(body.amount),
@@ -59,6 +63,7 @@ router.post("/", async (req, res, next) => {
       receivedAt: new Date(body.receivedAt),
       note: body.note,
       createdBy: userId,
+      creatorRole: role,
     });
     res.status(201).json({ payment: { ...payment, amount: payment.amount.toString() } });
   } catch (err) {
@@ -66,7 +71,7 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const payment = await prisma.payment.findUniqueOrThrow({
       where: { id: req.params.id },
@@ -78,7 +83,7 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
-router.patch("/:id", async (req, res, next) => {
+router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const body = patchSchema.parse(req.body);
     const userId = req.adminUser!.userId;
@@ -94,7 +99,7 @@ router.patch("/:id", async (req, res, next) => {
   }
 });
 
-router.delete("/:id", async (req, res, next) => {
+router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const userId = req.adminUser!.userId;
     await paymentService.deletePayment(req.params.id, userId);
