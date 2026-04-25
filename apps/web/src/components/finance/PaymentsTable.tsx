@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatRub } from "../../lib/format";
-import { QuickPaymentModal } from "./QuickPaymentModal";
+import { RecordPaymentModal } from "./RecordPaymentModal";
 import { BookingQuickEditModal } from "./BookingQuickEditModal";
 import { StatusCell } from "./StatusCell";
 
@@ -143,16 +143,24 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh }: Props) 
         </div>
       )}
 
-      {payingBooking && (
-        <QuickPaymentModal
-          booking={payingBooking}
-          onClose={() => setPayingBooking(null)}
-          onSaved={() => {
-            setPayingBooking(null);
-            onRefresh();
-          }}
-        />
-      )}
+      {/* RecordPaymentModal — T2: replaces QuickPaymentModal */}
+      <RecordPaymentModal
+        open={payingBooking !== null}
+        onClose={() => setPayingBooking(null)}
+        defaultBookingId={payingBooking?.id}
+        bookingContext={payingBooking ? {
+          id: payingBooking.id,
+          projectName: payingBooking.projectName,
+          client: payingBooking.client,
+          finalAmount: payingBooking.finalAmount,
+          amountPaid: payingBooking.amountPaid,
+          amountOutstanding: payingBooking.amountOutstanding,
+        } : undefined}
+        onCreated={() => {
+          setPayingBooking(null);
+          onRefresh();
+        }}
+      />
 
       {editingBooking && (
         <BookingQuickEditModal

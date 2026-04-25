@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "../../lib/api";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { PaymentsFilterBar, type PaymentsFilter } from "./PaymentsFilterBar";
 import { PaymentsTotalsStrip } from "./PaymentsTotalsStrip";
 import { PaymentsTable, type OverviewItem } from "./PaymentsTable";
 import { PaymentsByClient } from "./PaymentsByClient";
 import { FinanceTabNav } from "./FinanceTabNav";
 import { PeriodSelector } from "./PeriodSelector";
+import { RecordPaymentModal } from "./RecordPaymentModal";
 import { derivePeriodRange, type PeriodKey } from "../../lib/periodUtils";
 
 type ViewTab = "table" | "clients";
@@ -43,6 +45,8 @@ function buildOverviewQuery(filter: PaymentsFilter, cursor?: string): string {
 export function PaymentsOverviewPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useCurrentUser();
+  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
 
   // Tab from URL
   const tabParam = searchParams.get("view") === "clients" ? "clients" : "table";
@@ -152,6 +156,15 @@ export function PaymentsOverviewPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Записать платёж — T3: SA всегда, WH тоже (сервер валидирует по брони) */}
+            {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+              <button
+                onClick={() => setRecordPaymentOpen(true)}
+                className="px-3.5 py-1.5 text-xs font-medium bg-accent text-white rounded border border-accent hover:bg-accent-bright"
+              >
+                + Записать платёж
+              </button>
+            )}
             <PeriodSelector value={period} onChange={handlePeriodChange} />
             {/* Tab switcher */}
             <div className="flex border border-border rounded-lg overflow-hidden bg-surface-subtle">
@@ -212,6 +225,16 @@ export function PaymentsOverviewPage() {
           <PaymentsByClient filter={filter} />
         )}
       </div>
+
+      {/* RecordPaymentModal — T2 global button call site */}
+      <RecordPaymentModal
+        open={recordPaymentOpen}
+        onClose={() => setRecordPaymentOpen(false)}
+        onCreated={() => {
+          setRecordPaymentOpen(false);
+          fetchOverview(false);
+        }}
+      />
     </div>
   );
 }

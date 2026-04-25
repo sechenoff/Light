@@ -15,6 +15,8 @@ import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimel
 import { ApprovalContext } from "../../../src/components/bookings/ApprovalContext";
 import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalReviewView";
 import { toast } from "../../../src/components/ToastProvider";
+import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
+import { VoidPaymentModal } from "../../../src/components/finance/VoidPaymentModal";
 
 type ScanSession = {
   id: string;
@@ -124,6 +126,8 @@ export default function BookingDetailPage() {
   const { user } = useCurrentUser();
   const [rejectOpen, setRejectOpen] = useState(false);
   const [actionBusy, setActionBusy] = useState<null | "submit" | "approve" | "reject">(null);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [voidPaymentId, setVoidPaymentId] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -166,25 +170,9 @@ export default function BookingDetailPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function quickAddPayment() {
-    if (!booking) return;
-    const raw = prompt("Сумма полученного платежа (RUB):");
-    if (!raw) return;
-    const amount = Number(raw);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      alert("Некорректная сумма");
-      return;
-    }
-    await apiFetch(`/api/payments`, {
-      method: "POST",
-      body: JSON.stringify({
-        bookingId: booking.id,
-        amount,
-        method: "BANK_TRANSFER",
-        receivedAt: new Date().toISOString(),
-      }),
-    });
-    const fresh = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${booking.id}`);
+  async function reloadBooking() {
+    if (!id) return;
+    const fresh = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${id}`);
     setBooking(fresh.booking);
   }
 
@@ -490,8 +478,8 @@ export default function BookingDetailPage() {
                   <div><span className="text-ink-3">Сумма сметы:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.totalEstimateAmount ?? "0")}</span></div>
                   <div><span className="text-ink-3">Скидка:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.discountAmount ?? "0")}</span></div>
                   <div><span className="text-ink-3">Итог:</span> <span className="font-semibold mono-num">{formatMoneyRub(booking.finalAmount ?? "0")}</span></div>
-                  <div><span className="text-ink-3">Оплачено:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.amountPaid ?? "0")}</span></div>
-                  <div><span className="text-ink-3">Остаток:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.amountOutstanding ?? "0")}</span></div>
+                  <div><span className="text-ink-3">Получено:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.amountPaid ?? "0")}</span></div>
+                  <div><span className="text-ink-3">Остаток к оплате:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.amountOutstanding ?? "0")}</span></div>
                   <div className="flex items-center gap-2">
                     <span className="text-ink-3">Статус оплаты:</span>
                     <StatusPill
@@ -503,15 +491,56 @@ export default function BookingDetailPage() {
                       }
                       label={
                         booking.paymentStatus === "PAID" ? "Оплачен"
-                        : booking.paymentStatus === "PARTIALLY_PAID" ? "Частично"
+                        : booking.paymentStatus === "PARTIALLY_PAID" ? "Частично оплачен"
                         : booking.paymentStatus === "OVERDUE" ? "Просрочен"
                         : "Не оплачен"
                       }
                     />
                   </div>
                   <div><span className="text-ink-3">Плановая дата платежа:</span> <span className="font-medium">{booking.expectedPaymentDate ? new Date(booking.expectedPaymentDate).toLocaleDateString("ru-RU") : "—"}</span></div>
-                  <div className="pt-2">
-                    <button className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-muted transition-colors" onClick={quickAddPayment}>Добавить платёж</button>
+
+                  {/* CTA row — role-gated (T3) */}
+                  <div className="pt-2 flex flex-wrap gap-2">
+                    {/* Записать платёж: SA всегда, WH только при ISSUED|RETURNED */}
+                    {(user?.role === "SUPER_ADMIN" ||
+                      (user?.role === "WAREHOUSE" && (booking.status === "ISSUED" || booking.status === "RETURNED"))
+                    ) && (
+                      <button
+                        className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-subtle transition-colors"
+                        onClick={() => setPaymentModalOpen(true)}
+                      >
+                        Записать платёж
+                      </button>
+                    )}
+
+                    {/* Скачать счёт PDF (T10) — доступен SA и WH */}
+                    {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+                      <button
+                        className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-subtle transition-colors"
+                        onClick={() => window.open(`/api/bookings/${booking.id}/invoice.pdf`, "_blank")}
+                      >
+                        Скачать счёт PDF
+                      </button>
+                    )}
+
+                    {/* Скачать акт PDF (T10) — только при RETURNED и нулевом остатке */}
+                    {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (() => {
+                      const canAct = booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0;
+                      return (
+                        <button
+                          className={`rounded border px-3 py-1.5 text-sm transition-colors ${
+                            canAct
+                              ? "border-border hover:bg-surface-subtle"
+                              : "border-border text-ink-3 cursor-not-allowed opacity-50"
+                          }`}
+                          title={canAct ? "" : "Доступно после возврата и закрытия долга"}
+                          disabled={!canAct}
+                          onClick={canAct ? () => window.open(`/api/bookings/${booking.id}/act.pdf`, "_blank") : undefined}
+                        >
+                          Скачать акт PDF
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -617,6 +646,38 @@ export default function BookingDetailPage() {
       ) : (
         <div className="mt-4 text-ink-3">Бронь не найдена.</div>
       )}
+      {/* RecordPaymentModal — T2 */}
+      {booking && (
+        <RecordPaymentModal
+          open={paymentModalOpen}
+          onClose={() => setPaymentModalOpen(false)}
+          defaultBookingId={booking.id}
+          bookingContext={{
+            id: booking.id,
+            projectName: booking.projectName,
+            client: booking.client,
+            finalAmount: booking.finalAmount ?? undefined,
+            amountPaid: booking.amountPaid ?? undefined,
+            amountOutstanding: booking.amountOutstanding ?? undefined,
+          }}
+          onCreated={() => {
+            setPaymentModalOpen(false);
+            reloadBooking();
+          }}
+        />
+      )}
+
+      {/* VoidPaymentModal — T11 */}
+      <VoidPaymentModal
+        open={voidPaymentId !== null}
+        paymentId={voidPaymentId}
+        onClose={() => setVoidPaymentId(null)}
+        onVoided={() => {
+          setVoidPaymentId(null);
+          reloadBooking();
+        }}
+      />
+
       <style jsx global>{`
         @media print {
           body * {
