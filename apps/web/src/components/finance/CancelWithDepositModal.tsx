@@ -78,45 +78,43 @@ export function CancelWithDepositModal({
   async function handleCommit() {
     setSaving(true);
     try {
-      // Step 1: execute selected disposition
-      if (branch === "refund") {
-        if (refundReason.trim().length < 3) {
-          toast.error("Укажите причину возврата (минимум 3 символа)");
-          setSaving(false);
-          return;
-        }
-        await apiFetch("/api/refunds", {
-          method: "POST",
-          body: JSON.stringify({
-            bookingId,
-            amount: Number(refundAmount),
-            method: refundMethod,
-            reason: refundReason.trim(),
-          }),
-        });
-      } else if (branch === "credit") {
-        if (creditReason.trim().length < 3) {
-          toast.error("Укажите причину кредит-ноты (минимум 3 символа)");
-          setSaving(false);
-          return;
-        }
-        await apiFetch("/api/credit-notes", {
-          method: "POST",
-          body: JSON.stringify({
-            contactClientId: clientId,
-            bookingId,
-            amount: Number(creditAmount),
-            reason: creditReason.trim(),
-            expiresAt: creditExpires ? new Date(creditExpires).toISOString() : undefined,
-          }),
-        });
+      // H5: Единый атомарный endpoint вместо 2-3 последовательных вызовов.
+      // Всё выполняется в одной DB-транзакции на сервере.
+      if (branch === "refund" && refundReason.trim().length < 3) {
+        toast.error("Укажите причину возврата (минимум 3 символа)");
+        setSaving(false);
+        return;
       }
-      // forfeit: only audit — write booking cancel which will record the audit
+      if (branch === "credit" && creditReason.trim().length < 3) {
+        toast.error("Укажите причину кредит-ноты (минимум 3 символа)");
+        setSaving(false);
+        return;
+      }
 
-      // Step 2: cancel booking
-      await apiFetch(`/api/bookings/${bookingId}/status`, {
+      await apiFetch(`/api/bookings/${bookingId}/cancel-with-deposit`, {
         method: "POST",
-        body: JSON.stringify({ action: "cancel" }),
+        body: JSON.stringify({
+          disposition: branch.toUpperCase(),
+          ...(branch === "refund"
+            ? {
+                refund: {
+                  amount: Number(refundAmount),
+                  method: refundMethod,
+                  reason: refundReason.trim(),
+                },
+              }
+            : {}),
+          ...(branch === "credit"
+            ? {
+                credit: {
+                  contactClientId: clientId,
+                  amount: Number(creditAmount),
+                  reason: creditReason.trim(),
+                  expiresAt: creditExpires ? new Date(creditExpires).toISOString() : undefined,
+                },
+              }
+            : {}),
+        }),
       });
 
       toast.success(

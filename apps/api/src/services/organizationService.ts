@@ -48,6 +48,9 @@ export type UpdateSettingsInput = Partial<
 /**
  * Обновляет настройки организации (partial update).
  * Пишет аудит INVOICE_ORG_SETTINGS_UPDATE.
+ *
+ * M4: read + update выполняются в одной $transaction для защиты от race conditions
+ * при одновременном обновлении из нескольких вкладок/запросов.
  */
 export async function updateSettings(
   data: UpdateSettingsInput,
@@ -70,7 +73,7 @@ export async function updateSettings(
       tx: tx as TxClient,
       userId,
       action: "ORG_SETTINGS_UPDATE",
-      entityType: "Payment", // общее пространство финансовых аудит-событий
+      entityType: "OrgSettings", // L4: правильный тип сущности
       entityId: SINGLETON_ID,
       before: diffFields({
         legalName: before.legalName,

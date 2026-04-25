@@ -43,6 +43,9 @@ async function main() {
 
   console.log("\nОбновляем брони...");
 
+  // H4: updateMany уже атомарна и не нагружает память — чанкинг не нужен для bulk-update.
+  // Для findMany-based операций используется cursor pagination (см. backfill-payment-invoices.ts).
+
   // Устанавливаем legacyFinance=true для pre-cutoff броней
   const legacyResult = await prisma.booking.updateMany({
     where: { createdAt: { lt: cutoff } },

@@ -107,6 +107,13 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
         { href: "/repair", label: "Ремонты", icon: "wrench" },
       ],
     },
+    {
+      // L1: WAREHOUSE видит счета в режиме read-only (без CTAs создания/выпуска/аннулирования)
+      title: "Финансы",
+      items: [
+        { href: "/finance/invoices", label: "Счета", icon: "invoice" },
+      ],
+    },
   ],
   TECHNICIAN: [
     {

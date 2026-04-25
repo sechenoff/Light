@@ -21,8 +21,9 @@ import { calcBookingPaymentStatus, createFinanceEvent, recomputeBookingFinance }
 import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { writeAuditEntry, diffFields } from "../services/audit";
-import { renderInvoicePdf, readOrgFromEnv, type InvoiceLine } from "../services/documentExport/invoice/renderInvoicePdf";
+import { renderInvoicePdf, coalesceWithEnv, type InvoiceLine } from "../services/documentExport/invoice/renderInvoicePdf";
 import { renderActPdf, type ActLine } from "../services/documentExport/act/renderActPdf";
+import { getSettings } from "../services/organizationService";
 
 const router = express.Router();
 
@@ -1189,6 +1190,156 @@ router.post(
   },
 );
 
+// ── POST /api/bookings/:id/cancel-with-deposit ────────────────────────────────
+// H5: Атомарная отмена брони + обработка депозита в одной транзакции.
+// Три ветки: REFUND (создаёт Refund), CREDIT (создаёт CreditNote), FORFEIT (только аудит).
+
+const cancelWithDepositSchema = z.object({
+  disposition: z.enum(["REFUND", "CREDIT", "FORFEIT"]),
+  refund: z
+    .object({
+      amount: z.number().positive(),
+      method: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]),
+      reason: z.string().trim().min(3),
+    })
+    .optional(),
+  credit: z
+    .object({
+      contactClientId: z.string().min(1),
+      amount: z.number().positive(),
+      reason: z.string().trim().min(3),
+      expiresAt: z.string().datetime().optional(),
+    })
+    .optional(),
+});
+
+router.post(
+  "/:id/cancel-with-deposit",
+  rolesGuard(["SUPER_ADMIN"]),
+  async (req, res, next) => {
+    try {
+      const userId = req.adminUser!.userId;
+      const body = cancelWithDepositSchema.parse(req.body);
+
+      const booking = await prisma.booking.findUnique({
+        where: { id: req.params.id },
+        include: { payments: { where: { voidedAt: null, direction: "INCOME" } } },
+      });
+      if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+
+      const allowedStatuses = ["DRAFT", "PENDING_APPROVAL", "CONFIRMED"];
+      if (!allowedStatuses.includes(booking.status)) {
+        throw new HttpError(409, `Нельзя отменить бронь в статусе ${booking.status}`, "INVALID_BOOKING_STATE");
+      }
+
+      const depositTotal = booking.payments.reduce(
+        (acc, p) => acc.add(new Decimal(p.amount.toString())),
+        new Decimal(0),
+      );
+      if (depositTotal.lessThanOrEqualTo(0)) {
+        throw new HttpError(409, "У брони нет открытых платежей для обработки депозита", "NO_DEPOSIT");
+      }
+
+      // Validate branch-specific fields
+      if (body.disposition === "REFUND" && !body.refund) {
+        throw new HttpError(400, "Для ветки REFUND необходимо поле refund", "REFUND_REQUIRED");
+      }
+      if (body.disposition === "CREDIT" && !body.credit) {
+        throw new HttpError(400, "Для ветки CREDIT необходимо поле credit", "CREDIT_REQUIRED");
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        type TxClientLocal = Omit<
+          Prisma.TransactionClient,
+          "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends" | "$use"
+        >;
+
+        // Выполняем ветку
+        if (body.disposition === "REFUND" && body.refund) {
+          await tx.refund.create({
+            data: {
+              bookingId: booking.id,
+              amount: new Decimal(body.refund.amount).toDecimalPlaces(2).toString(),
+              reason: body.refund.reason,
+              method: body.refund.method,
+              refundedAt: new Date(),
+              createdBy: userId,
+            },
+          });
+          await writeAuditEntry({
+            tx: tx as TxClientLocal,
+            userId,
+            action: "REFUND_CREATE",
+            entityType: "Payment",
+            entityId: booking.id,
+            before: null,
+            after: diffFields({ disposition: "REFUND", amount: body.refund.amount, method: body.refund.method, reason: body.refund.reason } as Record<string, unknown>),
+          });
+        } else if (body.disposition === "CREDIT" && body.credit) {
+          await tx.creditNote.create({
+            data: {
+              contactClientId: body.credit.contactClientId,
+              bookingId: booking.id,
+              amount: new Decimal(body.credit.amount).toDecimalPlaces(2).toString(),
+              remaining: new Decimal(body.credit.amount).toDecimalPlaces(2).toString(),
+              reason: body.credit.reason,
+              expiresAt: body.credit.expiresAt ? new Date(body.credit.expiresAt) : null,
+              createdBy: userId,
+            },
+          });
+          await writeAuditEntry({
+            tx: tx as TxClientLocal,
+            userId,
+            action: "CREDIT_NOTE_CREATE",
+            entityType: "Payment",
+            entityId: booking.id,
+            before: null,
+            after: diffFields({ disposition: "CREDIT", amount: body.credit.amount, reason: body.credit.reason } as Record<string, unknown>),
+          });
+        } else if (body.disposition === "FORFEIT") {
+          // FORFEIT: только аудит, деньги остаются без движения
+          await tx.booking.update({
+            where: { id: booking.id },
+            data: { forfeitedAt: new Date() },
+          });
+          await writeAuditEntry({
+            tx: tx as TxClientLocal,
+            userId,
+            action: "BOOKING_DEPOSIT_FORFEITED",
+            entityType: "Booking",
+            entityId: booking.id,
+            before: null,
+            after: diffFields({ disposition: "FORFEIT", depositTotal: depositTotal.toString() } as Record<string, unknown>),
+          });
+        }
+
+        // Отменяем бронь
+        const cancelled = await tx.booking.update({
+          where: { id: booking.id },
+          data: { status: "CANCELLED" },
+        });
+
+        // Единая аудит-запись объединяющего события
+        await writeAuditEntry({
+          tx: tx as TxClientLocal,
+          userId,
+          action: "BOOKING_CANCEL_WITH_DEPOSIT",
+          entityType: "Booking",
+          entityId: booking.id,
+          before: diffFields({ status: booking.status, depositTotal: depositTotal.toString() } as Record<string, unknown>),
+          after: diffFields({ status: "CANCELLED", disposition: body.disposition } as Record<string, unknown>),
+        });
+
+        return cancelled;
+      });
+
+      res.json({ booking: serializeBookingForApi(result as any) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 // ── GET /api/bookings/:id/invoice.pdf ─────────────────────────────────────────
 
 router.get(
@@ -1229,7 +1380,8 @@ router.get(
         }
       }
 
-      const org = readOrgFromEnv();
+      const orgSettings = await getSettings();
+      const org = coalesceWithEnv(orgSettings);
       const invoiceNumber = `LR-DRAFT-${booking.id.slice(0, 8).toUpperCase()}`;
       const invoiceDate = new Date().toLocaleDateString("ru-RU");
 
@@ -1319,7 +1471,8 @@ router.get(
         });
       }
 
-      const org = readOrgFromEnv();
+      const orgSettings = await getSettings();
+      const org = coalesceWithEnv(orgSettings);
       const actNumber = `LR-ACT-${booking.id.slice(0, 8).toUpperCase()}`;
       const actDate = new Date().toLocaleDateString("ru-RU");
 

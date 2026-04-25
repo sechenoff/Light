@@ -127,4 +127,55 @@ describe("generateInvoiceNumber", () => {
     const n2 = await generateInvoiceNumber("LR", 2029);
     expect(n2).toBe("LR-2029-0002");
   });
+
+  it("sequential calls produce unique sequential numbers (5 generate+write in order)", async () => {
+    // H2: test that 5 sequential generateInvoiceNumber+write produce 5 unique sequential numbers.
+    // SQLite is single-writer — true parallelism is not possible anyway (WAL serializes).
+    // This test verifies the uniqueness contract under the actual production pattern:
+    // issueInvoice calls generateInvoiceNumber INSIDE a transaction, then writes the invoice.
+    const { generateInvoiceNumber } = await import("../services/numberingService");
+
+    const client = await prisma.client.create({ data: { name: `seq5-client-${Date.now()}` } });
+    const booking = await prisma.booking.create({
+      data: {
+        clientId: client.id,
+        projectName: "seq5-test",
+        startDate: new Date(),
+        endDate: new Date(),
+      },
+    });
+
+    // Year 2031 — untouched in previous tests
+    const YEAR = 2031;
+
+    const results: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const num = await generateInvoiceNumber("LR", YEAR);
+      await prisma.invoice.create({
+        data: {
+          number: num,
+          bookingId: booking.id,
+          kind: i === 0 ? "FULL" : "DEPOSIT",
+          status: "ISSUED",
+          total: "100",
+          paidAmount: "0",
+          createdBy: "test",
+        },
+      });
+      results.push(num);
+    }
+
+    // All numbers must be unique
+    const unique = new Set(results);
+    expect(unique.size).toBe(5);
+
+    // All must match the expected pattern
+    for (const num of results) {
+      expect(num).toMatch(/^LR-2031-\d{4}$/);
+    }
+
+    // They must all be strictly sequential (1, 2, 3, 4, 5)
+    const seqNums = results.map((n) => parseInt(n.slice(`LR-${YEAR}-`.length), 10));
+    expect(seqNums).toEqual([1, 2, 3, 4, 5]);
+  });
 });

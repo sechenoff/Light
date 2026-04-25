@@ -337,6 +337,10 @@ model Booking {
 
   invoices       Invoice[]
 
+  /// H5: Дата удержания депозита как штрафа (FORFEIT ветка cancel-with-deposit).
+  /// null означает что штраф не применялся.
+  forfeitedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   confirmedAt DateTime?
@@ -834,7 +838,7 @@ model Invoice {
   @@index([bookingId])
   @@index([status])
   @@index([dueDate])
-  @@index([number])
+  // H7: @@index([number]) удалён — уже покрыт @unique на поле number
 }
 
 /// Возврат денег клиенту. Привязан к Payment и/или Invoice.

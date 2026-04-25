@@ -1,11 +1,15 @@
 import { prisma } from "../prisma";
 
-const MAX_RETRIES = 5;
+const MAX_RETRIES = 10;
 
 /**
  * Генерирует уникальный номер счёта в формате `${prefix}-${year}-${NNNN}`.
  * Год сбрасывает счётчик — LR-2026-0001, LR-2027-0001.
  * Защита от race conditions: транзакция + retry на P2002 (unique violation).
+ * MAX_RETRIES=10 обеспечивает защиту при высокой конкурентности.
+ *
+ * TODO Phase 3: Мигрировать на InvoiceCounter таблицу с атомарным инкрементом
+ * для полностью race-free генерации без retry-логики.
  */
 export async function generateInvoiceNumber(prefix: string, year: number): Promise<string> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {

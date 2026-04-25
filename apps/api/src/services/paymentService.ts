@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { writeAuditEntry, diffFields } from "./audit";
 import { recomputeBookingFinance } from "./finance";
+import { recomputeInvoiceStatus } from "./invoiceService";
 
 /** Методы оплаты, разрешённые для роли WAREHOUSE */
 const WH_ALLOWED_METHODS: PaymentMethod[] = ["CASH", "CARD"];
@@ -71,6 +72,12 @@ export interface CreatePaymentArgs {
   createdBy: string;
   /** Роль создателя — нужна для WH-ограничений. По умолчанию SUPER_ADMIN (без ограничений). */
   creatorRole?: UserRole;
+  /**
+   * Привязка платежа к конкретному счёту (Invoice).
+   * Если передан — проверяется существование счёта (не VOID), устанавливается invoiceId,
+   * после создания пересчитывается статус счёта через recomputeInvoiceStatus.
+   */
+  invoiceId?: string;
 }
 
 export async function createPayment(args: CreatePaymentArgs): Promise<Payment> {
@@ -84,6 +91,16 @@ export async function createPayment(args: CreatePaymentArgs): Promise<Payment> {
   // Валидация лимитов WAREHOUSE (SUPER_ADMIN обходит)
   validateWhLimits(role, { method: args.method, amount }, { status: booking.status });
 
+  // Если передан invoiceId — проверяем существование и статус VOID
+  if (args.invoiceId) {
+    const inv = await prisma.invoice.findUnique({
+      where: { id: args.invoiceId },
+      select: { id: true, voidedAt: true },
+    });
+    if (!inv) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
+    if (inv.voidedAt) throw new HttpError(409, "Счёт аннулирован — нельзя привязать платёж", "INVOICE_VOID");
+  }
+
   // Аудит-экшен зависит от роли
   const auditAction = role === "WAREHOUSE" ? "PAYMENT_CREATE_BY_WH" : "PAYMENT_CREATE";
 
@@ -96,6 +113,7 @@ export async function createPayment(args: CreatePaymentArgs): Promise<Payment> {
         receivedAt: args.receivedAt,
         note: args.note ?? null,
         createdBy: args.createdBy,
+        invoiceId: args.invoiceId ?? null,
         // Legacy backfill
         paymentMethod: args.method,
         paymentDate: args.receivedAt,
@@ -106,6 +124,11 @@ export async function createPayment(args: CreatePaymentArgs): Promise<Payment> {
     });
 
     await recomputeBookingFinance(args.bookingId, tx as TxClient);
+
+    // Пересчитываем статус счёта после привязки платежа
+    if (args.invoiceId) {
+      await recomputeInvoiceStatus(args.invoiceId, tx as TxClient);
+    }
 
     await writeAuditEntry({
       tx: tx as TxClient,
@@ -153,6 +176,12 @@ export async function updatePayment(
     const bookingId = before.bookingId;
     if (bookingId) await recomputeBookingFinance(bookingId, tx as TxClient);
 
+    // Пересчитываем статус счёта при изменении суммы или привязки
+    const invoiceId = after.invoiceId ?? before.invoiceId;
+    if (invoiceId) {
+      await recomputeInvoiceStatus(invoiceId, tx as TxClient);
+    }
+
     await writeAuditEntry({
       tx: tx as TxClient,
       userId,
@@ -192,6 +221,11 @@ export async function voidPayment(id: string, userId: string, reason?: string): 
     });
 
     if (before.bookingId) await recomputeBookingFinance(before.bookingId, tx as TxClient);
+
+    // Пересчитываем статус счёта после аннулирования платежа
+    if (before.invoiceId) {
+      await recomputeInvoiceStatus(before.invoiceId, tx as TxClient);
+    }
 
     await writeAuditEntry({
       tx: tx as TxClient,
