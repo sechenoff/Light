@@ -1,14 +1,15 @@
 {
-  "sprint": "perf-phase-a",
+  "sprint": "finance-phase-1",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
-  "provider": "split-focus",
-  "ts": "2026-04-25T00:00:00Z",
+  "provider": "split-focus + 4-agent-qa",
+  "ts": "2026-04-25T20:00:00Z",
   "notes": [
-    "Backend audit + frontend audit identified 25+ findings; Phase A applied top 9 surgical wins.",
-    "Initial product review NEEDS_FIXES on openCount regression (DayTasksWidget skipped /task-stats when dashboard prop supplied).",
-    "Fix commit 9d01aa4 split task-stats fetch into independent useEffect.",
-    "Re-review: product ACCEPTED, technical APPROVE.",
-    "Pre-existing LOW issues (Russian error message regression in apiFetch, redundant @@index([createdAt])) deferred to follow-up."
+    "Phase 1 Finance Redesign: 16 specced tasks (T1-T16) + 9 PAR fixes + 12 user-QA fixes.",
+    "Standard PAR (product+technical Opus) flagged 9 issues incl. 2 HIGH (PDF empty buffer + DejaVu font path) — fixed.",
+    "User-requested 4-agent QA pipeline: Agent A (functional) SHIP_READY 0 CRIT/HIGH, Agent B (conformance) 72% fidelity 7 HIGH (5 deferred Phase 2), Agent C (browser) 6 HIGH runtime bugs.",
+    "Agent D consolidated and applied 12 must-fix items + 5 TODO(phase2) markers for deferred mockup elements.",
+    "Final gates: tsc api+web clean; api 781 tests pass; web 207 tests pass.",
+    "Phase 2 deferrals (TODO comments inline): per-method chips, recent activity feed, expenses approved/pending split, tel/mailto stack, booking timeline. Will land with Invoice model in Phase 2."
   ]
 }
