@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { apiFetch } from "../../../src/lib/api";
 import { pluralRu } from "../../../src/lib/pluralRu";
+import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 
 const Html5QrcodePlugin = dynamic<{ onScan: (text: string) => void }>(
   () => import("./Html5QrcodePlugin"),
@@ -751,7 +752,8 @@ function SummaryStep({
 }: {
   sessionId: string;
   operation: Operation;
-  onComplete: (createdRepairIds: string[], failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>) => void;
+  /** B6: bookingId added so parent can offer payment recording post-issue/return */
+  onComplete: (createdRepairIds: string[], failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>, bookingId?: string) => void;
   onUnauth: () => void;
 }) {
   const [summary, setSummary] = useState<ReconciliationSummary | null>(null);
@@ -816,7 +818,7 @@ function SummaryStep({
         method: "POST",
         body: JSON.stringify(body),
       });
-      onComplete(result.createdRepairIds ?? [], result.failedBrokenUnits ?? []);
+      onComplete(result.createdRepairIds ?? [], result.failedBrokenUnits ?? [], sessionDetail?.session.bookingId);
     } catch (err: unknown) {
       const e = err as { status?: number; message?: string };
       if (e?.status === 401) {
@@ -1003,6 +1005,8 @@ export default function WarehouseScanPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [completionToast, setCompletionToast] = useState<string | null>(null);
   const [errorToast, setErrorToast] = useState<string | null>(null);
+  // B6: payment modal after issue/return (T2 third call-site)
+  const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
 
   const goToLogin = useCallback(() => {
     sessionStorage.removeItem("warehouse_token");
@@ -1035,6 +1039,7 @@ export default function WarehouseScanPage() {
   function handleSummaryComplete(
     createdRepairIds: string[],
     failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>,
+    bookingId?: string,
   ) {
     setSessionId(null);
     setStep("operation");
@@ -1047,6 +1052,10 @@ export default function WarehouseScanPage() {
       const m = failedBrokenUnits.length;
       setErrorToast(`Не удалось создать ${m} ${pluralRu(m, ["карточку", "карточки", "карточек"])} — обратитесь к администратору`);
       setTimeout(() => setErrorToast(null), 8000);
+    }
+    // B6: T2 — offer payment recording after session complete (spec: warehouse/scan post-issue)
+    if (bookingId) {
+      setPaymentBookingId(bookingId);
     }
   }
 
@@ -1101,6 +1110,14 @@ export default function WarehouseScanPage() {
           {errorToast}
         </div>
       )}
+
+      {/* B6: T2 — RecordPaymentModal on /warehouse/scan post-issue/return */}
+      <RecordPaymentModal
+        open={paymentBookingId !== null}
+        defaultBookingId={paymentBookingId ?? undefined}
+        onClose={() => setPaymentBookingId(null)}
+        onCreated={() => setPaymentBookingId(null)}
+      />
     </>
   );
 }
