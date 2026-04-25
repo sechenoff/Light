@@ -41,6 +41,17 @@ interface InvoiceAgingBucket {
   invoiceCount: number;
 }
 
+interface ClientAgingRow {
+  clientId: string;
+  clientName: string;
+  current: string;
+  days1to30: string;
+  days31to60: string;
+  days61to90: string;
+  over90: string;
+  total: string;
+}
+
 interface DebtsResponse {
   debts: ClientDebt[];
   summary: {
@@ -50,6 +61,8 @@ interface DebtsResponse {
     asOf: string;
   };
   aging?: InvoiceAgingBucket[];
+  /** D6: Per-client × 5-bucket aging matrix */
+  agingPerClient?: ClientAgingRow[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -326,6 +339,54 @@ function DebtsPageInner() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* D6: Per-client × 5-bucket aging matrix (post-cutoff only) */}
+        {data?.agingPerClient && data.agingPerClient.length > 0 && (
+          <div className="mb-6">
+            <div className="eyebrow text-ink-3 mb-2">Матрица дебиторки по клиентам (счета)</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border border-border rounded-lg overflow-hidden bg-surface border-separate border-spacing-0" style={{ minWidth: 680 }}>
+                <thead className="bg-surface-2">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3">Клиент</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-emerald-dark">Текущая</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-[#854d0e]">1–30 дн.</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-[#92400e]">31–60 дн.</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-[#9a3412]">61–90 дн.</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-rose">90+ дн.</th>
+                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-ink-2">Итог</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.agingPerClient.map((row) => (
+                    <tr key={row.clientId} className="border-t border-slate-soft hover:bg-surface-subtle">
+                      <td className="px-4 py-3 text-ink text-sm font-medium">{row.clientName}</td>
+                      <td className="px-3 py-3 text-right mono-num bg-emerald-soft/30 text-ink-2">
+                        {Number(row.current) > 0 ? formatRub(row.current) : <span className="text-ink-3">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-right mono-num bg-[#fef9c3] text-[#854d0e]">
+                        {Number(row.days1to30) > 0 ? formatRub(row.days1to30) : <span className="text-ink-3">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-right mono-num bg-[#fef3c7] text-[#92400e] font-medium">
+                        {Number(row.days31to60) > 0 ? formatRub(row.days31to60) : <span className="text-ink-3">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-right mono-num bg-[#ffedd5] text-[#9a3412] font-medium">
+                        {Number(row.days61to90) > 0 ? formatRub(row.days61to90) : <span className="text-ink-3">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-right mono-num bg-rose-soft text-rose font-semibold">
+                        {Number(row.over90) > 0 ? formatRub(row.over90) : <span className="text-ink-3 font-normal">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-right mono-num font-semibold text-ink">
+                        {formatRub(row.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* TODO(phase3): tel:/mailto: inline actions (requires client.phone/email from API) */}
           </div>
         )}
 

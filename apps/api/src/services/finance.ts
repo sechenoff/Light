@@ -661,3 +661,118 @@ export async function computeAging(asOf: Date = new Date()): Promise<AgingBucket
   return buckets;
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Finance Phase 2 (D6): Per-client aging matrix (5 buckets × clients)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export interface ClientAgingRow {
+  clientId: string;
+  clientName: string;
+  current: string;     // ≤0 days overdue
+  days1to30: string;   // 1–30 days
+  days31to60: string;  // 31–60 days
+  days61to90: string;  // 61–90 days
+  over90: string;      // >90 days
+  total: string;
+}
+
+export interface AgingPerClientResult {
+  summary: AgingBucket[];
+  perClient: ClientAgingRow[];
+}
+
+/**
+ * D6: Per-client × 5-bucket aging matrix from Invoice.dueDate.
+ * Only includes post-cutoff bookings (legacyFinance: false).
+ */
+export async function computeAgingPerClient(asOf: Date = new Date()): Promise<AgingPerClientResult> {
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      status: { in: ["ISSUED", "PARTIAL_PAID", "OVERDUE"] },
+      dueDate: { not: null },
+      booking: { legacyFinance: false },
+    },
+    select: {
+      dueDate: true,
+      total: true,
+      paidAmount: true,
+      booking: {
+        select: {
+          clientId: true,
+          client: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+
+  // Summary buckets (same as computeAging)
+  const summaryBuckets: AgingBucket[] = [
+    { label: "Текущие", minDays: Number.NEGATIVE_INFINITY, maxDays: 0, total: "0", invoiceCount: 0 },
+    { label: "1–30 дней", minDays: 1, maxDays: 30, total: "0", invoiceCount: 0 },
+    { label: "31–60 дней", minDays: 31, maxDays: 60, total: "0", invoiceCount: 0 },
+    { label: "61–90 дней", minDays: 61, maxDays: 90, total: "0", invoiceCount: 0 },
+    { label: "Свыше 90 дней", minDays: 91, maxDays: null, total: "0", invoiceCount: 0 },
+  ];
+
+  // Per-client accumulation
+  const perClientMap = new Map<string, { name: string; current: Decimal; d1to30: Decimal; d31to60: Decimal; d61to90: Decimal; over90: Decimal }>();
+
+  for (const inv of invoices) {
+    if (!inv.dueDate) continue;
+    const outstanding = new Decimal(inv.total.toString()).sub(new Decimal(inv.paidAmount.toString()));
+    if (outstanding.lessThanOrEqualTo(0)) continue;
+
+    const daysOverdue = Math.floor((asOf.getTime() - inv.dueDate.getTime()) / 86400000);
+    const clientId = inv.booking.clientId;
+    const clientName = inv.booking.client.name;
+
+    // Update summary buckets
+    const summaryBucket = summaryBuckets.find((b) => {
+      if (b.maxDays === null) return daysOverdue >= b.minDays;
+      if (b.minDays === Number.NEGATIVE_INFINITY) return daysOverdue <= b.maxDays;
+      return daysOverdue >= b.minDays && daysOverdue <= b.maxDays;
+    });
+    if (summaryBucket) {
+      summaryBucket.total = new Decimal(summaryBucket.total).add(outstanding).toFixed(2);
+      summaryBucket.invoiceCount++;
+    }
+
+    // Update per-client row
+    if (!perClientMap.has(clientId)) {
+      perClientMap.set(clientId, {
+        name: clientName,
+        current: new Decimal(0),
+        d1to30: new Decimal(0),
+        d31to60: new Decimal(0),
+        d61to90: new Decimal(0),
+        over90: new Decimal(0),
+      });
+    }
+    const row = perClientMap.get(clientId)!;
+
+    if (daysOverdue <= 0) row.current = row.current.add(outstanding);
+    else if (daysOverdue <= 30) row.d1to30 = row.d1to30.add(outstanding);
+    else if (daysOverdue <= 60) row.d31to60 = row.d31to60.add(outstanding);
+    else if (daysOverdue <= 90) row.d61to90 = row.d61to90.add(outstanding);
+    else row.over90 = row.over90.add(outstanding);
+  }
+
+  const perClient: ClientAgingRow[] = Array.from(perClientMap.entries())
+    .map(([clientId, row]) => {
+      const total = row.current.add(row.d1to30).add(row.d31to60).add(row.d61to90).add(row.over90);
+      return {
+        clientId,
+        clientName: row.name,
+        current: row.current.toFixed(2),
+        days1to30: row.d1to30.toFixed(2),
+        days31to60: row.d31to60.toFixed(2),
+        days61to90: row.d61to90.toFixed(2),
+        over90: row.over90.toFixed(2),
+        total: total.toFixed(2),
+      };
+    })
+    .sort((a, b) => Number(b.total) - Number(a.total));
+
+  return { summary: summaryBuckets, perClient };
+}
+

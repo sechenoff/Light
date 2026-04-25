@@ -922,6 +922,7 @@ export default function BookingDetailPage() {
           open={paymentModalOpen}
           onClose={() => setPaymentModalOpen(false)}
           defaultBookingId={booking.id}
+          legacyFinance={booking.legacyFinance !== false ? true : false}
           bookingContext={{
             id: booking.id,
             projectName: booking.projectName,

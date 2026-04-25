@@ -69,7 +69,7 @@ router.post("/", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
  */
 router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
-    const { status, bookingId, limit, offset } = req.query;
+    const { status, bookingId, limit, offset, createdAfter, createdBefore } = req.query;
 
     // M1: Zod validation for ?status= (comma-separated InvoiceStatus values)
     const where: Record<string, unknown> = {};
@@ -85,6 +85,14 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
       where.status = { in: rawStatuses };
     }
     if (bookingId) where.bookingId = bookingId as string;
+
+    // D9: Period filtering by createdAt
+    if (createdAfter || createdBefore) {
+      const createdAtFilter: Record<string, Date> = {};
+      if (createdAfter) createdAtFilter.gte = new Date(createdAfter as string);
+      if (createdBefore) createdAtFilter.lte = new Date(createdBefore as string);
+      where.createdAt = createdAtFilter;
+    }
 
     const take = Math.min(parseInt(limit as string, 10) || 50, 200); // L2: explicit radix 10
     const skip = parseInt(offset as string, 10) || 0;
