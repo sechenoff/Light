@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { formatRub } from "../../lib/format";
 import { StatusPill } from "../StatusPill";
-import { QuickPaymentModal } from "./QuickPaymentModal";
+import { RecordPaymentModal } from "./RecordPaymentModal";
 import { StatusCell } from "./StatusCell";
 import type { OverviewItem } from "./PaymentsTable";
 import type { PaymentsFilter } from "./PaymentsFilterBar";
@@ -253,18 +253,26 @@ export function PaymentsByClient({ filter }: Props) {
         </div>
       </div>
 
-      {payingBooking && (
-        <QuickPaymentModal
-          booking={payingBooking}
-          onClose={() => setPayingBooking(null)}
-          onSaved={() => {
-            setPayingBooking(null);
-            // Refetch client data and clear cached booking lists
-            setClientBookings({});
-            fetchData();
-          }}
-        />
-      )}
+      {/* RecordPaymentModal — T2: replaces QuickPaymentModal */}
+      <RecordPaymentModal
+        open={payingBooking !== null}
+        onClose={() => setPayingBooking(null)}
+        defaultBookingId={payingBooking?.id}
+        bookingContext={payingBooking ? {
+          id: payingBooking.id,
+          projectName: payingBooking.projectName,
+          client: payingBooking.client,
+          finalAmount: payingBooking.finalAmount,
+          amountPaid: payingBooking.amountPaid,
+          amountOutstanding: payingBooking.amountOutstanding,
+        } : undefined}
+        onCreated={() => {
+          setPayingBooking(null);
+          // Refetch client data and clear cached booking lists
+          setClientBookings({});
+          fetchData();
+        }}
+      />
     </>
   );
 }
