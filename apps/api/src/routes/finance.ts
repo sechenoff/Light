@@ -4,6 +4,7 @@ import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
 import {
+  computeAging,
   computeDebts,
   computeExpensesBreakdown,
   computeFinanceDashboard,
@@ -38,6 +39,7 @@ router.get("/finance/dashboard", superAdminOnly, async (_req, res, next) => {
 const debtsQuerySchema = z.object({
   overdueOnly: z.enum(["true", "false"]).optional(),
   minAmount: z.coerce.number().nonnegative().optional(),
+  withAging: z.enum(["true", "false"]).optional(),
 });
 
 router.get("/finance/debts", superAdminOnly, async (req, res, next) => {
@@ -48,6 +50,12 @@ router.get("/finance/debts", superAdminOnly, async (req, res, next) => {
       overdueOnly: query.overdueOnly === "true",
       minAmount: query.minAmount,
     });
+    // Finance Phase 2: опционально включаем aging-бакеты по Invoice.dueDate
+    if (query.withAging === "true") {
+      const aging = await computeAging();
+      res.json({ ...result, aging });
+      return;
+    }
     res.json(result);
   } catch (err) {
     next(err);

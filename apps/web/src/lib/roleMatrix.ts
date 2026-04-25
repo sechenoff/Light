@@ -47,9 +47,16 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Финансы",
       items: [
         { href: "/finance", label: "Обзор", icon: "money" },
+        { href: "/finance/invoices", label: "Счета", icon: "invoice" },
         { href: "/finance/payments", label: "Платежи", icon: "receipt" },
         { href: "/finance/debts", label: "Дебиторка", icon: "alert" },
         { href: "/finance/expenses", label: "Расходы", icon: "expense" },
+      ],
+    },
+    {
+      title: "Настройки",
+      items: [
+        { href: "/settings/organization", label: "Организация", icon: "settings" },
       ],
     },
     {

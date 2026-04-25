@@ -17,6 +17,10 @@ import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalRev
 import { toast } from "../../../src/components/ToastProvider";
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 import { VoidPaymentModal } from "../../../src/components/finance/VoidPaymentModal";
+import { RefundModal } from "../../../src/components/finance/RefundModal";
+import { CreateInvoiceModal } from "../../../src/components/finance/CreateInvoiceModal";
+import { CancelWithDepositModal } from "../../../src/components/finance/CancelWithDepositModal";
+import { CreditNoteApplyModal } from "../../../src/components/finance/CreditNoteApplyModal";
 
 type ScanSession = {
   id: string;
@@ -28,9 +32,20 @@ type ScanSession = {
   _count: { scanRecords: number };
 };
 
+type InvoiceItem = {
+  id: string;
+  number: string | null;
+  kind: "FULL" | "DEPOSIT" | "BALANCE" | "CORRECTION";
+  status: "DRAFT" | "ISSUED" | "PARTIAL_PAID" | "PAID" | "OVERDUE" | "VOID";
+  total: string;
+  paidAmount: string;
+  dueDate: string | null;
+};
+
 type BookingDetail = {
   id: string;
   displayName?: string;
+  legacyFinance?: boolean;
   status: "DRAFT" | "PENDING_APPROVAL" | "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
   rejectionReason?: string | null;
   scanSessions?: ScanSession[];
@@ -146,6 +161,11 @@ export default function BookingDetailPage() {
   const [actionBusy, setActionBusy] = useState<null | "submit" | "approve" | "reject">(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [voidPaymentId, setVoidPaymentId] = useState<string | null>(null);
+  const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
+  const [refundInvoiceId, setRefundInvoiceId] = useState<string | null>(null);
+  const [cancelDepositOpen, setCancelDepositOpen] = useState(false);
+  const [creditNoteOpen, setCreditNoteOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -192,6 +212,28 @@ export default function BookingDetailPage() {
     if (!id) return;
     const fresh = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${id}`);
     setBooking(fresh.booking);
+  }
+
+  async function loadInvoices() {
+    if (!id) return;
+    try {
+      const data = await apiFetch<{ items: InvoiceItem[] }>(`/api/invoices?bookingId=${id}`);
+      setInvoices(data.items);
+    } catch {
+      // Non-fatal; invoices section will just show empty
+    }
+  }
+
+  async function downloadInvoicePdf(inv: InvoiceItem) {
+    const res = await apiFetchRaw(`/api/invoices/${inv.id}/pdf`, { method: "GET", credentials: "include" });
+    if (!res.ok) { toast.error("Не удалось скачать PDF счёта"); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `invoice-${inv.number ?? inv.id}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function handleSubmitForApproval() {
@@ -245,6 +287,14 @@ export default function BookingDetailPage() {
       setActionBusy(null);
     }
   }
+
+  // Загружаем счета когда бронь загружена и не legacyFinance
+  useEffect(() => {
+    if (booking && !booking.legacyFinance) {
+      loadInvoices();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking?.id, booking?.legacyFinance]);
 
   const showApprovalView =
     booking?.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN";
@@ -371,6 +421,39 @@ export default function BookingDetailPage() {
             loading={actionBusy === "reject"}
             onClose={() => setRejectOpen(false)}
             onSubmit={handleReject}
+          />
+
+          {/* Finance Phase 2 modals */}
+          <CreateInvoiceModal
+            open={createInvoiceOpen}
+            onClose={() => setCreateInvoiceOpen(false)}
+            defaultBookingId={booking.id}
+            defaultTotal={booking.finalAmount ?? undefined}
+            onCreated={() => { setCreateInvoiceOpen(false); loadInvoices(); }}
+          />
+          <RefundModal
+            open={!!refundInvoiceId}
+            onClose={() => setRefundInvoiceId(null)}
+            invoiceId={refundInvoiceId ?? undefined}
+            bookingId={booking.id}
+            onSuccess={() => { setRefundInvoiceId(null); reloadBooking(); }}
+          />
+          <CancelWithDepositModal
+            open={cancelDepositOpen}
+            onClose={() => setCancelDepositOpen(false)}
+            bookingId={booking.id}
+            bookingDisplayName={booking.displayName ?? booking.projectName}
+            clientId={booking.client.id}
+            clientName={booking.client.name}
+            depositTotal={Number(booking.amountPaid ?? "0")}
+            onCancelled={() => { setCancelDepositOpen(false); reloadBooking(); }}
+          />
+          <CreditNoteApplyModal
+            open={creditNoteOpen}
+            onClose={() => setCreditNoteOpen(false)}
+            bookingId={booking.id}
+            clientId={booking.client.id}
+            onApplied={() => { setCreditNoteOpen(false); reloadBooking(); }}
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 print-booking">
@@ -573,15 +656,27 @@ export default function BookingDetailPage() {
                       </button>
                     )}
 
-                    {/* Скачать счёт PDF (T10) — доступен SA и WH */}
+                    {/* Скачать счёт PDF (Phase 1 legacy) — только для legacyFinance */}
                     {/* A1: use apiFetch-based download() to respect NEXT_PUBLIC_API_BASE_URL and auth cookies */}
-                    {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+                    {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && booking.legacyFinance !== false && (
                       <button
                         className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-subtle transition-colors"
                         onClick={() => download(`/api/bookings/${booking.id}/invoice.pdf`, `Счёт_${booking.id}.pdf`)}
                       >
                         Скачать счёт PDF
                       </button>
+                    )}
+
+                    {/* Отменить бронь с депозитом (SA only) */}
+                    {user?.role === "SUPER_ADMIN" &&
+                      ["DRAFT", "PENDING_APPROVAL", "CONFIRMED"].includes(booking.status) &&
+                      Number(booking.amountPaid ?? "0") > 0 && (
+                        <button
+                          className="rounded border border-rose px-3 py-1.5 text-sm text-rose hover:bg-rose-soft transition-colors"
+                          onClick={() => setCancelDepositOpen(true)}
+                        >
+                          Отменить бронь
+                        </button>
                     )}
 
                     {/* Скачать акт PDF (T10) — только при RETURNED и нулевом остатке */}
@@ -603,6 +698,79 @@ export default function BookingDetailPage() {
                       );
                     })()}
                   </div>
+
+                  {/* Счета (Phase 2) — скрыто если legacyFinance */}
+                  {booking.legacyFinance === false && user?.role === "SUPER_ADMIN" && (
+                    <div className="pt-2 mt-2 border-t border-border">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="eyebrow">Счета</p>
+                        <button
+                          onClick={() => setCreateInvoiceOpen(true)}
+                          className="text-[11px] px-2 py-1 bg-accent-bright text-white rounded hover:opacity-90"
+                        >
+                          + Создать счёт
+                        </button>
+                      </div>
+                      {invoices.length === 0 ? (
+                        <div className="text-xs text-ink-3">Счетов пока нет</div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {invoices.map((inv) => {
+                            const invStatusVariant = (
+                              inv.status === "DRAFT" ? "view" :
+                              inv.status === "ISSUED" ? "info" :
+                              inv.status === "PARTIAL_PAID" ? "warn" :
+                              inv.status === "PAID" ? "ok" :
+                              inv.status === "OVERDUE" ? "alert" : "none"
+                            ) as "view" | "info" | "warn" | "ok" | "alert" | "none";
+                            const invStatusLabel = {
+                              DRAFT: "Черновик", ISSUED: "Выставлен", PARTIAL_PAID: "Частично",
+                              PAID: "Оплачен", OVERDUE: "Просрочен", VOID: "Аннулирован",
+                            }[inv.status];
+                            const kindLabel = { FULL: "Полный", DEPOSIT: "Предоплата", BALANCE: "Остаток", CORRECTION: "Корректировка" }[inv.kind];
+                            return (
+                              <div key={inv.id} className="flex items-center justify-between gap-2 text-xs py-1.5 border-b border-dashed border-border last:border-0">
+                                <div className="min-w-0">
+                                  <div className="font-mono">{inv.number ?? "Черновик"} · {kindLabel}</div>
+                                  <div className="text-ink-3">
+                                    {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("ru-RU") : "—"}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <StatusPill variant={invStatusVariant} label={invStatusLabel} />
+                                  {inv.number && (
+                                    <button
+                                      onClick={() => downloadInvoicePdf(inv)}
+                                      className="text-ink-3 hover:text-accent"
+                                      title="PDF"
+                                      aria-label="Скачать PDF счёта"
+                                    >
+                                      ↓
+                                    </button>
+                                  )}
+                                  {["ISSUED", "PARTIAL_PAID", "PAID"].includes(inv.status) && (
+                                    <button
+                                      onClick={() => setRefundInvoiceId(inv.id)}
+                                      className="text-amber hover:underline text-[10px]"
+                                    >
+                                      Возврат
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {/* Кредит-ноты */}
+                      <button
+                        onClick={() => setCreditNoteOpen(true)}
+                        className="mt-2 text-[11px] text-accent hover:underline"
+                      >
+                        Кредит-ноты клиента →
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

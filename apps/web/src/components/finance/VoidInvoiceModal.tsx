@@ -6,22 +6,20 @@ import { toast } from "../ToastProvider";
 
 interface Props {
   open: boolean;
-  paymentId: string | null;
+  invoiceId: string | null;
   onClose: () => void;
   onVoided: () => void;
 }
 
 /**
- * Модалка «Аннулировать платёж» (T11).
- * Требует обязательную причину (min 3 символа после trim).
- * Вызывает DELETE /api/payments/:id (передаёт reason в теле).
+ * Модалка «Аннулировать счёт».
+ * POST /api/invoices/:id/void с обязательной причиной.
  */
-export function VoidPaymentModal({ open, paymentId, onClose, onVoided }: Props) {
+export function VoidInvoiceModal({ open, invoiceId, onClose, onVoided }: Props) {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-focus on open
   useEffect(() => {
     if (open) {
       setReason("");
@@ -29,7 +27,6 @@ export function VoidPaymentModal({ open, paymentId, onClose, onVoided }: Props) 
     }
   }, [open]);
 
-  // Esc to close
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -43,16 +40,14 @@ export function VoidPaymentModal({ open, paymentId, onClose, onVoided }: Props) 
   const isValid = trimmedReason.length >= 3;
 
   const handleSubmit = async () => {
-    if (!isValid || !paymentId) return;
+    if (!isValid || !invoiceId) return;
     setSaving(true);
     try {
-      // Finance Phase 2: используем POST /void вместо DELETE (deprecated).
-      // Сервер пишет аудит PAYMENT_VOIDED с reason.
-      await apiFetch(`/api/payments/${paymentId}/void`, {
+      await apiFetch(`/api/invoices/${invoiceId}/void`, {
         method: "POST",
         body: JSON.stringify({ reason: trimmedReason }),
       });
-      toast.success("Платёж аннулирован");
+      toast.success("Счёт аннулирован");
       onVoided();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Ошибка аннулирования");
@@ -69,27 +64,16 @@ export function VoidPaymentModal({ open, paymentId, onClose, onVoided }: Props) 
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-surface rounded-lg border border-border shadow-xl w-full max-w-sm">
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-[15px] font-semibold text-ink">Аннулировать платёж</h2>
-          <button
-            onClick={onClose}
-            aria-label="Закрыть"
-            className="text-ink-3 hover:text-ink text-lg leading-none"
-          >
-            ×
-          </button>
+          <h2 className="text-[15px] font-semibold text-ink">Аннулировать счёт</h2>
+          <button onClick={onClose} aria-label="Закрыть" className="text-ink-3 hover:text-ink text-lg leading-none">×</button>
         </div>
 
-        {/* Body */}
         <div className="px-5 py-4 space-y-3">
-          <p className="text-sm text-ink-2">
-            Укажите причину аннулирования. Это действие нельзя отменить.
-          </p>
+          <p className="text-sm text-ink-2">Укажите причину аннулирования. Это действие нельзя отменить.</p>
           <div>
             <label className="eyebrow block mb-1">
-              Причина *{" "}
-              <span className="text-ink-3 font-normal">({trimmedReason.length}/3 мин.)</span>
+              Причина * <span className="text-ink-3 font-normal">({trimmedReason.length}/3 мин.)</span>
             </label>
             <textarea
               ref={textareaRef}
@@ -97,17 +81,13 @@ export function VoidPaymentModal({ open, paymentId, onClose, onVoided }: Props) 
               rows={3}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Например: ошибка ввода суммы"
+              placeholder="Например: ошибка суммы, дублирующий счёт"
             />
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex gap-2 justify-end px-5 pb-5">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm border border-border rounded text-ink-2 hover:bg-surface-subtle"
-          >
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-border rounded text-ink-2 hover:bg-surface-subtle">
             Отмена
           </button>
           <button
