@@ -230,6 +230,11 @@ router.get("/:id", async (req, res, next) => {
         estimate: { include: { lines: true } },
         vehicle: true,
         financeEvents: { orderBy: { createdAt: "desc" }, take: 100 },
+        payments: {
+          where: { direction: "INCOME", OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }] },
+          orderBy: [{ receivedAt: "desc" }, { paymentDate: "desc" }],
+          take: 100,
+        },
         scanSessions: {
           select: {
             id: true,
@@ -245,7 +250,7 @@ router.get("/:id", async (req, res, next) => {
       },
     });
     if (!booking) return res.status(404).json({ message: "Booking not found" });
-    const { financeEvents, scanSessions, ...bookingCore } = booking as any;
+    const { financeEvents, scanSessions, payments, ...bookingCore } = booking as any;
     const serialized = serializeBookingForApi(bookingCore);
     const displayName = buildBookingHumanName({
       startDate: booking.startDate,
@@ -256,6 +261,14 @@ router.get("/:id", async (req, res, next) => {
       booking: {
         ...serialized,
         displayName,
+        payments: (payments ?? []).map((p: any) => ({
+          id: p.id,
+          amount: p.amount.toString(),
+          method: p.method ?? p.paymentMethod,
+          receivedAt: (p.receivedAt ?? p.paymentDate)?.toISOString() ?? null,
+          direction: p.direction,
+          note: p.note ?? p.comment ?? null,
+        })),
         financeEvents: financeEvents.map((ev: any) => ({
           ...ev,
           amountDelta: ev.amountDelta?.toString() ?? null,
@@ -1193,6 +1206,14 @@ router.get(
       });
       if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
 
+      // Счёт недоступен для отменённых броней
+      if (booking.status === "CANCELLED") {
+        throw new HttpError(409, "Счёт недоступен: бронь отменена", {
+          code: "INVOICE_NOT_AVAILABLE",
+          reason: "BOOKING_CANCELLED",
+        });
+      }
+
       const org = readOrgFromEnv();
       const invoiceNumber = `LR-DRAFT-${booking.id.slice(0, 8).toUpperCase()}`;
       const invoiceDate = new Date().toLocaleDateString("ru-RU");
@@ -1234,7 +1255,7 @@ router.get(
         totalAfterDiscount = booking.finalAmount.toString();
       }
 
-      const pdfBuf = renderInvoicePdf(
+      const pdfBuf = await renderInvoicePdf(
         { invoiceNumber, invoiceDate, clientName: booking.client.name, lines, subtotal, discountPercent, discountAmount, totalAfterDiscount },
         org,
       );
@@ -1314,7 +1335,7 @@ router.get(
         totalAmount = booking.finalAmount.toString();
       }
 
-      const pdfBuf = renderActPdf(
+      const pdfBuf = await renderActPdf(
         { actNumber, actDate, clientName: booking.client.name, lines: actLines, totalAmount },
         org,
       );

@@ -55,9 +55,9 @@ const COLORS = {
 type FontSet = { body: string; bold: string };
 
 function apiPackageRoot(): string {
-  // __dirname = .../apps/api/src/services/documentExport/invoice (compiled)
-  // We need to reach apps/api root — go up 5 levels from src/services/documentExport/invoice
-  return path.resolve(__dirname, "..", "..", "..", "..", "..");
+  // __dirname = .../apps/api/src/services/documentExport/invoice
+  // apps/api root is 4 levels up: invoice → documentExport → services → src → api
+  return path.resolve(__dirname, "..", "..", "..", "..");
 }
 
 function bundledDejaVuPaths(): { regular: string; bold: string } | null {
@@ -112,15 +112,17 @@ export function readOrgFromEnv(): OrgDetails {
 
 /**
  * Генерирует PDF Счёт на оплату.
- * @returns Buffer с PDF-файлом.
+ * @returns Promise<Buffer> с PDF-файлом.
  */
-export function renderInvoicePdf(doc: InvoiceDocument, org: OrgDetails): Buffer {
+export function renderInvoicePdf(doc: InvoiceDocument, org: OrgDetails): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
   const chunks: Buffer[] = [];
   const pdfDoc = new PDFDocument({ size: "A4", margin: 48, autoFirstPage: true });
   const fonts = resolveFonts(pdfDoc);
 
-  // Collect into buffer
   pdfDoc.on("data", (chunk: Buffer) => chunks.push(chunk));
+  pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
+  pdfDoc.on("error", reject);
 
   const margin = 48;
   const pageWidth = 595.28;
@@ -261,6 +263,5 @@ export function renderInvoicePdf(doc: InvoiceDocument, org: OrgDetails): Buffer 
     .text("М.П.", margin, y, { width: 40 });
 
   pdfDoc.end();
-
-  return Buffer.concat(chunks);
+  }); // end Promise
 }

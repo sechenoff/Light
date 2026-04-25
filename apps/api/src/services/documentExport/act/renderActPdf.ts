@@ -39,7 +39,9 @@ const COLORS = {
 type FontSet = { body: string; bold: string };
 
 function apiPackageRoot(): string {
-  return path.resolve(__dirname, "..", "..", "..", "..", "..");
+  // __dirname = .../apps/api/src/services/documentExport/act
+  // apps/api root is 4 levels up: act → documentExport → services → src → api
+  return path.resolve(__dirname, "..", "..", "..", "..");
 }
 
 function bundledDejaVuPaths(): { regular: string; bold: string } | null {
@@ -79,14 +81,17 @@ function rub(value: string): string {
 
 /**
  * Генерирует PDF Акт оказанных услуг.
- * @returns Buffer с PDF-файлом.
+ * @returns Promise<Buffer> с PDF-файлом.
  */
-export function renderActPdf(doc: ActDocument, org: OrgDetails): Buffer {
+export function renderActPdf(doc: ActDocument, org: OrgDetails): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
   const chunks: Buffer[] = [];
   const pdfDoc = new PDFDocument({ size: "A4", margin: 48, autoFirstPage: true });
   const fonts = resolveFonts(pdfDoc);
 
   pdfDoc.on("data", (chunk: Buffer) => chunks.push(chunk));
+  pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
+  pdfDoc.on("error", reject);
 
   const margin = 48;
   const pageWidth = 595.28;
@@ -240,6 +245,5 @@ export function renderActPdf(doc: ActDocument, org: OrgDetails): Buffer {
   pdfDoc.text("М.П.", margin + sigColW + 20, y, { width: 40 });
 
   pdfDoc.end();
-
-  return Buffer.concat(chunks);
+  }); // end Promise
 }
