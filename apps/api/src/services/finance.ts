@@ -479,6 +479,8 @@ interface ClientDebtProject {
 interface ClientDebtAccumulator {
   clientId: string;
   clientName: string;
+  clientPhone: string | null;
+  clientEmail: string | null;
   totalOutstanding: Decimal;
   overdueAmount: Decimal;
   maxDaysOverdue: number;
@@ -495,6 +497,8 @@ export async function computeDebts(
   debts: Array<{
     clientId: string;
     clientName: string;
+    clientPhone: string | null;
+    clientEmail: string | null;
     totalOutstanding: string;
     overdueAmount: string;
     maxDaysOverdue: number;
@@ -515,7 +519,11 @@ export async function computeDebts(
       status: { not: "CANCELLED" },
       amountOutstanding: { gt: 0 },
     },
-    include: { client: true },
+    include: {
+      client: {
+        select: { id: true, name: true, phone: true, email: true },
+      },
+    },
     orderBy: { expectedPaymentDate: "asc" },
   });
 
@@ -532,6 +540,8 @@ export async function computeDebts(
     const acc = byClient.get(b.clientId) ?? {
       clientId: b.clientId,
       clientName: b.client.name,
+      clientPhone: b.client.phone ?? null,
+      clientEmail: b.client.email ?? null,
       totalOutstanding: new Decimal(0),
       overdueAmount: new Decimal(0),
       maxDaysOverdue: 0,
@@ -561,6 +571,8 @@ export async function computeDebts(
   let debts = Array.from(byClient.values()).map((c) => ({
     clientId: c.clientId,
     clientName: c.clientName,
+    clientPhone: c.clientPhone,
+    clientEmail: c.clientEmail,
     totalOutstanding: c.totalOutstanding.toFixed(2),
     overdueAmount: c.overdueAmount.toFixed(2),
     maxDaysOverdue: c.maxDaysOverdue,
@@ -659,6 +671,386 @@ export async function computeAging(asOf: Date = new Date()): Promise<AgingBucket
   }
 
   return buckets;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// B5 — Finance Phase 3: Related Expenses for a Booking
+// ──────────────────────────────────────────────────────────────────────────────
+
+export interface RelatedExpenseItem {
+  id: string;
+  category: string;
+  amount: string;
+  description: string | null;
+  documentUrl: string | null;
+  approved: boolean;
+  createdAt: string;
+  source: "DIRECT" | "REPAIR_LINKED";
+}
+
+export interface RelatedExpensesResult {
+  items: RelatedExpenseItem[];
+  total: string;
+}
+
+/**
+ * Возвращает прямые и косвенно связанные расходы по броне.
+ * - DIRECT: Expense.bookingId == bookingId
+ * - REPAIR_LINKED: Expense.linkedRepairId => Repair на unit, который был в этой броне
+ *   (с ограничением по дате: createdAt в пределах booking.startDate — booking.endDate + 14 дней)
+ */
+export async function computeRelatedExpenses(bookingId: string): Promise<RelatedExpensesResult> {
+  // Get booking for date range
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: { startDate: true, endDate: true },
+  });
+  if (!booking) return { items: [], total: "0.00" };
+
+  const windowEnd = new Date(booking.endDate.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+  // Direct expenses
+  const directExpenses = await prisma.expense.findMany({
+    where: { bookingId },
+    select: { id: true, category: true, amount: true, description: true, documentUrl: true, approved: true, createdAt: true },
+  });
+
+  // Repair-linked expenses:
+  // Find repairs on units that were in this booking AND created within date window
+  const repairsOnBookingUnits = await prisma.repair.findMany({
+    where: {
+      unit: {
+        bookingItemUnits: {
+          some: {
+            bookingItem: { bookingId },
+          },
+        },
+      },
+      createdAt: { gte: booking.startDate, lte: windowEnd },
+    },
+    select: { id: true },
+  });
+  const repairIds = repairsOnBookingUnits.map((r: { id: string }) => r.id);
+
+  // Get direct expense IDs to avoid duplicates (expense could have both bookingId and linkedRepairId)
+  const directIds = new Set(directExpenses.map((e) => e.id));
+
+  const repairExpenses =
+    repairIds.length > 0
+      ? await prisma.expense.findMany({
+          where: {
+            linkedRepairId: { in: repairIds },
+            id: { notIn: Array.from(directIds) },
+          },
+          select: { id: true, category: true, amount: true, description: true, documentUrl: true, approved: true, createdAt: true },
+        })
+      : [];
+
+  const directItems: RelatedExpenseItem[] = directExpenses.map((e) => ({
+    id: e.id,
+    category: e.category,
+    amount: e.amount.toString(),
+    description: e.description ?? null,
+    documentUrl: e.documentUrl ?? null,
+    approved: e.approved,
+    createdAt: e.createdAt.toISOString(),
+    source: "DIRECT" as const,
+  }));
+
+  const repairItems: RelatedExpenseItem[] = repairExpenses.map((e) => ({
+    id: e.id,
+    category: e.category,
+    amount: e.amount.toString(),
+    description: e.description ?? null,
+    documentUrl: e.documentUrl ?? null,
+    approved: e.approved,
+    createdAt: e.createdAt.toISOString(),
+    source: "REPAIR_LINKED" as const,
+  }));
+
+  const items = [...directItems, ...repairItems];
+  const total = items.reduce((acc, e) => acc.add(new Decimal(e.amount)), new Decimal(0)).toFixed(2);
+
+  return { items, total };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// B4 — Finance Phase 3: Booking Finance Timeline
+// ──────────────────────────────────────────────────────────────────────────────
+
+export type TimelineEvent =
+  | { type: "INVOICE_ISSUED"; at: string; invoiceId: string; number: string; total: string; kind: string }
+  | { type: "INVOICE_VOIDED"; at: string; invoiceId: string; number: string; reason: string | null }
+  | { type: "PAYMENT_RECEIVED"; at: string; paymentId: string; amount: string; method: string; invoiceId: string | null }
+  | { type: "PAYMENT_VOIDED"; at: string; paymentId: string; amount: string; reason: string | null }
+  | { type: "REFUND_ISSUED"; at: string; refundId: string; amount: string; method: string; reason: string }
+  | { type: "EXPENSE_LOGGED"; at: string; expenseId: string; category: string; amount: string; description: string | null }
+  | { type: "CREDIT_NOTE_APPLIED"; at: string; creditNoteId: string; amount: string };
+
+/**
+ * Возвращает хронологию финансовых событий по броне.
+ * Сортировка: ascending by at (ISO timestamp).
+ */
+export async function computeBookingTimeline(bookingId: string): Promise<TimelineEvent[]> {
+  const [invoices, payments, refunds, expenses, creditNotes] = await Promise.all([
+    prisma.invoice.findMany({
+      where: { bookingId },
+      select: { id: true, number: true, total: true, kind: true, issuedAt: true, voidedAt: true, voidReason: true, createdAt: true },
+    }),
+    prisma.payment.findMany({
+      where: { bookingId, direction: "INCOME" },
+      select: { id: true, amount: true, paymentMethod: true, receivedAt: true, paymentDate: true, voidedAt: true, voidReason: true, invoiceId: true, createdAt: true },
+    }),
+    prisma.refund.findMany({
+      where: { bookingId },
+      select: { id: true, amount: true, method: true, reason: true, refundedAt: true, createdAt: true },
+    }),
+    prisma.expense.findMany({
+      where: { bookingId },
+      select: { id: true, category: true, amount: true, description: true, expenseDate: true, createdAt: true },
+    }),
+    prisma.creditNote.findMany({
+      where: { appliedToBookingId: bookingId, appliedAt: { not: null } },
+      select: { id: true, amount: true, appliedAt: true },
+    }),
+  ]);
+
+  const events: TimelineEvent[] = [];
+
+  for (const inv of invoices) {
+    if (inv.issuedAt) {
+      events.push({
+        type: "INVOICE_ISSUED",
+        at: inv.issuedAt.toISOString(),
+        invoiceId: inv.id,
+        number: inv.number,
+        total: inv.total.toString(),
+        kind: inv.kind,
+      });
+    }
+    if (inv.voidedAt) {
+      events.push({
+        type: "INVOICE_VOIDED",
+        at: inv.voidedAt.toISOString(),
+        invoiceId: inv.id,
+        number: inv.number,
+        reason: inv.voidReason ?? null,
+      });
+    }
+  }
+
+  for (const p of payments) {
+    const at = (p.receivedAt ?? p.paymentDate ?? p.createdAt).toISOString();
+    if (!p.voidedAt) {
+      events.push({
+        type: "PAYMENT_RECEIVED",
+        at,
+        paymentId: p.id,
+        amount: p.amount.toString(),
+        method: p.paymentMethod,
+        invoiceId: p.invoiceId ?? null,
+      });
+    } else {
+      events.push({
+        type: "PAYMENT_RECEIVED",
+        at,
+        paymentId: p.id,
+        amount: p.amount.toString(),
+        method: p.paymentMethod,
+        invoiceId: p.invoiceId ?? null,
+      });
+      events.push({
+        type: "PAYMENT_VOIDED",
+        at: p.voidedAt.toISOString(),
+        paymentId: p.id,
+        amount: p.amount.toString(),
+        reason: p.voidReason ?? null,
+      });
+    }
+  }
+
+  for (const r of refunds) {
+    events.push({
+      type: "REFUND_ISSUED",
+      at: r.refundedAt.toISOString(),
+      refundId: r.id,
+      amount: r.amount.toString(),
+      method: r.method,
+      reason: r.reason,
+    });
+  }
+
+  for (const e of expenses) {
+    events.push({
+      type: "EXPENSE_LOGGED",
+      at: e.expenseDate.toISOString(),
+      expenseId: e.id,
+      category: e.category,
+      amount: e.amount.toString(),
+      description: e.description ?? null,
+    });
+  }
+
+  for (const cn of creditNotes) {
+    if (cn.appliedAt) {
+      events.push({
+        type: "CREDIT_NOTE_APPLIED",
+        at: cn.appliedAt.toISOString(),
+        creditNoteId: cn.id,
+        amount: cn.amount.toString(),
+      });
+    }
+  }
+
+  // Sort ascending by at
+  events.sort((a, b) => a.at.localeCompare(b.at));
+
+  return events;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// B1 — Finance Phase 3: Forecast (стек-бар прогноза)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export interface ForecastMonth {
+  /** YYYY-MM */
+  month: string;
+  /** Сумма остатков ISSUED/PARTIAL_PAID/OVERDUE инвойсов с dueDate в этом месяце */
+  confirmed: string;
+  /** Сумма остатков DRAFT инвойсов с dueDate в этом месяце */
+  potential: string;
+  /** Сумма amountOutstanding броней без инвойсов (CONFIRMED/ISSUED/RETURNED) */
+  bookingsPipeline: string;
+}
+
+export interface ForecastResult {
+  months: ForecastMonth[];
+  totals: {
+    confirmed: string;
+    potential: string;
+    bookingsPipeline: string;
+  };
+  horizon: { from: string; to: string };
+}
+
+/**
+ * Возвращает прогноз доходов на horizonMonths месяцев вперёд начиная с текущего.
+ * Максимальный горизонт: 12 месяцев.
+ */
+export async function computeForecast(horizonMonths = 6): Promise<ForecastResult> {
+  const clampedMonths = Math.min(Math.max(1, horizonMonths), 12);
+  const now = new Date();
+
+  // Build month slots: current month + next (horizonMonths - 1) months
+  const monthSlots: Array<{ label: string; start: Date; end: Date }> = [];
+  for (let i = 0; i < clampedMonths; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const start = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    monthSlots.push({ label: `${d.getFullYear()}-${m}`, start, end });
+  }
+
+  const horizonStart = monthSlots[0].start;
+  const horizonEnd = monthSlots[monthSlots.length - 1].end;
+
+  // Fetch ISSUED/PARTIAL_PAID/OVERDUE invoices with dueDate in horizon
+  const confirmedInvoices = await prisma.invoice.findMany({
+    where: {
+      status: { in: ["ISSUED", "PARTIAL_PAID", "OVERDUE"] },
+      dueDate: { gte: horizonStart, lte: horizonEnd },
+      voidedAt: null,
+    },
+    select: { dueDate: true, total: true, paidAmount: true },
+  });
+
+  // Fetch DRAFT invoices with dueDate in horizon
+  const potentialInvoices = await prisma.invoice.findMany({
+    where: {
+      status: "DRAFT",
+      dueDate: { gte: horizonStart, lte: horizonEnd },
+      voidedAt: null,
+    },
+    select: { dueDate: true, total: true, paidAmount: true },
+  });
+
+  // Fetch CONFIRMED/ISSUED/RETURNED bookings without any invoice, startDate in horizon
+  // "without invoice" = no related Invoice records
+  const pipelineBookings = await prisma.booking.findMany({
+    where: {
+      status: { in: ["CONFIRMED", "ISSUED", "RETURNED"] },
+      startDate: { gte: horizonStart, lte: horizonEnd },
+      amountOutstanding: { gt: 0 },
+      invoices: { none: {} },
+    },
+    select: { startDate: true, amountOutstanding: true },
+  });
+
+  // Helper: which month slot does a date fall in?
+  function monthSlotLabel(d: Date): string | null {
+    const yyyy = d.getFullYear();
+    const mm = d.getMonth() + 1;
+    const label = `${yyyy}-${String(mm).padStart(2, "0")}`;
+    const slot = monthSlots.find((s) => s.label === label);
+    return slot ? label : null;
+  }
+
+  // Accumulate per slot
+  const slotData = new Map<string, { confirmed: Decimal; potential: Decimal; bookingsPipeline: Decimal }>(
+    monthSlots.map((s) => [s.label, { confirmed: new Decimal(0), potential: new Decimal(0), bookingsPipeline: new Decimal(0) }]),
+  );
+
+  for (const inv of confirmedInvoices) {
+    if (!inv.dueDate) continue;
+    const label = monthSlotLabel(inv.dueDate);
+    if (!label) continue;
+    const outstanding = Decimal.max(
+      new Decimal(inv.total.toString()).sub(new Decimal(inv.paidAmount.toString())),
+      new Decimal(0),
+    );
+    slotData.get(label)!.confirmed = slotData.get(label)!.confirmed.add(outstanding);
+  }
+
+  for (const inv of potentialInvoices) {
+    if (!inv.dueDate) continue;
+    const label = monthSlotLabel(inv.dueDate);
+    if (!label) continue;
+    const outstanding = Decimal.max(
+      new Decimal(inv.total.toString()).sub(new Decimal(inv.paidAmount.toString())),
+      new Decimal(0),
+    );
+    slotData.get(label)!.potential = slotData.get(label)!.potential.add(outstanding);
+  }
+
+  for (const b of pipelineBookings) {
+    const label = monthSlotLabel(b.startDate);
+    if (!label) continue;
+    const outstanding = new Decimal(b.amountOutstanding.toString());
+    slotData.get(label)!.bookingsPipeline = slotData.get(label)!.bookingsPipeline.add(outstanding);
+  }
+
+  // Build output months array in order
+  const months: ForecastMonth[] = monthSlots.map((s) => {
+    const d = slotData.get(s.label)!;
+    return {
+      month: s.label,
+      confirmed: d.confirmed.toFixed(2),
+      potential: d.potential.toFixed(2),
+      bookingsPipeline: d.bookingsPipeline.toFixed(2),
+    };
+  });
+
+  const totals = {
+    confirmed: months.reduce((acc, m) => acc.add(m.confirmed), new Decimal(0)).toFixed(2),
+    potential: months.reduce((acc, m) => acc.add(m.potential), new Decimal(0)).toFixed(2),
+    bookingsPipeline: months.reduce((acc, m) => acc.add(m.bookingsPipeline), new Decimal(0)).toFixed(2),
+  };
+
+  return {
+    months,
+    totals,
+    horizon: { from: horizonStart.toISOString(), to: horizonEnd.toISOString() },
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

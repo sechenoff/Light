@@ -17,7 +17,7 @@ import { buildQuoteXml } from "../services/quoteExport";
 import { buildSmetaExportDocument, writeSmetaPdf, writeSmetaXlsx } from "../services/smetaExport";
 import { formatExportHourCalculationLine } from "../utils/dates";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
-import { calcBookingPaymentStatus, createFinanceEvent, recomputeBookingFinance } from "../services/finance";
+import { calcBookingPaymentStatus, computeBookingTimeline, computeRelatedExpenses, createFinanceEvent, recomputeBookingFinance } from "../services/finance";
 import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { writeAuditEntry, diffFields } from "../services/audit";
@@ -1532,6 +1532,40 @@ router.get(
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", buildAttachmentContentDisposition(filename, "act.pdf"));
       res.end(pdfBuf);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── B5: GET /api/bookings/:id/related-expenses ───────────────────────────────
+
+router.get(
+  "/:id/related-expenses",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  async (req, res, next) => {
+    try {
+      const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { id: true } });
+      if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+      const result = await computeRelatedExpenses(req.params.id);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── B4: GET /api/bookings/:id/finance-timeline ───────────────────────────────
+
+router.get(
+  "/:id/finance-timeline",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  async (req, res, next) => {
+    try {
+      const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { id: true } });
+      if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+      const events = await computeBookingTimeline(req.params.id);
+      res.json(events);
     } catch (err) {
       next(err);
     }

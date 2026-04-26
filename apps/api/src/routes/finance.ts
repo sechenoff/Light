@@ -9,6 +9,7 @@ import {
   computeDebts,
   computeExpensesBreakdown,
   computeFinanceDashboard,
+  computeForecast,
   computePaymentsCalendar,
   csvEscape,
   paymentStatusSyncForAllBookings,
@@ -26,6 +27,22 @@ import {
 const router = express.Router();
 
 const superAdminOnly = rolesGuard(["SUPER_ADMIN"]);
+
+// ── B1: GET /api/finance/forecast ────────────────────────────────────────────
+
+const forecastQuerySchema = z.object({
+  months: z.coerce.number().int().min(1).max(12).default(6),
+});
+
+router.get("/finance/forecast", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
+  try {
+    const q = forecastQuerySchema.parse(req.query);
+    const result = await computeForecast(q.months);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get("/finance/dashboard", superAdminOnly, async (_req, res, next) => {
   try {
