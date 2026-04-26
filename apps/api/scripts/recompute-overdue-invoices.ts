@@ -28,24 +28,37 @@ import { recomputeInvoiceStatus } from "../src/services/invoiceService";
 
 const prisma = new PrismaClient();
 
+const CHUNK_SIZE = 500;
+
 async function main() {
   const now = new Date();
 
-  // Найти все инвойсы, которые могут стать OVERDUE
-  const candidates = await prisma.invoice.findMany({
-    where: {
-      status: { in: ["ISSUED", "PARTIAL_PAID"] },
-      dueDate: { lt: now },
-      voidedAt: null,
-    },
-    select: { id: true, number: true, status: true },
-  });
-
-  console.log(`[recompute-overdue] Кандидатов для обновления: ${candidates.length}`);
-
+  // M2: cursor-based pagination, chunk size 500 — avoids large findMany on big DBs
+  let cursor: string | undefined;
+  let totalCandidates = 0;
   let changedCount = 0;
 
-  for (const inv of candidates) {
+  console.log(`[recompute-overdue] Запуск: ${now.toISOString()}`);
+
+  while (true) {
+    const candidates = await prisma.invoice.findMany({
+      where: {
+        status: { in: ["ISSUED", "PARTIAL_PAID"] },
+        dueDate: { lt: now },
+        voidedAt: null,
+      },
+      select: { id: true, number: true, status: true },
+      take: CHUNK_SIZE,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      orderBy: { id: "asc" },
+    });
+
+    if (candidates.length === 0) break;
+
+    totalCandidates += candidates.length;
+    cursor = candidates[candidates.length - 1].id;
+
+    for (const inv of candidates) {
     const before = inv.status;
     const updated = await recomputeInvoiceStatus(inv.id);
     if (updated && updated.status !== before) {
@@ -53,6 +66,8 @@ async function main() {
       console.log(`  Счёт ${inv.number}: ${before} → ${updated.status}`);
 
       // Запись в аудит-лог (без userId — системный вызов, используем "system")
+      // T3: "_system_" AdminUser is seeded by seed-system-user.ts (run in deploy.sh).
+      // If for any reason the row is missing, audit write fails silently — cron continues.
       try {
         await prisma.auditEntry.create({
           data: {
@@ -64,14 +79,16 @@ async function main() {
             after: JSON.stringify({ status: "OVERDUE" }),
           },
         });
-      } catch {
-        // userId "_system_" не существует в AdminUser — это ожидаемо для системных скриптов.
-        // Аудит опционален; не прерываем выполнение при ошибке FK.
+      } catch (auditErr) {
+        console.warn(`  [recompute-overdue] Аудит не записан для счёта ${inv.number}:`, auditErr);
       }
     }
+
+    // If fewer than CHUNK_SIZE returned, we've processed all
+    if (candidates.length < CHUNK_SIZE) break;
   }
 
-  console.log(`[recompute-overdue] Изменено статусов: ${changedCount} из ${candidates.length}`);
+  console.log(`[recompute-overdue] Изменено статусов: ${changedCount} из ${totalCandidates}`);
 }
 
 main()

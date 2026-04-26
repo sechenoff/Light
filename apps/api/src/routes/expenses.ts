@@ -4,16 +4,44 @@ import type { UserRole } from "@prisma/client";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 
 import { prisma } from "../prisma";
 import { rolesGuard } from "../middleware/rolesGuard";
 import * as expenseService from "../services/expenseService";
 import { HttpError } from "../utils/errors";
 
+// ── B6: upload root (T1: relative paths) ─────────────────────────────────────
+
+// UPLOAD_ROOT is the absolute base for all expense document storage.
+// documentUrl values in DB are stored RELATIVE to this root (e.g. "expenses/abc/xyz.pdf").
+// GET/DELETE resolve by joining UPLOAD_ROOT + relative path and verifying no traversal.
+const UPLOAD_ROOT = path.resolve(__dirname, "../../uploads");
+
 // ── B6: multer setup for expense document upload ──────────────────────────────
 
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+
+// M1: Magic-byte signatures for allowed types
+const MAGIC_BYTES: Array<{ mime: string; bytes: number[]; offset: number }> = [
+  { mime: "application/pdf", bytes: [0x25, 0x50, 0x44, 0x46], offset: 0 }, // %PDF
+  { mime: "image/jpeg",     bytes: [0xff, 0xd8, 0xff],         offset: 0 }, // FF D8 FF
+  { mime: "image/png",      bytes: [0x89, 0x50, 0x4e, 0x47],   offset: 0 }, // 89 PNG
+];
+
+/**
+ * Validate file buffer magic bytes match the declared MIME type.
+ * Returns true if valid, false otherwise.
+ */
+function validateMagicBytes(buffer: Buffer, mime: string): boolean {
+  const sig = MAGIC_BYTES.find((m) => m.mime === mime);
+  if (!sig) return false;
+  for (let i = 0; i < sig.bytes.length; i++) {
+    if (buffer[sig.offset + i] !== sig.bytes[i]) return false;
+  }
+  return true;
+}
 
 /**
  * Sanitise filename: strip path separators, keep ASCII + Cyrillic alphanum + safe chars.
@@ -25,6 +53,21 @@ function sanitizeFilename(name: string): string {
   const ext = path.extname(base);
   const stem = path.basename(base, ext).replace(/[^\wЀ-ӿ.-]/g, "_").slice(0, 100);
   return stem + ext;
+}
+
+/**
+ * Resolve a relative documentUrl to an absolute path, guarding against path traversal.
+ * Returns null if the resolved path escapes UPLOAD_ROOT.
+ */
+function resolveDocumentPath(relativeUrl: string): string | null {
+  // Strip leading slash if present
+  const rel = relativeUrl.replace(/^\//, "");
+  const resolved = path.resolve(UPLOAD_ROOT, rel);
+  // Guard: resolved path must start with UPLOAD_ROOT + sep
+  if (!resolved.startsWith(UPLOAD_ROOT + path.sep) && resolved !== UPLOAD_ROOT) {
+    return null;
+  }
+  return resolved;
 }
 
 const documentUpload = multer({
@@ -51,12 +94,20 @@ const createSchema = z.object({
   category: z.enum(EXPENSE_CATEGORIES),
   amount: z.coerce.number().positive(),
   description: z.string().min(1),
-  documentUrl: z.string().url().optional(),
+  // documentUrl intentionally excluded: document operations only via /document endpoints (T2)
   linkedBookingId: z.string().optional(),
   linkedRepairId: z.string().optional(),
 });
 
-const patchSchema = createSchema.partial();
+// T2: patchSchema also excludes documentUrl — document ops via /document endpoints only
+const patchSchema = z.object({
+  date: z.string().datetime().optional(),
+  category: z.enum(EXPENSE_CATEGORIES).optional(),
+  amount: z.coerce.number().positive().optional(),
+  description: z.string().min(1).optional(),
+  linkedBookingId: z.string().optional(),
+  linkedRepairId: z.string().optional(),
+});
 
 const listQuerySchema = z.object({
   category: z.enum(EXPENSE_CATEGORIES).optional(),
@@ -79,7 +130,7 @@ router.post("/", rolesGuard(["SUPER_ADMIN", "TECHNICIAN"]), async (req, res, nex
       category: body.category,
       amount: body.amount,
       description: body.description,
-      documentUrl: body.documentUrl,
+      // documentUrl intentionally not accepted here (T2) — use /document endpoint
       linkedBookingId: body.linkedBookingId,
       linkedRepairId: body.linkedRepairId,
       createdBy: userId,
@@ -144,7 +195,7 @@ router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
     if (body.category !== undefined) patch.category = body.category;
     if (body.amount !== undefined) patch.amount = body.amount;
     if (body.description !== undefined) patch.description = body.description;
-    if (body.documentUrl !== undefined) patch.documentUrl = body.documentUrl;
+    // documentUrl intentionally excluded from PATCH (T2) — use /document endpoint
     const expense = await expenseService.updateExpense(req.params.id, patch, userId);
     res.json({ expense: { ...expense, amount: expense.amount.toString() } });
   } catch (err) {
@@ -188,37 +239,43 @@ router.post(
         throw new HttpError(400, "Файл не приложен", "NO_FILE");
       }
 
+      // M1: Validate magic bytes to prevent MIME-type spoofing
+      if (!validateMagicBytes(req.file.buffer, req.file.mimetype)) {
+        throw new HttpError(400, "Содержимое файла не соответствует указанному типу", "INVALID_FILE_FORMAT");
+      }
+
       const expense = await prisma.expense.findUnique({ where: { id: req.params.id } });
       if (!expense) throw new HttpError(404, "Расход не найден", "EXPENSE_NOT_FOUND");
 
-      // Delete previous file if exists
+      // Delete previous file if exists (T1: resolve relative path safely)
       if (expense.documentUrl) {
-        // documentUrl stored as relative path from api root: /uploads/expenses/:id/:filename
-        const existing = path.join(
-          __dirname,
-          "../..",
-          expense.documentUrl.replace(/^\//, ""),
-        );
-        if (fs.existsSync(existing)) {
-          try { fs.unlinkSync(existing); } catch { /* ignore */ }
+        const existingAbsolute = resolveDocumentPath(expense.documentUrl);
+        if (existingAbsolute && fs.existsSync(existingAbsolute)) {
+          try { fs.unlinkSync(existingAbsolute); } catch { /* ignore */ }
         }
       }
 
       // Write new file
-      const uploadDir = path.join(__dirname, "../../uploads/expenses", req.params.id);
+      // M3: Use crypto.randomBytes instead of Date.now() to avoid collision
+      const randomSuffix = crypto.randomBytes(4).toString("hex");
+      const filename = `${randomSuffix}_${sanitizeFilename(req.file.originalname)}`;
+
+      // T1: Store relative path in DB (relative to UPLOAD_ROOT)
+      const relativeDir = path.join("expenses", req.params.id);
+      const uploadDir = path.join(UPLOAD_ROOT, relativeDir);
       fs.mkdirSync(uploadDir, { recursive: true });
 
-      const filename = `${Date.now()}_${sanitizeFilename(req.file.originalname)}`;
-      const filepath = path.join(uploadDir, filename);
-      fs.writeFileSync(filepath, req.file.buffer);
+      const relativeDocPath = path.join(relativeDir, filename);
+      const absoluteFilepath = path.join(UPLOAD_ROOT, relativeDocPath);
+      fs.writeFileSync(absoluteFilepath, req.file.buffer);
 
-      const documentUrl = `/api/expenses/${req.params.id}/document`;
-
+      // Store relative path in DB (not absolute filesystem path)
       await prisma.expense.update({
         where: { id: req.params.id },
-        data: { documentUrl: filepath },
+        data: { documentUrl: relativeDocPath },
       });
 
+      const documentUrl = `/api/expenses/${req.params.id}/document`;
       res.json({ documentUrl });
     } catch (err) {
       next(err);
@@ -237,8 +294,9 @@ router.get(
       if (!expense) throw new HttpError(404, "Расход не найден", "EXPENSE_NOT_FOUND");
       if (!expense.documentUrl) throw new HttpError(404, "Документ не загружен", "DOCUMENT_NOT_FOUND");
 
-      // documentUrl is stored as absolute filepath
-      const filepath = expense.documentUrl;
+      // T1: Resolve relative path to absolute, guard against traversal
+      const filepath = resolveDocumentPath(expense.documentUrl);
+      if (!filepath) throw new HttpError(404, "Файл не найден на диске", "FILE_NOT_FOUND");
       if (!fs.existsSync(filepath)) throw new HttpError(404, "Файл не найден на диске", "FILE_NOT_FOUND");
 
       const ext = path.extname(filepath).toLowerCase();
@@ -267,8 +325,9 @@ router.delete(
       if (!expense) throw new HttpError(404, "Расход не найден", "EXPENSE_NOT_FOUND");
       if (!expense.documentUrl) throw new HttpError(404, "Документ не загружен", "DOCUMENT_NOT_FOUND");
 
-      const filepath = expense.documentUrl;
-      if (fs.existsSync(filepath)) {
+      // T1: Resolve relative path safely
+      const filepath = resolveDocumentPath(expense.documentUrl);
+      if (filepath && fs.existsSync(filepath)) {
         try { fs.unlinkSync(filepath); } catch { /* ignore */ }
       }
 
