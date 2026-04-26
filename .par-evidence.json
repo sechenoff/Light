@@ -1,17 +1,16 @@
 {
-  "sprint": "finance-phase-2",
+  "sprint": "finance-phase-3",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus + 4-agent-qa",
-  "ts": "2026-04-26T00:00:00Z",
+  "ts": "2026-04-26T11:00:00Z",
   "notes": [
-    "Phase 2 Finance Redesign: 13 backend tasks + 7 frontend tasks per spec.",
-    "Backend: Invoice/Refund/CreditNote/OrganizationSettings models (additive schema), numberingService LR-YYYY-NNNN, soft-void on Payment, dual-mode legacy/post-cutoff, cancel-with-deposit composite endpoint.",
-    "Frontend: /finance/invoices, /finance/debts aging buckets, /settings/organization, /bookings/[id] Invoices section, 5 modals (CreateInvoice/Refund/CancelWithDeposit/CreditNoteApply/VoidInvoice).",
-    "Standard PAR (product+technical) flagged 3 CRITICAL + 8 HIGH — all closed in fix commit 70d9e23.",
-    "User-requested 4-agent QA: Agent A (functional) NEEDS_FIXES 4 HIGH, Agent B (conformance) 80% fidelity 3 HIGH, Agent C (browser) FAIL 1 BLOCKER + 1 HIGH.",
-    "Agent D consolidated 11 priority fixes across 4 commits (9996573, 2185edf, 3404691, plus per-client aging matrix backend in 9996573).",
-    "Final gates: tsc api+web clean; 829 API tests + 224 web tests all green.",
-    "Phase 3 deferrals (TODO comments inline): tel/mailto on /finance/debts (needs API expose phone/email), Хронология денег + Связанные расходы on /bookings/[id], WH PDF access scoped to own bookings (no ownership concept yet), forecast widget, bank reconcile."
+    "Phase 3: forecast widget, contact chips, finance timeline, related expenses, expense document upload, OVERDUE cron.",
+    "Backend (B1-B6): forecast endpoint with Moscow TZ + legacyFinance filter, debts phone/email, OVERDUE cron + _system_ user, finance-timeline (no double-emit voided), related-expenses (with linkedRepairId), document upload (relative path + magic-byte + path-traversal guard).",
+    "Frontend (F1-F5): ForecastWidget pure-CSS bars, ContactChips tel/mailto, FinanceTimeline collapsible, RelatedExpenses with REPAIR link, ExpenseDocumentUpload (XHR progress, no auto-close, per-row attach).",
+    "Standard PAR: technical REQUEST_CHANGES (5 HIGH including path traversal, forecast TZ, voided dedup) + product NEEDS_FIXES (double-₽ × 7) — all 7 HIGH + 8 MED closed.",
+    "User 4-agent QA: A NEEDS_FIXES (1 CRIT broken cron + 1 HIGH unseeded _system_ user), B 94% fidelity (role drifts), C PASS (1 HIGH role mismatch). D applied 6 fixes (cron syntax, deploy.sh seed call, SA-only tightening, linkedRepairId, doc drift, FS-after-tx delete).",
+    "Final gates: tsc clean api+web; 853 API tests + 249 web tests all green.",
+    "Deferred to Phase 4: bank reconciliation CSV import, multi-currency, real email/SMS reminders integration, margin sparkline, per-method analytics, WH PDF scoped to own bookings."
   ]
 }
