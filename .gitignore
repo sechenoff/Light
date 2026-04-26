@@ -22,3 +22,6 @@ logs/*.log
 .superflow-state.json
 CLAUDE.local.md
 .superpowers/
+
+# Phase 3 expense document uploads
+uploads/
