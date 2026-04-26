@@ -302,7 +302,7 @@ export default function BookingDetailPage() {
     booking?.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN";
 
   return (
-    <div className="p-4">
+    <div className="p-4 pb-24 md:pb-4">
       {/* Parent top-bar — hidden when ApprovalReviewView is rendered; that view brings its own header */}
       {!showApprovalView && (
         <div className="flex items-center justify-between flex-wrap gap-3 no-print">
