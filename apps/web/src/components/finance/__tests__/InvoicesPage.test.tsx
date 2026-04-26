@@ -117,10 +117,11 @@ describe("InvoicesPage", () => {
     mockInvoicesResponse([]);
     render(<InvoicesPageDefault />);
 
-    // All tab labels should be visible
+    // All tab labels should be visible (labels match the mockup rewrite)
     expect(screen.getByRole("button", { name: /все/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /черновики/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /выставлены/i })).toBeInTheDocument();
+    // DRAFT tab is labelled "К выставлению" in the mockup design
+    expect(screen.getByRole("button", { name: /выставлению/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /выставлено/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /оплачены/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /просрочены/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /аннулированы/i })).toBeInTheDocument();
@@ -143,7 +144,8 @@ describe("InvoicesPage", () => {
     // Bulk bar should now appear
     await waitFor(() => {
       expect(screen.getByText(/выбрано/i)).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /выставить черновики/i })).toBeInTheDocument();
+      // Button label is "Выставить выбранные" in the mockup design
+      expect(screen.getByRole("button", { name: /выставить выбранные/i })).toBeInTheDocument();
     });
   });
 });
