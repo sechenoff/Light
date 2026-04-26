@@ -8,6 +8,7 @@ import { apiFetch } from "../../../src/lib/api";
 import { formatRub } from "../../../src/lib/format";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { PeriodSelector } from "../../../src/components/finance/PeriodSelector";
+import { ExpenseDocumentUpload } from "../../../src/components/finance/ExpenseDocumentUpload";
 import { derivePeriodRange, type PeriodKey } from "../../../src/lib/periodUtils";
 import type { UserRole } from "../../../src/lib/auth";
 
@@ -167,11 +168,12 @@ function AddExpenseModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [category, setCategory] = useState("OTHER");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [documentUrl, setDocumentUrl] = useState("");
   const [linkedBookingId, setLinkedBookingId] = useState("");
   const [bookings, setBookings] = useState<BookingOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // F5: after save we get the expense id for document upload
+  const [savedExpenseId, setSavedExpenseId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -186,18 +188,22 @@ function AddExpenseModal({ onClose, onCreated }: { onClose: () => void; onCreate
     setSaving(true);
     setError("");
     try {
-      await apiFetch("/api/expenses", {
+      const created = await apiFetch<{ expense: { id: string } }>("/api/expenses", {
         method: "POST",
         body: JSON.stringify({
           date: new Date(date).toISOString(),
           category,
           amount: Number(amount),
           description,
-          documentUrl: documentUrl || undefined,
           linkedBookingId: linkedBookingId || undefined,
         }),
       });
-      onCreated();
+      // F5: expose expenseId for document upload
+      if (created?.expense?.id) {
+        setSavedExpenseId(created.expense.id);
+      } else {
+        onCreated();
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Ошибка");
     } finally {
@@ -205,63 +211,82 @@ function AddExpenseModal({ onClose, onCreated }: { onClose: () => void; onCreate
     }
   };
 
+  // F5: after document upload (or skip), finalize
+  function handleDocumentDone() {
+    onCreated();
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-surface rounded-lg p-6 w-full max-w-md shadow-xl">
         <h2 className="text-lg font-semibold text-ink mb-4">Добавить расход</h2>
-        <div className="space-y-3">
-          <div>
-            <label className="eyebrow block mb-1">Дата</label>
-            <input type="datetime-local" className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
-              value={date} onChange={(e) => setDate(e.target.value)} />
+
+        {savedExpenseId ? (
+          /* F5: Step 2 — document upload after expense is saved */
+          <div className="space-y-4">
+            <p className="text-sm text-ink-2">Расход сохранён. Прикрепите документ (необязательно).</p>
+            <ExpenseDocumentUpload
+              expenseId={savedExpenseId}
+              existingDocumentUrl={null}
+              onUploaded={handleDocumentDone}
+            />
+            <div className="flex gap-2 justify-end pt-2">
+              <button onClick={handleDocumentDone}
+                className="px-4 py-2 text-sm border border-border rounded text-ink-2 hover:bg-surface-subtle">
+                Пропустить
+              </button>
+            </div>
           </div>
-          <div>
-            <label className="eyebrow block mb-1">Категория</label>
-            <select className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
-              value={category} onChange={(e) => setCategory(e.target.value)}>
-              {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <label className="eyebrow block mb-1">Дата</label>
+              <input type="datetime-local" className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
+                value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="eyebrow block mb-1">Категория</label>
+              <select className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
+                value={category} onChange={(e) => setCategory(e.target.value)}>
+                {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="eyebrow block mb-1">Сумма *</label>
+              <input type="number" className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
+                value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <label className="eyebrow block mb-1">Описание *</label>
+              <input className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
+                value={description} onChange={(e) => setDescription(e.target.value)} />
+            </div>
+            <div>
+              <label className="eyebrow block mb-1">Бронирование (необязательно)</label>
+              <select className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
+                value={linkedBookingId} onChange={(e) => setLinkedBookingId(e.target.value)}>
+                <option value="">— не указано —</option>
+                {bookings.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.client.name} — {b.projectName} — {new Date(b.startDate).toLocaleDateString("ru-RU")}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {error && <p className="text-sm text-rose">{error}</p>}
+            <div className="flex gap-2 justify-end pt-2">
+              <button onClick={onClose} className="px-4 py-2 text-sm border border-border rounded text-ink-2 hover:bg-surface-subtle">
+                Отмена
+              </button>
+              <button onClick={handleSubmit} disabled={saving}
+                className="px-4 py-2 text-sm bg-accent text-white rounded hover:bg-accent-bright disabled:opacity-50">
+                {saving ? "Сохранение…" : "Добавить"}
+              </button>
+            </div>
           </div>
-          <div>
-            <label className="eyebrow block mb-1">Сумма *</label>
-            <input type="number" className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
-              value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
-          </div>
-          <div>
-            <label className="eyebrow block mb-1">Описание *</label>
-            <input className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
-              value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
-          <div>
-            <label className="eyebrow block mb-1">Документ (URL)</label>
-            <input className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
-              value={documentUrl} onChange={(e) => setDocumentUrl(e.target.value)} placeholder="https://…" />
-          </div>
-          <div>
-            <label className="eyebrow block mb-1">Бронирование (необязательно)</label>
-            <select className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
-              value={linkedBookingId} onChange={(e) => setLinkedBookingId(e.target.value)}>
-              <option value="">— не указано —</option>
-              {bookings.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.client.name} — {b.projectName} — {new Date(b.startDate).toLocaleDateString("ru-RU")}
-                </option>
-              ))}
-            </select>
-          </div>
-          {error && <p className="text-sm text-rose">{error}</p>}
-          <div className="flex gap-2 justify-end pt-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm border border-border rounded text-ink-2 hover:bg-surface-subtle">
-              Отмена
-            </button>
-            <button onClick={handleSubmit} disabled={saving}
-              className="px-4 py-2 text-sm bg-accent text-white rounded hover:bg-accent-bright disabled:opacity-50">
-              {saving ? "Сохранение…" : "Добавить"}
-            </button>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

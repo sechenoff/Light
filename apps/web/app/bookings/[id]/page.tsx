@@ -17,6 +17,8 @@ import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalRev
 import { toast } from "../../../src/components/ToastProvider";
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 import { VoidPaymentModal } from "../../../src/components/finance/VoidPaymentModal";
+import { FinanceTimeline } from "../../../src/components/finance/FinanceTimeline";
+import { RelatedExpenses } from "../../../src/components/finance/RelatedExpenses";
 import { RefundModal } from "../../../src/components/finance/RefundModal";
 import { CreateInvoiceModal } from "../../../src/components/finance/CreateInvoiceModal";
 import { CancelWithDepositModal } from "../../../src/components/finance/CancelWithDepositModal";
@@ -600,13 +602,19 @@ export default function BookingDetailPage() {
                   </div>
                   <div><span className="text-ink-3">Плановая дата платежа:</span> <span className="font-medium">{booking.expectedPaymentDate ? new Date(booking.expectedPaymentDate).toLocaleDateString("ru-RU") : "—"}</span></div>
 
-                  {/* TODO(phase2): B7 — «Хронология денег» collapsible section (P4).
-                      Reverse-chronological timeline: счёт сгенерирован → депозит получен → выдано → возврат.
-                      Source: Payment[] + AuditEntry filtered to BOOKING_CONFIRMED, PAYMENT_CREATE, BOOKING_ISSUED etc.
-                      Default collapsed <details>. */}
-                  {/* TODO(phase2): B7 — «Связанные расходы» collapsible (SA-only, P8).
-                      Read-only list of Expense where linkedBookingId = booking.id.
-                      Margin = finalAmount - sum(approved expenses). */}
+                  {/* F3: Хронология денег — SA + WH */}
+                  {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+                    <div className="pt-2 mt-2 border-t border-border">
+                      <FinanceTimeline bookingId={booking.id} />
+                    </div>
+                  )}
+
+                  {/* F4: Связанные расходы — SA + WH */}
+                  {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+                    <div>
+                      <RelatedExpenses bookingId={booking.id} />
+                    </div>
+                  )}
 
                   {/* Список платежей — Платежи */}
                   {(booking.payments ?? []).length > 0 && (
