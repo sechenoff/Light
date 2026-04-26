@@ -3,6 +3,7 @@ import Decimal from "decimal.js";
 import ExcelJS from "exceljs";
 
 import { prisma } from "../prisma";
+import { toMoscowDateString, fromMoscowDateString } from "../utils/moscowDate";
 
 type TxLike = Omit<
   Prisma.TransactionClient,
@@ -842,6 +843,7 @@ export async function computeBookingTimeline(bookingId: string): Promise<Timelin
   for (const p of payments) {
     const at = (p.receivedAt ?? p.paymentDate ?? p.createdAt).toISOString();
     if (!p.voidedAt) {
+      // Non-voided payment: emit PAYMENT_RECEIVED
       events.push({
         type: "PAYMENT_RECEIVED",
         at,
@@ -851,14 +853,8 @@ export async function computeBookingTimeline(bookingId: string): Promise<Timelin
         invoiceId: p.invoiceId ?? null,
       });
     } else {
-      events.push({
-        type: "PAYMENT_RECEIVED",
-        at,
-        paymentId: p.id,
-        amount: p.amount.toString(),
-        method: p.paymentMethod,
-        invoiceId: p.invoiceId ?? null,
-      });
+      // T6: Voided payment — do NOT emit PAYMENT_RECEIVED; only emit PAYMENT_VOIDED.
+      // Emitting both would show income that was immediately cancelled, confusing the timeline.
       events.push({
         type: "PAYMENT_VOIDED",
         at: p.voidedAt.toISOString(),
@@ -941,14 +937,33 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
   const clampedMonths = Math.min(Math.max(1, horizonMonths), 12);
   const now = new Date();
 
-  // Build month slots: current month + next (horizonMonths - 1) months
+  // T5: Build month slots in Moscow TZ (Europe/Moscow, UTC+3).
+  // Using toMoscowDateString to get the current date in Moscow, then computing
+  // month boundaries as Moscow-midnight UTC via fromMoscowDateString.
+  const nowMoscowStr = toMoscowDateString(now); // "YYYY-MM-DD" in Moscow
+  const [nowYear, nowMonth] = nowMoscowStr.split("-").map(Number);
+
   const monthSlots: Array<{ label: string; start: Date; end: Date }> = [];
   for (let i = 0; i < clampedMonths; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    const start = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
-    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    monthSlots.push({ label: `${d.getFullYear()}-${m}`, start, end });
+    // Compute target year/month (1-based) in Moscow TZ
+    const totalMonths = (nowYear - 1) * 12 + (nowMonth - 1) + i;
+    const year = Math.floor(totalMonths / 12) + 1;
+    const month = (totalMonths % 12) + 1; // 1-based
+
+    const mm = String(month).padStart(2, "0");
+    const label = `${year}-${mm}`;
+
+    // Start of month: first day in Moscow = Moscow midnight UTC
+    const start = fromMoscowDateString(`${year}-${mm}-01`);
+
+    // End of month: last day in Moscow (compute last day properly)
+    // Next month's first day - 1 ms
+    const nextMonthYear = month === 12 ? year + 1 : year;
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextMonthStart = fromMoscowDateString(`${nextMonthYear}-${String(nextMonth).padStart(2, "0")}-01`);
+    const end = new Date(nextMonthStart.getTime() - 1);
+
+    monthSlots.push({ label, start, end });
   }
 
   const horizonStart = monthSlots[0].start;
@@ -974,23 +989,26 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
     select: { dueDate: true, total: true, paidAmount: true },
   });
 
-  // Fetch CONFIRMED/ISSUED/RETURNED bookings without any invoice, startDate in horizon
-  // "without invoice" = no related Invoice records
+  // Fetch CONFIRMED/ISSUED/RETURNED bookings without any invoice, startDate in horizon.
+  // "without invoice" = no related Invoice records.
+  // T4: Exclude legacyFinance bookings — they have outstanding from pre-finance era
+  // and should not appear in the forward-looking forecast.
   const pipelineBookings = await prisma.booking.findMany({
     where: {
       status: { in: ["CONFIRMED", "ISSUED", "RETURNED"] },
       startDate: { gte: horizonStart, lte: horizonEnd },
       amountOutstanding: { gt: 0 },
       invoices: { none: {} },
+      legacyFinance: false,
     },
     select: { startDate: true, amountOutstanding: true },
   });
 
   // Helper: which month slot does a date fall in?
+  // T5: Use Moscow TZ for bucketing — convert date to Moscow "YYYY-MM-DD", take YYYY-MM prefix
   function monthSlotLabel(d: Date): string | null {
-    const yyyy = d.getFullYear();
-    const mm = d.getMonth() + 1;
-    const label = `${yyyy}-${String(mm).padStart(2, "0")}`;
+    const moscowDateStr = toMoscowDateString(d); // "YYYY-MM-DD" in Moscow
+    const label = moscowDateStr.slice(0, 7); // "YYYY-MM"
     const slot = monthSlots.find((s) => s.label === label);
     return slot ? label : null;
   }

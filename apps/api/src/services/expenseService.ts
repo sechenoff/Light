@@ -1,8 +1,14 @@
 import type { ExpenseCategory, Expense, UserRole, Prisma } from "@prisma/client";
 import { Decimal } from "decimal.js";
+import path from "path";
+import fs from "fs";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { writeAuditEntry, diffFields } from "./audit";
+
+// M6: UPLOAD_ROOT for resolving relative documentUrl paths on delete
+// Must match the constant in routes/expenses.ts
+const UPLOAD_ROOT = path.resolve(__dirname, "../../../uploads");
 
 type TxClient = Omit<
   Prisma.TransactionClient,
@@ -136,6 +142,20 @@ export async function deleteExpense(id: string, userId: string): Promise<void> {
       before: diffFields({ ...before, amount: before.amount.toString() } as Record<string, unknown>),
       after: null,
     });
+
+    // M6: Clean up associated document file after DB delete (best-effort, don't fail delete on FS error)
+    if (before.documentUrl) {
+      try {
+        const rel = before.documentUrl.replace(/^\//, "");
+        const resolved = path.resolve(UPLOAD_ROOT, rel);
+        // Guard against traversal
+        if (resolved.startsWith(UPLOAD_ROOT + path.sep) && fs.existsSync(resolved)) {
+          fs.rmSync(resolved, { recursive: false, force: true });
+        }
+      } catch (fsErr) {
+        console.warn("[expenseService] deleteExpense: failed to remove document file:", fsErr);
+      }
+    }
   });
 }
 
