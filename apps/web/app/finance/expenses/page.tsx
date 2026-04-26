@@ -69,6 +69,7 @@ interface ExpenseItem {
   createdBy: string | null;
   bookingId: string | null;
   linkedRepairId: string | null;
+  documentUrl: string | null;
   booking: { id: string; projectName: string } | null;
 }
 
@@ -324,6 +325,9 @@ function ExpensesPageInner() {
   const [breakdown, setBreakdown] = useState<BreakdownItem[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [showModal, setShowModal] = useState(false);
+  // P3: document modal state — null = closed, string = expenseId being edited
+  const [docModalExpenseId, setDocModalExpenseId] = useState<string | null>(null);
+  const [docModalExistingUrl, setDocModalExistingUrl] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -550,6 +554,31 @@ function ExpensesPageInner() {
                             ›
                           </a>
                         )}
+                        {/* P3: per-row document button */}
+                        {e.documentUrl ? (
+                          <a
+                            href={`/api/expenses/${e.id}/document`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label="Открыть документ"
+                            title="Открыть документ"
+                            className="w-[26px] h-[26px] rounded border border-border bg-surface flex items-center justify-center text-ink-2 hover:bg-surface-subtle text-xs"
+                          >
+                            📎
+                          </a>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setDocModalExpenseId(e.id);
+                              setDocModalExistingUrl(null);
+                            }}
+                            aria-label="Прикрепить документ"
+                            title="Прикрепить документ"
+                            className="w-[26px] h-[26px] rounded border border-border bg-surface flex items-center justify-center text-ink-3 hover:bg-surface-subtle text-xs"
+                          >
+                            📎
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDelete(e.id)}
                           aria-label="Удалить расход"
@@ -596,6 +625,41 @@ function ExpensesPageInner() {
             await fetchAll(cancelled);
           }}
         />
+      )}
+
+      {/* P3: per-row document upload modal */}
+      {docModalExpenseId && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-surface rounded-lg p-6 w-full max-w-md shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold text-ink">Документ расхода</h2>
+              <button
+                onClick={() => setDocModalExpenseId(null)}
+                aria-label="Закрыть"
+                className="text-ink-3 hover:text-ink text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <ExpenseDocumentUpload
+              expenseId={docModalExpenseId}
+              existingDocumentUrl={docModalExistingUrl}
+              onUploaded={async () => {
+                setDocModalExpenseId(null);
+                const cancelled = { v: false };
+                await fetchAll(cancelled);
+              }}
+            />
+            <div className="flex justify-end mt-3">
+              <button
+                onClick={() => setDocModalExpenseId(null)}
+                className="px-4 py-2 text-sm border border-border rounded text-ink-2 hover:bg-surface-subtle"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

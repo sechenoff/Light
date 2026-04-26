@@ -18,7 +18,7 @@ export function ContactChips({ phone, email, clientName, outstanding }: ContactC
 
   const subject = encodeURIComponent(`Напоминание об оплате — ${clientName}`);
   const body = encodeURIComponent(
-    `Здравствуйте!\n\nНапоминаем о наличии задолженности перед нашей компанией в размере ${formatRub(outstanding)} ₽.\n\nПросим произвести оплату в ближайшее время.\n\nС уважением, световой прокат`
+    `Здравствуйте!\n\nНапоминаем о наличии задолженности перед нашей компанией в размере ${formatRub(outstanding)}.\n\nПросим произвести оплату в ближайшее время.\n\nС уважением, световой прокат`
   );
 
   return (
