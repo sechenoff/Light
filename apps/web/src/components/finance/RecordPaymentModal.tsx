@@ -248,12 +248,15 @@ export function RecordPaymentModal({
     >
       <div className="bg-surface rounded-lg border border-border shadow-xl w-full max-w-md">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-[15px] font-semibold text-ink">Записать платёж</h2>
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border">
+          <div>
+            <p className="eyebrow text-ink-3 mb-0.5">Финансы</p>
+            <h2 className="text-base font-semibold text-ink">Записать платёж</h2>
+          </div>
           <button
             onClick={onClose}
             aria-label="Закрыть"
-            className="text-ink-3 hover:text-ink text-lg leading-none"
+            className="text-ink-3 hover:text-ink text-xl leading-none mt-0.5"
           >
             ×
           </button>
@@ -339,7 +342,7 @@ export function RecordPaymentModal({
             <input
               ref={amountRef}
               type="number"
-              className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
+              className="w-full border border-border rounded-lg px-3 py-2.5 text-lg font-semibold bg-surface text-ink mono-num focus:outline-none focus:border-accent-bright"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0"
@@ -386,17 +389,17 @@ export function RecordPaymentModal({
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2 justify-end px-5 pb-5">
+        <div className="flex gap-2 justify-end px-5 pb-5 border-t border-border pt-4">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm border border-border rounded text-ink-2 hover:bg-surface-subtle"
+            className="px-4 py-2 text-sm border border-border rounded-lg text-ink-2 hover:bg-surface-2 transition-colors"
           >
             Отмена
           </button>
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="px-4 py-2 text-sm bg-accent text-white rounded hover:bg-accent-bright disabled:opacity-50"
+            className="px-5 py-2 text-sm bg-accent-bright text-white rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {saving ? "Сохранение…" : "Записать платёж"}
           </button>

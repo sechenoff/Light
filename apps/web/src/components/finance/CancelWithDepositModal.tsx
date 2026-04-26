@@ -261,7 +261,7 @@ export function CancelWithDepositModal({
           {/* ── Step 2: детали ── */}
           {step === 2 && branch === "refund" && (
             <div className="space-y-3">
-              <p className="text-sm font-medium text-ink mb-1">↩ Полный возврат — параметры</p>
+              <p className="text-sm font-medium text-ink mb-1">Детали возврата</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="eyebrow block mb-1">Сумма (₽)</label>
@@ -297,7 +297,7 @@ export function CancelWithDepositModal({
                   rows={3}
                   value={refundReason}
                   onChange={(e) => setRefundReason(e.target.value)}
-                  placeholder="Отмена съёмки по инициативе клиента"
+                  placeholder="Отмена съёмки клиентом"
                   autoFocus
                 />
               </div>
@@ -306,7 +306,7 @@ export function CancelWithDepositModal({
 
           {step === 2 && branch === "credit" && (
             <div className="space-y-3">
-              <p className="text-sm font-medium text-ink mb-1">💳 Кредит-нота — параметры</p>
+              <p className="text-sm font-medium text-ink mb-1">Параметры кредит-ноты</p>
               <div>
                 <label className="eyebrow block mb-1">Клиент</label>
                 <input
@@ -439,7 +439,7 @@ export function CancelWithDepositModal({
             onClick={step === 1 ? onClose : () => setStep((s) => (s - 1) as 1 | 2 | 3)}
             className="px-4 py-2 text-sm border border-border rounded-lg text-ink-2 hover:bg-surface-2 transition-colors"
           >
-            {step === 1 ? "Закрыть" : "← Назад"}
+            {step === 1 ? "Закрыть" : "Назад"}
           </button>
           {step < 3 ? (
             <button
@@ -456,13 +456,7 @@ export function CancelWithDepositModal({
                 branch === "refund" ? "bg-emerald" : branch === "credit" ? "bg-accent-bright" : "bg-rose"
               }`}
             >
-              {saving
-                ? "Выполнение…"
-                : branch === "refund"
-                ? "Оформить возврат"
-                : branch === "credit"
-                ? "Создать кредит-ноту"
-                : "Удержать как штраф"}
+              {saving ? "Выполнение…" : "Подтвердить отмену"}
             </button>
           )}
         </div>
