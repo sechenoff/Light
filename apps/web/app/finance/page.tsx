@@ -13,6 +13,7 @@ const MONTHS_NOMINATIVE = [
   "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
 ] as const;
 import { FinanceTabNav } from "../../src/components/finance/FinanceTabNav";
+import { ForecastWidget } from "../../src/components/finance/ForecastWidget";
 import { PeriodSelector } from "../../src/components/finance/PeriodSelector";
 import { derivePeriodRange, type PeriodKey } from "../../src/lib/periodUtils";
 import type { UserRole } from "../../src/lib/auth";
@@ -291,6 +292,9 @@ function FinancePageInner() {
             </span>
           </Link>
         </div>
+
+        {/* F1: Forecast widget — SUPER_ADMIN only */}
+        <ForecastWidget months={6} />
 
         {/* Net result strip */}
         <div className="flex justify-between items-center bg-accent-soft border border-accent-border rounded-[6px] px-5 py-3.5 mb-7" style={{ background: "linear-gradient(90deg, var(--tw-gradient-from) 0%, var(--tw-gradient-to) 80%)" }}>

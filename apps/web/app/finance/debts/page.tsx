@@ -9,6 +9,7 @@ import { apiFetch } from "../../../src/lib/api";
 import { formatRub, pluralize } from "../../../src/lib/format";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { LegacyBookingImportModal } from "../../../src/components/finance/LegacyBookingImportModal";
+import { ContactChips } from "../../../src/components/finance/ContactChips";
 import type { UserRole } from "../../../src/lib/auth";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
@@ -31,6 +32,9 @@ interface ClientDebt {
   maxDaysOverdue: number;
   bookingsCount: number;
   projects: DebtProject[];
+  // F2: Phase 3 contact fields (B2 backend extension)
+  clientPhone?: string | null;
+  clientEmail?: string | null;
 }
 
 interface InvoiceAgingBucket {
@@ -386,7 +390,7 @@ function DebtsPageInner() {
                 </tbody>
               </table>
             </div>
-            {/* TODO(phase3): tel:/mailto: inline actions (requires client.phone/email from API) */}
+            {/* F2: Contact chips are rendered in the legacy debts cards below */}
           </div>
         )}
 
@@ -543,16 +547,17 @@ function DebtsPageInner() {
                       <div className="text-[11px] text-ink-3">задолженность</div>
                     </div>
 
-                    {/* Actions — T13: tel/mailto links when data available */}
+                    {/* Actions: contact chips + navigate to bookings */}
                     <div
-                      className="flex gap-1.5 justify-end"
+                      className="flex gap-1.5 justify-end items-center"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {/* TODO(phase2): B5 — tel:/mailto: stack per row. computeDebts API needs to include
-                          client.phone and client.email in response. Then render:
-                          {d.phone && <a href={`tel:${d.phone}`}>📞</a>}
-                          {d.email && <a href={`mailto:${d.email}`}>✉</a>}
-                          Depends on API change to expose client contact fields. */}
+                      <ContactChips
+                        phone={d.clientPhone ?? null}
+                        email={d.clientEmail ?? null}
+                        clientName={d.clientName}
+                        outstanding={Number(d.totalOutstanding)}
+                      />
                       <a
                         href={`/bookings?clientId=${d.clientId}`}
                         aria-label="Открыть брони клиента"
