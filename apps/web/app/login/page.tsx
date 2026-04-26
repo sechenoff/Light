@@ -121,6 +121,48 @@ function LoginForm() {
               ← На главную
             </Link>
           </div>
+
+          {process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true" && (
+            <div className="pt-4 mt-4 border-t border-border">
+              <p className="text-xs text-ink-3 text-center mb-2">
+                DEV-режим: вход без пароля
+              </p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {(["super", "admin", "sechenoff", "andrey", "alex"] as const).map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    disabled={loading}
+                    onClick={async () => {
+                      setError(null);
+                      setLoading(true);
+                      try {
+                        const res = await apiFetch<LoginResponse>("/api/auth/login", {
+                          method: "POST",
+                          body: JSON.stringify({ username: u, password: "_dev_bypass_" }),
+                        });
+                        if (typeof window !== "undefined") {
+                          window.localStorage.setItem(
+                            "lr_user",
+                            JSON.stringify({ username: res.user.username, role: res.user.role }),
+                          );
+                        }
+                        router.push(redirectTo);
+                        router.refresh();
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : "Не удалось войти");
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    className="px-2.5 py-1 text-xs bg-amber-soft border border-amber-border text-amber rounded hover:bg-amber/10 disabled:opacity-50"
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </form>
       </div>
     </main>

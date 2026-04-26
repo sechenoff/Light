@@ -66,9 +66,35 @@ export function normalizeUsername(username: string): string {
   return username.trim().toLowerCase();
 }
 
+/**
+ * Dev-only auth bypass — skips bcrypt password check. Tripple-guarded:
+ * 1. NODE_ENV must NOT be "production"
+ * 2. Explicit env var DEV_AUTH_BYPASS === "true"
+ * 3. Both flags re-checked at every call (no cached state)
+ *
+ * Even if DEV_AUTH_BYPASS leaks into a production .env by mistake, NODE_ENV=production
+ * still rejects the bypass. Logs a noisy warning on every use so it can't go unnoticed.
+ *
+ * To enable locally: add `DEV_AUTH_BYPASS=true` to apps/api/.env (gitignored).
+ * Prod deploy.sh sets NODE_ENV=production, so this branch is unreachable on the VPS.
+ */
+function isDevAuthBypassEnabled(): boolean {
+  return process.env.NODE_ENV !== "production" && process.env.DEV_AUTH_BYPASS === "true";
+}
+
 export async function authenticate(username: string, password: string): Promise<SessionPayload | null> {
   const user = await prisma.adminUser.findUnique({ where: { username: normalizeUsername(username) } });
   if (!user) return null;
+
+  // DEV_AUTH_BYPASS — пропуск bcrypt в режиме разработки. См. JSDoc выше.
+  if (isDevAuthBypassEnabled()) {
+    console.warn(
+      `[AUTH-BYPASS] User '${user.username}' (${user.role}) authenticated WITHOUT password ` +
+      `(NODE_ENV=${process.env.NODE_ENV ?? "undefined"}, DEV_AUTH_BYPASS=true). Dev-mode only.`,
+    );
+    return { userId: user.id, username: user.username, role: user.role as UserRole };
+  }
+
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) return null;
   return { userId: user.id, username: user.username, role: user.role as UserRole };
