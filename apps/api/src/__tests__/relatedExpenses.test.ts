@@ -202,14 +202,33 @@ describe("GET /api/bookings/:id/related-expenses", () => {
       },
     });
 
+    // D3: endpoint is now SA-only — verify via SA
     const res = await request(app)
       .get(`/api/bookings/${booking.id}/related-expenses`)
-      .set(AUTH_WH());
+      .set(AUTH_SA());
     expect(res.status).toBe(200);
     const repairItem = res.body.items.find((e: any) => e.id === repairExpense.id);
     expect(repairItem).toBeDefined();
     expect(repairItem.source).toBe("REPAIR_LINKED");
+    expect(repairItem.linkedRepairId).toBe(repair.id); // D4: linkedRepairId included in response
     expect(new Decimal(res.body.total).gte(new Decimal("3500"))).toBe(true);
+  });
+
+  it("WAREHOUSE cannot access related expenses — 403 (D3: SA-only)", async () => {
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        projectName: "RelExp WH Forbidden",
+        startDate: new Date("2025-06-01"),
+        endDate: new Date("2025-06-05"),
+        status: "CONFIRMED",
+      },
+    });
+
+    const res = await request(app)
+      .get(`/api/bookings/${booking.id}/related-expenses`)
+      .set(AUTH_WH());
+    expect(res.status).toBe(403);
   });
 
   it("TECHNICIAN cannot access related expenses — 403", async () => {

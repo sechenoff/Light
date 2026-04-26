@@ -128,7 +128,11 @@ export async function updateExpense(
 }
 
 export async function deleteExpense(id: string, userId: string): Promise<void> {
-  await prisma.$transaction(async (tx) => {
+  // D6: capture documentUrl BEFORE transaction so we can clean up AFTER tx commits.
+  // FS delete intentionally happens outside the transaction: if tx rolls back, the file
+  // is still there (correct). If FS delete fails after tx commits, we log a warning and
+  // continue — an orphan file on disk is preferable to a phantom DB record.
+  const { documentUrl } = await prisma.$transaction(async (tx) => {
     const before = await tx.expense.findUniqueOrThrow({ where: { id } });
 
     await tx.expense.delete({ where: { id } });
@@ -143,20 +147,22 @@ export async function deleteExpense(id: string, userId: string): Promise<void> {
       after: null,
     });
 
-    // M6: Clean up associated document file after DB delete (best-effort, don't fail delete on FS error)
-    if (before.documentUrl) {
-      try {
-        const rel = before.documentUrl.replace(/^\//, "");
-        const resolved = path.resolve(UPLOAD_ROOT, rel);
-        // Guard against traversal
-        if (resolved.startsWith(UPLOAD_ROOT + path.sep) && fs.existsSync(resolved)) {
-          fs.rmSync(resolved, { recursive: false, force: true });
-        }
-      } catch (fsErr) {
-        console.warn("[expenseService] deleteExpense: failed to remove document file:", fsErr);
-      }
-    }
+    return { documentUrl: before.documentUrl };
   });
+
+  // M6: Clean up associated document file AFTER tx commits (best-effort, don't fail delete on FS error)
+  if (documentUrl) {
+    try {
+      const rel = documentUrl.replace(/^\//, "");
+      const resolved = path.resolve(UPLOAD_ROOT, rel);
+      // Guard against traversal
+      if (resolved.startsWith(UPLOAD_ROOT + path.sep) && fs.existsSync(resolved)) {
+        fs.rmSync(resolved, { recursive: false, force: true });
+      }
+    } catch (fsErr) {
+      console.warn("[expenseService] deleteExpense: failed to remove document file:", fsErr);
+    }
+  }
 }
 
 export interface ListExpensesArgs {
