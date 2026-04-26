@@ -8,7 +8,7 @@ import { apiFetch, apiFetchRaw } from "../../../src/lib/api";
 import { getFileNameFromContentDisposition } from "../../../src/lib/download";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { SectionHeader } from "../../../src/components/SectionHeader";
-import { formatMoneyRub } from "../../../src/lib/format";
+import { formatMoneyRub, formatRub } from "../../../src/lib/format";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { RejectBookingModal } from "../../../src/components/bookings/RejectBookingModal";
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
@@ -554,9 +554,279 @@ export default function BookingDetailPage() {
                 </div>
               </div>
             )}
+            {/* ── ФИНАНСЫ ── Mockup-faithful finance block ── */}
+            {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+              <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+                {/* Header */}
+                <div className="px-4 pt-4 pb-3 border-b border-border bg-surface-subtle">
+                  <p className="eyebrow text-accent-bright mb-1">Финансы</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <StatusPill
+                      variant={
+                        booking.paymentStatus === "PAID" ? "ok"
+                        : booking.paymentStatus === "PARTIALLY_PAID" ? "limited"
+                        : booking.paymentStatus === "OVERDUE" ? "warn"
+                        : "none"
+                      }
+                      label={
+                        booking.paymentStatus === "PAID" ? "Оплачен"
+                        : booking.paymentStatus === "PARTIALLY_PAID" ? "Частично оплачен"
+                        : booking.paymentStatus === "OVERDUE" ? "Просрочен"
+                        : "Не оплачен"
+                      }
+                    />
+                    {booking.expectedPaymentDate && (
+                      <span className="text-xs text-ink-3">
+                        срок {new Date(booking.expectedPaymentDate).toLocaleDateString("ru-RU")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4 space-y-4">
+                  {/* KPI mini-strip */}
+                  <div className="grid grid-cols-3 gap-2 p-3 bg-surface-2 rounded-lg">
+                    <div>
+                      <div className="eyebrow text-ink-3 mb-1">Сумма брони</div>
+                      <div className="text-lg font-semibold mono-num text-ink">{formatMoneyRub(booking.finalAmount ?? "0")}</div>
+                    </div>
+                    <div>
+                      <div className="eyebrow text-ink-3 mb-1">Получено</div>
+                      <div className="text-lg font-semibold mono-num text-emerald">{formatMoneyRub(booking.amountPaid ?? "0")}</div>
+                    </div>
+                    <div>
+                      <div className="eyebrow text-ink-3 mb-1">К получению</div>
+                      <div className={`text-lg font-semibold mono-num ${Number(booking.amountOutstanding ?? "0") > 0 ? "text-rose" : "text-ink"}`}>
+                        {formatMoneyRub(booking.amountOutstanding ?? "0")}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CTA row (desktop) */}
+                  <div className="hidden md:flex flex-wrap gap-2">
+                    {/* Записать платёж: SA всегда; WH при ISSUED|RETURNED */}
+                    {(user?.role === "SUPER_ADMIN" ||
+                      (user?.role === "WAREHOUSE" &&
+                        (booking.status === "ISSUED" || booking.status === "RETURNED") &&
+                        (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
+                    ) && (
+                      <button
+                        className="rounded bg-accent-bright text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+                        onClick={() => setPaymentModalOpen(true)}
+                      >
+                        + Записать платёж
+                      </button>
+                    )}
+
+                    {/* Отменить с депозитом (SA only) */}
+                    {user?.role === "SUPER_ADMIN" &&
+                      ["DRAFT", "PENDING_APPROVAL", "CONFIRMED"].includes(booking.status) &&
+                      Number(booking.amountPaid ?? "0") > 0 && (
+                        <button
+                          className="rounded border border-rose px-3 py-2 text-sm text-rose hover:bg-rose-soft transition-colors"
+                          onClick={() => setCancelDepositOpen(true)}
+                        >
+                          Отменить бронь
+                        </button>
+                    )}
+
+                    {/* Счёт PDF — legacy */}
+                    {booking.legacyFinance !== false && (
+                      <button
+                        className="rounded border border-border px-3 py-2 text-sm hover:bg-surface-subtle transition-colors"
+                        onClick={() => download(`/api/bookings/${booking.id}/invoice.pdf`, `Счёт_${booking.id}.pdf`)}
+                      >
+                        📄 Скачать счёт PDF
+                      </button>
+                    )}
+
+                    {/* Акт PDF */}
+                    {(() => {
+                      const canAct = booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0;
+                      return (
+                        <button
+                          className={`rounded border px-3 py-2 text-sm transition-colors ${
+                            canAct
+                              ? "border-border hover:bg-surface-subtle"
+                              : "border-border text-ink-3 cursor-not-allowed opacity-50"
+                          }`}
+                          title={canAct ? "" : "Доступно после возврата и закрытия долга"}
+                          disabled={!canAct}
+                          onClick={canAct ? () => download(`/api/bookings/${booking.id}/act.pdf`, `Акт_${booking.id}.pdf`) : undefined}
+                        >
+                          📄 Скачать акт PDF
+                        </button>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Счета (Phase 2, post-cutoff) */}
+                  {booking.legacyFinance === false && user?.role === "SUPER_ADMIN" && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="eyebrow">Счета</p>
+                        <button
+                          onClick={() => setCreateInvoiceOpen(true)}
+                          className="text-[11px] px-2 py-1 bg-accent-bright text-white rounded hover:opacity-90"
+                        >
+                          + Создать счёт
+                        </button>
+                      </div>
+                      {invoices.length === 0 ? (
+                        <div className="text-xs text-ink-3 py-2">Счетов пока нет</div>
+                      ) : (
+                        <div className="border border-border rounded-lg overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead className="bg-surface-subtle border-b border-border text-ink-2">
+                              <tr>
+                                <th className="text-left px-3 py-2 font-medium">№</th>
+                                <th className="text-left px-3 py-2 font-medium">Тип</th>
+                                <th className="text-right px-3 py-2 font-medium">Сумма</th>
+                                <th className="text-right px-3 py-2 font-medium">Срок</th>
+                                <th className="px-3 py-2"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {invoices.map((inv) => {
+                                const invStatusVariant = (
+                                  inv.status === "DRAFT" ? "view" :
+                                  inv.status === "ISSUED" ? "info" :
+                                  inv.status === "PARTIAL_PAID" ? "warn" :
+                                  inv.status === "PAID" ? "ok" :
+                                  inv.status === "OVERDUE" ? "alert" : "none"
+                                ) as "view" | "info" | "warn" | "ok" | "alert" | "none";
+                                const invStatusLabel = {
+                                  DRAFT: "Черновик", ISSUED: "Выставлен", PARTIAL_PAID: "Частично",
+                                  PAID: "Оплачен", OVERDUE: "Просрочен", VOID: "Аннулирован",
+                                }[inv.status] ?? inv.status;
+                                const kindLabel = { FULL: "Полный", DEPOSIT: "Предоплата", BALANCE: "Остаток", CORRECTION: "Корректировка" }[inv.kind] ?? inv.kind;
+                                return (
+                                  <tr key={inv.id} className="border-t border-border">
+                                    <td className="px-3 py-2 font-mono text-ink-2">{inv.number ?? "—"}</td>
+                                    <td className="px-3 py-2 text-ink-2">{kindLabel}</td>
+                                    <td className="px-3 py-2 text-right mono-num">{formatMoneyRub(inv.total)}</td>
+                                    <td className="px-3 py-2 text-right text-ink-3">
+                                      {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("ru-RU") : "—"}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <div className="flex items-center gap-1.5 justify-end">
+                                        <StatusPill variant={invStatusVariant} label={invStatusLabel} />
+                                        {inv.number && (
+                                          <button
+                                            onClick={() => downloadInvoicePdf(inv)}
+                                            className="text-ink-3 hover:text-accent px-1"
+                                            title="PDF"
+                                            aria-label="Скачать PDF счёта"
+                                          >
+                                            📄
+                                          </button>
+                                        )}
+                                        {["ISSUED", "PARTIAL_PAID", "PAID"].includes(inv.status) && (
+                                          <button
+                                            onClick={() => setRefundInvoiceId(inv.id)}
+                                            className="text-amber hover:underline"
+                                          >
+                                            ↩ Возврат
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => setCreditNoteOpen(true)}
+                        className="mt-2 text-[11px] text-accent hover:underline"
+                      >
+                        Кредит-ноты клиента →
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Платежи */}
+                  {(booking.payments ?? []).length > 0 && (
+                    <div>
+                      <p className="eyebrow mb-2">Платежи</p>
+                      <div className="divide-y divide-border">
+                        {(booking.payments ?? []).map((p) => {
+                          const isVoided = p.direction === "VOID";
+                          return (
+                            <div
+                              key={p.id}
+                              className={`flex items-center justify-between gap-2 py-2.5 text-sm ${isVoided ? "opacity-40 line-through" : ""}`}
+                            >
+                              <div className="min-w-0">
+                                <span className={`font-semibold mono-num ${isVoided ? "" : "text-emerald"}`}>
+                                  +{formatMoneyRub(p.amount)}
+                                </span>
+                                <span className="text-ink-3 mx-1.5">·</span>
+                                <span className="text-ink-2">{paymentMethodLabel(p.method)}</span>
+                                {p.note && <span className="text-xs text-ink-3 ml-1.5 truncate">{p.note}</span>}
+                                <div className="text-xs text-ink-3 mt-0.5">
+                                  {p.receivedAt ? new Date(p.receivedAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" }) : "—"}
+                                </div>
+                              </div>
+                              {!isVoided && user?.role === "SUPER_ADMIN" && (
+                                <div className="flex gap-1.5 shrink-0">
+                                  <button
+                                    className="text-xs text-rose border border-rose-border rounded px-2 py-0.5 hover:bg-rose-soft transition-colors"
+                                    onClick={() => setVoidPaymentId(p.id)}
+                                  >
+                                    ⊘ Аннулировать
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Хронология денег (SA only, collapsible) */}
+                  {user?.role === "SUPER_ADMIN" && (
+                    <details className="group">
+                      <summary className="cursor-pointer flex items-center justify-between px-3 py-2.5 bg-surface-2 rounded-lg text-sm font-medium text-ink list-none hover:bg-surface-subtle transition-colors">
+                        <span>📊 Хронология денег</span>
+                        <span className="text-ink-3 group-open:rotate-180 transition-transform text-xs">▾</span>
+                      </summary>
+                      <div className="pt-3 px-1">
+                        <FinanceTimeline bookingId={booking.id} />
+                      </div>
+                    </details>
+                  )}
+
+                  {/* Связанные расходы (SA only, collapsible) */}
+                  {user?.role === "SUPER_ADMIN" && (
+                    <details className="group">
+                      <summary className="cursor-pointer flex items-center justify-between px-3 py-2.5 bg-surface-2 rounded-lg text-sm font-medium text-ink list-none hover:bg-surface-subtle transition-colors">
+                        <span>🛒 Связанные расходы</span>
+                        <span className="text-ink-3 group-open:rotate-180 transition-transform text-xs">▾</span>
+                      </summary>
+                      <div className="pt-3 px-1">
+                        <RelatedExpenses bookingId={booking.id} />
+                      </div>
+                    </details>
+                  )}
+
+                  {/* WAREHOUSE finance note */}
+                  {user?.role === "WAREHOUSE" && (
+                    <div className="text-xs text-ink-3 bg-accent-soft border border-accent-border rounded-lg px-3 py-2">
+                      <strong className="text-accent-bright">Доступ склада:</strong> только наличные/карта · до 100 000 ₽ за операцию
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Данные заказа */}
             <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
               <div className="p-3 border-b border-border bg-surface-subtle">
-                <p className="eyebrow">Данные заказа и финансы</p>
+                <p className="eyebrow">Данные заказа</p>
               </div>
               <div className="p-3 text-sm text-ink space-y-2">
                 <div>
@@ -577,209 +847,6 @@ export default function BookingDetailPage() {
                     <span className="text-ink-3">Комментарий:</span> <span>{booking.comment}</span>
                   </div>
                 ) : null}
-                <div className="border-t border-border pt-2 mt-2 space-y-1">
-                  <div><span className="text-ink-3">Сумма сметы:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.totalEstimateAmount ?? "0")}</span></div>
-                  <div><span className="text-ink-3">Скидка:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.discountAmount ?? "0")}</span></div>
-                  <div><span className="text-ink-3">Итог:</span> <span className="font-semibold mono-num">{formatMoneyRub(booking.finalAmount ?? "0")}</span></div>
-                  <div><span className="text-ink-3">Оплачено:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.amountPaid ?? "0")}</span></div>
-                  <div><span className="text-ink-3">Остаток к оплате:</span> <span className="font-medium mono-num">{formatMoneyRub(booking.amountOutstanding ?? "0")}</span></div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-ink-3">Статус оплаты:</span>
-                    <StatusPill
-                      variant={
-                        booking.paymentStatus === "PAID" ? "ok"
-                        : booking.paymentStatus === "PARTIALLY_PAID" ? "limited"
-                        : booking.paymentStatus === "OVERDUE" ? "warn"
-                        : "none"
-                      }
-                      label={
-                        booking.paymentStatus === "PAID" ? "Оплачен"
-                        : booking.paymentStatus === "PARTIALLY_PAID" ? "Частично оплачен"
-                        : booking.paymentStatus === "OVERDUE" ? "Просрочен"
-                        : "Не оплачен"
-                      }
-                    />
-                  </div>
-                  <div><span className="text-ink-3">Плановая дата платежа:</span> <span className="font-medium">{booking.expectedPaymentDate ? new Date(booking.expectedPaymentDate).toLocaleDateString("ru-RU") : "—"}</span></div>
-
-                  {/* F3: Хронология денег — SA only (D3: backend gated SA-only) */}
-                  {user?.role === "SUPER_ADMIN" && (
-                    <div className="pt-2 mt-2 border-t border-border">
-                      <FinanceTimeline bookingId={booking.id} />
-                    </div>
-                  )}
-
-                  {/* F4: Связанные расходы — SA only (D3: backend gated SA-only) */}
-                  {user?.role === "SUPER_ADMIN" && (
-                    <div>
-                      <RelatedExpenses bookingId={booking.id} />
-                    </div>
-                  )}
-
-                  {/* Список платежей — Платежи */}
-                  {(booking.payments ?? []).length > 0 && (
-                    <div className="pt-2 mt-2 border-t border-border">
-                      <p className="eyebrow mb-2">Платежи</p>
-                      <div className="space-y-1">
-                        {(booking.payments ?? []).map((p) => (
-                          <div key={p.id} className="flex items-center justify-between gap-2 text-sm py-1">
-                            <div className="flex items-center gap-2 text-ink-2 min-w-0">
-                              <span className="text-xs text-ink-3">
-                                {p.receivedAt ? new Date(p.receivedAt).toLocaleDateString("ru-RU") : "—"}
-                              </span>
-                              <span>{paymentMethodLabel(p.method)}</span>
-                              {p.note && <span className="text-xs text-ink-3 truncate">{p.note}</span>}
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="font-medium mono-num">{formatMoneyRub(p.amount)}</span>
-                              {user?.role === "SUPER_ADMIN" && (
-                                <button
-                                  className="text-xs text-rose hover:underline"
-                                  onClick={() => setVoidPaymentId(p.id)}
-                                >
-                                  Аннулировать
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* CTA row — role-gated (T3) */}
-                  <div className="pt-2 flex flex-wrap gap-2">
-                    {/* Записать платёж: SA всегда; WH при ISSUED|RETURNED (остаток > 0 или не известен) */}
-                    {/* C3: outstanding=null means finance not computed yet; show button so WH can record payment */}
-                    {(user?.role === "SUPER_ADMIN" ||
-                      (user?.role === "WAREHOUSE" &&
-                        (booking.status === "ISSUED" || booking.status === "RETURNED") &&
-                        (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
-                    ) && (
-                      <button
-                        className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-subtle transition-colors"
-                        onClick={() => setPaymentModalOpen(true)}
-                      >
-                        Записать платёж
-                      </button>
-                    )}
-
-                    {/* Скачать счёт PDF (Phase 1 legacy) — только для legacyFinance */}
-                    {/* A1: use apiFetch-based download() to respect NEXT_PUBLIC_API_BASE_URL and auth cookies */}
-                    {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && booking.legacyFinance !== false && (
-                      <button
-                        className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-subtle transition-colors"
-                        onClick={() => download(`/api/bookings/${booking.id}/invoice.pdf`, `Счёт_${booking.id}.pdf`)}
-                      >
-                        Скачать счёт PDF
-                      </button>
-                    )}
-
-                    {/* Отменить бронь с депозитом (SA only) */}
-                    {user?.role === "SUPER_ADMIN" &&
-                      ["DRAFT", "PENDING_APPROVAL", "CONFIRMED"].includes(booking.status) &&
-                      Number(booking.amountPaid ?? "0") > 0 && (
-                        <button
-                          className="rounded border border-rose px-3 py-1.5 text-sm text-rose hover:bg-rose-soft transition-colors"
-                          onClick={() => setCancelDepositOpen(true)}
-                        >
-                          Отменить бронь
-                        </button>
-                    )}
-
-                    {/* Скачать акт PDF (T10) — только при RETURNED и нулевом остатке */}
-                    {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (() => {
-                      const canAct = booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0;
-                      return (
-                        <button
-                          className={`rounded border px-3 py-1.5 text-sm transition-colors ${
-                            canAct
-                              ? "border-border hover:bg-surface-subtle"
-                              : "border-border text-ink-3 cursor-not-allowed opacity-50"
-                          }`}
-                          title={canAct ? "" : "Доступно после возврата и закрытия долга"}
-                          disabled={!canAct}
-                          onClick={canAct ? () => download(`/api/bookings/${booking.id}/act.pdf`, `Акт_${booking.id}.pdf`) : undefined}
-                        >
-                          Скачать акт PDF
-                        </button>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Счета (Phase 2) — скрыто если legacyFinance */}
-                  {booking.legacyFinance === false && user?.role === "SUPER_ADMIN" && (
-                    <div className="pt-2 mt-2 border-t border-border">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="eyebrow">Счета</p>
-                        <button
-                          onClick={() => setCreateInvoiceOpen(true)}
-                          className="text-[11px] px-2 py-1 bg-accent-bright text-white rounded hover:opacity-90"
-                        >
-                          + Создать счёт
-                        </button>
-                      </div>
-                      {invoices.length === 0 ? (
-                        <div className="text-xs text-ink-3">Счетов пока нет</div>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {invoices.map((inv) => {
-                            const invStatusVariant = (
-                              inv.status === "DRAFT" ? "view" :
-                              inv.status === "ISSUED" ? "info" :
-                              inv.status === "PARTIAL_PAID" ? "warn" :
-                              inv.status === "PAID" ? "ok" :
-                              inv.status === "OVERDUE" ? "alert" : "none"
-                            ) as "view" | "info" | "warn" | "ok" | "alert" | "none";
-                            const invStatusLabel = {
-                              DRAFT: "Черновик", ISSUED: "Выставлен", PARTIAL_PAID: "Частично",
-                              PAID: "Оплачен", OVERDUE: "Просрочен", VOID: "Аннулирован",
-                            }[inv.status];
-                            const kindLabel = { FULL: "Полный", DEPOSIT: "Предоплата", BALANCE: "Остаток", CORRECTION: "Корректировка" }[inv.kind];
-                            return (
-                              <div key={inv.id} className="flex items-center justify-between gap-2 text-xs py-1.5 border-b border-dashed border-border last:border-0">
-                                <div className="min-w-0">
-                                  <div className="font-mono">{inv.number ?? "Черновик"} · {kindLabel}</div>
-                                  <div className="text-ink-3">
-                                    {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("ru-RU") : "—"}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <StatusPill variant={invStatusVariant} label={invStatusLabel} />
-                                  {inv.number && (
-                                    <button
-                                      onClick={() => downloadInvoicePdf(inv)}
-                                      className="text-ink-3 hover:text-accent"
-                                      title="PDF"
-                                      aria-label="Скачать PDF счёта"
-                                    >
-                                      ↓
-                                    </button>
-                                  )}
-                                  {["ISSUED", "PARTIAL_PAID", "PAID"].includes(inv.status) && (
-                                    <button
-                                      onClick={() => setRefundInvoiceId(inv.id)}
-                                      className="text-amber hover:underline text-[10px]"
-                                    >
-                                      Возврат
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                      {/* Кредит-ноты */}
-                      <button
-                        onClick={() => setCreditNoteOpen(true)}
-                        className="mt-2 text-[11px] text-accent hover:underline"
-                      >
-                        Кредит-ноты клиента →
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
 
@@ -887,13 +954,13 @@ export default function BookingDetailPage() {
       {booking && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") &&
         booking.status !== "CANCELLED" && booking.status !== "DRAFT" && booking.status !== "PENDING_APPROVAL" && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex gap-2 px-3 py-3 bg-surface border-t border-border shadow-lg no-print">
-          {/* ₽ Платёж */}
+          {/* ₽ Платёж — primary */}
           {(user?.role === "SUPER_ADMIN" ||
             ((booking.status === "ISSUED" || booking.status === "RETURNED") &&
               (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
           ) && (
             <button
-              className="flex-1 rounded border border-border px-2 py-2.5 text-sm font-medium hover:bg-surface-subtle transition-colors"
+              className="flex-1 rounded bg-accent-bright text-white px-2 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
               onClick={() => setPaymentModalOpen(true)}
             >
               ₽ Платёж
@@ -904,7 +971,7 @@ export default function BookingDetailPage() {
             className="flex-1 rounded border border-border px-2 py-2.5 text-sm font-medium hover:bg-surface-subtle transition-colors"
             onClick={() => download(`/api/bookings/${booking.id}/invoice.pdf`, `Счёт_${booking.id}.pdf`)}
           >
-            PDF Счёт
+            📄 Счёт
           </button>
           {/* PDF Акт */}
           {(() => {
