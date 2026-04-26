@@ -633,4 +633,53 @@ Telegram нормализация: если не начинается с `@` —
 - Tenant-изоляция через `gafferWhere(req)` / `assertGafferTenant()` — никакого прямого `req.gafferUser.id` в сервисах без этих хелперов.
 - Ошибки через `HttpError` из `utils/errors.ts`; error-код передаётся как строка в третий параметр (`details`), что соответствует паттерну `res.body.details` в тестах.
 
-<!-- updated-by-superflow:2026-04-18 -->
+## Finance Phase 3 (Backend B1–B6)
+
+### Новые API-маршруты
+
+| Маршрут | Метод | Роли | Описание |
+|---------|-------|------|----------|
+| `/api/finance/forecast` | GET | SA, WH | Стек-бар прогноза доходов на 1–12 месяцев |
+| `/api/bookings/:id/finance-timeline` | GET | SA, WH | Хронология финансовых событий по броне |
+| `/api/bookings/:id/related-expenses` | GET | SA, WH | Прямые + ремонтно-связанные расходы по броне |
+| `/api/expenses/:id/document` | POST | SA | Загрузка документа расхода (JPEG/PNG/PDF ≤5 MB) |
+| `/api/expenses/:id/document` | GET | SA, WH | Получение документа расхода |
+| `/api/expenses/:id/document` | DELETE | SA | Удаление документа расхода |
+
+### Изменения в существующих маршрутах
+
+- `GET /api/finance/debts` — добавлены поля `clientPhone: string | null` и `clientEmail: string | null` в каждый элемент ответа `debts`.
+
+### Новые сервисные функции (apps/api/src/services/finance.ts)
+
+- `computeForecast(horizonMonths)` — прогноз по инвойсам (ISSUED/OVERDUE = confirmed, DRAFT = potential) и броням без инвойсов (= bookingsPipeline). Возвращает массив `ForecastMonth[]` + `totals`.
+- `computeBookingTimeline(bookingId)` — хронология финансовых событий: INVOICE_ISSUED, INVOICE_VOIDED, PAYMENT_RECEIVED, PAYMENT_VOIDED, REFUND_ISSUED, EXPENSE_LOGGED, CREDIT_NOTE_APPLIED. Сортировка ascending.
+- `computeRelatedExpenses(bookingId)` — прямые (Expense.bookingId) + REPAIR_LINKED (Expense.linkedRepairId на ремонт в рамках брони ± 14 дней). Возвращает `{ items, total }`.
+
+### Cron-скрипт OVERDUE recompute (B3)
+
+**Файл:** `apps/api/scripts/recompute-overdue-invoices.ts`
+
+Находит инвойсы с `status IN (ISSUED, PARTIAL_PAID)` и `dueDate < now()` и переводит их в OVERDUE через `recomputeInvoiceStatus()`.
+
+**Настройка в PM2** (добавить в `ecosystem.config.js`):
+```js
+{
+  name: "overdue-recompute",
+  script: "apps/api/scripts/pm2-cron-overdue.cjs",
+  cron_restart: "0 2 * * *",   // каждый день в 02:00 UTC
+  autorestart: false,
+  env: { NODE_ENV: "production" },
+}
+```
+Команды: `pm2 start ecosystem.config.js --only overdue-recompute`.
+
+### Загрузка документов расходов (B6)
+
+- Файлы хранятся в `apps/api/uploads/expenses/{expenseId}/{timestamp}_{filename}`.
+- `Expense.documentUrl` хранит абсолютный путь к файлу на диске (не публичный URL).
+- `GET /api/expenses/:id/document` стримит файл напрямую с диском.
+- Ограничения: 5 MB max, только JPEG/PNG/PDF.
+- Директория `uploads/` создаётся автоматически при первой загрузке.
+
+<!-- updated-by-superflow:2026-04-25 -->
