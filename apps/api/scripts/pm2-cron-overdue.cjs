@@ -17,10 +17,11 @@
 const { execSync } = require("child_process");
 const path = require("path");
 
-const scriptPath = path.join(__dirname, "recompute-overdue-invoices.js");
+// Use tsx to run TypeScript directly — scripts/ is excluded from tsconfig so no compiled .js exists
+const scriptPath = path.join(__dirname, "recompute-overdue-invoices.ts");
 
 try {
-  execSync(`node ${scriptPath}`, { stdio: "inherit" });
+  execSync(`npx tsx ${scriptPath}`, { stdio: "inherit" });
 } catch (err) {
   console.error("recompute-overdue-invoices failed:", err.message);
   process.exit(1);

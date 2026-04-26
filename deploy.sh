@@ -84,6 +84,7 @@ if $DEPLOY_API; then
 
   npx prisma db push --accept-data-loss   # SQLite: синхронизируем схему
   npx tsx scripts/seed-admin-users.ts || true   # идемпотентный seed админ-пользователей
+  npx tsx scripts/seed-system-user.ts || true   # идемпотентный seed _system_ user (нужен для cron аудита)
   npm run build
 
   pm2 describe api > /dev/null 2>&1 \

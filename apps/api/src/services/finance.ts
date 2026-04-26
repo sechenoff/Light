@@ -687,6 +687,7 @@ export interface RelatedExpenseItem {
   approved: boolean;
   createdAt: string;
   source: "DIRECT" | "REPAIR_LINKED";
+  linkedRepairId: string | null; // D4: included so frontend can link to /repair/<id>
 }
 
 export interface RelatedExpensesResult {
@@ -713,7 +714,7 @@ export async function computeRelatedExpenses(bookingId: string): Promise<Related
   // Direct expenses
   const directExpenses = await prisma.expense.findMany({
     where: { bookingId },
-    select: { id: true, category: true, amount: true, description: true, documentUrl: true, approved: true, createdAt: true },
+    select: { id: true, category: true, amount: true, description: true, documentUrl: true, approved: true, createdAt: true, linkedRepairId: true },
   });
 
   // Repair-linked expenses:
@@ -743,7 +744,7 @@ export async function computeRelatedExpenses(bookingId: string): Promise<Related
             linkedRepairId: { in: repairIds },
             id: { notIn: Array.from(directIds) },
           },
-          select: { id: true, category: true, amount: true, description: true, documentUrl: true, approved: true, createdAt: true },
+          select: { id: true, category: true, amount: true, description: true, documentUrl: true, approved: true, createdAt: true, linkedRepairId: true },
         })
       : [];
 
@@ -756,6 +757,7 @@ export async function computeRelatedExpenses(bookingId: string): Promise<Related
     approved: e.approved,
     createdAt: e.createdAt.toISOString(),
     source: "DIRECT" as const,
+    linkedRepairId: e.linkedRepairId ?? null,
   }));
 
   const repairItems: RelatedExpenseItem[] = repairExpenses.map((e) => ({
@@ -767,6 +769,7 @@ export async function computeRelatedExpenses(bookingId: string): Promise<Related
     approved: e.approved,
     createdAt: e.createdAt.toISOString(),
     source: "REPAIR_LINKED" as const,
+    linkedRepairId: e.linkedRepairId ?? null,
   }));
 
   const items = [...directItems, ...repairItems];

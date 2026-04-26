@@ -602,15 +602,15 @@ export default function BookingDetailPage() {
                   </div>
                   <div><span className="text-ink-3">Плановая дата платежа:</span> <span className="font-medium">{booking.expectedPaymentDate ? new Date(booking.expectedPaymentDate).toLocaleDateString("ru-RU") : "—"}</span></div>
 
-                  {/* F3: Хронология денег — SA + WH */}
-                  {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+                  {/* F3: Хронология денег — SA only (D3: backend gated SA-only) */}
+                  {user?.role === "SUPER_ADMIN" && (
                     <div className="pt-2 mt-2 border-t border-border">
                       <FinanceTimeline bookingId={booking.id} />
                     </div>
                   )}
 
-                  {/* F4: Связанные расходы — SA + WH */}
-                  {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+                  {/* F4: Связанные расходы — SA only (D3: backend gated SA-only) */}
+                  {user?.role === "SUPER_ADMIN" && (
                     <div>
                       <RelatedExpenses bookingId={booking.id} />
                     </div>

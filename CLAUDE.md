@@ -639,9 +639,9 @@ Telegram нормализация: если не начинается с `@` —
 
 | Маршрут | Метод | Роли | Описание |
 |---------|-------|------|----------|
-| `/api/finance/forecast` | GET | SA, WH | Стек-бар прогноза доходов на 1–12 месяцев |
-| `/api/bookings/:id/finance-timeline` | GET | SA, WH | Хронология финансовых событий по броне |
-| `/api/bookings/:id/related-expenses` | GET | SA, WH | Прямые + ремонтно-связанные расходы по броне |
+| `/api/finance/forecast` | GET | SA | Стек-бар прогноза доходов на 1–12 месяцев |
+| `/api/bookings/:id/finance-timeline` | GET | SA | Хронология финансовых событий по броне |
+| `/api/bookings/:id/related-expenses` | GET | SA | Прямые + ремонтно-связанные расходы по броне |
 | `/api/expenses/:id/document` | POST | SA | Загрузка документа расхода (JPEG/PNG/PDF ≤5 MB) |
 | `/api/expenses/:id/document` | GET | SA, WH | Получение документа расхода |
 | `/api/expenses/:id/document` | DELETE | SA | Удаление документа расхода |
@@ -677,7 +677,7 @@ Telegram нормализация: если не начинается с `@` —
 ### Загрузка документов расходов (B6)
 
 - Файлы хранятся в `apps/api/uploads/expenses/{expenseId}/{timestamp}_{filename}`.
-- `Expense.documentUrl` хранит абсолютный путь к файлу на диске (не публичный URL).
+- `Expense.documentUrl` хранит **относительный путь** от `apps/api/uploads/` (например, `expenses/{id}/{timestamp}_{filename}`). Полный путь строится через `path.resolve(UPLOAD_ROOT, rel)` с защитой от traversal (`startsWith(UPLOAD_ROOT + path.sep)`). Не абсолютный путь — скрипты и операторы не должны интерпретировать это поле как готовый абсолютный путь.
 - `GET /api/expenses/:id/document` стримит файл напрямую с диском.
 - Ограничения: 5 MB max, только JPEG/PNG/PDF.
 - Директория `uploads/` создаётся автоматически при первой загрузке.

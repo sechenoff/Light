@@ -1539,10 +1539,11 @@ router.get(
 );
 
 // ── B5: GET /api/bookings/:id/related-expenses ───────────────────────────────
+// D3: SA-only — CLAUDE.md matrix: GET /api/finance/* SA-only; booking finance sub-routes follow same policy
 
 router.get(
   "/:id/related-expenses",
-  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  rolesGuard(["SUPER_ADMIN"]),
   async (req, res, next) => {
     try {
       const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { id: true } });
@@ -1556,10 +1557,11 @@ router.get(
 );
 
 // ── B4: GET /api/bookings/:id/finance-timeline ───────────────────────────────
+// D3: SA-only — CLAUDE.md matrix: GET /api/finance/* SA-only; booking finance sub-routes follow same policy
 
 router.get(
   "/:id/finance-timeline",
-  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  rolesGuard(["SUPER_ADMIN"]),
   async (req, res, next) => {
     try {
       const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { id: true } });
