@@ -197,7 +197,7 @@ describe("GET /api/finance/forecast", () => {
         startDate: month3,
         endDate: new Date(month3.getTime() + 2 * 86400000),
         status: "CONFIRMED",
-        legacyFinance: true,
+        legacyFinance: false, // T4: must be false to appear in pipeline forecast
         finalAmount: new Decimal("20000"),
         amountPaid: new Decimal("5000"),
         amountOutstanding: new Decimal("15000"),
