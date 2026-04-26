@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
+import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 import { apiFetch } from "../../src/lib/api";
 import { formatRub } from "../../src/lib/format";
 import { FinanceTabNav } from "../../src/components/finance/FinanceTabNav";
@@ -14,7 +15,7 @@ import type { UserRole } from "../../src/lib/auth";
 import { RecordPaymentModal } from "../../src/components/finance/RecordPaymentModal";
 import { CreateInvoiceModal } from "../../src/components/finance/CreateInvoiceModal";
 
-const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
+const ALLOWED: UserRole[] = ["SUPER_ADMIN", "WAREHOUSE"];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -146,6 +147,8 @@ function KpiCard({
 
 function FinancePageInner() {
   const { authorized, loading } = useRequireRole(ALLOWED);
+  const { user } = useCurrentUser();
+  const isSA = user?.role === "SUPER_ADMIN";
   const router = useRouter();
   const searchParams = useSearchParams();
   const [data, setData] = useState<Dashboard | null>(null);
@@ -234,12 +237,14 @@ function FinancePageInner() {
               >
                 + Записать платёж
               </button>
-              <button
-                onClick={() => setCreateInvoiceOpen(true)}
-                className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface text-ink rounded-lg hover:bg-surface-subtle transition-colors whitespace-nowrap"
-              >
-                + Создать счёт
-              </button>
+              {isSA && (
+                <button
+                  onClick={() => setCreateInvoiceOpen(true)}
+                  className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface text-ink rounded-lg hover:bg-surface-subtle transition-colors whitespace-nowrap"
+                >
+                  + Создать счёт
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -279,11 +284,26 @@ function FinancePageInner() {
           />
         </div>
 
-        {/* Forecast widget */}
-        <ForecastWidget months={6} />
+        {/* Action ribbon — SA only, hidden when no actions */}
+        {isSA && overdueCount > 0 && (
+          <div className="mb-4 px-4 py-2.5 rounded-lg border border-amber-border bg-amber-soft flex items-center gap-3 text-[13px] flex-wrap">
+            <span className="text-amber">⚡ Сегодня сделать:</span>
+            <span className="text-ink">
+              {overdueCount > 0 && (
+                <><Link href="/finance/invoices?status=OVERDUE" className="text-amber font-semibold hover:underline">{overdueCount} {overdueCount === 1 ? "счёт просрочен" : "счёта просрочены"} ≥ 7 дней</Link></>
+              )}
+            </span>
+            <Link href="/finance/invoices?status=OVERDUE" className="ml-auto px-3 py-1 text-[12px] font-medium border border-amber-border rounded-lg text-amber hover:bg-amber-border/20 whitespace-nowrap">
+              Открыть →
+            </Link>
+          </div>
+        )}
 
-        {/* Two-column layout: top debtors + activity feed */}
-        <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "1.3fr 1fr" }}>
+        {/* Forecast widget — SA only */}
+        {isSA && <ForecastWidget months={6} />}
+
+        {/* Two-column layout: top debtors + activity feed — SA only */}
+        {isSA && <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "1.3fr 1fr" }}>
 
           {/* Top debtors panel */}
           <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
@@ -349,12 +369,12 @@ function FinancePageInner() {
           {/* Activity feed panel */}
           <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
             <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
-              <h3 className="text-[13.5px] font-semibold text-ink">Последняя активность</h3>
-              <span className="text-[11.5px] text-ink-3">за 24 ч</span>
+              <h3 className="text-[13.5px] font-semibold text-ink">Ожидаемые поступления</h3>
+              <span className="text-[11.5px] text-ink-3">ближайшие 7 дней</span>
             </div>
             <div className="px-4 py-3 flex flex-col gap-3.5">
               {data.upcomingWeek.length === 0 ? (
-                <p className="text-sm text-ink-3 py-4 text-center">Нет активности за 24 ч</p>
+                <p className="text-sm text-ink-3 py-4 text-center">Нет ожидаемых поступлений на этой неделе</p>
               ) : (
                 data.upcomingWeek.slice(0, 6).map((u) => (
                   <div key={u.bookingId} className="flex gap-2.5 text-[12.5px]">
@@ -377,7 +397,7 @@ function FinancePageInner() {
               )}
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* Mobile KPI (visible md:hidden) */}
         <div className="md:hidden mt-5">

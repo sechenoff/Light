@@ -464,7 +464,7 @@ export function CancelWithDepositModal({
               onClick={handleCommit}
               disabled={saving}
               className={`px-5 py-2 text-sm text-white rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 ${
-                branch === "refund" ? "bg-emerald" : branch === "credit" ? "bg-accent-bright" : "bg-rose"
+                branch === "refund" ? "bg-rose" : branch === "credit" ? "bg-accent-bright" : "bg-rose"
               }`}
             >
               {saving ? "Выполнение…" : "Подтвердить отмену"}

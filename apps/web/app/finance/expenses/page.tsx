@@ -12,6 +12,7 @@ import { ExpenseDocumentUpload } from "../../../src/components/finance/ExpenseDo
 import { StatusPill } from "../../../src/components/StatusPill";
 import { derivePeriodRange, type PeriodKey } from "../../../src/lib/periodUtils";
 import type { UserRole } from "../../../src/lib/auth";
+import { toast } from "../../../src/components/ToastProvider";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
 
@@ -179,8 +180,15 @@ function AddExpenseModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ bookings: BookingOption[] }>("/api/bookings?status=CONFIRMED,ISSUED&limit=100")
-      .then((r) => { if (!cancelled) setBookings(r.bookings ?? []); })
+    // C2: split into 3 calls — API Zod rejects comma-separated status values
+    Promise.all([
+      apiFetch<{ bookings: BookingOption[] }>("/api/bookings?status=CONFIRMED&limit=100"),
+      apiFetch<{ bookings: BookingOption[] }>("/api/bookings?status=ISSUED&limit=100"),
+      apiFetch<{ bookings: BookingOption[] }>("/api/bookings?status=RETURNED&limit=100"),
+    ])
+      .then(([c, i, r]) => {
+        if (!cancelled) setBookings([...(c.bookings ?? []), ...(i.bookings ?? []), ...(r.bookings ?? [])]);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -347,6 +355,20 @@ function ExpensesPageInner() {
     await apiFetch(`/api/expenses/${id}`, { method: "DELETE" });
     const cancelled = { v: false };
     await fetchAll(cancelled);
+  };
+
+  const handleApprove = async (id: string) => {
+    try {
+      await apiFetch(`/api/expenses/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ approved: true }),
+      });
+      toast.success("Расход утверждён");
+      const cancelled = { v: false };
+      await fetchAll(cancelled);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка при утверждении");
+    }
   };
 
   if (loading || !authorized) return null;
@@ -588,6 +610,7 @@ function ExpensesPageInner() {
                           <button
                             aria-label="Утвердить"
                             title="Утвердить расход"
+                            onClick={() => handleApprove(e.id)}
                             className="w-7 h-7 rounded border border-emerald bg-surface flex items-center justify-center text-emerald hover:bg-emerald/10 text-xs font-medium"
                           >
                             ✓
@@ -720,6 +743,7 @@ function ExpensesPageInner() {
                     {isPending && (
                       <button
                         aria-label="Утвердить расход"
+                        onClick={() => handleApprove(e.id)}
                         className="ml-auto px-2.5 py-1 border border-emerald text-emerald rounded text-xs hover:bg-emerald/10"
                       >
                         ✓ Утвердить

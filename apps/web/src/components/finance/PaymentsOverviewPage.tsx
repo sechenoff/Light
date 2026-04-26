@@ -8,6 +8,8 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { FinanceTabNav } from "./FinanceTabNav";
 import { PeriodSelector } from "./PeriodSelector";
 import { RecordPaymentModal } from "./RecordPaymentModal";
+import { VoidPaymentModal } from "./VoidPaymentModal";
+import { RefundModal } from "./RefundModal";
 import { derivePeriodRange, type PeriodKey } from "../../lib/periodUtils";
 import { StatusPill } from "../StatusPill";
 import { PaymentsByClient } from "./PaymentsByClient";
@@ -162,6 +164,9 @@ export function PaymentsOverviewPage() {
   const [search, setSearch] = useState("");
   // Type filter
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "refund">("all");
+  // Void/refund modals
+  const [voidPaymentId, setVoidPaymentId] = useState<string | null>(null);
+  const [refundPaymentId, setRefundPaymentId] = useState<string | null>(null);
 
   function setView(v: ViewTab) {
     setViewState(v);
@@ -563,6 +568,7 @@ export function PaymentsOverviewPage() {
                               {!isVoided && !isRefund && (
                                 <div className="flex gap-1 justify-end">
                                   <button
+                                    onClick={() => setRefundPaymentId(p.id)}
                                     className="w-7 h-7 flex items-center justify-center border border-border rounded hover:border-accent-bright hover:text-accent-bright text-[13px]"
                                     aria-label="Возврат"
                                     title="Возврат"
@@ -570,6 +576,7 @@ export function PaymentsOverviewPage() {
                                     ↩
                                   </button>
                                   <button
+                                    onClick={() => setVoidPaymentId(p.id)}
                                     className="w-7 h-7 flex items-center justify-center border border-border rounded hover:border-rose hover:text-rose text-[13px]"
                                     aria-label="Аннулировать"
                                     title="Аннулировать"
@@ -669,6 +676,20 @@ export function PaymentsOverviewPage() {
           if (view === "payments") fetchPayments(period);
           else fetchBookings(false);
         }}
+      />
+      {/* VoidPaymentModal */}
+      <VoidPaymentModal
+        open={!!voidPaymentId}
+        paymentId={voidPaymentId}
+        onClose={() => setVoidPaymentId(null)}
+        onVoided={() => { setVoidPaymentId(null); fetchPayments(period); }}
+      />
+      {/* RefundModal */}
+      <RefundModal
+        open={!!refundPaymentId}
+        paymentId={refundPaymentId ?? undefined}
+        onClose={() => setRefundPaymentId(null)}
+        onSuccess={() => { setRefundPaymentId(null); fetchPayments(period); }}
       />
     </div>
   );
