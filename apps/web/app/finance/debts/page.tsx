@@ -10,6 +10,7 @@ import { formatRub, pluralize } from "../../../src/lib/format";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { LegacyBookingImportModal } from "../../../src/components/finance/LegacyBookingImportModal";
 import { ContactChips } from "../../../src/components/finance/ContactChips";
+import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 import type { UserRole } from "../../../src/lib/auth";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
@@ -125,6 +126,7 @@ function DebtsPageInner() {
   const [fetching, setFetching] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
 
   function loadDebts() {
     let cancelled = false;
@@ -356,6 +358,7 @@ function DebtsPageInner() {
                         <td className="px-3 py-3.5">
                           <div className="flex gap-1.5 justify-end flex-wrap">
                             <button
+                              onClick={() => setRecordPaymentOpen(true)}
                               className="px-2.5 py-1 text-[11px] border border-border bg-surface rounded hover:border-accent-bright hover:text-accent-bright transition-colors whitespace-nowrap"
                             >
                               ₽ Платёж
@@ -393,7 +396,7 @@ function DebtsPageInner() {
           <p className="eyebrow text-ink-3 mb-2">
             всего {data ? formatRub(data.summary.totalOutstanding) : "—"} · {debtCount} контрагентов
           </p>
-          {data?.agingPerClient?.length === 0 && (
+          {(data?.agingPerClient?.length ?? 0) > 0 && (
             <div className="space-y-2">
               {/* Bucket cards sorted worst-first */}
               {[
@@ -542,6 +545,11 @@ function DebtsPageInner() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         onImported={() => { setImportOpen(false); loadDebts(); }}
+      />
+      <RecordPaymentModal
+        open={recordPaymentOpen}
+        onClose={() => setRecordPaymentOpen(false)}
+        onCreated={() => { setRecordPaymentOpen(false); loadDebts(); }}
       />
     </div>
   );

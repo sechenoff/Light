@@ -11,6 +11,7 @@ import { StatusPill } from "../../../src/components/StatusPill";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { CreateInvoiceModal } from "../../../src/components/finance/CreateInvoiceModal";
 import { VoidInvoiceModal } from "../../../src/components/finance/VoidInvoiceModal";
+import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 import { toast } from "../../../src/components/ToastProvider";
 import { FINANCE_TERMS } from "../../../src/lib/financeTerms";
 
@@ -152,6 +153,7 @@ function InvoicesPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [voidInvoiceId, setVoidInvoiceId] = useState<string | null>(null);
+  const [recordPaymentBookingId, setRecordPaymentBookingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -184,6 +186,21 @@ function InvoicesPage() {
     if (tab === "ALL") params.delete("status");
     else params.set("status", tab);
     router.replace(`/finance/invoices?${params}`);
+  }
+
+  function changePeriod(p: PeriodKey) {
+    setPeriod(p);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("period", p);
+    router.replace(`/finance/invoices?${params}`, { scroll: false });
+  }
+
+  function changeSearch(q: string) {
+    setSearch(q);
+    const params = new URLSearchParams(searchParams.toString());
+    if (q) params.set("search", q);
+    else params.delete("search");
+    router.replace(`/finance/invoices?${params}`, { scroll: false });
   }
 
   async function issueInvoice(id: string) {
@@ -315,14 +332,14 @@ function InvoicesPage() {
               placeholder="🔍 № счёта, клиент, проект…"
               className="border border-border rounded-lg px-3 py-2 text-[13px] bg-surface text-ink min-w-[240px]"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => changeSearch(e.target.value)}
             />
             {/* Period pills */}
             <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 overflow-x-auto flex-nowrap">
               {PERIOD_OPTIONS.map((opt) => (
                 <button
                   key={opt.key}
-                  onClick={() => setPeriod(opt.key)}
+                  onClick={() => changePeriod(opt.key)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors whitespace-nowrap ${
                     period === opt.key
                       ? "bg-accent-bright text-white shadow-xs"
@@ -486,6 +503,7 @@ function InvoicesPage() {
                               {/* ₽ payment button for issued/overdue */}
                               {["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (
                                 <button
+                                  onClick={() => setRecordPaymentBookingId(inv.booking.id)}
                                   className="w-7 h-7 flex items-center justify-center border border-border rounded hover:border-accent-bright hover:text-accent-bright text-[12px] font-mono"
                                   aria-label="Записать платёж"
                                   title="Записать платёж"
@@ -576,7 +594,10 @@ function InvoicesPage() {
                       </div>
                       <div className="flex gap-2">
                         {["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (
-                          <button className="flex-1 py-2 text-[12px] bg-accent-bright text-white rounded-lg font-medium hover:opacity-90">
+                          <button
+                            onClick={() => setRecordPaymentBookingId(inv.booking.id)}
+                            className="flex-1 py-2 text-[12px] bg-accent-bright text-white rounded-lg font-medium hover:opacity-90"
+                          >
                             ₽ Платёж
                           </button>
                         )}
@@ -616,6 +637,12 @@ function InvoicesPage() {
           invoiceId={voidInvoiceId}
           onClose={() => setVoidInvoiceId(null)}
           onVoided={() => { setVoidInvoiceId(null); load(); }}
+        />
+        <RecordPaymentModal
+          open={!!recordPaymentBookingId}
+          defaultBookingId={recordPaymentBookingId ?? undefined}
+          onClose={() => setRecordPaymentBookingId(null)}
+          onCreated={() => { setRecordPaymentBookingId(null); load(); }}
         />
       </div>
     </div>
