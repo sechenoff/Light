@@ -1,16 +1,16 @@
 {
-  "sprint": "finance-phase-3",
+  "sprint": "finance-rebuild",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus + 4-agent-qa",
-  "ts": "2026-04-26T11:00:00Z",
+  "ts": "2026-04-26T22:30:00Z",
   "notes": [
-    "Phase 3: forecast widget, contact chips, finance timeline, related expenses, expense document upload, OVERDUE cron.",
-    "Backend (B1-B6): forecast endpoint with Moscow TZ + legacyFinance filter, debts phone/email, OVERDUE cron + _system_ user, finance-timeline (no double-emit voided), related-expenses (with linkedRepairId), document upload (relative path + magic-byte + path-traversal guard).",
-    "Frontend (F1-F5): ForecastWidget pure-CSS bars, ContactChips tel/mailto, FinanceTimeline collapsible, RelatedExpenses with REPAIR link, ExpenseDocumentUpload (XHR progress, no auto-close, per-row attach).",
-    "Standard PAR: technical REQUEST_CHANGES (5 HIGH including path traversal, forecast TZ, voided dedup) + product NEEDS_FIXES (double-₽ × 7) — all 7 HIGH + 8 MED closed.",
-    "User 4-agent QA: A NEEDS_FIXES (1 CRIT broken cron + 1 HIGH unseeded _system_ user), B 94% fidelity (role drifts), C PASS (1 HIGH role mismatch). D applied 6 fixes (cron syntax, deploy.sh seed call, SA-only tightening, linkedRepairId, doc drift, FS-after-tx delete).",
-    "Final gates: tsc clean api+web; 853 API tests + 249 web tests all green.",
-    "Deferred to Phase 4: bank reconciliation CSV import, multi-currency, real email/SMS reminders integration, margin sparkline, per-method analytics, WH PDF scoped to own bookings."
+    "Visual rebuild of finance section: 5 pages + booking finance block + 2 key modals to match HTML mockups in docs/mockups/finance-redesign-2026-04-25/.",
+    "No backend changes. No schema changes. No new dependencies. Visual layer (JSX + Tailwind classes) only.",
+    "Standard PAR: Technical APPROVE (3 LOW hex hygiene). Product NEEDS_FIXES (2 MED hex + 1 MED mobile sticky padding + 1 LOW refund validation) — all 4 closed in 8ad691d.",
+    "User 4-agent QA: A NEEDS_FIXES (4 HIGH dead onClicks). B 88% fidelity (2 MED dashboard + 5 LOW). C PARTIAL PASS (1 HIGH aging matrix concern + 1 MED-HIGH WH redirect + 2 MED).",
+    "Agent D applied 11 fixes in 88c7ff0: AddExpenseModal status filter, expense approve onClicks, ₽ Платёж buttons in 3 places, refund/void wiring on /finance/payments, /finance aging matrix re-verification, WH /finance access (gating per-section instead of redirect), mobile aging condition flipped, /finance/invoices URL persistence, dashboard action ribbon, activity feed rename, refund button color.",
+    "Final gates: tsc clean api+web; 853 api + 249 web tests all green.",
+    "Deferred to Phase 4 polish: period selector copy, top-debtors status tier label, invoice tab counts inflation, debtor header copy, dashboard mobile KPI duplication, forecast empty months data issue, act PDF disabled state cosmetics."
   ]
 }
