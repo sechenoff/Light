@@ -45,7 +45,6 @@ interface InvoicesResponse {
 type PeriodKey = "today" | "7d" | "30d" | "quarter" | "year" | "all";
 
 const PERIOD_OPTIONS: Array<{ key: PeriodKey; label: string }> = [
-  { key: "today", label: "Сегодня" },
   { key: "7d", label: "7 дней" },
   { key: "30d", label: "30 дней" },
   { key: "quarter", label: "Квартал" },
@@ -79,8 +78,8 @@ function periodToDates(period: PeriodKey): { createdAfter?: string; createdBefor
 
 const STATUS_TABS: Array<{ key: InvoiceStatus | "ALL"; label: string }> = [
   { key: "ALL", label: "Все" },
-  { key: "DRAFT", label: "Черновики" },
-  { key: "ISSUED", label: "Выставлены" },
+  { key: "DRAFT", label: "К выставлению" },
+  { key: "ISSUED", label: "Выставлено" },
   { key: "PARTIAL_PAID", label: "Частично" },
   { key: "PAID", label: "Оплачены" },
   { key: "OVERDUE", label: "Просрочены" },
@@ -106,14 +105,13 @@ function statusVariant(s: InvoiceStatus): "view" | "info" | "warn" | "ok" | "ale
 }
 
 function statusLabel(s: InvoiceStatus): string {
-  // D10: Use canonical financeTerms for consistent terminology
   switch (s) {
-    case "DRAFT": return FINANCE_TERMS.draft;      // «Черновик»
-    case "ISSUED": return FINANCE_TERMS.billed;    // «Выставлено»
-    case "PARTIAL_PAID": return FINANCE_TERMS.partial; // «Частично оплачено»
-    case "PAID": return FINANCE_TERMS.paid;        // «Оплачено»
-    case "OVERDUE": return FINANCE_TERMS.overdue;  // «Просрочено»
-    case "VOID": return FINANCE_TERMS.void;        // «Аннулирован»
+    case "DRAFT": return FINANCE_TERMS.draft;
+    case "ISSUED": return FINANCE_TERMS.billed;
+    case "PARTIAL_PAID": return FINANCE_TERMS.partial;
+    case "PAID": return FINANCE_TERMS.paid;
+    case "OVERDUE": return FINANCE_TERMS.overdue;
+    case "VOID": return FINANCE_TERMS.void;
   }
 }
 
@@ -142,7 +140,6 @@ function InvoicesPage() {
     (searchParams.get("status") as InvoiceStatus | "ALL") ?? "ALL"
   );
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
-  // D9: Period selector
   const [period, setPeriod] = useState<PeriodKey>(
     (searchParams.get("period") as PeriodKey) ?? "all"
   );
@@ -156,7 +153,6 @@ function InvoicesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [voidInvoiceId, setVoidInvoiceId] = useState<string | null>(null);
 
-  // Fetch invoices
   const load = useCallback(async () => {
     setLoading(true);
     setSelected(new Set());
@@ -165,7 +161,6 @@ function InvoicesPage() {
       if (statusTab !== "ALL") params.set("status", statusTab);
       if (search.trim()) params.set("search", search.trim());
       params.set("limit", "100");
-      // D9: Period filter
       const { createdAfter, createdBefore } = periodToDates(period);
       if (createdAfter) params.set("createdAfter", createdAfter);
       if (createdBefore) params.set("createdBefore", createdBefore);
@@ -183,7 +178,6 @@ function InvoicesPage() {
     load();
   }, [load]);
 
-  // Update URL when tab changes
   function changeTab(tab: InvoiceStatus | "ALL") {
     setStatusTab(tab);
     const params = new URLSearchParams(searchParams.toString());
@@ -192,7 +186,6 @@ function InvoicesPage() {
     router.replace(`/finance/invoices?${params}`);
   }
 
-  // Issue single invoice
   async function issueInvoice(id: string) {
     try {
       await apiFetch(`/api/invoices/${id}/issue`, { method: "POST" });
@@ -203,7 +196,6 @@ function InvoicesPage() {
     }
   }
 
-  // Bulk-issue selected DRAFT invoices
   async function bulkIssue() {
     const draftIds = invoices
       .filter((inv) => selected.has(inv.id) && inv.status === "DRAFT")
@@ -229,7 +221,6 @@ function InvoicesPage() {
     load();
   }
 
-  // Download PDF
   async function downloadPdf(inv: Invoice) {
     try {
       const res = await apiFetchRaw(`/api/invoices/${inv.id}/pdf`, { method: "GET", credentials: "include" });
@@ -246,16 +237,12 @@ function InvoicesPage() {
     }
   }
 
-  // Select all
   const allSelectableIds = invoices.filter((inv) => inv.status === "DRAFT").map((inv) => inv.id);
   const allSelected = allSelectableIds.length > 0 && allSelectableIds.every((id) => selected.has(id));
 
   function toggleSelectAll() {
-    if (allSelected) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(allSelectableIds));
-    }
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(allSelectableIds));
   }
 
   function toggleSelect(id: string) {
@@ -268,7 +255,7 @@ function InvoicesPage() {
   const selectedCount = selected.size;
   const draftSelectedCount = invoices.filter((inv) => selected.has(inv.id) && inv.status === "DRAFT").length;
 
-  // Counts per tab
+  // Counts per status (loaded from server totals or client side)
   const counts = STATUS_TABS.reduce((acc, tab) => {
     if (tab.key === "ALL") acc[tab.key] = invoices.length;
     else acc[tab.key] = invoices.filter((inv) => inv.status === tab.key).length;
@@ -276,63 +263,41 @@ function InvoicesPage() {
   }, {} as Record<string, number>);
 
   return (
-    <div className="min-h-screen bg-surface-2">
+    <div className="min-h-screen bg-surface-subtle">
       <FinanceTabNav />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
+
         {/* Header */}
-        <div className="flex items-start justify-between mb-5 gap-4 flex-wrap">
-          <div>
-            <p className="eyebrow text-ink-3">Финансы</p>
-            <h1 className="text-xl font-semibold text-ink mt-1">Счета</h1>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* D9: Period selector */}
-            <div className="flex gap-0.5 bg-surface border border-border rounded p-0.5">
-              {PERIOD_OPTIONS.map((opt) => (
-                <button
-                  key={opt.key}
-                  onClick={() => setPeriod(opt.key)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
-                    period === opt.key
-                      ? "bg-accent text-white"
-                      : "text-ink-2 hover:bg-surface-subtle"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            {isSA && (
-              <button
-                onClick={() => setCreateOpen(true)}
-                className="px-4 py-2 text-sm bg-accent-bright text-white rounded hover:opacity-90 font-medium"
-              >
-                + Создать счёт
-              </button>
-            )}
-          </div>
+        <div className="mb-4">
+          <p className="eyebrow text-ink-3">Финансы</p>
+          <h1 className="text-[22px] font-semibold text-ink mt-1">Счета</h1>
         </div>
 
-        {/* Status tabs */}
-        <div className="flex gap-1 border-b border-border mb-4 overflow-x-auto">
+        {/* Tabs (underline style) */}
+        <div className="flex border-b border-border mb-4 overflow-x-auto gap-0.5">
           {STATUS_TABS.map((tab) => {
             const count = counts[tab.key] ?? 0;
             const active = statusTab === tab.key;
+            const isOverdue = tab.key === "OVERDUE";
             return (
               <button
                 key={tab.key}
                 onClick={() => changeTab(tab.key as InvoiceStatus | "ALL")}
-                className={`flex items-center gap-1.5 px-3 py-2.5 text-[13px] border-b-2 -mb-px whitespace-nowrap transition-colors ${
-                  active ? "text-accent border-accent font-semibold" : "text-ink-2 border-transparent hover:text-ink"
+                className={`flex items-center gap-1.5 px-3.5 py-3 text-[13px] border-b-2 -mb-px whitespace-nowrap transition-colors ${
+                  active
+                    ? "text-accent-bright border-accent-bright font-semibold"
+                    : "text-ink-2 border-transparent hover:text-ink"
                 }`}
               >
                 {tab.label}
                 {count > 0 && (
                   <span className={`text-[11px] px-1.5 py-0.5 rounded font-mono ${
-                    active ? "bg-accent-soft text-accent" :
-                    tab.key === "OVERDUE" ? "bg-rose-soft text-rose" :
-                    "bg-surface-2 text-ink-3 border border-border"
+                    active
+                      ? "bg-accent-soft text-accent-bright border border-accent-border"
+                      : isOverdue
+                        ? "bg-rose-soft text-rose border border-rose-border"
+                        : "bg-surface-subtle text-ink-3 border border-border"
                   }`}>
                     {count}
                   </span>
@@ -342,36 +307,74 @@ function InvoicesPage() {
           })}
         </div>
 
-        {/* Filter bar */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          <input
-            type="text"
-            placeholder="Поиск по клиенту, проекту, № счёта…"
-            className="border border-border rounded px-3 py-2 text-sm bg-surface text-ink min-w-[220px]"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        {/* Filter bar + CTA */}
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div className="flex gap-2 flex-wrap">
+            <input
+              type="text"
+              placeholder="🔍 № счёта, клиент, проект…"
+              className="border border-border rounded-lg px-3 py-2 text-[13px] bg-surface text-ink min-w-[240px]"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {/* Period pills */}
+            <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 overflow-x-auto flex-nowrap">
+              {PERIOD_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setPeriod(opt.key)}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors whitespace-nowrap ${
+                    period === opt.key
+                      ? "bg-accent-bright text-white shadow-xs"
+                      : "text-ink-2 hover:text-ink"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface text-ink rounded-lg hover:bg-surface-subtle transition-colors">
+              📊 Экспорт XLSX
+            </button>
+            {isSA && (
+              <button
+                onClick={() => setCreateOpen(true)}
+                className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-white rounded-lg hover:opacity-90 transition-opacity"
+              >
+                + Создать счёт
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Bulk bar */}
+        {/* Bulk bar (visible when selected) */}
         {selectedCount > 0 && (
-          <div className="flex items-center gap-3 mb-4 px-4 py-2.5 bg-accent-soft border border-[#bfdbfe] rounded-lg text-sm">
-            <span className="font-medium">{selectedCount} выбрано</span>
+          <div className="flex items-center gap-3 mb-3 px-4 py-2.5 bg-accent-soft border border-accent-border rounded-lg text-[13px]">
+            <input type="checkbox" className="rounded" checked={allSelected} onChange={toggleSelectAll} />
+            <span><strong>{selectedCount} счёт{selectedCount > 1 ? "а" : ""}</strong> выбрано</span>
             {draftSelectedCount > 0 && isSA && (
               <button
                 onClick={bulkIssue}
                 disabled={bulkIssuing}
                 className="px-3 py-1.5 bg-accent-bright text-white rounded text-[12px] hover:opacity-90 disabled:opacity-50"
               >
-                {bulkIssuing ? "Выставляем…" : `Выставить черновики (${draftSelectedCount})`}
+                {bulkIssuing ? "Выставляем…" : "Выставить выбранные"}
               </button>
             )}
             <button
-              onClick={() => setSelected(new Set())}
-              className="ml-auto text-ink-3 hover:text-ink text-[12px]"
+              onClick={async () => {
+                // Download PDFs for selected invoices that have a number
+                for (const inv of invoices.filter((i) => selected.has(i.id) && i.number)) {
+                  await downloadPdf(inv);
+                }
+              }}
+              className="px-3 py-1.5 border border-border bg-surface rounded text-[12px] hover:bg-surface-subtle"
             >
-              Сбросить
+              Скачать все PDF
             </button>
+            <span className="ml-auto text-ink-3 text-[11.5px]">Действие применится только к черновикам</span>
           </div>
         )}
 
@@ -379,7 +382,7 @@ function InvoicesPage() {
         {loading ? (
           <div className="text-center py-12 text-ink-3 text-sm">Загрузка…</div>
         ) : invoices.length === 0 ? (
-          <div className="text-center py-16 text-ink-2">
+          <div className="text-center py-16 text-ink-2 bg-surface border border-border rounded-lg">
             <p className="text-[15px] font-medium mb-2">Счетов нет</p>
             <p className="text-sm text-ink-3">Создайте счёт на странице брони → «Создать счёт»</p>
           </div>
@@ -387,8 +390,8 @@ function InvoicesPage() {
           <>
             {/* Desktop table */}
             <div className="hidden md:block bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
-              <table className="w-full text-sm">
-                <thead className="bg-surface-2 border-b border-border">
+              <table className="w-full text-[12.5px]">
+                <thead className="bg-surface-subtle border-b border-border">
                   <tr>
                     <th className="w-9 px-3 py-3 text-left">
                       <input
@@ -399,14 +402,15 @@ function InvoicesPage() {
                         title="Выбрать все черновики"
                       />
                     </th>
-                    <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3">№ счёта</th>
-                    <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3">Клиент / Бронь</th>
-                    <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3">Тип</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-ink-3">Сумма</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-ink-3">Оплачено</th>
-                    <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-ink-3">Остаток</th>
-                    <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3">Срок</th>
-                    <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3">Статус</th>
+                    <th className="px-3 py-3 text-left eyebrow">№ счёта</th>
+                    <th className="px-3 py-3 text-left eyebrow">Клиент</th>
+                    <th className="px-3 py-3 text-left eyebrow">Бронь</th>
+                    <th className="px-3 py-3 text-left eyebrow">Тип</th>
+                    <th className="px-3 py-3 text-right eyebrow">Сумма</th>
+                    <th className="px-3 py-3 text-right eyebrow">Оплачено</th>
+                    <th className="px-3 py-3 text-right eyebrow">Остаток</th>
+                    <th className="px-3 py-3 text-left eyebrow">Срок</th>
+                    <th className="px-3 py-3 text-left eyebrow">Статус</th>
                     <th className="px-3 py-3 w-24"></th>
                   </tr>
                 </thead>
@@ -414,8 +418,14 @@ function InvoicesPage() {
                   {invoices.map((inv) => {
                     const outstanding = Math.max(0, Number(inv.total) - Number(inv.paidAmount));
                     const overdueDays = daysOverdue(inv.dueDate);
+                    const isVoid = inv.status === "VOID";
                     return (
-                      <tr key={inv.id} className="border-b border-slate-soft hover:bg-surface-2/50 transition-colors">
+                      <tr
+                        key={inv.id}
+                        className={`border-b border-slate-soft last:border-0 transition-colors ${
+                          isVoid ? "bg-surface-subtle opacity-60" : "hover:bg-surface-subtle/50"
+                        }`}
+                      >
                         <td className="px-3 py-3">
                           {inv.status === "DRAFT" && (
                             <input
@@ -425,67 +435,86 @@ function InvoicesPage() {
                               onChange={() => toggleSelect(inv.id)}
                             />
                           )}
+                          {isVoid && <input type="checkbox" className="rounded" disabled />}
                         </td>
                         <td className="px-3 py-3">
-                          <span className="font-mono text-xs bg-surface-2 border border-border rounded px-1.5 py-0.5">
+                          <span className={`font-mono text-xs bg-surface-subtle border border-border rounded px-1.5 py-0.5 ${isVoid ? "line-through" : ""}`}>
                             {inv.number ?? "—"}
                           </span>
                         </td>
                         <td className="px-3 py-3">
                           <div className="font-medium text-ink">{inv.booking.client.name}</div>
-                          <div className="text-xs text-ink-3">{inv.booking.projectName}</div>
-                          <Link href={`/bookings/${inv.booking.id}`} className="text-xs text-accent hover:underline">
+                          <div className="text-[11px] text-ink-3 mt-0.5 truncate max-w-[180px]">{inv.booking.projectName}</div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Link href={`/bookings/${inv.booking.id}`} className="text-[11px] text-accent hover:underline font-mono">
                             #{inv.booking.id.slice(-6)}
                           </Link>
                         </td>
                         <td className="px-3 py-3 text-ink-2">{KIND_LABELS[inv.kind]}</td>
-                        <td className="px-3 py-3 text-right mono-num">{formatRub(Number(inv.total))}</td>
-                        <td className="px-3 py-3 text-right mono-num text-emerald">{formatRub(Number(inv.paidAmount))}</td>
-                        <td className="px-3 py-3 text-right mono-num font-medium">{outstanding > 0 ? formatRub(outstanding) : "—"}</td>
-                        <td className="px-3 py-3 text-ink-2 text-xs">
-                          <div>{formatDate(inv.dueDate)}</div>
-                          {overdueDays && (
-                            <div className="text-rose">{overdueDays} дн. просрочки</div>
+                        <td className={`px-3 py-3 text-right mono-num ${isVoid ? "line-through text-ink-3" : ""}`}>{formatRub(Number(inv.total))}</td>
+                        <td className="px-3 py-3 text-right mono-num text-ink-2">
+                          {isVoid ? "—" : formatRub(Number(inv.paidAmount))}
+                        </td>
+                        <td className="px-3 py-3 text-right mono-num font-semibold">
+                          {isVoid ? "—" : outstanding > 0 ? formatRub(outstanding) : "—"}
+                        </td>
+                        <td className="px-3 py-3 text-ink-2">
+                          <div className="text-[12px]">{isVoid ? "—" : formatDate(inv.dueDate)}</div>
+                          {!isVoid && overdueDays && (
+                            <div className="text-rose text-[11px]">{overdueDays} дн. проср.</div>
                           )}
                         </td>
                         <td className="px-3 py-3">
                           <StatusPill variant={statusVariant(inv.status)} label={statusLabel(inv.status)} />
                         </td>
                         <td className="px-3 py-3">
-                          <div className="flex gap-1 justify-end">
-                            {/* Issue */}
-                            {inv.status === "DRAFT" && isSA && (
-                              <button
-                                onClick={() => issueInvoice(inv.id)}
-                                className="text-[11px] px-2 py-1 border border-border rounded hover:border-accent-bright hover:text-accent-bright"
-                                title="Выставить"
-                              >
-                                Выставить
-                              </button>
-                            )}
-                            {/* PDF */}
-                            {inv.number && (
-                              <button
-                                onClick={() => downloadPdf(inv)}
-                                className="w-7 h-7 flex items-center justify-center border border-border rounded hover:border-accent-bright hover:text-accent-bright text-[13px]"
-                                aria-label="Скачать PDF"
-                                title="Скачать PDF"
-                              >
-                                ↓
-                              </button>
-                            )}
-                            {/* Void */}
-                            {isSA && ["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (
-                              <button
-                                onClick={() => setVoidInvoiceId(inv.id)}
-                                className="w-7 h-7 flex items-center justify-center border border-border rounded hover:border-rose hover:text-rose text-[13px]"
-                                aria-label="Аннулировать"
-                                title="Аннулировать"
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </div>
+                          {isVoid ? (
+                            <span className="text-[11px] text-ink-3">аннулирован</span>
+                          ) : (
+                            <div className="flex gap-1 justify-end">
+                              {inv.status === "DRAFT" && isSA && (
+                                <button
+                                  onClick={() => issueInvoice(inv.id)}
+                                  className="w-7 h-7 flex items-center justify-center border border-border rounded hover:border-accent-bright hover:text-accent-bright text-[13px]"
+                                  aria-label="Выставить счёт"
+                                  title="Выставить"
+                                >
+                                  ✓
+                                </button>
+                              )}
+                              {/* ₽ payment button for issued/overdue */}
+                              {["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (
+                                <button
+                                  className="w-7 h-7 flex items-center justify-center border border-border rounded hover:border-accent-bright hover:text-accent-bright text-[12px] font-mono"
+                                  aria-label="Записать платёж"
+                                  title="Записать платёж"
+                                >
+                                  ₽
+                                </button>
+                              )}
+                              {inv.number && (
+                                <button
+                                  onClick={() => downloadPdf(inv)}
+                                  className="w-7 h-7 flex items-center justify-center border border-border rounded hover:border-accent-bright hover:text-accent-bright text-[13px]"
+                                  aria-label="Скачать PDF"
+                                  title="Скачать PDF"
+                                >
+                                  📄
+                                </button>
+                              )}
+                              {isSA && ["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (
+                                <button
+                                  onClick={() => setVoidInvoiceId(inv.id)}
+                                  className="w-7 h-7 flex items-center justify-center border border-border rounded hover:border-rose hover:text-rose text-[13px]"
+                                  aria-label="Аннулировать"
+                                  title="Аннулировать"
+                                >
+                                  ⋯
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -495,64 +524,83 @@ function InvoicesPage() {
             </div>
 
             {/* Mobile card list */}
-            <div className="md:hidden space-y-3">
-              {invoices.map((inv) => {
-                const outstanding = Math.max(0, Number(inv.total) - Number(inv.paidAmount));
-                return (
-                  <div key={inv.id} className="bg-surface border border-border rounded-lg p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <span className="font-mono text-xs bg-surface-2 border border-border rounded px-1.5 py-0.5">
-                          {inv.number ?? "Черновик"}
-                        </span>
-                        <div className="mt-1 font-medium text-ink text-sm">{inv.booking.client.name}</div>
-                        <div className="text-xs text-ink-3">{inv.booking.projectName}</div>
+            <div className="md:hidden">
+              {/* Status pills summary on mobile */}
+              <div className="flex gap-2 flex-wrap mb-3">
+                {counts["OVERDUE"] > 0 && (
+                  <span className="px-2.5 py-1 rounded-full text-[12px] font-medium bg-rose-soft text-rose border border-rose-border">
+                    Просрочено · {counts["OVERDUE"]}
+                  </span>
+                )}
+                {counts["ISSUED"] > 0 && (
+                  <span className="px-2.5 py-1 rounded-full text-[12px] font-medium bg-accent-soft text-accent-bright border border-accent-border">
+                    Выставлено · {counts["ISSUED"]}
+                  </span>
+                )}
+                {counts["PAID"] > 0 && (
+                  <span className="px-2.5 py-1 rounded-full text-[12px] font-medium bg-emerald-soft text-emerald border border-emerald-border">
+                    Оплачено · {counts["PAID"]}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-3">
+                {invoices.map((inv) => {
+                  const outstanding = Math.max(0, Number(inv.total) - Number(inv.paidAmount));
+                  const overdueDays = daysOverdue(inv.dueDate);
+                  const isOverdueSt = inv.status === "OVERDUE";
+                  return (
+                    <div
+                      key={inv.id}
+                      className={`border rounded-lg p-4 ${
+                        isOverdueSt
+                          ? "border-rose-border bg-rose-soft/20"
+                          : "border-border bg-surface"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <span className="font-mono text-xs bg-surface-subtle border border-border rounded px-1.5 py-0.5">
+                            {inv.number ?? "Черновик"}
+                          </span>
+                          <div className="mt-1.5 font-semibold text-ink text-sm">{inv.booking.client.name}</div>
+                          <div className="text-[11px] text-ink-3 mt-0.5">
+                            {KIND_LABELS[inv.kind]}
+                            {inv.dueDate && !isOverdueSt && ` · срок ${formatDate(inv.dueDate)}`}
+                            {isOverdueSt && overdueDays && ` · срок ${formatDate(inv.dueDate)}`}
+                          </div>
+                        </div>
+                        <StatusPill variant={statusVariant(inv.status)} label={statusLabel(inv.status)} />
                       </div>
-                      <StatusPill variant={statusVariant(inv.status)} label={statusLabel(inv.status)} />
+                      <div className="mono-num text-[18px] font-semibold mb-3">
+                        {formatRub(Number(inv.total))}
+                      </div>
+                      <div className="flex gap-2">
+                        {["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (
+                          <button className="flex-1 py-2 text-[12px] bg-accent-bright text-white rounded-lg font-medium hover:opacity-90">
+                            ₽ Платёж
+                          </button>
+                        )}
+                        {inv.number && (
+                          <button
+                            onClick={() => downloadPdf(inv)}
+                            className="py-2 px-3 text-[12px] border border-border rounded-lg hover:border-accent-bright hover:text-accent-bright"
+                          >
+                            📄 PDF
+                          </button>
+                        )}
+                        {inv.status === "DRAFT" && isSA && (
+                          <button
+                            onClick={() => issueInvoice(inv.id)}
+                            className="py-2 px-3 text-[12px] border border-border rounded-lg hover:border-accent-bright hover:text-accent-bright"
+                          >
+                            Выставить
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-xs mb-3">
-                      <div>
-                        <div className="text-ink-3 mb-0.5">Сумма</div>
-                        <div className="mono-num font-medium">{formatRub(Number(inv.total))}</div>
-                      </div>
-                      <div>
-                        <div className="text-ink-3 mb-0.5">Оплачено</div>
-                        <div className="mono-num text-emerald">{formatRub(Number(inv.paidAmount))}</div>
-                      </div>
-                      <div>
-                        <div className="text-ink-3 mb-0.5">Остаток</div>
-                        <div className="mono-num font-medium">{outstanding > 0 ? formatRub(outstanding) : "—"}</div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      {inv.status === "DRAFT" && isSA && (
-                        <button
-                          onClick={() => issueInvoice(inv.id)}
-                          className="text-[12px] px-3 py-1.5 border border-border rounded hover:border-accent-bright hover:text-accent-bright"
-                        >
-                          Выставить
-                        </button>
-                      )}
-                      {inv.number && (
-                        <button
-                          onClick={() => downloadPdf(inv)}
-                          className="text-[12px] px-3 py-1.5 border border-border rounded hover:border-accent-bright hover:text-accent-bright"
-                        >
-                          PDF
-                        </button>
-                      )}
-                      {isSA && ["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (
-                        <button
-                          onClick={() => setVoidInvoiceId(inv.id)}
-                          className="text-[12px] px-3 py-1.5 border border-border rounded hover:border-rose hover:text-rose text-rose"
-                        >
-                          Аннулировать
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </>
         )}
