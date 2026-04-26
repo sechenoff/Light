@@ -68,7 +68,7 @@ function EventRow({ event }: EventRowProps) {
     case "INVOICE_ISSUED":
       icon = "📄";
       tone = "slate";
-      primary = `Выпущен счёт ${event.number} · ${INVOICE_KIND_LABEL[event.kind] ?? event.kind} · ${formatRub(event.total)} ₽`;
+      primary = `Выпущен счёт ${event.number} · ${INVOICE_KIND_LABEL[event.kind] ?? event.kind} · ${formatRub(event.total)}`;
       break;
     case "INVOICE_VOIDED":
       icon = "❌";
@@ -79,29 +79,29 @@ function EventRow({ event }: EventRowProps) {
     case "PAYMENT_RECEIVED":
       icon = "✅";
       tone = "emerald";
-      primary = `Получен платёж ${formatRub(event.amount)} ₽ · ${PAYMENT_METHOD_LABEL[event.method] ?? event.method}${event.invoiceId ? " · к счёту" : ""}`;
+      primary = `Получен платёж ${formatRub(event.amount)} · ${PAYMENT_METHOD_LABEL[event.method] ?? event.method}${event.invoiceId ? " · к счёту" : ""}`;
       break;
     case "PAYMENT_VOIDED":
       icon = "⚠️";
       tone = "amber";
-      primary = `Аннулирован платёж ${formatRub(event.amount)} ₽`;
+      primary = `Аннулирован платёж ${formatRub(event.amount)}`;
       secondary = event.reason ? event.reason : null;
       break;
     case "REFUND_ISSUED":
       icon = "↩️";
       tone = "amber";
-      primary = `Возврат ${formatRub(event.amount)} ₽ · ${PAYMENT_METHOD_LABEL[event.method] ?? event.method}`;
+      primary = `Возврат ${formatRub(event.amount)} · ${PAYMENT_METHOD_LABEL[event.method] ?? event.method}`;
       secondary = event.reason ?? null;
       break;
     case "EXPENSE_LOGGED":
       icon = "💸";
       tone = "rose";
-      primary = `Расход ${EXPENSE_CATEGORY_LABEL[event.category] ?? event.category} ${formatRub(event.amount)} ₽${event.description ? ` — ${event.description}` : ""}`;
+      primary = `Расход ${EXPENSE_CATEGORY_LABEL[event.category] ?? event.category} ${formatRub(event.amount)}${event.description ? ` — ${event.description}` : ""}`;
       break;
     case "CREDIT_NOTE_APPLIED":
       icon = "🎫";
       tone = "slate";
-      primary = `Кредит-нота ${formatRub(event.amount)} ₽ применена`;
+      primary = `Кредит-нота ${formatRub(event.amount)} применена`;
       break;
   }
 

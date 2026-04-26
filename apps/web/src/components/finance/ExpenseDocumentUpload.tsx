@@ -15,6 +15,7 @@ interface ExpenseDocumentUploadProps {
   /** null when creating a new expense (upload happens after save) */
   expenseId: string | null;
   existingDocumentUrl: string | null;
+  /** Called when user explicitly clicks "Готово" after upload — parent closes modal */
   onUploaded: (documentUrl: string) => void;
   onError?: (message: string) => void;
 }
@@ -28,8 +29,14 @@ function isAllowedType(file: File): boolean {
   return ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
-function isPdf(url: string): boolean {
-  return url.toLowerCase().includes("pdf") || url.toLowerCase().endsWith("/document");
+// M4: Use MIME type tracked from upload moment (not URL heuristic).
+// Falls back to extension parsing if mime is unknown.
+function isPdfByMime(mime: string | null, url: string): boolean {
+  if (mime === "application/pdf") return true;
+  if (mime && mime.startsWith("image/")) return false;
+  // Fallback: try extension from stored relative path
+  const lower = url.toLowerCase();
+  return lower.includes(".pdf");
 }
 
 // ── Upload progress bar ───────────────────────────────────────────────────────
@@ -38,7 +45,7 @@ function ProgressBar({ value }: { value: number }) {
   return (
     <div className="w-full bg-surface-subtle rounded-full h-1.5 overflow-hidden">
       <div
-        className="h-full bg-accent-bright transition-all duration-300"
+        className="h-full bg-accent-bright transition-all duration-100"
         style={{ width: `${value}%` }}
       />
     </div>
@@ -57,13 +64,16 @@ export function ExpenseDocumentUpload({
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentDocUrl, setCurrentDocUrl] = useState<string | null>(existingDocumentUrl);
+  // M4: track MIME type from the file chosen at upload time
+  const [currentMime, setCurrentMime] = useState<string | null>(null);
 
   function showError(message: string) {
     toast.error(message);
     onError?.(message);
   }
 
-  async function handleFile(file: File) {
+  // M5: Use XMLHttpRequest for real upload progress
+  function handleFile(file: File) {
     if (file.size > MAX_FILE_SIZE) {
       showError("Файл превышает 5 МБ. Загрузите меньший файл.");
       return;
@@ -73,37 +83,33 @@ export function ExpenseDocumentUpload({
       return;
     }
     if (!expenseId) {
-      // Deferred upload: store file for parent to handle after save
       showError("Сохраните расход сначала, затем загрузите документ.");
       return;
     }
 
     setUploading(true);
-    setProgress(10);
+    setProgress(0);
 
-    try {
-      const formData = new FormData();
-      formData.append("document", file);
+    const formData = new FormData();
+    formData.append("document", file);
 
-      // Simulate progress increments
-      const progressInterval = setInterval(() => {
-        setProgress((p) => Math.min(p + 20, 85));
-      }, 200);
+    const xhr = new XMLHttpRequest();
 
-      const res = await fetch(`/api/expenses/${expenseId}/document`, {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
+    // M5: real progress events
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        setProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
 
-      clearInterval(progressInterval);
-      setProgress(100);
+    xhr.addEventListener("load", () => {
+      setUploading(false);
+      setProgress(0);
 
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
+      if (xhr.status < 200 || xhr.status >= 300) {
         let msg = "Ошибка загрузки документа";
         try {
-          const json = JSON.parse(text);
+          const json = JSON.parse(xhr.responseText);
           if (typeof json?.message === "string") msg = json.message;
         } catch {
           // ignore
@@ -112,17 +118,30 @@ export function ExpenseDocumentUpload({
         return;
       }
 
-      const data = await res.json();
-      const url: string = data.documentUrl ?? `/api/expenses/${expenseId}/document`;
+      let url = `/api/expenses/${expenseId}/document`;
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (data?.documentUrl) url = data.documentUrl;
+      } catch {
+        // ignore
+      }
+
+      // M4: capture MIME from the file chosen, not from URL heuristic
+      setCurrentMime(file.type);
       setCurrentDocUrl(url);
-      onUploaded(url);
       toast.success("Документ загружен");
-    } catch {
-      showError("Ошибка загрузки. Проверьте соединение.");
-    } finally {
+      // P2: do NOT call onUploaded here — user must click «Готово» to confirm
+    });
+
+    xhr.addEventListener("error", () => {
       setUploading(false);
       setProgress(0);
-    }
+      showError("Ошибка загрузки. Проверьте соединение.");
+    });
+
+    xhr.open("POST", `/api/expenses/${expenseId}/document`);
+    xhr.withCredentials = true;
+    xhr.send(formData);
   }
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -148,6 +167,7 @@ export function ExpenseDocumentUpload({
       });
       if (res.ok) {
         setCurrentDocUrl(null);
+        setCurrentMime(null);
         onUploaded("");
         toast.success("Документ удалён");
       } else {
@@ -161,7 +181,7 @@ export function ExpenseDocumentUpload({
   // ── Render existing document preview ───────────────────────────────────────
 
   if (currentDocUrl) {
-    const looksLikePdf = isPdf(currentDocUrl);
+    const looksLikePdf = isPdfByMime(currentMime, currentDocUrl);
     return (
       <div className="border border-border rounded-[6px] p-3 bg-surface-subtle space-y-2">
         <p className="eyebrow text-ink-3">Документ</p>
@@ -184,10 +204,15 @@ export function ExpenseDocumentUpload({
             </a>
           </div>
         </div>
+        {/* P2: action buttons — Заменить / Удалить */}
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              // P2: "Заменить" clears preview and returns to upload zone
+              setCurrentDocUrl(null);
+              setCurrentMime(null);
+            }}
             disabled={uploading}
             className="text-xs px-2.5 py-1 border border-border rounded hover:bg-surface bg-surface-subtle text-ink-2"
             aria-label="Заменить документ"
@@ -202,6 +227,14 @@ export function ExpenseDocumentUpload({
             aria-label="Удалить документ"
           >
             Удалить
+          </button>
+          {/* P2: explicit «Готово» triggers onUploaded — parent closes modal */}
+          <button
+            type="button"
+            onClick={() => onUploaded(currentDocUrl)}
+            className="text-xs px-2.5 py-1 bg-accent text-white rounded hover:bg-accent-bright ml-auto"
+          >
+            Готово
           </button>
         </div>
         <input
