@@ -133,12 +133,15 @@ describe("POST /api/expenses/:id/document", () => {
   });
 
   it("serves uploaded document via GET", async () => {
-    // Upload first
-    const fakeImg = Buffer.from("FAKE IMAGE DATA PNG");
+    // M1: Use valid PNG magic bytes (89 50 4E 47 = \x89PNG)
+    const validPng = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from("fake png content"),
+    ]);
     const uploadRes = await request(app)
       .post(`/api/expenses/${expenseId}/document`)
       .set(AUTH_SA())
-      .attach("document", fakeImg, { filename: "invoice.png", contentType: "image/png" });
+      .attach("document", validPng, { filename: "invoice.png", contentType: "image/png" });
     expect(uploadRes.status).toBe(200);
 
     const res = await request(app)
@@ -148,11 +151,15 @@ describe("POST /api/expenses/:id/document", () => {
   });
 
   it("deletes document via DELETE", async () => {
-    const fakeImg = Buffer.from("FAKE IMAGE DATA FOR DELETE");
+    // M1: Use valid PNG magic bytes
+    const validPng = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from("fake png for delete"),
+    ]);
     await request(app)
       .post(`/api/expenses/${expenseId}/document`)
       .set(AUTH_SA())
-      .attach("document", fakeImg, { filename: "delete-me.png", contentType: "image/png" });
+      .attach("document", validPng, { filename: "delete-me.png", contentType: "image/png" });
 
     const delRes = await request(app)
       .delete(`/api/expenses/${expenseId}/document`)
