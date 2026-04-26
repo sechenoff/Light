@@ -95,20 +95,20 @@ const BUCKET_CELL = [
   // current
   "bg-surface-subtle text-ink-2",
   // 1-30
-  "text-[#854d0e]",
+  "text-amber",
   // 31-60
-  "text-[#92400e] font-medium",
+  "text-amber font-medium",
   // 61-90
-  "text-[#9a3412] font-medium",
+  "text-rose font-medium",
   // 90+
   "text-rose font-semibold",
 ] as const;
 
 const BUCKET_BG = [
   "bg-surface-subtle",
-  "bg-[#fef9c3]",
-  "bg-[#fef3c7]",
-  "bg-[#ffedd5]",
+  "bg-amber-soft/60",
+  "bg-amber-soft",
+  "bg-rose-soft/70",
   "bg-rose-soft",
 ] as const;
 
@@ -278,15 +278,15 @@ function DebtsPageInner() {
             Текущая
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-sm bg-[#fef9c3] inline-block" />
+            <span className="w-3.5 h-3.5 rounded-sm bg-amber-soft/60 inline-block" />
             1–30 дн.
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-sm bg-[#fef3c7] inline-block" />
+            <span className="w-3.5 h-3.5 rounded-sm bg-amber-soft inline-block" />
             31–60
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-sm bg-[#ffedd5] inline-block" />
+            <span className="w-3.5 h-3.5 rounded-sm bg-rose-soft/70 inline-block" />
             61–90
           </span>
           <span className="flex items-center gap-1.5">
@@ -372,7 +372,7 @@ function DebtsPageInner() {
                     );
                   })}
                   {/* Totals row */}
-                  <tr className="bg-[#1e293b] text-white">
+                  <tr className="bg-ink text-white">
                     <td className="px-4 py-3 font-semibold">Итого</td>
                     <td className="px-3 py-3 text-right mono-num">{agingTotals.current > 0 ? formatRub(agingTotals.current) : "—"}</td>
                     <td className="px-3 py-3 text-right mono-num">{agingTotals.days1to30 > 0 ? formatRub(agingTotals.days1to30) : "—"}</td>
@@ -398,9 +398,9 @@ function DebtsPageInner() {
               {/* Bucket cards sorted worst-first */}
               {[
                 { label: "90+ безнадёжно", key: "over90" as const, borderColor: "border-rose-border", textColor: "text-rose" },
-                { label: "61–90 дней", key: "days61to90" as const, borderColor: "border-[#fed7aa]", textColor: "text-[#9a3412]" },
-                { label: "31–60 дней", key: "days31to60" as const, borderColor: "border-[#fcd34d]", textColor: "text-[#92400e]" },
-                { label: "1–30 дней", key: "days1to30" as const, borderColor: "border-[#fde68a]", textColor: "text-[#854d0e]" },
+                { label: "61–90 дней", key: "days61to90" as const, borderColor: "border-rose-border", textColor: "text-rose" },
+                { label: "31–60 дней", key: "days31to60" as const, borderColor: "border-amber-border", textColor: "text-amber" },
+                { label: "1–30 дней", key: "days1to30" as const, borderColor: "border-amber-border", textColor: "text-amber" },
               ].map(({ label, key, borderColor, textColor }) => {
                 const total = agingRows.reduce((s, r) => s + Number(r[key]), 0);
                 const clients = agingRows.filter((r) => Number(r[key]) > 0).map((r) => r.clientName);

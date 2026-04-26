@@ -472,7 +472,7 @@ function ExpensesPageInner() {
                 onClick={() => setActiveFilter(f.key)}
                 className={`px-3 py-1.5 border rounded-[6px] text-xs font-medium transition-colors ${
                   activeFilter === f.key
-                    ? "bg-accent-soft text-accent-bright border-[#bfdbfe]"
+                    ? "bg-accent-soft text-accent-bright border-accent-border"
                     : "bg-surface border-border text-ink-2 hover:bg-surface-subtle"
                 }`}
               >
@@ -508,7 +508,7 @@ function ExpensesPageInner() {
                   <tr
                     key={e.id}
                     className={`border-b border-border ${
-                      isPending ? "bg-[#fffbeb]" : "hover:bg-surface-subtle"
+                      isPending ? "bg-amber-soft/50" : "hover:bg-surface-subtle"
                     }`}
                   >
                     <td className="px-3.5 py-3 mono-num text-xs text-ink-2 align-middle">
@@ -669,7 +669,7 @@ function ExpensesPageInner() {
                 onClick={() => setActiveFilter(f.key)}
                 className={`flex-shrink-0 px-3 py-1.5 border rounded-[6px] text-xs font-medium transition-colors ${
                   activeFilter === f.key
-                    ? "bg-accent-soft text-accent-bright border-[#bfdbfe]"
+                    ? "bg-accent-soft text-accent-bright border-accent-border"
                     : "bg-surface border-border text-ink-2"
                 }`}
               >
@@ -689,7 +689,7 @@ function ExpensesPageInner() {
                   key={e.id}
                   className={`rounded-[10px] p-3 border ${
                     isPending
-                      ? "border-[#fcd34d] bg-[#fffbeb]"
+                      ? "border-amber-border bg-amber-soft/50"
                       : "border-border bg-surface"
                   }`}
                 >

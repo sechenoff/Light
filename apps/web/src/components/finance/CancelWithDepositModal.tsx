@@ -72,6 +72,7 @@ export function CancelWithDepositModal({
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [branch, setBranch] = useState<Branch>("refund");
   const [saving, setSaving] = useState(false);
+  const [step2Error, setStep2Error] = useState("");
 
   // Refund fields
   const [refundAmount, setRefundAmount] = useState(String(depositTotal));
@@ -287,6 +288,9 @@ export function CancelWithDepositModal({
                   </select>
                 </div>
               </div>
+              {step2Error && (
+                <p className="text-sm text-rose">{step2Error}</p>
+              )}
               <div>
                 <label className="eyebrow block mb-1">
                   Причина <span className="text-rose">*</span>{" "}
@@ -443,7 +447,14 @@ export function CancelWithDepositModal({
           </button>
           {step < 3 ? (
             <button
-              onClick={() => setStep((s) => (s + 1) as 1 | 2 | 3)}
+              onClick={() => {
+                if (step === 2 && branch === "refund" && !(Number(refundAmount) > 0)) {
+                  setStep2Error("Укажите сумму возврата больше 0");
+                  return;
+                }
+                setStep2Error("");
+                setStep((s) => (s + 1) as 1 | 2 | 3);
+              }}
               className="px-5 py-2 text-sm bg-accent-bright text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
             >
               Далее →
