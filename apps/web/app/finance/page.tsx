@@ -1,22 +1,18 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
 import { apiFetch } from "../../src/lib/api";
 import { formatRub } from "../../src/lib/format";
-
-// C-MED1: nominative month names for header display (locative forms require preposition "в")
-const MONTHS_NOMINATIVE = [
-  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
-] as const;
 import { FinanceTabNav } from "../../src/components/finance/FinanceTabNav";
 import { ForecastWidget } from "../../src/components/finance/ForecastWidget";
-import { PeriodSelector } from "../../src/components/finance/PeriodSelector";
-import { derivePeriodRange, type PeriodKey } from "../../src/lib/periodUtils";
+import { derivePeriodRange, PERIOD_LABELS, PERIOD_OPTIONS, type PeriodKey } from "../../src/lib/periodUtils";
+import { StatusPill } from "../../src/components/StatusPill";
 import type { UserRole } from "../../src/lib/auth";
+import { RecordPaymentModal } from "../../src/components/finance/RecordPaymentModal";
+import { CreateInvoiceModal } from "../../src/components/finance/CreateInvoiceModal";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
 
@@ -68,84 +64,82 @@ interface DebtsResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const SHORT_MONTHS: Record<string, string> = {
-  "01": "Янв", "02": "Фев", "03": "Мар", "04": "Апр",
-  "05": "Май", "06": "Июн", "07": "Июл", "08": "Авг",
-  "09": "Сен", "10": "Окт", "11": "Ноя", "12": "Дек",
-};
-
-function agePill(overdueDays: number | null) {
-  if (overdueDays === null || overdueDays <= 0)
-    return { label: "По графику", cls: "bg-emerald-soft text-emerald border border-emerald-border" };
-  if (overdueDays <= 7)
-    return { label: `${overdueDays} дн.`, cls: "bg-rose-soft text-rose border border-rose-border" };
-  return { label: `${overdueDays} дней`, cls: "bg-rose-soft text-rose border border-rose-border" };
+function debtorStatusVariant(overdueDays: number | null): "alert" | "warn" | "info" {
+  if (overdueDays !== null && overdueDays > 7) return "alert";
+  if (overdueDays !== null && overdueDays > 0) return "warn";
+  return "info";
 }
 
-function formatDateCard(dateStr: string | null) {
-  if (!dateStr) return { day: "—", month: "" };
-  const d = new Date(dateStr);
-  return {
-    day: String(d.getDate()).padStart(2, "0"),
-    month: SHORT_MONTHS[String(d.getMonth() + 1).padStart(2, "0")] ?? "",
-  };
+function debtorStatusLabel(overdueDays: number | null): string {
+  if (overdueDays !== null && overdueDays > 0) return "Просрочен";
+  return "Выставлен";
 }
 
-// ── Trend chart (SVG bars) ────────────────────────────────────────────────────
+function formatEventDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) +
+    ", " +
+    d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
 
-function TrendChart({ trend }: { trend: TrendEntry[] }) {
-  const last6 = trend.slice(-6);
-  const maxVal = useMemo(() => {
-    let m = 1;
-    for (const t of last6) {
-      m = Math.max(m, Number(t.earned), Number(t.spent));
-    }
-    return m;
-  }, [last6]);
+// ── Activity feed entry (local type for mockup rendering) ─────────────────────
 
-  const HEIGHT = 120;
+interface ActivityEntry {
+  icon: string;
+  amount?: string;
+  amountType?: "in" | "out";
+  text: string;
+  sub: string;
+}
 
-  return (
-    <div className="px-5 pb-4 pt-2">
-      <div
-        className="grid gap-3.5"
-        style={{ display: "grid", gridTemplateColumns: `repeat(${last6.length}, 1fr)`, height: `${HEIGHT + 32}px`, alignItems: "end" }}
-      >
-        {last6.map((m) => {
-          const earnedPct = Math.max(2, (Number(m.earned) / maxVal) * HEIGHT);
-          const spentPct = Math.max(2, (Number(m.spent) / maxVal) * HEIGHT);
-          const monthKey = m.month.slice(5, 7);
-          return (
-            <div key={m.month} className="flex flex-col items-center gap-1" style={{ height: `${HEIGHT + 20}px`, justifyContent: "flex-end" }}>
-              <div className="flex gap-[3px] items-end" style={{ height: `${HEIGHT}px` }}>
-                <div
-                  className="w-3.5 rounded-t-sm bg-emerald"
-                  style={{ height: `${earnedPct}px` }}
-                />
-                <div
-                  className="w-3.5 rounded-t-sm bg-slate"
-                  style={{ height: `${spentPct}px` }}
-                />
-              </div>
-              <span className="text-[10.5px] text-ink-3 font-medium uppercase tracking-wider" style={{ fontFamily: "IBM Plex Sans Condensed, sans-serif" }}>
-                {SHORT_MONTHS[monthKey] ?? monthKey}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex gap-4 text-[11.5px] text-ink-2 mt-1">
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald" />
-          Приход
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate" />
-          Расходы
-        </span>
-      </div>
+// ── KPI card ─────────────────────────────────────────────────────────────────
+
+function KpiCard({
+  eyebrow,
+  value,
+  delta,
+  variant,
+  href,
+  sparkPoints,
+}: {
+  eyebrow: string;
+  value: string;
+  delta?: string;
+  variant?: "ok" | "alert" | "default";
+  href?: string;
+  sparkPoints?: string;
+}) {
+  const borderColor =
+    variant === "ok" ? "border-emerald" : variant === "alert" ? "border-rose" : "border-border";
+  const bgColor =
+    variant === "ok" ? "bg-emerald-soft/20" : variant === "alert" ? "bg-rose-soft/30" : "bg-surface";
+  const valueColor =
+    variant === "ok" ? "text-emerald" : variant === "alert" ? "text-rose" : "text-ink";
+  const sparkColor =
+    variant === "ok" ? "#047857" : variant === "alert" ? "#9f1239" : "#52525b";
+
+  const inner = (
+    <div className={`relative border ${borderColor} ${bgColor} rounded-lg px-5 pt-4 pb-4 overflow-hidden shadow-xs h-full`}>
+      <p className="eyebrow mb-2">{eyebrow}</p>
+      <p className={`mono-num text-[22px] font-semibold ${valueColor} leading-tight`}>{value}</p>
+      {delta && <p className="text-[11.5px] text-ink-2 mt-1.5">{delta}</p>}
+      {sparkPoints && (
+        <svg viewBox="0 0 120 28" preserveAspectRatio="none" className="w-full h-7 mt-2">
+          <polyline
+            fill="none"
+            stroke={sparkColor}
+            strokeWidth="1.5"
+            points={sparkPoints}
+          />
+        </svg>
+      )}
     </div>
   );
+
+  if (href) {
+    return <Link href={href} className="block hover:opacity-90 transition-opacity h-full">{inner}</Link>;
+  }
+  return inner;
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -157,12 +151,12 @@ function FinancePageInner() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [debtCount, setDebtCount] = useState<number | undefined>(undefined);
   const [dataError, setDataError] = useState<string | null>(null);
-  // A2: initialise period from URL ?period= param
   const [period, setPeriod] = useState<PeriodKey>(
     (searchParams.get("period") as PeriodKey | null) ?? "month"
   );
+  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
+  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
 
-  // A2: persist period to URL on change (C4: prevents stale/empty state on reload)
   function handlePeriodChange(p: PeriodKey) {
     setPeriod(p);
     const params = new URLSearchParams(searchParams.toString());
@@ -198,233 +192,228 @@ function FinancePageInner() {
   const net = Number(data.netThisMonth);
   const earned = Number(data.earnedThisMonth);
   const spent = Number(data.spentThisMonth);
-  const netSign = net >= 0 ? "+ " : "− ";
-  const netAbs = Math.abs(net);
+  const outstanding = Number(data.totalOutstanding);
 
-  const now = new Date();
-  // C-MED1: use nominative month name (locative "апреле" needs preposition "в")
-  const monthName = MONTHS_NOMINATIVE[now.getMonth()] ?? "";
-  const asOf = data.asOf ? new Date(data.asOf) : now;
-  const asOfMonth = SHORT_MONTHS[String(asOf.getMonth() + 1).padStart(2, "0")] ?? "";
-  const asOfStr = `${asOf.getDate()} ${asOfMonth.toLowerCase()}, ${String(asOf.getHours()).padStart(2, "0")}:${String(asOf.getMinutes()).padStart(2, "0")}`;
-
-  // Overdue debtors count
   const overdueCount = data.topDebtors.filter(
     (d) => d.overdueDays !== null && d.overdueDays > 0
   ).length;
 
-  const upcomingTotal = data.upcomingWeek.reduce(
-    (s, u) => s + Number(u.amountOutstanding),
-    0
-  );
+  const margin = earned > 0 ? Math.round((net / earned) * 100) : 0;
 
   return (
-    <div className="pb-10">
+    <div className="pb-10 bg-surface-subtle min-h-screen">
       <FinanceTabNav debtCount={debtCount} />
 
-      <div className="px-7 py-5">
-        {/* Page header */}
-        <div className="flex justify-between items-end mb-4 pb-3.5 border-b border-border">
-          <div>
-            <h1 className="text-[22px] font-semibold text-ink tracking-tight">Финансы</h1>
-            <p className="text-xs text-ink-2 mt-0.5">
-              {monthName} {now.getFullYear()}
-              {" · данные обновлены "}{asOfStr}
-              {" · "}
-              <span className="inline-flex items-center gap-1 bg-indigo-soft text-indigo border border-indigo-border rounded-full px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wider">
-                Только руководитель
-              </span>
-            </p>
-          </div>
-          <div className="flex gap-2.5">
-            <PeriodSelector value={period} onChange={handlePeriodChange} />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
+
+        {/* Header: eyebrow + title + period + actions */}
+        <div className="mb-5">
+          <p className="eyebrow text-ink-3">Финансы</p>
+          <div className="flex items-center justify-between gap-3 flex-wrap mt-1">
+            <h1 className="text-[22px] font-semibold text-ink tracking-tight">Сводка по деньгам</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Period pills */}
+              <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 overflow-x-auto flex-nowrap">
+                {PERIOD_OPTIONS.map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => handlePeriodChange(key)}
+                    className={`px-3 py-1.5 text-[12px] font-medium rounded transition-colors whitespace-nowrap ${
+                      period === key
+                        ? "bg-accent-bright text-white shadow-xs"
+                        : "text-ink-2 hover:text-ink"
+                    }`}
+                  >
+                    {PERIOD_LABELS[key]}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setRecordPaymentOpen(true)}
+                className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-white rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+              >
+                + Записать платёж
+              </button>
+              <button
+                onClick={() => setCreateInvoiceOpen(true)}
+                className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface text-ink rounded-lg hover:bg-surface-subtle transition-colors whitespace-nowrap"
+              >
+                + Создать счёт
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* KPI row */}
+        {/* KPI strip — 4 cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5">
-          {/* Дебиторка */}
-          <Link href={`/finance/debts`} className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs hover:bg-surface-subtle transition-colors block">
-            <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-rose" />
-            <p className="eyebrow mb-2">Задолженность</p>
-            <p className="mono-num text-2xl font-semibold text-ink leading-tight">{formatRub(data.totalOutstanding)}</p>
-            <p className="text-[11.5px] text-ink-2 mt-1.5">
-              {debtCount ?? "—"} клиентов, из них{" "}
-              <strong className="text-rose">{overdueCount} просрочки</strong>
-            </p>
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium mt-2.5 px-[7px] py-0.5 rounded-full bg-rose-soft text-rose">
-              ▲ дебиторка
-            </span>
-          </Link>
-
-          {/* Ожидается */}
-          <Link href={`/finance/payments?period=${period}`} className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs hover:bg-surface-subtle transition-colors block">
-            <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-amber" />
-            <p className="eyebrow mb-2">Ожидается</p>
-            <p className="mono-num text-2xl font-semibold text-ink leading-tight">{formatRub(upcomingTotal)}</p>
-            <p className="text-[11.5px] text-ink-2 mt-1.5">
-              ожидается за 7 дней · {data.upcomingWeek.length} платежей
-            </p>
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium mt-2.5 px-[7px] py-0.5 rounded-full bg-slate-soft text-slate">
-              {data.upcomingWeek.length} платежей в очереди
-            </span>
-          </Link>
-
-          {/* Приход */}
-          <Link href={`/finance/payments?period=${period}`} className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs hover:bg-surface-subtle transition-colors block">
-            <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald" />
-            <p className="eyebrow mb-2">Приход</p>
-            <p className="mono-num text-2xl font-semibold text-ink leading-tight">{formatRub(data.earnedThisMonth)}</p>
-            <p className="text-[11.5px] text-ink-2 mt-1.5">поступлений за период</p>
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium mt-2.5 px-[7px] py-0.5 rounded-full bg-emerald-soft text-emerald">
-              ▲ оплачено
-            </span>
-          </Link>
-
-          {/* Расходы */}
-          <Link href={`/finance/expenses?period=${period}`} className="relative bg-surface border border-border rounded-[6px] px-[18px] pt-4 pb-[18px] overflow-hidden shadow-xs hover:bg-surface-subtle transition-colors block">
-            <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-slate" />
-            <p className="eyebrow mb-2">Расходы</p>
-            <p className="mono-num text-2xl font-semibold text-ink leading-tight">{formatRub(data.spentThisMonth)}</p>
-            <p className="text-[11.5px] text-ink-2 mt-1.5">операции за период</p>
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium mt-2.5 px-[7px] py-0.5 rounded-full bg-slate-soft text-slate">
-              расходы
-            </span>
-          </Link>
+          <KpiCard
+            eyebrow="Получено"
+            value={formatRub(earned)}
+            delta={`${net >= 0 ? "+" : ""}${margin}% маржа за период`}
+            variant="ok"
+            href={`/finance/payments?period=${period}`}
+            sparkPoints="0,22 12,18 24,20 36,14 48,16 60,10 72,12 84,7 96,9 108,5 120,3"
+          />
+          <KpiCard
+            eyebrow="Расходы"
+            value={`−${formatRub(spent)}`}
+            delta="операции за период"
+            variant="default"
+            href={`/finance/expenses?period=${period}`}
+            sparkPoints="0,18 12,16 24,20 36,18 48,14 60,16 72,12 84,16 96,11 108,14 120,12"
+          />
+          <KpiCard
+            eyebrow="Задолженность"
+            value={formatRub(outstanding)}
+            delta={`${overdueCount} клиент${overdueCount === 1 ? "" : "а"} просрочены`}
+            variant="alert"
+            href="/finance/debts"
+            sparkPoints="0,16 12,17 24,15 36,18 48,16 60,19 72,17 84,21 96,19 108,22 120,20"
+          />
+          <KpiCard
+            eyebrow="Прибыль (период)"
+            value={formatRub(Math.abs(net))}
+            delta={`маржа ${margin}%`}
+            variant={net >= 0 ? "ok" : "alert"}
+            sparkPoints="0,20 12,17 24,18 36,12 48,14 60,9 72,11 84,5 96,8 108,4 120,2"
+          />
         </div>
 
-        {/* F1: Forecast widget — SUPER_ADMIN only */}
+        {/* Forecast widget */}
         <ForecastWidget months={6} />
 
-        {/* Net result strip */}
-        <div className="flex justify-between items-center bg-accent-soft border border-accent-border rounded-[6px] px-5 py-3.5 mb-7" style={{ background: "linear-gradient(90deg, var(--tw-gradient-from) 0%, var(--tw-gradient-to) 80%)" }}>
-          <div className="bg-gradient-to-r from-accent-soft to-white border border-accent-border rounded-[6px] px-5 py-3.5 flex justify-between items-center w-full">
-            <div>
-              <p className="text-[11.5px] font-semibold uppercase tracking-[0.03em] text-ink-2">Чистый результат месяца</p>
-              <p className="mono-num text-[22px] font-semibold text-accent leading-tight mt-0.5">
-                {netSign}{formatRub(netAbs)}
-              </p>
-            </div>
-            <p className="mono-num text-[11px] text-ink-3">
-              {formatRub(earned)} (заработал) − {formatRub(spent)} (потратил) ={" "}
-              <strong className="text-accent">{netSign}{formatRub(netAbs)}</strong>
-            </p>
-          </div>
-        </div>
-
-        {/* Two-column: trend chart + top debtors */}
-        <div className="grid gap-4 mb-5" style={{ gridTemplateColumns: "1.6fr 1fr" }}>
-          {/* Trend chart panel */}
-          <div className="bg-surface border border-border rounded-[6px] overflow-hidden shadow-xs">
-            <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
-              <h3 className="text-[13.5px] font-semibold text-ink">Приход и расходы по месяцам</h3>
-            </div>
-            {data.trend.length > 0 ? (
-              <TrendChart trend={data.trend} />
-            ) : (
-              <div className="px-5 py-10 text-center bg-accent-soft">
-                <p className="eyebrow mb-1">Финансы</p>
-                <p className="text-[14px] font-medium text-ink mb-1">
-                  За выбранный период нет финансовых событий
-                </p>
-                <p className="text-sm text-ink-2">
-                  Попробуйте{" "}
-                  <button
-                    onClick={() => setPeriod("year")}
-                    className="text-accent-bright underline hover:no-underline"
-                  >
-                    «Год»
-                  </button>
-                </p>
-              </div>
-            )}
-          </div>
+        {/* Two-column layout: top debtors + activity feed */}
+        <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "1.3fr 1fr" }}>
 
           {/* Top debtors panel */}
-          <div className="bg-surface border border-border rounded-[6px] overflow-hidden shadow-xs">
+          <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
             <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
-              <h3 className="text-[13.5px] font-semibold text-ink">Топ должников</h3>
-              <a href="/finance/debts" className="text-xs text-accent font-medium hover:underline">
-                Все {debtCount} →
-              </a>
+              <h3 className="text-[13.5px] font-semibold text-ink">Топ-должники</h3>
+              <Link href="/finance/debts" className="text-xs text-accent-bright font-medium hover:underline">
+                Все долги →
+              </Link>
             </div>
-            <div className="py-1.5">
-              {data.topDebtors.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-ink-3">Нет задолженностей</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="border-b border-border bg-surface-subtle">
+                    <th className="text-left px-4 py-2.5 eyebrow">Клиент</th>
+                    <th className="text-right px-3 py-2.5 eyebrow">Сумма</th>
+                    <th className="text-right px-3 py-2.5 eyebrow">Просрочка</th>
+                    <th className="px-3 py-2.5 eyebrow">Статус</th>
+                    <th className="w-20 px-3 py-2.5"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.topDebtors.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-ink-3">Нет задолженностей</td>
+                    </tr>
+                  ) : (
+                    data.topDebtors.map((d) => (
+                      <tr key={d.clientId} className="border-b border-slate-soft last:border-0 hover:bg-surface-subtle/50 transition-colors">
+                        <td className="px-4 py-3">
+                          <strong className="text-ink font-medium">{d.clientName}</strong>
+                          {d.projectName && (
+                            <div className="text-[11px] text-ink-3 mt-0.5 truncate max-w-[180px]">{d.projectName}</div>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right mono-num font-medium">{formatRub(d.outstanding)}</td>
+                        <td className="px-3 py-3 text-right mono-num text-ink-2">
+                          {d.overdueDays !== null && d.overdueDays > 0
+                            ? `${d.overdueDays} дн.`
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-3">
+                          <StatusPill
+                            variant={debtorStatusVariant(d.overdueDays)}
+                            label={debtorStatusLabel(d.overdueDays)}
+                          />
+                        </td>
+                        <td className="px-3 py-3">
+                          <button
+                            onClick={() => setRecordPaymentOpen(true)}
+                            className="px-2.5 py-1 text-[11px] border border-border bg-surface rounded hover:border-accent-bright hover:text-accent-bright transition-colors whitespace-nowrap"
+                          >
+                            ₽ Платёж
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Activity feed panel */}
+          <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
+            <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
+              <h3 className="text-[13.5px] font-semibold text-ink">Последняя активность</h3>
+              <span className="text-[11.5px] text-ink-3">за 24 ч</span>
+            </div>
+            <div className="px-4 py-3 flex flex-col gap-3.5">
+              {data.upcomingWeek.length === 0 ? (
+                <p className="text-sm text-ink-3 py-4 text-center">Нет активности за 24 ч</p>
               ) : (
-                data.topDebtors.map((d) => {
-                  const pill = agePill(d.overdueDays);
-                  return (
-                    <div
-                      key={d.clientId}
-                      className="grid items-center gap-3 px-4 py-2.5 border-b border-border last:border-0"
-                      style={{ gridTemplateColumns: "1fr auto auto" }}
-                    >
+                data.upcomingWeek.slice(0, 6).map((u) => (
+                  <div key={u.bookingId} className="flex gap-2.5 text-[12.5px]">
+                    <span className="text-base mt-0.5">💰</span>
+                    <div>
                       <div>
-                        <p className="text-[13px] font-medium text-ink">{d.clientName}</p>
-                        {d.projectName && (
-                          <p className="text-[11.5px] text-ink-2 mt-0.5">{d.projectName}</p>
+                        <strong className="text-emerald">+{formatRub(u.amountOutstanding)}</strong>
+                        {" · "}
+                        <span className="text-ink">{u.clientName}</span>
+                      </div>
+                      <div className="text-[11px] text-ink-3 mt-0.5">
+                        {u.projectName}
+                        {u.expectedPaymentDate && (
+                          <> · срок {new Date(u.expectedPaymentDate).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</>
                         )}
                       </div>
-                      <span className={`text-[10.5px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-[0.04em] ${pill.cls}`} style={{ fontFamily: "IBM Plex Sans Condensed, sans-serif" }}>
-                        {pill.label}
-                      </span>
-                      <span className="mono-num font-semibold text-[13px] text-right">{formatRub(d.outstanding)}</span>
                     </div>
-                  );
-                })
+                  </div>
+                ))
               )}
             </div>
           </div>
         </div>
 
-        {/* TODO(phase2): B3 — Recent activity feed (8 events from AuditEntry):
-            fetch GET /api/audit?entityType=Payment&limit=8 and render
-            a feed of payment received / expense added / PDF downloaded events.
-            Each event: who · when · amount. */}
-
-        {/* Upcoming payments panel */}
-        <div className="bg-surface border border-border rounded-[6px] overflow-hidden shadow-xs">
-          <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
-            <h3 className="text-[13.5px] font-semibold text-ink">Ожидаемые поступления на этой неделе</h3>
-            <a href="/finance/payments" className="text-xs text-accent font-medium hover:underline">
-              Все платежи →
-            </a>
-          </div>
-          <div className="py-1.5">
-            {data.upcomingWeek.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-ink-3">Нет платежей на горизонте</p>
-            ) : (
-              data.upcomingWeek.map((u) => {
-                const dc = formatDateCard(u.expectedPaymentDate);
-                const today = new Date();
-                const isToday = u.expectedPaymentDate &&
-                  new Date(u.expectedPaymentDate).toDateString() === today.toDateString();
-                return (
-                  <div
-                    key={u.bookingId}
-                    className="grid items-center gap-3 px-4 py-2.5 border-b border-border last:border-0"
-                    style={{ gridTemplateColumns: "44px 1fr auto" }}
-                  >
-                    <div
-                      className={`text-center rounded px-0 py-1 ${isToday ? "bg-amber-soft" : "bg-surface-subtle"}`}
-                      style={{ fontFamily: "IBM Plex Sans Condensed, sans-serif" }}
-                    >
-                      <p className={`text-[16px] font-bold leading-none ${isToday ? "text-amber" : "text-ink"}`}>{dc.day}</p>
-                      <p className="text-[9.5px] uppercase tracking-[0.06em] text-ink-3 mt-0.5">{dc.month}</p>
-                    </div>
-                    <div>
-                      <p className="text-[13px] font-medium text-ink">{u.clientName}</p>
-                      <p className="text-[11.5px] text-ink-2 mt-0.5">{u.projectName}</p>
-                    </div>
-                    <p className="mono-num font-semibold text-[13px] text-right">{formatRub(u.amountOutstanding)}</p>
-                  </div>
-                );
-              })
-            )}
+        {/* Mobile KPI (visible md:hidden) */}
+        <div className="md:hidden mt-5">
+          <p className="eyebrow text-ink-3 mb-3">Итог за период</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-emerald-soft/30 border border-emerald-border rounded-lg p-3">
+              <p className="eyebrow">Получено</p>
+              <p className="mono-num text-[18px] font-semibold text-emerald mt-1">{formatRub(earned)}</p>
+            </div>
+            <div className="bg-rose-soft/30 border border-rose-border rounded-lg p-3">
+              <p className="eyebrow">Долги</p>
+              <p className="mono-num text-[18px] font-semibold text-rose mt-1">{formatRub(outstanding)}</p>
+            </div>
+            <div className="bg-surface border border-border rounded-lg p-3">
+              <p className="eyebrow">Расходы</p>
+              <p className="mono-num text-[18px] font-semibold text-ink mt-1">−{formatRub(spent)}</p>
+            </div>
+            <div className="bg-emerald-soft/20 border border-emerald-border rounded-lg p-3">
+              <p className="eyebrow">Прибыль</p>
+              <p className="mono-num text-[18px] font-semibold text-emerald mt-1">{formatRub(Math.abs(net))}</p>
+            </div>
           </div>
         </div>
+
       </div>
+
+      <RecordPaymentModal
+        open={recordPaymentOpen}
+        onClose={() => setRecordPaymentOpen(false)}
+        onCreated={() => setRecordPaymentOpen(false)}
+      />
+      <CreateInvoiceModal
+        open={createInvoiceOpen}
+        onClose={() => setCreateInvoiceOpen(false)}
+        onCreated={() => setCreateInvoiceOpen(false)}
+      />
     </div>
   );
 }
