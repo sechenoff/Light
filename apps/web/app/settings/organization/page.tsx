@@ -19,6 +19,7 @@ interface OrgSettings {
   email: string | null;
   invoiceNumberPrefix: string | null;
   migrationCutoffAt: string | null;
+  defaultPaymentTermsDays: number | null;
 }
 
 function OrgSettingsForm() {
@@ -37,7 +38,7 @@ function OrgSettingsForm() {
     return () => { cancelled = true; };
   }, []);
 
-  function set(key: keyof OrgSettings, value: string) {
+  function set(key: keyof OrgSettings, value: string | number) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -62,6 +63,8 @@ function OrgSettingsForm() {
           migrationCutoffAt: form.migrationCutoffAt
             ? new Date(form.migrationCutoffAt).toISOString()
             : undefined,
+          defaultPaymentTermsDays:
+            form.defaultPaymentTermsDays != null ? Number(form.defaultPaymentTermsDays) : undefined,
         }),
       });
       toast.success("Настройки сохранены");
@@ -235,6 +238,29 @@ function OrgSettingsForm() {
           <div className="mt-2 p-3 bg-amber-soft border border-amber-border rounded text-xs text-amber">
             Брони, созданные до этой даты, останутся в legacy-режиме. Не меняйте, если уже выпущены инвойсы.
           </div>
+        </div>
+      </div>
+
+      {/* Finance policy */}
+      <div className="bg-surface border border-border rounded-lg p-5 space-y-4">
+        <p className="eyebrow text-ink-3 mb-1">Финансовая политика</p>
+
+        <div>
+          <label className="eyebrow block mb-1">Срок оплаты по умолчанию</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={90}
+              className="w-24 border border-border rounded px-3 py-2 text-sm bg-surface text-ink font-mono"
+              value={form.defaultPaymentTermsDays ?? 7}
+              onChange={(e) => set("defaultPaymentTermsDays", parseInt(e.target.value, 10) || 0)}
+            />
+            <span className="text-sm text-ink-2">дн.</span>
+          </div>
+          <p className="text-xs text-ink-3 mt-1">
+            Через сколько дней после возврата ожидается оплата. Применится к новым броням; существующие — через скрипт-бекфил.
+          </p>
         </div>
       </div>
 

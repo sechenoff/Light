@@ -232,6 +232,18 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     isEdit ? (initialBooking?.vehicleTtkEntry ?? false) : false,
   );
 
+  // ── expectedPaymentDate — пользовательское значение (опционально) ──
+  // Пустая строка = использовать default из настроек организации
+  const [expectedPaymentDateLocal, setExpectedPaymentDateLocal] = useState<string>(() => {
+    if (isEdit && initialBooking?.expectedPaymentDate) {
+      const d = new Date(initialBooking.expectedPaymentDate);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      // Date only: YYYY-MM-DD
+      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+    }
+    return "";
+  });
+
   // ── Vehicles fetch (once on mount) ──
   useEffect(() => {
     let cancelled = false;
@@ -632,6 +644,10 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
         comment: finalComment,
         items,
         transport: transportPayload,
+        // Если пользователь оставил поле пустым — не передаём (backend вычислит default)
+        ...(expectedPaymentDateLocal
+          ? { expectedPaymentDate: new Date(`${expectedPaymentDateLocal}T00:00:00+03:00`).toISOString() }
+          : {}),
       };
       const res = await apiFetch<{ booking: { id: string } }>("/api/bookings/draft", { method: "POST", body: JSON.stringify(body) });
       toast.success("Черновик сохранён");
@@ -689,6 +705,10 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
         comment: finalComment,
         items,
         transport: transportPayload,
+        // null = сбросить до auto-default; строка = пользовательский выбор
+        expectedPaymentDate: expectedPaymentDateLocal
+          ? new Date(`${expectedPaymentDateLocal}T00:00:00+03:00`).toISOString()
+          : null,
       };
       await apiFetch(`/api/bookings/${bookingId}`, { method: "PATCH", body: JSON.stringify(body) });
       toast.success("Изменения сохранены");
@@ -794,6 +814,20 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
           />
 
           <CommentCard value={bookingComment} onChange={setBookingComment} />
+
+          {/* Срок оплаты */}
+          <div className="bg-surface border border-border rounded-lg p-4">
+            <label className="eyebrow block mb-1">Срок оплаты</label>
+            <input
+              type="date"
+              className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
+              value={expectedPaymentDateLocal}
+              onChange={(e) => setExpectedPaymentDateLocal(e.target.value)}
+            />
+            <p className="text-xs text-ink-3 mt-1">
+              Оставь пустым для default-значения из настроек организации
+            </p>
+          </div>
         </div>
 
         {/* Right column: Discount, Summary, Transport */}

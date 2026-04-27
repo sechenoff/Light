@@ -8,8 +8,22 @@ import { computeUnitPriceForBookingPeriod } from "./pricing";
 import { getAvailability } from "./availability";
 import { computeTransportPrice } from "./transportCalculator";
 import type { TransportBreakdown } from "./transportCalculator";
+import { toMoscowDateString, fromMoscowDateString } from "../utils/moscowDate";
 
 const BLOCKING_STATUSES = ["CONFIRMED", "ISSUED"] as const;
+
+/**
+ * Вычисляет дату оплаты по умолчанию: endDate + N дней из OrganizationSettings.
+ * Читает настройки из БД. N по умолчанию = 7, если запись отсутствует.
+ */
+async function computeDefaultPaymentDate(endDate: Date): Promise<Date> {
+  const settings = await prisma.organizationSettings.findUnique({ where: { id: "singleton" } });
+  const days = settings?.defaultPaymentTermsDays ?? 7;
+  // Берём московскую дату endDate, прибавляем N дней (как Moscow-midnight UTC)
+  const endMoscowStr = toMoscowDateString(endDate);
+  const endMoscowMidnight = fromMoscowDateString(endMoscowStr);
+  return new Date(endMoscowMidnight.getTime() + days * 24 * 60 * 60 * 1000);
+}
 
 export const CUSTOM_LINE_CATEGORY = "Произвольная позиция";
 
@@ -175,6 +189,12 @@ export async function createBookingDraft(args: {
 }) {
   if (args.items.length === 0) throw new HttpError(400, "At least one equipment item is required.");
 
+  // Если явная дата оплаты не передана — вычисляем из настроек организации
+  const resolvedPaymentDate =
+    args.expectedPaymentDate !== undefined && args.expectedPaymentDate !== null
+      ? args.expectedPaymentDate
+      : await computeDefaultPaymentDate(args.endDate);
+
   const booking = await prisma.booking.create({
     data: {
       clientId: args.clientId,
@@ -184,7 +204,7 @@ export async function createBookingDraft(args: {
       status: "DRAFT",
       comment: args.comment ?? null,
       discountPercent: args.discountPercent != null ? new Decimal(args.discountPercent) : null,
-      expectedPaymentDate: args.expectedPaymentDate ?? null,
+      expectedPaymentDate: resolvedPaymentDate,
       estimateOptionalNote: args.estimateOptionalNote?.trim() || null,
       estimateIncludeOptionalInExport: args.estimateIncludeOptionalInExport ?? false,
       // Transport snapshot
@@ -583,11 +603,20 @@ export async function confirmBooking(bookingId: string) {
     // atomic.
     await tx.estimate.deleteMany({ where: { bookingId } });
 
+    // Если дата оплаты ещё не задана — заполняем из настроек организации
+    let paymentDateUpdate: Date | undefined;
+    if (!booking.expectedPaymentDate) {
+      // computeDefaultPaymentDate читает орг-настройки вне транзакции — допустимо,
+      // так как OrganizationSettings изменяются редко и это observability-значение
+      paymentDateUpdate = await computeDefaultPaymentDate(booking.endDate);
+    }
+
     const updated = await tx.booking.update({
       where: { id: bookingId },
       data: {
         status: "CONFIRMED",
         confirmedAt: new Date(),
+        ...(paymentDateUpdate ? { expectedPaymentDate: paymentDateUpdate } : {}),
         estimate: {
           create: estimateCreate,
         },

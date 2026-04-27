@@ -42,6 +42,7 @@ export type UpdateSettingsInput = Partial<
     | "email"
     | "invoiceNumberPrefix"
     | "migrationCutoffAt"
+    | "defaultPaymentTermsDays"
   >
 >;
 

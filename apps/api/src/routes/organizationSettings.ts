@@ -18,6 +18,7 @@ const updateSchema = z.object({
   email: z.string().email().optional(),
   invoiceNumberPrefix: z.string().min(1).max(10).optional(),
   migrationCutoffAt: z.string().datetime().optional(),
+  defaultPaymentTermsDays: z.number().int().min(0).max(90).optional(),
 });
 
 /**
