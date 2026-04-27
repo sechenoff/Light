@@ -929,12 +929,16 @@ router.post("/finance/debts/:clientId/mark-reminded", superAdminOnly, async (req
 router.get("/finance/debts/:clientId/report.pdf", superAdminOnly, async (req, res, next) => {
   try {
     const { clientId } = req.params;
+    // D6: синхронизируем денормализованные поля перед генерацией отчёта (как и у siblings)
+    await paymentStatusSyncForAllBookings();
     const data = await computeClientDebtReport(clientId);
     const organization = await getSettings();
     const pdfBuffer = await renderClientDebtReportPdf({ ...data, organization });
 
     const dateStr = new Date().toISOString().slice(0, 10);
-    const safeName = data.client.name.replace(/[\x00-\x1f/\\?%*:|"<>]/g, "_").trim();
+    const rawSafe = data.client.name.replace(/[\x00-\x1f/\\?%*:|"<>]/g, "_").trim();
+    // D9: если имя полностью из спецсимволов → fallback на id клиента
+    const safeName = rawSafe.replace(/_+/g, "_").replace(/^_|_$/g, "") || `Клиент_${clientId}`;
     const filename = `Отчёт_${safeName}_${dateStr}.pdf`;
 
     res.setHeader("Content-Type", "application/pdf");

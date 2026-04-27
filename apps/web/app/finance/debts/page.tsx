@@ -571,14 +571,14 @@ function DebtsPageInner() {
           <div className="mb-3 flex items-center gap-2">
             <a
               href={`/api/finance/debts/${clientFilter}/report.pdf`}
-              className="inline-flex items-center gap-1.5 h-[30px] px-3 text-[12px] font-medium border border-border bg-surface text-ink-2 rounded hover:bg-surface-subtle transition-colors"
+              className="inline-flex items-center gap-1.5 h-[30px] min-h-[44px] sm:min-h-0 px-3 text-[12px] font-medium border border-border bg-surface text-ink-2 rounded hover:bg-surface-subtle transition-colors"
               download
             >
               📋 Отчёт по клиенту PDF
             </a>
             <a
               href={`/api/finance/debts/${clientFilter}/export.xlsx`}
-              className="inline-flex items-center gap-1.5 h-[30px] px-3 text-[12px] font-medium border border-border bg-surface text-ink-2 rounded hover:bg-surface-subtle transition-colors"
+              className="inline-flex items-center gap-1.5 h-[30px] min-h-[44px] sm:min-h-0 px-3 text-[12px] font-medium border border-border bg-surface text-ink-2 rounded hover:bg-surface-subtle transition-colors"
               download
             >
               📊 Excel
