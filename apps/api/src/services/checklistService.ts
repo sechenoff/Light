@@ -14,6 +14,7 @@
 import { prisma } from "../prisma";
 import { writeAuditEntry } from "./audit";
 import { recomputeBookingFinance } from "./finance";
+import { HttpError } from "../utils/errors";
 import Decimal from "decimal.js";
 
 type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
@@ -129,6 +130,7 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
       booking: {
         include: {
           items: {
+            orderBy: { createdAt: "asc" },
             include: {
               equipment: {
                 select: {
@@ -152,7 +154,7 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
     },
   });
 
-  if (!session) throw new Error("Сессия не найдена");
+  if (!session) throw new HttpError(404, "Сессия не найдена", "SESSION_NOT_FOUND");
 
   const scannedUnitIds = new Set(session.scans.map((s) => s.equipmentUnitId));
 
@@ -296,7 +298,7 @@ export async function checkUnit(
     where: { id: sessionId },
   });
   if (!session || session.status !== "ACTIVE") {
-    throw new Error("Сессия не активна");
+    throw new HttpError(409, "Сессия не активна", "SESSION_NOT_FOUND");
   }
 
   // Проверяем что юнит принадлежит броне
@@ -304,16 +306,28 @@ export async function checkUnit(
     where: { id: equipmentUnitId },
     include: { equipment: true },
   });
-  if (!unit) throw new Error("Единица оборудования не найдена");
+  if (!unit) throw new HttpError(404, "Единица оборудования не найдена", "UNIT_NOT_FOUND");
 
-  // Проверяем, что есть BookingItem для этой брони
+  // Проверяем, что есть BookingItem для этой брони и конкретный unit зарезервирован
   const bookingItem = await prisma.bookingItem.findFirst({
     where: {
       bookingId: session.bookingId,
       equipmentId: unit.equipmentId,
     },
+    include: { unitReservations: { select: { equipmentUnitId: true } } },
   });
-  if (!bookingItem) throw new Error("Оборудование не входит в эту бронь");
+  if (!bookingItem) throw new HttpError(409, "Оборудование не входит в эту бронь", "UNIT_NOT_IN_BOOKING");
+
+  // I3: Проверяем что конкретный unit зарезервирован в этой броне (для RETURN-операций)
+  // Для ISSUE достаточно проверки оборудования — юниты могут быть заменены
+  if (session.operation === "RETURN") {
+    const isReserved = bookingItem.unitReservations.some(
+      (r) => r.equipmentUnitId === equipmentUnitId,
+    );
+    if (!isReserved) {
+      throw new HttpError(409, "Этот юнит не зарезервирован в этой броне", "UNIT_NOT_RESERVED");
+    }
+  }
 
   // Идемпотентность: если уже отмечено — no-op
   try {
@@ -383,63 +397,60 @@ export async function addExtraItem(
 ): Promise<{ bookingItemId: string }> {
   const session = await prisma.scanSession.findUnique({
     where: { id: sessionId },
-    include: { booking: { select: { id: true, status: true, startDate: true, endDate: true } } },
+    select: { id: true, status: true, bookingId: true },
   });
   if (!session || session.status !== "ACTIVE") {
-    throw new Error("Сессия не активна");
+    throw new HttpError(409, "Сессия не активна", "SESSION_NOT_FOUND");
   }
 
   const equipment = await prisma.equipment.findUnique({
     where: { id: equipmentId },
   });
-  if (!equipment) throw new Error("Оборудование не найдено");
+  if (!equipment) throw new HttpError(404, "Оборудование не найдено", "EQUIPMENT_NOT_FOUND");
 
   const bookingId = session.bookingId;
 
-  // Проверяем существующий BookingItem для этого оборудования
-  const existing = await prisma.bookingItem.findFirst({
-    where: { bookingId, equipmentId },
+  // I1: атомарный upsert с проверкой статуса брони
+  const bookingItemId = await prisma.$transaction(async (tx: TxClient) => {
+    const booking = await tx.booking.findUnique({
+      where: { id: bookingId },
+      select: { status: true },
+    });
+    if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+    if (!["DRAFT", "CONFIRMED", "ISSUED"].includes(booking.status)) {
+      throw new HttpError(
+        409,
+        `Нельзя добавлять позиции в бронь со статусом ${booking.status}`,
+        "BOOKING_LOCKED",
+      );
+    }
+
+    // Atomic upsert через @@unique([bookingId, equipmentId]) — предотвращает race condition
+    const item = await tx.bookingItem.upsert({
+      where: { bookingId_equipmentId: { bookingId, equipmentId } },
+      update: { quantity: { increment: quantity } },
+      create: { bookingId, equipmentId, quantity },
+    });
+
+    return item.id;
   });
 
-  let bookingItemId: string;
+  // Аудит вне транзакции (observability, не бизнес-инвариант)
+  await writeAuditEntry({
+    userId: createdBy,
+    action: "BOOKING_ITEM_ADDED_ON_SITE",
+    entityType: "Booking",
+    entityId: bookingId,
+    before: null,
+    after: { equipmentId, equipmentName: equipment.name, quantity, bookingItemId },
+  }).catch((err: unknown) => {
+    console.warn("[addExtraItem] audit failed:", err);
+  });
 
-  if (existing) {
-    // Увеличиваем quantity существующей позиции
-    const updated = await prisma.bookingItem.update({
-      where: { id: existing.id },
-      data: { quantity: existing.quantity + quantity },
-    });
-    bookingItemId = updated.id;
-  } else {
-    // Создаём новую позицию
-    const item = await prisma.bookingItem.create({
-      data: {
-        bookingId,
-        equipmentId,
-        quantity,
-      },
-    });
-    bookingItemId = item.id;
-  }
-
-  // Пересчитываем финансы
-  try {
-    await recomputeBookingFinance(bookingId);
-  } catch {
-    // Не блокируем основной flow — финансы пересчитаются при следующем редактировании
-  }
-
-  // Аудит
-  try {
-    await writeAuditEntry({
-      userId: createdBy,
-      action: "BOOKING_ITEM_ADDED_ON_SITE",
-      entityType: "Booking",
-      entityId: bookingId,
-      before: null,
-      after: { equipmentId, equipmentName: equipment.name, quantity, bookingItemId },
-    });
-  } catch { /* аудит не должен блокировать */ }
+  // Пересчитываем финансы вне транзакции (легитимно — read-modify-write)
+  await recomputeBookingFinance(bookingId).catch((err: unknown) => {
+    console.error("[addExtraItem] recomputeBookingFinance failed:", err);
+  });
 
   return { bookingItemId };
 }

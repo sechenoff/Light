@@ -12,6 +12,7 @@ import {
   getSessionWithDetails,
   getReconciliationPreview,
   type BrokenUnit,
+  type LostUnit,
 } from "../services/warehouseScan";
 import {
   checkUnit,
@@ -310,8 +311,16 @@ const brokenUnitSchema = z.object({
   urgency: z.enum(["NOT_URGENT", "NORMAL", "URGENT"]),
 });
 
+const lostUnitSchema = z.object({
+  equipmentUnitId: z.string().min(1),
+  reason: z.string().min(5),
+  lostLocation: z.enum(["ON_SITE", "IN_TRANSIT", "AT_CLIENT", "UNKNOWN"]),
+  chargeClient: z.boolean(),
+});
+
 const completeSessionBodySchema = z.object({
   brokenUnits: z.array(brokenUnitSchema).optional(),
+  lostUnits: z.array(lostUnitSchema).optional(),
 }).optional();
 
 /** POST /api/warehouse/sessions/:id/complete — завершить сессию */
@@ -320,8 +329,10 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
     const { id } = req.params;
     const body = completeSessionBodySchema.parse(req.body);
     const brokenUnits = body?.brokenUnits as BrokenUnit[] | undefined;
+    const lostUnits = body?.lostUnits as LostUnit[] | undefined;
     const summary = await completeSession(id, {
       brokenUnits,
+      lostUnits,
       createdBy: req.warehouseWorker?.name,
     });
 
