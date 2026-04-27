@@ -842,7 +842,9 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
               const ddMm = `${d}.${m}.${y}`;
               return (
                 <p className="text-xs text-ink-3 mt-1">
-                  по умолчанию: {ddMm} (срок оплаты + {defaultPaymentTermsDays} дн.)
+                  {defaultPaymentTermsDays === 0
+                    ? `по умолчанию: совпадает с днём сдачи (${ddMm})`
+                    : `по умолчанию: через ${defaultPaymentTermsDays} дн. после сдачи (${ddMm})`}
                 </p>
               );
             })()}
