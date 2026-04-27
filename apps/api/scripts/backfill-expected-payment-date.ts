@@ -16,23 +16,11 @@
 
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
+import { toMoscowDateString, fromMoscowDateString } from "../src/utils/moscowDate";
 
 const isDryRun = !process.argv.includes("--execute");
 
 const prisma = new PrismaClient();
-
-function toMoscowDateString(d: Date): string {
-  return d.toLocaleString("en-CA", {
-    timeZone: "Europe/Moscow",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-}
-
-function fromMoscowDateString(s: string): Date {
-  return new Date(`${s}T00:00:00+03:00`);
-}
 
 async function main() {
   const settings = await prisma.organizationSettings.findUnique({ where: { id: "singleton" } });
@@ -44,7 +32,7 @@ async function main() {
   const bookings = await prisma.booking.findMany({
     where: {
       expectedPaymentDate: null,
-      status: { not: "CANCELLED" },
+      status: { in: ["CONFIRMED", "ISSUED", "RETURNED"] },
     },
     select: { id: true, endDate: true },
   });

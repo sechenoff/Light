@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { apiFetch } from "../../lib/api";
 import { pluralize } from "../../lib/format";
+import { toMoscowDateString, addDays } from "../../lib/moscowDate";
 import { toast } from "../ToastProvider";
 import {
   addHoursToDatetimeLocal,
@@ -236,13 +237,21 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   // Пустая строка = использовать default из настроек организации
   const [expectedPaymentDateLocal, setExpectedPaymentDateLocal] = useState<string>(() => {
     if (isEdit && initialBooking?.expectedPaymentDate) {
-      const d = new Date(initialBooking.expectedPaymentDate);
-      const pad = (n: number) => String(n).padStart(2, "0");
-      // Date only: YYYY-MM-DD
-      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+      // F1: use toMoscowDateString to avoid 1-day backward drift on edit-save cycles
+      return toMoscowDateString(new Date(initialBooking.expectedPaymentDate));
     }
     return "";
   });
+
+  // F3: fetch org settings for dynamic placeholder
+  const [defaultPaymentTermsDays, setDefaultPaymentTermsDays] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ defaultPaymentTermsDays?: number }>("/api/settings/organization")
+      .then((res) => { if (!cancelled) setDefaultPaymentTermsDays(res.defaultPaymentTermsDays ?? 7); })
+      .catch(() => { if (!cancelled) setDefaultPaymentTermsDays(7); });
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Vehicles fetch (once on mount) ──
   useEffect(() => {
@@ -824,9 +833,24 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
               value={expectedPaymentDateLocal}
               onChange={(e) => setExpectedPaymentDateLocal(e.target.value)}
             />
-            <p className="text-xs text-ink-3 mt-1">
-              Оставь пустым для default-значения из настроек организации
-            </p>
+            {/* F3: dynamic placeholder showing computed default date */}
+            {!expectedPaymentDateLocal && returnISO && defaultPaymentTermsDays !== null && (() => {
+              const endDate = new Date(returnISO);
+              const defaultDate = addDays(endDate, defaultPaymentTermsDays);
+              const defaultStr = toMoscowDateString(defaultDate);
+              const [y, m, d] = defaultStr.split("-");
+              const ddMm = `${d}.${m}.${y}`;
+              return (
+                <p className="text-xs text-ink-3 mt-1">
+                  по умолчанию: {ddMm} (срок оплаты + {defaultPaymentTermsDays} дн.)
+                </p>
+              );
+            })()}
+            {(!returnISO || expectedPaymentDateLocal) && (
+              <p className="text-xs text-ink-3 mt-1">
+                Оставь пустым для default-значения из настроек организации
+              </p>
+            )}
           </div>
         </div>
 
