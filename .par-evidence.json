@@ -1,21 +1,24 @@
 {
-  "sprint": "payment-terms-zero",
+  "sprint": "warehouse-no-pin",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "head": "a41d75e",
-  "ts": "2026-04-27T20:57:00Z",
+  "head": "65cfc3c",
+  "ts": "2026-04-27T22:50:00Z",
   "fixes_applied": [
-    "CRITICAL #1: backfill --reset heuristic + audit + --force-all TTY confirmation",
-    "HIGH #2: bookings.ts service fallback ?? 7 → ?? 0",
-    "MEDIUM #3: new update-org-settings-default-zero.ts idempotent script",
-    "LOW #4: BookingForm defensive ?? 0 fallback"
+    "BLOCKER (product): split shell/inner components; loading skeleton; lazy useState init — no PIN flash for SA/WH",
+    "Polish (product): goToLogin branches on hasMainSession — toast + redirect on session expiry instead of loop",
+    "Polish (product+technical): documented workerName dual-namespace convention in CLAUDE.md",
+    "Polish (technical): JSDoc null-on-error contract for verifyToken",
+    "Polish (technical): 2 new tests — invalid PIN + valid SA session = 200 (fallback); both PIN+session = 200 (PIN wins)"
   ],
-  "tests": "886/886 pass",
+  "tests": "892/893 pass (1 pre-existing flaky ECONNRESET in barcode-integration, unrelated)",
   "ts_check": "clean (api+web)",
   "notes": [
-    "Default semantic shift: defaultPaymentTermsDays 7 → 0 (день сдачи = день оплаты).",
-    "Backfill --reset is now safe: requires --previous-default N, skips user-set dates via 1h heuristic, writes BOOKING_UPDATE AuditEntry per row, --force-all blind override gated by TTY YES prompt.",
-    "Initial PAR: product ACCEPTED, technical REQUEST_CHANGES (4 issues). Fix-pass HEAD a41d75e. Re-review technical APPROVE."
+    "User intent: «убери пароль с Выдачи и возвраты» — реализовано через main-session fallback в warehouseAuth middleware.",
+    "SA/WH с активной session: открывают /warehouse/scan → загрузка → сразу шаг 'выдача/возврат', PIN keypad не виден.",
+    "External workers без main session: PIN flow сохранён без изменений.",
+    "TECHNICIAN main session → 401 (роль не имеет warehouse прав).",
+    "Initial PAR: product NEEDS_FIXES (PIN flash blocker), technical APPROVE. Fix-pass HEAD 65cfc3c. Re-review product ACCEPTED."
   ]
 }
