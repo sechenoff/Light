@@ -1,13 +1,12 @@
 {
-  "sprint": "walkthrough-fixes",
+  "sprint": "payment-terms",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "ts": "2026-04-27T15:00:00Z",
+  "ts": "2026-04-27T16:00:00Z",
   "notes": [
-    "17 fixes from QA Playwright walkthrough on 27.04.2026 (4 HIGH + 6 MED + 7 LOW). Spec: docs/qa/walkthrough-2026-04-27.md.",
-    "Standard PAR: technical APPROVE (2 MED + 4 LOW polish), product NEEDS_FIXES (HIGH H3 incomplete: adminUsers create/update lowercase; 5 LOW). 8 PAR fixes applied.",
-    "Final gates: tsc clean api+web; 878 API + 256 web tests all green.",
-    "Notable fixes: H1 calendar shows ALL equipment, H2 createdBy resolves to username, H3 audit actions all UPPERCASE, H4 approval cycles collapse, M1 formatRub smart decimals (no `,00`), M2 forecast pipeline includes PENDING_APPROVAL, L7 «БЕЗ СРОКА» pill when null dueDate."
+    "Booking.expectedPaymentDate теперь работает end-to-end: schema OrganizationSettings.defaultPaymentTermsDays (Int default 7), backend auto-default при createBookingDraft + confirmBooking, UI поле в BookingForm + Settings, backfill script.",
+    "Standard PAR: technical REQUEST_CHANGES (TZ drift на edit + Zod без datetime validator), product NEEDS_FIXES (no dynamic placeholder, no recompute on endDate edit, null inconsistency POST/PATCH). 8 fixes applied.",
+    "Final gates: tsc clean api+web; 886 API + 256 web tests all green."
   ]
 }
