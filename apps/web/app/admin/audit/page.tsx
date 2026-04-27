@@ -160,13 +160,22 @@ export default function AuditPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
             <label className="eyebrow block mb-1">Тип объекта</label>
-            <input
-              type="text"
+            <select
               value={entityType}
               onChange={(e) => setEntityType(e.target.value)}
-              placeholder="Booking, Payment…"
-              className="w-full border border-border rounded px-3 py-1.5 text-sm text-ink bg-surface placeholder-ink-3 focus:outline-none focus:border-accent-bright"
-            />
+              className="w-full border border-border rounded px-3 py-1.5 text-sm text-ink bg-surface focus:outline-none focus:border-accent-bright"
+            >
+              <option value="">Все</option>
+              <option value="Booking">Booking</option>
+              <option value="Payment">Payment</option>
+              <option value="Expense">Expense</option>
+              <option value="Unit">Unit</option>
+              <option value="Client">Client</option>
+              <option value="Repair">Repair</option>
+              <option value="AdminUser">AdminUser</option>
+              <option value="EquipmentUnit">EquipmentUnit</option>
+              <option value="Task">Task</option>
+            </select>
           </div>
           <div>
             <label className="eyebrow block mb-1">User ID</label>

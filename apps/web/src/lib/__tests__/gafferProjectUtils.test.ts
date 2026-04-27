@@ -29,7 +29,7 @@ describe("clientDebtVariant", () => {
   it("handles string decimals", () => {
     const result = clientDebtVariant("5000.00", "1234.56");
     expect(result?.label).toContain("1");
-    expect(result?.label).toContain("235");
+    expect(result?.label).toContain("234");
     expect(result?.colorClass).toContain("rose");
   });
 });

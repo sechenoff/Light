@@ -34,7 +34,7 @@ export function formatRentalDurationDetails(start: Date, end: Date): {
       : shifts % 10 >= 2 && shifts % 10 <= 4 && (shifts % 100 < 10 || shifts % 100 >= 20)
         ? "смены"
         : "смен";
-  const labelShort = `${durationPart} · ${shifts} ${shiftWord} (по 24 ч)`;
+  const labelShort = `${shifts} ${shiftWord} (24 ч)`;
   return { shifts, totalHours, labelShort };
 }
 

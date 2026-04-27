@@ -833,7 +833,12 @@ export default function BookingDetailPage() {
                   <span className="text-ink-3">Клиент:</span> <span className="font-medium">{booking.client.name}</span>
                 </div>
                 <div>
-                  <span className="text-ink-3">Проект:</span> <span className="font-medium">{booking.projectName}</span>
+                  <span className="text-ink-3">Проект:</span>{" "}
+                  {booking.projectName === "Проект" ? (
+                    <span className="font-medium text-ink-3">Без названия</span>
+                  ) : (
+                    <span className="font-medium">{booking.projectName}</span>
+                  )}
                 </div>
                 <div>
                   <span className="text-ink-3">Период:</span>{" "}

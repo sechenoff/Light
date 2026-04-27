@@ -299,7 +299,7 @@ export async function listPayments(args: ListPaymentsArgs) {
 
   const where: Prisma.PaymentWhereInput = { AND: andClauses };
 
-  const [items, total] = await Promise.all([
+  const [rawItems, total] = await Promise.all([
     prisma.payment.findMany({
       where,
       include: {
@@ -317,6 +317,21 @@ export async function listPayments(args: ListPaymentsArgs) {
     }),
     prisma.payment.count({ where }),
   ]);
+
+  // H2: резолвим createdBy (AdminUser.id) → username для отображения «Кто принял»
+  const createdByIds = [...new Set(rawItems.map((p) => p.createdBy).filter((id): id is string => id != null))];
+  const adminUsers = createdByIds.length > 0
+    ? await prisma.adminUser.findMany({
+        where: { id: { in: createdByIds } },
+        select: { id: true, username: true },
+      })
+    : [];
+  const adminUserMap = new Map(adminUsers.map((u) => [u.id, u.username]));
+
+  const items = rawItems.map((p) => ({
+    ...p,
+    createdByName: p.createdBy ? (adminUserMap.get(p.createdBy) ?? null) : null,
+  }));
 
   return { items, total };
 }

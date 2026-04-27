@@ -80,7 +80,7 @@ type AuditItem = {
   action: string;
   createdAt: string;
   after: Record<string, unknown> | null;
-  user?: { username: string } | null;
+  user?: { username: string; role?: string | null } | null;
 };
 
 // --------------------------------------------------------------- helpers ---
@@ -115,6 +115,15 @@ function formatDateRange(start: string, end: string): string {
   const fmt = (s: string) =>
     new Date(s).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
   return `${fmt(start)} — ${fmt(end)}`;
+}
+
+function submitterLabel(role: string | null | undefined): string {
+  switch (role) {
+    case "SUPER_ADMIN": return "отправлено руководителем";
+    case "WAREHOUSE": return "отправлено кладовщиком";
+    case "TECHNICIAN": return "отправлено техником";
+    default: return "отправлено";
+  }
 }
 
 function formatTs(iso: string): string {
@@ -213,6 +222,11 @@ export function ApprovalReviewView({ booking, onReload: _onReload, currentUser: 
     linesByCategory.set(ln.categorySnapshot, list);
   }
 
+  // Derive submitter role from first BOOKING_SUBMITTED audit event
+  const submitterRole = auditItems
+    ? (auditItems.find((it) => it.action === "BOOKING_SUBMITTED")?.user?.role ?? null)
+    : null;
+
   // Transport display
   const hasTransport = Boolean(booking.vehicleId && booking.transportSubtotalRub);
   const transportName = booking.vehicle?.name ?? null;
@@ -247,7 +261,7 @@ export function ApprovalReviewView({ booking, onReload: _onReload, currentUser: 
             <p className="mt-1 text-sm text-ink-2">
               {formatDateRange(booking.startDate, booking.endDate)}
               {" · "}
-              <span className="text-ink-3">отправлено кладовщиком</span>
+              <span className="text-ink-3">{submitterLabel(submitterRole)}</span>
             </p>
           </div>
           <div className="flex gap-2 shrink-0 flex-wrap">
@@ -296,7 +310,11 @@ export function ApprovalReviewView({ booking, onReload: _onReload, currentUser: 
               </div>
               <div>
                 <div className="eyebrow mb-1">Проект</div>
-                <div className="font-medium text-ink">{booking.projectName}</div>
+                {booking.projectName === "Проект" ? (
+                  <div className="font-medium text-ink-3">Без названия</div>
+                ) : (
+                  <div className="font-medium text-ink">{booking.projectName}</div>
+                )}
               </div>
               <div>
                 <div className="eyebrow mb-1">Период</div>

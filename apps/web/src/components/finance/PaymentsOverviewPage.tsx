@@ -32,6 +32,8 @@ interface PaymentItem {
   note: string | null;
   voidedAt: string | null;
   createdBy: string | null;
+  /** H2: разрешённое имя пользователя из AdminUser (вместо cuid) */
+  createdByName?: string | null;
   booking: {
     id: string;
     projectName: string;
@@ -549,8 +551,8 @@ export function PaymentsOverviewPage() {
                               )}
                             </td>
                             <td className="px-3 py-3 text-ink-2">
-                              {p.createdBy ? (
-                                <span className="text-[12px]">{p.createdBy}</span>
+                              {(p.createdByName ?? p.createdBy) ? (
+                                <span className="text-[12px]">{p.createdByName ?? p.createdBy}</span>
                               ) : (
                                 <span className="text-ink-3">—</span>
                               )}
@@ -622,7 +624,7 @@ export function PaymentsOverviewPage() {
                         </div>
                         <div className="text-[11px] text-ink-3 mt-1">
                           {METHOD_LABELS[p.method]} · {date}, {time}
-                          {p.createdBy && ` · ${p.createdBy}`}
+                          {(p.createdByName ?? p.createdBy) && ` · ${p.createdByName ?? p.createdBy}`}
                         </div>
                       </div>
                     );

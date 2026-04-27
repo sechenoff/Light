@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../../src/lib/api";
 import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
-import { formatMoneyRub, formatWaitingTime } from "../../src/lib/format";
+import { formatRub, formatWaitingTime } from "../../src/lib/format";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 
 type BookingItemMini = {
@@ -269,7 +269,13 @@ function BookingHistoryPageInner() {
                     {formatBookingPeriod(r.startDate, r.endDate)}
                   </td>
                   <td className="px-3 py-2 text-ink-2">{r.client.name}</td>
-                  <td className="px-3 py-2 text-ink-2">{r.projectName}</td>
+                  <td className="px-3 py-2">
+                    {r.projectName === "Проект" ? (
+                      <span className="text-ink-3">Без названия</span>
+                    ) : (
+                      <span className="text-ink-2">{r.projectName}</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-ink">{r.displayName}</td>
                   <td className="px-3 py-2">
                     <StatusPill
@@ -305,7 +311,7 @@ function BookingHistoryPageInner() {
                       label={paymentStatusText(r.paymentStatus)}
                     />
                   </td>
-                  <td className="px-3 py-2 text-right mono-num text-ink">{formatMoneyRub(r.amountOutstanding)}</td>
+                  <td className="px-3 py-2 text-right mono-num text-ink">{formatRub(r.amountOutstanding)}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       <Link className="text-xs text-accent-bright hover:text-accent font-medium" href={`/bookings/${r.id}`}>

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 import { apiFetch } from "../../src/lib/api";
-import { formatRub } from "../../src/lib/format";
+import { formatRub, pluralize } from "../../src/lib/format";
 import { FinanceTabNav } from "../../src/components/finance/FinanceTabNav";
 import { ForecastWidget } from "../../src/components/finance/ForecastWidget";
 import { derivePeriodRange, PERIOD_LABELS, PERIOD_OPTIONS, type PeriodKey } from "../../src/lib/periodUtils";
@@ -65,14 +65,16 @@ interface DebtsResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function debtorStatusVariant(overdueDays: number | null): "alert" | "warn" | "info" {
+function debtorStatusVariant(overdueDays: number | null): "alert" | "warn" | "info" | "view" {
   if (overdueDays !== null && overdueDays > 7) return "alert";
   if (overdueDays !== null && overdueDays > 0) return "warn";
+  if (overdueDays === null) return "view";
   return "info";
 }
 
 function debtorStatusLabel(overdueDays: number | null): string {
   if (overdueDays !== null && overdueDays > 0) return "Просрочен";
+  if (overdueDays === null) return "Без срока";
   return "Выставлен";
 }
 
@@ -270,7 +272,7 @@ function FinancePageInner() {
           <KpiCard
             eyebrow="Задолженность"
             value={formatRub(outstanding)}
-            delta={`${overdueCount} клиент${overdueCount === 1 ? "" : "а"} просрочены`}
+            delta={`${overdueCount} ${pluralize(overdueCount, "клиент просрочен", "клиента просрочены", "клиентов просрочены")}`}
             variant="alert"
             href="/finance/debts"
             sparkPoints="0,16 12,17 24,15 36,18 48,16 60,19 72,17 84,21 96,19 108,22 120,20"
@@ -290,7 +292,7 @@ function FinancePageInner() {
             <span className="text-amber">⚡ Сегодня сделать:</span>
             <span className="text-ink">
               {overdueCount > 0 && (
-                <><Link href="/finance/invoices?status=OVERDUE" className="text-amber font-semibold hover:underline">{overdueCount} {overdueCount === 1 ? "счёт просрочен" : "счёта просрочены"} ≥ 7 дней</Link></>
+                <><Link href="/finance/invoices?status=OVERDUE" className="text-amber font-semibold hover:underline">{overdueCount} {pluralize(overdueCount, "счёт просрочен", "счёта просрочены", "счётов просрочено")} ≥ 7 дней</Link></>
               )}
             </span>
             <Link href="/finance/invoices?status=OVERDUE" className="ml-auto px-3 py-1 text-[12px] font-medium border border-amber-border rounded-lg text-amber hover:bg-amber-border/20 whitespace-nowrap">

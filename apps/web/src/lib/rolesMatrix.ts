@@ -102,7 +102,7 @@ export const MATRIX_SECTIONS: MatrixSection[] = [
         capability: "Брони",
         hint: "список, календарь, аналитика",
         super:      { level: "full", label: "полный" },
-        warehouse:  { level: "edit", label: "работает" },
+        warehouse:  { level: "edit", label: "редактирует" },
         technician: { level: "none", label: "нет" },
       },
       {
@@ -117,7 +117,7 @@ export const MATRIX_SECTIONS: MatrixSection[] = [
         hint: "очередь ремонта, история",
         super:      { level: "view",    label: "читает" },
         warehouse:  { level: "limited", label: "создаёт" },
-        technician: { level: "full",    label: "работает" },
+        technician: { level: "full",    label: "полный" },
       },
       {
         capability: "Клиенты",
