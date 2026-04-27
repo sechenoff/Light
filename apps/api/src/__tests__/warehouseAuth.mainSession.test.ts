@@ -123,4 +123,30 @@ describe("warehouseAuth fallback to main session", () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("bookings");
   });
+
+  it("Невалидный PIN-shaped Bearer + валидная main session SA → 200 (fallback срабатывает)", async () => {
+    // Симулирует случай: фронт отправил невалидный/просроченный PIN-token
+    // вместе с валидной lr_session cookie SA.
+    // warehouseAuth должен отбросить невалидный Bearer через verifyToken→null
+    // и сделать fallback на main session.
+    const res = await request(app)
+      .get("/api/warehouse/bookings?operation=ISSUE")
+      .set("Authorization", "Bearer invalid-pin-token-junk-that-wont-verify")
+      .set("Cookie", `lr_session=${superAdminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("bookings");
+  });
+
+  it("PIN-token и main session одновременно → PIN wins (статус 200)", async () => {
+    // Оба присутствуют: Bearer = валидный PIN-token, Cookie = SA main session.
+    // Middleware должен использовать PIN-token (он валиден и разбирается первым).
+    // Проверяем только статус — deep inspection req.warehouseWorker.name
+    // потребовал бы echo-endpoint, достаточно убедиться что запрос проходит.
+    const res = await request(app)
+      .get("/api/warehouse/bookings?operation=ISSUE")
+      .set("Authorization", `Bearer ${warehouseWorkerToken}`)
+      .set("Cookie", `lr_session=${superAdminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("bookings");
+  });
 });

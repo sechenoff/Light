@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { apiFetch } from "../../../src/lib/api";
 import { pluralRu } from "../../../src/lib/pluralRu";
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 import { useCurrentUser } from "../../../src/lib/auth";
+import { toast } from "../../../src/components/ToastProvider";
 
 const Html5QrcodePlugin = dynamic<{ onScan: (text: string) => void }>(
   () => import("./Html5QrcodePlugin"),
@@ -1000,11 +1002,15 @@ function SummaryStep({
 
 type Step = "login" | "operation" | "booking" | "scan" | "summary";
 
-export default function WarehouseScanPage() {
-  const { user } = useCurrentUser();
-  const hasMainSession = user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE";
+// Inner component mounts only after useCurrentUser loading resolves,
+// so useState lazy init runs with the correct hasMainSession value —
+// eliminating the flash of LoginStep for SA/WH users.
+function WarehouseScanInner({ hasMainSession }: { hasMainSession: boolean }) {
+  const router = useRouter();
 
-  const [step, setStep] = useState<Step>("login");
+  // Lazy init: step computed once at mount with already-known hasMainSession.
+  // No useEffect needed — no flash of LoginStep for authenticated users.
+  const [step, setStep] = useState<Step>(() => (hasMainSession ? "operation" : "login"));
   const [operation, setOperation] = useState<Operation>("ISSUE");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [completionToast, setCompletionToast] = useState<string | null>(null);
@@ -1012,23 +1018,17 @@ export default function WarehouseScanPage() {
   // B6: payment modal after issue/return (T2 third call-site)
   const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
 
-  // Когда main session загрузилась — пропустить LoginStep
-  useEffect(() => {
-    if (hasMainSession && step === "login") {
-      setStep("operation");
-    }
-  }, [hasMainSession, step]);
-
   const goToLogin = useCallback(() => {
     sessionStorage.removeItem("warehouse_token");
-    // Если у пользователя есть main session — не возвращать на PIN,
-    // а оставаться на operation (PIN уже не нужен)
     if (hasMainSession) {
-      setStep("operation");
+      // Main session expired — show error and redirect to login with return path.
+      // Next API call would return 401; routing back to /login avoids a silent loop.
+      toast.error("Сессия истекла, войдите заново");
+      router.push(`/login?from=${encodeURIComponent("/warehouse/scan")}`);
     } else {
       setStep("login");
     }
-  }, [hasMainSession]);
+  }, [hasMainSession, router]);
 
   function handleLoginSuccess() {
     setStep("operation");
@@ -1137,4 +1137,25 @@ export default function WarehouseScanPage() {
       />
     </>
   );
+}
+
+// ── Page shell — gates on auth loading to prevent PIN flash ──────────────────
+
+export default function WarehouseScanPage() {
+  const { user, loading } = useCurrentUser();
+
+  // Show neutral skeleton while /api/auth/me is in flight.
+  // This prevents the PIN keypad from briefly appearing for SA/WH users.
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-surface flex items-center justify-center">
+        <div className="text-ink-3 text-sm">Загрузка…</div>
+      </div>
+    );
+  }
+
+  const hasMainSession =
+    user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE";
+
+  return <WarehouseScanInner hasMainSession={hasMainSession} />;
 }

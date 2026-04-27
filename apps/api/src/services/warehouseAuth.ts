@@ -33,6 +33,13 @@ export function generateToken(name: string): string {
   return `${payloadB64}:${hmac}`;
 }
 
+/**
+ * Возвращает payload PIN-token'а или null при любой ошибке валидации.
+ *
+ * IMPORTANT: контракт — null-on-error. Middleware warehouseAuth зависит
+ * от этого для fallback на main session при невалидном Bearer-формате.
+ * НЕ throw'ить исключения — возвращай null если что-то не так.
+ */
 export function verifyToken(token: string): { name: string } | null {
   try {
     const colonIdx = token.lastIndexOf(":");
