@@ -113,12 +113,16 @@ function startDateColor(dateStr: string | null, daysOverdue: number | null): str
 
 // ── Payment status → pill ──────────────────────────────────────────────────────
 
-function statusPill(paymentStatus: string, daysOverdue: number | null): { label: string; cls: string } {
+function statusPill(paymentStatus: string, daysOverdue: number | null, expectedPaymentDate: string | null = null): { label: string; cls: string } {
   if (daysOverdue !== null && daysOverdue > 0) {
     return {
       label: `Просрочено ${daysOverdue} ${pluralize(daysOverdue, "дн", "дн", "дн")}`,
       cls: "bg-rose-soft text-rose border-rose-border",
     };
+  }
+  // No due date set — show neutral "Без срока"
+  if (daysOverdue === null && !expectedPaymentDate && paymentStatus === "NOT_PAID") {
+    return { label: "Без срока", cls: "bg-slate-soft text-slate border-slate-border" };
   }
   switch (paymentStatus) {
     case "PARTIALLY_PAID": return { label: "Частично", cls: "bg-amber-soft text-amber border-amber-border" };
@@ -701,7 +705,7 @@ function DebtsPageInner() {
                   {sortedRows.map((row) => {
                     const dateInfo = formatStartDate(row.startDate);
                     const dateColor = startDateColor(row.startDate, row.daysOverdue);
-                    const pill = statusPill(row.paymentStatus, row.daysOverdue);
+                    const pill = statusPill(row.paymentStatus, row.daysOverdue, row.expectedPaymentDate);
 
                     return (
                       <tr
@@ -782,7 +786,7 @@ function DebtsPageInner() {
               {sortedRows.map((row) => {
                 const dateInfo = formatStartDate(row.startDate);
                 const dateColor = startDateColor(row.startDate, row.daysOverdue);
-                const pill = statusPill(row.paymentStatus, row.daysOverdue);
+                const pill = statusPill(row.paymentStatus, row.daysOverdue, row.expectedPaymentDate);
                 return (
                   <div key={row.bookingId} className="bg-surface border border-border rounded-lg p-3.5">
                     <div className="flex items-center justify-between mb-2">

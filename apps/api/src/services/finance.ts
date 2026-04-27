@@ -1050,19 +1050,22 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
     select: { dueDate: true, total: true, paidAmount: true },
   });
 
-  // Fetch CONFIRMED/ISSUED/RETURNED bookings without any invoice, startDate in horizon.
+  // Fetch CONFIRMED/ISSUED/RETURNED/PENDING_APPROVAL bookings without any invoice, startDate in horizon.
   // "without invoice" = no related Invoice records.
   // T4: Exclude legacyFinance bookings — they have outstanding from pre-finance era
   // and should not appear in the forward-looking forecast.
+  // M2: также включаем PENDING_APPROVAL (реальный pipeline), и убираем ограничение на amountOutstanding
+  //     т.к. брони без инвойсов могут ещё не иметь финансового состояния.
   const pipelineBookings = await prisma.booking.findMany({
     where: {
-      status: { in: ["CONFIRMED", "ISSUED", "RETURNED"] },
+      status: { in: ["CONFIRMED", "ISSUED", "RETURNED", "PENDING_APPROVAL"] },
       startDate: { gte: horizonStart, lte: horizonEnd },
-      amountOutstanding: { gt: 0 },
-      invoices: { none: {} },
       legacyFinance: false,
+      OR: [
+        { invoices: { none: {} } },
+      ],
     },
-    select: { startDate: true, amountOutstanding: true },
+    select: { startDate: true, amountOutstanding: true, finalAmount: true, invoices: { select: { id: true } } },
   });
 
   // Helper: which month slot does a date fall in?
@@ -1102,10 +1105,15 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
   }
 
   for (const b of pipelineBookings) {
+    // M2: пропускаем брони с инвойсами (они уже учтены выше через confirmedInvoices/potentialInvoices)
+    if (b.invoices.length > 0) continue;
     const label = monthSlotLabel(b.startDate);
     if (!label) continue;
+    // M2: используем amountOutstanding если > 0, иначе finalAmount (бронь без платежей)
     const outstanding = new Decimal(b.amountOutstanding.toString());
-    slotData.get(label)!.bookingsPipeline = slotData.get(label)!.bookingsPipeline.add(outstanding);
+    const amount = outstanding.gt(0) ? outstanding : new Decimal(b.finalAmount.toString());
+    if (amount.lte(0)) continue;
+    slotData.get(label)!.bookingsPipeline = slotData.get(label)!.bookingsPipeline.add(amount);
   }
 
   // Build output months array in order

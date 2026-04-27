@@ -12,16 +12,21 @@ export function formatMoneyRub(value: number | string | null | undefined | unkno
 }
 
 /**
- * Форматирует сумму в рублях: «1 234 567 ₽» (без копеек, локаль ru-RU).
+ * Форматирует сумму в рублях (локаль ru-RU).
+ * Целые суммы: «1 234 567 ₽» (без копеек).
+ * Дробные суммы: «1 234 567,50 ₽» (до 2 знаков).
  */
 export function formatRub(value: string | number | null | undefined): string {
   if (value == null) return "0 ₽";
   const n = typeof value === "number" ? value : Number(String(value).replace(/\s/g, "").replace(",", "."));
   if (!Number.isFinite(n)) return "0 ₽";
+  // M1: показываем копейки только если сумма не целая
+  const isInteger = Math.round(n * 100) === Math.round(n) * 100;
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
     currency: "RUB",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: isInteger ? 0 : 2,
+    maximumFractionDigits: 2,
   }).format(n);
 }
 

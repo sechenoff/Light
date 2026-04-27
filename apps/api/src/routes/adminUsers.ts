@@ -172,7 +172,7 @@ router.delete("/:id", async (req, res, next) => {
         await writeAuditEntry({
           tx,
           userId: actorId,
-          action: "delete",
+          action: "ADMIN_USER_DELETE",
           entityType: "AdminUser",
           entityId: id,
           before,

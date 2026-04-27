@@ -52,29 +52,46 @@ router.get("/", async (req, res, next) => {
       ? ["DRAFT", ...BLOCKING_STATUSES]
       : BLOCKING_STATUSES;
 
-    const bookings = await prisma.booking.findMany({
-      where: {
-        status: { in: statuses },
-        startDate: { lte: end },
-        endDate: { gte: start },
-      },
-      include: {
-        client: true,
-        items: {
-          include: {
-            equipment: {
-              select: {
-                id: true,
-                name: true,
-                category: true,
-                totalQuantity: true,
-                stockTrackingMode: true,
+    // H1: Загружаем ВСЁ оборудование как ресурсы (не только то, у которого есть брони).
+    // Фильтрация по категории и поиску происходит после получения данных.
+    const [allEquipment, bookings] = await Promise.all([
+      prisma.equipment.findMany({
+        where: {
+          ...(q.category ? { category: q.category } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          category: true,
+          totalQuantity: true,
+          stockTrackingMode: true,
+        },
+        orderBy: [{ category: "asc" }, { name: "asc" }],
+      }),
+      prisma.booking.findMany({
+        where: {
+          status: { in: statuses },
+          startDate: { lte: end },
+          endDate: { gte: start },
+        },
+        include: {
+          client: true,
+          items: {
+            include: {
+              equipment: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                  totalQuantity: true,
+                  stockTrackingMode: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      }),
+    ]);
 
     const searchLower = q.search?.trim().toLocaleLowerCase("ru-RU") ?? "";
 
@@ -92,11 +109,23 @@ router.get("/", async (req, res, next) => {
       return true;
     });
 
-    // Собираем уникальные ресурсы из айтемов
+    // Инициализируем resourcesMap из всего оборудования
     const resourcesMap = new Map<
       string,
       { id: string; name: string; category: string; totalQuantity: number; trackingMode: string }
     >();
+
+    // Применяем серверный поиск по названию оборудования (если задан — дополнительная фильтрация)
+    for (const eq of allEquipment) {
+      if (searchLower && !eq.name.toLocaleLowerCase("ru-RU").includes(searchLower)) continue;
+      resourcesMap.set(eq.id, {
+        id: eq.id,
+        name: eq.name,
+        category: eq.category,
+        totalQuantity: eq.totalQuantity,
+        trackingMode: eq.stockTrackingMode,
+      });
+    }
 
     const events: Array<{
       id: string;
@@ -118,6 +147,7 @@ router.get("/", async (req, res, next) => {
         // Фильтрация по категории на уровне айтема
         if (q.category && item.equipment.category !== q.category) continue;
 
+        // Добавляем оборудование из броней в resourcesMap (если ещё не добавлено)
         const eq = item.equipment;
         if (!resourcesMap.has(eq.id)) {
           resourcesMap.set(eq.id, {

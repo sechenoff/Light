@@ -6,7 +6,7 @@ import Link from "next/link";
 import { apiFetch } from "../../src/lib/api";
 import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
-import { formatMoneyRub } from "../../src/lib/format";
+import { formatRub } from "../../src/lib/format";
 
 const UNIT_STATUS_LABELS: Record<string, string> = {
   AVAILABLE: "на складе",
@@ -391,7 +391,7 @@ export default function EquipmentPage() {
                             r.totalQuantity
                           )}
                         </td>
-                        <td className="px-3 py-2 font-medium text-right mono-num">{formatMoneyRub(r.rentalRatePerShift)}</td>
+                        <td className="px-3 py-2 font-medium text-right mono-num">{formatRub(r.rentalRatePerShift)}</td>
                         <td className="px-3 py-2 text-ink-2">{r.category}</td>
                         <td className="px-3 py-2 text-right mono-num text-ink-2">
                           {avail ? avail.occupiedQuantity : <span className="text-ink-3">—</span>}

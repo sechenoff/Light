@@ -469,7 +469,7 @@ function ExpensesPageInner() {
                         style={{ background: GROUP_META[g.key].color }}
                       />
                       {GROUP_META[g.key].label}{" "}
-                      <span className="mono-num font-medium text-ink">{Math.round(g.total / 1000)}k</span>
+                      <span className="mono-num font-medium text-ink">{formatRub(g.total)}</span>
                     </span>
                   ))
                 )}

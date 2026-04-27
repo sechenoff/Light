@@ -197,11 +197,12 @@ export default function AdminUsersPage() {
 
   const filtered = (users ?? []).filter(
     (u) =>
-      search.trim() === "" ||
-      u.username.toLowerCase().includes(search.toLowerCase())
+      u.id !== "_system_" &&
+      (search.trim() === "" ||
+        u.username.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const roleCounts = (users ?? []).reduce(
+  const roleCounts = (users ?? []).filter((u) => u.id !== "_system_").reduce(
     (acc, u) => {
       acc[u.role] = (acc[u.role] ?? 0) + 1;
       return acc;

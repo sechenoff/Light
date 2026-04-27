@@ -138,7 +138,7 @@ export function SummaryPanel({
           <span className="text-ink-2">Оборудование</span>
           <span className="mono-num text-ink">{formatMoneyRub(equipSubtotal)} ₽</span>
         </div>
-        {discPct > 0 && (
+        {discPct > 0 && discount > 0 && (
           <>
             <div className="flex justify-between">
               <span className="text-ink-2">Скидка {discPct}%</span>

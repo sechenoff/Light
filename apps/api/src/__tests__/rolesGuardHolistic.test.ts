@@ -316,7 +316,7 @@ describe("H4: аудит DELETE /api/bookings/:id", () => {
     expect(auditsAfter).toBe(auditsBefore + 1);
 
     const entry = await prisma.auditEntry.findFirst({
-      where: { entityId: booking.id, action: "delete" },
+      where: { entityId: booking.id, action: "BOOKING_DELETE" },
     });
     expect(entry).not.toBeNull();
     expect(entry!.entityType).toBe("Booking");
@@ -368,7 +368,7 @@ describe("H4: аудит /api/admin-users CRUD", () => {
     expect(JSON.parse(entry!.after)).toMatchObject({ role: "TECHNICIAN" });
   });
 
-  it("DELETE /api/admin-users/:id создаёт AuditEntry с action=delete", async () => {
+  it("DELETE /api/admin-users/:id создаёт AuditEntry с action=ADMIN_USER_DELETE", async () => {
     const createRes = await request(app)
       .post("/api/admin-users")
       .set(SA())
@@ -381,7 +381,7 @@ describe("H4: аудит /api/admin-users CRUD", () => {
     expect(res.status).toBe(200);
 
     const entry = await prisma.auditEntry.findFirst({
-      where: { entityId: userId, action: "delete", entityType: "AdminUser" },
+      where: { entityId: userId, action: "ADMIN_USER_DELETE", entityType: "AdminUser" },
     });
     expect(entry).not.toBeNull();
     expect(entry!.after).toBeNull();

@@ -590,7 +590,7 @@ router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
       await writeAuditEntry({
         tx,
         userId,
-        action: "delete",
+        action: "BOOKING_DELETE",
         entityType: "Booking",
         entityId: id,
         before: diffFields(existing as Record<string, unknown>),
