@@ -549,7 +549,8 @@ export async function computeDebts(
       client: {
         select: { id: true, name: true, phone: true, email: true, lastReminderAt: true },
       },
-      _count: { select: { payments: true } },
+      // D2: count only active INCOME payments (exclude voided + refunds)
+      _count: { select: { payments: { where: { voidedAt: null, direction: "INCOME" } } } },
     },
     orderBy: { expectedPaymentDate: "asc" },
   });

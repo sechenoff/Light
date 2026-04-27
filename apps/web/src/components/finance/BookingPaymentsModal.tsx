@@ -57,6 +57,8 @@ export function BookingPaymentsModal({ open, onClose, bookingId, bookingContext,
   const [loading, setLoading] = useState(false);
   const [voidPaymentId, setVoidPaymentId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // D8: track live outstanding, refreshed after each void
+  const [liveOutstanding, setLiveOutstanding] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -66,6 +68,16 @@ export function BookingPaymentsModal({ open, onClose, bookingId, bookingContext,
       .then((d) => { if (!cancelled) setData(d); })
       .catch(() => { if (!cancelled) toast.error("Не удалось загрузить платежи"); })
       .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, bookingId, reloadKey]);
+
+  // D8: fetch fresh amountOutstanding after each void so footer stays accurate
+  useEffect(() => {
+    if (!open || reloadKey === 0) return;
+    let cancelled = false;
+    apiFetch<{ amountOutstanding: string }>(`/api/bookings/${encodeURIComponent(bookingId)}`)
+      .then((b) => { if (!cancelled) setLiveOutstanding(Number(b.amountOutstanding)); })
+      .catch(() => { /* non-critical — fall back to prop */ });
     return () => { cancelled = true; };
   }, [open, bookingId, reloadKey]);
 
@@ -91,7 +103,9 @@ export function BookingPaymentsModal({ open, onClose, bookingId, bookingContext,
   const totalReceived = items
     .filter((p) => !p.voidedAt)
     .reduce((acc, p) => acc + Number(p.amount), 0);
-  const outstanding = Number(bookingContext.amountOutstanding);
+  // D8: use live outstanding from a separate booking fetch, not the stale prop.
+  // liveOutstanding is refreshed after each void via reloadKey.
+  const outstanding = liveOutstanding ?? Number(bookingContext.amountOutstanding);
 
   return (
     <>

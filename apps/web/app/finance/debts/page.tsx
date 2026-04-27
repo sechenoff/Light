@@ -7,6 +7,7 @@ import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { apiFetch } from "../../../src/lib/api";
 import { formatRub, pluralize } from "../../../src/lib/format";
+import { toMoscowDateString } from "../../../src/lib/moscowDate";
 import { toast } from "../../../src/components/ToastProvider";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { LegacyBookingImportModal } from "../../../src/components/finance/LegacyBookingImportModal";
@@ -101,11 +102,13 @@ function formatStartDate(dateStr: string | null): { dayMon: string; year: string
 function startDateColor(dateStr: string | null, daysOverdue: number | null): string {
   if (daysOverdue !== null && daysOverdue > 0) return "text-rose";
   if (!dateStr) return "text-ink-3";
-  const today = new Date();
-  const d = new Date(dateStr);
-  const diff = Math.floor((d.getTime() - today.getTime()) / 86400000);
-  if (diff >= 0) return "text-accent"; // future / today
-  return "text-ink-3";
+  // D5: compare using Moscow TZ date strings for TZ-stability
+  // D6: today = amber (call-to-action urgency), future = accent (blue), past = ink-3
+  const todayMsk = toMoscowDateString(new Date());
+  const dateMsk = toMoscowDateString(new Date(dateStr));
+  if (dateMsk === todayMsk) return "text-amber"; // today
+  if (dateMsk > todayMsk) return "text-accent"; // future
+  return "text-ink-3"; // past
 }
 
 // ── Payment status → pill ──────────────────────────────────────────────────────
@@ -244,7 +247,8 @@ function DebtsPageInner() {
   const ALLOWED_SORTS: SortField[] = ["startDate", "name", "amount", "status"];
   const rawSort = searchParams.get("sort");
   const initSort: SortField = ALLOWED_SORTS.includes(rawSort as SortField) ? (rawSort as SortField) : "startDate";
-  const initOrder = (searchParams.get("order") as SortOrder | null) ?? "desc";
+  const rawOrder = searchParams.get("order");
+  const initOrder: SortOrder = rawOrder === "asc" || rawOrder === "desc" ? rawOrder : "desc";
   // F4: client filter URL persistence
   const initClient = searchParams.get("client") ?? "";
 
@@ -283,14 +287,29 @@ function DebtsPageInner() {
     return () => { cancelled = true; };
   }, []);
 
+  // D7: track in-flight request to abort previous on new call
+  const loadAbortRef = useRef<AbortController | null>(null);
+
   const loadDebts = useCallback(() => {
+    // Abort any prior in-flight fetch
+    if (loadAbortRef.current) loadAbortRef.current.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
     let cancelled = false;
     setFetching(true);
-    apiFetch<DebtsResponse>("/api/finance/debts")
+    apiFetch<DebtsResponse>("/api/finance/debts", { signal: controller.signal })
       .then((d) => { if (!cancelled) setData(d); })
-      .catch(() => { if (!cancelled) toast.error("Ошибка загрузки долгов"); })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        // AbortError is expected on superseded requests — suppress toast
+        if (e instanceof Error && e.name === "AbortError") return;
+        toast.error("Ошибка загрузки долгов");
+      })
       .finally(() => { if (!cancelled) setFetching(false); });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -570,6 +589,31 @@ function DebtsPageInner() {
           />
         </div>
 
+        {/* D3: Mobile sort selector — visible only on mobile where column headers are hidden */}
+        <div className="md:hidden mb-3">
+          <select
+            value={`${sort}:${order}`}
+            onChange={(e) => {
+              const [f, o] = e.target.value.split(":") as [SortField, SortOrder];
+              setSort(f);
+              setOrder(o);
+              const params = new URLSearchParams(searchParams.toString());
+              params.set("sort", f);
+              params.set("order", o);
+              router.replace(`?${params.toString()}`, { scroll: false });
+            }}
+            className="w-full border border-border rounded px-3 py-2 text-[13px] bg-surface text-ink-2"
+            aria-label="Сортировка"
+          >
+            <option value="startDate:desc">По дате (свежие)</option>
+            <option value="startDate:asc">По дате (старые)</option>
+            <option value="name:asc">По имени (А-Я)</option>
+            <option value="amount:desc">По сумме (большие)</option>
+            <option value="amount:asc">По сумме (малые)</option>
+            <option value="status:desc">По статусу (горящие)</option>
+          </select>
+        </div>
+
         {/* ── Desktop table ── */}
         {sortedRows.length === 0 ? (
           <div className="bg-surface border border-border rounded-lg px-4 py-14 text-center">
@@ -656,12 +700,12 @@ function DebtsPageInner() {
                           <div className="mono-num font-semibold text-[14px] text-rose">
                             {formatRub(row.amountOutstanding)}
                           </div>
-                          {row.paymentStatus === "PARTIALLY_PAID" && (
+                          {/* D1: show «получено» on ALL non-PAID rows */}
+                          {Number(row.amountPaid) > 0 ? (
                             <div className="text-[11px] text-ink-3">
                               получено: {formatRub(Number(row.amountPaid))} из {formatRub(Number(row.finalAmount))}
                             </div>
-                          )}
-                          {row.paymentStatus === "NOT_PAID" && Number(row.amountPaid) === 0 && (
+                          ) : (
                             <div className="text-[11px] text-ink-3">получено: 0 ₽</div>
                           )}
                         </td>
@@ -724,17 +768,20 @@ function DebtsPageInner() {
                     <div className="text-[12px] text-ink-2 mb-2">{row.projectName}</div>
                     <div className="flex items-end justify-between mb-3">
                       <span className="mono-num font-semibold text-[18px] text-rose">{formatRub(row.amountOutstanding)}</span>
-                      {row.paymentStatus === "PARTIALLY_PAID" && (
+                      {/* D1: show «получено» on ALL non-PAID rows in mobile card */}
+                      {Number(row.amountPaid) > 0 ? (
                         <span className="text-[11px] text-ink-3">
                           получено: {formatRub(Number(row.amountPaid))} из {formatRub(Number(row.finalAmount))}
                         </span>
+                      ) : (
+                        <span className="text-[11px] text-ink-3">получено: 0 ₽</span>
                       )}
                     </div>
-                    {/* Mobile action grid */}
+                    {/* D4: 3-button layout — row 1: full-width CTA, row 2: ✏️ + ⋯ at ≥44px */}
                     <div className="grid grid-cols-2 gap-1.5 mb-1.5">
                       <button
                         onClick={() => openPayment(row)}
-                        className="h-[38px] flex items-center justify-center gap-1 bg-accent text-white border border-accent rounded text-[13px] font-medium hover:bg-accent-bright col-span-2"
+                        className="h-11 flex items-center justify-center gap-1 bg-accent text-white border border-accent rounded text-[13px] font-medium hover:bg-accent-bright col-span-2"
                       >
                         ₽ Оплатить
                       </button>
@@ -742,7 +789,7 @@ function DebtsPageInner() {
                     <div className="grid grid-cols-2 gap-1.5">
                       <a
                         href={`/bookings/${row.bookingId}`}
-                        className="h-[38px] flex items-center justify-center gap-1 border border-border bg-surface rounded text-[12px] text-ink-2 hover:bg-surface-subtle"
+                        className="h-11 flex items-center justify-center gap-1 border border-border bg-surface rounded text-[12px] text-ink-2 hover:bg-surface-subtle"
                       >
                         ✏️ Правка
                       </a>
