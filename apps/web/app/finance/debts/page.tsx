@@ -7,6 +7,7 @@ import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { apiFetch } from "../../../src/lib/api";
 import { formatRub, pluralize } from "../../../src/lib/format";
+import { toast } from "../../../src/components/ToastProvider";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { LegacyBookingImportModal } from "../../../src/components/finance/LegacyBookingImportModal";
 import { ContactChips } from "../../../src/components/finance/ContactChips";
@@ -86,7 +87,7 @@ function formatPayDate(dateStr: string | null): string {
 
 function formatDaysLabel(maxDaysOverdue: number, projects: DebtProject[]): {
   label: string;
-  tone: "rose" | "amber" | "ink-2";
+  tone: DaysTone;
 } {
   if (maxDaysOverdue > 0) {
     return { label: `${maxDaysOverdue} ${pluralize(maxDaysOverdue, "день", "дня", "дней")} просрочка`, tone: "rose" };
@@ -103,6 +104,14 @@ function formatDaysLabel(maxDaysOverdue: number, projects: DebtProject[]): {
   }
   return { label: "—", tone: "ink-2" };
 }
+
+// Static lookup for daysTone — avoids JIT-fragile dynamic `text-${tone}` classes
+type DaysTone = "rose" | "amber" | "ink-2";
+const DAYS_TONE_CLASS: Record<DaysTone, string> = {
+  rose: "text-rose",
+  amber: "text-amber",
+  "ink-2": "text-ink-2",
+};
 
 // Aging cell color classes
 const BUCKET_CELL = [
@@ -135,17 +144,17 @@ function pickPriorityBooking(projects: DebtProject[]): string | null {
   // 1. Most overdue (daysOverdue > 0, descending)
   const overdue = projects.filter((p) => (p.daysOverdue ?? 0) > 0);
   if (overdue.length > 0) {
-    return overdue.sort((a, b) => (b.daysOverdue ?? 0) - (a.daysOverdue ?? 0))[0].bookingId;
+    return [...overdue].sort((a, b) => (b.daysOverdue ?? 0) - (a.daysOverdue ?? 0))[0].bookingId;
   }
   // 2. With dueDate, earliest first
   const withDueDate = projects.filter((p) => p.expectedPaymentDate);
   if (withDueDate.length > 0) {
-    return withDueDate.sort((a, b) =>
+    return [...withDueDate].sort((a, b) =>
       String(a.expectedPaymentDate).localeCompare(String(b.expectedPaymentDate))
     )[0].bookingId;
   }
-  // 3. Largest amount fallback
-  return projects.sort((a, b) =>
+  // 3. Largest amount fallback — copy to avoid mutating d.projects
+  return [...projects].sort((a, b) =>
     Number(b.amountOutstanding) - Number(a.amountOutstanding)
   )[0].bookingId;
 }
@@ -170,10 +179,12 @@ function DebtsPageInner() {
   const [fetching, setFetching] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
 
   // Payment modal state
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentBookingId, setPaymentBookingId] = useState<string | undefined>(undefined);
+  const [paymentDebtContext, setPaymentDebtContext] = useState<{ projectName: string; clientName: string; amountOutstanding: string } | null>(null);
 
   // AI reminder modal state
   const [reminderClient, setReminderClient] = useState<ClientDebt | null>(null);
@@ -193,8 +204,16 @@ function DebtsPageInner() {
   const loadDebts = useCallback((s: SortField, o: SortOrder) => {
     let cancelled = false;
     setFetching(true);
+    setError(null);
     apiFetch<DebtsResponse>(`/api/finance/debts?withAging=true&sort=${s}&order=${o}`)
-      .then((d) => { if (!cancelled) setData(d); })
+      .then((d) => { if (!cancelled) { setData(d); } })
+      .catch((e) => {
+        if (cancelled) return;
+        setFetching(false);
+        const msg = e instanceof Error ? e.message : "Не удалось загрузить долги";
+        setError(msg);
+        toast.error("Ошибка загрузки долгов");
+      })
       .finally(() => { if (!cancelled) setFetching(false); });
     return () => { cancelled = true; };
   }, []);
@@ -229,8 +248,9 @@ function DebtsPageInner() {
     });
   }
 
-  function openPayment(bookingId?: string) {
+  function openPayment(bookingId?: string, context?: { projectName: string; clientName: string; amountOutstanding: string }) {
     setPaymentBookingId(bookingId);
+    setPaymentDebtContext(context ?? null);
     setPaymentOpen(true);
   }
 
@@ -247,6 +267,13 @@ function DebtsPageInner() {
 
   if (loading || !authorized) return null;
   if (!data && fetching) return <div className="p-8 text-ink-3 text-sm">Загрузка…</div>;
+  if (error && !data) return (
+    <div className="p-8">
+      <div className="bg-rose-soft border border-rose-border rounded-lg px-4 py-3 text-sm text-rose">
+        {error}
+      </div>
+    </div>
+  );
 
   const debtCount = data?.summary.totalClients ?? data?.debts.length ?? 0;
 
@@ -393,6 +420,26 @@ function DebtsPageInner() {
               </button>
             </div>
           </div>
+          {/* Mobile sort selector — desktop uses sortable column headers */}
+          <div className="md:hidden w-full mt-1">
+            <select
+              className="w-full border border-border rounded-lg px-3 py-2 text-[13px] bg-surface text-ink"
+              value={`${sort}:${order}`}
+              onChange={(e) => {
+                const [f, o] = e.target.value.split(":") as [SortField, SortOrder];
+                setSort(f);
+                setOrder(o);
+                const params = new URLSearchParams(searchParams.toString());
+                params.set("sort", f);
+                params.set("order", o);
+                router.replace(`?${params.toString()}`, { scroll: false });
+              }}
+            >
+              <option value="amount:desc">По сумме (большие сверху)</option>
+              <option value="name:asc">По имени (А-Я)</option>
+              <option value="date:asc">Самые старые долги</option>
+            </select>
+          </div>
         </div>
 
         {/* Aging legend */}
@@ -534,7 +581,7 @@ function DebtsPageInner() {
                             {formatRub(d.totalOutstanding)}
                           </span>
                           {daysLabel !== "—" && (
-                            <span className={`text-[11px] text-${daysTone}`}>{daysLabel}</span>
+                            <span className={`text-[11px] ${DAYS_TONE_CLASS[daysTone]}`}>{daysLabel}</span>
                           )}
                         </div>
                         {/* Contact chips inline */}
@@ -559,30 +606,41 @@ function DebtsPageInner() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex gap-1.5 items-center flex-wrap justify-end" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => openPayment(earliestBookingId ?? undefined)}
-                          className="px-2.5 py-1.5 text-[11px] font-medium border border-accent-bright bg-accent-bright text-white rounded-lg hover:opacity-90 whitespace-nowrap"
-                        >
-                          ₽ Оплатить
-                        </button>
+                      <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:flex-wrap md:justify-end" onClick={(e) => e.stopPropagation()}>
+                        {/* Primary: full-width on mobile */}
                         <button
                           type="button"
                           onClick={() => {
-                            window.location.href = `/api/finance/debts/${d.clientId}/export.xlsx`;
+                            const proj = d.projects.find((p) => p.bookingId === earliestBookingId);
+                            openPayment(earliestBookingId ?? undefined, proj ? {
+                              projectName: proj.projectName,
+                              clientName: d.clientName,
+                              amountOutstanding: proj.amountOutstanding,
+                            } : undefined);
                           }}
-                          className="px-2.5 py-1.5 text-[11px] border border-border bg-surface rounded-lg hover:bg-surface-subtle whitespace-nowrap"
+                          className="w-full md:w-auto px-2.5 py-1.5 text-[11px] font-medium border border-accent-bright bg-accent-bright text-white rounded-lg hover:opacity-90 whitespace-nowrap"
                         >
-                          📊 Экспорт
+                          ₽ Оплатить
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setReminderClient(d)}
-                          className="px-2.5 py-1.5 text-[11px] border border-border bg-surface rounded-lg hover:bg-surface-subtle whitespace-nowrap"
-                        >
-                          🤖 Напомнить
-                        </button>
+                        {/* Secondary: 2-column on mobile */}
+                        <div className="grid grid-cols-2 gap-1.5 md:contents">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              window.location.href = `/api/finance/debts/${d.clientId}/export.xlsx`;
+                            }}
+                            className="px-2.5 py-1.5 text-[11px] border border-border bg-surface rounded-lg hover:bg-surface-subtle whitespace-nowrap"
+                          >
+                            📊 Экспорт
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReminderClient(d)}
+                            className="px-2.5 py-1.5 text-[11px] border border-border bg-surface rounded-lg hover:bg-surface-subtle whitespace-nowrap"
+                          >
+                            🤖 Напомнить
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -638,7 +696,11 @@ function DebtsPageInner() {
                             <div className="flex gap-1.5 justify-end">
                               <button
                                 type="button"
-                                onClick={() => openPayment(p.bookingId)}
+                                onClick={() => openPayment(p.bookingId, {
+                                  projectName: p.projectName,
+                                  clientName: d.clientName,
+                                  amountOutstanding: p.amountOutstanding,
+                                })}
                                 className="px-2.5 py-1 text-[11px] border border-border bg-surface rounded hover:border-accent-bright hover:text-accent-bright transition-colors whitespace-nowrap"
                               >
                                 Оплатить эту бронь
@@ -697,7 +759,13 @@ function DebtsPageInner() {
       <RecordPaymentModal
         open={paymentOpen}
         defaultBookingId={paymentBookingId}
-        onClose={() => setPaymentOpen(false)}
+        bookingContext={paymentDebtContext ? {
+          id: paymentBookingId ?? "",
+          projectName: paymentDebtContext.projectName,
+          client: { name: paymentDebtContext.clientName },
+          amountOutstanding: paymentDebtContext.amountOutstanding,
+        } : undefined}
+        onClose={() => { setPaymentOpen(false); setPaymentDebtContext(null); }}
         onCreated={handlePaymentCreated}
       />
       {reminderClient && (
