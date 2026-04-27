@@ -184,5 +184,7 @@ describe("GET /api/finance/debts/:clientId/report.pdf", () => {
     expect(bodyBuf.length).toBeGreaterThan(1000);
     // PDF magic bytes %PDF
     expect(bodyBuf.slice(0, 4).toString("ascii")).toBe("%PDF");
+    // DejaVu font must be embedded (Cyrillic support); absence means font path resolved incorrectly
+    expect(bodyBuf.toString("binary")).toContain("DejaVu");
   });
 });

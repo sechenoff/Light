@@ -52,8 +52,8 @@ type FontSet = { body: string; bold: string };
 
 function apiPackageRoot(): string {
   // __dirname = .../apps/api/src/services/documentExport/clientDebtReport
-  // apps/api root is 5 levels up: clientDebtReport → documentExport → services → src → api
-  return path.resolve(__dirname, "..", "..", "..", "..", "..");
+  // 4 levels up: clientDebtReport → documentExport → services → src → api → apps/api
+  return path.resolve(__dirname, "..", "..", "..", "..");
 }
 
 function bundledDejaVuPaths(): { regular: string; bold: string } | null {
