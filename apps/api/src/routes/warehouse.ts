@@ -13,6 +13,12 @@ import {
   getReconciliationPreview,
   type BrokenUnit,
 } from "../services/warehouseScan";
+import {
+  checkUnit,
+  uncheckUnit,
+  getChecklistState,
+  addExtraItem,
+} from "../services/checklistService";
 
 // ── Public router (mounted BEFORE apiKeyAuth) ─────────────────────────────────
 
@@ -359,6 +365,65 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       createdRepairIds: summary.createdRepairIds,
       failedBrokenUnits: summary.failedBrokenUnits,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Checklist endpoints (без сканера) ─────────────────────────────────────────
+
+const checkBodySchema = z.object({
+  equipmentUnitId: z.string().min(1),
+});
+
+const uncheckBodySchema = z.object({
+  equipmentUnitId: z.string().min(1),
+});
+
+const addItemBodySchema = z.object({
+  equipmentId: z.string().min(1),
+  quantity: z.number().int().positive(),
+});
+
+/** GET /api/warehouse/sessions/:id/state — текущее состояние чек-листа */
+warehouseScanRouter.get("/sessions/:id/state", warehouseAuth, async (req, res, next) => {
+  try {
+    const state = await getChecklistState(req.params.id);
+    res.json(state);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/warehouse/sessions/:id/check — отметить UNIT-позицию */
+warehouseScanRouter.post("/sessions/:id/check", warehouseAuth, async (req, res, next) => {
+  try {
+    const { equipmentUnitId } = checkBodySchema.parse(req.body);
+    const result = await checkUnit(req.params.id, equipmentUnitId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/warehouse/sessions/:id/uncheck — снять отметку с UNIT-позиции */
+warehouseScanRouter.post("/sessions/:id/uncheck", warehouseAuth, async (req, res, next) => {
+  try {
+    const { equipmentUnitId } = uncheckBodySchema.parse(req.body);
+    const result = await uncheckUnit(req.params.id, equipmentUnitId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/warehouse/sessions/:id/items — быстрое добавление позиции в бронь */
+warehouseScanRouter.post("/sessions/:id/items", warehouseAuth, async (req, res, next) => {
+  try {
+    const { equipmentId, quantity } = addItemBodySchema.parse(req.body);
+    const createdBy = req.warehouseWorker?.name ?? "warehouse";
+    const result = await addExtraItem(req.params.id, equipmentId, quantity, createdBy);
+    res.status(201).json(result);
   } catch (err) {
     next(err);
   }

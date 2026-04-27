@@ -2,24 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
 import { apiFetch } from "../../../src/lib/api";
 import { pluralRu } from "../../../src/lib/pluralRu";
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 import { useCurrentUser } from "../../../src/lib/auth";
 import { toast } from "../../../src/components/ToastProvider";
 
-const Html5QrcodePlugin = dynamic<{ onScan: (text: string) => void }>(
-  () => import("./Html5QrcodePlugin"),
-  { ssr: false },
-);
-
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Типы ─────────────────────────────────────────────────────────────────────────
 
 type Operation = "ISSUE" | "RETURN";
 
 type WorkerNamesResponse = { names: string[] };
-
 type AuthResponse = { token: string; name: string; expiresAt: string };
 
 type BookingRow = {
@@ -27,6 +20,7 @@ type BookingRow = {
   projectName: string;
   startDate: string;
   endDate: string;
+  status: string;
   client: { id: string; name: string };
   items: { id: string }[];
 };
@@ -34,74 +28,57 @@ type BookingRow = {
 type BookingsResponse = { bookings: BookingRow[] };
 
 type SessionResponse = {
-  session: {
-    id: string;
-    bookingId: string;
-    operation: Operation;
-    status: string;
-  };
+  session: { id: string; bookingId: string; operation: Operation; status: string };
 };
 
-type BookingItem = {
-  id: string;
+type ChecklistUnit = {
+  unitId: string;
+  barcode: string | null;
+  checked: boolean;
+  problemType: "BROKEN" | "LOST" | null;
+};
+
+type ChecklistItem = {
+  bookingItemId: string;
+  equipmentId: string | null;
+  equipmentName: string;
+  category: string;
   quantity: number;
-  scanMode: "UNIT" | "COUNT";
-  scannedCount: number;
-  equipment: { id: string; name: string };
-  units?: {
-    id: string;
-    barcode: string;
-    reservedButUnavailable?: boolean;
-    scanned?: boolean;
-  }[];
+  checkedQty: number;
+  trackingMode: "COUNT" | "UNIT";
+  isExtra: boolean;
+  units?: ChecklistUnit[];
 };
 
-type SessionDetailResponse = {
-  session: {
-    id: string;
-    bookingId: string;
-    operation: Operation;
-    status: string;
-    scans?: Array<{
-      id: string;
-      equipmentUnitId: string;
-      scannedAt: string;
-      equipmentUnit: {
-        id: string;
-        equipmentId: string;
-        equipment: { name: string };
-      };
-    }>;
-  };
-  bookingItems: BookingItem[];
-};
-
-type ScanResult = {
-  status: "ok" | "error";
-  message?: string;
-  unitId?: string;
-  itemId?: string;
-};
-
-type ReconciliationSummary = {
+type ChecklistState = {
   sessionId: string;
+  bookingId: string;
   operation: Operation;
-  scannedCount: number;
-  expectedCount: number;
-  missingItems: { id: string; name: string; barcode: string }[];
-  substitutedItems: { id: string; name: string; barcode: string }[];
+  items: ChecklistItem[];
+  progress: { checkedItems: number; totalItems: number };
 };
 
 type RepairUrgency = "NOT_URGENT" | "NORMAL" | "URGENT";
 
-interface BrokenUnit {
-  equipmentUnitId: string;
+type ProblemUnit = {
+  unitId: string;
+  unitName: string;
+  type: "BROKEN" | "LOST";
   reason: string;
-  urgency: RepairUrgency;
-  name: string; // для отображения
-}
+  urgency?: RepairUrgency;
+  lostLocation?: "ON_SITE" | "IN_TRANSIT" | "AT_CLIENT" | "UNKNOWN";
+  chargeClient?: boolean;
+};
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+type CatalogEquipment = {
+  id: string;
+  name: string;
+  category: string;
+  rentalRatePerShift: number | null;
+  stockTrackingMode: string;
+};
+
+// ── warehouseFetch ────────────────────────────────────────────────────────────────
 
 function warehouseFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token =
@@ -115,29 +92,44 @@ function warehouseFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
 }
 
+// ── Хелперы ───────────────────────────────────────────────────────────────────────
+
 function formatDate(iso: string) {
   try {
-    return new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+    return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
   } catch {
     return iso;
   }
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
-
-function Toast({ message, type }: { message: string; type: "success" | "error" }) {
-  return (
-    <div
-      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl text-white text-sm font-medium shadow-lg max-w-xs w-full text-center ${
-        type === "success" ? "bg-ok" : "bg-rose"
-      }`}
-    >
-      {message}
-    </div>
-  );
+function formatRub(n: number | null | undefined) {
+  if (n == null) return "";
+  return n.toLocaleString("ru-RU") + " ₽";
 }
 
-// ── Step 1: Login ─────────────────────────────────────────────────────────────
+function statusLabel(status: string) {
+  const map: Record<string, string> = {
+    CONFIRMED: "Подтверждена",
+    ISSUED: "Выдана",
+    DRAFT: "Черновик",
+    PENDING_APPROVAL: "На согласовании",
+    RETURNED: "Возвращена",
+    CANCELLED: "Отменена",
+  };
+  return map[status] ?? status;
+}
+
+function statusVariant(status: string): string {
+  const map: Record<string, string> = {
+    CONFIRMED: "bg-accent-soft text-accent-bright border border-accent-border",
+    ISSUED: "bg-emerald-soft text-emerald border border-emerald-border",
+    PENDING_APPROVAL: "bg-amber-soft text-amber border border-amber-border",
+    DRAFT: "bg-surface-subtle text-ink-2 border border-border",
+  };
+  return map[status] ?? "bg-surface-subtle text-ink-3 border border-border";
+}
+
+// ── Step 1: Login ─────────────────────────────────────────────────────────────────
 
 function LoginStep({ onSuccess }: { onSuccess: () => void }) {
   const [names, setNames] = useState<string[]>([]);
@@ -148,13 +140,16 @@ function LoginStep({ onSuccess }: { onSuccess: () => void }) {
   const [loadingNames, setLoadingNames] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<WorkerNamesResponse>("/api/warehouse/workers/names")
       .then((data) => {
+        if (cancelled) return;
         setNames(data.names);
         if (data.names.length > 0) setSelectedName(data.names[0]);
       })
-      .catch(() => setError("Не удалось загрузить список сотрудников"))
-      .finally(() => setLoadingNames(false));
+      .catch(() => { if (!cancelled) setError("Не удалось загрузить список сотрудников"); })
+      .finally(() => { if (!cancelled) setLoadingNames(false); });
+    return () => { cancelled = true; };
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -181,33 +176,34 @@ function LoginStep({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <div className="min-h-[calc(100vh-56px)] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <h2 className="text-2xl font-bold text-ink mb-6 text-center">Вход на склад</h2>
+    <div className="min-h-screen flex items-center justify-center px-4 bg-surface-2">
+      <div className="w-full max-w-[360px] bg-surface border border-border rounded-2xl p-6 shadow-xs">
+        <div className="text-center mb-6">
+          <div className="text-3xl mb-2">🏭</div>
+          <h2 className="text-xl font-semibold text-ink">Вход на склад</h2>
+          <p className="text-sm text-ink-3 mt-1">Выберите имя и введите PIN</p>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-ink mb-1.5">Сотрудник</label>
+            <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wide mb-1.5">Сотрудник</label>
             {loadingNames ? (
               <div className="h-12 bg-surface-subtle rounded-lg animate-pulse" />
             ) : (
               <select
                 value={selectedName}
                 onChange={(e) => setSelectedName(e.target.value)}
-                className="w-full h-12 px-3 border border-border rounded-lg text-base bg-surface focus:outline-none focus:ring-2 focus:ring-accent-bright"
+                className="w-full h-12 px-3 border border-border rounded-lg text-base bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-bright"
                 required
               >
                 <option value="">— выберите сотрудника —</option>
                 {names.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
+                  <option key={n} value={n}>{n}</option>
                 ))}
               </select>
             )}
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-ink mb-1.5">PIN-код</label>
+            <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wide mb-1.5">PIN-код</label>
             <input
               type="password"
               inputMode="numeric"
@@ -217,17 +213,15 @@ function LoginStep({ onSuccess }: { onSuccess: () => void }) {
               minLength={4}
               maxLength={8}
               placeholder="••••"
-              className="w-full h-12 px-3 border border-border rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-accent-bright"
+              className="w-full h-12 px-3 border border-border rounded-lg text-base text-ink focus:outline-none focus:ring-2 focus:ring-accent-bright"
               required
             />
           </div>
-
           {error && (
             <div className="text-rose text-sm bg-rose-soft border border-rose-border rounded-lg px-3 py-2">
               {error}
             </div>
           )}
-
           <button
             type="submit"
             disabled={loading}
@@ -241,33 +235,61 @@ function LoginStep({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-// ── Step 2: Operation Selection ───────────────────────────────────────────────
+// ── Step 2: Operation Selection ───────────────────────────────────────────────────
 
-function OperationStep({ onSelect }: { onSelect: (op: Operation) => void }) {
+function OperationStep({
+  onSelect,
+  workerName,
+}: {
+  onSelect: (op: Operation) => void;
+  workerName: string;
+}) {
+  const today = new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+
   return (
-    <div className="min-h-[calc(100vh-56px)] flex flex-col items-center justify-center px-4 gap-6">
-      <h2 className="text-2xl font-bold text-ink">Выберите операцию</h2>
-      <div className="w-full max-w-sm space-y-4">
+    <div className="min-h-screen bg-surface-2 flex flex-col">
+      {/* Header */}
+      <div className="bg-surface border-b border-border px-4 py-3 flex items-center gap-3">
+        <div className="flex-1">
+          <h2 className="text-[15px] font-semibold text-ink">Склад</h2>
+          <div className="text-xs text-ink-3 mt-0.5">{workerName} · {today}</div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 p-4">
+        <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-4">Что вы делаете сейчас?</p>
+
         <button
           onClick={() => onSelect("ISSUE")}
-          className="w-full h-20 bg-accent-bright hover:bg-accent text-white text-xl font-semibold rounded-2xl transition-colors flex items-center justify-center gap-3"
+          className="w-full text-left border border-accent-border bg-accent-soft rounded-2xl p-[22px] mb-4 active:opacity-80 transition-opacity"
+          style={{ background: "linear-gradient(135deg, var(--accent-soft) 0%, var(--surface) 70%)", borderColor: "var(--accent-bright)" }}
         >
-          <span>📤</span>
-          Выдача
+          <span className="text-3xl block mb-2">📤</span>
+          <span className="block font-bold text-accent-bright" style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 22 }}>Выдача</span>
+          <span className="block text-sm text-ink-2 mt-1">Загрузить оборудование клиенту</span>
         </button>
+
         <button
           onClick={() => onSelect("RETURN")}
-          className="w-full h-20 bg-emerald hover:bg-ok text-white text-xl font-semibold rounded-2xl transition-colors flex items-center justify-center gap-3"
+          className="w-full text-left border rounded-2xl p-[22px] mb-4 active:opacity-80 transition-opacity"
+          style={{ background: "linear-gradient(135deg, var(--teal-soft) 0%, var(--surface) 70%)", borderColor: "var(--teal)" }}
         >
-          <span>📥</span>
-          Возврат
+          <span className="text-3xl block mb-2">📥</span>
+          <span className="block font-bold" style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 22, color: "var(--teal)" }}>Возврат</span>
+          <span className="block text-sm text-ink-2 mt-1">Принять оборудование от клиента</span>
         </button>
+
+        <div className="mt-4 p-3 bg-surface border border-dashed border-border-2 rounded-xl text-xs text-ink-2 text-center">
+          Нужно зарегистрировать поломку без возврата?{" "}
+          <a href="/repair" className="text-accent-bright font-medium">Открыть мастерскую →</a>
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Step 3: Booking Selection ─────────────────────────────────────────────────
+// ── Step 3: Booking Selection ─────────────────────────────────────────────────────
 
 function BookingStep({
   operation,
@@ -276,7 +298,7 @@ function BookingStep({
   onBack,
 }: {
   operation: Operation;
-  onSelect: (sessionId: string) => void;
+  onSelect: (sessionId: string, bookingId: string, clientName: string) => void;
   onUnauth: () => void;
   onBack: () => void;
 }) {
@@ -284,35 +306,34 @@ function BookingStep({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [tab, setTab] = useState<"today" | "tomorrow" | "all">("today");
 
   useEffect(() => {
+    let cancelled = false;
     warehouseFetch<BookingsResponse>(`/api/warehouse/bookings?operation=${operation}`)
-      .then((data) => setBookings(data.bookings))
+      .then((data) => { if (!cancelled) setBookings(data.bookings); })
       .catch((err: unknown) => {
         const e = err as { status?: number; message?: string };
-        if (e?.status === 401) {
-          onUnauth();
-          return;
-        }
+        if (cancelled) return;
+        if (e?.status === 401) { onUnauth(); return; }
         setError(e?.message ?? "Ошибка загрузки бронирований");
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [operation, onUnauth]);
 
-  async function handleSelect(bookingId: string) {
-    setCreating(bookingId);
+  async function handleSelect(b: BookingRow) {
+    setCreating(b.id);
     try {
       const data = await warehouseFetch<SessionResponse>("/api/warehouse/sessions", {
         method: "POST",
-        body: JSON.stringify({ bookingId, operation }),
+        body: JSON.stringify({ bookingId: b.id, operation }),
       });
-      onSelect(data.session.id);
+      onSelect(data.session.id, b.id, b.client.name);
     } catch (err: unknown) {
       const e = err as { status?: number; message?: string };
-      if (e?.status === 401) {
-        onUnauth();
-        return;
-      }
+      if (e?.status === 401) { onUnauth(); return; }
       setError(e?.message ?? "Ошибка создания сессии");
     } finally {
       setCreating(null);
@@ -320,57 +341,119 @@ function BookingStep({
   }
 
   const opLabel = operation === "ISSUE" ? "Выдача" : "Возврат";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const filtered = bookings.filter((b) => {
+    if (search) {
+      const q = search.toLowerCase();
+      if (!b.client.name.toLowerCase().includes(q) && !b.projectName.toLowerCase().includes(q)) {
+        return false;
+      }
+    }
+    if (tab === "today") {
+      const sd = new Date(b.startDate);
+      sd.setHours(0, 0, 0, 0);
+      return sd.getTime() === today.getTime();
+    }
+    if (tab === "tomorrow") {
+      const sd = new Date(b.startDate);
+      sd.setHours(0, 0, 0, 0);
+      return sd.getTime() <= tomorrow.getTime();
+    }
+    return true;
+  });
 
   return (
-    <div className="px-4 py-6">
-      <button
-        onClick={onBack}
-        className="mb-4 text-sm text-slate-500 hover:text-slate-700 transition-colors"
-      >
-        ← Назад
-      </button>
-      <h2 className="text-xl font-bold text-slate-800 mb-4">{opLabel}: выберите бронирование</h2>
-
-      {loading && (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 bg-slate-100 rounded-xl animate-pulse" />
-          ))}
+    <div className="min-h-screen flex flex-col bg-surface">
+      {/* Header */}
+      <div className="bg-surface border-b border-border px-4 py-3 flex items-center gap-3">
+        <button onClick={onBack} className="text-2xl text-ink-2 leading-none w-10 h-10 flex items-center justify-center" aria-label="Назад">←</button>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-[15px] font-semibold text-ink truncate">{opLabel}</h2>
+          <div className="text-xs text-ink-3">{today.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</div>
         </div>
-      )}
+      </div>
 
-      {error && (
-        <div className="text-rose bg-rose-soft border border-rose-border rounded-xl px-4 py-3 text-sm">
-          {error}
+      {/* Tabs */}
+      <div className="flex border-b border-border bg-surface">
+        {(["today", "tomorrow", "all"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`flex-1 py-2.5 text-[13px] font-medium border-b-2 transition-colors ${
+              tab === t ? "text-accent-bright border-accent-bright font-semibold" : "text-ink-2 border-transparent"
+            }`}
+          >
+            {t === "today" ? "Сегодня" : t === "tomorrow" ? "+ Завтра" : "Все"}
+          </button>
+        ))}
+      </div>
+
+      {/* Search */}
+      <div className="px-4 py-2.5 border-b border-border bg-surface">
+        <div className="relative">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Найти бронь или клиента..."
+            className="w-full pl-8 pr-3 py-2 border border-border rounded-xl text-[13px] bg-surface-2 text-ink focus:outline-none focus:border-accent-bright"
+          />
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3 text-sm">🔍</span>
         </div>
-      )}
+      </div>
 
-      {!loading && !error && bookings.length === 0 && (
-        <div className="text-slate-500 text-center py-12">Нет доступных бронирований</div>
-      )}
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto bg-surface">
+        {loading && (
+          <div className="space-y-0">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-[72px] border-b border-border px-4 py-3 animate-pulse bg-surface">
+                <div className="h-3 bg-surface-subtle rounded w-24 mb-2" />
+                <div className="h-4 bg-surface-subtle rounded w-40 mb-1.5" />
+                <div className="h-3 bg-surface-subtle rounded w-32" />
+              </div>
+            ))}
+          </div>
+        )}
 
-      <div className="space-y-3">
-        {bookings.map((b) => {
-          const itemCount = b.items.length;
+        {error && (
+          <div className="m-4 text-rose bg-rose-soft border border-rose-border rounded-xl px-4 py-3 text-sm">{error}</div>
+        )}
+
+        {!loading && !error && filtered.length === 0 && (
+          <div className="text-ink-3 text-center py-16 text-sm">
+            {search ? "Ничего не найдено" : "Нет доступных бронирований"}
+          </div>
+        )}
+
+        {filtered.map((b) => {
           const isBusy = creating === b.id;
           return (
             <button
               key={b.id}
-              onClick={() => handleSelect(b.id)}
+              onClick={() => handleSelect(b)}
               disabled={!!creating}
-              className="w-full text-left bg-white border border-slate-200 rounded-xl px-4 py-4 hover:border-accent-bright hover:shadow-sm transition-all disabled:opacity-60 min-h-[80px]"
+              className="w-full text-left border-b border-border px-4 py-[14px] flex items-center gap-3 hover:bg-surface-2 active:bg-surface-2 disabled:opacity-60 transition-colors min-h-[72px]"
             >
-              <div className="font-semibold text-slate-800 text-base">
-                {b.client.name}
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] text-ink-3 font-mono mb-0.5">
+                  {b.projectName || "Бронь"}
+                </div>
+                <div className="text-[14px] font-medium text-ink mb-1">{b.client.name}</div>
+                <div className="flex items-center gap-2 text-xs text-ink-2">
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${statusVariant(b.status)}`}>
+                    {statusLabel(b.status)}
+                  </span>
+                  <span>{formatDate(b.startDate)} — {formatDate(b.endDate)}</span>
+                  <span>· {b.items.length} {pluralRu(b.items.length, ["позиция", "позиции", "позиций"])}</span>
+                </div>
               </div>
-              <div className="text-slate-600 text-sm mt-0.5">{b.projectName}</div>
-              <div className="text-slate-400 text-xs mt-1">
-                {formatDate(b.startDate)} — {formatDate(b.endDate)} · {itemCount}{" "}
-                {itemCount === 1 ? "позиция" : itemCount < 5 ? "позиции" : "позиций"}
-              </div>
-              {isBusy && (
-                <div className="text-accent-bright text-xs mt-1">Создание сессии...</div>
-              )}
+              <span className="text-ink-3 text-lg" aria-hidden="true">›</span>
+              {isBusy && <div className="absolute inset-0 bg-surface/50 rounded" />}
             </button>
           );
         })}
@@ -379,58 +462,457 @@ function BookingStep({
   );
 }
 
-// ── Step 4: Scanning ──────────────────────────────────────────────────────────
+// ── Problem Modal ─────────────────────────────────────────────────────────────────
 
-function ScanStep({
+function ProblemModal({
+  unit,
+  onConfirm,
+  onCancel,
+}: {
+  unit: { unitId: string; unitName: string; unitBarcode?: string | null };
+  onConfirm: (problem: ProblemUnit) => void;
+  onCancel: () => void;
+}) {
+  const [type, setType] = useState<"BROKEN" | "LOST">("BROKEN");
+  const [reason, setReason] = useState("");
+  const [urgency, setUrgency] = useState<RepairUrgency>("NORMAL");
+  const [lostLocation, setLostLocation] = useState<"ON_SITE" | "IN_TRANSIT" | "AT_CLIENT" | "UNKNOWN">("ON_SITE");
+  const [chargeClient, setChargeClient] = useState(true);
+  const [err, setErr] = useState("");
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (reason.trim().length < 5) {
+      setErr("Опишите подробнее (минимум 5 символов)");
+      return;
+    }
+    onConfirm({
+      unitId: unit.unitId,
+      unitName: unit.unitName,
+      type,
+      reason: reason.trim(),
+      urgency: type === "BROKEN" ? urgency : undefined,
+      lostLocation: type === "LOST" ? lostLocation : undefined,
+      chargeClient: type === "LOST" ? chargeClient : undefined,
+    });
+  }
+
+  const displayBarcode = unit.unitBarcode
+    ? unit.unitBarcode.replace(/^LR-/i, "").substring(0, 12)
+    : null;
+
+  return (
+    <div className="fixed inset-0 z-20 flex items-center justify-center p-6 bg-black/50">
+      <div className="bg-surface rounded-2xl w-full max-w-[340px] overflow-hidden shadow-2xl">
+        {/* Head */}
+        <div className="px-[18px] pt-4 pb-2">
+          <h3 className="text-[16px] font-semibold text-ink">Проблема с единицей</h3>
+          <div className="text-xs text-ink-3 font-mono mt-1">
+            {unit.unitName}{displayBarcode ? ` · ${displayBarcode}` : ""}
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="px-[18px] pb-4">
+            {/* Type tabs */}
+            <div className="grid grid-cols-2 gap-1 p-2 bg-surface-2 rounded-xl mb-4">
+              <button
+                type="button"
+                onClick={() => setType("BROKEN")}
+                className={`py-2 rounded-lg text-[13px] font-medium transition-all ${
+                  type === "BROKEN"
+                    ? "bg-surface text-rose font-semibold shadow-sm"
+                    : "text-ink-3"
+                }`}
+              >
+                🔧 Поломка
+              </button>
+              <button
+                type="button"
+                onClick={() => setType("LOST")}
+                className={`py-2 rounded-lg text-[13px] font-medium transition-all ${
+                  type === "LOST"
+                    ? "bg-surface text-amber font-semibold shadow-sm"
+                    : "text-ink-3"
+                }`}
+              >
+                ⚠ Утеря
+              </button>
+            </div>
+
+            {/* Reason */}
+            <div className="mb-4">
+              <label className="block text-xs text-ink-2 font-medium mb-1.5">
+                {type === "BROKEN" ? "Что произошло?" : "Обстоятельства утери"}
+              </label>
+              <textarea
+                value={reason}
+                onChange={(e) => { setReason(e.target.value); setErr(""); }}
+                rows={3}
+                className={`w-full px-3 py-2.5 border rounded-lg text-[13px] text-ink bg-surface focus:outline-none resize-none ${
+                  reason.trim().length >= 5 ? "border-accent-bright" : "border-border"
+                }`}
+                placeholder={type === "BROKEN" ? "Опишите повреждение..." : "Опишите обстоятельства..."}
+              />
+              {err && <p className="text-xs text-rose mt-1">{err}</p>}
+              {reason.trim().length >= 5 && (
+                <p className="text-xs text-emerald mt-1">✓ Достаточно подробно</p>
+              )}
+            </div>
+
+            {type === "BROKEN" ? (
+              <div className="mb-2">
+                <label className="block text-xs text-ink-2 font-medium mb-2">Срочность</label>
+                <div className="space-y-2">
+                  {([
+                    ["NOT_URGENT", "Не срочно", "14+ дней", "text-ink-2"],
+                    ["NORMAL", "Обычная", "3–7 дней", "text-amber"],
+                    ["URGENT", "Срочно", "≤ 24 часа", "text-rose"],
+                  ] as const).map(([val, label, hint, color]) => (
+                    <label
+                      key={val}
+                      onClick={() => setUrgency(val)}
+                      className={`flex items-center gap-3 px-3 py-3 border rounded-xl cursor-pointer transition-colors ${
+                        urgency === val
+                          ? val === "URGENT"
+                            ? "border-rose bg-rose-soft"
+                            : val === "NORMAL"
+                              ? "border-amber bg-amber-soft"
+                              : "border-border bg-surface-2"
+                          : "border-border"
+                      }`}
+                    >
+                      <span className={`w-[18px] h-[18px] rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                        urgency === val
+                          ? val === "URGENT"
+                            ? "border-rose"
+                            : val === "NORMAL"
+                              ? "border-amber"
+                              : "border-border-2"
+                          : "border-border-2"
+                      }`}>
+                        {urgency === val && (
+                          <span className={`w-2 h-2 rounded-full ${
+                            val === "URGENT" ? "bg-rose" : val === "NORMAL" ? "bg-amber" : "bg-ink-2"
+                          }`} />
+                        )}
+                      </span>
+                      <span className="flex-1 text-[13px] font-medium text-ink">{label}</span>
+                      <span className={`text-[11px] font-semibold uppercase tracking-wide ${color}`}>{hint}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-3 px-3 py-2.5 bg-rose-soft rounded-lg text-xs text-rose">
+                  Будет создан ремонт. Назначение техника — потом, в /repair.
+                </div>
+              </div>
+            ) : (
+              <div className="mb-2">
+                <label className="block text-xs text-ink-2 font-medium mb-2">Где утеряна?</label>
+                <div className="space-y-2">
+                  {([
+                    ["ON_SITE", "На площадке"],
+                    ["IN_TRANSIT", "В транспорте"],
+                    ["AT_CLIENT", "У клиента"],
+                    ["UNKNOWN", "Неизвестно"],
+                  ] as const).map(([val, label]) => (
+                    <label
+                      key={val}
+                      onClick={() => setLostLocation(val)}
+                      className={`flex items-center gap-3 px-3 py-3 border rounded-xl cursor-pointer transition-colors ${
+                        lostLocation === val ? "border-amber bg-amber-soft" : "border-border"
+                      }`}
+                    >
+                      <span className={`w-[18px] h-[18px] rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                        lostLocation === val ? "border-amber" : "border-border-2"
+                      }`}>
+                        {lostLocation === val && <span className="w-2 h-2 rounded-full bg-amber" />}
+                      </span>
+                      <span className="text-[13px] font-medium text-ink">{label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <label className="flex items-center gap-2 mt-3 px-3 py-2.5 border border-amber bg-amber-soft rounded-xl cursor-pointer">
+                  <span
+                    onClick={() => setChargeClient(!chargeClient)}
+                    className={`w-[18px] h-[18px] border-2 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
+                      chargeClient ? "border-amber bg-amber" : "border-border-2 bg-surface"
+                    }`}
+                  >
+                    {chargeClient && <span className="text-white text-[11px] font-bold">✓</span>}
+                  </span>
+                  <span className="text-[13px] text-ink">Добавить компенсацию в счёт</span>
+                </label>
+
+                <div className="mt-3 px-3 py-2.5 bg-amber-soft rounded-lg text-xs text-amber">
+                  Единица будет списана (RETIRED). Восстановить — через админ-панель.
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex gap-2 px-[14px] pb-[14px] border-t border-border pt-3">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 h-12 bg-surface border border-border rounded-xl text-[14px] font-medium text-ink"
+            >
+              Отмена
+            </button>
+            <button
+              type="submit"
+              className={`flex-1 h-12 rounded-xl text-[14px] font-semibold text-white ${
+                type === "BROKEN" ? "bg-rose" : "bg-amber"
+              }`}
+            >
+              {type === "BROKEN" ? "Зарегистрировать поломку" : "Зарегистрировать утерю"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── QuickAdd Sheet ────────────────────────────────────────────────────────────────
+
+function QuickAddSheet({
+  sessionId,
+  onAdded,
+  onClose,
+  onUnauth,
+}: {
+  sessionId: string;
+  onAdded: (name: string) => void;
+  onClose: () => void;
+  onUnauth: () => void;
+}) {
+  const [catalog, setCatalog] = useState<CatalogEquipment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [adding, setAdding] = useState<string | null>(null);
+  const [activeItem, setActiveItem] = useState<CatalogEquipment | null>(null);
+  const [qty, setQty] = useState(1);
+  const [addedNames, setAddedNames] = useState<string[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    let cancelled = false;
+    warehouseFetch<{ equipment: CatalogEquipment[] }>("/api/equipment")
+      .then((d) => { if (!cancelled) setCatalog(d.equipment); })
+      .catch((err: unknown) => {
+        const e = err as { status?: number };
+        if (cancelled) return;
+        if (e?.status === 401) onUnauth();
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [onUnauth]);
+
+  const filtered = search
+    ? catalog.filter((e) =>
+        e.name.toLowerCase().includes(search.toLowerCase()) ||
+        e.category.toLowerCase().includes(search.toLowerCase()),
+      )
+    : catalog.slice(0, 30);
+
+  async function handleAdd(item: CatalogEquipment, quantity: number) {
+    setAdding(item.id);
+    try {
+      await warehouseFetch(`/api/warehouse/sessions/${sessionId}/items`, {
+        method: "POST",
+        body: JSON.stringify({ equipmentId: item.id, quantity }),
+      });
+      setAddedNames((prev) => [...prev, item.name]);
+      onAdded(item.name);
+      setActiveItem(null);
+      setQty(1);
+    } catch (err: unknown) {
+      const e = err as { status?: number; message?: string };
+      if (e?.status === 401) { onUnauth(); return; }
+      toast.error(e?.message ?? "Ошибка добавления");
+    } finally {
+      setAdding(null);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-10">
+      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
+      <div className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl shadow-2xl flex flex-col" style={{ maxHeight: "88%" }}>
+        {/* Handle */}
+        <div className="w-9 h-1 bg-border-2 rounded-full mx-auto mt-2 mb-1" />
+
+        {/* Header */}
+        <div className="flex items-center gap-2.5 px-4 pb-3 pt-2 border-b border-border">
+          <h3 className="flex-1 text-[16px] font-semibold text-ink">Добавить позицию</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center text-ink-2 text-xl" aria-label="Закрыть">✕</button>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 py-2.5 border-b border-border">
+          <div className="relative">
+            <input
+              ref={inputRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск по названию или категории..."
+              className="w-full pl-8 pr-3 py-2 border border-border rounded-xl text-[13px] bg-surface-2 text-ink focus:outline-none focus:border-accent-bright"
+            />
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3 text-sm">🔍</span>
+          </div>
+        </div>
+
+        {/* Catalog list */}
+        <div className="flex-1 overflow-y-auto bg-surface-2">
+          {loading && (
+            <div className="space-y-0">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-16 border-b border-border bg-surface animate-pulse" />
+              ))}
+            </div>
+          )}
+
+          {!loading && filtered.length === 0 && (
+            <div className="text-ink-3 text-center py-12 text-sm">Ничего не найдено</div>
+          )}
+
+          <div className="bg-surface">
+            {filtered.map((item) => {
+              const isAdded = addedNames.includes(item.name);
+              const isActive = activeItem?.id === item.id;
+
+              return (
+                <div key={item.id}>
+                  <div className={`flex items-center gap-3 px-4 py-3 border-t border-border ${isActive ? "bg-accent-soft" : "bg-surface"}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[14px] font-medium text-ink mb-0.5 truncate">{item.name}</div>
+                      <div className="flex gap-2 text-xs text-ink-3 flex-wrap">
+                        <span>{item.category}</span>
+                        {item.rentalRatePerShift != null && (
+                          <span className="font-mono text-ink-2">от {item.rentalRatePerShift.toLocaleString()} ₽/смена</span>
+                        )}
+                      </div>
+                      {isActive && (
+                        <div className="text-[11px] text-accent-bright mt-1">Сколько добавить?</div>
+                      )}
+                    </div>
+
+                    {isActive ? (
+                      <div className="flex items-center gap-0 border border-accent-bright rounded-lg overflow-hidden flex-shrink-0">
+                        <button
+                          onClick={() => setQty((q) => Math.max(1, q - 1))}
+                          className="w-8 h-8 bg-surface text-ink-2 text-base font-medium"
+                          aria-label="Уменьшить"
+                        >−</button>
+                        <span className="w-9 text-center font-semibold font-mono text-ink text-[13px] border-x border-accent-border">
+                          {qty}
+                        </span>
+                        <button
+                          onClick={() => setQty((q) => q + 1)}
+                          className="w-8 h-8 bg-surface text-ink-2 text-base font-medium"
+                          aria-label="Увеличить"
+                        >+</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (isAdded) return;
+                          setActiveItem(item);
+                          setQty(1);
+                        }}
+                        disabled={isAdded || adding === item.id}
+                        className={`h-9 px-3 rounded-lg text-[13px] font-semibold border flex-shrink-0 flex items-center gap-1 transition-colors ${
+                          isAdded
+                            ? "bg-accent-bright border-accent-bright text-white"
+                            : "border-accent-bright text-accent-bright bg-surface hover:bg-accent-soft"
+                        }`}
+                      >
+                        {isAdded ? "✓ Добавлено" : "+ Добавить"}
+                      </button>
+                    )}
+                  </div>
+
+                  {isActive && (
+                    <div className="px-4 pb-3 bg-accent-soft">
+                      <button
+                        onClick={() => handleAdd(item, qty)}
+                        disabled={adding === item.id}
+                        className="w-full py-3 bg-accent-bright text-white rounded-xl text-[14px] font-semibold disabled:opacity-50"
+                      >
+                        {adding === item.id ? "Добавление..." : `Добавить ${qty} шт. в бронь`}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Footer summary */}
+        {addedNames.length > 0 && (
+          <div className="px-4 py-3 border-t border-border bg-surface flex items-center gap-2">
+            <span className="bg-teal text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0">
+              +{addedNames.length}
+            </span>
+            <span className="flex-1 text-xs text-teal truncate">
+              Добавлено: {addedNames.join(", ")}
+            </span>
+            <button onClick={onClose} className="text-teal text-xs font-semibold whitespace-nowrap">
+              Готово →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Step 4: Checklist ─────────────────────────────────────────────────────────────
+
+function ChecklistStep({
   sessionId,
   operation,
+  clientName,
   onDone,
-  onCancel,
+  onBack,
   onUnauth,
 }: {
   sessionId: string;
   operation: Operation;
-  onDone: () => void;
-  onCancel: () => void;
+  clientName: string;
+  onDone: (countChecks: Map<string, number>, problems: ProblemUnit[]) => void;
+  onBack: () => void;
   onUnauth: () => void;
 }) {
-  const [detail, setDetail] = useState<SessionDetailResponse | null>(null);
+  const [state, setState] = useState<ChecklistState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const [manualInput, setManualInput] = useState("");
-  const [confirmCancel, setConfirmCancel] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastScanRef = useRef<{ value: string; ts: number }>({ value: "", ts: 0 });
-  const scanningRef = useRef(false);
+  const [search, setSearch] = useState("");
+  const [countChecks, setCountChecks] = useState<Map<string, number>>(new Map());
+  const [problems, setProblems] = useState<ProblemUnit[]>([]);
+  const [problemModal, setProblemModal] = useState<{ unitId: string; unitName: string; unitBarcode?: string | null } | null>(null);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [confirmMissing, setConfirmMissing] = useState(false);
 
-  function showToast(message: string, type: "success" | "error") {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast({ message, type });
-    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
-  }
-
-  function playBeep(success: boolean) {
+  const loadState = useCallback(async () => {
     try {
-      navigator.vibrate?.(success ? 100 : [50, 50, 50]);
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = success ? 880 : 440;
-      gain.gain.value = 0.3;
-      osc.start();
-      osc.stop(ctx.currentTime + (success ? 0.15 : 0.3));
-    } catch {}
-  }
-
-  const loadDetail = useCallback(async () => {
-    try {
-      const data = await warehouseFetch<SessionDetailResponse>(
-        `/api/warehouse/sessions/${sessionId}`,
-      );
-      setDetail(data);
+      const s = await warehouseFetch<ChecklistState>(`/api/warehouse/sessions/${sessionId}/state`);
+      setState(s);
+      // Initialize countChecks for COUNT items that haven't been touched yet
+      setCountChecks((prev) => {
+        const updated = new Map(prev);
+        for (const item of s.items) {
+          if (item.trackingMode === "COUNT" && !updated.has(item.bookingItemId)) {
+            updated.set(item.bookingItemId, 0);
+          }
+        }
+        return updated;
+      });
     } catch (err: unknown) {
       const e = err as { status?: number };
       if (e?.status === 401) onUnauth();
@@ -440,394 +922,647 @@ function ScanStep({
   }, [sessionId, onUnauth]);
 
   useEffect(() => {
-    loadDetail();
-  }, [loadDetail]);
+    loadState();
+  }, [loadState]);
 
-  const handleScan = useCallback(
-    async (barcodePayload: string) => {
-      const now = Date.now();
-      if (barcodePayload === lastScanRef.current.value && now - lastScanRef.current.ts < 3000) return;
-      lastScanRef.current = { value: barcodePayload, ts: now };
-      if (scanningRef.current) return;
-      scanningRef.current = true;
-      try {
-        const result = await warehouseFetch<ScanResult>(
-          `/api/warehouse/sessions/${sessionId}/scan`,
-          {
-            method: "POST",
-            body: JSON.stringify({ barcodePayload }),
-          },
-        );
-        if (result.status === "ok") {
-          playBeep(true);
-          showToast("Отсканировано успешно", "success");
-          await loadDetail();
-        } else {
-          playBeep(false);
-          showToast(result.message ?? "Ошибка сканирования", "error");
-        }
-      } catch (err: unknown) {
-        const e = err as { status?: number; message?: string };
-        if (e?.status === 401) {
-          onUnauth();
-          return;
-        }
-        playBeep(false);
-        showToast(e?.message ?? "Ошибка сканирования", "error");
-      } finally {
-        scanningRef.current = false;
-      }
-    },
-    [sessionId, onUnauth, loadDetail],
-  );
+  async function handleUnitToggle(unitId: string, currentChecked: boolean) {
+    // Optimistic update
+    setState((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map((item) => {
+          if (!item.units) return item;
+          const units = item.units.map((u) =>
+            u.unitId === unitId ? { ...u, checked: !currentChecked } : u,
+          );
+          const checkedQty = units.filter((u) => u.checked).length;
+          return { ...item, units, checkedQty };
+        }),
+      };
+    });
 
-  async function handleManualSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!manualInput.trim()) return;
-    const val = manualInput.trim();
-    setManualInput("");
-    await handleScan(val);
-  }
-
-  async function handleCancelConfirm() {
-    setCancelling(true);
     try {
-      await warehouseFetch(`/api/warehouse/sessions/${sessionId}/cancel`, {
-        method: "POST",
-      });
-      onCancel();
+      if (currentChecked) {
+        await warehouseFetch(`/api/warehouse/sessions/${sessionId}/uncheck`, {
+          method: "POST",
+          body: JSON.stringify({ equipmentUnitId: unitId }),
+        });
+      } else {
+        await warehouseFetch(`/api/warehouse/sessions/${sessionId}/check`, {
+          method: "POST",
+          body: JSON.stringify({ equipmentUnitId: unitId }),
+        });
+      }
     } catch (err: unknown) {
       const e = err as { status?: number; message?: string };
-      if (e?.status === 401) {
-        onUnauth();
-        return;
-      }
-      showToast(e?.message ?? "Ошибка отмены", "error");
-    } finally {
-      setCancelling(false);
-      setConfirmCancel(false);
+      if (e?.status === 401) { onUnauth(); return; }
+      // Rollback
+      setState((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((item) => {
+            if (!item.units) return item;
+            const units = item.units.map((u) =>
+              u.unitId === unitId ? { ...u, checked: currentChecked } : u,
+            );
+            const checkedQty = units.filter((u) => u.checked).length;
+            return { ...item, units, checkedQty };
+          }),
+        };
+      });
+      toast.error(e?.message ?? "Ошибка при отметке");
     }
   }
 
+  function handleCountToggle(bookingItemId: string, quantity: number) {
+    setCountChecks((prev) => {
+      const updated = new Map(prev);
+      const current = updated.get(bookingItemId) ?? 0;
+      // Toggle: 0 → quantity → 0
+      updated.set(bookingItemId, current >= quantity ? 0 : quantity);
+      return updated;
+    });
+  }
+
+  function handleCountStep(bookingItemId: string, quantity: number, delta: number) {
+    setCountChecks((prev) => {
+      const updated = new Map(prev);
+      const current = updated.get(bookingItemId) ?? 0;
+      const next = Math.max(0, Math.min(quantity, current + delta));
+      updated.set(bookingItemId, next);
+      return updated;
+    });
+  }
+
+  function handleCheckAll() {
+    if (!state) return;
+    // Mark all UNIT items
+    for (const item of state.items) {
+      if (item.units) {
+        for (const unit of item.units) {
+          if (!unit.checked && !hasProblem(unit.unitId)) {
+            handleUnitToggle(unit.unitId, false);
+          }
+        }
+      }
+    }
+    // Mark all COUNT items
+    setCountChecks((prev) => {
+      const updated = new Map(prev);
+      for (const item of state.items) {
+        if (item.trackingMode === "COUNT") {
+          updated.set(item.bookingItemId, item.quantity);
+        }
+      }
+      return updated;
+    });
+  }
+
+  function hasProblem(unitId: string) {
+    return problems.some((p) => p.unitId === unitId);
+  }
+
+  function handleConfirmProblem(problem: ProblemUnit) {
+    setProblems((prev) => {
+      const filtered = prev.filter((p) => p.unitId !== problem.unitId);
+      return [...filtered, problem];
+    });
+    setProblemModal(null);
+  }
+
+  function handleRemoveProblem(unitId: string) {
+    setProblems((prev) => prev.filter((p) => p.unitId !== unitId));
+  }
+
+  function handleDone() {
+    if (!state) return;
+
+    // Calculate total checked items
+    const { totalCount, checkedCount } = calculateProgress();
+    const hasMissing = checkedCount < totalCount;
+
+    if (hasMissing && !confirmMissing) {
+      setConfirmMissing(true);
+      return;
+    }
+    setConfirmMissing(false);
+    onDone(countChecks, problems);
+  }
+
+  function calculateProgress() {
+    if (!state) return { totalCount: 0, checkedCount: 0 };
+    let totalCount = 0;
+    let checkedCount = 0;
+
+    for (const item of state.items) {
+      if (item.trackingMode === "UNIT" && item.units) {
+        totalCount += item.units.length;
+        checkedCount += item.units.filter((u) => u.checked || hasProblem(u.unitId)).length;
+      } else if (item.trackingMode === "COUNT") {
+        totalCount += 1;
+        const checked = countChecks.get(item.bookingItemId) ?? 0;
+        if (checked >= item.quantity) checkedCount += 1;
+        else if (checked > 0) checkedCount += 0.5; // partial
+      }
+    }
+    return { totalCount, checkedCount };
+  }
+
+  const { totalCount, checkedCount } = calculateProgress();
+  const progressPct = totalCount > 0 ? (checkedCount / totalCount) * 100 : 0;
+  const allDone = progressPct >= 100;
+
+  const opLabel = operation === "ISSUE" ? "выдачу" : "возврат";
+  const opProgress = operation === "ISSUE" ? "Выдано" : "Принято";
+
+  // Filter items by search
+  const filteredItems = state?.items.filter((item) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      item.equipmentName.toLowerCase().includes(q) ||
+      item.category.toLowerCase().includes(q)
+    );
+  }) ?? [];
+
+  // Group by category
+  const categories = new Map<string, typeof filteredItems>();
+  for (const item of filteredItems) {
+    const cat = item.isExtra ? "Добавлено на месте" : item.category;
+    if (!categories.has(cat)) categories.set(cat, []);
+    categories.get(cat)!.push(item);
+  }
+
+  // Сортируем: «Добавлено на месте» всегда в конце
+  const sortedCategories = [...categories.entries()].sort(([a], [b]) => {
+    if (a === "Добавлено на месте") return 1;
+    if (b === "Добавлено на месте") return -1;
+    return a.localeCompare(b);
+  });
+
+  const missingCount = Math.ceil(totalCount - checkedCount);
+
   if (loading) {
     return (
-      <div className="px-4 py-6 space-y-3">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-16 bg-slate-100 rounded-xl animate-pulse" />
-        ))}
+      <div className="min-h-screen flex flex-col bg-surface">
+        <div className="h-14 border-b border-border animate-pulse bg-surface" />
+        <div className="h-16 border-b border-border animate-pulse bg-surface-2" />
+        <div className="flex-1 space-y-px">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-[60px] border-b border-border bg-surface animate-pulse" />
+          ))}
+        </div>
       </div>
     );
   }
 
-  if (!detail) return null;
-
-  const unitItems = detail.bookingItems.filter((item) => item.scanMode === "UNIT");
-  const countItems = detail.bookingItems.filter((item) => item.scanMode === "COUNT");
-  const opLabel = operation === "ISSUE" ? "выдачи" : "возврата";
-
   return (
-    <div className="px-4 py-4 pb-32">
-      <h2 className="text-xl font-bold text-slate-800 mb-4">Сканирование для {opLabel}</h2>
-
-      {/* Camera scanner */}
-      <div className="mb-4 rounded-xl overflow-hidden border border-slate-200">
-        <Html5QrcodePlugin onScan={handleScan} />
+    <div className="min-h-screen flex flex-col bg-surface-2">
+      {/* Sticky header */}
+      <div className="bg-surface border-b border-border px-4 py-3 flex items-center gap-3">
+        <button onClick={onBack} className="text-2xl text-ink-2 leading-none w-10 h-10 flex items-center justify-center flex-shrink-0" aria-label="Назад">←</button>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-[15px] font-semibold text-ink truncate">{clientName}</h2>
+          <div className="text-xs text-ink-3 truncate">
+            {operation === "ISSUE" ? "выдача" : "возврат"}
+          </div>
+        </div>
+        <button
+          onClick={handleCheckAll}
+          className="text-xs text-accent-bright font-medium px-2 py-1 flex-shrink-0"
+        >
+          ✓ Все
+        </button>
       </div>
 
-      {/* Manual input */}
-      <form onSubmit={handleManualSubmit} className="flex gap-2 mb-6">
-        <input
-          type="text"
-          value={manualInput}
-          onChange={(e) => setManualInput(e.target.value)}
-          placeholder="Введите штрихкод вручную"
-          className="flex-1 h-12 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
-        />
-        <button
-          type="submit"
-          className="h-12 px-4 bg-slate-700 text-white text-sm font-medium rounded-lg hover:bg-slate-800 transition-colors"
-        >
-          Ввести
-        </button>
-      </form>
+      {/* Progress */}
+      <div className="bg-surface border-b border-border px-4 py-3">
+        <div className="flex justify-between items-center mb-2 text-[13px]">
+          <span className="text-ink-2">{opProgress}</span>
+          <span className={`font-mono font-semibold ${allDone ? "text-emerald" : "text-ink"}`}>
+            {Math.round(checkedCount)} / {Math.round(totalCount)} поз.
+          </span>
+        </div>
+        <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-200 ${allDone ? "bg-emerald" : "bg-accent-bright"}`}
+            style={{ width: `${Math.min(100, progressPct)}%` }}
+          />
+        </div>
+      </div>
 
-      {/* UNIT items checklist */}
-      {unitItems.length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">
-            Позиции с поштучным сканированием
-          </h3>
-          <div className="space-y-2">
-            {unitItems.map((item) => {
-              const scanned = item.scannedCount ?? 0;
-              const total = item.quantity;
-              const done = scanned >= total;
-              return (
-                <div
-                  key={item.id}
-                  className={`flex items-center justify-between px-4 py-3 rounded-xl border ${
-                    done ? "bg-emerald-soft border-emerald-border" : "bg-white border-slate-200"
-                  }`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-slate-800 truncate">
-                      {item.equipment.name}
+      {/* Search */}
+      <div className="px-4 py-2.5 bg-surface border-b border-border">
+        <div className="relative">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск по позициям..."
+            className="w-full pl-8 pr-3 py-2 border border-border rounded-xl text-[13px] bg-surface-2 text-ink focus:outline-none focus:border-accent-bright"
+          />
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3 text-sm">🔍</span>
+        </div>
+      </div>
+
+      {/* Missing alert (RETURN) */}
+      {operation === "RETURN" && missingCount > 0 && checkedCount > 0 && !allDone && (
+        <div className="mx-4 mt-3 px-3 py-3 rounded-xl bg-rose-soft border border-rose-border flex items-start gap-2.5">
+          <span className="text-xl">⚠</span>
+          <div>
+            <strong className="text-[13px] text-rose">
+              {missingCount} {pluralRu(missingCount, ["позиция", "позиции", "позиций"])} не возвращена
+            </strong>
+          </div>
+        </div>
+      )}
+
+      {/* Checklist body */}
+      <div className="flex-1 overflow-y-auto pb-32">
+        {sortedCategories.map(([cat, items]) => {
+          const catTotal = items.reduce((s, item) => {
+            if (item.trackingMode === "UNIT") return s + (item.units?.length ?? 0);
+            return s + 1;
+          }, 0);
+          const catChecked = items.reduce((s, item) => {
+            if (item.trackingMode === "UNIT") {
+              return s + (item.units?.filter((u) => u.checked || hasProblem(u.unitId)).length ?? 0);
+            }
+            const checked = countChecks.get(item.bookingItemId) ?? 0;
+            return s + (checked >= item.quantity ? 1 : 0);
+          }, 0);
+          const isExtraCat = cat === "Добавлено на месте";
+
+          return (
+            <div key={cat} className="bg-surface border-t border-border mt-2">
+              {/* Category header */}
+              <div className="flex justify-between items-baseline px-4 py-2.5">
+                <span className={`text-xs font-semibold uppercase tracking-wide ${isExtraCat ? "text-teal" : "text-ink-2"}`}
+                  style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+                  {cat}
+                </span>
+                <span className={`text-xs font-mono ${catChecked >= catTotal ? "text-emerald" : "text-ink-3"}`}>
+                  {catChecked} / {catTotal}
+                </span>
+              </div>
+
+              {/* Items */}
+              {items.map((item) => {
+                if (item.trackingMode === "UNIT" && item.units) {
+                  return item.units.map((unit) => {
+                    const prob = problems.find((p) => p.unitId === unit.unitId);
+                    const isBroken = prob?.type === "BROKEN";
+                    const isLost = prob?.type === "LOST";
+                    const isChecked = unit.checked;
+                    const displayBarcode = unit.barcode
+                      ? unit.barcode.replace(/^LR-/i, "").substring(0, 10)
+                      : null;
+
+                    return (
+                      <div
+                        key={unit.unitId}
+                        className={`flex items-center gap-3 px-4 py-3 border-t border-border min-h-[60px] cursor-pointer active:opacity-70 transition-opacity ${
+                          isBroken ? "bg-rose-soft" : isLost ? "bg-amber-soft" : isChecked ? "bg-accent-soft" : isExtraCat ? "bg-teal-soft" : "bg-surface"
+                        }`}
+                        onClick={() => !prob && handleUnitToggle(unit.unitId, isChecked)}
+                      >
+                        {/* Checkbox */}
+                        <span
+                          className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center flex-shrink-0 text-lg font-medium transition-all ${
+                            prob
+                              ? isBroken
+                                ? "border-rose bg-rose-soft text-rose"
+                                : "border-amber bg-amber-soft text-amber"
+                              : isChecked
+                                ? isExtraCat
+                                  ? "border-teal bg-teal text-white"
+                                  : "border-accent-bright bg-accent-bright text-white"
+                                : "border-border-2 bg-surface text-transparent"
+                          }`}
+                          aria-label={isChecked ? "Отмечено" : "Не отмечено"}
+                        >
+                          {prob ? (isBroken ? "⚠" : "!") : (isChecked ? "✓" : "")}
+                        </span>
+
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-[14px] font-medium leading-tight ${isChecked || prob ? "text-ink-2" : "text-ink"}`}>
+                            {item.equipmentName}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            {displayBarcode && (
+                              <span className="text-[10px] font-mono text-ink-3 bg-slate-soft px-1.5 py-0.5 rounded">
+                                {displayBarcode}
+                              </span>
+                            )}
+                            {prob && (
+                              <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                                isBroken ? "bg-rose-soft text-rose" : "bg-amber-soft text-amber"
+                              }`}>
+                                {isBroken ? "🔧 в ремонт" : "⚠ утеряна"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Problem button (RETURN only) */}
+                        {operation === "RETURN" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (prob) {
+                                handleRemoveProblem(unit.unitId);
+                              } else {
+                                setProblemModal({
+                                  unitId: unit.unitId,
+                                  unitName: item.equipmentName,
+                                  unitBarcode: unit.barcode,
+                                });
+                              }
+                            }}
+                            className={`w-9 h-9 rounded-lg border flex items-center justify-center text-base flex-shrink-0 transition-colors ${
+                              prob
+                                ? "border-rose-border bg-rose-soft text-rose"
+                                : "border-border text-ink-2"
+                            }`}
+                            aria-label="Зарегистрировать проблему"
+                          >
+                            {prob ? "⚙" : "🔧"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  });
+                }
+
+                // COUNT item
+                const checked = countChecks.get(item.bookingItemId) ?? 0;
+                const isFullyChecked = checked >= item.quantity;
+                const isPartial = checked > 0 && checked < item.quantity;
+
+                return (
+                  <div
+                    key={item.bookingItemId}
+                    className={`flex items-center gap-3 px-4 py-3 border-t border-border min-h-[60px] cursor-pointer active:opacity-70 transition-opacity ${
+                      isFullyChecked
+                        ? isExtraCat
+                          ? "bg-teal-soft"
+                          : "bg-accent-soft"
+                        : isPartial
+                          ? "bg-amber-soft"
+                          : isExtraCat
+                            ? "bg-teal-soft opacity-60"
+                            : "bg-surface"
+                    }`}
+                    onClick={() => handleCountToggle(item.bookingItemId, item.quantity)}
+                  >
+                    {/* Checkbox */}
+                    <span
+                      className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center flex-shrink-0 text-lg font-medium transition-all ${
+                        isFullyChecked
+                          ? isExtraCat
+                            ? "border-teal bg-teal text-white"
+                            : "border-accent-bright bg-accent-bright text-white"
+                          : isPartial
+                            ? "border-amber bg-amber-soft text-amber"
+                            : "border-border-2 bg-surface text-transparent"
+                      }`}
+                      aria-label={isFullyChecked ? "Отмечено" : isPartial ? "Частично" : "Не отмечено"}
+                    >
+                      {isFullyChecked ? "✓" : isPartial ? "−" : ""}
+                    </span>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-[14px] font-medium leading-tight ${isFullyChecked ? "text-ink-2" : "text-ink"}`}>
+                        {item.equipmentName}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`text-xs font-mono font-medium ${isPartial ? "text-amber" : "text-ink-2"}`}>
+                          {isPartial ? `${checked} / ${item.quantity} шт.` : `${item.quantity} шт.`}
+                        </span>
+                        {isPartial && <span className="text-xs text-amber">· частично</span>}
+                        {item.isExtra && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide bg-teal-soft text-teal px-2 py-0.5 rounded-full">
+                            + доп
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {item.units?.some((u) => u.reservedButUnavailable) && (
-                      <div className="text-xs text-amber mt-0.5">
-                        ⚠ Часть единиц недоступна
+
+                    {/* Partial stepper (shown only for partial) */}
+                    {isPartial && (
+                      <div
+                        className="flex items-center border border-border-2 rounded-lg overflow-hidden flex-shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={() => handleCountStep(item.bookingItemId, item.quantity, -1)}
+                          className="w-8 h-8 bg-surface text-ink-2 text-base"
+                          aria-label="Уменьшить"
+                        >−</button>
+                        <span className="w-9 text-center text-[13px] font-mono font-semibold text-ink border-x border-border h-8 flex items-center justify-center">
+                          {checked}
+                        </span>
+                        <button
+                          onClick={() => handleCountStep(item.bookingItemId, item.quantity, 1)}
+                          className="w-8 h-8 bg-surface text-ink-2 text-base"
+                          aria-label="Увеличить"
+                        >+</button>
                       </div>
                     )}
                   </div>
-                  <div className={`text-sm font-semibold ml-3 ${done ? "text-emerald" : "text-slate-700"}`}>
-                    {scanned} / {total}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+                );
+              })}
+            </div>
+          );
+        })}
 
-      {/* COUNT items (greyed out) */}
-      {countItems.length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-2">
-            Без сканирования (количество)
-          </h3>
-          <div className="space-y-2">
-            {countItems.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between px-4 py-3 rounded-xl border border-slate-100 bg-slate-50"
-              >
-                <div className="text-sm text-slate-400 truncate">{item.equipment.name}</div>
-                <div className="text-sm text-slate-400 ml-3">{item.quantity} шт.</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Bottom actions */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border px-4 py-4 space-y-2">
-        <button
-          onClick={onDone}
-          className="w-full h-14 bg-accent-bright hover:bg-accent text-white text-base font-semibold rounded-xl transition-colors"
-        >
-          Завершить и просмотреть итог
-        </button>
-        <button
-          onClick={() => setConfirmCancel(true)}
-          className="w-full h-12 text-rose border border-rose-border rounded-xl text-sm font-medium hover:bg-rose-soft transition-colors"
-        >
-          Отменить сессию
-        </button>
+        {/* Bottom spacer */}
+        <div className="h-24" />
       </div>
 
-      {/* Toast */}
-      {toast && <Toast message={toast.message} type={toast.type} />}
+      {/* FAB (issue mode only) */}
+      {operation === "ISSUE" && (
+        <button
+          onClick={() => setShowQuickAdd(true)}
+          className="fixed right-4 text-white text-[14px] font-semibold flex items-center gap-2 px-[18px] h-[52px] rounded-[26px] shadow-lg"
+          style={{
+            bottom: 84,
+            background: "var(--accent-bright)",
+            boxShadow: "0 6px 16px rgba(29, 78, 216, 0.32)",
+          }}
+          aria-label="Добавить позицию"
+        >
+          <span className="text-lg leading-none">+</span>
+          <span>Добавить позицию</span>
+        </button>
+      )}
 
-      {/* Cancel confirmation dialog */}
-      {confirmCancel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-bold text-ink mb-2">Отменить сессию?</h3>
-            <p className="text-sm text-ink-2 mb-6">
-              Сессия сканирования будет отменена. Записи сканирования сохранятся для аудита.
-            </p>
-            <div className="flex gap-3">
+      {/* Sticky CTA */}
+      <div className="fixed bottom-0 left-0 right-0 bg-surface border-t border-border px-4 py-3 pb-safe shadow-lg">
+        <button
+          onClick={handleDone}
+          disabled={checkedCount === 0 && problems.length === 0}
+          className={`w-full py-[14px] text-[15px] font-semibold rounded-xl transition-colors ${
+            allDone
+              ? "bg-emerald text-white"
+              : checkedCount > 0 || problems.length > 0
+                ? "bg-accent-bright text-white"
+                : "bg-surface-2 text-ink-3 cursor-not-allowed"
+          }`}
+        >
+          Завершить {opLabel}
+        </button>
+        <div className="text-xs text-ink-3 text-center mt-1.5">
+          {allDone
+            ? `К ${opLabel === "выдачу" ? "выдаче" : "возврату"}: ${Math.round(totalCount)} поз.${problems.length > 0 ? ` · ${problems.length} с проблемой` : ""}`
+            : checkedCount > 0
+              ? `Отмечено ${Math.round(checkedCount)} из ${Math.round(totalCount)} позиций`
+              : `Начните отмечать позиции`}
+        </div>
+      </div>
+
+      {/* Confirm with missing modal */}
+      {confirmMissing && (
+        <div className="fixed inset-0 z-20 flex items-center justify-center p-6 bg-black/50">
+          <div className="bg-surface rounded-2xl w-full max-w-[340px] overflow-hidden shadow-2xl">
+            <div className="px-[18px] pt-4 pb-2">
+              <h3 className="text-[16px] font-semibold text-ink">Закрыть с задолженностью?</h3>
+              <div className="text-xs text-ink-2 mt-1">
+                {missingCount} {pluralRu(missingCount, ["позиция", "позиции", "позиций"])} не {operation === "ISSUE" ? "выдана" : "возвращена"}
+              </div>
+            </div>
+            <div className="px-[18px] py-3 text-[13px] text-ink-2">
+              <div className="mt-2 p-2.5 bg-rose-soft rounded-lg text-xs text-rose">
+                Незакрытые позиции останутся как задолженность.
+              </div>
+            </div>
+            <div className="flex gap-2 px-[14px] pb-[14px] border-t border-border pt-3">
               <button
-                onClick={() => setConfirmCancel(false)}
-                className="flex-1 h-12 border border-border rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                onClick={() => setConfirmMissing(false)}
+                className="flex-1 h-12 bg-surface border border-border rounded-xl text-[14px] font-medium text-ink"
               >
                 Отмена
               </button>
               <button
-                onClick={handleCancelConfirm}
-                disabled={cancelling}
-                className="flex-1 h-12 bg-rose hover:bg-rose/80 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-colors"
+                onClick={() => {
+                  setConfirmMissing(false);
+                  onDone(countChecks, problems);
+                }}
+                className="flex-1 h-12 bg-rose rounded-xl text-[14px] font-semibold text-white"
               >
-                {cancelling ? "Отмена..." : "Да, отменить"}
+                Закрыть с долгом
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Problem modal */}
+      {problemModal && (
+        <ProblemModal
+          unit={problemModal}
+          onConfirm={handleConfirmProblem}
+          onCancel={() => setProblemModal(null)}
+        />
+      )}
+
+      {/* Quick add sheet */}
+      {showQuickAdd && (
+        <QuickAddSheet
+          sessionId={sessionId}
+          onAdded={(name) => {
+            toast.success(`+1 добавлено: ${name}`);
+            loadState();
+          }}
+          onClose={() => {
+            setShowQuickAdd(false);
+            loadState();
+          }}
+          onUnauth={onUnauth}
+        />
+      )}
     </div>
   );
 }
 
-// ── Step 5: Summary ───────────────────────────────────────────────────────────
-
-// ── Модалка отметки поломки ────────────────────────────────────────────────
-
-function BrokenUnitModal({
-  unitId,
-  unitName,
-  onConfirm,
-  onCancel,
-}: {
-  unitId: string;
-  unitName: string;
-  onConfirm: (reason: string, urgency: RepairUrgency) => void;
-  onCancel: () => void;
-}) {
-  const [reason, setReason] = useState("");
-  const [urgency, setUrgency] = useState<RepairUrgency>("NORMAL");
-  const [err, setErr] = useState("");
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (reason.trim().length < 5) {
-      setErr("Укажите причину (минимум 5 символов)");
-      return;
-    }
-    onConfirm(reason.trim(), urgency);
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm space-y-4">
-        <h3 className="text-lg font-bold text-slate-800">Отметить поломку</h3>
-        <p className="text-sm text-slate-600">{unitName}</p>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Причина поломки</label>
-            <textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
-              placeholder="Опишите повреждение..."
-              required
-            />
-            {err && <p className="text-xs text-rose mt-1">{err}</p>}
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-700 mb-2">Срочность</p>
-            <div className="space-y-1">
-              {([["URGENT", "Срочно"], ["NORMAL", "Обычно"], ["NOT_URGENT", "Не срочно"]] as [RepairUrgency, string][]).map(
-                ([val, label]) => (
-                  <label key={val} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="urgency"
-                      value={val}
-                      checked={urgency === val}
-                      onChange={() => setUrgency(val)}
-                      className="text-accent-bright"
-                    />
-                    <span className="text-sm text-slate-700">{label}</span>
-                  </label>
-                ),
-              )}
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="flex-1 h-12 border border-border rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-            >
-              Отмена
-            </button>
-            <button
-              type="submit"
-              className="flex-1 h-12 bg-rose hover:bg-rose/80 text-white rounded-xl text-sm font-semibold transition-colors"
-            >
-              Отметить
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// ── Step 5: Summary ───────────────────────────────────────────────────────────
+// ── Step 5: Summary ───────────────────────────────────────────────────────────────
 
 function SummaryStep({
   sessionId,
   operation,
+  clientName,
+  countChecks,
+  problems,
   onComplete,
+  onBack,
   onUnauth,
 }: {
   sessionId: string;
   operation: Operation;
-  /** B6: bookingId added so parent can offer payment recording post-issue/return */
-  onComplete: (createdRepairIds: string[], failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>, bookingId?: string) => void;
+  clientName: string;
+  countChecks: Map<string, number>;
+  problems: ProblemUnit[];
+  onComplete: (bookingId?: string) => void;
+  onBack: () => void;
   onUnauth: () => void;
 }) {
-  const [summary, setSummary] = useState<ReconciliationSummary | null>(null);
-  const [sessionDetail, setSessionDetail] = useState<SessionDetailResponse | null>(null);
+  const [state, setState] = useState<ChecklistState | null>(null);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [brokenUnits, setBrokenUnits] = useState<BrokenUnit[]>([]);
-  const [brokenModal, setBrokenModal] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      warehouseFetch<ReconciliationSummary>(`/api/warehouse/sessions/${sessionId}/summary`),
-      warehouseFetch<SessionDetailResponse>(`/api/warehouse/sessions/${sessionId}`),
-    ])
-      .then(([s, d]) => {
-        setSummary(s);
-        setSessionDetail(d);
-      })
+    let cancelled = false;
+    warehouseFetch<ChecklistState>(`/api/warehouse/sessions/${sessionId}/state`)
+      .then((s) => { if (!cancelled) setState(s); })
       .catch((err: unknown) => {
         const e = err as { status?: number; message?: string };
-        if (e?.status === 401) {
-          onUnauth();
-          return;
-        }
-        setError(e?.message ?? "Ошибка загрузки итогов");
+        if (cancelled) return;
+        if (e?.status === 401) { onUnauth(); return; }
+        setError(e?.message ?? "Ошибка загрузки");
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [sessionId, onUnauth]);
-
-  function markBroken(unitId: string, name: string) {
-    setBrokenModal({ id: unitId, name });
-  }
-
-  function confirmBroken(reason: string, urgency: RepairUrgency) {
-    if (!brokenModal) return;
-    setBrokenUnits((prev) => {
-      // Заменить существующую запись если есть
-      const filtered = prev.filter((b) => b.equipmentUnitId !== brokenModal.id);
-      return [...filtered, { equipmentUnitId: brokenModal.id, reason, urgency, name: brokenModal.name }];
-    });
-    setBrokenModal(null);
-  }
-
-  function removeBroken(unitId: string) {
-    setBrokenUnits((prev) => prev.filter((b) => b.equipmentUnitId !== unitId));
-  }
 
   async function handleComplete() {
     setCompleting(true);
+    setError(null);
     try {
-      const body: { brokenUnits?: Omit<BrokenUnit, "name">[] } = {};
-      if (brokenUnits.length > 0) {
-        body.brokenUnits = brokenUnits.map(({ equipmentUnitId, reason, urgency }) => ({
-          equipmentUnitId, reason, urgency,
+      const brokenUnits = problems
+        .filter((p) => p.type === "BROKEN")
+        .map((p) => ({
+          equipmentUnitId: p.unitId,
+          reason: p.reason,
+          urgency: p.urgency ?? "NORMAL",
         }));
-      }
-      const result = await warehouseFetch<{
-        createdRepairIds: string[];
-        failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>;
-      }>(`/api/warehouse/sessions/${sessionId}/complete`, {
+
+      const lostUnits = problems
+        .filter((p) => p.type === "LOST")
+        .map((p) => ({
+          equipmentUnitId: p.unitId,
+          reason: p.reason,
+          lostLocation: p.lostLocation ?? "UNKNOWN",
+          chargeClient: p.chargeClient ?? false,
+        }));
+
+      const body: Record<string, unknown> = {};
+      if (brokenUnits.length > 0) body.brokenUnits = brokenUnits;
+      if (lostUnits.length > 0) body.lostUnits = lostUnits;
+
+      await warehouseFetch(`/api/warehouse/sessions/${sessionId}/complete`, {
         method: "POST",
         body: JSON.stringify(body),
       });
-      onComplete(result.createdRepairIds ?? [], result.failedBrokenUnits ?? [], sessionDetail?.session.bookingId);
+
+      onComplete(state?.bookingId);
     } catch (err: unknown) {
       const e = err as { status?: number; message?: string };
-      if (e?.status === 401) {
-        onUnauth();
-        return;
-      }
+      if (e?.status === 401) { onUnauth(); return; }
       setError(e?.message ?? "Ошибка завершения");
     } finally {
       setCompleting(false);
@@ -835,194 +1570,204 @@ function SummaryStep({
   }
 
   const opLabel = operation === "ISSUE" ? "выдачу" : "возврат";
-  const opLabelCap = operation === "ISSUE" ? "Выдача" : "Возврат";
-
-  // Все отсканированные единицы из сессии (для RETURN — список поштучных)
-  const scannedUnits = sessionDetail?.session.scans ?? [];
 
   if (loading) {
     return (
-      <div className="px-4 py-6 space-y-4">
-        <div className="h-8 bg-slate-100 rounded-lg animate-pulse" />
-        <div className="h-32 bg-slate-100 rounded-xl animate-pulse" />
+      <div className="min-h-screen flex flex-col bg-surface-2">
+        <div className="h-14 border-b border-border animate-pulse bg-surface" />
+        <div className="flex-1 space-y-2 p-4">
+          {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-surface rounded-xl animate-pulse" />)}
+        </div>
       </div>
     );
   }
 
+  // Calculate totals
+  const unitItems = state?.items.filter((i) => i.trackingMode === "UNIT") ?? [];
+  const countItems = state?.items.filter((i) => i.trackingMode === "COUNT") ?? [];
+  const extraItems = state?.items.filter((i) => i.isExtra) ?? [];
+
+  const totalUnitChecked = unitItems.reduce((s, i) => s + (i.units?.filter((u) => u.checked).length ?? 0), 0);
+  const totalCountChecked = countItems.reduce((s, i) => {
+    const checked = countChecks.get(i.bookingItemId) ?? 0;
+    return s + checked;
+  }, 0);
+  const totalChecked = totalUnitChecked + totalCountChecked;
+
+  const brokenCount = problems.filter((p) => p.type === "BROKEN").length;
+  const lostCount = problems.filter((p) => p.type === "LOST").length;
+
+  // Group by category for display
+  const categories = new Map<string, ChecklistItem[]>();
+  if (state) {
+    for (const item of state.items) {
+      const cat = item.isExtra ? "Добавлено на месте" : item.category;
+      if (!categories.has(cat)) categories.set(cat, []);
+      categories.get(cat)!.push(item);
+    }
+  }
+
   return (
-    <div className="px-4 py-6 pb-32">
-      <h2 className="text-xl font-bold text-slate-800 mb-4">Итог: {opLabelCap}</h2>
-
-      {error && (
-        <div className="text-rose bg-rose-soft border border-rose-border rounded-xl px-4 py-3 text-sm mb-4">
-          {error}
+    <div className="min-h-screen flex flex-col bg-surface-2">
+      {/* Header */}
+      <div className="bg-surface border-b border-border px-4 py-3 flex items-center gap-3">
+        <button onClick={onBack} className="text-2xl text-ink-2 leading-none w-10 h-10 flex items-center justify-center flex-shrink-0" aria-label="Назад">←</button>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-[15px] font-semibold text-ink">Подтверждение {opLabel === "выдачу" ? "выдачи" : "возврата"}</h2>
+          <div className="text-xs text-ink-3">{clientName}</div>
         </div>
-      )}
+      </div>
 
-      {summary && (
-        <>
-          {/* Summary stats */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            <div className="bg-emerald-soft border border-emerald-border rounded-xl px-4 py-4 text-center">
-              <div className="text-3xl font-bold text-emerald">{summary.scannedCount}</div>
-              <div className="text-xs text-ok mt-1">Отсканировано</div>
-            </div>
-            <div className="bg-surface-subtle border border-border rounded-xl px-4 py-4 text-center">
-              <div className="text-3xl font-bold text-slate-700">{summary.expectedCount}</div>
-              <div className="text-xs text-slate-500 mt-1">Ожидалось</div>
-            </div>
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto pb-32">
+        {/* Total summary */}
+        <div className="bg-surface border-b border-border px-4 py-3">
+          <div className="text-xs text-ink-2 font-semibold uppercase tracking-wide mb-1">
+            Готово к {opLabel === "выдачу" ? "выдаче" : "приёму"}
           </div>
+          <div className="text-2xl font-bold text-emerald" style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+            {totalChecked} позиций
+          </div>
+          <div className="text-xs text-ink-3 mt-0.5">
+            {totalUnitChecked > 0 && `${totalUnitChecked} штучных`}
+            {totalUnitChecked > 0 && totalCountChecked > 0 && " + "}
+            {totalCountChecked > 0 && `${totalCountChecked} шт. количественных`}
+            {extraItems.length > 0 && ` · ${extraItems.length} добавлено на месте`}
+          </div>
+        </div>
 
-          {/* RETURN: список единиц с кнопкой поломки */}
-          {operation === "RETURN" && scannedUnits.length > 0 && (
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">
-                Принятые единицы
-              </h3>
-              <div className="space-y-2">
-                {scannedUnits.map((scan) => {
-                  const broken = brokenUnits.find((b) => b.equipmentUnitId === scan.equipmentUnitId);
-                  return (
-                    <div
-                      key={scan.equipmentUnitId}
-                      className={`flex items-center justify-between px-3 py-2.5 rounded-xl border ${
-                        broken
-                          ? "bg-rose-soft border-rose-border"
-                          : "bg-white border-slate-200"
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-slate-800 truncate">
-                          {scan.equipmentUnit.equipment.name}
-                        </div>
-                        {broken && (
-                          <div className="text-xs text-rose mt-0.5">Поломка отмечена</div>
-                        )}
-                      </div>
-                      {broken ? (
-                        <button
-                          onClick={() => removeBroken(scan.equipmentUnitId)}
-                          className="ml-2 text-xs text-slate-400 hover:text-rose transition-colors"
-                        >
-                          Отменить
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => markBroken(scan.equipmentUnitId, scan.equipmentUnit.equipment.name)}
-                          className="ml-2 text-xs text-amber border border-amber-border rounded-lg px-2 py-1 hover:bg-amber-soft transition-colors whitespace-nowrap"
-                        >
-                          🔧 Поломка
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Missing items */}
-          {summary.missingItems.length > 0 && (
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold text-rose mb-2">
-                Не найдено ({summary.missingItems.length})
-              </h3>
-              <div className="space-y-1">
-                {summary.missingItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="text-sm text-rose bg-rose-soft border border-rose-border rounded-lg px-3 py-2"
-                  >
-                    {item.name} — <span className="font-mono text-xs">{item.barcode}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Substituted items */}
-          {summary.substitutedItems.length > 0 && (
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold text-amber mb-2">
-                Замены ({summary.substitutedItems.length})
-              </h3>
-              <div className="space-y-1">
-                {summary.substitutedItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="text-sm text-amber bg-amber-soft border border-amber-border rounded-lg px-3 py-2"
-                  >
-                    {item.name} — <span className="font-mono text-xs">{item.barcode}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {summary.missingItems.length === 0 && summary.substitutedItems.length === 0 && scannedUnits.length === 0 && (
-            <div className="text-center text-emerald bg-emerald-soft border border-emerald-border rounded-xl px-4 py-6 mb-4">
-              <div className="text-2xl mb-1">✓</div>
-              <div className="font-semibold">Всё в порядке</div>
-              <div className="text-sm text-ok mt-1">Все позиции совпадают</div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Bottom action */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border px-4 py-4">
-        {brokenUnits.length > 0 && (
-          <p className="text-xs text-amber mb-2 text-center">
-            {brokenUnits.length} {brokenUnits.length === 1 ? "единица" : "единицы"} отмечено как поломка
-          </p>
+        {error && (
+          <div className="mx-4 mt-4 text-rose bg-rose-soft border border-rose-border rounded-xl px-4 py-3 text-sm">{error}</div>
         )}
+
+        {/* Categories */}
+        {[...categories.entries()].map(([cat, items]) => {
+          const isExtraCat = cat === "Добавлено на месте";
+          const catTotal = items.reduce((s, i) => {
+            if (i.trackingMode === "UNIT") return s + (i.units?.filter((u) => u.checked).length ?? 0);
+            return s + (countChecks.get(i.bookingItemId) ?? 0);
+          }, 0);
+
+          return (
+            <div key={cat} className="bg-surface border-t border-border mt-2">
+              <div className="flex justify-between items-baseline px-4 py-2">
+                <span className={`text-xs font-semibold uppercase tracking-wide ${isExtraCat ? "text-teal" : "text-ink-2"}`}
+                  style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>
+                  {cat} · {catTotal} шт.
+                </span>
+                <span className="text-[11px] text-emerald">✓</span>
+              </div>
+
+              {items.map((item) => {
+                if (item.trackingMode === "UNIT" && item.units) {
+                  return item.units
+                    .filter((u) => u.checked || problems.some((p) => p.unitId === u.unitId))
+                    .map((unit) => {
+                      const prob = problems.find((p) => p.unitId === unit.unitId);
+                      const displayBarcode = unit.barcode
+                        ? unit.barcode.replace(/^LR-/i, "").substring(0, 10)
+                        : null;
+                      return (
+                        <div key={unit.unitId} className={`flex items-center gap-2 px-4 py-2 border-t border-border min-h-0 ${
+                          prob?.type === "BROKEN" ? "bg-rose-soft" : prob?.type === "LOST" ? "bg-amber-soft" : isExtraCat ? "bg-teal-soft" : ""
+                        }`}>
+                          <span className={`w-5 h-5 rounded flex items-center justify-center text-xs flex-shrink-0 ${
+                            prob ? (prob.type === "BROKEN" ? "bg-rose-soft text-rose border border-rose-border" : "bg-amber-soft text-amber border border-amber-border") : "bg-accent-bright text-white"
+                          }`}>
+                            {prob ? "!" : "✓"}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[13px] text-ink">{item.equipmentName}</span>
+                            {displayBarcode && (
+                              <span className="ml-2 text-[10px] font-mono text-ink-3">{displayBarcode}</span>
+                            )}
+                          </div>
+                          {prob && (
+                            <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-full ${
+                              prob.type === "BROKEN" ? "bg-rose-soft text-rose" : "bg-amber-soft text-amber"
+                            }`}>
+                              {prob.type === "BROKEN" ? "ремонт" : "утеря"}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    });
+                }
+
+                const checked = countChecks.get(item.bookingItemId) ?? 0;
+                if (checked === 0) return null;
+
+                return (
+                  <div key={item.bookingItemId} className={`flex items-center gap-2 px-4 py-2 border-t border-border ${isExtraCat ? "bg-teal-soft" : ""}`}>
+                    <span className={`w-5 h-5 rounded flex items-center justify-center text-xs flex-shrink-0 ${isExtraCat ? "bg-teal text-white" : "bg-accent-bright text-white"}`}>✓</span>
+                    <span className="text-[13px] text-ink flex-1">{item.equipmentName}</span>
+                    <span className="text-xs font-mono text-ink-2">{checked} шт.</span>
+                    {item.isExtra && (
+                      <span className="text-[10px] font-semibold bg-teal-soft text-teal px-1.5 py-0.5 rounded-full">+ доп</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+
+        {/* Problems summary */}
+        {(brokenCount > 0 || lostCount > 0) && (
+          <div className="bg-surface border-t border-border mt-2 px-4 py-3">
+            <div className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">Проблемы</div>
+            {problems.map((p) => (
+              <div key={p.unitId} className={`flex items-center gap-2 py-1.5 text-[13px] ${p.type === "BROKEN" ? "text-rose" : "text-amber"}`}>
+                <span>{p.type === "BROKEN" ? "🔧" : "⚠"}</span>
+                <span className="flex-1">{p.unitName}</span>
+                <span className="text-xs opacity-70">{p.type === "BROKEN" ? "ремонт" : "утеря"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="h-8" />
+      </div>
+
+      {/* CTA */}
+      <div className="fixed bottom-0 left-0 right-0 bg-surface border-t border-border px-4 py-3 pb-safe flex flex-col gap-2">
         <button
           onClick={handleComplete}
-          disabled={completing || !summary}
-          className="w-full h-14 bg-accent-bright hover:bg-accent disabled:opacity-50 text-white text-base font-semibold rounded-xl transition-colors"
+          disabled={completing}
+          className="w-full py-[14px] bg-accent-bright text-white text-[15px] font-semibold rounded-xl disabled:opacity-50 transition-colors"
         >
           {completing ? "Подтверждение..." : `Подтвердить ${opLabel}`}
         </button>
+        <button
+          onClick={onBack}
+          className="text-ink-2 text-[13px] text-center py-1.5"
+        >
+          ← Изменить список
+        </button>
       </div>
-
-      {/* Модалка поломки */}
-      {brokenModal && (
-        <BrokenUnitModal
-          unitId={brokenModal.id}
-          unitName={brokenModal.name}
-          onConfirm={confirmBroken}
-          onCancel={() => setBrokenModal(null)}
-        />
-      )}
     </div>
   );
 }
 
-// ── Main page component ───────────────────────────────────────────────────────
+// ── Main State Machine ────────────────────────────────────────────────────────────
 
-type Step = "login" | "operation" | "booking" | "scan" | "summary";
+type Step = "login" | "operation" | "booking" | "checklist" | "summary";
 
-// Inner component mounts only after useCurrentUser loading resolves,
-// so useState lazy init runs with the correct hasMainSession value —
-// eliminating the flash of LoginStep for SA/WH users.
-function WarehouseScanInner({ hasMainSession }: { hasMainSession: boolean }) {
+function WarehouseScanInner({ hasMainSession, workerName }: { hasMainSession: boolean; workerName: string }) {
   const router = useRouter();
 
-  // Lazy init: step computed once at mount with already-known hasMainSession.
-  // No useEffect needed — no flash of LoginStep for authenticated users.
-  const [step, setStep] = useState<Step>(() => (hasMainSession ? "operation" : "login"));
+  const [step, setStep] = useState<Step>(() => hasMainSession ? "operation" : "login");
   const [operation, setOperation] = useState<Operation>("ISSUE");
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [completionToast, setCompletionToast] = useState<string | null>(null);
-  const [errorToast, setErrorToast] = useState<string | null>(null);
-  // B6: payment modal after issue/return (T2 third call-site)
+  const [bookingId, setBookingId] = useState<string | null>(null);
+  const [clientName, setClientName] = useState("");
+  const [countChecks, setCountChecks] = useState<Map<string, number>>(new Map());
+  const [problems, setProblems] = useState<ProblemUnit[]>([]);
   const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
 
   const goToLogin = useCallback(() => {
     sessionStorage.removeItem("warehouse_token");
     if (hasMainSession) {
-      // Main session expired — show error and redirect to login with return path.
-      // Next API call would return 401; routing back to /login avoids a silent loop.
       toast.error("Сессия истекла, войдите заново");
       router.push(`/login?from=${encodeURIComponent("/warehouse/scan")}`);
     } else {
@@ -1039,48 +1784,40 @@ function WarehouseScanInner({ hasMainSession }: { hasMainSession: boolean }) {
     setStep("booking");
   }
 
-  function handleBookingSelect(sid: string) {
+  function handleBookingSelect(sid: string, bid: string, cname: string) {
     setSessionId(sid);
-    setStep("scan");
+    setBookingId(bid);
+    setClientName(cname);
+    setStep("checklist");
   }
 
-  function handleScanDone() {
+  function handleChecklistDone(checks: Map<string, number>, probs: ProblemUnit[]) {
+    setCountChecks(checks);
+    setProblems(probs);
     setStep("summary");
   }
 
-  function handleScanCancel() {
-    setSessionId(null);
-    setStep("operation");
-  }
-
-  function handleSummaryComplete(
-    createdRepairIds: string[],
-    failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>,
-    bookingId?: string,
-  ) {
-    setSessionId(null);
-    setStep("operation");
-    const n = createdRepairIds.length;
+  function handleSummaryComplete(bid?: string) {
+    const n = problems.filter((p) => p.type === "BROKEN").length;
     if (n > 0) {
-      setCompletionToast(`Создано ${n} ${pluralRu(n, ["карточка", "карточки", "карточек"])} ремонта`);
-      setTimeout(() => setCompletionToast(null), 5000);
+      toast.success(`Создано ${n} ${pluralRu(n, ["карточка", "карточки", "карточек"])} ремонта`);
     }
-    if (failedBrokenUnits.length > 0) {
-      const m = failedBrokenUnits.length;
-      setErrorToast(`Не удалось создать ${m} ${pluralRu(m, ["карточку", "карточки", "карточек"])} — обратитесь к администратору`);
-      setTimeout(() => setErrorToast(null), 8000);
-    }
-    // B6: T2 — offer payment recording after session complete (spec: warehouse/scan post-issue)
-    if (bookingId) {
-      setPaymentBookingId(bookingId);
-    }
+    setSessionId(null);
+    setBookingId(null);
+    setClientName("");
+    setCountChecks(new Map());
+    setProblems([]);
+    setStep("operation");
+    if (bid) setPaymentBookingId(bid);
   }
 
   return (
     <>
       {step === "login" && <LoginStep onSuccess={handleLoginSuccess} />}
 
-      {step === "operation" && <OperationStep onSelect={handleOperationSelect} />}
+      {step === "operation" && (
+        <OperationStep onSelect={handleOperationSelect} workerName={workerName} />
+      )}
 
       {step === "booking" && (
         <BookingStep
@@ -1091,12 +1828,13 @@ function WarehouseScanInner({ hasMainSession }: { hasMainSession: boolean }) {
         />
       )}
 
-      {step === "scan" && sessionId && (
-        <ScanStep
+      {step === "checklist" && sessionId && (
+        <ChecklistStep
           sessionId={sessionId}
           operation={operation}
-          onDone={handleScanDone}
-          onCancel={handleScanCancel}
+          clientName={clientName}
+          onDone={handleChecklistDone}
+          onBack={() => setStep("booking")}
           onUnauth={goToLogin}
         />
       )}
@@ -1105,30 +1843,15 @@ function WarehouseScanInner({ hasMainSession }: { hasMainSession: boolean }) {
         <SummaryStep
           sessionId={sessionId}
           operation={operation}
+          clientName={clientName}
+          countChecks={countChecks}
+          problems={problems}
           onComplete={handleSummaryComplete}
+          onBack={() => setStep("checklist")}
           onUnauth={goToLogin}
         />
       )}
 
-      {/* Toast: карточки ремонта созданы */}
-      {completionToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-slate-800 text-white text-sm font-medium shadow-lg max-w-xs w-full text-center">
-          {completionToast}
-          {" · "}
-          <a href="/repair" className="underline text-accent-border">
-            Открыть мастерскую
-          </a>
-        </div>
-      )}
-
-      {/* Toast: ошибка создания карточек ремонта */}
-      {errorToast && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-rose-600 text-white text-sm font-medium shadow-lg max-w-xs w-full text-center">
-          {errorToast}
-        </div>
-      )}
-
-      {/* B6: T2 — RecordPaymentModal on /warehouse/scan post-issue/return */}
       <RecordPaymentModal
         open={paymentBookingId !== null}
         defaultBookingId={paymentBookingId ?? undefined}
@@ -1139,13 +1862,11 @@ function WarehouseScanInner({ hasMainSession }: { hasMainSession: boolean }) {
   );
 }
 
-// ── Page shell — gates on auth loading to prevent PIN flash ──────────────────
+// ── Page Shell ────────────────────────────────────────────────────────────────────
 
 export default function WarehouseScanPage() {
   const { user, loading } = useCurrentUser();
 
-  // Show neutral skeleton while /api/auth/me is in flight.
-  // This prevents the PIN keypad from briefly appearing for SA/WH users.
   if (loading) {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center">
@@ -1154,8 +1875,8 @@ export default function WarehouseScanPage() {
     );
   }
 
-  const hasMainSession =
-    user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE";
+  const hasMainSession = user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE";
+  const workerName = user?.username ?? "Кладовщик";
 
-  return <WarehouseScanInner hasMainSession={hasMainSession} />;
+  return <WarehouseScanInner hasMainSession={hasMainSession} workerName={workerName} />;
 }
