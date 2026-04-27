@@ -46,6 +46,7 @@ const COLORS = {
   sectionBg: "#e2e8f0",
   rose: "#e11d48",
   amber: "#d97706",
+  emerald: "#059669",
 };
 
 type FontSet = { body: string; bold: string };
@@ -83,13 +84,22 @@ function resolveFonts(pdfDoc: InstanceType<typeof PDFDocument>): FontSet {
   return { body: "Helvetica", bold: "Helvetica-Bold" };
 }
 
-const rubFormatter = new Intl.NumberFormat("ru-RU", {
+const rubFormatterInt = new Intl.NumberFormat("ru-RU", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+const rubFormatterDec = new Intl.NumberFormat("ru-RU", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
+/** D3: целые рубли без «,00», дробные с 2 знаками */
 function formatRub(value: Decimal): string {
-  return `${rubFormatter.format(Number(value.toFixed(2)))} ₽`;
+  const num = value.toDecimalPlaces(2);
+  const formatted = num.mod(1).isZero()
+    ? rubFormatterInt.format(num.toNumber())
+    : rubFormatterDec.format(num.toNumber());
+  return `${formatted} ₽`;
 }
 
 const RU_MONTHS = [
@@ -116,7 +126,18 @@ function paymentStatusLabel(paymentStatus: string, daysOverdue: number): string 
     case "NOT_PAID": return "Открыт";
     case "PAID": return "Оплачено";
     case "OVERDUE": return "Просрочено";
-    default: return paymentStatus;
+    default: return "Неизвестен"; // D8: русский fallback вместо сырого enum
+  }
+}
+
+/** D5: цвет статуса — rose=просрочено, amber=частично, muted=открыт, emerald=оплачено */
+function paymentStatusColor(paymentStatus: string, daysOverdue: number): string {
+  if (daysOverdue > 0) return COLORS.rose;
+  switch (paymentStatus) {
+    case "OVERDUE": return COLORS.rose;
+    case "PARTIALLY_PAID": return COLORS.amber;
+    case "PAID": return COLORS.emerald;
+    default: return COLORS.muted; // NOT_PAID и прочее — нейтральный
   }
 }
 
@@ -140,8 +161,7 @@ export function renderClientDebtReportPdf(input: ClientDebtReportInput): Promise
     const { client, bookings, organization, generatedAt } = input;
     const org = organization;
 
-    // Короткий ID отчёта из timestamp
-    const reportId = `#R-${generatedAt.getTime().toString(36).toUpperCase().slice(-6)}`;
+    // D10: ID отчёта убран — дата в футере достаточна для идентификации
 
     // ── Шапка ─────────────────────────────────────────────────────────────────
 
@@ -178,8 +198,6 @@ export function renderClientDebtReportPdf(input: ClientDebtReportInput): Promise
       .text("Отчёт по дебиторке", rightX, margin, { width: rightW, align: "right" });
     pdfDoc.font(fonts.body).fontSize(8.5).fillColor(COLORS.muted)
       .text(`Сформировано: ${formatDateRu(generatedAt)}`, rightX, margin + 18, { width: rightW, align: "right" });
-    pdfDoc.font(fonts.body).fontSize(8.5).fillColor(COLORS.muted)
-      .text(reportId, rightX, margin + 30, { width: rightW, align: "right" });
 
     y = Math.max(y, margin + 44) + 10;
 
@@ -240,6 +258,17 @@ export function renderClientDebtReportPdf(input: ClientDebtReportInput): Promise
       grouped.get(k)!.push(b);
     }
 
+    // D2: внутри «Без даты» — вторичная сортировка по expectedPaymentDate desc, затем по amount desc
+    const nodateGroup = grouped.get("");
+    if (nodateGroup) {
+      nodateGroup.sort((a, b) => {
+        const da = a.expectedPaymentDate?.getTime() ?? 0;
+        const db = b.expectedPaymentDate?.getTime() ?? 0;
+        if (db !== da) return db - da;
+        return b.amountOutstanding.comparedTo(a.amountOutstanding);
+      });
+    }
+
     // Порядок ключей: пустая строка ("без даты") первой, затем по убыванию даты
     const sortedKeys = Array.from(grouped.keys()).sort((a, b) => {
       if (a === "" && b === "") return 0;
@@ -248,31 +277,29 @@ export function renderClientDebtReportPdf(input: ClientDebtReportInput): Promise
       return b.localeCompare(a); // desc
     });
 
-    // Колонки таблицы
+    // D1: колонка «№» удалена — её 24pt перераспределены в Проект (+24pt)
     const COL = {
-      num: 24,
-      project: 155,
+      project: 179,
       total: 72,
       paid: 72,
       outstanding: 80,
       status: 82,
     };
-    const totalColW = COL.num + COL.project + COL.total + COL.paid + COL.outstanding + COL.status;
+    const totalColW = COL.project + COL.total + COL.paid + COL.outstanding + COL.status;
     // centre the table if content is narrower than page content width
     const tableX = margin + Math.max(0, (contentW - totalColW) / 2);
 
+    // D4: ensureSpace НЕ сбрасывает y — это делает pageAdded-листенер
     function ensureSpace(extra: number) {
-      const bottom = pdfDoc.page.height - margin - 40; // 40 for footer
+      const bottom = pdfDoc.page.height - margin - 40; // 40 для футера
       if (y + extra > bottom) {
         pdfDoc.addPage();
-        y = margin;
+        // y обновляется внутри pageAdded-листенера ниже
       }
     }
 
-    function drawTableHeader() {
-      ensureSpace(20);
+    function drawTableHeaderAt(startY: number): number {
       const headers: [string, number][] = [
-        ["№", COL.num],
         ["Проект", COL.project],
         ["Итого", COL.total],
         ["Получено", COL.paid],
@@ -280,16 +307,22 @@ export function renderClientDebtReportPdf(input: ClientDebtReportInput): Promise
         ["Статус", COL.status],
       ];
       pdfDoc.save()
-        .rect(tableX, y, totalColW, 18).fill(COLORS.sectionBg)
+        .rect(tableX, startY, totalColW, 18).fill(COLORS.sectionBg)
         .restore();
       let cx = tableX;
       pdfDoc.font(fonts.bold).fontSize(7.5).fillColor(COLORS.ink);
       for (const [h, w] of headers) {
-        pdfDoc.text(h, cx + 3, y + 5, { width: w - 6, lineBreak: false, ellipsis: true });
+        pdfDoc.text(h, cx + 3, startY + 5, { width: w - 6, lineBreak: false, ellipsis: true });
         cx += w;
       }
-      y += 18;
+      return startY + 18;
     }
+
+    // D4: единый заголовок таблицы в начале; при каждом новом листе — повтор
+    y = drawTableHeaderAt(y);
+    pdfDoc.on("pageAdded", () => {
+      y = drawTableHeaderAt(margin);
+    });
 
     for (const key of sortedKeys) {
       const group = grouped.get(key)!;
@@ -297,7 +330,7 @@ export function renderClientDebtReportPdf(input: ClientDebtReportInput): Promise
 
       ensureSpace(28 + group.length * 26);
 
-      // Заголовок дня
+      // D4: разделитель-полоса вместо повторного заголовка
       pdfDoc.save()
         .rect(margin, y, contentW, 20).fill(COLORS.headerBg)
         .restore();
@@ -309,9 +342,6 @@ export function renderClientDebtReportPdf(input: ClientDebtReportInput): Promise
       pdfDoc.font(fonts.bold).fontSize(9.5).fillColor(COLORS.ink)
         .text(dayLabel, margin + 6, y + 5, { width: contentW - 12 });
       y += 20;
-
-      // Таблица-шапка
-      drawTableHeader();
 
       // Строки броней
       for (const b of group) {
@@ -325,16 +355,13 @@ export function renderClientDebtReportPdf(input: ClientDebtReportInput): Promise
           .strokeColor(COLORS.border).lineWidth(0.3).stroke()
           .restore();
 
-        // № брони (последние 6 символов CUID)
-        const shortId = b.bookingId.slice(-6).toUpperCase();
-
+        // D1: № колонка удалена; D5: правильный цвет статуса
         const cells: [string, number, string, boolean][] = [
-          [shortId, COL.num, COLORS.muted, false],
           [b.projectName, COL.project, COLORS.ink, false],
           [formatRub(b.finalAmount), COL.total, COLORS.muted, false],
           [b.amountPaid.greaterThan(0) ? formatRub(b.amountPaid) : "—", COL.paid, COLORS.muted, false],
           [formatRub(b.amountOutstanding), COL.outstanding, isOverdue ? COLORS.rose : COLORS.ink, true],
-          [paymentStatusLabel(b.paymentStatus, b.daysOverdue), COL.status, isOverdue ? COLORS.rose : COLORS.amber, false],
+          [paymentStatusLabel(b.paymentStatus, b.daysOverdue), COL.status, paymentStatusColor(b.paymentStatus, b.daysOverdue), false],
         ];
 
         let cx = tableX;
