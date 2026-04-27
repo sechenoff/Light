@@ -68,7 +68,8 @@ const debtsQuerySchema = z.object({
   overdueOnly: z.enum(["true", "false"]).optional(),
   minAmount: z.coerce.number().nonnegative().optional(),
   withAging: z.enum(["true", "false"]).optional(),
-  sort: z.enum(["name", "amount", "date"]).optional(),
+  /** B2: сортировка (фактическая сортировка на фронтенде; enum нужен для будущего использования) */
+  sort: z.enum(["name", "amount", "date", "startDate", "status"]).optional(),
   order: z.enum(["asc", "desc"]).optional(),
 });
 

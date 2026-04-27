@@ -10,9 +10,9 @@ import { formatRub, pluralize } from "../../../src/lib/format";
 import { toast } from "../../../src/components/ToastProvider";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { LegacyBookingImportModal } from "../../../src/components/finance/LegacyBookingImportModal";
-import { ContactChips } from "../../../src/components/finance/ContactChips";
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 import { AIReminderModal } from "../../../src/components/finance/AIReminderModal";
+import { BookingPaymentsModal } from "../../../src/components/finance/BookingPaymentsModal";
 import type { UserRole } from "../../../src/lib/auth";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
@@ -27,6 +27,11 @@ interface DebtProject {
   daysOverdue: number | null;
   paymentStatus: string;
   bookingStatus?: string;
+  /** B1 */
+  startDate: string | null;
+  endDate: string | null;
+  clientName: string;
+  clientId: string;
 }
 
 interface ClientDebt {
@@ -42,27 +47,6 @@ interface ClientDebt {
   lastReminderAt?: string | null;
 }
 
-interface InvoiceAgingBucket {
-  label: string;
-  minDays: number;
-  maxDays: number | null;
-  total: string;
-  invoiceCount: number;
-}
-
-interface ClientAgingRow {
-  clientId: string;
-  clientName: string;
-  current: string;
-  days1to30: string;
-  days31to60: string;
-  days61to90: string;
-  over90: string;
-  total: string;
-  clientPhone?: string | null;
-  clientEmail?: string | null;
-}
-
 interface DebtsResponse {
   debts: ClientDebt[];
   summary: {
@@ -71,92 +55,170 @@ interface DebtsResponse {
     totalOverdue: string;
     asOf: string;
   };
-  aging?: InvoiceAgingBucket[];
-  agingPerClient?: ClientAgingRow[];
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Flat row type ──────────────────────────────────────────────────────────────
 
-type SortField = "name" | "amount" | "date";
+interface FlatRow extends DebtProject {
+  clientPhone: string | null;
+  clientEmail: string | null;
+  lastReminderAt: string | null;
+  totalClientOutstanding: string;
+}
+
+// ── Sort types ─────────────────────────────────────────────────────────────────
+
+type SortField = "startDate" | "name" | "amount" | "status";
 type SortOrder = "asc" | "desc";
 
-function formatPayDate(dateStr: string | null): string {
-  if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+// ── Status filter type ─────────────────────────────────────────────────────────
+
+type StatusFilter = "all" | "open" | "partial" | "overdue";
+
+// ── Date helpers ───────────────────────────────────────────────────────────────
+
+const RU_MONTHS_SHORT = [
+  "янв", "фев", "мар", "апр", "май", "июн",
+  "июл", "авг", "сен", "окт", "ноя", "дек",
+];
+
+function formatStartDate(dateStr: string | null): { dayMon: string; year: string } | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  return {
+    dayMon: `${d.getDate()} ${RU_MONTHS_SHORT[d.getMonth()]}`,
+    year: String(d.getFullYear()),
+  };
 }
 
-function formatDaysLabel(maxDaysOverdue: number, projects: DebtProject[]): {
-  label: string;
-  tone: DaysTone;
-} {
-  if (maxDaysOverdue > 0) {
-    return { label: `${maxDaysOverdue} ${pluralize(maxDaysOverdue, "день", "дня", "дней")} просрочка`, tone: "rose" };
-  }
-  const now = Date.now();
-  let minDays = Infinity;
-  for (const p of projects) {
-    if (!p.expectedPaymentDate) continue;
-    const diff = Math.ceil((new Date(p.expectedPaymentDate).getTime() - now) / 86400000);
-    if (diff >= 0 && diff < minDays) minDays = diff;
-  }
-  if (minDays <= 7 && minDays !== Infinity) {
-    return { label: `через ${minDays} ${pluralize(minDays, "день", "дня", "дней")}`, tone: "amber" };
-  }
-  return { label: "—", tone: "ink-2" };
+function startDateColor(dateStr: string | null, daysOverdue: number | null): string {
+  if (daysOverdue !== null && daysOverdue > 0) return "text-rose";
+  if (!dateStr) return "text-ink-3";
+  const today = new Date();
+  const d = new Date(dateStr);
+  const diff = Math.floor((d.getTime() - today.getTime()) / 86400000);
+  if (diff >= 0) return "text-accent"; // future / today
+  return "text-ink-3";
 }
 
-// Static lookup for daysTone — avoids JIT-fragile dynamic `text-${tone}` classes
-type DaysTone = "rose" | "amber" | "ink-2";
-const DAYS_TONE_CLASS: Record<DaysTone, string> = {
-  rose: "text-rose",
-  amber: "text-amber",
-  "ink-2": "text-ink-2",
-};
+// ── Payment status → pill ──────────────────────────────────────────────────────
 
-// Aging cell color classes
-const BUCKET_CELL = [
-  "bg-surface-subtle text-ink-2",
-  "text-amber",
-  "text-amber font-medium",
-  "text-rose font-medium",
-  "text-rose font-semibold",
-] as const;
+function statusPill(paymentStatus: string, daysOverdue: number | null): { label: string; cls: string } {
+  if (daysOverdue !== null && daysOverdue > 0) {
+    return {
+      label: `Просрочено ${daysOverdue} ${pluralize(daysOverdue, "дн", "дн", "дн")}`,
+      cls: "bg-rose-soft text-rose border-rose-border",
+    };
+  }
+  switch (paymentStatus) {
+    case "PARTIALLY_PAID": return { label: "Частично", cls: "bg-amber-soft text-amber border-amber-border" };
+    case "OVERDUE": return {
+      label: `Просрочено${daysOverdue ? ` ${daysOverdue} дн` : ""}`,
+      cls: "bg-rose-soft text-rose border-rose-border",
+    };
+    case "NOT_PAID": return { label: "Открыт", cls: "bg-amber-soft text-amber border-amber-border" };
+    case "PAID": return { label: "Оплачено", cls: "bg-emerald-soft text-emerald-dark border-emerald-border" };
+    default: return { label: paymentStatus, cls: "bg-surface-subtle text-ink-2 border-border" };
+  }
+}
 
-const BUCKET_BG = [
-  "bg-surface-subtle",
-  "bg-amber-soft/60",
-  "bg-amber-soft",
-  "bg-rose-soft/70",
-  "bg-rose-soft",
-] as const;
+// ── Sort helpers ───────────────────────────────────────────────────────────────
+
+function sortRows(rows: FlatRow[], sort: SortField, order: SortOrder): FlatRow[] {
+  const sorted = [...rows].sort((a, b) => {
+    let cmp = 0;
+    switch (sort) {
+      case "startDate":
+        cmp = (a.startDate ?? "").localeCompare(b.startDate ?? "");
+        break;
+      case "name":
+        cmp = a.clientName.localeCompare(b.clientName, "ru");
+        break;
+      case "amount":
+        cmp = Number(a.amountOutstanding) - Number(b.amountOutstanding);
+        break;
+      case "status":
+        cmp = (a.daysOverdue ?? -1) - (b.daysOverdue ?? -1);
+        break;
+    }
+    return order === "asc" ? cmp : -cmp;
+  });
+  return sorted;
+}
 
 // ── Sort arrow ─────────────────────────────────────────────────────────────────
 
 function SortArrow({ active, order }: { active: boolean; order: SortOrder }) {
   if (!active) return <span className="text-ink-3 text-[10px] ml-1">↕</span>;
-  return <span className="text-accent-bright text-[10px] ml-1">{order === "asc" ? "▲" : "▼"}</span>;
+  return <span className="ml-1 text-[10px] text-accent-bright">{order === "asc" ? "▲" : "▼"}</span>;
 }
 
-// ── Smart-pick earliest overdue booking ───────────────────────────────────────
+// ── Action menu ────────────────────────────────────────────────────────────────
 
-function pickPriorityBooking(projects: DebtProject[]): string | null {
-  if (!projects?.length) return null;
-  // 1. Most overdue (daysOverdue > 0, descending)
-  const overdue = projects.filter((p) => (p.daysOverdue ?? 0) > 0);
-  if (overdue.length > 0) {
-    return [...overdue].sort((a, b) => (b.daysOverdue ?? 0) - (a.daysOverdue ?? 0))[0].bookingId;
-  }
-  // 2. With dueDate, earliest first
-  const withDueDate = projects.filter((p) => p.expectedPaymentDate);
-  if (withDueDate.length > 0) {
-    return [...withDueDate].sort((a, b) =>
-      String(a.expectedPaymentDate).localeCompare(String(b.expectedPaymentDate))
-    )[0].bookingId;
-  }
-  // 3. Largest amount fallback — copy to avoid mutating d.projects
-  return [...projects].sort((a, b) =>
-    Number(b.amountOutstanding) - Number(a.amountOutstanding)
-  )[0].bookingId;
+interface ActionMenuProps {
+  row: FlatRow;
+  onRemind: () => void;
+  onDelete: () => void;
+  onPaymentsList: () => void;
+}
+
+function ActionMenu({ row, onRemind, onDelete, onPaymentsList }: ActionMenuProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Дополнительные действия"
+        className="h-[30px] w-[30px] flex items-center justify-center border border-border bg-surface rounded text-ink-2 hover:bg-surface-subtle text-sm"
+      >
+        ⋯
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-30 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[190px]">
+          <button
+            onClick={() => { setOpen(false); onPaymentsList(); }}
+            className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+          >
+            📋 Список платежей
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              window.location.href = `/api/bookings/${row.bookingId}/invoice.pdf`;
+            }}
+            className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+          >
+            📄 Скачать счёт PDF
+          </button>
+          <button
+            onClick={() => { setOpen(false); onRemind(); }}
+            className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+          >
+            🤖 Напомнить клиенту
+          </button>
+          <div className="border-t border-border my-1" />
+          <button
+            onClick={() => { setOpen(false); onDelete(); }}
+            className="w-full text-left px-3.5 py-2 text-[12.5px] text-rose hover:bg-rose-soft"
+          >
+            🗑 Удалить бронь
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -168,28 +230,37 @@ function DebtsPageInner() {
   const searchParams = useSearchParams();
 
   const legacyMode = searchParams.get("legacy") === "1";
-  const initSort = (searchParams.get("sort") as SortField | null) ?? "amount";
+
+  // F3: sort URL persistence
+  const initSort = (searchParams.get("sort") as SortField | null) ?? "startDate";
   const initOrder = (searchParams.get("order") as SortOrder | null) ?? "desc";
+  // F4: client filter URL persistence
+  const initClient = searchParams.get("client") ?? "";
 
   const [sort, setSort] = useState<SortField>(initSort);
   const [order, setOrder] = useState<SortOrder>(initOrder);
-  const [data, setData] = useState<DebtsResponse | null>(null);
+  const [clientFilter, setClientFilter] = useState<string>(initClient);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
-  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [data, setData] = useState<DebtsResponse | null>(null);
   const [fetching, setFetching] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [error, setError] = useState<string | null>(null);
 
   // Payment modal state
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentBookingId, setPaymentBookingId] = useState<string | undefined>(undefined);
-  const [paymentDebtContext, setPaymentDebtContext] = useState<{ projectName: string; clientName: string; amountOutstanding: string } | null>(null);
+  const [paymentContext, setPaymentContext] = useState<{ projectName: string; clientName: string; amountOutstanding: string } | null>(null);
+
+  // BookingPaymentsModal state
+  const [paymentsListOpen, setPaymentsListOpen] = useState(false);
+  const [paymentsListBookingId, setPaymentsListBookingId] = useState<string>("");
+  const [paymentsListContext, setPaymentsListContext] = useState<{ projectName: string; clientName: string; amountOutstanding: string } | null>(null);
 
   // AI reminder modal state
-  const [reminderClient, setReminderClient] = useState<ClientDebt | null>(null);
+  const [reminderClientDebt, setReminderClientDebt] = useState<ClientDebt | null>(null);
+  const [reminderRowClientId, setReminderRowClientId] = useState<string | null>(null);
 
-  // Remindable clients ribbon
+  // Remindable clients
   const [remindableCount, setRemindableCount] = useState<number | null>(null);
   const remindableFetched = useRef(false);
 
@@ -201,33 +272,74 @@ function DebtsPageInner() {
     return () => { cancelled = true; };
   }, []);
 
-  const loadDebts = useCallback((s: SortField, o: SortOrder) => {
+  const loadDebts = useCallback(() => {
     let cancelled = false;
     setFetching(true);
-    setError(null);
-    apiFetch<DebtsResponse>(`/api/finance/debts?withAging=true&sort=${s}&order=${o}`)
-      .then((d) => { if (!cancelled) { setData(d); } })
-      .catch((e) => {
-        if (cancelled) return;
-        setFetching(false);
-        const msg = e instanceof Error ? e.message : "Не удалось загрузить долги";
-        setError(msg);
-        toast.error("Ошибка загрузки долгов");
-      })
+    apiFetch<DebtsResponse>("/api/finance/debts")
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) toast.error("Ошибка загрузки долгов"); })
       .finally(() => { if (!cancelled) setFetching(false); });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (!authorized) return;
-    return loadDebts(sort, order);
-  }, [authorized, sort, order, loadDebts]);
+    return loadDebts();
+  }, [authorized, loadDebts]);
 
   useEffect(() => {
     if (!authorized || remindableFetched.current) return;
     remindableFetched.current = true;
     fetchRemindable();
   }, [authorized, fetchRemindable]);
+
+  // ── Flatten data ───────────────────────────────────────────────────────────────
+
+  const allRows: FlatRow[] = (data?.debts ?? []).flatMap((c) =>
+    c.projects.map((p) => ({
+      ...p,
+      clientPhone: c.clientPhone ?? null,
+      clientEmail: c.clientEmail ?? null,
+      lastReminderAt: c.lastReminderAt ?? null,
+      totalClientOutstanding: c.totalOutstanding,
+    }))
+  );
+
+  // ── Per-client chips data ──────────────────────────────────────────────────────
+
+  const clientChips = (data?.debts ?? []).map((c) => ({
+    clientId: c.clientId,
+    clientName: c.clientName,
+    totalOutstanding: c.totalOutstanding,
+    overdueAmount: c.overdueAmount,
+    maxDaysOverdue: c.maxDaysOverdue,
+    bookingsCount: c.bookingsCount,
+  }));
+
+  // ── Filtering ──────────────────────────────────────────────────────────────────
+
+  const filtered = allRows.filter((row) => {
+    // Client filter
+    if (clientFilter && row.clientId !== clientFilter) return false;
+    // Status filter
+    if (statusFilter === "open" && !(row.paymentStatus === "NOT_PAID" && (row.daysOverdue === null || row.daysOverdue <= 0))) return false;
+    if (statusFilter === "partial" && row.paymentStatus !== "PARTIALLY_PAID") return false;
+    if (statusFilter === "overdue" && !((row.daysOverdue ?? 0) > 0 || row.paymentStatus === "OVERDUE")) return false;
+    // Search
+    const q = search.toLowerCase();
+    if (q && !row.clientName.toLowerCase().includes(q) && !row.projectName.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  // Status counts
+  const openCount = allRows.filter((r) => r.paymentStatus === "NOT_PAID" && (r.daysOverdue === null || r.daysOverdue <= 0)).length;
+  const partialCount = allRows.filter((r) => r.paymentStatus === "PARTIALLY_PAID").length;
+  const overdueCount = allRows.filter((r) => (r.daysOverdue ?? 0) > 0 || r.paymentStatus === "OVERDUE").length;
+
+  // Sort rows
+  const sortedRows = sortRows(filtered, sort, order);
+
+  // ── URL helpers ────────────────────────────────────────────────────────────────
 
   function handleSort(field: SortField) {
     const newOrder = sort === field && order === "desc" ? "asc" : "desc";
@@ -239,498 +351,221 @@ function DebtsPageInner() {
     router.replace(`?${params.toString()}`, { scroll: false });
   }
 
-  function toggle(clientId: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(clientId)) next.delete(clientId);
-      else next.add(clientId);
-      return next;
-    });
+  function handleClientFilter(clientId: string) {
+    const next = clientId === clientFilter ? "" : clientId;
+    setClientFilter(next);
+    const params = new URLSearchParams(searchParams.toString());
+    if (next) params.set("client", next);
+    else params.delete("client");
+    router.replace(`?${params.toString()}`, { scroll: false });
   }
 
-  function openPayment(bookingId?: string, context?: { projectName: string; clientName: string; amountOutstanding: string }) {
-    setPaymentBookingId(bookingId);
-    setPaymentDebtContext(context ?? null);
+  // ── Actions ────────────────────────────────────────────────────────────────────
+
+  function openPayment(row: FlatRow) {
+    setPaymentBookingId(row.bookingId);
+    setPaymentContext({ projectName: row.projectName, clientName: row.clientName, amountOutstanding: row.amountOutstanding });
     setPaymentOpen(true);
   }
 
-  function handlePaymentCreated() {
-    setPaymentOpen(false);
-    loadDebts(sort, order);
+  function openPaymentsList(row: FlatRow) {
+    setPaymentsListBookingId(row.bookingId);
+    setPaymentsListContext({ projectName: row.projectName, clientName: row.clientName, amountOutstanding: row.amountOutstanding });
+    setPaymentsListOpen(true);
   }
 
-  function handleReminderSent() {
-    setReminderClient(null);
-    fetchRemindable();
-    loadDebts(sort, order);
+  function openReminder(row: FlatRow) {
+    // Find full client debt for total outstanding
+    const clientDebt = data?.debts.find((c) => c.clientId === row.clientId) ?? null;
+    setReminderClientDebt(clientDebt);
+    setReminderRowClientId(row.clientId);
+  }
+
+  async function handleDelete(row: FlatRow) {
+    if (!confirm(`Удалить бронь «${row.projectName}»? Это действие нельзя отменить.`)) return;
+    try {
+      await apiFetch(`/api/bookings/${row.bookingId}`, { method: "DELETE" });
+      toast.success("Бронь удалена");
+      loadDebts();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Ошибка удаления");
+    }
   }
 
   if (loading || !authorized) return null;
   if (!data && fetching) return <div className="p-8 text-ink-3 text-sm">Загрузка…</div>;
-  if (error && !data) return (
-    <div className="p-8">
-      <div className="bg-rose-soft border border-rose-border rounded-lg px-4 py-3 text-sm text-rose">
-        {error}
-      </div>
-    </div>
-  );
 
-  const debtCount = data?.summary.totalClients ?? data?.debts.length ?? 0;
+  const totalClients = data?.summary.totalClients ?? 0;
+  const totalOutstanding = data?.summary.totalOutstanding ?? "0";
+  const totalOverdue = data?.summary.totalOverdue ?? "0";
 
-  // Filter debts
-  const filteredDebts = (data?.debts ?? []).filter((d) => {
-    const isOverdue = d.maxDaysOverdue > 0;
-    const matchOverdue = !overdueOnly || isOverdue;
-    const q = search.toLowerCase();
-    const matchSearch =
-      !q ||
-      d.clientName.toLowerCase().includes(q) ||
-      d.projects.some((p) => p.projectName.toLowerCase().includes(q));
-    return matchOverdue && matchSearch;
-  });
-
-  // Filter aging matrix rows
-  const agingRows = (data?.agingPerClient ?? []).filter((row) => {
-    const q = search.toLowerCase();
-    if (q && !row.clientName.toLowerCase().includes(q)) return false;
-    if (overdueOnly) {
-      return (
-        Number(row.days1to30) > 0 ||
-        Number(row.days31to60) > 0 ||
-        Number(row.days61to90) > 0 ||
-        Number(row.over90) > 0
-      );
-    }
-    return true;
-  });
-
-  // Totals for aging matrix
-  const agingTotals = agingRows.reduce(
-    (acc, row) => ({
-      current: acc.current + Number(row.current),
-      days1to30: acc.days1to30 + Number(row.days1to30),
-      days31to60: acc.days31to60 + Number(row.days31to60),
-      days61to90: acc.days61to90 + Number(row.days61to90),
-      over90: acc.over90 + Number(row.over90),
-      total: acc.total + Number(row.total),
-    }),
-    { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, over90: 0, total: 0 }
-  );
-
-  const hasAgingMatrix = agingRows.length > 0;
-  const hasDebtsList = filteredDebts.length > 0;
+  const activeReminderClient = reminderClientDebt;
 
   return (
     <div className="pb-10 bg-surface-subtle min-h-screen">
-      <FinanceTabNav debtCount={debtCount} />
+      <FinanceTabNav debtCount={totalClients} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
 
         {/* Header */}
-        <div className="mb-5">
-          <p className="eyebrow text-ink-3">Финансы</p>
-          <div className="flex items-center justify-between gap-3 flex-wrap mt-1">
-            <h1 className="text-[22px] font-semibold text-ink tracking-tight">Дебиторка</h1>
-            <div className="flex gap-2">
-              {legacyMode && currentUser?.user?.role === "SUPER_ADMIN" && (
-                <button
-                  type="button"
-                  onClick={() => setImportOpen(true)}
-                  className="px-3.5 py-2 text-[12px] font-medium rounded-lg border border-accent-border bg-accent-soft text-accent-bright hover:bg-accent-border"
-                >
-                  + Импортировать смету
-                </button>
-              )}
+        <div className="flex items-end justify-between gap-3 mb-5">
+          <div>
+            <p className="eyebrow text-ink-3 mb-1">ФИНАНСЫ</p>
+            <h1 className="text-[24px] font-semibold text-ink tracking-tight mb-1">Дебиторка</h1>
+            <p className="text-[13px] text-ink-2">
+              {totalClients} {pluralize(totalClients, "клиент", "клиента", "клиентов")}
+              {" · "}{allRows.length} открытых {pluralize(allRows.length, "долг", "долга", "долгов")}
+              {" · к получению "}
+              <strong className="mono-num text-ink">{formatRub(totalOutstanding)}</strong>
+            </p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            {legacyMode && currentUser?.user?.role === "SUPER_ADMIN" && (
               <button
-                onClick={() => { window.location.href = "/api/finance/debts.xlsx"; }}
-                className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface rounded-lg hover:bg-surface-subtle"
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="px-3.5 py-2 text-[12px] font-medium rounded-lg border border-accent-border bg-accent-soft text-accent-bright hover:bg-accent-border"
               >
-                📊 Экспорт XLSX
+                + Импортировать смету
               </button>
-            </div>
-          </div>
-        </div>
-
-        {/* KPI summary strip */}
-        {data?.summary && (
-          <div className="grid grid-cols-3 gap-3 mb-5">
-            <div className="bg-surface border border-border rounded-lg px-4 py-3">
-              <p className="eyebrow text-ink-3 mb-0.5">Всего долгов</p>
-              <p className="mono-num text-[18px] font-semibold text-ink">{formatRub(data.summary.totalOutstanding)}</p>
-            </div>
-            <div className="bg-surface border border-border rounded-lg px-4 py-3">
-              <p className="eyebrow text-ink-3 mb-0.5">Просрочено</p>
-              <p className={`mono-num text-[18px] font-semibold ${Number(data.summary.totalOverdue) > 0 ? "text-rose" : "text-ink"}`}>
-                {formatRub(data.summary.totalOverdue)}
-              </p>
-            </div>
-            <div className="bg-surface border border-border rounded-lg px-4 py-3">
-              <p className="eyebrow text-ink-3 mb-0.5">Клиентов с долгом</p>
-              <p className="mono-num text-[18px] font-semibold text-ink">{data.summary.totalClients}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Action ribbon: clients ready for reminder */}
-        {remindableCount !== null && remindableCount > 0 && (
-          <div className="mb-4 flex items-center gap-3 bg-amber-soft border border-amber-border rounded-lg px-4 py-3">
-            <span className="text-[13px] text-ink">
-              🤖 {remindableCount} {pluralize(remindableCount, "клиент готов", "клиента готовы", "клиентов готовы")} к напоминанию
-            </span>
+            )}
             <button
-              type="button"
-              onClick={() => setOverdueOnly(true)}
-              className="ml-auto px-3 py-1.5 text-[11px] font-medium border border-amber-border rounded-lg bg-surface hover:bg-amber-soft"
+              onClick={() => { window.location.href = "/api/finance/debts.xlsx"; }}
+              className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface rounded-lg hover:bg-surface-subtle"
             >
-              Просмотреть
+              📊 Экспорт всего
             </button>
           </div>
-        )}
+        </div>
 
-        {/* Filter row */}
-        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <div className="flex items-center gap-2 flex-wrap">
-            <input
-              type="text"
-              className="border border-border rounded-lg px-3 py-2 text-[13px] bg-surface min-w-[240px]"
-              placeholder="🔍 Контрагент или проект…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <div className="flex border border-border rounded-lg overflow-hidden">
+        {/* KPI strip — 4 cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <div className="bg-surface border border-border rounded-lg px-4 py-3">
+            <p className="eyebrow text-ink-3 mb-0.5">Всего к получению</p>
+            <p className={`mono-num text-[17px] font-semibold ${Number(totalOutstanding) > 0 ? "text-rose" : "text-ink"}`}>
+              {formatRub(totalOutstanding)}
+            </p>
+          </div>
+          <div className="bg-surface border border-border rounded-lg px-4 py-3">
+            <p className="eyebrow text-ink-3 mb-0.5">Просрочено</p>
+            <p className={`mono-num text-[17px] font-semibold ${Number(totalOverdue) > 0 ? "text-rose" : "text-ink"}`}>
+              {formatRub(totalOverdue)}
+            </p>
+            {overdueCount > 0 && (
+              <p className="text-[11px] text-rose mt-0.5">{overdueCount} {pluralize(overdueCount, "долг", "долга", "долгов")}</p>
+            )}
+          </div>
+          <div className="bg-surface border border-border rounded-lg px-4 py-3">
+            <p className="eyebrow text-ink-3 mb-0.5">Частично оплачено</p>
+            <p className="mono-num text-[17px] font-semibold text-ink">{partialCount}</p>
+            {partialCount > 0 && (
+              <p className="text-[11px] text-ink-2 mt-0.5">
+                {formatRub(allRows.filter((r) => r.paymentStatus === "PARTIALLY_PAID").reduce((s, r) => s + Number(r.amountOutstanding), 0))}
+              </p>
+            )}
+          </div>
+          <div className="bg-surface border border-border rounded-lg px-4 py-3">
+            <p className="eyebrow text-ink-3 mb-0.5">К напоминанию</p>
+            <p className="mono-num text-[17px] font-semibold text-ink">
+              {remindableCount ?? "…"}
+            </p>
+            {(remindableCount ?? 0) > 0 && (
+              <p className="text-[11px] text-ink-2 mt-0.5">готовы к уведомлению</p>
+            )}
+          </div>
+        </div>
+
+        {/* Per-client chips — horizontal scroll */}
+        {clientChips.length > 0 && (
+          <div className="mb-5">
+            <p className="eyebrow text-ink-3 mb-2">КЛИЕНТЫ С ДОЛГОМ · клик = фильтр</p>
+            <div className="flex gap-2 overflow-x-auto pb-1 -webkit-overflow-scrolling-touch">
+              {/* "Все клиенты" chip */}
               <button
-                onClick={() => setOverdueOnly(false)}
-                className={`px-3.5 py-2 text-[12px] font-medium transition-colors ${
-                  !overdueOnly
-                    ? "bg-surface text-ink"
-                    : "bg-surface-subtle text-ink-2 hover:bg-surface"
+                onClick={() => handleClientFilter("")}
+                className={`flex-shrink-0 min-w-[130px] flex flex-col gap-0.5 px-3 py-2 border rounded-md text-left transition-colors ${
+                  clientFilter === ""
+                    ? "bg-accent text-white border-accent"
+                    : "bg-surface border-border hover:bg-surface-subtle"
                 }`}
               >
-                Все с остатком
+                <span className={`text-[12px] font-semibold ${clientFilter === "" ? "text-white" : "text-ink"}`}>
+                  Все клиенты
+                </span>
+                <span className={`font-mono text-[13px] font-semibold ${clientFilter === "" ? "text-white" : "text-rose"}`}>
+                  {formatRub(totalOutstanding)}
+                </span>
+                <span className={`text-[10px] uppercase tracking-wide ${clientFilter === "" ? "text-blue-200" : "text-ink-3"}`}>
+                  {allRows.length} {pluralize(allRows.length, "бронь", "брони", "броней")}
+                </span>
               </button>
-              <button
-                onClick={() => setOverdueOnly(true)}
-                className={`px-3.5 py-2 text-[12px] font-medium transition-colors border-l border-border ${
-                  overdueOnly
-                    ? "bg-accent-bright text-white"
-                    : "bg-surface-subtle text-ink-2 hover:bg-surface"
-                }`}
-              >
-                Только просроченные
-              </button>
+
+              {clientChips.map((c) => (
+                <button
+                  key={c.clientId}
+                  onClick={() => handleClientFilter(c.clientId)}
+                  className={`flex-shrink-0 min-w-[130px] flex flex-col gap-0.5 px-3 py-2 border rounded-md text-left transition-colors ${
+                    clientFilter === c.clientId
+                      ? "bg-accent text-white border-accent"
+                      : "bg-surface border-border hover:bg-surface-subtle"
+                  }`}
+                >
+                  <span className={`text-[12px] font-semibold truncate max-w-[140px] ${clientFilter === c.clientId ? "text-white" : "text-ink"}`}>
+                    {c.clientName}
+                  </span>
+                  <span className={`font-mono text-[13px] font-semibold ${clientFilter === c.clientId ? "text-white" : "text-rose"}`}>
+                    {formatRub(c.totalOutstanding)}
+                  </span>
+                  <span className={`text-[10px] uppercase tracking-wide ${clientFilter === c.clientId ? "text-blue-200" : "text-ink-3"}`}>
+                    {c.maxDaysOverdue > 0
+                      ? `⚠ просрочка ${c.maxDaysOverdue} дн`
+                      : `${c.bookingsCount} ${pluralize(c.bookingsCount, "бронь", "брони", "броней")}`}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
-          {/* Mobile sort selector — desktop uses sortable column headers */}
-          <div className="md:hidden w-full mt-1">
-            <select
-              className="w-full border border-border rounded-lg px-3 py-2 text-[13px] bg-surface text-ink"
-              value={`${sort}:${order}`}
-              onChange={(e) => {
-                const [f, o] = e.target.value.split(":") as [SortField, SortOrder];
-                setSort(f);
-                setOrder(o);
-                const params = new URLSearchParams(searchParams.toString());
-                params.set("sort", f);
-                params.set("order", o);
-                router.replace(`?${params.toString()}`, { scroll: false });
-              }}
+        )}
+
+        {/* Filter pills + search */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          {(
+            [
+              { key: "all", label: "Все", count: allRows.length },
+              { key: "open", label: "Открыты", count: openCount },
+              { key: "partial", label: "Частично", count: partialCount },
+              { key: "overdue", label: "Просрочено", count: overdueCount },
+            ] as { key: StatusFilter; label: string; count: number }[]
+          ).map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setStatusFilter(f.key)}
+              className={`h-[30px] px-3 text-[12px] font-medium border rounded transition-colors ${
+                statusFilter === f.key
+                  ? "bg-accent text-white border-accent"
+                  : "bg-surface border-border text-ink-2 hover:bg-surface-subtle"
+              }`}
             >
-              <option value="amount:desc">По сумме (большие сверху)</option>
-              <option value="name:asc">По имени (А-Я)</option>
-              <option value="date:asc">Самые старые долги</option>
-            </select>
-          </div>
+              {f.label}
+              <span className={`ml-1.5 ${statusFilter === f.key ? "text-blue-200" : "text-ink-3"}`}>{f.count}</span>
+            </button>
+          ))}
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="🔍 Найти клиента или проект…"
+            className="ml-auto border border-border rounded px-3 py-1.5 text-[12px] bg-surface text-ink-2 w-[240px]"
+          />
         </div>
 
-        {/* Aging legend */}
-        <div className="flex gap-4 items-center text-[12px] text-ink-2 mb-3 flex-wrap">
-          <span className="font-semibold">Светофор просрочки:</span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-sm bg-surface-subtle border border-border inline-block" />
-            Текущая
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-sm bg-amber-soft/60 inline-block" />
-            1–30 дн.
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-sm bg-amber-soft inline-block" />
-            31–60
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-sm bg-rose-soft/70 inline-block" />
-            61–90
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded-sm bg-rose-soft inline-block" />
-            90+ безнадёжно
-          </span>
-        </div>
-
-
-        {/* Mobile accordion (md:hidden) */}
-        <div className="md:hidden mb-5">
-          <p className="eyebrow text-ink-3 mb-2">
-            всего {data ? formatRub(data.summary.totalOutstanding) : "—"} · {debtCount} контрагентов
-          </p>
-          {(data?.agingPerClient?.length ?? 0) > 0 && (
-            <div className="space-y-2">
-              {[
-                { label: "90+ безнадёжно", key: "over90" as const, borderColor: "border-rose-border", textColor: "text-rose" },
-                { label: "61–90 дней", key: "days61to90" as const, borderColor: "border-rose-border", textColor: "text-rose" },
-                { label: "31–60 дней", key: "days31to60" as const, borderColor: "border-amber-border", textColor: "text-amber" },
-                { label: "1–30 дней", key: "days1to30" as const, borderColor: "border-amber-border", textColor: "text-amber" },
-              ].map(({ label, key, borderColor, textColor }) => {
-                const total = agingRows.reduce((s, r) => s + Number(r[key]), 0);
-                const clients = agingRows.filter((r) => Number(r[key]) > 0).map((r) => r.clientName);
-                if (total === 0) return null;
-                return (
-                  <div key={key} className={`border ${borderColor} rounded-lg p-3`}>
-                    <div className="flex justify-between items-center">
-                      <strong className={textColor}>{label}</strong>
-                      <span className={`mono-num font-semibold ${textColor}`}>{formatRub(total)}</span>
-                    </div>
-                    <div className="mt-2 text-[12px] text-ink-2">{clients.slice(0, 3).join(" · ")}</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Per-client debts table with sortable header */}
-        {hasDebtsList && (
-          <div className="mt-2">
-            <div className="bg-surface border border-border rounded-t-lg overflow-hidden">
-              {/* Sortable table header */}
-              <div
-                className="hidden md:grid items-center bg-surface-subtle border-b border-border px-4 py-2.5 text-[11px] font-medium text-ink-2"
-                style={{ gridTemplateColumns: "24px minmax(0,1fr) 130px 160px 220px 24px" }}
-              >
-                <div></div>
-                <button
-                  type="button"
-                  onClick={() => handleSort("name")}
-                  className="text-left flex items-center hover:text-ink"
-                >
-                  Клиент
-                  <SortArrow active={sort === "name"} order={order} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSort("amount")}
-                  className="text-right flex items-center justify-end hover:text-ink"
-                >
-                  Долг
-                  <SortArrow active={sort === "amount"} order={order} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSort("date")}
-                  className="text-right flex items-center justify-end hover:text-ink"
-                >
-                  Самый старый долг
-                  <SortArrow active={sort === "date"} order={order} />
-                </button>
-                <div className="text-right">Действия</div>
-                <div></div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-0 border-x border-b border-border rounded-b-lg overflow-hidden">
-              {filteredDebts.map((d) => {
-                const isOpen = expanded.has(d.clientId);
-                const isOverdue = d.maxDaysOverdue > 0;
-                const amountTone = isOverdue ? "text-rose" : "text-ink";
-                const { label: daysLabel, tone: daysTone } = formatDaysLabel(d.maxDaysOverdue, d.projects);
-                const earliestBookingId = pickPriorityBooking(d.projects);
-
-                return (
-                  <div
-                    key={d.clientId}
-                    className={`bg-surface border-b border-border last:border-b-0 overflow-hidden transition-shadow ${
-                      isOpen ? "shadow-sm" : ""
-                    }`}
-                  >
-                    {/* Row header */}
-                    <div
-                      className={`grid items-center gap-3 px-4 py-3.5 ${
-                        isOpen ? "bg-accent-soft border-b border-accent-border" : "hover:bg-surface-subtle"
-                      }`}
-                      style={{ gridTemplateColumns: "24px minmax(0,1fr) auto" }}
-                    >
-                      {/* Chevron */}
-                      <button
-                        type="button"
-                        aria-expanded={isOpen}
-                        aria-label={isOpen ? "Свернуть" : "Развернуть"}
-                        onClick={() => toggle(d.clientId)}
-                        className="w-6 h-6 flex items-center justify-center text-ink-3 text-[12px]"
-                      >
-                        <span className={`inline-block transition-transform ${isOpen ? "rotate-90" : ""}`}>▸</span>
-                      </button>
-
-                      {/* Client info + inline KPI */}
-                      <div className="min-w-0 cursor-pointer" onClick={() => toggle(d.clientId)}>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[13px] font-semibold text-ink">{d.clientName}</span>
-                          <span className="text-[11px] text-ink-3">
-                            {d.bookingsCount} {pluralize(d.bookingsCount, "проект", "проекта", "проектов")}
-                          </span>
-                          <span className={`text-[11px] mono-num font-semibold ${amountTone}`}>
-                            {formatRub(d.totalOutstanding)}
-                          </span>
-                          {daysLabel !== "—" && (
-                            <span className={`text-[11px] ${DAYS_TONE_CLASS[daysTone]}`}>{daysLabel}</span>
-                          )}
-                        </div>
-                        {/* Contact chips inline */}
-                        <div className="flex items-center gap-1.5 mt-1" onClick={(e) => e.stopPropagation()}>
-                          {d.clientPhone && (
-                            <a
-                              href={`tel:${d.clientPhone}`}
-                              className="text-[11px] text-ink-2 hover:text-accent-bright flex items-center gap-0.5"
-                            >
-                              📞 {d.clientPhone}
-                            </a>
-                          )}
-                          {d.clientEmail && (
-                            <a
-                              href={`mailto:${d.clientEmail}`}
-                              className="text-[11px] text-ink-2 hover:text-accent-bright flex items-center gap-0.5"
-                            >
-                              ✉️ {d.clientEmail}
-                            </a>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:flex-wrap md:justify-end" onClick={(e) => e.stopPropagation()}>
-                        {/* Primary: full-width on mobile */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const proj = d.projects.find((p) => p.bookingId === earliestBookingId);
-                            openPayment(earliestBookingId ?? undefined, proj ? {
-                              projectName: proj.projectName,
-                              clientName: d.clientName,
-                              amountOutstanding: proj.amountOutstanding,
-                            } : undefined);
-                          }}
-                          className="w-full md:w-auto px-2.5 py-1.5 text-[11px] font-medium border border-accent-bright bg-accent-bright text-white rounded-lg hover:opacity-90 whitespace-nowrap"
-                        >
-                          ₽ Оплатить
-                        </button>
-                        {/* Secondary: 2-column on mobile */}
-                        <div className="grid grid-cols-2 gap-1.5 md:contents">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              window.location.href = `/api/finance/debts/${d.clientId}/export.xlsx`;
-                            }}
-                            className="px-2.5 py-1.5 text-[11px] border border-border bg-surface rounded-lg hover:bg-surface-subtle whitespace-nowrap"
-                          >
-                            📊 Экспорт
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setReminderClient(d)}
-                            className="px-2.5 py-1.5 text-[11px] border border-border bg-surface rounded-lg hover:bg-surface-subtle whitespace-nowrap"
-                          >
-                            🤖 Напомнить
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Expanded details */}
-                    {isOpen && (
-                      <div className="bg-surface-subtle px-10 py-3">
-                        {/* Mini aging matrix */}
-                        {(() => {
-                          const agingRow = data?.agingPerClient?.find((r) => r.clientId === d.clientId);
-                          if (!agingRow) return null;
-                          return (
-                            <div className="flex gap-3 flex-wrap mb-3 text-[11px]">
-                              <span className="text-ink-3 font-medium">Старение:</span>
-                              {[
-                                { label: "Текущая", val: agingRow.current, cls: "text-ink-2" },
-                                { label: "1–30 дн.", val: agingRow.days1to30, cls: "text-amber" },
-                                { label: "31–60", val: agingRow.days31to60, cls: "text-amber font-medium" },
-                                { label: "61–90", val: agingRow.days61to90, cls: "text-rose font-medium" },
-                                { label: "90+", val: agingRow.over90, cls: "text-rose font-semibold" },
-                              ].filter((b) => Number(b.val) > 0).map((b) => (
-                                <span key={b.label} className={b.cls}>
-                                  {b.label}: {formatRub(b.val)}
-                                </span>
-                              ))}
-                            </div>
-                          );
-                        })()}
-
-                        {/* Per-booking rows */}
-                        {d.projects.map((p) => (
-                          <div
-                            key={p.bookingId}
-                            className="grid items-center gap-3 py-2.5 border-b border-dashed border-border last:border-b-0"
-                            style={{ gridTemplateColumns: "minmax(0,1fr) 90px 90px 120px auto" }}
-                          >
-                            <div>
-                              <div className="text-[12.5px] text-ink truncate">{p.projectName}</div>
-                              <div className="text-[11px] text-ink-3">
-                                {p.daysOverdue !== null && p.daysOverdue > 0
-                                  ? `Просрочено ${p.daysOverdue} дн.`
-                                  : formatPayDate(p.expectedPaymentDate)}
-                              </div>
-                            </div>
-                            <div className="text-[11px] text-ink-2 mono-num text-right hidden md:block">
-                              —
-                            </div>
-                            <div className="text-[11px] text-ink-2 mono-num text-right hidden md:block">
-                              —
-                            </div>
-                            <div className={`mono-num text-[13px] font-semibold text-right ${p.daysOverdue !== null && p.daysOverdue > 0 ? "text-rose" : "text-ink"}`}>
-                              {formatRub(p.amountOutstanding)}
-                            </div>
-                            <div className="flex gap-1.5 justify-end">
-                              <button
-                                type="button"
-                                onClick={() => openPayment(p.bookingId, {
-                                  projectName: p.projectName,
-                                  clientName: d.clientName,
-                                  amountOutstanding: p.amountOutstanding,
-                                })}
-                                className="px-2.5 py-1 text-[11px] border border-border bg-surface rounded hover:border-accent-bright hover:text-accent-bright transition-colors whitespace-nowrap"
-                              >
-                                Оплатить эту бронь
-                              </button>
-                              <a
-                                href={`/bookings/${p.bookingId}`}
-                                aria-label="Открыть бронь"
-                                className="w-7 h-7 rounded border border-border bg-surface flex items-center justify-center text-ink-2 hover:bg-surface-subtle text-sm"
-                              >
-                                ›
-                              </a>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!hasAgingMatrix && !hasDebtsList && (
-          <div className="bg-accent-soft border border-accent-border rounded-lg px-4 py-14 text-center">
-            {data?.debts.length === 0 && (data?.agingPerClient?.length ?? 0) === 0 ? (
+        {/* ── Desktop table ── */}
+        {sortedRows.length === 0 ? (
+          <div className="bg-surface border border-border rounded-lg px-4 py-14 text-center">
+            {allRows.length === 0 ? (
               <>
                 <p className="text-2xl mb-2">🎉</p>
-                <p className="eyebrow mb-1">Должники</p>
+                <p className="eyebrow mb-1">Дебиторка</p>
                 <p className="text-[15px] font-medium text-ink mb-1">Долгов нет</p>
                 <p className="text-sm text-ink-2">Все клиенты закрыли свои брони.</p>
               </>
@@ -738,47 +573,232 @@ function DebtsPageInner() {
               <p className="text-sm text-ink-3">Нет результатов по выбранному фильтру</p>
             )}
           </div>
+        ) : (
+          <>
+            {/* Desktop table (hidden on mobile) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full border-collapse bg-surface border border-border rounded-lg overflow-hidden text-[13.5px]">
+                <thead className="bg-surface-subtle text-[11px] uppercase tracking-wide text-ink-3">
+                  <tr>
+                    <th
+                      className={`text-left px-3 py-2.5 border-b border-border cursor-pointer select-none w-[92px] ${sort === "startDate" ? "text-accent-bright" : ""}`}
+                      onClick={() => handleSort("startDate")}
+                    >
+                      Дата проекта
+                      <SortArrow active={sort === "startDate"} order={order} />
+                    </th>
+                    <th
+                      className={`text-left px-3 py-2.5 border-b border-border cursor-pointer select-none ${sort === "name" ? "text-accent-bright" : ""}`}
+                      onClick={() => handleSort("name")}
+                    >
+                      Клиент / Проект
+                      <SortArrow active={sort === "name"} order={order} />
+                    </th>
+                    <th
+                      className={`text-right px-3 py-2.5 border-b border-border cursor-pointer select-none w-[120px] ${sort === "amount" ? "text-accent-bright" : ""}`}
+                      onClick={() => handleSort("amount")}
+                    >
+                      Сумма
+                      <SortArrow active={sort === "amount"} order={order} />
+                    </th>
+                    <th
+                      className={`text-left px-3 py-2.5 border-b border-border cursor-pointer select-none w-[130px] ${sort === "status" ? "text-accent-bright" : ""}`}
+                      onClick={() => handleSort("status")}
+                    >
+                      Статус
+                      <SortArrow active={sort === "status"} order={order} />
+                    </th>
+                    <th className="text-left px-3 py-2.5 border-b border-border w-[200px]">
+                      Действия
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map((row) => {
+                    const dateInfo = formatStartDate(row.startDate);
+                    const dateColor = startDateColor(row.startDate, row.daysOverdue);
+                    const pill = statusPill(row.paymentStatus, row.daysOverdue);
+                    const amountPaid = Number(row.totalClientOutstanding) > 0
+                      ? `из ${formatRub(Number(row.amountOutstanding) + /* approx */ 0)}`
+                      : undefined;
+
+                    return (
+                      <tr
+                        key={row.bookingId}
+                        className="border-t border-border hover:bg-surface-subtle transition-colors"
+                      >
+                        {/* Date */}
+                        <td className={`px-3 py-2.5 font-mono font-semibold leading-tight ${dateColor}`}>
+                          {dateInfo ? (
+                            <>
+                              <span className="text-[14px] block">{dateInfo.dayMon}</span>
+                              <span className="text-[11px] text-ink-3">{dateInfo.year}</span>
+                            </>
+                          ) : <span className="text-ink-3">—</span>}
+                        </td>
+
+                        {/* Client / Project */}
+                        <td className="px-3 py-2.5 leading-tight">
+                          <div className="font-semibold text-ink text-[13.5px]">{row.clientName}</div>
+                          <div className="text-[11.5px] text-ink-2">{row.projectName}</div>
+                        </td>
+
+                        {/* Amount */}
+                        <td className="px-3 py-2.5 text-right leading-tight">
+                          <div className="mono-num font-semibold text-[14px] text-rose">
+                            {formatRub(row.amountOutstanding)}
+                          </div>
+                          {row.paymentStatus === "PARTIALLY_PAID" && (
+                            <div className="text-[11px] text-ink-3">
+                              получено: {formatRub(Number(row.totalClientOutstanding) - Number(row.amountOutstanding) < 0 ? 0 : Number(row.totalClientOutstanding) - Number(row.amountOutstanding))}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-3 py-2.5">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border whitespace-nowrap ${pill.cls}`}>
+                            {pill.label}
+                          </span>
+                        </td>
+
+                        {/* Actions — Variant 2: CTA + icons */}
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => openPayment(row)}
+                              className="h-[30px] px-2.5 flex items-center gap-1 bg-accent text-white border border-accent rounded text-[12px] font-medium hover:bg-accent-bright"
+                            >
+                              ₽ Оплатить
+                            </button>
+                            <a
+                              href={`/bookings/${row.bookingId}`}
+                              aria-label="Редактировать бронь"
+                              className="h-[30px] w-[30px] flex items-center justify-center border border-border bg-surface rounded text-ink-2 hover:bg-surface-subtle text-sm"
+                            >
+                              ✏️
+                            </a>
+                            <ActionMenu
+                              row={row}
+                              onRemind={() => openReminder(row)}
+                              onDelete={() => handleDelete(row)}
+                              onPaymentsList={() => openPaymentsList(row)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile cards (hidden on desktop) */}
+            <div className="md:hidden flex flex-col gap-3">
+              {sortedRows.map((row) => {
+                const dateInfo = formatStartDate(row.startDate);
+                const dateColor = startDateColor(row.startDate, row.daysOverdue);
+                const pill = statusPill(row.paymentStatus, row.daysOverdue);
+                return (
+                  <div key={row.bookingId} className="bg-surface border border-border rounded-lg p-3.5">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={`font-mono font-semibold text-[14px] ${dateColor}`}>
+                        {dateInfo ? `${dateInfo.dayMon} ${dateInfo.year}` : "—"}
+                      </div>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${pill.cls}`}>
+                        {pill.label}
+                      </span>
+                    </div>
+                    <div className="font-semibold text-ink text-[14px] mb-0.5">{row.clientName}</div>
+                    <div className="text-[12px] text-ink-2 mb-2">{row.projectName}</div>
+                    <div className="flex items-end justify-between mb-3">
+                      <span className="mono-num font-semibold text-[18px] text-rose">{formatRub(row.amountOutstanding)}</span>
+                      {row.paymentStatus === "PARTIALLY_PAID" && (
+                        <span className="text-[11px] text-ink-3">
+                          получено: {formatRub(Math.max(0, Number(row.totalClientOutstanding) - Number(row.amountOutstanding)))}
+                        </span>
+                      )}
+                    </div>
+                    {/* Mobile action grid */}
+                    <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+                      <button
+                        onClick={() => openPayment(row)}
+                        className="h-[38px] flex items-center justify-center gap-1 bg-accent text-white border border-accent rounded text-[13px] font-medium hover:bg-accent-bright col-span-2"
+                      >
+                        ₽ Оплатить
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <a
+                        href={`/bookings/${row.bookingId}`}
+                        className="h-[34px] flex items-center justify-center gap-1 border border-border bg-surface rounded text-[12px] text-ink-2 hover:bg-surface-subtle"
+                      >
+                        ✏️ Правка
+                      </a>
+                      <button
+                        onClick={() => openPaymentsList(row)}
+                        className="h-[34px] flex items-center justify-center border border-border bg-surface rounded text-[12px] text-ink-2 hover:bg-surface-subtle"
+                      >
+                        ⋯ Меню
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
 
-        {data?.summary && (
-          <div className="mt-4 px-4 py-3 border border-border rounded-lg bg-surface flex justify-between text-[12px] text-ink-2">
-            <span>
-              {data.summary.totalClients} {pluralize(data.summary.totalClients, "клиент", "клиента", "клиентов")}
-            </span>
-            <span className="mono-num font-semibold text-ink">{formatRub(data.summary.totalOutstanding)}</span>
-          </div>
-        )}
       </div>
 
       {/* Modals */}
+      <RecordPaymentModal
+        open={paymentOpen}
+        onClose={() => setPaymentOpen(false)}
+        defaultBookingId={paymentBookingId}
+        bookingContext={paymentContext ? {
+          id: paymentBookingId ?? "",
+          displayName: paymentContext.projectName,
+          projectName: paymentContext.projectName,
+          amountOutstanding: paymentContext.amountOutstanding,
+          client: { name: paymentContext.clientName },
+        } : undefined}
+        legacyFinance
+        onCreated={() => { setPaymentOpen(false); loadDebts(); }}
+      />
+
+      {activeReminderClient && (
+        <AIReminderModal
+          open={!!reminderRowClientId}
+          onClose={() => { setReminderClientDebt(null); setReminderRowClientId(null); }}
+          clientId={activeReminderClient.clientId}
+          clientName={activeReminderClient.clientName}
+          totalOutstanding={activeReminderClient.totalOutstanding}
+          clientEmail={activeReminderClient.clientEmail ?? null}
+          onReminded={() => {
+            setReminderClientDebt(null);
+            setReminderRowClientId(null);
+            fetchRemindable();
+            loadDebts();
+          }}
+        />
+      )}
+
+      {paymentsListContext && (
+        <BookingPaymentsModal
+          open={paymentsListOpen}
+          onClose={() => setPaymentsListOpen(false)}
+          bookingId={paymentsListBookingId}
+          bookingContext={paymentsListContext}
+          onChange={() => loadDebts()}
+        />
+      )}
+
       <LegacyBookingImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onImported={() => { setImportOpen(false); loadDebts(sort, order); }}
+        onImported={() => { setImportOpen(false); loadDebts(); }}
       />
-      <RecordPaymentModal
-        open={paymentOpen}
-        defaultBookingId={paymentBookingId}
-        bookingContext={paymentDebtContext ? {
-          id: paymentBookingId ?? "",
-          projectName: paymentDebtContext.projectName,
-          client: { name: paymentDebtContext.clientName },
-          amountOutstanding: paymentDebtContext.amountOutstanding,
-        } : undefined}
-        onClose={() => { setPaymentOpen(false); setPaymentDebtContext(null); }}
-        onCreated={handlePaymentCreated}
-      />
-      {reminderClient && (
-        <AIReminderModal
-          open={true}
-          onClose={() => setReminderClient(null)}
-          clientId={reminderClient.clientId}
-          clientName={reminderClient.clientName}
-          totalOutstanding={formatRub(reminderClient.totalOutstanding)}
-          clientEmail={reminderClient.clientEmail}
-          onReminded={handleReminderSent}
-        />
-      )}
     </div>
   );
 }
