@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../src/lib/api";
 import { pluralRu } from "../../../src/lib/pluralRu";
-import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 import { useCurrentUser } from "../../../src/lib/auth";
 import { toast } from "../../../src/components/ToastProvider";
 
@@ -1763,8 +1762,6 @@ function WarehouseScanInner({ hasMainSession, workerName }: { hasMainSession: bo
   const [clientName, setClientName] = useState("");
   const [countChecks, setCountChecks] = useState<Map<string, number>>(new Map());
   const [problems, setProblems] = useState<ProblemUnit[]>([]);
-  const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
-
   const goToLogin = useCallback(() => {
     sessionStorage.removeItem("warehouse_token");
     if (hasMainSession) {
@@ -1798,17 +1795,19 @@ function WarehouseScanInner({ hasMainSession, workerName }: { hasMainSession: bo
   }
 
   function handleSummaryComplete(bid?: string) {
-    const n = problems.filter((p) => p.type === "BROKEN").length;
-    if (n > 0) {
-      toast.success(`Создано ${n} ${pluralRu(n, ["карточка", "карточки", "карточек"])} ремонта`);
+    const nBroken = problems.filter((p) => p.type === "BROKEN").length;
+    if (nBroken > 0) {
+      toast.success(`Создано ${nBroken} ${pluralRu(nBroken, ["карточка", "карточки", "карточек"])} ремонта`);
     }
+    // bid (bookingId) сохраняем в переменной, но не показываем модалку оплаты —
+    // согласно мокапу 05 блок оплаты на этом экране отсутствует
+    void bid;
     setSessionId(null);
     setBookingId(null);
     setClientName("");
     setCountChecks(new Map());
     setProblems([]);
     setStep("operation");
-    if (bid) setPaymentBookingId(bid);
   }
 
   return (
@@ -1852,12 +1851,6 @@ function WarehouseScanInner({ hasMainSession, workerName }: { hasMainSession: bo
         />
       )}
 
-      <RecordPaymentModal
-        open={paymentBookingId !== null}
-        defaultBookingId={paymentBookingId ?? undefined}
-        onClose={() => setPaymentBookingId(null)}
-        onCreated={() => setPaymentBookingId(null)}
-      />
     </>
   );
 }
