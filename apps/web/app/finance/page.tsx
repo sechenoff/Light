@@ -292,7 +292,7 @@ function FinancePageInner() {
             <span className="text-amber">⚡ Сегодня сделать:</span>
             <span className="text-ink">
               {overdueCount > 0 && (
-                <><Link href="/finance/invoices?status=OVERDUE" className="text-amber font-semibold hover:underline">{overdueCount} {pluralize(overdueCount, "счёт просрочен", "счёта просрочены", "счётов просрочено")} ≥ 7 дней</Link></>
+                <><Link href="/finance/invoices?status=OVERDUE" className="text-amber font-semibold hover:underline">{overdueCount} {pluralize(overdueCount, "счёт просрочен", "счёта просрочены", "счётов просрочены")} ≥ 7 дней</Link></>
               )}
             </span>
             <Link href="/finance/invoices?status=OVERDUE" className="ml-auto px-3 py-1 text-[12px] font-medium border border-amber-border rounded-lg text-amber hover:bg-amber-border/20 whitespace-nowrap">

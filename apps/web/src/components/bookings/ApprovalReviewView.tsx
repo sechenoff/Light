@@ -122,7 +122,7 @@ function submitterLabel(role: string | null | undefined): string {
     case "SUPER_ADMIN": return "отправлено руководителем";
     case "WAREHOUSE": return "отправлено кладовщиком";
     case "TECHNICIAN": return "отправлено техником";
-    default: return "отправлено";
+    default: return "отправлено кладовщиком";
   }
 }
 
@@ -310,7 +310,7 @@ export function ApprovalReviewView({ booking, onReload: _onReload, currentUser: 
               </div>
               <div>
                 <div className="eyebrow mb-1">Проект</div>
-                {booking.projectName === "Проект" ? (
+                {booking.projectName?.trim() === "Проект" ? (
                   <div className="font-medium text-ink-3">Без названия</div>
                 ) : (
                   <div className="font-medium text-ink">{booking.projectName}</div>

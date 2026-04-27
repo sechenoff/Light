@@ -551,8 +551,12 @@ export function PaymentsOverviewPage() {
                               )}
                             </td>
                             <td className="px-3 py-3 text-ink-2">
-                              {(p.createdByName ?? p.createdBy) ? (
-                                <span className="text-[12px]">{p.createdByName ?? p.createdBy}</span>
+                              {p.createdByName ? (
+                                <span className="text-[12px]">{p.createdByName}</span>
+                              ) : p.createdBy === "_system_" ? (
+                                <span className="text-[12px] text-ink-3">Система</span>
+                              ) : p.createdBy ? (
+                                <span className="text-ink-3">—</span>
                               ) : (
                                 <span className="text-ink-3">—</span>
                               )}

@@ -834,7 +834,7 @@ export default function BookingDetailPage() {
                 </div>
                 <div>
                   <span className="text-ink-3">Проект:</span>{" "}
-                  {booking.projectName === "Проект" ? (
+                  {booking.projectName?.trim() === "Проект" ? (
                     <span className="font-medium text-ink-3">Без названия</span>
                   ) : (
                     <span className="font-medium">{booking.projectName}</span>

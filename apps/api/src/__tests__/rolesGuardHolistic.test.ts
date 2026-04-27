@@ -339,7 +339,7 @@ describe("H4: аудит /api/admin-users CRUD", () => {
     const userId = res.body.user.id;
 
     const entry = await prisma.auditEntry.findFirst({
-      where: { entityId: userId, action: "create", entityType: "AdminUser" },
+      where: { entityId: userId, action: "ADMIN_USER_CREATE", entityType: "AdminUser" },
     });
     expect(entry).not.toBeNull();
     expect(JSON.parse(entry!.after)).toMatchObject({ username: "audit_test_user", role: "WAREHOUSE" });
@@ -361,7 +361,7 @@ describe("H4: аудит /api/admin-users CRUD", () => {
     expect(res.status).toBe(200);
 
     const entry = await prisma.auditEntry.findFirst({
-      where: { entityId: userId, action: "update", entityType: "AdminUser" },
+      where: { entityId: userId, action: "ADMIN_USER_UPDATE", entityType: "AdminUser" },
     });
     expect(entry).not.toBeNull();
     expect(JSON.parse(entry!.before)).toMatchObject({ role: "WAREHOUSE" });
