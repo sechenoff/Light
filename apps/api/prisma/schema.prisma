@@ -900,8 +900,8 @@ model OrganizationSettings {
   invoiceNumberPrefix  String   @default("LR")
   /// Дата отсечения: брони до cutoff → legacyFinance=true, после → false
   migrationCutoffAt    DateTime @default(now())
-  /// Срок оплаты по умолчанию для новых броней. expectedPaymentDate = booking.endDate + defaultPaymentTermsDays.
-  defaultPaymentTermsDays Int   @default(7)
+  /// Срок оплаты по умолчанию для новых броней. expectedPaymentDate = booking.endDate + defaultPaymentTermsDays. 0 = в день возврата.
+  defaultPaymentTermsDays Int   @default(0)
   updatedAt            DateTime @updatedAt
 }
 
