@@ -1,16 +1,15 @@
 {
-  "sprint": "finance-rebuild",
+  "sprint": "debts-superpowered",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus + 4-agent-qa",
-  "ts": "2026-04-26T22:30:00Z",
+  "ts": "2026-04-27T08:00:00Z",
   "notes": [
-    "Visual rebuild of finance section: 5 pages + booking finance block + 2 key modals to match HTML mockups in docs/mockups/finance-redesign-2026-04-25/.",
-    "No backend changes. No schema changes. No new dependencies. Visual layer (JSX + Tailwind classes) only.",
-    "Standard PAR: Technical APPROVE (3 LOW hex hygiene). Product NEEDS_FIXES (2 MED hex + 1 MED mobile sticky padding + 1 LOW refund validation) — all 4 closed in 8ad691d.",
-    "User 4-agent QA: A NEEDS_FIXES (4 HIGH dead onClicks). B 88% fidelity (2 MED dashboard + 5 LOW). C PARTIAL PASS (1 HIGH aging matrix concern + 1 MED-HIGH WH redirect + 2 MED).",
-    "Agent D applied 11 fixes in 88c7ff0: AddExpenseModal status filter, expense approve onClicks, ₽ Платёж buttons in 3 places, refund/void wiring on /finance/payments, /finance aging matrix re-verification, WH /finance access (gating per-section instead of redirect), mobile aging condition flipped, /finance/invoices URL persistence, dashboard action ribbon, activity feed rename, refund button color.",
-    "Final gates: tsc clean api+web; 853 api + 249 web tests all green.",
-    "Deferred to Phase 4 polish: period selector copy, top-debtors status tier label, invoice tab counts inflation, debtor header copy, dashboard mobile KPI duplication, forecast empty months data issue, act PDF disabled state cosmetics."
+    "Дебиторка superpowers: sortable list (name/amount/date), per-client XLSX export (3 sheets, RU labels), Gemini-drafted AI reminders + hardcoded fallback, Client.lastReminderAt schema field, mark-reminded route + audit, action ribbon for remindable clients, smart-pick priority booking for inline payment, removed visual duplication of aging matrix.",
+    "Standard PAR (Opus product+technical): Technical APPROVE (3 LOW). Product ACCEPTED (3 MED recommendations: smart-pick, ENG enums in XLSX, visual duplication). All addressed in polish commit 0a391e40.",
+    "User 4-agent QA: A SHIP_READY (1 HIGH loadDebts no .catch + 1 MED pickPriorityBooking mutates input), B 92% fidelity (5 minor: mobile sort, action row, Telegram clutter, JIT-fragile className), C PASS (1 HIGH RecordPaymentModal hides selected booking + 3 MED including Gemini raw amount + 4 LOW).",
+    "Agent D applied 9 fixes: loadDebts catch+toast, RecordPaymentModal bookingContext, mobile sort selector, pickPriorityBooking copy-not-mutate, Gemini Intl.NumberFormat, DAYS_TONE_CLASS static map, mobile action row layout, Telegram button removed, AbortController on tone switch.",
+    "Final gates: tsc clean api+web; 872 API tests + 253 web tests all green.",
+    "Schema migration: Client.lastReminderAt DateTime? — additive nullable, safe under prisma db push --accept-data-loss."
   ]
 }
