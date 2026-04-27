@@ -14,11 +14,11 @@ const BLOCKING_STATUSES = ["CONFIRMED", "ISSUED"] as const;
 
 /**
  * Вычисляет дату оплаты по умолчанию: endDate + N дней из OrganizationSettings.
- * Читает настройки из БД. N по умолчанию = 7, если запись отсутствует.
+ * Читает настройки из БД. N по умолчанию = 0 (день сдачи), если запись отсутствует.
  */
 async function computeDefaultPaymentDate(endDate: Date): Promise<Date> {
   const settings = await prisma.organizationSettings.findUnique({ where: { id: "singleton" } });
-  const days = settings?.defaultPaymentTermsDays ?? 7;
+  const days = settings?.defaultPaymentTermsDays ?? 0;
   // Берём московскую дату endDate, прибавляем N дней (как Moscow-midnight UTC)
   const endMoscowStr = toMoscowDateString(endDate);
   const endMoscowMidnight = fromMoscowDateString(endMoscowStr);
