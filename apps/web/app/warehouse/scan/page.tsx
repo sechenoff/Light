@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { apiFetch } from "../../../src/lib/api";
 import { pluralRu } from "../../../src/lib/pluralRu";
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
+import { useCurrentUser } from "../../../src/lib/auth";
 
 const Html5QrcodePlugin = dynamic<{ onScan: (text: string) => void }>(
   () => import("./Html5QrcodePlugin"),
@@ -1000,6 +1001,9 @@ function SummaryStep({
 type Step = "login" | "operation" | "booking" | "scan" | "summary";
 
 export default function WarehouseScanPage() {
+  const { user } = useCurrentUser();
+  const hasMainSession = user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE";
+
   const [step, setStep] = useState<Step>("login");
   const [operation, setOperation] = useState<Operation>("ISSUE");
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -1008,10 +1012,23 @@ export default function WarehouseScanPage() {
   // B6: payment modal after issue/return (T2 third call-site)
   const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
 
+  // Когда main session загрузилась — пропустить LoginStep
+  useEffect(() => {
+    if (hasMainSession && step === "login") {
+      setStep("operation");
+    }
+  }, [hasMainSession, step]);
+
   const goToLogin = useCallback(() => {
     sessionStorage.removeItem("warehouse_token");
-    setStep("login");
-  }, []);
+    // Если у пользователя есть main session — не возвращать на PIN,
+    // а оставаться на operation (PIN уже не нужен)
+    if (hasMainSession) {
+      setStep("operation");
+    } else {
+      setStep("login");
+    }
+  }, [hasMainSession]);
 
   function handleLoginSuccess() {
     setStep("operation");

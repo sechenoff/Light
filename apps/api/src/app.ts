@@ -67,7 +67,8 @@ app.use("/api/auth", sessionParser, authRouter);
 // Gaffer CRM routes — публичные (до apiKeyAuth), собственная auth система (gaffer_session JWT).
 app.use("/api/gaffer", gafferRouter);
 app.use("/api/warehouse", warehousePublicRouter);
-app.use("/api/warehouse", warehouseScanRouter);
+// sessionParser здесь нужен для fallback warehouseAuth → main session (SA/WH без PIN)
+app.use("/api/warehouse", sessionParser, warehouseScanRouter);
 app.use(apiKeyAuth);
 app.use(sessionParser);
 app.use(botScopeGuard);
