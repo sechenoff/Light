@@ -482,6 +482,7 @@ interface ClientDebtAccumulator {
   clientName: string;
   clientPhone: string | null;
   clientEmail: string | null;
+  lastReminderAt: Date | null;
   totalOutstanding: Decimal;
   overdueAmount: Decimal;
   maxDaysOverdue: number;
@@ -508,6 +509,7 @@ export async function computeDebts(
     clientName: string;
     clientPhone: string | null;
     clientEmail: string | null;
+    lastReminderAt: string | null;
     totalOutstanding: string;
     overdueAmount: string;
     maxDaysOverdue: number;
@@ -530,7 +532,7 @@ export async function computeDebts(
     },
     include: {
       client: {
-        select: { id: true, name: true, phone: true, email: true },
+        select: { id: true, name: true, phone: true, email: true, lastReminderAt: true },
       },
     },
     orderBy: { expectedPaymentDate: "asc" },
@@ -551,6 +553,7 @@ export async function computeDebts(
       clientName: b.client.name,
       clientPhone: b.client.phone ?? null,
       clientEmail: b.client.email ?? null,
+      lastReminderAt: b.client.lastReminderAt ?? null,
       totalOutstanding: new Decimal(0),
       overdueAmount: new Decimal(0),
       maxDaysOverdue: 0,
@@ -582,6 +585,7 @@ export async function computeDebts(
     clientName: c.clientName,
     clientPhone: c.clientPhone,
     clientEmail: c.clientEmail,
+    lastReminderAt: c.lastReminderAt ? c.lastReminderAt.toISOString() : null,
     totalOutstanding: c.totalOutstanding.toFixed(2),
     overdueAmount: c.overdueAmount.toFixed(2),
     maxDaysOverdue: c.maxDaysOverdue,

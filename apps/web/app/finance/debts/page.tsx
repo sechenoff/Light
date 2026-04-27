@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
@@ -11,9 +11,12 @@ import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { LegacyBookingImportModal } from "../../../src/components/finance/LegacyBookingImportModal";
 import { ContactChips } from "../../../src/components/finance/ContactChips";
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
+import { AIReminderModal } from "../../../src/components/finance/AIReminderModal";
 import type { UserRole } from "../../../src/lib/auth";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface DebtProject {
   bookingId: string;
@@ -35,6 +38,7 @@ interface ClientDebt {
   projects: DebtProject[];
   clientPhone?: string | null;
   clientEmail?: string | null;
+  lastReminderAt?: string | null;
 }
 
 interface InvoiceAgingBucket {
@@ -72,36 +76,40 @@ interface DebtsResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-type AgingBucket = "overdue30" | "overdue7" | "soon" | "current";
-
-function getAgingBucket(maxDaysOverdue: number, projects: DebtProject[]): AgingBucket {
-  if (maxDaysOverdue > 30) return "overdue30";
-  if (maxDaysOverdue > 0) return "overdue7";
-  const now = Date.now();
-  for (const p of projects) {
-    if (!p.expectedPaymentDate) continue;
-    const diff = Math.ceil((new Date(p.expectedPaymentDate).getTime() - now) / 86400000);
-    if (diff >= 0 && diff <= 7) return "soon";
-  }
-  return "current";
-}
+type SortField = "name" | "amount" | "date";
+type SortOrder = "asc" | "desc";
 
 function formatPayDate(dateStr: string | null): string {
   if (!dateStr) return "—";
   return new Date(dateStr).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
+function formatDaysLabel(maxDaysOverdue: number, projects: DebtProject[]): {
+  label: string;
+  tone: "rose" | "amber" | "ink-2";
+} {
+  if (maxDaysOverdue > 0) {
+    return { label: `${maxDaysOverdue} ${pluralize(maxDaysOverdue, "день", "дня", "дней")} просрочка`, tone: "rose" };
+  }
+  const now = Date.now();
+  let minDays = Infinity;
+  for (const p of projects) {
+    if (!p.expectedPaymentDate) continue;
+    const diff = Math.ceil((new Date(p.expectedPaymentDate).getTime() - now) / 86400000);
+    if (diff >= 0 && diff < minDays) minDays = diff;
+  }
+  if (minDays <= 7 && minDays !== Infinity) {
+    return { label: `через ${minDays} ${pluralize(minDays, "день", "дня", "дней")}`, tone: "amber" };
+  }
+  return { label: "—", tone: "ink-2" };
+}
+
 // Aging cell color classes
 const BUCKET_CELL = [
-  // current
   "bg-surface-subtle text-ink-2",
-  // 1-30
   "text-amber",
-  // 31-60
   "text-amber font-medium",
-  // 61-90
   "text-rose font-medium",
-  // 90+
   "text-rose font-semibold",
 ] as const;
 
@@ -113,34 +121,82 @@ const BUCKET_BG = [
   "bg-rose-soft",
 ] as const;
 
+// ── Sort arrow ─────────────────────────────────────────────────────────────────
+
+function SortArrow({ active, order }: { active: boolean; order: SortOrder }) {
+  if (!active) return <span className="text-ink-3 text-[10px] ml-1">↕</span>;
+  return <span className="text-accent-bright text-[10px] ml-1">{order === "asc" ? "▲" : "▼"}</span>;
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 function DebtsPageInner() {
   const { authorized, loading } = useRequireRole(ALLOWED);
   const currentUser = useCurrentUser();
+  const router = useRouter();
   const searchParams = useSearchParams();
+
   const legacyMode = searchParams.get("legacy") === "1";
+  const initSort = (searchParams.get("sort") as SortField | null) ?? "amount";
+  const initOrder = (searchParams.get("order") as SortOrder | null) ?? "desc";
+
+  const [sort, setSort] = useState<SortField>(initSort);
+  const [order, setOrder] = useState<SortOrder>(initOrder);
   const [data, setData] = useState<DebtsResponse | null>(null);
   const [search, setSearch] = useState("");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
 
-  function loadDebts() {
+  // Payment modal state
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentBookingId, setPaymentBookingId] = useState<string | undefined>(undefined);
+
+  // AI reminder modal state
+  const [reminderClient, setReminderClient] = useState<ClientDebt | null>(null);
+
+  // Remindable clients ribbon
+  const [remindableCount, setRemindableCount] = useState<number | null>(null);
+  const remindableFetched = useRef(false);
+
+  const fetchRemindable = useCallback(() => {
+    let cancelled = false;
+    apiFetch<{ clients: Array<{ clientId: string }> }>("/api/finance/debts/remindable")
+      .then((d) => { if (!cancelled) setRemindableCount(d.clients.length); })
+      .catch(() => { if (!cancelled) setRemindableCount(null); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const loadDebts = useCallback((s: SortField, o: SortOrder) => {
     let cancelled = false;
     setFetching(true);
-    apiFetch<DebtsResponse>("/api/finance/debts?withAging=true")
+    apiFetch<DebtsResponse>(`/api/finance/debts?withAging=true&sort=${s}&order=${o}`)
       .then((d) => { if (!cancelled) setData(d); })
       .finally(() => { if (!cancelled) setFetching(false); });
     return () => { cancelled = true; };
-  }
+  }, []);
 
   useEffect(() => {
     if (!authorized) return;
-    return loadDebts();
-  }, [authorized]);
+    return loadDebts(sort, order);
+  }, [authorized, sort, order, loadDebts]);
+
+  useEffect(() => {
+    if (!authorized || remindableFetched.current) return;
+    remindableFetched.current = true;
+    fetchRemindable();
+  }, [authorized, fetchRemindable]);
+
+  function handleSort(field: SortField) {
+    const newOrder = sort === field && order === "desc" ? "asc" : "desc";
+    setSort(field);
+    setOrder(newOrder);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("sort", field);
+    params.set("order", newOrder);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }
 
   function toggle(clientId: string) {
     setExpanded((prev) => {
@@ -151,15 +207,31 @@ function DebtsPageInner() {
     });
   }
 
+  function openPayment(bookingId?: string) {
+    setPaymentBookingId(bookingId);
+    setPaymentOpen(true);
+  }
+
+  function handlePaymentCreated() {
+    setPaymentOpen(false);
+    loadDebts(sort, order);
+  }
+
+  function handleReminderSent() {
+    setReminderClient(null);
+    fetchRemindable();
+    loadDebts(sort, order);
+  }
+
   if (loading || !authorized) return null;
   if (!data && fetching) return <div className="p-8 text-ink-3 text-sm">Загрузка…</div>;
 
   const debtCount = data?.summary.totalClients ?? data?.debts.length ?? 0;
 
-  // Filter legacy debts
+  // Filter debts
   const filteredDebts = (data?.debts ?? []).filter((d) => {
-    const bucket = getAgingBucket(d.maxDaysOverdue, d.projects);
-    const matchOverdue = !overdueOnly || bucket === "overdue30" || bucket === "overdue7";
+    const isOverdue = d.maxDaysOverdue > 0;
+    const matchOverdue = !overdueOnly || isOverdue;
     const q = search.toLowerCase();
     const matchSearch =
       !q ||
@@ -173,7 +245,6 @@ function DebtsPageInner() {
     const q = search.toLowerCase();
     if (q && !row.clientName.toLowerCase().includes(q)) return false;
     if (overdueOnly) {
-      // show rows that have any non-current debt
       return (
         Number(row.days1to30) > 0 ||
         Number(row.days31to60) > 0 ||
@@ -198,7 +269,7 @@ function DebtsPageInner() {
   );
 
   const hasAgingMatrix = agingRows.length > 0;
-  const hasLegacyDebts = filteredDebts.length > 0;
+  const hasDebtsList = filteredDebts.length > 0;
 
   return (
     <div className="pb-10 bg-surface-subtle min-h-screen">
@@ -222,12 +293,7 @@ function DebtsPageInner() {
                 </button>
               )}
               <button
-                onClick={() => {
-                  const a = document.createElement("a");
-                  a.href = "/api/finance/debts.xlsx";
-                  a.download = "debts.xlsx";
-                  a.click();
-                }}
+                onClick={() => { window.location.href = "/api/finance/debts.xlsx"; }}
                 className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface rounded-lg hover:bg-surface-subtle"
               >
                 📊 Экспорт XLSX
@@ -235,6 +301,42 @@ function DebtsPageInner() {
             </div>
           </div>
         </div>
+
+        {/* KPI summary strip */}
+        {data?.summary && (
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            <div className="bg-surface border border-border rounded-lg px-4 py-3">
+              <p className="eyebrow text-ink-3 mb-0.5">Всего долгов</p>
+              <p className="mono-num text-[18px] font-semibold text-ink">{formatRub(data.summary.totalOutstanding)}</p>
+            </div>
+            <div className="bg-surface border border-border rounded-lg px-4 py-3">
+              <p className="eyebrow text-ink-3 mb-0.5">Просрочено</p>
+              <p className={`mono-num text-[18px] font-semibold ${Number(data.summary.totalOverdue) > 0 ? "text-rose" : "text-ink"}`}>
+                {formatRub(data.summary.totalOverdue)}
+              </p>
+            </div>
+            <div className="bg-surface border border-border rounded-lg px-4 py-3">
+              <p className="eyebrow text-ink-3 mb-0.5">Клиентов с долгом</p>
+              <p className="mono-num text-[18px] font-semibold text-ink">{data.summary.totalClients}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Action ribbon: clients ready for reminder */}
+        {remindableCount !== null && remindableCount > 0 && (
+          <div className="mb-4 flex items-center gap-3 bg-amber-soft border border-amber-border rounded-lg px-4 py-3">
+            <span className="text-[13px] text-ink">
+              🤖 {remindableCount} {pluralize(remindableCount, "клиент готов", "клиента готовы", "клиентов готовы")} к напоминанию
+            </span>
+            <button
+              type="button"
+              onClick={() => setOverdueOnly(true)}
+              className="ml-auto px-3 py-1.5 text-[11px] font-medium border border-amber-border rounded-lg bg-surface hover:bg-amber-soft"
+            >
+              Просмотреть
+            </button>
+          </div>
+        )}
 
         {/* Filter row */}
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
@@ -246,7 +348,6 @@ function DebtsPageInner() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            {/* Toggle: все / только просроченные */}
             <div className="flex border border-border rounded-lg overflow-hidden">
               <button
                 onClick={() => setOverdueOnly(false)}
@@ -316,11 +417,10 @@ function DebtsPageInner() {
                 </thead>
                 <tbody>
                   {agingRows.map((row) => {
-                    // find matching legacy debt for contact info
-                    const legacyDebt = data?.debts.find((d) => d.clientId === row.clientId);
-                    const phone = row.clientPhone ?? legacyDebt?.clientPhone ?? null;
-                    const email = row.clientEmail ?? legacyDebt?.clientEmail ?? null;
-                    const bookingsCount = legacyDebt?.bookingsCount ?? 0;
+                    const debtEntry = data?.debts.find((d) => d.clientId === row.clientId);
+                    const phone = row.clientPhone ?? debtEntry?.clientPhone ?? null;
+                    const email = row.clientEmail ?? debtEntry?.clientEmail ?? null;
+                    const bookingsCount = debtEntry?.bookingsCount ?? 0;
 
                     type BucketKey = "current" | "days1to30" | "days31to60" | "days61to90" | "over90";
                     const cells: [BucketKey, number][] = [
@@ -358,7 +458,10 @@ function DebtsPageInner() {
                         <td className="px-3 py-3.5">
                           <div className="flex gap-1.5 justify-end flex-wrap">
                             <button
-                              onClick={() => setRecordPaymentOpen(true)}
+                              onClick={() => {
+                                const earliest = debtEntry?.projects[0]?.bookingId;
+                                openPayment(earliest);
+                              }}
                               className="px-2.5 py-1 text-[11px] border border-border bg-surface rounded hover:border-accent-bright hover:text-accent-bright transition-colors whitespace-nowrap"
                             >
                               ₽ Платёж
@@ -391,14 +494,13 @@ function DebtsPageInner() {
           </div>
         ) : null}
 
-        {/* Mobile accordion (md:hidden) — aging buckets by priority */}
+        {/* Mobile accordion (md:hidden) */}
         <div className="md:hidden mb-5">
           <p className="eyebrow text-ink-3 mb-2">
             всего {data ? formatRub(data.summary.totalOutstanding) : "—"} · {debtCount} контрагентов
           </p>
           {(data?.agingPerClient?.length ?? 0) > 0 && (
             <div className="space-y-2">
-              {/* Bucket cards sorted worst-first */}
               {[
                 { label: "90+ безнадёжно", key: "over90" as const, borderColor: "border-rose-border", textColor: "text-rose" },
                 { label: "61–90 дней", key: "days61to90" as const, borderColor: "border-rose-border", textColor: "text-rose" },
@@ -422,69 +524,172 @@ function DebtsPageInner() {
           )}
         </div>
 
-        {/* Legacy bookings section */}
-        {hasLegacyDebts && (
+        {/* Per-client debts table with sortable header */}
+        {hasDebtsList && (
           <div className="mt-2">
-            <p className="eyebrow text-ink-3 mb-3">Legacy брони (до миграции)</p>
-            <div className="flex flex-col gap-2">
+            <div className="bg-surface border border-border rounded-t-lg overflow-hidden">
+              {/* Sortable table header */}
+              <div
+                className="hidden md:grid items-center bg-surface-subtle border-b border-border px-4 py-2.5 text-[11px] font-medium text-ink-2"
+                style={{ gridTemplateColumns: "24px minmax(0,1fr) 130px 160px 220px 24px" }}
+              >
+                <div></div>
+                <button
+                  type="button"
+                  onClick={() => handleSort("name")}
+                  className="text-left flex items-center hover:text-ink"
+                >
+                  Клиент
+                  <SortArrow active={sort === "name"} order={order} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSort("amount")}
+                  className="text-right flex items-center justify-end hover:text-ink"
+                >
+                  Долг
+                  <SortArrow active={sort === "amount"} order={order} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSort("date")}
+                  className="text-right flex items-center justify-end hover:text-ink"
+                >
+                  Самый старый долг
+                  <SortArrow active={sort === "date"} order={order} />
+                </button>
+                <div className="text-right">Действия</div>
+                <div></div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-0 border-x border-b border-border rounded-b-lg overflow-hidden">
               {filteredDebts.map((d) => {
                 const isOpen = expanded.has(d.clientId);
-                const bucket = getAgingBucket(d.maxDaysOverdue, d.projects);
-                const isOverdue = bucket === "overdue30" || bucket === "overdue7";
+                const isOverdue = d.maxDaysOverdue > 0;
                 const amountTone = isOverdue ? "text-rose" : "text-ink";
+                const { label: daysLabel, tone: daysTone } = formatDaysLabel(d.maxDaysOverdue, d.projects);
+                const earliestBookingId = d.projects[0]?.bookingId;
 
                 return (
                   <div
                     key={d.clientId}
-                    className={`bg-surface border rounded-lg overflow-hidden transition-shadow ${
-                      isOpen ? "border-accent-border shadow-sm" : "border-border"
+                    className={`bg-surface border-b border-border last:border-b-0 overflow-hidden transition-shadow ${
+                      isOpen ? "shadow-sm" : ""
                     }`}
                   >
-                    <button
-                      type="button"
-                      aria-expanded={isOpen}
-                      onClick={() => toggle(d.clientId)}
-                      className={`w-full grid items-center gap-4 px-4 py-3.5 text-left ${
+                    {/* Row header */}
+                    <div
+                      className={`grid items-center gap-3 px-4 py-3.5 ${
                         isOpen ? "bg-accent-soft border-b border-accent-border" : "hover:bg-surface-subtle"
                       }`}
-                      style={{ gridTemplateColumns: "14px minmax(0,1fr) auto auto auto" }}
+                      style={{ gridTemplateColumns: "24px minmax(0,1fr) auto" }}
                     >
-                      <span className={`text-ink-3 text-[12px] transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden>
-                        ▸
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-[13px] font-semibold text-ink truncate">{d.clientName}</div>
-                        <div className="text-[11px] text-ink-2 mt-0.5">
-                          {d.bookingsCount} {pluralize(d.bookingsCount, "проект", "проекта", "проектов")}
+                      {/* Chevron */}
+                      <button
+                        type="button"
+                        aria-expanded={isOpen}
+                        aria-label={isOpen ? "Свернуть" : "Развернуть"}
+                        onClick={() => toggle(d.clientId)}
+                        className="w-6 h-6 flex items-center justify-center text-ink-3 text-[12px]"
+                      >
+                        <span className={`inline-block transition-transform ${isOpen ? "rotate-90" : ""}`}>▸</span>
+                      </button>
+
+                      {/* Client info + inline KPI */}
+                      <div className="min-w-0 cursor-pointer" onClick={() => toggle(d.clientId)}>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[13px] font-semibold text-ink">{d.clientName}</span>
+                          <span className="text-[11px] text-ink-3">
+                            {d.bookingsCount} {pluralize(d.bookingsCount, "проект", "проекта", "проектов")}
+                          </span>
+                          <span className={`text-[11px] mono-num font-semibold ${amountTone}`}>
+                            {formatRub(d.totalOutstanding)}
+                          </span>
+                          {daysLabel !== "—" && (
+                            <span className={`text-[11px] text-${daysTone}`}>{daysLabel}</span>
+                          )}
+                        </div>
+                        {/* Contact chips inline */}
+                        <div className="flex items-center gap-1.5 mt-1" onClick={(e) => e.stopPropagation()}>
+                          {d.clientPhone && (
+                            <a
+                              href={`tel:${d.clientPhone}`}
+                              className="text-[11px] text-ink-2 hover:text-accent-bright flex items-center gap-0.5"
+                            >
+                              📞 {d.clientPhone}
+                            </a>
+                          )}
+                          {d.clientEmail && (
+                            <a
+                              href={`mailto:${d.clientEmail}`}
+                              className="text-[11px] text-ink-2 hover:text-accent-bright flex items-center gap-0.5"
+                            >
+                              ✉️ {d.clientEmail}
+                            </a>
+                          )}
                         </div>
                       </div>
-                      <div className={`text-right mono-num text-[14px] font-semibold ${amountTone}`}>
-                        {formatRub(d.totalOutstanding)}
-                      </div>
-                      <div className="flex gap-1.5 justify-end" onClick={(e) => e.stopPropagation()}>
-                        <ContactChips
-                          phone={d.clientPhone ?? null}
-                          email={d.clientEmail ?? null}
-                          clientName={d.clientName}
-                          outstanding={Number(d.totalOutstanding)}
-                        />
-                        <a
-                          href={`/bookings?clientId=${d.clientId}`}
-                          aria-label="Открыть брони клиента"
-                          className="w-7 h-7 rounded border border-border bg-surface flex items-center justify-center text-ink-2 hover:bg-surface-subtle text-sm"
-                        >
-                          ›
-                        </a>
-                      </div>
-                    </button>
 
+                      {/* Actions */}
+                      <div className="flex gap-1.5 items-center flex-wrap justify-end" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => openPayment(earliestBookingId)}
+                          className="px-2.5 py-1.5 text-[11px] font-medium border border-accent-bright bg-accent-bright text-white rounded-lg hover:opacity-90 whitespace-nowrap"
+                        >
+                          ₽ Оплатить
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.location.href = `/api/finance/debts/${d.clientId}/export.xlsx`;
+                          }}
+                          className="px-2.5 py-1.5 text-[11px] border border-border bg-surface rounded-lg hover:bg-surface-subtle whitespace-nowrap"
+                        >
+                          📊 Экспорт
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReminderClient(d)}
+                          className="px-2.5 py-1.5 text-[11px] border border-border bg-surface rounded-lg hover:bg-surface-subtle whitespace-nowrap"
+                        >
+                          🤖 Напомнить
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expanded details */}
                     {isOpen && (
-                      <div className="bg-surface-subtle pl-14 pr-4 py-2">
+                      <div className="bg-surface-subtle px-10 py-3">
+                        {/* Mini aging matrix */}
+                        {(() => {
+                          const agingRow = data?.agingPerClient?.find((r) => r.clientId === d.clientId);
+                          if (!agingRow) return null;
+                          return (
+                            <div className="flex gap-3 flex-wrap mb-3 text-[11px]">
+                              <span className="text-ink-3 font-medium">Старение:</span>
+                              {[
+                                { label: "Текущая", val: agingRow.current, cls: "text-ink-2" },
+                                { label: "1–30 дн.", val: agingRow.days1to30, cls: "text-amber" },
+                                { label: "31–60", val: agingRow.days31to60, cls: "text-amber font-medium" },
+                                { label: "61–90", val: agingRow.days61to90, cls: "text-rose font-medium" },
+                                { label: "90+", val: agingRow.over90, cls: "text-rose font-semibold" },
+                              ].filter((b) => Number(b.val) > 0).map((b) => (
+                                <span key={b.label} className={b.cls}>
+                                  {b.label}: {formatRub(b.val)}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Per-booking rows */}
                         {d.projects.map((p) => (
                           <div
                             key={p.bookingId}
                             className="grid items-center gap-3 py-2.5 border-b border-dashed border-border last:border-b-0"
-                            style={{ gridTemplateColumns: "minmax(0,1fr) auto 32px" }}
+                            style={{ gridTemplateColumns: "minmax(0,1fr) 90px 90px 120px auto" }}
                           >
                             <div>
                               <div className="text-[12.5px] text-ink truncate">{p.projectName}</div>
@@ -494,16 +699,31 @@ function DebtsPageInner() {
                                   : formatPayDate(p.expectedPaymentDate)}
                               </div>
                             </div>
-                            <div className={`mono-num text-[13px] font-semibold ${p.daysOverdue !== null && p.daysOverdue > 0 ? "text-rose" : "text-ink"}`}>
+                            <div className="text-[11px] text-ink-2 mono-num text-right hidden md:block">
+                              —
+                            </div>
+                            <div className="text-[11px] text-ink-2 mono-num text-right hidden md:block">
+                              —
+                            </div>
+                            <div className={`mono-num text-[13px] font-semibold text-right ${p.daysOverdue !== null && p.daysOverdue > 0 ? "text-rose" : "text-ink"}`}>
                               {formatRub(p.amountOutstanding)}
                             </div>
-                            <a
-                              href={`/bookings/${p.bookingId}`}
-                              aria-label="Открыть бронь"
-                              className="w-7 h-7 rounded border border-border bg-surface flex items-center justify-center text-ink-2 hover:bg-surface-subtle text-sm"
-                            >
-                              ›
-                            </a>
+                            <div className="flex gap-1.5 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => openPayment(p.bookingId)}
+                                className="px-2.5 py-1 text-[11px] border border-border bg-surface rounded hover:border-accent-bright hover:text-accent-bright transition-colors whitespace-nowrap"
+                              >
+                                Оплатить эту бронь
+                              </button>
+                              <a
+                                href={`/bookings/${p.bookingId}`}
+                                aria-label="Открыть бронь"
+                                className="w-7 h-7 rounded border border-border bg-surface flex items-center justify-center text-ink-2 hover:bg-surface-subtle text-sm"
+                              >
+                                ›
+                              </a>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -516,7 +736,7 @@ function DebtsPageInner() {
         )}
 
         {/* Empty state */}
-        {!hasAgingMatrix && !hasLegacyDebts && (
+        {!hasAgingMatrix && !hasDebtsList && (
           <div className="bg-accent-soft border border-accent-border rounded-lg px-4 py-14 text-center">
             {data?.debts.length === 0 && (data?.agingPerClient?.length ?? 0) === 0 ? (
               <>
@@ -541,16 +761,29 @@ function DebtsPageInner() {
         )}
       </div>
 
+      {/* Modals */}
       <LegacyBookingImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onImported={() => { setImportOpen(false); loadDebts(); }}
+        onImported={() => { setImportOpen(false); loadDebts(sort, order); }}
       />
       <RecordPaymentModal
-        open={recordPaymentOpen}
-        onClose={() => setRecordPaymentOpen(false)}
-        onCreated={() => { setRecordPaymentOpen(false); loadDebts(); }}
+        open={paymentOpen}
+        defaultBookingId={paymentBookingId}
+        onClose={() => setPaymentOpen(false)}
+        onCreated={handlePaymentCreated}
       />
+      {reminderClient && (
+        <AIReminderModal
+          open={true}
+          onClose={() => setReminderClient(null)}
+          clientId={reminderClient.clientId}
+          clientName={reminderClient.clientName}
+          totalOutstanding={formatRub(reminderClient.totalOutstanding)}
+          clientEmail={reminderClient.clientEmail}
+          onReminded={handleReminderSent}
+        />
+      )}
     </div>
   );
 }

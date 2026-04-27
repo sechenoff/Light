@@ -797,6 +797,17 @@ router.get("/finance/payments-by-client", superAdminOnly, async (req, res, next)
   }
 });
 
+// ── B1.5: GET /api/finance/debts/remindable ──────────────────────────────────
+
+router.get("/finance/debts/remindable", superAdminOnly, async (_req, res, next) => {
+  try {
+    const clients = await getRemindableClients();
+    res.json({ clients });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── B2: GET /api/finance/debts/:clientId/export.xlsx ─────────────────────────
 
 router.get("/finance/debts/:clientId/export.xlsx", superAdminOnly, async (req, res, next) => {
