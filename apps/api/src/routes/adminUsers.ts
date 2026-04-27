@@ -88,7 +88,7 @@ router.post("/", async (req, res, next) => {
       await writeAuditEntry({
         tx,
         userId: actorId,
-        action: "create",
+        action: "ADMIN_USER_CREATE",
         entityType: "AdminUser",
         entityId: created.id,
         before: null,
@@ -129,7 +129,7 @@ router.patch("/:id", async (req, res, next) => {
       await writeAuditEntry({
         tx,
         userId: actorId,
-        action: "update",
+        action: "ADMIN_USER_UPDATE",
         entityType: "AdminUser",
         entityId: id,
         before,

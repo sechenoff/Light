@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { pluralize } from "@/lib/format";
 
 type AuditItem = {
   id: string;
@@ -91,6 +92,7 @@ export function ApprovalTimeline({ bookingId }: { bookingId: string }) {
     let cancelled = false;
     setError(null);
     setItems(null);
+    setShowAll(false);
     fetch(
       `/api/audit?entityType=Booking&entityId=${encodeURIComponent(bookingId)}&limit=200`,
       { credentials: "include" },
@@ -171,7 +173,7 @@ export function ApprovalTimeline({ bookingId }: { bookingId: string }) {
       <summary className="cursor-pointer select-none px-3 py-2 text-ink-2">
         <span className="eyebrow">История согласования</span>
         {hasManyCycles && (
-          <span className="ml-2 text-xs text-amber font-medium">{cycles} {cycles === 1 ? "цикл" : cycles <= 4 ? "цикла" : "циклов"} согласования</span>
+          <span className="ml-2 text-xs text-amber font-medium">{cycles} {pluralize(cycles, "цикл", "цикла", "циклов")} согласования</span>
         )}
         {!hasManyCycles && (
           <span className="ml-2 text-ink-3">({items.length})</span>

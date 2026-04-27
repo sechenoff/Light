@@ -270,7 +270,7 @@ function BookingHistoryPageInner() {
                   </td>
                   <td className="px-3 py-2 text-ink-2">{r.client.name}</td>
                   <td className="px-3 py-2">
-                    {r.projectName === "Проект" ? (
+                    {r.projectName?.trim() === "Проект" ? (
                       <span className="text-ink-3">Без названия</span>
                     ) : (
                       <span className="text-ink-2">{r.projectName}</span>

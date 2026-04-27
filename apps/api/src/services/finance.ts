@@ -1061,11 +1061,9 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
       status: { in: ["CONFIRMED", "ISSUED", "RETURNED", "PENDING_APPROVAL"] },
       startDate: { gte: horizonStart, lte: horizonEnd },
       legacyFinance: false,
-      OR: [
-        { invoices: { none: {} } },
-      ],
+      invoices: { none: {} },
     },
-    select: { startDate: true, amountOutstanding: true, finalAmount: true, invoices: { select: { id: true } } },
+    select: { startDate: true, amountOutstanding: true, finalAmount: true },
   });
 
   // Helper: which month slot does a date fall in?
@@ -1105,8 +1103,6 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
   }
 
   for (const b of pipelineBookings) {
-    // M2: пропускаем брони с инвойсами (они уже учтены выше через confirmedInvoices/potentialInvoices)
-    if (b.invoices.length > 0) continue;
     const label = monthSlotLabel(b.startDate);
     if (!label) continue;
     // M2: используем amountOutstanding если > 0, иначе finalAmount (бронь без платежей)
