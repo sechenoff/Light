@@ -196,13 +196,14 @@ model Lead {
 }
 
 model Client {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  phone     String?
-  email     String?
-  comment   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String    @id @default(cuid())
+  name             String    @unique
+  phone            String?
+  email            String?
+  comment          String?
+  lastReminderAt   DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   bookings Booking[]
 

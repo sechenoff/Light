@@ -14,15 +14,24 @@ import {
   csvEscape,
   paymentStatusSyncForAllBookings,
   workbookFromRows,
+  buildClientDebtExport,
+  getRemindableClients,
 } from "../services/finance";
+import { GeminiVisionProvider } from "../services/gemini";
 import { importLegacyBookings } from "../services/legacyBookingImport";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { buildBookingHumanName } from "../utils/bookingName";
+import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
+import { writeAuditEntry } from "../services/audit";
+import { HttpError } from "../utils/errors";
 import {
   fromMoscowDateString,
   toMoscowDateString,
   moscowTodayStart,
 } from "../utils/moscowDate";
+
+// Singleton GeminiVisionProvider for debt reminder generation
+const geminiProvider = new GeminiVisionProvider();
 
 const router = express.Router();
 
@@ -59,6 +68,8 @@ const debtsQuerySchema = z.object({
   overdueOnly: z.enum(["true", "false"]).optional(),
   minAmount: z.coerce.number().nonnegative().optional(),
   withAging: z.enum(["true", "false"]).optional(),
+  sort: z.enum(["name", "amount", "date"]).optional(),
+  order: z.enum(["asc", "desc"]).optional(),
 });
 
 router.get("/finance/debts", superAdminOnly, async (req, res, next) => {
@@ -68,6 +79,8 @@ router.get("/finance/debts", superAdminOnly, async (req, res, next) => {
     const result = await computeDebts({
       overdueOnly: query.overdueOnly === "true",
       minAmount: query.minAmount,
+      sort: query.sort,
+      order: query.order,
     });
     // Finance Phase 2: опционально включаем aging-бакеты по Invoice.dueDate
     // D6: Теперь возвращаем как сводку так и per-client матрицу
@@ -779,6 +792,118 @@ router.get("/finance/payments-by-client", superAdminOnly, async (req, res, next)
         averageDebt: new Decimal(averageDebt).toDecimalPlaces(0).toString(),
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── B2: GET /api/finance/debts/:clientId/export.xlsx ─────────────────────────
+
+router.get("/finance/debts/:clientId/export.xlsx", superAdminOnly, async (req, res, next) => {
+  try {
+    const { clientId } = req.params;
+    const result = await buildClientDebtExport(clientId);
+    if (!result) {
+      throw new HttpError(404, "Клиент не найден");
+    }
+    const { buf, clientName } = result;
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `Дебиторка_${clientName}_${dateStr}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", buildAttachmentContentDisposition(filename, "debts_export.xlsx"));
+    res.end(buf);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── B3: POST /api/finance/debts/:clientId/draft-reminder ─────────────────────
+
+const draftReminderBodySchema = z.object({
+  tone: z.enum(["polite", "firm", "friendly"]).optional(),
+  language: z.enum(["ru", "en"]).optional(),
+});
+
+router.post("/finance/debts/:clientId/draft-reminder", superAdminOnly, async (req, res, next) => {
+  try {
+    const { clientId } = req.params;
+    const body = draftReminderBodySchema.parse(req.body);
+
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+      select: { id: true, name: true },
+    });
+    if (!client) {
+      throw new HttpError(404, "Клиент не найден");
+    }
+
+    // Получаем данные о долге клиента
+    const debtResult = await computeDebts({ sort: "amount", order: "desc" });
+    const clientDebt = debtResult.debts.find((d) => d.clientId === clientId);
+    if (!clientDebt || new Decimal(clientDebt.totalOutstanding).lte(0)) {
+      throw new HttpError(400, "NO_DEBTS");
+    }
+
+    // Ищем самую раннюю дату ожидаемой оплаты
+    const oldestDueDate = clientDebt.projects
+      .map((p) => p.expectedPaymentDate)
+      .filter((d): d is Date => d !== null && d !== undefined)
+      .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+
+    const { subject, body: reminderBody, generatedBy } = await geminiProvider.generateDebtReminder({
+      clientName: client.name,
+      totalOutstanding: new Decimal(clientDebt.totalOutstanding),
+      oldestDueDate,
+      daysOverdue: clientDebt.maxDaysOverdue,
+      bookingsCount: clientDebt.bookingsCount,
+      tone: body.tone,
+      language: body.language,
+    });
+
+    res.json({ subject, body: reminderBody, generatedBy });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── B4: POST /api/finance/debts/:clientId/mark-reminded ──────────────────────
+
+router.post("/finance/debts/:clientId/mark-reminded", superAdminOnly, async (req, res, next) => {
+  try {
+    const { clientId } = req.params;
+    const userId = req.adminUser!.userId;
+
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+      select: { id: true, name: true, lastReminderAt: true },
+    });
+    if (!client) {
+      throw new HttpError(404, "Клиент не найден");
+    }
+
+    const now = new Date();
+    const before = { lastReminderAt: client.lastReminderAt?.toISOString() ?? null };
+
+    await prisma.$transaction(async (tx: any) => {
+      await tx.client.update({
+        where: { id: clientId },
+        data: { lastReminderAt: now },
+      });
+      await writeAuditEntry({
+        tx,
+        userId,
+        action: "CLIENT_REMINDED",
+        entityType: "Client",
+        entityId: clientId,
+        before,
+        after: { lastReminderAt: now.toISOString() },
+      });
+    });
+
+    res.json({ ok: true, lastReminderAt: now.toISOString() });
   } catch (err) {
     next(err);
   }

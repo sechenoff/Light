@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import Decimal from "decimal.js";
 import type { VisionProvider } from "./vision/provider";
 import type { VisionInput, LightingAnalysis } from "./vision/types";
 import { parseLightingAnalysis } from "./vision/types";
@@ -264,6 +265,79 @@ export class GeminiVisionProvider implements VisionProvider {
       console.error(`[gemini] description type:`, typeof obj.description, `len:`, String(obj.description).length);
       throw new Error(`Gemini JSON не прошёл валидацию: ${zodErr?.issues?.[0]?.message ?? zodErr?.message ?? "unknown"}`);
     }
+  }
+
+  /**
+   * Генерирует текст письма-напоминания об оплате долга для клиента.
+   * При ошибке Gemini возвращает hardcoded шаблон (fallback).
+   */
+  async generateDebtReminder(args: {
+    clientName: string;
+    totalOutstanding: Decimal;
+    oldestDueDate: Date | null;
+    daysOverdue: number;
+    bookingsCount: number;
+    tone?: "polite" | "firm" | "friendly";
+    language?: "ru" | "en";
+  }): Promise<{ subject: string; body: string; generatedBy: "gemini" | "fallback" }> {
+    const tone = args.tone ?? "polite";
+    const toneRu = tone === "firm" ? "деловой и настойчивый" : tone === "friendly" ? "дружеский" : "вежливый и деловой";
+    const amount = args.totalOutstanding.toFixed(2);
+    const dueDateStr = args.oldestDueDate
+      ? args.oldestDueDate.toLocaleDateString("ru-RU")
+      : "не указан";
+
+    const systemPrompt = `Ты помогаешь владельцу проката кинооборудования вежливо напомнить клиенту о неоплаченном счёте. Тон ${toneRu}. Используй обращение по имени, упомяни конкретную сумму и срок. Не угрожай, предложи связаться при вопросах. Длина 3–5 коротких абзацев. Отвечай строго в формате JSON: {"subject": "...", "body": "..."}.`;
+
+    const userPrompt = `Клиент: ${args.clientName}
+Сумма задолженности: ${amount} ₽
+Срок оплаты: ${dueDateStr}
+Просрочка: ${args.daysOverdue > 0 ? `${args.daysOverdue} дней` : "не просрочено"}
+Количество броней: ${args.bookingsCount}`;
+
+    try {
+      const model = this.client.getGenerativeModel({
+        model: "gemini-2.5-flash-lite",
+        generationConfig: {
+          maxOutputTokens: 2048,
+          responseMimeType: "application/json",
+        },
+      });
+
+      const result = await retryOnOverload(() =>
+        model.generateContent([{ text: systemPrompt }, { text: userPrompt }]),
+      );
+
+      const raw = result.response.text().trim();
+      const parsed = tryParseJson(raw);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof (parsed as Record<string, unknown>).subject === "string" &&
+        typeof (parsed as Record<string, unknown>).body === "string"
+      ) {
+        const p = parsed as { subject: string; body: string };
+        return { subject: p.subject, body: p.body, generatedBy: "gemini" };
+      }
+    } catch (err) {
+      console.error("[gemini] generateDebtReminder error:", err);
+    }
+
+    // Fallback шаблон
+    const overdueNote = args.daysOverdue > 0
+      ? `\n\nОбращаем ваше внимание, что платёж просрочен на ${args.daysOverdue} дней.`
+      : "";
+    const subject = `Напоминание об оплате — ${args.clientName}`;
+    const body = `Уважаемый(ая) ${args.clientName},
+
+Напоминаем о наличии задолженности в размере ${amount} ₽ по нашим договорённостям. Срок оплаты: ${dueDateStr}.${overdueNote}
+
+Просим произвести оплату в ближайшее время. Если у вас возникли вопросы или вам необходима отсрочка, пожалуйста, свяжитесь с нами — мы готовы обсудить удобные условия.
+
+С уважением,
+Служба проката`;
+
+    return { subject, body, generatedBy: "fallback" };
   }
 
   async generateDiagram(description: string): Promise<Buffer | null> {
