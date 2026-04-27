@@ -23,6 +23,12 @@ interface DebtProject {
   bookingId: string;
   projectName: string;
   amountOutstanding: string;
+  /** PAR F1: сумма уже полученных платежей */
+  amountPaid: string;
+  /** PAR F1: итоговая сумма по брони */
+  finalAmount: string;
+  /** PAR F4: количество платежей */
+  paymentCount: number;
   expectedPaymentDate: string | null;
   daysOverdue: number | null;
   paymentStatus: string;
@@ -138,9 +144,12 @@ function sortRows(rows: FlatRow[], sort: SortField, order: SortOrder): FlatRow[]
       case "amount":
         cmp = Number(a.amountOutstanding) - Number(b.amountOutstanding);
         break;
-      case "status":
-        cmp = (a.daysOverdue ?? -1) - (b.daysOverdue ?? -1);
+      case "status": {
+        const aOver = a.daysOverdue ?? -Infinity;
+        const bOver = b.daysOverdue ?? -Infinity;
+        cmp = aOver - bOver;
         break;
+      }
     }
     return order === "asc" ? cmp : -cmp;
   });
@@ -191,7 +200,7 @@ function ActionMenu({ row, onRemind, onDelete, onPaymentsList }: ActionMenuProps
             onClick={() => { setOpen(false); onPaymentsList(); }}
             className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
           >
-            📋 Список платежей
+            📋 Список платежей{row.paymentCount > 0 ? ` (${row.paymentCount})` : ""}
           </button>
           <button
             onClick={() => {
@@ -232,7 +241,9 @@ function DebtsPageInner() {
   const legacyMode = searchParams.get("legacy") === "1";
 
   // F3: sort URL persistence
-  const initSort = (searchParams.get("sort") as SortField | null) ?? "startDate";
+  const ALLOWED_SORTS: SortField[] = ["startDate", "name", "amount", "status"];
+  const rawSort = searchParams.get("sort");
+  const initSort: SortField = ALLOWED_SORTS.includes(rawSort as SortField) ? (rawSort as SortField) : "startDate";
   const initOrder = (searchParams.get("order") as SortOrder | null) ?? "desc";
   // F4: client filter URL persistence
   const initClient = searchParams.get("client") ?? "";
@@ -495,7 +506,7 @@ function DebtsPageInner() {
                 <span className={`font-mono text-[13px] font-semibold ${clientFilter === "" ? "text-white" : "text-rose"}`}>
                   {formatRub(totalOutstanding)}
                 </span>
-                <span className={`text-[10px] uppercase tracking-wide ${clientFilter === "" ? "text-blue-200" : "text-ink-3"}`}>
+                <span className={`text-[10px] uppercase tracking-wide ${clientFilter === "" ? "text-white/70" : "text-ink-3"}`}>
                   {allRows.length} {pluralize(allRows.length, "бронь", "брони", "броней")}
                 </span>
               </button>
@@ -516,7 +527,7 @@ function DebtsPageInner() {
                   <span className={`font-mono text-[13px] font-semibold ${clientFilter === c.clientId ? "text-white" : "text-rose"}`}>
                     {formatRub(c.totalOutstanding)}
                   </span>
-                  <span className={`text-[10px] uppercase tracking-wide ${clientFilter === c.clientId ? "text-blue-200" : "text-ink-3"}`}>
+                  <span className={`text-[10px] uppercase tracking-wide ${clientFilter === c.clientId ? "text-white/70" : "text-ink-3"}`}>
                     {c.maxDaysOverdue > 0
                       ? `⚠ просрочка ${c.maxDaysOverdue} дн`
                       : `${c.bookingsCount} ${pluralize(c.bookingsCount, "бронь", "брони", "броней")}`}
@@ -547,7 +558,7 @@ function DebtsPageInner() {
               }`}
             >
               {f.label}
-              <span className={`ml-1.5 ${statusFilter === f.key ? "text-blue-200" : "text-ink-3"}`}>{f.count}</span>
+              <span className={`ml-1.5 ${statusFilter === f.key ? "text-white/70" : "text-ink-3"}`}>{f.count}</span>
             </button>
           ))}
           <input
@@ -618,9 +629,6 @@ function DebtsPageInner() {
                     const dateInfo = formatStartDate(row.startDate);
                     const dateColor = startDateColor(row.startDate, row.daysOverdue);
                     const pill = statusPill(row.paymentStatus, row.daysOverdue);
-                    const amountPaid = Number(row.totalClientOutstanding) > 0
-                      ? `из ${formatRub(Number(row.amountOutstanding) + /* approx */ 0)}`
-                      : undefined;
 
                     return (
                       <tr
@@ -650,8 +658,11 @@ function DebtsPageInner() {
                           </div>
                           {row.paymentStatus === "PARTIALLY_PAID" && (
                             <div className="text-[11px] text-ink-3">
-                              получено: {formatRub(Number(row.totalClientOutstanding) - Number(row.amountOutstanding) < 0 ? 0 : Number(row.totalClientOutstanding) - Number(row.amountOutstanding))}
+                              получено: {formatRub(Number(row.amountPaid))} из {formatRub(Number(row.finalAmount))}
                             </div>
+                          )}
+                          {row.paymentStatus === "NOT_PAID" && Number(row.amountPaid) === 0 && (
+                            <div className="text-[11px] text-ink-3">получено: 0 ₽</div>
                           )}
                         </td>
 
@@ -715,7 +726,7 @@ function DebtsPageInner() {
                       <span className="mono-num font-semibold text-[18px] text-rose">{formatRub(row.amountOutstanding)}</span>
                       {row.paymentStatus === "PARTIALLY_PAID" && (
                         <span className="text-[11px] text-ink-3">
-                          получено: {formatRub(Math.max(0, Number(row.totalClientOutstanding) - Number(row.amountOutstanding)))}
+                          получено: {formatRub(Number(row.amountPaid))} из {formatRub(Number(row.finalAmount))}
                         </span>
                       )}
                     </div>
@@ -731,16 +742,16 @@ function DebtsPageInner() {
                     <div className="grid grid-cols-2 gap-1.5">
                       <a
                         href={`/bookings/${row.bookingId}`}
-                        className="h-[34px] flex items-center justify-center gap-1 border border-border bg-surface rounded text-[12px] text-ink-2 hover:bg-surface-subtle"
+                        className="h-[38px] flex items-center justify-center gap-1 border border-border bg-surface rounded text-[12px] text-ink-2 hover:bg-surface-subtle"
                       >
                         ✏️ Правка
                       </a>
-                      <button
-                        onClick={() => openPaymentsList(row)}
-                        className="h-[34px] flex items-center justify-center border border-border bg-surface rounded text-[12px] text-ink-2 hover:bg-surface-subtle"
-                      >
-                        ⋯ Меню
-                      </button>
+                      <ActionMenu
+                        row={row}
+                        onRemind={() => openReminder(row)}
+                        onDelete={() => handleDelete(row)}
+                        onPaymentsList={() => openPaymentsList(row)}
+                      />
                     </div>
                   </div>
                 );

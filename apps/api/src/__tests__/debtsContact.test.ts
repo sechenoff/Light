@@ -125,6 +125,11 @@ describe("GET /api/finance/debts — clientPhone & clientEmail", () => {
     expect(new Date(proj.endDate).toISOString().startsWith("2025-03-15")).toBe(true);
     expect(proj.clientName).toBe("DC Denorm Client");
     expect(proj.clientId).toBe(client.id);
+    // PAR F1: new fields
+    expect(proj.amountPaid).toBeDefined();
+    expect(proj.finalAmount).toBeDefined();
+    // PAR F4: payment count
+    expect(typeof proj.paymentCount).toBe("number");
   });
 
   it("returns null for clientPhone/clientEmail when not set on client", async () => {
