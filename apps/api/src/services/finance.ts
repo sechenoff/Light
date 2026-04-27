@@ -1281,6 +1281,35 @@ export async function buildClientDebtExport(clientId: string): Promise<{ buf: Bu
       })
     : [];
 
+  const BOOKING_STATUS_RU: Record<string, string> = {
+    DRAFT: "Черновик",
+    PENDING_APPROVAL: "На согласовании",
+    CONFIRMED: "Подтверждена",
+    ISSUED: "Выдана",
+    ACTIVE: "В работе",
+    RETURNED: "Возвращена",
+    CLOSED: "Закрыта",
+    CANCELLED: "Отменена",
+  };
+
+  const PAYMENT_METHOD_RU: Record<string, string> = {
+    CASH: "Наличные",
+    CARD: "Карта",
+    BANK_TRANSFER: "Банк",
+    CARD_TERMINAL: "Терминал",
+    CREDIT_NOTE: "Кредит-нота",
+    OTHER: "Прочее",
+  };
+
+  const INVOICE_STATUS_RU: Record<string, string> = {
+    DRAFT: "Черновик",
+    ISSUED: "Выпущен",
+    PARTIAL_PAID: "Частично оплачен",
+    PAID: "Оплачен",
+    OVERDUE: "Просрочен",
+    VOID: "Аннулирован",
+  };
+
   const wb = new ExcelJS.Workbook();
 
   // Лист 1: Долги
@@ -1300,7 +1329,7 @@ export async function buildClientDebtExport(clientId: string): Promise<{ buf: Bu
     wsDebts.addRow([
       b.projectName,
       period,
-      b.status,
+      BOOKING_STATUS_RU[b.status] ?? b.status,
       Number(b.finalAmount.toString()),
       Number(b.amountPaid.toString()),
       Number(b.amountOutstanding.toString()),
@@ -1328,7 +1357,7 @@ export async function buildClientDebtExport(clientId: string): Promise<{ buf: Bu
     wsPayments.addRow([
       date,
       Number(p.amount.toString()),
-      p.paymentMethod,
+      PAYMENT_METHOD_RU[p.paymentMethod ?? ""] ?? p.paymentMethod,
       p.booking?.projectName ?? "",
       p.comment ?? "",
     ]);
@@ -1349,7 +1378,7 @@ export async function buildClientDebtExport(clientId: string): Promise<{ buf: Bu
         Number(inv.total.toString()),
         Number(inv.paidAmount.toString()),
         inv.dueDate ? inv.dueDate.toLocaleDateString("ru-RU") : "—",
-        inv.status,
+        INVOICE_STATUS_RU[inv.status] ?? inv.status,
       ]);
     }
   }
