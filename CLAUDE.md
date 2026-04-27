@@ -180,6 +180,7 @@ npm run seed                  # Seed database
 - **Bot modes**: Polling (dev, default) or webhook (production, set `WEBHOOK_DOMAIN` in bot .env). Webhook listens on `WEBHOOK_PORT` (default 3001) at path `/telegram`.
 - **Deploy backups**: `deploy.sh` auto-backs up SQLite DB before `prisma db push`. Backups in `backups/`, last 10 kept.
 - **Warehouse auth is separate from API auth**: `warehouseAuth` middleware uses HMAC-signed tokens from PIN login. Applied per-route to scan endpoints only — `/api/warehouse/auth` and `/api/warehouse/workers/names` are public. Does NOT use apiKeyAuth.
+- **Warehouse worker name (audit) — dual namespace.** `ScanSession.workerName` и `req.warehouseWorker.name` хранят `WarehousePin.name` (например, «Иван Кладовщик») когда вход через PIN, или `AdminUser.username` (например, `sechenoff`) когда главная сессия SA/WH прошла fallback в `warehouseAuth`. Это by design: kiosk-сценарий vs admin-сценарий распознаются по namespace.
 - **Barcode payloads use HMAC-SHA256**: `BARCODE_SECRET` env var required. Payload format: `unitId:hmac12hex`. Labels encode `barcodePayload` (machine-scannable), display `barcode` (human-readable like `LR-SKY60-003`).
 - **Equipment tracking modes**: `COUNT` (legacy, quantity-only) and `UNIT` (individual barcode tracking). Both coexist — COUNT items skip scan verification.
 - **Unit status lifecycle**: AVAILABLE → ISSUED (on scan) → AVAILABLE (on return). MAINTENANCE and RETIRED units excluded from reservation and scanning.
