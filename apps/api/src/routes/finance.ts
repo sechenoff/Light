@@ -934,7 +934,7 @@ router.get("/finance/debts/:clientId/report.pdf", superAdminOnly, async (req, re
     const pdfBuffer = await renderClientDebtReportPdf({ ...data, organization });
 
     const dateStr = new Date().toISOString().slice(0, 10);
-    const safeName = data.client.name.replace(/[/\\?%*:|"<>]/g, "_");
+    const safeName = data.client.name.replace(/[\x00-\x1f/\\?%*:|"<>]/g, "_").trim();
     const filename = `Отчёт_${safeName}_${dateStr}.pdf`;
 
     res.setHeader("Content-Type", "application/pdf");
