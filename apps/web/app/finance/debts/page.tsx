@@ -215,6 +215,15 @@ function ActionMenu({ row, onRemind, onDelete, onPaymentsList }: ActionMenuProps
             📄 Скачать счёт PDF
           </button>
           <button
+            onClick={() => {
+              setOpen(false);
+              window.location.href = `/api/finance/debts/${row.clientId}/report.pdf`;
+            }}
+            className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+          >
+            📋 Отчёт по клиенту PDF
+          </button>
+          <button
             onClick={() => { setOpen(false); onRemind(); }}
             className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
           >
@@ -554,6 +563,26 @@ function DebtsPageInner() {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* PDF-отчёт по выбранному клиенту */}
+        {clientFilter && (
+          <div className="mb-3 flex items-center gap-2">
+            <a
+              href={`/api/finance/debts/${clientFilter}/report.pdf`}
+              className="inline-flex items-center gap-1.5 h-[30px] px-3 text-[12px] font-medium border border-border bg-surface text-ink-2 rounded hover:bg-surface-subtle transition-colors"
+              download
+            >
+              📋 Отчёт по клиенту PDF
+            </a>
+            <a
+              href={`/api/finance/debts/${clientFilter}/export.xlsx`}
+              className="inline-flex items-center gap-1.5 h-[30px] px-3 text-[12px] font-medium border border-border bg-surface text-ink-2 rounded hover:bg-surface-subtle transition-colors"
+              download
+            >
+              📊 Excel
+            </a>
           </div>
         )}
 

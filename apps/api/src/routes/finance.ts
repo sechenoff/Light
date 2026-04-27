@@ -16,7 +16,10 @@ import {
   workbookFromRows,
   buildClientDebtExport,
   getRemindableClients,
+  computeClientDebtReport,
 } from "../services/finance";
+import { renderClientDebtReportPdf } from "../services/documentExport/clientDebtReport/renderClientDebtReportPdf";
+import { getSettings } from "../services/organizationService";
 import { GeminiVisionProvider } from "../services/gemini";
 import { importLegacyBookings } from "../services/legacyBookingImport";
 import { rolesGuard } from "../middleware/rolesGuard";
@@ -916,6 +919,27 @@ router.post("/finance/debts/:clientId/mark-reminded", superAdminOnly, async (req
     });
 
     res.json({ ok: true, lastReminderAt: now.toISOString() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── B3: GET /api/finance/debts/:clientId/report.pdf ───────────────────────────
+
+router.get("/finance/debts/:clientId/report.pdf", superAdminOnly, async (req, res, next) => {
+  try {
+    const { clientId } = req.params;
+    const data = await computeClientDebtReport(clientId);
+    const organization = await getSettings();
+    const pdfBuffer = await renderClientDebtReportPdf({ ...data, organization });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const safeName = data.client.name.replace(/[/\\?%*:|"<>]/g, "_");
+    const filename = `Отчёт_${safeName}_${dateStr}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", buildAttachmentContentDisposition(filename, "debt_report.pdf"));
+    res.send(pdfBuffer);
   } catch (err) {
     next(err);
   }
