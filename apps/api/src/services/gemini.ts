@@ -282,7 +282,8 @@ export class GeminiVisionProvider implements VisionProvider {
   }): Promise<{ subject: string; body: string; generatedBy: "gemini" | "fallback" }> {
     const tone = args.tone ?? "polite";
     const toneRu = tone === "firm" ? "деловой и настойчивый" : tone === "friendly" ? "дружеский" : "вежливый и деловой";
-    const amount = args.totalOutstanding.toFixed(2);
+    // Format with Russian thousand separators (e.g. «1 082 954 ₽») — more readable in Gemini prompt and fallback
+    const amount = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(args.totalOutstanding.toNumber()) + " ₽";
     const dueDateStr = args.oldestDueDate
       ? args.oldestDueDate.toLocaleDateString("ru-RU")
       : "не указан";
@@ -290,7 +291,7 @@ export class GeminiVisionProvider implements VisionProvider {
     const systemPrompt = `Ты помогаешь владельцу проката кинооборудования вежливо напомнить клиенту о неоплаченном счёте. Тон ${toneRu}. Используй обращение по имени, упомяни конкретную сумму и срок. Не угрожай, предложи связаться при вопросах. Длина 3–5 коротких абзацев. Отвечай строго в формате JSON: {"subject": "...", "body": "..."}.`;
 
     const userPrompt = `Клиент: ${args.clientName}
-Сумма задолженности: ${amount} ₽
+Сумма задолженности: ${amount}
 Срок оплаты: ${dueDateStr}
 Просрочка: ${args.daysOverdue > 0 ? `${args.daysOverdue} дней` : "не просрочено"}
 Количество броней: ${args.bookingsCount}`;
@@ -334,7 +335,7 @@ export class GeminiVisionProvider implements VisionProvider {
     const subject = `Напоминание об оплате — ${args.clientName}`;
     const body = `Уважаемый(ая) ${args.clientName},
 
-Напоминаем о наличии задолженности в размере ${amount} ₽ по нашим договорённостям. Срок оплаты: ${dueDateStr}.${overdueNote}
+Напоминаем о наличии задолженности в размере ${amount} по нашим договорённостям. Срок оплаты: ${dueDateStr}.${overdueNote}
 
 Просим произвести оплату в ближайшее время. Если у вас возникли вопросы или вам необходима отсрочка, пожалуйста, свяжитесь с нами — мы готовы обсудить удобные условия.
 

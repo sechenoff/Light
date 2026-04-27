@@ -45,12 +45,14 @@ export function AIReminderModal({
   const [marking, setMarking] = useState(false);
   const fetchedToneRef = useRef<Tone | null>(null);
 
-  // Fetch reminder when modal opens or tone changes
+  // Fetch reminder when modal opens or tone changes.
+  // AbortController cancels previous in-flight request on rapid tone switches.
   useEffect(() => {
     if (!open) return;
     // Avoid re-fetch if same tone already fetched
     if (fetchedToneRef.current === tone && result !== null) return;
 
+    const controller = new AbortController();
     let cancelled = false;
     setLoading(true);
     setResult(null);
@@ -58,6 +60,7 @@ export function AIReminderModal({
     apiFetch<ReminderResult>(`/api/finance/debts/${clientId}/draft-reminder`, {
       method: "POST",
       body: JSON.stringify({ tone }),
+      signal: controller.signal,
     })
       .then((data) => {
         if (cancelled) return;
@@ -69,11 +72,16 @@ export function AIReminderModal({
       })
       .catch((err) => {
         if (cancelled) return;
+        // Ignore abort errors from controller.abort()
+        if (err?.name === "AbortError") return;
         setLoading(false);
         toast.error(err?.message ?? "Ошибка генерации напоминания");
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [open, clientId, tone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset when modal closes
@@ -262,14 +270,7 @@ export function AIReminderModal({
               >
                 ✉️ Email
               </a>
-              <button
-                type="button"
-                disabled
-                title="В разработке"
-                className="px-3.5 py-2 text-[12px] border border-border rounded-lg bg-surface-subtle text-ink-3 cursor-not-allowed opacity-60"
-              >
-                💬 Telegram
-              </button>
+              {/* Telegram stub hidden until feature is implemented */}
             </div>
 
             {/* Mark reminded */}

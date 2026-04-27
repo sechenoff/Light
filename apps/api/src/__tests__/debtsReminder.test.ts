@@ -165,7 +165,9 @@ describe("POST /api/finance/debts/:clientId/draft-reminder", () => {
     expect(result.generatedBy).toBe("fallback");
     expect(result.subject).toContain("Тест Клиент");
     expect(result.body).toContain("Тест Клиент");
-    expect(result.body).toContain("12345.00");
+    // D5: amount now formatted with thousand separators in Russian style (non-breaking space U+00A0)
+    const expectedAmount = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(12345) + " ₽";
+    expect(result.body).toContain(expectedAmount);
   });
 
   it("возвращает 404 для несуществующего клиента", async () => {
