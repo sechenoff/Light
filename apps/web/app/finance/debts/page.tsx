@@ -128,6 +128,28 @@ function SortArrow({ active, order }: { active: boolean; order: SortOrder }) {
   return <span className="text-accent-bright text-[10px] ml-1">{order === "asc" ? "▲" : "▼"}</span>;
 }
 
+// ── Smart-pick earliest overdue booking ───────────────────────────────────────
+
+function pickPriorityBooking(projects: DebtProject[]): string | null {
+  if (!projects?.length) return null;
+  // 1. Most overdue (daysOverdue > 0, descending)
+  const overdue = projects.filter((p) => (p.daysOverdue ?? 0) > 0);
+  if (overdue.length > 0) {
+    return overdue.sort((a, b) => (b.daysOverdue ?? 0) - (a.daysOverdue ?? 0))[0].bookingId;
+  }
+  // 2. With dueDate, earliest first
+  const withDueDate = projects.filter((p) => p.expectedPaymentDate);
+  if (withDueDate.length > 0) {
+    return withDueDate.sort((a, b) =>
+      String(a.expectedPaymentDate).localeCompare(String(b.expectedPaymentDate))
+    )[0].bookingId;
+  }
+  // 3. Largest amount fallback
+  return projects.sort((a, b) =>
+    Number(b.amountOutstanding) - Number(a.amountOutstanding)
+  )[0].bookingId;
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 function DebtsPageInner() {
@@ -398,101 +420,6 @@ function DebtsPageInner() {
           </span>
         </div>
 
-        {/* Aging matrix table */}
-        {hasAgingMatrix ? (
-          <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs mb-6">
-            <div className="overflow-x-auto">
-              <table className="w-full text-[12.5px]" style={{ minWidth: 680 }}>
-                <thead className="bg-surface-subtle border-b border-border">
-                  <tr>
-                    <th className="px-4 py-3 text-left eyebrow">Контрагент</th>
-                    <th className="px-3 py-3 text-right eyebrow">Текущая</th>
-                    <th className="px-3 py-3 text-right eyebrow">1–30 дн.</th>
-                    <th className="px-3 py-3 text-right eyebrow">31–60</th>
-                    <th className="px-3 py-3 text-right eyebrow">61–90</th>
-                    <th className="px-3 py-3 text-right eyebrow">90+</th>
-                    <th className="px-3 py-3 text-right eyebrow">Итого</th>
-                    <th className="w-40 px-3 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {agingRows.map((row) => {
-                    const debtEntry = data?.debts.find((d) => d.clientId === row.clientId);
-                    const phone = row.clientPhone ?? debtEntry?.clientPhone ?? null;
-                    const email = row.clientEmail ?? debtEntry?.clientEmail ?? null;
-                    const bookingsCount = debtEntry?.bookingsCount ?? 0;
-
-                    type BucketKey = "current" | "days1to30" | "days31to60" | "days61to90" | "over90";
-                    const cells: [BucketKey, number][] = [
-                      ["current", 0],
-                      ["days1to30", 1],
-                      ["days31to60", 2],
-                      ["days61to90", 3],
-                      ["over90", 4],
-                    ];
-
-                    return (
-                      <tr key={row.clientId} className="border-b border-slate-soft last:border-0 hover:bg-surface-subtle/30 transition-colors">
-                        <td className="px-4 py-3.5">
-                          <strong className="text-ink font-medium">{row.clientName}</strong>
-                          <div className="text-[11px] text-ink-3 mt-0.5">
-                            {bookingsCount > 0
-                              ? `${bookingsCount} ${pluralize(bookingsCount, "счёт", "счёта", "счетов")}`
-                              : "по счетам"}
-                          </div>
-                        </td>
-                        {cells.map(([key, idx]) => {
-                          const val = Number(row[key]);
-                          return (
-                            <td
-                              key={key}
-                              className={`px-3 py-3.5 text-right mono-num ${BUCKET_BG[idx]} ${val > 0 ? BUCKET_CELL[idx] : "text-ink-3"}`}
-                            >
-                              {val > 0 ? formatRub(val) : "—"}
-                            </td>
-                          );
-                        })}
-                        <td className="px-3 py-3.5 text-right mono-num font-semibold text-ink">
-                          {formatRub(row.total)}
-                        </td>
-                        <td className="px-3 py-3.5">
-                          <div className="flex gap-1.5 justify-end flex-wrap">
-                            <button
-                              onClick={() => {
-                                const earliest = debtEntry?.projects[0]?.bookingId;
-                                openPayment(earliest);
-                              }}
-                              className="px-2.5 py-1 text-[11px] border border-border bg-surface rounded hover:border-accent-bright hover:text-accent-bright transition-colors whitespace-nowrap"
-                            >
-                              ₽ Платёж
-                            </button>
-                            <ContactChips
-                              phone={phone}
-                              email={email}
-                              clientName={row.clientName}
-                              outstanding={Number(row.total)}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {/* Totals row */}
-                  <tr className="bg-ink text-white">
-                    <td className="px-4 py-3 font-semibold">Итого</td>
-                    <td className="px-3 py-3 text-right mono-num">{agingTotals.current > 0 ? formatRub(agingTotals.current) : "—"}</td>
-                    <td className="px-3 py-3 text-right mono-num">{agingTotals.days1to30 > 0 ? formatRub(agingTotals.days1to30) : "—"}</td>
-                    <td className="px-3 py-3 text-right mono-num">{agingTotals.days31to60 > 0 ? formatRub(agingTotals.days31to60) : "—"}</td>
-                    <td className="px-3 py-3 text-right mono-num">{agingTotals.days61to90 > 0 ? formatRub(agingTotals.days61to90) : "—"}</td>
-                    <td className="px-3 py-3 text-right mono-num">{agingTotals.over90 > 0 ? formatRub(agingTotals.over90) : "—"}</td>
-                    <td className="px-3 py-3 text-right mono-num font-bold text-[14px]">{formatRub(agingTotals.total)}</td>
-                    <td className="px-3 py-3"></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : null}
 
         {/* Mobile accordion (md:hidden) */}
         <div className="md:hidden mb-5">
@@ -569,7 +496,7 @@ function DebtsPageInner() {
                 const isOverdue = d.maxDaysOverdue > 0;
                 const amountTone = isOverdue ? "text-rose" : "text-ink";
                 const { label: daysLabel, tone: daysTone } = formatDaysLabel(d.maxDaysOverdue, d.projects);
-                const earliestBookingId = d.projects[0]?.bookingId;
+                const earliestBookingId = pickPriorityBooking(d.projects);
 
                 return (
                   <div
@@ -635,7 +562,7 @@ function DebtsPageInner() {
                       <div className="flex gap-1.5 items-center flex-wrap justify-end" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
-                          onClick={() => openPayment(earliestBookingId)}
+                          onClick={() => openPayment(earliestBookingId ?? undefined)}
                           className="px-2.5 py-1.5 text-[11px] font-medium border border-accent-bright bg-accent-bright text-white rounded-lg hover:opacity-90 whitespace-nowrap"
                         >
                           ₽ Оплатить

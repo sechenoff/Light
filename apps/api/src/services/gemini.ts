@@ -314,10 +314,14 @@ export class GeminiVisionProvider implements VisionProvider {
         parsed &&
         typeof parsed === "object" &&
         typeof (parsed as Record<string, unknown>).subject === "string" &&
-        typeof (parsed as Record<string, unknown>).body === "string"
+        (parsed as Record<string, unknown>).subject !== "" &&
+        typeof (parsed as Record<string, unknown>).body === "string" &&
+        (parsed as Record<string, unknown>).body !== ""
       ) {
         const p = parsed as { subject: string; body: string };
-        return { subject: p.subject, body: p.body, generatedBy: "gemini" };
+        if (p.subject.trim().length > 0 && p.body.trim().length > 0) {
+          return { subject: p.subject.trim(), body: p.body.trim(), generatedBy: "gemini" };
+        }
       }
     } catch (err) {
       console.error("[gemini] generateDebtReminder error:", err);
