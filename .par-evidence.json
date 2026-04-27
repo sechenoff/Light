@@ -1,24 +1,32 @@
 {
-  "sprint": "warehouse-no-pin",
+  "sprint": "warehouse-checklist",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "head": "65cfc3c",
-  "ts": "2026-04-27T22:50:00Z",
+  "head": "eb618ac",
+  "ts": "2026-04-28T01:08:00Z",
   "fixes_applied": [
-    "BLOCKER (product): split shell/inner components; loading skeleton; lazy useState init — no PIN flash for SA/WH",
-    "Polish (product): goToLogin branches on hasMainSession — toast + redirect on session expiry instead of loop",
-    "Polish (product+technical): documented workerName dual-namespace convention in CLAUDE.md",
-    "Polish (technical): JSDoc null-on-error contract for verifyToken",
-    "Polish (technical): 2 new tests — invalid PIN + valid SA session = 200 (fallback); both PIN+session = 200 (PIN wins)"
+    "Round 1 — CRITICAL (technical+product): lost flow backend implementation (Zod schema + completeSession extension; status→RETIRED, Repair WROTE_OFF, audit UNIT_LOST/STATUS_CHANGED, optional BookingItem compensation with replacementCost fallback, BOOKING_CHARGE_ADDED audit, recomputeBookingFinance)",
+    "Round 1 — IMPORTANT I1: addExtraItem wrapped in $transaction with upsert + booking.status guard (409 BOOKING_LOCKED for non-DRAFT/CONFIRMED/ISSUED)",
+    "Round 1 — IMPORTANT I2: HttpError replaces plain Error throughout checklistService (proper 4xx codes)",
+    "Round 1 — IMPORTANT I3: checkUnit validates unit reservation ownership for RETURN (substitution still allowed for ISSUE per existing semantics)",
+    "Round 1 — Product CONCERN: removed auto-popup RecordPaymentModal in summary (mockup 05 update)",
+    "Round 1 — MINOR M1/M2/M3: audit/recompute catches log errors; getChecklistState orderBy createdAt",
+    "Round 2 — IMPORTANT: uncheckUnit straggler bare Error → HttpError(409, SESSION_NOT_ACTIVE)",
+    "Round 2 — IMPORTANT: lost-unit loop wrapped in try/catch per iteration, partial failures surface in result.failedLostUnits[] (mirrors broken-unit pattern)",
+    "Round 2 — MINOR: replacementCost fallback skips BookingItem when 0 (prevents silent under-collection); console.warn",
+    "Round 2 — MINOR: dead brainstorm comments cleanup in checklistService.ts (~57 lines → 3 lines)"
   ],
-  "tests": "892/893 pass (1 pre-existing flaky ECONNRESET in barcode-integration, unrelated)",
+  "tests": "917/917 pass (was 893 before sprint, +24 new tests)",
   "ts_check": "clean (api+web)",
   "notes": [
-    "User intent: «убери пароль с Выдачи и возвраты» — реализовано через main-session fallback в warehouseAuth middleware.",
-    "SA/WH с активной session: открывают /warehouse/scan → загрузка → сразу шаг 'выдача/возврат', PIN keypad не виден.",
-    "External workers без main session: PIN flow сохранён без изменений.",
-    "TECHNICIAN main session → 401 (роль не имеет warehouse прав).",
-    "Initial PAR: product NEEDS_FIXES (PIN flash blocker), technical APPROVE. Fix-pass HEAD 65cfc3c. Re-review product ACCEPTED."
+    "User intent: «убрали сканер из всей этой системы, чекбоксами отмечал что выдано и потом принято обратно... 1 в 1 как ты нарисовал на мокапах».",
+    "Полная замена scanner-based UI на checkbox checklist: 5-step wizard (login → operation → booking → checklist → summary).",
+    "Mobile-first 390px design, sticky header + sticky CTA, FAB для quick-add bottom sheet.",
+    "ProblemModal с табами Поломка / Утеря (новый): poломка → Repair, утеря → status RETIRED + опц. компенсация клиенту.",
+    "4 новых backend endpoints: GET /state, POST /check, POST /uncheck, POST /items (quick-add).",
+    "/complete расширен полем lostUnits[] (Zod-validated): UNIT_LOST + UNIT_STATUS_CHANGED + опционально BOOKING_CHARGE_ADDED audit.",
+    "Camera scanner удалён из flow; BarcodeScanner.tsx сохранён (используется в /admin/scanner и /equipment/[id]/units).",
+    "Initial PAR: product NEEDS_FIXES (3), technical REQUEST_CHANGES (4 important + 3 minor). Round 1 fix-pass HEAD 07c196e. Round 2 fix-pass HEAD eb618ac. Final: product ACCEPTED, technical APPROVE."
   ]
 }
