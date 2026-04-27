@@ -79,7 +79,8 @@ describe("backfill-expected-payment-date", () => {
       update: { defaultPaymentTermsDays: 7 },
     });
 
-    const booking = await makeBooking({ expectedPaymentDate: null });
+    // F6: backfill only processes CONFIRMED/ISSUED/RETURNED bookings
+    const booking = await makeBooking({ expectedPaymentDate: null, status: "CONFIRMED" });
     expect(booking.expectedPaymentDate).toBeNull();
 
     const output = runScript([]); // dry-run (no --execute)
@@ -98,7 +99,8 @@ describe("backfill-expected-payment-date", () => {
       update: { defaultPaymentTermsDays: 7 },
     });
 
-    const booking = await makeBooking({ expectedPaymentDate: null });
+    // F6: backfill only processes CONFIRMED/ISSUED/RETURNED bookings
+    const booking = await makeBooking({ expectedPaymentDate: null, status: "CONFIRMED" });
     expect(booking.expectedPaymentDate).toBeNull();
 
     const output = runScript(["--execute"]);

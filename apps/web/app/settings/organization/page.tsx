@@ -253,8 +253,12 @@ function OrgSettingsForm() {
               min={0}
               max={90}
               className="w-24 border border-border rounded px-3 py-2 text-sm bg-surface text-ink font-mono"
-              value={form.defaultPaymentTermsDays ?? 7}
-              onChange={(e) => set("defaultPaymentTermsDays", parseInt(e.target.value, 10) || 0)}
+              value={form.defaultPaymentTermsDays ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                // F8: empty string → send 0 (not NaN); parseInt handles numeric input
+                set("defaultPaymentTermsDays", v === "" ? 0 : parseInt(v, 10) || 0);
+              }}
             />
             <span className="text-sm text-ink-2">дн.</span>
           </div>

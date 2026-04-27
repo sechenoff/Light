@@ -24,6 +24,7 @@ import { writeAuditEntry, diffFields } from "../services/audit";
 import { renderInvoicePdf, coalesceWithEnv, type InvoiceLine } from "../services/documentExport/invoice/renderInvoicePdf";
 import { renderActPdf, type ActLine } from "../services/documentExport/act/renderActPdf";
 import { getSettings } from "../services/organizationService";
+import { toMoscowDateString, fromMoscowDateString } from "../utils/moscowDate";
 
 const router = express.Router();
 
@@ -66,7 +67,7 @@ const bookingCreateSchema = z.object({
   comment: z.string().optional().nullable(),
   discountPercent: z.number().min(0).max(100).optional().nullable(),
   /** Плановая дата платежа (YYYY-MM-DD или ISO datetime) */
-  expectedPaymentDate: z.string().optional().nullable(),
+  expectedPaymentDate: z.string().refine((s) => !isNaN(Date.parse(s)), "Invalid date").optional().nullable(),
   /** Доп. текст в экспорте (PDF/XLSX), опционально */
   estimateOptionalNote: z.string().optional().nullable(),
   estimateIncludeOptionalInExport: z.boolean().optional(),
@@ -89,7 +90,7 @@ const bookingUpdateSchema = z.object({
   endDate: bookingRangeStringSchema.optional(),
   comment: z.string().optional().nullable(),
   discountPercent: z.number().min(0).max(100).optional().nullable(),
-  expectedPaymentDate: z.string().optional().nullable(),
+  expectedPaymentDate: z.string().refine((s) => !isNaN(Date.parse(s)), "Invalid date").optional().nullable(),
   items: z.array(bookingItemSchema).min(1).optional(),
   /** Если true — возвращает превью изменений брони без записи в БД */
   dryRun: z.boolean().optional().default(false),
@@ -378,6 +379,37 @@ router.patch("/:id", async (req, res, next) => {
     if (body.endDate) end = parseBookingRangeBound(body.endDate, "end");
     assertBookingRangeOrder(start, end);
 
+    // F4+F5: compute resolved expectedPaymentDate for PATCH
+    // null from client = re-default (F5, consistent with POST).
+    // If endDate changed and existing date was auto-defaulted → recompute (F4).
+    let resolvedExpectedPaymentDate: Date | null | undefined;
+    if (body.expectedPaymentDate !== undefined && body.expectedPaymentDate !== null) {
+      // Explicit user value
+      resolvedExpectedPaymentDate = new Date(body.expectedPaymentDate);
+    } else {
+      // null or undefined from client
+      const orgSettings = await prisma.organizationSettings.findUnique({ where: { id: "singleton" } });
+      const days = orgSettings?.defaultPaymentTermsDays ?? 7;
+      const oldEndMoscow = toMoscowDateString(existing.endDate);
+      const oldEndMidnight = fromMoscowDateString(oldEndMoscow);
+      const autoDefaultedDate = new Date(oldEndMidnight.getTime() + days * 24 * 60 * 60 * 1000);
+
+      const endChanged = body.endDate !== undefined;
+      const existingIsAutoDefault =
+        existing.expectedPaymentDate !== null &&
+        Math.abs(existing.expectedPaymentDate.getTime() - autoDefaultedDate.getTime()) < 1000;
+
+      if (body.expectedPaymentDate === null || !existing.expectedPaymentDate || (endChanged && existingIsAutoDefault)) {
+        // Re-default: compute from new end date
+        const newEndMoscow = toMoscowDateString(end);
+        const newEndMidnight = fromMoscowDateString(newEndMoscow);
+        resolvedExpectedPaymentDate = new Date(newEndMidnight.getTime() + days * 24 * 60 * 60 * 1000);
+      } else {
+        // Not passed — leave unchanged
+        resolvedExpectedPaymentDate = undefined;
+      }
+    }
+
     const booking = await prisma.$transaction(async (tx) => {
       if (body.items) {
         await tx.bookingItem.deleteMany({ where: { bookingId: id } });
@@ -400,7 +432,7 @@ router.patch("/:id", async (req, res, next) => {
           endDate: end,
           comment: body.comment === undefined ? undefined : body.comment ?? null,
           discountPercent: body.discountPercent === undefined ? undefined : body.discountPercent != null ? new Decimal(body.discountPercent) : null,
-          expectedPaymentDate: body.expectedPaymentDate === undefined ? undefined : body.expectedPaymentDate ? new Date(body.expectedPaymentDate) : null,
+          expectedPaymentDate: resolvedExpectedPaymentDate,
         },
         include: {
           client: true,
