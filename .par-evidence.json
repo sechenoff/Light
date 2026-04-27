@@ -1,15 +1,13 @@
 {
-  "sprint": "debt-report",
+  "sprint": "walkthrough-fixes",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
-  "provider": "split-focus + 4-agent-qa",
-  "ts": "2026-04-27T14:00:00Z",
+  "provider": "split-focus",
+  "ts": "2026-04-27T15:00:00Z",
   "notes": [
-    "Per-client debt PDF report endpoint + frontend integration. GET /api/finance/debts/:clientId/report.pdf returns A4 PDF grouped by date with totals.",
-    "Standard PAR: product ACCEPTED (3 LOW), technical REQUEST_CHANGES (HIGH font path 5 vs 4 levels causes Cyrillic boxes) — fixed in 287b845.",
-    "User 4-agent QA: A SHIP_READY (1 MED paymentStatusSync), B NEEDS_FIXES (2 HIGH № column wraps + null-date secondary sort + 3 MED), C PASS (4 LOW).",
-    "Agent D applied 10 fixes in af97f10: drop № column, secondary sort, integer-ruble format, single page-aware header, status color map, paymentStatusSync, 44px mobile tap, RU enum fallback, empty-name filename, dropped opaque report ID.",
+    "17 fixes from QA Playwright walkthrough on 27.04.2026 (4 HIGH + 6 MED + 7 LOW). Spec: docs/qa/walkthrough-2026-04-27.md.",
+    "Standard PAR: technical APPROVE (2 MED + 4 LOW polish), product NEEDS_FIXES (HIGH H3 incomplete: adminUsers create/update lowercase; 5 LOW). 8 PAR fixes applied.",
     "Final gates: tsc clean api+web; 878 API + 256 web tests all green.",
-    "New endpoint: GET /api/finance/debts/:clientId/report.pdf (SUPER_ADMIN only)."
+    "Notable fixes: H1 calendar shows ALL equipment, H2 createdBy resolves to username, H3 audit actions all UPPERCASE, H4 approval cycles collapse, M1 formatRub smart decimals (no `,00`), M2 forecast pipeline includes PENDING_APPROVAL, L7 «БЕЗ СРОКА» pill when null dueDate."
   ]
 }
