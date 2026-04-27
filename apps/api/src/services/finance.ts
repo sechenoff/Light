@@ -488,12 +488,20 @@ interface ClientDebtAccumulator {
   projects: ClientDebtProject[];
 }
 
+// Russian-locale collator для сортировки по имени клиента
+const ruCollator = new Intl.Collator("ru");
+
 /**
  * Возвращает агрегированные долги клиентов по броням.
  * Игнорирует: CANCELLED брони, брони с amountOutstanding = 0.
  */
 export async function computeDebts(
-  options: { overdueOnly?: boolean; minAmount?: number } = {},
+  options: {
+    overdueOnly?: boolean;
+    minAmount?: number;
+    sort?: "name" | "amount" | "date";
+    order?: "asc" | "desc";
+  } = {},
 ): Promise<{
   debts: Array<{
     clientId: string;
@@ -590,11 +598,31 @@ export async function computeDebts(
     );
   }
 
-  // Сортировка по totalOutstanding desc
-  debts.sort(
-    (a, b) =>
-      new Decimal(b.totalOutstanding).cmp(new Decimal(a.totalOutstanding)),
-  );
+  // Сортировка: sort + order с поддержкой russian-locale collation для имён
+  const sort = options.sort ?? "amount";
+  const order = options.order ?? "desc";
+  const sign = order === "asc" ? 1 : -1;
+
+  if (sort === "name") {
+    debts.sort((a, b) => sign * ruCollator.compare(a.clientName, b.clientName));
+  } else if (sort === "date") {
+    // Сортировка по самой ранней дате ожидаемой оплаты среди проектов клиента
+    // null-значения идут последними при asc, первыми при desc
+    const getMinDate = (d: typeof debts[number]): number => {
+      const dates = d.projects
+        .map((p) => p.expectedPaymentDate)
+        .filter((dt): dt is Date => dt !== null && dt !== undefined)
+        .map((dt) => dt instanceof Date ? dt.getTime() : new Date(dt).getTime());
+      return dates.length > 0 ? Math.min(...dates) : (order === "asc" ? Infinity : -Infinity);
+    };
+    debts.sort((a, b) => sign * (getMinDate(a) - getMinDate(b)));
+  } else {
+    // default: sort by amount
+    debts.sort(
+      (a, b) =>
+        sign * new Decimal(a.totalOutstanding).cmp(new Decimal(b.totalOutstanding)),
+    );
+  }
 
   const totalOutstanding = debts
     .reduce((acc, d) => acc.add(d.totalOutstanding), new Decimal(0))
@@ -1189,3 +1217,211 @@ export async function computeAgingPerClient(asOf: Date = new Date()): Promise<Ag
   return { summary: summaryBuckets, perClient };
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// B2 — Per-client XLSX export
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Строит XLSX-книгу с 3 листами по задолженности конкретного клиента.
+ * Лист 1 «Долги»: брони с amountOutstanding > 0.
+ * Лист 2 «Платежи»: все платежи клиента по этим броням.
+ * Лист 3 «Счета»: post-cutoff инвойсы по этим броням.
+ * Возвращает null если клиент не найден.
+ */
+export async function buildClientDebtExport(clientId: string): Promise<{ buf: Buffer; clientName: string } | null> {
+  const now = new Date();
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { id: true, name: true },
+  });
+  if (!client) return null;
+
+  // Брони с долгом (status != CANCELLED, amountOutstanding > 0)
+  const bookings = await prisma.booking.findMany({
+    where: {
+      clientId,
+      status: { not: "CANCELLED" },
+      amountOutstanding: { gt: 0 },
+    },
+    orderBy: { startDate: "asc" },
+  });
+
+  // Все брони клиента (включая оплаченные) для платежей
+  const allClientBookingIds = (
+    await prisma.booking.findMany({
+      where: { clientId, status: { not: "CANCELLED" } },
+      select: { id: true },
+    })
+  ).map((b: { id: string }) => b.id);
+
+  // Платежи по всем броням клиента
+  const payments = allClientBookingIds.length > 0
+    ? await prisma.payment.findMany({
+        where: { bookingId: { in: allClientBookingIds }, direction: "INCOME", voidedAt: null },
+        orderBy: { createdAt: "asc" },
+        include: { booking: { select: { projectName: true } } },
+      })
+    : [];
+
+  // Инвойсы по броням с долгом (post-cutoff — legacyFinance: false)
+  const debtBookingIds = bookings.map((b: { id: string }) => b.id);
+  const invoices = debtBookingIds.length > 0
+    ? await prisma.invoice.findMany({
+        where: {
+          bookingId: { in: debtBookingIds },
+          booking: { legacyFinance: false },
+        },
+        orderBy: { createdAt: "asc" },
+        include: { booking: { select: { projectName: true } } },
+      })
+    : [];
+
+  const wb = new ExcelJS.Workbook();
+
+  // Лист 1: Долги
+  const wsDebts = wb.addWorksheet("Долги");
+  const debtHeaders = ["Бронь", "Период", "Статус", "Стоимость", "Получено", "К получению", "Срок оплаты", "Дни просрочки"];
+  wsDebts.addRow(debtHeaders);
+  wsDebts.getRow(1).font = { bold: true };
+  wsDebts.columns = debtHeaders.map((h) => ({ width: Math.max(14, h.length + 4) }));
+
+  let totalOutstanding = new Decimal(0);
+
+  for (const b of bookings) {
+    const period = `${b.startDate.toLocaleDateString("ru-RU")}–${b.endDate.toLocaleDateString("ru-RU")}`;
+    const daysOverdue = b.expectedPaymentDate
+      ? Math.max(0, Math.floor((now.getTime() - b.expectedPaymentDate.getTime()) / 86400000))
+      : 0;
+    wsDebts.addRow([
+      b.projectName,
+      period,
+      b.status,
+      Number(b.finalAmount.toString()),
+      Number(b.amountPaid.toString()),
+      Number(b.amountOutstanding.toString()),
+      b.expectedPaymentDate ? b.expectedPaymentDate.toLocaleDateString("ru-RU") : "—",
+      daysOverdue,
+    ]);
+    totalOutstanding = totalOutstanding.add(b.amountOutstanding.toString());
+  }
+
+  // Итого строка
+  if (bookings.length > 0) {
+    const totalRow = wsDebts.addRow(["ИТОГО", "", "", "", "", Number(totalOutstanding.toFixed(2)), "", ""]);
+    totalRow.font = { bold: true };
+  }
+
+  // Лист 2: Платежи
+  const wsPayments = wb.addWorksheet("Платежи");
+  const paymentHeaders = ["Дата", "Сумма", "Метод", "Бронь", "Заметка"];
+  wsPayments.addRow(paymentHeaders);
+  wsPayments.getRow(1).font = { bold: true };
+  wsPayments.columns = paymentHeaders.map((h) => ({ width: Math.max(14, h.length + 4) }));
+
+  for (const p of payments) {
+    const date = (p.paymentDate ?? p.receivedAt ?? p.createdAt).toLocaleDateString("ru-RU");
+    wsPayments.addRow([
+      date,
+      Number(p.amount.toString()),
+      p.paymentMethod,
+      p.booking?.projectName ?? "",
+      p.comment ?? "",
+    ]);
+  }
+
+  // Лист 3: Счета (только при наличии)
+  if (invoices.length > 0) {
+    const wsInvoices = wb.addWorksheet("Счета");
+    const invoiceHeaders = ["Номер", "Бронь", "Сумма", "Оплачено", "Срок", "Статус"];
+    wsInvoices.addRow(invoiceHeaders);
+    wsInvoices.getRow(1).font = { bold: true };
+    wsInvoices.columns = invoiceHeaders.map((h) => ({ width: Math.max(14, h.length + 4) }));
+
+    for (const inv of invoices) {
+      wsInvoices.addRow([
+        inv.number,
+        inv.booking?.projectName ?? "",
+        Number(inv.total.toString()),
+        Number(inv.paidAmount.toString()),
+        inv.dueDate ? inv.dueDate.toLocaleDateString("ru-RU") : "—",
+        inv.status,
+      ]);
+    }
+  }
+
+  const xlsxBuf = await wb.xlsx.writeBuffer();
+  const buf = Buffer.isBuffer(xlsxBuf) ? xlsxBuf : Buffer.from(xlsxBuf);
+  return { buf, clientName: client.name };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// B4 — Remindable clients helper
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Возвращает клиентов с долгом, у которых есть просроченный (> 7 дней)
+ * неоплаченный инвойс и не было напоминания в последние 14 дней.
+ */
+export async function getRemindableClients(): Promise<
+  Array<{ clientId: string; clientName: string; totalOutstanding: string; maxDaysOverdue: number }>
+> {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+  // Клиенты с просроченными инвойсами (dueDate < now - 7 days)
+  const overdueInvoices = await prisma.invoice.findMany({
+    where: {
+      status: { in: ["ISSUED", "PARTIAL_PAID", "OVERDUE"] },
+      dueDate: { lt: sevenDaysAgo },
+      booking: { legacyFinance: false },
+    },
+    include: {
+      booking: {
+        select: {
+          clientId: true,
+          client: { select: { id: true, name: true, lastReminderAt: true } },
+        },
+      },
+    },
+  });
+
+  const clientMap = new Map<string, { name: string; lastReminderAt: Date | null; daysOverdue: number; outstanding: Decimal }>();
+
+  for (const inv of overdueInvoices) {
+    if (!inv.booking) continue;
+    const { clientId, client } = inv.booking;
+    const daysOverdue = inv.dueDate
+      ? Math.floor((now.getTime() - inv.dueDate.getTime()) / 86400000)
+      : 0;
+    const outstanding = new Decimal(inv.total.toString()).sub(new Decimal(inv.paidAmount.toString()));
+    if (outstanding.lte(0)) continue;
+
+    const existing = clientMap.get(clientId) ?? {
+      name: client.name,
+      lastReminderAt: client.lastReminderAt,
+      daysOverdue: 0,
+      outstanding: new Decimal(0),
+    };
+    existing.daysOverdue = Math.max(existing.daysOverdue, daysOverdue);
+    existing.outstanding = existing.outstanding.add(outstanding);
+    clientMap.set(clientId, existing);
+  }
+
+  // Фильтруем: нет напоминания за последние 14 дней
+  const result: Array<{ clientId: string; clientName: string; totalOutstanding: string; maxDaysOverdue: number }> = [];
+  for (const [clientId, data] of clientMap) {
+    const notRemindedRecently = !data.lastReminderAt || data.lastReminderAt < fourteenDaysAgo;
+    if (notRemindedRecently) {
+      result.push({
+        clientId,
+        clientName: data.name,
+        totalOutstanding: data.outstanding.toFixed(2),
+        maxDaysOverdue: data.daysOverdue,
+      });
+    }
+  }
+
+  return result.sort((a, b) => new Decimal(b.totalOutstanding).cmp(new Decimal(a.totalOutstanding)));
+}
