@@ -248,8 +248,8 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   useEffect(() => {
     let cancelled = false;
     apiFetch<{ defaultPaymentTermsDays?: number }>("/api/settings/organization")
-      .then((res) => { if (!cancelled) setDefaultPaymentTermsDays(res.defaultPaymentTermsDays ?? 7); })
-      .catch(() => { if (!cancelled) setDefaultPaymentTermsDays(7); });
+      .then((res) => { if (!cancelled) setDefaultPaymentTermsDays(res.defaultPaymentTermsDays ?? 0); })
+      .catch(() => { if (!cancelled) setDefaultPaymentTermsDays(0); });
     return () => { cancelled = true; };
   }, []);
 

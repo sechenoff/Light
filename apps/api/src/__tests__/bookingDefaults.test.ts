@@ -61,11 +61,11 @@ async function makeEquipmentAndClient() {
 }
 
 describe("createBookingDraft — expectedPaymentDate auto-default", () => {
-  it("Бронь без явной даты оплаты получает default (endDate + 7 дней)", async () => {
+  it("Бронь без явной даты оплаты получает default (endDate + 0 дней = день сдачи)", async () => {
     const { createBookingDraft } = await import("../services/bookings");
     const { client, equipment } = await makeEquipmentAndClient();
 
-    // endDate = 2026-05-10T10:00:00Z → Moscow = 2026-05-10, +7d = 2026-05-17
+    // endDate = 2026-05-10T10:00:00Z → Moscow = 2026-05-10, +0d = 2026-05-10
     const endDate = new Date("2026-05-10T10:00:00Z");
     const booking = await createBookingDraft({
       clientId: client.id,
@@ -76,10 +76,10 @@ describe("createBookingDraft — expectedPaymentDate auto-default", () => {
     });
 
     expect(booking.expectedPaymentDate).not.toBeNull();
-    // endDate is 2026-05-10, +7 days = 2026-05-17 (as Moscow midnight UTC)
+    // endDate is 2026-05-10, +0 days (new default) = 2026-05-10 (as Moscow midnight UTC)
     const { toMoscowDateString } = await import("../utils/moscowDate");
     const epd = toMoscowDateString(booking.expectedPaymentDate!);
-    expect(epd).toBe("2026-05-17");
+    expect(epd).toBe("2026-05-10");
   });
 
   it("Бронь с явной датой оплаты сохраняет пользовательское значение", async () => {
