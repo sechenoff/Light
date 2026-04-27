@@ -475,6 +475,14 @@ interface ClientDebtProject {
   daysOverdue: number | null;
   paymentStatus: string;
   bookingStatus: string;
+  /** B1: дата начала брони (booking.startDate) — для сортировки по дате проекта */
+  startDate: Date | null;
+  /** B1: дата окончания брони (booking.endDate) */
+  endDate: Date | null;
+  /** B1: имя клиента (денормализовано для плоского списка) */
+  clientName: string;
+  /** B1: id клиента (денормализовано для плоского списка) */
+  clientId: string;
 }
 
 interface ClientDebtAccumulator {
@@ -500,7 +508,8 @@ export async function computeDebts(
   options: {
     overdueOnly?: boolean;
     minAmount?: number;
-    sort?: "name" | "amount" | "date";
+    /** B2: accepted enum; actual per-row sort done on frontend for flat list */
+    sort?: "name" | "amount" | "date" | "startDate" | "status";
     order?: "asc" | "desc";
   } = {},
 ): Promise<{
@@ -575,6 +584,10 @@ export async function computeDebts(
       daysOverdue: isOverdue ? daysOverdue : null,
       paymentStatus: b.paymentStatus,
       bookingStatus: b.status,
+      startDate: b.startDate ?? null,
+      endDate: b.endDate ?? null,
+      clientName: b.client.name,
+      clientId: b.clientId,
     });
 
     byClient.set(b.clientId, acc);

@@ -90,6 +90,43 @@ describe("GET /api/finance/debts — clientPhone & clientEmail", () => {
     expect(debt.clientEmail).toBe("dclient@test.com");
   });
 
+  it("B1: projects include startDate, endDate, clientName, clientId (denormalized)", async () => {
+    const client = await prisma.client.create({
+      data: { name: "DC Denorm Client" },
+    });
+    const startDate = new Date("2025-03-10");
+    const endDate = new Date("2025-03-15");
+    await prisma.booking.create({
+      data: {
+        clientId: client.id,
+        projectName: "DC Denorm Project",
+        startDate,
+        endDate,
+        status: "ISSUED",
+        amountOutstanding: new Decimal("8000"),
+        finalAmount: new Decimal("8000"),
+        amountPaid: new Decimal("0"),
+        paymentStatus: "NOT_PAID",
+      },
+    });
+
+    const res = await request(app)
+      .get("/api/finance/debts")
+      .set(AUTH_SA());
+
+    expect(res.status).toBe(200);
+    const debt = res.body.debts.find((d: any) => d.clientId === client.id);
+    expect(debt).toBeDefined();
+    expect(debt.projects).toHaveLength(1);
+    const proj = debt.projects[0];
+    expect(proj.startDate).toBeDefined();
+    expect(new Date(proj.startDate).toISOString().startsWith("2025-03-10")).toBe(true);
+    expect(proj.endDate).toBeDefined();
+    expect(new Date(proj.endDate).toISOString().startsWith("2025-03-15")).toBe(true);
+    expect(proj.clientName).toBe("DC Denorm Client");
+    expect(proj.clientId).toBe(client.id);
+  });
+
   it("returns null for clientPhone/clientEmail when not set on client", async () => {
     const client = await prisma.client.create({
       data: { name: "DC Client No Contact" },
