@@ -47,6 +47,7 @@ export interface ReconciliationSummary {
   substituted: string[]; // equipmentUnitId[] замен (отсканирован другой юнит вместо зарезервированного)
   createdRepairIds: string[];  // id карточек ремонта, успешно созданных после возврата
   failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>; // единицы, для которых ремонт не удалось создать
+  failedLostUnits: Array<{ equipmentUnitId: string; reason: string }>; // утерянные единицы, которые не удалось обработать
 }
 
 export interface SessionBookingItem {
@@ -239,7 +240,7 @@ export async function recordScan(
 export async function completeSession(
   sessionId: string,
   options?: { brokenUnits?: BrokenUnit[]; lostUnits?: LostUnit[]; createdBy?: string },
-): Promise<ReconciliationSummary & { createdRepairIds: string[]; failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }> }> {
+): Promise<ReconciliationSummary & { createdRepairIds: string[]; failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>; failedLostUnits: Array<{ equipmentUnitId: string; reason: string }> }> {
   // Загружаем сессию со сканами и информацией о брони
   const session = await prisma.scanSession.findUnique({
     where: { id: sessionId },
@@ -290,6 +291,7 @@ export async function completeSession(
       substituted: [],
       createdRepairIds: [],
       failedBrokenUnits: [],
+      failedLostUnits: [],
     };
 
     if (session.operation === "ISSUE") {
@@ -428,105 +430,125 @@ export async function completeSession(
     let hasChargeClient = false;
 
     for (const lost of lostUnits) {
-      await prisma.$transaction(async (tx: TxClient) => {
-        // 1. Загружаем unit с оборудованием для расчёта стоимости замены
-        const unit = await tx.equipmentUnit.findUnique({
-          where: { id: lost.equipmentUnitId },
-          include: { equipment: true },
-        });
-        if (!unit) throw new HttpError(404, "Unit не найден", "UNIT_NOT_FOUND");
+      try {
+        await prisma.$transaction(async (tx: TxClient) => {
+          // 1. Загружаем unit с оборудованием для расчёта стоимости замены
+          const unit = await tx.equipmentUnit.findUnique({
+            where: { id: lost.equipmentUnitId },
+            include: { equipment: true },
+          });
+          if (!unit) throw new HttpError(404, "Unit не найден", "UNIT_NOT_FOUND");
 
-        const previousStatus = unit.status;
+          const previousStatus = unit.status;
 
-        // 2. Переводим unit → RETIRED
-        await tx.equipmentUnit.update({
-          where: { id: lost.equipmentUnitId },
-          data: { status: "RETIRED" },
-        });
+          // 2. Переводим unit → RETIRED
+          await tx.equipmentUnit.update({
+            where: { id: lost.equipmentUnitId },
+            data: { status: "RETIRED" },
+          });
 
-        // 3. Создаём Repair со статусом WROTE_OFF для прослеживаемости
-        await tx.repair.create({
-          data: {
-            unitId: lost.equipmentUnitId,
-            status: "WROTE_OFF",
-            urgency: "NORMAL",
-            reason: `[Утеря: ${lost.lostLocation}] ${lost.reason}`,
-            sourceBookingId: session.bookingId,
-            createdBy,
-            closedAt: new Date(),
-          },
-        });
-
-        // 4. Аудит UNIT_LOST
-        await writeAuditEntry({
-          tx,
-          userId: createdBy,
-          action: "UNIT_LOST",
-          entityType: "EquipmentUnit",
-          entityId: lost.equipmentUnitId,
-          before: { status: previousStatus },
-          after: {
-            status: "RETIRED",
-            lostLocation: lost.lostLocation,
-            chargeClient: lost.chargeClient,
-            reason: lost.reason,
-          },
-        });
-
-        // 5. Аудит UNIT_STATUS_CHANGED
-        await writeAuditEntry({
-          tx,
-          userId: createdBy,
-          action: "UNIT_STATUS_CHANGED",
-          entityType: "EquipmentUnit",
-          entityId: lost.equipmentUnitId,
-          before: { status: previousStatus },
-          after: { status: "RETIRED" },
-        });
-
-        // 6. Если chargeClient — создаём BookingItem компенсации
-        if (lost.chargeClient) {
-          // Стоимость замены: rentalRatePerProject если задано,
-          // иначе rentalRatePerShift * 30 как приблизительная стоимость,
-          // fallback 50 000 ₽
-          const equipment = unit.equipment;
-          const replacementCost =
-            equipment.rentalRatePerProject != null
-              ? equipment.rentalRatePerProject
-              : equipment.rentalRatePerShift.mul(30);
-
-          await tx.bookingItem.create({
+          // 3. Создаём Repair со статусом WROTE_OFF для прослеживаемости
+          await tx.repair.create({
             data: {
-              bookingId: session.bookingId,
-              equipmentId: null,
-              quantity: 1,
-              customName: `Компенсация утери: ${equipment.name}`,
-              customCategory: "Компенсация",
-              customUnitPrice: replacementCost,
+              unitId: lost.equipmentUnitId,
+              status: "WROTE_OFF",
+              urgency: "NORMAL",
+              reason: `[Утеря: ${lost.lostLocation}] ${lost.reason}`,
+              sourceBookingId: session.bookingId,
+              createdBy,
+              closedAt: new Date(),
             },
           });
 
+          // 4. Аудит UNIT_LOST
           await writeAuditEntry({
             tx,
             userId: createdBy,
-            action: "BOOKING_CHARGE_ADDED",
-            entityType: "Booking",
-            entityId: session.bookingId,
-            before: null,
+            action: "UNIT_LOST",
+            entityType: "EquipmentUnit",
+            entityId: lost.equipmentUnitId,
+            before: { status: previousStatus },
             after: {
-              reason: "lost_unit",
-              equipmentName: equipment.name,
-              amount: replacementCost.toString(),
-              unitId: lost.equipmentUnitId,
+              status: "RETIRED",
+              lostLocation: lost.lostLocation,
+              chargeClient: lost.chargeClient,
+              reason: lost.reason,
             },
           });
 
-          hasChargeClient = true;
-        }
-      });
+          // 5. Аудит UNIT_STATUS_CHANGED
+          await writeAuditEntry({
+            tx,
+            userId: createdBy,
+            action: "UNIT_STATUS_CHANGED",
+            entityType: "EquipmentUnit",
+            entityId: lost.equipmentUnitId,
+            before: { status: previousStatus },
+            after: { status: "RETIRED" },
+          });
+
+          // 6. Если chargeClient — создаём BookingItem компенсации
+          if (lost.chargeClient) {
+            // Стоимость замены: rentalRatePerProject если задано,
+            // иначе rentalRatePerShift * 30 как приблизительная стоимость.
+            // Если обе ставки равны 0 или null — пропускаем создание BookingItem:
+            // лучше не создавать позицию с нулевой суммой, чем silently under-charge.
+            const equipment = unit.equipment;
+            const replacementCost =
+              equipment.rentalRatePerProject != null
+                ? equipment.rentalRatePerProject
+                : (equipment.rentalRatePerShift != null
+                    ? equipment.rentalRatePerShift.mul(30)
+                    : null);
+
+            if (replacementCost && replacementCost.gt(0)) {
+              await tx.bookingItem.create({
+                data: {
+                  bookingId: session.bookingId,
+                  equipmentId: null,
+                  quantity: 1,
+                  customName: `Компенсация утери: ${equipment.name}`,
+                  customCategory: "Компенсация",
+                  customUnitPrice: replacementCost,
+                },
+              });
+
+              await writeAuditEntry({
+                tx,
+                userId: createdBy,
+                action: "BOOKING_CHARGE_ADDED",
+                entityType: "Booking",
+                entityId: session.bookingId,
+                before: null,
+                after: {
+                  reason: "lost_unit",
+                  equipmentName: equipment.name,
+                  amount: replacementCost.toString(),
+                  unitId: lost.equipmentUnitId,
+                },
+              });
+
+              hasChargeClient = true;
+            } else {
+              console.warn(
+                `[completeSession] Skipping compensation for ${lost.equipmentUnitId}: replacementCost is 0 or null. ` +
+                `Equipment rates: project=${equipment.rentalRatePerProject}, shift=${equipment.rentalRatePerShift}`,
+              );
+            }
+          }
+        });
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[completeSession] lost unit ${lost.equipmentUnitId} failed:`, err);
+        summary.failedLostUnits.push({
+          equipmentUnitId: lost.equipmentUnitId,
+          reason: errMsg,
+        });
+        // Продолжаем обработку остальных lost units (не throw)
+      }
     }
 
-    // Пересчитываем финансы если был хотя бы один chargeClient
+    // Пересчитываем финансы если был хотя бы один chargeClient (даже при частичных ошибках)
     if (hasChargeClient) {
       await recomputeBookingFinance(session.bookingId).catch((err: unknown) => {
         console.error("[completeSession] recomputeBookingFinance failed for lost units:", err);
@@ -619,6 +641,7 @@ export async function getReconciliationPreview(sessionId: string): Promise<Recon
     substituted,
     createdRepairIds: [],
     failedBrokenUnits: [],
+    failedLostUnits: [],
   };
 }
 

@@ -369,4 +369,153 @@ describe("completeSession с lostUnits", () => {
     });
     expect(repairLost).not.toBeNull();
   });
+
+  it("replacementCost=0 + chargeClient=true → BookingItem НЕ создан (skip + warn)", async () => {
+    // Оборудование с нулевыми ставками
+    const freeEquipment = await prisma.equipment.create({
+      data: {
+        importKey: "lost-unit-free-rate-001",
+        name: "Бесплатный кабель",
+        category: "Кабели",
+        rentalRatePerShift: 0,
+        rentalRatePerProject: null,
+        stockTrackingMode: "UNIT",
+      },
+    });
+    const unit = await prisma.equipmentUnit.create({
+      data: { equipmentId: freeEquipment.id, barcode: "LOST-UNIT-FREE-001", status: "ISSUED" },
+    });
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        projectName: "Тест нулевая ставка",
+        startDate: new Date("2026-04-15"),
+        endDate: new Date("2026-04-20"),
+        status: "ISSUED",
+        amountPaid: 0,
+        amountOutstanding: 0,
+      },
+    });
+    const bookingItem = await prisma.bookingItem.create({
+      data: { bookingId: booking.id, equipmentId: freeEquipment.id, quantity: 1 },
+    });
+    await prisma.bookingItemUnit.create({
+      data: { bookingItemId: bookingItem.id, equipmentUnitId: unit.id },
+    });
+    const session = await prisma.scanSession.create({
+      data: {
+        bookingId: booking.id,
+        workerName: "Тест кладовщик",
+        operation: "RETURN",
+        status: "ACTIVE",
+      },
+    });
+    await prisma.scanRecord.create({
+      data: { sessionId: session.id, equipmentUnitId: unit.id, hmacVerified: false },
+    });
+
+    const { completeSession } = await import("../services/warehouseScan");
+
+    const result = await completeSession(session.id, {
+      lostUnits: [
+        {
+          equipmentUnitId: unit.id,
+          reason: "Потерян кабель с нулевой ставкой",
+          lostLocation: "UNKNOWN",
+          chargeClient: true,
+        },
+      ],
+      createdBy: adminUserId,
+    });
+
+    // Unit переведён в RETIRED
+    const updatedUnit = await prisma.equipmentUnit.findUnique({ where: { id: unit.id } });
+    expect(updatedUnit.status).toBe("RETIRED");
+
+    // Repair создана
+    const repair = await prisma.repair.findFirst({ where: { unitId: unit.id, status: "WROTE_OFF" } });
+    expect(repair).not.toBeNull();
+
+    // BookingItem компенсации НЕ создан (ставка 0)
+    const compensationItem = await prisma.bookingItem.findFirst({
+      where: { bookingId: booking.id, customCategory: "Компенсация" },
+    });
+    expect(compensationItem).toBeNull();
+
+    // failedLostUnits пустой (unit обработан успешно, просто без BookingItem)
+    expect(result.failedLostUnits).toHaveLength(0);
+  });
+
+  it("partial failure в lost-unit loop → failedLostUnits[] содержит ошибку, остальные обработаны", async () => {
+    // Создаём двух единиц: первый с несуществующим ID (вызовет ошибку), второй нормальный
+    const validUnit = await prisma.equipmentUnit.create({
+      data: { equipmentId, barcode: "LOST-PARTIAL-VALID-001", status: "ISSUED" },
+    });
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        projectName: "Тест partial failure",
+        startDate: new Date("2026-04-25"),
+        endDate: new Date("2026-04-30"),
+        status: "ISSUED",
+        amountPaid: 0,
+        amountOutstanding: 0,
+      },
+    });
+    const bookingItem = await prisma.bookingItem.create({
+      data: { bookingId: booking.id, equipmentId, quantity: 1 },
+    });
+    await prisma.bookingItemUnit.create({
+      data: { bookingItemId: bookingItem.id, equipmentUnitId: validUnit.id },
+    });
+    const session = await prisma.scanSession.create({
+      data: {
+        bookingId: booking.id,
+        workerName: "Тест кладовщик",
+        operation: "RETURN",
+        status: "ACTIVE",
+      },
+    });
+    await prisma.scanRecord.create({
+      data: { sessionId: session.id, equipmentUnitId: validUnit.id, hmacVerified: false },
+    });
+
+    const { completeSession } = await import("../services/warehouseScan");
+    const NON_EXISTENT_ID = "non-existent-unit-id-00000000";
+
+    const result = await completeSession(session.id, {
+      lostUnits: [
+        // 1-й: несуществующий ID → должен упасть → попасть в failedLostUnits
+        {
+          equipmentUnitId: NON_EXISTENT_ID,
+          reason: "Тест несуществующего unit",
+          lostLocation: "UNKNOWN",
+          chargeClient: false,
+        },
+        // 2-й: реальный unit → должен успешно обработаться
+        {
+          equipmentUnitId: validUnit.id,
+          reason: "Потеряна валидная единица",
+          lostLocation: "IN_TRANSIT",
+          chargeClient: false,
+        },
+      ],
+      createdBy: adminUserId,
+    });
+
+    // Валидный unit обработан: RETIRED
+    const updatedValid = await prisma.equipmentUnit.findUnique({ where: { id: validUnit.id } });
+    expect(updatedValid.status).toBe("RETIRED");
+
+    // Repair создана для валидного
+    const repairValid = await prisma.repair.findFirst({
+      where: { unitId: validUnit.id, status: "WROTE_OFF" },
+    });
+    expect(repairValid).not.toBeNull();
+
+    // failedLostUnits содержит несуществующий unit
+    expect(result.failedLostUnits).toHaveLength(1);
+    expect(result.failedLostUnits[0].equipmentUnitId).toBe(NON_EXISTENT_ID);
+    expect(result.failedLostUnits[0].reason).toBeTruthy();
+  });
 });
