@@ -1,12 +1,21 @@
 {
-  "sprint": "payment-terms",
+  "sprint": "payment-terms-zero",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus",
-  "ts": "2026-04-27T16:00:00Z",
+  "head": "a41d75e",
+  "ts": "2026-04-27T20:57:00Z",
+  "fixes_applied": [
+    "CRITICAL #1: backfill --reset heuristic + audit + --force-all TTY confirmation",
+    "HIGH #2: bookings.ts service fallback ?? 7 → ?? 0",
+    "MEDIUM #3: new update-org-settings-default-zero.ts idempotent script",
+    "LOW #4: BookingForm defensive ?? 0 fallback"
+  ],
+  "tests": "886/886 pass",
+  "ts_check": "clean (api+web)",
   "notes": [
-    "Booking.expectedPaymentDate теперь работает end-to-end: schema OrganizationSettings.defaultPaymentTermsDays (Int default 7), backend auto-default при createBookingDraft + confirmBooking, UI поле в BookingForm + Settings, backfill script.",
-    "Standard PAR: technical REQUEST_CHANGES (TZ drift на edit + Zod без datetime validator), product NEEDS_FIXES (no dynamic placeholder, no recompute on endDate edit, null inconsistency POST/PATCH). 8 fixes applied.",
-    "Final gates: tsc clean api+web; 886 API + 256 web tests all green."
+    "Default semantic shift: defaultPaymentTermsDays 7 → 0 (день сдачи = день оплаты).",
+    "Backfill --reset is now safe: requires --previous-default N, skips user-set dates via 1h heuristic, writes BOOKING_UPDATE AuditEntry per row, --force-all blind override gated by TTY YES prompt.",
+    "Initial PAR: product ACCEPTED, technical REQUEST_CHANGES (4 issues). Fix-pass HEAD a41d75e. Re-review technical APPROVE."
   ]
 }
