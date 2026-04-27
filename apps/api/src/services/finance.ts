@@ -4,6 +4,8 @@ import ExcelJS from "exceljs";
 
 import { prisma } from "../prisma";
 import { toMoscowDateString, fromMoscowDateString } from "../utils/moscowDate";
+import { HttpError } from "../utils/errors";
+import type { DebtReportBooking } from "./documentExport/clientDebtReport/renderClientDebtReportPdf";
 
 type TxLike = Omit<
   Prisma.TransactionClient,
@@ -1481,4 +1483,64 @@ export async function getRemindableClients(): Promise<
   }
 
   return result.sort((a, b) => new Decimal(b.totalOutstanding).cmp(new Decimal(a.totalOutstanding)));
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// B2 — computeClientDebtReport: данные для PDF-отчёта по клиенту
+// ──────────────────────────────────────────────────────────────────────────────
+
+export type ClientDebtReportData = {
+  client: { id: string; name: string; phone: string | null; email: string | null };
+  bookings: DebtReportBooking[];
+  generatedAt: Date;
+};
+
+export async function computeClientDebtReport(clientId: string): Promise<ClientDebtReportData> {
+  const now = new Date();
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { id: true, name: true, phone: true, email: true },
+  });
+  if (!client) {
+    throw new HttpError(404, "Клиент не найден");
+  }
+
+  const rawBookings = await prisma.booking.findMany({
+    where: {
+      clientId,
+      status: { not: "CANCELLED" },
+      amountOutstanding: { gt: 0 },
+    },
+    orderBy: { startDate: "desc" },
+  });
+
+  const bookings: DebtReportBooking[] = rawBookings.map((b) => {
+    const daysOverdue = b.expectedPaymentDate
+      ? Math.max(0, Math.floor((now.getTime() - b.expectedPaymentDate.getTime()) / 86400000))
+      : 0;
+    return {
+      bookingId: b.id,
+      startDate: b.startDate ?? null,
+      endDate: b.endDate ?? null,
+      projectName: b.projectName,
+      finalAmount: new Decimal(b.finalAmount.toString()),
+      amountPaid: new Decimal(b.amountPaid.toString()),
+      amountOutstanding: new Decimal(b.amountOutstanding.toString()),
+      expectedPaymentDate: b.expectedPaymentDate,
+      daysOverdue,
+      paymentStatus: b.paymentStatus,
+    };
+  });
+
+  return {
+    client: {
+      id: client.id,
+      name: client.name,
+      phone: client.phone ?? null,
+      email: client.email ?? null,
+    },
+    bookings,
+    generatedAt: now,
+  };
 }
