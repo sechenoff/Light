@@ -62,63 +62,10 @@ function countRecordKey(bookingItemId: string): string {
   return `count:${bookingItemId}`;
 }
 
-/**
- * Для COUNT-позиций мы храним ScanRecord со специальным «виртуальным» equipmentUnitId.
- * Это требует существующего EquipmentUnit записи. Чтобы не зависеть от реальных единиц,
- * мы храним состояние в виде JSON поля количества в metadata-полях ScanSession.
- *
- * Упрощение: для COUNT-позиций state хранится в отдельной таблице checklist_count_records
- * через JSON-хранилище в поле ScanSession.notes (если будет добавлено).
- *
- * Текущая реализация: COUNT-позиции хранятся в памяти (ScanSession не имеет notes).
- * Используем отдельный паттерн — специальный equipment unit (COUNT_PLACEHOLDER) не подходит.
- *
- * РЕШЕНИЕ: храним COUNT-state в prisma через дополнительную таблицу не меняя schema.
- * Вместо этого — добавляем поле в уже существующую модель ScanSession.
- * НЕЛЬЗЯ менять schema без db push.
- *
- * Финальное решение: COUNT-чекбоксы хранятся как булева карта bookingItemId→checkedQty
- * в реальном JSON-поле. Так как его нет, делаем это через prisma raw JSON query
- * с workaround: храним в специальном поле workerName с суффиксом "|count:{json}".
- *
- * НЕТ — это слишком хакерски. Правильный подход:
- * Храним COUNT-позиции как простой map в памяти сессии, передавая из frontend
- * на каждый check/uncheck. Это stateless для сервера, полностью корректно.
- *
- * Итог: COUNT-позиции trackable через отдельную таблицу BookingItemCheckRecord
- * создаём через виртуальный механизм: используем ScanRecord только для UNIT
- * и добавляем простую key-value таблицу для COUNT через имеющийся механизм AuditEntry.
- *
- * ИТОГОВОЕ РЕШЕНИЕ (без изменения schema):
- * - UNIT: ScanRecord с реальным equipmentUnitId
- * - COUNT: хранить в виде JSON в поле ПОСЛЕ получения из клиента.
- *   Client отправляет checkedQty, мы его кэшируем в session.workerName как JSON-suffix
- *
- * САМОЕ ЧИСТОЕ РЕШЕНИЕ: Добавить отдельный механизм хранения без изменения schema.
- * Используем prisma.scanRecord.create с equipmentUnitId = специальный CUID на основе
- * bookingItemId — но EquipmentUnit с таким id не существует → FK constraint fails.
- *
- * === ФИНАЛЬНОЕ РЕШЕНИЕ (принято) ===
- * COUNT-позиции: хранить checkedQty в поле `ScanSession.completedAt` нельзя.
- * Вместо ScanRecord для COUNT — используем специальную "COUNT" запись в ScanRecord
- * с фиктивным equipmentUnitId = bookingItemId (нарушает FK). НЕТ.
- *
- * Правильно: хранить COUNT-state в `workerName` не подходит — это отображается в аудите.
- *
- * === ДЕЙСТВИТЕЛЬНО ФИНАЛЬНОЕ РЕШЕНИЕ ===
- * Для COUNT-позиций checkedQty хранится на клиенте (frontend) и передаётся
- * вместе с вызовом complete. Это корректно: COUNT-позиции — это просто количество,
- * без индивидуального tracking. Сервер подтверждает факт нажатия на кнопку
- * «Завершить выдачу/возврат» с явным перечислением checked items.
- *
- * Упрощённая архитектура:
- * - /state endpoint возвращает UNIT-позиции с их ScanRecord статусами
- * - COUNT-позиции возвращаются как «всегда готовы» (checkedQty = quantity)
- *   клиент управляет своим состоянием и передаёт countChecks при /complete
- * - /check endpoint только для UNIT (добавляет ScanRecord)
- * - /uncheck endpoint только для UNIT (удаляет ScanRecord)
- * - /complete принимает дополнительный список countChecks
- */
+// Checklist state model:
+// - COUNT positions: client-managed (no per-event tracking) — qty + checked count.
+// - UNIT positions: persisted via ScanRecord (one record per unit checked).
+// Frontend optimistically updates; server is authoritative on tap-confirm.
 
 // ── getChecklistState ────────────────────────────────────────────────────────────
 
@@ -360,7 +307,7 @@ export async function uncheckUnit(
     where: { id: sessionId },
   });
   if (!session || session.status !== "ACTIVE") {
-    throw new Error("Сессия не активна");
+    throw new HttpError(409, "Сессия не активна", "SESSION_NOT_ACTIVE");
   }
 
   const existing = await prisma.scanRecord.findUnique({
