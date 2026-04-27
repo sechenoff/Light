@@ -1,15 +1,15 @@
 {
-  "sprint": "debts-flat",
+  "sprint": "debt-report",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus + 4-agent-qa",
-  "ts": "2026-04-27T10:00:00Z",
+  "ts": "2026-04-27T14:00:00Z",
   "notes": [
-    "Plain flat table at /finance/debts: дата проекта первая колонка (default DESC), no client grouping, V2 actions [₽ Оплатить] + [✏️] + [⋯].",
-    "Backend: ClientDebtProject extended with startDate/endDate/clientName/clientId/finalAmount/amountPaid/paymentCount. Sort enum extended with startDate/status. _count filter excludes voided + refund payments.",
-    "Frontend: full /finance/debts rewrite. New BookingPaymentsModal for ⋯ → Список платежей. Per-client chips strip, KPI strip, status filter pills, mobile sort <select>, mobile cards with 44px touch targets.",
-    "Standard PAR: technical REQUEST_CHANGES (HIGH math bug + dead code) + product NEEDS_FIXES (mobile menu broken + получено wrong) — 7 fixes in de391a9.",
-    "User 4-agent QA: A NEEDS_FIXES (получено для OVERDUE / paymentCount inflate), B 92% fidelity (mobile sort missing, mobile grid), C PASS (cosmetic only). D applied 9 fixes in c6e7fa0.",
-    "Final gates: tsc clean api+web; 873 API tests + 256 web tests all green."
+    "Per-client debt PDF report endpoint + frontend integration. GET /api/finance/debts/:clientId/report.pdf returns A4 PDF grouped by date with totals.",
+    "Standard PAR: product ACCEPTED (3 LOW), technical REQUEST_CHANGES (HIGH font path 5 vs 4 levels causes Cyrillic boxes) — fixed in 287b845.",
+    "User 4-agent QA: A SHIP_READY (1 MED paymentStatusSync), B NEEDS_FIXES (2 HIGH № column wraps + null-date secondary sort + 3 MED), C PASS (4 LOW).",
+    "Agent D applied 10 fixes in af97f10: drop № column, secondary sort, integer-ruble format, single page-aware header, status color map, paymentStatusSync, 44px mobile tap, RU enum fallback, empty-name filename, dropped opaque report ID.",
+    "Final gates: tsc clean api+web; 878 API + 256 web tests all green.",
+    "New endpoint: GET /api/finance/debts/:clientId/report.pdf (SUPER_ADMIN only)."
   ]
 }
