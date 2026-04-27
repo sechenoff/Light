@@ -471,6 +471,12 @@ interface ClientDebtProject {
   bookingId: string;
   projectName: string;
   amountOutstanding: string;
+  /** PAR F1: сумма уже полученных платежей по этой брони */
+  amountPaid: string;
+  /** PAR F1: итоговая сумма по брони (до вычета outstanding) */
+  finalAmount: string;
+  /** PAR F4: количество платежей по брони */
+  paymentCount: number;
   expectedPaymentDate: Date | null;
   daysOverdue: number | null;
   paymentStatus: string;
@@ -543,6 +549,7 @@ export async function computeDebts(
       client: {
         select: { id: true, name: true, phone: true, email: true, lastReminderAt: true },
       },
+      _count: { select: { payments: true } },
     },
     orderBy: { expectedPaymentDate: "asc" },
   });
@@ -580,6 +587,9 @@ export async function computeDebts(
       bookingId: b.id,
       projectName: b.projectName,
       amountOutstanding: amt.toFixed(2),
+      amountPaid: new Decimal(b.amountPaid.toString()).toFixed(2),
+      finalAmount: new Decimal(b.finalAmount.toString()).toFixed(2),
+      paymentCount: b._count.payments,
       expectedPaymentDate: b.expectedPaymentDate,
       daysOverdue: isOverdue ? daysOverdue : null,
       paymentStatus: b.paymentStatus,

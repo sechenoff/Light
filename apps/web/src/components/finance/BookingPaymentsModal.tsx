@@ -56,8 +56,10 @@ export function BookingPaymentsModal({ open, onClose, bookingId, bookingContext,
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [voidPaymentId, setVoidPaymentId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  function load() {
+  useEffect(() => {
+    if (!open) return;
     let cancelled = false;
     setLoading(true);
     apiFetch<ListResponse>(`/api/payments?bookingId=${encodeURIComponent(bookingId)}`)
@@ -65,12 +67,7 @@ export function BookingPaymentsModal({ open, onClose, bookingId, bookingContext,
       .catch(() => { if (!cancelled) toast.error("Не удалось загрузить платежи"); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }
-
-  useEffect(() => {
-    if (!open) return;
-    return load();
-  }, [open, bookingId]);
+  }, [open, bookingId, reloadKey]);
 
   // Esc to close
   useEffect(() => {
@@ -84,7 +81,7 @@ export function BookingPaymentsModal({ open, onClose, bookingId, bookingContext,
 
   const handleVoided = () => {
     setVoidPaymentId(null);
-    load();
+    setReloadKey((k) => k + 1);
     onChange?.();
   };
 
