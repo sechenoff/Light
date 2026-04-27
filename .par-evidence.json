@@ -1,15 +1,15 @@
 {
-  "sprint": "debts-superpowered",
+  "sprint": "debts-flat",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "split-focus + 4-agent-qa",
-  "ts": "2026-04-27T08:00:00Z",
+  "ts": "2026-04-27T10:00:00Z",
   "notes": [
-    "Дебиторка superpowers: sortable list (name/amount/date), per-client XLSX export (3 sheets, RU labels), Gemini-drafted AI reminders + hardcoded fallback, Client.lastReminderAt schema field, mark-reminded route + audit, action ribbon for remindable clients, smart-pick priority booking for inline payment, removed visual duplication of aging matrix.",
-    "Standard PAR (Opus product+technical): Technical APPROVE (3 LOW). Product ACCEPTED (3 MED recommendations: smart-pick, ENG enums in XLSX, visual duplication). All addressed in polish commit 0a391e40.",
-    "User 4-agent QA: A SHIP_READY (1 HIGH loadDebts no .catch + 1 MED pickPriorityBooking mutates input), B 92% fidelity (5 minor: mobile sort, action row, Telegram clutter, JIT-fragile className), C PASS (1 HIGH RecordPaymentModal hides selected booking + 3 MED including Gemini raw amount + 4 LOW).",
-    "Agent D applied 9 fixes: loadDebts catch+toast, RecordPaymentModal bookingContext, mobile sort selector, pickPriorityBooking copy-not-mutate, Gemini Intl.NumberFormat, DAYS_TONE_CLASS static map, mobile action row layout, Telegram button removed, AbortController on tone switch.",
-    "Final gates: tsc clean api+web; 872 API tests + 253 web tests all green.",
-    "Schema migration: Client.lastReminderAt DateTime? — additive nullable, safe under prisma db push --accept-data-loss."
+    "Plain flat table at /finance/debts: дата проекта первая колонка (default DESC), no client grouping, V2 actions [₽ Оплатить] + [✏️] + [⋯].",
+    "Backend: ClientDebtProject extended with startDate/endDate/clientName/clientId/finalAmount/amountPaid/paymentCount. Sort enum extended with startDate/status. _count filter excludes voided + refund payments.",
+    "Frontend: full /finance/debts rewrite. New BookingPaymentsModal for ⋯ → Список платежей. Per-client chips strip, KPI strip, status filter pills, mobile sort <select>, mobile cards with 44px touch targets.",
+    "Standard PAR: technical REQUEST_CHANGES (HIGH math bug + dead code) + product NEEDS_FIXES (mobile menu broken + получено wrong) — 7 fixes in de391a9.",
+    "User 4-agent QA: A NEEDS_FIXES (получено для OVERDUE / paymentCount inflate), B 92% fidelity (mobile sort missing, mobile grid), C PASS (cosmetic only). D applied 9 fixes in c6e7fa0.",
+    "Final gates: tsc clean api+web; 873 API tests + 256 web tests all green."
   ]
 }
