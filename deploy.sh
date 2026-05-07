@@ -52,6 +52,17 @@ echo "▶ root: npm ci (workspaces, clean install)"
 npm ci --no-audit --no-fund
 echo "  ✓ workspace deps установлены"
 
+# `npm ci` стирает node_modules, в т.ч. сгенерированный @prisma/client.
+# Регенерируем сразу — иначе любой процесс, который импортирует prisma
+# (api, скрипты, cron), упадёт с "Prisma client did not initialize yet".
+if [ -f "$ROOT/apps/api/.env" ]; then
+  echo "▶ prisma: generate"
+  cd "$ROOT/apps/api" && npx prisma generate > /dev/null 2>&1 \
+    && echo "  ✓ Prisma Client сгенерирован" \
+    || echo "  ⚠ prisma generate failed (это OK на dev-машине без apps/api/.env)"
+  cd "$ROOT"
+fi
+
 # ── Shared package (нужен для web, bot) ───────────────────────────────────────
 if $DEPLOY_WEB || $DEPLOY_RENTAL_BOT || $DEPLOY_ALL; then
   echo "▶ shared: build"
