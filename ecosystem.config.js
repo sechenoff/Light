@@ -8,6 +8,28 @@
  *   pm2 status
  */
 
+const fs = require("fs");
+const path = require("path");
+
+/**
+ * Читает первый ключ из API_KEYS в apps/api/.env.
+ * Используется как X-API-Key для прокси в Next.js (apps/web/app/api/[...path]/route.ts).
+ * Это единый источник истины — рассинхрон между api и web невозможен.
+ */
+function readApiKeyFromApi() {
+  try {
+    const envFile = path.join(__dirname, "apps/api/.env");
+    const content = fs.readFileSync(envFile, "utf8");
+    const match = content.match(/^API_KEYS=(.+)$/m);
+    if (match) {
+      return match[1].split(",")[0].replace(/^['"]|['"]$/g, "").trim();
+    }
+  } catch (_e) {
+    // .env может не существовать на dev-машинах — это OK, web просто не будет авторизован
+  }
+  return "";
+}
+
 module.exports = {
   apps: [
     // ── Backend API ────────────────────────────────────────────────────────────
@@ -23,6 +45,28 @@ module.exports = {
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       error_file: "../../logs/api-error.log",
       out_file:   "../../logs/api-out.log",
+    },
+
+    // ── Web (Next.js) ─────────────────────────────────────────────────────────
+    // API_KEY автоматически читается из apps/api/.env при каждом pm2 reload
+    // (см. readApiKeyFromApi() выше). Нет ручной синхронизации между .env-файлами.
+    {
+      name: "web",
+      cwd: "./apps/web",
+      script: "npm",
+      args: "start",
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: "512M",
+      env: {
+        NODE_ENV: "production",
+        PORT: 3000,
+        API_KEY: readApiKeyFromApi(),
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: "../../logs/web-error.log",
+      out_file:   "../../logs/web-out.log",
     },
 
     // ── Light Rental Bot ──────────────────────────────────────────────────────

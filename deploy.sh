@@ -137,13 +137,33 @@ if $DEPLOY_WEB; then
     exit 1
   }
 
+  # ── Sync API_KEY из apps/api/.env (single source of truth) ──────────────
+  # Это страховка для процессов, которые могут читать .env.local напрямую
+  # (build-time оптимизации, локальные npm start вне pm2 и т.д.).
+  # PM2-процесс получает API_KEY из ecosystem.config.js (читается на каждый reload).
+  if [ -f "$ROOT/apps/api/.env" ]; then
+    API_KEY_FROM_API=$(grep -E '^API_KEYS=' "$ROOT/apps/api/.env" | head -1 \
+      | sed -E 's/^API_KEYS=//' | cut -d',' -f1 | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+    if [ -n "${API_KEY_FROM_API:-}" ]; then
+      touch "$ROOT/apps/web/.env.local"
+      if grep -q '^API_KEY=' "$ROOT/apps/web/.env.local"; then
+        sed -i.bak "s|^API_KEY=.*|API_KEY=$API_KEY_FROM_API|" "$ROOT/apps/web/.env.local"
+        rm -f "$ROOT/apps/web/.env.local.bak"
+      else
+        echo "API_KEY=$API_KEY_FROM_API" >> "$ROOT/apps/web/.env.local"
+      fi
+      echo "  ✓ API_KEY синхронизирован из apps/api/.env"
+    fi
+  fi
+
   # Deps уже установлены корневым `npm ci` в начале скрипта (workspace hoisting).
   npm run build
 
-  # --update-env обязателен чтобы Next.js подхватил новые .env.local переменные (API_KEY и т.д.)
+  # ecosystem.config.js на каждом reload читает API_KEYS из apps/api/.env
+  # и подставляет в env web-процесса как API_KEY. --update-env обязателен.
   pm2 describe web > /dev/null 2>&1 \
-    && pm2 restart web --update-env \
-    || pm2 start npm --name web --cwd "$ROOT/apps/web" -- start
+    && pm2 reload "$ROOT/ecosystem.config.js" --only web --update-env \
+    || pm2 start "$ROOT/ecosystem.config.js" --only web
 
   echo "  ✓ web готов"
 fi
