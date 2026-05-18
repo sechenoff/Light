@@ -1,27 +1,26 @@
 {
-  "sprint": "critical-money-safety",
-  "claude_product": "ACCEPTED",
+  "sprint": "dead-code-cleanup",
+  "claude_product": "n/a (behaviour-preserving cleanup — technical review only)",
   "technical_review": "APPROVE",
-  "provider": "split-focus (two Claude reviewers — no codex this session)",
-  "head": "bc0baf21",
-  "ts": "2026-05-18T15:05:00Z",
-  "scope": "4 CRITICAL bugs from product+codebase audit",
+  "provider": "Claude code-reviewer",
+  "head": "post-3ff48d2 + item3 commit",
+  "ts": "2026-05-18T15:45:00Z",
+  "scope": "dead code / dupes removal from product+codebase audit (behaviour-preserving)",
   "fixes_applied": [
-    "C1: legacy POST /:id/confirm bypass closed — rolesGuard([SUPER_ADMIN]) + non-bot DRAFT/PENDING_APPROVAL -> 409 USE_APPROVAL_FLOW. Bot one-step flow preserved via botAccess (whitelisted openclaw key, by design). Dead action=='confirm' branch in /status removed.",
-    "C2: releaseBookingUnits(bookingId, tx) — units returned AVAILABLE on cancel + cancel-with-deposit, BookingItemUnit cleared, MAINTENANCE/RETIRED skipped, idempotent, BOOKING_UNITS_RELEASED audit, all in one $transaction.",
-    "C3: isBookingOverdue()/computeOutstanding() single-source helpers — dashboardMetrics/computeDebts/computeFinanceDashboard now compute overdue live (no stale paymentStatus drift, no cron). Decimal-correct.",
-    "C5: lost-unit compensation now serializes invoiceNeedsReissue in /complete API response (was dropped at API layer) + warehouse/scan persistent rose warning on operation screen + INVOICE_OUTDATED_BY_COMPENSATION audit.",
-    "C1-obs (PAR LOW): bot-channel confirm writes BOOKING_CONFIRMED_VIA_BOT audit (after.via:'bot', attributed to first SUPER_ADMIN due to AuditEntry.userId FK constraint)."
+    "Item 1: removed recordScan + POST /sessions/:id/scan + scanBodySchema + dead tests. barcode-integration.test.ts rewired recordScan->seedScan (direct prisma.scanRecord.create) — live completeSession/reconciliation coverage preserved (verified non-masking).",
+    "Item 2: removed deprecated deletePayment + DELETE /api/payments/:id. Its only test rewritten as describe(voidPayment) with identical assertions — net void coverage preserved. Frontend already uses POST /:id/void. Gaffer's separate deletePayment untouched.",
+    "Item 3 (frozen->resolved): removed reachable «📷 Открыть в сканере» Link from /equipment/[id]/units per user directive 'No Barcodes in UX'. /admin/scanner page + BarcodeScanner components kept dormant for future.",
+    "Item 4: added scoped .gitignore (apps/api/dev*.db, root /*.png) — git check-ignore verified does NOT match tracked prisma/dev.db or docs/**/*.png. Repo copy-artifacts (* N.tsx etc) absent on this branch.",
+    "Item 5 (frozen, no change): computeAging/computeAgingPerClient/computeForecast/buildClientDebtExport operate on Invoice (not Booking) — different entity, not duplicates of isBookingOverdue/computeOutstanding. Conservatively left intact to avoid money-exact regression for ~zero dedup value."
   ],
-  "tests": "928/928 pass (was 927 + 1 new bot-confirm-audit test)",
-  "ts_check": "clean (api + web)",
+  "tests": "915/915 pass (dead-code-only tests removed; live coverage preserved via canonical-path rewiring)",
+  "ts_check": "clean (api + web, incl. Item 3 edit)",
   "par_rounds": [
-    "Round 1 (HEAD 2281165): technical APPROVE (0 CRIT/HIGH/MED, 1 LOW pre-existing double-reservation edge — follow-up note). product ACCEPTED + 1 MEDIUM (C5 flag silent in UI).",
-    "Fix-pass (HEAD bc0baf21): C5 UI surfacing + API serialization root-cause + bot-confirm audit.",
-    "Re-review: product ACCEPTED (MEDIUM closed). technical APPROVE stands (additive, 928/928)."
+    "Round 1 (HEAD 3ff48d2): technical APPROVE — 0 CRIT/HIGH/MED/LOW, all 6 risk checks pass (no live code deleted, no test masking, no dangling refs, .gitignore correctly anchored, 915/915).",
+    "Item 3 follow-up commit: scanner Link removed, tsc web clean exit 0, Link import still used."
   ],
   "followups": [
-    "LOW (technical): cross-booking unit-status edge if a unit is double-reserved by two bookings — pre-existing upstream invariant, separate ticket.",
-    "Doc drift: CLAUDE.md scanSession.ts ref is warehouseScan.ts (doc-only, no code impact)."
+    "Doc: CLAUDE.md 'Scanner component is shared' line is now stale (units page no longer imports BarcodeScanner) — doc-only.",
+    "2 .claude/data/sessions/*.json already git-tracked — untrack-or-keep is a repo-history decision, deferred."
   ]
 }
