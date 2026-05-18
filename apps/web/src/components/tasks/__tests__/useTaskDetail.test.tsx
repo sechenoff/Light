@@ -43,6 +43,7 @@ describe("useTaskDetail", () => {
       await result.current.addComment("hi");
     });
     expect(result.current.task?.comments.some((c) => c.body === "hi")).toBe(true);
+    expect(result.current.task?.comments.every((c) => !c.id.startsWith("temp-"))).toBe(true);
   });
 
   it("rolls back the optimistic comment on failure", async () => {
@@ -55,5 +56,39 @@ describe("useTaskDetail", () => {
       await result.current.addComment("bad");
     });
     expect(result.current.task?.comments.some((c) => c.body === "bad")).toBe(false);
+  });
+
+  it("a poll landing mid-add does not drop the optimistic comment", async () => {
+    mockFetch.mockResolvedValueOnce({ task: baseTask }); // initial load
+    const { result } = renderHook(() => useTaskDetail("t1"));
+    await waitFor(() => expect(result.current.task?.id).toBe("t1"));
+
+    // POST is pending; resolve it manually after we simulate a poll
+    let resolvePost: (v: any) => void;
+    const postPromise = new Promise((res) => { resolvePost = res; });
+    mockFetch.mockReturnValueOnce(postPromise as any);
+
+    let addPromise: Promise<void>;
+    await act(async () => {
+      addPromise = result.current.addComment("racy");
+      // optimistic item should be present now
+    });
+    expect(result.current.task?.comments.some((c) => c.body === "racy")).toBe(true);
+
+    // Simulate the 8s poll firing mid-add: returns server snapshot WITHOUT the temp item
+    mockFetch.mockResolvedValueOnce({ task: baseTask });
+    await act(async () => {
+      await result.current.refetch();
+    });
+    // poll must NOT have clobbered the in-flight optimistic comment
+    expect(result.current.task?.comments.some((c) => c.body === "racy")).toBe(true);
+
+    // now resolve the POST and let reconcile run
+    await act(async () => {
+      resolvePost!({ comment: { id: "c9", taskId: "t1", authorId: "u1", body: "racy", createdAt: "2026-05-18T02:00:00Z", authorUser: { id: "u1", username: "U" } } });
+      await addPromise!;
+    });
+    expect(result.current.task?.comments.some((c) => c.body === "racy")).toBe(true);
+    expect(result.current.task?.comments.every((c) => !c.id.startsWith("temp-"))).toBe(true);
   });
 });

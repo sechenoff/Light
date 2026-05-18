@@ -37,11 +37,13 @@ export function useTaskDetail(taskId: string | null) {
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const inFlight = useRef<Set<string>>(new Set());
+  const pollBlocked = useRef(false);
 
   const fetchTask = useCallback(async () => {
     if (!taskId) return;
     try {
       const { task: t } = await apiFetch<{ task: TaskDetail }>(`/api/tasks/${taskId}`);
+      if (pollBlocked.current) return;
       setTask(t);
       setNotFound(false);
     } catch (err: any) {
@@ -90,7 +92,8 @@ export function useTaskDetail(taskId: string | null) {
   const addComment = useCallback(async (body: string) => {
     const trimmed = body.trim();
     if (!trimmed || !taskId) return;
-    const tempId = `temp-${Date.now()}`;
+    pollBlocked.current = true;
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const optimistic: TaskComment = {
       id: tempId, taskId, authorId: "", body: trimmed,
       createdAt: new Date().toISOString(), authorUser: null,
@@ -104,12 +107,15 @@ export function useTaskDetail(taskId: string | null) {
     } catch (err: any) {
       setTask((t) => (t ? { ...t, comments: t.comments.filter((c) => c.id !== tempId) } : t));
       toast.error(err?.message ?? "Не удалось добавить комментарий");
+    } finally {
+      pollBlocked.current = false;
     }
   }, [taskId]);
 
   // ── deleteComment (optimistic) ──
   const deleteComment = useCallback(async (commentId: string) => {
     if (!taskId) return;
+    pollBlocked.current = true;
     let snapshot: TaskComment[] | undefined;
     setTask((t) => {
       if (!t) return t;
@@ -121,6 +127,8 @@ export function useTaskDetail(taskId: string | null) {
     } catch (err: any) {
       setTask((t) => (t && snapshot ? { ...t, comments: snapshot } : t));
       toast.error(err?.message ?? "Не удалось удалить комментарий");
+    } finally {
+      pollBlocked.current = false;
     }
   }, [taskId]);
 
@@ -128,7 +136,8 @@ export function useTaskDetail(taskId: string | null) {
   const addChecklistItem = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || !taskId) return;
-    const tempId = `temp-${Date.now()}`;
+    pollBlocked.current = true;
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setTask((t) => {
       if (!t) return t;
       const pos = t.checklist.length;
@@ -146,6 +155,8 @@ export function useTaskDetail(taskId: string | null) {
     } catch (err: any) {
       setTask((t) => (t ? { ...t, checklist: t.checklist.filter((i) => i.id !== tempId) } : t));
       toast.error(err?.message ?? "Не удалось добавить пункт");
+    } finally {
+      pollBlocked.current = false;
     }
   }, [taskId]);
 
@@ -153,6 +164,7 @@ export function useTaskDetail(taskId: string | null) {
   const toggleChecklistItem = useCallback(async (itemId: string, done: boolean) => {
     if (!taskId || inFlight.current.has(`cl-${itemId}`)) return;
     inFlight.current.add(`cl-${itemId}`);
+    pollBlocked.current = true;
     let snapshot: ChecklistItem | undefined;
     setTask((t) => {
       if (!t) return t;
@@ -169,12 +181,14 @@ export function useTaskDetail(taskId: string | null) {
       toast.error(err?.message ?? "Не удалось обновить пункт");
     } finally {
       inFlight.current.delete(`cl-${itemId}`);
+      pollBlocked.current = false;
     }
   }, [taskId]);
 
   // ── deleteChecklistItem (optimistic) ──
   const deleteChecklistItem = useCallback(async (itemId: string) => {
     if (!taskId) return;
+    pollBlocked.current = true;
     let snapshot: ChecklistItem[] | undefined;
     setTask((t) => {
       if (!t) return t;
@@ -186,6 +200,8 @@ export function useTaskDetail(taskId: string | null) {
     } catch (err: any) {
       setTask((t) => (t && snapshot ? { ...t, checklist: snapshot } : t));
       toast.error(err?.message ?? "Не удалось удалить пункт");
+    } finally {
+      pollBlocked.current = false;
     }
   }, [taskId]);
 
