@@ -6,7 +6,11 @@ module.exports = {
       fontFamily: {
         sans: ["IBM Plex Sans", "system-ui", "sans-serif"],
         cond: ["IBM Plex Sans Condensed", "system-ui", "sans-serif"],
-        mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
+        // "IBM Plex Sans" before generic monospace: IBM Plex Mono lacks the
+        // ₽ glyph (U+20BD); without this the browser falls back to an
+        // arbitrary system mono only for ₽ (different weight/colour than the
+        // digits). Sans fallback keeps ₽ visually consistent with the digits.
+        mono: ["IBM Plex Mono", "IBM Plex Sans", "ui-monospace", "monospace"],
       },
       colors: {
         ink: {

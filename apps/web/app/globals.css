@@ -26,7 +26,12 @@
   }
 
   .mono-num {
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    /* IBM Plex Mono не содержит глиф ₽ (U+20BD). Без явного фолбэка браузер
+       подставляет произвольный системный моно-шрифт ТОЛЬКО для ₽ — он
+       отличается по весу/цвету/базлайну от цифр. Ставим "IBM Plex Sans"
+       (шрифт body, тот же вес/цвет) перед generic monospace: цифры берутся
+       из IBM Plex Mono, ₽ — из IBM Plex Sans, визуально согласовано. */
+    font-family: "IBM Plex Mono", "IBM Plex Sans", ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
   }
 }

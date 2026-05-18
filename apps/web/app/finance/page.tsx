@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 import { apiFetch } from "../../src/lib/api";
-import { formatRub, pluralize } from "../../src/lib/format";
+import { formatRub, formatExpenseRub, formatMarginPercent, pluralize } from "../../src/lib/format";
 import { FinanceTabNav } from "../../src/components/finance/FinanceTabNav";
 import { ForecastWidget } from "../../src/components/finance/ForecastWidget";
 import { derivePeriodRange, PERIOD_LABELS, PERIOD_OPTIONS, type PeriodKey } from "../../src/lib/periodUtils";
@@ -203,7 +203,16 @@ function FinancePageInner() {
     (d) => d.overdueDays !== null && d.overdueDays > 0
   ).length;
 
-  const margin = earned > 0 ? Math.round((net / earned) * 100) : 0;
+  // Маржа от нулевой выручки бессмысленна → formatMarginPercent вернёт «—».
+  const marginLabel = formatMarginPercent(net, earned);
+  const hasMargin = marginLabel !== "—";
+
+  // Хардкод-спарклайны — чистая декорация, не данные. На пустом периоде
+  // (метрика == 0) не рисуем фейковый «тренд» по нулям.
+  const SPARK_EARNED = "0,22 12,18 24,20 36,14 48,16 60,10 72,12 84,7 96,9 108,5 120,3";
+  const SPARK_SPENT = "0,18 12,16 24,20 36,18 48,14 60,16 72,12 84,16 96,11 108,14 120,12";
+  const SPARK_DEBT = "0,16 12,17 24,15 36,18 48,16 60,19 72,17 84,21 96,19 108,22 120,20";
+  const SPARK_NET = "0,20 12,17 24,18 36,12 48,14 60,9 72,11 84,5 96,8 108,4 120,2";
 
   return (
     <div className="pb-10 bg-surface-subtle min-h-screen">
@@ -256,18 +265,18 @@ function FinancePageInner() {
           <KpiCard
             eyebrow="Получено"
             value={formatRub(earned)}
-            delta={`${net >= 0 ? "+" : ""}${margin}% маржа за период`}
+            delta={hasMargin ? `${marginLabel} маржа за период` : "за период"}
             variant="ok"
             href={`/finance/payments?period=${period}`}
-            sparkPoints="0,22 12,18 24,20 36,14 48,16 60,10 72,12 84,7 96,9 108,5 120,3"
+            sparkPoints={earned > 0 ? SPARK_EARNED : undefined}
           />
           <KpiCard
             eyebrow="Расходы"
-            value={`−${formatRub(spent)}`}
+            value={formatExpenseRub(spent)}
             delta="операции за период"
             variant="default"
             href={`/finance/expenses?period=${period}`}
-            sparkPoints="0,18 12,16 24,20 36,18 48,14 60,16 72,12 84,16 96,11 108,14 120,12"
+            sparkPoints={spent > 0 ? SPARK_SPENT : undefined}
           />
           <KpiCard
             eyebrow="Задолженность"
@@ -275,14 +284,14 @@ function FinancePageInner() {
             delta={`${overdueCount} ${pluralize(overdueCount, "клиент просрочен", "клиента просрочены", "клиентов просрочены")}`}
             variant="alert"
             href="/finance/debts"
-            sparkPoints="0,16 12,17 24,15 36,18 48,16 60,19 72,17 84,21 96,19 108,22 120,20"
+            sparkPoints={outstanding > 0 ? SPARK_DEBT : undefined}
           />
           <KpiCard
             eyebrow="Прибыль (период)"
             value={formatRub(Math.abs(net))}
-            delta={`маржа ${margin}%`}
+            delta={hasMargin ? `маржа ${marginLabel.replace(/^\+/, "")}` : "за период"}
             variant={net >= 0 ? "ok" : "alert"}
-            sparkPoints="0,20 12,17 24,18 36,12 48,14 60,9 72,11 84,5 96,8 108,4 120,2"
+            sparkPoints={net !== 0 ? SPARK_NET : undefined}
           />
         </div>
 
@@ -415,7 +424,7 @@ function FinancePageInner() {
             </div>
             <div className="bg-surface border border-border rounded-lg p-3">
               <p className="eyebrow">Расходы</p>
-              <p className="mono-num text-[18px] font-semibold text-ink mt-1">−{formatRub(spent)}</p>
+              <p className="mono-num text-[18px] font-semibold text-ink mt-1">{formatExpenseRub(spent)}</p>
             </div>
             <div className="bg-emerald-soft/20 border border-emerald-border rounded-lg p-3">
               <p className="eyebrow">Прибыль</p>
