@@ -9,6 +9,7 @@ import { TaskFilterPills } from "./TaskFilterPills";
 import { TaskGroupList } from "./TaskGroupList";
 import { TaskEditModal } from "./TaskEditModal";
 import { TaskCreateModal } from "./TaskCreateModal";
+import { TaskDetailPanel } from "./TaskDetailPanel";
 import { TaskEmptyState } from "./TaskEmptyState";
 import { apiFetch } from "../../lib/api";
 import { pluralize } from "../../lib/format";
@@ -51,6 +52,21 @@ export function TasksPage() {
   // Фильтр из URL-параметра
   const initialFilter = parseFilter(searchParams?.get("filter"));
   const [filter, setFilter] = useState<TaskFilter>(initialFilter);
+
+  const openTaskId = searchParams?.get("task") ?? null;
+
+  const openDetail = useCallback((id: string) => {
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.set("task", id);
+    router.replace(`/tasks?${params.toString()}`);
+  }, [router, searchParams]);
+
+  const closeDetail = useCallback(() => {
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.delete("task");
+    const qs = params.toString();
+    router.replace(qs ? `/tasks?${qs}` : "/tasks");
+  }, [router, searchParams]);
 
   const {
     tasks,
@@ -305,6 +321,7 @@ export function TasksPage() {
           onUpdate={handleUpdate}
           onDelete={handleDelete}
           onOpenEdit={setEditingTask}
+          onOpenDetail={openDetail}
         />
       )}
 
@@ -344,6 +361,16 @@ export function TasksPage() {
           }}
           onClose={() => setCreating(false)}
           assigneeOptions={assigneeOptions}
+        />
+      )}
+
+      {/* Панель деталей задачи (?task=<id>) */}
+      {openTaskId && user && (
+        <TaskDetailPanel
+          taskId={openTaskId}
+          currentUserId={user.userId}
+          isSuperAdmin={user.role === "SUPER_ADMIN"}
+          onClose={closeDetail}
         />
       )}
     </div>

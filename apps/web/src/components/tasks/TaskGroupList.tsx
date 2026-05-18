@@ -35,6 +35,7 @@ function TaskGroup({
   onUpdate,
   onDelete,
   onOpenEdit,
+  onOpenDetail,
 }: {
   bucket: TaskBucket;
   tasks: Task[];
@@ -43,6 +44,7 @@ function TaskGroup({
   onUpdate: (id: string, patch: Partial<Task>) => void;
   onDelete: (id: string) => void;
   onOpenEdit: (task: Task) => void;
+  onOpenDetail?: (id: string) => void;
 }) {
   const meta = BUCKET_META[bucket];
 
@@ -71,6 +73,7 @@ function TaskGroup({
             onUpdate={onUpdate}
             onDelete={onDelete}
             onOpenEdit={onOpenEdit}
+            onOpenDetail={onOpenDetail}
           />
         ))}
       </div>
@@ -87,6 +90,7 @@ interface TaskGroupListProps {
   onUpdate: (id: string, patch: Partial<Task>) => void;
   onDelete: (id: string) => void;
   onOpenEdit: (task: Task) => void;
+  onOpenDetail?: (id: string) => void;
 }
 
 export function TaskGroupList({
@@ -96,6 +100,7 @@ export function TaskGroupList({
   onUpdate,
   onDelete,
   onOpenEdit,
+  onOpenDetail,
 }: TaskGroupListProps) {
   const groups = useMemo(() => groupTasks(tasks), [tasks]);
 
@@ -119,6 +124,7 @@ export function TaskGroupList({
           onUpdate={onUpdate}
           onDelete={onDelete}
           onOpenEdit={onOpenEdit}
+          onOpenDetail={onOpenDetail}
         />
       ))}
 
@@ -142,6 +148,7 @@ export function TaskGroupList({
                 onUpdate={onUpdate}
                 onDelete={onDelete}
                 onOpenEdit={onOpenEdit}
+                onOpenDetail={onOpenDetail}
               />
             ))}
           </div>
