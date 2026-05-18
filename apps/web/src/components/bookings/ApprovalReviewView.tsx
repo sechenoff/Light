@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { apiFetch } from "../../lib/api";
-import { formatMoneyRub } from "../../lib/format";
+import { formatMoneyRub, pluralize } from "../../lib/format";
 import { StatusPill } from "../StatusPill";
 import { RoleBadge } from "../RoleBadge";
 import { RejectBookingModal } from "./RejectBookingModal";
@@ -100,6 +100,24 @@ function actionLabel(action: string): string {
     case "BOOKING_EDITED_IN_REVIEW": return "Изменено руководителем";
     default: return action;
   }
+}
+
+/**
+ * H4: количество полных циклов согласования (submit → approve/reject).
+ * `items` отсортированы ascending.
+ */
+function countCycles(items: AuditItem[]): number {
+  let cycles = 0;
+  let awaiting = false;
+  for (const it of items) {
+    if (it.action === "BOOKING_SUBMITTED") {
+      awaiting = true;
+    } else if (awaiting && (it.action === "BOOKING_APPROVED" || it.action === "BOOKING_REJECTED")) {
+      cycles++;
+      awaiting = false;
+    }
+  }
+  return cycles;
 }
 
 function actionDotClass(action: string): string {
@@ -417,16 +435,30 @@ export function ApprovalReviewView({ booking, onReload: _onReload, currentUser: 
             </div>
           )}
 
-          {/* History / Timeline card */}
-          <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-            <div className="border-b border-border bg-surface-subtle px-4 py-2.5">
-              <p className="eyebrow">История согласования</p>
-            </div>
+          {/* История согласования — H4: свёрнуто по умолчанию + счётчик циклов.
+              Раньше 14 циклов рендерились всегда раскрытыми и забивали экран. */}
+          <details className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden group">
+            <summary className="cursor-pointer select-none border-b border-border bg-surface-subtle px-4 py-2.5 flex items-center justify-between">
+              <span className="flex items-baseline gap-2">
+                <span className="eyebrow">История согласования</span>
+                {auditItems && auditItems.length > 0 && (() => {
+                  const cycles = countCycles(auditItems);
+                  return cycles > 1 ? (
+                    <span className="text-xs font-medium text-amber">
+                      {cycles} {pluralize(cycles, "цикл", "цикла", "циклов")}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-ink-3">({auditItems.length})</span>
+                  );
+                })()}
+              </span>
+              <span className="text-ink-3 group-open:rotate-180 transition-transform text-xs">▾</span>
+            </summary>
             {!auditItems || auditItems.length === 0 ? (
               <div className="p-4 text-sm text-ink-3">Нет событий</div>
             ) : (
               <ol className="divide-y divide-border px-4 py-1">
-                {auditItems.map((it) => {
+                {[...auditItems].reverse().map((it) => {
                   const reason =
                     it.action === "BOOKING_REJECTED" && it.after && typeof (it.after as { rejectionReason?: unknown }).rejectionReason === "string"
                       ? (it.after as { rejectionReason: string }).rejectionReason
@@ -455,7 +487,7 @@ export function ApprovalReviewView({ booking, onReload: _onReload, currentUser: 
                 })}
               </ol>
             )}
-          </div>
+          </details>
         </div>
 
         {/* Right column — sticky totals + actions */}
