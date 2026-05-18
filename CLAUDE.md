@@ -127,6 +127,11 @@ light-rental-system/
 | `apps/web/src/components/day/DayTasksWidget.tsx` | Dashboard widget on `/day` for all 3 roles: fetches `/api/dashboard/today` `myTasks`, shows ≤5 tasks with day chip, optimistic complete, empty state, link to `/tasks?filter=my` |
 | `apps/web/app/tasks/page.tsx` | Tasks main page shell: `useRequireRole` + Suspense wrapper for `<TasksPage />` |
 | `apps/web/app/tasks/history/page.tsx` | Tasks history page shell: `useRequireRole` + Suspense wrapper for `<TaskHistoryPage />` |
+| `apps/api/src/services/taskCollabService.ts` | Комментарии + чеклист CRUD: `$transaction` + `writeAuditEntry`; `enrichAuthors` join AdminUser (no FK) |
+| `apps/web/src/components/tasks/useTaskDetail.ts` | Консолидированный `GET /api/tasks/:id` + 8 s polling панели + оптимистичные мутации comment/checklist, `pollBlocked`-guard |
+| `apps/web/src/components/tasks/TaskDetailPanel.tsx` | Slide-over справа (`?task=` deep-link, focus-trap, Esc); композирует checklist + comments |
+| `apps/web/src/components/tasks/TaskComments.tsx` | Лента обсуждения + composer (⌘/Ctrl+Enter) |
+| `apps/web/src/components/tasks/TaskChecklist.tsx` | Упорядоченные пункты + прогресс-бар (compositor-friendly scaleX) |
 
 ## Commands
 
@@ -583,6 +588,13 @@ Prisma model `Task` (новый):
 | `/api/tasks/:id/reopen` | POST | Вернуть в работу (идемпотентно) |
 | `/api/dashboard/task-stats` | GET | `{myOpen, myOverdue, myToday, myUrgent}` для текущего пользователя |
 | `/api/dashboard/today` | GET | Включает `myTasks: TaskSummary[]` (до 5, overdue∪today∪urgent-undated) |
+| `/api/tasks/:id/comments` | POST | Добавить комментарий (все роли) |
+| `/api/tasks/:id/comments/:commentId` | DELETE | Удалить комментарий (автор или SUPER_ADMIN) |
+| `/api/tasks/:id/checklist` | POST | Добавить пункт чеклиста (creator/SA) |
+| `/api/tasks/:id/checklist/:itemId` | PATCH | Тогл `done` (creator/assignee/SA) или правка `text` (creator/SA) |
+| `/api/tasks/:id/checklist/:itemId` | DELETE | Удалить пункт (creator/SA) |
+
+`GET /api/tasks/:id` теперь возвращает `comments[]` (author-enriched, createdAt asc) + `checklist[]` (position asc). `GET /api/tasks` список — каждый элемент включает `commentCount: number` и `checklistSummary: { done, total }` (через Prisma `_count` + lightweight include, без N+1). Имя `checklistSummary` намеренно отличается от detail-поля `checklist[]` во избежание конфликта формы.
 
 ### Conventions (дополнение)
 
@@ -591,6 +603,10 @@ Prisma model `Task` (новый):
 - **Audit actions.** `TASK_CREATE / TASK_UPDATE / TASK_ASSIGN / TASK_COMPLETE / TASK_REOPEN / TASK_DELETE` — все пишутся в той же транзакции, что и мутация; `entityType: "Task"`. `TASK_ASSIGN` пишется отдельным action при изменении `assignedTo` (для поиска в аудите).
 - **History fetch.** `TaskHistoryPage` использует локальный `useEffect + useState` с `cancelled`-flag паттерном (не `useTasksQuery` — у него своя filter/optimistic семантика для главной страницы). Пагинация через `cursor` query param, кнопка «Загрузить ещё».
 - **DayTasksWidget.** Самостоятельно фетчит `/api/dashboard/today`, не получает данные через props. Graceful degradation: если `myTasks` отсутствует в ответе — показывает пустое состояние без ошибки.
+- **Task collab realtime.** Умный polling: список (`useTasksQuery`) 12 s, открытая панель (`useTaskDetail`) 8 s; пауза при `document.hidden`; `pollBlocked` ref не даёт поллу затереть in-flight оптимистичную мутацию (snapshot→apply→reconcile→rollback). SSE — задокументированный v2-путь (spec §10).
+- **Checklist toggles НЕ аудируются** (высокочастотны, прогресс самоочевиден). Аудируются только `TASK_COMMENT_ADD/DELETE` и `TASK_CHECKLIST_ADD/DELETE` — в той же транзакции, `entityType: "Task"`, `entityId: taskId`. PATCH чеклиста (`done`/`text`) аудит не пишет.
+- **HttpError → `res.body.code`.** Централизованный error-handler в `app.ts` теперь дублирует строковый 3-й аргумент `HttpError` в поле `code` (сохраняя `details`) — обратносовместимо; новые task-collab тесты ассертят `res.body.code`.
+- **Slide-over панель задач.** `?task=<id>` deep-link открывает `TaskDetailPanel` (router.replace, не push — закрытие через Esc/кнопку/backdrop, не засоряет историю); чипы `💬`/`☑` на карточке открывают панель кликом по телу (не по чекбоксу/inline-edit/⋯).
 
 ## Gaffer CRM — Sprint 2A (Contacts + PaymentMethods API)
 
