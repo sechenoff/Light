@@ -62,15 +62,14 @@ export type TransportBreakdown = {
   total: string;
 };
 
-/** Transport state on the booking form */
-export type TransportState = {
-  selectedVehicleId: string | null;
+/** Per-vehicle config on the booking form (multi-vehicle) */
+export type SelectedVehicle = {
+  vehicleId: string;
   withGenerator: boolean;
   shiftHours: number;
   skipOvertime: boolean;
   kmOutsideMkad: number;
   ttkEntry: boolean;
-  shiftHoursDirty: boolean; // true if user manually changed hours
 };
 
 /** Response from POST /api/bookings/quote */
@@ -87,8 +86,9 @@ export type QuoteResponse = {
   discountPercent: string;
   discountAmount: string;
   totalAfterDiscount: string;
-  // Transport
-  transport?: TransportBreakdown | null;
+  // Transport — array of per-vehicle breakdowns (empty when none) + summed subtotal
+  transport?: TransportBreakdown[] | null;
+  transportSubtotal?: string;
   grandTotal?: string;
   lines: Array<{
     equipmentId: string;

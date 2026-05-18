@@ -58,13 +58,41 @@ export type QuoteTransportResult = TransportBreakdown & {
   vehicleName: string;
 };
 
+/**
+ * Считает транспорт по одной машине: загружает Vehicle, вызывает
+ * чистый `computeTransportPrice`. Используется и в `quoteEstimate`,
+ * и в fallback-пересчёте старых броней.
+ */
+async function computeOneVehicle(
+  input: QuoteTransportInput,
+  client: Pick<Prisma.TransactionClient, "vehicle"> = prisma,
+): Promise<QuoteTransportResult> {
+  const vehicle = await client.vehicle.findUnique({ where: { id: input.vehicleId } });
+  if (!vehicle) throw new HttpError(400, `Vehicle not found: ${input.vehicleId}`);
+  const breakdown = computeTransportPrice({
+    vehicle: {
+      shiftPriceRub: vehicle.shiftPriceRub.toString(),
+      hasGeneratorOption: vehicle.hasGeneratorOption,
+      generatorPriceRub: vehicle.generatorPriceRub?.toString() ?? null,
+      shiftHours: vehicle.shiftHours,
+      overtimePercent: vehicle.overtimePercent.toString(),
+    },
+    withGenerator: input.withGenerator,
+    shiftHours: input.shiftHours,
+    skipOvertime: input.skipOvertime,
+    kmOutsideMkad: input.kmOutsideMkad,
+    ttkEntry: input.ttkEntry,
+  });
+  return { vehicleId: vehicle.id, vehicleName: vehicle.name, ...breakdown };
+}
+
 export async function quoteEstimate(args: {
   startDate: Date;
   endDate: Date;
   clientId: string;
   discountPercent?: number | null;
   items: Array<{ equipmentId?: string; customName?: string; customUnitPrice?: number; quantity: number }>;
-  transport?: QuoteTransportInput | null;
+  transport?: QuoteTransportInput[] | null;
   skipPartialDay?: boolean;
 }) {
   const shifts = billableShifts24h(args.startDate, args.endDate, args.skipPartialDay ?? false);
@@ -125,30 +153,17 @@ export async function quoteEstimate(args: {
   // Legacy alias
   const totalAfterDiscount = equipmentTotal;
 
-  // Transport — isolated from discount
-  let transport: QuoteTransportResult | null = null;
-  if (args.transport) {
-    const vehicle = await prisma.vehicle.findUnique({ where: { id: args.transport.vehicleId } });
-    if (!vehicle) throw new HttpError(400, `Vehicle not found: ${args.transport.vehicleId}`);
-    const breakdown = computeTransportPrice({
-      vehicle: {
-        shiftPriceRub: vehicle.shiftPriceRub.toString(),
-        hasGeneratorOption: vehicle.hasGeneratorOption,
-        generatorPriceRub: vehicle.generatorPriceRub?.toString() ?? null,
-        shiftHours: vehicle.shiftHours,
-        overtimePercent: vehicle.overtimePercent.toString(),
-      },
-      withGenerator: args.transport.withGenerator,
-      shiftHours: args.transport.shiftHours,
-      skipOvertime: args.transport.skipOvertime,
-      kmOutsideMkad: args.transport.kmOutsideMkad,
-      ttkEntry: args.transport.ttkEntry,
-    });
-    transport = { vehicleId: vehicle.id, vehicleName: vehicle.name, ...breakdown };
+  // Transport — isolated from discount. Per-vehicle: each entry computed
+  // independently, transportSubtotal = Decimal sum of each .total.
+  const transport: QuoteTransportResult[] = [];
+  if (args.transport && args.transport.length > 0) {
+    for (const entry of args.transport) {
+      transport.push(await computeOneVehicle(entry));
+    }
   }
 
-  const transportTotal = transport ? new Decimal(transport.total) : new Decimal(0);
-  const grandTotal = equipmentTotal.add(transportTotal);
+  const transportSubtotal = sumDec(transport.map((t) => new Decimal(t.total)));
+  const grandTotal = equipmentTotal.add(transportSubtotal);
 
   return {
     shifts,
@@ -160,7 +175,8 @@ export async function quoteEstimate(args: {
     equipmentDiscount: discountAmount,
     totalAfterDiscount,    // legacy alias = equipmentTotal
     equipmentTotal,
-    transport,
+    transport,             // QuoteTransportResult[] — empty array when no transport
+    transportSubtotal,     // Decimal sum of all transport[].total
     grandTotal,
   };
 }
@@ -172,7 +188,8 @@ export type BookingTransportSnapshot = {
   skipOvertime: boolean;
   kmOutsideMkad: number;
   ttkEntry: boolean;
-  transportSubtotalRub: string;
+  /** Сумма по этой конкретной машине (per-row subtotal). */
+  subtotalRub: string;
 };
 
 export async function createBookingDraft(args: {
@@ -187,9 +204,14 @@ export async function createBookingDraft(args: {
   estimateIncludeOptionalInExport?: boolean;
   skipPartialDay?: boolean;
   items: Array<{ equipmentId?: string; customName?: string; customUnitPrice?: number; quantity: number }>;
-  transport?: BookingTransportSnapshot | null;
+  transport?: BookingTransportSnapshot[] | null;
 }) {
   if (args.items.length === 0) throw new HttpError(400, "At least one equipment item is required.");
+
+  const transportRows = args.transport ?? [];
+  const transportSubtotal = sumDec(
+    transportRows.map((t) => new Decimal(t.subtotalRub)),
+  );
 
   // Если явная дата оплаты не передана — вычисляем из настроек организации
   const resolvedPaymentDate =
@@ -210,16 +232,24 @@ export async function createBookingDraft(args: {
       estimateOptionalNote: args.estimateOptionalNote?.trim() || null,
       estimateIncludeOptionalInExport: args.estimateIncludeOptionalInExport ?? false,
       skipPartialDay: args.skipPartialDay ?? false,
-      // Transport snapshot
-      vehicleId: args.transport?.vehicleId ?? null,
-      vehicleWithGenerator: args.transport?.withGenerator ?? false,
-      vehicleShiftHours: args.transport?.shiftHours != null ? new Decimal(args.transport.shiftHours) : null,
-      vehicleSkipOvertime: args.transport?.skipOvertime ?? false,
-      vehicleKmOutsideMkad: args.transport?.kmOutsideMkad ?? null,
-      vehicleTtkEntry: args.transport?.ttkEntry ?? false,
-      transportSubtotalRub: args.transport?.transportSubtotalRub != null
-        ? new Decimal(args.transport.transportSubtotalRub)
-        : null,
+      // Transport snapshot — multi-vehicle via `vehicles[]`. Legacy single
+      // columns left at defaults (null/false) for new bookings; only
+      // `transportSubtotalRub` (the total) is populated for back-compat with
+      // existing readers (PATCH finalAmount recompute, detail page).
+      transportSubtotalRub: transportRows.length > 0 ? transportSubtotal : null,
+      vehicles: transportRows.length > 0
+        ? {
+            create: transportRows.map((t) => ({
+              vehicleId: t.vehicleId,
+              withGenerator: t.withGenerator,
+              shiftHours: new Decimal(t.shiftHours),
+              skipOvertime: t.skipOvertime,
+              kmOutsideMkad: t.kmOutsideMkad,
+              ttkEntry: t.ttkEntry,
+              subtotalRub: new Decimal(t.subtotalRub),
+            })),
+          }
+        : undefined,
       items: {
         create: args.items.map((it) => {
           if (it.equipmentId) {
@@ -252,9 +282,6 @@ export async function createBookingDraft(args: {
         transport: null,
         skipPartialDay: args.skipPartialDay ?? false,
       });
-      const transportSubtotal = args.transport?.transportSubtotalRub
-        ? new Decimal(args.transport.transportSubtotalRub)
-        : new Decimal(0);
       const equipmentAfterDiscount = new Decimal(quote.totalAfterDiscount);
       const finalAmount = equipmentAfterDiscount.add(transportSubtotal);
       await prisma.booking.update({
@@ -272,9 +299,63 @@ export async function createBookingDraft(args: {
 
   const withTotals = await prisma.booking.findUnique({
     where: { id: booking.id },
-    include: { items: true },
+    include: { items: true, vehicles: { include: { vehicle: true } } },
   });
   return withTotals!;
+}
+
+/**
+ * Вычисляет суммарную стоимость транспорта брони.
+ *
+ * Multi-vehicle: если у брони есть `vehicles[]` — пересчитываем каждую через
+ * `computeOneVehicle` (актуальные цены машин). Иначе — fallback на legacy
+ * одиночные `vehicle*` колонки (старые брони продолжают считаться корректно).
+ * Нет ни того, ни другого ⇒ Decimal(0).
+ */
+async function computeBookingTransportSubtotal(booking: {
+  vehicles?: Array<{
+    vehicleId: string;
+    withGenerator: boolean;
+    shiftHours: Prisma.Decimal | null;
+    skipOvertime: boolean;
+    kmOutsideMkad: number | null;
+    ttkEntry: boolean;
+  }>;
+  vehicleId: string | null;
+  vehicleWithGenerator: boolean;
+  vehicleShiftHours: Prisma.Decimal | null;
+  vehicleSkipOvertime: boolean;
+  vehicleKmOutsideMkad: number | null;
+  vehicleTtkEntry: boolean;
+}): Promise<Decimal> {
+  if (booking.vehicles && booking.vehicles.length > 0) {
+    let sum = new Decimal(0);
+    for (const v of booking.vehicles) {
+      const result = await computeOneVehicle({
+        vehicleId: v.vehicleId,
+        withGenerator: v.withGenerator,
+        shiftHours: v.shiftHours != null ? Number(v.shiftHours.toString()) : 12,
+        skipOvertime: v.skipOvertime,
+        kmOutsideMkad: v.kmOutsideMkad ?? 0,
+        ttkEntry: v.ttkEntry,
+      });
+      sum = sum.add(new Decimal(result.total));
+    }
+    return sum;
+  }
+  // Legacy fallback: single vehicle columns (старые брони)
+  if (booking.vehicleId) {
+    const result = await computeOneVehicle({
+      vehicleId: booking.vehicleId,
+      withGenerator: booking.vehicleWithGenerator,
+      shiftHours: booking.vehicleShiftHours != null ? Number(booking.vehicleShiftHours.toString()) : 12,
+      skipOvertime: booking.vehicleSkipOvertime,
+      kmOutsideMkad: booking.vehicleKmOutsideMkad ?? 0,
+      ttkEntry: booking.vehicleTtkEntry,
+    });
+    return new Decimal(result.total);
+  }
+  return new Decimal(0);
 }
 
 /**
@@ -289,10 +370,26 @@ export async function rebuildBookingEstimate(bookingId: string) {
       include: {
         items: { include: { equipment: true } },
         estimate: true,
+        vehicles: true,
       },
     });
     if (!booking) throw new HttpError(404, "Booking not found.");
     if (booking.items.length === 0) return null;
+
+    // Transport: пересчитываем суммарную стоимость из `vehicles[]`
+    // (новые брони) или legacy одиночных колонок (старые брони) и
+    // обновляем `transportSubtotalRub` — он остаётся источником истины
+    // для finalAmount/детальной страницы.
+    const transportSubtotal = await computeBookingTransportSubtotal(booking);
+    await tx.booking.update({
+      where: { id: bookingId },
+      data: {
+        transportSubtotalRub:
+          booking.vehicles.length > 0 || booking.vehicleId
+            ? transportSubtotal
+            : booking.transportSubtotalRub,
+      },
+    });
 
     const shifts = billableShifts24h(booking.startDate, booking.endDate, booking.skipPartialDay ?? false);
 
@@ -389,11 +486,16 @@ export async function confirmBooking(bookingId: string) {
           },
         },
         estimate: true,
+        vehicles: true,
       },
     });
     if (!booking) throw new HttpError(404, "Booking not found.");
     if (booking.status === "CONFIRMED" || booking.status === "ISSUED") return booking;
     if (booking.items.length === 0) throw new HttpError(400, "Booking items are empty.");
+
+    // Transport: пересчитываем суммарную стоимость из `vehicles[]`
+    // (новые брони) либо legacy одиночных колонок (старые брони).
+    const confirmTransportSubtotal = await computeBookingTransportSubtotal(booking);
 
     // Только каталожные позиции участвуют в проверке доступности и резервировании
     const catalogBookingItems = booking.items.filter((it) => it.equipmentId != null);
@@ -621,6 +723,11 @@ export async function confirmBooking(bookingId: string) {
         status: "CONFIRMED",
         confirmedAt: new Date(),
         ...(paymentDateUpdate ? { expectedPaymentDate: paymentDateUpdate } : {}),
+        // Refresh transport subtotal from vehicles[]/legacy fallback so
+        // approval recomputes old bookings' transport correctly.
+        ...(booking.vehicles.length > 0 || booking.vehicleId
+          ? { transportSubtotalRub: confirmTransportSubtotal }
+          : {}),
         estimate: {
           create: estimateCreate,
         },
@@ -629,6 +736,7 @@ export async function confirmBooking(bookingId: string) {
         client: true,
         items: { include: { equipment: true } },
         estimate: { include: { lines: true } },
+        vehicles: { include: { vehicle: true } },
       },
     });
 

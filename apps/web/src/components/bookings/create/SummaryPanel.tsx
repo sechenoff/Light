@@ -22,8 +22,8 @@ type SummaryPanelProps = {
   selectedItems?: Map<string, CatalogSelectedItem>;
   offCatalogItems?: OffCatalogItem[];
   customItems?: CustomItem[];
-  selectedVehicleName?: string | null;
-  localTransport?: TransportBreakdown | null;
+  /** Per-vehicle breakdowns (multi-vehicle). Empty when no transport. */
+  transportBreakdowns?: TransportBreakdown[];
   onRemoveItem?: (equipmentId: string) => void;
   onRemoveOffCatalog?: (tempId: string) => void;
   onRemoveCustom?: (tempId: string) => void;
@@ -58,8 +58,7 @@ export function SummaryPanel({
   selectedItems,
   offCatalogItems,
   customItems,
-  selectedVehicleName,
-  localTransport,
+  transportBreakdowns,
   onRemoveItem,
   onRemoveOffCatalog,
   onRemoveCustom,
@@ -73,10 +72,10 @@ export function SummaryPanel({
   const discPct = quote ? Number(quote.discountPercent) : discountPercent;
   const effectiveShifts = quote ? quote.shifts : shifts;
 
-  // Transport: prefer server quote, fallback to local calculation
-  const transport = quote?.transport ?? localTransport ?? null;
-  const transportTotal = transport ? Number(transport.total) : 0;
-  const vehicleName = transport?.vehicleName ?? selectedVehicleName ?? null;
+  // Transport: prefer server quote, fallback to local calculation.
+  // Multi-vehicle: array of per-vehicle breakdowns; total = sum.
+  const transportRows = quote?.transport ?? transportBreakdowns ?? [];
+  const transportTotal = transportRows.reduce((acc, t) => acc + Number(t.total), 0);
 
   // Grand total: prefer server, fallback to local
   const grandTotal = quote?.grandTotal
@@ -150,14 +149,12 @@ export function SummaryPanel({
             </div>
           </>
         )}
-        {transportTotal > 0 && (
-          <div className="flex justify-between">
-            <span className="text-ink-2">
-              Транспорт{vehicleName ? ` (${vehicleName})` : ""}
-            </span>
-            <span className="mono-num text-ink">{formatMoneyRub(transportTotal)} ₽</span>
+        {transportRows.map((t) => (
+          <div key={t.vehicleId} className="flex justify-between">
+            <span className="text-ink-2">Транспорт ({t.vehicleName})</span>
+            <span className="mono-num text-ink">{formatMoneyRub(Number(t.total))} ₽</span>
           </div>
-        )}
+        ))}
         <div className="flex justify-between border-t border-border pt-1 font-semibold">
           <span className="text-ink">Итого</span>
           <span className="mono-num text-ink">{formatMoneyRub(grandTotal)} ₽</span>

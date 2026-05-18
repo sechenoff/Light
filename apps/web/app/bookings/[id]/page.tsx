@@ -112,6 +112,18 @@ type BookingDetail = {
     }>;
   };
   // Transport snapshot — flat add-on, не участвует в скидке оборудования.
+  // Multi-vehicle: vehicles[]. Legacy single columns kept for old bookings.
+  vehicles?: Array<{
+    id: string;
+    vehicleId: string;
+    vehicle?: { id: string; name: string; slug: string } | null;
+    withGenerator: boolean;
+    shiftHours: string | null;
+    skipOvertime: boolean;
+    kmOutsideMkad: number | null;
+    ttkEntry: boolean;
+    subtotalRub: string | null;
+  }>;
   vehicleId?: string | null;
   transportSubtotalRub?: string | null;
   vehicle?: { id: string; name: string; slug: string } | null;
@@ -665,7 +677,10 @@ export default function BookingDetailPage() {
                       ? Number(booking.estimate.totalAfterDiscount)
                       : Number(booking.finalAmount ?? "0") - Number(booking.transportSubtotalRub ?? "0");
                     const transport = Number(booking.transportSubtotalRub ?? "0");
-                    const hasTransport = Boolean(booking.vehicleId) && transport > 0;
+                    const transportVehicles = booking.vehicles ?? [];
+                    const hasMultiVehicles = transportVehicles.length > 0;
+                    const hasTransport =
+                      (hasMultiVehicles || Boolean(booking.vehicleId)) && transport > 0;
                     const finalNum = Number(booking.finalAmount ?? "0");
                     const discount = booking.estimate ? Number(booking.estimate.discountAmount) : Number(booking.discountAmount ?? "0");
                     const rentBeforeDiscount = booking.estimate ? Number(booking.estimate.subtotal) : Number(booking.totalEstimateAmount ?? "0");
@@ -691,7 +706,21 @@ export default function BookingDetailPage() {
                           <span className="text-ink-2">Аренда после скидки</span>
                           <span className="mono-num text-ink-2">{formatMoneyRub(equipAfterDiscount)}</span>
                         </div>
-                        {hasTransport && (
+                        {hasTransport && hasMultiVehicles && (
+                          <>
+                            {transportVehicles.map((v) => (
+                              <div key={v.id} className="flex justify-between">
+                                <span className="text-ink-2">
+                                  Транспорт{v.vehicle?.name ? ` (${v.vehicle.name})` : ""}
+                                </span>
+                                <span className="mono-num text-ink-2">
+                                  +{formatMoneyRub(v.subtotalRub ?? "0")}
+                                </span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                        {hasTransport && !hasMultiVehicles && (
                           <div className="flex justify-between">
                             <span className="text-ink-2">
                               Доставка / транспорт{booking.vehicle?.name ? ` (${booking.vehicle.name})` : ""}
@@ -987,12 +1016,13 @@ export default function BookingDetailPage() {
                     <span className="font-semibold text-ink">После скидки</span>
                     <span className="font-semibold text-ink mono-num">{formatMoneyRub(booking.estimate.totalAfterDiscount)}</span>
                   </div>
-                  {Boolean(booking.vehicleId) && Number(booking.transportSubtotalRub ?? "0") > 0 && (
-                    <div className="text-xs text-ink-3 rounded bg-surface-subtle px-2 py-1.5">
-                      Без транспорта. Полная сумма к оплате — в блоке «Финансы» выше
-                      ({formatMoneyRub(booking.finalAmount ?? "0")}).
-                    </div>
-                  )}
+                  {((booking.vehicles?.length ?? 0) > 0 || Boolean(booking.vehicleId)) &&
+                    Number(booking.transportSubtotalRub ?? "0") > 0 && (
+                      <div className="text-xs text-ink-3 rounded bg-surface-subtle px-2 py-1.5">
+                        Без транспорта. Полная сумма к оплате — в блоке «Финансы» выше
+                        ({formatMoneyRub(booking.finalAmount ?? "0")}).
+                      </div>
+                    )}
 
                   <div className="flex gap-2 no-print">
                     <button

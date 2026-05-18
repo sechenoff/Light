@@ -1,10 +1,11 @@
 {
-  "sprint": "instant-recalc-skippartial",
-  "feature": "instant estimate recalc on «не считать вторые сутки» toggle",
+  "sprint": "multi-vehicle",
+  "feature": "multiple distinct vehicles per booking, per-vehicle params, summed transport",
   "claude_product": "ACCEPTED",
-  "technical_review": "self (trivial 4-line frontend reactivity fix, 270/270 web tests green)",
-  "ts": "2026-05-18T23:42:00+03:00",
-  "tests": { "web": { "files": 40, "tests": 270, "status": "passed" } },
-  "tsc": { "web": "clean (excl pre-existing formatWaitingTime.test.ts TS2578)" },
-  "notes": "Bug: BookingForm debounced /quote effect dep array omitted skipPartialDay → toggling the checkbox never re-fetched the server estimate (only the local label updated via rentalDuration useMemo). Fix: (1) add skipPartialDay to the effect deps; (2) prevSkipPartialRef tracks the flag — when it changed (discrete checkbox click) debounceMs=0 (instant recalc), otherwise 500ms (typing stays debounced, no /quote spam). Edit/mount init: prevSkipPartialRef seeded from initial skipPartialDay → no spurious instant on load. Early-return-before-ref-update path only yields at-worst one harmlessly-fast quote when completing an incomplete form post-toggle (no wrong data). Web-only, no API/schema change."
+  "technical_review": "APPROVE (after fixes — was BLOCK: 1 HIGH+2 MED+1 LOW, all resolved)",
+  "provider": "typescript-reviewer",
+  "ts": "2026-05-19T00:00:00+03:00",
+  "tests": { "api": { "files": 81, "tests": 960, "status": "passed" }, "web": { "files": 41, "tests": 282, "status": "passed" } },
+  "tsc": { "api": "exit 0", "web": "exit 0" },
+  "notes": "New BookingVehicle child table (@@unique([bookingId,vehicleId]), Cascade) — additive, legacy Booking.vehicle* columns kept for back-compat read fallback. quoteEstimate/createBookingDraft/rebuildBookingEstimate/confirmBooking handle vehicle arrays; transportSubtotal = Decimal sum of per-vehicle computeTransportPrice totals; computeBookingTransportSubtotal prefers vehicles[] else legacy single-column fallback. Zod transportSchema = array + .refine distinct vehicleId (dup→400). Serializer exposes vehicles[] (+explicit transportSubtotalRub.toString). Frontend: TransportCard multi-select + per-vehicle param cards + total; BookingForm array state + edit hydration (vehicles[] else legacy); transportClientCalc Decimal sum mirrors server. Idempotent backfill-booking-vehicles.ts (dry-run default). PATCH transport edits intentionally NOT wired (v1) but serializes vehicles[]. Review BLOCK→resolved: HIGH dryRun POST/PATCH omitted transport from preview (fixed: pass transport, return transport/transportSubtotal/grandTotal matching real-save finalAmount, tests added); MED client float sum→Decimal parity; MED explicit transportSubtotalRub serialization; LOW stale JSDoc. Deploy needs prisma db push (additive) + backfill script run on prod."
 }

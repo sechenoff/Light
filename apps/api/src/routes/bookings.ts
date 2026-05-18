@@ -45,14 +45,30 @@ const bookingItemSchema = z
     { message: "Укажите либо equipmentId, либо customName + customUnitPrice" },
   );
 
-const transportSchema = z.object({
+const transportVehicleSchema = z.object({
   vehicleId: z.string().min(1),
   withGenerator: z.boolean().default(false),
   shiftHours: z.number().int().min(0).default(12),
   skipOvertime: z.boolean().default(false),
   kmOutsideMkad: z.number().int().min(0).default(0),
   ttkEntry: z.boolean().default(false),
-}).optional().nullable();
+});
+
+/**
+ * Транспорт брони: массив машин, у каждой свои параметры (per-row).
+ * Машины должны быть DISTINCT (одна и та же машина не дважды).
+ */
+const transportSchema = z
+  .array(transportVehicleSchema)
+  .refine(
+    (rows) => {
+      const ids = rows.map((r) => r.vehicleId);
+      return new Set(ids).size === ids.length;
+    },
+    { message: "Одна машина не может быть выбрана дважды" },
+  )
+  .optional()
+  .nullable();
 
 const bookingCreateSchema = z.object({
   client: z.object({
@@ -235,6 +251,7 @@ router.get("/:id", async (req, res, next) => {
         items: { include: { equipment: true } },
         estimate: { include: { lines: true } },
         vehicle: true,
+        vehicles: { include: { vehicle: true }, orderBy: { createdAt: "asc" } },
         financeEvents: { orderBy: { createdAt: "desc" }, take: 100 },
         payments: {
           where: { direction: "INCOME", OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }] },
@@ -330,8 +347,21 @@ router.patch("/:id", async (req, res, next) => {
               ? Number(existing.discountPercent)
               : null,
         items: itemsAfter,
+        transport: body.transport ?? null,
         skipPartialDay: body.skipPartialDay !== undefined ? body.skipPartialDay : (existing.skipPartialDay ?? false),
       });
+
+      // grandTotal mirrors the non-dryRun PATCH path: equipment total-after-discount
+      // + transportSubtotal. When the dryRun body carries `transport`, use that;
+      // otherwise fall back to the booking's persisted transportSubtotalRub
+      // (PATCH v1 doesn't mutate transport — same source as the wasInReview recompute).
+      const dryRunTransportSubtotal =
+        body.transport != null
+          ? estimate.transportSubtotal
+          : existing.transportSubtotalRub
+            ? new Decimal(existing.transportSubtotalRub.toString())
+            : new Decimal(0);
+      const dryRunGrandTotal = estimate.totalAfterDiscount.add(dryRunTransportSubtotal);
 
       res.json({
         dryRun: true,
@@ -348,6 +378,11 @@ router.patch("/:id", async (req, res, next) => {
             discountPercent: estimate.discountPercent.toString(),
             discountAmount: estimate.discountAmount.toDecimalPlaces(2).toString(),
             totalAfterDiscount: estimate.totalAfterDiscount.toDecimalPlaces(2).toString(),
+            // Transport — array of per-vehicle breakdowns (empty when none) + summed subtotal
+            transport: estimate.transport,
+            transportSubtotal: dryRunTransportSubtotal.toFixed(2),
+            // Grand total = equipment-after-discount + transportSubtotal (same as persisted finalAmount)
+            grandTotal: dryRunGrandTotal.toFixed(2),
             lines: estimate.lines.map((l) => ({
               equipmentId: l.equipmentId,
               nameSnapshot: l.nameSnapshot,
@@ -502,12 +537,15 @@ router.patch("/:id", async (req, res, next) => {
     }
 
     // Перечитываем бронь после пересчёта, чтобы вернуть актуальные суммы.
+    // Включаем vehicles[] для гидрации формы редактирования (PATCH не меняет
+    // транспорт в v1, но клиенту нужны машины для отображения/правок).
     const freshBooking = await prisma.booking.findUnique({
       where: { id },
       include: {
         client: true,
         items: { include: { equipment: true } },
         estimate: { include: { lines: true } },
+        vehicles: { include: { vehicle: true }, orderBy: { createdAt: "asc" } },
       },
     });
 
@@ -721,8 +759,9 @@ router.post("/quote", async (req, res, next) => {
       discountPercent: estimate.discountPercent.toString(),
       discountAmount: estimate.discountAmount.toFixed(2),
       totalAfterDiscount: estimate.totalAfterDiscount.toFixed(2),
-      // Transport
-      transport: estimate.transport ?? null,
+      // Transport — array of per-vehicle breakdowns (empty when none) + summed subtotal
+      transport: estimate.transport,
+      transportSubtotal: estimate.transportSubtotal.toFixed(2),
       // Grand total
       grandTotal: estimate.grandTotal.toFixed(2),
       lines: estimate.lines.map((l) => ({
@@ -871,6 +910,7 @@ router.post("/draft", async (req, res, next) => {
         clientId: clientIdForQuote,
         discountPercent: body.discountPercent ?? null,
         items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+        transport: body.transport ?? null,
         skipPartialDay: body.skipPartialDay ?? false,
       });
 
@@ -894,6 +934,12 @@ router.post("/draft", async (req, res, next) => {
             discountPercent: estimate.discountPercent.toString(),
             discountAmount: estimate.discountAmount.toDecimalPlaces(2).toString(),
             totalAfterDiscount: estimate.totalAfterDiscount.toDecimalPlaces(2).toString(),
+            // Transport — mirrors the non-dryRun /draft (finalAmount includes transport)
+            // and the /quote response shape exactly.
+            transport: estimate.transport,
+            transportSubtotal: estimate.transportSubtotal.toFixed(2),
+            // Grand total = equipment-after-discount + transportSubtotal (== persisted finalAmount)
+            grandTotal: estimate.grandTotal.toFixed(2),
             lines: estimate.lines.map((l) => ({
               equipmentId: l.equipmentId,
               nameSnapshot: l.nameSnapshot,
@@ -925,35 +971,46 @@ router.post("/draft", async (req, res, next) => {
       },
     });
 
-    // Compute transport snapshot if provided
-    let transportSnapshot = null;
-    if (body.transport) {
-      const vehicleForDraft = await prisma.vehicle.findUnique({ where: { id: body.transport.vehicleId } });
-      if (!vehicleForDraft) throw new HttpError(400, `Vehicle not found: ${body.transport.vehicleId}`);
+    // Compute per-vehicle transport snapshots if provided
+    let transportSnapshots: Array<{
+      vehicleId: string;
+      withGenerator: boolean;
+      shiftHours: number;
+      skipOvertime: boolean;
+      kmOutsideMkad: number;
+      ttkEntry: boolean;
+      subtotalRub: string;
+    }> | null = null;
+    if (body.transport && body.transport.length > 0) {
       const { computeTransportPrice: calcTransport } = await import("../services/transportCalculator");
-      const breakdown = calcTransport({
-        vehicle: {
-          shiftPriceRub: vehicleForDraft.shiftPriceRub.toString(),
-          hasGeneratorOption: vehicleForDraft.hasGeneratorOption,
-          generatorPriceRub: vehicleForDraft.generatorPriceRub?.toString() ?? null,
-          shiftHours: vehicleForDraft.shiftHours,
-          overtimePercent: vehicleForDraft.overtimePercent.toString(),
-        },
-        withGenerator: body.transport.withGenerator,
-        shiftHours: body.transport.shiftHours,
-        skipOvertime: body.transport.skipOvertime,
-        kmOutsideMkad: body.transport.kmOutsideMkad,
-        ttkEntry: body.transport.ttkEntry,
-      });
-      transportSnapshot = {
-        vehicleId: body.transport.vehicleId,
-        withGenerator: body.transport.withGenerator,
-        shiftHours: body.transport.shiftHours,
-        skipOvertime: body.transport.skipOvertime,
-        kmOutsideMkad: body.transport.kmOutsideMkad,
-        ttkEntry: body.transport.ttkEntry,
-        transportSubtotalRub: breakdown.total,
-      };
+      transportSnapshots = [];
+      for (const entry of body.transport) {
+        const vehicleForDraft = await prisma.vehicle.findUnique({ where: { id: entry.vehicleId } });
+        if (!vehicleForDraft) throw new HttpError(400, `Vehicle not found: ${entry.vehicleId}`);
+        const breakdown = calcTransport({
+          vehicle: {
+            shiftPriceRub: vehicleForDraft.shiftPriceRub.toString(),
+            hasGeneratorOption: vehicleForDraft.hasGeneratorOption,
+            generatorPriceRub: vehicleForDraft.generatorPriceRub?.toString() ?? null,
+            shiftHours: vehicleForDraft.shiftHours,
+            overtimePercent: vehicleForDraft.overtimePercent.toString(),
+          },
+          withGenerator: entry.withGenerator,
+          shiftHours: entry.shiftHours,
+          skipOvertime: entry.skipOvertime,
+          kmOutsideMkad: entry.kmOutsideMkad,
+          ttkEntry: entry.ttkEntry,
+        });
+        transportSnapshots.push({
+          vehicleId: entry.vehicleId,
+          withGenerator: entry.withGenerator,
+          shiftHours: entry.shiftHours,
+          skipOvertime: entry.skipOvertime,
+          kmOutsideMkad: entry.kmOutsideMkad,
+          ttkEntry: entry.ttkEntry,
+          subtotalRub: breakdown.total,
+        });
+      }
     }
 
     const booking = await createBookingDraft({
@@ -968,7 +1025,7 @@ router.post("/draft", async (req, res, next) => {
       estimateIncludeOptionalInExport: body.estimateIncludeOptionalInExport ?? false,
       skipPartialDay: body.skipPartialDay ?? false,
       items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
-      transport: transportSnapshot,
+      transport: transportSnapshots,
     });
 
     res.json({ booking: serializeBookingForApi(booking as any) });
