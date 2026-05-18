@@ -20,6 +20,8 @@ export interface Task {
   assignedToUser?: { id: string; username: string } | null;
   createdByUser?: { id: string; username: string } | null;
   completedByUser?: { id: string; username: string } | null;
+  commentCount?: number;
+  checklistSummary?: { done: number; total: number };
 }
 
 // ── bucketOf ──────────────────────────────────────────────────────────────────
