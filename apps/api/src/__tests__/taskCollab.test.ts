@@ -173,3 +173,18 @@ describe("Checklist", () => {
     expect(audit).toHaveLength(1);
   });
 });
+
+describe("GET /api/tasks/:id with collab", () => {
+  it("returns enriched comments (asc) + ordered checklist", async () => {
+    const task = await makeTask(AUTH_SA());
+    await request(app).post(`/api/tasks/${task.id}/comments`).set(AUTH_WH()).send({ body: "первый" });
+    await request(app).post(`/api/tasks/${task.id}/comments`).set(AUTH_SA()).send({ body: "второй" });
+    await request(app).post(`/api/tasks/${task.id}/checklist`).set(AUTH_SA()).send({ text: "A" });
+    await request(app).post(`/api/tasks/${task.id}/checklist`).set(AUTH_SA()).send({ text: "B" });
+    const res = await request(app).get(`/api/tasks/${task.id}`).set(AUTH_SA());
+    expect(res.status).toBe(200);
+    expect(res.body.task.comments.map((c: any) => c.body)).toEqual(["первый", "второй"]);
+    expect(res.body.task.comments[0].authorUser.username).toBe("tc_wh");
+    expect(res.body.task.checklist.map((i: any) => i.text)).toEqual(["A", "B"]);
+  });
+});

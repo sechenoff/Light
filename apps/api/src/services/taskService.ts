@@ -10,6 +10,7 @@ import { prisma } from "../prisma";
 import { writeAuditEntry, diffFields } from "./audit";
 import { HttpError } from "../utils/errors";
 import { fromMoscowDateString, moscowTodayStart, addDays } from "../utils/moscowDate";
+import { listComments, listChecklist } from "./taskCollabService";
 
 type Actor = {
   userId: string;
@@ -395,11 +396,18 @@ export async function getTask(id: string) {
 
   const userMap = new Map(users.map((u) => [u.id, u]));
 
+  const [comments, checklist] = await Promise.all([
+    listComments(task.id),
+    listChecklist(task.id),
+  ]);
+
   return {
     ...task,
     createdByUser: userMap.get(task.createdBy) ?? null,
     assignedToUser: task.assignedTo ? (userMap.get(task.assignedTo) ?? null) : null,
     completedByUser: task.completedBy ? (userMap.get(task.completedBy) ?? null) : null,
+    comments,
+    checklist,
   };
 }
 

@@ -143,7 +143,13 @@ tasksRouter.get(
   async (req, res, next) => {
     try {
       const task = await getTask(req.params.id);
-      res.json({ task: serializeTask(task) });
+      res.json({
+        task: {
+          ...serializeTask(task),
+          comments: (task.comments ?? []).map(serializeComment),
+          checklist: (task.checklist ?? []).map(serializeChecklistItem),
+        },
+      });
     } catch (err) {
       next(err);
     }
