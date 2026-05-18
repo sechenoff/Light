@@ -23,6 +23,7 @@ import {
   getTask,
   enrichTasksWithUsers,
 } from "../services/taskService";
+import { addComment, deleteComment, listComments } from "../services/taskCollabService";
 
 async function enrichOne<T extends { createdBy: string; assignedTo: string | null; completedBy: string | null }>(
   task: T,
@@ -62,6 +63,8 @@ const listQuerySchema = z.object({
   cursor: z.string().optional(),
 });
 
+const commentBodySchema = z.object({ body: z.string().trim().min(1, "Пустой комментарий").max(5000) });
+
 // ─── Serializer ──────────────────────────────────────────────────────────────
 
 function serializeTask(t: any) {
@@ -72,6 +75,10 @@ function serializeTask(t: any) {
     createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
     updatedAt: t.updatedAt instanceof Date ? t.updatedAt.toISOString() : t.updatedAt,
   };
+}
+
+function serializeComment(c: any) {
+  return { ...c, createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt };
 }
 
 // ─── GET / ────────────────────────────────────────────────────────────────────
@@ -190,3 +197,22 @@ tasksRouter.delete(
     }
   },
 );
+
+// ─── Comments ─────────────────────────────────────────────────────────────────
+
+tasksRouter.post("/:id/comments", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), async (req, res, next) => {
+  try {
+    const { body } = commentBodySchema.parse(req.body);
+    const actor = { userId: req.adminUser!.userId, role: req.adminUser!.role as any };
+    const comment = await addComment(req.params.id, body, actor);
+    res.status(201).json({ comment: serializeComment(comment) });
+  } catch (err) { next(err); }
+});
+
+tasksRouter.delete("/:id/comments/:commentId", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), async (req, res, next) => {
+  try {
+    const actor = { userId: req.adminUser!.userId, role: req.adminUser!.role as any };
+    const result = await deleteComment(req.params.id, req.params.commentId, actor);
+    res.json(result);
+  } catch (err) { next(err); }
+});

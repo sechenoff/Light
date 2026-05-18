@@ -76,7 +76,13 @@ app.use(router);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err instanceof HttpError) {
-    return res.status(err.status).json({ message: err.message, details: err.details });
+    return res.status(err.status).json({
+      message: err.message,
+      details: err.details,
+      // Surface a string detail as `code` as well — backward-compatible:
+      // `details` is preserved, existing `res.body.details` assertions keep working.
+      ...(typeof err.details === "string" ? { code: err.details } : {}),
+    });
   }
   if (err instanceof ZodError) {
     return res.status(400).json({
