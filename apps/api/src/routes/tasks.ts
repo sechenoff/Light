@@ -23,7 +23,10 @@ import {
   getTask,
   enrichTasksWithUsers,
 } from "../services/taskService";
-import { addComment, deleteComment, listComments } from "../services/taskCollabService";
+import {
+  addComment, deleteComment, listComments,
+  addChecklistItem, patchChecklistItem, deleteChecklistItem, listChecklist,
+} from "../services/taskCollabService";
 
 async function enrichOne<T extends { createdBy: string; assignedTo: string | null; completedBy: string | null }>(
   task: T,
@@ -65,6 +68,13 @@ const listQuerySchema = z.object({
 
 const commentBodySchema = z.object({ body: z.string().trim().min(1, "Пустой комментарий").max(5000) });
 
+const checklistAddSchema = z.object({ text: z.string().trim().min(1, "Пустой пункт").max(500) });
+const checklistPatchSchema = z.object({
+  done: z.boolean().optional(),
+  text: z.string().trim().min(1).max(500).optional(),
+  position: z.number().int().min(0).optional(),
+});
+
 // ─── Serializer ──────────────────────────────────────────────────────────────
 
 function serializeTask(t: any) {
@@ -79,6 +89,14 @@ function serializeTask(t: any) {
 
 function serializeComment(c: any) {
   return { ...c, createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt };
+}
+
+function serializeChecklistItem(i: any) {
+  return {
+    ...i,
+    completedAt: i.completedAt instanceof Date ? i.completedAt.toISOString() : i.completedAt,
+    createdAt: i.createdAt instanceof Date ? i.createdAt.toISOString() : i.createdAt,
+  };
 }
 
 // ─── GET / ────────────────────────────────────────────────────────────────────
@@ -213,6 +231,34 @@ tasksRouter.delete("/:id/comments/:commentId", rolesGuard(["SUPER_ADMIN", "WAREH
   try {
     const actor = { userId: req.adminUser!.userId, role: req.adminUser!.role as any };
     const result = await deleteComment(req.params.id, req.params.commentId, actor);
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+// ─── Checklist ────────────────────────────────────────────────────────────────
+
+tasksRouter.post("/:id/checklist", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), async (req, res, next) => {
+  try {
+    const { text } = checklistAddSchema.parse(req.body);
+    const actor = { userId: req.adminUser!.userId, role: req.adminUser!.role as any };
+    const item = await addChecklistItem(req.params.id, text, actor);
+    res.status(201).json({ item: serializeChecklistItem(item) });
+  } catch (err) { next(err); }
+});
+
+tasksRouter.patch("/:id/checklist/:itemId", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), async (req, res, next) => {
+  try {
+    const patch = checklistPatchSchema.parse(req.body);
+    const actor = { userId: req.adminUser!.userId, role: req.adminUser!.role as any };
+    const item = await patchChecklistItem(req.params.id, req.params.itemId, patch, actor);
+    res.json({ item: serializeChecklistItem(item) });
+  } catch (err) { next(err); }
+});
+
+tasksRouter.delete("/:id/checklist/:itemId", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), async (req, res, next) => {
+  try {
+    const actor = { userId: req.adminUser!.userId, role: req.adminUser!.role as any };
+    const result = await deleteChecklistItem(req.params.id, req.params.itemId, actor);
     res.json(result);
   } catch (err) { next(err); }
 });

@@ -119,3 +119,57 @@ describe("Comments", () => {
     expect(del.status).toBe(200);
   });
 });
+
+describe("Checklist", () => {
+  it("POST adds item at next position; audit TASK_CHECKLIST_ADD", async () => {
+    const task = await makeTask(AUTH_SA());
+    const a = await request(app).post(`/api/tasks/${task.id}/checklist`).set(AUTH_SA()).send({ text: "Шаг 1" });
+    const b = await request(app).post(`/api/tasks/${task.id}/checklist`).set(AUTH_SA()).send({ text: "Шаг 2" });
+    expect(a.status).toBe(201);
+    expect(a.body.item.position).toBe(0);
+    expect(b.body.item.position).toBe(1);
+    const audit = await prisma.auditEntry.findMany({
+      where: { entityType: "Task", entityId: task.id, action: "TASK_CHECKLIST_ADD" },
+    });
+    expect(audit).toHaveLength(2);
+  });
+
+  it("PATCH toggle done sets completedAt/By; idempotent; NO audit row", async () => {
+    const task = await makeTask(AUTH_SA());
+    const a = await request(app).post(`/api/tasks/${task.id}/checklist`).set(AUTH_SA()).send({ text: "x" });
+    const t1 = await request(app).patch(`/api/tasks/${task.id}/checklist/${a.body.item.id}`).set(AUTH_SA()).send({ done: true });
+    expect(t1.status).toBe(200);
+    expect(t1.body.item.done).toBe(true);
+    expect(t1.body.item.completedBy).toBe(saUser.id);
+    const t2 = await request(app).patch(`/api/tasks/${task.id}/checklist/${a.body.item.id}`).set(AUTH_SA()).send({ done: true });
+    expect(t2.status).toBe(200); // idempotent
+    const audit = await prisma.auditEntry.findMany({
+      where: { entityType: "Task", entityId: task.id, action: { startsWith: "TASK_CHECKLIST" } },
+    });
+    expect(audit.filter((x: any) => x.action === "TASK_CHECKLIST_ADD")).toHaveLength(1);
+    expect(audit.filter((x: any) => x.action.includes("TOGGLE"))).toHaveLength(0); // no toggle audit
+  });
+
+  it("assignee may toggle done but may NOT edit text", async () => {
+    const task = await makeTask(AUTH_SA(), { title: "T", assignedTo: whUser.id });
+    const a = await request(app).post(`/api/tasks/${task.id}/checklist`).set(AUTH_SA()).send({ text: "x" });
+    const toggle = await request(app).patch(`/api/tasks/${task.id}/checklist/${a.body.item.id}`).set(AUTH_WH()).send({ done: true });
+    expect(toggle.status).toBe(200);
+    const edit = await request(app).patch(`/api/tasks/${task.id}/checklist/${a.body.item.id}`).set(AUTH_WH()).send({ text: "new" });
+    expect(edit.status).toBe(403);
+    expect(edit.body.code).toBe("TASK_EDIT_FORBIDDEN");
+  });
+
+  it("DELETE removes item; audit TASK_CHECKLIST_DELETE; non-creator non-SA → 403", async () => {
+    const task = await makeTask(AUTH_SA());
+    const a = await request(app).post(`/api/tasks/${task.id}/checklist`).set(AUTH_SA()).send({ text: "x" });
+    const forbidden = await request(app).delete(`/api/tasks/${task.id}/checklist/${a.body.item.id}`).set(AUTH_TECH());
+    expect(forbidden.status).toBe(403);
+    const ok = await request(app).delete(`/api/tasks/${task.id}/checklist/${a.body.item.id}`).set(AUTH_SA());
+    expect(ok.status).toBe(200);
+    const audit = await prisma.auditEntry.findMany({
+      where: { entityType: "Task", entityId: task.id, action: "TASK_CHECKLIST_DELETE" },
+    });
+    expect(audit).toHaveLength(1);
+  });
+});
