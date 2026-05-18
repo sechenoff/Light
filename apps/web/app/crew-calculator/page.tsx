@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 
 import { calculateCrewCost, type RoleBreakdown, ROLES, type RoleId } from "@light-rental/shared";
@@ -198,14 +198,20 @@ export default function CrewCalculatorPage() {
         : `${hours} ч`
       : "—";
 
-  const printDate = useMemo(() => {
-    return new Date().toLocaleString("ru-RU", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  // Empty during SSR/first client render so the print-only header markup
+  // matches between server and client; filled after mount. The print date
+  // should reflect when the user prints anyway, not server render time.
+  const [printDate, setPrintDate] = useState("");
+  useEffect(() => {
+    setPrintDate(
+      new Date().toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    );
   }, []);
 
   const exportPdf = useCallback(() => {

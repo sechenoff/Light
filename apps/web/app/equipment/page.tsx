@@ -7,6 +7,7 @@ import { apiFetch } from "../../src/lib/api";
 import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
 import { formatRub } from "../../src/lib/format";
+import { toMoscowDateString } from "../../src/lib/moscowDate";
 
 const UNIT_STATUS_LABELS: Record<string, string> = {
   AVAILABLE: "на складе",
@@ -37,13 +38,10 @@ type AvailInfo = {
   availability: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
 };
 
+// Called only from a post-mount effect (never during render) so the
+// new Date() here is the client clock — no SSR/CSR hydration mismatch.
 function defaultPickupDatetimeLocal(): string {
-  const d = new Date();
-  d.setHours(10, 0, 0, 0);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}T10:00`;
+  return `${toMoscowDateString(new Date())}T10:00`;
 }
 
 function addHoursToDatetimeLocal(dtLocal: string, hours: number): string {
@@ -71,7 +69,9 @@ function formatDatetimeLocal(d: Date): string {
 }
 
 function displayDatetime(dtLocal: string): string {
+  if (!dtLocal) return "—";
   const d = new Date(dtLocal);
+  if (isNaN(d.getTime())) return "—";
   return d.toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
@@ -107,9 +107,10 @@ function getQuickPeriod(type: "today" | "tomorrow" | "week"): { start: string; e
 }
 
 export default function EquipmentPage() {
-  const defaultStart = defaultPickupDatetimeLocal();
-  const [start, setStart] = useState(defaultStart);
-  const [end, setEnd] = useState(addHoursToDatetimeLocal(defaultStart, 24));
+  // Empty until mounted: server and client render the same markup, then the
+  // effect below fills the real Moscow-TZ default (avoids hydration mismatch).
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [category, setCategory] = useState<string | undefined>(undefined);
@@ -121,6 +122,13 @@ export default function EquipmentPage() {
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [loadingAvail, setLoadingAvail] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  // Seed the default date range on the client after mount.
+  useEffect(() => {
+    const s = defaultPickupDatetimeLocal();
+    setStart(s);
+    setEnd(addHoursToDatetimeLocal(s, 24));
+  }, []);
 
   // Load category list for filter
   useEffect(() => {
@@ -201,6 +209,12 @@ export default function EquipmentPage() {
     ? catalog.filter((r) => (availMap.get(r.id)?.availableQuantity ?? 1) > 0).length
     : catalog.length;
 
+  // Guard: datetimeLocalToISO("") throws before the default-range effect runs.
+  const bookingHref =
+    start && end
+      ? `/bookings/new?start=${datetimeLocalToISO(start)}&end=${datetimeLocalToISO(end)}`
+      : "/bookings/new";
+
   return (
     <div className="p-4">
       <div className="flex items-end justify-between gap-4 flex-wrap">
@@ -273,7 +287,7 @@ export default function EquipmentPage() {
         <div className="flex items-center gap-2">
           <Link
             className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent transition-colors"
-            href={`/bookings/new?start=${datetimeLocalToISO(start)}&end=${datetimeLocalToISO(end)}`}
+            href={bookingHref}
           >
             Создать бронь
           </Link>
