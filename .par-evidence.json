@@ -1,32 +1,27 @@
 {
-  "sprint": "warehouse-checklist",
+  "sprint": "critical-money-safety",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
-  "provider": "split-focus",
-  "head": "eb618ac",
-  "ts": "2026-04-28T01:08:00Z",
+  "provider": "split-focus (two Claude reviewers — no codex this session)",
+  "head": "bc0baf21",
+  "ts": "2026-05-18T15:05:00Z",
+  "scope": "4 CRITICAL bugs from product+codebase audit",
   "fixes_applied": [
-    "Round 1 — CRITICAL (technical+product): lost flow backend implementation (Zod schema + completeSession extension; status→RETIRED, Repair WROTE_OFF, audit UNIT_LOST/STATUS_CHANGED, optional BookingItem compensation with replacementCost fallback, BOOKING_CHARGE_ADDED audit, recomputeBookingFinance)",
-    "Round 1 — IMPORTANT I1: addExtraItem wrapped in $transaction with upsert + booking.status guard (409 BOOKING_LOCKED for non-DRAFT/CONFIRMED/ISSUED)",
-    "Round 1 — IMPORTANT I2: HttpError replaces plain Error throughout checklistService (proper 4xx codes)",
-    "Round 1 — IMPORTANT I3: checkUnit validates unit reservation ownership for RETURN (substitution still allowed for ISSUE per existing semantics)",
-    "Round 1 — Product CONCERN: removed auto-popup RecordPaymentModal in summary (mockup 05 update)",
-    "Round 1 — MINOR M1/M2/M3: audit/recompute catches log errors; getChecklistState orderBy createdAt",
-    "Round 2 — IMPORTANT: uncheckUnit straggler bare Error → HttpError(409, SESSION_NOT_ACTIVE)",
-    "Round 2 — IMPORTANT: lost-unit loop wrapped in try/catch per iteration, partial failures surface in result.failedLostUnits[] (mirrors broken-unit pattern)",
-    "Round 2 — MINOR: replacementCost fallback skips BookingItem when 0 (prevents silent under-collection); console.warn",
-    "Round 2 — MINOR: dead brainstorm comments cleanup in checklistService.ts (~57 lines → 3 lines)"
+    "C1: legacy POST /:id/confirm bypass closed — rolesGuard([SUPER_ADMIN]) + non-bot DRAFT/PENDING_APPROVAL -> 409 USE_APPROVAL_FLOW. Bot one-step flow preserved via botAccess (whitelisted openclaw key, by design). Dead action=='confirm' branch in /status removed.",
+    "C2: releaseBookingUnits(bookingId, tx) — units returned AVAILABLE on cancel + cancel-with-deposit, BookingItemUnit cleared, MAINTENANCE/RETIRED skipped, idempotent, BOOKING_UNITS_RELEASED audit, all in one $transaction.",
+    "C3: isBookingOverdue()/computeOutstanding() single-source helpers — dashboardMetrics/computeDebts/computeFinanceDashboard now compute overdue live (no stale paymentStatus drift, no cron). Decimal-correct.",
+    "C5: lost-unit compensation now serializes invoiceNeedsReissue in /complete API response (was dropped at API layer) + warehouse/scan persistent rose warning on operation screen + INVOICE_OUTDATED_BY_COMPENSATION audit.",
+    "C1-obs (PAR LOW): bot-channel confirm writes BOOKING_CONFIRMED_VIA_BOT audit (after.via:'bot', attributed to first SUPER_ADMIN due to AuditEntry.userId FK constraint)."
   ],
-  "tests": "917/917 pass (was 893 before sprint, +24 new tests)",
-  "ts_check": "clean (api+web)",
-  "notes": [
-    "User intent: «убрали сканер из всей этой системы, чекбоксами отмечал что выдано и потом принято обратно... 1 в 1 как ты нарисовал на мокапах».",
-    "Полная замена scanner-based UI на checkbox checklist: 5-step wizard (login → operation → booking → checklist → summary).",
-    "Mobile-first 390px design, sticky header + sticky CTA, FAB для quick-add bottom sheet.",
-    "ProblemModal с табами Поломка / Утеря (новый): poломка → Repair, утеря → status RETIRED + опц. компенсация клиенту.",
-    "4 новых backend endpoints: GET /state, POST /check, POST /uncheck, POST /items (quick-add).",
-    "/complete расширен полем lostUnits[] (Zod-validated): UNIT_LOST + UNIT_STATUS_CHANGED + опционально BOOKING_CHARGE_ADDED audit.",
-    "Camera scanner удалён из flow; BarcodeScanner.tsx сохранён (используется в /admin/scanner и /equipment/[id]/units).",
-    "Initial PAR: product NEEDS_FIXES (3), technical REQUEST_CHANGES (4 important + 3 minor). Round 1 fix-pass HEAD 07c196e. Round 2 fix-pass HEAD eb618ac. Final: product ACCEPTED, technical APPROVE."
+  "tests": "928/928 pass (was 927 + 1 new bot-confirm-audit test)",
+  "ts_check": "clean (api + web)",
+  "par_rounds": [
+    "Round 1 (HEAD 2281165): technical APPROVE (0 CRIT/HIGH/MED, 1 LOW pre-existing double-reservation edge — follow-up note). product ACCEPTED + 1 MEDIUM (C5 flag silent in UI).",
+    "Fix-pass (HEAD bc0baf21): C5 UI surfacing + API serialization root-cause + bot-confirm audit.",
+    "Re-review: product ACCEPTED (MEDIUM closed). technical APPROVE stands (additive, 928/928)."
+  ],
+  "followups": [
+    "LOW (technical): cross-booking unit-status edge if a unit is double-reserved by two bookings — pre-existing upstream invariant, separate ticket.",
+    "Doc drift: CLAUDE.md scanSession.ts ref is warehouseScan.ts (doc-only, no code impact)."
   ]
 }
