@@ -59,6 +59,7 @@ export interface TaskCardProps {
   onUpdate: (id: string, patch: Partial<Pick<Task, "title" | "urgent">>) => void;
   onDelete: (id: string) => void;
   onOpenEdit?: (task: Task) => void;
+  onOpenDetail?: (id: string) => void;
   isOverdue?: boolean;
 }
 
@@ -69,6 +70,7 @@ export function TaskCard({
   onUpdate,
   onDelete,
   onOpenEdit,
+  onOpenDetail,
   isOverdue = false,
 }: TaskCardProps) {
   const [editingTitle, setEditingTitle] = useState(false);
@@ -167,7 +169,15 @@ export function TaskCard({
       </span>
 
       {/* Заголовок + мета */}
-      <div className="min-w-0">
+      <div
+        className="min-w-0 cursor-pointer"
+        data-testid={`task-card-body-${task.id}`}
+        onClick={(e) => {
+          if (editingTitle) return;
+          if ((e.target as HTMLElement).closest("button,input,a")) return;
+          onOpenDetail?.(task.id);
+        }}
+      >
         {editingTitle ? (
           <input
             ref={inputRef}
@@ -209,6 +219,19 @@ export function TaskCard({
             {" · "}
             {formatCreatedAt(task.createdAt)}
           </p>
+        )}
+        {/* Чипы: комментарии + чеклист */}
+        {((task.commentCount ?? 0) > 0 || (task.checklistSummary?.total ?? 0) > 0) && (
+          <div className="flex items-center gap-2 mt-1">
+            {(task.commentCount ?? 0) > 0 && (
+              <span className="text-[11px] text-ink-3">💬 {task.commentCount}</span>
+            )}
+            {(task.checklistSummary?.total ?? 0) > 0 && (
+              <span className="text-[11px] text-ink-3">
+                ☑ {task.checklistSummary!.done}/{task.checklistSummary!.total}
+              </span>
+            )}
+          </div>
         )}
       </div>
 

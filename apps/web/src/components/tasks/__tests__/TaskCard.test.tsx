@@ -121,4 +121,36 @@ describe("TaskCard", () => {
     fireEvent.click(urgentBtn);
     expect(onUpdate).toHaveBeenCalledWith("t1", { urgent: false });
   });
+
+  it("renders comment + checklist chips when present", () => {
+    const onOpen = vi.fn();
+    render(
+      <TaskCard
+        task={makeTask({ commentCount: 3, checklistSummary: { done: 1, total: 4 } })}
+        onComplete={() => {}}
+        onReopen={() => {}}
+        onUpdate={() => {}}
+        onDelete={() => {}}
+        onOpenDetail={onOpen}
+      />,
+    );
+    expect(screen.getByText("💬 3")).toBeInTheDocument();
+    expect(screen.getByText("☑ 1/4")).toBeInTheDocument();
+  });
+
+  it("calls onOpenDetail when the card body is clicked", () => {
+    const onOpen = vi.fn();
+    render(
+      <TaskCard
+        task={makeTask({ id: "tX" })}
+        onComplete={() => {}}
+        onReopen={() => {}}
+        onUpdate={() => {}}
+        onDelete={() => {}}
+        onOpenDetail={onOpen}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("task-card-body-tX"));
+    expect(onOpen).toHaveBeenCalledWith("tX");
+  });
 });
