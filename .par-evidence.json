@@ -1,11 +1,10 @@
 {
-  "sprint": "booking-24h-grace",
-  "feature": "auto-return-plus24h + skip-partial-day grace",
+  "sprint": "instant-recalc-skippartial",
+  "feature": "instant estimate recalc on «не считать вторые сутки» toggle",
   "claude_product": "ACCEPTED",
-  "technical_review": "APPROVE",
-  "provider": "typescript-reviewer",
-  "ts": "2026-05-18T23:10:00+03:00",
-  "tests": { "api": { "files": 79, "tests": 939, "status": "passed" }, "web": { "files": 40, "tests": 270, "status": "passed" } },
-  "tsc": { "api": "clean (exit 0)", "web": "clean (excl pre-existing formatWaitingTime.test.ts TS2578)" },
-  "notes": "2a: handlePickupChange auto-fills return = pickup+24h; returnTouchedRef (useRef(isEdit)) prevents clobbering manual edits; invalid (re<=pu) still auto-fixed. 2b: billableShifts24h(start,end,skipPartialDay) + SECOND_DAY_GRACE_MS=4h — when checked and overage beyond whole days <=4h, round shifts DOWN (min 1); >4h billed normally (ceil). Booking.skipPartialDay Boolean @default(false) (additive, safe for prisma db push). Threaded: Zod create/update, quoteEstimate/createBookingDraft/rebuildBookingEstimate/confirmBooking, /quote //quote/export //draft/ PATCH (dry-run+write+wasInReview), client mirror rentalTime.ts (identical math), DatesCard checkbox, edit-mode hydration via serialized booking. Custom line items unaffected (no shift mult). 14 new grace unit tests. Review APPROVE, zero CRITICAL/HIGH; MEDIUM/LOW all pre-existing (ESM/CJS const dup is intentional, labelShort divergence + durationPart dead code predate PR) — comment clarified, pre-existing untouched (out of scope)."
+  "technical_review": "self (trivial 4-line frontend reactivity fix, 270/270 web tests green)",
+  "ts": "2026-05-18T23:42:00+03:00",
+  "tests": { "web": { "files": 40, "tests": 270, "status": "passed" } },
+  "tsc": { "web": "clean (excl pre-existing formatWaitingTime.test.ts TS2578)" },
+  "notes": "Bug: BookingForm debounced /quote effect dep array omitted skipPartialDay → toggling the checkbox never re-fetched the server estimate (only the local label updated via rentalDuration useMemo). Fix: (1) add skipPartialDay to the effect deps; (2) prevSkipPartialRef tracks the flag — when it changed (discrete checkbox click) debounceMs=0 (instant recalc), otherwise 500ms (typing stays debounced, no /quote spam). Edit/mount init: prevSkipPartialRef seeded from initial skipPartialDay → no spurious instant on load. Early-return-before-ref-update path only yields at-worst one harmlessly-fast quote when completing an incomplete form post-toggle (no wrong data). Web-only, no API/schema change."
 }

@@ -134,6 +134,9 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   const [skipPartialDay, setSkipPartialDay] = useState<boolean>(
     isEdit && initialBooking ? Boolean(initialBooking.skipPartialDay) : false,
   );
+  // Отслеживаем смену именно этого флага, чтобы пересчитать смету мгновенно
+  // (без debounce) при клике по чекбоксу.
+  const prevSkipPartialRef = useRef(skipPartialDay);
   // Возврат тронут вручную → не перетираем авто-+24ч на смене выдачи.
   // create: старт false (первый выбор выдачи ставит +24ч; если возврат уже
   // введён вручную и валиден — сохраняется, иначе чинится +24ч). edit: старт
@@ -401,6 +404,12 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
       return;
     }
     let cancelled = false;
+    // Тоггл чекбокса «не считать вторые сутки» — дискретное действие:
+    // пересчитываем смету мгновенно (без debounce). Печать (скидка, qty
+    // и т.п.) по-прежнему debounce 500 мс, чтобы не спамить /quote.
+    const skipChanged = prevSkipPartialRef.current !== skipPartialDay;
+    prevSkipPartialRef.current = skipPartialDay;
+    const debounceMs = skipChanged ? 0 : 500;
     const timer = setTimeout(async () => {
       setLoadingQuote(true);
       try {
@@ -429,9 +438,9 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
       } finally {
         if (!cancelled) setLoadingQuote(false);
       }
-    }, 500);
+    }, debounceMs);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [clientName, projectName, pickupISO, returnISO, discountPercent, apiItems, customItems, transportPayload]);
+  }, [clientName, projectName, pickupISO, returnISO, discountPercent, skipPartialDay, apiItems, customItems, transportPayload]);
 
   // ── Date handlers ──
   function handlePickupChange(v: string) {
