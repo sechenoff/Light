@@ -375,6 +375,10 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       })),
       createdRepairIds: summary.createdRepairIds,
       failedBrokenUnits: summary.failedBrokenUnits,
+      // C5: счёт по брони устарел из-за компенсации за утерю (выпущенный
+      // Invoice не перевыпускается автоматически — оператор аннулирует
+      // старый и выставляет новый вручную).
+      invoiceNeedsReissue: summary.invoiceNeedsReissue,
     });
   } catch (err) {
     next(err);
