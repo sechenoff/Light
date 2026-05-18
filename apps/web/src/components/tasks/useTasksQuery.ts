@@ -49,6 +49,44 @@ export function useTasksQuery(filter: TaskFilter) {
     };
   }, [filter]);
 
+  // ── Smart polling: refetch list every 12s, paused when tab hidden ──
+  useEffect(() => {
+    const POLL_MS = 12000;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const poll = () => {
+      apiFetch<TasksListResponse>(`/api/tasks?filter=${filter}&status=ALL&limit=200`)
+        .then((data) => setTasks(data.items ?? []))
+        .catch(() => {
+          /* keep last good state; errors surfaced on user actions */
+        });
+    };
+
+    const start = () => {
+      if (!timer) timer = setInterval(poll, POLL_MS);
+    };
+    const stop = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const onVis = () => {
+      if (document.hidden) stop();
+      else {
+        poll();
+        start();
+      }
+    };
+
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [filter]);
+
   // ── createTask ──────────────────────────────────────────────────────────────
 
   const createTask = useCallback(
