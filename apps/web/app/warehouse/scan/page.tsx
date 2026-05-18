@@ -57,6 +57,18 @@ type ChecklistState = {
   progress: { checkedItems: number; totalItems: number };
 };
 
+// Ответ POST /api/warehouse/sessions/:id/complete (только используемые поля).
+type CompleteResponse = {
+  createdRepairIds?: string[];
+  failedBrokenUnits?: Array<{ unitId: string; reason: string; error: string }>;
+  /**
+   * C5: true, если компенсация за утерю изменила сумму брони, по которой
+   * уже выпущен Invoice. Счёт НЕ перевыпускается автоматически — оператор
+   * должен вручную аннулировать старый и выставить новый.
+   */
+  invoiceNeedsReissue?: boolean;
+};
+
 type RepairUrgency = "NOT_URGENT" | "NORMAL" | "URGENT";
 
 type ProblemUnit = {
@@ -239,9 +251,13 @@ function LoginStep({ onSuccess }: { onSuccess: () => void }) {
 function OperationStep({
   onSelect,
   workerName,
+  invoiceReissueWarning,
+  onDismissInvoiceWarning,
 }: {
   onSelect: (op: Operation) => void;
   workerName: string;
+  invoiceReissueWarning: boolean;
+  onDismissInvoiceWarning: () => void;
 }) {
   const today = new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 
@@ -254,6 +270,26 @@ function OperationStep({
           <div className="text-xs text-ink-3 mt-0.5">{workerName} · {today}</div>
         </div>
       </div>
+
+      {/* C5: стойкое предупреждение об устаревшем счёте (не auto-dismiss) */}
+      {invoiceReissueWarning && (
+        <div className="mx-4 mt-4 px-4 py-3 rounded-xl bg-rose-soft border border-rose-border flex items-start gap-2.5">
+          <span className="text-base leading-none flex-shrink-0" aria-hidden="true">⚠️</span>
+          <div className="flex-1 min-w-0">
+            <strong className="text-[13px] text-rose block">Счёт по брони устарел</strong>
+            <p className="text-xs text-rose mt-1">
+              Счёт устарел из-за компенсации за утерю. Аннулируйте старый счёт и выставьте новый.
+            </p>
+          </div>
+          <button
+            onClick={onDismissInvoiceWarning}
+            className="text-rose text-lg leading-none flex-shrink-0 w-6 h-6 flex items-center justify-center"
+            aria-label="Скрыть предупреждение"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Body */}
       <div className="flex-1 p-4">
@@ -1505,7 +1541,7 @@ function SummaryStep({
   clientName: string;
   countChecks: Map<string, number>;
   problems: ProblemUnit[];
-  onComplete: (bookingId?: string) => void;
+  onComplete: (bookingId?: string, result?: CompleteResponse) => void;
   onBack: () => void;
   onUnauth: () => void;
 }) {
@@ -1553,12 +1589,15 @@ function SummaryStep({
       if (brokenUnits.length > 0) body.brokenUnits = brokenUnits;
       if (lostUnits.length > 0) body.lostUnits = lostUnits;
 
-      await warehouseFetch(`/api/warehouse/sessions/${sessionId}/complete`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      const result = await warehouseFetch<CompleteResponse>(
+        `/api/warehouse/sessions/${sessionId}/complete`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      );
 
-      onComplete(state?.bookingId);
+      onComplete(state?.bookingId, result);
     } catch (err: unknown) {
       const e = err as { status?: number; message?: string };
       if (e?.status === 401) { onUnauth(); return; }
@@ -1762,6 +1801,10 @@ function WarehouseScanInner({ hasMainSession, workerName }: { hasMainSession: bo
   const [clientName, setClientName] = useState("");
   const [countChecks, setCountChecks] = useState<Map<string, number>>(new Map());
   const [problems, setProblems] = useState<ProblemUnit[]>([]);
+  // C5: стойкое предупреждение об устаревшем счёте после завершения сессии.
+  // Сбрасывается только явным закрытием пользователем (не auto-dismiss),
+  // переживает возврат на экран выбора операции.
+  const [invoiceReissueWarning, setInvoiceReissueWarning] = useState(false);
   const goToLogin = useCallback(() => {
     sessionStorage.removeItem("warehouse_token");
     if (hasMainSession) {
@@ -1794,10 +1837,17 @@ function WarehouseScanInner({ hasMainSession, workerName }: { hasMainSession: bo
     setStep("summary");
   }
 
-  function handleSummaryComplete(bid?: string) {
+  function handleSummaryComplete(bid?: string, result?: CompleteResponse) {
     const nBroken = problems.filter((p) => p.type === "BROKEN").length;
     if (nBroken > 0) {
       toast.success(`Создано ${nBroken} ${pluralRu(nBroken, ["карточка", "карточки", "карточек"])} ремонта`);
+    }
+    // C5: компенсация за утерю изменила сумму брони с уже выпущенным счётом.
+    // toast недостаточно (исчезнет) — поднимаем стойкий баннер на экран
+    // выбора операции, плюс toast.error как дополнительный сигнал.
+    if (result?.invoiceNeedsReissue) {
+      setInvoiceReissueWarning(true);
+      toast.error("Счёт по брони устарел из-за компенсации за утерю — нужно перевыставить");
     }
     // bid (bookingId) сохраняем в переменной, но не показываем модалку оплаты —
     // согласно мокапу 05 блок оплаты на этом экране отсутствует
@@ -1815,7 +1865,12 @@ function WarehouseScanInner({ hasMainSession, workerName }: { hasMainSession: bo
       {step === "login" && <LoginStep onSuccess={handleLoginSuccess} />}
 
       {step === "operation" && (
-        <OperationStep onSelect={handleOperationSelect} workerName={workerName} />
+        <OperationStep
+          onSelect={handleOperationSelect}
+          workerName={workerName}
+          invoiceReissueWarning={invoiceReissueWarning}
+          onDismissInvoiceWarning={() => setInvoiceReissueWarning(false)}
+        />
       )}
 
       {step === "booking" && (

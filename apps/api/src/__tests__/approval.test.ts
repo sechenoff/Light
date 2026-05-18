@@ -12,7 +12,7 @@ import type { Express } from "express";
 const TEST_DB_PATH = path.resolve(__dirname, "../../prisma/test-approval.db");
 process.env.DATABASE_URL = `file:${TEST_DB_PATH}`;
 process.env.RATE_LIMIT_DISABLED = "true";
-process.env.API_KEYS = "test-key-1";
+process.env.API_KEYS = "test-key-1,openclaw-test-bot";
 process.env.AUTH_MODE = "enforce";
 process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-approval";
@@ -359,6 +359,23 @@ describe("CRITICAL 1 — legacy confirm bypass", () => {
       .send({});
     expect(res.status).toBe(409);
     expect(res.body.details).toBe("USE_APPROVAL_FLOW");
+  });
+
+  it("бот POST /api/bookings/:id/confirm на DRAFT → CONFIRMED + AuditEntry BOOKING_CONFIRMED_VIA_BOT", async () => {
+    const booking = await createDraftBooking();
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/confirm`)
+      .set({ "X-API-Key": "openclaw-test-bot" })
+      .send({});
+    expect(res.status).toBe(200);
+    const fresh = await prisma.booking.findUnique({ where: { id: booking.id } });
+    expect(fresh.status).toBe("CONFIRMED");
+    const audit = await prisma.auditEntry.findFirst({
+      where: { entityType: "Booking", entityId: booking.id, action: "BOOKING_CONFIRMED_VIA_BOT" },
+    });
+    expect(audit).not.toBeNull();
+    expect(JSON.parse(audit.before)).toEqual({ status: "DRAFT" });
+    expect(JSON.parse(audit.after)).toEqual({ status: "CONFIRMED", via: "bot" });
   });
 });
 

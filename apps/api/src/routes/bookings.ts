@@ -997,8 +997,47 @@ router.post("/:id/confirm", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) 
     if (!isBot && ["DRAFT", "PENDING_APPROVAL"].includes(booking.status)) {
       throw new HttpError(409, "Используйте процесс согласования", "USE_APPROVAL_FLOW");
     }
+    const prevStatus = booking.status;
     // Body can be extended later (idempotency key, override discount, etc.).
     const confirmed = await confirmBooking(id);
+    // C1 observability: бот-канал делает DRAFT→CONFIRMED в обход approval-флоу.
+    // confirmBooking сам аудит НЕ пишет, поэтому фиксируем отдельной записью
+    // (как BOOKING_APPROVED — вне транзакции confirmBooking, осознанный
+    // trade-off: аудит это observability, не бизнес-инвариант).
+    //
+    // AuditEntry.userId — обязательный FK на AdminUser, синтетический
+    // sentinel невозможен. Бот не имеет своей AdminUser-записи, поэтому
+    // атрибутируем действие первому SUPER_ADMIN (бот-confirm функционально
+    // эквивалентен SUPER_ADMIN-approve), а бот-происхождение фиксируем
+    // именем экшена BOOKING_CONFIRMED_VIA_BOT + полем after.via="bot".
+    // Если AdminUser нет вообще — тихо пропускаем (аудит не критичен).
+    if (isBot) {
+      try {
+        const auditActor =
+          req.adminUser?.userId ??
+          (
+            await prisma.adminUser.findFirst({
+              where: { role: "SUPER_ADMIN" },
+              orderBy: { createdAt: "asc" },
+              select: { id: true },
+            })
+          )?.id;
+        if (auditActor) {
+          await writeAuditEntry({
+            userId: auditActor,
+            action: "BOOKING_CONFIRMED_VIA_BOT",
+            entityType: "Booking",
+            entityId: id,
+            before: { status: prevStatus },
+            after: { status: confirmed.status, via: "bot" },
+          });
+        }
+      } catch (auditErr) {
+        // Аудит не должен ронять confirm; логируем и продолжаем.
+        // eslint-disable-next-line no-console
+        console.error("Audit write failed in bot /confirm:", auditErr);
+      }
+    }
     let warning: string | null = null;
     try {
       await recomputeBookingFinance(id);
