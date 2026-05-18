@@ -188,3 +188,17 @@ describe("GET /api/tasks/:id with collab", () => {
     expect(res.body.task.checklist.map((i: any) => i.text)).toEqual(["A", "B"]);
   });
 });
+
+describe("GET /api/tasks list aggregates", () => {
+  it("each item has commentCount and checklist {done,total}", async () => {
+    const task = await makeTask(AUTH_SA(), { title: "Aggr", assignedTo: saUser.id });
+    await request(app).post(`/api/tasks/${task.id}/comments`).set(AUTH_SA()).send({ body: "c1" });
+    const i1 = await request(app).post(`/api/tasks/${task.id}/checklist`).set(AUTH_SA()).send({ text: "i1" });
+    await request(app).post(`/api/tasks/${task.id}/checklist`).set(AUTH_SA()).send({ text: "i2" });
+    await request(app).patch(`/api/tasks/${task.id}/checklist/${i1.body.item.id}`).set(AUTH_SA()).send({ done: true });
+    const res = await request(app).get("/api/tasks?filter=all&status=ALL&limit=200").set(AUTH_SA());
+    const found = res.body.items.find((t: any) => t.id === task.id);
+    expect(found.commentCount).toBe(1);
+    expect(found.checklist).toEqual({ done: 1, total: 2 });
+  });
+});

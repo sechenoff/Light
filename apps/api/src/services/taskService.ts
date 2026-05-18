@@ -366,12 +366,29 @@ export async function listTasks(input: ListTasksInput, actor: Actor) {
     where,
     take: limit,
     orderBy: { id: "asc" },
+    include: {
+      _count: { select: { comments: true } },
+      checklist: { select: { done: true } },
+    },
   });
 
   const nextCursor = tasks.length === limit ? tasks[tasks.length - 1].id : null;
   const enriched = await enrichTasksWithUsers(tasks);
 
-  return { items: enriched, nextCursor };
+  const withAggregates = enriched.map((t: any) => {
+    const checklist = (t.checklist ?? []) as Array<{ done: boolean }>;
+    const { _count, checklist: _cl, ...rest } = t;
+    return {
+      ...rest,
+      commentCount: _count?.comments ?? 0,
+      checklist: {
+        done: checklist.filter((c) => c.done).length,
+        total: checklist.length,
+      },
+    };
+  });
+
+  return { items: withAggregates, nextCursor };
 }
 
 // ─── getTask (single) ─────────────────────────────────────────────────────────
