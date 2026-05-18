@@ -151,20 +151,6 @@ describe("/api/payments", () => {
     expect(audit).not.toBeNull();
   });
 
-  it("DELETE SUPER_ADMIN удаляет платёж → amountPaid пересчитывается", async () => {
-    // Сначала получаем amountPaid до удаления
-    const beforeBooking = await prisma.booking.findUnique({ where: { id: bookingId } });
-    const amountBefore = Number(beforeBooking.amountPaid.toString());
-
-    const res = await request(app)
-      .delete(`/api/payments/${createdPaymentId}`)
-      .set(authHeaders(superAdminToken));
-    expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
-
-    // amountPaid пересчитан (уменьшился или стал 0)
-    const afterBooking = await prisma.booking.findUnique({ where: { id: bookingId } });
-    const amountAfter = Number(afterBooking.amountPaid.toString());
-    expect(amountAfter).toBeLessThan(amountBefore);
-  });
+  // it("DELETE …") — REMOVED вместе с deprecated DELETE /api/payments/:id.
+  // Soft-void покрыт voidPayment-тестом в paymentService.test.ts.
 });

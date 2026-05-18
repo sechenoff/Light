@@ -124,9 +124,11 @@ describe("createPayment", () => {
   });
 });
 
-describe("deletePayment", () => {
-  it("аннулирует платёж (soft-void) через deprecated deletePayment и пересчитывает суммы брони", async () => {
-    const { createPayment, deletePayment } = await import("../services/paymentService");
+// deprecated deletePayment() удалён. Покрытие перенесено на voidPayment
+// напрямую (canonical) — те же инварианты: soft-void + пересчёт + PAYMENT_VOID.
+describe("voidPayment", () => {
+  it("аннулирует платёж (soft-void), пересчитывает суммы брони и пишет PAYMENT_VOID", async () => {
+    const { createPayment, voidPayment } = await import("../services/paymentService");
 
     const payment = await createPayment({
       bookingId,
@@ -139,14 +141,13 @@ describe("deletePayment", () => {
     const beforeDel = await prisma.booking.findUnique({ where: { id: bookingId } });
     const paidBefore = Number(beforeDel.amountPaid.toString());
 
-    await deletePayment(payment.id, adminUserId);
+    await voidPayment(payment.id, adminUserId, "Тест аннулирования");
 
     const afterDel = await prisma.booking.findUnique({ where: { id: bookingId } });
     const paidAfter = Number(afterDel.amountPaid.toString());
 
     expect(paidAfter).toBeCloseTo(paidBefore - 10000, 0);
 
-    // Finance Phase 2: deletePayment delegates to voidPayment — audit writes PAYMENT_VOID
     const auditEntry = await prisma.auditEntry.findFirst({
       where: { action: "PAYMENT_VOID", entityType: "Payment", entityId: payment.id },
     });

@@ -33,7 +33,6 @@ const mockPrisma = {
 vi.mock("../../prisma", () => ({ prisma: mockPrisma }));
 
 const mockCreateSession = vi.fn();
-const mockRecordScan = vi.fn();
 const mockCompleteSession = vi.fn();
 const mockCancelSession = vi.fn();
 const mockGetSessionWithDetails = vi.fn();
@@ -41,7 +40,6 @@ const mockGetReconciliationPreview = vi.fn();
 
 vi.mock("../../services/warehouseScan", () => ({
   createSession: mockCreateSession,
-  recordScan: mockRecordScan,
   completeSession: mockCompleteSession,
   cancelSession: mockCancelSession,
   getSessionWithDetails: mockGetSessionWithDetails,
@@ -260,53 +258,7 @@ describe("GET /api/warehouse/sessions/:id", () => {
   });
 });
 
-// ── POST /api/warehouse/sessions/:id/scan ────────────────────────────────────
-
-describe("POST /api/warehouse/sessions/:id/scan", () => {
-  beforeEach(() => {
-    mockVerifyToken.mockReturnValue({ name: "Иван" });
-  });
-
-  it("returns scan result on success", async () => {
-    const scanResult = {
-      scanRecord: { id: "scan-1", sessionId: "sess-1", equipmentUnitId: "unit-1", scannedAt: new Date().toISOString() },
-      bookingItem: { id: "bi-1", equipmentId: "eq-1" },
-      unit: { id: "unit-1", barcode: "BC001" },
-    };
-    mockRecordScan.mockResolvedValue(scanResult);
-
-    const res = await request(app)
-      .post("/api/warehouse/sessions/sess-1/scan")
-      .set("Authorization", "Bearer valid-token")
-      .send({ barcodePayload: "hmac-signed-payload" });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: "ok", ...scanResult });
-    expect(mockRecordScan).toHaveBeenCalledWith("sess-1", "hmac-signed-payload");
-  });
-
-  it("returns error result when scan service returns error", async () => {
-    mockRecordScan.mockResolvedValue({ error: "Неверный штрихкод" });
-
-    const res = await request(app)
-      .post("/api/warehouse/sessions/sess-1/scan")
-      .set("Authorization", "Bearer valid-token")
-      .send({ barcodePayload: "bad" });
-
-    expect(res.status).toBe(400);
-    expect(res.body.message).toBe("Неверный штрихкод");
-    expect(res.body.status).toBe("error");
-  });
-
-  it("returns 400 when barcodePayload is missing", async () => {
-    const res = await request(app)
-      .post("/api/warehouse/sessions/sess-1/scan")
-      .set("Authorization", "Bearer valid-token")
-      .send({});
-
-    expect(res.status).toBe(400);
-  });
-});
+// POST /api/warehouse/sessions/:id/scan — REMOVED (dead barcode-scan path).
 
 // ── POST /api/warehouse/sessions/:id/complete ────────────────────────────────
 

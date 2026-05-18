@@ -11,7 +11,6 @@
 import { Prisma } from "@prisma/client";
 import type { RepairUrgency } from "@prisma/client";
 import { prisma } from "../prisma";
-import { resolveBarcode } from "./barcode";
 import { createRepair } from "./repairService";
 import { writeAuditEntry } from "./audit";
 import { recomputeBookingFinance } from "./finance";
@@ -143,94 +142,14 @@ export async function createSession(
 }
 
 // ──────────────────────────────────────────────
-// 5.2 recordScan
+// 5.2 recordScan — REMOVED
+//
+// Раньше здесь был recordScan() + POST /api/warehouse/sessions/:id/scan для
+// штрихкод-сканирования. Складской UI (apps/web/app/warehouse/scan) переписан
+// на чек-лист (/state, /check, /uncheck, /items, /complete) — путь со сканером
+// мёртвый. Резолв штрихкода (resolveBarcode) живёт в services/barcode.ts и
+// используется /api/equipment-units/lookup, поэтому не удалён.
 // ──────────────────────────────────────────────
-
-/**
- * Регистрирует сканирование единицы оборудования в рамках сессии.
- *
- * @returns { error: string } при ошибке валидации
- * @returns { scanRecord, bookingItem, unit } при успехе
- */
-export async function recordScan(
-  sessionId: string,
-  barcodePayload: string,
-): Promise<
-  | { error: string }
-  | {
-      scanRecord: { id: string; sessionId: string; equipmentUnitId: string; scannedAt: Date };
-      bookingItem: { id: string; equipmentId: string | null };
-      unit: { id: string; barcode: string | null };
-    }
-> {
-  // Загружаем сессию с информацией о брони
-  const session = await prisma.scanSession.findUnique({
-    where: { id: sessionId },
-    include: { booking: true },
-  });
-  if (!session || session.status !== "ACTIVE") {
-    return { error: "Сессия не активна" };
-  }
-
-  // Двухпроходное разрешение штрихкода (HMAC → raw DB lookup)
-  const resolved = await resolveBarcode(barcodePayload);
-  if (!resolved) {
-    return { error: "Неверный штрихкод" };
-  }
-  const { unitId, hmacVerified } = resolved;
-
-  // Находим единицу оборудования
-  const unit = await prisma.equipmentUnit.findUnique({
-    where: { id: unitId },
-  });
-  if (!unit || !unit.barcode) {
-    return { error: "Неверный штрихкод" };
-  }
-
-  // Ищем позицию в заказе по equipmentId
-  const bookingItem = await prisma.bookingItem.findFirst({
-    where: { bookingId: session.bookingId, equipmentId: unit.equipmentId },
-  });
-  if (!bookingItem) {
-    return { error: "Оборудование не найдено в заказе" };
-  }
-
-  // Проверяем статус единицы в зависимости от операции
-  if (session.operation === "ISSUE") {
-    if (unit.status !== "AVAILABLE") {
-      return { error: "Единица недоступна для выдачи" };
-    }
-  } else {
-    // RETURN: юнит должен быть выдан и иметь запись BookingItemUnit
-    if (unit.status !== "ISSUED") {
-      return { error: "Единица не была выдана" };
-    }
-    const biu = await prisma.bookingItemUnit.findFirst({
-      where: { equipmentUnitId: unitId, bookingItem: { bookingId: session.bookingId } },
-    });
-    if (!biu) {
-      return { error: "Единица не была выдана" };
-    }
-  }
-
-  // Создаём запись сканирования (unique constraint защищает от дублей)
-  try {
-    const scanRecord = await prisma.scanRecord.create({
-      data: {
-        sessionId,
-        equipmentUnitId: unitId,
-        hmacVerified,
-      },
-    });
-    return { scanRecord, bookingItem, unit };
-  } catch (err: any) {
-    // P2002 = Unique constraint failed
-    if (err?.code === "P2002") {
-      return { error: "Единица уже отсканирована в этой сессии" };
-    }
-    throw err;
-  }
-}
 
 // ──────────────────────────────────────────────
 // 5.3 completeSession

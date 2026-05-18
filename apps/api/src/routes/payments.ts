@@ -123,21 +123,7 @@ router.post("/:id/void", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => 
   }
 });
 
-/**
- * DELETE /api/payments/:id — DEPRECATED
- * Перенаправляет на voidPayment. В Phase 3 будет удалён.
- */
-router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
-  try {
-    console.warn("[DEPRECATED] DELETE /api/payments/:id вызван — используйте POST /api/payments/:id/void");
-    const userId = req.adminUser!.userId;
-    const body = voidSchema.safeParse(req.body);
-    const reason = body.success ? body.data.reason : "Удалено через legacy DELETE endpoint";
-    await paymentService.voidPayment(req.params.id, userId, reason);
-    res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
-});
+// DELETE /api/payments/:id — REMOVED (deprecated). Use POST /api/payments/:id/void.
+// Frontend (VoidPaymentModal) уже вызывает /void; маршрут лишь проксировал voidPayment.
 
 export { router as paymentsRouter };

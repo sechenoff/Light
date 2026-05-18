@@ -25,3 +25,15 @@ CLAUDE.local.md
 
 # Phase 3 expense document uploads
 uploads/
+
+# Scratch / copy-artifact files (never commit)
+# NOTE: apps/api/dev*.db is anchored to apps/api/ and does NOT match the
+# tracked canonical apps/api/prisma/dev.db (different directory).
+apps/api/dev*.db
+apps/api/inspect-xlsx*.cjs
+# Root-only screenshot scratch files. Leading slash anchors to repo root —
+# does NOT match docs/**/*.png (QA/mockup screenshots stay tracked).
+/*.png
+# Local Claude session transcripts (2 legacy files remain tracked; this only
+# prevents new ones from being committed).
+.claude/data/sessions/
