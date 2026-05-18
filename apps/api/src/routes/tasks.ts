@@ -24,8 +24,8 @@ import {
   enrichTasksWithUsers,
 } from "../services/taskService";
 import {
-  addComment, deleteComment, listComments,
-  addChecklistItem, patchChecklistItem, deleteChecklistItem, listChecklist,
+  addComment, deleteComment,
+  addChecklistItem, patchChecklistItem, deleteChecklistItem,
 } from "../services/taskCollabService";
 
 async function enrichOne<T extends { createdBy: string; assignedTo: string | null; completedBy: string | null }>(
@@ -72,7 +72,6 @@ const checklistAddSchema = z.object({ text: z.string().trim().min(1, "Пусто
 const checklistPatchSchema = z.object({
   done: z.boolean().optional(),
   text: z.string().trim().min(1).max(500).optional(),
-  position: z.number().int().min(0).optional(),
 });
 
 // ─── Serializer ──────────────────────────────────────────────────────────────

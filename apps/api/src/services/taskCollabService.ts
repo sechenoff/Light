@@ -131,7 +131,6 @@ export async function addChecklistItem(taskId: string, text: string, actor: Acto
 export interface PatchChecklistInput {
   done?: boolean;
   text?: string;
-  position?: number;
 }
 
 export async function patchChecklistItem(
@@ -151,7 +150,7 @@ export async function patchChecklistItem(
     const isAssignee = task.assignedTo === actor.userId;
     const isSA = actor.role === "SUPER_ADMIN";
 
-    const wantsStructural = "text" in patch || "position" in patch;
+    const wantsStructural = "text" in patch;
     if (wantsStructural && !isCreator && !isSA) {
       throw new HttpError(403, "Нет прав на редактирование задачи", "TASK_EDIT_FORBIDDEN");
     }
@@ -161,7 +160,6 @@ export async function patchChecklistItem(
 
     const data: Record<string, unknown> = {};
     if ("text" in patch && patch.text !== undefined) data.text = patch.text;
-    if ("position" in patch && patch.position !== undefined) data.position = patch.position;
     if ("done" in patch && patch.done !== undefined) {
       data.done = patch.done;
       data.completedAt = patch.done ? new Date() : null;
