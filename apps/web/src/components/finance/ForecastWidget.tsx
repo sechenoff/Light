@@ -192,7 +192,7 @@ export function ForecastWidget({ months = 6 }: { months?: number }) {
 
       {allZero ? (
         <div className="px-5 py-10 text-center">
-          <p className="text-[14px] font-medium text-ink mb-1">Нет прогноза по invoice&apos;ам</p>
+          <p className="text-[14px] font-medium text-ink mb-1">Нет прогноза по счетам</p>
           <p className="text-sm text-ink-2">Создайте счета с датой оплаты, чтобы увидеть прогноз</p>
         </div>
       ) : (

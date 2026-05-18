@@ -31,6 +31,44 @@ export function formatRub(value: string | number | null | undefined): string {
 }
 
 /**
+ * Форматирует сумму расхода/оттока с ведущим минусом.
+ * Минус показывается ТОЛЬКО когда сумма строго больше нуля —
+ * чтобы не было бессмысленного «−0 ₽» на нулевом периоде.
+ * Отрицательные значения нормализуются (берётся модуль), знак рисуется один раз.
+ *
+ * formatExpenseRub(0)     → "0 ₽"
+ * formatExpenseRub(-0)    → "0 ₽"
+ * formatExpenseRub(42600) → "−42 600 ₽"
+ */
+export function formatExpenseRub(value: string | number | null | undefined): string {
+  const n =
+    typeof value === "number"
+      ? value
+      : Number(String(value ?? "").replace(/\s/g, "").replace(",", "."));
+  const abs = Number.isFinite(n) ? Math.abs(n) : 0;
+  // U+2212 MINUS SIGN только при ненулевой сумме (никакого «−0 ₽»)
+  return abs > 0 ? `−${formatRub(abs)}` : formatRub(0);
+}
+
+/**
+ * Подпись маржи/процента. Процент от нулевой базы бессмыслен —
+ * в этом случае возвращается em-dash «—» вместо «+0%» / «0%».
+ *
+ * formatMarginPercent(50000, 100000) → "+50%"
+ * formatMarginPercent(-1000, 100000) → "-1%"
+ * formatMarginPercent(0, 0)          → "—"
+ * formatMarginPercent(123, 0)        → "—"
+ */
+export function formatMarginPercent(
+  numerator: number,
+  base: number,
+): string {
+  if (!Number.isFinite(base) || base <= 0) return "—";
+  const pct = Math.round((numerator / base) * 100);
+  return `${pct >= 0 ? "+" : ""}${pct}%`;
+}
+
+/**
  * Выбирает форму по числу: 1 → one, 2-4 → few, прочее → many.
  * Пример: pluralize(5, "день", "дня", "дней") → "дней".
  *
