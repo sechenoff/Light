@@ -6,7 +6,6 @@ import { warehouseAuth } from "../middleware/warehouseAuth";
 import { rolesGuard } from "../middleware/rolesGuard";
 import {
   createSession,
-  recordScan,
   completeSession,
   cancelSession,
   getSessionWithDetails,
@@ -167,10 +166,6 @@ const createSessionBodySchema = z.object({
   operation: operationSchema,
 });
 
-const scanBodySchema = z.object({
-  barcodePayload: z.string().min(1),
-});
-
 /** GET /api/warehouse/bookings — список броней, доступных для сканирования */
 warehouseScanRouter.get("/bookings", warehouseAuth, async (req, res, next) => {
   try {
@@ -241,20 +236,8 @@ warehouseScanRouter.get("/sessions/:id", warehouseAuth, async (req, res, next) =
   }
 });
 
-/** POST /api/warehouse/sessions/:id/scan — зарегистрировать сканирование */
-warehouseScanRouter.post("/sessions/:id/scan", warehouseAuth, async (req, res, next) => {
-  try {
-    const { barcodePayload } = scanBodySchema.parse(req.body);
-    const result = await recordScan(req.params.id, barcodePayload);
-    if ("error" in result) {
-      res.status(400).json({ status: "error", message: result.error });
-      return;
-    }
-    res.json({ status: "ok", ...result });
-  } catch (err) {
-    next(err);
-  }
-});
+// POST /api/warehouse/sessions/:id/scan — REMOVED (dead barcode-scan path).
+// Складской UI использует чек-лист: /check, /uncheck, /state, /items, /complete.
 
 /** GET /api/warehouse/sessions/:id/summary — предварительная сверка (без завершения) */
 warehouseScanRouter.get("/sessions/:id/summary", warehouseAuth, async (req, res, next) => {

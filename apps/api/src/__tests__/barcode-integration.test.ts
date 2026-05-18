@@ -152,6 +152,18 @@ async function getScanService() {
   return import("../services/warehouseScan");
 }
 
+/**
+ * Сидирует ScanRecord напрямую (раньше это делал recordScan, удалённый как
+ * мёртвый barcode-путь). Эти интеграционные тесты проверяют completeSession /
+ * сверку (живой код); recordScan использовался лишь как фикстура для вставки
+ * скан-записей перед completeSession.
+ */
+async function seedScan(sessionId: string, equipmentUnitId: string): Promise<void> {
+  await prisma.scanRecord.create({
+    data: { sessionId, equipmentUnitId, hmacVerified: true },
+  });
+}
+
 // ──────────────────────────────────────────────────────────────────
 // Полный цикл ISSUE
 // ──────────────────────────────────────────────────────────────────
@@ -160,7 +172,6 @@ describe("Full ISSUE flow", () => {
   it("создаёт оборудование, генерирует юниты, создаёт бронь, подтверждает, проводит ISSUE-сессию, завершает — все юниты ISSUED", async () => {
     const {
       createSession,
-      recordScan,
       completeSession,
       getReconciliationPreview,
     } = await getScanService();
@@ -193,10 +204,9 @@ describe("Full ISSUE flow", () => {
     const session = await createSession(booking.id, "Иван", "ISSUE");
     expect(session.status).toBe("ACTIVE");
 
-    // 6. Сканируем все 3 юнита по их barcodePayload
+    // 6. Сидируем скан-записи для всех 3 юнитов (фикстура для completeSession)
     for (const u of units) {
-      const result = await recordScan(session.id, u.barcodePayload);
-      expect("error" in result).toBe(false);
+      await seedScan(session.id, u.id);
     }
 
     // 7. Предварительная сверка: ожидаем 3, отсканировано 3, missing 0
@@ -234,7 +244,6 @@ describe("Full RETURN flow", () => {
   it("возвращает 2 из 3 выданных юнитов, 1 остаётся ISSUED и помечается как missing", async () => {
     const {
       createSession,
-      recordScan,
       completeSession,
     } = await getScanService();
 
@@ -246,7 +255,7 @@ describe("Full RETURN flow", () => {
 
     const issueSession = await createSession(booking.id, "Петр", "ISSUE");
     for (const u of units) {
-      await recordScan(issueSession.id, u.barcodePayload);
+      await seedScan(issueSession.id, u.id);
     }
     await completeSession(issueSession.id);
 
@@ -258,8 +267,8 @@ describe("Full RETURN flow", () => {
     expect(returnSession.status).toBe("ACTIVE");
 
     // 2. Сканируем только 2 из 3 юнитов
-    await recordScan(returnSession.id, units[0].barcodePayload);
-    await recordScan(returnSession.id, units[1].barcodePayload);
+    await seedScan(returnSession.id, units[0].id);
+    await seedScan(returnSession.id, units[1].id);
 
     // 3. Завершаем сессию
     const summary = await completeSession(returnSession.id);
@@ -325,7 +334,7 @@ describe("Edge cases", () => {
   });
 
   it("частичная выдача: сканируем 2 из 3 → незарезервированная BookingItemUnit удаляется", async () => {
-    const { createSession, recordScan, completeSession } = await getScanService();
+    const { createSession, completeSession } = await getScanService();
 
     const equipment = await createEquipment("Chimera 4x6", "Свет", 3, "UNIT");
     const units = await generateUnits(equipment.id, 3);
@@ -340,8 +349,8 @@ describe("Edge cases", () => {
 
     const session = await createSession(booking.id, "Алексей", "ISSUE");
     // Сканируем только 2 юнита
-    await recordScan(session.id, units[0].barcodePayload);
-    await recordScan(session.id, units[1].barcodePayload);
+    await seedScan(session.id, units[0].id);
+    await seedScan(session.id, units[1].id);
     const summary = await completeSession(session.id);
 
     // Summary: 1 missing (не отсканированный зарезервированный юнит)
@@ -356,7 +365,7 @@ describe("Edge cases", () => {
   });
 
   it("замена юнита: сканируем юнит не из резервации → BookingItemUnit подменяется", async () => {
-    const { createSession, recordScan, completeSession } = await getScanService();
+    const { createSession, completeSession } = await getScanService();
 
     const equipment = await createEquipment("Nova SL150R", "Свет", 2, "UNIT");
     const units = await generateUnits(equipment.id, 2);
@@ -375,8 +384,7 @@ describe("Edge cases", () => {
 
     const session = await createSession(booking.id, "Дмитрий", "ISSUE");
     // Сканируем незарезервированный юнит (замена)
-    const result = await recordScan(session.id, nonReservedUnit!.barcodePayload);
-    expect("error" in result).toBe(false);
+    await seedScan(session.id, nonReservedUnit!.id);
 
     const summary = await completeSession(session.id);
     // substituted содержит id замены

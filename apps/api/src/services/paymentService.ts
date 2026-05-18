@@ -246,14 +246,8 @@ export async function voidPayment(id: string, userId: string, reason?: string): 
   });
 }
 
-/**
- * @deprecated Используйте voidPayment. Этот метод оставлен для совместимости.
- * В Phase 3 будет удалён.
- */
-export async function deletePayment(id: string, userId: string, reason?: string): Promise<void> {
-  console.warn("[DEPRECATED] deletePayment вызван — перенаправляю на voidPayment. Используйте voidPayment напрямую.");
-  return voidPayment(id, userId, reason ?? "Удалено через legacy deletePayment");
-}
+// deletePayment() — REMOVED. Был deprecated-прокси на voidPayment. Весь код
+// (frontend, DELETE /api/payments/:id) уже использует voidPayment напрямую.
 
 export interface ListPaymentsArgs {
   bookingId?: string;
