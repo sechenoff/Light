@@ -806,9 +806,37 @@ model Task {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
+  comments  TaskComment[]
+  checklist TaskChecklistItem[]
+
   @@index([status, assignedTo])
   @@index([status, dueDate])
   @@index([createdBy, status])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String   // AdminUser.id — no FK, enriched manually
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+model TaskChecklistItem {
+  id          String    @id @default(cuid())
+  taskId      String
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  text        String
+  done        Boolean   @default(false)
+  position    Int       // 0-based ordering within the task
+  completedAt DateTime?
+  completedBy String?   // AdminUser.id — no FK
+  createdAt   DateTime  @default(now())
+
+  @@index([taskId, position])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
