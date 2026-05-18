@@ -4,7 +4,7 @@
 
 **Goal:** Add a slide-over task detail panel with a comment thread, an ordered checklist/subtasks, and visibility-aware smart polling so a 3–5 person team stays in sync without reloading.
 
-**Architecture:** Approach A from the spec — `GET /api/tasks/:id` returns the task plus user-enriched comments and ordered checklist in one response; `GET /api/tasks` gains `commentCount` + `checklist {done,total}` aggregates via Prisma relation `_count` (no N+1). Comment/checklist mutations are separate optimistic REST endpoints. Realtime = two visibility-paused pollers (list 12 s, open panel 8 s) that force-refetch after the user's own mutation.
+**Architecture:** Approach A from the spec — `GET /api/tasks/:id` returns the task plus user-enriched comments and ordered checklist in one response; `GET /api/tasks` gains `commentCount` + `checklistSummary {done,total}` aggregates via Prisma relation `_count` (no N+1). NOTE: the list-level checklist aggregate key is `checklistSummary` (not `checklist`) to avoid shape-clashing with the detail endpoint's `checklist: ChecklistItem[]`. Comment/checklist mutations are separate optimistic REST endpoints. Realtime = two visibility-paused pollers (list 12 s, open panel 8 s) that force-refetch after the user's own mutation.
 
 **Tech Stack:** Express 4 + Prisma 6 (SQLite), Zod, Vitest + supertest (API), Next.js 14 + React 18 + Tailwind, Vitest + jsdom + @testing-library/react (web). No new dependencies.
 
@@ -29,7 +29,7 @@
 - `apps/web/src/components/tasks/TaskCard.tsx` — add 💬/☑ chips + open-panel click (Task 12).
 - `apps/web/src/components/tasks/useTasksQuery.ts` — add 12 s visibility-aware list poller (Task 13).
 - `apps/web/src/components/tasks/TasksPage.tsx` — `?task=` deep-link → render panel (Task 13).
-- `apps/web/src/components/tasks/groupTasks.ts` — extend `Task` type with `commentCount?`, `checklist?` summary (Task 6).
+- `apps/web/src/components/tasks/groupTasks.ts` — extend `Task` type with `commentCount?`, `checklistSummary?` (Task 6).
 - `apps/web/src/components/tasks/__tests__/useTaskDetail.test.tsx` — **new** (Task 8).
 
 **Docs**
@@ -748,7 +748,7 @@ git commit -m "feat(tasks): GET /api/tasks/:id includes comments + checklist"
 
 ---
 
-## Task 5: List aggregates — commentCount + checklist {done,total}
+## Task 5: List aggregates — commentCount + checklistSummary {done,total}
 
 **Files:**
 - Modify: `apps/api/src/services/taskService.ts:364-373` (`listTasks`)
@@ -760,7 +760,7 @@ Append to `taskCollab.test.ts`:
 
 ```ts
 describe("GET /api/tasks list aggregates", () => {
-  it("each item has commentCount and checklist {done,total}", async () => {
+  it("each item has commentCount and checklistSummary {done,total}", async () => {
     const task = await makeTask(AUTH_SA(), { title: "Aggr", assignedTo: saUser.id });
     await request(app).post(`/api/tasks/${task.id}/comments`).set(AUTH_SA()).send({ body: "c1" });
     const i1 = await request(app).post(`/api/tasks/${task.id}/checklist`).set(AUTH_SA()).send({ text: "i1" });
@@ -769,7 +769,15 @@ describe("GET /api/tasks list aggregates", () => {
     const res = await request(app).get("/api/tasks?filter=all&status=ALL&limit=200").set(AUTH_SA());
     const found = res.body.items.find((t: any) => t.id === task.id);
     expect(found.commentCount).toBe(1);
-    expect(found.checklist).toEqual({ done: 1, total: 2 });
+    expect(found.checklistSummary).toEqual({ done: 1, total: 2 });
+  });
+
+  it("a fresh task with no comments/checklist → zero baseline", async () => {
+    const task = await makeTask(AUTH_SA(), { title: "Empty" });
+    const res = await request(app).get("/api/tasks?filter=all&status=ALL&limit=200").set(AUTH_SA());
+    const found = res.body.items.find((t: any) => t.id === task.id);
+    expect(found.commentCount).toBe(0);
+    expect(found.checklistSummary).toEqual({ done: 0, total: 0 });
   });
 });
 ```
@@ -818,7 +826,7 @@ with:
     return {
       ...rest,
       commentCount: _count?.comments ?? 0,
-      checklist: {
+      checklistSummary: {
         done: checklist.filter((c) => c.done).length,
         total: checklist.length,
       },
@@ -842,7 +850,7 @@ Expected: PASS (existing `tasks.test.ts` still green + all new tests).
 
 ```bash
 git add apps/api/src/services/taskService.ts apps/api/src/__tests__/taskCollab.test.ts
-git commit -m "feat(tasks): list items expose commentCount + checklist {done,total}"
+git commit -m "feat(tasks): list items expose commentCount + checklistSummary {done,total}"
 ```
 
 ---
@@ -858,7 +866,7 @@ In `apps/web/src/components/tasks/groupTasks.ts`, add to the `Task` interface (a
 
 ```ts
   commentCount?: number;
-  checklist?: { done: number; total: number };
+  checklistSummary?: { done: number; total: number };
 ```
 
 - [ ] **Step 2: Typecheck**
@@ -1589,7 +1597,7 @@ it("renders comment + checklist chips when present", () => {
   const onOpen = vi.fn();
   render(
     <TaskCard
-      task={makeTask({ commentCount: 3, checklist: { done: 1, total: 4 } })}
+      task={makeTask({ commentCount: 3, checklistSummary: { done: 1, total: 4 } })}
       onComplete={() => {}}
       onReopen={() => {}}
       onUpdate={() => {}}
@@ -1652,14 +1660,14 @@ Wrap the title+meta block (the `<div className="min-w-0">`) so clicking it (but 
 Then, immediately after the creator meta `<p>` (the `{creator && (...)}` block), add chips:
 
 ```tsx
-        {((task.commentCount ?? 0) > 0 || (task.checklist?.total ?? 0) > 0) && (
+        {((task.commentCount ?? 0) > 0 || (task.checklistSummary?.total ?? 0) > 0) && (
           <div className="flex items-center gap-2 mt-1">
             {(task.commentCount ?? 0) > 0 && (
               <span className="text-[11px] text-ink-3">💬 {task.commentCount}</span>
             )}
-            {(task.checklist?.total ?? 0) > 0 && (
+            {(task.checklistSummary?.total ?? 0) > 0 && (
               <span className="text-[11px] text-ink-3">
-                ☑ {task.checklist!.done}/{task.checklist!.total}
+                ☑ {task.checklistSummary!.done}/{task.checklistSummary!.total}
               </span>
             )}
           </div>
@@ -1824,7 +1832,7 @@ Add to the **API endpoints** table:
 | `/api/tasks/:id/checklist/:itemId` | DELETE | Удалить пункт (creator/SA) |
 ```
 
-Note that `GET /api/tasks/:id` now includes `comments[]` + `checklist[]`, and `GET /api/tasks` items include `commentCount` + `checklist {done,total}`.
+Note that `GET /api/tasks/:id` now includes `comments[]` + `checklist[]`, and `GET /api/tasks` items include `commentCount` + `checklistSummary {done,total}`.
 
 Add a Key Files block:
 

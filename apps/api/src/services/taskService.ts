@@ -381,7 +381,7 @@ export async function listTasks(input: ListTasksInput, actor: Actor) {
     return {
       ...rest,
       commentCount: _count?.comments ?? 0,
-      checklist: {
+      checklistSummary: {
         done: checklist.filter((c) => c.done).length,
         total: checklist.length,
       },

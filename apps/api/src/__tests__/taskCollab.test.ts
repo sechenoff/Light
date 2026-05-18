@@ -190,7 +190,7 @@ describe("GET /api/tasks/:id with collab", () => {
 });
 
 describe("GET /api/tasks list aggregates", () => {
-  it("each item has commentCount and checklist {done,total}", async () => {
+  it("each item has commentCount and checklistSummary {done,total}", async () => {
     const task = await makeTask(AUTH_SA(), { title: "Aggr", assignedTo: saUser.id });
     await request(app).post(`/api/tasks/${task.id}/comments`).set(AUTH_SA()).send({ body: "c1" });
     const i1 = await request(app).post(`/api/tasks/${task.id}/checklist`).set(AUTH_SA()).send({ text: "i1" });
@@ -199,6 +199,14 @@ describe("GET /api/tasks list aggregates", () => {
     const res = await request(app).get("/api/tasks?filter=all&status=ALL&limit=200").set(AUTH_SA());
     const found = res.body.items.find((t: any) => t.id === task.id);
     expect(found.commentCount).toBe(1);
-    expect(found.checklist).toEqual({ done: 1, total: 2 });
+    expect(found.checklistSummary).toEqual({ done: 1, total: 2 });
+  });
+
+  it("a fresh task with no comments/checklist → zero baseline", async () => {
+    const task = await makeTask(AUTH_SA(), { title: "Empty" });
+    const res = await request(app).get("/api/tasks?filter=all&status=ALL&limit=200").set(AUTH_SA());
+    const found = res.body.items.find((t: any) => t.id === task.id);
+    expect(found.commentCount).toBe(0);
+    expect(found.checklistSummary).toEqual({ done: 0, total: 0 });
   });
 });
