@@ -7,6 +7,8 @@ type DatesCardProps = {
   onReturnChange: (v: string) => void;
   durationTag: string | null;
   durationDetail: string | null;
+  skipPartialDay: boolean;
+  onSkipPartialDayChange: (v: boolean) => void;
 };
 
 function combine(date: string, time: string): string {
@@ -24,6 +26,8 @@ export function DatesCard({
   onReturnChange,
   durationTag,
   durationDetail,
+  skipPartialDay,
+  onSkipPartialDayChange,
 }: DatesCardProps) {
   const [pickupDate, pickupTime] = pickupLocal ? pickupLocal.split("T") : ["", ""];
   const [returnDate, returnTime] = returnLocal ? returnLocal.split("T") : ["", ""];
@@ -81,6 +85,21 @@ export function DatesCard({
             {durationDetail && <span>{durationDetail}</span>}
           </div>
         )}
+
+        <label className="mt-3 flex items-start gap-2.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 rounded border-border-strong text-accent-bright focus:ring-2 focus:ring-accent-soft cursor-pointer"
+            checked={skipPartialDay}
+            onChange={(e) => onSkipPartialDayChange(e.target.checked)}
+          />
+          <span className="text-[12.5px] text-ink-2 leading-snug">
+            Не считать вторые сутки
+            <span className="block text-[11px] text-ink-3">
+              Прощать переработку до 4 ч сверх целых суток (25–28 ч → 1 смена)
+            </span>
+          </span>
+        </label>
       </div>
     </div>
   );

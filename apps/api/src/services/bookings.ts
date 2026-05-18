@@ -65,8 +65,9 @@ export async function quoteEstimate(args: {
   discountPercent?: number | null;
   items: Array<{ equipmentId?: string; customName?: string; customUnitPrice?: number; quantity: number }>;
   transport?: QuoteTransportInput | null;
+  skipPartialDay?: boolean;
 }) {
-  const shifts = billableShifts24h(args.startDate, args.endDate);
+  const shifts = billableShifts24h(args.startDate, args.endDate, args.skipPartialDay ?? false);
 
   const catalogItems = args.items.filter((i) => i.equipmentId);
   const customItems = args.items.filter((i) => !i.equipmentId && i.customName && i.customUnitPrice !== undefined);
@@ -184,6 +185,7 @@ export async function createBookingDraft(args: {
   expectedPaymentDate?: Date | null;
   estimateOptionalNote?: string | null;
   estimateIncludeOptionalInExport?: boolean;
+  skipPartialDay?: boolean;
   items: Array<{ equipmentId?: string; customName?: string; customUnitPrice?: number; quantity: number }>;
   transport?: BookingTransportSnapshot | null;
 }) {
@@ -207,6 +209,7 @@ export async function createBookingDraft(args: {
       expectedPaymentDate: resolvedPaymentDate,
       estimateOptionalNote: args.estimateOptionalNote?.trim() || null,
       estimateIncludeOptionalInExport: args.estimateIncludeOptionalInExport ?? false,
+      skipPartialDay: args.skipPartialDay ?? false,
       // Transport snapshot
       vehicleId: args.transport?.vehicleId ?? null,
       vehicleWithGenerator: args.transport?.withGenerator ?? false,
@@ -247,6 +250,7 @@ export async function createBookingDraft(args: {
         discountPercent: args.discountPercent ?? null,
         items: args.items,
         transport: null,
+        skipPartialDay: args.skipPartialDay ?? false,
       });
       const transportSubtotal = args.transport?.transportSubtotalRub
         ? new Decimal(args.transport.transportSubtotalRub)
@@ -290,7 +294,7 @@ export async function rebuildBookingEstimate(bookingId: string) {
     if (!booking) throw new HttpError(404, "Booking not found.");
     if (booking.items.length === 0) return null;
 
-    const shifts = billableShifts24h(booking.startDate, booking.endDate);
+    const shifts = billableShifts24h(booking.startDate, booking.endDate, booking.skipPartialDay ?? false);
 
     const lines: Array<{
       equipmentId: string | null;
@@ -344,7 +348,7 @@ export async function rebuildBookingEstimate(bookingId: string) {
       commentSnapshot: booking.comment,
       optionalNote: booking.estimateOptionalNote ?? null,
       includeOptionalInExport: booking.estimateIncludeOptionalInExport,
-      hoursSummaryText: formatExportHourCalculationLine(booking.startDate, booking.endDate),
+      hoursSummaryText: formatExportHourCalculationLine(booking.startDate, booking.endDate, booking.skipPartialDay ?? false),
     };
 
     const linesData = lines.map((l) => ({
@@ -450,7 +454,7 @@ export async function confirmBooking(bookingId: string) {
       throw new HttpError(409, "Booking conflicts with already occupied inventory.", { conflicts });
     }
 
-    const shifts = billableShifts24h(booking.startDate, booking.endDate);
+    const shifts = billableShifts24h(booking.startDate, booking.endDate, booking.skipPartialDay ?? false);
     // Create estimate snapshot (stored together with booking).
     const lines: Array<{
       equipmentId: string | null;
@@ -551,7 +555,7 @@ export async function confirmBooking(bookingId: string) {
       commentSnapshot: booking.comment,
       optionalNote: booking.estimateOptionalNote ?? null,
       includeOptionalInExport: booking.estimateIncludeOptionalInExport,
-      hoursSummaryText: formatExportHourCalculationLine(booking.startDate, booking.endDate),
+      hoursSummaryText: formatExportHourCalculationLine(booking.startDate, booking.endDate, booking.skipPartialDay ?? false),
       lines: {
         create: lines.map((l) => ({
           equipmentId: l.equipmentId,

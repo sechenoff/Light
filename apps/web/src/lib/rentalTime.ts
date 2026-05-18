@@ -1,19 +1,27 @@
 /** Должно совпадать с apps/api/src/utils/dates.ts (24 ч = 1 смена). */
 const MS_PER_RENTAL_SHIFT = 24 * 60 * 60 * 1000;
+/** Должно совпадать с SECOND_DAY_GRACE_MS в apps/api/src/utils/dates.ts (4 ч). */
+export const SECOND_DAY_GRACE_MS = 4 * 60 * 60 * 1000;
 
-export function billableShifts24h(start: Date, end: Date): number {
+export function billableShifts24h(start: Date, end: Date, skipPartialDay = false): number {
   const ms = end.getTime() - start.getTime();
   if (ms <= 0) return 0;
+  if (skipPartialDay) {
+    const remainder = ms % MS_PER_RENTAL_SHIFT;
+    if (remainder > 0 && remainder <= SECOND_DAY_GRACE_MS) {
+      return Math.max(1, Math.floor(ms / MS_PER_RENTAL_SHIFT));
+    }
+  }
   return Math.max(1, Math.ceil(ms / MS_PER_RENTAL_SHIFT));
 }
 
-export function formatRentalDurationDetails(start: Date, end: Date): {
+export function formatRentalDurationDetails(start: Date, end: Date, skipPartialDay = false): {
   shifts: number;
   totalHours: number;
   labelShort: string;
 } {
   const ms = end.getTime() - start.getTime();
-  const shifts = billableShifts24h(start, end);
+  const shifts = billableShifts24h(start, end, skipPartialDay);
   const totalHours = ms / (60 * 60 * 1000);
   const fullDays = Math.floor(ms / MS_PER_RENTAL_SHIFT);
   const remAfterDays = ms % MS_PER_RENTAL_SHIFT;
@@ -45,9 +53,9 @@ function pluralShiftWord(shifts: number): string {
 }
 
 /** Должно совпадать с apps/api/src/utils/dates.ts — строка для PDF/XLSX. */
-export function formatExportHourCalculationLine(start: Date, end: Date): string {
+export function formatExportHourCalculationLine(start: Date, end: Date, skipPartialDay = false): string {
   const ms = end.getTime() - start.getTime();
-  const shifts = billableShifts24h(start, end);
+  const shifts = billableShifts24h(start, end, skipPartialDay);
   const fullDays = Math.floor(ms / MS_PER_RENTAL_SHIFT);
   const remAfterDays = ms % MS_PER_RENTAL_SHIFT;
   const wholeHoursRemainder = Math.floor(remAfterDays / (60 * 60 * 1000));
