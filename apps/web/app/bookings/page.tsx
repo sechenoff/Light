@@ -120,14 +120,17 @@ function BookingHistoryPageInner() {
     }
   };
 
-  const statusVariant = (s: BookingRow["status"]): "view" | "warn" | "ok" | "limited" | "none" | "full" | "edit" => {
+  // Семантика жизненного цикла: каждая стадия — свой variant (не два
+  // одинаковых зелёных). CONFIRMED/ISSUED — нейтрально-активные (accent/teal),
+  // RETURNED — «хорошо, закрыто» (emerald), CANCELLED — нейтрально гашёный.
+  const statusVariant = (s: BookingRow["status"]): "view" | "warn" | "ok" | "info" | "edit" | "none" => {
     switch (s) {
-      case "DRAFT": return "view";
-      case "PENDING_APPROVAL": return "warn";
-      case "CONFIRMED": return "full";
-      case "ISSUED": return "edit";
-      case "RETURNED": return "ok";
-      case "CANCELLED": return "none";
+      case "DRAFT": return "view";          // slate — черновик
+      case "PENDING_APPROVAL": return "warn"; // amber — ждёт согласования
+      case "CONFIRMED": return "info";       // accent — подтверждено, активно
+      case "ISSUED": return "edit";          // teal — выдано, в работе
+      case "RETURNED": return "ok";          // emerald — возвращено, закрыто
+      case "CANCELLED": return "none";       // gray — отменено
     }
   };
 
@@ -188,7 +191,7 @@ function BookingHistoryPageInner() {
     <div className="p-4">
       <SectionHeader
         eyebrow="Аренда"
-        title="История броней"
+        title="Список броней"
         actions={
           <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent transition-colors">
             Создать бронь
@@ -198,7 +201,7 @@ function BookingHistoryPageInner() {
 
       <div className="mt-4 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
         <div className="p-3 border-b border-border flex items-center justify-between">
-          <p className="eyebrow">Список броней</p>
+          <p className="eyebrow">Фильтры</p>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2">
               <label className="text-xs text-ink-3">С</label>
@@ -244,16 +247,13 @@ function BookingHistoryPageInner() {
           </div>
         </div>
         <div className="overflow-auto">
-          <table className="min-w-[1400px] w-full text-sm">
+          <table className="min-w-[960px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
-                <th className="text-left px-3 py-2 font-medium">Дата</th>
                 <th className="text-left px-3 py-2 font-medium">Период</th>
                 <th className="text-left px-3 py-2 font-medium">Клиент</th>
                 <th className="text-left px-3 py-2 font-medium">Проект</th>
-                <th className="text-left px-3 py-2 font-medium">Название</th>
                 <th className="text-left px-3 py-2 font-medium">Статус</th>
-                <th className="text-left px-3 py-2 font-medium">Ждёт</th>
                 <th className="text-left px-3 py-2 font-medium">Оплата</th>
                 <th className="text-right px-3 py-2 font-medium">Остаток</th>
                 <th className="px-3 py-2 font-medium">Действия</th>
@@ -262,9 +262,6 @@ function BookingHistoryPageInner() {
             <tbody>
               {filteredRows.map((r) => (
                 <tr key={r.id} className="border-t border-border hover:bg-surface-muted transition-colors">
-                  <td className="px-3 py-2 text-ink mono-num whitespace-nowrap">
-                    {new Date(r.startDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Moscow" })}
-                  </td>
                   <td className="px-3 py-2 text-ink-2 whitespace-nowrap mono-num">
                     {formatBookingPeriod(r.startDate, r.endDate)}
                   </td>
@@ -276,12 +273,17 @@ function BookingHistoryPageInner() {
                       <span className="text-ink-2">{r.projectName}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-ink">{r.displayName}</td>
                   <td className="px-3 py-2">
                     <StatusPill
                       variant={statusVariant(r.status)}
                       label={statusText(r.status)}
                     />
+                    {r.status === "PENDING_APPROVAL" && (() => {
+                      const aging = formatWaitingTime(r.updatedAt, r.createdAt);
+                      return aging ? (
+                        <div className={`mt-0.5 text-xs ${aging.className}`}>ждёт {aging.text}</div>
+                      ) : null;
+                    })()}
                     {r.hasScanSessions && (
                       <span className="ml-1 inline-block" title={
                         r.lastScanOperation === "ISSUE" && r.lastScanStatus === "COMPLETED" ? "Выдача отсканирована" :
@@ -294,18 +296,14 @@ function BookingHistoryPageInner() {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    {r.status === "PENDING_APPROVAL" ? (() => {
-                      const aging = formatWaitingTime(r.updatedAt, r.createdAt);
-                      return aging ? <span className={aging.className}>{aging.text}</span> : "—";
-                    })() : ""}
-                  </td>
                   <td className="px-3 py-2">
                     <StatusPill
                       variant={
+                        // Контраст плохо/хорошо: оплачено = emerald (ok),
+                        // просрочено = rose (alert) — не путать с amber.
                         r.paymentStatus === "PAID" ? "ok"
                         : r.paymentStatus === "PARTIALLY_PAID" ? "limited"
-                        : r.paymentStatus === "OVERDUE" ? "warn"
+                        : r.paymentStatus === "OVERDUE" ? "alert"
                         : "none"
                       }
                       label={paymentStatusText(r.paymentStatus)}
@@ -387,7 +385,7 @@ function BookingHistoryPageInner() {
               ))}
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-ink-3" colSpan={10}>
+                  <td className="px-3 py-6 text-center text-ink-3" colSpan={7}>
                     Нет данных
                   </td>
                 </tr>

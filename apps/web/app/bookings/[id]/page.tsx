@@ -111,7 +111,28 @@ type BookingDetail = {
       lineSum: string;
     }>;
   };
+  // Transport snapshot — flat add-on, не участвует в скидке оборудования.
+  vehicleId?: string | null;
+  transportSubtotalRub?: string | null;
+  vehicle?: { id: string; name: string; slug: string } | null;
 };
+
+/**
+ * Чистый заголовок брони: дата · клиент · проект.
+ * Сознательно БЕЗ суммы — серверный displayName конкатенирует сумму
+ * («17.05.2026 Захар Родомский 74623»), что путало оператора, потому
+ * что эта цифра — equipment-after-discount без транспорта, а не итог.
+ */
+function bookingTitle(b: BookingDetail): string {
+  const date = new Date(b.startDate).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Europe/Moscow",
+  });
+  const project = b.projectName?.trim() && b.projectName.trim() !== "Проект" ? b.projectName.trim() : null;
+  return [date, b.client.name, project].filter(Boolean).join(" · ");
+}
 
 function statusText(s: BookingDetail["status"]) {
   switch (s) {
@@ -308,7 +329,7 @@ export default function BookingDetailPage() {
         <div className="flex items-center justify-between flex-wrap gap-3 no-print">
           <SectionHeader
             eyebrow="Бронирование"
-            title={booking?.displayName || `Бронь: ${id}`}
+            title={booking ? bookingTitle(booking) : `Бронь: ${id}`}
           />
           <div className="flex items-center gap-2 flex-wrap">
             <Link href="/bookings" className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-muted transition-colors">
@@ -459,43 +480,76 @@ export default function BookingDetailPage() {
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 print-booking">
-          <div className="lg:col-span-8 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-            <div className="p-3 border-b border-border bg-surface-subtle">
-              <p className="eyebrow">Позиции брони</p>
-            </div>
-            <div className="overflow-auto">
-              <table className="min-w-[860px] w-full text-sm">
-                <thead className="bg-surface-subtle text-ink-2 border-b border-border">
-                  <tr>
-                    <th className="text-left px-3 py-2 font-medium">Категория</th>
-                    <th className="text-left px-3 py-2 font-medium">Наименование</th>
-                    <th className="px-3 py-2 w-[120px] font-medium text-right">Кол-во</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {booking.items.map((it) => (
-                    <tr key={it.id} className="border-t border-border">
-                      <td className="px-3 py-2 text-ink-2">{it.equipment?.category ?? it.customCategory ?? "—"}</td>
-                      <td className="px-3 py-2">
-                        <div className="font-medium text-ink">{it.equipment?.name ?? it.customName ?? "—"}</div>
-                        <div className="text-xs text-ink-3">
-                          {it.equipment?.brand ? it.equipment.brand : ""} {it.equipment?.model ? `· ${it.equipment.model}` : ""}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 font-medium text-right mono-num">{it.quantity}</td>
-                    </tr>
-                  ))}
-                  {booking.items.length === 0 ? (
-                    <tr>
-                      <td className="px-3 py-6 text-center text-ink-3" colSpan={3}>
-                        Нет позиций
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {(() => {
+            // Единый список позиций. Когда есть снапшот сметы — показываем
+            // цены/суммы прямо здесь (раньше дублировалось отдельным списком
+            // «Смета → Позиции»). Сопоставление по equipmentId, затем по имени.
+            const estLines = booking.estimate?.lines ?? [];
+            const priceByEquipmentId = new Map<string, { unitPrice: string; lineSum: string }>();
+            const priceByName = new Map<string, { unitPrice: string; lineSum: string }>();
+            for (const l of estLines) {
+              if (l.equipmentId) priceByEquipmentId.set(l.equipmentId, { unitPrice: l.unitPrice, lineSum: l.lineSum });
+              priceByName.set(l.nameSnapshot, { unitPrice: l.unitPrice, lineSum: l.lineSum });
+            }
+            const showPrices = estLines.length > 0;
+            const colCount = showPrices ? 5 : 3;
+            return (
+              <div className="lg:col-span-8 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+                <div className="p-3 border-b border-border bg-surface-subtle">
+                  <p className="eyebrow">Позиции брони ({booking.items.length})</p>
+                </div>
+                <div className="overflow-auto max-h-[560px]">
+                  <table className="min-w-[860px] w-full text-sm">
+                    <thead className="bg-surface-subtle text-ink-2 border-b border-border sticky top-0">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium">Категория</th>
+                        <th className="text-left px-3 py-2 font-medium">Наименование</th>
+                        <th className="px-3 py-2 w-[100px] font-medium text-right">Кол-во</th>
+                        {showPrices && <th className="px-3 py-2 w-[120px] font-medium text-right">Цена</th>}
+                        {showPrices && <th className="px-3 py-2 w-[130px] font-medium text-right">Сумма</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {booking.items.map((it) => {
+                        const price =
+                          (it.equipmentId ? priceByEquipmentId.get(it.equipmentId) : undefined) ??
+                          priceByName.get(it.equipment?.name ?? it.customName ?? "");
+                        return (
+                          <tr key={it.id} className="border-t border-border">
+                            <td className="px-3 py-2 text-ink-2">{it.equipment?.category ?? it.customCategory ?? "—"}</td>
+                            <td className="px-3 py-2">
+                              <div className="font-medium text-ink">{it.equipment?.name ?? it.customName ?? "—"}</div>
+                              <div className="text-xs text-ink-3">
+                                {it.equipment?.brand ? it.equipment.brand : ""} {it.equipment?.model ? `· ${it.equipment.model}` : ""}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 font-medium text-right mono-num">{it.quantity}</td>
+                            {showPrices && (
+                              <td className="px-3 py-2 text-right mono-num text-ink-2">
+                                {price ? formatMoneyRub(price.unitPrice) : "—"}
+                              </td>
+                            )}
+                            {showPrices && (
+                              <td className="px-3 py-2 text-right mono-num font-medium text-ink">
+                                {price ? formatMoneyRub(price.lineSum) : "—"}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                      {booking.items.length === 0 ? (
+                        <tr>
+                          <td className="px-3 py-6 text-center text-ink-3" colSpan={colCount}>
+                            Нет позиций
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="lg:col-span-4 space-y-4">
             {(booking.status === "CONFIRMED" || booking.status === "ISSUED" || booking.status === "RETURNED") && (
@@ -602,6 +656,63 @@ export default function BookingDetailPage() {
                     </div>
                   </div>
 
+                  {/* Разбивка «Сумма брони» — единственный источник истины для оператора.
+                      finalAmount = аренда-после-скидки (снапшот сметы) + транспорт.
+                      Показываем явно, чтобы расхождение с блоком «Смета» (там только
+                      оборудование, без транспорта) не сбивало с толку. */}
+                  {(() => {
+                    const equipAfterDiscount = booking.estimate
+                      ? Number(booking.estimate.totalAfterDiscount)
+                      : Number(booking.finalAmount ?? "0") - Number(booking.transportSubtotalRub ?? "0");
+                    const transport = Number(booking.transportSubtotalRub ?? "0");
+                    const hasTransport = Boolean(booking.vehicleId) && transport > 0;
+                    const finalNum = Number(booking.finalAmount ?? "0");
+                    const discount = booking.estimate ? Number(booking.estimate.discountAmount) : Number(booking.discountAmount ?? "0");
+                    const rentBeforeDiscount = booking.estimate ? Number(booking.estimate.subtotal) : Number(booking.totalEstimateAmount ?? "0");
+                    // Сигнал рассинхрона: снапшот сметы + транспорт ≠ сохранённый finalAmount.
+                    const recomposed = equipAfterDiscount + transport;
+                    const drifted = booking.estimate != null && Math.abs(recomposed - finalNum) > 0.01;
+                    return (
+                      <div className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm space-y-1.5">
+                        <div className="eyebrow text-ink-3 mb-1">Из чего складывается сумма</div>
+                        <div className="flex justify-between">
+                          <span className="text-ink-2">Аренда оборудования</span>
+                          <span className="mono-num text-ink-2">{formatMoneyRub(rentBeforeDiscount)}</span>
+                        </div>
+                        {discount > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-ink-2">
+                              Скидка{booking.estimate?.discountPercent ? ` ${booking.estimate.discountPercent}%` : ""}
+                            </span>
+                            <span className="mono-num text-rose">−{formatMoneyRub(discount)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-ink-2">Аренда после скидки</span>
+                          <span className="mono-num text-ink-2">{formatMoneyRub(equipAfterDiscount)}</span>
+                        </div>
+                        {hasTransport && (
+                          <div className="flex justify-between">
+                            <span className="text-ink-2">
+                              Доставка / транспорт{booking.vehicle?.name ? ` (${booking.vehicle.name})` : ""}
+                            </span>
+                            <span className="mono-num text-ink-2">+{formatMoneyRub(transport)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between border-t border-border pt-1.5 font-semibold">
+                          <span className="text-ink">Сумма брони</span>
+                          <span className="mono-num text-ink">{formatMoneyRub(booking.finalAmount ?? "0")}</span>
+                        </div>
+                        {drifted && (
+                          <div className="mt-1 rounded bg-amber-soft border border-amber-border px-2 py-1 text-xs text-amber">
+                            Смета пересчитана после изменений — итог брони ({formatMoneyRub(finalNum)}) актуальнее
+                            суммы в снапшоте сметы ниже ({formatMoneyRub(recomposed)}).
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* CTA row (desktop) */}
                   <div className="hidden md:flex flex-wrap gap-2">
                     {/* Записать платёж: SA всегда; WH при ISSUED|RETURNED */}
@@ -643,6 +754,7 @@ export default function BookingDetailPage() {
                     {/* Акт PDF */}
                     {(() => {
                       const canAct = booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0;
+                      const actHint = "Акт доступен после возврата оборудования и закрытия долга";
                       return (
                         <button
                           className={`rounded border px-3 py-2 text-sm transition-colors ${
@@ -650,7 +762,8 @@ export default function BookingDetailPage() {
                               ? "border-border hover:bg-surface-subtle"
                               : "border-border text-ink-3 cursor-not-allowed opacity-50"
                           }`}
-                          title={canAct ? "" : "Доступно после возврата и закрытия долга"}
+                          title={canAct ? "Скачать акт PDF" : actHint}
+                          aria-label={canAct ? "Скачать акт PDF" : actHint}
                           disabled={!canAct}
                           onClick={canAct ? () => download(`/api/bookings/${booking.id}/act.pdf`, `Акт_${booking.id}.pdf`) : undefined}
                         >
@@ -858,7 +971,7 @@ export default function BookingDetailPage() {
             {booking.estimate ? (
               <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
                 <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
-                  <p className="eyebrow">Смета</p>
+                  <p className="eyebrow">Смета (только оборудование)</p>
                   <span className="text-xs text-ink-3">Шифты: {booking.estimate.shifts}</span>
                 </div>
                 <div className="p-3 space-y-3">
@@ -874,6 +987,12 @@ export default function BookingDetailPage() {
                     <span className="font-semibold text-ink">После скидки</span>
                     <span className="font-semibold text-ink mono-num">{formatMoneyRub(booking.estimate.totalAfterDiscount)}</span>
                   </div>
+                  {Boolean(booking.vehicleId) && Number(booking.transportSubtotalRub ?? "0") > 0 && (
+                    <div className="text-xs text-ink-3 rounded bg-surface-subtle px-2 py-1.5">
+                      Без транспорта. Полная сумма к оплате — в блоке «Финансы» выше
+                      ({formatMoneyRub(booking.finalAmount ?? "0")}).
+                    </div>
+                  )}
 
                   <div className="flex gap-2 no-print">
                     <button
@@ -903,19 +1022,10 @@ export default function BookingDetailPage() {
                     </button>
                   </div>
 
-                  <div className="max-h-[280px] overflow-auto border rounded-lg border-border">
-                    <div className="eyebrow p-2 border-b border-border">Позиции</div>
-                    {booking.estimate.lines.map((l) => (
-                      <div key={l.id} className="px-2 py-2 border-t border-border flex justify-between gap-3 text-sm">
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">{l.nameSnapshot}</div>
-                          <div className="text-xs text-ink-3 mono-num">
-                            {l.quantity} × {formatMoneyRub(l.unitPrice)}
-                          </div>
-                        </div>
-                        <div className="font-medium mono-num">{formatMoneyRub(l.lineSum)}</div>
-                      </div>
-                    ))}
+                  {/* Позиции сметы показаны выше в таблице «Позиции брони»
+                      (с ценами/суммами) — здесь не дублируем. */}
+                  <div className="text-xs text-ink-3 border-t border-border pt-2">
+                    Состав позиций — в таблице «Позиции брони» (с ценами).
                   </div>
 
                   {booking.estimate.commentSnapshot ? <div className="text-xs text-ink-3">{booking.estimate.commentSnapshot}</div> : null}
@@ -981,11 +1091,14 @@ export default function BookingDetailPage() {
           {/* PDF Акт */}
           {(() => {
             const canAct = booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0;
+            const actHint = "Акт доступен после возврата оборудования и закрытия долга";
             return (
               <button
                 className={`flex-1 rounded border px-2 py-2.5 text-sm font-medium transition-colors ${
                   canAct ? "border-border hover:bg-surface-subtle" : "border-border text-ink-3 opacity-50 cursor-not-allowed"
                 }`}
+                title={canAct ? "Скачать акт PDF" : actHint}
+                aria-label={canAct ? "Скачать акт PDF" : actHint}
                 disabled={!canAct}
                 onClick={canAct ? () => download(`/api/bookings/${booking.id}/act.pdf`, `Акт_${booking.id}.pdf`) : undefined}
               >
