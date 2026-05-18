@@ -30,9 +30,9 @@ async function assertTaskExists(tx: any, taskId: string) {
 // ─── Comments ─────────────────────────────────────────────────────────────────
 
 export async function addComment(taskId: string, body: string, actor: Actor) {
-  return prisma.$transaction(async (tx) => {
+  const comment = await prisma.$transaction(async (tx) => {
     await assertTaskExists(tx, taskId);
-    const comment = await tx.taskComment.create({
+    const created = await tx.taskComment.create({
       data: { taskId, authorId: actor.userId, body },
     });
     await writeAuditEntry({
@@ -42,11 +42,12 @@ export async function addComment(taskId: string, body: string, actor: Actor) {
       entityType: "Task",
       entityId: taskId,
       before: null,
-      after: { commentId: comment.id, body },
+      after: { commentId: created.id, body },
     });
-    const [enriched] = await enrichAuthors([comment]);
-    return enriched;
+    return created;
   });
+  const [enriched] = await enrichAuthors([comment]);
+  return enriched;
 }
 
 export async function listComments(taskId: string) {

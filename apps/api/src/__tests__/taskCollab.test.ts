@@ -84,6 +84,15 @@ describe("Comments", () => {
     expect(res.status).toBe(400);
   });
 
+  it("POST to a non-existent task → 404 TASK_NOT_FOUND", async () => {
+    const res = await request(app)
+      .post(`/api/tasks/nonexistent-task-id/comments`)
+      .set(AUTH_SA())
+      .send({ body: "ghost" });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("TASK_NOT_FOUND");
+  });
+
   it("DELETE — author can delete, audit TASK_COMMENT_DELETE", async () => {
     const task = await makeTask(AUTH_SA());
     const add = await request(app).post(`/api/tasks/${task.id}/comments`).set(AUTH_WH()).send({ body: "x" });
