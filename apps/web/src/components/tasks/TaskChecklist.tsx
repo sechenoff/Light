@@ -16,7 +16,6 @@ export function TaskChecklist({ items, canEdit, canToggle, onAdd, onToggle, onDe
   const [draft, setDraft] = useState("");
   const done = items.filter((i) => i.done).length;
   const total = items.length;
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   function add() {
     const t = draft.trim();
@@ -26,9 +25,9 @@ export function TaskChecklist({ items, canEdit, canToggle, onAdd, onToggle, onDe
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" role="group" aria-labelledby="checklist-heading">
       <div className="flex items-center justify-between">
-        <p className="eyebrow">Чеклист</p>
+        <p id="checklist-heading" className="eyebrow">Чеклист</p>
         {total > 0 && (
           <span className="text-[12px] text-ink-3 mono-num">{done}/{total}</span>
         )}
@@ -37,8 +36,8 @@ export function TaskChecklist({ items, canEdit, canToggle, onAdd, onToggle, onDe
       {total > 0 && (
         <div className="h-1.5 rounded-full bg-surface-muted overflow-hidden">
           <div
-            className="h-full bg-teal transition-all"
-            style={{ width: `${pct}%` }}
+            className="h-full bg-teal origin-left transition-transform"
+            style={{ transform: `scaleX(${total > 0 ? done / total : 0})` }}
             aria-hidden
           />
         </div>

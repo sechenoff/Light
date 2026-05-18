@@ -108,6 +108,15 @@ module.exports = {
         xs: "0 1px 0 rgba(9,9,11,.03)",
         sm: "0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02)",
       },
+      keyframes: {
+        slidein: {
+          from: { transform: "translateX(24px)", opacity: "0.6" },
+          to: { transform: "translateX(0)", opacity: "1" },
+        },
+      },
+      animation: {
+        slidein: "slidein 180ms ease-out",
+      },
     },
   },
   plugins: [],

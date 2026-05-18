@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useTaskDetail } from "./useTaskDetail";
 import { TaskComments } from "./TaskComments";
 import { TaskChecklist } from "./TaskChecklist";
@@ -32,12 +32,42 @@ export function TaskDetailPanel({ taskId, currentUserId, isSuperAdmin, onClose }
     addChecklistItem, toggleChecklistItem, deleteChecklistItem,
   } = useTaskDetail(taskId);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+
   // Esc closes
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // Auto-focus the panel on open; restore focus on unmount (spec §6 focus trap)
+  useEffect(() => {
+    const prevFocused = document.activeElement as HTMLElement | null;
+    const t = setTimeout(() => panelRef.current?.focus(), 50);
+    return () => {
+      clearTimeout(t);
+      prevFocused?.focus?.();
+    };
+  }, []);
+
+  function handleTrapKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Tab" || !panelRef.current) return;
+    const focusables = panelRef.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+    );
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    if (e.shiftKey && (active === first || active === panelRef.current)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   // Auto-close if the task was deleted elsewhere (polled 404)
   useEffect(() => {
@@ -50,16 +80,24 @@ export function TaskDetailPanel({ taskId, currentUserId, isSuperAdmin, onClose }
   const canToggle = isSuperAdmin || isCreator || isAssignee;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 flex justify-end"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="task-detail-title"
+    >
       <div className="absolute inset-0 bg-ink/40" onClick={onClose} aria-hidden />
-      <div className="relative w-full max-w-[480px] h-full bg-surface shadow-xl overflow-y-auto animate-[slidein_180ms_ease-out]">
-        <style>{`@keyframes slidein{from{transform:translateX(24px);opacity:.6}to{transform:translateX(0);opacity:1}}`}</style>
-
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        onKeyDown={handleTrapKey}
+        className="relative w-full max-w-[480px] h-full bg-surface shadow-xl overflow-y-auto animate-slidein"
+      >
         {/* Header */}
         <div className="sticky top-0 bg-surface border-b border-border px-5 py-4 flex items-start justify-between gap-3 z-10">
           <div className="min-w-0">
             <p className="eyebrow">Задача</p>
-            <h2 className="text-[17px] font-semibold text-ink mt-0.5 leading-snug break-words">
+            <h2 id="task-detail-title" className="text-[17px] font-semibold text-ink mt-0.5 leading-snug break-words">
               {task?.title ?? (loading ? "Загрузка…" : "—")}
             </h2>
           </div>
@@ -113,6 +151,13 @@ export function TaskDetailPanel({ taskId, currentUserId, isSuperAdmin, onClose }
               onDelete={deleteComment}
             />
           </div>
+        )}
+
+        {!task && !loading && !notFound && (
+          <div className="p-5 text-[13px] text-ink-3">Не удалось загрузить задачу</div>
+        )}
+        {!task && loading && (
+          <div className="p-5 text-[13px] text-ink-3">Загрузка…</div>
         )}
       </div>
     </div>
