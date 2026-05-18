@@ -519,3 +519,112 @@ describe("completeSession с lostUnits", () => {
     expect(result.failedLostUnits[0].reason).toBeTruthy();
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// C5 — компенсация утери при выпущенном Invoice → флаг + аудит (не молчаливо)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe("CRITICAL 5 — invoice resync при утере с компенсацией", () => {
+  it("выпущенный Invoice + lostUnit chargeClient=true → summary.invoiceNeedsReissue + audit INVOICE_OUTDATED_BY_COMPENSATION", async () => {
+    const { unit, booking, session } = await setupReturnSession("LOST-INV-001");
+
+    // Выпускаем активный (ISSUED) Invoice по брони
+    const invoice = await prisma.invoice.create({
+      data: {
+        number: `LR-TEST-INV-001`,
+        bookingId: booking.id,
+        kind: "FULL",
+        status: "ISSUED",
+        total: "10000",
+        paidAmount: "0",
+        issuedAt: new Date(),
+        createdBy: adminUserId,
+      },
+    });
+
+    const { completeSession } = await import("../services/warehouseScan");
+
+    const summary = await completeSession(session.id, {
+      lostUnits: [
+        {
+          equipmentUnitId: unit.id,
+          reason: "Утеряна — счёт уже выставлен",
+          lostLocation: "ON_SITE",
+          chargeClient: true,
+        },
+      ],
+      createdBy: adminUserId,
+    });
+
+    // Компенсация создана (rate*30 > 0)
+    const compensationItem = await prisma.bookingItem.findFirst({
+      where: { bookingId: booking.id, customCategory: "Компенсация" },
+    });
+    expect(compensationItem).not.toBeNull();
+
+    // C5: рассинхрон НЕ молчаливый — флаг выставлен
+    expect(summary.invoiceNeedsReissue).toBe(true);
+
+    // C5: аудит INVOICE_OUTDATED_BY_COMPENSATION на этом инвойсе
+    const audit = await prisma.auditEntry.findFirst({
+      where: {
+        entityType: "Invoice",
+        entityId: invoice.id,
+        action: "INVOICE_OUTDATED_BY_COMPENSATION",
+      },
+    });
+    expect(audit).not.toBeNull();
+  });
+
+  it("DRAFT/VOID Invoice → invoiceNeedsReissue остаётся false (редактируемый/аннулированный счёт не считается рассинхроном)", async () => {
+    const { unit, booking, session } = await setupReturnSession("LOST-INV-002");
+
+    await prisma.invoice.create({
+      data: {
+        number: `LR-TEST-INV-DRAFT-002`,
+        bookingId: booking.id,
+        kind: "FULL",
+        status: "DRAFT",
+        total: "10000",
+        paidAmount: "0",
+        createdBy: adminUserId,
+      },
+    });
+
+    const { completeSession } = await import("../services/warehouseScan");
+
+    const summary = await completeSession(session.id, {
+      lostUnits: [
+        {
+          equipmentUnitId: unit.id,
+          reason: "Утеряна — счёт ещё DRAFT",
+          lostLocation: "ON_SITE",
+          chargeClient: true,
+        },
+      ],
+      createdBy: adminUserId,
+    });
+
+    expect(summary.invoiceNeedsReissue).toBe(false);
+  });
+
+  it("без Invoice + lostUnit chargeClient=true → invoiceNeedsReissue false", async () => {
+    const { unit, session } = await setupReturnSession("LOST-INV-003");
+
+    const { completeSession } = await import("../services/warehouseScan");
+
+    const summary = await completeSession(session.id, {
+      lostUnits: [
+        {
+          equipmentUnitId: unit.id,
+          reason: "Утеряна — счёта нет",
+          lostLocation: "ON_SITE",
+          chargeClient: true,
+        },
+      ],
+      createdBy: adminUserId,
+    });
+
+    expect(summary.invoiceNeedsReissue).toBe(false);
+  });
+});

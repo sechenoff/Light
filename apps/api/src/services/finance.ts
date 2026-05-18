@@ -37,6 +37,47 @@ export function calcBookingPaymentStatus(args: {
   return "NOT_PAID";
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// C3: Единый источник истины для просрочки.
+//
+// Раньше overdue считался по-разному на 3 экранах:
+//  - computeDebts:           live (expectedPaymentDate < now) ∨ stored OVERDUE
+//  - dashboardMetrics:       только stored paymentStatus === "OVERDUE"
+//  - computeFinanceDashboard: через legacy dashboardMetrics (тот же stored)
+// paymentStatusSyncForAllBookings нигде не в cron → числа расходились.
+//
+// Теперь все три проходят через эти хелперы (live-логика как в computeDebts).
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** Минимальная форма брони для оценки просрочки. */
+export interface OverdueBookingLike {
+  expectedPaymentDate: Date | null;
+  paymentStatus: string;
+}
+
+/**
+ * Просрочена ли бронь — единственная реализация.
+ *
+ * Бронь считается просроченной, если есть `expectedPaymentDate` строго в
+ * прошлом ИЛИ сохранённый `paymentStatus === "OVERDUE"` (страховка на случай,
+ * когда recompute уже выставил OVERDUE, но дата по какой-то причине пустая).
+ * Эквивалентно исходной логике `computeDebts`.
+ */
+export function isBookingOverdue(
+  booking: OverdueBookingLike,
+  now: Date = new Date(),
+): boolean {
+  const daysOverdue = booking.expectedPaymentDate
+    ? Math.floor((now.getTime() - booking.expectedPaymentDate.getTime()) / 86400000)
+    : null;
+  return (daysOverdue !== null && daysOverdue > 0) || booking.paymentStatus === "OVERDUE";
+}
+
+/** Остаток к оплате по брони (нормализация Decimal). */
+export function computeOutstanding(booking: { amountOutstanding: string | number | Decimal }): Decimal {
+  return toDec(booking.amountOutstanding.toString());
+}
+
 export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike) {
   const tx = txArg ?? prisma;
   const booking = await tx.booking.findUnique({
@@ -147,13 +188,17 @@ export async function dashboardMetrics() {
       orderBy: { plannedPaymentDate: "asc" },
       take: 20,
     }),
+    // C3: кандидаты на просрочку — фильтруем live через isBookingOverdue
+    // (а не по сохранённому paymentStatus, который мог не синхронизироваться).
     prisma.booking.findMany({
-      where: { paymentStatus: "OVERDUE", status: { not: "CANCELLED" } },
+      where: { status: { not: "CANCELLED" }, amountOutstanding: { gt: 0 } },
       include: { client: true },
       orderBy: { expectedPaymentDate: "asc" },
-      take: 20,
     }),
-    prisma.booking.findMany({ where: { status: { not: "CANCELLED" } }, select: { amountOutstanding: true, paymentStatus: true } }),
+    prisma.booking.findMany({
+      where: { status: { not: "CANCELLED" } },
+      select: { amountOutstanding: true, paymentStatus: true, expectedPaymentDate: true },
+    }),
     prisma.expense.findMany({ where: { expenseDate: { gte: monthStart } }, select: { amount: true } }),
     prisma.expense.findMany({ select: { amount: true } }),
     prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", voidedAt: null }, select: { amount: true } }),
@@ -166,8 +211,11 @@ export async function dashboardMetrics() {
   const allExpenseSum = sumDec(allExpenses.map((x) => x.amount.toString()));
   const allIncomeSum = sumDec(allIncome.map((x) => x.amount.toString()));
   const totalReceivables = sumDec(allBookings.map((b) => b.amountOutstanding.toString()));
+  // C3: overdue считается live (тот же isBookingOverdue, что и в computeDebts).
   const overdueReceivables = sumDec(
-    allBookings.filter((b) => b.paymentStatus === "OVERDUE").map((b) => b.amountOutstanding.toString()),
+    allBookings
+      .filter((b) => isBookingOverdue(b, now))
+      .map((b) => b.amountOutstanding.toString()),
   );
   const unpaidCount = allBookings.filter((b) => b.paymentStatus === "NOT_PAID").length;
   const partialCount = allBookings.filter((b) => b.paymentStatus === "PARTIALLY_PAID").length;
@@ -189,13 +237,16 @@ export async function dashboardMetrics() {
           }
         : null,
     })),
-    overdueBookings: overdueBookings.map((b) => ({
-      id: b.id,
-      clientName: b.client.name,
-      projectName: b.projectName,
-      expectedPaymentDate: b.expectedPaymentDate,
-      amountOutstanding: b.amountOutstanding.toString(),
-    })),
+    overdueBookings: overdueBookings
+      .filter((b) => isBookingOverdue(b, now))
+      .slice(0, 20)
+      .map((b) => ({
+        id: b.id,
+        clientName: b.client.name,
+        projectName: b.projectName,
+        expectedPaymentDate: b.expectedPaymentDate,
+        amountOutstanding: b.amountOutstanding.toString(),
+      })),
     monthProfit: incomeMonth.sub(monthExpenses).toDecimalPlaces(2).toString(),
     summary: {
       totalIncome: allIncomeSum.toDecimalPlaces(2).toString(),
@@ -560,12 +611,12 @@ export async function computeDebts(
   const byClient = new Map<string, ClientDebtAccumulator>();
 
   for (const b of bookings) {
-    const amt = new Decimal(b.amountOutstanding.toString());
+    const amt = computeOutstanding(b);
     const daysOverdue = b.expectedPaymentDate
       ? Math.floor((now.getTime() - b.expectedPaymentDate.getTime()) / 86400000)
       : null;
-    const isOverdue =
-      (daysOverdue !== null && daysOverdue > 0) || b.paymentStatus === "OVERDUE";
+    // C3: единый источник истины — тот же предикат, что dashboardMetrics.
+    const isOverdue = isBookingOverdue(b, now);
 
     const acc = byClient.get(b.clientId) ?? {
       clientId: b.clientId,

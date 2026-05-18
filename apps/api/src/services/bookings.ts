@@ -1,5 +1,5 @@
 import Decimal from "decimal.js";
-import type { Booking, Equipment, BookingItem } from "@prisma/client";
+import type { Booking, Equipment, BookingItem, Prisma } from "@prisma/client";
 
 import { prisma } from "../prisma";
 import { billableShifts24h, formatExportHourCalculationLine } from "../utils/dates";
@@ -630,5 +630,76 @@ export async function confirmBooking(bookingId: string) {
 
     return updated;
   });
+}
+
+type ReleaseTx = Omit<
+  Prisma.TransactionClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends" | "$use"
+>;
+
+export interface ReleaseBookingUnitsResult {
+  /** Кол-во снятых резервов BookingItemUnit */
+  releasedReservations: number;
+  /** Юниты, переведённые обратно в AVAILABLE */
+  freedUnitIds: string[];
+}
+
+/**
+ * Освобождает все UNIT-резервы брони (C2).
+ *
+ * Вызывается при отмене брони (CONFIRMED/ISSUED → CANCELLED). Для каждого
+ * зарезервированного `BookingItemUnit`:
+ *  - переводит `equipmentUnit.status` обратно в `AVAILABLE`
+ *    (НЕ трогает юниты в `MAINTENANCE`/`RETIRED` — у них свой жизненный цикл);
+ *  - удаляет строку-резерв `BookingItemUnit` (резерв = наличие строки, как в
+ *    `confirmBooking`, который создаёт их через `createMany`).
+ *
+ * Идемпотентна: повторный вызов находит 0 резервов и ничего не делает —
+ * безопасно при двойной отмене.
+ *
+ * @param bookingId  id брони
+ * @param tx         транзакционный клиент Prisma (обязателен — вызывается
+ *                   внутри той же `$transaction`, что и смена статуса +
+ *                   `writeAuditEntry`, чтобы откат был атомарным)
+ */
+export async function releaseBookingUnits(
+  bookingId: string,
+  tx: ReleaseTx,
+): Promise<ReleaseBookingUnitsResult> {
+  const reservations = await tx.bookingItemUnit.findMany({
+    where: { bookingItem: { bookingId } },
+    select: { id: true, equipmentUnitId: true },
+  });
+
+  if (reservations.length === 0) {
+    return { releasedReservations: 0, freedUnitIds: [] };
+  }
+
+  const unitIds = Array.from(new Set(reservations.map((r) => r.equipmentUnitId)));
+
+  // Только юниты в "занятых" статусах возвращаем в AVAILABLE.
+  // MAINTENANCE/RETIRED не трогаем — их статус управляется ремонтным workflow.
+  const units = await tx.equipmentUnit.findMany({
+    where: { id: { in: unitIds }, status: { in: ["AVAILABLE", "ISSUED"] } },
+    select: { id: true },
+  });
+  const freedUnitIds = units.map((u) => u.id);
+
+  if (freedUnitIds.length > 0) {
+    await tx.equipmentUnit.updateMany({
+      where: { id: { in: freedUnitIds } },
+      data: { status: "AVAILABLE" },
+    });
+  }
+
+  // Снимаем резерв — удаляем строки BookingItemUnit брони.
+  await tx.bookingItemUnit.deleteMany({
+    where: { id: { in: reservations.map((r) => r.id) } },
+  });
+
+  return {
+    releasedReservations: reservations.length,
+    freedUnitIds,
+  };
 }
 

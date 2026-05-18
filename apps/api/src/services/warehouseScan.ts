@@ -48,6 +48,13 @@ export interface ReconciliationSummary {
   createdRepairIds: string[];  // id карточек ремонта, успешно созданных после возврата
   failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>; // единицы, для которых ремонт не удалось создать
   failedLostUnits: Array<{ equipmentUnitId: string; reason: string }>; // утерянные единицы, которые не удалось обработать
+  /**
+   * C5: true, если компенсация утери изменила сумму брони, по которой уже
+   * выпущен Invoice (не DRAFT/VOID). Invoice автоматически НЕ перевыпускается —
+   * оператор должен вручную аннулировать старый и выставить новый счёт.
+   * Рассинхрон зафиксирован аудит-записью INVOICE_OUTDATED_BY_COMPENSATION.
+   */
+  invoiceNeedsReissue: boolean;
 }
 
 export interface SessionBookingItem {
@@ -292,6 +299,7 @@ export async function completeSession(
       createdRepairIds: [],
       failedBrokenUnits: [],
       failedLostUnits: [],
+      invoiceNeedsReissue: false,
     };
 
     if (session.operation === "ISSUE") {
@@ -553,6 +561,53 @@ export async function completeSession(
       await recomputeBookingFinance(session.bookingId).catch((err: unknown) => {
         console.error("[completeSession] recomputeBookingFinance failed for lost units:", err);
       });
+
+      // C5: компенсация утери изменила сумму брони. Если по брони уже выпущен
+      // активный Invoice (не DRAFT/VOID — его total больше нельзя редактировать
+      // через updateInvoice), он рассинхронизирован с новой суммой.
+      //
+      // Вариант (c) из спеки: автоматический void/reissue здесь = большой
+      // рефактор (нет reissue-хелпера; numbering, refunds, audit-цепочка).
+      // Поэтому делаем рассинхрон НЕ молчаливым: ставим summary-флаг + аудит +
+      // console.warn. Оператор аннулирует старый счёт и выставит новый вручную.
+      try {
+        const activeInvoices = await prisma.invoice.findMany({
+          where: {
+            bookingId: session.bookingId,
+            status: { notIn: ["DRAFT", "VOID"] },
+          },
+          select: { id: true, number: true, status: true, total: true },
+        });
+
+        if (activeInvoices.length > 0) {
+          summary.invoiceNeedsReissue = true;
+          const numbers = activeInvoices.map((inv) => inv.number).join(", ");
+          console.warn(
+            `[completeSession] Booking ${session.bookingId}: compensation for lost unit(s) ` +
+              `changed booking total, but ${activeInvoices.length} active invoice(s) ` +
+              `[${numbers}] were NOT auto-reissued. Operator must void & re-issue manually.`,
+          );
+          for (const inv of activeInvoices) {
+            await writeAuditEntry({
+              userId: createdBy,
+              action: "INVOICE_OUTDATED_BY_COMPENSATION",
+              entityType: "Invoice",
+              entityId: inv.id,
+              before: { status: inv.status, total: inv.total.toString() },
+              after: {
+                reason: "lost_unit_compensation",
+                bookingId: session.bookingId,
+                note: "Invoice total больше не соответствует сумме брони. Требуется ручной void + reissue.",
+              },
+            }).catch((err: unknown) => {
+              console.error("[completeSession] INVOICE_OUTDATED_BY_COMPENSATION audit failed:", err);
+            });
+          }
+        }
+      } catch (err: unknown) {
+        // Детекция рассинхрона не должна валить весь возврат — логируем и продолжаем.
+        console.error("[completeSession] invoice-resync check failed:", err);
+      }
     }
   }
 
@@ -642,6 +697,7 @@ export async function getReconciliationPreview(sessionId: string): Promise<Recon
     createdRepairIds: [],
     failedBrokenUnits: [],
     failedLostUnits: [],
+    invoiceNeedsReissue: false,
   };
 }
 
