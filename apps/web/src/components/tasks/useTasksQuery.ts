@@ -24,6 +24,11 @@ export function useTasksQuery(filter: TaskFilter) {
   // Per-id in-flight guard — useRef avoids re-render churn and stale closures
   const inFlight = useRef<Set<string>>(new Set());
 
+  // Suppresses the 12s poll's blind setTasks while any optimistic mutation's
+  // network request is in flight — otherwise the poll clobbers temp-/optimistic
+  // entries and the mutation's reconcile no-ops. Mirrors useTaskDetail (Task 7).
+  const pollBlocked = useRef(false);
+
   // ── Загрузка ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -55,6 +60,7 @@ export function useTasksQuery(filter: TaskFilter) {
     let timer: ReturnType<typeof setInterval> | null = null;
 
     const poll = () => {
+      if (pollBlocked.current) return;
       apiFetch<TasksListResponse>(`/api/tasks?filter=${filter}&status=ALL&limit=200`)
         .then((data) => setTasks(data.items ?? []))
         .catch(() => {
@@ -97,6 +103,7 @@ export function useTasksQuery(filter: TaskFilter) {
       assignedTo?: string | null;
       description?: string | null;
     }) => {
+      pollBlocked.current = true;
       const tempId = `temp-${Date.now()}`;
       const optimistic: Task = {
         id: tempId,
@@ -124,6 +131,8 @@ export function useTasksQuery(filter: TaskFilter) {
       } catch (err: any) {
         setTasks((t) => t.filter((x) => x.id !== tempId));
         toast.error(err?.message ?? "Не удалось создать задачу");
+      } finally {
+        pollBlocked.current = false;
       }
     },
     [],
@@ -135,6 +144,7 @@ export function useTasksQuery(filter: TaskFilter) {
     async (id: string, patch: Partial<Task>) => {
       if (inFlight.current.has(`update-${id}`)) return;
       inFlight.current.add(`update-${id}`);
+      pollBlocked.current = true;
 
       // Snapshot just the affected task for targeted rollback
       let snapshot: Task | undefined;
@@ -156,6 +166,7 @@ export function useTasksQuery(filter: TaskFilter) {
         toast.error(err?.message ?? "Не удалось обновить задачу");
       } finally {
         inFlight.current.delete(`update-${id}`);
+        pollBlocked.current = false;
       }
     },
     [],
@@ -167,6 +178,7 @@ export function useTasksQuery(filter: TaskFilter) {
     async (id: string) => {
       if (inFlight.current.has(`reopen-${id}`)) return;
       inFlight.current.add(`reopen-${id}`);
+      pollBlocked.current = true;
 
       let snapshot: Task | undefined;
       setTasks((t) => {
@@ -187,6 +199,7 @@ export function useTasksQuery(filter: TaskFilter) {
         toast.error(err?.message ?? "Не удалось открыть задачу");
       } finally {
         inFlight.current.delete(`reopen-${id}`);
+        pollBlocked.current = false;
       }
     },
     [],
@@ -198,6 +211,7 @@ export function useTasksQuery(filter: TaskFilter) {
     async (id: string) => {
       if (inFlight.current.has(`complete-${id}`)) return;
       inFlight.current.add(`complete-${id}`);
+      pollBlocked.current = true;
 
       let snapshot: Task | undefined;
       setTasks((t) => {
@@ -227,6 +241,7 @@ export function useTasksQuery(filter: TaskFilter) {
         toast.error(err?.message ?? "Не удалось выполнить задачу");
       } finally {
         inFlight.current.delete(`complete-${id}`);
+        pollBlocked.current = false;
       }
     },
     [reopenTask],
@@ -236,6 +251,7 @@ export function useTasksQuery(filter: TaskFilter) {
 
   const deleteTask = useCallback(
     async (id: string) => {
+      pollBlocked.current = true;
       let snapshot: Task | undefined;
       setTasks((t) => {
         snapshot = t.find((x) => x.id === id);
@@ -249,6 +265,8 @@ export function useTasksQuery(filter: TaskFilter) {
           setTasks((t) => [...t, snapshot!]);
         }
         toast.error(err?.message ?? "Не удалось удалить задачу");
+      } finally {
+        pollBlocked.current = false;
       }
     },
     [],
