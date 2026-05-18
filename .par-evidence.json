@@ -1,26 +1,26 @@
 {
-  "sprint": "dead-code-cleanup",
-  "claude_product": "n/a (behaviour-preserving cleanup — technical review only)",
-  "technical_review": "APPROVE",
-  "provider": "Claude code-reviewer",
-  "head": "post-3ff48d2 + item3 commit",
-  "ts": "2026-05-18T15:45:00Z",
-  "scope": "dead code / dupes removal from product+codebase audit (behaviour-preserving)",
+  "sprint": "ux-polish",
+  "claude_product": "ACCEPTED (1 minor follow-up fixed in-sprint)",
+  "technical_review": "APPROVE (0 issues)",
+  "provider": "split-focus (two Claude reviewers)",
+  "head": "post-07033a1 + overdue-color-unify",
+  "ts": "2026-05-18T16:30:00Z",
+  "scope": "UX polish from live-site product audit (UI-only, 0 API/schema)",
   "fixes_applied": [
-    "Item 1: removed recordScan + POST /sessions/:id/scan + scanBodySchema + dead tests. barcode-integration.test.ts rewired recordScan->seedScan (direct prisma.scanRecord.create) — live completeSession/reconciliation coverage preserved (verified non-masking).",
-    "Item 2: removed deprecated deletePayment + DELETE /api/payments/:id. Its only test rewritten as describe(voidPayment) with identical assertions — net void coverage preserved. Frontend already uses POST /:id/void. Gaffer's separate deletePayment untouched.",
-    "Item 3 (frozen->resolved): removed reachable «📷 Открыть в сканере» Link from /equipment/[id]/units per user directive 'No Barcodes in UX'. /admin/scanner page + BarcodeScanner components kept dormant for future.",
-    "Item 4: added scoped .gitignore (apps/api/dev*.db, root /*.png) — git check-ignore verified does NOT match tracked prisma/dev.db or docs/**/*.png. Repo copy-artifacts (* N.tsx etc) absent on this branch.",
-    "Item 5 (frozen, no change): computeAging/computeAgingPerClient/computeForecast/buildClientDebtExport operate on Invoice (not Booking) — different entity, not duplicates of isBookingOverdue/computeOutstanding. Conservatively left intact to avoid money-exact regression for ~zero dedup value."
+    "/bookings: removed junk Название + empty Ждёт + duplicate Дата columns (7 cols, colSpan fixed); PENDING aging under pill",
+    "/bookings: status colors — distinct lifecycle variants; OVERDUE=alert(rose) vs PAID=ok(emerald) bad/good contrast",
+    "/bookings: fixed mislabeled 'История броней' eyebrow -> 'Список броней'",
+    "/bookings/[id]: 3-sums resolved — title sum removed, Finance block breakdown (Аренда->Скидка->after->Транспорт->finalAmount), смета marked '(только оборудование)' + cross-link; amber drift-detector banner if estimate+transport != finalAmount",
+    "/bookings/[id]: positions shown once (priced table, дубль смета-list removed)",
+    "/bookings/[id]: ApprovalReviewView history default-collapsed <details> + countCycles() (H4 closed)",
+    "/bookings/[id]: disabled Акт PDF tooltip+aria 'Акт доступен после возврата и закрытия долга'",
+    "follow-up: unified Просрочен color alert/rose between list and detail (was warn/amber on detail)"
   ],
-  "tests": "915/915 pass (dead-code-only tests removed; live coverage preserved via canonical-path rewiring)",
-  "ts_check": "clean (api + web, incl. Item 3 edit)",
-  "par_rounds": [
-    "Round 1 (HEAD 3ff48d2): technical APPROVE — 0 CRIT/HIGH/MED/LOW, all 6 risk checks pass (no live code deleted, no test masking, no dangling refs, .gitignore correctly anchored, 915/915).",
-    "Item 3 follow-up commit: scanner Link removed, tsc web clean exit 0, Link import still used."
-  ],
-  "followups": [
-    "Doc: CLAUDE.md 'Scanner component is shared' line is now stale (units page no longer imports BarcodeScanner) — doc-only.",
-    "2 .claude/data/sessions/*.json already git-tracked — untrack-or-keep is a repo-history decision, deferred."
-  ]
+  "tests": "915/915 pass (web-isolated 256/256 incl. ApprovalReviewView/ApprovalTimeline)",
+  "ts_check": "clean (api + web)",
+  "par_verdicts": {
+    "technical": "APPROVE — 0 CRIT/HIGH/MED/LOW; breakdown arithmetic verified vs recomputeBookingFinance (finance.ts:108-115); drift detector gated against NaN/false-trigger; no data loss; collapse preserves tests",
+    "product": "ACCEPTED — working scenarios preserved, 3-sums pain resolved & readable, 2 minor follow-ups (overdue color unify [fixed], date locale [non-issue])"
+  },
+  "backend_followup": "Architectural fragility (not a bug): confirmBooking does not call recomputeBookingFinance; finalAmount sync relies on approve/payment paths. amber drift-detector now surfaces any future desync in UI. Separate backend sprint if desired."
 }
