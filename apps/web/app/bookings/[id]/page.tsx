@@ -619,7 +619,7 @@ export default function BookingDetailPage() {
                       variant={
                         booking.paymentStatus === "PAID" ? "ok"
                         : booking.paymentStatus === "PARTIALLY_PAID" ? "limited"
-                        : booking.paymentStatus === "OVERDUE" ? "warn"
+                        : booking.paymentStatus === "OVERDUE" ? "alert"
                         : "none"
                       }
                       label={
