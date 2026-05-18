@@ -1,18 +1,11 @@
 {
-  "sprint": "design-fixes",
-  "technical_review": "APPROVE (0 CRIT/HIGH/MED, 1 LOW doc-count note)",
-  "claude_product": "n/a (presentation-only design fixes — technical review sufficient)",
-  "provider": "Claude code-reviewer",
-  "head": "391049a",
-  "ts": "2026-05-18T17:15:00Z",
-  "scope": "final design fixes from live-site /finance review (presentation-only)",
-  "fixes_applied": [
-    "D1: /finance zero-state — formatExpenseRub() kills negative-zero (−0 ₽ -> 0 ₽); formatMarginPercent() returns '—' on zero/neg base (no meaningless +0%/маржа 0%); sparkline suppressed when metric=0 (no fake trend on empty data)",
-    "D2: latinitsa fixed — ForecastWidget «Нет прогноза по invoice'ам» -> «по счетам» (grep confirmed no other UI latinisms in finance)",
-    "D3: ₽ glyph consistency — root cause IBM Plex Mono lacks U+20BD -> font fallback mismatch. Fix: added 'IBM Plex Sans' as fallback #2 in .mono-num (globals.css) + tailwind mono (tailwind.config.js). Plex Mono stays FIRST so digits remain tabular-mono; only ₽ falls to Plex Sans (same weight/colour). No new fonts/deps. PDF (DejaVu) untouched."
-  ],
-  "tests": "915/915 pass (was 905; +14 it() in new format.test.ts — real edge assertions: 0, -0, null/garbage, percent-of-zero, single-minus + non-zero regression). formatRub/formatMoneyRub byte-identical (verified git diff).",
-  "ts_check": "clean (web)",
-  "par_verdict": "technical APPROVE — no format regression for non-zero, margin math byte-identical (only zero-base guard added), font-stack preserves tabular digit alignment, scope strictly presentation + 2 pure helpers",
-  "followup_noted": "/finance/expenses/page.tsx has same −{formatRub} hardcode pattern (lines 433,596,674,683,735) — formatExpenseRub ready to apply there; left out of scope (D1 was KPI-cards only)."
+  "sprint": "llm-fallback-chain",
+  "feature": "automatic-chatmock-to-openai-failover",
+  "claude_product": "ACCEPTED",
+  "technical_review": "APPROVE",
+  "provider": "typescript-reviewer",
+  "ts": "2026-05-18T22:41:48+03:00",
+  "tests": { "api": { "files": 78, "tests": 925, "status": "passed" } },
+  "tsc": { "api": "clean (exit 0)" },
+  "notes": "Root cause: prod gaffer recognition broke when ChatMock (ChatGPT Plus OAuth proxy) hit HTTP 429 'usage limit reached' (single event 2026-05-14 in api logs) -> 503 AI_UNAVAILABLE. Fix: new FallbackLlmProvider wraps ordered legs; a leg 'fails for this request' on throw OR empty array (non-last legs); last leg's empty result returned as legit 'no equipment'. LLM_PROVIDER=fallback wires ChatMock (OPENAI_BASE_URL, maxRetries=1 fail-fast) primary -> direct api.openai.com (OPENAI_FALLBACK_API_KEY real sk-proj, OPENAI_FALLBACK_MODEL=gpt-4o, no baseURL) fallback. Review APPROVE no CRITICAL; applied: HIGH#1 maxRetries param on OpenAiLlmProvider (primary leg=1 so 429 storm hands off in ~1 round-trip vs ~7s backoff), MEDIUM getLlmProvider(fallback) wiring tests (+2), console.warn->console.info for non-error logs, 'unused' sentinel comment, test rename, .env.example placeholder. HIGH#2 (module cache needs restart on key rotation) documented — pre-existing pattern, pm2 reload restarts process anyway. 10 fallback unit tests total."
 }

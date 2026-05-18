@@ -16,15 +16,24 @@ function stripReasoningTags(raw: string): string {
 export class OpenAiLlmProvider implements LlmProvider {
   private client: OpenAI;
   private model: string;
+  private maxRetries: number;
 
-  constructor(apiKey: string, model: string = "gpt-4o-mini", baseURL?: string) {
+  /**
+   * @param maxRetries internal retry attempts on 429/5xx (default 3).
+   *   Pass 1 when this provider is the *primary* leg of a FallbackLlmProvider:
+   *   the fallback chain is the retry strategy, so failing fast (one attempt,
+   *   no exponential back-off) hands off to the reliable leg in ~1 round-trip
+   *   instead of stalling ~7s on a sustained ChatMock 429 storm.
+   */
+  constructor(apiKey: string, model: string = "gpt-4o-mini", baseURL?: string, maxRetries = 3) {
     this.client = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
     this.model = model;
+    this.maxRetries = Math.max(1, maxRetries);
   }
 
   async extractGafferLines(text: string): Promise<GafferExtractedLine[]> {
     let lastError: unknown;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
         const response = await this.client.chat.completions.create({
           model: this.model,
