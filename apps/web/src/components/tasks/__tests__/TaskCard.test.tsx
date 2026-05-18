@@ -153,4 +153,23 @@ describe("TaskCard", () => {
     fireEvent.click(screen.getByTestId("task-card-body-tX"));
     expect(onOpen).toHaveBeenCalledWith("tX");
   });
+
+  it("clicking the title enters inline-edit and does NOT open the detail panel", () => {
+    const onOpen = vi.fn();
+    render(
+      <TaskCard
+        task={makeTask({ id: "tEdit", title: "Изначальное" })}
+        onComplete={() => {}}
+        onReopen={() => {}}
+        onUpdate={() => {}}
+        onDelete={() => {}}
+        onOpenDetail={onOpen}
+      />,
+    );
+    fireEvent.click(screen.getByText("Изначальное"));
+    // inline-edit input should appear (title became editable)
+    expect(screen.getByDisplayValue("Изначальное")).toBeInTheDocument();
+    // and the detail panel must NOT have been requested
+    expect(onOpen).not.toHaveBeenCalled();
+  });
 });

@@ -170,7 +170,7 @@ export function TaskCard({
 
       {/* Заголовок + мета */}
       <div
-        className="min-w-0 cursor-pointer"
+        className={`min-w-0 ${onOpenDetail ? "cursor-pointer" : ""}`}
         data-testid={`task-card-body-${task.id}`}
         onClick={(e) => {
           if (editingTitle) return;
@@ -189,7 +189,12 @@ export function TaskCard({
           />
         ) : (
           <p
-            onClick={() => !isDone && setEditingTitle(true)}
+            onClick={(e) => {
+              if (!isDone) {
+                e.stopPropagation();
+                setEditingTitle(true);
+              }
+            }}
             className={`text-[15px] font-medium leading-snug cursor-text select-none ${
               isDone ? "line-through text-ink-3" : "text-ink"
             }`}
