@@ -1,26 +1,18 @@
 {
-  "sprint": "ux-polish",
-  "claude_product": "ACCEPTED (1 minor follow-up fixed in-sprint)",
-  "technical_review": "APPROVE (0 issues)",
-  "provider": "split-focus (two Claude reviewers)",
-  "head": "post-07033a1 + overdue-color-unify",
-  "ts": "2026-05-18T16:30:00Z",
-  "scope": "UX polish from live-site product audit (UI-only, 0 API/schema)",
+  "sprint": "design-fixes",
+  "technical_review": "APPROVE (0 CRIT/HIGH/MED, 1 LOW doc-count note)",
+  "claude_product": "n/a (presentation-only design fixes — technical review sufficient)",
+  "provider": "Claude code-reviewer",
+  "head": "391049a",
+  "ts": "2026-05-18T17:15:00Z",
+  "scope": "final design fixes from live-site /finance review (presentation-only)",
   "fixes_applied": [
-    "/bookings: removed junk Название + empty Ждёт + duplicate Дата columns (7 cols, colSpan fixed); PENDING aging under pill",
-    "/bookings: status colors — distinct lifecycle variants; OVERDUE=alert(rose) vs PAID=ok(emerald) bad/good contrast",
-    "/bookings: fixed mislabeled 'История броней' eyebrow -> 'Список броней'",
-    "/bookings/[id]: 3-sums resolved — title sum removed, Finance block breakdown (Аренда->Скидка->after->Транспорт->finalAmount), смета marked '(только оборудование)' + cross-link; amber drift-detector banner if estimate+transport != finalAmount",
-    "/bookings/[id]: positions shown once (priced table, дубль смета-list removed)",
-    "/bookings/[id]: ApprovalReviewView history default-collapsed <details> + countCycles() (H4 closed)",
-    "/bookings/[id]: disabled Акт PDF tooltip+aria 'Акт доступен после возврата и закрытия долга'",
-    "follow-up: unified Просрочен color alert/rose between list and detail (was warn/amber on detail)"
+    "D1: /finance zero-state — formatExpenseRub() kills negative-zero (−0 ₽ -> 0 ₽); formatMarginPercent() returns '—' on zero/neg base (no meaningless +0%/маржа 0%); sparkline suppressed when metric=0 (no fake trend on empty data)",
+    "D2: latinitsa fixed — ForecastWidget «Нет прогноза по invoice'ам» -> «по счетам» (grep confirmed no other UI latinisms in finance)",
+    "D3: ₽ glyph consistency — root cause IBM Plex Mono lacks U+20BD -> font fallback mismatch. Fix: added 'IBM Plex Sans' as fallback #2 in .mono-num (globals.css) + tailwind mono (tailwind.config.js). Plex Mono stays FIRST so digits remain tabular-mono; only ₽ falls to Plex Sans (same weight/colour). No new fonts/deps. PDF (DejaVu) untouched."
   ],
-  "tests": "915/915 pass (web-isolated 256/256 incl. ApprovalReviewView/ApprovalTimeline)",
-  "ts_check": "clean (api + web)",
-  "par_verdicts": {
-    "technical": "APPROVE — 0 CRIT/HIGH/MED/LOW; breakdown arithmetic verified vs recomputeBookingFinance (finance.ts:108-115); drift detector gated against NaN/false-trigger; no data loss; collapse preserves tests",
-    "product": "ACCEPTED — working scenarios preserved, 3-sums pain resolved & readable, 2 minor follow-ups (overdue color unify [fixed], date locale [non-issue])"
-  },
-  "backend_followup": "Architectural fragility (not a bug): confirmBooking does not call recomputeBookingFinance; finalAmount sync relies on approve/payment paths. amber drift-detector now surfaces any future desync in UI. Separate backend sprint if desired."
+  "tests": "915/915 pass (was 905; +14 it() in new format.test.ts — real edge assertions: 0, -0, null/garbage, percent-of-zero, single-minus + non-zero regression). formatRub/formatMoneyRub byte-identical (verified git diff).",
+  "ts_check": "clean (web)",
+  "par_verdict": "technical APPROVE — no format regression for non-zero, margin math byte-identical (only zero-base guard added), font-stack preserves tabular digit alignment, scope strictly presentation + 2 pure helpers",
+  "followup_noted": "/finance/expenses/page.tsx has same −{formatRub} hardcode pattern (lines 433,596,674,683,735) — formatExpenseRub ready to apply there; left out of scope (D1 was KPI-cards only)."
 }
