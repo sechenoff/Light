@@ -310,6 +310,8 @@ model Booking {
   /// Текст для экспорта сметы (PDF/XLSX), опционально
   estimateOptionalNote            String?
   estimateIncludeOptionalInExport Boolean @default(false)
+  /// «Не считать вторые сутки»: прощать хвост ≤ 4 ч сверх целых суток (округление смен вниз)
+  skipPartialDay                  Boolean @default(false)
 
   /// Transport snapshot — захватывается в момент создания/апдейта
   vehicleId             String?

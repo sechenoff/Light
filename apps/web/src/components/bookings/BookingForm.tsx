@@ -51,6 +51,7 @@ export type BookingDetail = {
   endDate: string;
   comment: string | null;
   discountPercent: string | null;
+  skipPartialDay?: boolean;
   expectedPaymentDate?: string | null;
   // Transport fields (serialized from Prisma — Decimal → string)
   vehicleId?: string | null;
@@ -129,6 +130,15 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     if (isEdit && initialBooking) return isoToDatetimeLocal(initialBooking.endDate);
     return returnFromSearchParam(endParam, pickupFromSearchParam(startParam, defaultPickupDatetimeLocal()));
   });
+  // «Не считать вторые сутки» — прощать хвост ≤ 4 ч сверх целых суток.
+  const [skipPartialDay, setSkipPartialDay] = useState<boolean>(
+    isEdit && initialBooking ? Boolean(initialBooking.skipPartialDay) : false,
+  );
+  // Возврат тронут вручную → не перетираем авто-+24ч на смене выдачи.
+  // create: старт false (первый выбор выдачи ставит +24ч; если возврат уже
+  // введён вручную и валиден — сохраняется, иначе чинится +24ч). edit: старт
+  // true (сохранённый возврат брони не трогаем при правке выдачи).
+  const returnTouchedRef = useRef(isEdit);
 
   const pickupISO = useMemo(() => datetimeLocalToISO(pickupLocal), [pickupLocal]);
   const returnISO = useMemo(() => datetimeLocalToISO(returnLocal), [returnLocal]);
@@ -138,8 +148,8 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     const s = new Date(pickupISO);
     const e = new Date(returnISO);
     if (e.getTime() <= s.getTime()) return null;
-    return formatRentalDurationDetails(s, e);
-  }, [pickupISO, returnISO]);
+    return formatRentalDurationDetails(s, e, skipPartialDay);
+  }, [pickupISO, returnISO, skipPartialDay]);
 
   const shifts = rentalDuration?.shifts ?? 1;
   const durationTag = rentalDuration ? `${shifts} ${pluralize(shifts, "день", "дня", "дней")}` : null;
@@ -408,6 +418,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
           startDate: pickupISO,
           endDate: returnISO,
           discountPercent: discountPercent || 0,
+          skipPartialDay,
           items,
           transport: transportPayload,
         };
@@ -427,14 +438,21 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     setPickupLocal(v);
     setReturnLocal((prev) => {
       const pu = new Date(v);
-      const re = new Date(prev);
       if (Number.isNaN(pu.getTime())) return prev;
-      if (re.getTime() <= pu.getTime()) return addHoursToDatetimeLocal(v, 24);
+      // По умолчанию бронь 24-часовая: возврат = выдача + 24 ч.
+      // Если пользователь уже правил возврат вручную — не перетираем,
+      // но всё равно не даём возврату оказаться раньше выдачи.
+      if (!returnTouchedRef.current) return addHoursToDatetimeLocal(v, 24);
+      const re = new Date(prev);
+      if (Number.isNaN(re.getTime()) || re.getTime() <= pu.getTime()) {
+        return addHoursToDatetimeLocal(v, 24);
+      }
       return prev;
     });
   }
 
   function handleReturnChange(v: string) {
+    returnTouchedRef.current = true;
     setReturnLocal(v);
   }
 
@@ -650,6 +668,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
         startDate: pickupISO,
         endDate: returnISO,
         discountPercent: discountPercent || 0,
+        skipPartialDay,
         comment: finalComment,
         items,
         transport: transportPayload,
@@ -711,6 +730,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
         startDate: pickupISO,
         endDate: returnISO,
         discountPercent: clampedDiscount,
+        skipPartialDay,
         comment: finalComment,
         items,
         transport: transportPayload,
@@ -778,6 +798,8 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
             onReturnChange={handleReturnChange}
             durationTag={durationTag}
             durationDetail={durationDetail}
+            skipPartialDay={skipPartialDay}
+            onSkipPartialDayChange={setSkipPartialDay}
           />
 
           <EquipmentCard

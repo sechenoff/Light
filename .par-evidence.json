@@ -1,11 +1,11 @@
 {
-  "sprint": "llm-fallback-chain",
-  "feature": "automatic-chatmock-to-openai-failover",
+  "sprint": "booking-24h-grace",
+  "feature": "auto-return-plus24h + skip-partial-day grace",
   "claude_product": "ACCEPTED",
   "technical_review": "APPROVE",
   "provider": "typescript-reviewer",
-  "ts": "2026-05-18T22:41:48+03:00",
-  "tests": { "api": { "files": 78, "tests": 925, "status": "passed" } },
-  "tsc": { "api": "clean (exit 0)" },
-  "notes": "Root cause: prod gaffer recognition broke when ChatMock (ChatGPT Plus OAuth proxy) hit HTTP 429 'usage limit reached' (single event 2026-05-14 in api logs) -> 503 AI_UNAVAILABLE. Fix: new FallbackLlmProvider wraps ordered legs; a leg 'fails for this request' on throw OR empty array (non-last legs); last leg's empty result returned as legit 'no equipment'. LLM_PROVIDER=fallback wires ChatMock (OPENAI_BASE_URL, maxRetries=1 fail-fast) primary -> direct api.openai.com (OPENAI_FALLBACK_API_KEY real sk-proj, OPENAI_FALLBACK_MODEL=gpt-4o, no baseURL) fallback. Review APPROVE no CRITICAL; applied: HIGH#1 maxRetries param on OpenAiLlmProvider (primary leg=1 so 429 storm hands off in ~1 round-trip vs ~7s backoff), MEDIUM getLlmProvider(fallback) wiring tests (+2), console.warn->console.info for non-error logs, 'unused' sentinel comment, test rename, .env.example placeholder. HIGH#2 (module cache needs restart on key rotation) documented — pre-existing pattern, pm2 reload restarts process anyway. 10 fallback unit tests total."
+  "ts": "2026-05-18T23:10:00+03:00",
+  "tests": { "api": { "files": 79, "tests": 939, "status": "passed" }, "web": { "files": 40, "tests": 270, "status": "passed" } },
+  "tsc": { "api": "clean (exit 0)", "web": "clean (excl pre-existing formatWaitingTime.test.ts TS2578)" },
+  "notes": "2a: handlePickupChange auto-fills return = pickup+24h; returnTouchedRef (useRef(isEdit)) prevents clobbering manual edits; invalid (re<=pu) still auto-fixed. 2b: billableShifts24h(start,end,skipPartialDay) + SECOND_DAY_GRACE_MS=4h — when checked and overage beyond whole days <=4h, round shifts DOWN (min 1); >4h billed normally (ceil). Booking.skipPartialDay Boolean @default(false) (additive, safe for prisma db push). Threaded: Zod create/update, quoteEstimate/createBookingDraft/rebuildBookingEstimate/confirmBooking, /quote //quote/export //draft/ PATCH (dry-run+write+wasInReview), client mirror rentalTime.ts (identical math), DatesCard checkbox, edit-mode hydration via serialized booking. Custom line items unaffected (no shift mult). 14 new grace unit tests. Review APPROVE, zero CRITICAL/HIGH; MEDIUM/LOW all pre-existing (ESM/CJS const dup is intentional, labelShort divergence + durationPart dead code predate PR) — comment clarified, pre-existing untouched (out of scope)."
 }

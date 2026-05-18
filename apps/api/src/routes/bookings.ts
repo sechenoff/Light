@@ -71,6 +71,8 @@ const bookingCreateSchema = z.object({
   /** Доп. текст в экспорте (PDF/XLSX), опционально */
   estimateOptionalNote: z.string().optional().nullable(),
   estimateIncludeOptionalInExport: z.boolean().optional(),
+  /** «Не считать вторые сутки»: прощать хвост ≤ 4 ч сверх целых суток */
+  skipPartialDay: z.boolean().optional().default(false),
   /** Переопределить строку «Просчёт часов» (иначе считается по датам) */
   hourCalculationOverride: z.string().optional().nullable(),
   items: z.array(bookingItemSchema).min(1),
@@ -92,6 +94,8 @@ const bookingUpdateSchema = z.object({
   discountPercent: z.number().min(0).max(100).optional().nullable(),
   expectedPaymentDate: z.string().refine((s) => !isNaN(Date.parse(s)), "Invalid date").optional().nullable(),
   items: z.array(bookingItemSchema).min(1).optional(),
+  /** «Не считать вторые сутки»: прощать хвост ≤ 4 ч сверх целых суток */
+  skipPartialDay: z.boolean().optional(),
   /** Если true — возвращает превью изменений брони без записи в БД */
   dryRun: z.boolean().optional().default(false),
   /** Транспорт (опционально) */
@@ -326,6 +330,7 @@ router.patch("/:id", async (req, res, next) => {
               ? Number(existing.discountPercent)
               : null,
         items: itemsAfter,
+        skipPartialDay: body.skipPartialDay !== undefined ? body.skipPartialDay : (existing.skipPartialDay ?? false),
       });
 
       res.json({
@@ -433,6 +438,7 @@ router.patch("/:id", async (req, res, next) => {
           comment: body.comment === undefined ? undefined : body.comment ?? null,
           discountPercent: body.discountPercent === undefined ? undefined : body.discountPercent != null ? new Decimal(body.discountPercent) : null,
           expectedPaymentDate: resolvedExpectedPaymentDate,
+          skipPartialDay: body.skipPartialDay === undefined ? undefined : body.skipPartialDay,
         },
         include: {
           client: true,
@@ -473,6 +479,7 @@ router.patch("/:id", async (req, res, next) => {
               : null,
           items: itemsAfter,
           transport: null,
+          skipPartialDay: body.skipPartialDay !== undefined ? body.skipPartialDay : (existing.skipPartialDay ?? false),
         });
         // finalAmount = equipment-after-discount + transportSubtotal.
         // Transport is on the booking (vehicleId + transportSubtotalRub) —
@@ -696,9 +703,10 @@ router.post("/quote", async (req, res, next) => {
       discountPercent: body.discountPercent ?? null,
       items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
       transport: body.transport ?? null,
+      skipPartialDay: body.skipPartialDay ?? false,
     });
 
-    const duration = formatRentalDurationDetails(start, end);
+    const duration = formatRentalDurationDetails(start, end, body.skipPartialDay ?? false);
 
     res.json({
       shifts: estimate.shifts,
@@ -771,9 +779,10 @@ router.post("/quote/export", async (req, res, next) => {
       clientId: client.id,
       discountPercent: body.discountPercent ?? null,
       items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+      skipPartialDay: body.skipPartialDay ?? false,
     });
 
-    const duration = formatRentalDurationDetails(start, end);
+    const duration = formatRentalDurationDetails(start, end, body.skipPartialDay ?? false);
     const payload = {
       clientName: body.client.name.trim(),
       projectName: body.projectName.trim(),
@@ -797,7 +806,7 @@ router.post("/quote/export", async (req, res, next) => {
     const fileBase = safeFileName(human);
 
     const hourText =
-      body.hourCalculationOverride?.trim() || formatExportHourCalculationLine(start, end);
+      body.hourCalculationOverride?.trim() || formatExportHourCalculationLine(start, end, body.skipPartialDay ?? false);
     const smetaDoc = buildSmetaExportDocument({
       startDate: start,
       endDate: end,
@@ -862,6 +871,7 @@ router.post("/draft", async (req, res, next) => {
         clientId: clientIdForQuote,
         discountPercent: body.discountPercent ?? null,
         items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+        skipPartialDay: body.skipPartialDay ?? false,
       });
 
       res.json({
@@ -956,6 +966,7 @@ router.post("/draft", async (req, res, next) => {
       expectedPaymentDate: body.expectedPaymentDate ? new Date(body.expectedPaymentDate) : null,
       estimateOptionalNote: body.estimateOptionalNote ?? null,
       estimateIncludeOptionalInExport: body.estimateIncludeOptionalInExport ?? false,
+      skipPartialDay: body.skipPartialDay ?? false,
       items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
       transport: transportSnapshot,
     });

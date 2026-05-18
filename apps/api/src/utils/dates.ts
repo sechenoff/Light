@@ -12,6 +12,13 @@ export function parseISODateToUTC(dateStr: string): Date {
 export const MS_PER_RENTAL_SHIFT = 24 * 60 * 60 * 1000;
 
 /**
+ * «Прощаемый» хвост сверх целых суток при включённом «не считать вторые сутки».
+ * Если бронь переехала за целые сутки не более чем на это время — последняя
+ * неполная смена не биллится (округление вниз вместо вверх). 4 часа.
+ */
+export const SECOND_DAY_GRACE_MS = 4 * 60 * 60 * 1000;
+
+/**
  * Граница периода брони: только дата YYYY-MM-DD или полная ISO-дата/время.
  * Для устаревших запросов «только дата»: начало — 00:00 UTC, конец — 23:59:59.999 UTC этого дня.
  */
@@ -35,20 +42,34 @@ export function assertBookingRangeOrder(start: Date, end: Date) {
   }
 }
 
-/** Округление вверх до целых смен по 24 ч, минимум 1 смена при положительной длительности. */
-export function billableShifts24h(start: Date, end: Date): number {
+/**
+ * Округление вверх до целых смен по 24 ч, минимум 1 смена при положительной длительности.
+ *
+ * При `skipPartialDay = true` («не считать вторые сутки»): если переработка
+ * сверх целых суток не превышает {@link SECOND_DAY_GRACE_MS}, последняя
+ * неполная смена прощается — округляем ВНИЗ (но не меньше 1). Перебор больше
+ * grace биллится как обычно (ceil), чтобы галочка не превращала 2-суточную
+ * бронь в 1 смену.
+ */
+export function billableShifts24h(start: Date, end: Date, skipPartialDay = false): number {
   const ms = end.getTime() - start.getTime();
   if (ms <= 0) return 0;
+  if (skipPartialDay) {
+    const remainder = ms % MS_PER_RENTAL_SHIFT;
+    if (remainder > 0 && remainder <= SECOND_DAY_GRACE_MS) {
+      return Math.max(1, Math.floor(ms / MS_PER_RENTAL_SHIFT));
+    }
+  }
   return Math.max(1, Math.ceil(ms / MS_PER_RENTAL_SHIFT));
 }
 
-export function formatRentalDurationDetails(start: Date, end: Date): {
+export function formatRentalDurationDetails(start: Date, end: Date, skipPartialDay = false): {
   shifts: number;
   totalHours: number;
   labelShort: string;
 } {
   const ms = end.getTime() - start.getTime();
-  const shifts = billableShifts24h(start, end);
+  const shifts = billableShifts24h(start, end, skipPartialDay);
   const totalHours = ms / (60 * 60 * 1000);
   const fullDays = Math.floor(ms / MS_PER_RENTAL_SHIFT);
   const remAfterDays = ms % MS_PER_RENTAL_SHIFT;
@@ -75,9 +96,9 @@ function pluralShiftWord(shifts: number): string {
 }
 
 /** Строка для блока «Просчёт часов сметы» в PDF/XLSX (с заделом на авто по датам). */
-export function formatExportHourCalculationLine(start: Date, end: Date): string {
+export function formatExportHourCalculationLine(start: Date, end: Date, skipPartialDay = false): string {
   const ms = end.getTime() - start.getTime();
-  const shifts = billableShifts24h(start, end);
+  const shifts = billableShifts24h(start, end, skipPartialDay);
   const fullDays = Math.floor(ms / MS_PER_RENTAL_SHIFT);
   const remAfterDays = ms % MS_PER_RENTAL_SHIFT;
   const wholeHoursRemainder = Math.floor(remAfterDays / (60 * 60 * 1000));
