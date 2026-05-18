@@ -32,7 +32,7 @@ export type TransportBreakdown = {
  *
  * Формула:
  *   shiftRate     = vehicle.shiftPriceRub + (generator if withGenerator && hasGeneratorOption)
- *   overtimeHours = skipOvertime ? 0 : max(0, shiftHours - 12)
+ *   overtimeHours = skipOvertime ? 0 : max(0, shiftHours - (vehicle.shiftHours ?? 12))
  *   overtime      = shiftRate * overtimePercent/100 * overtimeHours
  *   km            = kmOutsideMkad * 120   (60 ₽/км × туда-обратно)
  *   ttk           = ttkEntry ? 500 : 0

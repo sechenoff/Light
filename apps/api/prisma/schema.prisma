@@ -313,7 +313,11 @@ model Booking {
   /// «Не считать вторые сутки»: прощать хвост ≤ 4 ч сверх целых суток (округление смен вниз)
   skipPartialDay                  Boolean @default(false)
 
-  /// Transport snapshot — захватывается в момент создания/апдейта
+  /// Transport snapshot — захватывается в момент создания/апдейта.
+  /// LEGACY: одиночные колонки оставлены для чтения старых броней,
+  /// созданных до multi-vehicle. Новые брони используют `vehicles[]`.
+  /// `transportSubtotalRub` — общая сумма транспорта (сумма по `vehicles[]`
+  /// для новых броней, либо снапшот одиночной машины для старых).
   vehicleId             String?
   vehicle               Vehicle?  @relation(fields: [vehicleId], references: [id])
   vehicleWithGenerator  Boolean   @default(false)
@@ -322,6 +326,9 @@ model Booking {
   vehicleKmOutsideMkad  Int?
   vehicleTtkEntry       Boolean   @default(false)
   transportSubtotalRub  Decimal?
+
+  /// Multi-vehicle: каждая машина со своими параметрами (per-row).
+  vehicles BookingVehicle[]
 
   estimate Estimate?
   payments Payment[]
@@ -355,6 +362,26 @@ model Booking {
   @@index([clientId])
   @@index([expectedPaymentDate])
   @@index([paymentStatus])
+}
+
+/// Транспорт брони: одна машина со своими параметрами (per-row).
+/// Заменяет одиночные `Booking.vehicle*` колонки (те оставлены legacy).
+model BookingVehicle {
+  id            String   @id @default(cuid())
+  bookingId     String
+  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  vehicleId     String
+  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id])
+  withGenerator Boolean  @default(false)
+  shiftHours    Decimal?
+  skipOvertime  Boolean  @default(false)
+  kmOutsideMkad Int?
+  ttkEntry      Boolean  @default(false)
+  subtotalRub   Decimal?
+  createdAt     DateTime @default(now())
+
+  @@unique([bookingId, vehicleId])
+  @@index([bookingId])
 }
 
 model Payment {
@@ -786,7 +813,8 @@ model Vehicle {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  bookings Booking[]
+  bookings        Booking[]
+  bookingVehicles BookingVehicle[]
 }
 
 /// Задача (to-do item)

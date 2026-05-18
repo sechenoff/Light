@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { TransportCard } from "../TransportCard";
-import type { VehicleRow, TransportBreakdown } from "../types";
+import type { VehicleRow, TransportBreakdown, SelectedVehicle } from "../types";
 
 const ford: VehicleRow = {
   id: "ford-id",
@@ -29,108 +29,108 @@ const iveco: VehicleRow = {
 
 const vehicles = [ford, iveco];
 
-const noopVehicle = vi.fn();
-const noopGenerator = vi.fn();
-const noopHours = vi.fn();
-const noopOvertime = vi.fn();
-const noopKm = vi.fn();
-const noopTtk = vi.fn();
+function sel(vehicleId: string, over: Partial<SelectedVehicle> = {}): SelectedVehicle {
+  return {
+    vehicleId,
+    withGenerator: false,
+    shiftHours: 12,
+    skipOvertime: false,
+    kmOutsideMkad: 0,
+    ttkEntry: false,
+    ...over,
+  };
+}
 
-const defaultProps = {
+const baseProps = {
   vehicles,
-  selectedVehicleId: null,
-  onChangeVehicle: noopVehicle,
-  withGenerator: false,
-  onChangeGenerator: noopGenerator,
-  shiftHours: 12,
-  onChangeShiftHours: noopHours,
-  skipOvertime: false,
-  onChangeSkipOvertime: noopOvertime,
-  kmOutsideMkad: 0,
-  onChangeKm: noopKm,
-  ttkEntry: false,
-  onChangeTtk: noopTtk,
-  breakdown: null,
+  selected: [] as SelectedVehicle[],
+  onToggleVehicle: vi.fn(),
+  onPatchVehicle: vi.fn(),
+  breakdownByVehicleId: {} as Record<string, TransportBreakdown>,
 };
 
-describe("TransportCard", () => {
-  it("renders radio кнопки для каждой машины и «Без транспорта»", () => {
-    render(<TransportCard {...defaultProps} />);
+describe("TransportCard (multi-vehicle)", () => {
+  it("renders a checkbox per vehicle + «Без транспорта» hint", () => {
+    render(<TransportCard {...baseProps} />);
 
-    expect(screen.getByText("Без транспорта")).toBeInTheDocument();
+    expect(screen.getByText(/Без транспорта/)).toBeInTheDocument();
     expect(screen.getByText("Ford")).toBeInTheDocument();
     expect(screen.getByText("Ивеко")).toBeInTheDocument();
+    // All checkboxes unchecked when nothing selected
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes.every((c) => !(c as HTMLInputElement).checked)).toBe(true);
   });
 
-  it("«Без транспорта» выбрано по умолчанию (selectedVehicleId=null)", () => {
-    render(<TransportCard {...defaultProps} />);
+  it("clicking a vehicle checkbox calls onToggleVehicle(id, true)", () => {
+    const onToggleVehicle = vi.fn();
+    render(<TransportCard {...baseProps} onToggleVehicle={onToggleVehicle} />);
 
-    const noTransportRadio = screen.getAllByRole("radio")[0];
-    expect(noTransportRadio).toBeChecked();
+    fireEvent.click(screen.getByLabelText("Выбрать машину Ford"));
+    expect(onToggleVehicle).toHaveBeenCalledWith("ford-id", true);
   });
 
-  it("клик на Ford — вызывает onChangeVehicle с id Ford", () => {
-    const onChangeVehicle = vi.fn();
-    render(<TransportCard {...defaultProps} onChangeVehicle={onChangeVehicle} />);
-
-    const fordLabel = screen.getByText("Ford").closest("label")!;
-    const fordRadio = fordLabel.querySelector("input[type='radio']")!;
-    fireEvent.click(fordRadio);
-
-    expect(onChangeVehicle).toHaveBeenCalledWith("ford-id");
-  });
-
-  it("чекбокс + генератор показывается только для Ивеко (не Ford)", () => {
-    // Ford selected — no generator checkbox
+  it("generator checkbox appears only for selected vehicle with hasGeneratorOption", () => {
+    // Ford selected — no generator option
     const { rerender } = render(
-      <TransportCard {...defaultProps} selectedVehicleId="ford-id" />,
+      <TransportCard {...baseProps} selected={[sel("ford-id")]} />,
     );
-    expect(screen.queryByText(/генератор/i)).toBeNull();
+    expect(screen.queryByText(/\+ Генератор/)).toBeNull();
 
-    // Ивеко selected — generator checkbox appears
-    rerender(<TransportCard {...defaultProps} selectedVehicleId="iveco-id" />);
-    expect(screen.getByText(/генератор/i)).toBeInTheDocument();
+    // Ивеко selected — generator option visible
+    rerender(<TransportCard {...baseProps} selected={[sel("iveco-id")]} />);
+    expect(screen.getByText(/\+ Генератор/)).toBeInTheDocument();
   });
 
-  it("чекбокс «Без переработки» зануляет OT в breakdown", () => {
-    const breakdown: TransportBreakdown = {
-      vehicleId: "ford-id",
-      vehicleName: "Ford",
-      shiftRate: "20000.00",
-      overtime: "4000.00",
-      overtimeHours: 2,
-      km: "0.00",
-      ttk: "0.00",
-      total: "24000.00",
+  it("renders param cards for multiple selected vehicles + total", () => {
+    const breakdownByVehicleId: Record<string, TransportBreakdown> = {
+      "ford-id": {
+        vehicleId: "ford-id",
+        vehicleName: "Ford",
+        shiftRate: "20000.00",
+        overtime: "0.00",
+        overtimeHours: 0,
+        km: "0.00",
+        ttk: "0.00",
+        total: "20000.00",
+      },
+      "iveco-id": {
+        vehicleId: "iveco-id",
+        vehicleName: "Ивеко",
+        shiftRate: "24000.00",
+        overtime: "0.00",
+        overtimeHours: 0,
+        km: "0.00",
+        ttk: "0.00",
+        total: "24000.00",
+      },
     };
-
-    // Without skipOvertime: overtime row visible
-    const { rerender } = render(
+    render(
       <TransportCard
-        {...defaultProps}
-        selectedVehicleId="ford-id"
-        shiftHours={14}
-        breakdown={breakdown}
+        {...baseProps}
+        selected={[sel("ford-id"), sel("iveco-id")]}
+        breakdownByVehicleId={breakdownByVehicleId}
       />,
     );
-    expect(screen.getByText(/переработка/i)).toBeInTheDocument();
 
-    // With skipOvertime + no overtime in breakdown: row hidden
-    const zeroBreakdown: TransportBreakdown = {
-      ...breakdown,
-      overtime: "0.00",
-      overtimeHours: 0,
-      total: "20000.00",
-    };
-    rerender(
+    expect(screen.getByText("Итого Ford")).toBeInTheDocument();
+    expect(screen.getByText("Итого Ивеко")).toBeInTheDocument();
+    // Total row across all selected
+    expect(screen.getByText(/Итого транспорт \(2\)/)).toBeInTheDocument();
+  });
+
+  it("patching shiftHours calls onPatchVehicle with the field", () => {
+    const onPatchVehicle = vi.fn();
+    render(
       <TransportCard
-        {...defaultProps}
-        selectedVehicleId="ford-id"
-        shiftHours={14}
-        skipOvertime={true}
-        breakdown={zeroBreakdown}
+        {...baseProps}
+        selected={[sel("ford-id")]}
+        onPatchVehicle={onPatchVehicle}
       />,
     );
-    expect(screen.queryByText(/переработка/i)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Часы смены для Ford"), {
+      target: { value: "14" },
+    });
+    expect(onPatchVehicle).toHaveBeenCalledWith("ford-id", { shiftHours: 14 });
   });
 });

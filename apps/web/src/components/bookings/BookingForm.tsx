@@ -24,7 +24,7 @@ import { TransportCard } from "./create/TransportCard";
 import { CommentCard } from "./create/CommentCard";
 import { DiscountCard } from "./create/DiscountCard";
 import { SummaryPanel } from "./create/SummaryPanel";
-import { computeTransportPriceClient } from "./create/transportClientCalc";
+import { computeTransportListClient } from "./create/transportClientCalc";
 import { AddCustomItemModal } from "./create/AddCustomItemModal";
 import type {
   AvailabilityRow,
@@ -37,6 +37,8 @@ import type {
   ValidationCheck,
   PendingReviewItem,
   VehicleRow,
+  SelectedVehicle,
+  TransportBreakdown,
 } from "./create/types";
 
 // ─── BookingDetail type (shape returned by GET /api/bookings/:id) ────────────
@@ -53,7 +55,18 @@ export type BookingDetail = {
   discountPercent: string | null;
   skipPartialDay?: boolean;
   expectedPaymentDate?: string | null;
-  // Transport fields (serialized from Prisma — Decimal → string)
+  // Transport — multi-vehicle. New bookings use `vehicles[]`; legacy single
+  // columns kept for back-compat with old bookings created pre-multi-vehicle.
+  vehicles?: Array<{
+    vehicleId: string;
+    vehicle?: { id: string; name: string; slug: string } | null;
+    withGenerator: boolean;
+    shiftHours: string | null;
+    skipOvertime: boolean;
+    kmOutsideMkad: number | null;
+    ttkEntry: boolean;
+    subtotalRub: string | null;
+  }>;
   vehicleId?: string | null;
   vehicleWithGenerator?: boolean;
   vehicleShiftHours?: string | null;
@@ -221,29 +234,41 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   const [loadingQuote, setLoadingQuote] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Transport — initialized from booking when editing
+  // Transport — multi-vehicle. Init from initialBooking.vehicles[] if present,
+  // else from legacy single vehicle* columns (back-compat with old bookings).
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(
-    isEdit ? (initialBooking?.vehicleId ?? null) : null,
-  );
-  const [withGenerator, setWithGenerator] = useState(
-    isEdit ? (initialBooking?.vehicleWithGenerator ?? false) : false,
-  );
-  const [shiftHours, setShiftHours] = useState(
-    isEdit && initialBooking?.vehicleShiftHours
-      ? Math.ceil(Number(initialBooking.vehicleShiftHours))
-      : 12,
-  );
-  // In edit mode: user already set shiftHours — prevent auto-derive from dates overriding them
-  const [shiftHoursDirty, setShiftHoursDirty] = useState(isEdit);
-  const [skipOvertime, setSkipOvertime] = useState(
-    isEdit ? (initialBooking?.vehicleSkipOvertime ?? false) : false,
-  );
-  const [kmOutsideMkad, setKmOutsideMkad] = useState(
-    isEdit ? (initialBooking?.vehicleKmOutsideMkad ?? 0) : 0,
-  );
-  const [ttkEntry, setTtkEntry] = useState(
-    isEdit ? (initialBooking?.vehicleTtkEntry ?? false) : false,
+  const [selectedVehicles, setSelectedVehicles] = useState<SelectedVehicle[]>(() => {
+    if (!isEdit || !initialBooking) return [];
+    if (initialBooking.vehicles && initialBooking.vehicles.length > 0) {
+      return initialBooking.vehicles.map((v) => ({
+        vehicleId: v.vehicleId,
+        withGenerator: v.withGenerator,
+        shiftHours: v.shiftHours ? Math.ceil(Number(v.shiftHours)) : 12,
+        skipOvertime: v.skipOvertime,
+        kmOutsideMkad: v.kmOutsideMkad ?? 0,
+        ttkEntry: v.ttkEntry,
+      }));
+    }
+    if (initialBooking.vehicleId) {
+      return [
+        {
+          vehicleId: initialBooking.vehicleId,
+          withGenerator: initialBooking.vehicleWithGenerator ?? false,
+          shiftHours: initialBooking.vehicleShiftHours
+            ? Math.ceil(Number(initialBooking.vehicleShiftHours))
+            : 12,
+          skipOvertime: initialBooking.vehicleSkipOvertime ?? false,
+          kmOutsideMkad: initialBooking.vehicleKmOutsideMkad ?? 0,
+          ttkEntry: initialBooking.vehicleTtkEntry ?? false,
+        },
+      ];
+    }
+    return [];
+  });
+  // Vehicles whose shiftHours the user manually set — excluded from
+  // auto-derive-from-dates. In edit mode, all initial vehicles are "dirty".
+  const shiftHoursDirtyRef = useRef<Set<string>>(
+    new Set(isEdit ? selectedVehicles.map((s) => s.vehicleId) : []),
   );
 
   // ── expectedPaymentDate — пользовательское значение (опционально) ──
@@ -275,13 +300,21 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     return () => { cancelled = true; };
   }, []);
 
-  // ── Auto-update shiftHours from rentalDuration if not dirty ──
+  // ── Auto-update each non-dirty vehicle's shiftHours from rentalDuration ──
   useEffect(() => {
-    if (!shiftHoursDirty && rentalDuration) {
-      const hours = Math.ceil(rentalDuration.totalHours);
-      setShiftHours(Math.max(1, hours));
-    }
-  }, [rentalDuration, shiftHoursDirty]);
+    if (!rentalDuration) return;
+    const hours = Math.max(1, Math.ceil(rentalDuration.totalHours));
+    setSelectedVehicles((prev) => {
+      let changed = false;
+      const next = prev.map((s) => {
+        if (shiftHoursDirtyRef.current.has(s.vehicleId)) return s;
+        if (s.shiftHours === hours) return s;
+        changed = true;
+        return { ...s, shiftHours: hours };
+      });
+      return changed ? next : prev;
+    });
+  }, [rentalDuration]);
 
   // ── Catalog fetch (on dates change) ──
   useEffect(() => {
@@ -370,31 +403,67 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     clientName.trim() && (selected.size > 0 || offCatalogItems.length > 0 || customItems.length > 0) && pickupISO && returnISO && !submitting,
   );
 
-  const transportPayload = useMemo(() => {
-    if (!selectedVehicleId) return null;
-    return {
-      vehicleId: selectedVehicleId,
-      withGenerator,
-      shiftHours,
-      skipOvertime,
-      kmOutsideMkad,
-      ttkEntry,
-    };
-  }, [selectedVehicleId, withGenerator, shiftHours, skipOvertime, kmOutsideMkad, ttkEntry]);
+  // Default shiftHours for a newly-toggled vehicle = current rental duration.
+  const defaultShiftHours = rentalDuration
+    ? Math.max(1, Math.ceil(rentalDuration.totalHours))
+    : 12;
 
-  const localTransport = useMemo(() => {
-    if (!selectedVehicleId) return null;
-    const vehicle = vehicles.find((v) => v.id === selectedVehicleId);
-    if (!vehicle) return null;
-    return computeTransportPriceClient({
-      vehicle,
-      withGenerator,
-      shiftHours,
-      skipOvertime,
-      kmOutsideMkad,
-      ttkEntry,
+  function handleToggleVehicle(vehicleId: string, checked: boolean) {
+    setSelectedVehicles((prev) => {
+      if (checked) {
+        if (prev.some((s) => s.vehicleId === vehicleId)) return prev;
+        return [
+          ...prev,
+          {
+            vehicleId,
+            withGenerator: false,
+            shiftHours: defaultShiftHours,
+            skipOvertime: false,
+            kmOutsideMkad: 0,
+            ttkEntry: false,
+          },
+        ];
+      }
+      shiftHoursDirtyRef.current.delete(vehicleId);
+      return prev.filter((s) => s.vehicleId !== vehicleId);
     });
-  }, [selectedVehicleId, vehicles, withGenerator, shiftHours, skipOvertime, kmOutsideMkad, ttkEntry]);
+  }
+
+  function handlePatchVehicle(vehicleId: string, patch: Partial<SelectedVehicle>) {
+    if (patch.shiftHours !== undefined) shiftHoursDirtyRef.current.add(vehicleId);
+    setSelectedVehicles((prev) =>
+      prev.map((s) => (s.vehicleId === vehicleId ? { ...s, ...patch } : s)),
+    );
+  }
+
+  // Stable key so the quote effect only refires when transport actually changes.
+  const transportKey = useMemo(
+    () => JSON.stringify(selectedVehicles),
+    [selectedVehicles],
+  );
+
+  // Payload for quote/draft/export: array of per-vehicle configs, or null.
+  const transportPayload = useMemo<SelectedVehicle[] | null>(
+    () => (selectedVehicles.length > 0 ? selectedVehicles : null),
+    // transportKey captures deep changes; selectedVehicles ref is enough here
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [transportKey],
+  );
+
+  // Local per-vehicle breakdowns + subtotal (instant feedback before quote).
+  const localTransport = useMemo(() => {
+    if (selectedVehicles.length === 0) return null;
+    return computeTransportListClient(selectedVehicles, vehicles);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transportKey, vehicles]);
+
+  // breakdownByVehicleId: prefer server quote, fall back to local calc.
+  const breakdownByVehicleId = useMemo<Record<string, TransportBreakdown>>(() => {
+    const map: Record<string, TransportBreakdown> = {};
+    const source = quote?.transport ?? localTransport?.breakdowns ?? [];
+    for (const b of source) map[b.vehicleId] = b;
+    return map;
+  }, [quote, localTransport]);
 
   // ── Debounced quote ──
   useEffect(() => {
@@ -907,8 +976,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
             selectedItems={selected}
             offCatalogItems={offCatalogItems}
             customItems={customItems}
-            selectedVehicleName={selectedVehicleId ? (vehicles.find(v => v.id === selectedVehicleId)?.name ?? null) : null}
-            localTransport={localTransport}
+            transportBreakdowns={localTransport?.breakdowns ?? []}
             onRemoveItem={handleRemove}
             onRemoveOffCatalog={handleRemoveOffCatalog}
             onRemoveCustom={handleRemoveCustom}
@@ -918,19 +986,10 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
           />
           <TransportCard
             vehicles={vehicles}
-            selectedVehicleId={selectedVehicleId}
-            onChangeVehicle={setSelectedVehicleId}
-            withGenerator={withGenerator}
-            onChangeGenerator={setWithGenerator}
-            shiftHours={shiftHours}
-            onChangeShiftHours={(h) => { setShiftHours(h); setShiftHoursDirty(true); }}
-            skipOvertime={skipOvertime}
-            onChangeSkipOvertime={setSkipOvertime}
-            kmOutsideMkad={kmOutsideMkad}
-            onChangeKm={setKmOutsideMkad}
-            ttkEntry={ttkEntry}
-            onChangeTtk={setTtkEntry}
-            breakdown={quote?.transport ?? localTransport}
+            selected={selectedVehicles}
+            onToggleVehicle={handleToggleVehicle}
+            onPatchVehicle={handlePatchVehicle}
+            breakdownByVehicleId={breakdownByVehicleId}
           />
         </div>
       </div>
