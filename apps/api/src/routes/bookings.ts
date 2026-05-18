@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
-import { createBookingDraft, confirmBooking, quoteEstimate, rebuildBookingEstimate, CUSTOM_LINE_CATEGORY } from "../services/bookings";
+import { createBookingDraft, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, CUSTOM_LINE_CATEGORY } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking } from "../services/bookingApproval";
 import { HttpError } from "../utils/errors";
 import {
@@ -548,25 +548,11 @@ router.post("/:id/status", async (req, res, next) => {
       throw new HttpError(409, `Недопустимый переход: ${booking.status} -> ${body.action}`);
     }
 
-    if (body.action === "confirm") {
-      const confirmed = await confirmBooking(id);
-      let warning: string | null = null;
-      try {
-        await recomputeBookingFinance(id);
-        await createFinanceEvent({
-          bookingId: id,
-          eventType: "BOOKING_CONFIRMED",
-          payload: { status: confirmed.status },
-        });
-      } catch (financeErr) {
-        warning = financeWarningFromError(financeErr);
-        // Не блокируем подтверждение брони, если финансовый модуль временно не готов (например, миграции).
-        // eslint-disable-next-line no-console
-        console.error("Finance side-effects failed after confirm:", financeErr);
-      }
-      res.json({ booking: serializeBookingForApi(confirmed as any), warning });
-      return;
-    }
+    // NB: ветка `body.action === "confirm"` намеренно удалена (C1).
+    // Ни один статус в allowedActionsByStatus не содержит "confirm" — DRAFT
+    // подтверждается только через approval workflow (submit-for-approval →
+    // approve). Bot использует отдельный POST /:id/confirm. Старая ветка была
+    // недостижима и служила легаси-bypass согласования.
 
     const nextStatus =
       body.action === "issue"
@@ -576,20 +562,55 @@ router.post("/:id/status", async (req, res, next) => {
           : body.action === "cancel"
             ? "CANCELLED"
             : booking.status;
-    const updated = await prisma.booking.update({
-      where: { id },
-      data: {
-        status: nextStatus,
-        expectedPaymentDate:
-          body.expectedPaymentDate !== undefined ? (body.expectedPaymentDate ? new Date(body.expectedPaymentDate) : null) : undefined,
-        paymentComment: body.paymentComment === undefined ? undefined : body.paymentComment ?? null,
-      },
-      include: {
-        client: true,
-        items: { include: { equipment: true } },
-        estimate: { include: { lines: true } },
-      },
-    });
+
+    const bookingUpdateData = {
+      status: nextStatus,
+      expectedPaymentDate:
+        body.expectedPaymentDate !== undefined ? (body.expectedPaymentDate ? new Date(body.expectedPaymentDate) : null) : undefined,
+      paymentComment: body.paymentComment === undefined ? undefined : body.paymentComment ?? null,
+    };
+    const bookingInclude = {
+      client: true,
+      items: { include: { equipment: true } },
+      estimate: { include: { lines: true } },
+    } as const;
+
+    let updated;
+    if (body.action === "cancel") {
+      // C2: при отмене освобождаем UNIT-резервы в той же транзакции, что и
+      // смена статуса + аудит. Без этого equipmentUnit.status застревал в
+      // ISSUED, а BookingItemUnit-резервы не снимались.
+      const auditUserId = req.adminUser?.userId ?? "system";
+      updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const u = await tx.booking.update({
+          where: { id },
+          data: bookingUpdateData,
+          include: bookingInclude,
+        });
+        const released = await releaseBookingUnits(id, tx);
+        await writeAuditEntry({
+          tx,
+          userId: auditUserId,
+          action: "BOOKING_UNITS_RELEASED",
+          entityType: "Booking",
+          entityId: id,
+          before: diffFields({ status: booking.status }),
+          after: diffFields({
+            status: "CANCELLED",
+            via: "status:cancel",
+            releasedReservations: released.releasedReservations,
+            freedUnitIds: released.freedUnitIds.length,
+          }),
+        });
+        return u;
+      });
+    } else {
+      updated = await prisma.booking.update({
+        where: { id },
+        data: bookingUpdateData,
+        include: bookingInclude,
+      });
+    }
     let warning: string | null = null;
     try {
       await recomputeBookingFinance(id);
@@ -955,9 +976,27 @@ router.post("/draft", async (req, res, next) => {
   }
 });
 
-router.post("/:id/confirm", async (req, res, next) => {
+// C1: легаси-bypass согласования закрыт.
+//  - rolesGuard(["SUPER_ADMIN"]) — у WAREHOUSE (JWT-сессия) больше нет доступа
+//    к прямому confirm; для них только submit-for-approval → approve.
+//    Бот (openclaw-ключ, req.botAccess=true) проходит rolesGuard без проверки
+//    роли (whitelisted в botScopeGuard) — его одношаговый draft→confirm flow
+//    сохраняется намеренно (у бота нет UI согласования; это отдельный
+//    доверенный автоматизированный канал).
+//  - Для НЕ-бота DRAFT/PENDING_APPROVAL → 409: SUPER_ADMIN из веба обязан
+//    идти через approval workflow, а не флипать статус напрямую.
+router.post("/:id/confirm", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const id = req.params.id;
+    const isBot = req.botAccess === true;
+    const booking = await prisma.booking.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    });
+    if (!booking) throw new HttpError(404, "Booking not found", "BOOKING_NOT_FOUND");
+    if (!isBot && ["DRAFT", "PENDING_APPROVAL"].includes(booking.status)) {
+      throw new HttpError(409, "Используйте процесс согласования", "USE_APPROVAL_FLOW");
+    }
     // Body can be extended later (idempotency key, override discount, etc.).
     const confirmed = await confirmBooking(id);
     let warning: string | null = null;
@@ -1356,6 +1395,24 @@ router.post(
         await tx.booking.update({
           where: { id: booking.id },
           data: { status: "CANCELLED" },
+        });
+
+        // C2: освобождаем UNIT-резервы в той же транзакции (статус юнитов
+        // обратно в AVAILABLE + снятие BookingItemUnit). Идемпотентно.
+        const released = await releaseBookingUnits(booking.id, tx as TxClientLocal);
+        await writeAuditEntry({
+          tx: tx as TxClientLocal,
+          userId,
+          action: "BOOKING_UNITS_RELEASED",
+          entityType: "Booking",
+          entityId: booking.id,
+          before: diffFields({ status: booking.status }),
+          after: diffFields({
+            status: "CANCELLED",
+            via: "cancel-with-deposit",
+            releasedReservations: released.releasedReservations,
+            freedUnitIds: released.freedUnitIds.length,
+          }),
         });
 
         // D5: Пересчитываем финансовые агрегаты после отмены (amountPaid, amountOutstanding, paymentStatus)

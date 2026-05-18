@@ -119,12 +119,20 @@ async function createBookingDraft(clientName: string, equipmentId: string, quant
 }
 
 async function confirmBooking(bookingId: string) {
-  const res = await request(app)
-    .post(`/api/bookings/${bookingId}/confirm`)
+  // C1: легаси DRAFT→/confirm bypass закрыт. Веб-роли (включая SUPER_ADMIN)
+  // обязаны идти через approval workflow: submit-for-approval → approve.
+  const submitRes = await request(app)
+    .post(`/api/bookings/${bookingId}/submit-for-approval`)
     .set(AUTH())
     .send({});
-  expect(res.status).toBe(200);
-  return res.body.booking;
+  expect(submitRes.status).toBe(200);
+
+  const approveRes = await request(app)
+    .post(`/api/bookings/${bookingId}/approve`)
+    .set(AUTH())
+    .send({});
+  expect(approveRes.status).toBe(200);
+  return approveRes.body.booking;
 }
 
 async function issueBooking(bookingId: string) {
