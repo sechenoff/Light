@@ -1,9 +1,11 @@
 name: Deploy (rsync)
 
 # Reliable deploy: the GitHub runner checks out main and rsyncs the tree to
-# the server over the working SSH channel, then builds + reloads. Does NOT
-# depend on the server being able to git-fetch from GitHub.
-# Triggers automatically on push to main, and can be run manually.
+# the server over the working SSH channel, then builds and does a DETERMINISTIC
+# pm2 (re)start from ecosystem for api/rental-bot (deploy.sh's `pm2 reload` is
+# unreliable for these cluster apps — it exhausts pm2's restart budget and
+# leaves them `errored`). Health-gated: the run fails if the API isn't up.
+# Does NOT depend on the server being able to git-fetch from GitHub.
 
 on:
   push:
@@ -37,7 +39,7 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_id -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
             ./ "$DEPLOY_USER@$DEPLOY_HOST:/opt/light-rental-system/"
 
-      - name: Build & reload on server
+      - name: Build, deterministic pm2 restart, health-gate
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -46,9 +48,25 @@ jobs:
           command_timeout: 15m
           script_stop: true
           script: |
+            set -e
             cd /opt/light-rental-system
             npm install
             chmod +x deploy.sh
-            ./deploy.sh --api --rental-bot --web
-            echo "--- deployed ---"
-            git rev-parse --short HEAD 2>/dev/null || echo "(no git; rsync-delivered tree)"
+            ./deploy.sh --api --rental-bot --web || echo "deploy.sh returned non-zero (continuing to deterministic pm2 restart)"
+            # deploy.sh uses `pm2 reload` which is unreliable for these cluster
+            # apps; force a clean restart from ecosystem so they end ONLINE.
+            for app in api rental-bot; do
+              pm2 delete "$app" >/dev/null 2>&1 || true
+              pm2 start ecosystem.config.js --only "$app" --update-env
+            done
+            pm2 save
+            sleep 10
+            pm2 list
+            echo "--- health gate ---"
+            code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' http://127.0.0.1:4000/health || echo 000)
+            echo "localhost:4000/health -> $code"
+            test "$code" = "200"
+            pi=$(curl -s -o /dev/null -m 10 -w '%{http_code}' http://127.0.0.1:4000/api/problem-items || echo 000)
+            echo "localhost:4000/api/problem-items -> $pi (expect 401 = feature route live)"
+            case "$pi" in 401|403) echo "feature route OK";; *) echo "feature route NOT live"; exit 1;; esac
+            echo "--- deployed ---"; git rev-parse --short HEAD 2>/dev/null || echo "(rsync tree)"
