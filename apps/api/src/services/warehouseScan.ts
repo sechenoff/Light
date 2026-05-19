@@ -8,7 +8,6 @@
  * Каждая сессия привязана к брони и проходит состояния: ACTIVE → COMPLETED | CANCELLED.
  */
 
-import { Prisma } from "@prisma/client";
 import type { RepairUrgency, ProblemReason } from "@prisma/client";
 import { prisma } from "../prisma";
 import { createRepair } from "./repairService";
