@@ -166,6 +166,7 @@ function WarehouseScanInner({
               sessionId={sessionId}
               projectName={projectName}
               onBack={backToBooking}
+              onComplete={() => goStep("summary")}
             />
           ) : (
             <ReturnChecklist
