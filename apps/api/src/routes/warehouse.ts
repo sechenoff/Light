@@ -19,6 +19,8 @@ import {
   getChecklistState,
   addExtraItem,
 } from "../services/checklistService";
+import { findAddonConflict } from "../services/addonAvailability";
+import { getAvailability } from "../services/availability";
 
 // ── Public router (mounted BEFORE apiKeyAuth) ─────────────────────────────────
 
@@ -381,6 +383,11 @@ const uncheckBodySchema = z.object({
 const addItemBodySchema = z.object({
   equipmentId: z.string().min(1),
   quantity: z.number().int().positive(),
+  acknowledgedConflict: z.boolean().optional(),
+});
+
+const addonSearchQuerySchema = z.object({
+  q: z.string().min(1).max(100),
 });
 
 /** GET /api/warehouse/sessions/:id/state — текущее состояние чек-листа */
@@ -415,12 +422,77 @@ warehouseScanRouter.post("/sessions/:id/uncheck", warehouseAuth, async (req, res
   }
 });
 
+/** GET /api/warehouse/sessions/:id/addon-search — поиск артикулов для quick-add */
+warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req, res, next) => {
+  try {
+    const { q } = addonSearchQuerySchema.parse(req.query);
+
+    const session = await prisma.scanSession.findUnique({
+      where: { id: req.params.id },
+      select: { bookingId: true },
+    });
+    if (!session) {
+      res.status(404).json({ message: "Сессия не найдена", code: "SESSION_NOT_FOUND" });
+      return;
+    }
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: session.bookingId },
+      select: { startDate: true, endDate: true },
+    });
+    if (!booking) {
+      res.status(404).json({ message: "Бронь не найдена", code: "BOOKING_NOT_FOUND" });
+      return;
+    }
+
+    const rows = await getAvailability({
+      startDate: booking.startDate,
+      endDate: booking.endDate,
+      search: q,
+      excludeBookingId: session.bookingId,
+    });
+
+    const results = await Promise.all(
+      rows.slice(0, 30).map(async (row) => {
+        const availability = row.availableQuantity > 0 ? "AVAILABLE" : "UNAVAILABLE";
+        const conflict =
+          availability === "UNAVAILABLE"
+            ? await findAddonConflict(
+                row.equipment.id,
+                booking.startDate,
+                booking.endDate,
+                session.bookingId,
+              )
+            : null;
+        return {
+          equipmentId: row.equipment.id,
+          name: row.equipment.name,
+          category: row.equipment.category,
+          availableQuantity: row.availableQuantity,
+          availability,
+          conflict,
+        };
+      }),
+    );
+
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** POST /api/warehouse/sessions/:id/items — быстрое добавление позиции в бронь */
 warehouseScanRouter.post("/sessions/:id/items", warehouseAuth, async (req, res, next) => {
   try {
-    const { equipmentId, quantity } = addItemBodySchema.parse(req.body);
+    const { equipmentId, quantity, acknowledgedConflict } = addItemBodySchema.parse(req.body);
     const createdBy = req.warehouseWorker?.name ?? "warehouse";
-    const result = await addExtraItem(req.params.id, equipmentId, quantity, createdBy);
+    const result = await addExtraItem(
+      req.params.id,
+      equipmentId,
+      quantity,
+      createdBy,
+      acknowledgedConflict ?? false,
+    );
     res.status(201).json(result);
   } catch (err) {
     next(err);
