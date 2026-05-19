@@ -8,8 +8,10 @@
  *   login     → LoginStep            (canon PIN login, token contract intact)
  *   operation → OperationStep        (ISSUE / RETURN picker)
  *   booking   → BookingList          (filter-less, date-grouped)
- *   checklist → IssueChecklist / ReturnChecklist  (Task 6/7 placeholders)
- *   summary   → SummaryStep          (Task 7/8 placeholder)
+ *   checklist → IssueChecklist (ISSUE) / ReturnChecklist (RETURN, Task 7.2:
+ *               3-outcome приёмка + inline completion result)
+ *   summary   → SummaryStep          (ISSUE-path placeholder; RETURN shows its
+ *               completion result inline in ReturnChecklist)
  *
  * Preserved verbatim from the previous implementation:
  *  - token contract: sessionStorage "warehouse_token" (Bearer) via api.ts
@@ -173,6 +175,7 @@ function WarehouseScanInner({
               sessionId={sessionId}
               projectName={projectName}
               onBack={backToBooking}
+              onDone={backToBooking}
             />
           )
         }

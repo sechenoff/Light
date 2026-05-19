@@ -15,6 +15,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { scanApi } from "./api";
+import { isScanApiError } from "./types";
 import type {
   ChecklistItem,
   ChecklistState,
@@ -24,15 +25,6 @@ import type {
 } from "./types";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function isScanApiError(value: unknown): value is ScanApiError {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "status" in value &&
-    "message" in value
-  );
-}
 
 function errorMessage(err: unknown, fallback: string): string {
   if (isScanApiError(err)) return err.message;

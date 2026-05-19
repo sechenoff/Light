@@ -23,7 +23,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { scanApi } from "./api";
-import type { BookingSummary, ScanApiError, ScanOperation } from "./types";
+import { isScanApiError } from "./types";
+import type { BookingSummary, ScanOperation } from "./types";
 import {
   moscowTodayStart,
   toMoscowDateString,
@@ -50,15 +51,6 @@ const BUCKET_DATE_TEXT: Record<Bucket, string> = {
   tomorrow: "text-indigo",
   later: "text-slate",
 };
-
-function isScanApiError(value: unknown): value is ScanApiError {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "status" in value &&
-    "message" in value
-  );
-}
 
 /** «#» + последние 6 символов id брони, в верхнем регистре. */
 function displayNo(id: string): string {

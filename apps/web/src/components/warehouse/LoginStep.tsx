@@ -17,16 +17,7 @@
 
 import { useEffect, useState } from "react";
 import { scanApi } from "./api";
-import type { ScanApiError } from "./types";
-
-function isScanApiError(value: unknown): value is ScanApiError {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "status" in value &&
-    "message" in value
-  );
-}
+import { isScanApiError } from "./types";
 
 export function LoginStep({ onSuccess }: { onSuccess: () => void }) {
   const [names, setNames] = useState<string[]>([]);
