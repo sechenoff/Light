@@ -13,20 +13,21 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          command_timeout: 5m
+          command_timeout: 4m
           script: |
             set +e
             cd /opt/light-rental-system
-            echo "=== node / npm ==="; node -v; npm -v
-            echo "=== deployed HEAD ==="; git rev-parse --short HEAD 2>/dev/null || echo "(no git)"
-            echo "=== pm2 list ==="; pm2 list
-            echo "=== pm2 describe api (tail) ==="; pm2 describe api 2>/dev/null | tail -30
-            echo "=== pm2 logs api --err (last 80, nostream) ==="; pm2 logs api --err --lines 80 --nostream 2>/dev/null
-            echo "=== pm2 logs api --out (last 30) ==="; pm2 logs api --out --lines 30 --nostream 2>/dev/null
-            echo "=== api dist present? ==="; ls -la apps/api/dist 2>/dev/null | head -5; echo "---"; ls apps/api/dist/index.js 2>/dev/null || echo "NO dist/index.js"
-            echo "=== try node load of built api (stderr) ==="; node -e "require('./apps/api/dist/index.js')" 2>&1 | head -25
-            echo "=== prisma client + DB tables ==="
-            node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.\$queryRawUnsafe(\"SELECT name FROM sqlite_master WHERE type='table' AND name IN ('ProblemItem','RepairPhoto')\").then(r=>{console.log('tables:',JSON.stringify(r));return p.\$disconnect()}).catch(e=>{console.log('PRISMA ERR:',e.message);process.exit(0)})" 2>&1 | head -15
-            echo "=== apps/api/.env keys (names only) ==="; ( [ -f apps/api/.env ] && grep -oE '^[A-Z_]+=' apps/api/.env | sort | tr '\n' ' ' ) || echo "NO apps/api/.env"; echo
-            echo "=== free mem ==="; free -m 2>/dev/null | head -2
-            echo "=== END DIAG ==="
+            echo "=== node/npm ==="; node -v; npm -v
+            echo "=== api ERROR log (tail 70) ==="; tail -n 70 logs/api-error-4.log 2>/dev/null || echo "(no api-error-4.log)"
+            echo "=== api OUT log (tail 25) ==="; tail -n 25 logs/api-out-4.log 2>/dev/null || echo "(no api-out-4.log)"
+            echo "=== rental-bot ERROR log (tail 40) ==="; tail -n 40 logs/rental-bot-error-1.log 2>/dev/null || ls logs/ 2>/dev/null
+            echo "=== artifacts ==="
+            ls apps/api/dist/index.js 2>/dev/null && echo "api dist OK" || echo "NO api dist"
+            ls packages/shared/dist 2>/dev/null | head -3 || echo "NO packages/shared/dist"
+            ls -d node_modules/@prisma/client node_modules/.prisma/client 2>/dev/null || echo "NO prisma client in root node_modules"
+            ls -d node_modules/@light-rental/shared 2>/dev/null || echo "NO @light-rental/shared symlink"
+            echo "=== prisma DB tables (timeout 20) ==="
+            timeout 20 node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.\$queryRawUnsafe(\"SELECT name FROM sqlite_master WHERE type='table' AND name IN ('ProblemItem','RepairPhoto','Repair')\").then(r=>{console.log('tables:',JSON.stringify(r))}).catch(e=>console.log('PRISMA ERR:',e.message)).finally(()=>process.exit(0))" 2>&1 | tail -8
+            echo "=== apps/api/.env keys ==="; ( [ -f apps/api/.env ] && grep -oE '^[A-Z_0-9]+=' apps/api/.env | sort | tr '\n' ' ' ) || echo "NO apps/api/.env"; echo
+            echo "=== free -m ==="; free -m 2>/dev/null | head -2
+            echo "=== END ==="
