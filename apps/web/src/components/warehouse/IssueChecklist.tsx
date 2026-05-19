@@ -18,10 +18,12 @@
  *    `units[]`). All-or-nothing per line, tracked in local state — consistent
  *    with how `checklistService` treats COUNT.
  *
- * Seams (filled by later tasks, intentionally not implemented here):
- *  - Добор → `onAddon` (Task 6.2 `AddonSearch`). When absent we render a minimal
- *    canon inline placeholder so the build/flow stay green; NO availability
- *    search here.
+ * Seams:
+ *  - Добор → `AddonSearch` (Task 6.2). The «＋ Добор» action opens an inline
+ *    catalog search with a soft availability warning; on add we `refresh()`
+ *    the session so the new добор appears in this list. An optional `onAddon`
+ *    prop still lets a parent intercept the action instead (kept for the
+ *    existing seam contract / tests).
  *  - «Завершить выдачу» → `onComplete` (Task 7/8 summary/complete wiring). We do
  *    NOT POST /complete here — we only advance the flow.
  */
@@ -29,9 +31,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useScanSession } from "./useScanSession";
 import { UnitRow } from "./UnitRow";
+import { AddonSearch } from "./AddonSearch";
 import type { IssueValue } from "./UnitRow";
 import type { ChecklistItem, ChecklistState } from "./types";
 import { pluralize } from "../../lib/format";
+
+/** «#» + последние 6 символов id брони, в верхнем регистре (как в BookingList). */
+function displayNo(id: string): string {
+  return "#" + id.slice(-6).toUpperCase();
+}
 
 interface CategoryGroup {
   category: string;
@@ -91,11 +99,12 @@ export function IssueChecklist({
   onAddon?: () => void;
 }) {
   const session = useScanSession();
-  const { state, loading, error, openSession, check, uncheck } = session;
+  const { state, loading, error, openSession, check, uncheck, refresh } =
+    session;
 
   // COUNT lines are client-managed (no per-unit ids server-side).
   const [countIssued, setCountIssued] = useState<Set<string>>(new Set());
-  // Minimal inline Добор placeholder shown only when no `onAddon` seam given.
+  // Inline Добор catalog search (shown when no `onAddon` seam overrides it).
   const [addonOpen, setAddonOpen] = useState(false);
   // Disables «Завершить» momentarily while the bulk action fans out.
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -171,7 +180,14 @@ export function IssueChecklist({
       onAddon();
       return;
     }
-    setAddonOpen((v) => !v);
+    setAddonOpen(true);
+  }
+
+  function handleAddonAdded() {
+    // Re-fetch checklist state so the freshly added добор shows up in the
+    // list (the hook's per-id guard / refreshBlocked keeps this safe vs any
+    // in-flight check/uncheck).
+    void refresh();
   }
 
   // ── States ──────────────────────────────────────────────────────────────────
@@ -308,12 +324,12 @@ export function IssueChecklist({
         </button>
 
         {addonOpen && !onAddon && (
-          <div className="mt-3 rounded-lg border border-dashed border-border-strong bg-surface px-4 py-4 text-center">
-            <p className="eyebrow mb-1">Добор</p>
-            <p className="text-sm text-ink-2">
-              Поиск по каталогу с проверкой доступности — Task 6.2.
-            </p>
-          </div>
+          <AddonSearch
+            sessionId={sessionId}
+            bookingNo={state.bookingId ? displayNo(state.bookingId) : undefined}
+            onAdded={handleAddonAdded}
+            onClose={() => setAddonOpen(false)}
+          />
         )}
       </div>
 

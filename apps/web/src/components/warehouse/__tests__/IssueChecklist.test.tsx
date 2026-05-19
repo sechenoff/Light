@@ -10,6 +10,7 @@ import type { UseScanSessionResult } from "../useScanSession";
 const checkSpy = vi.fn(async () => {});
 const uncheckSpy = vi.fn(async () => {});
 const openSessionSpy = vi.fn(async () => {});
+const refreshSpy = vi.fn(async () => {});
 
 let mockState: ChecklistState | null = null;
 let mockLoading = false;
@@ -23,7 +24,37 @@ vi.mock("../useScanSession", () => ({
     openSession: openSessionSpy,
     check: checkSpy,
     uncheck: uncheckSpy,
+    refresh: refreshSpy,
   }),
+}));
+
+// Stub AddonSearch — its full behaviour (debounced search, soft-warning,
+// 409-race) is covered by AddonSearch.test.tsx. Here we only assert the
+// IssueChecklist wiring: «＋ Добор» mounts it, and its `onAdded` triggers the
+// session refresh so a freshly added добор appears in the list.
+vi.mock("../AddonSearch", () => ({
+  AddonSearch: ({
+    sessionId,
+    bookingNo,
+    onAdded,
+    onClose,
+  }: {
+    sessionId: string;
+    bookingNo?: string;
+    onAdded: () => void;
+    onClose: () => void;
+  }) => (
+    <div data-testid="addon-search">
+      <span>addon:{sessionId}</span>
+      <span>no:{bookingNo}</span>
+      <button type="button" onClick={onAdded}>
+        stub-add
+      </button>
+      <button type="button" onClick={onClose}>
+        stub-close
+      </button>
+    </div>
+  ),
 }));
 
 import { IssueChecklist } from "../IssueChecklist";
@@ -224,5 +255,41 @@ describe("IssueChecklist", () => {
     expect(
       await screen.findByText(/нет позиций для выдачи/),
     ).toBeInTheDocument();
+  });
+
+  it("«＋ Добор» (no onAddon) opens AddonSearch with sessionId + booking #", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    expect(screen.queryByTestId("addon-search")).not.toBeInTheDocument();
+
+    const dobor = (
+      await screen.findAllByRole("button", { name: /Добор/ })
+    )[0];
+    dobor.click();
+
+    const panel = await screen.findByTestId("addon-search");
+    expect(panel).toBeInTheDocument();
+    // sessionId is forwarded; bookingNo derived as "#" + last 6 of bookingId.
+    expect(screen.getByText("addon:s1")).toBeInTheDocument();
+    expect(screen.getByText("no:#B1")).toBeInTheDocument();
+  });
+
+  it("AddonSearch onAdded triggers the session refresh; onClose hides it", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    (await screen.findAllByRole("button", { name: /Добор/ }))[0].click();
+    await screen.findByTestId("addon-search");
+
+    screen.getByRole("button", { name: "stub-add" }).click();
+    await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(1));
+
+    screen.getByRole("button", { name: "stub-close" }).click();
+    await waitFor(() =>
+      expect(screen.queryByTestId("addon-search")).not.toBeInTheDocument(),
+    );
   });
 });
