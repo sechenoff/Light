@@ -18,10 +18,15 @@
  * to an amber attention variant «завершена с замечаниями» — a partial failure
  * must never read as a clean walk-away success.
  *
- * Counts: «flagged» (units the operator marked) vs «created» (cards/requests
- * the backend actually produced) are DISTINCT. We don't have a separate
- * flagged count post-POST, so we honestly show only the created counts with
- * an unambiguous Russian label — never the same number printed twice.
+ * Counts (props, NOT derived here): the displayed «Принято» is the count of
+ * units the operator actually marked ✓ (+ accepted COUNT lines), computed by
+ * `ReturnChecklist` from its authoritative outcome map. It is NOT
+ * `result.scannedCount − repair − problem`: backend `scannedCount` only counts
+ * ScanRecords, which in the RETURN flow exist ONLY for ACCEPTED units
+ * (REPAIR/PROBLEM are never check()'d) — so subtracting repair/problem from it
+ * would double-count and under-report «Принято». «На ремонт» / «В Потеряшки»
+ * are the cards/requests the backend actually CREATED
+ * (`createdRepairIds` / `createdProblemItemIds`) — distinct from "flagged".
  *
  * NEVER renders a barcode.
  */
@@ -32,18 +37,24 @@ import { pluralize } from "../../lib/format";
 export function ReturnResultView({
   result,
   projectName,
+  acceptedCount,
   onDone,
 }: {
   result: CompleteResult;
   projectName: string;
+  /**
+   * Units the operator marked ✓ (+ accepted COUNT lines) — the frontend
+   * outcome truth from `ReturnChecklist`. Clamped ≥0 defensively here too.
+   */
+  acceptedCount: number;
   /** Back to the bookings list. */
   onDone: () => void;
 }) {
   const repairCount = result.createdRepairIds?.length ?? 0;
   const problemCount = result.createdProblemItemIds?.length ?? 0;
-  const acceptedCount = Math.max(
+  const safeAccepted = Math.max(
     0,
-    result.scannedCount - repairCount - problemCount,
+    Number.isFinite(acceptedCount) ? acceptedCount : 0,
   );
 
   const failedBroken = result.failedBrokenUnits ?? [];
@@ -87,7 +98,7 @@ export function ReturnResultView({
             <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2.5">
               <dt className="text-[13px] text-ink-2">Принято</dt>
               <dd className="mono-num text-[15px] font-semibold text-emerald">
-                {acceptedCount}
+                {safeAccepted}
               </dd>
             </div>
             {/* Distinct concepts: the VALUE is the count of cards/requests

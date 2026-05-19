@@ -114,6 +114,35 @@ function allCountLineIds(state: ChecklistState): string[] {
 }
 
 /**
+ * The TRUE «Принято» count from the frontend outcome truth (this component
+ * owns it): UNIT units whose outcome is ACCEPTED + accepted COUNT lines.
+ *
+ * This is intentionally NOT derived from the backend `scannedCount`: in the
+ * RETURN flow only ACCEPTED units are ever check()'d (REPAIR/PROBLEM are sent
+ * in the /complete POST, never scanned), so `scannedCount − repair − problem`
+ * double-subtracts and under-reports. An accepted COUNT line counts as 1 —
+ * consistent with IssueChecklist.computeProgress + the validate/progress logic
+ * here (COUNT lines are all-or-nothing, no per-unit ids server-side).
+ */
+function computeAcceptedCount(
+  state: ChecklistState,
+  outcomes: OutcomeMap,
+  countAccepted: ReadonlySet<string>,
+): number {
+  let accepted = 0;
+  for (const item of state.items) {
+    if (item.trackingMode === "UNIT" && item.units) {
+      for (const u of item.units) {
+        if (outcomes[u.unitId]?.outcome === "ACCEPTED") accepted += 1;
+      }
+    } else if (countAccepted.has(item.bookingItemId)) {
+      accepted += 1;
+    }
+  }
+  return accepted;
+}
+
+/**
  * ISO-8601 upgrade for the backend Zod (`z.string().datetime()`).
  * Bare `YYYY-MM-DD` → midnight-UTC ISO. Returns undefined when the date is
  * absent or not a clean calendar date (defensive — never POST a bad value).
@@ -431,10 +460,19 @@ export function ReturnChecklist({
   // failedBrokenUnits / failedProblemUnits shapes + partial-failure header).
 
   if (result) {
+    // «Принято» = the frontend outcome truth (ACCEPTED units + accepted COUNT
+    // lines), NOT scannedCount − repair − problem (which double-subtracts —
+    // see computeAcceptedCount / ReturnResultView docblock). `state` is
+    // guaranteed present here (the operator interacted to submit); fall back
+    // to 0 defensively if the hook somehow cleared it.
+    const acceptedCount = state
+      ? computeAcceptedCount(state, outcomes, countAccepted)
+      : 0;
     return (
       <ReturnResultView
         result={result}
         projectName={projectName}
+        acceptedCount={acceptedCount}
         onDone={() => (onDone ? onDone() : onBack())}
       />
     );

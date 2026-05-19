@@ -475,8 +475,18 @@ describe("ReturnChecklist", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Приёмка завершена")).not.toBeInTheDocument();
 
-    // scanned 3 − 1 repair − 1 problem = 1 accepted.
-    expect(screen.getByText("Принято")).toBeInTheDocument();
+    // «Принято» = the FRONTEND outcome truth: «Принять всё разом» marked all
+    // 3 UNIT units ACCEPTED + the 1 COUNT line accepted = 4. The OLD buggy
+    // formula `scannedCount(3) − repair(1) − problem(1)` = 1 — this assertion
+    // pins the true accepted count and would FAIL under that derivation.
+    {
+      const acceptedDt = screen.getByText(/^Принято$/);
+      const acceptedDd = (acceptedDt.parentElement as HTMLElement).querySelector(
+        "dd",
+      );
+      expect(acceptedDd?.textContent).toBe("4");
+      expect(acceptedDd?.textContent).not.toBe("1");
+    }
     expect(screen.getByText(/^На ремонт/)).toBeInTheDocument();
     expect(screen.getByText(/^В «Потеряшки»/)).toBeInTheDocument();
 
@@ -503,6 +513,86 @@ describe("ReturnChecklist", () => {
     expect(
       screen.getByRole("button", { name: /Готово/ }),
     ).toBeInTheDocument();
+  });
+
+  it("mixed completion (1 ✓ + 1 🔧 + 1 ✗): «Принято: 1», NOT scanned − repair − problem", async () => {
+    // The exact display-accuracy regression. Backend `scannedCount` counts
+    // ScanRecords, which exist ONLY for ACCEPTED units (REPAIR/PROBLEM are
+    // never check()'d). If the backend (correctly) reports scannedCount: 1
+    // here, the OLD formula `scannedCount − repair − problem` = 1 − 1 − 1 =
+    // -1 → clamped 0 — under-reporting the 1 accepted unit. The fix derives
+    // «Принято» from the frontend outcome map instead → 1.
+    completeSpy.mockResolvedValue(
+      okResult({
+        scannedCount: 1, // only the 1 ACCEPTED unit was scanned/check()'d
+        createdRepairIds: ["r1"],
+        createdProblemItemIds: ["p1"],
+      }),
+    );
+
+    render(
+      <ReturnChecklist sessionId="s1" projectName="Орбита" onBack={() => {}} />,
+    );
+
+    // u1 → accepted
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /прибор 1 из 3\) — принять без замечаний/,
+      }),
+    );
+    // u2 → repair w/ comment
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /прибор 2 из 3\) — отправить в ремонт/,
+      }),
+    );
+    await screen.findByTestId("repair-panel-u2");
+    fireEvent.change(screen.getByLabelText("repair-comment-u2"), {
+      target: { value: "Разбит байонет" },
+    });
+    // u3 → problem LOST w/ comment
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /прибор 3 из 3\) — зарегистрировать проблему/,
+      }),
+    );
+    await screen.findByTestId("problem-panel");
+    fireEvent.click(screen.getByRole("button", { name: "set-lost" }));
+    fireEvent.change(screen.getByLabelText("problem-comment"), {
+      target: { value: "потеряли на площадке" },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Завершить приёмку/ }),
+    );
+
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+
+    // «Принято» MUST be 1 (the one ACCEPTED unit) — NOT scanned − repair −
+    // problem (= 1 − 1 − 1 → clamped 0 under the old formula).
+    const acceptedDt = await screen.findByText(/^Принято$/);
+    const acceptedDd = (acceptedDt.parentElement as HTMLElement).querySelector(
+      "dd",
+    );
+    expect(acceptedDd?.textContent).toBe("1");
+    expect(acceptedDd?.textContent).not.toBe("0");
+
+    // Repair line = createdRepairIds.length; problem line =
+    // createdProblemItemIds.length (what the backend actually created).
+    const repairDt = screen.getByText(/^На ремонт/);
+    expect(
+      (repairDt.parentElement as HTMLElement).querySelector("dd")?.textContent,
+    ).toBe("1");
+    const problemDt = screen.getByText(/^В «Потеряшки»/);
+    expect(
+      (problemDt.parentElement as HTMLElement).querySelector("dd")?.textContent,
+    ).toBe("1");
+
+    // Zero failures here → clean emerald header preserved.
+    expect(screen.getByText("Приёмка завершена")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Приёмка завершена с замечаниями"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the emerald success header when there are zero failures", async () => {

@@ -30,7 +30,13 @@ describe("ReturnResultView", () => {
     return dd as HTMLElement;
   }
 
-  it("renders the three counts (accepted = scanned − repair − problem)", () => {
+  it("renders «Принято» from the acceptedCount prop, NOT scanned − repair − problem", () => {
+    // The OLD buggy formula was `scannedCount − repair − problem`. With this
+    // input that would be 5 − 1 − 2 = 2 — but the view is now a pure
+    // presentational component that takes the authoritative accepted count
+    // (computed by ReturnChecklist from its outcome map) as a prop. Pin it to
+    // a value (4) that ONLY matches the prop and would FAIL under the old
+    // derivation.
     render(
       <ReturnResultView
         result={okResult({
@@ -38,16 +44,17 @@ describe("ReturnResultView", () => {
           createdRepairIds: ["r1"],
           createdProblemItemIds: ["p1", "p2"],
         })}
+        acceptedCount={4}
         projectName="Орбита"
         onDone={() => {}}
       />,
     );
 
-    // 5 − 1 − 2 = 2 accepted; 1 repair card; 2 problem requests.
-    expect(valueFor(/^Принято$/)).toHaveTextContent("2");
-    // The label states the TRUE distinct concept (cards/requests actually
-    // CREATED) and the value is that single meaningful number — never the
-    // same number printed twice, no bare/confusing parenthetical.
+    // 4 accepted (the prop) — NOT 5 − 1 − 2 = 2 (the old formula).
+    expect(valueFor(/^Принято$/)).toHaveTextContent("4");
+    expect(valueFor(/^Принято$/)).not.toHaveTextContent("2");
+    // «На ремонт» / «В Потеряшки» stay the cards/requests the backend
+    // actually CREATED (createdRepairIds / createdProblemItemIds).
     expect(
       screen.getByText("На ремонт — создано карточка"),
     ).toBeInTheDocument();
@@ -58,19 +65,27 @@ describe("ReturnResultView", () => {
     expect(valueFor(/^В «Потеряшки»/)).toHaveTextContent("2");
   });
 
-  it("never renders a negative accepted count", () => {
-    render(
+  it("never renders a negative or non-finite accepted count (clamped ≥0)", () => {
+    const { rerender } = render(
       <ReturnResultView
-        result={okResult({
-          scannedCount: 1,
-          createdRepairIds: ["r1"],
-          createdProblemItemIds: ["p1", "p2"],
-        })}
+        result={okResult()}
+        acceptedCount={-2}
         projectName="P"
         onDone={() => {}}
       />,
     );
-    // 1 − 1 − 2 = -2 → clamped to 0.
+    // -2 → clamped to 0.
+    expect(valueFor(/^Принято$/)).toHaveTextContent("0");
+
+    rerender(
+      <ReturnResultView
+        result={okResult()}
+        acceptedCount={Number.NaN}
+        projectName="P"
+        onDone={() => {}}
+      />,
+    );
+    // NaN → 0 (Number.isFinite guard).
     expect(valueFor(/^Принято$/)).toHaveTextContent("0");
   });
 
@@ -78,6 +93,7 @@ describe("ReturnResultView", () => {
     render(
       <ReturnResultView
         result={okResult({ createdRepairIds: ["r1"] })}
+        acceptedCount={2}
         projectName="Орбита"
         onDone={() => {}}
       />,
@@ -96,6 +112,7 @@ describe("ReturnResultView", () => {
             { equipmentUnitId: "u3", reason: "единица уже списана" },
           ],
         })}
+        acceptedCount={2}
         projectName="Орбита"
         onDone={() => {}}
       />,
@@ -114,6 +131,7 @@ describe("ReturnResultView", () => {
             { unitId: "u9", reason: "Разбит байонет", error: "ремонт занят" },
           ],
         })}
+        acceptedCount={2}
         projectName="P"
         onDone={() => {}}
       />,
@@ -136,6 +154,7 @@ describe("ReturnResultView", () => {
             { equipmentUnitId: "u3", reason: "единица уже списана" },
           ],
         })}
+        acceptedCount={2}
         projectName="P"
         onDone={() => {}}
       />,
@@ -161,6 +180,7 @@ describe("ReturnResultView", () => {
             { equipmentUnitId: "u3", reason: "единица уже списана" },
           ],
         })}
+        acceptedCount={2}
         projectName="P"
         onDone={() => {}}
       />,
@@ -179,6 +199,7 @@ describe("ReturnResultView", () => {
             { unitId: "u9", reason: "Разбит байонет", error: "ремонт занят" },
           ],
         })}
+        acceptedCount={2}
         projectName="P"
         onDone={() => {}}
       />,
@@ -191,6 +212,7 @@ describe("ReturnResultView", () => {
     render(
       <ReturnResultView
         result={okResult()}
+        acceptedCount={3}
         projectName="P"
         onDone={onDone}
       />,
