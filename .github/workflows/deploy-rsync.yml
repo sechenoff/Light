@@ -1,11 +1,13 @@
-name: Deploy (rsync fallback)
+name: Deploy (rsync)
 
-# Robust deploy that does NOT depend on the server being able to `git fetch`
-# from GitHub. The runner (which can read the repo) rsyncs the checked-out
-# tree to the server over the working SSH channel, then builds + reloads.
-# Trigger manually: Actions → "Deploy (rsync fallback)" → Run workflow.
+# Reliable deploy: the GitHub runner checks out main and rsyncs the tree to
+# the server over the working SSH channel, then builds + reloads. Does NOT
+# depend on the server being able to git-fetch from GitHub.
+# Triggers automatically on push to main, and can be run manually.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -48,5 +50,5 @@ jobs:
             npm install
             chmod +x deploy.sh
             ./deploy.sh --api --rental-bot --web
-            echo "--- deployed commit ---"
-            git rev-parse --short HEAD 2>/dev/null || echo "(no git)"
+            echo "--- deployed ---"
+            git rev-parse --short HEAD 2>/dev/null || echo "(no git; rsync-delivered tree)"
