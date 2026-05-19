@@ -45,7 +45,7 @@ function errorMessage(err: unknown, fallback: string): string {
  * recomputing the owning item's `checkedQty`. Returns the same reference when
  * nothing changed (the unit was not found).
  */
-function applyUnitChecked(
+export function applyUnitChecked(
   state: ChecklistState,
   unitId: string,
   checked: boolean,
@@ -180,7 +180,8 @@ export function useScanSession(
       inFlight.current.add(guardKey);
       refreshBlocked.current = true;
 
-      // Snapshot just the affected state for targeted rollback.
+      // Whole-state snapshot for rollback (the previous ChecklistState
+      // reference is captured and restored verbatim on failure).
       let snapshot: ChecklistState | null = null;
       setState((prev) => {
         if (!prev) return prev;
@@ -203,7 +204,7 @@ export function useScanSession(
           }
         }
       } catch (err: unknown) {
-        // Rollback to the pre-mutation snapshot.
+        // Rollback to the whole-state pre-mutation snapshot.
         if (snapshot !== null) {
           const snap: ChecklistState = snapshot;
           setState((prev) => (prev ? snap : prev));

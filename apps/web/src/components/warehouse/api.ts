@@ -42,7 +42,10 @@ import type {
 
 const TOKEN_STORAGE_KEY = "warehouse_token";
 
-/** Resolve API base identically to `src/lib/api.ts`. */
+/**
+ * Resolve API base identically to `src/lib/api.ts`.
+ * keep in sync with src/lib/api.ts resolveApiBaseUrl
+ */
 function resolveApiBaseUrl(): string {
   if (process.env.NODE_ENV === "development") return "";
   const raw = process.env.NEXT_PUBLIC_API_BASE_URL;

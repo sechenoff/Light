@@ -1,32 +1,17 @@
-"use client";
+/**
+ * Warehouse route group is a standalone kiosk surface — NO chrome here.
+ *
+ * The frame (dark canon header, worker name, logout) lives in
+ * `src/components/warehouse/ScanShell.tsx`, which every warehouse screen
+ * renders. A wrapper header at this layer produced a non-canon double
+ * header over the redesigned kiosk page, so this layout is intentionally
+ * a transparent passthrough. Keep it minimal — do not reintroduce chrome.
+ */
 
-import { useRouter } from "next/navigation";
-
-export default function WarehouseLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-
-  function handleLogout() {
-    sessionStorage.removeItem("warehouse_token");
-    router.push("/warehouse/scan");
-  }
-
-  return (
-    <div className="min-h-screen bg-white flex flex-col w-full">
-      {/* Header */}
-      <header className="bg-slate-800 text-white flex items-center justify-between px-4 py-3 sticky top-0 z-10">
-        <h1 className="text-lg font-semibold">Склад</h1>
-        <button
-          onClick={handleLogout}
-          className="text-slate-300 hover:text-white text-sm px-3 py-1.5 rounded-md border border-slate-600 hover:border-slate-400 transition-colors"
-        >
-          Выйти
-        </button>
-      </header>
-
-      {/* Main content */}
-      <main className="flex-1 w-full">
-        {children}
-      </main>
-    </div>
-  );
+export default function WarehouseLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return <>{children}</>;
 }
