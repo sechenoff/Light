@@ -96,12 +96,20 @@ const OPEN_STATUSES: ReadonlySet<ProblemStatus> = new Set<ProblemStatus>([
 
 // ── Хелперы форматирования ────────────────────────────────────────────────────
 
-/** «DD.MM» (ru) — единый подход с booking/audit-страницами. */
-function formatDayMonth(iso: string | null | undefined): string | null {
+/**
+ * «DD.MM.YYYY» (ru) — год обязателен: реестр охватывает границу годов,
+ * без года дата неоднозначна. Тот же канон-подход, что и /admin/audit
+ * (toLocaleString ru-RU с year: "numeric").
+ */
+function formatDayMonthYear(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+  return d.toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 /** «#»+последние 6 символов id брони в верхнем регистре, либо «—». */
@@ -113,7 +121,7 @@ function bookingRef(sourceBookingId: string | null): string {
 // ── Карточка «закрыто» (resolutionNote + кем/когда) ───────────────────────────
 
 function ResolutionInfo({ item }: { item: ProblemItem }) {
-  const resolvedDate = formatDayMonth(item.resolvedAt);
+  const resolvedDate = formatDayMonthYear(item.resolvedAt);
   return (
     <div className="rounded-md border border-border bg-surface-muted px-3 py-2">
       <p className="eyebrow mb-1">Разбор</p>
@@ -171,8 +179,8 @@ function ProblemCard({
   item: ProblemItem;
   onResolve: (item: ProblemItem, outcome: ResolveOutcome) => void;
 }) {
-  const expected = formatDayMonth(item.expectedBackDate);
-  const created = formatDayMonth(item.createdAt);
+  const expected = formatDayMonthYear(item.expectedBackDate);
+  const created = formatDayMonthYear(item.createdAt);
   return (
     <div className="rounded-lg border border-border bg-surface p-4 shadow-xs space-y-3">
       <div className="flex items-start justify-between gap-3">
@@ -224,8 +232,8 @@ function ProblemRow({
   item: ProblemItem;
   onResolve: (item: ProblemItem, outcome: ResolveOutcome) => void;
 }) {
-  const expected = formatDayMonth(item.expectedBackDate);
-  const created = formatDayMonth(item.createdAt);
+  const expected = formatDayMonthYear(item.expectedBackDate);
+  const created = formatDayMonthYear(item.createdAt);
   return (
     <tr className="border-b border-border align-top hover:bg-surface-muted">
       <td className="py-3 px-3">
@@ -356,16 +364,26 @@ export function ProblemItemsPage() {
             body: JSON.stringify({ outcome: resolveOutcome, note }),
           },
         );
-        // Оптимистично отражаем новый статус в строке.
-        setItems((prev) =>
-          prev.map((it) => (it.id === targetId ? { ...it, ...updated } : it)),
-        );
         setResolveTarget(null);
         toast.success(
           resolveOutcome === "FOUND"
             ? "Единица найдена и возвращена в оборот"
             : "Карточка закрыта как «Не найдено»",
         );
+        if (statusFilter) {
+          // Активен фильтр по статусу: разобранная строка может больше не
+          // соответствовать фильтру (напр. «На поиске» → FOUND). Полный
+          // ресинк (тот же путь, что и 409) — список консистентен фильтру,
+          // nextCursor пересчитан, никакого рассинхрона курсора.
+          await load();
+        } else {
+          // Фильтр «Все»: строка остаётся видимой, оптимистично
+          // отражаем новый статус (пилюля статуса меняется). Без
+          // лишнего рефетча.
+          setItems((prev) =>
+            prev.map((it) => (it.id === targetId ? { ...it, ...updated } : it)),
+          );
+        }
       } catch (e: unknown) {
         // ApiFetchError: { status, details }. Бэкенд HttpError(409, …,
         // "PROBLEM_ITEM_CLOSED") → app.ts кладёт строку в `details` (и
@@ -393,7 +411,7 @@ export function ProblemItemsPage() {
         setResolving(false);
       }
     },
-    [resolveTarget, resolveOutcome, load],
+    [resolveTarget, resolveOutcome, statusFilter, load],
   );
 
   if (authLoading) {

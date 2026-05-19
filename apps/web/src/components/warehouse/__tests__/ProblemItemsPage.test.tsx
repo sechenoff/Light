@@ -225,6 +225,113 @@ describe("ProblemItemsPage", () => {
     expect(toastSuccess).toHaveBeenCalled();
   });
 
+  it("renders dates with the year (DD.MM.YYYY) — registry spans year boundaries", async () => {
+    apiFetch.mockResolvedValueOnce({
+      items: [OPEN_ITEM, CLOSED_ITEM],
+      nextCursor: null,
+    });
+    render(<ProblemItemsPage />);
+    await waitFor(() =>
+      expect(screen.getAllByText("Aputure 600d").length).toBeGreaterThan(0),
+    );
+
+    // createdAt 2026-05-10T08:00Z → «10.05.2026» (year-bearing canon,
+    // same approach as /admin/audit). Daytime-UTC fixtures → no TZ-boundary
+    // flake on the year/day.
+    expect(screen.getAllByText(/\b10\.05\.2026\b/).length).toBeGreaterThan(0);
+    // resolvedAt 2026-05-12T09:00Z shown in resolution info with the year.
+    expect(screen.getAllByText(/\b12\.05\.2026\b/).length).toBeGreaterThan(0);
+    // The year must always be present — no bare DD.MM rendered anywhere.
+    const txt = document.body.textContent || "";
+    expect(txt).not.toMatch(/(?<!\d)\d{2}\.\d{2}(?!\.\d{4})(?!\d)/);
+  });
+
+  it("resolving a row out of the active status filter removes it (reconciles with filter)", async () => {
+    // Initial unfiltered list with a SEARCHING row.
+    apiFetch.mockResolvedValueOnce({ items: [OPEN_ITEM], nextCursor: null });
+    render(<ProblemItemsPage />);
+    await waitFor(() =>
+      expect(screen.getAllByText("Aputure 600d").length).toBeGreaterThan(0),
+    );
+
+    // Activate the «На поиске» (SEARCHING) status filter → refetch returns
+    // the still-SEARCHING row (matches the active filter).
+    apiFetch.mockResolvedValueOnce({ items: [OPEN_ITEM], nextCursor: null });
+    const filterGroup = screen.getByRole("group", {
+      name: "Фильтр по статусу",
+    });
+    fireEvent.click(
+      within(filterGroup).getByRole("button", { name: "На поиске" }),
+    );
+    await waitFor(() =>
+      expect(
+        apiFetch.mock.calls.some((c) =>
+          String(c[0]).includes("status=SEARCHING"),
+        ),
+      ).toBe(true),
+    );
+    await waitFor(() =>
+      expect(screen.getAllByText("Aputure 600d").length).toBeGreaterThan(0),
+    );
+
+    // Resolve the visible SEARCHING row as FOUND.
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Отметить «Найдено»" })[0],
+    );
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/Заметка/), {
+      target: { value: "нашёлся на складе" },
+    });
+
+    // resolve POST succeeds → server now returns FOUND for this row.
+    apiFetch.mockResolvedValueOnce({
+      item: { ...OPEN_ITEM, status: "FOUND", resolvedBy: "sechenoff" },
+    });
+    // Reconcile refetch with the SEARCHING filter still active → the row
+    // no longer matches, so the list comes back empty.
+    apiFetch.mockResolvedValueOnce({ items: [], nextCursor: null });
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Подтвердить «Найдено»" }),
+    );
+
+    // Resolve POST carried the right payload.
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/api/problem-items/pi-open/resolve",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+    const body = JSON.parse(
+      (apiFetch.mock.calls.find(
+        (c) => c[0] === "/api/problem-items/pi-open/resolve",
+      )![1] as RequestInit).body as string,
+    );
+    expect(body).toEqual({ outcome: "FOUND", note: "нашёлся на складе" });
+
+    // Modal closed, success toast, and a reconcile refetch was issued
+    // because a status filter is active.
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(toastSuccess).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(
+        apiFetch.mock.calls.filter((c) =>
+          String(c[0]).includes("status=SEARCHING"),
+        ).length,
+      ).toBeGreaterThanOrEqual(2),
+    );
+
+    // The resolved-out-of-filter row is REMOVED from the list — the list
+    // reconciles with the active «На поиске» filter (only the filter pill
+    // bar still renders that label as a button).
+    await waitFor(() =>
+      expect(screen.queryByText("Aputure 600d")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("Потеряшек нет")).toBeInTheDocument();
+  });
+
   it("«Загрузить ещё» appends the next page using nextCursor", async () => {
     apiFetch.mockResolvedValueOnce({
       items: [OPEN_ITEM],
