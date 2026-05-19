@@ -28,7 +28,7 @@ export async function findAddonConflict(
 ): Promise<AddonConflict | null> {
   const eq = await prisma.equipment.findUnique({
     where: { id: equipmentId },
-    select: { totalQuantity: true, stockTrackingMode: true },
+    select: { totalQuantity: true },
   });
   if (!eq) return null;
 
