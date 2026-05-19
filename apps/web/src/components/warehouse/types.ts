@@ -224,3 +224,18 @@ export interface ScanApiError {
   message: string;
   details: unknown;
 }
+
+/**
+ * Runtime type guard for {@link ScanApiError}. Defined here (next to the type,
+ * with no module imports) so every warehouse component shares ONE copy and no
+ * import cycle is introduced. Narrows an unknown rejection to the normalised
+ * `{ status, code, message, details }` envelope every `api.ts` call throws.
+ */
+export function isScanApiError(value: unknown): value is ScanApiError {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "status" in value &&
+    "message" in value
+  );
+}

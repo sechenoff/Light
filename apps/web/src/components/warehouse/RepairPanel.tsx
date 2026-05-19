@@ -32,16 +32,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { scanApi } from "./api";
-import type { ScanApiError } from "./types";
-
-function isScanApiError(value: unknown): value is ScanApiError {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "status" in value &&
-    "message" in value
-  );
-}
+import { isScanApiError } from "./types";
 
 /**
  * A staged photo as the panel tracks it locally. `objectUrl` is present only
@@ -129,37 +120,54 @@ export function RepairPanel({
 
     setBusy(true);
     setError(null);
+    // Resilient: upload EVERY selected file. A failed upload (e.g. one bad
+    // photo in a multi-shot capture) must NOT abort the rest — losing damage
+    // photos silently is a real data-loss risk. We try/catch PER FILE,
+    // continue past failures, and report a partial-failure summary at the end.
+    const failed: string[] = [];
+    let succeeded = 0;
     try {
       for (const file of files) {
-        const res = await scanApi.uploadPhoto(sessionId, unitId, file);
-        const objectUrl = URL.createObjectURL(file);
-        // The server response (`res.photos`) is authoritative for names; pair
-        // the freshly returned name(s) with our in-memory blob preview. We use
-        // the last returned name as this file's name (the API appends).
-        const newName = res.photos[res.photos.length - 1] ?? file.name;
-        objectUrlsRef.current.set(newName, objectUrl);
-        setPhotos((prev) => {
-          const known = new Set(prev.map((p) => p.name));
-          const merged = res.photos.map((name) => {
-            const existing = prev.find((p) => p.name === name);
-            if (existing) return existing;
-            return {
-              name,
-              objectUrl: name === newName ? objectUrl : null,
-            };
+        try {
+          const res = await scanApi.uploadPhoto(sessionId, unitId, file);
+          // Mint + track the object URL ONLY after a successful upload, so a
+          // failed file never leaks a blob: URL.
+          const objectUrl = URL.createObjectURL(file);
+          // The server response (`res.photos`) is authoritative for names;
+          // pair the freshly returned name(s) with our in-memory blob
+          // preview. We use the last returned name as this file's name (the
+          // API appends).
+          const newName = res.photos[res.photos.length - 1] ?? file.name;
+          objectUrlsRef.current.set(newName, objectUrl);
+          setPhotos((prev) => {
+            const merged = res.photos.map((name) => {
+              const existing = prev.find((p) => p.name === name);
+              if (existing) return existing;
+              return {
+                name,
+                objectUrl: name === newName ? objectUrl : null,
+              };
+            });
+            // Preserve any locally-known previews not echoed (defensive).
+            const carried = prev.filter(
+              (p) => p.objectUrl && !merged.some((m) => m.name === p.name),
+            );
+            return [...merged, ...carried];
           });
-          // Preserve any locally-known previews not echoed (defensive).
-          const carried = prev.filter(
-            (p) => p.objectUrl && !merged.some((m) => m.name === p.name),
-          );
-          void known;
-          return [...merged, ...carried];
-        });
+          succeeded += 1;
+        } catch {
+          // Swallow per-file so the loop continues; record the filename so
+          // the operator knows exactly which photos to re-take.
+          failed.push(file.name);
+        }
       }
-    } catch (err: unknown) {
-      setError(
-        isScanApiError(err) ? err.message : "Не удалось загрузить фото",
-      );
+      if (failed.length > 0) {
+        setError(
+          `Загружено ${succeeded} из ${files.length}. Не удалось: ${failed.join(", ")}`,
+        );
+      } else {
+        setError(null);
+      }
     } finally {
       setBusy(false);
     }

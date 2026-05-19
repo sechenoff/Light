@@ -30,20 +30,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { scanApi } from "./api";
-import type { AddonConflict, AddonResult, ScanApiError } from "./types";
+import type { AddonConflict, AddonResult } from "./types";
+import { isScanApiError } from "./types";
 import { toMoscowDateString } from "../../lib/moscowDate";
 
 const DEBOUNCE_MS = 300;
 const ADDON_CONFLICT_CODE = "ADDON_CONFLICT";
-
-function isScanApiError(value: unknown): value is ScanApiError {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "status" in value &&
-    "message" in value
-  );
-}
 
 /** «21.05» — день.месяц по московскому времени (как в BookingList). */
 function shortDate(iso: string): string {

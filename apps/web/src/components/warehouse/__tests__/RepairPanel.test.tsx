@@ -135,6 +135,59 @@ describe("RepairPanel", () => {
     expect(imgs.length).toBe(2);
   });
 
+  it("multi-file upload is resilient: a mid-list failure does NOT abort the rest", async () => {
+    vi.spyOn(scanApi, "listPhotos").mockResolvedValue({ photos: [] });
+    const err: ScanApiError = {
+      status: 500,
+      code: "UPLOAD_FAILED",
+      message: "Сбой загрузки",
+      details: null,
+    };
+    // 3 files: #1 ok, #2 rejects, #3 ok. The loop MUST continue past #2.
+    const uploadSpy = vi
+      .spyOn(scanApi, "uploadPhoto")
+      .mockResolvedValueOnce({ photos: ["a.jpg"] })
+      .mockRejectedValueOnce(err)
+      .mockResolvedValueOnce({ photos: ["a.jpg", "c.jpg"] });
+
+    const { container } = render(
+      <RepairPanel
+        sessionId="s1"
+        unitId="u1"
+        comment=""
+        onCommentChange={() => {}}
+      />,
+    );
+
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const f1 = makeFile("a.jpg");
+    const f2 = makeFile("b.jpg");
+    const f3 = makeFile("c.jpg");
+
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [f1, f2, f3] } });
+    });
+
+    // All 3 attempted — NOT aborted at the 2nd failure.
+    await waitFor(() => expect(uploadSpy).toHaveBeenCalledTimes(3));
+    expect(uploadSpy).toHaveBeenNthCalledWith(1, "s1", "u1", f1);
+    expect(uploadSpy).toHaveBeenNthCalledWith(2, "s1", "u1", f2);
+    expect(uploadSpy).toHaveBeenNthCalledWith(3, "s1", "u1", f3);
+
+    // Only the 2 successful files mint an object URL / render a thumbnail.
+    expect(createSpy).toHaveBeenCalledTimes(2);
+    const imgs = await screen.findAllByRole("img");
+    expect(imgs.length).toBe(2);
+
+    // Russian partial-failure alert naming the failed file (b.jpg) and counts.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Загружено 2 из 3");
+    expect(alert).toHaveTextContent("Не удалось: b.jpg");
+    expect(alert.className).toMatch(/bg-rose-soft/);
+  });
+
   it("deleting a photo calls deletePhoto and refreshes the list", async () => {
     vi.spyOn(scanApi, "listPhotos").mockResolvedValue({ photos: [] });
     vi.spyOn(scanApi, "uploadPhoto").mockResolvedValue({
@@ -177,7 +230,7 @@ describe("RepairPanel", () => {
     );
   });
 
-  it("upload error shows a canon Russian alert", async () => {
+  it("upload error shows a canon Russian alert (resilient partial-failure summary)", async () => {
     vi.spyOn(scanApi, "listPhotos").mockResolvedValue({ photos: [] });
     const err: ScanApiError = {
       status: 413,
@@ -202,8 +255,11 @@ describe("RepairPanel", () => {
       fireEvent.change(input, { target: { files: [makeFile()] } });
     });
 
+    // A single failed upload is the degenerate case of the resilient
+    // per-file path: a canon rose Russian alert that names the failed file.
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Файл слишком большой");
+    expect(alert).toHaveTextContent("Загружено 0 из 1");
+    expect(alert).toHaveTextContent("Не удалось: broken.jpg");
     expect(alert.className).toMatch(/bg-rose-soft/);
   });
 

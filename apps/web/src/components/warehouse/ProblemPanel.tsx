@@ -19,9 +19,21 @@
  * required per flagged row" before POSTing /complete. The panel never touches
  * the network.
  *
- * `expectedBackDate` is an ISO date string (YYYY-MM-DD) or null. It is null
- * unless the reason is LEFT_ON_SITE; switching the reason away from
- * LEFT_ON_SITE clears it (we emit `onExpectedBackDateChange(null)`).
+ * `expectedBackDate` is a bare calendar date string (YYYY-MM-DD) or null — it
+ * is the raw value of a controlled `<input type="date">`. It is null unless
+ * the reason is LEFT_ON_SITE; switching the reason away from LEFT_ON_SITE
+ * clears it (we emit `onExpectedBackDateChange(null)`).
+ *
+ * ⚠ WIRE-FORMAT TRAP — this is NOT what `POST /complete` accepts. The backend
+ * Zod for `problemUnits[].expectedBackDate` is `z.string().datetime()` (full
+ * ISO-8601 datetime, see `apps/api/src/routes/warehouse.ts`). A bare
+ * YYYY-MM-DD fails that schema → 400. This panel does NOT POST; the consumer
+ * (ReturnChecklist, Task 7.2) OWNS the conversion and MUST upgrade the value
+ * to an ISO datetime before sending, e.g.:
+ *   `new Date(d + "T00:00:00.000Z").toISOString()`.
+ * The emitted format is intentionally left as YYYY-MM-DD here: a controlled
+ * date input legitimately yields that, and centralising the conversion in the
+ * POST owner avoids every consumer re-deriving it.
  *
  * Never renders a barcode (product rule: hidden barcode IDs). Real
  * <button>/<textarea>/<input> semantics; Russian aria-labels; emoji
@@ -59,9 +71,17 @@ export function ProblemPanel({
   onReasonChange: (r: ProblemReason) => void;
   comment: string;
   onCommentChange: (s: string) => void;
-  /** ISO date string (YYYY-MM-DD) or null. Only meaningful for LEFT_ON_SITE. */
+  /**
+   * Bare calendar date `YYYY-MM-DD` (raw `<input type="date">` value) or null.
+   * Only meaningful for LEFT_ON_SITE.
+   *
+   * ⚠ NOT a wire-ready value: `POST /complete` expects ISO-8601 datetime
+   * (backend Zod `z.string().datetime()`). The consumer (ReturnChecklist,
+   * Task 7.2) MUST convert before POST — see this file's header note.
+   */
   expectedBackDate: string | null;
-  onExpectedBackDateChange: (iso: string | null) => void;
+  /** Receives `YYYY-MM-DD` (or null on clear). NOT ISO datetime — see above. */
+  onExpectedBackDateChange: (date: string | null) => void;
   disabled?: boolean;
 }) {
   function selectReason(next: ProblemReason) {
@@ -115,6 +135,13 @@ export function ProblemPanel({
           >
             Ожидается к:
           </label>
+          {/* NOTE: a controlled <input type="date"> yields a bare
+              `YYYY-MM-DD` string — we emit it verbatim. The backend
+              `POST /complete` Zod requires full ISO-8601 datetime
+              (`z.string().datetime()`), so the consumer (ReturnChecklist,
+              Task 7.2) MUST convert before POST, e.g.
+              `new Date(d + "T00:00:00.000Z").toISOString()`, or the API 400s.
+              Conversion is intentionally NOT done here (see file header). */}
           <input
             id="problem-expected-back"
             type="date"
