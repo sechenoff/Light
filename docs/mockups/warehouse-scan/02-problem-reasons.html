@@ -1,0 +1,90 @@
+<style>
+  .pr-wrap{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+  .panel{width:330px;flex:0 0 auto;border:1px solid #e5848a;background:#fdeced;border-radius:14px;padding:14px;font-family:'IBM Plex Sans',system-ui,sans-serif}
+  .panel h4{margin:0 0 3px;font-size:14px;color:#b42318}
+  .panel .pp-sub{font-size:11px;color:#9a3a3a;margin-bottom:10px}
+  .chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}
+  .chips span{font-size:12px;padding:7px 11px;border-radius:16px;border:1px solid #e5848a;color:#b42318;background:#fff;display:flex;align-items:center;gap:5px}
+  .chips span.on{background:#e5484d;color:#fff;border-color:#e5484d}
+  .panel textarea{width:100%;border:1px solid #e0c2c4;border-radius:8px;font-size:12px;padding:7px;font-family:inherit;resize:none;background:#fff}
+  .opt-date{margin-top:8px;font-size:12px;color:#9a3a3a;display:flex;align-items:center;gap:6px}
+  .opt-date input{border:1px solid #e0c2c4;border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit}
+  .map{flex:1;min-width:300px}
+  .map table{border-collapse:collapse;width:100%;font-size:13px}
+  .map td,.map th{border:1px solid #e6e8eb;padding:8px 10px;text-align:left;vertical-align:top}
+  .map th{background:#f3f4f6;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b7280}
+  .b-rec{color:#1a7f37;font-weight:600}
+  .b-inv{color:#9a6700;font-weight:600}
+  .b-off{color:#b42318;font-weight:600}
+</style>
+
+<h2>«✗ Проблема»: причины под реалии съёмок</h2>
+<p class="subtitle">Каждая причина = один тап и ведёт к конкретному поведению системы. Набор подбирал под кино-прокат: гаффер, смены, экспедиции, мультивендорные площадки.</p>
+
+<div class="pr-wrap">
+  <div class="panel">
+    <h4>✗ Проблема · Aputure 600D (прибор 3 из 3)</h4>
+    <div class="pp-sub">Рекомендованный набор — 4 причины</div>
+    <div class="chips">
+      <span class="on">📍 Остался на площадке</span>
+      <span>🤷 Потерян</span>
+      <span>💥 Уничтожен</span>
+      <span>🚨 Украден</span>
+    </div>
+    <div class="opt-date">Ожидается к: <input type="text" value="22.05" size="6"> <span style="opacity:.6">(только для «остался на площадке»)</span></div>
+    <textarea rows="2" style="margin-top:8px">Не успели снять на ночной смене, бригадир привезёт утром</textarea>
+    <div style="font-size:11px;color:#b42318;margin-top:8px">→ в список «Потеряшки» · статус «ожидается 22.05»</div>
+  </div>
+
+  <div class="map">
+    <span class="label">Причина → что делает система</span>
+    <table style="margin-top:6px">
+      <tr><th>Причина</th><th>Поведение</th><th>Статус единицы</th></tr>
+      <tr>
+        <td>📍 <b>Остался на площадке</b><br><small style="color:#6b7280">на объекте / у бригады, ждём возврат</small></td>
+        <td><span class="b-rec">Восстановимо</span> — заявка «ожидается», можно до-принять позже второй приёмкой</td>
+        <td>MISSING</td>
+      </tr>
+      <tr>
+        <td>🤷 <b>Потерян</b><br><small style="color:#6b7280">местонахождение неизвестно</small></td>
+        <td><span class="b-inv">Расследование</span> — заявка на поиск; не найдено → (позже) долг гафера</td>
+        <td>MISSING</td>
+      </tr>
+      <tr>
+        <td>💥 <b>Уничтожен</b><br><small style="color:#6b7280">разбит/утоплен/сгорел, ремонт невозможен</small></td>
+        <td><span class="b-off">Списание</span> — единица выбывает; (позже) ответственность гафера/клиента</td>
+        <td>RETIRED</td>
+      </tr>
+      <tr>
+        <td>🚨 <b>Украден</b><br><small style="color:#6b7280">пропал на площадке, кража</small></td>
+        <td><span class="b-inv">Расследование</span> — заявка на поиск + пометка «кража» (позже — полиция/страховая/долг)</td>
+        <td>MISSING</td>
+      </tr>
+    </table>
+    <p style="font-size:12px;color:#6b7280;margin-top:10px">Комментарий обязателен для всех. «Остался на площадке» — опц. поле «ожидается к дате». Все попадают в реестр «Потеряшки» для разбирательства.</p>
+
+    <div class="options">
+      <div class="option" data-choice="set4" onclick="toggleSelect(this)">
+        <div class="letter">A</div>
+        <div class="content">
+          <h3>4 причины: Остался · Потерян · Уничтожен · Украден (рекомендую)</h3>
+          <p>Покрывает реальные кейсы кино-смен и чётко делится на 3 поведения: восстановимо / расследование / списание. «Украден» отделён от «потерян» ради расследования и будущей страховой.</p>
+        </div>
+      </div>
+      <div class="option" data-choice="set3" onclick="toggleSelect(this)">
+        <div class="letter">B</div>
+        <div class="content">
+          <h3>3 причины: Остался на площадке · Потерян · Уничтожен</h3>
+          <p>Самый простой набор (близко к вашему изначальному). «Украден» сворачивается в «Потерян» + комментарий. Меньше кнопок — быстрее, но кражу в отчётах не отделить.</p>
+        </div>
+      </div>
+      <div class="option" data-choice="set5" onclick="toggleSelect(this)">
+        <div class="letter">C</div>
+        <div class="content">
+          <h3>5 причин: + «Уехал с другим прокатом»</h3>
+          <p>Добавляем кейс мультивендорной площадки (перепутали, уехало с чужой бригадой) — восстановимо, но follow-up = связаться с другим прокатом. Точнее для крупных площадок, но +1 кнопка.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

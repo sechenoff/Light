@@ -1,0 +1,119 @@
+<style>
+  .rb-wrap{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+  .phone{width:300px;flex:0 0 auto;border:10px solid #1c1f26;border-radius:30px;overflow:hidden;background:#f4f5f7;font-family:'IBM Plex Sans',system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .phone *{box-sizing:border-box}
+  .ph-top{background:#15294d;color:#fff;padding:12px 14px}
+  .ph-eyebrow{font-size:10px;letter-spacing:.12em;text-transform:uppercase;opacity:.7}
+  .ph-title{font-size:15px;font-weight:600;margin-top:2px}
+  .ph-sub{font-size:12px;opacity:.85;margin-top:3px}
+  .ph-progress{height:5px;background:#ffffff22;border-radius:3px;margin-top:9px;overflow:hidden}
+  .ph-progress > i{display:block;height:100%;width:75%;background:#3fb950}
+  .ph-acceptall{margin:12px;padding:11px;background:#1f6feb;color:#fff;text-align:center;border-radius:10px;font-weight:600;font-size:14px}
+  .ph-grp{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;padding:6px 16px 4px}
+  .row{display:flex;align-items:center;gap:8px;background:#fff;margin:0 12px 6px;padding:9px 10px;border-radius:10px;border:1px solid #e6e8eb}
+  .row-name{flex:1;font-size:13px;color:#1c1f26;line-height:1.25}
+  .row-name small{display:block;color:#9aa1ab;font-size:11px;margin-top:1px}
+  .seg{display:flex;gap:3px}
+  .seg b{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;border:1px solid #e0e2e6;background:#fafbfc;font-weight:400}
+  .seg b.on-ok{background:#3fb950;border-color:#3fb950;color:#fff}
+  .seg b.on-fix{background:#d29922;border-color:#d29922;color:#fff}
+  .seg b.on-lost{background:#f85149;border-color:#f85149;color:#fff}
+  .seg b.on-keep{background:#6e7681;border-color:#6e7681;color:#fff}
+  .row.exp{display:block;border-color:#d29922;background:#fffaf0}
+  .exp-head{display:flex;align-items:center;gap:8px}
+  .exp-body{margin-top:8px;border-top:1px dashed #e6c98a;padding-top:8px}
+  .exp-body textarea{width:100%;border:1px solid #e0e2e6;border-radius:7px;font-size:12px;padding:6px;font-family:inherit;resize:none}
+  .photos{display:flex;gap:6px;margin-top:7px}
+  .photos div{width:46px;height:46px;border-radius:7px;background:#e9ebef;display:flex;align-items:center;justify-content:center;font-size:16px;color:#9aa1ab}
+  .photos .cam{background:#15294d;color:#fff;font-weight:600;font-size:11px;flex-direction:column;line-height:1.1}
+  .ph-bottom{position:sticky;bottom:0;background:#fff;border-top:1px solid #e6e8eb;padding:11px 12px;margin-top:6px}
+  .ph-bottom div{background:#15294d;color:#fff;text-align:center;padding:11px;border-radius:10px;font-weight:600;font-size:14px}
+  .legend{font-size:12px;color:#6b7280;margin:10px 4px 0;display:flex;gap:14px;flex-wrap:wrap}
+  .legend span b{font-style:normal}
+</style>
+
+<h2>Приёмка: как кладовщик размечает исходы (мобильный)</h2>
+<p class="subtitle">Обычно почти всё возвращается целым. Цель — минимум тапов: «Принять всё» по умолчанию, а кладовщик трогает только исключения.</p>
+
+<div class="rb-wrap">
+  <div class="phone">
+    <div class="ph-top">
+      <div class="ph-eyebrow">Приёмка · 21 мая</div>
+      <div class="ph-title">Реклама «Орбита»</div>
+      <div class="ph-sub">ООО «Кинопроба» · 24 единицы</div>
+      <div class="ph-progress"><i></i></div>
+      <div class="ph-sub" style="margin-top:6px">18 принято · 6 требуют решения</div>
+    </div>
+    <div class="ph-acceptall">✓ Принять всё разом</div>
+
+    <div class="ph-grp">Свет · Aputure 600D</div>
+    <div class="row">
+      <div class="row-name">Aputure 600D <small>прибор 1 из 3</small></div>
+      <div class="seg"><b class="on-ok">✓</b><b>🔧</b><b>✗</b><b>⏳</b></div>
+    </div>
+    <div class="row">
+      <div class="row-name">Aputure 600D <small>прибор 2 из 3</small></div>
+      <div class="seg"><b class="on-ok">✓</b><b>🔧</b><b>✗</b><b>⏳</b></div>
+    </div>
+
+    <div class="row exp">
+      <div class="exp-head">
+        <div class="row-name">Aputure 600D <small>прибор 3 из 3</small></div>
+        <div class="seg"><b>✓</b><b class="on-fix">🔧</b><b>✗</b><b>⏳</b></div>
+      </div>
+      <div class="exp-body">
+        <textarea rows="2">Разбит байонет крепления, не фиксирует модификатор</textarea>
+        <div class="photos">
+          <div>🖼</div><div>🖼</div>
+          <div class="cam">📷<span>Фото</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ph-grp">Стойки · Manfrotto 1004</div>
+    <div class="row">
+      <div class="row-name">Manfrotto 1004 <small>стойка 1 из 4</small></div>
+      <div class="seg"><b class="on-ok">✓</b><b>🔧</b><b>✗</b><b>⏳</b></div>
+    </div>
+    <div class="row">
+      <div class="row-name">Manfrotto 1004 <small>стойка 2 из 4</small></div>
+      <div class="seg"><b>✓</b><b>🔧</b><b>✗</b><b class="on-keep">⏳</b></div>
+    </div>
+
+    <div class="ph-bottom"><div>Завершить приёмку →</div></div>
+  </div>
+
+  <div style="flex:1;min-width:280px">
+    <div class="legend">
+      <span><b style="color:#3fb950">✓</b> Принято</span>
+      <span><b style="color:#d29922">🔧</b> Сломано → ремонт+фото</span>
+      <span><b style="color:#f85149">✗</b> Потеряно → списание</span>
+      <span><b style="color:#6e7681">⏳</b> Не вернули</span>
+    </div>
+    <p style="font-size:13px;color:#6b7280;margin:14px 4px">На макете: «Принять всё» делает всё зелёным; «🔧 Сломано» раскрывает строку с причиной + камерой; «⏳ Не вернули» оставляет единицу у клиента. Выберите модель взаимодействия:</p>
+
+    <div class="options">
+      <div class="option" data-choice="acceptall-seg" onclick="toggleSelect(this)">
+        <div class="letter">A</div>
+        <div class="content">
+          <h3>Принять всё + сегмент-кнопки в строке (на макете, рекомендую)</h3>
+          <p>По умолчанию всё «Принято». Кнопка «Принять всё» сверху. У каждой строки 4 мини-кнопки исхода — один тап меняет статус. «Сломано»/«Потеряно» раскрывают мини-форму прямо в строке. Меньше всего тапов в типичном случае «всё ок».</p>
+        </div>
+      </div>
+      <div class="option" data-choice="tap-sheet" onclick="toggleSelect(this)">
+        <div class="letter">B</div>
+        <div class="content">
+          <h3>Тап по строке → нижняя шторка с 4 крупными кнопками</h3>
+          <p>Строки чистые (только название + текущий статус). Тап по строке открывает большую нижнюю шторку с 4 крупными кнопками-исходами. Крупнее цели для пальца, но +1 тап на каждое исключение и закрытие шторки.</p>
+        </div>
+      </div>
+      <div class="option" data-choice="swipe" onclick="toggleSelect(this)">
+        <div class="letter">C</div>
+        <div class="content">
+          <h3>Свайп по строке (жесты)</h3>
+          <p>Тап = принято/снять; свайп влево = меню проблемы. Самый быстрый для опытного кладовщика, но жесты менее очевидны и капризнее на разных телефонах/чехлах.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

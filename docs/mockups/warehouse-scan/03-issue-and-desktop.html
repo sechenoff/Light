@@ -1,0 +1,144 @@
+<style>
+  .iw{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+  .phone{width:280px;flex:0 0 auto;border:9px solid #1c1f26;border-radius:28px;overflow:hidden;background:#f4f5f7;font-family:'IBM Plex Sans',system-ui,sans-serif;box-shadow:0 8px 22px rgba(0,0,0,.22)}
+  .phone *{box-sizing:border-box}
+  .pcap{font-size:12px;font-weight:600;color:#6b7280;margin:0 0 6px;text-transform:uppercase;letter-spacing:.06em}
+  .top{background:#15294d;color:#fff;padding:11px 13px}
+  .top .eb{font-size:9px;letter-spacing:.12em;text-transform:uppercase;opacity:.7}
+  .top .ti{font-size:14px;font-weight:600;margin-top:2px}
+  .bk{background:#fff;margin:8px 10px;border:1px solid #e6e8eb;border-left:4px solid #1f6feb;border-radius:9px;padding:9px 11px}
+  .bk .d{font-size:11px;color:#1f6feb;font-weight:600}
+  .bk .n{font-size:13px;color:#1c1f26;font-weight:600;margin-top:2px}
+  .bk .c{font-size:11px;color:#6b7280;margin-top:2px}
+  .bk.tom{border-left-color:#8957e5}.bk.tom .d{color:#8957e5}
+  .bk.later{border-left-color:#9aa1ab}.bk.later .d{color:#9aa1ab}
+  .row{display:flex;align-items:center;gap:8px;background:#fff;margin:0 10px 5px;padding:8px 10px;border-radius:9px;border:1px solid #e6e8eb}
+  .row .nm{flex:1;font-size:12px;color:#1c1f26}
+  .row .nm small{display:block;color:#9aa1ab;font-size:10px}
+  .seg{display:flex;gap:4px}
+  .seg b{min-width:34px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;border:1px solid #e0e2e6;background:#fafbfc}
+  .seg b.ok{background:#2da44e;border-color:#2da44e;color:#fff}
+  .seg b.no{background:#6e7681;border-color:#6e7681;color:#fff}
+  .bar{margin:9px 10px;padding:10px;text-align:center;border-radius:9px;font-weight:600;font-size:13px}
+  .bar.acc{background:#1f6feb;color:#fff}
+  .bar.add{background:#fff;border:1.5px dashed #1f6feb;color:#1f6feb}
+  .grp{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#6b7280;padding:5px 14px 3px}
+  .sheet{margin:8px 10px;border:1px solid #e6e8eb;border-radius:10px;background:#fff;overflow:hidden}
+  .sheet .sh{background:#f3f4f6;padding:8px 11px;font-size:12px;font-weight:600}
+  .srch{margin:9px 11px;border:1px solid #d0d3d8;border-radius:8px;padding:7px 9px;font-size:12px;color:#6b7280}
+  .res{display:flex;align-items:center;gap:8px;padding:8px 11px;border-top:1px solid #f0f1f3;font-size:12px}
+  .res .pill{margin-left:auto;font-size:10px;font-weight:600;padding:3px 7px;border-radius:10px}
+  .pill.free{background:#e7f5ec;color:#1a7f37}
+  .pill.busy{background:#fdeced;color:#b42318}
+  .warn{margin:0 11px 10px;border:1px solid #e5848a;background:#fdeced;border-radius:9px;padding:9px}
+  .warn .wt{font-size:12px;color:#b42318;font-weight:600}
+  .warn .ws{font-size:11px;color:#9a3a3a;margin-top:3px}
+  .warn .wb{display:flex;gap:6px;margin-top:8px}
+  .warn .wb span{flex:1;text-align:center;font-size:11px;padding:6px;border-radius:7px}
+  .wb .x{background:#fff;border:1px solid #d0d3d8;color:#6b7280}
+  .wb .y{background:#e5484d;color:#fff;font-weight:600}
+  .desk{flex:1;min-width:340px;border:1px solid #d0d3d8;border-radius:12px;overflow:hidden;font-family:'IBM Plex Sans',system-ui,sans-serif}
+  .desk .dt{background:#15294d;color:#fff;padding:9px 14px;font-size:13px;font-weight:600}
+  .desk .body{display:flex;min-height:280px}
+  .desk .lft{width:38%;border-right:1px solid #e6e8eb;background:#fafbfc}
+  .desk .lft .bk{margin:8px}
+  .desk .rgt{flex:1;padding:10px 12px;background:#fff}
+  .desk .rgt h4{margin:2px 0 8px;font-size:14px}
+  .drow{display:flex;align-items:center;gap:8px;border:1px solid #e6e8eb;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:13px}
+  .drow .nm{flex:1}
+</style>
+
+<h2>Выдача + адаптив desktop</h2>
+<p class="subtitle">Список броней без фильтров (сортировка дата+номер) → чек-лист выдачи → добор с мягким предупреждением о занятости. Справа — тот же экран на широком экране (две панели).</p>
+
+<div class="iw">
+  <div>
+    <p class="pcap">1 · Список броней (без фильтров)</p>
+    <div class="phone">
+      <div class="top"><div class="eb">Склад · Выдача</div><div class="ti">Выберите бронь</div></div>
+      <div class="grp">Сегодня · 21 мая</div>
+      <div class="bk"><div class="d">21.05 · №1043</div><div class="n">Реклама «Орбита»</div><div class="c">ООО «Кинопроба» · 24 ед.</div></div>
+      <div class="grp">Завтра · 22 мая</div>
+      <div class="bk tom"><div class="d">22.05 · №1044</div><div class="n">Клип «Север»</div><div class="c">Иванов И. · 11 ед.</div></div>
+      <div class="bk tom"><div class="d">22.05 · №1047</div><div class="n">Сериал «Дом» смена 4</div><div class="c">ООО «Студия» · 38 ед.</div></div>
+      <div class="grp">Позже</div>
+      <div class="bk later"><div class="d">24.05 · №1051</div><div class="n">Фотосет каталог</div><div class="c">Петров П. · 6 ед.</div></div>
+    </div>
+  </div>
+
+  <div>
+    <p class="pcap">2 · Чек-лист выдачи</p>
+    <div class="phone">
+      <div class="top"><div class="eb">Выдача · №1043 · 21.05</div><div class="ti">Реклама «Орбита»</div></div>
+      <div class="bar acc">✓ Выдать всё разом</div>
+      <div class="grp">Свет</div>
+      <div class="row"><div class="nm">Aputure 600D <small>прибор 1 из 3</small></div><div class="seg"><b class="ok">✓</b><b>✗</b></div></div>
+      <div class="row"><div class="nm">Aputure 600D <small>прибор 2 из 3</small></div><div class="seg"><b class="ok">✓</b><b>✗</b></div></div>
+      <div class="row"><div class="nm">SkyPanel S60 <small>прибор 1 из 2</small></div><div class="seg"><b>✓</b><b class="no">✗</b></div></div>
+      <div class="grp">Стойки</div>
+      <div class="row"><div class="nm">Manfrotto 1004 <small>×4</small></div><div class="seg"><b class="ok">✓</b><b>✗</b></div></div>
+      <div class="bar add">＋ Добор (артикул не из заявки)</div>
+    </div>
+  </div>
+
+  <div>
+    <p class="pcap">3 · Добор + проверка доступности</p>
+    <div class="phone">
+      <div class="top"><div class="eb">Добор в бронь №1043 · 21–23.05</div><div class="ti">Поиск по каталогу</div></div>
+      <div class="sheet">
+        <div class="sh">Доступность на даты брони</div>
+        <div class="srch">🔎 dedolight…</div>
+        <div class="res">Dedolight DLED4 <span class="pill free">свободно ×3</span></div>
+        <div class="res">Astera Titan Tube <span class="pill busy">занято</span></div>
+      </div>
+      <div class="warn">
+        <div class="wt">⚠ Astera Titan Tube занят</div>
+        <div class="ws">Бронь №1039 «Клип Maxi» · 22–24.05. Конфликт 22–23.05. Свободно с 24.05.</div>
+        <div class="wb"><span class="x">Отмена</span><span class="y">Выдать под ответственность</span></div>
+        <div style="font-size:10px;color:#9a3a3a;margin-top:6px">Конфликт зафиксируется в аудите</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="width:100%">
+    <p class="pcap">4 · Тот же раздел на desktop — адаптив (две панели, без модалок)</p>
+    <div class="desk">
+      <div class="dt">Склад · Выдача — Реклама «Орбита» №1043</div>
+      <div class="body">
+        <div class="lft">
+          <div class="bk"><div class="d">21.05 · №1043</div><div class="n">Реклама «Орбита»</div><div class="c">24 ед. · идёт выдача</div></div>
+          <div class="bk tom"><div class="d">22.05 · №1044</div><div class="n">Клип «Север»</div><div class="c">11 ед.</div></div>
+          <div class="bk later"><div class="d">24.05 · №1051</div><div class="n">Фотосет каталог</div><div class="c">6 ед.</div></div>
+        </div>
+        <div class="rgt">
+          <h4>Чек-лист выдачи · 18 / 24 ✓ &nbsp;&nbsp; <span style="font-size:11px;color:#1f6feb;border:1px dashed #1f6feb;padding:3px 7px;border-radius:7px">＋ Добор</span></h4>
+          <div class="drow"><div class="nm">Aputure 600D · прибор 1 из 3</div><div class="seg"><b class="ok">✓</b><b>✗</b></div></div>
+          <div class="drow"><div class="nm">SkyPanel S60 · прибор 1 из 2</div><div class="seg"><b>✓</b><b class="no">✗</b></div></div>
+          <div class="drow" style="border-color:#e5848a;background:#fdeced"><div class="nm">＋ Astera Titan Tube — <b style="color:#b42318">занят бронью №1039 (22–24.05)</b></div><div class="seg"><b style="background:#e5484d;border-color:#e5484d;color:#fff;min-width:auto;padding:0 8px">Выдать под отв.</b></div></div>
+          <p style="font-size:12px;color:#6b7280;margin-top:10px">Десктоп: список броней слева, чек-лист справа, добор — встроенная панель, не модалка. Те же кнопки и логика, крупнее цели, видно больше строк.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="ok" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>Всё верно — переходим к техническому дизайну</h3>
+      <p>Список без фильтров, выдача с «Выдать всё», добор с мягким предупреждением, desktop = две панели. Дальше — модель данных «Потеряшки», фото-хранилище, API, и пишем спецификацию.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="fix-issue" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>Поправить выдачу / добор</h3>
+      <p>Есть замечания по списку броней, чек-листу выдачи или предупреждению о доборе — опишу в терминале.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="fix-desktop" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content"><h3>Поправить desktop-адаптив</h3>
+      <p>Двух-панельная раскладка на широком экране не та — обсудим, как должно быть.</p>
+    </div>
+  </div>
+</div>
