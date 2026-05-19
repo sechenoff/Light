@@ -10,8 +10,8 @@ import {
   cancelSession,
   getSessionWithDetails,
   getReconciliationPreview,
-  type BrokenUnit,
-  type LostUnit,
+  type RepairUnit,
+  type ProblemUnit,
 } from "../services/warehouseScan";
 import {
   checkUnit,
@@ -290,22 +290,22 @@ warehouseScanRouter.get("/sessions/:id/summary", warehouseAuth, async (req, res,
   }
 });
 
-const brokenUnitSchema = z.object({
+const repairUnitSchema = z.object({
   equipmentUnitId: z.string().min(1),
-  reason: z.string().min(1),
-  urgency: z.enum(["NOT_URGENT", "NORMAL", "URGENT"]),
+  comment: z.string().min(1),
+  urgency: z.enum(["NOT_URGENT", "NORMAL", "URGENT"]).optional(),
 });
 
-const lostUnitSchema = z.object({
+const problemUnitSchema = z.object({
   equipmentUnitId: z.string().min(1),
-  reason: z.string().min(5),
-  lostLocation: z.enum(["ON_SITE", "IN_TRANSIT", "AT_CLIENT", "UNKNOWN"]),
-  chargeClient: z.boolean(),
+  reason: z.enum(["LEFT_ON_SITE", "LOST", "DESTROYED", "STOLEN"]),
+  comment: z.string().min(1),
+  expectedBackDate: z.string().datetime().optional(),
 });
 
 const completeSessionBodySchema = z.object({
-  brokenUnits: z.array(brokenUnitSchema).optional(),
-  lostUnits: z.array(lostUnitSchema).optional(),
+  repairUnits: z.array(repairUnitSchema).optional(),
+  problemUnits: z.array(problemUnitSchema).optional(),
 }).optional();
 
 /** POST /api/warehouse/sessions/:id/complete — завершить сессию */
@@ -313,11 +313,11 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
   try {
     const { id } = req.params;
     const body = completeSessionBodySchema.parse(req.body);
-    const brokenUnits = body?.brokenUnits as BrokenUnit[] | undefined;
-    const lostUnits = body?.lostUnits as LostUnit[] | undefined;
+    const repairUnits = body?.repairUnits as RepairUnit[] | undefined;
+    const problemUnits = body?.problemUnits as ProblemUnit[] | undefined;
     const summary = await completeSession(id, {
-      brokenUnits,
-      lostUnits,
+      repairUnits,
+      problemUnits,
       createdBy: req.warehouseWorker?.name,
     });
 
@@ -360,10 +360,8 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       })),
       createdRepairIds: summary.createdRepairIds,
       failedBrokenUnits: summary.failedBrokenUnits,
-      // C5: счёт по брони устарел из-за компенсации за утерю (выпущенный
-      // Invoice не перевыпускается автоматически — оператор аннулирует
-      // старый и выставляет новый вручную).
-      invoiceNeedsReissue: summary.invoiceNeedsReissue,
+      createdProblemItemIds: summary.createdProblemItemIds,
+      failedProblemUnits: summary.failedProblemUnits,
     });
   } catch (err) {
     next(err);

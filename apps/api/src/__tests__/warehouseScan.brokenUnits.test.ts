@@ -1,6 +1,7 @@
 /**
- * Интеграционный тест: warehouse scan return с brokenUnits
- * Sprint 4.4 — после возврата оборудования создаются Repair карточки
+ * Интеграционный тест: warehouse scan return с repairUnits
+ * Sprint 4.4 / Phase 2 — после возврата оборудования создаются Repair карточки.
+ * (brokenUnits переименован в repairUnits; ключ reason → comment.)
  */
 
 import path from "path";
@@ -135,15 +136,15 @@ afterAll(async () => {
   }
 });
 
-describe("completeSession с brokenUnits", () => {
-  it("после возврата с brokenUnits — Repair создана, unit в MAINTENANCE", async () => {
+describe("completeSession с repairUnits", () => {
+  it("после возврата с repairUnits — Repair создана, unit в MAINTENANCE", async () => {
     const { completeSession } = await import("../services/warehouseScan");
 
     const summary = await completeSession(sessionId, {
-      brokenUnits: [
+      repairUnits: [
         {
           equipmentUnitId: unitId,
-          reason: "Поломана линза",
+          comment: "Поломана линза",
           urgency: "URGENT",
         },
       ],
@@ -210,7 +211,7 @@ describe("completeSession с brokenUnits", () => {
 
     // Используем unitId из первого теста (уже имеет активный ремонт!) → REPAIR_ACTIVE_EXISTS
     const summary = await completeSession(session2.id, {
-      brokenUnits: [{ equipmentUnitId: unitId, reason: "Снова поломка", urgency: "NORMAL" }],
+      repairUnits: [{ equipmentUnitId: unitId, comment: "Снова поломка", urgency: "NORMAL" }],
       createdBy: superAdminId,
     });
 

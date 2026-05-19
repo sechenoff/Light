@@ -9,12 +9,11 @@
  */
 
 import { Prisma } from "@prisma/client";
-import type { RepairUrgency } from "@prisma/client";
+import type { RepairUrgency, ProblemReason } from "@prisma/client";
 import { prisma } from "../prisma";
 import { createRepair } from "./repairService";
+import { createProblemItem, autoResolveOnReturn } from "./problemItemService";
 import { writeAuditEntry } from "./audit";
-import { recomputeBookingFinance } from "./finance";
-import { HttpError } from "../utils/errors";
 
 type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
 
@@ -24,19 +23,17 @@ type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$trans
 
 export type ScanOperation = "ISSUE" | "RETURN";
 
-export interface BrokenUnit {
+export interface RepairUnit {
   equipmentUnitId: string;
-  reason: string;
-  urgency: RepairUrgency;
+  comment: string;
+  urgency?: RepairUrgency;
 }
 
-export type LostLocation = "ON_SITE" | "IN_TRANSIT" | "AT_CLIENT" | "UNKNOWN";
-
-export interface LostUnit {
+export interface ProblemUnit {
   equipmentUnitId: string;
-  reason: string;
-  lostLocation: LostLocation;
-  chargeClient: boolean;
+  reason: ProblemReason;
+  comment: string;
+  expectedBackDate?: string;
 }
 
 export interface ReconciliationSummary {
@@ -46,14 +43,8 @@ export interface ReconciliationSummary {
   substituted: string[]; // equipmentUnitId[] замен (отсканирован другой юнит вместо зарезервированного)
   createdRepairIds: string[];  // id карточек ремонта, успешно созданных после возврата
   failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>; // единицы, для которых ремонт не удалось создать
-  failedLostUnits: Array<{ equipmentUnitId: string; reason: string }>; // утерянные единицы, которые не удалось обработать
-  /**
-   * C5: true, если компенсация утери изменила сумму брони, по которой уже
-   * выпущен Invoice (не DRAFT/VOID). Invoice автоматически НЕ перевыпускается —
-   * оператор должен вручную аннулировать старый и выставить новый счёт.
-   * Рассинхрон зафиксирован аудит-записью INVOICE_OUTDATED_BY_COMPENSATION.
-   */
-  invoiceNeedsReissue: boolean;
+  createdProblemItemIds: string[]; // id карточек «Потеряшки», успешно созданных после возврата
+  failedProblemUnits: Array<{ equipmentUnitId: string; reason: string }>; // проблемные единицы, которые не удалось обработать
 }
 
 export interface SessionBookingItem {
@@ -165,8 +156,8 @@ export async function createSession(
  */
 export async function completeSession(
   sessionId: string,
-  options?: { brokenUnits?: BrokenUnit[]; lostUnits?: LostUnit[]; createdBy?: string },
-): Promise<ReconciliationSummary & { createdRepairIds: string[]; failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>; failedLostUnits: Array<{ equipmentUnitId: string; reason: string }> }> {
+  options?: { repairUnits?: RepairUnit[]; problemUnits?: ProblemUnit[]; createdBy?: string },
+): Promise<ReconciliationSummary> {
   // Загружаем сессию со сканами и информацией о брони
   const session = await prisma.scanSession.findUnique({
     where: { id: sessionId },
@@ -217,8 +208,8 @@ export async function completeSession(
       substituted: [],
       createdRepairIds: [],
       failedBrokenUnits: [],
-      failedLostUnits: [],
-      invoiceNeedsReissue: false,
+      createdProblemItemIds: [],
+      failedProblemUnits: [],
     };
 
     if (session.operation === "ISSUE") {
@@ -293,16 +284,18 @@ export async function completeSession(
     return summary;
   });
 
-  // После завершения транзакции — создаём карточки ремонта для поломанных единиц
-  const brokenUnits = options?.brokenUnits ?? [];
-  if (brokenUnits.length > 0 && session.operation === "RETURN") {
-    const createdBy = options?.createdBy ?? session.workerName;
-    for (const broken of brokenUnits) {
+  const createdBy = options?.createdBy ?? session.workerName;
+
+  // После завершения транзакции — создаём карточки ремонта для поломанных единиц.
+  // urgency не собирается в быстром UI → дефолт NORMAL.
+  const repairUnits = options?.repairUnits ?? [];
+  if (repairUnits.length > 0 && session.operation === "RETURN") {
+    for (const r of repairUnits) {
       try {
         const repair = await createRepair({
-          unitId: broken.equipmentUnitId,
-          reason: broken.reason,
-          urgency: broken.urgency,
+          unitId: r.equipmentUnitId,
+          reason: r.comment,
+          urgency: r.urgency ?? "NORMAL",
           sourceBookingId: session.bookingId,
           createdBy,
         });
@@ -310,7 +303,7 @@ export async function completeSession(
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
         console.error("createRepair failed during scan completion", {
-          unitId: broken.equipmentUnitId,
+          unitId: r.equipmentUnitId,
           bookingId: session.bookingId,
           error: errMsg,
         });
@@ -318,13 +311,13 @@ export async function completeSession(
         // Безопасность: возвращаем unit в MAINTENANCE, чтобы не сдать сломанный в аренду
         try {
           await prisma.equipmentUnit.update({
-            where: { id: broken.equipmentUnitId },
+            where: { id: r.equipmentUnitId },
             data: { status: "MAINTENANCE" },
           });
-          console.error("unit restored to MAINTENANCE after createRepair failure", { unitId: broken.equipmentUnitId });
+          console.error("unit restored to MAINTENANCE after createRepair failure", { unitId: r.equipmentUnitId });
         } catch (fallbackErr: unknown) {
           console.error("CRITICAL: failed to restore unit to MAINTENANCE", {
-            unitId: broken.equipmentUnitId,
+            unitId: r.equipmentUnitId,
             fallbackError: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
           });
         }
@@ -335,197 +328,71 @@ export async function completeSession(
             userId: createdBy,
             action: "REPAIR_CREATE_FAILED",
             entityType: "EquipmentUnit",
-            entityId: broken.equipmentUnitId,
+            entityId: r.equipmentUnitId,
             before: null,
-            after: { reason: broken.reason, urgency: broken.urgency, error: errMsg },
+            after: { reason: r.comment, urgency: r.urgency ?? "NORMAL", error: errMsg },
           });
         } catch { /* аудит не должен блокировать */ }
 
         summary.failedBrokenUnits.push({
-          unitId: broken.equipmentUnitId,
-          reason: broken.reason,
+          unitId: r.equipmentUnitId,
+          reason: r.comment,
           error: errMsg,
         });
       }
     }
   }
 
-  // ── Обработка утерянных единиц (только для операции RETURN) ─────────────────
-  const lostUnits = options?.lostUnits ?? [];
-  if (lostUnits.length > 0 && session.operation === "RETURN") {
-    const createdBy = options?.createdBy ?? session.workerName;
-    let hasChargeClient = false;
-
-    for (const lost of lostUnits) {
+  // ── Обработка проблемных единиц «Потеряшки» (только для операции RETURN) ────
+  // createProblemItem открывает собственную транзакцию (вызов без tx). Каждая
+  // единица обрабатывается изолированно — сбой одной не валит остальные и не
+  // откатывает физический возврат.
+  const problemUnits = options?.problemUnits ?? [];
+  if (problemUnits.length > 0 && session.operation === "RETURN") {
+    for (const p of problemUnits) {
       try {
-        await prisma.$transaction(async (tx: TxClient) => {
-          // 1. Загружаем unit с оборудованием для расчёта стоимости замены
-          const unit = await tx.equipmentUnit.findUnique({
-            where: { id: lost.equipmentUnitId },
-            include: { equipment: true },
-          });
-          if (!unit) throw new HttpError(404, "Unit не найден", "UNIT_NOT_FOUND");
-
-          const previousStatus = unit.status;
-
-          // 2. Переводим unit → RETIRED
-          await tx.equipmentUnit.update({
-            where: { id: lost.equipmentUnitId },
-            data: { status: "RETIRED" },
-          });
-
-          // 3. Создаём Repair со статусом WROTE_OFF для прослеживаемости
-          await tx.repair.create({
-            data: {
-              unitId: lost.equipmentUnitId,
-              status: "WROTE_OFF",
-              urgency: "NORMAL",
-              reason: `[Утеря: ${lost.lostLocation}] ${lost.reason}`,
-              sourceBookingId: session.bookingId,
-              createdBy,
-              closedAt: new Date(),
-            },
-          });
-
-          // 4. Аудит UNIT_LOST
-          await writeAuditEntry({
-            tx,
-            userId: createdBy,
-            action: "UNIT_LOST",
-            entityType: "EquipmentUnit",
-            entityId: lost.equipmentUnitId,
-            before: { status: previousStatus },
-            after: {
-              status: "RETIRED",
-              lostLocation: lost.lostLocation,
-              chargeClient: lost.chargeClient,
-              reason: lost.reason,
-            },
-          });
-
-          // 5. Аудит UNIT_STATUS_CHANGED
-          await writeAuditEntry({
-            tx,
-            userId: createdBy,
-            action: "UNIT_STATUS_CHANGED",
-            entityType: "EquipmentUnit",
-            entityId: lost.equipmentUnitId,
-            before: { status: previousStatus },
-            after: { status: "RETIRED" },
-          });
-
-          // 6. Если chargeClient — создаём BookingItem компенсации
-          if (lost.chargeClient) {
-            // Стоимость замены: rentalRatePerProject если задано,
-            // иначе rentalRatePerShift * 30 как приблизительная стоимость.
-            // Если обе ставки равны 0 или null — пропускаем создание BookingItem:
-            // лучше не создавать позицию с нулевой суммой, чем silently under-charge.
-            const equipment = unit.equipment;
-            const replacementCost =
-              equipment.rentalRatePerProject != null
-                ? equipment.rentalRatePerProject
-                : (equipment.rentalRatePerShift != null
-                    ? equipment.rentalRatePerShift.mul(30)
-                    : null);
-
-            if (replacementCost && replacementCost.gt(0)) {
-              await tx.bookingItem.create({
-                data: {
-                  bookingId: session.bookingId,
-                  equipmentId: null,
-                  quantity: 1,
-                  customName: `Компенсация утери: ${equipment.name}`,
-                  customCategory: "Компенсация",
-                  customUnitPrice: replacementCost,
-                },
-              });
-
-              await writeAuditEntry({
-                tx,
-                userId: createdBy,
-                action: "BOOKING_CHARGE_ADDED",
-                entityType: "Booking",
-                entityId: session.bookingId,
-                before: null,
-                after: {
-                  reason: "lost_unit",
-                  equipmentName: equipment.name,
-                  amount: replacementCost.toString(),
-                  unitId: lost.equipmentUnitId,
-                },
-              });
-
-              hasChargeClient = true;
-            } else {
-              console.warn(
-                `[completeSession] Skipping compensation for ${lost.equipmentUnitId}: replacementCost is 0 or null. ` +
-                `Equipment rates: project=${equipment.rentalRatePerProject}, shift=${equipment.rentalRatePerShift}`,
-              );
-            }
-          }
+        const pi = await createProblemItem({
+          equipmentUnitId: p.equipmentUnitId,
+          reason: p.reason,
+          comment: p.comment,
+          expectedBackDate: p.expectedBackDate ? new Date(p.expectedBackDate) : null,
+          sourceBookingId: session.bookingId,
+          createdBy,
         });
+        summary.createdProblemItemIds.push(pi.id);
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        console.error(`[completeSession] lost unit ${lost.equipmentUnitId} failed:`, err);
-        summary.failedLostUnits.push({
-          equipmentUnitId: lost.equipmentUnitId,
+        console.error(`[completeSession] problem unit ${p.equipmentUnitId} failed:`, err);
+        summary.failedProblemUnits.push({
+          equipmentUnitId: p.equipmentUnitId,
           reason: errMsg,
         });
-        // Продолжаем обработку остальных lost units (не throw)
       }
     }
+  }
 
-    // Пересчитываем финансы если был хотя бы один chargeClient (даже при частичных ошибках)
-    if (hasChargeClient) {
-      await recomputeBookingFinance(session.bookingId).catch((err: unknown) => {
-        console.error("[completeSession] recomputeBookingFinance failed for lost units:", err);
-      });
-
-      // C5: компенсация утери изменила сумму брони. Если по брони уже выпущен
-      // активный Invoice (не DRAFT/VOID — его total больше нельзя редактировать
-      // через updateInvoice), он рассинхронизирован с новой суммой.
-      //
-      // Вариант (c) из спеки: автоматический void/reissue здесь = большой
-      // рефактор (нет reissue-хелпера; numbering, refunds, audit-цепочка).
-      // Поэтому делаем рассинхрон НЕ молчаливым: ставим summary-флаг + аудит +
-      // console.warn. Оператор аннулирует старый счёт и выставит новый вручную.
+  // ── Авто-резолв открытых карточек «Потеряшки» при повторной приёмке ─────────
+  // Best-effort, ПОСЛЕ основной транзакции: autoResolveOnReturn пишет аудит-
+  // запись, а createdBy в проде — имя кладовщика (не AdminUser.id), поэтому
+  // insert FK-падает. Внутри основной транзакции это откатило бы весь
+  // физический возврат — недопустимая регрессия. Аудит здесь = коррекция
+  // статуса + observability, не бизнес-инвариант (документированный trade-off).
+  //
+  // Единицы, по которым в ЭТОЙ же приёмке заведена проблема/ремонт, исключаются:
+  // их новый статус (MISSING/RETIRED/MAINTENANCE) — авторитетный итог сессии,
+  // авто-резолв не должен «вернуть» только что заведённую карточку в FOUND.
+  // Сценарий авто-резолва — поздний возврат единицы, помеченной В ПРОШЛОЙ сессии.
+  if (session.operation === "RETURN") {
+    const flaggedThisSession = new Set<string>([
+      ...problemUnits.map((p) => p.equipmentUnitId),
+      ...repairUnits.map((r) => r.equipmentUnitId),
+    ]);
+    for (const unitId of scannedUnitIds) {
+      if (flaggedThisSession.has(unitId)) continue;
       try {
-        const activeInvoices = await prisma.invoice.findMany({
-          where: {
-            bookingId: session.bookingId,
-            status: { notIn: ["DRAFT", "VOID"] },
-          },
-          select: { id: true, number: true, status: true, total: true },
-        });
-
-        if (activeInvoices.length > 0) {
-          summary.invoiceNeedsReissue = true;
-          const numbers = activeInvoices.map((inv) => inv.number).join(", ");
-          console.warn(
-            `[completeSession] Booking ${session.bookingId}: compensation for lost unit(s) ` +
-              `changed booking total, but ${activeInvoices.length} active invoice(s) ` +
-              `[${numbers}] were NOT auto-reissued. Operator must void & re-issue manually.`,
-          );
-          for (const inv of activeInvoices) {
-            await writeAuditEntry({
-              userId: createdBy,
-              action: "INVOICE_OUTDATED_BY_COMPENSATION",
-              entityType: "Invoice",
-              entityId: inv.id,
-              before: { status: inv.status, total: inv.total.toString() },
-              after: {
-                reason: "lost_unit_compensation",
-                bookingId: session.bookingId,
-                note: "Invoice total больше не соответствует сумме брони. Требуется ручной void + reissue.",
-              },
-            }).catch((err: unknown) => {
-              console.error("[completeSession] INVOICE_OUTDATED_BY_COMPENSATION audit failed:", err);
-            });
-          }
-        }
-      } catch (err: unknown) {
-        // Детекция рассинхрона не должна валить весь возврат — логируем и продолжаем.
-        console.error("[completeSession] invoice-resync check failed:", err);
+        await prisma.$transaction((tx: TxClient) => autoResolveOnReturn(tx, unitId, createdBy));
+      } catch (e) {
+        console.error("[completeSession] autoResolveOnReturn failed", unitId, e);
       }
     }
   }
@@ -615,8 +482,8 @@ export async function getReconciliationPreview(sessionId: string): Promise<Recon
     substituted,
     createdRepairIds: [],
     failedBrokenUnits: [],
-    failedLostUnits: [],
-    invoiceNeedsReissue: false,
+    createdProblemItemIds: [],
+    failedProblemUnits: [],
   };
 }
 
