@@ -243,6 +243,106 @@ describe("GET /api/repairs/:id", () => {
   });
 });
 
+// ─── Task 3.2: фото поломки в детали ремонта + стрим ─────────────────────────
+
+describe("GET /api/repairs/:id — photos + stream endpoint", () => {
+  let photoUnitId: string;
+  let photoRepairId: string;
+  let photoId: string;
+  let photoAbsPath: string;
+  // 1x1 PNG (валидные magic-байты 89 50 4E 47)
+  const PNG_1x1 = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+
+  beforeAll(async () => {
+    const pu = await prisma.equipmentUnit.create({
+      data: { equipmentId, barcode: "PHOTO-RT-001", status: "AVAILABLE" },
+    });
+    photoUnitId = pu.id;
+
+    const repair = await prisma.repair.create({
+      data: {
+        unitId: photoUnitId,
+        reason: "Поломка с фото",
+        urgency: "NORMAL",
+        createdBy: superAdminId,
+        status: "WAITING_REPAIR",
+        partsCost: 0,
+        totalTimeHours: 0,
+      },
+    });
+    photoRepairId = repair.id;
+    await prisma.equipmentUnit.update({ where: { id: photoUnitId }, data: { status: "MAINTENANCE" } });
+
+    const relPath = `repairs/${photoRepairId}/x.png`;
+    const { UPLOAD_ROOT } = await import("../services/repairPhotoStorage");
+    photoAbsPath = path.join(UPLOAD_ROOT, relPath);
+    fs.mkdirSync(path.dirname(photoAbsPath), { recursive: true });
+    fs.writeFileSync(photoAbsPath, PNG_1x1);
+
+    const photo = await prisma.repairPhoto.create({
+      data: { repairId: photoRepairId, filePath: relPath, createdBy: superAdminId },
+    });
+    photoId = photo.id;
+  });
+
+  afterAll(async () => {
+    await prisma.repairPhoto.deleteMany({ where: { repairId: photoRepairId } }).catch(() => {});
+    await prisma.repair.update({ where: { id: photoRepairId }, data: { status: "CLOSED", closedAt: new Date() } }).catch(() => {});
+    await prisma.equipmentUnit.update({ where: { id: photoUnitId }, data: { status: "AVAILABLE" } }).catch(() => {});
+    try { fs.rmSync(path.dirname(photoAbsPath), { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+
+  it("200 — GET /:id возвращает photos = [{ id, url }]", async () => {
+    const res = await request(app)
+      .get(`/api/repairs/${photoRepairId}`)
+      .set(auth(superAdminToken));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.repair.photos)).toBe(true);
+    expect(res.body.repair.photos).toHaveLength(1);
+    expect(res.body.repair.photos[0]).toEqual({
+      id: photoId,
+      url: `/api/repairs/${photoRepairId}/photos/${photoId}`,
+    });
+  });
+
+  it("200 — стрим фото отдаёт image/png", async () => {
+    const res = await request(app)
+      .get(`/api/repairs/${photoRepairId}/photos/${photoId}`)
+      .set(auth(superAdminToken));
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("image/png");
+    expect(res.body.length).toBe(PNG_1x1.length);
+  });
+
+  it("200 — WAREHOUSE и TECHNICIAN тоже видят стрим", async () => {
+    const wh = await request(app)
+      .get(`/api/repairs/${photoRepairId}/photos/${photoId}`)
+      .set(auth(warehouseToken));
+    expect(wh.status).toBe(200);
+    const tech = await request(app)
+      .get(`/api/repairs/${photoRepairId}/photos/${photoId}`)
+      .set(auth(technicianToken));
+    expect(tech.status).toBe(200);
+  });
+
+  it("404 — несуществующее фото", async () => {
+    const res = await request(app)
+      .get(`/api/repairs/${photoRepairId}/photos/nonexistent-photo-id`)
+      .set(auth(superAdminToken));
+    expect(res.status).toBe(404);
+  });
+
+  it("404 — photoId принадлежит другому ремонту", async () => {
+    const res = await request(app)
+      .get(`/api/repairs/nonexistent-repair-id/photos/${photoId}`)
+      .set(auth(superAdminToken));
+    expect(res.status).toBe(404);
+  });
+});
+
 // ─── POST /:id/write-off — только SUPER_ADMIN ─────────────────────────────────
 
 describe("POST /api/repairs/:id/write-off", () => {

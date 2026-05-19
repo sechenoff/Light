@@ -1,0 +1,127 @@
+<style>
+  .rb-wrap{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+  .phone{width:310px;flex:0 0 auto;border:10px solid #1c1f26;border-radius:30px;overflow:hidden;background:#f4f5f7;font-family:'IBM Plex Sans',system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .phone *{box-sizing:border-box}
+  .ph-top{background:#15294d;color:#fff;padding:12px 14px}
+  .ph-eyebrow{font-size:10px;letter-spacing:.12em;text-transform:uppercase;opacity:.7}
+  .ph-title{font-size:15px;font-weight:600;margin-top:2px}
+  .ph-sub{font-size:12px;opacity:.85;margin-top:3px}
+  .ph-acceptall{margin:12px;padding:11px;background:#1f6feb;color:#fff;text-align:center;border-radius:10px;font-weight:600;font-size:14px}
+  .ph-grp{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;padding:6px 16px 4px}
+  .row{display:flex;align-items:center;gap:8px;background:#fff;margin:0 12px 6px;padding:9px 10px;border-radius:10px;border:1px solid #e6e8eb}
+  .row-name{flex:1;font-size:13px;color:#1c1f26;line-height:1.25}
+  .row-name small{display:block;color:#9aa1ab;font-size:11px;margin-top:1px}
+  .seg{display:flex;gap:4px}
+  .seg b{min-width:38px;height:34px;padding:0 8px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;border:1px solid #e0e2e6;background:#fafbfc;font-weight:400;gap:4px}
+  .seg b.on-ok{background:#2da44e;border-color:#2da44e;color:#fff}
+  .seg b.on-fix{background:#d29922;border-color:#d29922;color:#fff}
+  .seg b.on-prob{background:#e5484d;border-color:#e5484d;color:#fff}
+  .row.exp-fix{display:block;border-color:#e3b341;background:#fff8e6}
+  .row.exp-prob{display:block;border-color:#e5848a;background:#fdeced}
+  .exp-head{display:flex;align-items:center;gap:8px}
+  .exp-body{margin-top:9px;padding-top:9px;border-top:1px dashed #00000022}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px}
+  .chips span{font-size:11px;padding:5px 9px;border-radius:14px;border:1px solid #e5848a;color:#b42318;background:#fff}
+  .chips span.on{background:#e5484d;color:#fff;border-color:#e5484d}
+  .exp-body textarea{width:100%;border:1px solid #e0e2e6;border-radius:7px;font-size:12px;padding:6px;font-family:inherit;resize:none}
+  .photos{display:flex;gap:6px;margin-top:7px}
+  .photos div{width:46px;height:46px;border-radius:7px;background:#0000000d;display:flex;align-items:center;justify-content:center;font-size:16px;color:#9aa1ab}
+  .photos .cam{background:#15294d;color:#fff;font-weight:600;font-size:11px;flex-direction:column;line-height:1.1}
+  .note{font-size:11px;color:#b42318;margin-top:7px}
+  .note-fix{font-size:11px;color:#9a6700;margin-top:7px}
+  .ph-bottom{position:sticky;bottom:0;background:#fff;border-top:1px solid #e6e8eb;padding:11px 12px;margin-top:6px}
+  .ph-bottom div{background:#15294d;color:#fff;text-align:center;padding:11px;border-radius:10px;font-weight:600;font-size:14px}
+</style>
+
+<h2>Приёмка — 3 кнопки на единицу (обновлено)</h2>
+<p class="subtitle">✓ Принято · 🔧 Ремонт (фото+коммент) · ✗ Проблема (красная панель: причина+коммент → список потеряшек). Вопрос внизу — только про цвет кнопки «Ремонт».</p>
+
+<div class="rb-wrap">
+  <div class="phone">
+    <div class="ph-top">
+      <div class="ph-eyebrow">Приёмка · 21 мая</div>
+      <div class="ph-title">Реклама «Орбита»</div>
+      <div class="ph-sub">ООО «Кинопроба» · 24 единицы · 18 принято</div>
+    </div>
+    <div class="ph-acceptall">✓ Принять всё разом</div>
+
+    <div class="ph-grp">Свет · Aputure 600D</div>
+    <div class="row">
+      <div class="row-name">Aputure 600D <small>прибор 1 из 3</small></div>
+      <div class="seg"><b class="on-ok">✓</b><b>🔧</b><b>✗</b></div>
+    </div>
+
+    <div class="row exp-fix">
+      <div class="exp-head">
+        <div class="row-name">Aputure 600D <small>прибор 2 из 3</small></div>
+        <div class="seg"><b>✓</b><b class="on-fix">🔧</b><b>✗</b></div>
+      </div>
+      <div class="exp-body">
+        <textarea rows="2">Разбит байонет, не держит модификатор</textarea>
+        <div class="photos"><div>🖼</div><div>🖼</div><div class="cam">📷<span>Фото</span></div></div>
+        <div class="note-fix">→ создаст карточку ремонта, фото видны руководителю</div>
+      </div>
+    </div>
+
+    <div class="row exp-prob">
+      <div class="exp-head">
+        <div class="row-name">Aputure 600D <small>прибор 3 из 3</small></div>
+        <div class="seg"><b>✓</b><b>🔧</b><b class="on-prob">✗</b></div>
+      </div>
+      <div class="exp-body">
+        <div class="chips">
+          <span>Остался на площадке</span><span class="on">Потерялся</span><span>Уничтожен</span>
+        </div>
+        <textarea rows="2">Не вернули со смены, бригадир обещал привезти завтра</textarea>
+        <div class="note">→ в список «Потеряшки» · заявка на поиск · (позже — долг гафера)</div>
+      </div>
+    </div>
+
+    <div class="ph-grp">Стойки · Manfrotto 1004</div>
+    <div class="row">
+      <div class="row-name">Manfrotto 1004 <small>стойка 1 из 4</small></div>
+      <div class="seg"><b class="on-ok">✓</b><b>🔧</b><b>✗</b></div>
+    </div>
+
+    <div class="ph-bottom"><div>Завершить приёмку →</div></div>
+  </div>
+
+  <div style="flex:1;min-width:280px">
+    <div class="section">
+      <span class="label">Что подтверждаем этим экраном</span>
+      <ul style="font-size:13px;color:#444;line-height:1.7;padding-left:18px;margin-top:6px">
+        <li>3 кнопки: <b>✓ Принято</b> / <b>🔧 Ремонт</b> / <b>✗ Проблема</b></li>
+        <li>«Ремонт» → панель: комментарий + фото с камеры → карточка ремонта</li>
+        <li>«Проблема» → <b>красная</b> панель: причина (остался на площадке / потерялся / уничтожен) + комментарий</li>
+        <li>Проблемные единицы → отдельный <b>список «Потеряшки»</b> + заявка на поиск (статус: на поиске → найдено / не найдено)</li>
+        <li><b>Сейчас просто:</b> уничтожен → списание сразу; потерялся / остался на площадке → на поиск, единица в статус «MISSING»</li>
+        <li><b>Позже (хук, не строим сейчас):</b> «не найдено» → долг на гафера + раздел долгов</li>
+      </ul>
+      <p style="font-size:13px;color:#6b7280;margin-top:8px">Если это верно — подтвердите. Любые правки состава пишите в терминал. Единственный выбор-вопрос — цвет кнопки «Ремонт» (вы сказали «зелёная», дизайн-канон тяготеет к янтарному).</p>
+    </div>
+
+    <div class="options">
+      <div class="option" data-choice="fix-amber" onclick="toggleSelect(this)">
+        <div class="letter">A</div>
+        <div class="content">
+          <h3>«Ремонт» — янтарный 🔧 (рекомендую, как на макете)</h3>
+          <p>Янтарный = «внимание/в работе» по семантическому канону (IBM Plex + спокойная палитра). Зелёный приберегаем только для «Принято», чтобы взгляд не путал «всё ок» и «нужен ремонт».</p>
+        </div>
+      </div>
+      <div class="option" data-choice="fix-green" onclick="toggleSelect(this)">
+        <div class="letter">B</div>
+        <div class="content">
+          <h3>«Ремонт» — зелёный, как вы сказали</h3>
+          <p>Кнопка ремонта зелёная. Тогда для «Принято» возьмём другой маркер (например, синяя галочка/контур), чтобы два зелёных не сливались.</p>
+        </div>
+      </div>
+      <div class="option" data-choice="fix-other" onclick="toggleSelect(this)">
+        <div class="letter">C</div>
+        <div class="content">
+          <h3>Другой цвет / обсудить</h3>
+          <p>Предложите свой вариант палитры для трёх кнопок — подберём в терминале.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

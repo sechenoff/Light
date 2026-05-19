@@ -14,6 +14,7 @@
 import { prisma } from "../prisma";
 import { writeAuditEntry } from "./audit";
 import { recomputeBookingFinance } from "./finance";
+import { findAddonConflict } from "./addonAvailability";
 import { HttpError } from "../utils/errors";
 import Decimal from "decimal.js";
 
@@ -335,12 +336,19 @@ export async function uncheckUnit(
  * Добавляет позицию из каталога в бронь во время выдачи (quick-add).
  * Создаёт BookingItem, пересчитывает финансы, пишет аудит.
  * Возвращает новый bookingItemId.
+ *
+ * Soft-warn семантика: если артикул занят другой бронью на даты текущей брони
+ * и `acknowledgedConflict` не выставлен — бросаем 409 ADDON_CONFLICT со
+ * структурными деталями (UI показывает предупреждение). При
+ * `acknowledgedConflict === true` позиция добавляется, а в аудит пишется
+ * `BOOKING_ITEM_ADDED_WITH_CONFLICT` (вместо `BOOKING_ITEM_ADDED_ON_SITE`).
  */
 export async function addExtraItem(
   sessionId: string,
   equipmentId: string,
   quantity: number,
   createdBy: string,
+  acknowledgedConflict = false,
 ): Promise<{ bookingItemId: string }> {
   const session = await prisma.scanSession.findUnique({
     where: { id: sessionId },
@@ -356,6 +364,33 @@ export async function addExtraItem(
   if (!equipment) throw new HttpError(404, "Оборудование не найдено", "EQUIPMENT_NOT_FOUND");
 
   const bookingId = session.bookingId;
+
+  // Soft-warn: проверяем конфликт по датам брони до записи. Транзакция ниже
+  // повторно загружает бронь (только status) для атомарной проверки статуса —
+  // здесь нам нужны только даты, поэтому отдельный лёгкий запрос.
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: { startDate: true, endDate: true },
+  });
+  if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+
+  const conflict = await findAddonConflict(
+    equipmentId,
+    booking.startDate,
+    booking.endDate,
+    bookingId,
+  );
+  if (conflict && !acknowledgedConflict) {
+    // 4-арг форма HttpError: 3-й арг — строковый code (instance.code ===
+    // "ADDON_CONFLICT"), 4-й — структурные details для UI-предупреждения.
+    throw new HttpError(409, "Артикул занят на даты брони", "ADDON_CONFLICT", {
+      bookingNo: conflict.bookingNo,
+      projectName: conflict.projectName,
+      from: conflict.from,
+      to: conflict.to,
+      freeFrom: conflict.freeFrom,
+    });
+  }
 
   // I1: атомарный upsert с проверкой статуса брони
   const bookingItemId = await prisma.$transaction(async (tx: TxClient) => {
@@ -385,11 +420,17 @@ export async function addExtraItem(
   // Аудит вне транзакции (observability, не бизнес-инвариант)
   await writeAuditEntry({
     userId: createdBy,
-    action: "BOOKING_ITEM_ADDED_ON_SITE",
+    action: conflict ? "BOOKING_ITEM_ADDED_WITH_CONFLICT" : "BOOKING_ITEM_ADDED_ON_SITE",
     entityType: "Booking",
     entityId: bookingId,
     before: null,
-    after: { equipmentId, equipmentName: equipment.name, quantity, bookingItemId },
+    after: {
+      equipmentId,
+      equipmentName: equipment.name,
+      quantity,
+      bookingItemId,
+      ...(conflict ? { conflict } : {}),
+    },
   }).catch((err: unknown) => {
     console.warn("[addExtraItem] audit failed:", err);
   });

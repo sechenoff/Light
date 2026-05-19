@@ -274,6 +274,7 @@ model EquipmentUnit {
   bookingItemUnits BookingItemUnit[]
   scanRecords      ScanRecord[]
   repairs          Repair[]
+  problemItems     ProblemItem[]
 
   @@index([equipmentId])
   @@index([status])
@@ -778,6 +779,7 @@ model Repair {
 
   workLog  RepairWorkLog[]
   expenses Expense[]
+  photos   RepairPhoto[]
 
   @@index([unitId])
   @@index([status])
@@ -1120,4 +1122,52 @@ model AuditEntry {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@index([entityType, createdAt])
+}
+
+enum ProblemReason {
+  LEFT_ON_SITE
+  LOST
+  DESTROYED
+  STOLEN
+}
+
+enum ProblemStatus {
+  EXPECTED
+  SEARCHING
+  FOUND
+  NOT_FOUND
+  WROTE_OFF
+}
+
+/// Реестр «Потеряшки» — проблемная единица с приёмки (заявка на поиск/разбор)
+model ProblemItem {
+  id               String        @id @default(cuid())
+  equipmentUnitId  String
+  equipmentUnit    EquipmentUnit @relation(fields: [equipmentUnitId], references: [id])
+  sourceBookingId  String?
+  reason           ProblemReason
+  comment          String
+  expectedBackDate DateTime?
+  status           ProblemStatus @default(SEARCHING)
+  createdBy        String
+  createdAt        DateTime      @default(now())
+  resolvedAt       DateTime?
+  resolvedBy       String?
+  resolutionNote   String?
+
+  @@index([status])
+  @@index([equipmentUnitId])
+  @@index([sourceBookingId])
+}
+
+/// Фото поломки, привязанное к карточке ремонта
+model RepairPhoto {
+  id        String   @id @default(cuid())
+  repairId  String
+  repair    Repair   @relation(fields: [repairId], references: [id], onDelete: Cascade)
+  filePath  String   // относительный путь от apps/api/uploads/
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([repairId])
 }

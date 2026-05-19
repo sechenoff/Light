@@ -12,6 +12,8 @@
  */
 
 import express from "express";
+import fs from "fs";
+import path from "path";
 import { z } from "zod";
 import { rolesGuard } from "../middleware/rolesGuard";
 import {
@@ -23,6 +25,7 @@ import {
   addWorkLog,
   takeRepair,
 } from "../services/repairService";
+import { resolveUploadPath } from "../services/repairPhotoStorage";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 
@@ -248,6 +251,7 @@ repairsRouter.get(
             },
           },
           workLog: { orderBy: { loggedAt: "desc" } },
+          photos: { select: { id: true, filePath: true }, orderBy: { createdAt: "asc" } },
         },
       });
 
@@ -255,7 +259,47 @@ repairsRouter.get(
         throw new HttpError(404, "Ремонт не найден", "REPAIR_NOT_FOUND");
       }
 
-      res.json({ repair: serializeRepair(repair) });
+      res.json({
+        repair: {
+          ...serializeRepair(repair),
+          photos: repair.photos.map((p) => ({
+            id: p.id,
+            url: `/api/repairs/${repair.id}/photos/${p.id}`,
+          })),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── GET /:id/photos/:photoId — стрим фото поломки ───────────────────────────
+
+repairsRouter.get(
+  "/:id/photos/:photoId",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]),
+  async (req, res, next) => {
+    try {
+      const photo = await prisma.repairPhoto.findUnique({
+        where: { id: req.params.photoId },
+        select: { filePath: true, repairId: true },
+      });
+      if (!photo || photo.repairId !== req.params.id) {
+        throw new HttpError(404, "Фото не найдено", "REPAIR_PHOTO_NOT_FOUND");
+      }
+
+      // Резолв относительного пути в абсолютный с guard от path traversal
+      const abs = resolveUploadPath(photo.filePath);
+      if (!abs) throw new HttpError(404, "Файл не найден на диске", "FILE_NOT_FOUND");
+      if (!fs.existsSync(abs)) throw new HttpError(404, "Файл не найден на диске", "FILE_NOT_FOUND");
+
+      const ext = path.extname(abs).toLowerCase();
+      const contentType = ext === ".png" ? "image/png" : "image/jpeg";
+
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", `inline; filename="${path.basename(abs)}"`);
+      fs.createReadStream(abs).pipe(res);
     } catch (err) {
       next(err);
     }

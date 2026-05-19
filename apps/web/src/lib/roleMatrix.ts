@@ -21,6 +21,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Склад",
       items: [
         { href: "/warehouse/scan", label: "Выдачи и возвраты", icon: "scan" },
+        { href: "/warehouse/problems", label: "Потеряшки", icon: "alert" },
       ],
     },
     {
@@ -85,6 +86,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Склад",
       items: [
         { href: "/warehouse/scan", label: "Выдачи и возвраты", icon: "scan" },
+        { href: "/warehouse/problems", label: "Потеряшки", icon: "alert" },
       ],
     },
     {

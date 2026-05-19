@@ -1,17 +1,21 @@
 import express from "express";
 import { z } from "zod";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { authenticateWorker, hashPin } from "../services/warehouseAuth";
 import { prisma } from "../prisma";
 import { warehouseAuth } from "../middleware/warehouseAuth";
 import { rolesGuard } from "../middleware/rolesGuard";
+import { HttpError } from "../utils/errors";
 import {
   createSession,
   completeSession,
   cancelSession,
   getSessionWithDetails,
   getReconciliationPreview,
-  type BrokenUnit,
-  type LostUnit,
+  type RepairUnit,
+  type ProblemUnit,
 } from "../services/warehouseScan";
 import {
   checkUnit,
@@ -19,6 +23,33 @@ import {
   getChecklistState,
   addExtraItem,
 } from "../services/checklistService";
+import { findAddonConflict } from "../services/addonAvailability";
+import { getAvailability } from "../services/availability";
+import {
+  ALLOWED_MIME_TYPES,
+  MAX_FILE_SIZE,
+  UPLOAD_ROOT,
+  validateMagicBytes,
+  writeStagedPhoto,
+  listStaged,
+  stageDir,
+  resolveUploadPath,
+} from "../services/repairPhotoStorage";
+
+// ── Multer для фото поломки (memoryStorage, 5 MB, только JPEG/PNG) ────────────
+// Зеркалит expenses.ts; константы переиспользуются из repairPhotoStorage.
+
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("INVALID_FILE_TYPE"));
+    }
+  },
+});
 
 // ── Public router (mounted BEFORE apiKeyAuth) ─────────────────────────────────
 
@@ -288,22 +319,22 @@ warehouseScanRouter.get("/sessions/:id/summary", warehouseAuth, async (req, res,
   }
 });
 
-const brokenUnitSchema = z.object({
+const repairUnitSchema = z.object({
   equipmentUnitId: z.string().min(1),
-  reason: z.string().min(1),
-  urgency: z.enum(["NOT_URGENT", "NORMAL", "URGENT"]),
+  comment: z.string().min(1),
+  urgency: z.enum(["NOT_URGENT", "NORMAL", "URGENT"]).optional(),
 });
 
-const lostUnitSchema = z.object({
+const problemUnitSchema = z.object({
   equipmentUnitId: z.string().min(1),
-  reason: z.string().min(5),
-  lostLocation: z.enum(["ON_SITE", "IN_TRANSIT", "AT_CLIENT", "UNKNOWN"]),
-  chargeClient: z.boolean(),
+  reason: z.enum(["LEFT_ON_SITE", "LOST", "DESTROYED", "STOLEN"]),
+  comment: z.string().min(1),
+  expectedBackDate: z.string().datetime().optional(),
 });
 
 const completeSessionBodySchema = z.object({
-  brokenUnits: z.array(brokenUnitSchema).optional(),
-  lostUnits: z.array(lostUnitSchema).optional(),
+  repairUnits: z.array(repairUnitSchema).optional(),
+  problemUnits: z.array(problemUnitSchema).optional(),
 }).optional();
 
 /** POST /api/warehouse/sessions/:id/complete — завершить сессию */
@@ -311,11 +342,11 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
   try {
     const { id } = req.params;
     const body = completeSessionBodySchema.parse(req.body);
-    const brokenUnits = body?.brokenUnits as BrokenUnit[] | undefined;
-    const lostUnits = body?.lostUnits as LostUnit[] | undefined;
+    const repairUnits = body?.repairUnits as RepairUnit[] | undefined;
+    const problemUnits = body?.problemUnits as ProblemUnit[] | undefined;
     const summary = await completeSession(id, {
-      brokenUnits,
-      lostUnits,
+      repairUnits,
+      problemUnits,
       createdBy: req.warehouseWorker?.name,
     });
 
@@ -358,15 +389,91 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       })),
       createdRepairIds: summary.createdRepairIds,
       failedBrokenUnits: summary.failedBrokenUnits,
-      // C5: счёт по брони устарел из-за компенсации за утерю (выпущенный
-      // Invoice не перевыпускается автоматически — оператор аннулирует
-      // старый и выставляет новый вручную).
-      invoiceNeedsReissue: summary.invoiceNeedsReissue,
+      createdProblemItemIds: summary.createdProblemItemIds,
+      failedProblemUnits: summary.failedProblemUnits,
     });
   } catch (err) {
     next(err);
   }
 });
+
+// ── Фото поломки (staging во время сессии возврата) ──────────────────────────
+// Фото загружаются в uploads/scan-sessions/{sessionId}/{unitId}/ и переносятся
+// в uploads/repairs/{repairId}/ на completeSession (см. warehouseScan.ts).
+
+/** POST /api/warehouse/sessions/:id/units/:unitId/photos — загрузить фото поломки */
+warehouseScanRouter.post(
+  "/sessions/:id/units/:unitId/photos",
+  warehouseAuth,
+  (req, res, next) => {
+    // Прогоняем multer, конвертируем его ошибки в HttpError (как в expenses.ts)
+    photoUpload.single("photo")(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+          return next(new HttpError(413, "Файл превышает 5 МБ", "FILE_TOO_LARGE"));
+        }
+        if (err instanceof Error && err.message === "INVALID_FILE_TYPE") {
+          return next(new HttpError(400, "Недопустимый тип файла. Разрешены: JPEG, PNG", "INVALID_FILE_TYPE"));
+        }
+        return next(err);
+      }
+      next();
+    });
+  },
+  async (req, res, next) => {
+    try {
+      const { id: sessionId, unitId } = req.params;
+      if (!req.file) {
+        throw new HttpError(400, "Файл не приложен", "NO_FILE");
+      }
+      // Валидация magic-байтов против подмены MIME-типа
+      if (!validateMagicBytes(req.file.buffer, req.file.mimetype)) {
+        throw new HttpError(400, "Содержимое файла не соответствует указанному типу", "INVALID_FILE_FORMAT");
+      }
+      writeStagedPhoto(sessionId, unitId, req.file.buffer, req.file.originalname);
+      res.json({ photos: listStaged(sessionId, unitId) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** GET /api/warehouse/sessions/:id/units/:unitId/photos — список staged-фото */
+warehouseScanRouter.get(
+  "/sessions/:id/units/:unitId/photos",
+  warehouseAuth,
+  async (req, res, next) => {
+    try {
+      const { id: sessionId, unitId } = req.params;
+      res.json({ photos: listStaged(sessionId, unitId) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** DELETE /api/warehouse/sessions/:id/units/:unitId/photos/:name — удалить одно staged-фото */
+warehouseScanRouter.delete(
+  "/sessions/:id/units/:unitId/photos/:name",
+  warehouseAuth,
+  async (req, res, next) => {
+    try {
+      const { id: sessionId, unitId, name } = req.params;
+      // Guard: только basename, никаких разделителей путей в имени
+      if (name !== path.basename(name) || name.includes("/") || name.includes("\\")) {
+        throw new HttpError(404, "Файл не найден", "PHOTO_NOT_FOUND");
+      }
+      const abs = resolveUploadPath(path.join(stageDir(sessionId, unitId), name));
+      if (!abs || !abs.startsWith(UPLOAD_ROOT + path.sep) || !fs.existsSync(abs)) {
+        throw new HttpError(404, "Файл не найден", "PHOTO_NOT_FOUND");
+      }
+      fs.unlinkSync(abs);
+      res.json({ photos: listStaged(sessionId, unitId) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // ── Checklist endpoints (без сканера) ─────────────────────────────────────────
 
@@ -381,6 +488,11 @@ const uncheckBodySchema = z.object({
 const addItemBodySchema = z.object({
   equipmentId: z.string().min(1),
   quantity: z.number().int().positive(),
+  acknowledgedConflict: z.boolean().optional(),
+});
+
+const addonSearchQuerySchema = z.object({
+  q: z.string().min(1).max(100),
 });
 
 /** GET /api/warehouse/sessions/:id/state — текущее состояние чек-листа */
@@ -415,12 +527,77 @@ warehouseScanRouter.post("/sessions/:id/uncheck", warehouseAuth, async (req, res
   }
 });
 
+/** GET /api/warehouse/sessions/:id/addon-search — поиск артикулов для quick-add */
+warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req, res, next) => {
+  try {
+    const { q } = addonSearchQuerySchema.parse(req.query);
+
+    const session = await prisma.scanSession.findUnique({
+      where: { id: req.params.id },
+      select: { bookingId: true },
+    });
+    if (!session) {
+      res.status(404).json({ message: "Сессия не найдена", code: "SESSION_NOT_FOUND" });
+      return;
+    }
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: session.bookingId },
+      select: { startDate: true, endDate: true },
+    });
+    if (!booking) {
+      res.status(404).json({ message: "Бронь не найдена", code: "BOOKING_NOT_FOUND" });
+      return;
+    }
+
+    const rows = await getAvailability({
+      startDate: booking.startDate,
+      endDate: booking.endDate,
+      search: q,
+      excludeBookingId: session.bookingId,
+    });
+
+    const results = await Promise.all(
+      rows.slice(0, 30).map(async (row) => {
+        const availability = row.availableQuantity > 0 ? "AVAILABLE" : "UNAVAILABLE";
+        const conflict =
+          availability === "UNAVAILABLE"
+            ? await findAddonConflict(
+                row.equipment.id,
+                booking.startDate,
+                booking.endDate,
+                session.bookingId,
+              )
+            : null;
+        return {
+          equipmentId: row.equipment.id,
+          name: row.equipment.name,
+          category: row.equipment.category,
+          availableQuantity: row.availableQuantity,
+          availability,
+          conflict,
+        };
+      }),
+    );
+
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** POST /api/warehouse/sessions/:id/items — быстрое добавление позиции в бронь */
 warehouseScanRouter.post("/sessions/:id/items", warehouseAuth, async (req, res, next) => {
   try {
-    const { equipmentId, quantity } = addItemBodySchema.parse(req.body);
+    const { equipmentId, quantity, acknowledgedConflict } = addItemBodySchema.parse(req.body);
     const createdBy = req.warehouseWorker?.name ?? "warehouse";
-    const result = await addExtraItem(req.params.id, equipmentId, quantity, createdBy);
+    const result = await addExtraItem(
+      req.params.id,
+      equipmentId,
+      quantity,
+      createdBy,
+      acknowledgedConflict ?? false,
+    );
     res.status(201).json(result);
   } catch (err) {
     next(err);
