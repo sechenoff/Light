@@ -12,6 +12,7 @@ import type { RepairUrgency, ProblemReason } from "@prisma/client";
 import { prisma } from "../prisma";
 import { createRepair } from "./repairService";
 import { createProblemItem, autoResolveOnReturn } from "./problemItemService";
+import { moveStagedToRepair } from "./repairPhotoStorage";
 import { writeAuditEntry } from "./audit";
 
 type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
@@ -299,6 +300,16 @@ export async function completeSession(
           createdBy,
         });
         summary.createdRepairIds.push(repair.id);
+
+        // Перенос staged-фото поломки этой единицы в uploads/repairs/{repairId}/
+        // и создание RepairPhoto-записей. Только success-путь (после успешного
+        // создания Repair). Не блокирует завершение при отсутствии фото.
+        const moved = moveStagedToRepair(sessionId, r.equipmentUnitId, repair.id);
+        if (moved.length > 0) {
+          await prisma.repairPhoto.createMany({
+            data: moved.map((fp) => ({ repairId: repair.id, filePath: fp, createdBy })),
+          });
+        }
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
         console.error("createRepair failed during scan completion", {

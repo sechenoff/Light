@@ -1,9 +1,13 @@
 import express from "express";
 import { z } from "zod";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { authenticateWorker, hashPin } from "../services/warehouseAuth";
 import { prisma } from "../prisma";
 import { warehouseAuth } from "../middleware/warehouseAuth";
 import { rolesGuard } from "../middleware/rolesGuard";
+import { HttpError } from "../utils/errors";
 import {
   createSession,
   completeSession,
@@ -21,6 +25,31 @@ import {
 } from "../services/checklistService";
 import { findAddonConflict } from "../services/addonAvailability";
 import { getAvailability } from "../services/availability";
+import {
+  ALLOWED_MIME_TYPES,
+  MAX_FILE_SIZE,
+  UPLOAD_ROOT,
+  validateMagicBytes,
+  writeStagedPhoto,
+  listStaged,
+  stageDir,
+  resolveUploadPath,
+} from "../services/repairPhotoStorage";
+
+// ── Multer для фото поломки (memoryStorage, 5 MB, только JPEG/PNG) ────────────
+// Зеркалит expenses.ts; константы переиспользуются из repairPhotoStorage.
+
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("INVALID_FILE_TYPE"));
+    }
+  },
+});
 
 // ── Public router (mounted BEFORE apiKeyAuth) ─────────────────────────────────
 
@@ -367,6 +396,84 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
     next(err);
   }
 });
+
+// ── Фото поломки (staging во время сессии возврата) ──────────────────────────
+// Фото загружаются в uploads/scan-sessions/{sessionId}/{unitId}/ и переносятся
+// в uploads/repairs/{repairId}/ на completeSession (см. warehouseScan.ts).
+
+/** POST /api/warehouse/sessions/:id/units/:unitId/photos — загрузить фото поломки */
+warehouseScanRouter.post(
+  "/sessions/:id/units/:unitId/photos",
+  warehouseAuth,
+  (req, res, next) => {
+    // Прогоняем multer, конвертируем его ошибки в HttpError (как в expenses.ts)
+    photoUpload.single("photo")(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+          return next(new HttpError(413, "Файл превышает 5 МБ", "FILE_TOO_LARGE"));
+        }
+        if (err instanceof Error && err.message === "INVALID_FILE_TYPE") {
+          return next(new HttpError(400, "Недопустимый тип файла. Разрешены: JPEG, PNG", "INVALID_FILE_TYPE"));
+        }
+        return next(err);
+      }
+      next();
+    });
+  },
+  async (req, res, next) => {
+    try {
+      const { id: sessionId, unitId } = req.params;
+      if (!req.file) {
+        throw new HttpError(400, "Файл не приложен", "NO_FILE");
+      }
+      // Валидация magic-байтов против подмены MIME-типа
+      if (!validateMagicBytes(req.file.buffer, req.file.mimetype)) {
+        throw new HttpError(400, "Содержимое файла не соответствует указанному типу", "INVALID_FILE_FORMAT");
+      }
+      writeStagedPhoto(sessionId, unitId, req.file.buffer, req.file.originalname);
+      res.json({ photos: listStaged(sessionId, unitId) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** GET /api/warehouse/sessions/:id/units/:unitId/photos — список staged-фото */
+warehouseScanRouter.get(
+  "/sessions/:id/units/:unitId/photos",
+  warehouseAuth,
+  async (req, res, next) => {
+    try {
+      const { id: sessionId, unitId } = req.params;
+      res.json({ photos: listStaged(sessionId, unitId) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** DELETE /api/warehouse/sessions/:id/units/:unitId/photos/:name — удалить одно staged-фото */
+warehouseScanRouter.delete(
+  "/sessions/:id/units/:unitId/photos/:name",
+  warehouseAuth,
+  async (req, res, next) => {
+    try {
+      const { id: sessionId, unitId, name } = req.params;
+      // Guard: только basename, никаких разделителей путей в имени
+      if (name !== path.basename(name) || name.includes("/") || name.includes("\\")) {
+        throw new HttpError(404, "Файл не найден", "PHOTO_NOT_FOUND");
+      }
+      const abs = resolveUploadPath(path.join(stageDir(sessionId, unitId), name));
+      if (!abs || !abs.startsWith(UPLOAD_ROOT + path.sep) || !fs.existsSync(abs)) {
+        throw new HttpError(404, "Файл не найден", "PHOTO_NOT_FOUND");
+      }
+      fs.unlinkSync(abs);
+      res.json({ photos: listStaged(sessionId, unitId) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // ── Checklist endpoints (без сканера) ─────────────────────────────────────────
 
