@@ -81,7 +81,7 @@ light-rental-system/
 | `apps/api/src/middleware/warehouseAuth.ts` | Warehouse PIN auth middleware: HMAC-signed token, per-route (not global) |
 | `apps/api/src/middleware/rateLimiter.ts` | Rate limiter: 100 req/min per IP (express-rate-limit) |
 | `apps/api/scripts/backfill-barcodes.ts` | Idempotent barcode generation for existing units without barcodes |
-| `apps/web/app/warehouse/scan/page.tsx` | Mobile-first 5-step scan wizard: login → booking → scan → summary → confirm |
+| `apps/web/app/warehouse/scan/page.tsx` | Thin adaptive kiosk shell (Warehouse Scan Redesign): composes `useScanSession` + `ScanShell`, one component per step (login/operation/booking/checklist/summary). No AppShell. |
 | `apps/web/app/equipment/[id]/units/page.tsx` | Unit management: status badges, generate/edit/delete, label printing |
 | `packages/shared/src/crewCalculator.ts` | Shared crew cost calculator (imported by web + bot) |
 | `apps/bot/src/scenes/booking-helpers.ts` | Extracted pure functions from booking scene |
@@ -132,6 +132,16 @@ light-rental-system/
 | `apps/web/src/components/tasks/TaskDetailPanel.tsx` | Slide-over справа (`?task=` deep-link, focus-trap, Esc); композирует checklist + comments |
 | `apps/web/src/components/tasks/TaskComments.tsx` | Лента обсуждения + composer (⌘/Ctrl+Enter) |
 | `apps/web/src/components/tasks/TaskChecklist.tsx` | Упорядоченные пункты + прогресс-бар (compositor-friendly scaleX) |
+| `apps/api/src/services/addonAvailability.ts` | `findAddonConflict()` — ближайшая конфликтующая бронь (CONFIRMED/ISSUED) для quick-add артикула с учётом `totalQuantity`; возвращает `AddonConflict \| null`. NB: barcode в выдачу не попадает |
+| `apps/api/src/services/problemItemService.ts` | Реестр «Потеряшки»: `createProblemItem` (reason→status: LEFT_ON_SITE→EXPECTED, LOST/STOLEN→SEARCHING, DESTROYED→WROTE_OFF; unit→MISSING/RETIRED), `resolveProblemItem` (FOUND/NOT_FOUND), `autoResolveOnReturn` (поздний возврат). Все в `$transaction` + `writeAuditEntry`. FUTURE-хук: NOT_FOUND → «долг гафера» |
+| `apps/api/src/services/repairPhotoStorage.ts` | Фото поломки: magic-byte валидация (JPEG/PNG, 5 MB, без PDF), `sanitizeFilename`, `resolveUploadPath` (traversal-guard), staging API (`writeStagedPhoto`/`listStaged`/`moveStagedToRepair`). Зеркалит `expenses.ts` security. `UPLOAD_ROOT` = `apps/api/uploads`; пути в БД относительные |
+| `apps/api/src/routes/problemItems.ts` | `/api/problem-items`: GET список (keyset-пагинация по createdAt, фильтр `?status=`, без barcode в выдаче) + POST `/:id/resolve` (Zod: outcome FOUND/NOT_FOUND + note min 3). Router-level `rolesGuard(["SUPER_ADMIN","WAREHOUSE"])` в `routes/index.ts` |
+| `apps/web/src/components/warehouse/` | Все компоненты редизайна kiosk: `ScanShell` (тёмная шапка/desktop two-pane), `LoginStep`, `BookingList` (без фильтров, группировка по дате), `OperationStep`, `UnitRow` (2-кн ВЫДАЧА / 3-кн ВОЗВРАТ), `IssueChecklist`, `AddonSearch` (bottom-sheet/inline + focus-trap/scroll-lock/slide-up), `RepairPanel` (нативная камера), `ProblemPanel` (4 причины), `ReturnChecklist`, `ReturnResultView`, `ProblemItemsPage`, `ResolveProblemModal`, `useScanSession`, `api.ts`, `types.ts` (вкл. shared `isScanApiError`) |
+| `apps/web/app/warehouse/problems/page.tsx` | Manager-реестр «Потеряшки»: обычный AppShell + JWT (НЕ kiosk). `Suspense` → `<ProblemItemsPage />` |
+| `apps/web/app/warehouse/layout.tsx` | Прозрачный passthrough (`<>{children}</>`). Kiosk-фрейм живёт в `ScanShell`, не в layout — иначе двойная шапка над редизайн-страницей |
+| `docs/superpowers/specs/2026-05-19-warehouse-scan-redesign-design.md` | Утверждённая спецификация редизайна (adaptive UX, потеряшки, фото) |
+| `docs/superpowers/plans/2026-05-19-warehouse-scan-redesign.md` | План реализации редизайна (по задачам) |
+| `docs/mockups/warehouse-scan/` | Утверждённые мокапы (00–03 HTML) + `FIDELITY-CHECK.md` (375/1440 скриншоты `_fidelity/`) |
 
 ## Commands
 
@@ -310,7 +320,8 @@ SUPER_ADMIN обходит все лимиты.
 3. **~~Minimal test coverage~~** — RESOLVED: 478 tests across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, importSession routes, dashboard, calendar, calendarUtils, rolesGuard holistic, approval tests. Plus 4 web component tests (ApprovalTimeline) via vitest + jsdom.
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
-6. **`npm run lint` fails on main** — ESLint v9 expects `eslint.config.(js|mjs|cjs)` but the repo has `.eslintrc.json`. Pre-existing, unrelated to feature work. Fix before any lint-gated CI.
+6. **`npm run lint` fails on main** — ESLint v9 expects `eslint.config.(js|mjs|cjs)` but the repo has `.eslintrc.json`. Pre-existing, unrelated to feature work. Fix before any lint-gated CI. **STILL OPEN** — not fixed by the Warehouse Scan Redesign. Working path для проверки фронта: `cd apps/web && npx next lint --dir <dir>` (Next бандлит ESLint 8, чтит repo-config). Для api eslint-пути нет из-за v9 — полагаемся на `tsc --noEmit` (clean).
+7. **Old warehouse-scan UI assumptions superseded** — Key Files row для `apps/web/app/warehouse/scan/page.tsx` («5-step scan wizard») и раздел «Sprint 4 → Сканирование возврата с поломкой» (`brokenUnits`) устарели. См. раздел «Warehouse Scan Redesign» — kiosk перестроен в adaptive-shell, `complete` принимает `repairUnits` + `problemUnits` (не `brokenUnits`).
 
 ## Sprint 2: Navigation, Design Canon & Audit UI
 
@@ -367,13 +378,15 @@ CSS-утилиты: `.eyebrow` (надстрочники), `.mono-num` (числ
 
 ### Сканирование возврата с поломкой
 
-`POST /api/warehouse/sessions/:id/complete` принимает опциональный `brokenUnits: Array<{ equipmentUnitId, reason, urgency }>`. После завершения транзакции возврата для каждой broken unit вызывается `createRepair({ ..., sourceBookingId: session.bookingId })`.
+> **СУПЕРСЕДЕД разделом «Warehouse Scan Redesign» ниже.** Контракт `complete` изменён: `brokenUnits` УДАЛЁН, заменён на `repairUnits` + `problemUnits`. Описание ниже сохранено для истории.
+
+`POST /api/warehouse/sessions/:id/complete` ранее принимал опциональный `brokenUnits: Array<{ equipmentUnitId, reason, urgency }>`. После завершения транзакции возврата для каждой broken unit вызывался `createRepair({ ..., sourceBookingId: session.bookingId })`.
 
 ### Frontend
 
 - `/repair` — `apps/web/app/repair/page.tsx`. Kanban-board: 4 колонки (WAITING_REPAIR/IN_REPAIR/WAITING_PARTS/CLOSED). Фильтры: "Моя очередь" / urgency pills.
 - `/repair/[id]` — `apps/web/app/repair/[id]/page.tsx`. Детали + журнал работ + кнопки по роли (взять, добавить работы, закрыть, списать). Модалка расхода при закрытии.
-- `/warehouse/scan` обновлён: на шаге итога возврата каждая единица имеет кнопку "🔧 Поломка" → модалка reason+urgency → `brokenUnits` в payload.
+- `/warehouse/scan` (СУПЕРСЕДЕД редизайном — см. ниже): ранее на шаге итога возврата каждая единица имела кнопку "🔧 Поломка" → модалка reason+urgency → `brokenUnits` в payload. Теперь — `RepairPanel`/`ProblemPanel` per-unit, payload `repairUnits` + `problemUnits`.
 - `/day` → `DayTechnician`: подгружает ремонты (`assignedTo=currentUser`), SLA просрочки (IN_REPAIR > 5 дней). `DayWarehouse`: показывает счётчик открытых ремонтов.
 
 ### CurrentUser + userId
@@ -698,5 +711,58 @@ Telegram нормализация: если не начинается с `@` —
 - `GET /api/expenses/:id/document` стримит файл напрямую с диском.
 - Ограничения: 5 MB max, только JPEG/PNG/PDF.
 - Директория `uploads/` создаётся автоматически при первой загрузке.
+
+## Warehouse Scan Redesign (Adaptive UX + Потеряшки)
+
+Полная переработка kiosk-сценария склада: адаптивный UX (mobile-tablet + desktop two-pane), быстрая 3-исходная приёмка, фото поломки прямо со сканера, реестр проблемных единиц «Потеряшки». Reference-мокапы и план — в `docs/superpowers/specs/2026-05-19-warehouse-scan-redesign-design.md` + `docs/superpowers/plans/2026-05-19-warehouse-scan-redesign.md`. Все экраны сверены с утверждёнными мокапами (`docs/mockups/warehouse-scan/FIDELITY-CHECK.md`).
+
+### Новые модели Prisma
+
+- **`ProblemItem`** — проблемная единица с приёмки (заявка на поиск/разбор). Поля: `equipmentUnitId`, `sourceBookingId?`, `reason` (`ProblemReason`), `comment`, `expectedBackDate?`, `status` (`ProblemStatus`, default `SEARCHING`), `createdBy`, `resolvedAt?`, `resolvedBy?`, `resolutionNote?`.
+- **`RepairPhoto`** — фото поломки, привязанное к `Repair` (`onDelete: Cascade`). Поля: `repairId`, `filePath` (относительный от `apps/api/uploads/`), `createdBy`.
+- Новые enum: **`ProblemReason`** = `LEFT_ON_SITE | LOST | DESTROYED | STOLEN`; **`ProblemStatus`** = `EXPECTED | SEARCHING | FOUND | NOT_FOUND | WROTE_OFF`.
+- `AuditEntityType += "ProblemItem"`. Новые audit-actions: `PROBLEM_ITEM_CREATE`, `PROBLEM_ITEM_RESOLVE`, `BOOKING_ITEM_ADDED_WITH_CONFLICT` (вместо `BOOKING_ITEM_ADDED_ON_SITE` когда добавлен конфликтный артикул).
+
+### Контракт `completeSession` (изменён)
+
+- `lostUnits` **УДАЛЁН**. Заменён на `repairUnits: RepairUnit[]` + `problemUnits: ProblemUnit[]` в `options`.
+- Удалены: `invoiceNeedsReissue`, compensation, invoice-resync (предыдущая лог-схема пересмотрена — приёмка не трогает финансы/инвойсы).
+- `repairUnits` / `problemUnits` обрабатываются ПОСЛЕ основной транзакции возврата, каждая единица изолированно (сбой одной не валит остальные и не откатывает физический возврат). `urgency` дефолтит `NORMAL` (быстрый UI не собирает срочность).
+- Post-tx `autoResolveOnReturn`: best-effort авто-закрытие открытой `ProblemItem` при повторной (поздней) приёмке. Фильтр: единицы, помеченные В ЭТОЙ ЖЕ сессии (problem/repair), исключаются — их новый статус (MISSING/RETIRED/MAINTENANCE) авторитетен.
+- `ReconciliationSummary` расширен: `createdProblemItemIds`, `failedProblemUnits` (в дополнение к `createdRepairIds`, `failedBrokenUnits`).
+- Соответствие reason → реакция (в `problemItemService.createProblemItem`): `LEFT_ON_SITE` → ProblemItem `EXPECTED`, unit `MISSING`; `LOST`/`STOLEN` → `SEARCHING`, unit `MISSING`; `DESTROYED` → `WROTE_OFF` (сразу закрыто), unit `RETIRED`.
+
+### Новые API-маршруты
+
+| Маршрут | Метод | Описание |
+|---------|-------|----------|
+| `/api/warehouse/sessions/:id/addon-search` | GET | Поиск артикулов для quick-add (`?q=`). Availability soft-warn: для `UNAVAILABLE` строк возвращает `conflict` (ближайшая бронь). Без barcode в выдаче. `warehouseAuth`. |
+| `/api/warehouse/sessions/:id/items` | POST | Quick-add позиции. Если артикул занят на даты брони и `acknowledgedConflict !== true` → 409 `ADDON_CONFLICT` со структурными `details` (bookingNo/projectName/from/to/freeFrom). С `acknowledgedConflict: true` — добавляет + аудит `BOOKING_ITEM_ADDED_WITH_CONFLICT`. |
+| `/api/warehouse/sessions/:id/units/:unitId/photos` | POST/GET/DELETE | Фото поломки, staged на сессию. multer-security как в `expenses.ts` (magic-bytes, JPEG/PNG, 5 MB). На `complete` для repair-единиц staged-фото переносятся в `uploads/repairs/{repairId}/` → `RepairPhoto`. |
+| `/api/repairs/:id` | GET | Теперь возвращает `photos: [{ id, url }]` (url = `/api/repairs/:id/photos/:photoId`). |
+| `/api/repairs/:id/photos/:photoId` | GET | Стрим фото поломки (traversal-guard через `resolveUploadPath`). SA/WAREHOUSE/TECHNICIAN. |
+| `/api/problem-items` | GET | Список «Потеряшки», keyset-пагинация (createdAt desc), фильтр `?status=`. Без barcode. |
+| `/api/problem-items/:id/resolve` | POST | Ручной разбор открытой карточки: `outcome` FOUND/NOT_FOUND + `note` (min 3). FOUND → unit `AVAILABLE`. FUTURE-хук в `resolveProblemItem`: NOT_FOUND → «долг гафера». |
+
+`/api/problem-items` смонтирован с router-level `rolesGuard(["SUPER_ADMIN", "WAREHOUSE"])` (TECHNICIAN → 403). НЕ в botScope whitelist.
+
+`HttpError` расширен 4-арг формой: `new HttpError(status, message, "CODE", { ...details })` — 3-й арг остаётся строковым кодом (обратносовместимо, `res.body.code` без изменений), 4-й несёт структурные `details` для UI-предупреждений (используется `ADDON_CONFLICT`).
+
+### Frontend
+
+- `apps/web/app/warehouse/scan/page.tsx` — тонкая adaptive-оболочка: `useScanSession` + `ScanShell`, один компонент на шаг (login/operation/booking/checklist/summary). Сохранён token-контракт (`warehouse_token` Bearer), step-машина, PIN-login + SA/WAREHOUSE main-session bypass. Desktop: список броней слева, активный шаг справа.
+- Новые компоненты в `apps/web/src/components/warehouse/`: `ScanShell`, `LoginStep`, `BookingList` (без фильтров, группировка по дате), `OperationStep`, `UnitRow` (2-кн ISSUE / 3-кн RETURN), `IssueChecklist`, `AddonSearch` (bottom-sheet/inline + focus-trap + scroll-lock + slide-up; soft-warn на конфликт + ack-proceed), `RepairPanel` (нативная камера через `<input capture>`), `ProblemPanel` (4 причины), `ReturnChecklist`, `ReturnResultView`, `ProblemItemsPage`, `ResolveProblemModal`, `useScanSession`, `api.ts`, `types.ts` (shared `isScanApiError` рядом с типом).
+- `apps/web/app/warehouse/problems/page.tsx` — manager-реестр «Потеряшки»: обычный AppShell + JWT (НЕ kiosk-сценарий).
+- `apps/web/app/warehouse/layout.tsx` — сведён к прозрачному passthrough (`<>{children}</>`): kiosk-фрейм теперь в `ScanShell`, layout-обёртка давала двойную шапку. Не возвращать chrome.
+- Навигация: пункт «Потеряшки» (`/warehouse/problems`, icon `alert`) добавлен в `roleMatrix.ts` для `SUPER_ADMIN` + `WAREHOUSE`.
+- **`expectedBackDate` wire-format**: `ProblemPanel` отдаёт голый `YYYY-MM-DD` (raw `<input type="date">`). Backend Zod для `problemUnits[].expectedBackDate` — `z.string().datetime()` (требует ISO-8601). `ReturnChecklist` конвертирует `YYYY-MM-DD` → `new Date(`${d}T00:00:00.000Z`).toISOString()` ПЕРЕД POST (`toIsoDatetime` в `types.ts`).
+
+### Технические нюансы / конвенции
+
+- **Никаких barcode в UX-питающем API.** `addon-search` и `/api/problem-items` отдают только название/категорию оборудования, не barcode (`LR-XXX-NNN`).
+- **Soft-warn семантика quick-add.** Конфликт по датам — не блокировка: 409 `ADDON_CONFLICT` → UI показывает предупреждение → пользователь подтверждает → повторный POST с `acknowledgedConflict: true` → добавлено + аудит `BOOKING_ITEM_ADDED_WITH_CONFLICT`.
+- **Фото — staged на сессию, мигрируют на complete.** До `complete` фото лежат в `uploads/scan-sessions/{sessionId}/{unitId}/`. На `complete` (success-путь, после успешного `createRepair`) `moveStagedToRepair` переносит в `uploads/repairs/{repairId}/` и создаёт `RepairPhoto`. Отсутствие фото не блокирует завершение.
+- **Аудит = observability, не бизнес-инвариант.** `autoResolveOnReturn` пишет аудит ВНЕ основной транзакции (в проде `createdBy` = имя кладовщика, не `AdminUser.id` → FK-инсерт упал бы и откатил физический возврат). Документированный trade-off, консистентно с остальным кодбейзом.
+- **Тесты.** API: `addonAvailability`, `addonItems`, `problemItemService`, `problemItems.routes`, `repairPhotos`, `repairPhotosRoutes`, `repairs.routes`, `warehouseProblemUnit`, обновлён `warehouseScan.brokenUnits`; удалён `warehouseLostUnit` (контракт устарел). Web: компонентные тесты на все новые warehouse-компоненты + design-fidelity capture vs мокапы. `RepairPanel.tsx` имеет один намеренный `@next/next/no-img-element` warning (blob-thumbnail превью) — документированное отклонение, не новая ошибка.
 
 <!-- updated-by-superflow:2026-04-25 -->
