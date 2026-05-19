@@ -306,4 +306,28 @@ describe("AddonSearch", () => {
     closers[0].click();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("Esc closes the sheet (calls onClose)", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
+    const onClose = vi.fn();
+    render(
+      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={onClose} />,
+    );
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves initial focus to the search input on mount", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
+    render(
+      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+    );
+    // Focus is scheduled on a 50ms timer (sibling overlay pattern).
+    await act(async () => {
+      vi.advanceTimersByTime(60);
+    });
+    expect(screen.getByLabelText("Поиск артикула по каталогу")).toHaveFocus();
+  });
 });

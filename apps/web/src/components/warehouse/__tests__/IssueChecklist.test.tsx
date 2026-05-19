@@ -217,25 +217,6 @@ describe("IssueChecklist", () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
-  it("Добор seam: calls onAddon when provided instead of the inline placeholder", async () => {
-    const onAddon = vi.fn();
-    render(
-      <IssueChecklist
-        sessionId="s1"
-        projectName="P"
-        onBack={() => {}}
-        onAddon={onAddon}
-      />,
-    );
-
-    const dobor = (
-      await screen.findAllByRole("button", { name: /Добор/ })
-    )[0];
-    dobor.click();
-    expect(onAddon).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(/Task 6\.2/)).not.toBeInTheDocument();
-  });
-
   it("shows the loading skeleton while state is null and loading", async () => {
     mockState = null;
     mockLoading = true;

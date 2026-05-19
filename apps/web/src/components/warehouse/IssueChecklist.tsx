@@ -21,9 +21,7 @@
  * Seams:
  *  - Добор → `AddonSearch` (Task 6.2). The «＋ Добор» action opens an inline
  *    catalog search with a soft availability warning; on add we `refresh()`
- *    the session so the new добор appears in this list. An optional `onAddon`
- *    prop still lets a parent intercept the action instead (kept for the
- *    existing seam contract / tests).
+ *    the session so the new добор appears in this list.
  *  - «Завершить выдачу» → `onComplete` (Task 7/8 summary/complete wiring). We do
  *    NOT POST /complete here — we only advance the flow.
  */
@@ -88,15 +86,12 @@ export function IssueChecklist({
   projectName,
   onBack,
   onComplete,
-  onAddon,
 }: {
   sessionId: string;
   projectName: string;
   onBack: () => void;
   /** Advance to the summary step (Task 7/8 wires the actual completion). */
   onComplete?: () => void;
-  /** Open the добор catalog search (Task 6.2 `AddonSearch`). */
-  onAddon?: () => void;
 }) {
   const session = useScanSession();
   const { state, loading, error, openSession, check, uncheck, refresh } =
@@ -104,7 +99,7 @@ export function IssueChecklist({
 
   // COUNT lines are client-managed (no per-unit ids server-side).
   const [countIssued, setCountIssued] = useState<Set<string>>(new Set());
-  // Inline Добор catalog search (shown when no `onAddon` seam overrides it).
+  // Inline Добор catalog search.
   const [addonOpen, setAddonOpen] = useState(false);
   // Disables «Завершить» momentarily while the bulk action fans out.
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -176,10 +171,6 @@ export function IssueChecklist({
   }
 
   function handleAddonClick() {
-    if (onAddon) {
-      onAddon();
-      return;
-    }
     setAddonOpen(true);
   }
 
@@ -323,7 +314,7 @@ export function IssueChecklist({
           ＋ Добор (артикул не из заявки)
         </button>
 
-        {addonOpen && !onAddon && (
+        {addonOpen && (
           <AddonSearch
             sessionId={sessionId}
             bookingNo={state.bookingId ? displayNo(state.bookingId) : undefined}

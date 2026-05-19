@@ -157,6 +157,7 @@ export function AddonSearch({
   /** Dismiss the sheet / inline panel. */
   onClose: () => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [results, setResults] = useState<AddonResult[]>([]);
@@ -170,6 +171,22 @@ export function AddonSearch({
   const [adding, setAdding] = useState<string | null>(null);
   // Brief confirmation line after a successful add (keeps sheet open).
   const [addedName, setAddedName] = useState<string | null>(null);
+
+  // Overlay a11y, matching the sibling pattern (RejectBookingModal /
+  // TaskDetailPanel): Esc closes, initial focus moves into the search field.
+  // NOTE: full focus-trap/scroll-lock tracked in Task 9.1 design-fidelity pass.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
 
   // Debounce the query (cleaned-up timer; min 1 char).
   useEffect(() => {
@@ -328,6 +345,7 @@ export function AddonSearch({
               🔎
             </span>
             <input
+              ref={inputRef}
               id="addon-search-input"
               type="text"
               inputMode="search"
