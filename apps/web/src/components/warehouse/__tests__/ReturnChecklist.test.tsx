@@ -438,14 +438,20 @@ describe("ReturnChecklist", () => {
     expect(payload.problemUnits?.[0]).not.toHaveProperty("expectedBackDate");
   });
 
-  it("renders the RESULT counts and a failure warning when failedProblemUnits is non-empty", async () => {
+  it("renders the RESULT with the REAL failure shapes (problem + broken), never 'undefined', attention header", async () => {
     completeSpy.mockResolvedValue(
       okResult({
         scannedCount: 3,
         createdRepairIds: ["r1"],
         createdProblemItemIds: ["p1"],
+        // REAL backend shapes (warehouseScan.ts push sites):
+        //  failedBrokenUnits   → { unitId, reason, error }
+        //  failedProblemUnits  → { equipmentUnitId, reason } (NO error field)
+        failedBrokenUnits: [
+          { unitId: "u9", reason: "Разбит байонет", error: "ремонт занят" },
+        ],
         failedProblemUnits: [
-          { unitId: "u3", reason: "STOLEN", error: "уже списан" },
+          { equipmentUnitId: "u3", reason: "единица уже списана" },
         ],
       }),
     );
@@ -463,16 +469,33 @@ describe("ReturnChecklist", () => {
       screen.getByRole("button", { name: /Завершить приёмку/ }),
     );
 
-    expect(await screen.findByText("Приёмка завершена")).toBeInTheDocument();
+    // Partial failure → attention header, NOT the clean-success one.
+    expect(
+      await screen.findByText("Приёмка завершена с замечаниями"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Приёмка завершена")).not.toBeInTheDocument();
+
     // scanned 3 − 1 repair − 1 problem = 1 accepted.
     expect(screen.getByText("Принято")).toBeInTheDocument();
-    expect(screen.getByText("На ремонт")).toBeInTheDocument();
-    expect(screen.getByText("В «Потеряшки»")).toBeInTheDocument();
-    // Failure surfaced (nothing silently lost).
+    expect(screen.getByText(/^На ремонт/)).toBeInTheDocument();
+    expect(screen.getByText(/^В «Потеряшки»/)).toBeInTheDocument();
+
+    // 2 failures total surfaced, nothing silently lost.
     expect(
-      screen.getByText(/Не удалось обработать 1 единицу/),
+      screen.getByText(/Не удалось обработать 2 единицы/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/уже списан/)).toBeInTheDocument();
+    // Broken unit rendered against ITS shape: reason + error.
+    expect(
+      screen.getByText(/Разбит байонет: ремонт занят/),
+    ).toBeInTheDocument();
+    // Problem unit rendered against ITS shape: equipmentUnitId + reason
+    // (reason already holds the error message — no `error` field exists).
+    expect(screen.getByText(/u3: единица уже списана/)).toBeInTheDocument();
+
+    // CRITICAL regression guard: the fabricated-shape bug rendered a literal
+    // "undefined" for every failed problem unit. It must NEVER appear.
+    expect(container.textContent || "").not.toContain("undefined");
+
     // No barcode anywhere in the result view.
     expect(container.textContent || "").not.toMatch(/LR-[A-Z0-9]+-\d+/);
 
@@ -480,6 +503,80 @@ describe("ReturnChecklist", () => {
     expect(
       screen.getByRole("button", { name: /Готово/ }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the emerald success header when there are zero failures", async () => {
+    completeSpy.mockResolvedValue(
+      okResult({
+        scannedCount: 3,
+        createdRepairIds: ["r1"],
+        createdProblemItemIds: [],
+      }),
+    );
+
+    render(
+      <ReturnChecklist sessionId="s1" projectName="Орбита" onBack={() => {}} />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Принять всё разом/ }),
+    );
+    await waitFor(() => expect(checkSpy).toHaveBeenCalled());
+    fireEvent.click(
+      screen.getByRole("button", { name: /Завершить приёмку/ }),
+    );
+
+    expect(await screen.findByText("Приёмка завершена")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Приёмка завершена с замечаниями"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("focuses the first invalid row on a failed «Завершить приёмку» submit", async () => {
+    const scrollSpy = vi.fn();
+    // jsdom has no scrollIntoView — install a spy so we can assert M3 a11y.
+    window.HTMLElement.prototype.scrollIntoView = scrollSpy;
+
+    render(
+      <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // u1 → repair WITHOUT a comment (invalid); u2/u3 accepted.
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /прибор 1 из 3\) — отправить в ремонт/,
+      }),
+    );
+    await screen.findByTestId("repair-panel-u1");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /прибор 2 из 3\) — принять без замечаний/,
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /прибор 3 из 3\) — принять без замечаний/,
+      }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Завершить приёмку/ }),
+    );
+
+    // POST blocked.
+    expect(
+      await screen.findByText("Опишите, что сломалось"),
+    ).toBeInTheDocument();
+    expect(completeSpy).not.toHaveBeenCalled();
+
+    // The offending row is marked invalid + describes its error, and the
+    // first errored row is scrolled into view (kiosk a11y).
+    const errorP = screen.getByText("Опишите, что сломалось");
+    const offendingRow = errorP.closest('[aria-invalid="true"]');
+    expect(offendingRow).not.toBeNull();
+    expect(offendingRow?.getAttribute("aria-describedby")).toBe(errorP.id);
+    expect(errorP.id).toBeTruthy();
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
   });
 
   it("shows the loading skeleton while state is null and loading", async () => {

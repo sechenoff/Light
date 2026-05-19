@@ -36,12 +36,13 @@
  * 2.2) — we do not reference it.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useScanSession } from "./useScanSession";
 import { scanApi } from "./api";
 import { UnitRow } from "./UnitRow";
 import { RepairPanel } from "./RepairPanel";
 import { ProblemPanel } from "./ProblemPanel";
+import { ReturnResultView } from "./ReturnResultView";
 import { isScanApiError } from "./types";
 import type {
   ChecklistItem,
@@ -156,6 +157,16 @@ export function ReturnChecklist({
   );
   // Completion result → switches the whole panel to the RESULT view.
   const [result, setResult] = useState<CompleteResult | null>(null);
+
+  // Per-unit row DOM refs — used to scroll/focus the FIRST errored row into
+  // view on a failed «Завершить приёмку» (kiosk a11y: the operator must not
+  // have to hunt for the offending row off-screen).
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  /** Stable id for a row's error <p> so the row can `aria-describedby` it. */
+  function rowErrorId(unitId: string): string {
+    return `return-row-error-${unitId}`;
+  }
 
   // Bind the hook to the upstream-opened session; cancellation-safe.
   useEffect(() => {
@@ -289,9 +300,10 @@ export function ReturnChecklist({
 
   // ── Validation + completion ────────────────────────────────────────────────
 
-  function validate(): boolean {
-    if (!state) return false;
+  /** Pure: per-unit-id validation errors (no state writes). */
+  function computeRowErrors(): Record<string, string> {
     const errs: Record<string, string> = {};
+    if (!state) return errs;
 
     for (const id of unitIds) {
       const o = outcomes[id];
@@ -312,17 +324,25 @@ export function ReturnChecklist({
         }
       }
     }
+    return errs;
+  }
 
+  /**
+   * Run validation, commit row + summary error state. Returns the computed
+   * errors map (empty ⇒ valid) so the caller can also focus the first row.
+   */
+  function validate(): Record<string, string> {
+    const errs = computeRowErrors();
     setRowErrors(errs);
     const count = Object.keys(errs).length;
     if (count > 0) {
       setValidationSummary(
         `Не заполнено ${count} ${pluralize(count, "позиция", "позиции", "позиций")} — проверьте отмеченные строки`,
       );
-      return false;
+    } else {
+      setValidationSummary(null);
     }
-    setValidationSummary(null);
-    return true;
+    return errs;
   }
 
   function buildPayload(): CompletePayload {
@@ -362,10 +382,34 @@ export function ReturnChecklist({
     return payload;
   }
 
+  /**
+   * Scroll + focus the FIRST errored row into view (kiosk a11y). Deferred to
+   * the next frame so the just-set row error / `aria-invalid` have rendered
+   * before focus moves.
+   */
+  function focusFirstError(errs: Record<string, string>) {
+    const firstId = unitIds.find((id) => id in errs);
+    if (!firstId) return;
+    requestAnimationFrame(() => {
+      const node = rowRefs.current.get(firstId);
+      if (!node) return;
+      // scrollIntoView is absent in some non-browser/test environments —
+      // focus alone still satisfies the a11y contract there.
+      if (typeof node.scrollIntoView === "function") {
+        node.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      node.focus();
+    });
+  }
+
   async function handleComplete() {
     if (submitting || bulkBusy) return;
     setSubmitError(null);
-    if (!validate()) return;
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      focusFirstError(errs);
+      return;
+    }
     setSubmitting(true);
     try {
       const payload = buildPayload();
@@ -383,98 +427,16 @@ export function ReturnChecklist({
   }
 
   // ── RESULT view ────────────────────────────────────────────────────────────
+  // Delegated to ReturnResultView (pure presentational; owns the correct
+  // failedBrokenUnits / failedProblemUnits shapes + partial-failure header).
 
   if (result) {
-    const acceptedCount =
-      result.scannedCount -
-      (result.createdRepairIds?.length ?? 0) -
-      (result.createdProblemItemIds?.length ?? 0);
-    const repairCount = result.createdRepairIds?.length ?? 0;
-    const problemCount = result.createdProblemItemIds?.length ?? 0;
-    const failed = [
-      ...(result.failedBrokenUnits ?? []),
-      ...(result.failedProblemUnits ?? []),
-    ];
-
     return (
-      <div className="flex min-h-full flex-1 flex-col">
-        <div className="flex-1 px-3 pb-6 pt-5 lg:px-5">
-          <div className="mx-auto w-full max-w-[460px]">
-            <div className="rounded-lg border border-emerald-border bg-emerald-soft px-4 py-4 text-center">
-              <p className="text-3xl leading-none" aria-hidden="true">
-                ✓
-              </p>
-              <h2 className="mt-2 text-[17px] font-semibold text-ink">
-                Приёмка завершена
-              </h2>
-              <p className="mt-1 text-[13px] text-ink-2">
-                {projectName || "Бронь"}
-              </p>
-            </div>
-
-            <dl className="mt-3 space-y-1.5">
-              <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2.5">
-                <dt className="text-[13px] text-ink-2">Принято</dt>
-                <dd className="mono-num text-[15px] font-semibold text-emerald">
-                  {Math.max(0, acceptedCount)}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2.5">
-                <dt className="text-[13px] text-ink-2">На ремонт</dt>
-                <dd className="mono-num text-[15px] font-semibold text-amber">
-                  {repairCount}
-                  <span className="ml-1 text-[11px] font-normal text-ink-3">
-                    (карточек: {repairCount})
-                  </span>
-                </dd>
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2.5">
-                <dt className="text-[13px] text-ink-2">В «Потеряшки»</dt>
-                <dd className="mono-num text-[15px] font-semibold text-rose">
-                  {problemCount}
-                  <span className="ml-1 text-[11px] font-normal text-ink-3">
-                    (заявок: {problemCount})
-                  </span>
-                </dd>
-              </div>
-            </dl>
-
-            {failed.length > 0 && (
-              <div
-                role="alert"
-                className="mt-3 rounded-lg border border-rose-border bg-rose-soft px-3 py-3"
-              >
-                <p className="text-[13px] font-semibold text-rose">
-                  Не удалось обработать {failed.length}{" "}
-                  {pluralize(failed.length, "единицу", "единицы", "единиц")} —
-                  проверьте вручную
-                </p>
-                <ul className="mt-1.5 space-y-1">
-                  {failed.map((f) => (
-                    <li
-                      key={`${f.unitId}-${f.reason}`}
-                      className="text-[12px] leading-snug text-rose"
-                    >
-                      • {f.reason}: {f.error}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 border-t border-border bg-surface px-3 py-3 lg:px-5">
-          <button
-            type="button"
-            onClick={() => (onDone ? onDone() : onBack())}
-            aria-label="Готово — вернуться к списку броней"
-            className="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:opacity-95"
-          >
-            Готово
-          </button>
-        </div>
-      </div>
+      <ReturnResultView
+        result={result}
+        projectName={projectName}
+        onDone={() => (onDone ? onDone() : onBack())}
+      />
     );
   }
 
@@ -565,8 +527,19 @@ export function ReturnChecklist({
                   return item.units.map((u, idx) => {
                     const o = outcomes[u.unitId];
                     const rowError = rowErrors[u.unitId];
+                    const errId = rowErrorId(u.unitId);
                     return (
-                      <div key={u.unitId} className="space-y-1.5">
+                      <div
+                        key={u.unitId}
+                        ref={(node) => {
+                          if (node) rowRefs.current.set(u.unitId, node);
+                          else rowRefs.current.delete(u.unitId);
+                        }}
+                        tabIndex={-1}
+                        aria-invalid={rowError ? true : undefined}
+                        aria-describedby={rowError ? errId : undefined}
+                        className="space-y-1.5 outline-none"
+                      >
                         <UnitRow
                           name={item.equipmentName}
                           ordinalLabel={`прибор ${idx + 1} из ${total}`}
@@ -612,6 +585,7 @@ export function ReturnChecklist({
 
                         {rowError && (
                           <p
+                            id={errId}
                             role="alert"
                             className="rounded-md border border-rose-border bg-rose-soft px-2.5 py-1.5 text-[12px] text-rose"
                           >

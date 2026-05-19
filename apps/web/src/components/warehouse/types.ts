@@ -184,17 +184,35 @@ export interface SummaryResult {
   substitutedItems: ReconciliationUnitRef[];
 }
 
-export interface FailedUnitRef {
+/**
+ * A unit whose REPAIR card could not be created post-return.
+ * Mirrors `warehouseScan.ts` `summary.failedBrokenUnits` push site EXACTLY:
+ * `{ unitId, reason: r.comment, error: errMsg }`. `reason` is the operator's
+ * repair note; `error` is the failure message.
+ */
+export interface FailedBrokenUnit {
   unitId: string;
   reason: string;
   error: string;
 }
 
+/**
+ * A unit whose «Потеряшки» (problem) card could not be created post-return.
+ * Mirrors `warehouseScan.ts` `summary.failedProblemUnits` push site EXACTLY:
+ * `{ equipmentUnitId: p.equipmentUnitId, reason: errMsg }`. There is NO
+ * `error` field — `reason` ALREADY holds the failure message, and the unit
+ * id field is `equipmentUnitId` (not `unitId`).
+ */
+export interface FailedProblemUnit {
+  equipmentUnitId: string;
+  reason: string;
+}
+
 export interface CompleteResult extends SummaryResult {
   createdRepairIds?: string[];
-  failedBrokenUnits?: FailedUnitRef[];
+  failedBrokenUnits?: FailedBrokenUnit[];
   createdProblemItemIds?: string[];
-  failedProblemUnits?: FailedUnitRef[];
+  failedProblemUnits?: FailedProblemUnit[];
 }
 
 // ── Mutation results ─────────────────────────────────────────────────────────
