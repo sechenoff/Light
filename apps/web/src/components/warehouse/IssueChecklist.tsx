@@ -273,6 +273,7 @@ export function IssueChecklist({
                       mode="ISSUE"
                       value={u.checked ? "ISSUED" : null}
                       onChange={(next) => handleUnitChange(u.unitId, next)}
+                      disabled={bulkBusy}
                     />
                   ));
                 }
@@ -288,6 +289,7 @@ export function IssueChecklist({
                     onChange={(next) =>
                       setCount(item.bookingItemId, next === "ISSUED")
                     }
+                    disabled={bulkBusy}
                   />
                 );
               })}

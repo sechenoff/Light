@@ -113,6 +113,43 @@ describe("IssueChecklist", () => {
     expect(checkSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("disables all unit rows while «Выдать всё разом» is fanning out", async () => {
+    // Hold `check` open so the `bulkBusy` window is observable.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    checkSpy.mockImplementationOnce(async () => {
+      await gate;
+    });
+
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    const bulk = await screen.findByRole("button", {
+      name: /Выдать всё разом/,
+    });
+    bulk.click();
+
+    // While the fan-out is pending, every per-row segment is disabled
+    // (consistent with the already-disabled bulk bar / footer).
+    await waitFor(() => {
+      const issued = screen.getByRole("button", {
+        name: /Aputure 600D \(прибор 1 из 2\) — отметить выданным/,
+      });
+      expect(issued).toBeDisabled();
+    });
+
+    release();
+    await waitFor(() => {
+      const issued = screen.getByRole("button", {
+        name: /Aputure 600D \(прибор 1 из 2\) — отметить выданным/,
+      });
+      expect(issued).not.toBeDisabled();
+    });
+  });
+
   it("toggling a UNIT row ✓ calls the hook's optimistic check", async () => {
     render(
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,

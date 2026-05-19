@@ -97,8 +97,48 @@ type UnitRowProps =
       disabled?: boolean;
     };
 
+/**
+ * Shared segment button shell. The ISSUE and RETURN modes differ ONLY by their
+ * segments array, the `active` computation, and the click handler — everything
+ * visual (class template, glyph aria-hidden, label, sizing) lives here once.
+ */
+function Segment<V>({
+  seg,
+  active,
+  disabled,
+  ariaLabel,
+  onClick,
+}: {
+  seg: SegmentDef<V>;
+  active: boolean;
+  disabled: boolean;
+  ariaLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-pressed={active}
+      aria-label={ariaLabel}
+      onClick={onClick}
+      className={`flex h-10 min-w-[40px] items-center justify-center gap-1 rounded px-2 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        active
+          ? seg.activeClass
+          : "border border-border bg-surface-muted text-ink-2 hover:bg-surface-subtle"
+      }`}
+    >
+      <span aria-hidden="true">{seg.glyph}</span>
+      <span className="hidden sm:inline">{seg.label}</span>
+    </button>
+  );
+}
+
 export function UnitRow(props: UnitRowProps) {
   const { name, ordinalLabel, mode, disabled = false } = props;
+
+  const ariaLabelFor = (aria: string) =>
+    `${name}${ordinalLabel ? ` (${ordinalLabel})` : ""} — ${aria}`;
 
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-2 lg:px-3 lg:py-2.5">
@@ -118,45 +158,27 @@ export function UnitRow(props: UnitRowProps) {
           ? ISSUE_SEGMENTS.map((seg) => {
               const active = props.value === seg.value;
               return (
-                <button
+                <Segment
                   key={seg.value}
-                  type="button"
+                  seg={seg}
+                  active={active}
                   disabled={disabled}
-                  aria-pressed={active}
-                  aria-label={`${name}${ordinalLabel ? ` (${ordinalLabel})` : ""} — ${seg.aria}`}
-                  onClick={() =>
-                    props.onChange(active ? null : seg.value)
-                  }
-                  className={`flex h-10 min-w-[40px] items-center justify-center gap-1 rounded px-2 text-[13px] font-medium transition-colors disabled:opacity-50 ${
-                    active
-                      ? seg.activeClass
-                      : "border border-border bg-surface-muted text-ink-2 hover:bg-surface-subtle"
-                  }`}
-                >
-                  <span aria-hidden="true">{seg.glyph}</span>
-                  <span className="hidden sm:inline">{seg.label}</span>
-                </button>
+                  ariaLabel={ariaLabelFor(seg.aria)}
+                  onClick={() => props.onChange(active ? null : seg.value)}
+                />
               );
             })
           : RETURN_SEGMENTS.map((seg) => {
               const active = props.value === seg.value;
               return (
-                <button
+                <Segment
                   key={seg.value}
-                  type="button"
+                  seg={seg}
+                  active={active}
                   disabled={disabled}
-                  aria-pressed={active}
-                  aria-label={`${name}${ordinalLabel ? ` (${ordinalLabel})` : ""} — ${seg.aria}`}
+                  ariaLabel={ariaLabelFor(seg.aria)}
                   onClick={() => props.onChange(seg.value)}
-                  className={`flex h-10 min-w-[40px] items-center justify-center gap-1 rounded px-2 text-[13px] font-medium transition-colors disabled:opacity-50 ${
-                    active
-                      ? seg.activeClass
-                      : "border border-border bg-surface-muted text-ink-2 hover:bg-surface-subtle"
-                  }`}
-                >
-                  <span aria-hidden="true">{seg.glyph}</span>
-                  <span className="hidden sm:inline">{seg.label}</span>
-                </button>
+                />
               );
             })}
       </div>
