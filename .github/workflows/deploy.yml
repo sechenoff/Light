@@ -19,6 +19,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 15m
+          script_stop: true
           script: |
             cd /opt/light-rental-system
             git fetch origin
