@@ -26,13 +26,14 @@
 | 08b | LEFT_ON_SITE date field | PASS | PASS | «Остался на площадке» chip toggles to rose-filled. «Ожидается к:» date input appears exclusively for this chip. No date field for other chips (Потерян/Уничтожен/Украден). |
 | 09 | Return completion result | PASS | PASS | Emerald header «Приёмка завершена», project name, dl counts (Принято/На ремонт/В «Потеряшки»), «Готово» button. |
 | 10 | Desktop two-pane | PASS (N/A) | PASS | `lg:grid-cols-[minmax(280px,360px)_1fr]`: left pane = booking list, right pane = checklist detail. Booking list scrollable with aside border-r. |
-| 11 | /warehouse/problems registry | PASS | PASS | «Потеряшки» title, eyebrow СКЛАД, 5-pill filter (Все/Ожидается/На поиске/Найдено/Не найдено/Списано), «Потеряшек нет» empty-state. Desktop: rendered inside AppShell with sidebar nav (WAREHOUSE role). |
+| 11 | /warehouse/problems registry | PASS | PASS | «Потеряшки» title, eyebrow СКЛАД, 6-pill filter (Все/Ожидается/На поиске/Найдено/Не найдено/Списано). 2 seeded rows visible: SkyPanel S60 (EXPECTED/«Ожидается», «Остался на площадке», ожидается к 22.05.2026, «Найдено»/«Не найдено» buttons) + Aputure 600D (SEARCHING/«На поиске», «Потерян», action buttons). Booking ref as #RETURN (last-6 uppercase, no barcode). Russian labels. Desktop: AppShell sidebar. |
+| 11b | ResolveProblemModal | PASS | PASS | «Найдено» clicked on SkyPanel S60 row. Modal open (role=dialog): eyebrow «РАЗБОР КАРТОЧКИ», title «Единица найдена», equipment name «SkyPanel S60», hint «Единица вернётся в оборот (статус «Доступна»). Заметка попадёт в журнал.», required «Заметка *» textarea (placeholder ru), «0 / 2000» counter, «Отмена»/«Подтвердить «Найдено»» buttons. 4 files are byte-distinct (md5 verified). |
 
 ---
 
 ## Summary
 
-**Total screens:** 15 (across 2 widths = up to 30 viewport instances)  
+**Total screens:** 15 (screen 11 + 11b each counted once; across 2 widths = up to 30 viewport instances)  
 **PASS:** 15/15  
 **DIFF:** 0/15  
 **Code fixes applied:** 0 (no UI component changes needed)
@@ -47,6 +48,10 @@ All critical mockup requirements verified:
 - Amber RepairPanel, rose ProblemPanel
 - Desktop two-pane `lg:grid-cols` layout
 - Sticky footers on mobile
+- Потеряшки registry: populated rows + action buttons + 6-pill filter
+- ResolveProblemModal: genuinely open (role=dialog confirmed), not a list duplicate
+
+**Note:** The initial run (d476de2) captured screen 11 and 11b as byte-identical files because no ProblemItems existed in the DB — the page rendered the empty state «Потеряшек нет» and the modal was never opened. That run overstated the result. This corrected run supersedes it: 2 ProblemItems were seeded (SEARCHING/LOST + EXPECTED/LEFT_ON_SITE) so rows and action buttons are present. MD5 of 4 files (11/11b × 375/1440): `368986e9` / `a37d5d8d` / `19fff50c` / `fd3ca9e9` — all distinct.
 
 ---
 
@@ -63,8 +68,10 @@ This was a test-infrastructure bug, not a UI bug. No component code was changed.
 ## Methodology
 
 1. Servers started: `apps/api` on :4000, `apps/web` on :3000  
-2. DB seeded: `npx tsx apps/api/scripts/seed-warehouse-fidelity.ts` (WarehousePin, 3 Equipment, 5 Bookings, AdminUser)  
+2. DB seeded: `npx tsx apps/api/scripts/seed-warehouse-fidelity.ts` (WarehousePin, 3 Equipment, 5 Bookings, AdminUser, **2 ProblemItems**)  
+   — ProblemItems added in seed section 9: `fidelity-problem-01` (SEARCHING/LOST, Aputure 600D, unit-01) + `fidelity-problem-02` (EXPECTED/LEFT_ON_SITE, SkyPanel S60, unit-04). Idempotent via delete-then-create by stable id.  
 3. Playwright Chromium headless, `isMobile: true` at 375, `isMobile: false` at 1440  
 4. Between viewport runs: seed re-run to restore `returnedAt: null` and unit statuses  
 5. All `clearScanSessions()` calls use `execSync('npx tsx apps/api/scripts/clear-scan-sessions.ts')` — no Prisma dynamic import from scripts  
-6. Screenshots taken with `fullPage: true` after `waitForLoadState("networkidle")`
+6. Screenshots taken with `fullPage: true` after `waitForLoadState("networkidle")`  
+7. Screens 11/11b re-captured separately via `scripts/capture-problems-screens.ts` which: authenticates as SUPER_ADMIN via /login form, navigates to /warehouse/problems, waits for action buttons to be present, then iterates DOM to find the **visible** «Найдено» button (mobile: inside `md:hidden` card layout; desktop: inside `hidden md:block` table), clicks it, waits for `[role="dialog"]`, screenshots, closes via Escape. MD5 uniqueness verified in-script.

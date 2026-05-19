@@ -313,6 +313,53 @@ async function main() {
     console.log("AdminUser already exists: admin");
   }
 
+  // 9. ProblemItems — reestр «Потеряшки» (for screen 11 + 11b fidelity capture)
+  //    Idempotent: delete-then-create by stable id markers.
+  const adminUser = await prisma.adminUser.findFirst({
+    where: { username: "admin" },
+    select: { id: true },
+  });
+  const adminId = adminUser?.id ?? "fidelity-admin";
+
+  // Delete any stale fidelity problem items first so re-runs stay idempotent.
+  await prisma.problemItem.deleteMany({
+    where: { id: { in: ["fidelity-problem-01", "fidelity-problem-02"] } },
+  });
+
+  // Problem 1: unit-01 (Aputure 600D) — SEARCHING (Потерян).
+  // Open status → «Найдено»/«Не найдено» action buttons must appear.
+  await prisma.problemItem.create({
+    data: {
+      id: "fidelity-problem-01",
+      equipmentUnitId: "fidelity-unit-01",
+      sourceBookingId: returnBooking.id,
+      reason: "LOST",
+      comment: "Не вернули со смены в пятницу, клиент не отвечает",
+      status: "SEARCHING",
+      createdBy: "admin",
+    },
+  });
+
+  // Problem 2: unit-04 (SkyPanel S60) — EXPECTED (Остался на площадке).
+  // Open status → «Найдено»/«Не найдено» action buttons must appear.
+  const expectedBack = new Date();
+  expectedBack.setDate(expectedBack.getDate() + 3);
+
+  await prisma.problemItem.create({
+    data: {
+      id: "fidelity-problem-02",
+      equipmentUnitId: "fidelity-unit-04",
+      sourceBookingId: returnBooking.id,
+      reason: "LEFT_ON_SITE",
+      comment: "Прибор остался на объекте «Причал», заберут в понедельник",
+      status: "EXPECTED",
+      expectedBackDate: expectedBack,
+      createdBy: "admin",
+    },
+  });
+
+  console.log("ProblemItems seeded: fidelity-problem-01 (SEARCHING/LOST), fidelity-problem-02 (EXPECTED/LEFT_ON_SITE)");
+
   console.log("\nAll fidelity seed data created successfully.");
   console.log("WarehousePin: Иван Кладовщик / PIN: 1234");
   console.log("AdminUser: admin / admin123");

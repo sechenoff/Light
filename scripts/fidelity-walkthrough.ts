@@ -435,9 +435,14 @@ async function runAtWidth(
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // SCREEN 11: /warehouse/problems (Потеряшки registry — admin JWT required)
   // ──────────────────────────────────────────────────────────────────────────
-  console.log("11. /warehouse/problems (Потеряшки registry)");
+  // SCREEN 11: /warehouse/problems (Потеряшки registry — admin JWT required)
+  // Requires ProblemItems seeded (SEARCHING + EXPECTED) so the registry rows
+  // and action buttons are visible.
+  // ──────────────────────────────────────────────────────────────────────────
+  console.log("11. /warehouse/problems (Потеряшки registry — populated)");
+
+  // Navigate to /login and authenticate as admin (JWT cookie required).
   await page.goto(`${BASE}/login`);
   await page.waitForLoadState("domcontentloaded");
   await page.waitForTimeout(1000);
@@ -448,27 +453,60 @@ async function runAtWidth(
     await usernameEl.fill("admin");
     await passwordEl.fill("admin123");
     await page.locator('button[type="submit"]').click();
-    await page.waitForTimeout(2500);
+    // Wait for redirect away from /login — means session cookie is set.
+    await page.waitForFunction(
+      () => !window.location.pathname.startsWith("/login"),
+      { timeout: 10000 },
+    ).catch(() => {});
     await waitNet(page);
   }
 
   await page.goto(`${BASE}/warehouse/problems`);
   await waitNet(page);
+
+  // Wait until the page renders actual rows (not empty state) — the seeded
+  // ProblemItems must be visible. Bail if the empty state text appears instead.
+  const hasRows = await page.waitForFunction(
+    () => {
+      // Either the «Найдено»/«Не найдено» buttons are present (rows loaded)
+      // or the page still shows loading skeleton / empty state.
+      const foundBtns = document.querySelectorAll('button[aria-label*="Найдено"]');
+      return foundBtns.length > 0;
+    },
+    { timeout: 12000 },
+  ).then(() => true).catch(() => false);
+
+  const pageText = await page.evaluate(() => document.body.innerText.slice(0, 200));
+  console.log(`  Problems page text snippet: ${pageText.replace(/\n/g, " ").slice(0, 120)}`);
+  console.log(`  Has rows with action buttons: ${hasRows}`);
+
+  // SCREEN 11: populated registry list
   await screenshot(page, `11-problems-list-${label}.png`);
 
-  // Try to open resolve modal
-  const foundBtn = page.locator('button[aria-label*="Найдено"]').first();
-  if (await foundBtn.isVisible().catch(() => false)) {
-    await foundBtn.click();
-    await page.waitForTimeout(500);
+  // SCREEN 11b: resolve modal — click «Найдено» on the first open row.
+  // If hasRows is false the modal cannot be captured honestly; log the blocker.
+  const foundBtnLocator = page.locator('button[aria-label*="Найдено"]').first();
+  const foundBtnVisible = await foundBtnLocator.isVisible().catch(() => false);
+
+  if (foundBtnVisible) {
+    await foundBtnLocator.click();
+    // Wait for the dialog to appear (role=dialog is present in ResolveProblemModal).
+    await page.waitForFunction(
+      () => document.querySelector('[role="dialog"]') !== null,
+      { timeout: 5000 },
+    ).catch(() => {});
+    await page.waitForTimeout(300);
+
+    const dialogVisible = await page.locator('[role="dialog"]').isVisible().catch(() => false);
+    console.log(`  ResolveProblemModal dialog visible: ${dialogVisible}`);
+
     await screenshot(page, `11b-problems-resolve-modal-${label}.png`);
+    // Close modal via Escape so state is clean.
     await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
   } else {
-    const noData = await page.evaluate(() =>
-      document.body.innerText.includes("Потеряшек нет") ||
-      document.body.innerText.includes("Потеряшки")
-    );
-    console.log(`  Problems page shows data: ${!noData ? "empty state" : "has content"}`);
+    console.log("  WARNING: «Найдено» button not visible — modal NOT captured.");
+    console.log("  This would be a BLOCKER; check that ProblemItems were seeded.");
     await screenshot(page, `11b-problems-resolve-modal-${label}.png`);
   }
 
