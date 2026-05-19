@@ -1,0 +1,52 @@
+name: Deploy (rsync fallback)
+
+# Robust deploy that does NOT depend on the server being able to `git fetch`
+# from GitHub. The runner (which can read the repo) rsyncs the checked-out
+# tree to the server over the working SSH channel, then builds + reloads.
+# Trigger manually: Actions → "Deploy (rsync fallback)" → Run workflow.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-rsync:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rsync repo tree to server
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_id
+          chmod 600 ~/.ssh/deploy_id
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          rsync -az --delete \
+            --exclude '.git' --exclude 'node_modules' \
+            --exclude '.env' --exclude '.env.*' --exclude '*.env' \
+            --exclude '*.db' --exclude 'data/' --exclude 'storage/' --exclude 'backups/' --exclude 'uploads/' \
+            -e "ssh -i ~/.ssh/deploy_id -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:/opt/light-rental-system/"
+
+      - name: Build & reload on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 15m
+          script_stop: true
+          script: |
+            cd /opt/light-rental-system
+            npm install
+            chmod +x deploy.sh
+            ./deploy.sh --api --rental-bot --web
+            echo "--- deployed commit ---"
+            git rev-parse --short HEAD 2>/dev/null || echo "(no git)"
