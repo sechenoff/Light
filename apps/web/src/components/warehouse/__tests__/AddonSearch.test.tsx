@@ -330,4 +330,92 @@ describe("AddonSearch", () => {
     });
     expect(screen.getByLabelText("Поиск артикула по каталогу")).toHaveFocus();
   });
+
+  it("returns focus to the triggering element on close (unmount)", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
+    // A real trigger that is focused before the sheet opens.
+    const trigger = document.createElement("button");
+    trigger.textContent = "Добор";
+    document.body.appendChild(trigger);
+    trigger.focus();
+    expect(trigger).toHaveFocus();
+
+    const { unmount } = render(
+      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(60);
+    });
+    expect(screen.getByLabelText("Поиск артикула по каталогу")).toHaveFocus();
+
+    // Closing the sheet (unmount) must restore focus to the trigger.
+    await act(async () => {
+      unmount();
+    });
+    expect(trigger).toHaveFocus();
+    trigger.remove();
+  });
+
+  it("traps Tab/Shift+Tab within the sheet (last↔first wrap)", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
+    render(
+      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(60);
+    });
+
+    const sheet = screen.getByRole("region", {
+      name: /Добор — поиск по каталогу/,
+    });
+    const focusables = Array.from(
+      sheet.querySelectorAll<HTMLElement>(
+        'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    expect(focusables.length).toBeGreaterThanOrEqual(2);
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+
+    // Tab from the last focusable wraps to the first.
+    last.focus();
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(sheet, { key: "Tab" });
+    expect(first).toHaveFocus();
+
+    // Shift+Tab from the first focusable wraps to the last.
+    first.focus();
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(sheet, { key: "Tab", shiftKey: true });
+    expect(last).toHaveFocus();
+  });
+
+  it("locks body scroll while the mobile sheet is open and restores it on close", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
+    document.body.style.overflow = "auto";
+
+    const { unmount } = render(
+      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+    );
+    // jsdom has no matchMedia → treated as the mobile sheet → lock engaged.
+    expect(document.body.style.overflow).toBe("hidden");
+
+    await act(async () => {
+      unmount();
+    });
+    expect(document.body.style.overflow).toBe("auto");
+  });
+
+  it("renders the mobile sheet with the vertical slide-up animation (not horizontal)", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
+    render(
+      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+    );
+    const sheet = screen.getByRole("region", {
+      name: /Добор — поиск по каталогу/,
+    });
+    // Bottom sheet must rise UP, never slide sideways.
+    expect(sheet.className).toMatch(/motion-safe:animate-slideup/);
+    expect(sheet.className).not.toMatch(/animate-slidein/);
+  });
 });

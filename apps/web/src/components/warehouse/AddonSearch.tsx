@@ -150,6 +150,7 @@ export function AddonSearch({
   onClose: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const sheetRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [results, setResults] = useState<AddonResult[]>([]);
@@ -164,9 +165,10 @@ export function AddonSearch({
   // Brief confirmation line after a successful add (keeps sheet open).
   const [addedName, setAddedName] = useState<string | null>(null);
 
-  // Overlay a11y, matching the sibling pattern (RejectBookingModal /
-  // TaskDetailPanel): Esc closes, initial focus moves into the search field.
-  // NOTE: full focus-trap/scroll-lock tracked in Task 9.1 design-fidelity pass.
+  // Overlay a11y, matching the established overlay canon
+  // (TaskDetailPanel): Esc closes, initial focus moves into the search
+  // field, focus is trapped within the sheet while open, and focus
+  // returns to the trigger on close.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -175,10 +177,55 @@ export function AddonSearch({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Initial focus into the search input; restore focus to whatever was
+  // focused before open (the trigger) on unmount — same approach as
+  // TaskDetailPanel (spec §6 focus trap).
   useEffect(() => {
+    const prevFocused = document.activeElement as HTMLElement | null;
     const t = setTimeout(() => inputRef.current?.focus(), 50);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      prevFocused?.focus?.();
+    };
   }, []);
+
+  // Body scroll lock — gated to the MOBILE bottom-sheet presentation only.
+  // On desktop (Tailwind `lg:` ≥ 1024px) this component renders as a static
+  // INLINE panel (no scrim, no fixed positioning), so locking page scroll
+  // there would be wrong. `window.matchMedia` is absent in jsdom → treated
+  // as mobile (lock engaged), which keeps the behaviour testable; real
+  // browsers get correct desktop detection.
+  useEffect(() => {
+    const isDesktopInline =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(min-width: 1024px)").matches;
+    if (isDesktopInline) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
+
+  // Minimal dependency-free focus trap: Tab / Shift+Tab cycle within the
+  // sheet only (first ↔ last focusable). Mirrors TaskDetailPanel.
+  function handleTrapKey(e: React.KeyboardEvent<HTMLElement>) {
+    if (e.key !== "Tab" || !sheetRef.current) return;
+    const focusables = sheetRef.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+    );
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const activeEl = document.activeElement as HTMLElement | null;
+    if (e.shiftKey && (activeEl === first || activeEl === sheetRef.current)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && activeEl === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   // Debounce the query (cleaned-up timer; min 1 char).
   useEffect(() => {
@@ -296,12 +343,14 @@ export function AddonSearch({
       />
 
       <section
+        ref={sheetRef}
+        onKeyDown={handleTrapKey}
         aria-label="Добор — поиск по каталогу с проверкой доступности"
         className={[
-          // Mobile: bottom sheet.
+          // Mobile: bottom sheet — must slide UP (vertical), not sideways.
           "fixed inset-x-0 bottom-0 z-50 flex max-h-[80vh] flex-col",
           "rounded-t-2xl border-t border-border bg-surface shadow-sm",
-          "motion-safe:animate-slidein",
+          "motion-safe:animate-slideup",
           // Desktop: static inline panel within the checklist area.
           "lg:static lg:inset-auto lg:z-auto lg:mt-3 lg:max-h-none",
           "lg:rounded-lg lg:border lg:shadow-xs lg:animate-none",

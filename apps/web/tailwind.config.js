@@ -113,9 +113,17 @@ module.exports = {
           from: { transform: "translateX(24px)", opacity: "0.6" },
           to: { transform: "translateX(0)", opacity: "1" },
         },
+        // Vertical companion to `slidein` for bottom sheets (must rise UP,
+        // not slide sideways). Same curve/feel as `slidein`: a short
+        // translate + slight opacity fade, compositor-friendly only.
+        slideup: {
+          from: { transform: "translateY(16px)", opacity: "0.6" },
+          to: { transform: "translateY(0)", opacity: "1" },
+        },
       },
       animation: {
         slidein: "slidein 180ms ease-out",
+        slideup: "slideup 180ms ease-out",
       },
     },
   },

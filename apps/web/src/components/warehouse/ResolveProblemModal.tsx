@@ -4,9 +4,13 @@
  * ResolveProblemModal — обязательная заметка при ручном разборе карточки
  * «Потеряшки» (исход FOUND / NOT_FOUND).
  *
- * Паттерн зеркалит src/components/bookings/RejectBookingModal.tsx:
+ * Паттерн зеркалит src/components/bookings/RejectBookingModal.tsx +
+ * overlay-канон src/components/tasks/TaskDetailPanel.tsx:
  *  - Esc / клик по backdrop закрывают (если не идёт отправка),
  *  - авто-фокус в textarea при открытии,
+ *  - фокус-ловушка (Tab/Shift+Tab циклятся внутри диалога),
+ *  - возврат фокуса на элемент-триггер при закрытии,
+ *  - body-scroll-lock пока открыта,
  *  - обязательная заметка (min 3 символа после trim) + счётчик,
  *  - русские подписи и сообщения об ошибке.
  *
@@ -47,6 +51,7 @@ export function ResolveProblemModal({
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) {
@@ -65,6 +70,40 @@ export function ResolveProblemModal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, loading, onClose]);
+
+  // Restore focus to the element that opened the modal (the trigger) when
+  // it closes, and lock body scroll while open — overlay canon, same
+  // approach as TaskDetailPanel.
+  useEffect(() => {
+    if (!open) return;
+    const prevFocused = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      prevFocused?.focus?.();
+    };
+  }, [open]);
+
+  // Minimal dependency-free focus trap: Tab / Shift+Tab cycle within the
+  // dialog only (first ↔ last focusable). Mirrors TaskDetailPanel.
+  function handleTrapKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Tab" || !dialogRef.current) return;
+    const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+    );
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const activeEl = document.activeElement as HTMLElement | null;
+    if (e.shiftKey && (activeEl === first || activeEl === dialogRef.current)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && activeEl === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   if (!open) return null;
 
@@ -90,11 +129,13 @@ export function ResolveProblemModal({
       onClick={() => !loading && onClose()}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={OUTCOME_TITLE[outcome]}
         className="w-full max-w-md rounded-lg bg-surface p-6 shadow-lg"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleTrapKey}
       >
         <div className="eyebrow mb-2">Разбор карточки</div>
         <h2 className="mb-1 text-lg font-semibold text-ink">{OUTCOME_TITLE[outcome]}</h2>
