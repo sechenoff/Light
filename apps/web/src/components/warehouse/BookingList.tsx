@@ -72,7 +72,7 @@ function shortDate(iso: string): string {
   return `${d}.${m}`;
 }
 
-function MONTH_DAY(d: Date): string {
+function monthDay(d: Date): string {
   return d.toLocaleDateString("ru-RU", {
     day: "numeric",
     month: "long",
@@ -110,14 +110,14 @@ function groupBookings(bookings: BookingSummary[]): BucketGroup[] {
   if (today.length > 0) {
     groups.push({
       bucket: "today",
-      label: `Сегодня · ${MONTH_DAY(moscowTodayStart())}`,
+      label: `Сегодня · ${monthDay(moscowTodayStart())}`,
       bookings: today,
     });
   }
   if (tomorrow.length > 0) {
     groups.push({
       bucket: "tomorrow",
-      label: `Завтра · ${MONTH_DAY(addDays(moscowTodayStart(), 1))}`,
+      label: `Завтра · ${monthDay(addDays(moscowTodayStart(), 1))}`,
       bookings: tomorrow,
     });
   }

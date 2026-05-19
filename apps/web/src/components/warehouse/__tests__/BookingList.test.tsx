@@ -28,7 +28,7 @@ function booking(
     client: { id: `c-${id}`, name: clientName },
     startDate: isoForOffset(offsetDays),
     endDate: isoForOffset(offsetDays + 2),
-    status: offsetDays === 0 ? "CONFIRMED" : "CONFIRMED",
+    status: "CONFIRMED",
     items: Array.from({ length: itemCount }, (_, i) => ({ id: `${id}-i${i}` })),
   };
 }
