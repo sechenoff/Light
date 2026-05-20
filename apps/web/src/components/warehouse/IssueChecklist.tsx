@@ -33,6 +33,9 @@ import { AddonSearch } from "./AddonSearch";
 import type { IssueValue } from "./UnitRow";
 import type { ChecklistItem, ChecklistState } from "./types";
 import { pluralize } from "../../lib/format";
+import { scanApi } from "./api";
+import type { CompleteResult, SummaryResult } from "./types";
+import { IssueResultView } from "./IssueResultView";
 
 /** «#» + последние 6 символов id брони, в верхнем регистре (как в BookingList). */
 function displayNo(id: string): string {
@@ -43,6 +46,8 @@ interface CategoryGroup {
   category: string;
   items: ChecklistItem[];
 }
+
+type IssuePhase = "checklist" | "summary" | "submitting" | "result";
 
 /** Stable category grouping in first-seen order (server already sorts items). */
 function groupByCategory(items: ChecklistItem[]): CategoryGroup[] {
@@ -103,6 +108,22 @@ export function IssueChecklist({
   const [addonOpen, setAddonOpen] = useState(false);
   // Disables «Завершить» momentarily while the bulk action fans out.
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  // ── Outcome state for the сверка (Phase 2 wires the UI / Phase 3 the submit). ──
+  // COUNT lines explicitly marked ✗ (different from "untouched"); mirrors
+  // countIssued.
+  const [countWithheld, setCountWithheld] = useState<Set<string>>(new Set());
+  // UNIT units explicitly marked ✗ (WITHHELD).
+  const [withheldUnits, setWithheldUnits] = useState<Set<string>>(new Set());
+  // bookingItemIds of доборы added with acknowledgedConflict=true.
+  const [conflictAddons, setConflictAddons] = useState<Set<string>>(new Set());
+
+  // ── Phase machine (lives inside this component — no outer step). ─────────────
+  const [phase, setPhase] = useState<IssuePhase>("checklist");
+  const [summary, setSummary] = useState<SummaryResult | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [result, setResult] = useState<CompleteResult | null>(null);
 
   // Bind the hook to the session opened upstream; cancellation-safe.
   useEffect(() => {
