@@ -132,4 +132,32 @@ describe("warehouseScan — ISSUE completion", () => {
       status: "MAINTENANCE",
     });
   });
+
+  it("completeSession(ISSUE) transitions booking CONFIRMED → ISSUED", async () => {
+    const svc = await import("../services/warehouseScan");
+    const result = await svc.completeSession(sessionId, { createdBy: superAdminId });
+
+    // Physical changes already covered by other tests — we assert ONLY the
+    // booking transition here.
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+    expect(booking?.status).toBe("ISSUED");
+    // Session marked COMPLETED in the same transaction.
+    const session = await prisma.scanSession.findUnique({ where: { id: sessionId } });
+    expect(session?.status).toBe("COMPLETED");
+    // Sanity: returned shape includes scanned/expected.
+    expect(result.scanned).toBe(1);
+    expect(result.expected).toBe(2);
+  });
+
+  it("re-running completeSession on the now-ISSUED booking does not crash and keeps booking ISSUED", async () => {
+    const svc = await import("../services/warehouseScan");
+    // Session is already COMPLETED → completeSession refuses (existing guard).
+    await expect(
+      svc.completeSession(sessionId, { createdBy: superAdminId }),
+    ).rejects.toThrow(/должна быть активной/i);
+
+    // Booking still ISSUED — no rollback.
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+    expect(booking?.status).toBe("ISSUED");
+  });
 });

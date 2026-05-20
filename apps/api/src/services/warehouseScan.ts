@@ -265,6 +265,15 @@ export async function completeSession(
           await tx.bookingItemUnit.delete({ where: { id: reservation.id } });
         }
       }
+
+      // Перевод брони в статус ISSUED — финальный физический эффект выдачи.
+      // Идемпотентно при повторном вызове на ACTIVE-сессии: Prisma update
+      // просто запишет ту же строку. Гонка с другой сессией исключена
+      // ACTIVE-сессион-гардом из createSession.
+      await tx.booking.update({
+        where: { id: session.bookingId },
+        data: { status: "ISSUED" },
+      });
     } else {
       // RETURN: для каждого отсканированного юнита — AVAILABLE + returnedAt
       for (const scan of session.scans) {
@@ -301,6 +310,23 @@ export async function completeSession(
   });
 
   const createdBy = options?.createdBy ?? session.workerName;
+
+  // BOOKING_STATUS_CHANGED — best-effort, ВНЕ транзакции.
+  // AuditEntry.userId — FK на AdminUser, а workerName из WarehousePin не
+  // соответствует AdminUser.id → P2003 ожидаем и логируем. Аудит здесь —
+  // observability, не бизнес-инвариант: физический переход уже зафиксирован.
+  if (session.operation === "ISSUE") {
+    await writeAuditEntry({
+      userId: createdBy,
+      action: "BOOKING_STATUS_CHANGED",
+      entityType: "Booking",
+      entityId: session.bookingId,
+      before: { status: session.booking.status },
+      after: { status: "ISSUED", source: "warehouse-scan-issue", sessionId },
+    }).catch((err) =>
+      console.warn("[completeSession ISSUE] booking-status audit failed:", err),
+    );
+  }
 
   // После завершения транзакции — создаём карточки ремонта для поломанных единиц.
   // urgency не собирается в быстром UI → дефолт NORMAL.
