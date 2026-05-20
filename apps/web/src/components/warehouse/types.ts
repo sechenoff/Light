@@ -17,7 +17,7 @@
  * Steps of the scan flow. Parity with the existing page's state machine
  * (`apps/web/app/warehouse/scan/page.tsx` — `type Step`).
  */
-export type ScanStep = "login" | "operation" | "booking" | "checklist" | "summary";
+export type ScanStep = "login" | "operation" | "booking" | "checklist";
 
 export type ScanOperation = "ISSUE" | "RETURN";
 

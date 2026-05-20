@@ -500,8 +500,8 @@ export function IssueChecklist({
     );
   }
 
-  // ── Phase: summary («Сверка») ───────────────────────────────────────────────
-  if (phase === "summary") {
+  // ── Phase: summary («Сверка») / submitting (POST in flight) ────────────────
+  if (phase === "summary" || phase === "submitting") {
     const issuedTotal = counts.issuedUnits + counts.issuedLines;
     const readyTotal = issuedTotal + counts.addons; // emerald badge: «N из M в брони + K доборов»
     const expectedM =
