@@ -42,6 +42,82 @@ function displayNo(id: string): string {
   return "#" + id.slice(-6).toUpperCase();
 }
 
+/** Human label for the unit status that blocks issuance. */
+function statusLabel(status: string): string {
+  switch (status) {
+    case "MAINTENANCE":
+      return "в ремонте";
+    case "MISSING":
+      return "в Потеряшках";
+    case "RETIRED":
+      return "списан";
+    case "ISSUED":
+      return "уже выдан";
+    default:
+      return status.toLowerCase();
+  }
+}
+
+function StatRow({
+  variant,
+  label,
+  value,
+}: {
+  variant: "ok" | "neutral" | "warn" | "bad";
+  label: string;
+  value: number;
+}) {
+  const cls =
+    variant === "ok"
+      ? "border-emerald-border bg-emerald-soft text-emerald"
+      : variant === "warn"
+        ? "border-amber-border bg-amber-soft text-amber"
+        : variant === "bad"
+          ? "border-rose-border bg-rose-soft text-rose"
+          : "border-border bg-surface text-ink";
+  return (
+    <div
+      className={`mx-3 flex items-center justify-between rounded-lg border px-3 py-2 text-[13px] ${cls}`}
+    >
+      <span>{label}</span>
+      <span className="mono-num font-semibold">{value}</span>
+    </div>
+  );
+}
+
+/** Compact «первые 5 + ... и ещё K» list under a stat row. */
+function DetailList({
+  variant,
+  items,
+}: {
+  variant: "neutral" | "warn" | "bad";
+  items: string[];
+}) {
+  if (items.length === 0) return null;
+  const head = items.slice(0, 5);
+  const rest = items.length - head.length;
+  const cls =
+    variant === "bad"
+      ? "border-rose-border text-rose"
+      : variant === "warn"
+        ? "border-amber-border text-amber"
+        : "border-border text-ink-2";
+  return (
+    <div
+      className={`mx-3 mt-1 rounded-lg border border-dashed bg-surface px-2.5 py-2 text-[11px] leading-snug ${cls}`}
+    >
+      {head.map((line, i) => (
+        <p key={i}>{line}</p>
+      ))}
+      {rest > 0 && (
+        <p className="mt-1 opacity-80">
+          …и ещё {rest}
+        </p>
+      )}
+    </div>
+  );
+}
+
 interface CategoryGroup {
   category: string;
   items: ChecklistItem[];
@@ -147,6 +223,80 @@ export function IssueChecklist({
     [state, countIssued],
   );
 
+  const counts = useMemo(() => {
+    if (!state) {
+      return {
+        issuedUnits: 0,
+        issuedLines: 0,
+        withheld: 0,
+        addons: 0,
+        addonsWithConflict: 0,
+        untouchedUnitLines: [] as string[],
+        untouchedCountLines: [] as string[],
+        addonConflictLines: [] as string[],
+      };
+    }
+    let issuedUnits = 0;
+    let issuedLines = 0;
+    let withheld = 0;
+    let addons = 0;
+    let addonsWithConflict = 0;
+    const untouchedUnitLines: string[] = [];
+    const untouchedCountLines: string[] = [];
+    const addonConflictLines: string[] = [];
+
+    for (const item of state.items) {
+      if (item.isExtra) {
+        addons += 1;
+        if (conflictAddons.has(item.bookingItemId)) {
+          addonsWithConflict += 1;
+          addonConflictLines.push(
+            `${item.equipmentName} — выдан под ответственность`,
+          );
+        }
+        // Addons are counted in their own «＋ Доборы» row — do NOT double-count
+        // their units/quantity into issuedUnits/issuedLines.
+        continue;
+      }
+      if (item.trackingMode === "UNIT" && item.units && item.units.length > 0) {
+        const total = item.units.length;
+        item.units.forEach((u, idx) => {
+          if (u.checked) {
+            issuedUnits += 1;
+            return;
+          }
+          if (withheldUnits.has(u.unitId)) {
+            withheld += 1;
+            return;
+          }
+          // Untouched UNIT.
+          untouchedUnitLines.push(
+            `${item.equipmentName} · прибор ${idx + 1} из ${total}`,
+          );
+        });
+      } else {
+        if (countIssued.has(item.bookingItemId)) {
+          issuedLines += 1;
+        } else if (countWithheld.has(item.bookingItemId)) {
+          withheld += 1;
+        } else {
+          untouchedCountLines.push(`${item.equipmentName} · ×${item.quantity}`);
+        }
+      }
+    }
+
+    return {
+      issuedUnits,
+      issuedLines,
+      withheld,
+      addons,
+      addonsWithConflict,
+      untouchedUnitLines,
+      untouchedCountLines,
+      addonConflictLines,
+    };
+  }, [state, countIssued, countWithheld, withheldUnits, conflictAddons]);
+
   function setCount(bookingItemId: string, next: IssueValue) {
     setCountIssued((prev) => {
       const n = new Set(prev);
@@ -243,6 +393,29 @@ export function IssueChecklist({
     void refresh();
   }
 
+  useEffect(() => {
+    if (phase !== "summary") return;
+    let cancelled = false;
+    setSummaryError(null);
+    scanApi
+      .getSummary(sessionId)
+      .then((s) => {
+        if (cancelled) return;
+        setSummary(s);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const msg =
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message: unknown }).message)
+            : "Не удалось загрузить сверку";
+        setSummaryError(msg);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, sessionId]);
+
   // ── States ──────────────────────────────────────────────────────────────────
 
   if (loading && !state) {
@@ -294,6 +467,141 @@ export function IssueChecklist({
   }
 
   if (!state) return null;
+
+  // ── Phase: summary («Сверка») ───────────────────────────────────────────────
+  if (phase === "summary") {
+    const issuedTotal = counts.issuedUnits + counts.issuedLines;
+    const readyTotal = issuedTotal + counts.addons; // emerald badge: «N из M в брони + K доборов»
+    const expectedM =
+      state.items.filter((i) => !i.isExtra).length || progress.total;
+    const reserved = summary?.reservedButUnavailable ?? [];
+
+    return (
+      <div className="flex min-h-full flex-1 flex-col">
+        <div className="flex-1 px-3 pb-4 pt-3 lg:px-5">
+          <div className="mx-auto w-full max-w-[460px]">
+            {/* Emerald badge ─ «Готово к выдаче» */}
+            <div className="rounded-lg border border-emerald-border bg-emerald-soft px-4 py-4 text-center">
+              <p className="eyebrow text-emerald">Готово к выдаче</p>
+              <p className="mono-num mt-1 text-[34px] font-semibold leading-none text-emerald">
+                {readyTotal}
+              </p>
+              <p className="mt-1 text-[12px] text-emerald">
+                из {expectedM} в брони
+                {counts.addons > 0 ? ` + ${counts.addons} доборов` : ""}
+              </p>
+            </div>
+
+            {summaryError && (
+              <div
+                role="alert"
+                className="mt-3 rounded-lg border border-rose-border bg-rose-soft px-3 py-2 text-[12px] text-rose"
+              >
+                {summaryError}
+              </div>
+            )}
+
+            {/* Stat rows */}
+            <div className="mt-3 space-y-1.5">
+              <StatRow variant="ok" label="✓ Выдаём" value={issuedTotal} />
+              {counts.addons > 0 && (
+                <StatRow variant="ok" label="＋ Доборы" value={counts.addons} />
+              )}
+              {counts.withheld > 0 && (
+                <StatRow
+                  variant="neutral"
+                  label="✗ Не выдаём"
+                  value={counts.withheld}
+                />
+              )}
+              {counts.untouchedUnitLines.length +
+                counts.untouchedCountLines.length >
+                0 && (
+                <>
+                  <StatRow
+                    variant="warn"
+                    label="⚠ Без отметки — пропустим"
+                    value={
+                      counts.untouchedUnitLines.length +
+                      counts.untouchedCountLines.length
+                    }
+                  />
+                  <DetailList
+                    variant="warn"
+                    items={[
+                      ...counts.untouchedUnitLines,
+                      ...counts.untouchedCountLines,
+                    ]}
+                  />
+                </>
+              )}
+              {reserved.length > 0 && (
+                <>
+                  <StatRow
+                    variant="bad"
+                    label="⛔ Резерв недоступен"
+                    value={reserved.length}
+                  />
+                  <DetailList
+                    variant="bad"
+                    items={reserved.map(
+                      (r) =>
+                        `${r.equipmentName} · ${r.ordinalLabel} → ${statusLabel(r.status)}`,
+                    )}
+                  />
+                </>
+              )}
+              {counts.addonsWithConflict > 0 && (
+                <>
+                  <StatRow
+                    variant="neutral"
+                    label="＋ Доборы с предупреждением"
+                    value={counts.addonsWithConflict}
+                  />
+                  <DetailList
+                    variant="warn"
+                    items={counts.addonConflictLines}
+                  />
+                </>
+              )}
+            </div>
+
+            {submitError && (
+              <div
+                role="alert"
+                className="mt-3 rounded-lg border border-rose-border bg-rose-soft px-3 py-2 text-[12px] text-rose"
+              >
+                Не получилось завершить выдачу: {submitError}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sticky footer */}
+        <div className="sticky bottom-0 flex gap-2 border-t border-border bg-surface px-3 py-3 lg:px-5">
+          <button
+            type="button"
+            onClick={() => setPhase("checklist")}
+            className="shrink-0 rounded-lg border border-border bg-surface px-3 py-3 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-muted"
+          >
+            ← К чек-листу
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              // Wired in Task 9.
+              setPhase("submitting");
+            }}
+            disabled={phase !== "summary"}
+            aria-label="Подтвердить выдачу"
+            className="flex-1 rounded-lg bg-accent px-4 py-3 text-center text-[13px] font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
+          >
+            Подтвердить выдачу →
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -399,15 +707,13 @@ export function IssueChecklist({
       <div className="sticky bottom-0 border-t border-border bg-surface px-2.5 py-3 lg:px-4">
         <button
           type="button"
-          onClick={() => onComplete?.()}
+          onClick={() => setPhase("summary")}
           disabled={bulkBusy}
           aria-label={`Завершить выдачу — ${projectName || "бронь"}`}
           className="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
         >
           Завершить выдачу →
         </button>
-        {/* TODO(Task 7/8): wire issue completion (POST /complete) — this only
-            advances the flow; completion semantics live in the summary task. */}
       </div>
     </div>
   );

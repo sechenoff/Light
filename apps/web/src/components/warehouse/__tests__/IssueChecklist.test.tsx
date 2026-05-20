@@ -219,27 +219,24 @@ describe("IssueChecklist", () => {
     await waitFor(() => expect(checkSpy).toHaveBeenCalledWith("u1"));
   });
 
-  it("renders «＋ Добор» and a sticky «Завершить выдачу» that calls onComplete", async () => {
-    const onComplete = vi.fn();
+  it("renders «＋ Добор» and a sticky «Завершить выдачу» that enters the сверка phase", async () => {
     render(
       <IssueChecklist
         sessionId="s1"
         projectName="Орбита"
         onBack={() => {}}
-        onComplete={onComplete}
       />,
     );
 
-    // At least one Добор control (mobile dashed bar; desktop chip is hidden by CSS).
     expect(
       (await screen.findAllByRole("button", { name: /Добор/ })).length,
     ).toBeGreaterThanOrEqual(1);
 
-    const finish = screen.getByRole("button", {
-      name: /Завершить выдачу/,
-    });
+    const finish = screen.getByRole("button", { name: /Завершить выдачу/ });
     finish.click();
-    expect(onComplete).toHaveBeenCalledTimes(1);
+
+    // Phase entered, badge visible.
+    expect(await screen.findByText(/Готово к выдаче/)).toBeInTheDocument();
   });
 
   it("shows the loading skeleton while state is null and loading", async () => {
