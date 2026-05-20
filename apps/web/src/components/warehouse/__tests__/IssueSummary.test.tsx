@@ -203,4 +203,66 @@ describe("IssueChecklist · Сверка phase", () => {
     });
     expect(confirm).not.toBeDisabled();
   });
+
+  it("«Подтвердить выдачу» POSTs /complete and renders the emerald result on success", async () => {
+    const completeSpy = vi.fn().mockResolvedValue({
+      sessionId: "s1",
+      operation: "ISSUE",
+      scannedCount: 5,
+      expectedCount: 7,
+      missingItems: [],
+      substitutedItems: [{ id: "u8", name: "Astera Titan Tube", barcode: "X" }],
+      reservedButUnavailable: [],
+      createdRepairIds: [],
+      failedBrokenUnits: [],
+      createdProblemItemIds: [],
+      failedProblemUnits: [],
+    });
+    const apiMod = await import("../api");
+    // @ts-expect-error — override the read-only `as const` object for the test.
+    apiMod.scanApi.complete = completeSpy;
+
+    render(<IssueChecklist sessionId="s1" projectName="Орбита" onBack={() => {}} />);
+    (await screen.findByRole("button", { name: /Завершить выдачу/ })).click();
+    await screen.findByText(/Готово к выдаче/);
+    (
+      await screen.findByRole("button", { name: /Подтвердить выдачу/ })
+    ).click();
+
+    // POST happened with empty body.
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledWith("s1", {}));
+    // Emerald result header.
+    expect(await screen.findByText("Выдача оформлена")).toBeInTheDocument();
+    // info-block visible.
+    expect(
+      screen.getByText(/Бронь переведена в «Выдана»/),
+    ).toBeInTheDocument();
+  });
+
+  it("network failure on submit keeps the сверка visible with a rose alert + retry", async () => {
+    const apiMod = await import("../api");
+    // @ts-expect-error — see above
+    apiMod.scanApi.complete = vi.fn().mockRejectedValue({
+      status: 500,
+      message: "boom",
+      code: null,
+      details: null,
+    });
+
+    render(<IssueChecklist sessionId="s1" projectName="Орбита" onBack={() => {}} />);
+    (await screen.findByRole("button", { name: /Завершить выдачу/ })).click();
+    await screen.findByText(/Готово к выдаче/);
+    (
+      await screen.findByRole("button", { name: /Подтвердить выдачу/ })
+    ).click();
+
+    expect(
+      await screen.findByText(/Не получилось завершить выдачу: boom/),
+    ).toBeInTheDocument();
+    // Сверка is still visible and «Подтвердить» is re-enabled.
+    expect(screen.getByText(/Готово к выдаче/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Подтвердить выдачу/ }),
+    ).not.toBeDisabled();
+  });
 });

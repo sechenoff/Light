@@ -468,6 +468,38 @@ export function IssueChecklist({
 
   if (!state) return null;
 
+  async function submitToComplete() {
+    if (phase !== "summary") return;
+    setSubmitError(null);
+    setPhase("submitting");
+    try {
+      const res = await scanApi.complete(sessionId, {});
+      setResult(res);
+      setPhase("result");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: unknown }).message)
+          : "Сеть недоступна";
+      setSubmitError(msg);
+      setPhase("summary");
+    }
+  }
+
+  // ── Phase: result («Выдача оформлена[ с замечаниями]») ───────────────────────
+  if (phase === "result" && result) {
+    return (
+      <IssueResultView
+        result={result}
+        projectName={projectName}
+        issuedCount={counts.issuedUnits + counts.issuedLines}
+        addonsCount={counts.addons}
+        substitutedCount={result.substitutedItems?.length ?? 0}
+        onDone={() => onComplete?.()}
+      />
+    );
+  }
+
   // ── Phase: summary («Сверка») ───────────────────────────────────────────────
   if (phase === "summary") {
     const issuedTotal = counts.issuedUnits + counts.issuedLines;
@@ -588,11 +620,8 @@ export function IssueChecklist({
           </button>
           <button
             type="button"
-            onClick={() => {
-              // Wired in Task 9.
-              setPhase("submitting");
-            }}
-            disabled={phase !== "summary"}
+            onClick={() => void submitToComplete()}
+            disabled={phase === "submitting"}
             aria-label="Подтвердить выдачу"
             className="flex-1 rounded-lg bg-accent px-4 py-3 text-center text-[13px] font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
           >
