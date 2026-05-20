@@ -144,8 +144,13 @@ export function AddonSearch({
   sessionId: string;
   /** Display id of the booking being augmented (header context). */
   bookingNo?: string;
-  /** Called after an article is added so the checklist can refresh. */
-  onAdded: () => void;
+  /**
+   * Called after an article is added so the checklist can refresh.
+   * `hadConflict=true` ⇔ the operator pressed «Выдать под ответственность» —
+   * IssueChecklist marks the new bookingItemId as a conflict добор so the
+   * сверка can list it under «＋ Доборы с предупреждением».
+   */
+  onAdded: (bookingItemId: string, hadConflict: boolean) => void;
   /** Dismiss the sheet / inline panel. */
   onClose: () => void;
 }) {
@@ -285,10 +290,15 @@ export function AddonSearch({
       setAdding(r.equipmentId);
       setError(null);
       try {
-        await scanApi.addItem(sessionId, r.equipmentId, 1, ack ? true : undefined);
+        const added = await scanApi.addItem(
+          sessionId,
+          r.equipmentId,
+          1,
+          ack ? true : undefined,
+        );
         setActive(null);
         setAddedName(r.name);
-        onAdded();
+        onAdded(added.bookingItemId, ack);
       } catch (err: unknown) {
         if (
           isScanApiError(err) &&

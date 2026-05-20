@@ -41,14 +41,17 @@ vi.mock("../AddonSearch", () => ({
   }: {
     sessionId: string;
     bookingNo?: string;
-    onAdded: () => void;
+    onAdded: (bookingItemId: string, hadConflict: boolean) => void;
     onClose: () => void;
   }) => (
     <div data-testid="addon-search">
       <span>addon:{sessionId}</span>
       <span>no:{bookingNo}</span>
-      <button type="button" onClick={onAdded}>
+      <button type="button" onClick={() => onAdded("bi-added", false)}>
         stub-add
+      </button>
+      <button type="button" onClick={() => onAdded("bi-conflict", true)}>
+        stub-add-conflict
       </button>
       <button type="button" onClick={onClose}>
         stub-close

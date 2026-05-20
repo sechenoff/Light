@@ -174,10 +174,10 @@ export function IssueChecklist({
     setAddonOpen(true);
   }
 
-  function handleAddonAdded() {
+  function handleAddonAdded(_bookingItemId: string, _hadConflict: boolean) {
     // Re-fetch checklist state so the freshly added добор shows up in the
     // list (the hook's per-id guard / refreshBlocked keeps this safe vs any
-    // in-flight check/uncheck).
+    // in-flight check/uncheck). Conflict-id tracking is wired in Task 7.
     void refresh();
   }
 
