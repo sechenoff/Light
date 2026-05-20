@@ -147,12 +147,18 @@ export function IssueChecklist({
     [state, countIssued],
   );
 
-  function setCount(bookingItemId: string, issued: boolean) {
+  function setCount(bookingItemId: string, next: IssueValue) {
     setCountIssued((prev) => {
-      const next = new Set(prev);
-      if (issued) next.add(bookingItemId);
-      else next.delete(bookingItemId);
-      return next;
+      const n = new Set(prev);
+      if (next === "ISSUED") n.add(bookingItemId);
+      else n.delete(bookingItemId);
+      return n;
+    });
+    setCountWithheld((prev) => {
+      const n = new Set(prev);
+      if (next === "WITHHELD") n.add(bookingItemId);
+      else n.delete(bookingItemId);
+      return n;
     });
   }
 
@@ -166,6 +172,8 @@ export function IssueChecklist({
         .filter((i) => i.trackingMode !== "UNIT" || !i.units)
         .map((i) => i.bookingItemId);
       setCountIssued(new Set(allCountIds));
+      setCountWithheld(new Set());
+      setWithheldUnits(new Set());
 
       const pending: Promise<void>[] = [];
       for (const item of state.items) {
@@ -183,22 +191,55 @@ export function IssueChecklist({
   }
 
   function handleUnitChange(unitId: string, next: IssueValue) {
-    // ISSUED → persist via hook; WITHHELD / neutral → ensure not checked.
+    // Three-way: ISSUED ⇒ persist via hook, WITHHELD ⇒ ✗-set,
+    // null ⇒ clear both (server-side uncheck + local ✗-set delete).
     if (next === "ISSUED") {
+      setWithheldUnits((prev) => {
+        if (!prev.has(unitId)) return prev;
+        const n = new Set(prev);
+        n.delete(unitId);
+        return n;
+      });
       void check(unitId).catch(() => undefined);
-    } else {
-      void uncheck(unitId).catch(() => undefined);
+      return;
     }
+    if (next === "WITHHELD") {
+      // Make sure it's NOT checked server-side either.
+      void uncheck(unitId).catch(() => undefined);
+      setWithheldUnits((prev) => {
+        if (prev.has(unitId)) return prev;
+        const n = new Set(prev);
+        n.add(unitId);
+        return n;
+      });
+      return;
+    }
+    // null — neutral.
+    setWithheldUnits((prev) => {
+      if (!prev.has(unitId)) return prev;
+      const n = new Set(prev);
+      n.delete(unitId);
+      return n;
+    });
+    void uncheck(unitId).catch(() => undefined);
   }
 
   function handleAddonClick() {
     setAddonOpen(true);
   }
 
-  function handleAddonAdded(_bookingItemId: string, _hadConflict: boolean) {
+  function handleAddonAdded(bookingItemId: string, hadConflict: boolean) {
+    if (hadConflict) {
+      setConflictAddons((prev) => {
+        if (prev.has(bookingItemId)) return prev;
+        const n = new Set(prev);
+        n.add(bookingItemId);
+        return n;
+      });
+    }
     // Re-fetch checklist state so the freshly added добор shows up in the
     // list (the hook's per-id guard / refreshBlocked keeps this safe vs any
-    // in-flight check/uncheck). Conflict-id tracking is wired in Task 7.
+    // in-flight check/uncheck).
     void refresh();
   }
 
@@ -293,30 +334,39 @@ export function IssueChecklist({
               {group.items.map((item) => {
                 if (item.trackingMode === "UNIT" && item.units) {
                   const total = item.units.length;
-                  return item.units.map((u, idx) => (
-                    <UnitRow
-                      key={u.unitId}
-                      name={item.equipmentName}
-                      ordinalLabel={`прибор ${idx + 1} из ${total}`}
-                      mode="ISSUE"
-                      value={u.checked ? "ISSUED" : null}
-                      onChange={(next) => handleUnitChange(u.unitId, next)}
-                      disabled={bulkBusy}
-                    />
-                  ));
+                  return item.units.map((u, idx) => {
+                    const value: IssueValue = u.checked
+                      ? "ISSUED"
+                      : withheldUnits.has(u.unitId)
+                        ? "WITHHELD"
+                        : null;
+                    return (
+                      <UnitRow
+                        key={u.unitId}
+                        name={item.equipmentName}
+                        ordinalLabel={`прибор ${idx + 1} из ${total}`}
+                        mode="ISSUE"
+                        value={value}
+                        onChange={(next) => handleUnitChange(u.unitId, next)}
+                        disabled={bulkBusy}
+                      />
+                    );
+                  });
                 }
                 // COUNT line — all-or-nothing, ×N quantity label.
-                const issued = countIssued.has(item.bookingItemId);
+                const value: IssueValue = countIssued.has(item.bookingItemId)
+                  ? "ISSUED"
+                  : countWithheld.has(item.bookingItemId)
+                    ? "WITHHELD"
+                    : null;
                 return (
                   <UnitRow
                     key={item.bookingItemId}
                     name={item.equipmentName}
                     ordinalLabel={`×${item.quantity}`}
                     mode="ISSUE"
-                    value={issued ? "ISSUED" : null}
-                    onChange={(next) =>
-                      setCount(item.bookingItemId, next === "ISSUED")
-                    }
+                    value={value}
+                    onChange={(next) => setCount(item.bookingItemId, next)}
                     disabled={bulkBusy}
                   />
                 );
