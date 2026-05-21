@@ -25,7 +25,7 @@
  */
 
 import type { CompleteResult } from "./types";
-import { formatRub, pluralize } from "../../lib/format";
+import { formatRub, formatExpenseRub, pluralize } from "../../lib/format";
 
 export function IssueResultView({
   result,
@@ -167,49 +167,120 @@ export function IssueResultView({
             </div>
           )}
 
-          {Number(result.addonAfterDiscount) > 0 && (
-            <div className="mt-4 rounded-lg border border-border bg-surface px-3 py-3">
-              <div className="eyebrow mb-2">Финансы</div>
-              <dl className="space-y-1 text-[13px] text-ink">
-                <div className="flex justify-between">
-                  <dt className="text-ink-2">Согласовано:</dt>
-                  <dd className="mono-num">
-                    {formatRub(result.mainAfterDiscount)}
-                  </dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-ink-2">Доб-смета:</dt>
-                  <dd className="mono-num">
-                    + {formatRub(result.addonAfterDiscount)}
-                  </dd>
-                </div>
-                <div className="flex justify-between border-t border-border pt-1 font-semibold">
-                  <dt>К оплате:</dt>
-                  <dd className="mono-num">
-                    {formatRub(result.finalAmount)}
-                  </dd>
-                </div>
-              </dl>
-              <div className="mt-3 flex gap-2">
-                <a
-                  href={`/api/bookings/${bookingId}/full-estimate/export/pdf`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex-1 rounded border border-border bg-surface px-3 py-2 text-center text-[12px] font-medium text-ink-2 hover:bg-surface-muted"
-                >
-                  Скачать смету (общая) PDF
-                </a>
-                <a
-                  href={`/api/addon-estimates/${bookingId}/export/pdf`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex-1 rounded border border-border bg-surface px-3 py-2 text-center text-[12px] font-medium text-ink-2 hover:bg-surface-muted"
-                >
-                  Скачать доб-смета PDF
-                </a>
+          {(() => {
+            // Task 13: «исходно / снято / фактически» + OVERPAID-callout.
+            //
+            // Финансовый блок раньше показывался ТОЛЬКО при `addonAfterDiscount > 0`
+            // (исторически — для отображения доб-сметы). Теперь он также должен
+            // появляться при main-reduction (склад снял позиции на выдаче) и при
+            // OVERPAID — иначе оператор не увидит «Снято на выдаче» и «К возврату».
+            const mainAfter = Number(result.mainAfterDiscount);
+            const mainOriginal = Number(result.mainOriginalAfterDiscount);
+            const addonAfter = Number(result.addonAfterDiscount);
+            // Защищаемся от NaN (любое поле может прийти не-числом) — Number.isFinite
+            // даёт false и для NaN, и для Infinity; в этом случае reduction не считаем.
+            const hasMainReduction =
+              Number.isFinite(mainAfter) &&
+              Number.isFinite(mainOriginal) &&
+              mainAfter < mainOriginal;
+            const removalAmount = hasMainReduction ? mainOriginal - mainAfter : 0;
+            const hasAddon = Number.isFinite(addonAfter) && addonAfter > 0;
+            const isOverpaid = result.paymentStatus === "OVERPAID";
+            const paid = Number(result.amountPaid ?? "0");
+            const finalNum = Number(result.finalAmount);
+            // Переплата = |paid − final|. Используем модуль на случай рассинхрона
+            // (paymentStatus="OVERPAID" но paid≤final) — UI не должен показать «0».
+            const overpayment =
+              Number.isFinite(paid) && Number.isFinite(finalNum)
+                ? Math.abs(paid - finalNum)
+                : 0;
+
+            if (!hasMainReduction && !hasAddon && !isOverpaid) return null;
+
+            return (
+              <div className="mt-4 rounded-lg border border-border bg-surface px-3 py-3">
+                <div className="eyebrow mb-2">Финансы</div>
+                <dl className="space-y-1 text-[13px] text-ink">
+                  {hasMainReduction ? (
+                    <>
+                      <div className="flex justify-between">
+                        <dt className="text-ink-2">Согласовано (исходно):</dt>
+                        <dd className="mono-num">
+                          {formatRub(result.mainOriginalAfterDiscount)}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-ink-2">Снято на выдаче:</dt>
+                        <dd className="mono-num text-rose">
+                          {formatExpenseRub(removalAmount)}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between font-semibold">
+                        <dt className="text-ink-2">Согласовано (фактически):</dt>
+                        <dd className="mono-num">
+                          {formatRub(result.mainAfterDiscount)}
+                        </dd>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between">
+                      <dt className="text-ink-2">Согласовано:</dt>
+                      <dd className="mono-num">
+                        {formatRub(result.mainAfterDiscount)}
+                      </dd>
+                    </div>
+                  )}
+                  {hasAddon && (
+                    <div className="flex justify-between">
+                      <dt className="text-ink-2">Доб-смета:</dt>
+                      <dd className="mono-num">
+                        + {formatRub(result.addonAfterDiscount)}
+                      </dd>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-border pt-1 font-semibold">
+                    <dt>К оплате:</dt>
+                    <dd className="mono-num">
+                      {formatRub(result.finalAmount)}
+                    </dd>
+                  </div>
+                </dl>
+
+                {isOverpaid && (
+                  <div
+                    role="status"
+                    className="mt-3 rounded border border-rose-border bg-rose-soft px-3 py-2 text-rose"
+                  >
+                    <p className="text-[13px] font-semibold">
+                      Переплата: {formatRub(overpayment)}
+                    </p>
+                    <p className="text-[11px]">К возврату клиенту</p>
+                  </div>
+                )}
+
+                {hasAddon && (
+                  <div className="mt-3 flex gap-2">
+                    <a
+                      href={`/api/bookings/${bookingId}/full-estimate/export/pdf`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1 rounded border border-border bg-surface px-3 py-2 text-center text-[12px] font-medium text-ink-2 hover:bg-surface-muted"
+                    >
+                      Скачать смету (общая) PDF
+                    </a>
+                    <a
+                      href={`/api/addon-estimates/${bookingId}/export/pdf`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1 rounded border border-border bg-surface px-3 py-2 text-center text-[12px] font-medium text-ink-2 hover:bg-surface-muted"
+                    >
+                      Скачать доб-смета PDF
+                    </a>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
 
