@@ -13,6 +13,7 @@ vi.mock("../../prisma", () => ({
   prisma: {
     booking: {
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
     scanSession: {
       findFirst: vi.fn(),

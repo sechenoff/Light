@@ -9,13 +9,12 @@
  *   operation → OperationStep        (ISSUE / RETURN picker)
  *   booking   → BookingList          (filter-less, date-grouped)
  *   checklist → IssueChecklist (ISSUE) / ReturnChecklist (RETURN, Task 7.2:
- *               3-outcome приёмка + inline completion result)
- *   summary   → SummaryStep          (ISSUE-path placeholder; RETURN shows its
- *               completion result inline in ReturnChecklist)
+ *               3-outcome приёмка + inline completion result). Both checklists
+ *               own their own completion finale; there is no outer summary step.
  *
  * Preserved verbatim from the previous implementation:
  *  - token contract: sessionStorage "warehouse_token" (Bearer) via api.ts
- *  - step machine values: login|operation|booking|checklist|summary
+ *  - step machine values: login|operation|booking|checklist
  *  - PIN-login flow + SA/WAREHOUSE "main session" bypass (skip login,
  *    expired token → redirect to /login)
  *  - session creation on booking tap → advance to checklist
@@ -34,7 +33,6 @@ import { OperationStep } from "../../../src/components/warehouse/OperationStep";
 import { BookingList } from "../../../src/components/warehouse/BookingList";
 import { IssueChecklist } from "../../../src/components/warehouse/IssueChecklist";
 import { ReturnChecklist } from "../../../src/components/warehouse/ReturnChecklist";
-import { SummaryStep } from "../../../src/components/warehouse/SummaryStep";
 import { useScanSession } from "../../../src/components/warehouse/useScanSession";
 import { scanApi } from "../../../src/components/warehouse/api";
 import type {
@@ -168,7 +166,7 @@ function WarehouseScanInner({
               sessionId={sessionId}
               projectName={projectName}
               onBack={backToBooking}
-              onComplete={() => goStep("summary")}
+              onComplete={backToBooking}
             />
           ) : (
             <ReturnChecklist
@@ -183,25 +181,7 @@ function WarehouseScanInner({
     );
   }
 
-  if (step === "summary" && sessionId) {
-    return (
-      <ScanShell
-        eyebrow={`${opLabel} · итог`}
-        title={headerTitle}
-        workerName={workerName}
-        onBack={() => goStep("checklist")}
-        list={bookingListSlot}
-        detail={
-          <SummaryStep
-            sessionId={sessionId}
-            onBack={() => goStep("checklist")}
-          />
-        }
-      />
-    );
-  }
-
-  // Defensive fallback (e.g. checklist/summary without a session).
+  // Defensive fallback (e.g. checklist without a session).
   return (
     <ScanShell
       eyebrow={`Склад · ${opLabel}`}

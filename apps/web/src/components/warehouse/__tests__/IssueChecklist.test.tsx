@@ -7,14 +7,36 @@ import type { UseScanSessionResult } from "../useScanSession";
 // The real hook makes network calls; here we drive `state` directly and spy on
 // the optimistic `check`/`uncheck` so we can assert «Выдать всё» behaviour.
 
-const checkSpy = vi.fn(async () => {});
-const uncheckSpy = vi.fn(async () => {});
-const openSessionSpy = vi.fn(async () => {});
-const refreshSpy = vi.fn(async () => {});
-
 let mockState: ChecklistState | null = null;
 let mockLoading = false;
 let mockError: UseScanSessionResult["error"] = null;
+
+/** Optimistically flip `unit.checked` in `mockState` — mirrors the real hook. */
+function applyUnitCheck(unitId: string, checked: boolean) {
+  if (!mockState) return;
+  mockState = {
+    ...mockState,
+    items: mockState.items.map((item) =>
+      item.units
+        ? {
+            ...item,
+            units: item.units.map((u) =>
+              u.unitId === unitId ? { ...u, checked } : u,
+            ),
+          }
+        : item,
+    ),
+  };
+}
+
+const checkSpy = vi.fn(async (unitId: string) => {
+  applyUnitCheck(unitId, true);
+});
+const uncheckSpy = vi.fn(async (unitId: string) => {
+  applyUnitCheck(unitId, false);
+});
+const openSessionSpy = vi.fn(async () => {});
+const refreshSpy = vi.fn(async () => {});
 
 vi.mock("../useScanSession", () => ({
   useScanSession: (): Partial<UseScanSessionResult> => ({
@@ -41,14 +63,17 @@ vi.mock("../AddonSearch", () => ({
   }: {
     sessionId: string;
     bookingNo?: string;
-    onAdded: () => void;
+    onAdded: (bookingItemId: string, hadConflict: boolean) => void;
     onClose: () => void;
   }) => (
     <div data-testid="addon-search">
       <span>addon:{sessionId}</span>
       <span>no:{bookingNo}</span>
-      <button type="button" onClick={onAdded}>
+      <button type="button" onClick={() => onAdded("bi-added", false)}>
         stub-add
+      </button>
+      <button type="button" onClick={() => onAdded("bi-conflict", true)}>
+        stub-add-conflict
       </button>
       <button type="button" onClick={onClose}>
         stub-close
@@ -194,27 +219,24 @@ describe("IssueChecklist", () => {
     await waitFor(() => expect(checkSpy).toHaveBeenCalledWith("u1"));
   });
 
-  it("renders «＋ Добор» and a sticky «Завершить выдачу» that calls onComplete", async () => {
-    const onComplete = vi.fn();
+  it("renders «＋ Добор» and a sticky «Завершить выдачу» that enters the сверка phase", async () => {
     render(
       <IssueChecklist
         sessionId="s1"
         projectName="Орбита"
         onBack={() => {}}
-        onComplete={onComplete}
       />,
     );
 
-    // At least one Добор control (mobile dashed bar; desktop chip is hidden by CSS).
     expect(
       (await screen.findAllByRole("button", { name: /Добор/ })).length,
     ).toBeGreaterThanOrEqual(1);
 
-    const finish = screen.getByRole("button", {
-      name: /Завершить выдачу/,
-    });
+    const finish = screen.getByRole("button", { name: /Завершить выдачу/ });
     finish.click();
-    expect(onComplete).toHaveBeenCalledTimes(1);
+
+    // Phase entered, badge visible.
+    expect(await screen.findByText(/Готово к выдаче/)).toBeInTheDocument();
   });
 
   it("shows the loading skeleton while state is null and loading", async () => {
@@ -272,5 +294,58 @@ describe("IssueChecklist", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("addon-search")).not.toBeInTheDocument(),
     );
+  });
+
+  it("tapping ✗ on a UNIT row tracks the unit as WITHHELD (visible later in сверка)", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    const withhold = await screen.findByRole("button", {
+      name: /Aputure 600D \(прибор 1 из 2\) — отметить «не выдаём»/,
+    });
+    withhold.click();
+
+    // No outward signal yet (UI for the сверка lands in Task 8), but the
+    // segment becomes aria-pressed and remains so on re-render.
+    await waitFor(() => expect(withhold).toHaveAttribute("aria-pressed", "true"));
+  });
+
+  it("tapping ✗ then ✓ on the same UNIT row clears the WITHHELD and issues it", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    const withhold = await screen.findByRole("button", {
+      name: /Aputure 600D \(прибор 1 из 2\) — отметить «не выдаём»/,
+    });
+    const issued = await screen.findByRole("button", {
+      name: /Aputure 600D \(прибор 1 из 2\) — отметить выданным/,
+    });
+    withhold.click();
+    await waitFor(() =>
+      expect(withhold).toHaveAttribute("aria-pressed", "true"),
+    );
+    issued.click();
+    await waitFor(() => {
+      expect(issued).toHaveAttribute("aria-pressed", "true");
+      expect(withhold).toHaveAttribute("aria-pressed", "false");
+    });
+    expect(checkSpy).toHaveBeenCalledWith("u1");
+  });
+
+  it("AddonSearch onAdded(bi, hadConflict=true) tracks the bookingItemId for the сверка", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    (await screen.findAllByRole("button", { name: /Добор/ }))[0].click();
+    await screen.findByTestId("addon-search");
+    screen.getByRole("button", { name: "stub-add-conflict" }).click();
+
+    // No outward signal yet (UI in Task 8), but the session refresh must
+    // still fire — keeps the existing «refresh» test green and proves the
+    // handler signature is correct.
+    await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(1));
   });
 });

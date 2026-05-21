@@ -161,6 +161,7 @@ function okResult(over: Partial<CompleteResult> = {}): CompleteResult {
     expectedCount: 3,
     missingItems: [],
     substitutedItems: [],
+    reservedButUnavailable: [],
     createdRepairIds: [],
     failedBrokenUnits: [],
     createdProblemItemIds: [],

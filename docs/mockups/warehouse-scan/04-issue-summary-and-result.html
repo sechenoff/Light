@@ -1,0 +1,199 @@
+<style>
+  .wrap{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+  .phone{width:300px;flex:0 0 auto;border:10px solid #1c1f26;border-radius:30px;overflow:hidden;background:#f4f5f7;font-family:'IBM Plex Sans',system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .phone *{box-sizing:border-box}
+  .ph-top{background:#15294d;color:#fff;padding:11px 14px}
+  .ph-eb{font-size:10px;letter-spacing:.12em;text-transform:uppercase;opacity:.7}
+  .ph-title{font-size:14px;font-weight:600;margin-top:2px}
+  .ph-sub{font-size:11px;opacity:.85;margin-top:2px}
+  .badge{margin:14px 12px;padding:14px;text-align:center;border-radius:10px;background:#e7f5ec;border:1px solid #b8e1c4}
+  .badge .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#1a7f37;margin-bottom:4px}
+  .badge .big{font-size:28px;font-weight:700;color:#1a7f37;line-height:1}
+  .badge .ed{font-size:11px;color:#1a7f37;margin-top:4px}
+  .stat-list{margin:0 12px 8px;display:flex;flex-direction:column;gap:5px}
+  .row{display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid #e6e8eb;border-radius:8px;padding:8px 11px;font-size:12px;color:#1c1f26}
+  .row.warn{border-color:#e6c98a;background:#fffaf0}
+  .row.bad{border-color:#e5848a;background:#fdeced}
+  .row.ok{border-color:#b8e1c4;background:#f3faf5}
+  .row .val{font-weight:700;font-variant-numeric:tabular-nums}
+  .row.warn .val{color:#9a6700}
+  .row.bad .val{color:#b42318}
+  .row.ok .val{color:#1a7f37}
+  .row .lbl{display:flex;align-items:center;gap:6px}
+  .det{margin:-3px 12px 8px;padding:7px 10px;background:#fff;border:1px dashed #e6c98a;border-radius:8px;font-size:11px;color:#9a6700;line-height:1.5}
+  .det.bad{border-color:#e5848a;color:#b42318}
+  .det ul{margin:4px 0 0;padding-left:14px}
+  .det li{margin-top:2px}
+  .ph-bottom{position:sticky;bottom:0;background:#fff;border-top:1px solid #e6e8eb;padding:10px 12px;margin-top:6px;display:flex;gap:7px}
+  .ph-bottom .back{flex:0 0 auto;background:#fff;border:1px solid #d0d3d8;color:#1c1f26;font-size:12px;padding:9px 12px;border-radius:8px;font-weight:500}
+  .ph-bottom .primary{flex:1;background:#15294d;color:#fff;text-align:center;padding:10px;border-radius:8px;font-weight:600;font-size:13px}
+  .res-head{margin:14px 12px;padding:16px 14px;text-align:center;border-radius:10px}
+  .res-head.ok{background:#e7f5ec;border:1px solid #b8e1c4;color:#1a7f37}
+  .res-head.warn{background:#fff8e6;border:1px solid #e3b341;color:#9a6700}
+  .res-head .icon{font-size:30px;line-height:1}
+  .res-head .ttl{font-size:15px;font-weight:600;margin-top:6px;color:#1c1f26}
+  .res-head .pn{font-size:12px;color:#6b7280;margin-top:2px}
+  .dl{margin:0 12px;display:flex;flex-direction:column;gap:5px}
+  .dl .row .val{font-size:14px}
+  .desk{flex:1;min-width:320px;border:1px solid #d0d3d8;border-radius:12px;overflow:hidden;font-family:'IBM Plex Sans',system-ui,sans-serif}
+  .desk .dt{background:#15294d;color:#fff;padding:9px 14px;font-size:13px;font-weight:600}
+  .desk .body{display:flex;min-height:240px}
+  .desk .lft{width:38%;border-right:1px solid #e6e8eb;background:#fafbfc;padding:10px 12px;color:#9aa1ab;font-size:12px}
+  .desk .rgt{flex:1;padding:14px}
+</style>
+
+<h2>Макет: «Сверка → Подтвердить → Результат»</h2>
+<p class="subtitle">Реалистичный mobile-макет, плюс desktop-вариант. Цифры — пример. Если общий вид ок — выбираем «Принимаем».</p>
+
+<div class="wrap">
+  <div>
+    <p class="label">Экран 1 · Сверка</p>
+    <div class="phone">
+      <div class="ph-top">
+        <div class="ph-eb">Сверка · 21 мая</div>
+        <div class="ph-title">Реклама «Орбита»</div>
+        <div class="ph-sub">ООО «Кинопроба» · бронь #1043</div>
+      </div>
+      <div class="badge">
+        <div class="lbl">Готово к выдаче</div>
+        <div class="big">24</div>
+        <div class="ed">из 26 в брони + 2 добора</div>
+      </div>
+      <div class="stat-list">
+        <div class="row ok"><div class="lbl">✓ Выдаём</div><div class="val">22</div></div>
+        <div class="row ok"><div class="lbl">＋ Доборы</div><div class="val">2</div></div>
+        <div class="row"><div class="lbl">✗ Не выдаём</div><div class="val">2</div></div>
+        <div class="row warn"><div class="lbl">⚠ Без отметки — пропустим</div><div class="val">3</div></div>
+      </div>
+      <div class="det">
+        Aputure 600D · прибор 3 из 3<br>
+        Manfrotto 1004 · стойки 3 и 4
+      </div>
+      <div class="stat-list">
+        <div class="row bad"><div class="lbl">⛔ Резерв недоступен</div><div class="val">1</div></div>
+      </div>
+      <div class="det bad">
+        SkyPanel S60 · прибор 2 из 2 → ремонт<br>
+        <span style="opacity:.8">Эта единица не может быть выдана. Считать её пропущенной?</span>
+      </div>
+      <div class="stat-list">
+        <div class="row"><div class="lbl">＋ Доборы с предупреждением</div><div class="val">1</div></div>
+      </div>
+      <div class="det">
+        Astera Titan Tube · выдан под ответственность (конфликт с бронью #1039)
+      </div>
+      <div class="ph-bottom">
+        <div class="back">← К чек-листу</div>
+        <div class="primary">Подтвердить выдачу →</div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <p class="label">Экран 2 · Результат (успех)</p>
+    <div class="phone">
+      <div class="ph-top">
+        <div class="ph-eb">Выдача · #1043</div>
+        <div class="ph-title">Реклама «Орбита»</div>
+      </div>
+      <div class="res-head ok">
+        <div class="icon" aria-hidden="true">✓</div>
+        <div class="ttl">Выдача оформлена</div>
+        <div class="pn">Реклама «Орбита»</div>
+      </div>
+      <div class="dl">
+        <div class="row"><div class="lbl">Выдано</div><div class="val" style="color:#1a7f37">24</div></div>
+        <div class="row"><div class="lbl">Добавлено доборов</div><div class="val">2</div></div>
+        <div class="row"><div class="lbl">Замены (другая единица)</div><div class="val">1</div></div>
+      </div>
+      <div style="margin:10px 12px 0;padding:8px 10px;background:#eef3fd;border:1px solid #b9ccef;border-radius:8px;font-size:11px;color:#15294d">
+        Бронь переведена в «Выдана» — появится в списке для приёмки.
+      </div>
+      <div class="ph-bottom">
+        <div class="primary">Готово</div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <p class="label">Экран 2 · с замечаниями</p>
+    <div class="phone">
+      <div class="ph-top">
+        <div class="ph-eb">Выдача · #1043</div>
+        <div class="ph-title">Реклама «Орбита»</div>
+      </div>
+      <div class="res-head warn">
+        <div class="icon" aria-hidden="true">⚠</div>
+        <div class="ttl">Выдача оформлена с замечаниями</div>
+        <div class="pn">Реклама «Орбита»</div>
+      </div>
+      <div class="dl">
+        <div class="row"><div class="lbl">Выдано</div><div class="val" style="color:#1a7f37">22</div></div>
+        <div class="row"><div class="lbl">Добавлено доборов</div><div class="val">2</div></div>
+        <div class="row"><div class="lbl">Пропущено</div><div class="val" style="color:#9a6700">3</div></div>
+      </div>
+      <div style="margin:10px 12px 0;padding:8px 10px;background:#fdeced;border:1px solid #e5848a;border-radius:8px;font-size:11px;color:#b42318;line-height:1.5">
+        Не получилось обработать 1 ед. — резерв SkyPanel S60 был недоступен (в ремонте). Бронь переведена в «Выдана».
+      </div>
+      <div class="ph-bottom">
+        <div class="primary">Готово</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="width:100%">
+    <p class="label">Desktop · те же два экрана в правой панели ScanShell</p>
+    <div class="desk">
+      <div class="dt">Склад · Выдача — Реклама «Орбита» #1043 — Сверка</div>
+      <div class="body">
+        <div class="lft">список броней…<br><br>(тот же двух-панельный adaptive, что и для приёмки)</div>
+        <div class="rgt">
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <div style="flex:1;min-width:200px;padding:14px;border-radius:10px;background:#e7f5ec;border:1px solid #b8e1c4;text-align:center">
+              <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#1a7f37">Готово к выдаче</div>
+              <div style="font-size:30px;font-weight:700;color:#1a7f37">24</div>
+              <div style="font-size:11px;color:#1a7f37">из 26 в брони + 2 добора</div>
+            </div>
+            <div style="flex:2;min-width:240px">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <div class="row ok"><div class="lbl">✓ Выдаём</div><div class="val">22</div></div>
+                <div class="row ok"><div class="lbl">＋ Доборы</div><div class="val">2</div></div>
+                <div class="row"><div class="lbl">✗ Не выдаём</div><div class="val">2</div></div>
+                <div class="row warn"><div class="lbl">⚠ Без отметки — пропустим</div><div class="val">3</div></div>
+                <div class="row bad"><div class="lbl">⛔ Резерв недоступен</div><div class="val">1</div></div>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:10px">
+            <div style="padding:9px 14px;background:#fff;border:1px solid #d0d3d8;border-radius:8px;font-size:12px;color:#1c1f26">← К чек-листу</div>
+            <div style="flex:1;padding:10px;background:#15294d;color:#fff;border-radius:8px;text-align:center;font-weight:600;font-size:13px">Подтвердить выдачу →</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approve" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Принимаем — пишем спеку и план</h3>
+      <p>Экран сверки: badge «Готово к выдаче: N», цветные строки (✓ выдаём · доборы · ✗ не выдаём · ⚠ без отметки · ⛔ резерв недоступен · доборы с предупреждением — с кратким списком конкретных единиц под каждой проблемной строкой). Экран результата: emerald (без проблем) или amber (с замечаниями), счётчики, явное «Бронь переведена в «Выдана»». Бэкенд: `completeSession(ISSUE)` пишет `booking.status = ISSUED` + аудит.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="tweak-summary" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Поправить экран сверки</h3>
+      <p>Изменения по содержимому/вёрстке/цветам сверки — опишу в терминале.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="tweak-result" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Поправить экран результата</h3>
+      <p>Изменения в финальном экране (что показывать, как формулировать) — опишу в терминале.</p>
+    </div>
+  </div>
+</div>

@@ -36,11 +36,26 @@ export interface ProblemUnit {
   expectedBackDate?: string;
 }
 
+export interface ReservedButUnavailableUnit {
+  equipmentUnitId: string;
+  equipmentName: string;
+  /** «прибор N из M» — порядок среди ВСЕХ резерваций этой позиции (стабильный). */
+  ordinalLabel: string;
+  /** Статус юнита, который мешает выдаче: MAINTENANCE | MISSING | RETIRED | ISSUED | …. */
+  status: string;
+}
+
 export interface ReconciliationSummary {
   scanned: number;
   expected: number;
   missing: string[];    // equipmentUnitId[] не отсканированных
   substituted: string[]; // equipmentUnitId[] замен (отсканирован другой юнит вместо зарезервированного)
+  /**
+   * Зарезервированные юниты, недоступные для выдачи (статус ≠ AVAILABLE).
+   * Только для ISSUE-сессий; для RETURN пустой массив. Обогащён name+ordinal+status
+   * чтобы фронт мог отрисовать список без второго запроса.
+   */
+  reservedButUnavailable: ReservedButUnavailableUnit[];
   createdRepairIds: string[];  // id карточек ремонта, успешно созданных после возврата
   failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>; // единицы, для которых ремонт не удалось создать
   createdProblemItemIds: string[]; // id карточек «Потеряшки», успешно созданных после возврата
@@ -206,6 +221,7 @@ export async function completeSession(
       expected: allReservations.length,
       missing: [],
       substituted: [],
+      reservedButUnavailable: [],
       createdRepairIds: [],
       failedBrokenUnits: [],
       createdProblemItemIds: [],
@@ -249,6 +265,15 @@ export async function completeSession(
           await tx.bookingItemUnit.delete({ where: { id: reservation.id } });
         }
       }
+
+      // Перевод брони в статус ISSUED — финальный физический эффект выдачи.
+      // Идемпотентно при повторном вызове на ACTIVE-сессии: Prisma update
+      // просто запишет ту же строку. Гонка с другой сессией исключена
+      // ACTIVE-сессион-гардом из createSession.
+      await tx.booking.update({
+        where: { id: session.bookingId },
+        data: { status: "ISSUED" },
+      });
     } else {
       // RETURN: для каждого отсканированного юнита — AVAILABLE + returnedAt
       for (const scan of session.scans) {
@@ -285,6 +310,23 @@ export async function completeSession(
   });
 
   const createdBy = options?.createdBy ?? session.workerName;
+
+  // BOOKING_STATUS_CHANGED — best-effort, ВНЕ транзакции.
+  // AuditEntry.userId — FK на AdminUser, а workerName из WarehousePin не
+  // соответствует AdminUser.id → P2003 ожидаем и логируем. Аудит здесь —
+  // observability, не бизнес-инвариант: физический переход уже зафиксирован.
+  if (session.operation === "ISSUE") {
+    await writeAuditEntry({
+      userId: createdBy,
+      action: "BOOKING_STATUS_CHANGED",
+      entityType: "Booking",
+      entityId: session.bookingId,
+      before: { status: session.booking.status },
+      after: { status: "ISSUED", source: "warehouse-scan-issue", sessionId },
+    }).catch((err) =>
+      console.warn("[completeSession ISSUE] booking-status audit failed:", err),
+    );
+  }
 
   // После завершения транзакции — создаём карточки ремонта для поломанных единиц.
   // urgency не собирается в быстром UI → дефолт NORMAL.
@@ -464,9 +506,41 @@ export async function getReconciliationPreview(sessionId: string): Promise<Recon
       bookingItemId: { in: bookingItemIds },
       ...(session.operation === "RETURN" ? { returnedAt: null } : {}),
     },
+    include: {
+      equipmentUnit: { select: { id: true, status: true } },
+      bookingItem: { include: { equipment: { select: { name: true } } } },
+    },
+    orderBy: { id: "asc" }, // stable ordinal across calls
   });
 
   const reservedUnitIds = new Set(allReservations.map((r) => r.equipmentUnitId));
+
+  // ── Enriched «зарезервирован, но недоступен» (только для ISSUE) ─────────────
+  // Группируем по bookingItemId и нумеруем единицы внутри группы — это даёт
+  // стабильный ordinal вида «прибор N из M», совпадающий с тем, что увидит
+  // оператор в чек-листе для AVAILABLE-единиц (см. checklistService.ts).
+  const reservedButUnavailable: ReservedButUnavailableUnit[] = [];
+  if (session.operation === "ISSUE") {
+    const byBookingItem = new Map<string, typeof allReservations>();
+    for (const r of allReservations) {
+      const arr = byBookingItem.get(r.bookingItemId) ?? [];
+      arr.push(r);
+      byBookingItem.set(r.bookingItemId, arr);
+    }
+    for (const [, group] of byBookingItem) {
+      group.forEach((r, idx) => {
+        const unitStatus = r.equipmentUnit?.status;
+        if (unitStatus && unitStatus !== "AVAILABLE") {
+          reservedButUnavailable.push({
+            equipmentUnitId: r.equipmentUnitId,
+            equipmentName: r.bookingItem?.equipment?.name ?? "—",
+            ordinalLabel: `прибор ${idx + 1} из ${group.length}`,
+            status: unitStatus,
+          });
+        }
+      });
+    }
+  }
 
   const missing: string[] = [];
   const substituted: string[] = [];
@@ -490,6 +564,7 @@ export async function getReconciliationPreview(sessionId: string): Promise<Recon
     expected: allReservations.length,
     missing,
     substituted,
+    reservedButUnavailable,
     createdRepairIds: [],
     failedBrokenUnits: [],
     createdProblemItemIds: [],

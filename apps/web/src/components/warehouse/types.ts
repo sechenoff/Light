@@ -17,7 +17,7 @@
  * Steps of the scan flow. Parity with the existing page's state machine
  * (`apps/web/app/warehouse/scan/page.tsx` — `type Step`).
  */
-export type ScanStep = "login" | "operation" | "booking" | "checklist" | "summary";
+export type ScanStep = "login" | "operation" | "booking" | "checklist";
 
 export type ScanOperation = "ISSUE" | "RETURN";
 
@@ -175,6 +175,20 @@ export interface ReconciliationUnitRef {
   barcode: string;
 }
 
+/**
+ * Зарезервированный юнит, который не может быть выдан (статус ≠ AVAILABLE).
+ * Источник — `GET /sessions/:id/summary`. Поля повторяют серверный
+ * `ReservedButUnavailableUnit` byte-for-byte (см. apps/api warehouseScan.ts).
+ */
+export interface ReservedButUnavailableUnit {
+  equipmentUnitId: string;
+  equipmentName: string;
+  /** «прибор N из M» — позиция среди резерваций этой позиции брони. */
+  ordinalLabel: string;
+  /** Сырое значение `EquipmentUnit.status`: MAINTENANCE | MISSING | RETIRED | ISSUED. */
+  status: string;
+}
+
 export interface SummaryResult {
   sessionId: string;
   operation: ScanOperation;
@@ -182,6 +196,12 @@ export interface SummaryResult {
   expectedCount: number;
   missingItems: ReconciliationUnitRef[];
   substitutedItems: ReconciliationUnitRef[];
+  /**
+   * Только для ISSUE; для RETURN пустой массив. Берётся из
+   * `getReconciliationPreview` (apps/api). НЕ полагаемся на `[]`-default,
+   * а делаем поле обязательным — клиент может рассчитывать на наличие.
+   */
+  reservedButUnavailable: ReservedButUnavailableUnit[];
 }
 
 /**

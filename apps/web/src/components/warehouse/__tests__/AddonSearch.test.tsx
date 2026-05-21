@@ -123,7 +123,7 @@ describe("AddonSearch", () => {
 
     // ack flag must be omitted (4th arg undefined) for an available row.
     expect(addSpy).toHaveBeenCalledWith("s1", "eq-free", 1, undefined);
-    await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onAdded).toHaveBeenCalledWith("bi-9", false));
     expect(
       await screen.findByText(/Dedolight DLED4 добавлен в выдачу/),
     ).toBeInTheDocument();
@@ -196,7 +196,7 @@ describe("AddonSearch", () => {
     });
 
     expect(addSpy).toHaveBeenCalledWith("s1", "eq-busy", 1, true);
-    await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onAdded).toHaveBeenCalledWith("bi-x", true));
   });
 
   it("«Отмена» dismisses the warn card without adding", async () => {
@@ -277,7 +277,7 @@ describe("AddonSearch", () => {
       await Promise.resolve();
     });
     expect(addSpy).toHaveBeenLastCalledWith("s1", "eq-free", 1, true);
-    await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onAdded).toHaveBeenCalledWith("bi-after-ack", true));
   });
 
   it("renders NO barcode anywhere", async () => {
