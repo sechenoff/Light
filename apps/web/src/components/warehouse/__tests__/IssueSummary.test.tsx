@@ -113,6 +113,9 @@ function defaultSummary(over: Partial<SummaryResult> = {}): SummaryResult {
         status: "MAINTENANCE",
       },
     ],
+    mainAfterDiscount: "0",
+    addonAfterDiscount: "0",
+    finalAmount: "0",
     ...over,
   };
 }
