@@ -504,8 +504,18 @@ export function IssueChecklist({
   if (phase === "summary" || phase === "submitting") {
     const issuedTotal = counts.issuedUnits + counts.issuedLines;
     const readyTotal = issuedTotal + counts.addons; // emerald badge: «N из M в брони + K доборов»
-    const expectedM =
-      state.items.filter((i) => !i.isExtra).length || progress.total;
+    // «из M в брони» — суммарное число СКАНИРУЕМЫХ строк в брони без доборов:
+    // каждый UNIT-юнит = 1, каждая COUNT-позиция = 1. Это та же единица
+    // измерения что и в числителе (readyTotal), а заодно совпадает с моком
+    // («из 26 в брони + 2 добора» где 26 — все юниты + count-строки).
+    // Раньше тут было `items.filter(!isExtra).length` — то есть число
+    // BookingItem-ов, что приводило к читаемому «4 из 3 в брони» при
+    // одном UNIT-айтеме с тремя юнитами + одной COUNT-строкой.
+    const expectedM = state.items.reduce((sum, i) => {
+      if (i.isExtra) return sum;
+      if (i.trackingMode === "UNIT" && i.units) return sum + i.units.length;
+      return sum + 1; // COUNT-позиция считается как одна «строка к выдаче».
+    }, 0);
     const reserved = summary?.reservedButUnavailable ?? [];
 
     return (
