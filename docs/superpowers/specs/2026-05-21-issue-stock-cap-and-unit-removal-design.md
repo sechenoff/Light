@@ -96,7 +96,7 @@ completeSession (внутри одной транзакции):
 - `services/warehouseScan.ts → completeSession` — обогащается обработкой `issuanceAdjustments` (existing, surgical change).
 - `services/mainEstimate.ts → recreateMainEstimate(bookingId)` — **NEW helper**, зеркало `recomputeAddonEstimate`. Удаляет старую MAIN-смету и создаёт новую из текущих BookingItem'ов, сохраняя discountPercent.
 - `services/addonEstimate.ts → recomputeAddonEstimate` — меняет формулу: вместо агрегации AddonRecord использует `addonQty = max(0, BookingItem.quantity − MAIN.line.qty)` для каждого equipmentId.
-- `services/finance.ts → recomputeBookingFinance` — добавляется ветка `outstanding.isNegative() ⇒ OVERPAID`.
+- `services/finance.ts → calcBookingPaymentStatus` — добавляется ветка `paid > finalAmount ⇒ OVERPAID` (приоритет над OVERDUE и PAID); вызывается из существующего `recomputeBookingFinance`.
 
 **Backend routes:**
 - `routes/warehouse.ts`:
@@ -190,10 +190,11 @@ mainOriginalAfterDiscount: string;  // snapshot до adjustments
 
 ```prisma
 enum BookingPaymentStatus {
-  UNPAID
+  NOT_PAID
   PARTIALLY_PAID
   PAID
-  OVERPAID
+  OVERDUE
+  OVERPAID  // NEW
 }
 ```
 
