@@ -31,8 +31,8 @@ import { useScanSession } from "./useScanSession";
 import { UnitRow } from "./UnitRow";
 import { AddonSearch } from "./AddonSearch";
 import type { IssueValue } from "./UnitRow";
-import type { ChecklistItem, ChecklistState } from "./types";
-import { pluralize } from "../../lib/format";
+import type { AddonEstimateView, ChecklistItem, ChecklistState } from "./types";
+import { formatRub, pluralize } from "../../lib/format";
 import { scanApi } from "./api";
 import type { CompleteResult, SummaryResult } from "./types";
 import { IssueResultView } from "./IssueResultView";
@@ -200,6 +200,10 @@ export function IssueChecklist({
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<CompleteResult | null>(null);
+  // ADDON Estimate fetched in parallel with summary when entering сверка.
+  const [addonEstimate, setAddonEstimate] = useState<AddonEstimateView | null>(
+    null,
+  );
 
   // Bind the hook to the session opened upstream; cancellation-safe.
   useEffect(() => {
@@ -416,6 +420,30 @@ export function IssueChecklist({
     };
   }, [phase, sessionId]);
 
+  // Parallel fetch: ADDON Estimate (доб-смета) when entering сверка. Failure is
+  // soft — we simply don't render the «Доб-смета» block (the summary screen is
+  // still actionable without it). Cancellation-safe via `cancelled` flag.
+  useEffect(() => {
+    if (phase !== "summary") return;
+    if (!state?.bookingId) return;
+    const bookingId = state.bookingId;
+    let cancelled = false;
+    scanApi
+      .getAddonEstimate(bookingId)
+      .then((r) => {
+        if (cancelled) return;
+        setAddonEstimate(r.addon);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        console.warn("getAddonEstimate failed:", err);
+        setAddonEstimate(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, state?.bookingId]);
+
   // ── States ──────────────────────────────────────────────────────────────────
 
   if (loading && !state) {
@@ -607,6 +635,61 @@ export function IssueChecklist({
                 </>
               )}
             </div>
+
+            {addonEstimate && addonEstimate.lines.length > 0 && (
+              <div className="mt-4 rounded-lg border border-border bg-surface px-3 py-3">
+                <div className="eyebrow mb-2">Доб-смета</div>
+                <ul className="space-y-1">
+                  {addonEstimate.lines.map((l, i) => (
+                    <li
+                      key={i}
+                      className="flex justify-between text-[13px] text-ink"
+                    >
+                      <span className="truncate">
+                        {l.name}{" "}
+                        <span className="text-ink-3">×{l.quantity}</span>
+                      </span>
+                      <span className="mono-num">{formatRub(l.lineSum)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-2 border-t border-border pt-2 text-[12px] text-ink-2">
+                  <div className="flex justify-between">
+                    <span>Итого:</span>
+                    <span className="mono-num">
+                      {formatRub(addonEstimate.subtotal)}
+                    </span>
+                  </div>
+                  {addonEstimate.discountPercent &&
+                    Number(addonEstimate.discountPercent) > 0 && (
+                      <div className="flex justify-between">
+                        <span>
+                          Скидка {addonEstimate.discountPercent}% (как в
+                          основной):
+                        </span>
+                        <span className="mono-num">
+                          −{formatRub(addonEstimate.discountAmount)}
+                        </span>
+                      </div>
+                    )}
+                  <div className="flex justify-between font-semibold text-ink">
+                    <span>К доплате:</span>
+                    <span className="mono-num">
+                      {formatRub(addonEstimate.totalAfterDiscount)}
+                    </span>
+                  </div>
+                </div>
+                <a
+                  href={`/api/addon-estimates/${state.bookingId}/export/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-block text-[12px] text-accent underline hover:no-underline"
+                  aria-label="Открыть PDF доб-сметы"
+                >
+                  Открыть PDF доб-сметы →
+                </a>
+              </div>
+            )}
 
             {submitError && (
               <div
