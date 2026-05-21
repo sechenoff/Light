@@ -6,6 +6,7 @@ import { availabilityRouter } from "./availability";
 import { bookingsRouter } from "./bookings";
 import { equipmentImportRouter } from "./equipmentImport";
 import { estimatesRouter } from "./estimates";
+import { addonEstimatesRouter } from "./addonEstimates";
 import { financeRouter } from "./finance";
 import { pricelistRouter } from "./pricelist";
 import { setCategoryOrder } from "../services/categoryOrder";
@@ -75,6 +76,9 @@ router.use("/api/import-sessions", rolesGuard(["SUPER_ADMIN"]), importSessionsRo
 
 // /api/estimates — SUPER_ADMIN, WAREHOUSE
 router.use("/api/estimates", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), estimatesRouter);
+
+// /api/addon-estimates — SUPER_ADMIN, WAREHOUSE
+router.use("/api/addon-estimates", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), addonEstimatesRouter);
 
 // /api/pricelist — SUPER_ADMIN only
 router.use("/api/pricelist", rolesGuard(["SUPER_ADMIN"]), pricelistRouter);
