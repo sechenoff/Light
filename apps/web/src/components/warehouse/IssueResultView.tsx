@@ -25,10 +25,11 @@
  */
 
 import type { CompleteResult } from "./types";
-import { pluralize } from "../../lib/format";
+import { formatRub, pluralize } from "../../lib/format";
 
 export function IssueResultView({
   result,
+  bookingId,
   projectName,
   issuedCount,
   addonsCount,
@@ -36,6 +37,8 @@ export function IssueResultView({
   onDone,
 }: {
   result: CompleteResult;
+  /** Booking id — used to build PDF download URLs in the «Финансы» block. */
+  bookingId: string;
   projectName: string;
   /** UNIT units marked ✓ + COUNT lines marked ✓ — FE truth from IssueChecklist. */
   issuedCount: number;
@@ -161,6 +164,50 @@ export function IssueResultView({
                   </ul>
                 </>
               )}
+            </div>
+          )}
+
+          {Number(result.addonAfterDiscount) > 0 && (
+            <div className="mt-4 rounded-lg border border-border bg-surface px-3 py-3">
+              <div className="eyebrow mb-2">Финансы</div>
+              <dl className="space-y-1 text-[13px] text-ink">
+                <div className="flex justify-between">
+                  <dt className="text-ink-2">Согласовано:</dt>
+                  <dd className="mono-num">
+                    {formatRub(result.mainAfterDiscount)}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-2">Доб-смета:</dt>
+                  <dd className="mono-num">
+                    + {formatRub(result.addonAfterDiscount)}
+                  </dd>
+                </div>
+                <div className="flex justify-between border-t border-border pt-1 font-semibold">
+                  <dt>К оплате:</dt>
+                  <dd className="mono-num">
+                    {formatRub(result.finalAmount)}
+                  </dd>
+                </div>
+              </dl>
+              <div className="mt-3 flex gap-2">
+                <a
+                  href={`/api/bookings/${bookingId}/full-estimate/export/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 rounded border border-border bg-surface px-3 py-2 text-center text-[12px] font-medium text-ink-2 hover:bg-surface-muted"
+                >
+                  Скачать смету (общая) PDF
+                </a>
+                <a
+                  href={`/api/addon-estimates/${bookingId}/export/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 rounded border border-border bg-surface px-3 py-2 text-center text-[12px] font-medium text-ink-2 hover:bg-surface-muted"
+                >
+                  Скачать доб-смета PDF
+                </a>
+              </div>
             </div>
           )}
         </div>

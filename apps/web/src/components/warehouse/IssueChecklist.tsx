@@ -519,6 +519,7 @@ export function IssueChecklist({
     return (
       <IssueResultView
         result={result}
+        bookingId={state.bookingId}
         projectName={projectName}
         issuedCount={counts.issuedUnits + counts.issuedLines}
         addonsCount={counts.addons}
