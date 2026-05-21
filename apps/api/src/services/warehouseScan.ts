@@ -61,6 +61,12 @@ export interface ReconciliationSummary {
   failedBrokenUnits: Array<{ unitId: string; reason: string; error: string }>; // единицы, для которых ремонт не удалось создать
   createdProblemItemIds: string[]; // id карточек «Потеряшки», успешно созданных после возврата
   failedProblemUnits: Array<{ equipmentUnitId: string; reason: string }>; // проблемные единицы, которые не удалось обработать
+  /** MAIN Estimate.totalAfterDiscount (0 если бронь не CONFIRMED). */
+  mainAfterDiscount: string;
+  /** ADDON Estimate.totalAfterDiscount (0 если доборов нет). */
+  addonAfterDiscount: string;
+  /** Booking.finalAmount (= main + addon + transport). */
+  finalAmount: string;
 }
 
 export interface SessionBookingItem {
@@ -243,6 +249,9 @@ export async function completeSession(
       failedBrokenUnits: [],
       createdProblemItemIds: [],
       failedProblemUnits: [],
+      mainAfterDiscount: "0",
+      addonAfterDiscount: "0",
+      finalAmount: "0",
     };
 
     if (session.operation === "ISSUE") {
@@ -466,6 +475,25 @@ export async function completeSession(
     }
   }
 
+  // НОВОЕ: финансовая разбивка для result-screen фронта.
+  // recomputeBookingFinance уже учёл ADDON Estimate в выше вызванной цепочке,
+  // здесь только читаем актуальные значения.
+  try {
+    const fresh = await prisma.booking.findUnique({
+      where: { id: session.bookingId },
+      include: { estimates: true },
+    });
+    if (fresh) {
+      const main = fresh.estimates.find((e) => e.kind === "MAIN");
+      const addon = fresh.estimates.find((e) => e.kind === "ADDON");
+      summary.mainAfterDiscount = main ? main.totalAfterDiscount.toString() : "0";
+      summary.addonAfterDiscount = addon ? addon.totalAfterDiscount.toString() : "0";
+      summary.finalAmount = fresh.finalAmount.toString();
+    }
+  } catch (err) {
+    console.warn("[completeSession] finance snapshot read failed:", err);
+  }
+
   return summary;
 }
 
@@ -586,6 +614,9 @@ export async function getReconciliationPreview(sessionId: string): Promise<Recon
     failedBrokenUnits: [],
     createdProblemItemIds: [],
     failedProblemUnits: [],
+    mainAfterDiscount: "0",
+    addonAfterDiscount: "0",
+    finalAmount: "0",
   };
 }
 
