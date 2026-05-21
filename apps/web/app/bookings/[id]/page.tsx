@@ -23,6 +23,7 @@ import { RefundModal } from "../../../src/components/finance/RefundModal";
 import { CreateInvoiceModal } from "../../../src/components/finance/CreateInvoiceModal";
 import { CancelWithDepositModal } from "../../../src/components/finance/CancelWithDepositModal";
 import { CreditNoteApplyModal } from "../../../src/components/finance/CreditNoteApplyModal";
+import { AddonEstimateSection } from "../../../src/components/bookings/AddonEstimateSection";
 
 type ScanSession = {
   id: string;
@@ -1066,6 +1067,7 @@ export default function BookingDetailPage() {
                 Смета пока не сформирована (возможно, это черновик).
               </div>
             )}
+            <AddonEstimateSection bookingId={booking.id} />
             <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
               <div className="p-3 border-b border-border bg-surface-subtle">
                 <p className="eyebrow">Журнал изменений</p>
