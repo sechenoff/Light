@@ -146,4 +146,35 @@ describe("BookingList", () => {
     );
     await waitFor(() => expect(onUnauth).toHaveBeenCalled());
   });
+
+  it("re-fetches listBookings when the `version` prop changes (post-complete refresh)", async () => {
+    const listSpy = vi
+      .spyOn(scanApi, "listBookings")
+      .mockResolvedValue([]);
+
+    const { rerender } = render(
+      <BookingList
+        operation="ISSUE"
+        version={0}
+        onUnauth={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(1));
+
+    // Bump version — page does this after a successful complete to evict
+    // the stale just-completed booking from the current operation's list.
+    rerender(
+      <BookingList
+        operation="ISSUE"
+        version={1}
+        onUnauth={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(2));
+    expect(listSpy).toHaveBeenLastCalledWith("ISSUE");
+  });
 });

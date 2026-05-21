@@ -57,6 +57,14 @@ function WarehouseScanInner({
     null,
   );
 
+  // Monotonic counter — bumped after a successful complete so the BookingList
+  // re-fetches and the just-issued booking disappears from the ISSUE list
+  // (and re-appears in the RETURN list when the operator switches operation).
+  // Without this the list cache stays stale → operator sees the booking they
+  // just completed and might tap it again (backend will refuse, but the UX
+  // confusion is real).
+  const [listVersion, setListVersion] = useState(0);
+
   const goToLogin = useCallback(() => {
     scanApi.clearWarehouseToken();
     if (hasMainSession) {
@@ -94,6 +102,14 @@ function WarehouseScanInner({
     goStep("booking");
   }, [openSession, goStep]);
 
+  // Same as backToBooking, but also bumps listVersion → BookingList refetches.
+  // Wire this into `onComplete`/`onDone` (= «Готово» from the result screen);
+  // the plain `onBack` path keeps `backToBooking` because nothing changed.
+  const backToBookingAfterComplete = useCallback(async () => {
+    setListVersion((v) => v + 1);
+    await backToBooking();
+  }, [backToBooking]);
+
   const backToOperation = useCallback(() => {
     goStep("operation");
   }, [goStep]);
@@ -127,6 +143,7 @@ function WarehouseScanInner({
   const bookingListSlot = (
     <BookingList
       operation={operation}
+      version={listVersion}
       onUnauth={goToLogin}
       onSelect={handleBookingSelect}
     />
@@ -166,14 +183,14 @@ function WarehouseScanInner({
               sessionId={sessionId}
               projectName={projectName}
               onBack={backToBooking}
-              onComplete={backToBooking}
+              onComplete={backToBookingAfterComplete}
             />
           ) : (
             <ReturnChecklist
               sessionId={sessionId}
               projectName={projectName}
               onBack={backToBooking}
-              onDone={backToBooking}
+              onDone={backToBookingAfterComplete}
             />
           )
         }
