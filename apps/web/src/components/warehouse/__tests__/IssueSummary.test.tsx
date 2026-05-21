@@ -118,6 +118,7 @@ function defaultSummary(over: Partial<SummaryResult> = {}): SummaryResult {
       },
     ],
     mainAfterDiscount: "0",
+    mainOriginalAfterDiscount: "0",
     addonAfterDiscount: "0",
     finalAmount: "0",
     ...over,

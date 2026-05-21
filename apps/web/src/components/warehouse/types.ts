@@ -100,6 +100,14 @@ export interface AddonResult {
   name: string;
   category: string;
   availableQuantity: number;
+  /**
+   * Верхняя граница для picker'а в quick-add. Считается на backend как
+   * `max(0, availableQuantity − alreadyInThisBooking)` (см.
+   * `apps/api/src/routes/warehouse.ts` — `/addon-search`). Используется
+   * UI, чтобы не дать оператору добавить больше, чем реально можно
+   * (учёт уже выданных позиций этой брони).
+   */
+  addCap: number;
   availability: "AVAILABLE" | "UNAVAILABLE";
   conflict: AddonConflict | null;
 }
@@ -158,9 +166,26 @@ export interface ProblemUnitInput {
   expectedBackDate?: string;
 }
 
+/**
+ * Per-position quantity adjustment applied at ISSUE-complete time.
+ * Mirrors `issuanceAdjustmentSchema` on the backend (apps/api warehouse.ts):
+ * { bookingItemId: non-empty string, actualQuantity: non-negative int }.
+ * Forwarded to `completeSession(...).options.issuanceAdjustments`.
+ */
+export interface IssuanceAdjustment {
+  bookingItemId: string;
+  actualQuantity: number;
+}
+
 export interface CompletePayload {
   repairUnits?: RepairUnitInput[];
   problemUnits?: ProblemUnitInput[];
+  /**
+   * Task 8: per-position quantity adjustments (ISSUE only). When supplied,
+   * the backend recomputes MAIN after applying these actualQuantity changes;
+   * `mainOriginalAfterDiscount` will hold the pre-adjustment snapshot.
+   */
+  issuanceAdjustments?: IssuanceAdjustment[];
 }
 
 // ── Summary / complete response (mirrors GET /summary, POST /complete) ────────
@@ -208,6 +233,13 @@ export interface SummaryResult {
    * Mirrors backend `ReconciliationSummary.mainAfterDiscount`.
    */
   mainAfterDiscount: string;
+  /**
+   * MAIN.totalAfterDiscount snapshot ДО применения issuanceAdjustments
+   * в этой сессии. Если adjustments не применялись — равен `mainAfterDiscount`.
+   * Backend ALWAYS sends this field; "0" when booking is not CONFIRMED.
+   * Mirrors backend `ReconciliationSummary.mainOriginalAfterDiscount`.
+   */
+  mainOriginalAfterDiscount: string;
   /**
    * ADDON Estimate.totalAfterDiscount — «Доб-смета» на result-screen.
    * Backend ALWAYS sends this field; "0" when there are no addons.

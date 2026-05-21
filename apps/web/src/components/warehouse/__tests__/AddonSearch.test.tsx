@@ -23,6 +23,7 @@ function freeResult(over: Partial<AddonResult> = {}): AddonResult {
     name: "Dedolight DLED4",
     category: "Свет",
     availableQuantity: 3,
+    addCap: 3,
     availability: "AVAILABLE",
     conflict: null,
     ...over,
@@ -35,6 +36,7 @@ function conflictedResult(over: Partial<AddonResult> = {}): AddonResult {
     name: "Astera Titan Tube",
     category: "Свет",
     availableQuantity: 0,
+    addCap: 0,
     availability: "UNAVAILABLE",
     conflict: {
       bookingId: "b-1039",
@@ -194,7 +196,7 @@ describe("AddonSearch", () => {
 
   it("qty picker: +/+ steppers bump count, «Добавить N» POSTs with chosen N", async () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
-      freeResult({ availableQuantity: 19 }),
+      freeResult({ availableQuantity: 19, addCap: 19 }),
     ]);
     const addSpy = vi
       .spyOn(scanApi, "addItem")
@@ -247,7 +249,7 @@ describe("AddonSearch", () => {
 
   it("qty picker clamps to availableMax and never below 1", async () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
-      freeResult({ availableQuantity: 2 }),
+      freeResult({ availableQuantity: 2, addCap: 2 }),
     ]);
     render(
       <AddonSearch
@@ -443,7 +445,7 @@ describe("AddonSearch", () => {
 
   it("409 ADDON_CONFLICT on confirm-with-qty surfaces warn card, preserves qty for force-add", async () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
-      freeResult({ availableQuantity: 5 }),
+      freeResult({ availableQuantity: 5, addCap: 5 }),
     ]);
     const raceErr: ScanApiError = {
       status: 409,
