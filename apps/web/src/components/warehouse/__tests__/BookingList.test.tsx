@@ -67,11 +67,13 @@ describe("BookingList", () => {
     expect(screen.getByText(/#TODAY2/)).toBeInTheDocument();
     expect(screen.getByText(/#OMORR1/)).toBeInTheDocument();
 
-    // Item count via pluralize.
-    expect(screen.getByText(/24 единицы/)).toBeInTheDocument();
-    expect(screen.getByText(/11 единиц/)).toBeInTheDocument();
-    expect(screen.getByText(/3 единицы/)).toBeInTheDocument();
-    expect(screen.getByText(/6 единиц/)).toBeInTheDocument();
+    // Item count via pluralize — label is «позиция» (line items), not
+    // «единица» (physical units), since `b.items.length` counts BookingItem
+    // objects (each may have N reserved units).
+    expect(screen.getByText(/24 позиции/)).toBeInTheDocument();
+    expect(screen.getByText(/11 позиций/)).toBeInTheDocument();
+    expect(screen.getByText(/3 позиции/)).toBeInTheDocument();
+    expect(screen.getByText(/6 позиций/)).toBeInTheDocument();
 
     // Within "Сегодня": aaaaaatoday1 (#TODAY1) sorts before bbbbbbtoday2.
     const buttons = [...container.querySelectorAll("button")];
@@ -145,5 +147,36 @@ describe("BookingList", () => {
       />,
     );
     await waitFor(() => expect(onUnauth).toHaveBeenCalled());
+  });
+
+  it("re-fetches listBookings when the `version` prop changes (post-complete refresh)", async () => {
+    const listSpy = vi
+      .spyOn(scanApi, "listBookings")
+      .mockResolvedValue([]);
+
+    const { rerender } = render(
+      <BookingList
+        operation="ISSUE"
+        version={0}
+        onUnauth={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(1));
+
+    // Bump version — page does this after a successful complete to evict
+    // the stale just-completed booking from the current operation's list.
+    rerender(
+      <BookingList
+        operation="ISSUE"
+        version={1}
+        onUnauth={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(2));
+    expect(listSpy).toHaveBeenLastCalledWith("ISSUE");
   });
 });

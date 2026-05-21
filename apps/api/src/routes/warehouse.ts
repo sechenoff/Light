@@ -313,6 +313,10 @@ warehouseScanRouter.get("/sessions/:id/summary", warehouseAuth, async (req, res,
         name: u.equipment.name,
         barcode: u.barcode ?? "",
       })),
+      // Обогащённый «зарезервирован, но недоступен» — служит источником
+      // для строки «⛔ Резерв недоступен» на экране сверки ISSUE-флоу.
+      // Сервис уже отдал name+ordinal+status; здесь просто пробрасываем.
+      reservedButUnavailable: summary.reservedButUnavailable,
     });
   } catch (err) {
     next(err);

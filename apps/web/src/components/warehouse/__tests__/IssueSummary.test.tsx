@@ -147,6 +147,21 @@ describe("IssueChecklist · Сверка phase", () => {
     expect(badgeBlock.textContent || "").toMatch(/\b5\b/);
   });
 
+  it("'из M в брони' uses unit count, not BookingItem count (no «4 из 3» misread)", async () => {
+    // Fixture state: two NON-extra UNIT items with 3+4 units = 7 reservable
+    // unit-rows; plus one extra UNIT добор of 1 unit (not counted into M).
+    // Old formula `state.items.filter(!isExtra).length` would give M=2 (just
+    // the two non-extra BookingItem objects), which reads as «… из 2 в брони»
+    // — semantically wrong against the mock «из 26 в брони» which counts
+    // every reservable row.
+    render(<IssueChecklist sessionId="s1" projectName="Орбита" onBack={() => {}} />);
+    (await screen.findByRole("button", { name: /Завершить выдачу/ })).click();
+
+    const badge = await screen.findByText(/Готово к выдаче/);
+    const badgeBlock = badge.parentElement as HTMLElement;
+    expect(badgeBlock.textContent || "").toMatch(/из\s+7\s+в брони/);
+  });
+
   it("expands the «⚠ Без отметки» row with the first matching units", async () => {
     render(<IssueChecklist sessionId="s1" projectName="Орбита" onBack={() => {}} />);
     (await screen.findByRole("button", { name: /Завершить выдачу/ })).click();

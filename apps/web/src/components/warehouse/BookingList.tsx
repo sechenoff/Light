@@ -121,10 +121,18 @@ function groupBookings(bookings: BookingSummary[]): BucketGroup[] {
 
 export function BookingList({
   operation,
+  version = 0,
   onUnauth,
   onSelect,
 }: {
   operation: ScanOperation;
+  /**
+   * Monotonic refetch trigger. The parent bumps this after a successful
+   * `complete` so the list re-fetches and the just-handled booking
+   * disappears from the current operation's list. Optional — defaults to
+   * 0 so existing tests / callers don't need to thread it through.
+   */
+  version?: number;
   /** 401 handler — token expired / missing. */
   onUnauth: () => void;
   /** Called after a session is created for the tapped booking. */
@@ -160,7 +168,11 @@ export function BookingList({
     return () => {
       cancelled = true;
     };
-  }, [operation, onUnauth]);
+    // `version` is a dependency on purpose — bumping it re-runs the effect
+    // and re-fetches /bookings, which is exactly the refetch semantics we
+    // need after a successful complete (the just-completed booking should
+    // disappear from the current operation's list).
+  }, [operation, onUnauth, version]);
 
   const groups = useMemo(() => groupBookings(bookings), [bookings]);
 
@@ -236,7 +248,7 @@ export function BookingList({
                   </div>
                   <div className="mt-0.5 truncate text-[11px] text-ink-3">
                     {b.client?.name ?? "—"} · {count}{" "}
-                    {pluralize(count, "единица", "единицы", "единиц")}
+                    {pluralize(count, "позиция", "позиции", "позиций")}
                     {isBusy && <span className="ml-1 text-ink-2">· …</span>}
                   </div>
                 </button>
