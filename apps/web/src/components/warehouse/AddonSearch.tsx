@@ -77,12 +77,14 @@ function isAvailable(r: AddonResult): boolean {
 /** The red conflict warn card (mockup block 3 `.warn`). Pure & controlled. */
 function ConflictWarning({
   name,
+  qty,
   conflict,
   busy,
   onCancel,
   onForce,
 }: {
   name: string;
+  qty: number;
   conflict: AddonConflict;
   busy: boolean;
   onCancel: () => void;
@@ -116,10 +118,14 @@ function ConflictWarning({
           type="button"
           onClick={onForce}
           disabled={busy}
-          aria-label={`Выдать ${name} под ответственность, несмотря на конфликт`}
+          aria-label={`Выдать ${qty > 1 ? `${qty} шт ` : ""}${name} под ответственность, несмотря на конфликт`}
           className="h-10 flex-[1.4] rounded bg-rose text-[12px] font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
         >
-          {busy ? "…" : "Выдать под ответственность"}
+          {busy
+            ? "…"
+            : qty > 1
+              ? `Выдать ${qty} под ответственность`
+              : "Выдать под ответственность"}
         </button>
       </div>
       <p className="mt-1.5 text-[10px] text-rose/80">
@@ -132,7 +138,16 @@ function ConflictWarning({
 interface ActiveConflict {
   equipmentId: string;
   name: string;
+  qty: number;
   conflict: AddonConflict;
+}
+
+interface PickingTarget {
+  equipmentId: string;
+  name: string;
+  qty: number;
+  /** Upper bound for the qty input: `availableQuantity` from the search row. */
+  availableMax: number;
 }
 
 export function AddonSearch({
@@ -165,6 +180,9 @@ export function AddonSearch({
 
   // The inline red warn card target (from a conflicted row OR a 409 race).
   const [active, setActive] = useState<ActiveConflict | null>(null);
+  // Free-row tap opens an inline qty picker for THIS row (− N + → Добавить N).
+  // null when no picker is open; set to a row to enter «picking N» mode.
+  const [picking, setPicking] = useState<PickingTarget | null>(null);
   // equipmentId currently being POSTed (disables its row / warn buttons).
   const [adding, setAdding] = useState<string | null>(null);
   // Brief confirmation line after a successful add (keeps sheet open).
@@ -280,24 +298,31 @@ export function AddonSearch({
   }, [sessionId, debounced]);
 
   const closeWarning = useCallback(() => setActive(null), []);
+  const closePicker = useCallback(() => setPicking(null), []);
 
-  // Shared POST: optional ack flag. On 409 ADDON_CONFLICT surface the SAME
-  // red warn card built from `err.details` (covers the race where a row
-  // looked free at search time but got booked before this add).
+  // Shared POST: accepts qty (>= 1) and optional ack flag. On 409 ADDON_CONFLICT
+  // surface the SAME red warn card built from `err.details` AND preserve the
+  // chosen qty so «Выдать N под ответственность» retries with the same N.
   const doAdd = useCallback(
-    async (r: { equipmentId: string; name: string }, ack: boolean) => {
+    async (
+      r: { equipmentId: string; name: string },
+      ack: boolean,
+      qty: number,
+    ) => {
       if (adding) return;
+      const safeQty = Math.max(1, Math.floor(Number.isFinite(qty) ? qty : 1));
       setAdding(r.equipmentId);
       setError(null);
       try {
         const added = await scanApi.addItem(
           sessionId,
           r.equipmentId,
-          1,
+          safeQty,
           ack ? true : undefined,
         );
         setActive(null);
-        setAddedName(r.name);
+        setPicking(null);
+        setAddedName(safeQty > 1 ? `${r.name} ×${safeQty}` : r.name);
         onAdded(added.bookingItemId, ack);
       } catch (err: unknown) {
         if (
@@ -307,7 +332,14 @@ export function AddonSearch({
         ) {
           const conflict = conflictFromDetails(err.details);
           if (conflict) {
-            setActive({ equipmentId: r.equipmentId, name: r.name, conflict });
+            // Transition picker → warn card, carrying the chosen qty.
+            setActive({
+              equipmentId: r.equipmentId,
+              name: r.name,
+              qty: safeQty,
+              conflict,
+            });
+            setPicking(null);
             return;
           }
         }
@@ -323,23 +355,49 @@ export function AddonSearch({
 
   function handleRowTap(r: AddonResult) {
     setAddedName(null);
-    // Conflicted (explicit conflict OR busy) → show the warn card, do NOT add.
+    // Conflicted (explicit conflict OR busy) → show the warn card directly
+    // with qty=1 (conflict-добор is rare; qty edit not exposed in this path).
     if (r.conflict || !isAvailable(r)) {
       if (r.conflict) {
         setActive({
           equipmentId: r.equipmentId,
           name: r.name,
+          qty: 1,
           conflict: r.conflict,
         });
       } else {
         // Busy with no conflict block from the API — still soft-warn by
         // attempting the add; the backend returns the 409 with details,
         // which surfaces the same card.
-        void doAdd({ equipmentId: r.equipmentId, name: r.name }, false);
+        void doAdd({ equipmentId: r.equipmentId, name: r.name }, false, 1);
       }
       return;
     }
-    void doAdd({ equipmentId: r.equipmentId, name: r.name }, false);
+    // Free row → open inline qty picker. Default qty=1, max = availableQuantity.
+    setPicking({
+      equipmentId: r.equipmentId,
+      name: r.name,
+      qty: 1,
+      availableMax: Math.max(1, r.availableQuantity),
+    });
+  }
+
+  /** Stepper helpers — clamped to [1, availableMax]. */
+  function bumpPickQty(delta: number) {
+    setPicking((p) => {
+      if (!p) return p;
+      const next = Math.min(p.availableMax, Math.max(1, p.qty + delta));
+      return next === p.qty ? p : { ...p, qty: next };
+    });
+  }
+  function setPickQty(raw: string) {
+    setPicking((p) => {
+      if (!p) return p;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return p;
+      const clamped = Math.min(p.availableMax, Math.max(1, Math.floor(n)));
+      return { ...p, qty: clamped };
+    });
   }
 
   return (
@@ -438,6 +496,7 @@ export function AddonSearch({
           {active && (
             <ConflictWarning
               name={active.name}
+              qty={active.qty}
               conflict={active.conflict}
               busy={adding === active.equipmentId}
               onCancel={closeWarning}
@@ -445,6 +504,7 @@ export function AddonSearch({
                 void doAdd(
                   { equipmentId: active.equipmentId, name: active.name },
                   true,
+                  active.qty,
                 )
               }
             />
@@ -482,6 +542,84 @@ export function AddonSearch({
               {results.map((r) => {
                 const free = isAvailable(r);
                 const isAdding = adding === r.equipmentId;
+                const isPicking = picking?.equipmentId === r.equipmentId;
+
+                // Inline qty picker for THIS row — replaces the regular row
+                // tap-target while the operator is choosing N. «Добавить N»
+                // confirms; «Отмена» backs out without touching state.
+                if (isPicking && picking) {
+                  return (
+                    <li key={r.equipmentId}>
+                      <div className="flex flex-wrap items-center gap-2 border-t border-surface-subtle bg-accent-soft/40 px-1 py-2.5 first:border-t-0">
+                        <span className="min-w-0 flex-1 basis-full md:basis-auto">
+                          <span className="block truncate text-[13px] font-medium text-ink">
+                            {r.name}
+                          </span>
+                          <span className="eyebrow mt-0.5 block truncate text-ink-3">
+                            свободно ×{r.availableQuantity}
+                          </span>
+                        </span>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => bumpPickQty(-1)}
+                            disabled={picking.qty <= 1 || !!adding}
+                            aria-label="Уменьшить количество"
+                            className="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface text-lg font-semibold leading-none text-ink-2 transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={picking.availableMax}
+                            value={picking.qty}
+                            onChange={(e) => setPickQty(e.target.value)}
+                            aria-label="Количество для добавления"
+                            className="h-10 w-14 rounded border border-border-strong bg-surface text-center text-[13px] font-semibold text-ink outline-none focus:border-accent-bright"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => bumpPickQty(+1)}
+                            disabled={
+                              picking.qty >= picking.availableMax || !!adding
+                            }
+                            aria-label="Увеличить количество"
+                            className="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface text-lg font-semibold leading-none text-ink-2 transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void doAdd(
+                              { equipmentId: r.equipmentId, name: r.name },
+                              false,
+                              picking.qty,
+                            )
+                          }
+                          disabled={!!adding}
+                          aria-label={`Добавить ${picking.qty} шт ${r.name} в выдачу`}
+                          className="h-10 shrink-0 rounded bg-accent-bright px-3 text-[12px] font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
+                        >
+                          {isAdding ? "…" : `Добавить ${picking.qty}`}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={closePicker}
+                          disabled={!!adding}
+                          aria-label="Отмена — закрыть выбор количества"
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-border bg-surface text-[16px] leading-none text-ink-3 transition-colors hover:bg-surface-muted disabled:opacity-50"
+                        >
+                          <span aria-hidden="true">✕</span>
+                        </button>
+                      </div>
+                    </li>
+                  );
+                }
+
                 return (
                   <li key={r.equipmentId}>
                     <button
@@ -490,7 +628,7 @@ export function AddonSearch({
                       disabled={!!adding}
                       aria-label={
                         free
-                          ? `${r.name} — свободно, добавить в выдачу`
+                          ? `${r.name} — свободно, выбрать количество и добавить в выдачу`
                           : `${r.name} — занят, открыть предупреждение о доборе`
                       }
                       className="flex w-full items-center gap-2 border-t border-surface-subtle px-1 py-2.5 text-left transition-colors first:border-t-0 hover:bg-surface-muted disabled:opacity-60"
