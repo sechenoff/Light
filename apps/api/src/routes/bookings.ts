@@ -14,7 +14,14 @@ import {
 } from "../utils/dates";
 import { serializeBookingForApi } from "../utils/serializeDecimal";
 import { buildQuoteXml } from "../services/quoteExport";
-import { buildSmetaExportDocument, writeSmetaPdf, writeSmetaXlsx } from "../services/smetaExport";
+import {
+  buildSmetaExportDocument,
+  writeSmetaPdf,
+  writeSmetaXlsx,
+  buildFullSmeta,
+  writeFullSmetaPdf,
+  writeFullSmetaXlsx,
+} from "../services/smetaExport";
 import { formatExportHourCalculationLine } from "../utils/dates";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
 import { calcBookingPaymentStatus, computeBookingTimeline, computeRelatedExpenses, createFinanceEvent, recomputeBookingFinance } from "../services/finance";
@@ -1735,6 +1742,65 @@ router.get(
     }
   },
 );
+
+// ── GET /api/bookings/:id/full-estimate/export/{pdf,xlsx} ────────────────────
+// Combined main + (optional) addon estimate in a single file. If addon is
+// absent, the output is identical to the existing main-only export. Used as
+// the default download for sending to clients.
+
+router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      include: {
+        client: true,
+        estimates: { include: { lines: true } },
+      },
+    });
+    if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+
+    const main = booking.estimates.find((e) => e.kind === "MAIN");
+    if (!main) throw new HttpError(404, "Основная смета не создана", "MAIN_ESTIMATE_NOT_FOUND");
+    const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
+
+    const doc = buildFullSmeta({ booking, main, addon });
+    const human = buildBookingHumanName({
+      startDate: booking.startDate,
+      clientName: booking.client.name,
+      totalAfterDiscount: main.totalAfterDiscount.toString(),
+    });
+    writeFullSmetaPdf(res, doc, `${safeFileName(human)}-смета.pdf`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      include: {
+        client: true,
+        estimates: { include: { lines: true } },
+      },
+    });
+    if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+
+    const main = booking.estimates.find((e) => e.kind === "MAIN");
+    if (!main) throw new HttpError(404, "Основная смета не создана", "MAIN_ESTIMATE_NOT_FOUND");
+    const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
+
+    const doc = buildFullSmeta({ booking, main, addon });
+    const human = buildBookingHumanName({
+      startDate: booking.startDate,
+      clientName: booking.client.name,
+      totalAfterDiscount: main.totalAfterDiscount.toString(),
+    });
+    await writeFullSmetaXlsx(res, doc, `${safeFileName(human)}-смета.xlsx`);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ── B5: GET /api/bookings/:id/related-expenses ───────────────────────────────
 // D3: SA-only — CLAUDE.md matrix: GET /api/finance/* SA-only; booking finance sub-routes follow same policy
