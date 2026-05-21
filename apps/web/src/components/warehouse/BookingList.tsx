@@ -248,7 +248,7 @@ export function BookingList({
                   </div>
                   <div className="mt-0.5 truncate text-[11px] text-ink-3">
                     {b.client?.name ?? "—"} · {count}{" "}
-                    {pluralize(count, "единица", "единицы", "единиц")}
+                    {pluralize(count, "позиция", "позиции", "позиций")}
                     {isBusy && <span className="ml-1 text-ink-2">· …</span>}
                   </div>
                 </button>

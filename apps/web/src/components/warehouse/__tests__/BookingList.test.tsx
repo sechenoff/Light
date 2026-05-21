@@ -67,11 +67,13 @@ describe("BookingList", () => {
     expect(screen.getByText(/#TODAY2/)).toBeInTheDocument();
     expect(screen.getByText(/#OMORR1/)).toBeInTheDocument();
 
-    // Item count via pluralize.
-    expect(screen.getByText(/24 единицы/)).toBeInTheDocument();
-    expect(screen.getByText(/11 единиц/)).toBeInTheDocument();
-    expect(screen.getByText(/3 единицы/)).toBeInTheDocument();
-    expect(screen.getByText(/6 единиц/)).toBeInTheDocument();
+    // Item count via pluralize — label is «позиция» (line items), not
+    // «единица» (physical units), since `b.items.length` counts BookingItem
+    // objects (each may have N reserved units).
+    expect(screen.getByText(/24 позиции/)).toBeInTheDocument();
+    expect(screen.getByText(/11 позиций/)).toBeInTheDocument();
+    expect(screen.getByText(/3 позиции/)).toBeInTheDocument();
+    expect(screen.getByText(/6 позиций/)).toBeInTheDocument();
 
     // Within "Сегодня": aaaaaatoday1 (#TODAY1) sorts before bbbbbbtoday2.
     const buttons = [...container.querySelectorAll("button")];
