@@ -574,8 +574,30 @@ warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req,
       excludeBookingId: session.bookingId,
     });
 
+    const trimmedRows = rows.slice(0, 30);
+
+    // Batch-load BookingItem.quantity for the current booking × visible equipment.
+    // addCap = max(0, availableQuantity − alreadyInThisBooking). `availableQuantity`
+    // уже исключает текущую бронь через excludeBookingId, поэтому остаётся вычесть
+    // только то, что эта же бронь уже держит.
+    const visibleEquipmentIds = trimmedRows.map((r) => r.equipment.id);
+    const existingItems =
+      visibleEquipmentIds.length > 0
+        ? await prisma.bookingItem.findMany({
+            where: {
+              bookingId: session.bookingId,
+              equipmentId: { in: visibleEquipmentIds },
+            },
+            select: { equipmentId: true, quantity: true },
+          })
+        : [];
+    const alreadyMineByEquipment = new Map<string, number>();
+    for (const it of existingItems) {
+      if (it.equipmentId) alreadyMineByEquipment.set(it.equipmentId, it.quantity);
+    }
+
     const results = await Promise.all(
-      rows.slice(0, 30).map(async (row) => {
+      trimmedRows.map(async (row) => {
         const availability = row.availableQuantity > 0 ? "AVAILABLE" : "UNAVAILABLE";
         const conflict =
           availability === "UNAVAILABLE"
@@ -586,11 +608,14 @@ warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req,
                 session.bookingId,
               )
             : null;
+        const alreadyMine = alreadyMineByEquipment.get(row.equipment.id) ?? 0;
+        const addCap = Math.max(0, row.availableQuantity - alreadyMine);
         return {
           equipmentId: row.equipment.id,
           name: row.equipment.name,
           category: row.equipment.category,
           availableQuantity: row.availableQuantity,
+          addCap,
           availability,
           conflict,
         };
