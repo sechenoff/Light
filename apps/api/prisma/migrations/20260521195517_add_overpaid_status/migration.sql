@@ -1,0 +1,5 @@
+-- Add OVERPAID to BookingPaymentStatus enum.
+-- SQLite stores Prisma enums as plain TEXT without CHECK constraints,
+-- so no DDL change is required at the database level. This migration
+-- exists only to keep the Prisma migration history aligned with the
+-- updated schema, so the enum's TypeScript type now includes "OVERPAID".
