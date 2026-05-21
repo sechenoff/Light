@@ -29,3 +29,11 @@ export type SmetaExportDocument = {
   totalAfterDiscount: string;
   currency: string;
 };
+
+/** Полная смета: основная + (опционально) доб-смета. */
+export type SmetaFullExportDocument = {
+  main: SmetaExportDocument;
+  addon: SmetaExportDocument | null;
+  /** Финальная сумма к оплате = main + addon (для итоговой строки). */
+  grandTotal: string;
+};

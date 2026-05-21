@@ -58,16 +58,19 @@ function rub(value: string): string {
   return `${n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`;
 }
 
-export function writeSmetaPdf(res: Response, data: SmetaExportDocument, downloadName: string): void {
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", buildAttachmentContentDisposition(downloadName, "estimate.pdf"));
-
+/**
+ * Рисует одну секцию сметы в уже открытый PDFKit-документ.
+ * Использует текущую страницу — у вызывающего ответственность вызвать `doc.addPage()`
+ * между секциями при multi-section экспорте.
+ */
+export function drawSmetaDocumentIntoPdf(
+  doc: InstanceType<typeof PDFDocument>,
+  data: SmetaExportDocument,
+): void {
   const margin = 48;
   const pageWidth = 595.28;
   const contentW = pageWidth - margin * 2;
-  const doc = new PDFDocument({ size: "A4", margin, autoFirstPage: true });
   const fonts = resolveFonts(doc);
-  doc.pipe(res);
 
   let y = margin;
 
@@ -229,6 +232,47 @@ export function writeSmetaPdf(res: Response, data: SmetaExportDocument, download
   totalRow("Смета итого", rub(data.subtotal));
   totalRow(`Скидка (${data.discountPercent}%)`, `− ${rub(data.discountAmount)}`);
   totalRow("Итого после скидки", rub(data.totalAfterDiscount), true);
+}
 
+export function writeSmetaPdf(res: Response, data: SmetaExportDocument, downloadName: string): void {
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", buildAttachmentContentDisposition(downloadName, "estimate.pdf"));
+
+  const doc = new PDFDocument({ size: "A4", margin: 48, autoFirstPage: true });
+  doc.pipe(res);
+  drawSmetaDocumentIntoPdf(doc, data);
+  doc.end();
+}
+
+/**
+ * Multi-section PDF: каждая секция рисуется со своей страницы, затем общий grand-total
+ * футер. Если передан один документ — поведение эквивалентно `writeSmetaPdf` (без футера).
+ */
+export function writeSmetaPdfMulti(
+  res: Response,
+  sections: SmetaExportDocument[],
+  downloadName: string,
+  grandTotal: string,
+): void {
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", buildAttachmentContentDisposition(downloadName, "estimate.pdf"));
+
+  const doc = new PDFDocument({ size: "A4", margin: 48, autoFirstPage: true });
+  doc.pipe(res);
+
+  sections.forEach((section, idx) => {
+    if (idx > 0) doc.addPage();
+    drawSmetaDocumentIntoPdf(doc, section);
+  });
+
+  // Grand total footer на последней странице (только при multi-section)
+  if (sections.length > 1) {
+    doc.moveDown(2);
+    const n = Number(grandTotal);
+    const formatted = Number.isFinite(n)
+      ? `${n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`
+      : `${grandTotal} ₽`;
+    doc.fontSize(11).text(`ИТОГО к оплате: ${formatted}`, { align: "right" });
+  }
   doc.end();
 }
