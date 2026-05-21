@@ -103,14 +103,28 @@ describe("createSession", () => {
     await expect(createSession("b1", "Иван", "RETURN")).rejects.toThrow("ISSUED");
   });
 
-  it("rejects if an ACTIVE session already exists for same bookingId+operation", async () => {
+  it("returns the existing ACTIVE session instead of throwing (idempotent re-open)", async () => {
+    // Real scenario: warehouse worker started, closed the tab, came back →
+    // tapping the same booking must REUSE the existing session, not blow up
+    // with «Уже существует…» which the global error handler mapped to a 500
+    // «Внутренняя ошибка сервера» and silently broke the UI.
     const { createSession } = await getSvc();
     const db = await getPrisma();
     db.booking.findUnique.mockResolvedValue({ id: "b1", status: "CONFIRMED" });
-    db.scanSession.findFirst.mockResolvedValue({ id: "s1", status: "ACTIVE" });
+    const existing = {
+      id: "s1",
+      bookingId: "b1",
+      operation: "ISSUE",
+      status: "ACTIVE",
+      workerName: "Алена",
+    };
+    db.scanSession.findFirst.mockResolvedValue(existing);
     db.$transaction.mockImplementation(async (fn: any) => fn(db));
 
-    await expect(createSession("b1", "Иван", "ISSUE")).rejects.toThrow("активная сессия");
+    const out = await createSession("b1", "Борис", "ISSUE");
+    expect(out).toEqual(existing);
+    // create MUST NOT be invoked when an ACTIVE session already exists.
+    expect(db.scanSession.create).not.toHaveBeenCalled();
   });
 
   it("creates and returns session for valid ISSUE booking", async () => {
