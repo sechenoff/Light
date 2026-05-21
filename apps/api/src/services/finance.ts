@@ -78,12 +78,23 @@ export function computeOutstanding(booking: { amountOutstanding: string | number
   return toDec(booking.amountOutstanding.toString());
 }
 
+/** Returns the MAIN estimate of a booking or null. Used everywhere callsites
+ *  previously read `booking.estimate` (1:1). With compound unique on
+ *  [bookingId, kind], the relation is 1:N — this helper centralizes the
+ *  filter so callsites stay readable. */
+export async function getMainEstimate(bookingId: string) {
+  return prisma.estimate.findFirst({
+    where: { bookingId, kind: "MAIN" },
+    include: { lines: true },
+  });
+}
+
 export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike) {
   const tx = txArg ?? prisma;
   const booking = await tx.booking.findUnique({
     where: { id: bookingId },
     include: {
-      estimate: true,
+      estimates: true, // ← changed: was `estimate: true` (1:1)
       payments: {
         where: {
           direction: "INCOME",
@@ -97,19 +108,29 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
   if (!booking) return null;
 
   const previousStatus = booking.paymentStatus;
-  const totalEstimateAmount = booking.estimate ? new Decimal(booking.estimate.subtotal.toString()) : new Decimal(booking.totalEstimateAmount.toString());
-  const discountAmount = booking.estimate ? new Decimal(booking.estimate.discountAmount.toString()) : new Decimal(booking.discountAmount.toString());
-  // Equipment total after discount — from estimate snapshot if present, else from booking's stored values.
-  const equipmentAfterDiscount = booking.estimate
-    ? new Decimal(booking.estimate.totalAfterDiscount.toString())
+  const main  = booking.estimates.find((e) => e.kind === "MAIN")  ?? null;
+  const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
+
+  const totalEstimateAmount = main
+    ? new Decimal(main.subtotal.toString())
+    : new Decimal(booking.totalEstimateAmount.toString());
+  const discountAmount = main
+    ? new Decimal(main.discountAmount.toString())
+    : new Decimal(booking.discountAmount.toString());
+
+  const mainAfterDiscount  = main  ? new Decimal(main.totalAfterDiscount.toString())  : new Decimal(0);
+  const addonAfterDiscount = addon ? new Decimal(addon.totalAfterDiscount.toString()) : new Decimal(0);
+  // Equipment after discount = MAIN + ADDON (both already include their own discount).
+  // For bookings without ANY estimate (DRAFT pre-confirm), fall back to legacy stored value.
+  const equipmentAfterDiscount = main
+    ? mainAfterDiscount.add(addonAfterDiscount)
     : new Decimal(booking.finalAmount.toString());
-  // Transport is a flat add-on that doesn't participate in the equipment discount.
+
   const transportSubtotal = booking.transportSubtotalRub
     ? new Decimal(booking.transportSubtotalRub.toString())
     : new Decimal(0);
-  // Final amount = what the client actually pays = equipment-after-discount + transport.
   const finalAmount = equipmentAfterDiscount.add(transportSubtotal);
-  const amountPaid = sumDec(booking.payments.map((p) => p.amount.toString()));
+  const amountPaid  = sumDec(booking.payments.map((p) => p.amount.toString()));
   const amountOutstanding = Decimal.max(finalAmount.sub(amountPaid), new Decimal(0));
   const status = calcBookingPaymentStatus({
     finalAmount,
@@ -129,6 +150,7 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
       totalEstimateAmount: totalEstimateAmount.toDecimalPlaces(2).toString(),
       discountAmount: discountAmount.toDecimalPlaces(2).toString(),
       finalAmount: finalAmount.toDecimalPlaces(2).toString(),
+      addonAmount: addonAfterDiscount.toDecimalPlaces(2).toString(),
       amountPaid: amountPaid.toDecimalPlaces(2).toString(),
       amountOutstanding: amountOutstanding.toDecimalPlaces(2).toString(),
       paymentStatus: status,

@@ -306,8 +306,8 @@ describe("approve workflow с custom item", () => {
     expect(approveRes.body.booking.status).toBe("CONFIRMED");
 
     // Проверяем EstimateLine
-    const estimate = await prisma.estimate.findUnique({
-      where: { bookingId: booking.id },
+    const estimate = await prisma.estimate.findFirst({
+      where: { bookingId: booking.id, kind: "MAIN" },
       include: { lines: true },
     });
     expect(estimate).toBeTruthy();

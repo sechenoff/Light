@@ -17,6 +17,9 @@ function okResult(over: Partial<CompleteResult> = {}): CompleteResult {
     failedBrokenUnits: [],
     createdProblemItemIds: [],
     failedProblemUnits: [],
+    mainAfterDiscount: "0",
+    addonAfterDiscount: "0",
+    finalAmount: "0",
     ...over,
   };
 }

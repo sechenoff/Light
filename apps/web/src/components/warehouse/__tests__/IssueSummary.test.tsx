@@ -29,6 +29,9 @@ vi.mock("../AddonSearch", () => ({
 
 // Spy on the api client used for getSummary.
 const summarySpy = vi.fn<(sessionId: string) => Promise<SummaryResult>>();
+const addonEstimateSpy = vi.fn<
+  (bookingId: string) => Promise<{ addon: import("../types").AddonEstimateView | null }>
+>();
 vi.mock("../api", async () => {
   const actual = await vi.importActual<typeof import("../api")>("../api");
   return {
@@ -36,6 +39,7 @@ vi.mock("../api", async () => {
     scanApi: {
       ...actual.scanApi,
       getSummary: (sessionId: string) => summarySpy(sessionId),
+      getAddonEstimate: (bookingId: string) => addonEstimateSpy(bookingId),
     },
   };
 });
@@ -113,6 +117,9 @@ function defaultSummary(over: Partial<SummaryResult> = {}): SummaryResult {
         status: "MAINTENANCE",
       },
     ],
+    mainAfterDiscount: "0",
+    addonAfterDiscount: "0",
+    finalAmount: "0",
     ...over,
   };
 }
@@ -121,6 +128,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockState = state();
   summarySpy.mockResolvedValue(defaultSummary());
+  addonEstimateSpy.mockResolvedValue({ addon: null });
 });
 
 describe("IssueChecklist · Сверка phase", () => {
@@ -279,5 +287,51 @@ describe("IssueChecklist · Сверка phase", () => {
     expect(
       screen.getByRole("button", { name: /Подтвердить выдачу/ }),
     ).not.toBeDisabled();
+  });
+
+  it("renders «Доб-смета» block in summary phase when addon estimate exists", async () => {
+    addonEstimateSpy.mockResolvedValue({
+      addon: {
+        id: "ae1",
+        bookingId: "b1",
+        shifts: 2,
+        subtotal: "10000",
+        discountPercent: "50",
+        discountAmount: "5000",
+        totalAfterDiscount: "5000",
+        lines: [
+          {
+            equipmentId: "eq-v",
+            name: "Vmount",
+            category: "Электрика",
+            quantity: 10,
+            unitPrice: "1000",
+            lineSum: "10000",
+          },
+        ],
+      },
+    });
+
+    render(<IssueChecklist sessionId="s1" projectName="Орбита" onBack={() => {}} />);
+    (await screen.findByRole("button", { name: /Завершить выдачу/ })).click();
+
+    expect(await screen.findByText(/Доб-смета/)).toBeInTheDocument();
+    expect(screen.getByText(/Vmount/)).toBeInTheDocument();
+    expect(screen.getByText(/×10/)).toBeInTheDocument();
+    // К доплате после скидки = 5000
+    expect(screen.getByText(/К доплате/)).toBeInTheDocument();
+    // PDF link присутствует
+    const link = screen.getByRole("link", { name: /PDF доб-сметы/ });
+    expect(link.getAttribute("href")).toBe("/api/addon-estimates/b1/export/pdf");
+  });
+
+  it("does NOT render «Доб-смета» block when addon is null", async () => {
+    addonEstimateSpy.mockResolvedValue({ addon: null });
+
+    render(<IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />);
+    (await screen.findByRole("button", { name: /Завершить выдачу/ })).click();
+    // Wait for сверка badge first
+    await screen.findByText(/Готово к выдаче/);
+    expect(screen.queryByText(/Доб-смета/)).not.toBeInTheDocument();
   });
 });

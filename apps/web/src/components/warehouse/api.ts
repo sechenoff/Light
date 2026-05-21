@@ -24,6 +24,7 @@
 
 import type {
   AddItemResult,
+  AddonEstimateView,
   BookingSummary,
   CheckResult,
   CompletePayload,
@@ -344,6 +345,30 @@ export function cancel(sessionId: string): Promise<ScanSessionInfo> {
   );
 }
 
+// ── Add-on estimate (доб-смета) ──────────────────────────────────────────────
+
+/**
+ * GET /api/addon-estimates/:bookingId — read-model доб-сметы.
+ * `addon` is `null` when the booking has no addon estimate yet.
+ */
+export function getAddonEstimate(
+  bookingId: string,
+): Promise<{ addon: AddonEstimateView | null }> {
+  return request<{ addon: AddonEstimateView | null }>(
+    `/api/addon-estimates/${bookingId}`,
+  );
+}
+
+/** URL для скачивания PDF доб-сметы (для прямых `<a href>` ссылок). */
+export function addonEstimatePdfUrl(bookingId: string): string {
+  return `/api/addon-estimates/${bookingId}/export/pdf`;
+}
+
+/** URL для скачивания общей PDF (main + addon). */
+export function fullEstimatePdfUrl(bookingId: string): string {
+  return `/api/bookings/${bookingId}/full-estimate/export/pdf`;
+}
+
 // ── Aggregate export (ergonomic single import) ───────────────────────────────
 
 export const scanApi = {
@@ -362,6 +387,9 @@ export const scanApi = {
   getSummary,
   complete,
   cancel,
+  getAddonEstimate,
+  addonEstimatePdfUrl,
+  fullEstimatePdfUrl,
   getWarehouseToken,
   setWarehouseToken,
   clearWarehouseToken,

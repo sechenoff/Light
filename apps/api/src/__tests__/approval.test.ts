@@ -394,11 +394,12 @@ describe("CRITICAL 2 — approveBooking via confirmBooking (estimate snapshot)",
 
     const fresh = await prisma.booking.findUnique({
       where: { id: booking.id },
-      include: { estimate: { include: { lines: true } } },
+      include: { estimates: { include: { lines: true } } },
     });
     expect(fresh!.confirmedAt).not.toBeNull();
-    expect(fresh!.estimate).not.toBeNull();
-    expect(fresh!.estimate!.lines.length).toBeGreaterThan(0);
+    const mainEst = fresh!.estimates.find((e) => e.kind === "MAIN");
+    expect(mainEst).toBeTruthy();
+    expect(mainEst!.lines.length).toBeGreaterThan(0);
   });
 
   it("approveBooking: audit entry содержит правильный userId", async () => {

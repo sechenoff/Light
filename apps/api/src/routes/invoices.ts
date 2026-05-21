@@ -236,7 +236,7 @@ router.get("/:id/pdf", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res
         booking: {
           include: {
             client: true,
-            estimate: { include: { lines: true } },
+            estimates: { include: { lines: true } },
             items: { include: { equipment: true } },
           },
         },
@@ -264,20 +264,21 @@ router.get("/:id/pdf", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res
     let discountAmount: string | null = null;
     let totalAfterDiscount: string;
 
-    if (booking.estimate) {
-      lines = booking.estimate.lines.map((l, i) => ({
+    const mainEstimate = booking.estimates?.find((e) => e.kind === "MAIN");
+    if (mainEstimate) {
+      lines = mainEstimate.lines.map((l, i) => ({
         index: i + 1,
         name: l.nameSnapshot,
         quantity: l.quantity,
         unitPrice: l.unitPrice.toString(),
         lineSum: l.lineSum.toString(),
       }));
-      subtotal = booking.estimate.subtotal.toString();
-      if (booking.estimate.discountPercent && new Decimal(booking.estimate.discountPercent.toString()).greaterThan(0)) {
-        discountPercent = booking.estimate.discountPercent.toString();
-        discountAmount = booking.estimate.discountAmount.toString();
+      subtotal = mainEstimate.subtotal.toString();
+      if (mainEstimate.discountPercent && new Decimal(mainEstimate.discountPercent.toString()).greaterThan(0)) {
+        discountPercent = mainEstimate.discountPercent.toString();
+        discountAmount = mainEstimate.discountAmount.toString();
       }
-      totalAfterDiscount = booking.estimate.totalAfterDiscount.toString();
+      totalAfterDiscount = mainEstimate.totalAfterDiscount.toString();
     } else {
       lines = booking.items.map((item, i) => {
         const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);

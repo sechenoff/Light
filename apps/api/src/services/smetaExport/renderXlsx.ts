@@ -11,10 +11,17 @@ function parseMoney(s: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export async function writeSmetaXlsx(res: Response, data: SmetaExportDocument, downloadName: string): Promise<void> {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = "Light Rental";
-  const sheet = wb.addWorksheet("Смета", {
+/**
+ * Добавляет один лист сметы (`sheetName`) в существующий workbook.
+ * Используется и для одиночного экспорта (`writeSmetaXlsx`), и для multi-sheet
+ * (`writeFullSmetaXlsx` в `renderFullXlsx.ts`).
+ */
+export function addSmetaSheetToWorkbook(
+  wb: ExcelJS.Workbook,
+  data: SmetaExportDocument,
+  sheetName: string,
+): void {
+  const sheet = wb.addWorksheet(sheetName, {
     views: [{ showGridLines: false }],
   });
 
@@ -160,6 +167,12 @@ export async function writeSmetaXlsx(res: Response, data: SmetaExportDocument, d
   }
 
   sheet.getCell(headerRow, 1).border = thinBorder as ExcelJS.Borders;
+}
+
+export async function writeSmetaXlsx(res: Response, data: SmetaExportDocument, downloadName: string): Promise<void> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Light Rental";
+  addSmetaSheetToWorkbook(wb, data, "Смета");
 
   // Поток в `res` у ExcelJS на части стеков Express даёт битый/пустой файл — пишем в буфер.
   const buf = await wb.xlsx.writeBuffer();

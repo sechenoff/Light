@@ -84,6 +84,7 @@ export function buildSmetaFromPersistedEstimate(args: {
     client: { name: string };
   };
   estimate: {
+    kind?: "MAIN" | "ADDON";
     shifts: number;
     subtotal: PrismaDecimal;
     discountPercent: PrismaDecimal | null;
@@ -109,7 +110,7 @@ export function buildSmetaFromPersistedEstimate(args: {
     isCustom: false,
   }));
 
-  return buildSmetaExportDocument({
+  const baseDoc = buildSmetaExportDocument({
     startDate: args.booking.startDate,
     endDate: args.booking.endDate,
     clientName: args.booking.client.name,
@@ -127,4 +128,9 @@ export function buildSmetaFromPersistedEstimate(args: {
     totalAfterDiscount: new Decimal(args.estimate.totalAfterDiscount.toString()).toDecimalPlaces(2).toString(),
     lines: quoteLikeLines,
   });
+
+  if (args.estimate.kind === "ADDON") {
+    return { ...baseDoc, documentTitleRu: "Смета-добор" };
+  }
+  return baseDoc;
 }

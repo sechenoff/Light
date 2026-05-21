@@ -317,6 +317,12 @@ warehouseScanRouter.get("/sessions/:id/summary", warehouseAuth, async (req, res,
       // для строки «⛔ Резерв недоступен» на экране сверки ISSUE-флоу.
       // Сервис уже отдал name+ordinal+status; здесь просто пробрасываем.
       reservedButUnavailable: summary.reservedButUnavailable,
+      // Финансовая разбивка (для preview-фазы фронт не использует — там
+      // нули; но shape-consistency важна, чтобы клиент мог типизировать
+      // SummaryResult одним типом для обоих endpoint'ов).
+      mainAfterDiscount: summary.mainAfterDiscount,
+      addonAfterDiscount: summary.addonAfterDiscount,
+      finalAmount: summary.finalAmount,
     });
   } catch (err) {
     next(err);
@@ -395,6 +401,13 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       failedBrokenUnits: summary.failedBrokenUnits,
       createdProblemItemIds: summary.createdProblemItemIds,
       failedProblemUnits: summary.failedProblemUnits,
+      // НОВОЕ: финансовая разбивка после recompute (см. completeSession §4.6).
+      // Используется на result-screen фронта для блока «Финансы»
+      // (Согласовано / Доб-смета / К оплате).
+      reservedButUnavailable: summary.reservedButUnavailable,
+      mainAfterDiscount: summary.mainAfterDiscount,
+      addonAfterDiscount: summary.addonAfterDiscount,
+      finalAmount: summary.finalAmount,
     });
   } catch (err) {
     next(err);

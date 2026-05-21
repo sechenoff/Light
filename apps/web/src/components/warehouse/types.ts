@@ -202,6 +202,24 @@ export interface SummaryResult {
    * а делаем поле обязательным — клиент может рассчитывать на наличие.
    */
   reservedButUnavailable: ReservedButUnavailableUnit[];
+  /**
+   * MAIN Estimate.totalAfterDiscount — «Согласовано» на result-screen.
+   * Backend ALWAYS sends this field; "0" when booking is not CONFIRMED.
+   * Mirrors backend `ReconciliationSummary.mainAfterDiscount`.
+   */
+  mainAfterDiscount: string;
+  /**
+   * ADDON Estimate.totalAfterDiscount — «Доб-смета» на result-screen.
+   * Backend ALWAYS sends this field; "0" when there are no addons.
+   * Mirrors backend `ReconciliationSummary.addonAfterDiscount`.
+   */
+  addonAfterDiscount: string;
+  /**
+   * Booking.finalAmount (= main + addon + transport) — «К оплате» на
+   * result-screen. Backend ALWAYS sends this field; "0" when booking is
+   * not yet finance-bound. Mirrors backend `ReconciliationSummary.finalAmount`.
+   */
+  finalAmount: string;
 }
 
 /**
@@ -261,6 +279,57 @@ export interface ScanApiError {
   code: string | null;
   message: string;
   details: unknown;
+}
+
+// ── Add-on estimate (mirrors GET /api/addon-estimates/:bookingId) ────────────
+
+/**
+ * One line of the addon estimate (a single article × quantity).
+ * `name` / `category` are `nameSnapshot` / `categorySnapshot` on the backend
+ * `AddonEstimateLine` — they survive even if the source `Equipment` is later
+ * renamed or deleted.
+ *
+ * Decimal-as-string transport: the backend serialises Prisma `Decimal` fields
+ * (`unitPrice`, `lineSum`) as raw strings to avoid IEEE-754 rounding when
+ * sent through JSON.
+ */
+export interface AddonEstimateLine {
+  /** May be null if the source Equipment was deleted after the line was created. */
+  equipmentId: string | null;
+  /** Display name at the time the line was added (`nameSnapshot`). */
+  name: string;
+  /** Display category at the time the line was added (`categorySnapshot`). */
+  category: string;
+  quantity: number;
+  /** Serialised Decimal. Format with `formatAmount` / `Number(...)` at the edge. */
+  unitPrice: string;
+  /** Serialised Decimal (= unitPrice × quantity × shifts). */
+  lineSum: string;
+}
+
+/**
+ * Read-model of the addon-estimate (доб-смета) for one booking.
+ * Mirrors the JSON returned by `GET /api/addon-estimates/:bookingId` →
+ * `{ addon: AddonEstimateView | null }`. `null` means the booking has no
+ * addon estimate yet (no доборы scanned in).
+ *
+ * All money fields are serialised Decimal strings — see {@link AddonEstimateLine}.
+ */
+export interface AddonEstimateView {
+  id: string;
+  bookingId: string;
+  /** Number of rental shifts the addon was priced for (matches MAIN). */
+  shifts: number;
+  /** Sum of `lines[].lineSum` before discount. */
+  subtotal: string;
+  /** Percent discount applied (e.g. "10" for 10%); `null` if no percent set. */
+  discountPercent: string | null;
+  /** Absolute monetary discount amount applied (Decimal string). */
+  discountAmount: string;
+  /** `subtotal − discountAmount`, the canonical addon total. */
+  totalAfterDiscount: string;
+  /** Per-article breakdown driving the «доб-смета» table. */
+  lines: AddonEstimateLine[];
 }
 
 /**

@@ -44,7 +44,7 @@ type BookingVehicleRow = {
 export type BookingWithItemsEquipment = Booking & {
   client?: Client;
   items: Array<BookingItem & { equipment?: Equipment }>;
-  estimate?: (Estimate & { lines: EstimateLine[] }) | null;
+  estimates?: Array<Estimate & { lines: EstimateLine[] }>;
   vehicles?: BookingVehicleRow[];
 };
 
@@ -77,7 +77,16 @@ export function serializeBookingForApi(b: BookingWithItemsEquipment) {
       customUnitPrice: (it as any).customUnitPrice != null ? (it as any).customUnitPrice.toString() : null,
       equipment: it.equipment ? serializeEquipmentForJson(it.equipment) : null,
     })),
-    estimate: b.estimate ? serializeEstimateForJson(b.estimate) : null,
+    // Преобразуем массив estimates в backward-compatible JSON: top-level `estimate`
+    // = MAIN (для существующих клиентов), `addonEstimate` = ADDON (новое поле).
+    estimate: (() => {
+      const main = b.estimates?.find((e: any) => e.kind === "MAIN");
+      return main ? serializeEstimateForJson(main) : null;
+    })(),
+    addonEstimate: (() => {
+      const addon = b.estimates?.find((e: any) => e.kind === "ADDON");
+      return addon ? serializeEstimateForJson(addon) : null;
+    })(),
     vehicles: b.vehicles ? b.vehicles.map(serializeBookingVehicle) : undefined,
   };
 }

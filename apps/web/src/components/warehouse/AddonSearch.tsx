@@ -152,11 +152,17 @@ interface PickingTarget {
 
 export function AddonSearch({
   sessionId,
+  bookingId,
   bookingNo,
   onAdded,
   onClose,
 }: {
   sessionId: string;
+  /**
+   * Booking id of the brons being augmented — used to build the
+   * «Открыть PDF доб-сметы» link surfaced in the success-line after each add.
+   */
+  bookingId: string;
   /** Display id of the booking being augmented (header context). */
   bookingNo?: string;
   /**
@@ -484,6 +490,17 @@ export function AddonSearch({
             <div className="mx-3 mb-2 rounded-lg border border-emerald-border bg-emerald-soft px-3 py-2 text-[12px] font-medium text-emerald">
               <span aria-hidden="true">✓ </span>
               {addedName} добавлен в выдачу
+              <div className="mt-1 text-[11px] text-emerald/85">
+                Доб-смета обновлена ·{" "}
+                <a
+                  href={`/api/addon-estimates/${bookingId}/export/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline hover:no-underline"
+                >
+                  Открыть PDF →
+                </a>
+              </div>
             </div>
           )}
 

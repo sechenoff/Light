@@ -16,6 +16,9 @@ function okResult(over: Partial<CompleteResult> = {}): CompleteResult {
     failedBrokenUnits: [],
     createdProblemItemIds: [],
     failedProblemUnits: [],
+    mainAfterDiscount: "0",
+    addonAfterDiscount: "0",
+    finalAmount: "0",
     ...over,
   };
 }
@@ -33,6 +36,7 @@ describe("IssueResultView", () => {
     render(
       <IssueResultView
         result={okResult()}
+        bookingId="b1"
         projectName="Орбита"
         issuedCount={24}
         addonsCount={2}
@@ -50,6 +54,7 @@ describe("IssueResultView", () => {
     render(
       <IssueResultView
         result={okResult({ scannedCount: 999 })}
+        bookingId="b1"
         projectName="P"
         issuedCount={24}
         addonsCount={2}
@@ -67,6 +72,7 @@ describe("IssueResultView", () => {
     render(
       <IssueResultView
         result={okResult()}
+        bookingId="b1"
         projectName="P"
         issuedCount={-3}
         addonsCount={0}
@@ -81,6 +87,7 @@ describe("IssueResultView", () => {
     render(
       <IssueResultView
         result={okResult()}
+        bookingId="b1"
         projectName="P"
         issuedCount={1}
         addonsCount={0}
@@ -101,6 +108,7 @@ describe("IssueResultView", () => {
             { equipmentUnitId: "u9", reason: "race-condition" },
           ],
         })}
+        bookingId="b1"
         projectName="P"
         issuedCount={22}
         addonsCount={2}
@@ -117,6 +125,7 @@ describe("IssueResultView", () => {
     const { container } = render(
       <IssueResultView
         result={okResult()}
+        bookingId="b1"
         projectName="P"
         issuedCount={1}
         addonsCount={0}
@@ -132,6 +141,7 @@ describe("IssueResultView", () => {
     render(
       <IssueResultView
         result={okResult()}
+        bookingId="b1"
         projectName="P"
         issuedCount={3}
         addonsCount={0}
@@ -141,5 +151,52 @@ describe("IssueResultView", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Готово/ }));
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders Финансы block with main/addon/final breakdown when addonAfterDiscount > 0", () => {
+    render(
+      <IssueResultView
+        result={okResult({
+          mainAfterDiscount: "5000",
+          addonAfterDiscount: "3000",
+          finalAmount: "8000",
+        })}
+        bookingId="b1"
+        issuedCount={3}
+        addonsCount={1}
+        substitutedCount={0}
+        projectName="P"
+        onDone={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Согласовано/)).toBeInTheDocument();
+    expect(screen.getByText(/5\s?000/)).toBeInTheDocument();
+    expect(screen.getByText(/Доб-смета/)).toBeInTheDocument();
+    expect(screen.getByText(/3\s?000/)).toBeInTheDocument();
+    expect(screen.getByText(/К оплате/)).toBeInTheDocument();
+    expect(screen.getByText(/8\s?000/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Скачать смету.*общая.*PDF/ }))
+      .toHaveAttribute("href", "/api/bookings/b1/full-estimate/export/pdf");
+    expect(screen.getByRole("link", { name: /Скачать доб-смета.*PDF/ }))
+      .toHaveAttribute("href", "/api/addon-estimates/b1/export/pdf");
+  });
+
+  it("does NOT render Финансы block when addonAfterDiscount === '0'", () => {
+    render(
+      <IssueResultView
+        result={okResult({
+          mainAfterDiscount: "5000",
+          addonAfterDiscount: "0",
+          finalAmount: "5000",
+        })}
+        bookingId="b1"
+        issuedCount={3}
+        addonsCount={0}
+        substitutedCount={0}
+        projectName="P"
+        onDone={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/^Согласовано:$/)).not.toBeInTheDocument();
   });
 });

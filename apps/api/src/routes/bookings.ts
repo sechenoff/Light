@@ -14,7 +14,14 @@ import {
 } from "../utils/dates";
 import { serializeBookingForApi } from "../utils/serializeDecimal";
 import { buildQuoteXml } from "../services/quoteExport";
-import { buildSmetaExportDocument, writeSmetaPdf, writeSmetaXlsx } from "../services/smetaExport";
+import {
+  buildSmetaExportDocument,
+  writeSmetaPdf,
+  writeSmetaXlsx,
+  buildFullSmeta,
+  writeFullSmetaPdf,
+  writeFullSmetaXlsx,
+} from "../services/smetaExport";
 import { formatExportHourCalculationLine } from "../utils/dates";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
 import { calcBookingPaymentStatus, computeBookingTimeline, computeRelatedExpenses, createFinanceEvent, recomputeBookingFinance } from "../services/finance";
@@ -249,7 +256,7 @@ router.get("/:id", async (req, res, next) => {
       include: {
         client: true,
         items: { include: { equipment: true } },
-        estimate: { include: { lines: true } },
+        estimates: { include: { lines: true } },
         vehicle: true,
         vehicles: { include: { vehicle: true }, orderBy: { createdAt: "asc" } },
         financeEvents: { orderBy: { createdAt: "desc" }, take: 100 },
@@ -278,7 +285,7 @@ router.get("/:id", async (req, res, next) => {
     const displayName = buildBookingHumanName({
       startDate: booking.startDate,
       clientName: booking.client.name,
-      totalAfterDiscount: booking.estimate?.totalAfterDiscount?.toString() ?? "0",
+      totalAfterDiscount: booking.estimates?.find((e) => e.kind === "MAIN")?.totalAfterDiscount?.toString() ?? "0",
     });
     res.json({
       booking: {
@@ -318,7 +325,7 @@ router.patch("/:id", async (req, res, next) => {
     const body = bookingUpdateSchema.parse(req.body);
     const existing = await prisma.booking.findUnique({
       where: { id },
-      include: { client: true, items: { include: { equipment: true } }, estimate: { include: { lines: true } } },
+      include: { client: true, items: { include: { equipment: true } }, estimates: { include: { lines: true } } },
     });
     if (!existing) throw new HttpError(404, "Booking not found");
 
@@ -478,7 +485,7 @@ router.patch("/:id", async (req, res, next) => {
         include: {
           client: true,
           items: { include: { equipment: true } },
-          estimate: { include: { lines: true } },
+          estimates: { include: { lines: true } },
         },
       });
     });
@@ -544,7 +551,7 @@ router.patch("/:id", async (req, res, next) => {
       include: {
         client: true,
         items: { include: { equipment: true } },
-        estimate: { include: { lines: true } },
+        estimates: { include: { lines: true } },
         vehicles: { include: { vehicle: true }, orderBy: { createdAt: "asc" } },
       },
     });
@@ -617,7 +624,7 @@ router.post("/:id/status", async (req, res, next) => {
     const bookingInclude = {
       client: true,
       items: { include: { equipment: true } },
-      estimate: { include: { lines: true } },
+      estimates: { include: { lines: true } },
     } as const;
 
     let updated;
@@ -1207,7 +1214,7 @@ router.patch("/:id/finance-corrections", rolesGuard(["SUPER_ADMIN"]), async (req
       const booking = await tx.booking.update({
         where: { id },
         data: updateData,
-        include: { client: true, items: { include: { equipment: true } }, estimate: { include: { lines: true } } },
+        include: { client: true, items: { include: { equipment: true } }, estimates: { include: { lines: true } } },
       });
 
       await writeAuditEntry({
@@ -1270,7 +1277,7 @@ router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next
       const updatedBooking = await tx.booking.update({
         where: { id },
         data: updateData,
-        include: { client: true, items: { include: { equipment: true } }, estimate: { include: { lines: true } } },
+        include: { client: true, items: { include: { equipment: true } }, estimates: { include: { lines: true } } },
       });
 
       await writeAuditEntry({
@@ -1543,7 +1550,7 @@ router.post(
         include: {
           client: true,
           items: { include: { equipment: true } },
-          estimate: { include: { lines: true } },
+          estimates: { include: { lines: true } },
         },
       });
       if (!result) throw new HttpError(404, "Бронь не найдена после отмены", "BOOKING_NOT_FOUND");
@@ -1566,7 +1573,7 @@ router.get(
         where: { id: req.params.id },
         include: {
           client: true,
-          estimate: { include: { lines: true } },
+          estimates: { include: { lines: true } },
           items: { include: { equipment: true } },
         },
       });
@@ -1607,20 +1614,21 @@ router.get(
       let discountAmount: string | null = null;
       let totalAfterDiscount: string;
 
-      if (booking.estimate) {
-        lines = booking.estimate.lines.map((l, i) => ({
+      const mainEstimate = booking.estimates?.find((e) => e.kind === "MAIN");
+      if (mainEstimate) {
+        lines = mainEstimate.lines.map((l, i) => ({
           index: i + 1,
           name: l.nameSnapshot,
           quantity: l.quantity,
           unitPrice: l.unitPrice.toString(),
           lineSum: l.lineSum.toString(),
         }));
-        subtotal = booking.estimate.subtotal.toString();
-        if (booking.estimate.discountPercent && new Decimal(booking.estimate.discountPercent.toString()).greaterThan(0)) {
-          discountPercent = booking.estimate.discountPercent.toString();
-          discountAmount = booking.estimate.discountAmount.toString();
+        subtotal = mainEstimate.subtotal.toString();
+        if (mainEstimate.discountPercent && new Decimal(mainEstimate.discountPercent.toString()).greaterThan(0)) {
+          discountPercent = mainEstimate.discountPercent.toString();
+          discountAmount = mainEstimate.discountAmount.toString();
         }
-        totalAfterDiscount = booking.estimate.totalAfterDiscount.toString();
+        totalAfterDiscount = mainEstimate.totalAfterDiscount.toString();
       } else {
         lines = booking.items.map((item, i) => {
           const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
@@ -1664,7 +1672,7 @@ router.get(
         where: { id: req.params.id },
         include: {
           client: true,
-          estimate: { include: { lines: true } },
+          estimates: { include: { lines: true } },
           items: { include: { equipment: true } },
         },
       });
@@ -1694,15 +1702,16 @@ router.get(
       let actLines: ActLine[];
       let totalAmount: string;
 
-      if (booking.estimate) {
-        actLines = booking.estimate.lines.map((l, i) => ({
+      const mainEstimate = booking.estimates?.find((e) => e.kind === "MAIN");
+      if (mainEstimate) {
+        actLines = mainEstimate.lines.map((l, i) => ({
           index: i + 1,
           name: l.nameSnapshot,
           quantity: l.quantity,
           unitPrice: l.unitPrice.toString(),
           lineSum: l.lineSum.toString(),
         }));
-        totalAmount = booking.estimate.totalAfterDiscount.toString();
+        totalAmount = mainEstimate.totalAfterDiscount.toString();
       } else {
         actLines = booking.items.map((item, i) => {
           const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
@@ -1733,6 +1742,65 @@ router.get(
     }
   },
 );
+
+// ── GET /api/bookings/:id/full-estimate/export/{pdf,xlsx} ────────────────────
+// Combined main + (optional) addon estimate in a single file. If addon is
+// absent, the output is identical to the existing main-only export. Used as
+// the default download for sending to clients.
+
+router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      include: {
+        client: true,
+        estimates: { include: { lines: true } },
+      },
+    });
+    if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+
+    const main = booking.estimates.find((e) => e.kind === "MAIN");
+    if (!main) throw new HttpError(404, "Основная смета не создана", "MAIN_ESTIMATE_NOT_FOUND");
+    const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
+
+    const doc = buildFullSmeta({ booking, main, addon });
+    const human = buildBookingHumanName({
+      startDate: booking.startDate,
+      clientName: booking.client.name,
+      totalAfterDiscount: main.totalAfterDiscount.toString(),
+    });
+    writeFullSmetaPdf(res, doc, `${safeFileName(human)}-смета.pdf`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      include: {
+        client: true,
+        estimates: { include: { lines: true } },
+      },
+    });
+    if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+
+    const main = booking.estimates.find((e) => e.kind === "MAIN");
+    if (!main) throw new HttpError(404, "Основная смета не создана", "MAIN_ESTIMATE_NOT_FOUND");
+    const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
+
+    const doc = buildFullSmeta({ booking, main, addon });
+    const human = buildBookingHumanName({
+      startDate: booking.startDate,
+      clientName: booking.client.name,
+      totalAfterDiscount: main.totalAfterDiscount.toString(),
+    });
+    await writeFullSmetaXlsx(res, doc, `${safeFileName(human)}-смета.xlsx`);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ── B5: GET /api/bookings/:id/related-expenses ───────────────────────────────
 // D3: SA-only — CLAUDE.md matrix: GET /api/finance/* SA-only; booking finance sub-routes follow same policy

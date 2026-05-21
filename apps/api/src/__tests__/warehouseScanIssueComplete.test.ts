@@ -85,10 +85,25 @@ beforeAll(async () => {
       endDate: new Date("2026-06-03"),
       status: "CONFIRMED",
       amountPaid: 0,
-      amountOutstanding: 0,
+      amountOutstanding: "4000",
+      totalEstimateAmount: "4000",
+      discountAmount: "0",
+      finalAmount: "4000",
     },
   });
   bookingId = booking.id;
+
+  // MAIN Estimate (Task 6 — completeSession reads totalAfterDiscount для result-screen).
+  await prisma.estimate.create({
+    data: {
+      bookingId,
+      kind: "MAIN",
+      shifts: 2,
+      subtotal: "4000",
+      discountAmount: "0",
+      totalAfterDiscount: "4000",
+    },
+  });
 
   const bi = await prisma.bookingItem.create({
     data: { bookingId, equipmentId, quantity: 2 },
@@ -133,7 +148,7 @@ describe("warehouseScan — ISSUE completion", () => {
     });
   });
 
-  it("completeSession(ISSUE) transitions booking CONFIRMED → ISSUED", async () => {
+  it("completeSession(ISSUE) transitions booking CONFIRMED → ISSUED + returns finance breakdown", async () => {
     const svc = await import("../services/warehouseScan");
     const result = await svc.completeSession(sessionId, { createdBy: superAdminId });
 
@@ -147,6 +162,15 @@ describe("warehouseScan — ISSUE completion", () => {
     // Sanity: returned shape includes scanned/expected.
     expect(result.scanned).toBe(1);
     expect(result.expected).toBe(2);
+
+    // Task 6: финансовая разбивка для result-screen фронта.
+    expect(result).toHaveProperty("mainAfterDiscount");
+    expect(result).toHaveProperty("addonAfterDiscount");
+    expect(result).toHaveProperty("finalAmount");
+    // MAIN seeded с totalAfterDiscount=4000 → finalAmount > 0; ADDON отсутствует → "0".
+    expect(Number(result.finalAmount)).toBeGreaterThan(0);
+    expect(Number(result.mainAfterDiscount)).toBeGreaterThan(0);
+    expect(result.addonAfterDiscount).toBe("0");
   });
 
   it("re-running completeSession on the now-ISSUED booking does not crash and keeps booking ISSUED", async () => {

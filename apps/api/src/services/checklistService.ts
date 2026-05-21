@@ -14,6 +14,7 @@
 import { prisma } from "../prisma";
 import { writeAuditEntry } from "./audit";
 import { recomputeBookingFinance } from "./finance";
+import { recomputeAddonEstimate } from "./addonEstimate";
 import { findAddonConflict } from "./addonAvailability";
 import { HttpError } from "../utils/errors";
 import Decimal from "decimal.js";
@@ -414,6 +415,21 @@ export async function addExtraItem(
       create: { bookingId, equipmentId, quantity },
     });
 
+    // НОВОЕ: дельта-запись для построения ADDON Estimate.
+    // Source of truth для агрегации, потому что upsert выше потерял дельту
+    // (BookingItem.quantity содержит TOTAL, а не «сколько добавили сейчас»).
+    await tx.addonRecord.create({
+      data: {
+        bookingId,
+        sessionId,
+        bookingItemId: item.id,
+        equipmentId,
+        quantity,
+        acknowledgedConflict,
+        createdBy,
+      },
+    });
+
     return item.id;
   });
 
@@ -433,6 +449,13 @@ export async function addExtraItem(
     },
   }).catch((err: unknown) => {
     console.warn("[addExtraItem] audit failed:", err);
+  });
+
+  // НОВОЕ: пересоздать ADDON Estimate. Best-effort: если падает, финансовый
+  // recompute всё равно пройдёт со старым ADDON, следующий успешный вызов
+  // восстановит инвариант.
+  await recomputeAddonEstimate(bookingId).catch((err: unknown) => {
+    console.error("[addExtraItem] recomputeAddonEstimate failed:", err);
   });
 
   // Пересчитываем финансы вне транзакции (легитимно — read-modify-write)
