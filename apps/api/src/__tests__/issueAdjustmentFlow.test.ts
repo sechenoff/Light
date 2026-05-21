@@ -326,18 +326,16 @@ describe("Issue-time adjustments + addon hard cap — full HTTP flow", () => {
     //    ADDON_CONFLICT (другая бронь занимает оборудование на те же даты) и
     //    дойти до hard-cap проверки внутри транзакции.
     //
-    //    Контракт ответа HTTP-ошибки: центральный обработчик в `app.ts`
-    //    кладёт structured-details из 4-арг формы HttpError в `body.details`
-    //    как объект; машинно-читаемый код события — это `body.message`
-    //    «Не хватает на складе» + дискриминирующий `details.addCap`.
-    //    (Top-level `code` строкой выставляется только когда `details` —
-    //    строка, см. backward-compat ветку в `app.ts`.)
+    //    Контракт ответа: HttpError 4-арг форма даёт {code, details} —
+    //    error handler в app.ts отдаёт top-level `body.code` для машинного
+    //    branching на фронте и `body.details` со структурированной нагрузкой.
     const overRes = await request(app)
       .post(`/api/warehouse/sessions/${sessionId2}/items`)
       .set("Authorization", `Bearer ${warehouseToken}`)
       .send({ equipmentId, quantity: 2, acknowledgedConflict: true });
 
     expect(overRes.status).toBe(409);
+    expect(overRes.body.code).toBe("ADDON_OVER_STOCK");
     expect(overRes.body.message).toBe("Не хватает на складе");
     expect(overRes.body.details).toMatchObject({
       addCap: 1,
@@ -361,6 +359,7 @@ describe("Issue-time adjustments + addon hard cap — full HTTP flow", () => {
       .send({ equipmentId, quantity: 1, acknowledgedConflict: true });
 
     expect(zeroRes.status).toBe(409);
+    expect(zeroRes.body.code).toBe("ADDON_OVER_STOCK");
     expect(zeroRes.body.message).toBe("Не хватает на складе");
     expect(zeroRes.body.details).toMatchObject({
       addCap: 0,

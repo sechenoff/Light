@@ -79,9 +79,15 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
     return res.status(err.status).json({
       message: err.message,
       details: err.details,
-      // Surface a string detail as `code` as well — backward-compatible:
-      // `details` is preserved, existing `res.body.details` assertions keep working.
-      ...(typeof err.details === "string" ? { code: err.details } : {}),
+      // Surface .code on the response. Legacy 3-arg form stored the code in
+      // details (string) — handled below. 4-arg form sets .code explicitly
+      // and keeps details as the structured payload; we still need to surface
+      // the code so frontend can branch on it (ADDON_OVER_STOCK, etc).
+      ...(err.code
+        ? { code: err.code }
+        : typeof err.details === "string"
+          ? { code: err.details }
+          : {}),
     });
   }
   if (err instanceof ZodError) {
