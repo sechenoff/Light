@@ -125,13 +125,24 @@ describe("addExtraItem conflict handling", () => {
     ).rejects.toMatchObject({ status: 409, code: "ADDON_CONFLICT" });
   });
 
-  it("adds + writes BOOKING_ITEM_ADDED_WITH_CONFLICT when acknowledged", async () => {
+  it("acknowledged conflict still hits hard cap when physical stock exhausted", async () => {
+    // С новым hard-cap (Task 5) acknowledgedConflict=true НЕ обходит проверку
+    // физического склада. totalQuantity=1, busy-бронь занимает 1, target пытается
+    // добавить ещё 1 → addCap = 1 − 1 − 0 = 0 → 409 ADDON_OVER_STOCK.
+    //
+    // Замечание: soft-warn ADDON_CONFLICT и hard cap ADDON_OVER_STOCK в этом
+    // конкретном сценарии срабатывают по одному и тому же триггеру
+    // (reservedQty+target > capacity). Когда acknowledgedConflict=false →
+    // soft-warn летит первым; когда true → soft-warn пропускается и hard cap
+    // блокирует операцию. Отдельный позитивный тест acknowledgedConflict-пути
+    // невозможен после внедрения cap — см. design spec, Task 5.
     const { addExtraItem } = await import("../services/checklistService");
-    const r = await addExtraItem(sessionId, eqBusyId, 1, createdById, true);
-    expect(r.bookingItemId).toBeTruthy();
-    const audit = await prisma.auditEntry.findFirst({
-      where: { action: "BOOKING_ITEM_ADDED_WITH_CONFLICT" },
+    await expect(
+      addExtraItem(sessionId, eqBusyId, 1, createdById, true),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "ADDON_OVER_STOCK",
+      details: { addCap: 0, requested: 1, alreadyInBooking: 0 },
     });
-    expect(audit).not.toBeNull();
   });
 });

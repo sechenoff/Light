@@ -56,6 +56,9 @@ beforeAll(async () => {
       category: "Электрика",
       rentalRatePerShift: "1000",
       stockTrackingMode: "COUNT",
+      // totalQuantity=10 для hard-cap (этот файл тестирует финансовый поток,
+      // а не stock cap). База 1 + добор 3 + добор 2 = 6 ≤ 10.
+      totalQuantity: 10,
     },
   });
   equipmentId = eq.id;
