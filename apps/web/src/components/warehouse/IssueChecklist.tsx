@@ -735,6 +735,7 @@ export function IssueChecklist({
         {addonOpen && (
           <AddonSearch
             sessionId={sessionId}
+            bookingId={state.bookingId}
             bookingNo={state.bookingId ? displayNo(state.bookingId) : undefined}
             onAdded={handleAddonAdded}
             onClose={() => setAddonOpen(false)}

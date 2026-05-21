@@ -72,7 +72,12 @@ describe("AddonSearch", () => {
       .mockResolvedValue([freeResult()]);
 
     render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
 
     await type("ded");
@@ -93,7 +98,12 @@ describe("AddonSearch", () => {
   it("shows empty state when nothing is found", async () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
     render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
     await type("zzz");
     await settleSearch();
@@ -108,7 +118,12 @@ describe("AddonSearch", () => {
     const onAdded = vi.fn();
 
     render(
-      <AddonSearch sessionId="s1" onAdded={onAdded} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={onAdded}
+        onClose={() => {}}
+      />,
     );
     await type("dedo");
     await settleSearch();
@@ -141,6 +156,42 @@ describe("AddonSearch", () => {
     ).toBeInTheDocument();
   });
 
+  it("success-line after add shows «Открыть PDF доб-сметы →» link with bookingId-based URL", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([freeResult()]);
+    vi.spyOn(scanApi, "addItem").mockResolvedValue({ bookingItemId: "bi-9" });
+
+    render(
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await type("dedo");
+    await settleSearch();
+
+    // Open qty picker + confirm with qty=1
+    await act(async () => {
+      screen
+        .getByRole("button", { name: /свободно, выбрать количество/ })
+        .click();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      screen.getByRole("button", { name: /Добавить 1 шт/ }).click();
+      await Promise.resolve();
+    });
+
+    // PDF link visible
+    const pdfLink = await screen.findByRole("link", { name: /Открыть PDF/ });
+    expect(pdfLink).toBeInTheDocument();
+    expect(pdfLink.getAttribute("href")).toBe(
+      "/api/addon-estimates/b-test/export/pdf",
+    );
+    expect(pdfLink.getAttribute("target")).toBe("_blank");
+  });
+
   it("qty picker: +/+ steppers bump count, «Добавить N» POSTs with chosen N", async () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
       freeResult({ availableQuantity: 19 }),
@@ -151,7 +202,12 @@ describe("AddonSearch", () => {
     const onAdded = vi.fn();
 
     render(
-      <AddonSearch sessionId="s1" onAdded={onAdded} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={onAdded}
+        onClose={() => {}}
+      />,
     );
     await type("dedo");
     await settleSearch();
@@ -194,7 +250,12 @@ describe("AddonSearch", () => {
       freeResult({ availableQuantity: 2 }),
     ]);
     render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
     await type("dedo");
     await settleSearch();
@@ -236,7 +297,12 @@ describe("AddonSearch", () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([freeResult()]);
     const addSpy = vi.spyOn(scanApi, "addItem");
     render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
     await type("dedo");
     await settleSearch();
@@ -267,7 +333,12 @@ describe("AddonSearch", () => {
       conflictedResult(),
     ]);
     render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
     await type("a");
     await settleSearch();
@@ -291,7 +362,12 @@ describe("AddonSearch", () => {
     const onAdded = vi.fn();
 
     render(
-      <AddonSearch sessionId="s1" onAdded={onAdded} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={onAdded}
+        onClose={() => {}}
+      />,
     );
     await type("astera");
     await settleSearch();
@@ -336,7 +412,12 @@ describe("AddonSearch", () => {
     const addSpy = vi.spyOn(scanApi, "addItem");
 
     render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
     await type("astera");
     await settleSearch();
@@ -384,7 +465,12 @@ describe("AddonSearch", () => {
     const onAdded = vi.fn();
 
     render(
-      <AddonSearch sessionId="s1" onAdded={onAdded} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={onAdded}
+        onClose={() => {}}
+      />,
     );
     await type("dedo");
     await settleSearch();
@@ -443,7 +529,12 @@ describe("AddonSearch", () => {
       conflictedResult(),
     ]);
     const { container } = render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
     await type("a");
     await settleSearch();
@@ -454,7 +545,12 @@ describe("AddonSearch", () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
     const onClose = vi.fn();
     render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={onClose} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={onClose}
+      />,
     );
     const closers = screen.getAllByRole("button", {
       name: /Закрыть поиск добора/,
@@ -468,7 +564,12 @@ describe("AddonSearch", () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
     const onClose = vi.fn();
     render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={onClose} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={onClose}
+      />,
     );
     await act(async () => {
       fireEvent.keyDown(window, { key: "Escape" });
@@ -479,7 +580,12 @@ describe("AddonSearch", () => {
   it("moves initial focus to the search input on mount", async () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
     render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
     // Focus is scheduled on a 50ms timer (sibling overlay pattern).
     await act(async () => {
@@ -498,7 +604,12 @@ describe("AddonSearch", () => {
     expect(trigger).toHaveFocus();
 
     const { unmount } = render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
     await act(async () => {
       vi.advanceTimersByTime(60);
@@ -516,7 +627,12 @@ describe("AddonSearch", () => {
   it("traps Tab/Shift+Tab within the sheet (last↔first wrap)", async () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
     render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
     await act(async () => {
       vi.advanceTimersByTime(60);
@@ -552,7 +668,12 @@ describe("AddonSearch", () => {
     document.body.style.overflow = "auto";
 
     const { unmount } = render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
     // jsdom has no matchMedia → treated as the mobile sheet → lock engaged.
     expect(document.body.style.overflow).toBe("hidden");
@@ -566,7 +687,12 @@ describe("AddonSearch", () => {
   it("renders the mobile sheet with the vertical slide-up animation (not horizontal)", async () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([]);
     render(
-      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
     );
     const sheet = screen.getByRole("region", {
       name: /Добор — поиск по каталогу/,

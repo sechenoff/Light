@@ -57,17 +57,20 @@ vi.mock("../useScanSession", () => ({
 vi.mock("../AddonSearch", () => ({
   AddonSearch: ({
     sessionId,
+    bookingId,
     bookingNo,
     onAdded,
     onClose,
   }: {
     sessionId: string;
+    bookingId: string;
     bookingNo?: string;
     onAdded: (bookingItemId: string, hadConflict: boolean) => void;
     onClose: () => void;
   }) => (
     <div data-testid="addon-search">
       <span>addon:{sessionId}</span>
+      <span>bookingId:{bookingId}</span>
       <span>no:{bookingNo}</span>
       <button type="button" onClick={() => onAdded("bi-added", false)}>
         stub-add
@@ -332,6 +335,13 @@ describe("IssueChecklist", () => {
       expect(withhold).toHaveAttribute("aria-pressed", "false");
     });
     expect(checkSpy).toHaveBeenCalledWith("u1");
+  });
+
+  it("passes bookingId to AddonSearch (for доб-смета PDF link)", async () => {
+    render(<IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />);
+    (await screen.findAllByRole("button", { name: /Добор/ }))[0].click();
+    await screen.findByTestId("addon-search");
+    expect(screen.getByText(/bookingId:b1/)).toBeInTheDocument();
   });
 
   it("AddonSearch onAdded(bi, hadConflict=true) tracks the bookingItemId for the сверка", async () => {
