@@ -127,6 +127,11 @@ enum ScanSessionStatus {
   CANCELLED
 }
 
+enum EstimateKind {
+  MAIN
+  ADDON
+}
+
 /// Telegram-пользователь, отправивший фото для анализа
 model User {
   id         String   @id @default(cuid())
@@ -249,6 +254,7 @@ model Equipment {
   slangAliases SlangAlias[]
   importSessionRows  ImportSessionRow[]
   competitorAliases  CompetitorAlias[]
+  addonRecords AddonRecord[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -307,6 +313,7 @@ model Booking {
   isFullyPaid Boolean @default(false)
   amountPaid Decimal @default(0)
   amountOutstanding Decimal @default(0)
+  addonAmount Decimal @default(0)
 
   /// Текст для экспорта сметы (PDF/XLSX), опционально
   estimateOptionalNote            String?
@@ -331,7 +338,7 @@ model Booking {
   /// Multi-vehicle: каждая машина со своими параметрами (per-row).
   vehicles BookingVehicle[]
 
-  estimate Estimate?
+  estimates Estimate[]
   payments Payment[]
   expenses Expense[]
   financeEvents BookingFinanceEvent[]
@@ -340,6 +347,7 @@ model Booking {
   items        BookingItem[]
   lead         Lead?
   scanSessions ScanSession[]
+  addonRecords AddonRecord[]
 
   /// Флаг импорта из старых данных: бронь без items, только финансовый остаток
   isLegacyImport Boolean @default(false)
@@ -489,6 +497,7 @@ model BookingItem {
   equipment Equipment? @relation(fields: [equipmentId], references: [id])
 
   unitReservations BookingItemUnit[]
+  addonRecords AddonRecord[]
 
   createdAt DateTime @default(now())
 
@@ -510,16 +519,17 @@ model BookingItemUnit {
 }
 
 model Estimate {
-  id              String   @id @default(cuid())
-  bookingId       String   @unique
-  booking         Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  id              String       @id @default(cuid())
+  bookingId       String
+  kind            EstimateKind @default(MAIN)
+  booking         Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   currency        String   @default("RUB")
   shifts          Int
 
-  subtotal        Decimal 
-  discountPercent Decimal? 
-  discountAmount  Decimal  
+  subtotal        Decimal
+  discountPercent Decimal?
+  discountAmount  Decimal
   totalAfterDiscount Decimal
 
   commentSnapshot String?
@@ -532,6 +542,8 @@ model Estimate {
   createdAt DateTime @default(now())
 
   lines EstimateLine[]
+
+  @@unique([bookingId, kind])
 }
 
 model EstimateLine {
@@ -545,12 +557,36 @@ model EstimateLine {
   modelSnapshot    String?
 
   quantity Int
-  unitPrice Decimal 
-  lineSum   Decimal 
+  unitPrice Decimal
+  lineSum   Decimal
 
   estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
 
   @@index([estimateId])
+}
+
+/// Запись о доборе во время ISSUE-сессии (дельта-источник для ADDON Estimate).
+/// addExtraItem upsert'ит BookingItem с {quantity: increment: N} — теряется
+/// след дельты («1 было изначально, 10 — добор»). AddonRecord фиксирует
+/// именно ДОБАВЛЕННОЕ qty.
+model AddonRecord {
+  id                   String   @id @default(cuid())
+  bookingId            String
+  sessionId            String?
+  bookingItemId        String
+  equipmentId          String?
+  quantity             Int
+  acknowledgedConflict Boolean  @default(false)
+  createdBy            String
+  createdAt            DateTime @default(now())
+
+  booking     Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  session     ScanSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  bookingItem BookingItem  @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
+  equipment   Equipment?   @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId])
+  @@index([sessionId])
 }
 
 model ScanSession {
@@ -564,6 +600,7 @@ model ScanSession {
   completedAt DateTime?
 
   scans ScanRecord[]
+  addonRecords AddonRecord[]
 
   @@index([bookingId, operation, status])
 }
