@@ -342,9 +342,17 @@ const problemUnitSchema = z.object({
   expectedBackDate: z.string().datetime().optional(),
 });
 
+const issuanceAdjustmentSchema = z.object({
+  bookingItemId: z.string().min(1),
+  actualQuantity: z.number().int().min(0),
+});
+
 const completeSessionBodySchema = z.object({
   repairUnits: z.array(repairUnitSchema).optional(),
   problemUnits: z.array(problemUnitSchema).optional(),
+  // Task 8: per-position quantity adjustments (ISSUE only).
+  // Forwarded to completeSession(...).options.issuanceAdjustments.
+  issuanceAdjustments: z.array(issuanceAdjustmentSchema).optional(),
 }).optional();
 
 /** POST /api/warehouse/sessions/:id/complete — завершить сессию */
@@ -358,6 +366,7 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       repairUnits,
       problemUnits,
       createdBy: req.warehouseWorker?.name,
+      issuanceAdjustments: body?.issuanceAdjustments,
     });
 
     // Enrich unit ID arrays with name and barcode data
@@ -408,6 +417,9 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       mainAfterDiscount: summary.mainAfterDiscount,
       addonAfterDiscount: summary.addonAfterDiscount,
       finalAmount: summary.finalAmount,
+      // Task 8: snapshot MAIN.totalAfterDiscount ДО issuanceAdjustments
+      // в этой сессии. Если adjustments не применялись — равен mainAfterDiscount.
+      mainOriginalAfterDiscount: summary.mainOriginalAfterDiscount,
     });
   } catch (err) {
     next(err);
