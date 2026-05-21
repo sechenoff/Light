@@ -266,4 +266,55 @@ describe("addExtraItem", () => {
       checklistService.addExtraItem(sessionId, "non-existent-id", 1, "test"),
     ).rejects.toThrow("Оборудование не найдено");
   });
+
+  it("addExtraItem creates an AddonRecord with delta quantity + triggers ADDON Estimate recompute", async () => {
+    // Сценарий: бронь CONFIRMED с MAIN Estimate, в ISSUE сессии добавляем +3 Vmount.
+    // Ожидаем: AddonRecord(quantity=3, sessionId, bookingItemId) + ADDON Estimate.
+    const { addExtraItem } = await import("../services/checklistService");
+
+    // Seed MAIN Estimate (без него recomputeAddonEstimate — no-op):
+    // в этом тестовом файле бронь создаётся напрямую, минуя approveBooking,
+    // поэтому посеять Estimate приходится вручную.
+    const existingMain = await prisma.estimate.findFirst({
+      where: { bookingId, kind: "MAIN" },
+    });
+    if (!existingMain) {
+      await prisma.estimate.create({
+        data: {
+          bookingId,
+          kind: "MAIN",
+          shifts: 1,
+          subtotal: "0",
+          discountAmount: "0",
+          totalAfterDiscount: "0",
+        },
+      });
+    }
+
+    const initialRecords = await prisma.addonRecord.count({
+      where: { bookingId },
+    });
+
+    await addExtraItem(sessionId, equipmentId, 3, "test-operator");
+
+    const finalRecords = await prisma.addonRecord.findMany({
+      where: { bookingId },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(finalRecords.length).toBe(initialRecords + 1);
+    expect(finalRecords[0].quantity).toBe(3);
+    expect(finalRecords[0].sessionId).toBe(sessionId);
+    expect(finalRecords[0].equipmentId).toBe(equipmentId);
+    expect(finalRecords[0].createdBy).toBe("test-operator");
+
+    // ADDON Estimate должен существовать с totalQty >= 3
+    const addon = await prisma.estimate.findFirst({
+      where: { bookingId, kind: "ADDON" },
+      include: { lines: true },
+    });
+    expect(addon).toBeTruthy();
+    const line = addon!.lines.find((l: any) => l.equipmentId === equipmentId);
+    expect(line).toBeTruthy();
+    expect(line!.quantity).toBeGreaterThanOrEqual(3);
+  });
 });
