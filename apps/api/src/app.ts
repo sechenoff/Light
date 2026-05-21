@@ -130,10 +130,13 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   }
   // eslint-disable-next-line no-console
   console.error(err);
-  const publicMessage =
-    process.env.NODE_ENV !== "production" && rawMessage
-      ? `Внутренняя ошибка сервера: ${rawMessage}`
-      : "Внутренняя ошибка сервера";
+  // Internal tool, one-staff shop — surfacing the real Error.message to the
+  // operator is more valuable than hiding it. Helps triage production issues
+  // without SSH access. Stack traces are NOT included; we only echo the
+  // single-line message string.
+  const publicMessage = rawMessage
+    ? `Внутренняя ошибка сервера: ${rawMessage}`
+    : "Внутренняя ошибка сервера";
   res.status(500).json({ message: publicMessage });
 });
 
