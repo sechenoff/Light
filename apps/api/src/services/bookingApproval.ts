@@ -32,7 +32,7 @@ export async function submitForApproval(bookingId: string, userId: string) {
       include: {
         client: true,
         items: { include: { equipment: true } },
-        estimate: { include: { lines: true } },
+        estimates: { include: { lines: true } },
       },
     });
 
@@ -93,7 +93,7 @@ export async function approveBooking(bookingId: string, userId: string) {
     include: {
       client: true,
       items: { include: { equipment: true } },
-      estimate: { include: { lines: true } },
+      estimates: { include: { lines: true } },
     },
   });
   return full!;
@@ -130,7 +130,7 @@ export async function rejectBooking(bookingId: string, userId: string, reason: s
       include: {
         client: true,
         items: { include: { equipment: true } },
-        estimate: { include: { lines: true } },
+        estimates: { include: { lines: true } },
       },
     });
 

@@ -369,7 +369,7 @@ export async function rebuildBookingEstimate(bookingId: string) {
       where: { id: bookingId },
       include: {
         items: { include: { equipment: true } },
-        estimate: true,
+        estimates: true,
         vehicles: true,
       },
     });
@@ -459,15 +459,17 @@ export async function rebuildBookingEstimate(bookingId: string) {
       lineSum: l.lineSum.toDecimalPlaces(2).toString(),
     }));
 
-    if (booking.estimate) {
-      // Удаляем старую смету (EstimateLine удалятся каскадом) и создаём новую.
-      await tx.estimate.delete({ where: { id: booking.estimate.id } });
+    // Удаляем существующий MAIN Estimate (если есть) — ADDON оставляем нетронутым.
+    const existingMain = booking.estimates.find((e) => e.kind === "MAIN");
+    if (existingMain) {
+      await tx.estimate.delete({ where: { id: existingMain.id } });
     }
 
     await tx.estimate.create({
       data: {
         ...estimateData,
         bookingId,
+        kind: "MAIN",
         lines: { create: linesData },
       },
     });
@@ -485,7 +487,7 @@ export async function confirmBooking(bookingId: string) {
             equipment: true,
           },
         },
-        estimate: true,
+        estimates: true,
         vehicles: true,
       },
     });
@@ -701,13 +703,9 @@ export async function confirmBooking(bookingId: string) {
       });
     }
 
-    // Remove any existing Estimate first (bookings in PENDING_APPROVAL already
-    // have one from submit-for-approval). Booking ↔ Estimate is a 1-to-1
-    // required relation, so `estimate: { create }` on an existing link throws
-    // P2014. deleteMany handles both cases: estimate exists → delete it (+
-    // cascades lines); estimate absent → no-op. Same transaction keeps it
-    // atomic.
-    await tx.estimate.deleteMany({ where: { bookingId } });
+    // Удаляем только MAIN — ADDON Estimate (если когда-то будет создан) живёт
+    // отдельным жизненным циклом через addExtraItem → recomputeAddonEstimate.
+    await tx.estimate.deleteMany({ where: { bookingId, kind: "MAIN" } });
 
     // Если дата оплаты ещё не задана — заполняем из настроек организации
     let paymentDateUpdate: Date | undefined;
@@ -728,14 +726,14 @@ export async function confirmBooking(bookingId: string) {
         ...(booking.vehicles.length > 0 || booking.vehicleId
           ? { transportSubtotalRub: confirmTransportSubtotal }
           : {}),
-        estimate: {
-          create: estimateCreate,
+        estimates: {
+          create: { ...estimateCreate, kind: "MAIN" },
         },
       },
       include: {
         client: true,
         items: { include: { equipment: true } },
-        estimate: { include: { lines: true } },
+        estimates: { include: { lines: true } },
         vehicles: { include: { vehicle: true } },
       },
     });

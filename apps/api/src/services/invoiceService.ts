@@ -27,12 +27,17 @@ export interface CreateInvoiceArgs {
 async function computeTotalFromBooking(bookingId: string): Promise<Decimal> {
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
-    include: { estimate: true },
+    include: { estimates: true },
   });
   if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
 
-  const equipmentAfterDiscount = booking.estimate
-    ? new Decimal(booking.estimate.totalAfterDiscount.toString())
+  const mainEstimate = booking.estimates.find((e) => e.kind === "MAIN");
+  const addonEstimate = booking.estimates.find((e) => e.kind === "ADDON");
+
+  const equipmentAfterDiscount = mainEstimate
+    ? new Decimal(mainEstimate.totalAfterDiscount.toString()).add(
+        addonEstimate ? new Decimal(addonEstimate.totalAfterDiscount.toString()) : new Decimal(0),
+      )
     : new Decimal(booking.finalAmount.toString());
 
   const transport = booking.transportSubtotalRub
