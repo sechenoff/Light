@@ -100,7 +100,7 @@ describe("AddonSearch", () => {
     expect(screen.getByText("Ничего не найдено")).toBeInTheDocument();
   });
 
-  it("available row → addItem WITHOUT ack flag, then onAdded + confirmation", async () => {
+  it("available row → opens qty picker; confirming with default qty=1 fires addItem(qty=1)", async () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([freeResult()]);
     const addSpy = vi
       .spyOn(scanApi, "addItem")
@@ -113,20 +113,152 @@ describe("AddonSearch", () => {
     await type("dedo");
     await settleSearch();
 
+    // Tap free row → picker opens (NOT immediate add).
     const row = screen.getByRole("button", {
-      name: /Dedolight DLED4 — свободно, добавить в выдачу/,
+      name: /Dedolight DLED4 — свободно, выбрать количество и добавить/,
     });
     await act(async () => {
       row.click();
       await Promise.resolve();
     });
+    expect(addSpy).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("spinbutton", { name: /Количество для добавления/ }),
+    ).toBeInTheDocument();
 
-    // ack flag must be omitted (4th arg undefined) for an available row.
+    // Confirm with default qty=1.
+    await act(async () => {
+      screen
+        .getByRole("button", { name: /Добавить 1 шт Dedolight/ })
+        .click();
+      await Promise.resolve();
+    });
+
     expect(addSpy).toHaveBeenCalledWith("s1", "eq-free", 1, undefined);
     await waitFor(() => expect(onAdded).toHaveBeenCalledWith("bi-9", false));
     expect(
       await screen.findByText(/Dedolight DLED4 добавлен в выдачу/),
     ).toBeInTheDocument();
+  });
+
+  it("qty picker: +/+ steppers bump count, «Добавить N» POSTs with chosen N", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
+      freeResult({ availableQuantity: 19 }),
+    ]);
+    const addSpy = vi
+      .spyOn(scanApi, "addItem")
+      .mockResolvedValue({ bookingItemId: "bi-10x" });
+    const onAdded = vi.fn();
+
+    render(
+      <AddonSearch sessionId="s1" onAdded={onAdded} onClose={() => {}} />,
+    );
+    await type("dedo");
+    await settleSearch();
+
+    await act(async () => {
+      screen
+        .getByRole("button", { name: /свободно, выбрать количество/ })
+        .click();
+      await Promise.resolve();
+    });
+
+    const plus = screen.getByRole("button", { name: /Увеличить количество/ });
+    // 1 → 10 (nine +).
+    for (let i = 0; i < 9; i++) {
+      await act(async () => {
+        plus.click();
+        await Promise.resolve();
+      });
+    }
+    expect(
+      screen.getByRole("spinbutton", { name: /Количество для добавления/ }),
+    ).toHaveValue(10);
+
+    await act(async () => {
+      screen.getByRole("button", { name: /Добавить 10 шт Dedolight/ }).click();
+      await Promise.resolve();
+    });
+    expect(addSpy).toHaveBeenCalledWith("s1", "eq-free", 10, undefined);
+    await waitFor(() =>
+      expect(onAdded).toHaveBeenCalledWith("bi-10x", false),
+    );
+    // Success line includes «×10» for clarity.
+    expect(
+      await screen.findByText(/Dedolight DLED4 ×10 добавлен в выдачу/),
+    ).toBeInTheDocument();
+  });
+
+  it("qty picker clamps to availableMax and never below 1", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
+      freeResult({ availableQuantity: 2 }),
+    ]);
+    render(
+      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+    );
+    await type("dedo");
+    await settleSearch();
+
+    await act(async () => {
+      screen
+        .getByRole("button", { name: /свободно, выбрать количество/ })
+        .click();
+      await Promise.resolve();
+    });
+
+    const input = screen.getByRole("spinbutton", {
+      name: /Количество для добавления/,
+    });
+    const plus = screen.getByRole("button", { name: /Увеличить количество/ });
+    const minus = screen.getByRole("button", { name: /Уменьшить количество/ });
+
+    // Press + three times — clamp to availableMax = 2.
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        plus.click();
+        await Promise.resolve();
+      });
+    }
+    expect(input).toHaveValue(2);
+    // + is disabled at max.
+    expect(plus).toBeDisabled();
+
+    // Press − to go back to 1; − becomes disabled at floor.
+    await act(async () => {
+      minus.click();
+      await Promise.resolve();
+    });
+    expect(input).toHaveValue(1);
+    expect(minus).toBeDisabled();
+  });
+
+  it("qty picker «Отмена» (×) closes the picker without POSTing", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([freeResult()]);
+    const addSpy = vi.spyOn(scanApi, "addItem");
+    render(
+      <AddonSearch sessionId="s1" onAdded={() => {}} onClose={() => {}} />,
+    );
+    await type("dedo");
+    await settleSearch();
+
+    await act(async () => {
+      screen
+        .getByRole("button", { name: /свободно, выбрать количество/ })
+        .click();
+      await Promise.resolve();
+    });
+    expect(
+      screen.getByRole("spinbutton", { name: /Количество для добавления/ }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByRole("button", { name: /Отмена — закрыть выбор/ }).click();
+      await Promise.resolve();
+    });
+    expect(
+      screen.queryByRole("spinbutton", { name: /Количество для добавления/ }),
+    ).not.toBeInTheDocument();
+    expect(addSpy).not.toHaveBeenCalled();
   });
 
   it("renders availability pills: «свободно ×K» emerald and «занято» rose", async () => {
@@ -228,8 +360,10 @@ describe("AddonSearch", () => {
     expect(addSpy).not.toHaveBeenCalled();
   });
 
-  it("409 ADDON_CONFLICT on an apparently-free row surfaces the warn card from err.details", async () => {
-    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([freeResult()]);
+  it("409 ADDON_CONFLICT on confirm-with-qty surfaces warn card, preserves qty for force-add", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
+      freeResult({ availableQuantity: 5 }),
+    ]);
     const raceErr: ScanApiError = {
       status: 409,
       code: "ADDON_CONFLICT",
@@ -255,29 +389,52 @@ describe("AddonSearch", () => {
     await type("dedo");
     await settleSearch();
 
-    // Tap an apparently-free row → 409 race → warn card from details.
+    // Tap free row → picker.
     await act(async () => {
       screen
-        .getByRole("button", { name: /свободно, добавить в выдачу/ })
+        .getByRole("button", { name: /свободно, выбрать количество/ })
         .click();
       await Promise.resolve();
     });
+    // Bump to qty=3.
+    const plus = screen.getByRole("button", { name: /Увеличить количество/ });
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        plus.click();
+        await Promise.resolve();
+      });
+    }
+    // Confirm → POST attempts qty=3 → 409 race → warn card appears, picker
+    // transitions away, qty=3 is preserved on the conflict state.
+    await act(async () => {
+      screen.getByRole("button", { name: /Добавить 3 шт Dedolight/ }).click();
+      await Promise.resolve();
+    });
 
+    expect(addSpy).toHaveBeenNthCalledWith(1, "s1", "eq-free", 3, undefined);
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(
       screen.getByText(/Бронь #1050 «Сериал Дом» · 21\.05–23\.05/),
     ).toBeInTheDocument();
+    // The force-add button reflects qty (preserved across picker → warn).
+    expect(
+      screen.getByRole("button", {
+        name: /Выдать 3 шт Dedolight DLED4 под ответственность/,
+      }),
+    ).toBeInTheDocument();
     expect(onAdded).not.toHaveBeenCalled();
 
-    // «Выдать под ответственность» retries WITH the ack flag.
+    // Press «Выдать N под ответственность» — retries with qty=3 AND ack=true.
     await act(async () => {
       screen
         .getByRole("button", { name: /под ответственность/ })
         .click();
       await Promise.resolve();
     });
-    expect(addSpy).toHaveBeenLastCalledWith("s1", "eq-free", 1, true);
-    await waitFor(() => expect(onAdded).toHaveBeenCalledWith("bi-after-ack", true));
+    expect(addSpy).toHaveBeenLastCalledWith("s1", "eq-free", 3, true);
+    await waitFor(() =>
+      expect(onAdded).toHaveBeenCalledWith("bi-after-ack", true),
+    );
   });
 
   it("renders NO barcode anywhere", async () => {
