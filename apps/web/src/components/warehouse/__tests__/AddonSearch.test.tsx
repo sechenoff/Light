@@ -703,4 +703,118 @@ describe("AddonSearch", () => {
     expect(sheet.className).toMatch(/motion-safe:animate-slideup/);
     expect(sheet.className).not.toMatch(/animate-slidein/);
   });
+
+  it("disables row when addCap=0 (uses «уже добран максимум» aria-label)", async () => {
+    // The row is technically "AVAILABLE" (warehouse has stock) but already
+    // fully на этой брони — addCap=0 means there's nothing left to dobor.
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
+      freeResult({
+        equipmentId: "eq-capped",
+        name: "Capped Light",
+        availableQuantity: 5,
+        addCap: 0,
+        availability: "AVAILABLE",
+        conflict: null,
+      }),
+    ]);
+    render(
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await type("capped");
+    await settleSearch();
+
+    expect(await screen.findByText("Capped Light")).toBeInTheDocument();
+    const row = screen.getByRole("button", {
+      name: /Capped Light — уже добран максимум/,
+    });
+    expect(row).toBeDisabled();
+  });
+
+  it("picker max equals addCap, not availableQuantity", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
+      freeResult({
+        equipmentId: "eq-partial",
+        name: "Partial Light",
+        availableQuantity: 5,
+        addCap: 2,
+        availability: "AVAILABLE",
+        conflict: null,
+      }),
+    ]);
+    render(
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await type("partial");
+    await settleSearch();
+
+    await act(async () => {
+      screen
+        .getByRole("button", { name: /Partial Light — свободно/ })
+        .click();
+      await Promise.resolve();
+    });
+
+    const qtyInput = screen.getByRole("spinbutton", {
+      name: /Количество для добавления/,
+    });
+    expect(qtyInput).toHaveAttribute("max", "2");
+  });
+
+  it("shows inline error on 409 ADDON_OVER_STOCK", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
+      freeResult({
+        equipmentId: "eq-overstock",
+        name: "Overstock Light",
+        availableQuantity: 5,
+        addCap: 1,
+        availability: "AVAILABLE",
+        conflict: null,
+      }),
+    ]);
+    const overstockErr: ScanApiError = {
+      status: 409,
+      code: "ADDON_OVER_STOCK",
+      message: "Не хватает на складе",
+      details: { addCap: 0, requested: 1, alreadyInBooking: 5 },
+    };
+    vi.spyOn(scanApi, "addItem").mockRejectedValue(overstockErr);
+
+    render(
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await type("overstock");
+    await settleSearch();
+
+    await act(async () => {
+      screen
+        .getByRole("button", { name: /Overstock Light — свободно/ })
+        .click();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      screen
+        .getByRole("button", { name: /Добавить 1 шт Overstock Light/ })
+        .click();
+      await Promise.resolve();
+    });
+
+    expect(
+      await screen.findByText(/Не хватает на складе/),
+    ).toBeInTheDocument();
+  });
 });

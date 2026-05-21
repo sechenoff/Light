@@ -36,6 +36,7 @@ import { toMoscowDateString } from "../../lib/moscowDate";
 
 const DEBOUNCE_MS = 300;
 const ADDON_CONFLICT_CODE = "ADDON_CONFLICT";
+const ADDON_OVER_STOCK_CODE = "ADDON_OVER_STOCK";
 
 /** «21.05» — день.месяц по московскому времени (как в BookingList). */
 function shortDate(iso: string): string {
@@ -71,7 +72,7 @@ function conflictFromDetails(details: unknown): AddonConflict | null {
 }
 
 function isAvailable(r: AddonResult): boolean {
-  return r.availability !== "UNAVAILABLE" && r.availableQuantity > 0;
+  return r.availability !== "UNAVAILABLE" && r.addCap > 0;
 }
 
 /** The red conflict warn card (mockup block 3 `.warn`). Pure & controlled. */
@@ -146,7 +147,13 @@ interface PickingTarget {
   equipmentId: string;
   name: string;
   qty: number;
-  /** Upper bound for the qty input: `availableQuantity` from the search row. */
+  /**
+   * Upper bound for the qty input: `addCap` from the search row — the amount
+   * the operator can still добрать on THIS booking (warehouse stock minus
+   * what's already on this booking). Falls back to 1 when addCap is 0 to keep
+   * the input in a valid [1, max] range; the disabled-row path prevents that
+   * branch from opening the picker anyway.
+   */
   availableMax: number;
 }
 
@@ -334,6 +341,29 @@ export function AddonSearch({
         if (
           isScanApiError(err) &&
           err.status === 409 &&
+          err.code === ADDON_OVER_STOCK_CODE
+        ) {
+          // Hard-cap по складу: на этой брони уже добран максимум
+          // (alreadyInBooking + новые requested > availableQuantity).
+          // Это НЕ конфликт с другой бронью — это нехватка на нашем же
+          // окне. Выдать «под ответственность» нельзя. Закрываем picker
+          // и показываем inline-ошибку с деталями из `err.details`.
+          const d = err.details as
+            | { addCap?: number; alreadyInBooking?: number }
+            | undefined;
+          const parts: string[] = ["Не хватает на складе."];
+          if (d?.alreadyInBooking !== undefined) {
+            parts.push(`Уже в брони: ${d.alreadyInBooking},`);
+          }
+          parts.push(`осталось добрать: ${d?.addCap ?? 0}`);
+          setError(parts.join(" "));
+          setPicking(null);
+          setActive(null);
+          return;
+        }
+        if (
+          isScanApiError(err) &&
+          err.status === 409 &&
           err.code === ADDON_CONFLICT_CODE
         ) {
           const conflict = conflictFromDetails(err.details);
@@ -379,12 +409,14 @@ export function AddonSearch({
       }
       return;
     }
-    // Free row → open inline qty picker. Default qty=1, max = availableQuantity.
+    // Free row → open inline qty picker. Default qty=1, max = addCap (upper
+    // bound that respects already-issued quantity on this booking, not the raw
+    // warehouse stock).
     setPicking({
       equipmentId: r.equipmentId,
       name: r.name,
       qty: 1,
-      availableMax: Math.max(1, r.availableQuantity),
+      availableMax: Math.max(1, r.addCap),
     });
   }
 
@@ -558,6 +590,15 @@ export function AddonSearch({
             <ul className="px-3">
               {results.map((r) => {
                 const free = isAvailable(r);
+                // «Capped» = warehouse сам по себе свободен, но на этой брони
+                // уже добран до предела (`addCap=0` без блокирующего
+                // конфликта). Это «информационный» disabled-state — оператор
+                // видит, почему нельзя добавить, но кнопка не делает POST.
+                const capped =
+                  !free &&
+                  r.availability !== "UNAVAILABLE" &&
+                  !r.conflict &&
+                  r.addCap === 0;
                 const isAdding = adding === r.equipmentId;
                 const isPicking = picking?.equipmentId === r.equipmentId;
 
@@ -642,11 +683,13 @@ export function AddonSearch({
                     <button
                       type="button"
                       onClick={() => handleRowTap(r)}
-                      disabled={!!adding}
+                      disabled={!!adding || capped}
                       aria-label={
-                        free
-                          ? `${r.name} — свободно, выбрать количество и добавить в выдачу`
-                          : `${r.name} — занят, открыть предупреждение о доборе`
+                        capped
+                          ? `${r.name} — уже добран максимум на даты, нельзя добавить`
+                          : free
+                            ? `${r.name} — свободно, выбрать количество и добавить в выдачу`
+                            : `${r.name} — занят, открыть предупреждение о доборе`
                       }
                       className="flex w-full items-center gap-2 border-t border-surface-subtle px-1 py-2.5 text-left transition-colors first:border-t-0 hover:bg-surface-muted disabled:opacity-60"
                     >
