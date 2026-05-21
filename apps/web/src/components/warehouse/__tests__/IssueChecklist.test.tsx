@@ -154,6 +154,8 @@ function defaultCompleteResult(): CompleteResult {
     mainOriginalAfterDiscount: "0",
     addonAfterDiscount: "0",
     finalAmount: "0",
+    paymentStatus: "NOT_PAID",
+    amountPaid: "0",
     createdRepairIds: [],
     failedBrokenUnits: [],
     createdProblemItemIds: [],

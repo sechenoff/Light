@@ -252,6 +252,21 @@ export interface SummaryResult {
    * not yet finance-bound. Mirrors backend `ReconciliationSummary.finalAmount`.
    */
   finalAmount: string;
+  /**
+   * Booking.paymentStatus (актуальный после recomputeBookingFinance).
+   * UI рисует callout «К возврату клиенту» при `paymentStatus === "OVERPAID"`.
+   * Mirrors backend `ReconciliationSummary.paymentStatus`. Включает все варианты
+   * `BookingPaymentStatus` Prisma-enum (NOT_PAID | PARTIALLY_PAID | PAID |
+   * OVERDUE | OVERPAID); хранится как string чтобы не ломать FE-build при
+   * расширениях enum'а.
+   */
+  paymentStatus: string;
+  /**
+   * Booking.amountPaid (Decimal as string). UI вычисляет «Переплата =
+   * amountPaid − finalAmount» для OVERPAID-callout. "0" если оплат ещё не
+   * было. Mirrors backend `ReconciliationSummary.amountPaid`.
+   */
+  amountPaid: string;
 }
 
 /**

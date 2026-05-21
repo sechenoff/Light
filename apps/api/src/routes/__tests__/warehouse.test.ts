@@ -354,6 +354,8 @@ describe("POST /api/warehouse/sessions/:id/complete", () => {
       addonAfterDiscount: "0.00",
       finalAmount: "100.00",
       mainOriginalAfterDiscount: "150.00",
+      paymentStatus: "NOT_PAID",
+      amountPaid: "0",
     };
     mockCompleteSession.mockResolvedValue(summary);
     mockPrisma.equipmentUnit.findMany.mockResolvedValue([]);
@@ -367,6 +369,38 @@ describe("POST /api/warehouse/sessions/:id/complete", () => {
     expect(res.status).toBe(200);
     expect(res.body.mainOriginalAfterDiscount).toBe("150.00");
     expect(res.body.mainAfterDiscount).toBe("100.00");
+  });
+
+  it("response includes paymentStatus + amountPaid for OVERPAID callout", async () => {
+    const summary = {
+      scanned: 5,
+      expected: 5,
+      missing: [],
+      substituted: [],
+      reservedButUnavailable: [],
+      createdRepairIds: [],
+      failedBrokenUnits: [],
+      createdProblemItemIds: [],
+      failedProblemUnits: [],
+      mainAfterDiscount: "3500.00",
+      addonAfterDiscount: "0",
+      finalAmount: "3500.00",
+      mainOriginalAfterDiscount: "5000.00",
+      paymentStatus: "OVERPAID",
+      amountPaid: "5000.00",
+    };
+    mockCompleteSession.mockResolvedValue(summary);
+    mockPrisma.equipmentUnit.findMany.mockResolvedValue([]);
+    mockPrisma.scanSession.findUnique.mockResolvedValue({ id: "sess-1", operation: "ISSUE" });
+
+    const res = await request(app)
+      .post("/api/warehouse/sessions/sess-1/complete")
+      .set("Authorization", "Bearer valid-token")
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.paymentStatus).toBe("OVERPAID");
+    expect(res.body.amountPaid).toBe("5000.00");
   });
 });
 

@@ -91,6 +91,18 @@ export interface ReconciliationSummary {
    * Если adjustments не применялись — равен mainAfterDiscount.
    */
   mainOriginalAfterDiscount: string;
+  /**
+   * Booking.paymentStatus (актуальный после recomputeBookingFinance).
+   * UI рисует «К возврату» callout при `paymentStatus === "OVERPAID"`.
+   * При неоплаченных/некомфирмированных бронях остаётся "NOT_PAID".
+   */
+  paymentStatus: string;
+  /**
+   * Booking.amountPaid (Decimal as string). UI вычисляет «Переплата =
+   * amountPaid − finalAmount» для OVERPAID callout. "0" если оплат ещё не
+   * было.
+   */
+  amountPaid: string;
 }
 
 export interface SessionBookingItem {
@@ -426,6 +438,8 @@ export async function completeSession(
       addonAfterDiscount: "0",
       finalAmount: "0",
       mainOriginalAfterDiscount: "0",
+      paymentStatus: "NOT_PAID",
+      amountPaid: "0",
     };
 
     if (session.operation === "ISSUE") {
@@ -678,6 +692,8 @@ export async function completeSession(
   // НОВОЕ: финансовая разбивка для result-screen фронта.
   // recomputeBookingFinance уже учёл ADDON Estimate в выше вызванной цепочке,
   // здесь только читаем актуальные значения.
+  // Task 13: также читаем paymentStatus + amountPaid, чтобы UI мог нарисовать
+  // OVERPAID-callout и сумму «К возврату» без отдельного запроса.
   try {
     const fresh = await prisma.booking.findUnique({
       where: { id: session.bookingId },
@@ -689,6 +705,8 @@ export async function completeSession(
       summary.mainAfterDiscount = main ? main.totalAfterDiscount.toString() : "0";
       summary.addonAfterDiscount = addon ? addon.totalAfterDiscount.toString() : "0";
       summary.finalAmount = fresh.finalAmount.toString();
+      summary.paymentStatus = fresh.paymentStatus;
+      summary.amountPaid = fresh.amountPaid.toString();
     }
   } catch (err) {
     console.warn("[completeSession] finance snapshot read failed:", err);
@@ -822,6 +840,8 @@ export async function getReconciliationPreview(sessionId: string): Promise<Recon
     addonAfterDiscount: "0",
     finalAmount: "0",
     mainOriginalAfterDiscount: "0",
+    paymentStatus: "NOT_PAID",
+    amountPaid: "0",
   };
 }
 

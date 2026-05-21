@@ -420,6 +420,10 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       // Task 8: snapshot MAIN.totalAfterDiscount ДО issuanceAdjustments
       // в этой сессии. Если adjustments не применялись — равен mainAfterDiscount.
       mainOriginalAfterDiscount: summary.mainOriginalAfterDiscount,
+      // Task 13: статус оплаты + сумма оплаты после recomputeBookingFinance.
+      // UI использует для OVERPAID-callout «К возврату клиенту».
+      paymentStatus: summary.paymentStatus,
+      amountPaid: summary.amountPaid,
     });
   } catch (err) {
     next(err);
