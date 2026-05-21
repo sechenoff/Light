@@ -139,6 +139,9 @@ function WarehouseScanInner({
   }
 
   const opLabel = operation === "ISSUE" ? "Выдача" : "Возврат";
+  // Accusative for the «чтобы начать N» phrase: «выдачу» (feminine) / «возврат»
+  // (masculine inanimate stays nominative). Без этого выводилось «начать выдача».
+  const opAccusative = operation === "ISSUE" ? "выдачу" : "возврат";
 
   const bookingListSlot = (
     <BookingList
@@ -159,7 +162,7 @@ function WarehouseScanInner({
         list={bookingListSlot}
         detail={
           <div className="hidden flex-1 items-center justify-center px-4 py-12 text-center text-sm text-ink-3 lg:flex">
-            Выберите бронь слева, чтобы начать {opLabel.toLowerCase()}.
+            Выберите бронь слева, чтобы начать {opAccusative}.
           </div>
         }
       />
@@ -208,7 +211,7 @@ function WarehouseScanInner({
       list={bookingListSlot}
       detail={
         <div className="hidden flex-1 items-center justify-center px-4 py-12 text-center text-sm text-ink-3 lg:flex">
-          Выберите бронь слева, чтобы начать {opLabel.toLowerCase()}.
+          Выберите бронь слева, чтобы начать {opAccusative}.
         </div>
       }
     />
