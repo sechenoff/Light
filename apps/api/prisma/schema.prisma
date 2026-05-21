@@ -26,6 +26,7 @@ enum BookingPaymentStatus {
   PARTIALLY_PAID
   PAID
   OVERDUE
+  OVERPAID
 }
 
 enum PaymentDirection {

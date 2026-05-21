@@ -17,8 +17,11 @@ function okResult(over: Partial<CompleteResult> = {}): CompleteResult {
     createdProblemItemIds: [],
     failedProblemUnits: [],
     mainAfterDiscount: "0",
+    mainOriginalAfterDiscount: "0",
     addonAfterDiscount: "0",
     finalAmount: "0",
+    paymentStatus: "NOT_PAID",
+    amountPaid: "0",
     ...over,
   };
 }
@@ -198,5 +201,119 @@ describe("IssueResultView", () => {
       />,
     );
     expect(screen.queryByText(/^Согласовано:$/)).not.toBeInTheDocument();
+  });
+
+  // ── Task 13: «исходно / снято / фактически» + OVERPAID ──────────────────────
+
+  it("shows «Согласовано (исходно)» and «Снято на выдаче» when mainAfterDiscount < mainOriginalAfterDiscount", () => {
+    render(
+      <IssueResultView
+        result={okResult({
+          mainAfterDiscount: "3500",
+          mainOriginalAfterDiscount: "5000",
+          addonAfterDiscount: "500",
+          finalAmount: "4000",
+        })}
+        bookingId="b1"
+        projectName="P"
+        issuedCount={3}
+        addonsCount={1}
+        substitutedCount={0}
+        onDone={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Согласовано \(исходно\)/)).toBeInTheDocument();
+    expect(screen.getByText(/5\s?000/)).toBeInTheDocument();
+    expect(screen.getByText(/Снято на выдаче/)).toBeInTheDocument();
+    // «−1 500 ₽» — допускаем дефис либо U+2212 MINUS SIGN
+    expect(screen.getByText(/[−-]1\s?500/)).toBeInTheDocument();
+    expect(screen.getByText(/Согласовано \(фактически\)/)).toBeInTheDocument();
+    expect(screen.getByText(/3\s?500/)).toBeInTheDocument();
+  });
+
+  it("hides «исходно» line when no adjustments (mainAfterDiscount === mainOriginalAfterDiscount)", () => {
+    render(
+      <IssueResultView
+        result={okResult({
+          mainAfterDiscount: "5000",
+          mainOriginalAfterDiscount: "5000",
+          addonAfterDiscount: "500",
+          finalAmount: "5500",
+        })}
+        bookingId="b1"
+        projectName="P"
+        issuedCount={3}
+        addonsCount={1}
+        substitutedCount={0}
+        onDone={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/Согласовано \(исходно\)/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Снято на выдаче/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Согласовано \(фактически\)/)).not.toBeInTheDocument();
+  });
+
+  it("renders Финансы block also when ONLY a main-reduction happened (no addons)", () => {
+    // Раньше блок «Финансы» рисовался только при addonAfterDiscount > 0.
+    // С Task 13 он также должен появиться при main-reduction — иначе оператор
+    // не увидит «Снято на выдаче».
+    render(
+      <IssueResultView
+        result={okResult({
+          mainAfterDiscount: "3500",
+          mainOriginalAfterDiscount: "5000",
+          addonAfterDiscount: "0",
+          finalAmount: "3500",
+        })}
+        bookingId="b1"
+        projectName="P"
+        issuedCount={3}
+        addonsCount={0}
+        substitutedCount={0}
+        onDone={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Согласовано \(исходно\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Снято на выдаче/)).toBeInTheDocument();
+  });
+
+  it("shows OVERPAID callout «Переплата … К возврату» when paymentStatus === 'OVERPAID'", () => {
+    render(
+      <IssueResultView
+        result={okResult({
+          paymentStatus: "OVERPAID",
+          finalAmount: "3500",
+          amountPaid: "5000",
+          mainAfterDiscount: "3500",
+          mainOriginalAfterDiscount: "3500",
+        })}
+        bookingId="b1"
+        projectName="P"
+        issuedCount={3}
+        addonsCount={0}
+        substitutedCount={0}
+        onDone={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Переплата/)).toBeInTheDocument();
+    // 5000 − 3500 = 1500
+    expect(screen.getByText(/1\s?500/)).toBeInTheDocument();
+    expect(screen.getByText(/К возврату клиенту/)).toBeInTheDocument();
+  });
+
+  it("does NOT show OVERPAID callout when paymentStatus !== 'OVERPAID'", () => {
+    render(
+      <IssueResultView
+        result={okResult({ paymentStatus: "PAID" })}
+        bookingId="b1"
+        projectName="P"
+        issuedCount={3}
+        addonsCount={0}
+        substitutedCount={0}
+        onDone={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/Переплата/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/К возврату клиенту/)).not.toBeInTheDocument();
   });
 });

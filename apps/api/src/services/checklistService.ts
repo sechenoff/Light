@@ -395,17 +395,59 @@ export async function addExtraItem(
 
   // I1: атомарный upsert с проверкой статуса брони
   const bookingItemId = await prisma.$transaction(async (tx: TxClient) => {
-    const booking = await tx.booking.findUnique({
+    const txBooking = await tx.booking.findUnique({
       where: { id: bookingId },
-      select: { status: true },
+      select: { status: true, startDate: true, endDate: true },
     });
-    if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
-    if (!["DRAFT", "CONFIRMED", "ISSUED"].includes(booking.status)) {
+    if (!txBooking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+    if (!["DRAFT", "CONFIRMED", "ISSUED"].includes(txBooking.status)) {
       throw new HttpError(
         409,
-        `Нельзя добавлять позиции в бронь со статусом ${booking.status}`,
+        `Нельзя добавлять позиции в бронь со статусом ${txBooking.status}`,
         "BOOKING_LOCKED",
       );
+    }
+
+    // Hard cap: запрещаем превысить физический склад.
+    // addCap = totalQuantity − occupied в других бронях (на пересекающиеся даты) −
+    //         уже взято в этой брони.
+    // Вычисляется внутри транзакции; SQLite serialize-mode гарантирует консистентность
+    // относительно параллельных добор-апдейтов на ту же бронь.
+    const txEquipment = await tx.equipment.findUnique({
+      where: { id: equipmentId },
+      select: { totalQuantity: true },
+    });
+    if (!txEquipment) {
+      throw new HttpError(404, "Оборудование не найдено", "EQUIPMENT_NOT_FOUND");
+    }
+
+    const overlappingItems = await tx.bookingItem.findMany({
+      where: {
+        equipmentId,
+        bookingId: { not: bookingId },
+        booking: {
+          status: { in: ["DRAFT", "CONFIRMED", "ISSUED"] },
+          startDate: { lte: txBooking.endDate },
+          endDate: { gte: txBooking.startDate },
+        },
+      },
+      select: { quantity: true },
+    });
+    const occupiedByOthers = overlappingItems.reduce((sum, it) => sum + it.quantity, 0);
+
+    const existingItem = await tx.bookingItem.findUnique({
+      where: { bookingId_equipmentId: { bookingId, equipmentId } },
+      select: { quantity: true },
+    });
+    const alreadyMine = existingItem?.quantity ?? 0;
+    const addCap = txEquipment.totalQuantity - occupiedByOthers - alreadyMine;
+
+    if (quantity > addCap) {
+      throw new HttpError(409, "Не хватает на складе", "ADDON_OVER_STOCK", {
+        addCap: Math.max(0, addCap),
+        requested: quantity,
+        alreadyInBooking: alreadyMine,
+      });
     }
 
     // Atomic upsert через @@unique([bookingId, equipmentId]) — предотвращает race condition

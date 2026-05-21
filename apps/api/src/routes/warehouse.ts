@@ -342,9 +342,17 @@ const problemUnitSchema = z.object({
   expectedBackDate: z.string().datetime().optional(),
 });
 
+const issuanceAdjustmentSchema = z.object({
+  bookingItemId: z.string().min(1),
+  actualQuantity: z.number().int().min(0),
+});
+
 const completeSessionBodySchema = z.object({
   repairUnits: z.array(repairUnitSchema).optional(),
   problemUnits: z.array(problemUnitSchema).optional(),
+  // Task 8: per-position quantity adjustments (ISSUE only).
+  // Forwarded to completeSession(...).options.issuanceAdjustments.
+  issuanceAdjustments: z.array(issuanceAdjustmentSchema).optional(),
 }).optional();
 
 /** POST /api/warehouse/sessions/:id/complete — завершить сессию */
@@ -358,6 +366,7 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       repairUnits,
       problemUnits,
       createdBy: req.warehouseWorker?.name,
+      issuanceAdjustments: body?.issuanceAdjustments,
     });
 
     // Enrich unit ID arrays with name and barcode data
@@ -408,6 +417,13 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       mainAfterDiscount: summary.mainAfterDiscount,
       addonAfterDiscount: summary.addonAfterDiscount,
       finalAmount: summary.finalAmount,
+      // Task 8: snapshot MAIN.totalAfterDiscount ДО issuanceAdjustments
+      // в этой сессии. Если adjustments не применялись — равен mainAfterDiscount.
+      mainOriginalAfterDiscount: summary.mainOriginalAfterDiscount,
+      // Task 13: статус оплаты + сумма оплаты после recomputeBookingFinance.
+      // UI использует для OVERPAID-callout «К возврату клиенту».
+      paymentStatus: summary.paymentStatus,
+      amountPaid: summary.amountPaid,
     });
   } catch (err) {
     next(err);
@@ -574,8 +590,30 @@ warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req,
       excludeBookingId: session.bookingId,
     });
 
+    const trimmedRows = rows.slice(0, 30);
+
+    // Batch-load BookingItem.quantity for the current booking × visible equipment.
+    // addCap = max(0, availableQuantity − alreadyInThisBooking). `availableQuantity`
+    // уже исключает текущую бронь через excludeBookingId, поэтому остаётся вычесть
+    // только то, что эта же бронь уже держит.
+    const visibleEquipmentIds = trimmedRows.map((r) => r.equipment.id);
+    const existingItems =
+      visibleEquipmentIds.length > 0
+        ? await prisma.bookingItem.findMany({
+            where: {
+              bookingId: session.bookingId,
+              equipmentId: { in: visibleEquipmentIds },
+            },
+            select: { equipmentId: true, quantity: true },
+          })
+        : [];
+    const alreadyMineByEquipment = new Map<string, number>();
+    for (const it of existingItems) {
+      if (it.equipmentId) alreadyMineByEquipment.set(it.equipmentId, it.quantity);
+    }
+
     const results = await Promise.all(
-      rows.slice(0, 30).map(async (row) => {
+      trimmedRows.map(async (row) => {
         const availability = row.availableQuantity > 0 ? "AVAILABLE" : "UNAVAILABLE";
         const conflict =
           availability === "UNAVAILABLE"
@@ -586,11 +624,14 @@ warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req,
                 session.bookingId,
               )
             : null;
+        const alreadyMine = alreadyMineByEquipment.get(row.equipment.id) ?? 0;
+        const addCap = Math.max(0, row.availableQuantity - alreadyMine);
         return {
           equipmentId: row.equipment.id,
           name: row.equipment.name,
           category: row.equipment.category,
           availableQuantity: row.availableQuantity,
+          addCap,
           availability,
           conflict,
         };

@@ -56,6 +56,9 @@ beforeAll(async () => {
       category: "Электрика",
       rentalRatePerShift: "1000",
       stockTrackingMode: "COUNT",
+      // totalQuantity=10 для hard-cap (этот файл тестирует финансовый поток,
+      // а не stock cap). База 1 + добор 3 + добор 2 = 6 ≤ 10.
+      totalQuantity: 10,
     },
   });
   equipmentId = eq.id;
@@ -85,6 +88,21 @@ beforeAll(async () => {
       discountPercent: "50",
       discountAmount: "5000",
       totalAfterDiscount: "5000",
+      // New formula (recomputeAddonEstimate) computes addon as
+      // BookingItem.quantity − MAIN.line.qty. Seed MAIN with the initial
+      // position so the first +Добор delta is detected correctly.
+      lines: {
+        create: [
+          {
+            equipmentId,
+            quantity: 1,
+            unitPrice: "1000",
+            lineSum: "2000",
+            categorySnapshot: "Электрика",
+            nameSnapshot: "Vmount Battery",
+          },
+        ],
+      },
     },
   });
 

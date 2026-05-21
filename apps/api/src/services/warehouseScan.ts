@@ -15,6 +15,9 @@ import { createRepair } from "./repairService";
 import { createProblemItem, autoResolveOnReturn } from "./problemItemService";
 import { moveStagedToRepair } from "./repairPhotoStorage";
 import { writeAuditEntry } from "./audit";
+import { recreateMainEstimate } from "./mainEstimate";
+import { recomputeAddonEstimate } from "./addonEstimate";
+import { recomputeBookingFinance } from "./finance";
 
 type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
 
@@ -35,6 +38,21 @@ export interface ProblemUnit {
   reason: ProblemReason;
   comment: string;
   expectedBackDate?: string;
+}
+
+/**
+ * Корректировка фактически выданного количества для одной BookingItem-позиции
+ * (Task 7 — issue-stock-cap-and-unit-removal).
+ *
+ * `actualQuantity` ∈ [0, bookingItem.quantity]. При `actualQuantity < quantity`:
+ *  - COUNT-режим: просто уменьшаем BookingItem.quantity.
+ *  - UNIT-режим: дополнительно удаляем (quantity − actualQuantity) BookingItemUnit,
+ *    выбирая только НЕотсканированные резервации. Если отсканированных больше
+ *    или равно actualQuantity — операция возможна; иначе HttpError 409.
+ */
+export interface IssuanceAdjustment {
+  bookingItemId: string;
+  actualQuantity: number;
 }
 
 export interface ReservedButUnavailableUnit {
@@ -67,6 +85,24 @@ export interface ReconciliationSummary {
   addonAfterDiscount: string;
   /** Booking.finalAmount (= main + addon + transport). */
   finalAmount: string;
+  /**
+   * MAIN.totalAfterDiscount, snapshot ДО применения issuanceAdjustments
+   * в этой сессии. Используется UI для блока «исходно / фактически».
+   * Если adjustments не применялись — равен mainAfterDiscount.
+   */
+  mainOriginalAfterDiscount: string;
+  /**
+   * Booking.paymentStatus (актуальный после recomputeBookingFinance).
+   * UI рисует «К возврату» callout при `paymentStatus === "OVERPAID"`.
+   * При неоплаченных/некомфирмированных бронях остаётся "NOT_PAID".
+   */
+  paymentStatus: string;
+  /**
+   * Booking.amountPaid (Decimal as string). UI вычисляет «Переплата =
+   * amountPaid − finalAmount» для OVERPAID callout. "0" если оплат ещё не
+   * было.
+   */
+  amountPaid: string;
 }
 
 export interface SessionBookingItem {
@@ -194,7 +230,13 @@ export async function createSession(
  */
 export async function completeSession(
   sessionId: string,
-  options?: { repairUnits?: RepairUnit[]; problemUnits?: ProblemUnit[]; createdBy?: string },
+  options?: {
+    repairUnits?: RepairUnit[];
+    problemUnits?: ProblemUnit[];
+    createdBy?: string;
+    /** Task 7: per-position quantity adjustments at ISSUE completion. */
+    issuanceAdjustments?: IssuanceAdjustment[];
+  },
 ): Promise<ReconciliationSummary> {
   // Загружаем сессию со сканами и информацией о брони
   const session = await prisma.scanSession.findUnique({
@@ -217,9 +259,152 @@ export async function completeSession(
   }
 
   const scannedUnitIds = new Set(session.scans.map((s) => s.equipmentUnitId));
+  const issuanceAdjustments = options?.issuanceAdjustments ?? [];
+  const hasAdjustments =
+    session.operation === "ISSUE" && issuanceAdjustments.length > 0;
+
+  // Snapshot для возврата в summary — захватываем ВНУТРИ транзакции (см. ниже).
+  let mainOriginalAfterDiscount = "0";
 
   const summary = await prisma.$transaction(async (tx: TxClient) => {
-    // Загружаем позиции заказа
+    // ── Task 7: snapshot MAIN.totalAfterDiscount ДО любых мутаций ────────────
+    // Используется UI для блока «исходно / фактически» — даже когда
+    // adjustments не применялись, snapshot отдаёт текущий MAIN.
+    // try/catch — для совместимости с легаси unit-тестами, где tx-mock
+    // не определяет .estimate (см. warehouseScan.test.ts).
+    try {
+      const mainBefore = await tx.estimate.findFirst({
+        where: { bookingId: session.bookingId, kind: "MAIN" },
+        select: { totalAfterDiscount: true },
+      });
+      mainOriginalAfterDiscount = mainBefore
+        ? mainBefore.totalAfterDiscount.toString()
+        : "0";
+    } catch {
+      mainOriginalAfterDiscount = "0";
+    }
+
+    // ── Task 7: применение issuanceAdjustments (только ISSUE) ────────────────
+    if (hasAdjustments) {
+      const itemIds = issuanceAdjustments.map((a) => a.bookingItemId);
+      const adjItems = await tx.bookingItem.findMany({
+        where: { id: { in: itemIds }, bookingId: session.bookingId },
+        include: {
+          equipment: { select: { id: true, name: true, stockTrackingMode: true } },
+          unitReservations: true,
+        },
+      });
+      if (adjItems.length !== itemIds.length) {
+        throw new HttpError(
+          400,
+          "Некорректные adjustments — bookingItem не принадлежит этой брони",
+          "INVALID_ADJUSTMENTS",
+        );
+      }
+
+      // Множество отсканированных в этой сессии equipmentUnitId — нужно для
+      // проверки UNIT-режима. session.scans уже содержит все scanRecords.
+      const scannedSet = new Set(session.scans.map((s) => s.equipmentUnitId));
+
+      for (const adj of issuanceAdjustments) {
+        const bi = adjItems.find((i) => i.id === adj.bookingItemId);
+        if (!bi) {
+          throw new HttpError(
+            400,
+            "Некорректные adjustments — bookingItem не принадлежит этой брони",
+            "INVALID_ADJUSTMENTS",
+          );
+        }
+        if (
+          !Number.isInteger(adj.actualQuantity) ||
+          adj.actualQuantity < 0 ||
+          adj.actualQuantity > bi.quantity
+        ) {
+          throw new HttpError(
+            400,
+            "actualQuantity вне диапазона [0, quantity]",
+            "INVALID_ADJUSTMENTS",
+          );
+        }
+        if (adj.actualQuantity === bi.quantity) {
+          // no-op: качество не меняется, в audit писать нечего.
+          continue;
+        }
+
+        const releaseCount = bi.quantity - adj.actualQuantity;
+        const stockMode = bi.equipment?.stockTrackingMode ?? "COUNT";
+
+        // ── UNIT-режим: освобождаем (M − N) НЕотсканированных резерваций ────
+        if (stockMode === "UNIT") {
+          const releasable = bi.unitReservations.filter(
+            (u) => !scannedSet.has(u.equipmentUnitId),
+          );
+          const scannedForItemCount = bi.unitReservations.length - releasable.length;
+
+          if (releasable.length < releaseCount) {
+            // КРИТИЧНО: проверка ДО любых мутаций, иначе транзакция оставила
+            // бы частично применённые adjustments. Throw → откат всего блока.
+            throw new HttpError(
+              409,
+              `Нельзя снять ${releaseCount} шт: ${scannedForItemCount} единиц уже отсканированы`,
+              "ADJUSTMENT_CONFLICTS_WITH_SCANS",
+              {
+                bookingItemId: bi.id,
+                scannedCount: scannedForItemCount,
+                requestedQuantity: adj.actualQuantity,
+              },
+            );
+          }
+
+          const toRelease = releasable.slice(0, releaseCount);
+          for (const biu of toRelease) {
+            await tx.bookingItemUnit.delete({ where: { id: biu.id } });
+            await writeAuditEntry({
+              tx,
+              userId: options?.createdBy ?? session.workerName,
+              action: "BOOKING_ITEM_UNIT_RELEASED",
+              entityType: "Booking",
+              entityId: session.bookingId,
+              before: null,
+              after: {
+                bookingItemUnitId: biu.id,
+                equipmentUnitId: biu.equipmentUnitId,
+                sessionId,
+              },
+            }).catch(() => {
+              // userId — workerName в реальном проде → P2003. Аудит = best-effort.
+            });
+          }
+        }
+
+        // ── Сам апдейт BookingItem.quantity (обе ветки) ─────────────────────
+        const beforeQty = bi.quantity;
+        await tx.bookingItem.update({
+          where: { id: bi.id },
+          data: { quantity: adj.actualQuantity },
+        });
+
+        await writeAuditEntry({
+          tx,
+          userId: options?.createdBy ?? session.workerName,
+          action: "BOOKING_ITEM_QUANTITY_REDUCED",
+          entityType: "Booking",
+          entityId: session.bookingId,
+          before: { quantity: beforeQty },
+          after: {
+            quantity: adj.actualQuantity,
+            sessionId,
+            equipmentId: bi.equipmentId,
+            equipmentName: bi.equipment?.name ?? null,
+          },
+        }).catch(() => {
+          // userId FK → AdminUser; в реальном проде workerName != AdminUser.id
+          // → P2003. Аудит — best-effort, не блокирует бизнес-операцию.
+        });
+      }
+    }
+
+    // Загружаем позиции заказа (после adjustments — quantity уже обновлены)
     const bookingItems = await tx.bookingItem.findMany({
       where: { bookingId: session.bookingId },
     });
@@ -252,6 +437,9 @@ export async function completeSession(
       mainAfterDiscount: "0",
       addonAfterDiscount: "0",
       finalAmount: "0",
+      mainOriginalAfterDiscount: "0",
+      paymentStatus: "NOT_PAID",
+      amountPaid: "0",
     };
 
     if (session.operation === "ISSUE") {
@@ -475,9 +663,37 @@ export async function completeSession(
     }
   }
 
+  // ── Task 7: после ISSUE-adjustments — пересчёт MAIN/ADDON/Finance ──────────
+  // recreateMainEstimate владеет собственной внутренней транзакцией, поэтому
+  // ВЫЗЫВАЕТСЯ ПОСЛЕ commit'а основной (не внутри неё).
+  // Порядок:
+  //   1. recreateMainEstimate — MAIN снапшот из текущих BookingItem.quantity.
+  //   2. recomputeAddonEstimate — ADDON = max(0, BookingItem.qty − MAIN.line.qty).
+  //   3. recomputeBookingFinance — finalAmount, outstanding, paymentStatus
+  //      (включая OVERPAID — Task 5).
+  if (hasAdjustments) {
+    try {
+      await recreateMainEstimate(session.bookingId);
+    } catch (err) {
+      console.warn("[completeSession] recreateMainEstimate failed:", err);
+    }
+    try {
+      await recomputeAddonEstimate(session.bookingId);
+    } catch (err) {
+      console.warn("[completeSession] recomputeAddonEstimate failed:", err);
+    }
+    try {
+      await recomputeBookingFinance(session.bookingId);
+    } catch (err) {
+      console.warn("[completeSession] recomputeBookingFinance failed:", err);
+    }
+  }
+
   // НОВОЕ: финансовая разбивка для result-screen фронта.
   // recomputeBookingFinance уже учёл ADDON Estimate в выше вызванной цепочке,
   // здесь только читаем актуальные значения.
+  // Task 13: также читаем paymentStatus + amountPaid, чтобы UI мог нарисовать
+  // OVERPAID-callout и сумму «К возврату» без отдельного запроса.
   try {
     const fresh = await prisma.booking.findUnique({
       where: { id: session.bookingId },
@@ -489,10 +705,16 @@ export async function completeSession(
       summary.mainAfterDiscount = main ? main.totalAfterDiscount.toString() : "0";
       summary.addonAfterDiscount = addon ? addon.totalAfterDiscount.toString() : "0";
       summary.finalAmount = fresh.finalAmount.toString();
+      summary.paymentStatus = fresh.paymentStatus;
+      summary.amountPaid = fresh.amountPaid.toString();
     }
   } catch (err) {
     console.warn("[completeSession] finance snapshot read failed:", err);
   }
+
+  // Task 7: snapshot ДО adjustments (захвачен внутри транзакции). Кладём в
+  // summary в самом конце, чтобы UI получил «исходно/фактически» одной парой.
+  summary.mainOriginalAfterDiscount = mainOriginalAfterDiscount;
 
   return summary;
 }
@@ -617,6 +839,9 @@ export async function getReconciliationPreview(sessionId: string): Promise<Recon
     mainAfterDiscount: "0",
     addonAfterDiscount: "0",
     finalAmount: "0",
+    mainOriginalAfterDiscount: "0",
+    paymentStatus: "NOT_PAID",
+    amountPaid: "0",
   };
 }
 

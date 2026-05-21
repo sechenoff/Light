@@ -29,6 +29,8 @@ export function calcBookingPaymentStatus(args: {
   const now = args.now ?? new Date();
   const final = args.finalAmount;
   const paid = args.amountPaid;
+  // OVERPAID has top priority — independent of due date.
+  if (paid.greaterThan(final) && final.greaterThan(0)) return "OVERPAID";
   const fullyPaid = paid.greaterThanOrEqualTo(final) || final.lessThanOrEqualTo(0);
   if (fullyPaid) return "PAID";
   const isOverdue = !!args.expectedPaymentDate && args.expectedPaymentDate.getTime() < now.getTime();

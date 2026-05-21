@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ChecklistState, SummaryResult } from "../types";
 import type { UseScanSessionResult } from "../useScanSession";
@@ -118,8 +118,11 @@ function defaultSummary(over: Partial<SummaryResult> = {}): SummaryResult {
       },
     ],
     mainAfterDiscount: "0",
+    mainOriginalAfterDiscount: "0",
     addonAfterDiscount: "0",
     finalAmount: "0",
+    paymentStatus: "NOT_PAID",
+    amountPaid: "0",
     ...over,
   };
 }
@@ -145,14 +148,22 @@ describe("IssueChecklist · Сверка phase", () => {
     expect(summarySpy).toHaveBeenCalledWith("s1");
   });
 
-  it("computes the emerald «Готово к выдаче» count from issued units + count lines", async () => {
+  it("computes the emerald «Готово к выдаче» count from committed rows + доборы", async () => {
     render(<IssueChecklist sessionId="s1" projectName="Орбита" onBack={() => {}} />);
+    // Post-Task-11 the сверка counts come from `committedRows` × `intendedQty`,
+    // not from per-unit `checked` state. Commit everything at default N=M first.
+    (
+      await screen.findByRole("button", { name: /Выдать всё разом/ })
+    ).click();
     (await screen.findByRole("button", { name: /Завершить выдачу/ })).click();
 
-    // 5 issued units (u1,u2,u4,u5,u8) + 0 count lines = 5.
+    // Issued = bi-1 (N=3) + bi-2 (N=4) = 7 unit-equivalents; добор bi-3 counts
+    // as 1 «＋ Доборы». readyTotal = 7 + 1 = 8.
     const badge = await screen.findByText(/Готово к выдаче/);
     const badgeBlock = badge.parentElement as HTMLElement;
-    expect(badgeBlock.textContent || "").toMatch(/\b5\b/);
+    expect(badgeBlock.textContent || "").toMatch(/\b8\b/);
+    expect(badgeBlock.textContent || "").toMatch(/из\s+7\s+в брони/);
+    expect(badgeBlock.textContent || "").toMatch(/1\s+доборов/);
   });
 
   it("'из M в брони' uses unit count, not BookingItem count (no «4 из 3» misread)", async () => {
@@ -170,18 +181,19 @@ describe("IssueChecklist · Сверка phase", () => {
     expect(badgeBlock.textContent || "").toMatch(/из\s+7\s+в брони/);
   });
 
-  it("expands the «⚠ Без отметки» row with the first matching units", async () => {
+  it("expands the «⚠ Без отметки» row with the first matching booking items (per-bookingItem post-Task-11)", async () => {
     render(<IssueChecklist sessionId="s1" projectName="Орбита" onBack={() => {}} />);
+    // Skip committing — leave every row uncommitted so it lands in the
+    // «без отметки» bucket. Post-Task-11 each line is a single bookingItem,
+    // labeled «Equipment · ×M» rather than per-unit «прибор N из M».
     (await screen.findByRole("button", { name: /Завершить выдачу/ })).click();
 
-    // u3 (Aputure 600D · прибор 3 из 3), u6 (Manfrotto · прибор 3 из 4),
-    // u7 (Manfrotto · прибор 4 из 4) — 3 untouched.
     await screen.findByText(/Без отметки/);
     expect(
-      screen.getByText(/Aputure 600D · прибор 3 из 3/),
+      screen.getByText(/Aputure 600D · ×3/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Manfrotto 1004 · прибор 3 из 4/),
+      screen.getByText(/Manfrotto 1004 · ×4/),
     ).toBeInTheDocument();
   });
 
@@ -197,23 +209,26 @@ describe("IssueChecklist · Сверка phase", () => {
     expect(screen.getByText(/в ремонте/)).toBeInTheDocument();
   });
 
-  it("«← К чек-листу» returns to the checklist phase with state preserved", async () => {
+  it("«← К чек-листу» returns to the checklist phase with row commit state preserved", async () => {
     render(<IssueChecklist sessionId="s1" projectName="Орбита" onBack={() => {}} />);
-    (await screen.findByRole("button", { name: /Завершить выдачу/ })).click();
+    // Commit one row, then enter сверка, then return — the badge should
+    // still be present on the checklist screen.
+    const firstIssue = (
+      await screen.findAllByRole("button", { name: /Выдать \d+ шт — Aputure/ })
+    )[0];
+    fireEvent.click(firstIssue);
+    expect(screen.getByText("Выдано 3 / 3")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Завершить выдачу/ }));
     await screen.findByText(/Готово к выдаче/);
 
-    const back = screen.getByRole("button", { name: /К чек-листу/ });
-    back.click();
+    fireEvent.click(screen.getByRole("button", { name: /К чек-листу/ }));
 
-    // Сверка hidden, checklist visible again — and the u1 segment is still ✓
-    // (state preserved across the round-trip).
     await waitFor(() =>
       expect(screen.queryByText(/Готово к выдаче/)).not.toBeInTheDocument(),
     );
-    const issued = screen.getByRole("button", {
-      name: /Aputure 600D \(прибор 1 из 3\) — отметить выданным/,
-    });
-    expect(issued).toHaveAttribute("aria-pressed", "true");
+    // Committed row still shows its badge — round-trip preserves state.
+    expect(screen.getByText("Выдано 3 / 3")).toBeInTheDocument();
   });
 
   it("soft-warn: «Без отметки»/«Резерв недоступен» do NOT disable «Подтвердить выдачу»", async () => {

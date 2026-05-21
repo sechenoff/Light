@@ -258,6 +258,7 @@ describe("POST /api/warehouse/sessions/:id/items (quick-add)", () => {
         category: "Аксессуары",
         rentalRatePerShift: 100,
         stockTrackingMode: "COUNT",
+        totalQuantity: 10, // addCap requires non-zero stock
       },
     });
 

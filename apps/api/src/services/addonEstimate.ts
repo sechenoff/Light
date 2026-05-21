@@ -1,18 +1,25 @@
 /**
- * Полная пересборка ADDON Estimate брони из AddonRecord'ов.
- * Идемпотентна: delete старый ADDON + create новый (или просто delete если
- * AddonRecord'ов больше нет).
+ * Полная пересборка ADDON Estimate брони.
  *
- * Алгоритм:
- *  1. Загружает MAIN Estimate (для shifts + discountPercent).
- *     Без MAIN бронь не CONFIRMED → доборов быть не должно → no-op.
- *  2. Фильтрует AddonRecord'ы: только из сессий в статусе ACTIVE/COMPLETED
- *     (CANCELLED сессии исключены — оператор отменил, оплачивать не надо).
- *  3. Сворачивает по equipmentId, суммирует quantity.
- *  4. Считает lineSum = unitPrice × totalQty × main.shifts.
- *  5. Применяет MAIN.discountPercent к subtotal.
- *  6. Delete-then-create по [bookingId, kind: ADDON].
- *     Если lines пустой — ADDON Estimate не создаётся вовсе (старый удаляется).
+ * Формула (после issue-stock-cap-and-unit-removal):
+ *   addonQty = max(0, BookingItem.quantity − MAIN.line.quantity) per equipmentId.
+ *
+ * Источник истины — текущее `BookingItem.quantity` минус `MAIN.line.quantity`
+ * для каждого equipmentId. Equipment, отсутствующее в MAIN-смете, полностью
+ * считается добором.
+ *
+ * До этого реализация агрегировала `AddonRecord`-дельты — это становилось
+ * неконсистентным после per-row adjustment в ISSUE-сессии (дельты копились,
+ * но не знали о последующих уменьшениях quantity). `AddonRecord` остаётся
+ * как чисто аудитная таблица.
+ *
+ * Идемпотентна: delete-then-create в транзакции. Если ни одного добора нет —
+ * существующий ADDON удаляется и новый не создаётся.
+ *
+ * No-op если у брони нет MAIN-сметы (бронь не CONFIRMED → доборов не может быть).
+ *
+ * Произвольные позиции (BookingItem.equipmentId == null) в ADDON не попадают —
+ * добор учитывает только каталожное оборудование.
  */
 import Decimal from "decimal.js";
 
@@ -21,54 +28,63 @@ import { prisma } from "../prisma";
 export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
   const main = await prisma.estimate.findFirst({
     where: { bookingId, kind: "MAIN" },
+    include: { lines: true },
   });
   if (!main) return;
 
-  const records = await prisma.addonRecord.findMany({
-    where: {
-      bookingId,
-      OR: [
-        { sessionId: null },
-        { session: { status: { in: ["ACTIVE", "COMPLETED"] } } },
-      ],
-    },
+  const items = await prisma.bookingItem.findMany({
+    where: { bookingId, quantity: { gt: 0 } },
     include: { equipment: true },
   });
 
-  type Group = { eq: NonNullable<(typeof records)[number]["equipment"]>; totalQty: number };
-  const byEq = new Map<string, Group>();
-  for (const r of records) {
-    if (!r.equipmentId || !r.equipment) continue;
-    const cur = byEq.get(r.equipmentId);
-    if (cur) cur.totalQty += r.quantity;
-    else byEq.set(r.equipmentId, { eq: r.equipment, totalQty: r.quantity });
+  // mainQty по equipmentId. MAIN custom-lines (equipmentId == null) игнорируются —
+  // у произвольных позиций нет equipmentId, чтобы их сопоставить.
+  const mainQtyByEquipment = new Map<string, number>();
+  for (const line of main.lines) {
+    if (line.equipmentId) {
+      mainQtyByEquipment.set(line.equipmentId, line.quantity);
+    }
   }
 
-  const shifts = main.shifts;
-  const discountPct = main.discountPercent
+  const discountPercent = main.discountPercent
     ? new Decimal(main.discountPercent.toString())
     : new Decimal(0);
+  const shifts = main.shifts > 0 ? main.shifts : 1;
 
-  const lines = Array.from(byEq.values()).map(({ eq, totalQty }) => {
-    const unitPrice = new Decimal(eq.rentalRatePerShift.toString());
-    const lineSum = unitPrice.mul(totalQty).mul(shifts);
-    return {
-      equipmentId: eq.id,
-      categorySnapshot: eq.category,
-      nameSnapshot: eq.name,
-      brandSnapshot: eq.brand ?? null,
-      modelSnapshot: eq.model ?? null,
-      quantity: totalQty,
-      unitPrice: unitPrice.toDecimalPlaces(2).toString(),
-      lineSum: lineSum.toDecimalPlaces(2).toString(),
-    };
-  });
+  type AddonLineInput = {
+    equipmentId: string;
+    categorySnapshot: string;
+    nameSnapshot: string;
+    brandSnapshot: string | null;
+    modelSnapshot: string | null;
+    quantity: number;
+    unitPrice: Decimal;
+    lineSum: Decimal;
+  };
 
-  const subtotal = lines.reduce(
-    (s, l) => s.add(new Decimal(l.lineSum)),
-    new Decimal(0),
-  );
-  const discountAmount = subtotal.mul(discountPct).div(100);
+  const lines: AddonLineInput[] = [];
+  for (const bi of items) {
+    // ADDON формируется только для каталожных позиций — custom items не учитываются.
+    if (!bi.equipmentId || !bi.equipment) continue;
+    const inMain = mainQtyByEquipment.get(bi.equipmentId) ?? 0;
+    const addonQty = bi.quantity - inMain;
+    if (addonQty <= 0) continue;
+    const unitPrice = new Decimal(bi.equipment.rentalRatePerShift.toString());
+    const lineSum = unitPrice.mul(addonQty).mul(shifts);
+    lines.push({
+      equipmentId: bi.equipmentId,
+      categorySnapshot: bi.equipment.category,
+      nameSnapshot: bi.equipment.name,
+      brandSnapshot: bi.equipment.brand ?? null,
+      modelSnapshot: bi.equipment.model ?? null,
+      quantity: addonQty,
+      unitPrice,
+      lineSum,
+    });
+  }
+
+  const subtotal = lines.reduce((acc, l) => acc.add(l.lineSum), new Decimal(0));
+  const discountAmount = subtotal.mul(discountPercent).div(100);
   const totalAfterDiscount = subtotal.sub(discountAmount);
 
   await prisma.$transaction(async (tx) => {
@@ -80,14 +96,27 @@ export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
         kind: "ADDON",
         shifts,
         subtotal: subtotal.toDecimalPlaces(2).toString(),
-        discountPercent: discountPct.isZero() ? null : discountPct.toString(),
+        discountPercent: discountPercent.isZero()
+          ? null
+          : discountPercent.toDecimalPlaces(2).toString(),
         discountAmount: discountAmount.toDecimalPlaces(2).toString(),
         totalAfterDiscount: totalAfterDiscount.toDecimalPlaces(2).toString(),
         commentSnapshot: null,
         optionalNote: null,
         includeOptionalInExport: false,
         hoursSummaryText: main.hoursSummaryText,
-        lines: { create: lines },
+        lines: {
+          create: lines.map((l) => ({
+            equipmentId: l.equipmentId,
+            categorySnapshot: l.categorySnapshot,
+            nameSnapshot: l.nameSnapshot,
+            brandSnapshot: l.brandSnapshot,
+            modelSnapshot: l.modelSnapshot,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
+            lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+          })),
+        },
       },
     });
   });

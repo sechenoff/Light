@@ -288,6 +288,120 @@ describe("POST /api/warehouse/sessions/:id/complete", () => {
     });
     expect(mockCompleteSession).toHaveBeenCalledWith("sess-1", expect.objectContaining({}));
   });
+
+  it("accepts issuanceAdjustments in body and forwards to completeSession", async () => {
+    const summary = { scanned: 3, expected: 3, missing: [], substituted: [] };
+    mockCompleteSession.mockResolvedValue(summary);
+    mockPrisma.equipmentUnit.findMany.mockResolvedValue([]);
+    mockPrisma.scanSession.findUnique.mockResolvedValue({ id: "sess-1", operation: "ISSUE" });
+
+    const res = await request(app)
+      .post("/api/warehouse/sessions/sess-1/complete")
+      .set("Authorization", "Bearer valid-token")
+      .send({ issuanceAdjustments: [{ bookingItemId: "bi-1", actualQuantity: 2 }] });
+
+    expect(res.status).toBe(200);
+    expect(mockCompleteSession).toHaveBeenCalledWith(
+      "sess-1",
+      expect.objectContaining({
+        issuanceAdjustments: [{ bookingItemId: "bi-1", actualQuantity: 2 }],
+      }),
+    );
+  });
+
+  it("rejects malformed issuanceAdjustments with 400", async () => {
+    const res = await request(app)
+      .post("/api/warehouse/sessions/sess-1/complete")
+      .set("Authorization", "Bearer valid-token")
+      .send({ issuanceAdjustments: [{ bookingItemId: "bi-1", actualQuantity: "two" }] });
+
+    expect(res.status).toBe(400);
+    expect(mockCompleteSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects issuanceAdjustments with empty bookingItemId", async () => {
+    const res = await request(app)
+      .post("/api/warehouse/sessions/sess-1/complete")
+      .set("Authorization", "Bearer valid-token")
+      .send({ issuanceAdjustments: [{ bookingItemId: "", actualQuantity: 1 }] });
+
+    expect(res.status).toBe(400);
+    expect(mockCompleteSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects issuanceAdjustments with negative actualQuantity", async () => {
+    const res = await request(app)
+      .post("/api/warehouse/sessions/sess-1/complete")
+      .set("Authorization", "Bearer valid-token")
+      .send({ issuanceAdjustments: [{ bookingItemId: "bi-1", actualQuantity: -1 }] });
+
+    expect(res.status).toBe(400);
+    expect(mockCompleteSession).not.toHaveBeenCalled();
+  });
+
+  it("response includes mainOriginalAfterDiscount", async () => {
+    const summary = {
+      scanned: 5,
+      expected: 5,
+      missing: [],
+      substituted: [],
+      reservedButUnavailable: [],
+      createdRepairIds: [],
+      failedBrokenUnits: [],
+      createdProblemItemIds: [],
+      failedProblemUnits: [],
+      mainAfterDiscount: "100.00",
+      addonAfterDiscount: "0.00",
+      finalAmount: "100.00",
+      mainOriginalAfterDiscount: "150.00",
+      paymentStatus: "NOT_PAID",
+      amountPaid: "0",
+    };
+    mockCompleteSession.mockResolvedValue(summary);
+    mockPrisma.equipmentUnit.findMany.mockResolvedValue([]);
+    mockPrisma.scanSession.findUnique.mockResolvedValue({ id: "sess-1", operation: "ISSUE" });
+
+    const res = await request(app)
+      .post("/api/warehouse/sessions/sess-1/complete")
+      .set("Authorization", "Bearer valid-token")
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.mainOriginalAfterDiscount).toBe("150.00");
+    expect(res.body.mainAfterDiscount).toBe("100.00");
+  });
+
+  it("response includes paymentStatus + amountPaid for OVERPAID callout", async () => {
+    const summary = {
+      scanned: 5,
+      expected: 5,
+      missing: [],
+      substituted: [],
+      reservedButUnavailable: [],
+      createdRepairIds: [],
+      failedBrokenUnits: [],
+      createdProblemItemIds: [],
+      failedProblemUnits: [],
+      mainAfterDiscount: "3500.00",
+      addonAfterDiscount: "0",
+      finalAmount: "3500.00",
+      mainOriginalAfterDiscount: "5000.00",
+      paymentStatus: "OVERPAID",
+      amountPaid: "5000.00",
+    };
+    mockCompleteSession.mockResolvedValue(summary);
+    mockPrisma.equipmentUnit.findMany.mockResolvedValue([]);
+    mockPrisma.scanSession.findUnique.mockResolvedValue({ id: "sess-1", operation: "ISSUE" });
+
+    const res = await request(app)
+      .post("/api/warehouse/sessions/sess-1/complete")
+      .set("Authorization", "Bearer valid-token")
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.paymentStatus).toBe("OVERPAID");
+    expect(res.body.amountPaid).toBe("5000.00");
+  });
 });
 
 // ── POST /api/warehouse/sessions/:id/cancel ──────────────────────────────────
