@@ -10,6 +10,7 @@
 
 import type { RepairUrgency, ProblemReason } from "@prisma/client";
 import { prisma } from "../prisma";
+import { HttpError } from "../utils/errors";
 import { createRepair } from "./repairService";
 import { createProblemItem, autoResolveOnReturn } from "./problemItemService";
 import { moveStagedToRepair } from "./repairPhotoStorage";
@@ -100,13 +101,19 @@ export interface SessionWithDetails {
 // ──────────────────────────────────────────────
 
 /**
- * Создаёт новую сессию сканирования для брони.
+ * Создаёт (или переиспользует) сессию сканирования для брони.
  *
- * Проверяет:
- * - Бронь существует и не отменена
- * - Для ISSUE: бронь в статусе CONFIRMED
- * - Для RETURN: бронь в статусе ISSUED
- * - Нет активной сессии для той же брони + операции
+ * Поведение:
+ * - Бронь существует и не отменена.
+ * - Для ISSUE: бронь в статусе CONFIRMED.
+ * - Для RETURN: бронь в статусе ISSUED.
+ * - Если для этой пары `(bookingId, operation)` УЖЕ есть ACTIVE-сессия —
+ *   возвращаем её (idempotent). Это закрывает реальный сценарий: кладовщик
+ *   закрыл вкладку посередине чек-листа, пришёл через час → жмёт ту же
+ *   бронь → продолжает с того же места, а не получает 500.
+ *
+ * Бизнес-ошибки кидаются как `HttpError(409, …)` → глобальный обработчик
+ * вернёт 409 с понятным русским сообщением, а не маскирует под 500.
  */
 export async function createSession(
   bookingId: string,
@@ -115,25 +122,35 @@ export async function createSession(
 ) {
   const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
   if (!booking) {
-    throw new Error("Бронь не найдена");
+    throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
   }
   if (booking.status === "CANCELLED") {
-    throw new Error("Бронь отменена");
+    throw new HttpError(409, "Бронь отменена", "BOOKING_CANCELLED");
   }
   if (operation === "ISSUE" && booking.status !== "CONFIRMED") {
-    throw new Error("Для выдачи бронь должна быть в статусе CONFIRMED");
+    throw new HttpError(
+      409,
+      "Для выдачи бронь должна быть в статусе CONFIRMED",
+      "BOOKING_WRONG_STATUS",
+    );
   }
   if (operation === "RETURN" && booking.status !== "ISSUED") {
-    throw new Error("Для возврата бронь должна быть в статусе ISSUED");
+    throw new HttpError(
+      409,
+      "Для возврата бронь должна быть в статусе ISSUED",
+      "BOOKING_WRONG_STATUS",
+    );
   }
 
-  // Защита от конкурентных сессий (в транзакции для атомарности)
+  // Атомарно: либо находим существующую ACTIVE-сессию и возвращаем её,
+  // либо создаём новую. Транзакция нужна на случай конкурентного открытия —
+  // findFirst + create под одним lock'ом.
   return prisma.$transaction(async (tx: TxClient) => {
     const existing = await tx.scanSession.findFirst({
       where: { bookingId, operation, status: "ACTIVE" },
     });
     if (existing) {
-      throw new Error("Уже существует активная сессия для этой брони и операции");
+      return existing;
     }
 
     return tx.scanSession.create({

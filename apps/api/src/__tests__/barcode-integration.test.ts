@@ -433,10 +433,16 @@ describe("Edge cases", () => {
     const session1 = await createSession(booking.id, "Алена", "ISSUE");
     expect(session1.status).toBe("ACTIVE");
 
-    // Попытка создать вторую — должна упасть с ошибкой
-    await expect(createSession(booking.id, "Борис", "ISSUE")).rejects.toThrow(
-      "Уже существует активная сессия",
-    );
+    // Повторный вызов с тем же (bookingId, operation) — идемпотентен:
+    // возвращает СУЩЕСТВУЮЩУЮ ACTIVE-сессию вместо ошибки. Это закрывает
+    // реальный сценарий: кладовщик закрыл вкладку посередине → вернулся →
+    // продолжает с того же места, а не упирается в 500.
+    const session2 = await createSession(booking.id, "Борис", "ISSUE");
+    expect(session2.id).toBe(session1.id);
+    expect(session2.status).toBe("ACTIVE");
+    // workerName в существующей сессии не меняется — аудит этой выдачи
+    // остаётся за тем кто её начал.
+    expect(session2.workerName).toBe("Алена");
 
     // Убираем за собой
     await cancelSession(session1.id);
