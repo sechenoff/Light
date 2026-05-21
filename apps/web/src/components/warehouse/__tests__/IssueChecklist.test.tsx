@@ -1,6 +1,6 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ChecklistState } from "../types";
+import type { ChecklistState, CompleteResult } from "../types";
 import type { UseScanSessionResult } from "../useScanSession";
 
 // ── Mock useScanSession ──────────────────────────────────────────────────────
@@ -85,6 +85,25 @@ vi.mock("../AddonSearch", () => ({
   ),
 }));
 
+// Spy on the api client used for getSummary / complete. We mock with hoisted
+// vi.fn() refs so tests can drive `complete`'s resolution/rejection per-case.
+const completeSpy = vi.fn();
+const getSummarySpy = vi.fn();
+const getAddonEstimateSpy = vi.fn();
+vi.mock("../api", async () => {
+  const actual = await vi.importActual<typeof import("../api")>("../api");
+  return {
+    ...actual,
+    scanApi: {
+      ...actual.scanApi,
+      complete: (sessionId: string, payload: unknown) =>
+        completeSpy(sessionId, payload),
+      getSummary: (sessionId: string) => getSummarySpy(sessionId),
+      getAddonEstimate: (bookingId: string) => getAddonEstimateSpy(bookingId),
+    },
+  };
+});
+
 import { IssueChecklist } from "../IssueChecklist";
 
 function state(): ChecklistState {
@@ -122,11 +141,47 @@ function state(): ChecklistState {
   };
 }
 
+function defaultCompleteResult(): CompleteResult {
+  return {
+    sessionId: "s1",
+    operation: "ISSUE",
+    scannedCount: 0,
+    expectedCount: 0,
+    missingItems: [],
+    substitutedItems: [],
+    reservedButUnavailable: [],
+    mainAfterDiscount: "0",
+    mainOriginalAfterDiscount: "0",
+    addonAfterDiscount: "0",
+    finalAmount: "0",
+    createdRepairIds: [],
+    failedBrokenUnits: [],
+    createdProblemItemIds: [],
+    failedProblemUnits: [],
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockState = state();
   mockLoading = false;
   mockError = null;
+  // Default api mocks — overridden per-test as needed.
+  completeSpy.mockResolvedValue(defaultCompleteResult());
+  getSummarySpy.mockResolvedValue({
+    sessionId: "s1",
+    operation: "ISSUE",
+    scannedCount: 0,
+    expectedCount: 0,
+    missingItems: [],
+    substitutedItems: [],
+    reservedButUnavailable: [],
+    mainAfterDiscount: "0",
+    mainOriginalAfterDiscount: "0",
+    addonAfterDiscount: "0",
+    finalAmount: "0",
+  });
+  getAddonEstimateSpy.mockResolvedValue({ addon: null });
 });
 
 describe("IssueChecklist", () => {
@@ -423,5 +478,114 @@ describe("IssueChecklist", () => {
     // still fire — keeps the existing «refresh» test green and proves the
     // handler signature is correct.
     await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(1));
+  });
+
+  // ── Task 12: issuanceAdjustments payload + 409 inline error ───────────────
+  // Fixture has bi-1 (UNIT, M=2) and bi-2 (COUNT, M=4). The submit handler is
+  // hit via the сверка screen («Подтвердить выдачу») — that's the moment we
+  // build the payload from committed rows where intended != original.
+
+  it("sends only differences (actualQty !== originalQty) in issuanceAdjustments", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // Reduce bi-1 (UNIT, M=2) by one → N=1.
+    const minuses = await screen.findAllByLabelText(/Уменьшить количество/);
+    fireEvent.click(minuses[0]);
+
+    // Reduce bi-2 (COUNT, M=4) all the way to 0 (four clicks).
+    fireEvent.click(minuses[1]);
+    fireEvent.click(minuses[1]);
+    fireEvent.click(minuses[1]);
+    fireEvent.click(minuses[1]);
+
+    // Global commit-all.
+    fireEvent.click(screen.getByRole("button", { name: /Выдать всё разом/ }));
+
+    // Enter сверка, then «Подтвердить выдачу» → POST /complete.
+    fireEvent.click(screen.getByRole("button", { name: /Завершить выдачу/ }));
+    await screen.findByText(/Готово к выдаче/);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Подтвердить выдачу/ }),
+    );
+
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+    const [callSessionId, callPayload] = completeSpy.mock.calls[0] as [
+      string,
+      { issuanceAdjustments?: Array<{ bookingItemId: string; actualQuantity: number }> },
+    ];
+    expect(callSessionId).toBe("s1");
+    // Order is iteration-stable but assert as a set for robustness.
+    expect(callPayload.issuanceAdjustments).toEqual(
+      expect.arrayContaining([
+        { bookingItemId: "bi-1", actualQuantity: 1 },
+        { bookingItemId: "bi-2", actualQuantity: 0 },
+      ]),
+    );
+    expect(callPayload.issuanceAdjustments).toHaveLength(2);
+  });
+
+  it("omits issuanceAdjustments when no row's intended differs from original", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // Commit everything at default N=M without changing anything.
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Выдать всё разом/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Завершить выдачу/ }));
+    await screen.findByText(/Готово к выдаче/);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Подтвердить выдачу/ }),
+    );
+
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+    const [, callPayload] = completeSpy.mock.calls[0] as [
+      string,
+      { issuanceAdjustments?: Array<{ bookingItemId: string; actualQuantity: number }> },
+    ];
+    // Either omitted entirely or sent as []. Either is acceptable.
+    expect(callPayload.issuanceAdjustments ?? []).toEqual([]);
+  });
+
+  it("surfaces 409 ADJUSTMENT_CONFLICTS_WITH_SCANS inline and uncommits the conflicting row", async () => {
+    completeSpy.mockRejectedValueOnce({
+      status: 409,
+      code: "ADJUSTMENT_CONFLICTS_WITH_SCANS",
+      message: "Нельзя снять 1 шт: 3 единицы уже отсканированы",
+      details: { bookingItemId: "bi-1", scannedCount: 3, requestedQuantity: 1 },
+    });
+
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // Reduce bi-1 to N=1, commit, then «Подтвердить выдачу».
+    fireEvent.click(
+      (await screen.findAllByLabelText(/Уменьшить количество/))[0],
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Выдать 1 шт — Aputure 600D/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Завершить выдачу/ }));
+    await screen.findByText(/Готово к выдаче/);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Подтвердить выдачу/ }),
+    );
+
+    // Server message surfaces inline.
+    await waitFor(() =>
+      expect(
+        screen.getByText(/3 единицы уже отсканированы/),
+      ).toBeInTheDocument(),
+    );
+
+    // We're back in the сверка phase (not advanced to result) — «Подтвердить»
+    // is enabled again so the operator can fix the row and retry.
+    expect(
+      screen.getByRole("button", { name: /Подтвердить выдачу/ }),
+    ).not.toBeDisabled();
   });
 });

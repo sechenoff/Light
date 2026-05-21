@@ -38,9 +38,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useScanSession } from "./useScanSession";
 import { AddonSearch } from "./AddonSearch";
-import type { AddonEstimateView, ChecklistItem, ChecklistState } from "./types";
+import type {
+  AddonEstimateView,
+  ChecklistItem,
+  ChecklistState,
+  IssuanceAdjustment,
+} from "./types";
 import { formatRub, pluralize } from "../../lib/format";
 import { scanApi } from "./api";
+import { isScanApiError } from "./types";
 import type { CompleteResult, SummaryResult } from "./types";
 import { IssueResultView } from "./IssueResultView";
 
@@ -631,19 +637,70 @@ export function IssueChecklist({
 
   if (!state) return null;
 
+  /**
+   * Build `issuanceAdjustments` from committed rows whose intended quantity
+   * differs from the BookingItem's original. Uncommitted rows are NOT included
+   * (the сверка surfaces them as «Без отметки — пропустим»). Rows where
+   * intended === original are also omitted — the backend recomputes MAIN only
+   * when there's an actual change, so we keep the payload minimal.
+   *
+   * Spec: `docs/superpowers/specs/2026-05-21-issue-stock-cap-and-unit-removal-design.md`
+   * (`POST /complete { issuanceAdjustments: [{ bookingItemId, actualQuantity }] }`).
+   */
+  function buildIssuanceAdjustments(): IssuanceAdjustment[] {
+    if (!state) return [];
+    const adjustments: IssuanceAdjustment[] = [];
+    for (const item of state.items) {
+      if (!committedRows.has(item.bookingItemId)) continue;
+      const intended = intendedQty.get(item.bookingItemId);
+      if (intended === undefined) continue;
+      if (intended !== item.quantity) {
+        adjustments.push({
+          bookingItemId: item.bookingItemId,
+          actualQuantity: intended,
+        });
+      }
+    }
+    return adjustments;
+  }
+
   async function submitToComplete() {
     if (phase !== "summary") return;
     setSubmitError(null);
     setPhase("submitting");
+    // Build adjustments from committed rows where intended ≠ original.
+    // Empty array → omit the field entirely (keeps wire shape `{}` for the
+    // no-change happy path, matching the pre-Task-12 contract).
+    const adjustments = buildIssuanceAdjustments();
+    const payload =
+      adjustments.length > 0 ? { issuanceAdjustments: adjustments } : {};
     try {
-      const res = await scanApi.complete(sessionId, {});
+      const res = await scanApi.complete(sessionId, payload);
       setResult(res);
       setPhase("result");
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === "object" && "message" in err
-          ? String((err as { message: unknown }).message)
-          : "Сеть недоступна";
+      // 409 ADJUSTMENT_CONFLICTS_WITH_SCANS: an operator-supplied adjustment
+      // tried to release units that are already scanned. Surface the server
+      // message inline (it carries the specifics — «3 единицы уже
+      // отсканированы») and uncommit the conflicting row so the operator can
+      // edit it without first hitting «Изменить».
+      if (
+        isScanApiError(err) &&
+        err.status === 409 &&
+        err.code === "ADJUSTMENT_CONFLICTS_WITH_SCANS"
+      ) {
+        const d = err.details as
+          | { bookingItemId?: string }
+          | null
+          | undefined;
+        if (d?.bookingItemId) {
+          uncommitRow(d.bookingItemId);
+        }
+        setSubmitError(err.message);
+        setPhase("summary");
+        return;
+      }
+      const msg = isScanApiError(err) ? err.message : "Сеть недоступна";
       setSubmitError(msg);
       setPhase("summary");
     }
