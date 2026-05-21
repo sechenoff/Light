@@ -1,0 +1,254 @@
+[
+  {
+    "segment": "cob-led-pipe",
+    "uncertain": {
+      "alias_id": "cmnh8zslt00fdxsaar3q9tum0",
+      "phrase": "эйрлайт",
+      "eq_name": "Ulanzi Air-light 60W  +Соты kinopereferia 3200-6500k",
+      "question": "Оставлять обе привязки (60W+120W)? 'Эйрлайт' без числа всегда амбивалентно — бот может либо переспросить мощность, либо матчить любой. Я бы оставил обе и реализовал в боте логику переспроса, но если так нельзя — удалить обе и оставить только 'эйрлайт 60' / 'эйрлайт 120' (suggested_new)."
+    }
+  },
+  {
+    "segment": "cob-led-pipe",
+    "uncertain": {
+      "alias_id": "cmnh8zsma00ffxsaa83qrhwm0",
+      "phrase": "эйрлайт",
+      "eq_name": "Ulanzi Air-light 120W +Соты kinopereferia 3200-6500k",
+      "question": "См. выше — судьба той же фразы для 120W"
+    }
+  },
+  {
+    "segment": "cob-led-pipe",
+    "uncertain": {
+      "alias_id": "cmnyiukar000exsx97o52a6nb",
+      "phrase": "павослим",
+      "eq_name": "Nanlite PavoSlim 240 С Long  RGBWW",
+      "question": "Это AUTO_LEARNED с usage=1, но 'павослим' охватывает три PavoSlim в каталоге (240 Long, 240 Square, 60). Если usage был контекстуально про Long — оставляем; если просто 'павослим' без контекста — лучше перепривязать на все три. Я склоняюсь оставить как есть (AUTO учится по контексту)."
+    }
+  },
+  {
+    "segment": "cob-led-pipe",
+    "uncertain": {
+      "alias_id": "cmnh905gl01udxsaauot2bjq2",
+      "phrase": "astera ax1",
+      "eq_name": "Astera Titan Tube Kit (8 шт)",
+      "question": "Технически Astera AX1 это предыдущая модель (до Titan). Если у вас в каталоге именно Titan — формально неверная привязка, но если гафёр знает, что у вас Titan и говорит 'AX1' по привычке — то правильно. Зависит от того, объясняете ли вы гафёрам разницу. Оставил, но низкая уверенность."
+    }
+  },
+  {
+    "segment": "cob-led-pipe",
+    "uncertain": {
+      "alias_id": "cmnh905h101ufxsaa2fls2nal",
+      "phrase": "astera ax3",
+      "eq_name": "Astera Titan Tube Kit (8 шт)",
+      "question": "AX3 = Titan Tube generation, формально правильно, но AX3 это и есть Titan Tube. Зависит от того, как маркируете в каталоге."
+    }
+  },
+  {
+    "segment": "cob-led-pipe",
+    "uncertain": {
+      "alias_id": "cmntze31q000ixsnw5fx8udrj",
+      "phrase": "2 астеры",
+      "eq_name": "Зарядки астера",
+      "question": "'2 астеры' семантически означает '2 трубки/прибора Astera', а не 'зарядки'. AUTO_LEARNED поймал контекст одного раза, но привязка к 'Зарядки астера' семантически странная. Удалить и пусть бот переспросит? Поместил в deletions."
+    }
+  },
+  {
+    "segment": "cob-led-pipe",
+    "uncertain": {
+      "alias_id": "cmnh8zsk900f5xsaak6ar1xho",
+      "phrase": "ulanzi air light 60",
+      "eq_name": "Ulanzi Air-light 60W  +Соты kinopereferia 3200-6500k",
+      "question": "Точно правильно, но не factor — оставил в kept"
+    }
+  },
+  {
+    "segment": "stands-grip",
+    "uncertain": {
+      "alias_id": "cmnh8zwbj00sdxsaafh6d7dk5,cmnh8zwcl00sfxsaasu4o1sye",
+      "phrase": "combo stand",
+      "eq_name": "Avenger ARM extention 20/40",
+      "question": "Эти 2 привязки combo stand на extension arm — это явная категориальная ошибка SEED, но я их пометил на удаление. Подтверди что не подразумевалось ничего хитрого (например, что Avenger Combo Stand комплектуется с extension arm и таким образом фраза 'combo stand' могла включать оба SKU как комплект). Если так — оставить, иначе deletion корректен."
+    }
+  },
+  {
+    "segment": "stands-grip",
+    "uncertain": {
+      "alias_id": null,
+      "phrase": "сорока / 40-ка",
+      "eq_name": "си-стенд 40",
+      "question": "В московском жаргоне часто слышу 'дай сороковку' / 'сорокушку' — это или си-стенд 40, или другой 40-дюймовый прибор. Подтвердить можно ли добавлять как алиас на C-STAND 40 (риск коллизии с другими 40-выми SKU в Текстиле/Грипе)?"
+    }
+  },
+  {
+    "segment": "stands-grip",
+    "uncertain": {
+      "alias_id": null,
+      "phrase": "длинная нога",
+      "eq_name": "?",
+      "question": "Слышал жаргон 'длинная нога' для бэйби-плейта на длинной ноге, но в каталоге нет явного бэйби-стенда. Стоит ли пушить?"
+    }
+  },
+  {
+    "segment": "stands-grip",
+    "uncertain": {
+      "alias_id": null,
+      "phrase": "комбо",
+      "eq_name": "DearKol COMBO STEEL STAND 45",
+      "question": "Просто 'комбо' без размера — стоит ли привязывать к DearKol Combo 45? Или это слишком общее и лучше требовать 'комбо 45'?"
+    }
+  },
+  {
+    "segment": "stands-grip",
+    "uncertain": {
+      "alias_id": null,
+      "phrase": "сэндбэг / песочник",
+      "eq_name": "?",
+      "question": "Гафёры часто упоминают песочник/сэндбэг — но мешки песка лежат в категории «Периферия», не в моём сегменте. Возможно стоит добавить в textile_flags или mods_periphery — оставляю на проверку другого сегмента."
+    }
+  },
+  {
+    "segment": "stands-grip",
+    "uncertain": {
+      "alias_id": "cmnh8zwf300spxsaa0o9r4vm1 (deleted)",
+      "phrase": "оверхед → Тринога Monfrotto 055XB",
+      "eq_name": "Тринога для камеры Monfrotto 055XB раскладная",
+      "question": "Я удалил эту привязку как 'wrong_brand' (055XB — камерная тренога, не оверхед). Но возможно у вас в студии бывает кастомное использование этой триноги для оверхеда — подтвердить удаление?"
+    }
+  },
+  {
+    "segment": "textile-flags",
+    "uncertain": {
+      "alias_id": null,
+      "phrase": "силк 12 1 (текущая привязка к SD Light grid 1/4)",
+      "eq_name": "Текстиль 12' х 12' SD Light grid 1/4",
+      "question": "AUTO_LEARNED 'силк 12 (1)' сейчас уходит на SD Light grid 1/4. По здравому смыслу 'силк 12' — это 'Текстиль 12' Silk', но такого в каталоге нет (есть 8x8 Silk и 20x20 Silk). SD Light 1/4 — это реально полупрозрачный распылитель ~='silk', логично. Однозначного решения нет"
+    }
+  },
+  {
+    "segment": "textile-flags",
+    "uncertain": {
+      "alias_id": "cmnyiuk9w000bxsx92yswzbpf",
+      "phrase": "сильвер",
+      "eq_name": "Текстиль 6' х 6' Silver",
+      "question": "В каталоге 4 'сильвера': 6'x6' Silver, 6'x6 Silver/Black, 8'x8' Silver/Gold (чекер), 12х12 Silver/White (Чекер). Голый 'сильвер' двусмыслен; AUTO_LEARNED привязал к 6'x6' Silver — возможно гафёр действительно про самый частый размер 6x6, но требует ревью человеком"
+    }
+  },
+  {
+    "segment": "textile-flags",
+    "uncertain": {
+      "alias_id": null,
+      "phrase": "rag (отсутствует)",
+      "eq_name": null,
+      "question": "'Rag' в РФ-практике сейчас почти не используется, но иногда мелькает в заявках от старшего поколения гафёров ('rag 8' = 'тряпка 8'). Добавлять только с размером ('8 rag' → 8x8) или вообще не трогать"
+    }
+  },
+  {
+    "segment": "textile-flags",
+    "uncertain": {
+      "alias_id": null,
+      "phrase": "frost 4x4 (отсутствует)",
+      "eq_name": null,
+      "question": "Frost 4x4 в каталоге нет — только 40x40 (см см), 48x48 и пустая 48x48. 'Фрост' без размера сейчас уходит на 48x48 — приемлемый дефолт, но если гафёр напишет '40 фрост' — попадёт?"
+    }
+  },
+  {
+    "segment": "textile-flags",
+    "uncertain": {
+      "alias_id": null,
+      "phrase": "куки 28 / cookie 28x28",
+      "eq_name": "Куколорис 28х28",
+      "question": "Стоит ли добавить размерные варианты? Куколорис в каталоге один, поэтому пока избыточно — единственный плюс: устойчивость, если завтра появится другой размер"
+    }
+  },
+  {
+    "segment": "electric",
+    "uncertain": {
+      "alias_id": "cmnh3s97l0007xsfz0515t60i",
+      "phrase": "капы 6",
+      "eq_name": "Кабельканалы",
+      "question": "«Капы» это что? Кабельные капы (защитные колпаки на разъёмы) или кабельканалы? Если первое — оставить, если второе — может быть ок. Нужна проверка у кладовщика. usage=1, AUTO_LEARNED"
+    }
+  },
+  {
+    "segment": "electric",
+    "uncertain": {
+      "alias_id": "cmnh3s63n0001xsfzn1hkad28",
+      "phrase": "быт 14",
+      "eq_name": "Кабель 16/220",
+      "question": "Уже в deletions: «быт 14» вообще не должен идти на кабель 16/220. Если у вас в каталоге нет 'Быт 14' дистро — это просто кривое автообучение. Можно ли подтвердить?"
+    }
+  },
+  {
+    "segment": "electric",
+    "uncertain": {
+      "alias_id": "cmnh902y101jvxsaaft3d33fc",
+      "phrase": "три фазы",
+      "eq_name": "Доставка Iveco Daily 3м Гидроборт+генератор",
+      "question": "«Три фазы» — это про генератор/электропитание, не про машину. Возможно, фраза должна быть на «Дизель генератор Вепрь SDMO 3 фазы 77 КвА» (там есть «3 фазы» в названии)? Я ставлю в deletions, но если хотите оставить — переназначьте только на генератор"
+    }
+  },
+  {
+    "segment": "mods",
+    "uncertain": {
+      "alias_id": "cmpcgcqqy0001y1fdix2xc0xe",
+      "phrase": "френель",
+      "eq_name": "Линза френеля Aputure СF12 Fresnel для 1200x",
+      "question": "AUTO_LEARNED usage=1 — было реальное использование, но «френель» без размера слишком общее (есть CF7/CF10/CF12/CF16). Удалить или переназначить на «дефолтный» CF12? Нужно решение владельца — оставлять как fallback или нет."
+    }
+  },
+  {
+    "segment": "mods",
+    "uncertain": {
+      "alias_id": "cmo2rh1lr001dxsrq3pftgavk",
+      "phrase": "фринель",
+      "eq_name": "Линза френеля Aputure СF12 Fresnel для 1200x",
+      "question": "Аналогично «френель» — обрезанная/неправильно написанная форма. AUTO_LEARNED, но без размера непонятно к какому CF."
+    }
+  },
+  {
+    "segment": "mods",
+    "uncertain": {
+      "alias_id": "cmo2slmdh000oxsjp91okyttt",
+      "phrase": "фринель 2",
+      "eq_name": "Линза френеля Aputure СF12 Fresnel для 1200x",
+      "question": "«2» это количество (а не размер) — AUTO_LEARNED распарсил неоднозначно. Возможно стоит оставить, но без уверенности что 2 единиц именно CF12."
+    }
+  },
+  {
+    "segment": "mods",
+    "uncertain": {
+      "alias_id": "cmnh8zxjh00y5xsaat08mhy1f",
+      "phrase": "sandbag",
+      "eq_name": "Мешок для песка на 12кг Русский грип (интерьерные)",
+      "question": "В каталоге одна модель — пока однозначно. Если появятся внешние мешки/другие веса, нужна доп.детализация."
+    }
+  },
+  {
+    "segment": "mods",
+    "uncertain": {
+      "alias_id": "cmnh8zxjt00y7xsaag7ubtpex",
+      "phrase": "shot bag",
+      "eq_name": "Мешок для песка на 12кг Русский грип (интерьерные)",
+      "question": "То же — пока однозначно, но «shot bag» это совсем другое (маленький мешок-наполнитель)."
+    }
+  },
+  {
+    "segment": "mods",
+    "uncertain": {
+      "alias_id": "cmpfv8gpb002ry16a6v8ecjbi",
+      "phrase": "веревка фалл",
+      "eq_name": "Фалл 10-15м",
+      "question": "Сейчас одна модель — оставил. Но «веревка фалл» это уже описание, не запрос. Нормально ли это для гафёра?"
+    }
+  },
+  {
+    "segment": "mods",
+    "uncertain": {
+      "alias_id": "cmntze32o000lxsnwzs17qeu6",
+      "phrase": "спотлайт 36",
+      "eq_name": "Насадка Spotlight Mount 19 градусов Bowens",
+      "question": "AUTO_LEARNED, но «36» это не размер из ассортимента (есть только 19 градусов с диафрагмой). Может быть ошибка распознавания. Удалить?"
+    }
+  }
+]
