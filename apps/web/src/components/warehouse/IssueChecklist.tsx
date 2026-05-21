@@ -1,22 +1,31 @@
 "use client";
 
 /**
- * ISSUE checklist — the operator's per-unit "выдача" screen.
+ * ISSUE checklist — the operator's "выдача" screen.
  *
  * Visual source of truth: mockup `03-issue-and-desktop.html`
  *  - block 2 (mobile): «✓ Выдать всё разом» primary bar → category groups →
- *    per-row 2-segment control → «＋ Добор» dashed bar → sticky
- *    «Завершить выдачу» footer. NEVER a barcode — name + «прибор N из M».
+ *    per-bookingItem row with stepper [−] N [+] / M and a «Выдать N» /
+ *    «Не выдаём» button → «＋ Добор» dashed bar → sticky «Завершить выдачу»
+ *    footer. NEVER a barcode — name + «было ×M» eyebrow.
  *  - block 4 (desktop, right pane): a heading line «Чек-лист выдачи · N / M ✓»
  *    with an inline «＋ Добор» chip, wider rows, same logic.
  *
+ * Per-row state machine (Task 11):
+ *  - editable: stepper + «Выдать N» (or «Не выдаём» at N=0) primary button.
+ *  - committed: status badge («Выдано N / M» / «Не выдаём») + «Изменить» link
+ *    that rolls back to editable.
+ *  - Global «✓ Выдать всё разом» commits every uncommitted row at its current
+ *    intended quantity (default N = M).
+ *
  * Data: `useScanSession` (already wired upstream by page.tsx — operation ISSUE).
- *  - UNIT items: one row per unit; outcome persisted via the hook's optimistic
- *    `check` / `uncheck` (server-authoritative on tap-confirm, per-id in-flight
- *    guard). «выдано» → check(unitId); back to neutral → uncheck(unitId).
- *  - COUNT items: the server is client-managed (always `checkedQty: 0`, no
- *    `units[]`). All-or-nothing per line, tracked in local state — consistent
- *    with how `checklistService` treats COUNT.
+ *  - The hook provides the canonical checklist state (items + per-unit metadata).
+ *  - Per-bookingItem intended quantities are held in local state and applied
+ *    batched at `/complete` time as `issuanceAdjustments` (Task 12 / spec
+ *    `docs/superpowers/specs/2026-05-21-issue-stock-cap-and-unit-removal-design.md`).
+ *  - Pre-scanned units (`unit.checked === true`) are not surfaced in v1 — the
+ *    backend enforces `ADJUSTMENT_CONFLICTS_WITH_SCANS` and the inline 409
+ *    handling lives in Task 12.
  *
  * Seams:
  *  - Добор → `AddonSearch` (Task 6.2). The «＋ Добор» action opens an inline
@@ -28,9 +37,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useScanSession } from "./useScanSession";
-import { UnitRow } from "./UnitRow";
 import { AddonSearch } from "./AddonSearch";
-import type { IssueValue } from "./UnitRow";
 import type { AddonEstimateView, ChecklistItem, ChecklistState } from "./types";
 import { formatRub, pluralize } from "../../lib/format";
 import { scanApi } from "./api";
@@ -143,23 +150,150 @@ function groupByCategory(items: ChecklistItem[]): CategoryGroup[] {
   }));
 }
 
-/** Checked-progress «N / M» across UNIT units + locally-issued COUNT lines. */
+/**
+ * Checked-progress «N / M» across booking items, post-Task-11.
+ *
+ * `done` is the count of *committed* rows (rows the operator has finalised via
+ * «Выдать N» / «Не выдаём» / «Выдать всё разом»). `total` is one-per-bookingItem
+ * since each line shows a single stepper, regardless of trackingMode.
+ *
+ * `isExtra` доборы count too — they're committed via the same per-row UI.
+ */
 function computeProgress(
   state: ChecklistState,
-  countIssued: ReadonlySet<string>,
+  committedRows: ReadonlySet<string>,
 ): { done: number; total: number } {
   let done = 0;
   let total = 0;
   for (const item of state.items) {
-    if (item.trackingMode === "UNIT" && item.units) {
-      total += item.units.length;
-      done += item.units.filter((u) => u.checked).length;
-    } else {
-      total += 1;
-      if (countIssued.has(item.bookingItemId)) done += 1;
-    }
+    total += 1;
+    if (committedRows.has(item.bookingItemId)) done += 1;
   }
   return { done, total };
+}
+
+/**
+ * One booking-item row inside the ISSUE checklist (post-Task-11).
+ *
+ * Editable state: `[−] N [+] / M` stepper + a single primary-CTA button. The
+ * button reads «Выдать N» (blue/accent) when N>0, «Не выдаём» (rose) when N=0.
+ * Clicking the button commits the row.
+ *
+ * Committed state: a status badge («Выдано N / M» emerald / «Не выдаём» rose)
+ * + a text-link «Изменить» that rolls back to editable. This matches the
+ * brainstorming mockup spec («количество единиц с левой и с правой, плюс и
+ * минус, и кнопка "выдать"»).
+ *
+ * Visual conventions stay aligned with the rest of the warehouse surface:
+ * `border-border` / `bg-surface` / semantic accents only. Touch targets ≥40px
+ * (h-10) on the controls.
+ *
+ * Pure / controlled: every state mutation goes through the parent's helpers.
+ */
+function IssueRow({
+  item,
+  intended,
+  committed,
+  onBump,
+  onSet,
+  onCommit,
+  onUncommit,
+}: {
+  item: ChecklistItem;
+  intended: number;
+  committed: boolean;
+  onBump: (delta: number) => void;
+  onSet: (value: number) => void;
+  onCommit: () => void;
+  onUncommit: () => void;
+}) {
+  const M = item.quantity;
+  const N = intended;
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-2 lg:px-3 lg:py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] leading-tight text-ink">
+          {item.equipmentName}
+        </div>
+        <div className="mt-0.5 truncate text-[11px] text-ink-3">
+          было ×{M}
+        </div>
+      </div>
+
+      {!committed ? (
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onBump(-1)}
+            disabled={N <= 0}
+            aria-label={`Уменьшить количество — ${item.equipmentName}`}
+            className="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface text-lg font-semibold leading-none text-ink-2 transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            −
+          </button>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={N}
+            onChange={(e) => {
+              const raw = e.target.value;
+              // Empty string clears to 0 — matches user expectation when
+              // selecting & deleting the value.
+              onSet(raw === "" ? 0 : Number(raw));
+            }}
+            min={0}
+            max={M}
+            aria-label={`Количество к выдаче — ${item.equipmentName}`}
+            className="mono-num h-10 w-12 rounded border border-border bg-surface text-center text-[13px] font-semibold text-ink outline-none focus:border-accent-bright"
+          />
+          <button
+            type="button"
+            onClick={() => onBump(+1)}
+            disabled={N >= M}
+            aria-label={`Увеличить количество — ${item.equipmentName}`}
+            className="flex h-10 w-10 items-center justify-center rounded border border-border bg-surface text-lg font-semibold leading-none text-ink-2 transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            +
+          </button>
+          <span className="text-[11px] text-ink-3">/ {M}</span>
+          <button
+            type="button"
+            onClick={onCommit}
+            aria-label={
+              N === 0
+                ? `Не выдаём — ${item.equipmentName}`
+                : `Выдать ${N} шт — ${item.equipmentName}`
+            }
+            className={`h-10 shrink-0 rounded px-3 text-[12px] font-semibold text-white transition-colors hover:opacity-95 ${
+              N === 0 ? "bg-rose" : "bg-accent-bright"
+            }`}
+          >
+            {N === 0 ? "Не выдаём" : `Выдать ${N}`}
+          </button>
+        </div>
+      ) : (
+        <div className="flex shrink-0 items-center gap-2">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+              N === 0
+                ? "border border-rose-border bg-rose-soft text-rose"
+                : "border border-emerald-border bg-emerald-soft text-emerald"
+            }`}
+          >
+            {N === 0 ? "Не выдаём" : `Выдано ${N} / ${M}`}
+          </span>
+          <button
+            type="button"
+            onClick={onUncommit}
+            aria-label={`Изменить количество для выдачи — ${item.equipmentName}`}
+            className="text-[11px] text-ink-3 underline transition-colors hover:text-ink hover:no-underline"
+          >
+            Изменить
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function IssueChecklist({
@@ -175,24 +309,43 @@ export function IssueChecklist({
   onComplete?: () => void;
 }) {
   const session = useScanSession();
-  const { state, loading, error, openSession, check, uncheck, refresh } =
-    session;
+  const { state, loading, error, openSession, refresh } = session;
 
-  // COUNT lines are client-managed (no per-unit ids server-side).
-  const [countIssued, setCountIssued] = useState<Set<string>>(new Set());
   // Inline Добор catalog search.
   const [addonOpen, setAddonOpen] = useState(false);
-  // Disables «Завершить» momentarily while the bulk action fans out.
-  const [bulkBusy, setBulkBusy] = useState(false);
 
-  // ── Outcome state for the сверка (Phase 2 wires the UI / Phase 3 the submit). ──
-  // COUNT lines explicitly marked ✗ (different from "untouched"); mirrors
-  // countIssued.
-  const [countWithheld, setCountWithheld] = useState<Set<string>>(new Set());
-  // UNIT units explicitly marked ✗ (WITHHELD).
-  const [withheldUnits, setWithheldUnits] = useState<Set<string>>(new Set());
+  // ── Per-row state machine (Task 11: stepper + commit/uncommit). ─────────────
+  // `intendedQty` is the operator's intended actualQuantity per booking item;
+  // default = bi.quantity (M). Bounded to [0, M] by `setRowQty`.
+  // For доборы (isExtra), default also = bi.quantity (the picker already
+  // capped at addCap when the добор was added).
+  const [intendedQty, setIntendedQty] = useState<Map<string, number>>(
+    () => new Map(),
+  );
+  // Rows for which the operator has committed an intent («Выдать N» /
+  // «Не выдаём»). Uncommitted rows still show the stepper; committed rows
+  // show a status badge + «Изменить» rollback link.
+  const [committedRows, setCommittedRows] = useState<Set<string>>(new Set());
   // bookingItemIds of доборы added with acknowledgedConflict=true.
   const [conflictAddons, setConflictAddons] = useState<Set<string>>(new Set());
+
+  // Seed `intendedQty` from `state.items` once the checklist arrives. New
+  // items (доборы added mid-session) get their default M; we never clobber a
+  // value the operator has already chosen.
+  useEffect(() => {
+    if (!state) return;
+    setIntendedQty((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const item of state.items) {
+        if (!next.has(item.bookingItemId)) {
+          next.set(item.bookingItemId, item.quantity);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [state]);
 
   // ── Phase machine (lives inside this component — no outer step). ─────────────
   const [phase, setPhase] = useState<IssuePhase>("checklist");
@@ -223,10 +376,72 @@ export function IssueChecklist({
   );
 
   const progress = useMemo(
-    () => (state ? computeProgress(state, countIssued) : { done: 0, total: 0 }),
-    [state, countIssued],
+    () =>
+      state
+        ? computeProgress(state, committedRows)
+        : { done: 0, total: 0 },
+    [state, committedRows],
   );
 
+  // ── Per-row helpers (Task 11). ─────────────────────────────────────────────
+  function getIntended(biId: string): number {
+    return intendedQty.get(biId) ?? 0;
+  }
+
+  function setRowQty(biId: string, value: number) {
+    setIntendedQty((m) => {
+      const next = new Map(m);
+      const original =
+        state?.items.find((i) => i.bookingItemId === biId)?.quantity ?? 0;
+      const clamped = Math.max(0, Math.min(original, Math.floor(value)));
+      next.set(biId, clamped);
+      return next;
+    });
+  }
+
+  function bumpRowQty(biId: string, delta: number) {
+    setRowQty(biId, getIntended(biId) + delta);
+  }
+
+  function commitRow(biId: string) {
+    setCommittedRows((s) => {
+      if (s.has(biId)) return s;
+      const next = new Set(s);
+      next.add(biId);
+      return next;
+    });
+  }
+
+  function uncommitRow(biId: string) {
+    setCommittedRows((s) => {
+      if (!s.has(biId)) return s;
+      const next = new Set(s);
+      next.delete(biId);
+      return next;
+    });
+  }
+
+  /**
+   * Commit every uncommitted row at its current intended quantity (default M).
+   * The label «✓ Выдать всё разом» suggests bulk-issue, but per the v1 spec we
+   * preserve any operator-chosen N — including N=0 (Не выдаём) — so an operator
+   * who set one row to 0 and then taps «Выдать всё разом» does not have their
+   * decision silently overridden back to M.
+   */
+  function commitAll() {
+    if (!state) return;
+    setCommittedRows(new Set(state.items.map((i) => i.bookingItemId)));
+  }
+
+  /**
+   * Derived counters for the сверка («N / M в брони + K доборов» summary).
+   *
+   * Conventions match the pre-Task-11 shape so the summary screen renders
+   * unchanged: `issuedUnits` accumulates UNIT-mode actual quantities,
+   * `issuedLines` accumulates COUNT-mode committed lines, `withheld` is the
+   * **unit-equivalent** count of pulled units (M − N for UNIT, M for COUNT
+   * when N=0). Uncommitted rows fall into the «без отметки» warning bucket.
+   */
   const counts = useMemo(() => {
     if (!state) {
       return {
@@ -262,30 +477,27 @@ export function IssueChecklist({
         // their units/quantity into issuedUnits/issuedLines.
         continue;
       }
-      if (item.trackingMode === "UNIT" && item.units && item.units.length > 0) {
-        const total = item.units.length;
-        item.units.forEach((u, idx) => {
-          if (u.checked) {
-            issuedUnits += 1;
-            return;
-          }
-          if (withheldUnits.has(u.unitId)) {
-            withheld += 1;
-            return;
-          }
-          // Untouched UNIT.
-          untouchedUnitLines.push(
-            `${item.equipmentName} · прибор ${idx + 1} из ${total}`,
-          );
-        });
-      } else {
-        if (countIssued.has(item.bookingItemId)) {
-          issuedLines += 1;
-        } else if (countWithheld.has(item.bookingItemId)) {
-          withheld += 1;
+      const M = item.trackingMode === "UNIT" && item.units
+        ? item.units.length
+        : item.quantity;
+      const committed = committedRows.has(item.bookingItemId);
+      if (!committed) {
+        if (item.trackingMode === "UNIT" && item.units) {
+          untouchedUnitLines.push(`${item.equipmentName} · ×${M}`);
         } else {
-          untouchedCountLines.push(`${item.equipmentName} · ×${item.quantity}`);
+          untouchedCountLines.push(`${item.equipmentName} · ×${M}`);
         }
+        continue;
+      }
+      const N = Math.max(0, Math.min(M, intendedQty.get(item.bookingItemId) ?? M));
+      if (item.trackingMode === "UNIT" && item.units) {
+        issuedUnits += N;
+        withheld += M - N;
+      } else {
+        if (N > 0) issuedLines += 1;
+        // For COUNT lines, the «withheld» counter tracks unit-equivalent
+        // pulled quantity. Removing (M − N) is meaningful when M > 1.
+        if (M - N > 0) withheld += M - N;
       }
     }
 
@@ -299,84 +511,7 @@ export function IssueChecklist({
       untouchedCountLines,
       addonConflictLines,
     };
-  }, [state, countIssued, countWithheld, withheldUnits, conflictAddons]);
-
-  function setCount(bookingItemId: string, next: IssueValue) {
-    setCountIssued((prev) => {
-      const n = new Set(prev);
-      if (next === "ISSUED") n.add(bookingItemId);
-      else n.delete(bookingItemId);
-      return n;
-    });
-    setCountWithheld((prev) => {
-      const n = new Set(prev);
-      if (next === "WITHHELD") n.add(bookingItemId);
-      else n.delete(bookingItemId);
-      return n;
-    });
-  }
-
-  // «Выдать всё разом» — mark every UNIT unit ✓ (the hook's per-id guard
-  // dedupes concurrent toggles) and every COUNT line issued.
-  async function issueAll() {
-    if (!state || bulkBusy) return;
-    setBulkBusy(true);
-    try {
-      const allCountIds = state.items
-        .filter((i) => i.trackingMode !== "UNIT" || !i.units)
-        .map((i) => i.bookingItemId);
-      setCountIssued(new Set(allCountIds));
-      setCountWithheld(new Set());
-      setWithheldUnits(new Set());
-
-      const pending: Promise<void>[] = [];
-      for (const item of state.items) {
-        if (item.trackingMode !== "UNIT" || !item.units) continue;
-        for (const u of item.units) {
-          if (!u.checked) {
-            pending.push(check(u.unitId).catch(() => undefined));
-          }
-        }
-      }
-      await Promise.all(pending);
-    } finally {
-      setBulkBusy(false);
-    }
-  }
-
-  function handleUnitChange(unitId: string, next: IssueValue) {
-    // Three-way: ISSUED ⇒ persist via hook, WITHHELD ⇒ ✗-set,
-    // null ⇒ clear both (server-side uncheck + local ✗-set delete).
-    if (next === "ISSUED") {
-      setWithheldUnits((prev) => {
-        if (!prev.has(unitId)) return prev;
-        const n = new Set(prev);
-        n.delete(unitId);
-        return n;
-      });
-      void check(unitId).catch(() => undefined);
-      return;
-    }
-    if (next === "WITHHELD") {
-      // Make sure it's NOT checked server-side either.
-      void uncheck(unitId).catch(() => undefined);
-      setWithheldUnits((prev) => {
-        if (prev.has(unitId)) return prev;
-        const n = new Set(prev);
-        n.add(unitId);
-        return n;
-      });
-      return;
-    }
-    // null — neutral.
-    setWithheldUnits((prev) => {
-      if (!prev.has(unitId)) return prev;
-      const n = new Set(prev);
-      n.delete(unitId);
-      return n;
-    });
-    void uncheck(unitId).catch(() => undefined);
-  }
+  }, [state, committedRows, intendedQty, conflictAddons]);
 
   function handleAddonClick() {
     setAddonOpen(true);
@@ -750,10 +885,9 @@ export function IssueChecklist({
         {/* «Выдать всё разом» — primary bar (mockup block 2 .bar.acc). */}
         <button
           type="button"
-          onClick={issueAll}
-          disabled={bulkBusy}
-          aria-label="Выдать всё разом — отметить все позиции выданными"
-          className="mb-3 block w-full rounded-lg bg-accent-bright px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
+          onClick={commitAll}
+          aria-label="Выдать всё разом — зафиксировать все строки в текущих количествах"
+          className="mb-3 block w-full rounded-lg bg-accent-bright px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:opacity-95"
         >
           ✓ Выдать всё разом
         </button>
@@ -762,46 +896,18 @@ export function IssueChecklist({
           <section key={group.category} className="mb-1">
             <p className="eyebrow px-1.5 pb-1 pt-2">{group.category}</p>
             <div className="space-y-1.5">
-              {group.items.map((item) => {
-                if (item.trackingMode === "UNIT" && item.units) {
-                  const total = item.units.length;
-                  return item.units.map((u, idx) => {
-                    const value: IssueValue = u.checked
-                      ? "ISSUED"
-                      : withheldUnits.has(u.unitId)
-                        ? "WITHHELD"
-                        : null;
-                    return (
-                      <UnitRow
-                        key={u.unitId}
-                        name={item.equipmentName}
-                        ordinalLabel={`прибор ${idx + 1} из ${total}`}
-                        mode="ISSUE"
-                        value={value}
-                        onChange={(next) => handleUnitChange(u.unitId, next)}
-                        disabled={bulkBusy}
-                      />
-                    );
-                  });
-                }
-                // COUNT line — all-or-nothing, ×N quantity label.
-                const value: IssueValue = countIssued.has(item.bookingItemId)
-                  ? "ISSUED"
-                  : countWithheld.has(item.bookingItemId)
-                    ? "WITHHELD"
-                    : null;
-                return (
-                  <UnitRow
-                    key={item.bookingItemId}
-                    name={item.equipmentName}
-                    ordinalLabel={`×${item.quantity}`}
-                    mode="ISSUE"
-                    value={value}
-                    onChange={(next) => setCount(item.bookingItemId, next)}
-                    disabled={bulkBusy}
-                  />
-                );
-              })}
+              {group.items.map((item) => (
+                <IssueRow
+                  key={item.bookingItemId}
+                  item={item}
+                  intended={getIntended(item.bookingItemId)}
+                  committed={committedRows.has(item.bookingItemId)}
+                  onBump={(delta) => bumpRowQty(item.bookingItemId, delta)}
+                  onSet={(value) => setRowQty(item.bookingItemId, value)}
+                  onCommit={() => commitRow(item.bookingItemId)}
+                  onUncommit={() => uncommitRow(item.bookingItemId)}
+                />
+              ))}
             </div>
           </section>
         ))}
@@ -832,9 +938,8 @@ export function IssueChecklist({
         <button
           type="button"
           onClick={() => setPhase("summary")}
-          disabled={bulkBusy}
           aria-label={`Завершить выдачу — ${projectName || "бронь"}`}
-          className="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
+          className="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:opacity-95"
         >
           Завершить выдачу →
         </button>
