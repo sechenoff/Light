@@ -135,14 +135,8 @@ async function confirmBooking(bookingId: string) {
   return approveRes.body.booking;
 }
 
-async function issueBooking(bookingId: string) {
-  const res = await request(app)
-    .post(`/api/bookings/${bookingId}/status`)
-    .set(AUTH())
-    .send({ action: "issue" });
-  expect(res.status).toBe(200);
-  return res.body.booking;
-}
+// (issueBooking helper удалён — после PR #162 completeSession(ISSUE) сам
+// переводит бронь в ISSUED, ручной POST /status?action=issue стал бы 409.)
 
 // ──────────────────────────────────────────────────────────────────
 // Импорт сервисов сканирования (не HTTP — Bearer auth не нужен в тестах)
@@ -259,8 +253,8 @@ describe("Full RETURN flow", () => {
     }
     await completeSession(issueSession.id);
 
-    // Переводим бронь в статус ISSUED чтобы можно было создать RETURN-сессию
-    await issueBooking(booking.id);
+    // completeSession(ISSUE) уже перевёл бронь в статус ISSUED (PR #162) —
+    // ручной POST /status?action=issue стал бы конфликтом (409).
 
     // 1. Создаём RETURN-сессию
     const returnSession = await createSession(booking.id, "Мария", "RETURN");
