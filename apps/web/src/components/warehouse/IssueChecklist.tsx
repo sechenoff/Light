@@ -169,13 +169,17 @@ export function computeLiveFinance(
 function IssueRow({
   item,
   intended,
+  checked,
   onBump,
   onSet,
+  onToggleCheck,
 }: {
   item: ChecklistItem;
   intended: number;
+  checked: boolean;
   onBump: (delta: number) => void;
   onSet: (value: number) => void;
+  onToggleCheck: () => void;
 }) {
   // origQty=0 ⇒ the line is itself a добор from a prior session; treat
   // bi.quantity (current) as the reference so the operator doesn't see
@@ -207,13 +211,19 @@ function IssueRow({
     );
   }
 
+  // Visual state for the row container — green left border + soft tint when
+  // the operator has marked this row as physically issued (грузчик унёс).
+  const rowClass = checked
+    ? "border-emerald-border bg-emerald-soft/30 shadow-[inset_3px_0_0_var(--color-emerald,#0d8a3f)]"
+    : "border-border bg-surface";
+
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-2 lg:px-3 lg:py-2.5 ${
+      className={`flex flex-wrap items-center gap-2 rounded-lg border px-2.5 py-2 lg:flex-nowrap lg:px-3 lg:py-2.5 ${rowClass} ${
         dimmed ? "opacity-60" : ""
       }`}
     >
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-full lg:basis-auto">
         <div
           className={`flex flex-wrap items-center gap-x-1 text-[13px] leading-tight ${
             dimmed ? "line-through text-ink-3" : "text-ink"
@@ -260,6 +270,38 @@ function IssueRow({
           +
         </button>
       </div>
+
+      {/*
+        «Выдать» / «✓ Выдано» — per-row tap target. Operators on the warehouse
+        floor use this as a check-off marker as грузчики хватают приборы со
+        стеллажа («чтобы не путаться в потоке»). Independent от степпера: qty
+        и факт выдачи — две ортогональные вещи. Сheck-state локальный (не
+        сохраняется на бэк до /complete) — это намерение, как и stepper.
+      */}
+      <button
+        type="button"
+        onClick={onToggleCheck}
+        aria-pressed={checked}
+        aria-label={
+          checked
+            ? `Снять отметку «Выдано» — ${item.equipmentName}`
+            : `Отметить «Выдано» — ${item.equipmentName}`
+        }
+        className={`flex h-10 min-w-[96px] shrink-0 items-center justify-center gap-1 rounded border px-3 text-[12px] font-semibold transition-colors ${
+          checked
+            ? "border-emerald-border bg-emerald text-white hover:opacity-90"
+            : "border-border bg-surface text-ink-2 hover:bg-surface-muted"
+        }`}
+      >
+        {checked ? (
+          <>
+            <span aria-hidden="true">✓</span>
+            Выдано
+          </>
+        ) : (
+          "Выдать"
+        )}
+      </button>
     </div>
   );
 }
@@ -270,11 +312,20 @@ function LiveFinanceBlock({
   finance,
   onSubmit,
   submitting,
+  checkedCount,
+  totalCount,
 }: {
   finance: LiveFinance;
   onSubmit: () => void;
   submitting: boolean;
+  /** How many rows the operator has marked as «Выдано». */
+  checkedCount: number;
+  /** Total rows in the checklist. */
+  totalCount: number;
 }) {
+  const allChecked = totalCount > 0 && checkedCount >= totalCount;
+  const unmarked = Math.max(0, totalCount - checkedCount);
+
   return (
     <div className="space-y-1 text-[13px] text-ink">
       <div className="flex items-baseline justify-between">
@@ -308,11 +359,28 @@ function LiveFinanceBlock({
         type="button"
         onClick={onSubmit}
         disabled={submitting}
-        aria-label="Готово, выдать — оформить выдачу с текущими количествами"
-        className="!mt-3 block w-full rounded-lg bg-accent px-4 py-3 text-center text-[14px] font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
+        aria-label={
+          allChecked
+            ? "Готово, выдать — оформить выдачу с текущими количествами"
+            : `Завершить выдачу — отмечено ${checkedCount} из ${totalCount} позиций (остальные считаются не выданными)`
+        }
+        className={`!mt-3 block w-full rounded-lg px-4 py-3 text-center text-[14px] font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60 ${
+          allChecked ? "bg-emerald" : "bg-amber"
+        }`}
       >
-        {submitting ? "Оформляем…" : "Готово, выдать →"}
+        {submitting
+          ? "Оформляем…"
+          : allChecked
+            ? "✓ Готово, выдать →"
+            : `Завершить (отмечено ${checkedCount} из ${totalCount}) →`}
       </button>
+      {!allChecked && unmarked > 0 && !submitting && (
+        <p className="mt-1 text-center text-[11px] text-ink-3">
+          {unmarked === 1
+            ? "Осталась 1 позиция без отметки «Выдано»"
+            : `Осталось ${unmarked} позиций без отметки «Выдано»`}
+        </p>
+      )}
     </div>
   );
 }
@@ -345,6 +413,29 @@ export function IssueChecklist({
   );
   // bookingItemIds of доборы added with acknowledgedConflict=true.
   const [conflictAddons, setConflictAddons] = useState<Set<string>>(new Set());
+
+  // bookingItemIds the operator has physically marked «Выдано». Used as a
+  // visual progress tracker — independent от stepper-а. Don't auto-clear on
+  // refetch: грузчик уже отнёс прибор, не отменять чек после refresh добора.
+  const [checkedRows, setCheckedRows] = useState<Set<string>>(new Set());
+
+  function toggleRowChecked(biId: string) {
+    setCheckedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(biId)) next.delete(biId);
+      else next.add(biId);
+      return next;
+    });
+  }
+
+  function checkAllRows() {
+    if (!state) return;
+    setCheckedRows(new Set(state.items.map((i) => i.bookingItemId)));
+  }
+
+  function uncheckAllRows() {
+    setCheckedRows(new Set());
+  }
 
   // Seed `intendedQty` from `state.items` once the checklist arrives. New
   // items (доборы added mid-session) get their default bi.quantity; we never
@@ -636,11 +727,40 @@ export function IssueChecklist({
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <div className="flex-1 px-2.5 pb-4 pt-3 lg:px-4">
-        {/* Desktop heading line with «+ Добор» chip. */}
+        {/* Desktop heading line with progress + bulk actions + «+ Добор» chip. */}
         <div className="mb-2 hidden items-center gap-3 px-1 lg:flex">
           <h2 className="text-[15px] font-semibold text-ink">
             Чек-лист выдачи
           </h2>
+          <span
+            aria-label={`Выдано ${checkedRows.size} из ${state.items.length} позиций`}
+            className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-ink-2"
+          >
+            <span className={checkedRows.size === state.items.length && state.items.length > 0 ? "text-emerald" : ""}>
+              {checkedRows.size}
+            </span>
+            <span className="text-ink-3"> / {state.items.length}</span>
+            <span className="ml-1 text-ink-3">выдано</span>
+          </span>
+          {checkedRows.size < state.items.length ? (
+            <button
+              type="button"
+              onClick={checkAllRows}
+              aria-label="Отметить все позиции как «Выдано»"
+              className="rounded border border-emerald-border px-2.5 py-1 text-xs font-semibold text-emerald transition-colors hover:bg-emerald-soft"
+            >
+              ✓ Все выдано
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={uncheckAllRows}
+              aria-label="Снять все отметки «Выдано»"
+              className="rounded border border-border px-2.5 py-1 text-xs font-semibold text-ink-2 transition-colors hover:bg-surface-muted"
+            >
+              Снять все отметки
+            </button>
+          )}
           <button
             type="button"
             onClick={handleAddonClick}
@@ -651,7 +771,28 @@ export function IssueChecklist({
           </button>
         </div>
 
-        {/* Mobile «+ Добор» chip — keeps the dashed-bar affordance from the mockup. */}
+        {/* Mobile heading: progress + bulk «Все выдано» + «+ Добор» chip. */}
+        <div className="mb-2 flex items-center gap-2 px-0.5 lg:hidden">
+          <span
+            aria-label={`Выдано ${checkedRows.size} из ${state.items.length} позиций`}
+            className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold"
+          >
+            <span className={checkedRows.size === state.items.length && state.items.length > 0 ? "text-emerald" : "text-ink-2"}>
+              {checkedRows.size}
+            </span>
+            <span className="text-ink-3"> / {state.items.length} выдано</span>
+          </span>
+          {checkedRows.size < state.items.length && (
+            <button
+              type="button"
+              onClick={checkAllRows}
+              aria-label="Отметить все позиции как «Выдано»"
+              className="ml-auto rounded border border-emerald-border px-2 py-1 text-[11px] font-semibold text-emerald transition-colors hover:bg-emerald-soft"
+            >
+              ✓ Все выдано
+            </button>
+          )}
+        </div>
         <button
           type="button"
           onClick={handleAddonClick}
@@ -670,8 +811,10 @@ export function IssueChecklist({
                   key={item.bookingItemId}
                   item={item}
                   intended={getIntended(item.bookingItemId)}
+                  checked={checkedRows.has(item.bookingItemId)}
                   onBump={(delta) => bumpRowQty(item.bookingItemId, delta)}
                   onSet={(value) => setRowQty(item.bookingItemId, value)}
+                  onToggleCheck={() => toggleRowChecked(item.bookingItemId)}
                 />
               ))}
             </div>
@@ -722,6 +865,8 @@ export function IssueChecklist({
           finance={finance}
           onSubmit={() => void submitToComplete()}
           submitting={phase === "submitting"}
+          checkedCount={checkedRows.size}
+          totalCount={state.items.length}
         />
       </div>
     </div>

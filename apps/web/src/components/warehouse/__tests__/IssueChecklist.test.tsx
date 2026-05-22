@@ -200,12 +200,17 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
   });
 
   it("stepper does NOT render «/ M» visually — it shows just the number", async () => {
-    const { container } = render(
+    render(
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
-    await screen.findAllByLabelText(/Количество к выдаче/);
-    // No «/ 2» or «/ 4» literal in the row UI (committed-state badges are gone).
-    expect(container.textContent || "").not.toMatch(/\/\s*\d+/);
+    const inputs = await screen.findAllByLabelText(/Количество к выдаче/);
+    // No «/ 2» or «/ 4» literal next to the stepper (committed-state badges are gone).
+    // The page-level progress chip (e.g. «0 / 2 выдано») is intentional and scoped
+    // out of this assertion — we only care about the stepper row itself.
+    for (const input of inputs) {
+      const stepperBox = input.parentElement;
+      expect(stepperBox?.textContent || "").not.toMatch(/\/\s*\d+/);
+    }
   });
 
   it("plus enabled past originalQuantity (up to bi.quantity + addCap)", async () => {
@@ -341,8 +346,10 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
     expect(
       (await screen.findAllByRole("button", { name: /Добор/ })).length,
     ).toBeGreaterThanOrEqual(1);
+    // Finalize button exists in either state: «Завершить (...)» when not all
+    // marked, «✓ Готово, выдать →» when all marked.
     expect(
-      screen.getByRole("button", { name: /Готово, выдать/ }),
+      screen.getByRole("button", { name: /Готово, выдать|Завершить выдачу/ }),
     ).toBeInTheDocument();
   });
 
@@ -358,6 +365,12 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
     // Bump bi-2 + 1 → 5 (inline-добор).
     const plus = screen.getAllByLabelText(/Увеличить количество/)[1];
     fireEvent.click(plus);
+
+    // Mark all rows «Выдано» so the finalize button switches to its
+    // all-checked emerald state («✓ Готово, выдать →»).
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Отметить все позиции/ })[0],
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /Готово, выдать/ }));
 
@@ -381,8 +394,14 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
 
+    // Need all rows marked «Выдано» so the finalize button switches to its
+    // all-checked emerald «✓ Готово, выдать →» state.
     fireEvent.click(
-      await screen.findByRole("button", { name: /Готово, выдать/ }),
+      (await screen.findAllByRole("button", { name: /Отметить все позиции/ }))[0],
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Готово, выдать/ }),
     );
 
     await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
@@ -403,6 +422,11 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
     fireEvent.click(plus);
     fireEvent.click(plus);
 
+    // Mark all rows «Выдано» so the finalize button is in the all-checked state.
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Отметить все позиции/ })[0],
+    );
+
     fireEvent.click(screen.getByRole("button", { name: /Готово, выдать/ }));
 
     await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
@@ -419,8 +443,12 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
     render(
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
+    // Mark all «Выдано» first so we can match the all-checked finalize button.
     fireEvent.click(
-      await screen.findByRole("button", { name: /Готово, выдать/ }),
+      (await screen.findAllByRole("button", { name: /Отметить все позиции/ }))[0],
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Готово, выдать/ }),
     );
     expect(await screen.findByText("Выдача оформлена")).toBeInTheDocument();
   });
@@ -437,9 +465,12 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
 
-    // Reduce bi-1 → 1, then submit.
+    // Reduce bi-1 → 1, then mark all + submit.
     fireEvent.click(
       (await screen.findAllByLabelText(/Уменьшить количество/))[0],
+    );
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Отметить все позиции/ })[0],
     );
     fireEvent.click(screen.getByRole("button", { name: /Готово, выдать/ }));
 
@@ -451,7 +482,7 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
 
     // The conflicting row's intended quantity is reset to bi.quantity (2).
     expect(screen.getAllByLabelText(/Количество к выдаче/)[0]).toHaveValue(2);
-    // Still on checklist — «Готово, выдать» re-enabled.
+    // Still on checklist — finalize button (now in all-checked state) re-enabled.
     expect(
       screen.getByRole("button", { name: /Готово, выдать/ }),
     ).not.toBeDisabled();
@@ -475,6 +506,10 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
     fireEvent.click(
       screen.getAllByLabelText(/Увеличить количество/)[0],
     );
+    // Mark all rows «Выдано» so finalize button enters all-checked state.
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Отметить все позиции/ })[0],
+    );
     fireEvent.click(screen.getByRole("button", { name: /Готово, выдать/ }));
 
     await waitFor(() =>
@@ -495,8 +530,13 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
 
+    // Mark all rows «Выдано» so the finalize button switches to its
+    // all-checked emerald «✓ Готово, выдать →» state.
     fireEvent.click(
-      await screen.findByRole("button", { name: /Готово, выдать/ }),
+      (await screen.findAllByRole("button", { name: /Отметить все позиции/ }))[0],
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Готово, выдать/ }),
     );
 
     expect(
@@ -633,5 +673,125 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
     expect(screen.getByText(/Дополнительно/)).toBeInTheDocument();
     // 500 * 2 * 2 = 2000
     expect(screen.getByText(/\+\s?2\s?000/)).toBeInTheDocument();
+  });
+
+  // ── Post-Task-14.1 per-row «Выдать» check-toggle UX ─────────────────────────
+
+  it("each row has a «Выдать» check-toggle button", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // Two rows in the fixture (Aputure 600D, Manfrotto 1004) → two toggles.
+    const toggles = await screen.findAllByRole("button", {
+      name: /Отметить «Выдано»/,
+    });
+    expect(toggles).toHaveLength(2);
+    for (const toggle of toggles) {
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+      expect(toggle).toHaveTextContent(/^Выдать$/);
+    }
+  });
+
+  it("clicking a row's «Выдать» turns it into «✓ Выдано» (aria-pressed=true) and tints the row", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    const aputureToggle = await screen.findByRole("button", {
+      name: /Отметить «Выдано» — Aputure 600D/,
+    });
+    expect(aputureToggle).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(aputureToggle);
+
+    // After the click, the same button switches to its checked label.
+    const checkedToggle = screen.getByRole("button", {
+      name: /Снять отметку «Выдано» — Aputure 600D/,
+    });
+    expect(checkedToggle).toHaveAttribute("aria-pressed", "true");
+    expect(checkedToggle).toHaveTextContent(/Выдано/);
+
+    // The row container (toggle's grandparent — wraps stepper + toggle) picks
+    // up the emerald border + soft tint when checked.
+    const rowContainer = checkedToggle.closest("div.flex.flex-wrap");
+    expect(rowContainer?.className || "").toMatch(/emerald/);
+
+    // The other row stays untouched.
+    const manfrottoToggle = screen.getByRole("button", {
+      name: /Отметить «Выдано» — Manfrotto 1004/,
+    });
+    expect(manfrottoToggle).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("bulk «✓ Все выдано» button marks every row at once", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // Initially none are marked.
+    const initialToggles = await screen.findAllByRole("button", {
+      name: /Отметить «Выдано»/,
+    });
+    expect(initialToggles).toHaveLength(2);
+
+    // Click the bulk «✓ Все выдано» button (desktop variant is the first).
+    fireEvent.click(
+      screen.getAllByRole("button", {
+        name: "Отметить все позиции как «Выдано»",
+      })[0],
+    );
+
+    // Both per-row toggles now show their checked label.
+    const checkedToggles = screen.getAllByRole("button", {
+      name: /Снять отметку «Выдано»/,
+    });
+    expect(checkedToggles).toHaveLength(2);
+    for (const toggle of checkedToggles) {
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+    }
+
+    // The bulk button flipped into «Снять все отметки» mode.
+    expect(
+      screen.getByRole("button", { name: "Снять все отметки «Выдано»" }),
+    ).toBeInTheDocument();
+  });
+
+  it("finalize button label is «Завершить (отмечено N из M)» when not all rows marked; «✓ Готово, выдать» when all marked", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // ── Phase A: nothing checked → amber «Завершить» state. ────────────────
+    const initialFinalize = await screen.findByRole("button", {
+      name: /Завершить выдачу/,
+    });
+    expect(initialFinalize).toHaveTextContent(/Завершить \(отмечено 0 из 2\)/);
+    expect(initialFinalize.className).toMatch(/bg-amber/);
+
+    // ── Phase B: one row checked → still amber, label updates to «1 из 2». ──
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Отметить «Выдано» — Aputure 600D/,
+      }),
+    );
+    const partialFinalize = screen.getByRole("button", {
+      name: /Завершить выдачу/,
+    });
+    expect(partialFinalize).toHaveTextContent(/Завершить \(отмечено 1 из 2\)/);
+    expect(partialFinalize.className).toMatch(/bg-amber/);
+
+    // ── Phase C: all rows checked → emerald «✓ Готово, выдать →». ──────────
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Отметить «Выдано» — Manfrotto 1004/,
+      }),
+    );
+    const finalFinalize = screen.getByRole("button", {
+      name: /Готово, выдать/,
+    });
+    expect(finalFinalize).toHaveTextContent(/✓ Готово, выдать/);
+    expect(finalFinalize.className).toMatch(/bg-emerald/);
+    expect(finalFinalize.className).not.toMatch(/bg-amber/);
   });
 });
