@@ -34,9 +34,16 @@ function shortDate(iso: string | null): string {
 
 export function InWorkList({
   onSelect,
+  version,
 }: {
   /** Tap-handler — called with the booking id when the user picks a card. */
   onSelect: (bookingId: string) => void;
+  /**
+   * Monotonic counter — bump after «Принять обратно» commits a RETURN so the
+   * list re-fetches and the just-returned booking disappears. Mirrors the
+   * `version` prop pattern on BookingList.
+   */
+  version?: number;
 }) {
   const [bookings, setBookings] = useState<InWorkBooking[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +51,7 @@ export function InWorkList({
   useEffect(() => {
     let cancelled = false;
     setError(null);
+    setBookings(null);   // show skeleton while refetching after a version bump
     scanApi
       .listInWork()
       .then((r) => {
@@ -60,7 +68,7 @@ export function InWorkList({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [version]);
 
   if (error) {
     return (

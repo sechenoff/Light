@@ -721,7 +721,9 @@ warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
         projectName: b.projectName,
         clientName: b.client?.name ?? "",
         clientPhone: b.client?.phone ?? null,
-        issuedAt: b.confirmedAt?.toISOString() ?? null,
+        // Prefer the real physical-issuance moment (set by completeSession ISSUE);
+        // fall back to confirmedAt for legacy bookings predating Booking.issuedAt.
+        issuedAt: b.issuedAt?.toISOString() ?? b.confirmedAt?.toISOString() ?? null,
         expectedReturnAt: b.endDate.toISOString(),
         itemsCount: b._count.items,
         finalAmount: b.finalAmount.toString(),
@@ -788,7 +790,8 @@ warehouseScanRouter.get("/in-work/:bookingId/details", warehouseAuth, async (req
       projectName: booking.projectName,
       clientName: booking.client?.name ?? "",
       clientPhone: booking.client?.phone ?? null,
-      issuedAt: booking.confirmedAt?.toISOString() ?? null,
+      // Prefer the real physical-issuance moment; fall back to confirmedAt.
+      issuedAt: booking.issuedAt?.toISOString() ?? booking.confirmedAt?.toISOString() ?? null,
       expectedReturnAt: booking.endDate.toISOString(),
       items,
       finance: {

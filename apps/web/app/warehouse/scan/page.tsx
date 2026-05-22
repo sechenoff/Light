@@ -67,6 +67,10 @@ function WarehouseScanInner({
   const [inWorkSelectedBookingId, setInWorkSelectedBookingId] = useState<
     string | null
   >(null);
+  // Monotonic counter — bumped after the operator returns to «В работе» from
+  // a successful RETURN session, so InWorkList re-fetches and the just-handled
+  // booking disappears. Mirrors `listVersion` for BookingList.
+  const [inWorkVersion, setInWorkVersion] = useState(0);
 
   // Monotonic counter — bumped after a successful complete so the BookingList
   // re-fetches and the just-issued booking disappears from the ISSUE list
@@ -109,25 +113,29 @@ function WarehouseScanInner({
   const handleInWorkAcceptBack = useCallback(
     async (bookingId: string) => {
       // Switch from view-only IN_WORK mode into a real RETURN session for
-      // this booking. Try to open an existing ACTIVE RETURN session first;
-      // if none exists, the user can pick the booking from the normal RETURN
-      // list and start a new one. To keep the flow simple, we just flip the
-      // mode + operation and navigate the user to the bookings list filtered
-      // by RETURN — they'll see the same booking ready to be picked.
+      // this booking. Fetch in-work details FIRST so we carry projectName
+      // into the checklist header (otherwise the title would be blank).
       setViewMode("RETURN");
       setOperation("RETURN");
       setInWorkSelectedBookingId(null);
-      // Try to fetch an existing session for this booking. If the backend
-      // sessions endpoint exists for booking-id lookup, we can directly
-      // jump into checklist. Otherwise fall back to the booking list and
-      // let the user tap.
       try {
-        const session = await scanApi.createSession(bookingId, "RETURN");
+        const [details, session] = await Promise.all([
+          scanApi.getInWorkDetails(bookingId).catch(() => null),
+          scanApi.createSession(bookingId, "RETURN"),
+        ]);
+        if (details) {
+          // Build a minimal BookingSummary for the checklist header.
+          setActiveBooking({
+            id: bookingId,
+            projectName: details.projectName,
+            client: { id: "", name: details.clientName },
+            startDate: details.issuedAt ?? "",
+            endDate: details.expectedReturnAt,
+            status: "ISSUED",
+            items: [],
+          });
+        }
         if (session && session.id) {
-          // Reuse / create — same idempotent path as BookingList.onSelect.
-          // We don't have an activeBooking for headers (in-work-details
-          // returned projectName, but we don't keep it here). Best-effort:
-          // null booking is acceptable — checklist still loads from sessionId.
           await openSession(session.id, "RETURN");
           goStep("checklist");
           return;
@@ -160,6 +168,9 @@ function WarehouseScanInner({
   // the plain `onBack` path keeps `backToBooking` because nothing changed.
   const backToBookingAfterComplete = useCallback(async () => {
     setListVersion((v) => v + 1);
+    // Also bump in-work version — if a RETURN session just completed, the
+    // booking should drop off both lists (ISSUED → RETURNED).
+    setInWorkVersion((v) => v + 1);
     await backToBooking();
   }, [backToBooking]);
 
@@ -206,6 +217,7 @@ function WarehouseScanInner({
     const inWorkListSlot = (
       <InWorkList
         onSelect={(bid) => setInWorkSelectedBookingId(bid)}
+        version={inWorkVersion}
       />
     );
     if (inWorkSelectedBookingId) {

@@ -366,6 +366,11 @@ model Booking {
   updatedAt DateTime @updatedAt
   confirmedAt DateTime?
 
+  /// Когда оборудование физически выдано клиенту (completeSession ISSUE).
+  /// Отличается от confirmedAt — между подтверждением и выдачей могут пройти
+  /// дни. Используется в /in-work для honest «взято {date}» на карточке.
+  issuedAt DateTime?
+
   @@index([startDate])
   @@index([endDate])
   @@index([status])

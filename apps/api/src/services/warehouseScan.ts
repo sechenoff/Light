@@ -611,12 +611,24 @@ export async function completeSession(
       }
 
       // Перевод брони в статус ISSUED — финальный физический эффект выдачи.
-      // Идемпотентно при повторном вызове на ACTIVE-сессии: Prisma update
-      // просто запишет ту же строку. Гонка с другой сессией исключена
-      // ACTIVE-сессион-гардом из createSession.
+      // Также фиксируем issuedAt — момент реальной выдачи (≠ confirmedAt,
+      // между ними могут быть дни). /in-work показывает «взято {issuedAt}»
+      // на карточке.
+      //
+      // issuedAt пишем только если ещё null — повторный вызов
+      // completeSession для той же брони не должен перезаписывать момент.
+      // Идемпотентно при повторном вызове на ACTIVE-сессии. Гонка с другой
+      // сессией исключена ACTIVE-сессион-гардом из createSession.
+      const bookingNow = await tx.booking.findUnique({
+        where: { id: session.bookingId },
+        select: { issuedAt: true },
+      });
       await tx.booking.update({
         where: { id: session.bookingId },
-        data: { status: "ISSUED" },
+        data: {
+          status: "ISSUED",
+          ...(bookingNow?.issuedAt ? {} : { issuedAt: new Date() }),
+        },
       });
     } else {
       // RETURN: для каждого отсканированного юнита — AVAILABLE + returnedAt
