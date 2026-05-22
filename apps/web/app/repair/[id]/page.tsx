@@ -35,7 +35,13 @@ interface RepairDetail {
     id: string;
     barcode: string | null;
     equipment: { name: string; category: string };
-  };
+  } | null;
+  // COUNT-mode: unit отсутствует, оборудование берётся через BookingItem.
+  bookingItem: {
+    id: string;
+    quantity: number;
+    equipment: { id: string; name: string; category: string };
+  } | null;
   sourceBooking: {
     id: string;
     projectName: string;
@@ -67,6 +73,10 @@ const STATUS_PILL_CLASSES: Record<RepairStatus, string> = {
 const ALL_ROLES = ["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"] as const;
 
 // ── Хелперы ───────────────────────────────────────────────────────────────────
+
+function repairEquipmentName(r: RepairDetail): string {
+  return r.unit?.equipment.name ?? r.bookingItem?.equipment.name ?? "Без оборудования";
+}
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString("ru-RU", {
@@ -248,7 +258,7 @@ export default function RepairDetailPage() {
               date: new Date().toISOString(),
               category: "REPAIR",
               amount,
-              description: `Ремонт ${repair?.unit.equipment.name ?? ""}`,
+              description: `Ремонт ${repair ? repairEquipmentName(repair) : ""}`,
               linkedRepairId: id,
             }),
           });
@@ -347,9 +357,12 @@ export default function RepairDetailPage() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-base font-semibold leading-tight">
-              {repair.unit.equipment.name}
+              {repairEquipmentName(repair)}
+              {repair.bookingItem && !repair.unit && repair.bookingItem.quantity > 1 && (
+                <span className="text-slate-400 font-normal"> ×{repair.bookingItem.quantity}</span>
+              )}
             </h1>
-            {repair.unit.barcode && (
+            {repair.unit?.barcode && (
               <p className="text-xs text-slate-400 font-mono mt-0.5">{repair.unit.barcode}</p>
             )}
             <p className="text-xs text-slate-400 mt-1">
@@ -541,8 +554,8 @@ export default function RepairDetailPage() {
               </button>
             )}
 
-            {/* Списать — только SUPER_ADMIN */}
-            {isSuperAdmin && (
+            {/* Списать — только SUPER_ADMIN и только для UNIT-юнитов */}
+            {isSuperAdmin && repair.unit && (
               <button
                 onClick={() => setShowWriteOffConfirm(true)}
                 disabled={actionLoading}
@@ -577,7 +590,7 @@ export default function RepairDetailPage() {
           <div className="bg-surface border border-border rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
             <h3 className="text-base font-semibold text-ink">Списать единицу?</h3>
             <p className="text-sm text-ink-2">
-              Единица {repair.unit.equipment.name} будет переведена в статус «Списано».
+              Единица {repairEquipmentName(repair)} будет переведена в статус «Списано».
               Это действие необратимо.
             </p>
             <div className="flex gap-3">

@@ -252,6 +252,15 @@ repairsRouter.get(
               equipment: { select: { name: true, category: true } },
             },
           },
+          // COUNT-mode: unit is null; expose equipment via BookingItem so the
+          // detail page can render the name without crashing.
+          bookingItem: {
+            select: {
+              id: true,
+              quantity: true,
+              equipment: { select: { id: true, name: true, category: true } },
+            },
+          },
           sourceBooking: {
             select: {
               id: true,
