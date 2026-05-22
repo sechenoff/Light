@@ -194,7 +194,7 @@ beforeEach(() => {
 });
 
 describe("ReturnChecklist", () => {
-  it("groups by category, renders «прибор N из M» for UNIT and «осталось пометить N из M» for COUNT, never a barcode", async () => {
+  it("groups by category, renders «прибор N из M» for UNIT and «осталось пометить N» for COUNT, never a barcode", async () => {
     const { container } = render(
       <ReturnChecklist
         sessionId="s1"
@@ -207,10 +207,10 @@ describe("ReturnChecklist", () => {
     expect(screen.getByText("Стойки")).toBeInTheDocument();
     expect(screen.getByText("прибор 1 из 3")).toBeInTheDocument();
     expect(screen.getByText("прибор 3 из 3")).toBeInTheDocument();
-    // COUNT row uses CountSplitRow → «осталось пометить N из M» (Task 6),
-    // not the old «×N» UnitRow ordinalLabel.
+    // COUNT row uses UnitGridRow → «осталось пометить N» (variant D, per-unit
+    // chips), not the old CountSplitRow «осталось пометить N из M».
     expect(
-      screen.getByText(/осталось пометить.*4.*из.*4/i),
+      screen.getByText(/осталось пометить\s*4/i),
     ).toBeInTheDocument();
     expect(container.textContent || "").not.toMatch(/LR-[A-Z0-9]+-\d+/);
   });
@@ -394,11 +394,14 @@ describe("ReturnChecklist", () => {
       }),
     );
 
-    // COUNT row (Manfrotto 1004 × 4) — accept all 4 via the «Принять 1 шт»
-    // shortcut (pending===totalQty → CountSplitRow.onAcceptAll). Without this
-    // the row's pending=4 would fail validation.
+    // COUNT row (Manfrotto 1004 × 4) — accept all 4 via the «✓ Все» bulk
+    // button. UnitGridRow only renders this when every unit is PENDING and no
+    // issues are flagged, which is exactly the state here. Without it the
+    // row's pending=4 would fail validation.
     fireEvent.click(
-      screen.getByRole("button", { name: /Принять 1 шт — Manfrotto 1004/ }),
+      screen.getByRole("button", {
+        name: /Принять все 4 шт «Manfrotto 1004» без замечаний/,
+      }),
     );
 
     fireEvent.click(
@@ -446,10 +449,13 @@ describe("ReturnChecklist", () => {
       }),
     );
 
-    // COUNT row — accept all 4 via the «Принять 1» shortcut (otherwise the
-    // row's pending=4 would block validation).
+    // COUNT row — accept all 4 via the «✓ Все» bulk button (otherwise the
+    // row's pending=4 would block validation). Visible only when all units
+    // are PENDING and no issues — true here for the COUNT row.
     fireEvent.click(
-      screen.getByRole("button", { name: /Принять 1 шт — Manfrotto 1004/ }),
+      screen.getByRole("button", {
+        name: /Принять все 4 шт «Manfrotto 1004» без замечаний/,
+      }),
     );
 
     fireEvent.click(
@@ -597,10 +603,12 @@ describe("ReturnChecklist", () => {
       target: { value: "потеряли на площадке" },
     });
 
-    // COUNT row — accept all 4 via the «Принять 1» shortcut so the row
+    // COUNT row — accept all 4 via the «✓ Все» bulk button so the row
     // doesn't block validation. Contributes 4 to the accepted total.
     fireEvent.click(
-      screen.getByRole("button", { name: /Принять 1 шт — Manfrotto 1004/ }),
+      screen.getByRole("button", {
+        name: /Принять все 4 шт «Manfrotto 1004» без замечаний/,
+      }),
     );
 
     fireEvent.click(
@@ -764,24 +772,35 @@ describe("ReturnChecklist", () => {
     };
   }
 
-  it("COUNT row uses CountSplitRow with three buckets (replacing single 'Принято' button)", async () => {
+  it("COUNT row uses UnitGridRow with per-unit chips + a bulk «✓ Все» action", async () => {
     mockState = countOnlyState();
     render(
       <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
 
     await screen.findByText("Sandbag");
-    // CountSplitRow's three action buttons (per CountSplitRow aria-labels).
+    // UnitGridRow renders ONE chip per physical unit, each cycling status on
+    // tap. Per UnitGridRow aria-labels: «"{name}" юнит #{N} — ожидает. Тап
+    // циклит статус.».
+    for (let i = 1; i <= 3; i++) {
+      expect(
+        screen.getByRole("button", {
+          name: new RegExp(`«Sandbag» юнит #${i} — ожидает`, "i"),
+        }),
+      ).toBeInTheDocument();
+    }
+    // Bulk-accept is visible when all units are PENDING and there are no
+    // issues — true at first paint.
     expect(
-      screen.getByRole("button", { name: /Принять 1 шт — Sandbag/ }),
+      screen.getByRole("button", {
+        name: /Принять все 3 шт «Sandbag» без замечаний/,
+      }),
     ).toBeInTheDocument();
+    // The OLD CountSplitRow «Принять 1 шт» tri-button control is NOT used.
     expect(
-      screen.getByRole("button", { name: /В ремонт 1 шт — Sandbag/ }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Проблема 1 шт — Sandbag/ }),
-    ).toBeInTheDocument();
-    // The old UnitRow «Принять» 3-segment control is NOT used for COUNT.
+      screen.queryByRole("button", { name: /Принять 1 шт — Sandbag/ }),
+    ).not.toBeInTheDocument();
+    // And the UnitRow 3-segment control is also not used for COUNT.
     expect(
       screen.queryByRole("button", {
         name: /Sandbag.*принять без замечаний/i,
@@ -789,33 +808,51 @@ describe("ReturnChecklist", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("split COUNT row: 1 accepted + 1 repair + 1 problem builds COUNT-form payload", async () => {
+  it("split COUNT row: 1 accepted + 1 repair + 1 problem builds COUNT-form payload (one entry per unit)", async () => {
     mockState = countOnlyState(3);
     render(
       <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
     await screen.findByText("Sandbag");
 
-    // ORDER MATTERS: the «Принять 1 шт» shortcut fires onAcceptAll when
-    // pending === totalQty. Click repair + problem FIRST (pending drops to 1
-    // < totalQty=3), then «Принять 1 шт» does +1 → split{accepted:1,repair:1,problem:1}.
+    // Cycle is PENDING → ACCEPTED → REPAIR → PROBLEM → PENDING. Per chip:
+    //   1 click  → ACCEPTED
+    //   2 clicks → REPAIR
+    //   3 clicks → PROBLEM
+    // Chip #1 — 1 click → ACCEPTED.
     fireEvent.click(
-      screen.getByRole("button", { name: /В ремонт 1 шт — Sandbag/ }),
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — ожидает/ }),
     );
-    fireEvent.change(screen.getByLabelText("Комментарий ремонта"), {
-      target: { value: "Порвался" },
-    });
+    // Chip #2 — 2 clicks → REPAIR. Second click queries the chip whose status
+    // has now updated to «принят», then re-query each step to keep the
+    // aria-label in sync with the live status.
     fireEvent.click(
-      screen.getByRole("button", { name: /Проблема 1 шт — Sandbag/ }),
+      screen.getByRole("button", { name: /«Sandbag» юнит #2 — ожидает/ }),
     );
-    fireEvent.change(screen.getByLabelText("Причина проблемы"), {
-      target: { value: "LOST" },
-    });
-    fireEvent.change(screen.getByLabelText("Комментарий проблемы"), {
-      target: { value: "Не нашли" },
-    });
     fireEvent.click(
-      screen.getByRole("button", { name: /Принять 1 шт — Sandbag/ }),
+      screen.getByRole("button", { name: /«Sandbag» юнит #2 — принят/ }),
+    );
+    fireEvent.change(
+      screen.getByLabelText(/Комментарий ремонта — юнит #2 «Sandbag»/),
+      { target: { value: "Порвался" } },
+    );
+    // Chip #3 — 3 clicks → PROBLEM.
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #3 — ожидает/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #3 — принят/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #3 — в ремонт/ }),
+    );
+    fireEvent.change(
+      screen.getByLabelText(/Причина проблемы — юнит #3 «Sandbag»/),
+      { target: { value: "LOST" } },
+    );
+    fireEvent.change(
+      screen.getByLabelText(/Комментарий проблемы — юнит #3 «Sandbag»/),
+      { target: { value: "Не нашли" } },
     );
 
     fireEvent.click(
@@ -830,9 +867,10 @@ describe("ReturnChecklist", () => {
         problemUnits?: Array<Record<string, unknown>>;
       },
     ];
-    // COUNT-form: `{bookingItemId, quantity, comment}` (RepairUnitInput) /
-    // `{bookingItemId, quantity, reason, comment}` (ProblemUnitInput).
-    // expectedBackDate is NOT in the payload (reason is LOST, not LEFT_ON_SITE).
+    // COUNT-form: ONE entry per non-accepted unit (variant D), each with
+    // quantity:1 and its own comment. `{bookingItemId, quantity, comment}` /
+    // `{bookingItemId, quantity, reason, comment}`. expectedBackDate is NOT in
+    // the payload (reason is LOST, not LEFT_ON_SITE).
     expect(payload.repairUnits).toEqual([
       { bookingItemId: "bi-count", quantity: 1, comment: "Порвался" },
     ]);
@@ -854,27 +892,185 @@ describe("ReturnChecklist", () => {
     );
     await screen.findByText("Sandbag");
 
-    // Accept just 1 of 3 — the «Принять 1» shortcut fires onAcceptAll at
-    // pending===totalQty (=3), so start with «В ремонт 1» to drop pending,
-    // then DECREMENT the repair pill to land at split:{0, 0, 0} accepted=0
-    // wait — that's not what we want either. Instead use the «Принять 1 шт»
-    // shortcut to accept all 3, then click the «✓ 3» pill once to decrement
-    // back to accepted=2: pending = 3 − 2 − 0 − 0 = 1 → row error.
+    // Accept just 2 of 3 chips — chip #3 stays PENDING.
+    // pending = 3 − 2 − 0 − 0 = 1 → row error.
     fireEvent.click(
-      screen.getByRole("button", { name: /Принять 1 шт — Sandbag/ }),
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — ожидает/ }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: /Снять отметку «Принято» — Sandbag/ }),
+      screen.getByRole("button", { name: /«Sandbag» юнит #2 — ожидает/ }),
     );
 
     fireEvent.click(
       screen.getByRole("button", { name: /Завершить приёмку/ }),
     );
 
-    // Row-level error on this COUNT line.
-    expect(
-      await screen.findByText(/Осталось пометить 1 из 3/),
-    ).toBeInTheDocument();
+    // Row-level error on this COUNT line. The message is rendered in two
+    // places (inside UnitGridRow + ReturnChecklist's outer aria-described
+    // <p>), so assert presence via getAllByText.
+    await waitFor(() =>
+      expect(screen.getAllByText(/Осталось пометить 1 из 3/).length).toBeGreaterThan(0),
+    );
     expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  // ── New UnitGridRow integration tests (variant D, per-unit chips) ──────────
+
+  it("a single chip cycles PENDING → ACCEPTED → REPAIR → PROBLEM → PENDING on tap", async () => {
+    mockState = countOnlyState(1);
+    render(
+      <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+    await screen.findByText("Sandbag");
+
+    // PENDING.
+    expect(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — ожидает/ }),
+    ).toBeInTheDocument();
+
+    // Tap → ACCEPTED.
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — ожидает/ }),
+    );
+    expect(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — принят/ }),
+    ).toBeInTheDocument();
+
+    // Tap → REPAIR (inline repair panel mounts with its textarea).
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — принят/ }),
+    );
+    expect(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — в ремонт/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/Комментарий ремонта — юнит #1 «Sandbag»/),
+    ).toBeInTheDocument();
+
+    // Tap → PROBLEM (inline problem panel mounts with reason select + comment).
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — в ремонт/ }),
+    );
+    expect(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — проблема/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/Причина проблемы — юнит #1 «Sandbag»/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/Комментарий проблемы — юнит #1 «Sandbag»/),
+    ).toBeInTheDocument();
+
+    // Tap → back to PENDING.
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — проблема/ }),
+    );
+    expect(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — ожидает/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("per-unit repair comment survives a full status cycle round-trip", async () => {
+    mockState = countOnlyState(1);
+    render(
+      <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+    await screen.findByText("Sandbag");
+
+    // PENDING → ACCEPTED → REPAIR.
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — ожидает/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — принят/ }),
+    );
+
+    const commentLabel = /Комментарий ремонта — юнит #1 «Sandbag»/;
+    fireEvent.change(screen.getByLabelText(commentLabel), {
+      target: { value: "Сломан рычаг" },
+    });
+    expect(
+      (screen.getByLabelText(commentLabel) as HTMLTextAreaElement).value,
+    ).toBe("Сломан рычаг");
+
+    // Currently REPAIR. Cycle through PROBLEM → PENDING → ACCEPTED → REPAIR
+    // (4 taps) and verify the comment we typed before is restored once REPAIR
+    // is re-entered.
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — в ремонт/ }),
+    );
+    // Now PROBLEM. Tap → PENDING.
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — проблема/ }),
+    );
+    // Now PENDING. Tap → ACCEPTED.
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — ожидает/ }),
+    );
+    // Now ACCEPTED. Tap → REPAIR (comment textarea reappears).
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — принят/ }),
+    );
+
+    expect(
+      (screen.getByLabelText(commentLabel) as HTMLTextAreaElement).value,
+    ).toBe("Сломан рычаг");
+  });
+
+  it("split COUNT row with different repair comments per unit emits N separate entries", async () => {
+    mockState = countOnlyState(3);
+    render(
+      <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+    await screen.findByText("Sandbag");
+
+    // Chip #1 → REPAIR (2 taps), unique comment.
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — ожидает/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #1 — принят/ }),
+    );
+    fireEvent.change(
+      screen.getByLabelText(/Комментарий ремонта — юнит #1 «Sandbag»/),
+      { target: { value: "Стойка погнута" } },
+    );
+
+    // Chip #2 → REPAIR (2 taps), DIFFERENT comment.
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #2 — ожидает/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #2 — принят/ }),
+    );
+    fireEvent.change(
+      screen.getByLabelText(/Комментарий ремонта — юнит #2 «Sandbag»/),
+      { target: { value: "Замок не закрывается" } },
+    );
+
+    // Chip #3 → ACCEPTED so the row is fully resolved (pending=0).
+    fireEvent.click(
+      screen.getByRole("button", { name: /«Sandbag» юнит #3 — ожидает/ }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Завершить приёмку/ }),
+    );
+
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+    const [, payload] = completeSpy.mock.calls[0] as [
+      string,
+      { repairUnits?: Array<Record<string, unknown>> },
+    ];
+    // TWO separate repair entries — NOT one merged entry with quantity:2 —
+    // each preserving its own comment for audit/traceability.
+    expect(payload.repairUnits).toEqual([
+      { bookingItemId: "bi-count", quantity: 1, comment: "Стойка погнута" },
+      {
+        bookingItemId: "bi-count",
+        quantity: 1,
+        comment: "Замок не закрывается",
+      },
+    ]);
   });
 });
