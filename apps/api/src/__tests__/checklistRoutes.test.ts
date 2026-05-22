@@ -165,6 +165,74 @@ describe("GET /api/warehouse/sessions/:id/state", () => {
     expect(countItem.quantity).toBe(3);
   });
 
+  it("возвращает доп-поля U1: addCap, rentalRatePerShift, originalQuantity per item + shifts, discountPercent, mainOriginalAfterDiscount on state", async () => {
+    // Перед тестом сидим MAIN Estimate с двумя строками, чтобы originalQuantity
+    // и mainOriginalAfterDiscount были не-дефолтными.
+    const existingMain = await prisma.estimate.findFirst({
+      where: { bookingId, kind: "MAIN" },
+    });
+    if (!existingMain) {
+      await prisma.estimate.create({
+        data: {
+          bookingId,
+          kind: "MAIN",
+          shifts: 2,
+          subtotal: "10000",
+          discountPercent: "10",
+          discountAmount: "1000",
+          totalAfterDiscount: "9000",
+          lines: {
+            create: [
+              {
+                equipmentId,
+                categorySnapshot: "Flash",
+                nameSnapshot: "Profoto B10",
+                quantity: 2,
+                unitPrice: "3000",
+                lineSum: "12000",
+              },
+              {
+                equipmentId: countEquipmentId,
+                categorySnapshot: "Аксессуары",
+                nameSnapshot: "C-stand 40",
+                quantity: 3,
+                unitPrice: "600",
+                lineSum: "3600",
+              },
+            ],
+          },
+        },
+      });
+    }
+
+    const res = await request(app)
+      .get(`/api/warehouse/sessions/${sessionId}/state`)
+      .set("X-API-Key", "test-key-cl-routes")
+      .set("Authorization", `Bearer ${warehouseToken}`);
+
+    expect(res.status).toBe(200);
+
+    // State-level поля
+    expect(res.body.shifts).toBe(2);
+    expect(res.body.discountPercent).toBe("10");
+    expect(res.body.mainOriginalAfterDiscount).toBe("9000");
+
+    // Per-item поля
+    const unitItem = res.body.items.find((i: any) => i.trackingMode === "UNIT");
+    expect(unitItem).toBeDefined();
+    expect(unitItem.rentalRatePerShift).toBe("3000");
+    expect(unitItem.originalQuantity).toBe(2);
+    expect(typeof unitItem.addCap).toBe("number");
+    expect(unitItem.addCap).toBeGreaterThanOrEqual(0);
+
+    const countItem = res.body.items.find((i: any) => i.trackingMode === "COUNT");
+    expect(countItem).toBeDefined();
+    expect(countItem.rentalRatePerShift).toBe("600");
+    expect(countItem.originalQuantity).toBe(3);
+    expect(typeof countItem.addCap).toBe("number");
+    expect(countItem.addCap).toBeGreaterThanOrEqual(0);
+  });
+
   it("возвращает 401 без токена", async () => {
     const res = await request(app)
       .get(`/api/warehouse/sessions/${sessionId}/state`)

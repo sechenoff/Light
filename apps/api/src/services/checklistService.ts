@@ -33,6 +33,27 @@ export interface ChecklistItem {
   trackingMode: "COUNT" | "UNIT";
   isExtra: boolean;             // added on-site during this session
   units?: ChecklistUnit[];      // only for UNIT-mode items
+  /**
+   * Per-shift rental rate for this equipment (string Decimal).
+   * Lets the frontend live-compute финансовая разбивка without API roundtrips.
+   * "0" for custom items (no equipmentId).
+   */
+  rentalRatePerShift: string;
+  /**
+   * Original quantity from MAIN Estimate snapshot — what was agreed with the
+   * client. If MAIN has no line for this equipment, equals 0 (i.e. this whole
+   * BookingItem is a добор done in a prior session).
+   * Lets the frontend show «исходно ×M» eyebrow distinctly from current quantity.
+   */
+  originalQuantity: number;
+  /**
+   * Additional units that can still be added on top of current bi.quantity
+   * without violating physical stock. Computed as:
+   *   max(0, totalQuantity − occupied_in_other_overlapping_bookings − bi.quantity)
+   * The stepper's max is then bi.quantity + addCap.
+   * 0 for custom items.
+   */
+  addCap: number;
 }
 
 export interface ChecklistUnit {
@@ -51,6 +72,22 @@ export interface ChecklistState {
     checkedItems: number;   // items fully checked
     totalItems: number;     // total logical items
   };
+  /**
+   * Shifts count (days) for finance computation. Read from MAIN Estimate;
+   * fallback to 1.
+   */
+  shifts: number;
+  /**
+   * Discount percent (string Decimal "0".."100") from MAIN Estimate.
+   * Frontend applies this to the recomputed subtotal.
+   */
+  discountPercent: string;
+  /**
+   * MAIN.totalAfterDiscount snapshot at the moment of /state read.
+   * Frontend uses this as the «Согласовано (исходно)» baseline in the
+   * live-finance sticky block.
+   */
+  mainOriginalAfterDiscount: string;
 }
 
 // ── Вспомогательные функции ──────────────────────────────────────────────────────
@@ -87,6 +124,8 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
                   name: true,
                   category: true,
                   stockTrackingMode: true,
+                  rentalRatePerShift: true,
+                  totalQuantity: true,
                 },
               },
               unitReservations: {
@@ -104,6 +143,56 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
   });
 
   if (!session) throw new HttpError(404, "Сессия не найдена", "SESSION_NOT_FOUND");
+
+  // ── Загружаем MAIN Estimate для originalQuantity / shifts / discountPercent /
+  //    mainOriginalAfterDiscount. Для броней без MAIN-сметы поля заполнятся
+  //    дефолтами (0/1/"0"/"0") — это нормально для DRAFT-броней и
+  //    «грязных» сценариев в тестах.
+  const main = await prisma.estimate.findFirst({
+    where: { bookingId: session.bookingId, kind: "MAIN" },
+    include: { lines: true },
+  });
+  const mainQtyByEquipment = new Map<string, number>();
+  if (main) {
+    for (const line of main.lines) {
+      if (line.equipmentId) {
+        mainQtyByEquipment.set(line.equipmentId, line.quantity);
+      }
+    }
+  }
+
+  // ── Подсчёт occupiedByOthers одним запросом по всем equipmentIds сессии.
+  //    Формула та же, что в /addon-search и addExtraItem:
+  //      occupiedByOthers = SUM(BookingItem.quantity) для пересекающихся
+  //      по датам броней (DRAFT|CONFIRMED|ISSUED), исключая текущую.
+  //    Custom-позиции (equipmentId=null) пропускаем — для них addCap=0.
+  const equipmentIds = session.booking.items
+    .map((bi) => bi.equipmentId)
+    .filter((id): id is string => id !== null);
+
+  const occupiedByOthers = new Map<string, number>();
+  if (equipmentIds.length > 0) {
+    const overlapping = await prisma.bookingItem.findMany({
+      where: {
+        equipmentId: { in: equipmentIds },
+        bookingId: { not: session.bookingId },
+        booking: {
+          status: { in: ["DRAFT", "CONFIRMED", "ISSUED"] },
+          startDate: { lte: session.booking.endDate },
+          endDate: { gte: session.booking.startDate },
+        },
+      },
+      select: { equipmentId: true, quantity: true },
+    });
+    for (const row of overlapping) {
+      if (row.equipmentId) {
+        occupiedByOthers.set(
+          row.equipmentId,
+          (occupiedByOthers.get(row.equipmentId) ?? 0) + row.quantity,
+        );
+      }
+    }
+  }
 
   const scannedUnitIds = new Set(session.scans.map((s) => s.equipmentUnitId));
 
@@ -177,6 +266,12 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
       totalItems += units.length;
       checkedItems += checkedUnits.length;
 
+      // ── Доп-поля для UNIT-позиции ─────────────────────────────────────────
+      const eqId = bi.equipmentId;
+      const totalQty = bi.equipment?.totalQuantity ?? 0;
+      const occ = eqId ? occupiedByOthers.get(eqId) ?? 0 : 0;
+      const computedAddCap = eqId ? Math.max(0, totalQty - occ - bi.quantity) : 0;
+
       items.push({
         bookingItemId: bi.id,
         equipmentId: bi.equipmentId,
@@ -192,6 +287,9 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
           checked: scannedUnitIds.has(u.id),
           problemType: null,
         })),
+        rentalRatePerShift: bi.equipment?.rentalRatePerShift?.toString() ?? "0",
+        originalQuantity: eqId ? mainQtyByEquipment.get(eqId) ?? 0 : 0,
+        addCap: computedAddCap,
       });
     } else if (bi.customName) {
       // Произвольная позиция (добавлена на месте)
@@ -207,10 +305,19 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
         checkedQty: 0, // клиент управляет локально
         trackingMode: "COUNT",
         isExtra: true,
+        // Custom-позиция: нет equipmentId → нет MAIN-line и нет cap.
+        rentalRatePerShift: "0",
+        originalQuantity: 0,
+        addCap: 0,
       });
     } else {
       // COUNT-позиция из каталога
       totalItems += 1;
+      const eqId = bi.equipmentId;
+      const totalQty = bi.equipment?.totalQuantity ?? 0;
+      const occ = eqId ? occupiedByOthers.get(eqId) ?? 0 : 0;
+      const computedAddCap = eqId ? Math.max(0, totalQty - occ - bi.quantity) : 0;
+
       items.push({
         bookingItemId: bi.id,
         equipmentId: bi.equipmentId,
@@ -220,6 +327,9 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
         checkedQty: 0, // клиент управляет локально
         trackingMode: "COUNT",
         isExtra: false,
+        rentalRatePerShift: bi.equipment?.rentalRatePerShift?.toString() ?? "0",
+        originalQuantity: eqId ? mainQtyByEquipment.get(eqId) ?? 0 : 0,
+        addCap: computedAddCap,
       });
     }
   }
@@ -230,6 +340,9 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
     operation: session.operation as "ISSUE" | "RETURN",
     items,
     progress: { checkedItems, totalItems },
+    shifts: main && main.shifts > 0 ? main.shifts : 1,
+    discountPercent: main?.discountPercent?.toString() ?? "0",
+    mainOriginalAfterDiscount: main?.totalAfterDiscount?.toString() ?? "0",
   };
 }
 

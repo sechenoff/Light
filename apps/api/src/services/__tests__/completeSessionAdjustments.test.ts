@@ -480,4 +480,140 @@ describe("completeSession with issuanceAdjustments", () => {
     const after = await prisma.bookingItem.findUnique({ where: { id: fx.bookingItemId } });
     expect(after.quantity).toBe(before.quantity);
   });
+
+  // ── U2: inline-добор через issuanceAdjustments (positive delta) ─────────────
+  it("allows actualQuantity > bi.quantity if within addCap (inline-добор)", async () => {
+    // Seed: Equipment.totalQuantity=5, BookingItem.quantity=2, no overlapping
+    // other bookings → addCap = 5 − 0 − 2 = 3.
+    // Adjustment: actualQuantity=4 (delta +2) → must succeed; BookingItem.quantity
+    // обновляется до 4, MAIN пересчитывается.
+    const fx = await seedCountFixture({
+      bookingItemQty: 2,
+      mainLineQty: 2,
+      finalAmount: "2000",
+      subtotal: "2000",
+      totalAfterDiscount: "2000",
+    });
+    const { completeSession } = await import("../warehouseScan");
+
+    await completeSession(fx.sessionId, {
+      issuanceAdjustments: [{ bookingItemId: fx.bookingItemId, actualQuantity: 4 }],
+      createdBy: fx.adminUserId,
+    });
+
+    const updated = await prisma.bookingItem.findUnique({ where: { id: fx.bookingItemId } });
+    expect(updated.quantity).toBe(4);
+
+    const audit = await prisma.auditEntry.findFirst({
+      where: {
+        action: "BOOKING_ITEM_QUANTITY_INCREASED",
+        entityType: "Booking",
+        entityId: fx.bookingId,
+      },
+    });
+    expect(audit).not.toBeNull();
+  });
+
+  it("rejects actualQuantity > bi.quantity + addCap with 409 ADDON_OVER_STOCK", async () => {
+    // Seed: Equipment.totalQuantity=5, BookingItem.quantity=2; добавим другую
+    // пересекающуюся бронь с quantity=2 → occupiedByOthers=2.
+    // addCap = 5 − 2 − 2 = 1. Adjustment actualQuantity=5 (delta +3) > addCap=1
+    // → 409 ADDON_OVER_STOCK { addCap: 1, requested: 5, alreadyInBooking: 2 }.
+    const fx = await seedCountFixture({
+      bookingItemQty: 2,
+      mainLineQty: 2,
+      finalAmount: "2000",
+      subtotal: "2000",
+      totalAfterDiscount: "2000",
+    });
+    // seedCountFixture создаёт equipment с totalQuantity=10; для этого теста
+    // нужно totalQuantity=5, чтобы получить addCap=1 после добавления
+    // пересекающейся брони с qty=2.
+    await prisma.equipment.update({
+      where: { id: fx.equipmentId },
+      data: { totalQuantity: 5 },
+    });
+
+    // Другой бронь на пересекающиеся даты, занимающая 2 шт того же оборудования.
+    const otherClient = await prisma.client.create({
+      data: { name: "Other booking client", phone: "+70000000777" },
+    });
+    const otherBooking = await prisma.booking.create({
+      data: {
+        clientId: otherClient.id,
+        projectName: "Other overlapping",
+        startDate: new Date("2026-06-01"),
+        endDate: new Date("2026-06-03"),
+        status: "CONFIRMED",
+        totalEstimateAmount: "2000",
+        discountAmount: "0",
+        finalAmount: "2000",
+        amountOutstanding: "2000",
+        amountPaid: "0",
+      },
+    });
+    await prisma.bookingItem.create({
+      data: { bookingId: otherBooking.id, equipmentId: fx.equipmentId, quantity: 2 },
+    });
+
+    const { completeSession } = await import("../warehouseScan");
+
+    let captured: any = null;
+    try {
+      await completeSession(fx.sessionId, {
+        issuanceAdjustments: [{ bookingItemId: fx.bookingItemId, actualQuantity: 5 }],
+        createdBy: fx.adminUserId,
+      });
+    } catch (e) {
+      captured = e;
+    }
+    expect(captured).not.toBeNull();
+    expect(captured.status).toBe(409);
+    expect(captured.code).toBe("ADDON_OVER_STOCK");
+    expect(captured.details).toMatchObject({
+      addCap: 1,
+      requested: 5,
+      alreadyInBooking: 2,
+    });
+
+    // Транзакция откатилась — BookingItem.quantity не изменился.
+    const bi = await prisma.bookingItem.findUnique({ where: { id: fx.bookingItemId } });
+    expect(bi.quantity).toBe(2);
+  });
+
+  it("UNIT-mode positive delta: bumps quantity without creating BookingItemUnit reservations", async () => {
+    // 3 unit-reservations, scan только первые 2. actualQuantity=4 (delta +1).
+    // Equipment.totalQuantity по seedUnitFixture не задан явно → дефолт 0,
+    // что даст addCap < 0. Пересчитаем с totalQuantity=5 после сидинга,
+    // чтобы addCap = 5 − 0 − 3 = 2 (других пересекающихся броней нет).
+    const fx = await seedUnitFixture({ unitCount: 3, scannedIndices: [0, 1] });
+    await prisma.equipment.update({
+      where: { id: fx.equipmentId },
+      data: { totalQuantity: 5 },
+    });
+
+    const { completeSession } = await import("../warehouseScan");
+
+    await completeSession(fx.sessionId, {
+      issuanceAdjustments: [{ bookingItemId: fx.bookingItemId, actualQuantity: 4 }],
+      createdBy: fx.adminUserId,
+    });
+
+    // BookingItem.quantity = 4 (физическая выдача operator-ом).
+    const bi = await prisma.bookingItem.findUnique({ where: { id: fx.bookingItemId } });
+    expect(bi.quantity).toBe(4);
+
+    // BookingItemUnit reservations: inline-добор НЕ создаёт новых резерваций,
+    // а основной блок completeSession удаляет не-отсканированные резервации
+    // (стандартная сверка). Итог: остаются 2 резервации (только отсканированные).
+    // Контракт: при положительной дельте мы НЕ добавляем reservation-rows.
+    const reservations = await prisma.bookingItemUnit.findMany({
+      where: { bookingItemId: fx.bookingItemId },
+    });
+    expect(reservations.length).toBe(2);
+    const scannedReservations = reservations.filter(
+      (r: any) => r.equipmentUnitId === fx.unitIds[0] || r.equipmentUnitId === fx.unitIds[1],
+    );
+    expect(scannedReservations.length).toBe(2);
+  });
 });

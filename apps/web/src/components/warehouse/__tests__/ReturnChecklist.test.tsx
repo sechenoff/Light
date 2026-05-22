@@ -132,6 +132,9 @@ function state(): ChecklistState {
         checkedQty: 0,
         trackingMode: "UNIT",
         isExtra: false,
+        rentalRatePerShift: "0",
+        originalQuantity: 3,
+        addCap: 0,
         units: [
           { unitId: "u1", barcode: "LR-AP600-001", checked: false, problemType: null },
           { unitId: "u2", barcode: "LR-AP600-002", checked: false, problemType: null },
@@ -147,9 +150,15 @@ function state(): ChecklistState {
         checkedQty: 0,
         trackingMode: "COUNT",
         isExtra: false,
+        rentalRatePerShift: "0",
+        originalQuantity: 4,
+        addCap: 0,
       },
     ],
     progress: { checkedItems: 0, totalItems: 4 },
+    shifts: 1,
+    discountPercent: "0",
+    mainOriginalAfterDiscount: "0",
   };
 }
 

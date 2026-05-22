@@ -17,6 +17,9 @@ function makeState(): ChecklistState {
         checkedQty: 0,
         trackingMode: "UNIT",
         isExtra: false,
+        rentalRatePerShift: "0",
+        originalQuantity: 2,
+        addCap: 0,
         units: [
           { unitId: "u1", barcode: null, checked: false, problemType: null },
           { unitId: "u2", barcode: null, checked: false, problemType: null },
@@ -31,9 +34,15 @@ function makeState(): ChecklistState {
         checkedQty: 0,
         trackingMode: "COUNT",
         isExtra: false,
+        rentalRatePerShift: "0",
+        originalQuantity: 4,
+        addCap: 0,
       },
     ],
     progress: { checkedItems: 0, totalItems: 2 },
+    shifts: 1,
+    discountPercent: "0",
+    mainOriginalAfterDiscount: "0",
   };
 }
 

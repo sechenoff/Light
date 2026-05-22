@@ -770,6 +770,87 @@ describe("AddonSearch", () => {
     expect(qtyInput).toHaveAttribute("max", "2");
   });
 
+  it("hides results whose equipmentId is already on this booking (with explainer)", async () => {
+    // Two results: one whose equipmentId is in the booking, one fresh.
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
+      freeResult({
+        equipmentId: "eq-already",
+        name: "Already In Booking",
+      }),
+      freeResult({
+        equipmentId: "eq-new",
+        name: "Brand New",
+      }),
+    ]);
+
+    render(
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        existingEquipmentIds={new Set(["eq-already"])}
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await type("test");
+    await settleSearch();
+
+    // The «Already In Booking» row is hidden; the new one is visible.
+    expect(screen.queryByText("Already In Booking")).not.toBeInTheDocument();
+    expect(screen.getByText("Brand New")).toBeInTheDocument();
+    // Sub-label explains WHY one was hidden.
+    expect(
+      screen.getByText(/уже в брони, измените количество в чек-листе/i),
+    ).toBeInTheDocument();
+  });
+
+  it("when ALL results are hidden by existingEquipmentIds, shows the empty explainer", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
+      freeResult({ equipmentId: "eq-a", name: "Already A" }),
+      freeResult({ equipmentId: "eq-b", name: "Already B" }),
+    ]);
+
+    render(
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        existingEquipmentIds={new Set(["eq-a", "eq-b"])}
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await type("test");
+    await settleSearch();
+
+    expect(screen.queryByText("Already A")).not.toBeInTheDocument();
+    expect(screen.queryByText("Already B")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Все совпадения уже в брони/),
+    ).toBeInTheDocument();
+  });
+
+  it("no filtering when existingEquipmentIds is undefined (backward compat)", async () => {
+    vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
+      freeResult({ equipmentId: "eq-1", name: "Visible Item" }),
+    ]);
+
+    render(
+      <AddonSearch
+        sessionId="s1"
+        bookingId="b-test"
+        onAdded={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await type("test");
+    await settleSearch();
+
+    expect(screen.getByText("Visible Item")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/уже в брони/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows inline error on 409 ADDON_OVER_STOCK", async () => {
     vi.spyOn(scanApi, "addonSearch").mockResolvedValue([
       freeResult({

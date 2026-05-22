@@ -50,6 +50,32 @@ export interface ChecklistItem {
   isExtra: boolean;
   /** Present only for UNIT-mode items. */
   units?: ChecklistUnit[];
+  /**
+   * Per-shift rental rate (string Decimal) — backend serialises Prisma
+   * `Equipment.rentalRatePerShift`. "0" for custom items (no equipmentId)
+   * since they're not priced through the catalog. The UI uses this in the
+   * live-finance sticky block to compute разбивку без round-trip'ов на сервер.
+   * Source: `apps/api/src/services/checklistService.ts` (`ChecklistItem`).
+   */
+  rentalRatePerShift: string;
+  /**
+   * Original agreed-with-client quantity for this equipment, taken from the
+   * MAIN Estimate snapshot. If MAIN has no line for this equipment, equals 0
+   * (i.e. the BookingItem is a добор from a previous session — any positive
+   * intent then counts as add-on, not as «снятие основной»). The unbounded
+   * stepper uses this to colour-code «−X removed» vs «+X added».
+   * Source: `apps/api/src/services/checklistService.ts` (`ChecklistItem`).
+   */
+  originalQuantity: number;
+  /**
+   * Additional units that can still be added on top of `quantity` without
+   * violating physical stock (computed by the backend as
+   * `max(0, totalQuantity − occupiedByOthers − bi.quantity)`). The stepper
+   * exposes max = `quantity + addCap` — this is what lets the operator
+   * silently bump a 10-bag row up to 12 without opening «+ Добор».
+   * Source: `apps/api/src/services/checklistService.ts` (`ChecklistItem`).
+   */
+  addCap: number;
 }
 
 export interface ChecklistState {
@@ -63,6 +89,27 @@ export interface ChecklistState {
     /** Total logical items. */
     totalItems: number;
   };
+  /**
+   * Number of rental shifts (days) for finance computation. Read from MAIN
+   * Estimate; defaults to 1 when MAIN is absent. The UI multiplies it into
+   * the per-item per-shift rate to get live subtotals.
+   * Source: `apps/api/src/services/checklistService.ts` (`ChecklistState`).
+   */
+  shifts: number;
+  /**
+   * Discount percent (string Decimal "0".."100") from MAIN Estimate. The UI
+   * applies the SAME discount to addons (matches what доб-смета does on the
+   * server when /complete recomputes finance).
+   * Source: `apps/api/src/services/checklistService.ts` (`ChecklistState`).
+   */
+  discountPercent: string;
+  /**
+   * MAIN.totalAfterDiscount snapshot — the «Согласовано» baseline shown in
+   * the live-finance sticky block. The UI never recomputes it client-side;
+   * we just display it and subtract / add the actual-vs-original delta.
+   * Source: `apps/api/src/services/checklistService.ts` (`ChecklistState`).
+   */
+  mainOriginalAfterDiscount: string;
 }
 
 // ── Return-flow outcomes ─────────────────────────────────────────────────────
