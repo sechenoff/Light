@@ -655,6 +655,18 @@ export async function completeSession(
           summary.missing.push(reservation.equipmentUnitId);
         }
       }
+
+      // RETURN-сессия завершилась — переводим бронь в RETURNED. Оператор
+      // явно нажал «Завершить приёмку», подтвердив что cycle закрыт даже
+      // для UNIT-юнитов, которых физически не было (они либо отмечены как
+      // PROBLEM → ProblemItem, либо missing — оба пути зафиксированы в
+      // ScanSession + ProblemItem.records, реконструировать можно из аудита).
+      // Без этого бронь застревает в /api/bookings?operation=RETURN и
+      // появляется в списке возвратов снова и снова.
+      await tx.booking.update({
+        where: { id: session.bookingId },
+        data: { status: "RETURNED" },
+      });
     }
 
     await tx.scanSession.update({
@@ -681,6 +693,17 @@ export async function completeSession(
       after: { status: "ISSUED", source: "warehouse-scan-issue", sessionId },
     }).catch((err) =>
       console.warn("[completeSession ISSUE] booking-status audit failed:", err),
+    );
+  } else {
+    await writeAuditEntry({
+      userId: createdBy,
+      action: "BOOKING_STATUS_CHANGED",
+      entityType: "Booking",
+      entityId: session.bookingId,
+      before: { status: session.booking.status },
+      after: { status: "RETURNED", source: "warehouse-scan-return", sessionId },
+    }).catch((err) =>
+      console.warn("[completeSession RETURN] booking-status audit failed:", err),
     );
   }
 

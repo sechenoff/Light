@@ -68,6 +68,16 @@ const listProblemItems: RequestHandler = async (req, res, next) => {
             equipment: { select: { name: true, category: true } },
           },
         },
+        // COUNT-mode: equipmentUnit is null; expose equipment via BookingItem
+        // so the frontend can show the item name on cards.
+        bookingItem: {
+          select: {
+            id: true,
+            quantity: true,
+            equipment: { select: { name: true, category: true } },
+          },
+        },
+        quantity: true,
       },
     });
 

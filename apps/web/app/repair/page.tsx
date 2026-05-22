@@ -23,12 +23,21 @@ interface RepairCard {
   createdBy: string;
   partsCost: string;
   totalTimeHours: string;
+  // UNIT-mode (per-juenit repair, has equipmentUnit) → unit is the full object.
+  // COUNT-mode (per-position, no specific unit) → unit is null and bookingItem
+  // carries the equipment + quantity. At least one of these is always set.
   unit: {
     id: string;
     barcode: string | null;
     equipmentId: string;
     equipment: { name: string; category: string };
-  };
+  } | null;
+  bookingItem: {
+    id: string;
+    quantity: number;
+    equipment: { id: string; name: string; category: string };
+  } | null;
+  quantity: number;   // 1 for UNIT-mode; N for COUNT-mode
   sourceBooking: {
     id: string;
     projectName: string;
@@ -120,6 +129,19 @@ function statusBadgeLabel(status: RepairStatus): string {
   }
 }
 
+/**
+ * Repair title — works for both UNIT-mode (has `unit.equipment`) and
+ * COUNT-mode (no unit, has `bookingItem.equipment` + quantity).
+ */
+function repairTitle(r: RepairCard): string {
+  if (r.unit) return r.unit.equipment.name;
+  if (r.bookingItem) {
+    const n = r.quantity > 1 ? ` ×${r.quantity}` : "";
+    return `${r.bookingItem.equipment.name}${n}`;
+  }
+  return "Без позиции";
+}
+
 // ── Компонент строки списка ───────────────────────────────────────────────────
 
 function RepairRow({
@@ -165,8 +187,8 @@ function RepairRow({
           </span>
         </div>
         <div className="min-w-0">
-          <div className="font-semibold text-ink text-sm leading-snug truncate">{repair.unit.equipment.name}</div>
-          {repair.unit.barcode && <div className="mono-num text-xs text-ink-3 truncate">{repair.unit.barcode}</div>}
+          <div className="font-semibold text-ink text-sm leading-snug truncate">{repairTitle(repair)}</div>
+          {repair.unit?.barcode && <div className="mono-num text-xs text-ink-3 truncate">{repair.unit.barcode}</div>}
           <div className="text-xs text-ink-2 truncate mt-0.5">{repair.reason.slice(0, 70)}{repair.reason.length > 70 ? "…" : ""}</div>
         </div>
         <div className="text-xs text-ink-2 leading-snug">
@@ -214,7 +236,7 @@ function RepairRow({
             {statusBadgeLabel(repair.status)}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-ink text-sm leading-snug">{repair.unit.equipment.name}</div>
+            <div className="font-semibold text-ink text-sm leading-snug">{repairTitle(repair)}</div>
             <div className="text-xs text-ink-2 mt-0.5">{repair.reason.slice(0, 70)}{repair.reason.length > 70 ? "…" : ""}</div>
           </div>
         </div>
@@ -539,9 +561,9 @@ function ArchiveTable({ repairs }: { repairs: RepairCard[] }) {
               >
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-ink truncate">
-                    {r.unit.equipment.name}
+                    {repairTitle(r)}
                   </div>
-                  {r.unit.barcode && (
+                  {r.unit?.barcode && (
                     <div className="mono-num text-xs text-ink-3 truncate">{r.unit.barcode}</div>
                   )}
                 </div>

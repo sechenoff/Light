@@ -31,7 +31,9 @@ type ProblemStatus = "EXPECTED" | "SEARCHING" | "FOUND" | "NOT_FOUND" | "WROTE_O
 
 interface ProblemItem {
   id: string;
-  equipmentUnitId: string;
+  // UNIT-mode: equipmentUnitId + equipmentUnit are set; COUNT-mode (per-bookingItem)
+  // → both are null, and `bookingItem` + `quantity` carry the equipment info.
+  equipmentUnitId: string | null;
   sourceBookingId: string | null;
   reason: ProblemReason;
   comment: string;
@@ -45,7 +47,13 @@ interface ProblemItem {
   equipmentUnit: {
     id: string;
     equipment: { name: string; category: string };
-  };
+  } | null;
+  bookingItem: {
+    id: string;
+    quantity: number;
+    equipment: { name: string; category: string };
+  } | null;
+  quantity: number;
 }
 
 interface ProblemItemsResponse {
@@ -170,6 +178,33 @@ function ItemActions({
   return <ResolutionInfo item={item} />;
 }
 
+/**
+ * Pick equipment info from either the UNIT-mode (`equipmentUnit`) or
+ * COUNT-mode (`bookingItem`) relation. UNIT-mode rows always have
+ * `equipmentUnit` populated; COUNT-mode rows have only `bookingItem`.
+ */
+function itemEquipment(item: ProblemItem): {
+  name: string;
+  category: string;
+  qty: number;
+} {
+  if (item.equipmentUnit) {
+    return {
+      name: item.equipmentUnit.equipment.name,
+      category: item.equipmentUnit.equipment.category,
+      qty: 1,
+    };
+  }
+  if (item.bookingItem) {
+    return {
+      name: item.bookingItem.equipment.name,
+      category: item.bookingItem.equipment.category,
+      qty: item.quantity,
+    };
+  }
+  return { name: "Без позиции", category: "—", qty: 1 };
+}
+
 // ── Строка-карточка (mobile) ──────────────────────────────────────────────────
 
 function ProblemCard({
@@ -185,9 +220,10 @@ function ProblemCard({
     <div className="rounded-lg border border-border bg-surface p-4 shadow-xs space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="eyebrow">{item.equipmentUnit.equipment.category}</p>
+          <p className="eyebrow">{itemEquipment(item).category}</p>
           <p className="text-sm font-semibold text-ink mt-0.5 break-words">
-            {item.equipmentUnit.equipment.name}
+            {itemEquipment(item).name}
+            {itemEquipment(item).qty > 1 ? ` ×${itemEquipment(item).qty}` : ""}
           </p>
         </div>
         <StatusPill
@@ -237,9 +273,10 @@ function ProblemRow({
   return (
     <tr className="border-b border-border align-top hover:bg-surface-muted">
       <td className="py-3 px-3">
-        <p className="eyebrow">{item.equipmentUnit.equipment.category}</p>
+        <p className="eyebrow">{itemEquipment(item).category}</p>
         <p className="text-sm font-medium text-ink mt-0.5">
-          {item.equipmentUnit.equipment.name}
+          {itemEquipment(item).name}
+          {itemEquipment(item).qty > 1 ? ` ×${itemEquipment(item).qty}` : ""}
         </p>
       </td>
       <td className="py-3 px-3 text-xs mono-num text-ink-2 whitespace-nowrap">
@@ -559,7 +596,7 @@ export function ProblemItemsPage() {
         <ResolveProblemModal
           open
           outcome={resolveOutcome}
-          equipmentName={resolveTarget.equipmentUnit.equipment.name}
+          equipmentName={itemEquipment(resolveTarget).name}
           loading={resolving}
           onClose={closeResolve}
           onSubmit={submitResolve}
