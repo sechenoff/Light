@@ -3,6 +3,7 @@ import { z } from "zod";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import Decimal from "decimal.js";
 import { authenticateWorker, hashPin } from "../services/warehouseAuth";
 import { prisma } from "../prisma";
 import { warehouseAuth } from "../middleware/warehouseAuth";
@@ -687,6 +688,117 @@ warehouseScanRouter.post("/sessions/:id/cancel", warehouseAuth, async (req, res,
   try {
     const session = await cancelSession(req.params.id);
     res.json(session);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/warehouse/in-work — список ISSUED-броней (выданы, но ещё не возвращены).
+ *
+ * Сортировка: по ожидаемой дате возврата (endDate) по возрастанию — самые срочные сверху.
+ * Поля isOverdue/overdueDays вычисляются на сервере на основе текущего времени.
+ * displayNo — последние 6 символов id в верхнем регистре с префиксом «#».
+ */
+warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
+  try {
+    const bookings = await prisma.booking.findMany({
+      where: { status: "ISSUED" },
+      orderBy: { endDate: "asc" },
+      include: {
+        client: { select: { name: true, phone: true } },
+        _count: { select: { items: { where: { quantity: { gt: 0 } } } } },
+      },
+    });
+
+    const now = Date.now();
+    const out = bookings.map((b) => {
+      const overdueMs = now - b.endDate.getTime();
+      const isOverdue = overdueMs > 0;
+      return {
+        bookingId: b.id,
+        displayNo: "#" + b.id.slice(-6).toUpperCase(),
+        projectName: b.projectName,
+        clientName: b.client?.name ?? "",
+        clientPhone: b.client?.phone ?? null,
+        issuedAt: b.confirmedAt?.toISOString() ?? null,
+        expectedReturnAt: b.endDate.toISOString(),
+        itemsCount: b._count.items,
+        finalAmount: b.finalAmount.toString(),
+        isOverdue,
+        overdueDays: isOverdue ? Math.floor(overdueMs / 86400000) : 0,
+      };
+    });
+
+    res.json({ bookings: out });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/warehouse/in-work/:bookingId/details — read-only детали активной выдачи.
+ *
+ * Возвращает items (с trackingMode для UI) и finance-блок (сводка финансов).
+ * 404 если бронь не найдена ИЛИ статус не ISSUED — этот endpoint работает только
+ * для активных выдач (страница «В работе» в /warehouse/scan).
+ */
+warehouseScanRouter.get("/in-work/:bookingId/details", warehouseAuth, async (req, res, next) => {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.bookingId },
+      include: {
+        client: { select: { name: true, phone: true } },
+        items: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            equipment: {
+              select: {
+                name: true,
+                category: true,
+                stockTrackingMode: true,
+                rentalRatePerShift: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!booking || booking.status !== "ISSUED") {
+      throw new HttpError(404, "Бронь не найдена или не активна", "NOT_FOUND");
+    }
+
+    const items = booking.items.map((bi) => ({
+      bookingItemId: bi.id,
+      equipmentId: bi.equipmentId,
+      equipmentName: bi.equipment?.name ?? bi.customName ?? "Без названия",
+      category: bi.equipment?.category ?? bi.customCategory ?? "Без категории",
+      quantity: bi.quantity,
+      trackingMode: bi.equipment?.stockTrackingMode ?? "COUNT",
+    }));
+
+    const finalAmount = new Decimal(booking.finalAmount.toString());
+    const amountPaid = new Decimal(booking.amountPaid.toString());
+    const outstanding = finalAmount.sub(amountPaid);
+
+    res.json({
+      bookingId: booking.id,
+      displayNo: "#" + booking.id.slice(-6).toUpperCase(),
+      projectName: booking.projectName,
+      clientName: booking.client?.name ?? "",
+      clientPhone: booking.client?.phone ?? null,
+      issuedAt: booking.confirmedAt?.toISOString() ?? null,
+      expectedReturnAt: booking.endDate.toISOString(),
+      items,
+      finance: {
+        finalAmount: finalAmount.toString(),
+        addonAmount: booking.addonAmount.toString(),
+        amountPaid: amountPaid.toString(),
+        outstanding: outstanding.toString(),
+        paymentStatus: booking.paymentStatus,
+      },
+    });
   } catch (err) {
     next(err);
   }
