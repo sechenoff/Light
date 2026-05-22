@@ -329,18 +329,38 @@ warehouseScanRouter.get("/sessions/:id/summary", warehouseAuth, async (req, res,
   }
 });
 
-const repairUnitSchema = z.object({
-  equipmentUnitId: z.string().min(1),
-  comment: z.string().min(1),
-  urgency: z.enum(["NOT_URGENT", "NORMAL", "URGENT"]).optional(),
-});
+// RepairUnit / ProblemUnit — discriminated union, две формы:
+//   - UNIT: { equipmentUnitId, ... } — карточка ремонта/проблемы на конкретный юнит.
+//   - COUNT: { bookingItemId, quantity, ... } — одна карточка на N единиц позиции
+//     (Task 2 — return COUNT-split).
+const repairUnitSchema = z.union([
+  z.object({
+    equipmentUnitId: z.string().min(1),
+    comment: z.string().min(1),
+    urgency: z.enum(["NOT_URGENT", "NORMAL", "URGENT"]).optional(),
+  }),
+  z.object({
+    bookingItemId: z.string().min(1),
+    quantity: z.number().int().min(1),
+    comment: z.string().min(1),
+  }),
+]);
 
-const problemUnitSchema = z.object({
-  equipmentUnitId: z.string().min(1),
-  reason: z.enum(["LEFT_ON_SITE", "LOST", "DESTROYED", "STOLEN"]),
-  comment: z.string().min(1),
-  expectedBackDate: z.string().datetime().optional(),
-});
+const problemUnitSchema = z.union([
+  z.object({
+    equipmentUnitId: z.string().min(1),
+    reason: z.enum(["LEFT_ON_SITE", "LOST", "DESTROYED", "STOLEN"]),
+    comment: z.string().min(1),
+    expectedBackDate: z.string().datetime().optional(),
+  }),
+  z.object({
+    bookingItemId: z.string().min(1),
+    quantity: z.number().int().min(1),
+    reason: z.enum(["LEFT_ON_SITE", "LOST", "DESTROYED", "STOLEN"]),
+    comment: z.string().min(1),
+    expectedBackDate: z.string().datetime().optional(),
+  }),
+]);
 
 const issuanceAdjustmentSchema = z.object({
   bookingItemId: z.string().min(1),
