@@ -194,7 +194,7 @@ beforeEach(() => {
 });
 
 describe("ReturnChecklist", () => {
-  it("groups by category, renders «прибор N из M», never a barcode", async () => {
+  it("groups by category, renders «прибор N из M» for UNIT and «осталось пометить N из M» for COUNT, never a barcode", async () => {
     const { container } = render(
       <ReturnChecklist
         sessionId="s1"
@@ -207,7 +207,11 @@ describe("ReturnChecklist", () => {
     expect(screen.getByText("Стойки")).toBeInTheDocument();
     expect(screen.getByText("прибор 1 из 3")).toBeInTheDocument();
     expect(screen.getByText("прибор 3 из 3")).toBeInTheDocument();
-    expect(screen.getByText("×4")).toBeInTheDocument();
+    // COUNT row uses CountSplitRow → «осталось пометить N из M» (Task 6),
+    // not the old «×N» UnitRow ordinalLabel.
+    expect(
+      screen.getByText(/осталось пометить.*4.*из.*4/i),
+    ).toBeInTheDocument();
     expect(container.textContent || "").not.toMatch(/LR-[A-Z0-9]+-\d+/);
   });
 
@@ -390,6 +394,13 @@ describe("ReturnChecklist", () => {
       }),
     );
 
+    // COUNT row (Manfrotto 1004 × 4) — accept all 4 via the «Принять 1 шт»
+    // shortcut (pending===totalQty → CountSplitRow.onAcceptAll). Without this
+    // the row's pending=4 would fail validation.
+    fireEvent.click(
+      screen.getByRole("button", { name: /Принять 1 шт — Manfrotto 1004/ }),
+    );
+
     fireEvent.click(
       screen.getByRole("button", { name: /Завершить приёмку/ }),
     );
@@ -433,6 +444,12 @@ describe("ReturnChecklist", () => {
       screen.getByRole("button", {
         name: /прибор 3 из 3\) — принять без замечаний/,
       }),
+    );
+
+    // COUNT row — accept all 4 via the «Принять 1» shortcut (otherwise the
+    // row's pending=4 would block validation).
+    fireEvent.click(
+      screen.getByRole("button", { name: /Принять 1 шт — Manfrotto 1004/ }),
     );
 
     fireEvent.click(
@@ -492,15 +509,17 @@ describe("ReturnChecklist", () => {
     expect(screen.queryByText("Приёмка завершена")).not.toBeInTheDocument();
 
     // «Принято» = the FRONTEND outcome truth: «Принять всё разом» marked all
-    // 3 UNIT units ACCEPTED + the 1 COUNT line accepted = 4. The OLD buggy
-    // formula `scannedCount(3) − repair(1) − problem(1)` = 1 — this assertion
-    // pins the true accepted count and would FAIL under that derivation.
+    // 3 UNIT units ACCEPTED + the COUNT row's split.accepted = 4 (Task 6
+    // split semantics — the COUNT row contributes `quantity` to the total,
+    // not 1). So total = 3 + 4 = 7. The OLD buggy formula
+    // `scannedCount(3) − repair(1) − problem(1)` = 1 — this assertion pins
+    // the true accepted count and would FAIL under that derivation.
     {
       const acceptedDt = screen.getByText(/^Принято$/);
       const acceptedDd = (acceptedDt.parentElement as HTMLElement).querySelector(
         "dd",
       );
-      expect(acceptedDd?.textContent).toBe("4");
+      expect(acceptedDd?.textContent).toBe("7");
       expect(acceptedDd?.textContent).not.toBe("1");
     }
     expect(screen.getByText(/^На ремонт/)).toBeInTheDocument();
@@ -531,13 +550,13 @@ describe("ReturnChecklist", () => {
     ).toBeInTheDocument();
   });
 
-  it("mixed completion (1 ✓ + 1 🔧 + 1 ✗): «Принято: 1», NOT scanned − repair − problem", async () => {
+  it("mixed completion (1 ✓ + 1 🔧 + 1 ✗): «Принято» derived from outcomes, NOT scanned − repair − problem", async () => {
     // The exact display-accuracy regression. Backend `scannedCount` counts
     // ScanRecords, which exist ONLY for ACCEPTED units (REPAIR/PROBLEM are
     // never check()'d). If the backend (correctly) reports scannedCount: 1
     // here, the OLD formula `scannedCount − repair − problem` = 1 − 1 − 1 =
     // -1 → clamped 0 — under-reporting the 1 accepted unit. The fix derives
-    // «Принято» from the frontend outcome map instead → 1.
+    // «Принято» from the frontend outcome map instead.
     completeSpy.mockResolvedValue(
       okResult({
         scannedCount: 1, // only the 1 ACCEPTED unit was scanned/check()'d
@@ -578,19 +597,26 @@ describe("ReturnChecklist", () => {
       target: { value: "потеряли на площадке" },
     });
 
+    // COUNT row — accept all 4 via the «Принять 1» shortcut so the row
+    // doesn't block validation. Contributes 4 to the accepted total.
+    fireEvent.click(
+      screen.getByRole("button", { name: /Принять 1 шт — Manfrotto 1004/ }),
+    );
+
     fireEvent.click(
       screen.getByRole("button", { name: /Завершить приёмку/ }),
     );
 
     await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
 
-    // «Принято» MUST be 1 (the one ACCEPTED unit) — NOT scanned − repair −
-    // problem (= 1 − 1 − 1 → clamped 0 under the old formula).
+    // «Принято» = 1 ACCEPTED UNIT + COUNT row's split.accepted (4) = 5.
+    // The OLD buggy formula `scannedCount(1) − repair(1) − problem(1)` →
+    // clamped 0 under-reports the actual accepted count.
     const acceptedDt = await screen.findByText(/^Принято$/);
     const acceptedDd = (acceptedDt.parentElement as HTMLElement).querySelector(
       "dd",
     );
-    expect(acceptedDd?.textContent).toBe("1");
+    expect(acceptedDd?.textContent).toBe("5");
     expect(acceptedDd?.textContent).not.toBe("0");
 
     // Repair line = createdRepairIds.length; problem line =
@@ -704,5 +730,151 @@ describe("ReturnChecklist", () => {
     expect(
       await screen.findByText(/нет позиций для приёмки/),
     ).toBeInTheDocument();
+  });
+
+  // ── Task 6 — CountSplitRow integration ─────────────────────────────────────
+  // A COUNT-only fixture isolates the split semantics from UNIT-row noise:
+  // one COUNT item of qty 3 (matches the «1 accept + 1 repair + 1 problem»
+  // split arithmetic without colliding with the «Принять 1» shortcut which
+  // fires onAcceptAll when pending === totalQty).
+  function countOnlyState(quantity = 3): ChecklistState {
+    return {
+      sessionId: "s1",
+      bookingId: "b1",
+      operation: "RETURN",
+      items: [
+        {
+          bookingItemId: "bi-count",
+          equipmentId: "eq-sandbag",
+          equipmentName: "Sandbag",
+          category: "Грипы",
+          quantity,
+          checkedQty: 0,
+          trackingMode: "COUNT",
+          isExtra: false,
+          rentalRatePerShift: "0",
+          originalQuantity: quantity,
+          addCap: 0,
+        },
+      ],
+      progress: { checkedItems: 0, totalItems: quantity },
+      shifts: 1,
+      discountPercent: "0",
+      mainOriginalAfterDiscount: "0",
+    };
+  }
+
+  it("COUNT row uses CountSplitRow with three buckets (replacing single 'Принято' button)", async () => {
+    mockState = countOnlyState();
+    render(
+      <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    await screen.findByText("Sandbag");
+    // CountSplitRow's three action buttons (per CountSplitRow aria-labels).
+    expect(
+      screen.getByRole("button", { name: /Принять 1 шт — Sandbag/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /В ремонт 1 шт — Sandbag/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Проблема 1 шт — Sandbag/ }),
+    ).toBeInTheDocument();
+    // The old UnitRow «Принять» 3-segment control is NOT used for COUNT.
+    expect(
+      screen.queryByRole("button", {
+        name: /Sandbag.*принять без замечаний/i,
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("split COUNT row: 1 accepted + 1 repair + 1 problem builds COUNT-form payload", async () => {
+    mockState = countOnlyState(3);
+    render(
+      <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+    await screen.findByText("Sandbag");
+
+    // ORDER MATTERS: the «Принять 1 шт» shortcut fires onAcceptAll when
+    // pending === totalQty. Click repair + problem FIRST (pending drops to 1
+    // < totalQty=3), then «Принять 1 шт» does +1 → split{accepted:1,repair:1,problem:1}.
+    fireEvent.click(
+      screen.getByRole("button", { name: /В ремонт 1 шт — Sandbag/ }),
+    );
+    fireEvent.change(screen.getByLabelText("Комментарий ремонта"), {
+      target: { value: "Порвался" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Проблема 1 шт — Sandbag/ }),
+    );
+    fireEvent.change(screen.getByLabelText("Причина проблемы"), {
+      target: { value: "LOST" },
+    });
+    fireEvent.change(screen.getByLabelText("Комментарий проблемы"), {
+      target: { value: "Не нашли" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Принять 1 шт — Sandbag/ }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Завершить приёмку/ }),
+    );
+
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+    const [, payload] = completeSpy.mock.calls[0] as [
+      string,
+      {
+        repairUnits?: Array<Record<string, unknown>>;
+        problemUnits?: Array<Record<string, unknown>>;
+      },
+    ];
+    // COUNT-form: `{bookingItemId, quantity, comment}` (RepairUnitInput) /
+    // `{bookingItemId, quantity, reason, comment}` (ProblemUnitInput).
+    // expectedBackDate is NOT in the payload (reason is LOST, not LEFT_ON_SITE).
+    expect(payload.repairUnits).toEqual([
+      { bookingItemId: "bi-count", quantity: 1, comment: "Порвался" },
+    ]);
+    expect(payload.problemUnits).toEqual([
+      {
+        bookingItemId: "bi-count",
+        quantity: 1,
+        reason: "LOST",
+        comment: "Не нашли",
+      },
+    ]);
+    expect(payload.problemUnits?.[0]).not.toHaveProperty("expectedBackDate");
+  });
+
+  it("validates pending > 0 — blocks submit with the row-level «Осталось пометить» error", async () => {
+    mockState = countOnlyState(3);
+    render(
+      <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+    await screen.findByText("Sandbag");
+
+    // Accept just 1 of 3 — the «Принять 1» shortcut fires onAcceptAll at
+    // pending===totalQty (=3), so start with «В ремонт 1» to drop pending,
+    // then DECREMENT the repair pill to land at split:{0, 0, 0} accepted=0
+    // wait — that's not what we want either. Instead use the «Принять 1 шт»
+    // shortcut to accept all 3, then click the «✓ 3» pill once to decrement
+    // back to accepted=2: pending = 3 − 2 − 0 − 0 = 1 → row error.
+    fireEvent.click(
+      screen.getByRole("button", { name: /Принять 1 шт — Sandbag/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Снять отметку «Принято» — Sandbag/ }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Завершить приёмку/ }),
+    );
+
+    // Row-level error on this COUNT line.
+    expect(
+      await screen.findByText(/Осталось пометить 1 из 3/),
+    ).toBeInTheDocument();
+    expect(completeSpy).not.toHaveBeenCalled();
   });
 });
