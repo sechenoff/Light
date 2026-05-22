@@ -499,6 +499,8 @@ model BookingItem {
 
   unitReservations BookingItemUnit[]
   addonRecords AddonRecord[]
+  repairs          Repair[]       @relation("RepairBookingItem")
+  problems         ProblemItem[]  @relation("ProblemItemBookingItem")
 
   createdAt DateTime @default(now())
 
@@ -800,8 +802,11 @@ model AdminUser {
 /// Ремонтная карточка на EquipmentUnit
 model Repair {
   id              String         @id @default(cuid())
-  unitId          String
-  unit            EquipmentUnit  @relation(fields: [unitId], references: [id])
+  unitId          String?
+  unit            EquipmentUnit? @relation(fields: [unitId], references: [id])
+  bookingItemId   String?
+  bookingItem     BookingItem?   @relation("RepairBookingItem", fields: [bookingItemId], references: [id], onDelete: SetNull)
+  quantity        Int            @default(1)
   status          RepairStatus   @default(WAITING_REPAIR)
   urgency         RepairUrgency  @default(NORMAL)
   reason          String
@@ -820,6 +825,7 @@ model Repair {
   photos   RepairPhoto[]
 
   @@index([unitId])
+  @@index([bookingItemId])
   @@index([status])
   @@index([assignedTo])
 }
@@ -1179,22 +1185,26 @@ enum ProblemStatus {
 
 /// Реестр «Потеряшки» — проблемная единица с приёмки (заявка на поиск/разбор)
 model ProblemItem {
-  id               String        @id @default(cuid())
-  equipmentUnitId  String
-  equipmentUnit    EquipmentUnit @relation(fields: [equipmentUnitId], references: [id])
+  id               String         @id @default(cuid())
+  equipmentUnitId  String?
+  equipmentUnit    EquipmentUnit? @relation(fields: [equipmentUnitId], references: [id])
+  bookingItemId    String?
+  bookingItem      BookingItem?   @relation("ProblemItemBookingItem", fields: [bookingItemId], references: [id], onDelete: SetNull)
+  quantity         Int            @default(1)
   sourceBookingId  String?
   reason           ProblemReason
   comment          String
   expectedBackDate DateTime?
-  status           ProblemStatus @default(SEARCHING)
+  status           ProblemStatus  @default(SEARCHING)
   createdBy        String
-  createdAt        DateTime      @default(now())
+  createdAt        DateTime       @default(now())
   resolvedAt       DateTime?
   resolvedBy       String?
   resolutionNote   String?
 
   @@index([status])
   @@index([equipmentUnitId])
+  @@index([bookingItemId])
   @@index([sourceBookingId])
 }
 

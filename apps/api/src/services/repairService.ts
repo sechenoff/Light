@@ -180,10 +180,12 @@ export async function closeRepair(id: string, userId: string) {
       data: { status: "CLOSED", closedAt: new Date() },
     });
 
-    await tx.equipmentUnit.update({
-      where: { id: repair.unitId },
-      data: { status: "AVAILABLE" },
-    });
+    if (repair.unitId) {
+      await tx.equipmentUnit.update({
+        where: { id: repair.unitId },
+        data: { status: "AVAILABLE" },
+      });
+    }
 
     await writeAuditEntry({
       tx,
@@ -219,10 +221,12 @@ export async function writeOffRepair(id: string, userId: string) {
       data: { status: "WROTE_OFF", closedAt: new Date() },
     });
 
-    await tx.equipmentUnit.update({
-      where: { id: repair.unitId },
-      data: { status: "RETIRED" },
-    });
+    if (repair.unitId) {
+      await tx.equipmentUnit.update({
+        where: { id: repair.unitId },
+        data: { status: "RETIRED" },
+      });
+    }
 
     await writeAuditEntry({
       tx,

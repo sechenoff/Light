@@ -155,7 +155,9 @@ repairsRouter.get(
       const activeRepairs = repairs.filter(
         (r) => r.status !== "CLOSED" && r.status !== "WROTE_OFF",
       );
-      const equipmentIds = [...new Set(activeRepairs.map((r) => r.unit.equipment.id).filter(Boolean))];
+      const equipmentIds = [
+        ...new Set(activeRepairs.map((r) => r.unit?.equipment.id).filter((id): id is string => Boolean(id))),
+      ];
 
       const conflictItems = equipmentIds.length
         ? await prisma.bookingItem.findMany({
@@ -195,7 +197,7 @@ repairsRouter.get(
         repairs: repairs.map((r) => ({
           ...serializeRepair(r),
           nextConflict:
-            r.status !== "CLOSED" && r.status !== "WROTE_OFF"
+            r.status !== "CLOSED" && r.status !== "WROTE_OFF" && r.unit
               ? (conflictMap.get(r.unit.equipment.id) ?? null)
               : null,
         })),
