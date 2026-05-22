@@ -524,7 +524,7 @@ export interface InWorkBooking {
   projectName: string;
   clientName: string;
   /** `null` when the client record has no phone on file. */
-  clientPhone: string | null;
+  clientPhone?: string | null;
   /** ISO datetime; `null` for legacy bookings without `confirmedAt`. */
   issuedAt: string | null;
   /** ISO datetime — `booking.endDate` (planned return moment). */
@@ -552,7 +552,7 @@ export interface InWorkDetails {
   projectName: string;
   clientName: string;
   /** `null` when the client record has no phone on file. */
-  clientPhone: string | null;
+  clientPhone?: string | null;
   /** ISO datetime; `null` for legacy bookings without `confirmedAt`. */
   issuedAt: string | null;
   /** ISO datetime — `booking.endDate`. */
