@@ -487,6 +487,22 @@ export interface CountSplit {
   problem: number;
 }
 
+/**
+ * Inline «черновик» проблемного юнита/линии — то, что вводит кладовщик в
+ * правом инлайн-блоке у строки. На отправке в API превращается в
+ * `ProblemUnitInput` (UNIT-mode `{ unitId, reason, comment, … }` или
+ * COUNT-mode `{ bookingItemId, quantity, reason, comment, … }`).
+ *
+ * `expectedBackDate` хранится в формате `YYYY-MM-DD` (сырое значение
+ * `<input type="date">`) и заполняется только при `reason === "LEFT_ON_SITE"`.
+ */
+export interface ProblemDraft {
+  reason: ProblemReason | null;
+  comment: string;
+  /** Bare `YYYY-MM-DD` (raw `<input type="date">`), `null` unless `LEFT_ON_SITE`. */
+  expectedBackDate: string | null;
+}
+
 // ── «В работе» tab (mirrors GET /api/warehouse/in-work) ──────────────────────
 
 /**
