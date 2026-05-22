@@ -199,19 +199,47 @@ export interface WorkerAuthResult {
 
 // ── Complete payload (mirrors completeSessionBodySchema) ─────────────────────
 
-export interface RepairUnitInput {
-  equipmentUnitId: string;
-  comment: string;
-  urgency?: RepairUrgency;
-}
+/**
+ * Repair-card input. Discriminated union mirroring the backend
+ * `repairUnitSchema` (`apps/api/src/routes/warehouse.ts`):
+ *
+ *  - UNIT-form  — `{ equipmentUnitId, comment, urgency? }` — one card per
+ *    serialised unit, used when the equipment is `UNIT`-tracked.
+ *  - COUNT-form — `{ bookingItemId, quantity, comment }` — a single card
+ *    covering `quantity` units of a `COUNT`-tracked position (Task 2,
+ *    return COUNT-split).
+ */
+export type RepairUnitInput =
+  | { equipmentUnitId: string; comment: string; urgency?: RepairUrgency }
+  | { bookingItemId: string; quantity: number; comment: string };
 
-export interface ProblemUnitInput {
-  equipmentUnitId: string;
-  reason: ProblemReason;
-  comment: string;
-  /** ISO datetime. */
-  expectedBackDate?: string;
-}
+/**
+ * Problem-card input («Потеряшки»). Discriminated union mirroring the backend
+ * `problemUnitSchema` (`apps/api/src/routes/warehouse.ts`):
+ *
+ *  - UNIT-form  — one card per serialised unit (`UNIT`-tracked equipment).
+ *  - COUNT-form — single card for `quantity` units of a `COUNT`-tracked
+ *    position (Task 2, return COUNT-split).
+ *
+ * `expectedBackDate` is an ISO datetime; the backend Zod rejects bare
+ * `YYYY-MM-DD`. Only meaningful for `LEFT_ON_SITE`.
+ */
+export type ProblemUnitInput =
+  | {
+      equipmentUnitId: string;
+      reason: ProblemReason;
+      comment: string;
+      /** ISO datetime. */
+      expectedBackDate?: string;
+    }
+  | {
+      bookingItemId: string;
+      quantity: number;
+      reason: ProblemReason;
+      comment: string;
+      /** ISO datetime. */
+      expectedBackDate?: string;
+    };
 
 /**
  * Per-position quantity adjustment applied at ISSUE-complete time.
@@ -439,4 +467,103 @@ export function isScanApiError(value: unknown): value is ScanApiError {
     "status" in value &&
     "message" in value
   );
+}
+
+// ── COUNT-mode return split (Task 2) ─────────────────────────────────────────
+
+/**
+ * Per-line «как разнести quantity по корзинам» for a COUNT-tracked position.
+ * The UI keeps a `CountSplit` next to each `ChecklistItem` whose
+ * `trackingMode === "COUNT"` and validates that
+ * `accepted + repair + problem === quantity` before allowing complete.
+ *
+ * Forwarded into `CompletePayload.repairUnits` / `.problemUnits` as the
+ * COUNT-form of {@link RepairUnitInput} / {@link ProblemUnitInput}
+ * (`{ bookingItemId, quantity, … }`).
+ */
+export interface CountSplit {
+  accepted: number;
+  repair: number;
+  problem: number;
+}
+
+// ── «В работе» tab (mirrors GET /api/warehouse/in-work) ──────────────────────
+
+/**
+ * One card on the «В работе» tab — an ISSUED booking that has not been
+ * returned yet. Mirrors `GET /api/warehouse/in-work` response shape
+ * (`apps/api/src/routes/warehouse.ts`).
+ *
+ * `clientPhone` is `null` when the client record has no phone. `issuedAt`
+ * is `null` for bookings that were ISSUED without going through CONFIRMED
+ * (legacy / fixture data) — server sources it from `booking.confirmedAt`.
+ * `finalAmount` is a serialised Decimal (string transport).
+ * `isOverdue` / `overdueDays` are derived server-side from
+ * `endDate` vs «сейчас».
+ */
+export interface InWorkBooking {
+  bookingId: string;
+  /** «#ABCDEF» — last 6 chars of bookingId, uppercase. */
+  displayNo: string;
+  projectName: string;
+  clientName: string;
+  /** `null` when the client record has no phone on file. */
+  clientPhone: string | null;
+  /** ISO datetime; `null` for legacy bookings without `confirmedAt`. */
+  issuedAt: string | null;
+  /** ISO datetime — `booking.endDate` (planned return moment). */
+  expectedReturnAt: string;
+  /** Count of booking items with `quantity > 0`. */
+  itemsCount: number;
+  /** Serialised Decimal — `booking.finalAmount`. */
+  finalAmount: string;
+  isOverdue: boolean;
+  /** Full days overdue (floor); 0 when not overdue. */
+  overdueDays: number;
+}
+
+/**
+ * Read-only details for one «В работе» booking. Mirrors
+ * `GET /api/warehouse/in-work/:bookingId/details` (`apps/api warehouse.ts`).
+ *
+ * This is a peek-only view — the tab does not mutate state. The shape is
+ * deliberately narrower than {@link ChecklistState}: no progress, no
+ * per-unit checked flags, no addCap. Money fields are serialised Decimals.
+ */
+export interface InWorkDetails {
+  bookingId: string;
+  displayNo: string;
+  projectName: string;
+  clientName: string;
+  /** `null` when the client record has no phone on file. */
+  clientPhone: string | null;
+  /** ISO datetime; `null` for legacy bookings without `confirmedAt`. */
+  issuedAt: string | null;
+  /** ISO datetime — `booking.endDate`. */
+  expectedReturnAt: string;
+  items: Array<{
+    bookingItemId: string;
+    /** `null` for custom (non-catalog) items. */
+    equipmentId: string | null;
+    equipmentName: string;
+    category: string;
+    quantity: number;
+    trackingMode: "COUNT" | "UNIT";
+  }>;
+  finance: {
+    /** Serialised Decimal — `booking.finalAmount` (main + addon + transport). */
+    finalAmount: string;
+    /** Serialised Decimal — addon subtotal. */
+    addonAmount: string;
+    /** Serialised Decimal — `booking.amountPaid`. */
+    amountPaid: string;
+    /** Serialised Decimal — `finalAmount − amountPaid` (server-computed). */
+    outstanding: string;
+    /**
+     * `booking.paymentStatus` — Prisma enum value as string so adding new
+     * variants on the backend does not break the FE build
+     * (NOT_PAID | PARTIALLY_PAID | PAID | OVERDUE | OVERPAID).
+     */
+    paymentStatus: string;
+  };
 }
