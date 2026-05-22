@@ -161,6 +161,7 @@ export function AddonSearch({
   sessionId,
   bookingId,
   bookingNo,
+  existingEquipmentIds,
   onAdded,
   onClose,
 }: {
@@ -173,10 +174,21 @@ export function AddonSearch({
   /** Display id of the booking being augmented (header context). */
   bookingNo?: string;
   /**
+   * Equipment ids that are already on this booking — the picker hides those
+   * rows so the operator can't re-add a position they should be editing via
+   * the checklist's stepper instead. Optional (undefined ⇒ no filtering),
+   * which keeps existing callers working without a forced rewrite.
+   *
+   * Carries «Уже в брони — измените количество в чек-листе» as a sub-label
+   * when ≥1 result was hidden, so the operator understands WHY a familiar
+   * item is missing.
+   */
+  existingEquipmentIds?: ReadonlySet<string>;
+  /**
    * Called after an article is added so the checklist can refresh.
    * `hadConflict=true` ⇔ the operator pressed «Выдать под ответственность» —
    * IssueChecklist marks the new bookingItemId as a conflict добор so the
-   * сверка can list it under «＋ Доборы с предупреждением».
+   * audit reflects the override.
    */
   onAdded: (bookingItemId: string, hadConflict: boolean) => void;
   /** Dismiss the sheet / inline panel. */
@@ -312,6 +324,16 @@ export function AddonSearch({
 
   const closeWarning = useCallback(() => setActive(null), []);
   const closePicker = useCallback(() => setPicking(null), []);
+
+  // Filter out results whose equipmentId is already on this booking — the
+  // operator should use the checklist's stepper instead. We compute both the
+  // visible list AND how many got hidden so we can render an explainer sublabel
+  // («Уже в брони — измените количество в чек-листе») only when relevant.
+  const visibleResults =
+    existingEquipmentIds && existingEquipmentIds.size > 0
+      ? results.filter((r) => !existingEquipmentIds.has(r.equipmentId))
+      : results;
+  const hiddenInBookingCount = results.length - visibleResults.length;
 
   // Shared POST: accepts qty (>= 1) and optional ack flag. On 409 ADDON_CONFLICT
   // surface the SAME red warn card built from `err.details` AND preserve the
@@ -579,16 +601,25 @@ export function AddonSearch({
           {!loading &&
             query.trim().length >= 1 &&
             searched &&
-            results.length === 0 &&
+            visibleResults.length === 0 &&
             !error && (
               <p className="px-4 py-8 text-center text-[12px] text-ink-3">
-                Ничего не найдено
+                {hiddenInBookingCount > 0
+                  ? "Все совпадения уже в брони — измените количество в чек-листе"
+                  : "Ничего не найдено"}
               </p>
             )}
 
-          {!loading && results.length > 0 && (
+          {!loading && hiddenInBookingCount > 0 && visibleResults.length > 0 && (
+            <p className="px-4 pb-1.5 pt-1 text-[11px] text-ink-3">
+              {hiddenInBookingCount === 1 ? "1 совпадение скрыто" : `${hiddenInBookingCount} совпадений скрыто`}
+              {" — уже в брони, измените количество в чек-листе"}
+            </p>
+          )}
+
+          {!loading && visibleResults.length > 0 && (
             <ul className="px-3">
-              {results.map((r) => {
+              {visibleResults.map((r) => {
                 const free = isAvailable(r);
                 // «Capped» = warehouse сам по себе свободен, но на этой брони
                 // уже добран до предела (`addCap=0` без блокирующего

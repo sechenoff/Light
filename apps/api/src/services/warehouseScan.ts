@@ -315,14 +315,13 @@ export async function completeSession(
             "INVALID_ADJUSTMENTS",
           );
         }
-        if (
-          !Number.isInteger(adj.actualQuantity) ||
-          adj.actualQuantity < 0 ||
-          adj.actualQuantity > bi.quantity
-        ) {
+        // U2: actualQuantity ≥ 0 — нижняя граница. Верхняя граница теперь
+        // динамическая: bi.quantity + addCap (см. ниже). Это позволяет
+        // inline-добор через тот же endpoint без отдельного вызова /items.
+        if (!Number.isInteger(adj.actualQuantity) || adj.actualQuantity < 0) {
           throw new HttpError(
             400,
-            "actualQuantity вне диапазона [0, quantity]",
+            "actualQuantity вне диапазона [0, …]",
             "INVALID_ADJUSTMENTS",
           );
         }
@@ -331,11 +330,69 @@ export async function completeSession(
           continue;
         }
 
-        const releaseCount = bi.quantity - adj.actualQuantity;
+        const delta = adj.actualQuantity - bi.quantity;
         const stockMode = bi.equipment?.stockTrackingMode ?? "COUNT";
 
-        // ── UNIT-режим: освобождаем (M − N) НЕотсканированных резерваций ────
-        if (stockMode === "UNIT") {
+        // ── U2: положительная дельта — inline-добор ─────────────────────────
+        // Логика addCap идентична addExtraItem(): equipment.totalQuantity −
+        // occupiedByOthers − bi.quantity. Если delta > addCap → 409
+        // ADDON_OVER_STOCK с теми же details, что у +Добор-эндпоинта.
+        //
+        // Для UNIT-mode НЕ создаём BookingItemUnit-резервации: оператор берёт
+        // лишние единицы со склада прямо сейчас, физически. Если впоследствии
+        // понадобится резервация — это отдельный workflow (карточки/MAIN
+        // ребилд). Аудит положительной дельты — BOOKING_ITEM_QUANTITY_INCREASED
+        // (по тому же шаблону, что и REDUCED).
+        if (delta > 0 && bi.equipmentId) {
+          const txEquipment = await tx.equipment.findUnique({
+            where: { id: bi.equipmentId },
+            select: { totalQuantity: true },
+          });
+          if (!txEquipment) {
+            throw new HttpError(
+              404,
+              "Оборудование не найдено",
+              "EQUIPMENT_NOT_FOUND",
+            );
+          }
+          const overlappingItems = await tx.bookingItem.findMany({
+            where: {
+              equipmentId: bi.equipmentId,
+              bookingId: { not: session.bookingId },
+              booking: {
+                status: { in: ["DRAFT", "CONFIRMED", "ISSUED"] },
+                startDate: { lte: session.booking.endDate },
+                endDate: { gte: session.booking.startDate },
+              },
+            },
+            select: { quantity: true },
+          });
+          const occupiedByOthers = overlappingItems.reduce(
+            (s, it) => s + it.quantity,
+            0,
+          );
+          const addCap = txEquipment.totalQuantity - occupiedByOthers - bi.quantity;
+
+          if (delta > addCap) {
+            throw new HttpError(
+              409,
+              "Не хватает на складе",
+              "ADDON_OVER_STOCK",
+              {
+                addCap: Math.max(0, addCap),
+                requested: adj.actualQuantity,
+                alreadyInBooking: bi.quantity,
+              },
+            );
+          }
+          // UNIT-mode положительная дельта: BookingItemUnit-резервации НЕ
+          // создаём — это on-the-spot inline-добор (см. комментарий выше).
+        }
+
+        // ── Отрицательная дельта: UNIT-режим освобождает (M − N)
+        //    НЕотсканированных резерваций (поведение Task 7 сохраняется). ───
+        if (delta < 0 && stockMode === "UNIT") {
+          const releaseCount = -delta;
           const releasable = bi.unitReservations.filter(
             (u) => !scannedSet.has(u.equipmentUnitId),
           );
@@ -384,15 +441,22 @@ export async function completeSession(
           data: { quantity: adj.actualQuantity },
         });
 
+        // U2: разные action-имена для +/− дельт. REDUCED сохраняется для
+        // обратной совместимости с существующими интеграционными тестами
+        // и дашбордами, INCREASED — новый action для inline-добор-кейса.
         await writeAuditEntry({
           tx,
           userId: options?.createdBy ?? session.workerName,
-          action: "BOOKING_ITEM_QUANTITY_REDUCED",
+          action:
+            delta > 0
+              ? "BOOKING_ITEM_QUANTITY_INCREASED"
+              : "BOOKING_ITEM_QUANTITY_REDUCED",
           entityType: "Booking",
           entityId: session.bookingId,
           before: { quantity: beforeQty },
           after: {
             quantity: adj.actualQuantity,
+            delta,
             sessionId,
             equipmentId: bi.equipmentId,
             equipmentName: bi.equipment?.name ?? null,

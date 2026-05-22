@@ -4,37 +4,18 @@ import type { ChecklistState, CompleteResult } from "../types";
 import type { UseScanSessionResult } from "../useScanSession";
 
 // ── Mock useScanSession ──────────────────────────────────────────────────────
-// The real hook makes network calls; here we drive `state` directly and spy on
-// the optimistic `check`/`uncheck` so we can assert «Выдать всё» behaviour.
+// The real hook makes network calls; here we drive `state` directly. The
+// post-Task-14 UX doesn't issue per-row check/uncheck during stepping — every
+// intent is held in local state and batched into /complete — so the spies
+// stay defined for backward-compat assertions but should never fire from this
+// component.
 
 let mockState: ChecklistState | null = null;
 let mockLoading = false;
 let mockError: UseScanSessionResult["error"] = null;
 
-/** Optimistically flip `unit.checked` in `mockState` — mirrors the real hook. */
-function applyUnitCheck(unitId: string, checked: boolean) {
-  if (!mockState) return;
-  mockState = {
-    ...mockState,
-    items: mockState.items.map((item) =>
-      item.units
-        ? {
-            ...item,
-            units: item.units.map((u) =>
-              u.unitId === unitId ? { ...u, checked } : u,
-            ),
-          }
-        : item,
-    ),
-  };
-}
-
-const checkSpy = vi.fn(async (unitId: string) => {
-  applyUnitCheck(unitId, true);
-});
-const uncheckSpy = vi.fn(async (unitId: string) => {
-  applyUnitCheck(unitId, false);
-});
+const checkSpy = vi.fn(async () => {});
+const uncheckSpy = vi.fn(async () => {});
 const openSessionSpy = vi.fn(async () => {});
 const refreshSpy = vi.fn(async () => {});
 
@@ -51,20 +32,22 @@ vi.mock("../useScanSession", () => ({
 }));
 
 // Stub AddonSearch — its full behaviour (debounced search, soft-warning,
-// 409-race) is covered by AddonSearch.test.tsx. Here we only assert the
-// IssueChecklist wiring: «＋ Добор» mounts it, and its `onAdded` triggers the
-// session refresh so a freshly added добор appears in the list.
+// 409-race, existingEquipmentIds filter) is covered by AddonSearch.test.tsx.
+// Here we only assert the IssueChecklist wiring: «+ Добор» mounts it with the
+// expected props, and its `onAdded` triggers the session refresh.
 vi.mock("../AddonSearch", () => ({
   AddonSearch: ({
     sessionId,
     bookingId,
     bookingNo,
+    existingEquipmentIds,
     onAdded,
     onClose,
   }: {
     sessionId: string;
     bookingId: string;
     bookingNo?: string;
+    existingEquipmentIds?: ReadonlySet<string>;
     onAdded: (bookingItemId: string, hadConflict: boolean) => void;
     onClose: () => void;
   }) => (
@@ -72,6 +55,10 @@ vi.mock("../AddonSearch", () => ({
       <span>addon:{sessionId}</span>
       <span>bookingId:{bookingId}</span>
       <span>no:{bookingNo}</span>
+      <span>
+        existingIds:
+        {existingEquipmentIds ? Array.from(existingEquipmentIds).sort().join(",") : ""}
+      </span>
       <button type="button" onClick={() => onAdded("bi-added", false)}>
         stub-add
       </button>
@@ -85,11 +72,9 @@ vi.mock("../AddonSearch", () => ({
   ),
 }));
 
-// Spy on the api client used for getSummary / complete. We mock with hoisted
-// vi.fn() refs so tests can drive `complete`'s resolution/rejection per-case.
+// Spy on the api client used for complete. We mock with hoisted vi.fn() refs
+// so tests can drive `complete`'s resolution/rejection per-case.
 const completeSpy = vi.fn();
-const getSummarySpy = vi.fn();
-const getAddonEstimateSpy = vi.fn();
 vi.mock("../api", async () => {
   const actual = await vi.importActual<typeof import("../api")>("../api");
   return {
@@ -98,8 +83,6 @@ vi.mock("../api", async () => {
       ...actual.scanApi,
       complete: (sessionId: string, payload: unknown) =>
         completeSpy(sessionId, payload),
-      getSummary: (sessionId: string) => getSummarySpy(sessionId),
-      getAddonEstimate: (bookingId: string) => getAddonEstimateSpy(bookingId),
     },
   };
 });
@@ -121,6 +104,9 @@ function state(): ChecklistState {
         checkedQty: 0,
         trackingMode: "UNIT",
         isExtra: false,
+        rentalRatePerShift: "1000",
+        originalQuantity: 2,
+        addCap: 2,
         units: [
           { unitId: "u1", barcode: "LR-AP600-001", checked: false, problemType: null },
           { unitId: "u2", barcode: "LR-AP600-002", checked: false, problemType: null },
@@ -135,9 +121,15 @@ function state(): ChecklistState {
         checkedQty: 0,
         trackingMode: "COUNT",
         isExtra: false,
+        rentalRatePerShift: "500",
+        originalQuantity: 4,
+        addCap: 1,
       },
     ],
     progress: { checkedItems: 0, totalItems: 3 },
+    shifts: 2,
+    discountPercent: "0",
+    mainOriginalAfterDiscount: "8000",
   };
 }
 
@@ -150,10 +142,10 @@ function defaultCompleteResult(): CompleteResult {
     missingItems: [],
     substitutedItems: [],
     reservedButUnavailable: [],
-    mainAfterDiscount: "0",
-    mainOriginalAfterDiscount: "0",
+    mainAfterDiscount: "8000",
+    mainOriginalAfterDiscount: "8000",
     addonAfterDiscount: "0",
-    finalAmount: "0",
+    finalAmount: "8000",
     paymentStatus: "NOT_PAID",
     amountPaid: "0",
     createdRepairIds: [],
@@ -168,25 +160,10 @@ beforeEach(() => {
   mockState = state();
   mockLoading = false;
   mockError = null;
-  // Default api mocks — overridden per-test as needed.
   completeSpy.mockResolvedValue(defaultCompleteResult());
-  getSummarySpy.mockResolvedValue({
-    sessionId: "s1",
-    operation: "ISSUE",
-    scannedCount: 0,
-    expectedCount: 0,
-    missingItems: [],
-    substitutedItems: [],
-    reservedButUnavailable: [],
-    mainAfterDiscount: "0",
-    mainOriginalAfterDiscount: "0",
-    addonAfterDiscount: "0",
-    finalAmount: "0",
-  });
-  getAddonEstimateSpy.mockResolvedValue({ addon: null });
 });
 
-describe("IssueChecklist", () => {
+describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
   it("groups items by category and renders one stepper row per bookingItem (no barcodes, no per-unit ordinals)", async () => {
     const { container } = render(
       <IssueChecklist
@@ -196,163 +173,338 @@ describe("IssueChecklist", () => {
       />,
     );
 
-    // Category headers.
     expect(await screen.findByText("Свет")).toBeInTheDocument();
     expect(screen.getByText("Стойки")).toBeInTheDocument();
 
-    // One row per bookingItem now — never per-unit. Pre-Task-11 ordinals
-    // («прибор N из M») are gone; we show «было ×M» eyebrows instead.
-    expect(screen.queryByText("прибор 1 из 2")).not.toBeInTheDocument();
-    expect(screen.queryByText("прибор 2 из 2")).not.toBeInTheDocument();
-    // Eyebrows: «было ×2» (UNIT) and «было ×4» (COUNT).
-    expect(screen.getByText("было ×2")).toBeInTheDocument();
-    expect(screen.getByText("было ×4")).toBeInTheDocument();
+    // Eyebrows now read «было ×<originalQuantity>» — one per row.
+    expect(screen.getAllByText(/было ×2/)).toHaveLength(1);
+    expect(screen.getAllByText(/было ×4/)).toHaveLength(1);
 
-    // Stepper inputs are present (one per bookingItem, including isExtra=false).
     expect(
       screen.getAllByLabelText(/Количество к выдаче/),
     ).toHaveLength(2);
 
-    // No barcode-like strings.
+    // Never a barcode.
     expect(container.textContent || "").not.toMatch(/LR-[A-Z0-9]+-\d+/);
   });
 
-  it("renders stepper with default N=M on each row", async () => {
+  it("renders stepper with default N=bi.quantity on each row", async () => {
     render(
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
 
     const inputs = await screen.findAllByLabelText(/Количество к выдаче/);
     expect(inputs).toHaveLength(2);
-    // UNIT-mode row: M = units.length = 2.
     expect(inputs[0]).toHaveValue(2);
-    // COUNT-mode row: M = item.quantity = 4.
     expect(inputs[1]).toHaveValue(4);
   });
 
-  it("minus disabled at 0, plus disabled at M", async () => {
+  it("stepper does NOT render «/ M» visually — it shows just the number", async () => {
+    const { container } = render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+    await screen.findAllByLabelText(/Количество к выдаче/);
+    // No «/ 2» or «/ 4» literal in the row UI (committed-state badges are gone).
+    expect(container.textContent || "").not.toMatch(/\/\s*\d+/);
+  });
+
+  it("plus enabled past originalQuantity (up to bi.quantity + addCap)", async () => {
     render(
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
 
-    // UNIT row M=2; plus is initially disabled (N=M).
-    const minus = (await screen.findAllByLabelText(/Уменьшить количество/))[0];
-    const plus = screen.getAllByLabelText(/Увеличить количество/)[0];
-    expect(plus).toBeDisabled();
-    expect(minus).not.toBeDisabled();
-
-    // Click minus twice to reach 0 — then minus becomes disabled, plus enabled.
-    fireEvent.click(minus);
-    fireEvent.click(minus);
-    expect(minus).toBeDisabled();
+    // bi-1: bi.quantity=2, addCap=2 → max = 4. Click + twice should reach 4.
+    const plus = (await screen.findAllByLabelText(/Увеличить количество/))[0];
     expect(plus).not.toBeDisabled();
+    fireEvent.click(plus);
+    fireEvent.click(plus);
+    const input = screen.getAllByLabelText(/Количество к выдаче/)[0];
+    expect(input).toHaveValue(4);
+    // At max, plus disabled.
+    expect(plus).toBeDisabled();
+    // One more click does nothing.
+    fireEvent.click(plus);
+    expect(input).toHaveValue(4);
   });
 
-  it("clicking «Выдать N» commits the row with N and surfaces «Выдано N / M»", async () => {
+  it("plus disabled at bi.quantity + addCap (cannot exceed)", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // bi-2: bi.quantity=4, addCap=1 → max = 5. Default value is 4.
+    const inputs = await screen.findAllByLabelText(/Количество к выдаче/);
+    const plus = screen.getAllByLabelText(/Увеличить количество/)[1];
+    fireEvent.click(plus);
+    expect(inputs[1]).toHaveValue(5);
+    expect(plus).toBeDisabled();
+  });
+
+  it("minus disabled at 0", async () => {
     render(
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
 
     const minus = (await screen.findAllByLabelText(/Уменьшить количество/))[0];
-    fireEvent.click(minus); // UNIT-row: N goes 2 → 1.
-    const issueBtn = screen.getByRole("button", {
-      name: /Выдать 1 шт — Aputure 600D/,
-    });
-    fireEvent.click(issueBtn);
-
-    expect(screen.getByText("Выдано 1 / 2")).toBeInTheDocument();
-    // Stepper input for that row is gone — committed state.
-    expect(
-      screen.queryByLabelText(/Количество к выдаче — Aputure 600D/),
-    ).not.toBeInTheDocument();
+    fireEvent.click(minus); // 2 → 1
+    fireEvent.click(minus); // 1 → 0
+    expect(minus).toBeDisabled();
+    // The check/uncheck hook API is NOT touched while stepping.
+    expect(checkSpy).not.toHaveBeenCalled();
+    expect(uncheckSpy).not.toHaveBeenCalled();
   });
 
-  it("N=0 → button reads «Не выдаём» (rose) and committing shows the «Не выдаём» badge", async () => {
+  it("shows «+X» emerald pill when N > originalQuantity (inline-добор)", async () => {
     render(
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
 
+    const plus = (await screen.findAllByLabelText(/Увеличить количество/))[0];
+    fireEvent.click(plus); // 2 → 3
+    const pill = screen.getByLabelText(/Добавлено сверх 2: 1/);
+    expect(pill).toBeInTheDocument();
+    expect(pill.className).toMatch(/text-emerald/);
+    expect(pill).toHaveTextContent("+1");
+  });
+
+  it("shows «−X» amber pill when N < originalQuantity (снято на выдаче)", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    const minus = (await screen.findAllByLabelText(/Уменьшить количество/))[0];
+    fireEvent.click(minus); // 2 → 1
+    const pill = screen.getByLabelText(/Снято от 2: 1/);
+    expect(pill).toBeInTheDocument();
+    expect(pill.className).toMatch(/text-amber/);
+    expect(pill).toHaveTextContent("−1");
+  });
+
+  it("dims and strikes through the row when N = 0", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    const minus = (await screen.findAllByLabelText(/Уменьшить количество/))[0];
+    fireEvent.click(minus); // 2 → 1
+    fireEvent.click(minus); // 1 → 0
+    // The row container gets opacity-60; the equipment name gets line-through.
+    const name = screen.getByText("Aputure 600D");
+    expect(name.parentElement?.className || "").toMatch(/line-through/);
+  });
+
+  it("renders the sticky live finance block with «Согласовано» from mainOriginalAfterDiscount", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    expect(await screen.findByText(/Согласовано/)).toBeInTheDocument();
+    // 8000 ₽
+    expect(screen.getAllByText(/8\s?000/).length).toBeGreaterThan(0);
+  });
+
+  it("live finance shows «Дополнительно» line when intended > originalQuantity (rate*shifts*delta)", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // Bump bi-1 by 1 → rate=1000, shifts=2 → addonActual=2000.
+    const plus = (await screen.findAllByLabelText(/Увеличить количество/))[0];
+    fireEvent.click(plus);
+
+    expect(screen.getByText(/Дополнительно/)).toBeInTheDocument();
+    expect(screen.getByText(/\+\s?2\s?000/)).toBeInTheDocument();
+    // Итого = 8000 + 2000 = 10 000.
+    expect(screen.getByText(/10\s?000/)).toBeInTheDocument();
+  });
+
+  it("live finance shows «Снято на выдаче» when intended < originalQuantity (rate*shifts*delta)", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // Reduce bi-1 by 1 → rate=1000, shifts=2 → removalAmount=2000.
     const minus = (await screen.findAllByLabelText(/Уменьшить количество/))[0];
     fireEvent.click(minus);
-    fireEvent.click(minus); // UNIT-row: 2 → 1 → 0.
 
-    const issueBtn = screen.getByRole("button", {
-      name: /Не выдаём — Aputure 600D/,
-    });
-    expect(issueBtn).toHaveTextContent("Не выдаём");
-    expect(issueBtn.className).toMatch(/bg-rose/);
-    fireEvent.click(issueBtn);
-
-    // Badge appears; stepper hidden.
-    expect(screen.getByText("Не выдаём")).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText(/Количество к выдаче — Aputure 600D/),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText(/Снято на выдаче/)).toBeInTheDocument();
+    expect(screen.getByText(/−\s?2\s?000/)).toBeInTheDocument();
+    // Итого = 8000 − 2000 = 6 000.
+    expect(screen.getByText(/6\s?000/)).toBeInTheDocument();
   });
 
-  it("«Изменить» reverses the commit state back to the stepper", async () => {
+  it("renders «+ Добор» chip and «Готово, выдать» button", async () => {
     render(
-      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
-    );
-
-    // Commit the first row at default N=2.
-    const issueBtn = (
-      await screen.findAllByRole("button", { name: /Выдать \d+ шт/ })
-    )[0];
-    fireEvent.click(issueBtn);
-    expect(
-      screen.queryByLabelText(/Количество к выдаче — Aputure 600D/),
-    ).not.toBeInTheDocument();
-
-    // Click «Изменить» → row is editable again.
-    fireEvent.click(
-      screen.getByLabelText(/Изменить количество для выдачи — Aputure 600D/),
-    );
-    expect(
-      screen.getByLabelText(/Количество к выдаче — Aputure 600D/),
-    ).toBeInTheDocument();
-  });
-
-  it("global «Выдать всё разом» commits every row at its current intended qty (preserving N=0 etc.)", async () => {
-    render(
-      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
-    );
-
-    // First row N=2→1. COUNT row stays at 4.
-    const firstMinus = (
-      await screen.findAllByLabelText(/Уменьшить количество/)
-    )[0];
-    fireEvent.click(firstMinus);
-
-    fireEvent.click(screen.getByRole("button", { name: /Выдать всё разом/ }));
-
-    // Both rows now committed: «Выдано 1 / 2» and «Выдано 4 / 4».
-    expect(screen.getByText("Выдано 1 / 2")).toBeInTheDocument();
-    expect(screen.getByText("Выдано 4 / 4")).toBeInTheDocument();
-
-    // The old API was: «Выдать всё разом» called `check(unitId)` per unit.
-    // Post-Task-11, commits stay in local state until /complete — no spies fired.
-    expect(checkSpy).not.toHaveBeenCalled();
-  });
-
-  it("renders «＋ Добор» and a sticky «Завершить выдачу» that enters the сверка phase", async () => {
-    render(
-      <IssueChecklist
-        sessionId="s1"
-        projectName="Орбита"
-        onBack={() => {}}
-      />,
+      <IssueChecklist sessionId="s1" projectName="Орбита" onBack={() => {}} />,
     );
 
     expect(
       (await screen.findAllByRole("button", { name: /Добор/ })).length,
     ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByRole("button", { name: /Готово, выдать/ }),
+    ).toBeInTheDocument();
+  });
 
-    const finish = screen.getByRole("button", { name: /Завершить выдачу/ });
-    finish.click();
+  it("«Готово, выдать» submits ONLY differences as issuanceAdjustments", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
 
-    // Phase entered, badge visible.
-    expect(await screen.findByText(/Готово к выдаче/)).toBeInTheDocument();
+    // bi-1: 2 → 1 (reduction). bi-2 left at 4 (unchanged).
+    const minuses = await screen.findAllByLabelText(/Уменьшить количество/);
+    fireEvent.click(minuses[0]);
+
+    // Bump bi-2 + 1 → 5 (inline-добор).
+    const plus = screen.getAllByLabelText(/Увеличить количество/)[1];
+    fireEvent.click(plus);
+
+    fireEvent.click(screen.getByRole("button", { name: /Готово, выдать/ }));
+
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+    const [callSessionId, callPayload] = completeSpy.mock.calls[0] as [
+      string,
+      { issuanceAdjustments?: Array<{ bookingItemId: string; actualQuantity: number }> },
+    ];
+    expect(callSessionId).toBe("s1");
+    expect(callPayload.issuanceAdjustments).toEqual(
+      expect.arrayContaining([
+        { bookingItemId: "bi-1", actualQuantity: 1 },
+        { bookingItemId: "bi-2", actualQuantity: 5 },
+      ]),
+    );
+    expect(callPayload.issuanceAdjustments).toHaveLength(2);
+  });
+
+  it("omits issuanceAdjustments when no row's intended differs from bi.quantity", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Готово, выдать/ }),
+    );
+
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+    const [, callPayload] = completeSpy.mock.calls[0] as [
+      string,
+      { issuanceAdjustments?: Array<{ bookingItemId: string; actualQuantity: number }> },
+    ];
+    expect(callPayload.issuanceAdjustments ?? []).toEqual([]);
+  });
+
+  it("sends actualQuantity > bi.quantity for inline-добор (positive delta)", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // bi-1: 2 → 3 → 4 (inline-добор of 2 above bi.quantity).
+    const plus = (await screen.findAllByLabelText(/Увеличить количество/))[0];
+    fireEvent.click(plus);
+    fireEvent.click(plus);
+
+    fireEvent.click(screen.getByRole("button", { name: /Готово, выдать/ }));
+
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
+    const [, callPayload] = completeSpy.mock.calls[0] as [
+      string,
+      { issuanceAdjustments?: Array<{ bookingItemId: string; actualQuantity: number }> },
+    ];
+    expect(callPayload.issuanceAdjustments).toEqual([
+      { bookingItemId: "bi-1", actualQuantity: 4 },
+    ]);
+  });
+
+  it("on /complete success advances to result phase rendering IssueResultView", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Готово, выдать/ }),
+    );
+    expect(await screen.findByText("Выдача оформлена")).toBeInTheDocument();
+  });
+
+  it("surfaces 409 ADJUSTMENT_CONFLICTS_WITH_SCANS inline and resets conflicting row", async () => {
+    completeSpy.mockRejectedValueOnce({
+      status: 409,
+      code: "ADJUSTMENT_CONFLICTS_WITH_SCANS",
+      message: "Нельзя снять 1 шт: 3 единицы уже отсканированы",
+      details: { bookingItemId: "bi-1", scannedCount: 3, requestedQuantity: 1 },
+    });
+
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // Reduce bi-1 → 1, then submit.
+    fireEvent.click(
+      (await screen.findAllByLabelText(/Уменьшить количество/))[0],
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Готово, выдать/ }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/3 единицы уже отсканированы/),
+      ).toBeInTheDocument(),
+    );
+
+    // The conflicting row's intended quantity is reset to bi.quantity (2).
+    expect(screen.getAllByLabelText(/Количество к выдаче/)[0]).toHaveValue(2);
+    // Still on checklist — «Готово, выдать» re-enabled.
+    expect(
+      screen.getByRole("button", { name: /Готово, выдать/ }),
+    ).not.toBeDisabled();
+  });
+
+  it("surfaces 409 ADDON_OVER_STOCK inline and resets row that hit stock cap", async () => {
+    completeSpy.mockRejectedValueOnce({
+      status: 409,
+      code: "ADDON_OVER_STOCK",
+      message: "Не хватает на складе",
+      details: { bookingItemId: "bi-1", addCap: 0, requested: 4 },
+    });
+
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    fireEvent.click(
+      (await screen.findAllByLabelText(/Увеличить количество/))[0],
+    );
+    fireEvent.click(
+      screen.getAllByLabelText(/Увеличить количество/)[0],
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Готово, выдать/ }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Не хватает на складе/)).toBeInTheDocument(),
+    );
+    expect(screen.getAllByLabelText(/Количество к выдаче/)[0]).toHaveValue(2);
+  });
+
+  it("network failure on submit keeps the checklist visible with a rose alert + retry", async () => {
+    completeSpy.mockRejectedValueOnce({
+      status: 500,
+      message: "boom",
+      code: null,
+      details: null,
+    });
+
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Готово, выдать/ }),
+    );
+
+    expect(
+      await screen.findByText(/Не получилось завершить выдачу: boom/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Готово, выдать/ }),
+    ).not.toBeDisabled();
   });
 
   it("shows the loading skeleton while state is null and loading", async () => {
@@ -376,7 +528,7 @@ describe("IssueChecklist", () => {
     ).toBeInTheDocument();
   });
 
-  it("«＋ Добор» (no onAddon) opens AddonSearch with sessionId + booking #", async () => {
+  it("«+ Добор» opens AddonSearch with sessionId, bookingId, existingEquipmentIds", async () => {
     render(
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
@@ -390,9 +542,11 @@ describe("IssueChecklist", () => {
 
     const panel = await screen.findByTestId("addon-search");
     expect(panel).toBeInTheDocument();
-    // sessionId is forwarded; bookingNo derived as "#" + last 6 of bookingId.
     expect(screen.getByText("addon:s1")).toBeInTheDocument();
+    expect(screen.getByText("bookingId:b1")).toBeInTheDocument();
     expect(screen.getByText("no:#B1")).toBeInTheDocument();
+    // Both equipment ids in the fixture flow to AddonSearch for filtering.
+    expect(screen.getByText("existingIds:eq1,eq2")).toBeInTheDocument();
   });
 
   it("AddonSearch onAdded triggers the session refresh; onClose hides it", async () => {
@@ -412,62 +566,7 @@ describe("IssueChecklist", () => {
     );
   });
 
-  it("«Не выдаём» badge counts toward сверка's withheld bucket (M − 0 = M)", async () => {
-    render(
-      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
-    );
-
-    // UNIT-row M=2 → N=0 → commit «Не выдаём».
-    const minus = (await screen.findAllByLabelText(/Уменьшить количество/))[0];
-    fireEvent.click(minus);
-    fireEvent.click(minus);
-    fireEvent.click(
-      screen.getByRole("button", { name: /Не выдаём — Aputure 600D/ }),
-    );
-
-    // Enter the сверка phase — the «✗ Не выдаём» stat row should report 2
-    // (every withheld unit counts; UNIT M=2 + N=0 → withheld=2).
-    fireEvent.click(screen.getByRole("button", { name: /Завершить выдачу/ }));
-    expect(await screen.findByText(/Готово к выдаче/)).toBeInTheDocument();
-    const notIssuedLabel = screen.getByText("✗ Не выдаём");
-    expect(notIssuedLabel.parentElement?.textContent || "").toContain("2");
-  });
-
-  it("changing N after «Изменить» and re-committing reflects the new value", async () => {
-    render(
-      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
-    );
-
-    // Commit UNIT row at default N=2.
-    const issueBtn = (
-      await screen.findAllByRole("button", { name: /Выдать \d+ шт — Aputure/ })
-    )[0];
-    fireEvent.click(issueBtn);
-    expect(screen.getByText("Выдано 2 / 2")).toBeInTheDocument();
-
-    // Uncommit → adjust → re-commit at N=1.
-    fireEvent.click(
-      screen.getByLabelText(/Изменить количество для выдачи — Aputure 600D/),
-    );
-    fireEvent.click(screen.getByLabelText(/Уменьшить количество — Aputure 600D/));
-    fireEvent.click(
-      screen.getByRole("button", { name: /Выдать 1 шт — Aputure 600D/ }),
-    );
-    expect(screen.getByText("Выдано 1 / 2")).toBeInTheDocument();
-
-    // The hook's optimistic check API must NOT be called — adjustments
-    // are batched into /complete by Task 12.
-    expect(checkSpy).not.toHaveBeenCalled();
-  });
-
-  it("passes bookingId to AddonSearch (for доб-смета PDF link)", async () => {
-    render(<IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />);
-    (await screen.findAllByRole("button", { name: /Добор/ }))[0].click();
-    await screen.findByTestId("addon-search");
-    expect(screen.getByText(/bookingId:b1/)).toBeInTheDocument();
-  });
-
-  it("AddonSearch onAdded(bi, hadConflict=true) tracks the bookingItemId for the сверка", async () => {
+  it("AddonSearch onAdded(_, true) surfaces an audit hint for conflict доборы", async () => {
     render(
       <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
     );
@@ -476,118 +575,63 @@ describe("IssueChecklist", () => {
     await screen.findByTestId("addon-search");
     screen.getByRole("button", { name: "stub-add-conflict" }).click();
 
-    // No outward signal yet (UI in Task 8), but the session refresh must
-    // still fire — keeps the existing «refresh» test green and proves the
-    // handler signature is correct.
     await waitFor(() => expect(refreshSpy).toHaveBeenCalledTimes(1));
-  });
-
-  // ── Task 12: issuanceAdjustments payload + 409 inline error ───────────────
-  // Fixture has bi-1 (UNIT, M=2) and bi-2 (COUNT, M=4). The submit handler is
-  // hit via the сверка screen («Подтвердить выдачу») — that's the moment we
-  // build the payload from committed rows where intended != original.
-
-  it("sends only differences (actualQty !== originalQty) in issuanceAdjustments", async () => {
-    render(
-      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
-    );
-
-    // Reduce bi-1 (UNIT, M=2) by one → N=1.
-    const minuses = await screen.findAllByLabelText(/Уменьшить количество/);
-    fireEvent.click(minuses[0]);
-
-    // Reduce bi-2 (COUNT, M=4) all the way to 0 (four clicks).
-    fireEvent.click(minuses[1]);
-    fireEvent.click(minuses[1]);
-    fireEvent.click(minuses[1]);
-    fireEvent.click(minuses[1]);
-
-    // Global commit-all.
-    fireEvent.click(screen.getByRole("button", { name: /Выдать всё разом/ }));
-
-    // Enter сверка, then «Подтвердить выдачу» → POST /complete.
-    fireEvent.click(screen.getByRole("button", { name: /Завершить выдачу/ }));
-    await screen.findByText(/Готово к выдаче/);
-    fireEvent.click(
-      await screen.findByRole("button", { name: /Подтвердить выдачу/ }),
-    );
-
-    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
-    const [callSessionId, callPayload] = completeSpy.mock.calls[0] as [
-      string,
-      { issuanceAdjustments?: Array<{ bookingItemId: string; actualQuantity: number }> },
-    ];
-    expect(callSessionId).toBe("s1");
-    // Order is iteration-stable but assert as a set for robustness.
-    expect(callPayload.issuanceAdjustments).toEqual(
-      expect.arrayContaining([
-        { bookingItemId: "bi-1", actualQuantity: 1 },
-        { bookingItemId: "bi-2", actualQuantity: 0 },
-      ]),
-    );
-    expect(callPayload.issuanceAdjustments).toHaveLength(2);
-  });
-
-  it("omits issuanceAdjustments when no row's intended differs from original", async () => {
-    render(
-      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
-    );
-
-    // Commit everything at default N=M without changing anything.
-    fireEvent.click(
-      await screen.findByRole("button", { name: /Выдать всё разом/ }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /Завершить выдачу/ }));
-    await screen.findByText(/Готово к выдаче/);
-    fireEvent.click(
-      await screen.findByRole("button", { name: /Подтвердить выдачу/ }),
-    );
-
-    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
-    const [, callPayload] = completeSpy.mock.calls[0] as [
-      string,
-      { issuanceAdjustments?: Array<{ bookingItemId: string; actualQuantity: number }> },
-    ];
-    // Either omitted entirely or sent as []. Either is acceptable.
-    expect(callPayload.issuanceAdjustments ?? []).toEqual([]);
-  });
-
-  it("surfaces 409 ADJUSTMENT_CONFLICTS_WITH_SCANS inline and uncommits the conflicting row", async () => {
-    completeSpy.mockRejectedValueOnce({
-      status: 409,
-      code: "ADJUSTMENT_CONFLICTS_WITH_SCANS",
-      message: "Нельзя снять 1 шт: 3 единицы уже отсканированы",
-      details: { bookingItemId: "bi-1", scannedCount: 3, requestedQuantity: 1 },
-    });
-
-    render(
-      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
-    );
-
-    // Reduce bi-1 to N=1, commit, then «Подтвердить выдачу».
-    fireEvent.click(
-      (await screen.findAllByLabelText(/Уменьшить количество/))[0],
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: /Выдать 1 шт — Aputure 600D/ }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /Завершить выдачу/ }));
-    await screen.findByText(/Готово к выдаче/);
-    fireEvent.click(
-      await screen.findByRole("button", { name: /Подтвердить выдачу/ }),
-    );
-
-    // Server message surfaces inline.
-    await waitFor(() =>
-      expect(
-        screen.getByText(/3 единицы уже отсканированы/),
-      ).toBeInTheDocument(),
-    );
-
-    // We're back in the сверка phase (not advanced to result) — «Подтвердить»
-    // is enabled again so the operator can fix the row and retry.
     expect(
-      screen.getByRole("button", { name: /Подтвердить выдачу/ }),
-    ).not.toBeDisabled();
+      await screen.findByText(/добавлен с конфликтом/),
+    ).toBeInTheDocument();
+  });
+
+  it("live finance applies discount: discountPercent=50 halves both main and addon contributions", async () => {
+    // Use a custom state with discount=50.
+    mockState = {
+      ...state(),
+      discountPercent: "50",
+      mainOriginalAfterDiscount: "4000", // 8000 * 0.5
+    };
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // bi-1 + 1 → addon rate=1000, shifts=2, discount=50% → +1000.
+    const plus = (await screen.findAllByLabelText(/Увеличить количество/))[0];
+    fireEvent.click(plus);
+
+    expect(screen.getByText(/Дополнительно/)).toBeInTheDocument();
+    expect(screen.getByText(/\+\s?1\s?000/)).toBeInTheDocument();
+  });
+
+  it("originalQuantity=0 (prior-session добор): any positive intent counts as addon", async () => {
+    mockState = {
+      ...state(),
+      items: [
+        {
+          bookingItemId: "bi-x",
+          equipmentId: "eq-x",
+          equipmentName: "Prior Добор",
+          category: "Свет",
+          quantity: 1,
+          checkedQty: 0,
+          trackingMode: "COUNT",
+          isExtra: false,
+          rentalRatePerShift: "500",
+          originalQuantity: 0,
+          addCap: 5,
+        },
+      ],
+      mainOriginalAfterDiscount: "0",
+    };
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // intended starts at bi.quantity=1; refQty=bi.quantity → diff=0, no pill.
+    expect(screen.queryByLabelText(/Добавлено сверх/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Снято от/)).not.toBeInTheDocument();
+
+    // Bump + 1 → intended=2 > originalQuantity=0 → addon portion is intended-0=2.
+    fireEvent.click(screen.getByLabelText(/Увеличить количество/));
+    expect(screen.getByText(/Дополнительно/)).toBeInTheDocument();
+    // 500 * 2 * 2 = 2000
+    expect(screen.getByText(/\+\s?2\s?000/)).toBeInTheDocument();
   });
 });
