@@ -42,7 +42,7 @@ import { scanApi } from "./api";
 import { UnitRow } from "./UnitRow";
 import { RepairPanel } from "./RepairPanel";
 import { ProblemPanel } from "./ProblemPanel";
-import { CountSplitRow } from "./CountSplitRow";
+import { UnitGridRow, type UnitSlot } from "./UnitGridRow";
 import { ReturnResultView } from "./ReturnResultView";
 import { isScanApiError } from "./types";
 import type {
@@ -50,7 +50,6 @@ import type {
   ChecklistState,
   CompletePayload,
   CompleteResult,
-  CountSplit,
   ProblemDraft,
   ProblemUnitInput,
   RepairUnitInput,
@@ -115,7 +114,7 @@ function allUnitIds(state: ChecklistState): string[] {
 function computeAcceptedCount(
   state: ChecklistState,
   outcomes: OutcomeMap,
-  countSplits: ReadonlyMap<string, CountSplit>,
+  unitGrids: ReadonlyMap<string, UnitSlot[]>,
 ): number {
   let accepted = 0;
   for (const item of state.items) {
@@ -124,7 +123,10 @@ function computeAcceptedCount(
         if (outcomes[u.unitId]?.outcome === "ACCEPTED") accepted += 1;
       }
     } else {
-      accepted += countSplits.get(item.bookingItemId)?.accepted ?? 0;
+      const slots = unitGrids.get(item.bookingItemId);
+      if (slots) {
+        accepted += slots.filter((s) => s.status === "ACCEPTED").length;
+      }
     }
   }
   return accepted;
@@ -162,18 +164,12 @@ export function ReturnChecklist({
 
   // Per-unit outcome map — OWNED here (panels are controlled).
   const [outcomes, setOutcomes] = useState<OutcomeMap>({});
-  // COUNT-row split state (Task 6) — per-line {accepted, repair, problem} bucket
-  // counts. The `repair` / `problem` buckets carry their own controlled draft
-  // (`countRepairComments` / `countProblems`) flushed into the /complete POST
-  // as the COUNT-form of RepairUnitInput / ProblemUnitInput ({bookingItemId,
-  // quantity, …}). Empty Map ⇒ no COUNT row touched yet.
-  const [countSplits, setCountSplits] = useState<Map<string, CountSplit>>(
-    new Map(),
-  );
-  const [countRepairComments, setCountRepairComments] = useState<
-    Map<string, string>
-  >(new Map());
-  const [countProblems, setCountProblems] = useState<Map<string, ProblemDraft>>(
+  // Per-unit state for COUNT-mode rows (variant D, 2026-05-23).
+  // Each COUNT-line owns `totalQty` independent UnitSlots — every slot carries
+  // its own status (PENDING|ACCEPTED|REPAIR|PROBLEM) AND its own repair
+  // comment / problem draft. Payload builder flushes one repair/problem entry
+  // per non-accepted slot (quantity:1, own comment). Empty Map ⇒ no row touched.
+  const [unitGrids, setUnitGrids] = useState<Map<string, UnitSlot[]>>(
     new Map(),
   );
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -288,47 +284,87 @@ export function ReturnChecklist({
     });
   }
 
-  /** Snapshot of a COUNT row's split (default zeros when row hasn't been touched). */
-  function getSplit(bookingItemId: string): CountSplit {
-    return (
-      countSplits.get(bookingItemId) ?? { accepted: 0, repair: 0, problem: 0 }
-    );
+  /** Lazily initialise a COUNT row's UnitSlot[] with all-PENDING slots. */
+  function getUnitGrid(bookingItemId: string, totalQty: number): UnitSlot[] {
+    const cached = unitGrids.get(bookingItemId);
+    if (cached) return cached;
+    return Array.from({ length: totalQty }, (_, i) => ({
+      index: i + 1,
+      status: "PENDING",
+      repairComment: "",
+      problem: { reason: null, comment: "", expectedBackDate: null },
+    }));
   }
 
   /**
-   * Bump one bucket of a COUNT row's split by `delta` (clamped at 0).
-   * Used for both onIncrement (+1) and onDecrement (−1) from CountSplitRow.
-   * Clears any prior row-validation error for this line.
+   * Cycle one slot's status PENDING → ACCEPTED → REPAIR → PROBLEM → PENDING.
+   * Persists repair/problem drafts across cycles so the operator doesn't lose
+   * a comment they typed on a previous status pass.
    */
-  function bumpSplit(
-    bookingItemId: string,
-    bucket: keyof CountSplit,
-    delta: number,
-  ) {
+  function cycleUnit(bookingItemId: string, unitIndex: number, totalQty: number) {
     clearRowError(bookingItemId);
-    setCountSplits((prev) => {
-      const cur = prev.get(bookingItemId) ?? {
-        accepted: 0,
-        repair: 0,
-        problem: 0,
-      };
-      const next = { ...cur, [bucket]: Math.max(0, cur[bucket] + delta) };
+    setUnitGrids((prev) => {
+      const existing = prev.get(bookingItemId) ?? getUnitGrid(bookingItemId, totalQty);
+      const next = existing.map((slot) =>
+        slot.index === unitIndex
+          ? {
+              ...slot,
+              status: cycleStatus(slot.status),
+            }
+          : slot,
+      );
       const updated = new Map(prev);
       updated.set(bookingItemId, next);
       return updated;
     });
   }
 
-  /** «Принять всё» shortcut on a single COUNT row (CountSplitRow.onAcceptAll). */
+  /** Bulk-accept: every slot of a row goes to ACCEPTED. */
   function acceptAllOfRow(bookingItemId: string, totalQty: number) {
     clearRowError(bookingItemId);
-    setCountSplits((prev) => {
+    setUnitGrids((prev) => {
+      const existing = prev.get(bookingItemId) ?? getUnitGrid(bookingItemId, totalQty);
+      const next = existing.map((slot) => ({ ...slot, status: "ACCEPTED" as const }));
       const updated = new Map(prev);
-      updated.set(bookingItemId, {
-        accepted: totalQty,
-        repair: 0,
-        problem: 0,
-      });
+      updated.set(bookingItemId, next);
+      return updated;
+    });
+  }
+
+  function setUnitRepairComment(
+    bookingItemId: string,
+    unitIndex: number,
+    comment: string,
+    totalQty: number,
+  ) {
+    clearRowError(bookingItemId);
+    setUnitGrids((prev) => {
+      const existing = prev.get(bookingItemId) ?? getUnitGrid(bookingItemId, totalQty);
+      const next = existing.map((slot) =>
+        slot.index === unitIndex ? { ...slot, repairComment: comment } : slot,
+      );
+      const updated = new Map(prev);
+      updated.set(bookingItemId, next);
+      return updated;
+    });
+  }
+
+  function patchUnitProblem(
+    bookingItemId: string,
+    unitIndex: number,
+    patch: Partial<ProblemDraft>,
+    totalQty: number,
+  ) {
+    clearRowError(bookingItemId);
+    setUnitGrids((prev) => {
+      const existing = prev.get(bookingItemId) ?? getUnitGrid(bookingItemId, totalQty);
+      const next = existing.map((slot) =>
+        slot.index === unitIndex
+          ? { ...slot, problem: { ...slot.problem, ...patch } }
+          : slot,
+      );
+      const updated = new Map(prev);
+      updated.set(bookingItemId, next);
       return updated;
     });
   }
@@ -340,15 +376,19 @@ export function ReturnChecklist({
     if (!state || bulkBusy || submitting) return;
     setBulkBusy(true);
     try {
-      setCountSplits(() => {
-        const next = new Map<string, CountSplit>();
+      setUnitGrids(() => {
+        const next = new Map<string, UnitSlot[]>();
         for (const item of state.items) {
           if (item.trackingMode !== "UNIT" || !item.units) {
-            next.set(item.bookingItemId, {
-              accepted: item.quantity,
-              repair: 0,
-              problem: 0,
-            });
+            next.set(
+              item.bookingItemId,
+              Array.from({ length: item.quantity }, (_, i) => ({
+                index: i + 1,
+                status: "ACCEPTED",
+                repairComment: "",
+                problem: { reason: null, comment: "", expectedBackDate: null },
+              })),
+            );
           }
         }
         return next;
@@ -374,6 +414,15 @@ export function ReturnChecklist({
     } finally {
       setBulkBusy(false);
     }
+  }
+
+  // ── UnitSlot status cycle (PENDING → ACCEPTED → REPAIR → PROBLEM → PENDING)
+  // Used by cycleUnit; defined locally for typing convenience.
+  function cycleStatus(s: UnitSlot["status"]): UnitSlot["status"] {
+    if (s === "PENDING") return "ACCEPTED";
+    if (s === "ACCEPTED") return "REPAIR";
+    if (s === "REPAIR") return "PROBLEM";
+    return "PENDING";
   }
 
   // ── Validation + completion ────────────────────────────────────────────────
@@ -415,23 +464,32 @@ export function ReturnChecklist({
     for (const item of state.items) {
       if (item.trackingMode === "UNIT") continue;
       const biId = item.bookingItemId;
-      const s = getSplit(biId);
-      const pending = item.quantity - s.accepted - s.repair - s.problem;
+      const slots = unitGrids.get(biId);
+      // Untouched row → ALL units still pending
+      if (!slots || slots.every((s) => s.status === "PENDING")) {
+        errs[biId] = `Помечьте все ${item.quantity} шт`;
+        continue;
+      }
+      const pending = slots.filter((s) => s.status === "PENDING").length;
       if (pending > 0) {
         errs[biId] = `Осталось пометить ${pending} из ${item.quantity}`;
         continue;
       }
-      if (
-        s.repair > 0 &&
-        !(countRepairComments.get(biId) ?? "").trim()
-      ) {
-        errs[biId] = "Введите комментарий ремонта";
-        continue;
-      }
-      if (s.problem > 0) {
-        const p = countProblems.get(biId);
-        if (!p || !p.reason || !p.comment.trim()) {
-          errs[biId] = "Заполните данные проблемы";
+      // Per-slot validation — first error wins, message names the unit.
+      for (const slot of slots) {
+        if (slot.status === "REPAIR" && !slot.repairComment.trim()) {
+          errs[biId] = `Юнит #${slot.index}: введите комментарий ремонта`;
+          break;
+        }
+        if (slot.status === "PROBLEM") {
+          if (!slot.problem.reason) {
+            errs[biId] = `Юнит #${slot.index}: выберите причину проблемы`;
+            break;
+          }
+          if (!slot.problem.comment.trim()) {
+            errs[biId] = `Юнит #${slot.index}: добавьте комментарий проблемы`;
+            break;
+          }
         }
       }
     }
@@ -487,36 +545,39 @@ export function ReturnChecklist({
       // they are NOT sent in repair/problem arrays.
     }
 
-    // Task 6: COUNT-form repair/problem cards (one per non-empty bucket per
-    // COUNT line). Backend `repairUnitSchema` / `problemUnitSchema` accept
-    // `{bookingItemId, quantity, …}` as the discriminated COUNT-form
-    // (apps/api warehouse.ts).
+    // Per-unit COUNT-mode repair/problem (variant D) — emit ONE entry per
+    // non-accepted unit with its own comment. Backend `repairUnitSchema` /
+    // `problemUnitSchema` accept `{bookingItemId, quantity, …}` as the
+    // discriminated COUNT-form (apps/api warehouse.ts). `INVALID_SPLIT`
+    // validation groups by bookingItemId and sums quantities, so N entries
+    // with quantity:1 are equivalent to one entry with quantity:N from the
+    // backend's perspective — we just get separate audit rows per unit.
     if (state) {
       for (const item of state.items) {
         if (item.trackingMode === "UNIT") continue;
         const biId = item.bookingItemId;
-        const s = getSplit(biId);
-        if (s.repair > 0) {
-          repairUnits.push({
-            bookingItemId: biId,
-            quantity: s.repair,
-            comment: (countRepairComments.get(biId) ?? "").trim(),
-          });
-        }
-        if (s.problem > 0) {
-          // Validation guarantees a non-null reason + non-empty comment here.
-          const p = countProblems.get(biId)!;
-          const entry: ProblemUnitInput = {
-            bookingItemId: biId,
-            quantity: s.problem,
-            reason: p.reason!,
-            comment: p.comment.trim(),
-          };
-          if (p.reason === "LEFT_ON_SITE") {
-            const iso = toIsoDatetime(p.expectedBackDate);
-            if (iso) entry.expectedBackDate = iso;
+        const slots = unitGrids.get(biId);
+        if (!slots) continue;
+        for (const slot of slots) {
+          if (slot.status === "REPAIR") {
+            repairUnits.push({
+              bookingItemId: biId,
+              quantity: 1,
+              comment: slot.repairComment.trim(),
+            });
+          } else if (slot.status === "PROBLEM" && slot.problem.reason) {
+            const entry: ProblemUnitInput = {
+              bookingItemId: biId,
+              quantity: 1,
+              reason: slot.problem.reason,
+              comment: slot.problem.comment.trim(),
+            };
+            if (slot.problem.reason === "LEFT_ON_SITE") {
+              const iso = toIsoDatetime(slot.problem.expectedBackDate);
+              if (iso) entry.expectedBackDate = iso;
+            }
+            problemUnits.push(entry);
           }
-          problemUnits.push(entry);
         }
       }
     }
@@ -600,7 +661,7 @@ export function ReturnChecklist({
     // guaranteed present here (the operator interacted to submit); fall back
     // to 0 defensively if the hook somehow cleared it.
     const acceptedCount = state
-      ? computeAcceptedCount(state, outcomes, countSplits)
+      ? computeAcceptedCount(state, outcomes, unitGrids)
       : 0;
     return (
       <ReturnResultView
@@ -784,45 +845,34 @@ export function ReturnChecklist({
                     aria-describedby={rowError ? errId : undefined}
                     className="space-y-1.5 outline-none"
                   >
-                    <CountSplitRow
+                    <UnitGridRow
                       name={item.equipmentName}
                       totalQty={item.quantity}
-                      split={getSplit(biId)}
-                      repairComment={countRepairComments.get(biId) ?? ""}
-                      problem={
-                        countProblems.get(biId) ?? {
-                          reason: null,
-                          comment: "",
-                          expectedBackDate: null,
-                        }
-                      }
+                      units={getUnitGrid(biId, item.quantity)}
                       disabled={interactionsDisabled}
-                      onIncrement={(bucket) => bumpSplit(biId, bucket, +1)}
-                      onDecrement={(bucket) => bumpSplit(biId, bucket, -1)}
+                      onCycle={(unitIndex) =>
+                        cycleUnit(biId, unitIndex, item.quantity)
+                      }
                       onAcceptAll={() =>
                         acceptAllOfRow(biId, item.quantity)
                       }
-                      onRepairCommentChange={(s) => {
-                        clearRowError(biId);
-                        setCountRepairComments((prev) => {
-                          const next = new Map(prev);
-                          next.set(biId, s);
-                          return next;
-                        });
-                      }}
-                      onProblemPatch={(patch) => {
-                        clearRowError(biId);
-                        setCountProblems((prev) => {
-                          const cur = prev.get(biId) ?? {
-                            reason: null,
-                            comment: "",
-                            expectedBackDate: null,
-                          };
-                          const next = new Map(prev);
-                          next.set(biId, { ...cur, ...patch });
-                          return next;
-                        });
-                      }}
+                      onRepairCommentChange={(unitIndex, comment) =>
+                        setUnitRepairComment(
+                          biId,
+                          unitIndex,
+                          comment,
+                          item.quantity,
+                        )
+                      }
+                      onProblemPatch={(unitIndex, patch) =>
+                        patchUnitProblem(
+                          biId,
+                          unitIndex,
+                          patch,
+                          item.quantity,
+                        )
+                      }
+                      rowError={rowError ?? null}
                     />
                     {rowError && (
                       <p
