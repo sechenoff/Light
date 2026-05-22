@@ -138,6 +138,15 @@ repairsRouter.get(
               equipment: { select: { id: true, name: true, category: true } },
             },
           },
+          // COUNT-mode: unit is null; expose equipment via BookingItem so the
+          // frontend can render «Зарядка астера ×3» on cards without crashing.
+          bookingItem: {
+            select: {
+              id: true,
+              quantity: true,
+              equipment: { select: { id: true, name: true, category: true } },
+            },
+          },
           sourceBooking: {
             select: {
               id: true,
