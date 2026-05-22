@@ -31,6 +31,8 @@ import type {
   CompleteResult,
   ChecklistState,
   AddonResult,
+  InWorkBooking,
+  InWorkDetails,
   ScanApiError,
   ScanOperation,
   ScanSessionInfo,
@@ -369,6 +371,31 @@ export function fullEstimatePdfUrl(bookingId: string): string {
   return `/api/bookings/${bookingId}/full-estimate/export/pdf`;
 }
 
+// ── «В работе» tab (active ISSUED bookings) ──────────────────────────────────
+
+/**
+ * GET /api/warehouse/in-work — list of active ISSUED bookings.
+ *
+ * Sorted server-side by `endDate ASC` (overdue/urgent at the top). The
+ * `bookings: [...]` envelope is preserved on purpose — it matches the
+ * backend response 1:1 and lets the caller `await scanApi.listInWork()`
+ * without an extra destructuring step.
+ */
+export function listInWork(): Promise<{ bookings: InWorkBooking[] }> {
+  return request<{ bookings: InWorkBooking[] }>("/api/warehouse/in-work");
+}
+
+/**
+ * GET /api/warehouse/in-work/:bookingId/details — read-only details for one
+ * active booking. 404 when the booking is missing or its status is not
+ * `ISSUED`.
+ */
+export function getInWorkDetails(bookingId: string): Promise<InWorkDetails> {
+  return request<InWorkDetails>(
+    `/api/warehouse/in-work/${bookingId}/details`,
+  );
+}
+
 // ── Aggregate export (ergonomic single import) ───────────────────────────────
 
 export const scanApi = {
@@ -390,6 +417,8 @@ export const scanApi = {
   getAddonEstimate,
   addonEstimatePdfUrl,
   fullEstimatePdfUrl,
+  listInWork,
+  getInWorkDetails,
   getWarehouseToken,
   setWarehouseToken,
   clearWarehouseToken,

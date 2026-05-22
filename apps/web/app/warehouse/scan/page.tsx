@@ -30,9 +30,12 @@ import { toast } from "../../../src/components/ToastProvider";
 import { ScanShell } from "../../../src/components/warehouse/ScanShell";
 import { LoginStep } from "../../../src/components/warehouse/LoginStep";
 import { OperationStep } from "../../../src/components/warehouse/OperationStep";
+import type { ScanViewMode } from "../../../src/components/warehouse/OperationStep";
 import { BookingList } from "../../../src/components/warehouse/BookingList";
 import { IssueChecklist } from "../../../src/components/warehouse/IssueChecklist";
 import { ReturnChecklist } from "../../../src/components/warehouse/ReturnChecklist";
+import { InWorkList } from "../../../src/components/warehouse/InWorkList";
+import { InWorkDetails } from "../../../src/components/warehouse/InWorkDetails";
 import { useScanSession } from "../../../src/components/warehouse/useScanSession";
 import { scanApi } from "../../../src/components/warehouse/api";
 import type {
@@ -57,6 +60,14 @@ function WarehouseScanInner({
     null,
   );
 
+  // «В работе» view-mode state — only meaningful when viewMode === "IN_WORK".
+  // The page enters IN_WORK from OperationStep; from there it shows InWorkList,
+  // then optionally InWorkDetails. There is no scan session in IN_WORK mode.
+  const [viewMode, setViewMode] = useState<ScanViewMode>("ISSUE");
+  const [inWorkSelectedBookingId, setInWorkSelectedBookingId] = useState<
+    string | null
+  >(null);
+
   // Monotonic counter — bumped after a successful complete so the BookingList
   // re-fetches and the just-issued booking disappears from the ISSUE list
   // (and re-appears in the RETURN list when the operator switches operation).
@@ -80,11 +91,53 @@ function WarehouseScanInner({
   }, [goStep]);
 
   const handleOperationSelect = useCallback(
-    (op: ScanOperation) => {
-      setOperation(op);
+    (mode: ScanViewMode) => {
+      setViewMode(mode);
+      if (mode === "IN_WORK") {
+        // IN_WORK: skip operation/RETURN session creation — page renders
+        // InWorkList instead of BookingList in the «booking» step.
+        setInWorkSelectedBookingId(null);
+        goStep("booking");
+        return;
+      }
+      setOperation(mode);
       goStep("booking");
     },
     [setOperation, goStep],
+  );
+
+  const handleInWorkAcceptBack = useCallback(
+    async (bookingId: string) => {
+      // Switch from view-only IN_WORK mode into a real RETURN session for
+      // this booking. Try to open an existing ACTIVE RETURN session first;
+      // if none exists, the user can pick the booking from the normal RETURN
+      // list and start a new one. To keep the flow simple, we just flip the
+      // mode + operation and navigate the user to the bookings list filtered
+      // by RETURN — they'll see the same booking ready to be picked.
+      setViewMode("RETURN");
+      setOperation("RETURN");
+      setInWorkSelectedBookingId(null);
+      // Try to fetch an existing session for this booking. If the backend
+      // sessions endpoint exists for booking-id lookup, we can directly
+      // jump into checklist. Otherwise fall back to the booking list and
+      // let the user tap.
+      try {
+        const session = await scanApi.createSession(bookingId, "RETURN");
+        if (session && session.id) {
+          // Reuse / create — same idempotent path as BookingList.onSelect.
+          // We don't have an activeBooking for headers (in-work-details
+          // returned projectName, but we don't keep it here). Best-effort:
+          // null booking is acceptable — checklist still loads from sessionId.
+          await openSession(session.id, "RETURN");
+          goStep("checklist");
+          return;
+        }
+      } catch {
+        // ignore — fall through to booking list
+      }
+      goStep("booking");
+    },
+    [openSession, setOperation, goStep],
   );
 
   const handleBookingSelect = useCallback(
@@ -138,10 +191,56 @@ function WarehouseScanInner({
     );
   }
 
-  const opLabel = operation === "ISSUE" ? "Выдача" : "Возврат";
+  const opLabel =
+    viewMode === "IN_WORK"
+      ? "В работе"
+      : operation === "ISSUE"
+        ? "Выдача"
+        : "Возврат";
   // Accusative for the «чтобы начать N» phrase: «выдачу» (feminine) / «возврат»
   // (masculine inanimate stays nominative). Без этого выводилось «начать выдача».
   const opAccusative = operation === "ISSUE" ? "выдачу" : "возврат";
+
+  // ── IN_WORK branch — list of active bookings + details + «← Принять обратно». ──
+  if (viewMode === "IN_WORK" && step === "booking") {
+    const inWorkListSlot = (
+      <InWorkList
+        onSelect={(bid) => setInWorkSelectedBookingId(bid)}
+      />
+    );
+    if (inWorkSelectedBookingId) {
+      return (
+        <ScanShell
+          eyebrow="Склад · В работе"
+          title="Активная выдача"
+          workerName={workerName}
+          onBack={() => setInWorkSelectedBookingId(null)}
+          list={inWorkListSlot}
+          detail={
+            <InWorkDetails
+              bookingId={inWorkSelectedBookingId}
+              onAcceptBack={(bid) => void handleInWorkAcceptBack(bid)}
+              onBack={() => setInWorkSelectedBookingId(null)}
+            />
+          }
+        />
+      );
+    }
+    return (
+      <ScanShell
+        eyebrow="Склад · В работе"
+        title="Что сейчас у клиентов"
+        workerName={workerName}
+        onBack={backToOperation}
+        list={inWorkListSlot}
+        detail={
+          <div className="hidden flex-1 items-center justify-center px-4 py-12 text-center text-sm text-ink-3 lg:flex">
+            Выберите бронь слева, чтобы посмотреть выдачу.
+          </div>
+        }
+      />
+    );
+  }
 
   const bookingListSlot = (
     <BookingList

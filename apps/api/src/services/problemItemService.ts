@@ -88,7 +88,7 @@ export async function resolveProblemItem(
       where: { id },
       data: { status: outcome, resolutionNote: note, resolvedAt: new Date(), resolvedBy },
     });
-    if (outcome === "FOUND") {
+    if (outcome === "FOUND" && pi.equipmentUnitId) {
       await tx.equipmentUnit.update({
         where: { id: pi.equipmentUnitId },
         data: { status: "AVAILABLE" },
@@ -97,7 +97,7 @@ export async function resolveProblemItem(
     // FUTURE: outcome === "NOT_FOUND" → создать «долг гафера» (раздел долгов). Не реализуем сейчас.
     await writeAuditEntry({
       tx, userId: resolvedBy, action: "PROBLEM_ITEM_RESOLVE",
-      entityType: "ProblemItem", entityId: pi.equipmentUnitId,
+      entityType: "ProblemItem", entityId: pi.equipmentUnitId ?? pi.id,
       before: { status: pi.status },
       after: { status: outcome, note },
     });

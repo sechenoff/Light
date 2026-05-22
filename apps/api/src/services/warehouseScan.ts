@@ -27,18 +27,32 @@ type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$trans
 
 export type ScanOperation = "ISSUE" | "RETURN";
 
-export interface RepairUnit {
-  equipmentUnitId: string;
-  comment: string;
-  urgency?: RepairUrgency;
-}
+/**
+ * Repair input — discriminated union of UNIT-mode and COUNT-mode forms.
+ *
+ *  - UNIT-mode: `{ equipmentUnitId, comment, urgency? }` — one Repair card created per
+ *    physically scanned unit (legacy behavior; statuses transition AVAILABLE→MAINTENANCE).
+ *  - COUNT-mode: `{ bookingItemId, quantity, comment }` — one Repair row covering N
+ *    untracked units of the same line. `unitId` is null in the persisted row.
+ *
+ * Exactly one of `equipmentUnitId` and `bookingItemId` is set per entry.
+ */
+export type RepairUnit =
+  | { equipmentUnitId: string; comment: string; urgency?: RepairUrgency }
+  | { bookingItemId: string; quantity: number; comment: string };
 
-export interface ProblemUnit {
-  equipmentUnitId: string;
-  reason: ProblemReason;
-  comment: string;
-  expectedBackDate?: string;
-}
+/**
+ * ProblemItem input — same UNIT-vs-COUNT discriminator pattern as RepairUnit.
+ */
+export type ProblemUnit =
+  | { equipmentUnitId: string; reason: ProblemReason; comment: string; expectedBackDate?: string }
+  | {
+      bookingItemId: string;
+      quantity: number;
+      reason: ProblemReason;
+      comment: string;
+      expectedBackDate?: string;
+    };
 
 /**
  * Корректировка фактически выданного количества для одной BookingItem-позиции
@@ -262,6 +276,58 @@ export async function completeSession(
   const issuanceAdjustments = options?.issuanceAdjustments ?? [];
   const hasAdjustments =
     session.operation === "ISSUE" && issuanceAdjustments.length > 0;
+
+  // ── COUNT-mode split validation (RETURN only) ──────────────────────────────
+  // На странице приёмки оператор может разнести N единиц одной BookingItem по
+  // трём «корзинам»: Принято / Ремонт / Проблема. Backend получает суммы по
+  // COUNT-форме repair/problem-входов. Если repair + problem > BookingItem.qty
+  // — это конфликт ввода, кидаем 400 ДО любых мутаций (включая физический
+  // RETURN). UNIT-форма входов не участвует в проверке — она привязана к
+  // конкретному equipmentUnitId.
+  if (session.operation === "RETURN") {
+    const repairsList = options?.repairUnits ?? [];
+    const problemsList = options?.problemUnits ?? [];
+    const countRepairByBi = new Map<string, number>();
+    const countProblemByBi = new Map<string, number>();
+    for (const r of repairsList) {
+      if ("bookingItemId" in r && r.bookingItemId) {
+        countRepairByBi.set(
+          r.bookingItemId,
+          (countRepairByBi.get(r.bookingItemId) ?? 0) + r.quantity,
+        );
+      }
+    }
+    for (const p of problemsList) {
+      if ("bookingItemId" in p && p.bookingItemId) {
+        countProblemByBi.set(
+          p.bookingItemId,
+          (countProblemByBi.get(p.bookingItemId) ?? 0) + p.quantity,
+        );
+      }
+    }
+    const splitBiIds = new Set<string>([
+      ...countRepairByBi.keys(),
+      ...countProblemByBi.keys(),
+    ]);
+    if (splitBiIds.size > 0) {
+      const bis = await prisma.bookingItem.findMany({
+        where: { id: { in: Array.from(splitBiIds) }, bookingId: session.bookingId },
+        select: { id: true, quantity: true },
+      });
+      for (const bi of bis) {
+        const repair = countRepairByBi.get(bi.id) ?? 0;
+        const problem = countProblemByBi.get(bi.id) ?? 0;
+        if (repair + problem > bi.quantity) {
+          throw new HttpError(400, "Неверное распределение", "INVALID_SPLIT", {
+            bookingItemId: bi.id,
+            repair,
+            problem,
+            totalQty: bi.quantity,
+          });
+        }
+      }
+    }
+  }
 
   // Snapshot для возврата в summary — захватываем ВНУТРИ транзакции (см. ниже).
   let mainOriginalAfterDiscount = "0";
@@ -608,95 +674,186 @@ export async function completeSession(
 
   // После завершения транзакции — создаём карточки ремонта для поломанных единиц.
   // urgency не собирается в быстром UI → дефолт NORMAL.
+  //
+  // RepairUnit поддерживает две формы:
+  //   - UNIT: { equipmentUnitId, comment, urgency? } → createRepair(unit) +
+  //     перенос staged-фото + перевод unit в MAINTENANCE (через createRepair).
+  //   - COUNT: { bookingItemId, quantity, comment } → tx.repair.create без
+  //     unitId; staged-фото не переносятся (нет привязки к юниту); статусы
+  //     equipmentUnit не трогаются.
   const repairUnits = options?.repairUnits ?? [];
   if (repairUnits.length > 0 && session.operation === "RETURN") {
     for (const r of repairUnits) {
-      try {
-        const repair = await createRepair({
-          unitId: r.equipmentUnitId,
-          reason: r.comment,
-          urgency: r.urgency ?? "NORMAL",
-          sourceBookingId: session.bookingId,
-          createdBy,
-        });
-        summary.createdRepairIds.push(repair.id);
-
-        // Перенос staged-фото поломки этой единицы в uploads/repairs/{repairId}/
-        // и создание RepairPhoto-записей. Только success-путь (после успешного
-        // создания Repair). Не блокирует завершение при отсутствии фото.
-        const moved = moveStagedToRepair(sessionId, r.equipmentUnitId, repair.id);
-        if (moved.length > 0) {
-          await prisma.repairPhoto.createMany({
-            data: moved.map((fp) => ({ repairId: repair.id, filePath: fp, createdBy })),
-          });
-        }
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        console.error("createRepair failed during scan completion", {
-          unitId: r.equipmentUnitId,
-          bookingId: session.bookingId,
-          error: errMsg,
-        });
-
-        // Безопасность: возвращаем unit в MAINTENANCE, чтобы не сдать сломанный в аренду
+      if ("equipmentUnitId" in r && r.equipmentUnitId) {
+        // ── UNIT-mode (legacy) ─────────────────────────────────────────────
         try {
-          await prisma.equipmentUnit.update({
-            where: { id: r.equipmentUnitId },
-            data: { status: "MAINTENANCE" },
-          });
-          console.error("unit restored to MAINTENANCE after createRepair failure", { unitId: r.equipmentUnitId });
-        } catch (fallbackErr: unknown) {
-          console.error("CRITICAL: failed to restore unit to MAINTENANCE", {
+          const repair = await createRepair({
             unitId: r.equipmentUnitId,
-            fallbackError: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+            reason: r.comment,
+            urgency: r.urgency ?? "NORMAL",
+            sourceBookingId: session.bookingId,
+            createdBy,
+          });
+          summary.createdRepairIds.push(repair.id);
+
+          // Перенос staged-фото поломки этой единицы в uploads/repairs/{repairId}/
+          // и создание RepairPhoto-записей. Только success-путь (после успешного
+          // создания Repair). Не блокирует завершение при отсутствии фото.
+          const moved = moveStagedToRepair(sessionId, r.equipmentUnitId, repair.id);
+          if (moved.length > 0) {
+            await prisma.repairPhoto.createMany({
+              data: moved.map((fp) => ({ repairId: repair.id, filePath: fp, createdBy })),
+            });
+          }
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error("createRepair failed during scan completion", {
+            unitId: r.equipmentUnitId,
+            bookingId: session.bookingId,
+            error: errMsg,
+          });
+
+          // Безопасность: возвращаем unit в MAINTENANCE, чтобы не сдать сломанный в аренду
+          try {
+            await prisma.equipmentUnit.update({
+              where: { id: r.equipmentUnitId },
+              data: { status: "MAINTENANCE" },
+            });
+            console.error("unit restored to MAINTENANCE after createRepair failure", { unitId: r.equipmentUnitId });
+          } catch (fallbackErr: unknown) {
+            console.error("CRITICAL: failed to restore unit to MAINTENANCE", {
+              unitId: r.equipmentUnitId,
+              fallbackError: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+            });
+          }
+
+          // Аудит провала (без транзакции)
+          try {
+            await writeAuditEntry({
+              userId: createdBy,
+              action: "REPAIR_CREATE_FAILED",
+              entityType: "EquipmentUnit",
+              entityId: r.equipmentUnitId,
+              before: null,
+              after: { reason: r.comment, urgency: r.urgency ?? "NORMAL", error: errMsg },
+            });
+          } catch { /* аудит не должен блокировать */ }
+
+          summary.failedBrokenUnits.push({
+            unitId: r.equipmentUnitId,
+            reason: r.comment,
+            error: errMsg,
           });
         }
-
-        // Аудит провала (без транзакции)
+      } else if ("bookingItemId" in r && r.bookingItemId) {
+        // ── COUNT-mode (Task 2 — return COUNT-split) ───────────────────────
+        // Один Repair-row на N единиц одной BookingItem. Никакого unit-id,
+        // никаких staged-фото, никаких MAINTENANCE-переходов: позиция COUNT —
+        // вне UNIT-трекинга.
         try {
-          await writeAuditEntry({
-            userId: createdBy,
-            action: "REPAIR_CREATE_FAILED",
-            entityType: "EquipmentUnit",
-            entityId: r.equipmentUnitId,
-            before: null,
-            after: { reason: r.comment, urgency: r.urgency ?? "NORMAL", error: errMsg },
+          const repair = await prisma.repair.create({
+            data: {
+              bookingItemId: r.bookingItemId,
+              quantity: r.quantity,
+              reason: r.comment,
+              urgency: "NORMAL",
+              status: "WAITING_REPAIR",
+              sourceBookingId: session.bookingId,
+              createdBy,
+              partsCost: 0,
+              totalTimeHours: 0,
+            },
           });
-        } catch { /* аудит не должен блокировать */ }
-
-        summary.failedBrokenUnits.push({
-          unitId: r.equipmentUnitId,
-          reason: r.comment,
-          error: errMsg,
-        });
+          summary.createdRepairIds.push(repair.id);
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error("[completeSession] COUNT repair create failed", {
+            bookingItemId: r.bookingItemId,
+            quantity: r.quantity,
+            bookingId: session.bookingId,
+            error: errMsg,
+          });
+          summary.failedBrokenUnits.push({
+            unitId: r.bookingItemId,
+            reason: r.comment,
+            error: errMsg,
+          });
+        }
       }
     }
   }
 
   // ── Обработка проблемных единиц «Потеряшки» (только для операции RETURN) ────
-  // createProblemItem открывает собственную транзакцию (вызов без tx). Каждая
+  // createProblemItem (UNIT-форма) открывает собственную транзакцию. Каждая
   // единица обрабатывается изолированно — сбой одной не валит остальные и не
   // откатывает физический возврат.
+  //
+  // ProblemUnit поддерживает две формы:
+  //   - UNIT: { equipmentUnitId, reason, comment, expectedBackDate? } →
+  //     createProblemItem(unit) с трансформацией статуса equipmentUnit и
+  //     reason-зависимой логикой (DESTROYED → RETIRED + WROTE_OFF, и т.д.).
+  //   - COUNT: { bookingItemId, quantity, reason, comment, expectedBackDate? } →
+  //     tx.problemItem.create без equipmentUnitId; статусы юнитов не трогаются,
+  //     reason используется только как enum-метка в строке (без авто-WROTE_OFF).
   const problemUnits = options?.problemUnits ?? [];
   if (problemUnits.length > 0 && session.operation === "RETURN") {
     for (const p of problemUnits) {
-      try {
-        const pi = await createProblemItem({
-          equipmentUnitId: p.equipmentUnitId,
-          reason: p.reason,
-          comment: p.comment,
-          expectedBackDate: p.expectedBackDate ? new Date(p.expectedBackDate) : null,
-          sourceBookingId: session.bookingId,
-          createdBy,
-        });
-        summary.createdProblemItemIds.push(pi.id);
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        console.error(`[completeSession] problem unit ${p.equipmentUnitId} failed:`, err);
-        summary.failedProblemUnits.push({
-          equipmentUnitId: p.equipmentUnitId,
-          reason: errMsg,
-        });
+      if ("equipmentUnitId" in p && p.equipmentUnitId) {
+        // ── UNIT-mode (legacy) ─────────────────────────────────────────────
+        try {
+          const pi = await createProblemItem({
+            equipmentUnitId: p.equipmentUnitId,
+            reason: p.reason,
+            comment: p.comment,
+            expectedBackDate: p.expectedBackDate ? new Date(p.expectedBackDate) : null,
+            sourceBookingId: session.bookingId,
+            createdBy,
+          });
+          summary.createdProblemItemIds.push(pi.id);
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error(`[completeSession] problem unit ${p.equipmentUnitId} failed:`, err);
+          summary.failedProblemUnits.push({
+            equipmentUnitId: p.equipmentUnitId,
+            reason: errMsg,
+          });
+        }
+      } else if ("bookingItemId" in p && p.bookingItemId) {
+        // ── COUNT-mode (Task 2 — return COUNT-split) ───────────────────────
+        // Простой insert ProblemItem-row с bookingItemId + quantity. Без
+        // equipmentUnit-side-эффектов: COUNT-позиция вне UNIT-трекинга.
+        // DESTROYED-кейс через COUNT-форму намеренно НЕ обрабатывается
+        // (нечего «списать» — нет конкретного юнита). UI-валидация не должна
+        // допускать reason=DESTROYED в COUNT-форме, но фронт-валидатор не
+        // имеет обязательной силы → попадание сюда фиксирует строку без
+        // WROTE_OFF-логики (status по умолчанию = SEARCHING).
+        try {
+          const pi = await prisma.problemItem.create({
+            data: {
+              bookingItemId: p.bookingItemId,
+              quantity: p.quantity,
+              sourceBookingId: session.bookingId,
+              reason: p.reason,
+              comment: p.comment,
+              expectedBackDate: p.expectedBackDate ? new Date(p.expectedBackDate) : null,
+              status: p.reason === "LEFT_ON_SITE" ? "EXPECTED" : "SEARCHING",
+              createdBy,
+            },
+          });
+          summary.createdProblemItemIds.push(pi.id);
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error("[completeSession] COUNT problem create failed", {
+            bookingItemId: p.bookingItemId,
+            quantity: p.quantity,
+            bookingId: session.bookingId,
+            error: errMsg,
+          });
+          summary.failedProblemUnits.push({
+            equipmentUnitId: p.bookingItemId,
+            reason: errMsg,
+          });
+        }
       }
     }
   }
@@ -713,10 +870,19 @@ export async function completeSession(
   // авто-резолв не должен «вернуть» только что заведённую карточку в FOUND.
   // Сценарий авто-резолва — поздний возврат единицы, помеченной В ПРОШЛОЙ сессии.
   if (session.operation === "RETURN") {
-    const flaggedThisSession = new Set<string>([
-      ...problemUnits.map((p) => p.equipmentUnitId),
-      ...repairUnits.map((r) => r.equipmentUnitId),
-    ]);
+    // COUNT-форма не имеет equipmentUnitId — она не помечает конкретные юниты,
+    // а значит и не должна влиять на авто-резолв. Фильтруем только UNIT-форму.
+    const flaggedThisSession = new Set<string>();
+    for (const p of problemUnits) {
+      if ("equipmentUnitId" in p && p.equipmentUnitId) {
+        flaggedThisSession.add(p.equipmentUnitId);
+      }
+    }
+    for (const r of repairUnits) {
+      if ("equipmentUnitId" in r && r.equipmentUnitId) {
+        flaggedThisSession.add(r.equipmentUnitId);
+      }
+    }
     for (const unitId of scannedUnitIds) {
       if (flaggedThisSession.has(unitId)) continue;
       try {

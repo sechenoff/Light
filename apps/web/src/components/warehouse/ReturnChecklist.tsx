@@ -42,6 +42,7 @@ import { scanApi } from "./api";
 import { UnitRow } from "./UnitRow";
 import { RepairPanel } from "./RepairPanel";
 import { ProblemPanel } from "./ProblemPanel";
+import { CountSplitRow } from "./CountSplitRow";
 import { ReturnResultView } from "./ReturnResultView";
 import { isScanApiError } from "./types";
 import type {
@@ -49,7 +50,8 @@ import type {
   ChecklistState,
   CompletePayload,
   CompleteResult,
-  ProblemReason,
+  CountSplit,
+  ProblemDraft,
   ProblemUnitInput,
   RepairUnitInput,
   ReturnOutcome,
@@ -57,13 +59,6 @@ import type {
 import { pluralize } from "../../lib/format";
 
 // ── Local outcome state ──────────────────────────────────────────────────────
-
-interface ProblemDraft {
-  reason: ProblemReason | null;
-  comment: string;
-  /** Bare `YYYY-MM-DD` (raw <input type="date">), null unless LEFT_ON_SITE. */
-  expectedBackDate: string | null;
-}
 
 interface UnitOutcome {
   outcome: ReturnOutcome;
@@ -106,28 +101,21 @@ function allUnitIds(state: ChecklistState): string[] {
   return ids;
 }
 
-/** COUNT-line bookingItemIds (no per-unit ids server-side). */
-function allCountLineIds(state: ChecklistState): string[] {
-  return state.items
-    .filter((i) => i.trackingMode !== "UNIT" || !i.units)
-    .map((i) => i.bookingItemId);
-}
-
 /**
  * The TRUE «Принято» count from the frontend outcome truth (this component
- * owns it): UNIT units whose outcome is ACCEPTED + accepted COUNT lines.
+ * owns it): UNIT units whose outcome is ACCEPTED + the `accepted` bucket of
+ * every COUNT row's split.
  *
  * This is intentionally NOT derived from the backend `scannedCount`: in the
  * RETURN flow only ACCEPTED units are ever check()'d (REPAIR/PROBLEM are sent
  * in the /complete POST, never scanned), so `scannedCount − repair − problem`
- * double-subtracts and under-reports. An accepted COUNT line counts as 1 —
- * consistent with IssueChecklist.computeProgress + the validate/progress logic
- * here (COUNT lines are all-or-nothing, no per-unit ids server-side).
+ * double-subtracts and under-reports. A COUNT row's `split.accepted` ranges
+ * 0..quantity (Task 6 split — accept/repair/problem buckets per line).
  */
 function computeAcceptedCount(
   state: ChecklistState,
   outcomes: OutcomeMap,
-  countAccepted: ReadonlySet<string>,
+  countSplits: ReadonlyMap<string, CountSplit>,
 ): number {
   let accepted = 0;
   for (const item of state.items) {
@@ -135,8 +123,8 @@ function computeAcceptedCount(
       for (const u of item.units) {
         if (outcomes[u.unitId]?.outcome === "ACCEPTED") accepted += 1;
       }
-    } else if (countAccepted.has(item.bookingItemId)) {
-      accepted += 1;
+    } else {
+      accepted += countSplits.get(item.bookingItemId)?.accepted ?? 0;
     }
   }
   return accepted;
@@ -174,8 +162,20 @@ export function ReturnChecklist({
 
   // Per-unit outcome map — OWNED here (panels are controlled).
   const [outcomes, setOutcomes] = useState<OutcomeMap>({});
-  // COUNT lines accepted locally (no server unit ids).
-  const [countAccepted, setCountAccepted] = useState<Set<string>>(new Set());
+  // COUNT-row split state (Task 6) — per-line {accepted, repair, problem} bucket
+  // counts. The `repair` / `problem` buckets carry their own controlled draft
+  // (`countRepairComments` / `countProblems`) flushed into the /complete POST
+  // as the COUNT-form of RepairUnitInput / ProblemUnitInput ({bookingItemId,
+  // quantity, …}). Empty Map ⇒ no COUNT row touched yet.
+  const [countSplits, setCountSplits] = useState<Map<string, CountSplit>>(
+    new Map(),
+  );
+  const [countRepairComments, setCountRepairComments] = useState<
+    Map<string, string>
+  >(new Map());
+  const [countProblems, setCountProblems] = useState<Map<string, ProblemDraft>>(
+    new Map(),
+  );
   const [bulkBusy, setBulkBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -288,22 +288,71 @@ export function ReturnChecklist({
     });
   }
 
-  function setCountLine(bookingItemId: string, accepted: boolean) {
-    setCountAccepted((prev) => {
-      const next = new Set(prev);
-      if (accepted) next.add(bookingItemId);
-      else next.delete(bookingItemId);
-      return next;
+  /** Snapshot of a COUNT row's split (default zeros when row hasn't been touched). */
+  function getSplit(bookingItemId: string): CountSplit {
+    return (
+      countSplits.get(bookingItemId) ?? { accepted: 0, repair: 0, problem: 0 }
+    );
+  }
+
+  /**
+   * Bump one bucket of a COUNT row's split by `delta` (clamped at 0).
+   * Used for both onIncrement (+1) and onDecrement (−1) from CountSplitRow.
+   * Clears any prior row-validation error for this line.
+   */
+  function bumpSplit(
+    bookingItemId: string,
+    bucket: keyof CountSplit,
+    delta: number,
+  ) {
+    clearRowError(bookingItemId);
+    setCountSplits((prev) => {
+      const cur = prev.get(bookingItemId) ?? {
+        accepted: 0,
+        repair: 0,
+        problem: 0,
+      };
+      const next = { ...cur, [bucket]: Math.max(0, cur[bucket] + delta) };
+      const updated = new Map(prev);
+      updated.set(bookingItemId, next);
+      return updated;
+    });
+  }
+
+  /** «Принять всё» shortcut on a single COUNT row (CountSplitRow.onAcceptAll). */
+  function acceptAllOfRow(bookingItemId: string, totalQty: number) {
+    clearRowError(bookingItemId);
+    setCountSplits((prev) => {
+      const updated = new Map(prev);
+      updated.set(bookingItemId, {
+        accepted: totalQty,
+        repair: 0,
+        problem: 0,
+      });
+      return updated;
     });
   }
 
   // «Принять всё разом» — every UNIT unit ACCEPTED (hook guard dedupes) and
-  // every COUNT line accepted. Mirrors IssueChecklist.issueAll.
+  // every COUNT row's split set to {accepted: quantity, repair: 0, problem: 0}.
+  // Mirrors IssueChecklist.issueAll.
   async function acceptAll() {
     if (!state || bulkBusy || submitting) return;
     setBulkBusy(true);
     try {
-      setCountAccepted(new Set(allCountLineIds(state)));
+      setCountSplits(() => {
+        const next = new Map<string, CountSplit>();
+        for (const item of state.items) {
+          if (item.trackingMode !== "UNIT" || !item.units) {
+            next.set(item.bookingItemId, {
+              accepted: item.quantity,
+              repair: 0,
+              problem: 0,
+            });
+          }
+        }
+        return next;
+      });
       setOutcomes((prev) => {
         const next: OutcomeMap = { ...prev };
         for (const id of allUnitIds(state)) next[id] = { outcome: "ACCEPTED" };
@@ -329,7 +378,16 @@ export function ReturnChecklist({
 
   // ── Validation + completion ────────────────────────────────────────────────
 
-  /** Pure: per-unit-id validation errors (no state writes). */
+  /**
+   * Pure: per-row-id validation errors (no state writes). Keyed by unitId for
+   * UNIT rows, bookingItemId for COUNT rows (mutually disjoint id spaces, both
+   * passed to `setRowErrors` / `rowErrorId`).
+   *
+   * COUNT-row rules (Task 6):
+   *  - `pending = qty − accepted − repair − problem` must be 0;
+   *  - if `repair > 0`, repair comment must be non-empty;
+   *  - if `problem > 0`, problem reason + comment must be set.
+   */
   function computeRowErrors(): Record<string, string> {
     const errs: Record<string, string> = {};
     if (!state) return errs;
@@ -350,6 +408,30 @@ export function ReturnChecklist({
           errs[id] = "Выберите причину проблемы";
         } else if (!p.comment || p.comment.trim() === "") {
           errs[id] = "Добавьте комментарий к проблеме";
+        }
+      }
+    }
+
+    for (const item of state.items) {
+      if (item.trackingMode === "UNIT") continue;
+      const biId = item.bookingItemId;
+      const s = getSplit(biId);
+      const pending = item.quantity - s.accepted - s.repair - s.problem;
+      if (pending > 0) {
+        errs[biId] = `Осталось пометить ${pending} из ${item.quantity}`;
+        continue;
+      }
+      if (
+        s.repair > 0 &&
+        !(countRepairComments.get(biId) ?? "").trim()
+      ) {
+        errs[biId] = "Введите комментарий ремонта";
+        continue;
+      }
+      if (s.problem > 0) {
+        const p = countProblems.get(biId);
+        if (!p || !p.reason || !p.comment.trim()) {
+          errs[biId] = "Заполните данные проблемы";
         }
       }
     }
@@ -405,6 +487,40 @@ export function ReturnChecklist({
       // they are NOT sent in repair/problem arrays.
     }
 
+    // Task 6: COUNT-form repair/problem cards (one per non-empty bucket per
+    // COUNT line). Backend `repairUnitSchema` / `problemUnitSchema` accept
+    // `{bookingItemId, quantity, …}` as the discriminated COUNT-form
+    // (apps/api warehouse.ts).
+    if (state) {
+      for (const item of state.items) {
+        if (item.trackingMode === "UNIT") continue;
+        const biId = item.bookingItemId;
+        const s = getSplit(biId);
+        if (s.repair > 0) {
+          repairUnits.push({
+            bookingItemId: biId,
+            quantity: s.repair,
+            comment: (countRepairComments.get(biId) ?? "").trim(),
+          });
+        }
+        if (s.problem > 0) {
+          // Validation guarantees a non-null reason + non-empty comment here.
+          const p = countProblems.get(biId)!;
+          const entry: ProblemUnitInput = {
+            bookingItemId: biId,
+            quantity: s.problem,
+            reason: p.reason!,
+            comment: p.comment.trim(),
+          };
+          if (p.reason === "LEFT_ON_SITE") {
+            const iso = toIsoDatetime(p.expectedBackDate);
+            if (iso) entry.expectedBackDate = iso;
+          }
+          problemUnits.push(entry);
+        }
+      }
+    }
+
     const payload: CompletePayload = {};
     if (repairUnits.length > 0) payload.repairUnits = repairUnits;
     if (problemUnits.length > 0) payload.problemUnits = problemUnits;
@@ -412,15 +528,33 @@ export function ReturnChecklist({
   }
 
   /**
-   * Scroll + focus the FIRST errored row into view (kiosk a11y). Deferred to
-   * the next frame so the just-set row error / `aria-invalid` have rendered
-   * before focus moves.
+   * Scroll + focus the FIRST errored row into view (kiosk a11y). Iterates
+   * rows in render order — UNIT unit-rows (per `unitIds`) and COUNT rows (per
+   * bookingItemId) both register their refs against the same `rowRefs` map.
+   * Deferred to the next frame so the just-set row error / `aria-invalid`
+   * have rendered before focus moves.
    */
   function focusFirstError(errs: Record<string, string>) {
-    const firstId = unitIds.find((id) => id in errs);
+    if (!state) return;
+    // Build the ordered id list as rendered: for each item, either every unit
+    // (UNIT) or the row's bookingItemId (COUNT).
+    let firstId: string | undefined;
+    outer: for (const item of state.items) {
+      if (item.trackingMode === "UNIT" && item.units) {
+        for (const u of item.units) {
+          if (u.unitId in errs) {
+            firstId = u.unitId;
+            break outer;
+          }
+        }
+      } else if (item.bookingItemId in errs) {
+        firstId = item.bookingItemId;
+        break;
+      }
+    }
     if (!firstId) return;
     requestAnimationFrame(() => {
-      const node = rowRefs.current.get(firstId);
+      const node = rowRefs.current.get(firstId!);
       if (!node) return;
       // scrollIntoView is absent in some non-browser/test environments —
       // focus alone still satisfies the a11y contract there.
@@ -466,7 +600,7 @@ export function ReturnChecklist({
     // guaranteed present here (the operator interacted to submit); fall back
     // to 0 defensively if the hook somehow cleared it.
     const acceptedCount = state
-      ? computeAcceptedCount(state, outcomes, countAccepted)
+      ? computeAcceptedCount(state, outcomes, countSplits)
       : 0;
     return (
       <ReturnResultView
@@ -634,23 +768,72 @@ export function ReturnChecklist({
                     );
                   });
                 }
-                // COUNT line — accept-only, ×N quantity label.
-                const accepted = countAccepted.has(item.bookingItemId);
+                // COUNT line — split between accept/repair/problem (Task 6).
+                const biId = item.bookingItemId;
+                const rowError = rowErrors[biId];
+                const errId = rowErrorId(biId);
                 return (
-                  <UnitRow
-                    key={item.bookingItemId}
-                    name={item.equipmentName}
-                    ordinalLabel={`×${item.quantity}`}
-                    mode="RETURN"
-                    value={accepted ? "ACCEPTED" : null}
-                    onChange={(next) =>
-                      setCountLine(
-                        item.bookingItemId,
-                        next === "ACCEPTED",
-                      )
-                    }
-                    disabled={interactionsDisabled}
-                  />
+                  <div
+                    key={biId}
+                    ref={(node) => {
+                      if (node) rowRefs.current.set(biId, node);
+                      else rowRefs.current.delete(biId);
+                    }}
+                    tabIndex={-1}
+                    aria-invalid={rowError ? true : undefined}
+                    aria-describedby={rowError ? errId : undefined}
+                    className="space-y-1.5 outline-none"
+                  >
+                    <CountSplitRow
+                      name={item.equipmentName}
+                      totalQty={item.quantity}
+                      split={getSplit(biId)}
+                      repairComment={countRepairComments.get(biId) ?? ""}
+                      problem={
+                        countProblems.get(biId) ?? {
+                          reason: null,
+                          comment: "",
+                          expectedBackDate: null,
+                        }
+                      }
+                      disabled={interactionsDisabled}
+                      onIncrement={(bucket) => bumpSplit(biId, bucket, +1)}
+                      onDecrement={(bucket) => bumpSplit(biId, bucket, -1)}
+                      onAcceptAll={() =>
+                        acceptAllOfRow(biId, item.quantity)
+                      }
+                      onRepairCommentChange={(s) => {
+                        clearRowError(biId);
+                        setCountRepairComments((prev) => {
+                          const next = new Map(prev);
+                          next.set(biId, s);
+                          return next;
+                        });
+                      }}
+                      onProblemPatch={(patch) => {
+                        clearRowError(biId);
+                        setCountProblems((prev) => {
+                          const cur = prev.get(biId) ?? {
+                            reason: null,
+                            comment: "",
+                            expectedBackDate: null,
+                          };
+                          const next = new Map(prev);
+                          next.set(biId, { ...cur, ...patch });
+                          return next;
+                        });
+                      }}
+                    />
+                    {rowError && (
+                      <p
+                        id={errId}
+                        role="alert"
+                        className="rounded-md border border-rose-border bg-rose-soft px-2.5 py-1.5 text-[12px] text-rose"
+                      >
+                        {rowError}
+                      </p>
+                    )}
+                  </div>
                 );
               })}
             </div>
