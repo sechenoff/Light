@@ -393,6 +393,10 @@ model BookingVehicle {
   kmOutsideMkad Int?
   ttkEntry      Boolean  @default(false)
   subtotalRub   Decimal?
+  /// Водитель: ФИО и телефон. Заполняется при погрузке (выдаче). Опционально.
+  /// Цель — учёт «кто ездил за рулём» по каждой машине брони.
+  driverName    String?
+  driverPhone   String?
   createdAt     DateTime @default(now())
 
   @@unique([bookingId, vehicleId])

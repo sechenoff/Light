@@ -24,6 +24,7 @@ import { CreateInvoiceModal } from "../../../src/components/finance/CreateInvoic
 import { CancelWithDepositModal } from "../../../src/components/finance/CancelWithDepositModal";
 import { CreditNoteApplyModal } from "../../../src/components/finance/CreditNoteApplyModal";
 import { AddonEstimateSection } from "../../../src/components/bookings/AddonEstimateSection";
+import { VehicleDriverRow } from "../../../src/components/bookings/VehicleDriverRow";
 
 type ScanSession = {
   id: string;
@@ -124,6 +125,8 @@ type BookingDetail = {
     kmOutsideMkad: number | null;
     ttkEntry: boolean;
     subtotalRub: string | null;
+    driverName?: string | null;
+    driverPhone?: string | null;
   }>;
   vehicleId?: string | null;
   transportSubtotalRub?: string | null;
@@ -998,6 +1001,48 @@ export default function BookingDetailPage() {
               </div>
             </div>
 
+            {/* Транспорт и водители — заполняется на погрузке */}
+            {((booking.vehicles?.length ?? 0) > 0) && (
+              <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+                <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
+                  <p className="eyebrow">Транспорт и водители</p>
+                  <span className="text-xs text-ink-3">
+                    {booking.vehicles!.length} {booking.vehicles!.length === 1 ? "машина" : booking.vehicles!.length < 5 ? "машины" : "машин"}
+                  </span>
+                </div>
+                <div className="p-3 space-y-2">
+                  {booking.vehicles!.map((v) => (
+                    <VehicleDriverRow
+                      key={v.id}
+                      bookingId={booking.id}
+                      vehicle={v}
+                      canEdit={user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE"}
+                      onUpdated={(next) => {
+                        // Локальное обновление, чтобы UI отразил изменения без полного re-fetch.
+                        setBooking((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                vehicles: prev.vehicles?.map((veh) =>
+                                  veh.id === v.id
+                                    ? { ...veh, driverName: next.driverName, driverPhone: next.driverPhone }
+                                    : veh,
+                                ),
+                              }
+                            : prev,
+                        );
+                      }}
+                    />
+                  ))}
+                  {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+                    <p className="text-xs text-ink-3 px-1 pt-1">
+                      Заполняется при погрузке — ведём учёт, кто ездил за рулём.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {booking.estimate ? (
               <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
                 <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
@@ -1025,32 +1070,81 @@ export default function BookingDetailPage() {
                       </div>
                     )}
 
-                  <div className="flex gap-2 no-print">
-                    <button
-                      className="flex-1 rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
-                      onClick={() =>
-                        download(
-                          `/api/estimates/${booking.estimate!.id}/export/xlsx`,
-                          `estimate-${booking.estimate!.id}.xlsx`,
-                        )
-                      }
-                    >
-                      Excel
-                    </button>
-                    <button
-                      className="flex-1 rounded bg-accent-bright text-white px-3 py-2 text-sm hover:bg-accent transition-colors"
-                      onClick={() =>
-                        download(
-                          `/api/estimates/${booking.estimate!.id}/export/pdf`,
-                          `estimate-${booking.estimate!.id}.pdf`,
-                        )
-                      }
-                    >
-                      PDF
-                    </button>
-                    <button className="flex-1 rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors" onClick={() => window.print()}>
-                      Печать
-                    </button>
+                  <div className="space-y-2 no-print">
+                    {/* Equipment-only smeta */}
+                    <div>
+                      <p className="text-xs text-ink-3 mb-1.5">Только оборудование:</p>
+                      <div className="flex gap-2">
+                        <button
+                          className="flex-1 rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
+                          onClick={() =>
+                            download(
+                              `/api/estimates/${booking.estimate!.id}/export/xlsx`,
+                              `estimate-${booking.estimate!.id}.xlsx`,
+                            )
+                          }
+                        >
+                          📊 Excel
+                        </button>
+                        <button
+                          className="flex-1 rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
+                          onClick={() =>
+                            download(
+                              `/api/estimates/${booking.estimate!.id}/export/pdf`,
+                              `estimate-${booking.estimate!.id}.pdf`,
+                            )
+                          }
+                        >
+                          📄 PDF
+                        </button>
+                      </div>
+                    </div>
+                    {/* Full smeta — includes transport. Highlighted as primary action. */}
+                    <div>
+                      <p className="text-xs text-ink-3 mb-1.5">Полная смета (с транспортом):</p>
+                      <div className="flex gap-2 flex-wrap">
+                        <button
+                          className="flex-1 min-w-[80px] rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
+                          onClick={() =>
+                            download(
+                              `/api/bookings/${booking.id}/full-estimate/export/xlsx`,
+                              `booking-${booking.id}-full.xlsx`,
+                            )
+                          }
+                        >
+                          📊 Excel
+                        </button>
+                        <button
+                          className="flex-1 min-w-[80px] rounded bg-accent-bright text-white px-3 py-2 text-sm hover:bg-accent transition-colors"
+                          onClick={() =>
+                            download(
+                              `/api/bookings/${booking.id}/full-estimate/export/pdf`,
+                              `booking-${booking.id}-full.pdf`,
+                            )
+                          }
+                        >
+                          📄 PDF
+                        </button>
+                        <button
+                          className="flex-1 min-w-[80px] rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
+                          onClick={() =>
+                            download(
+                              `/api/bookings/${booking.id}/full-estimate.xml`,
+                              `booking-${booking.id}.xml`,
+                            )
+                          }
+                          title="Выгрузка для 1С и учётных систем"
+                        >
+                          ⟨/⟩ XML
+                        </button>
+                        <button
+                          className="flex-1 min-w-[80px] rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
+                          onClick={() => window.print()}
+                        >
+                          🖨 Печать
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Позиции сметы показаны выше в таблице «Позиции брони»
