@@ -208,88 +208,89 @@ function RoleRow({
 
   return (
     <div
-      className={`group grid grid-cols-12 gap-3 items-center py-3 px-3 -mx-3 rounded-md transition-colors ${
+      className={`group py-3 px-3 -mx-3 rounded-md transition-colors ${
         isActive ? "bg-accent-soft/40" : "hover:bg-surface-subtle"
       }`}
     >
-      {/* Role name + rate */}
-      <div className="col-span-6 sm:col-span-4 min-w-0">
-        <div className="text-sm font-semibold text-ink truncate">{role.label}</div>
-        <div className="text-xs text-ink-3 mono-num">
-          {formatMoneyRub(role.shiftRate)} ₽ / смена
-        </div>
-      </div>
-
-      {/* Stepper */}
-      <div className="col-span-6 sm:col-span-3 flex items-center justify-end">
-        <div className="inline-flex items-center rounded-md border border-border bg-surface overflow-hidden">
-          <button
-            type="button"
-            aria-label={`Убрать ${role.label}`}
-            className="h-8 w-8 text-base text-ink-2 bg-surface hover:bg-surface-subtle disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            disabled={count <= 0}
-            onClick={() => onChange(Math.max(0, count - 1))}
-          >
-            −
-          </button>
-          <div className="h-8 w-10 border-x border-border bg-surface flex items-center justify-center text-sm font-semibold mono-num">
-            {count || 0}
+      {/* Top row: name | stepper | total */}
+      <div className="flex items-center gap-3">
+        {/* Role name + rate */}
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-ink truncate">{role.label}</div>
+          <div className="text-xs text-ink-3 mono-num">
+            {formatMoneyRub(role.shiftRate)} ₽ / смена
           </div>
-          <button
-            type="button"
-            aria-label={`Добавить ${role.label}`}
-            className="h-8 w-8 text-base text-ink-2 bg-surface hover:bg-surface-subtle transition-colors"
-            onClick={() => onChange(count + 1)}
-          >
-            +
-          </button>
         </div>
-      </div>
 
-      {/* Breakdown bar + total */}
-      <div className="col-span-12 sm:col-span-5">
-        {isActive && breakdown ? (
-          <div className="flex items-center gap-3">
-            <div className="flex-1 min-w-0">
-              {/* Stacked bar */}
-              <div className="flex h-2.5 rounded-full overflow-hidden bg-surface-subtle">
-                {segments.map((s) => (
-                  <div
-                    key={s.key}
-                    className={s.palette.solid}
-                    style={{ width: `${s.pct}%` }}
-                    title={`${formatMoneyRub(s.value)} ₽`}
-                  />
-                ))}
-              </div>
-              {/* Compact legend under bar */}
-              {breakdown.totalOvertimeCostPerPerson > 0 && (
-                <div className="mt-1 flex gap-2 text-[10px] font-cond uppercase tracking-wide text-ink-3">
-                  <span>
-                    база <span className="text-ink-2 mono-num">{formatMoneyRub(breakdown.baseShiftCost)}</span>
-                  </span>
-                  <span>·</span>
-                  <span className="text-amber">
-                    ОТ <span className="text-amber mono-num">+{formatMoneyRub(breakdown.totalOvertimeCostPerPerson)}</span>
-                  </span>
-                </div>
-              )}
+        {/* Stepper */}
+        <div className="shrink-0">
+          <div className="inline-flex items-center rounded-md border border-border bg-surface overflow-hidden">
+            <button
+              type="button"
+              aria-label={`Убрать ${role.label}`}
+              className="h-8 w-8 text-base text-ink-2 bg-surface hover:bg-surface-subtle disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              disabled={count <= 0}
+              onClick={() => onChange(Math.max(0, count - 1))}
+            >
+              −
+            </button>
+            <div className="h-8 w-10 border-x border-border bg-surface flex items-center justify-center text-sm font-semibold mono-num">
+              {count || 0}
             </div>
-            <div className="text-right shrink-0">
-              <div className="text-sm font-semibold text-ink mono-num">
-                {formatMoneyRub(breakdown.total)} ₽
-              </div>
-              {count > 1 && (
-                <div className="text-[10px] text-ink-3 mono-num">
-                  {formatMoneyRub(breakdown.totalPerPerson)} × {count}
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              aria-label={`Добавить ${role.label}`}
+              className="h-8 w-8 text-base text-ink-2 bg-surface hover:bg-surface-subtle transition-colors"
+              onClick={() => onChange(count + 1)}
+            >
+              +
+            </button>
           </div>
-        ) : (
-          <div className="text-xs text-ink-3 italic">не задействован</div>
+        </div>
+
+        {/* Total — appears only when active */}
+        {isActive && breakdown && (
+          <div className="text-right shrink-0 min-w-[88px]">
+            <div className="text-sm font-semibold text-ink mono-num whitespace-nowrap">
+              {formatMoneyRub(breakdown.total)} ₽
+            </div>
+            {count > 1 && (
+              <div className="text-[10px] text-ink-3 mono-num whitespace-nowrap leading-tight">
+                {formatMoneyRub(breakdown.totalPerPerson)} × {count}
+              </div>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Bottom row: bar + legend (full-width when active) */}
+      {isActive && breakdown ? (
+        <div className="mt-2.5 space-y-1">
+          {/* Stacked bar */}
+          <div className="flex h-2 rounded-full overflow-hidden bg-surface-subtle">
+            {segments.map((s) => (
+              <div
+                key={s.key}
+                className={s.palette.solid}
+                style={{ width: `${s.pct}%` }}
+                title={`${formatMoneyRub(s.value)} ₽`}
+              />
+            ))}
+          </div>
+          {/* Compact legend under bar */}
+          {breakdown.totalOvertimeCostPerPerson > 0 && (
+            <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] font-cond uppercase tracking-wide text-ink-3">
+              <span>
+                база <span className="text-ink-2 mono-num">{formatMoneyRub(breakdown.baseShiftCost)}</span>
+              </span>
+              <span aria-hidden>·</span>
+              <span className="text-amber">
+                ОТ <span className="text-amber mono-num">+{formatMoneyRub(breakdown.totalOvertimeCostPerPerson)}</span>
+              </span>
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
