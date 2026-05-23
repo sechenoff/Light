@@ -4,13 +4,103 @@ import { Suspense, useMemo, useState, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import {
-  calculateCrewCost,
   calcPersonCost,
+  type CalculationResult,
+  type CrewInput,
+  RATE_CARDS,
+  type RateCard,
+  type RateCardId,
+  type RateCardPositionKey,
   type RoleBreakdown,
+  type RoleConfig,
   ROLES,
   type RoleId,
 } from "@light-rental/shared";
 import { formatMoneyRub } from "../../src/lib/format";
+
+// ─── Rate cards integration ───────────────────────────────────────────────────
+
+// Public toggle ids — exclude "custom" which is a Gaffer-CRM-only sentinel.
+type ToggleCardId = Exclude<RateCardId, "custom">;
+const TOGGLE_CARD_IDS: ToggleCardId[] = ["rates_2026", "rates_2024"];
+const DEFAULT_CARD: ToggleCardId = "rates_2026";
+
+const TOGGLE_LABELS: Record<ToggleCardId, { short: string; long: string }> = {
+  rates_2026: { short: "Новые", long: "Тариф 2026" },
+  rates_2024: { short: "Старые", long: "Тариф 2024" },
+};
+
+// Map calculator's RoleId enum to RateCard position keys.
+const ROLE_TO_POSITION: Record<RoleId, RateCardPositionKey> = {
+  GAFFER: "gaffer",
+  KEY_GRIP: "key_grip",
+  BEST_BOY: "best_boy",
+  PROGRAMMER: "programmer",
+  GRIP: "grip",
+};
+
+/**
+ * Build a RoleConfig[] list (calculator's native shape) from a RateCard.
+ * Keeps the existing Russian role labels from ROLES, replaces only rate values.
+ */
+function buildRolesFromCard(card: RateCard): RoleConfig[] {
+  return ROLES.map((existing) => {
+    const data = card.positions[ROLE_TO_POSITION[existing.id]];
+    return {
+      id: existing.id,
+      label: existing.label,
+      shiftRate: data.shiftRate,
+      overtime: {
+        tier1: data.ot1Rate,
+        tier2: data.ot2Rate,
+        tier3: data.ot3Rate,
+      },
+    };
+  });
+}
+
+/**
+ * Same logic as shared `calculateCrewCost`, but parameterised by an explicit
+ * roles list so the page can switch between rate cards without touching the
+ * shared package contract.
+ */
+function calculateForRoles(
+  roles: RoleConfig[],
+  crew: CrewInput,
+  hours: number | null | undefined,
+): CalculationResult {
+  if (hours === null || hours === undefined || !Number.isFinite(hours) || hours < 0) {
+    return { lines: [], grandTotal: 0 };
+  }
+  const lines: RoleBreakdown[] = [];
+  for (const role of roles) {
+    const count = crew[role.id] ?? 0;
+    if (!Number.isFinite(count) || count <= 0) continue;
+    const perPerson = calcPersonCost(role, hours);
+    const totalForRole = Math.round(perPerson.totalPerPerson * count);
+    lines.push({
+      role: role.id,
+      label: role.label,
+      count,
+      hoursWorked: hours,
+      ...perPerson,
+      totalForRole,
+    });
+  }
+  return { lines, grandTotal: lines.reduce((s, l) => s + l.totalForRole, 0) };
+}
+
+function parseCardId(raw: string | null | undefined): ToggleCardId {
+  return raw === "rates_2024" || raw === "rates_2026" ? raw : DEFAULT_CARD;
+}
+
+/** «2026-05-01» → «1 мая 2026» */
+function formatEffectiveFrom(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  const months = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+  return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -83,7 +173,7 @@ const DEFAULT_COUNTS: CountState = {
 };
 
 // Read state from URL search params on mount
-function readUrlState(sp: URLSearchParams): { counts: CountState; hours: string } {
+function readUrlState(sp: URLSearchParams): { counts: CountState; hours: string; cardId: ToggleCardId } {
   const counts: CountState = { ...DEFAULT_COUNTS };
   for (const role of ROLES) {
     const v = sp.get(role.id.toLowerCase());
@@ -91,7 +181,8 @@ function readUrlState(sp: URLSearchParams): { counts: CountState; hours: string 
   }
   const h = sp.get("h");
   const hours = h && /^\d+(\.\d+)?$/.test(h) ? h : "";
-  return { counts, hours };
+  const cardId = parseCardId(sp.get("rc"));
+  return { counts, hours, cardId };
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -339,6 +430,7 @@ function CrewCalculatorPageInner() {
 
   const [counts, setCounts] = useState<CountState>(DEFAULT_COUNTS);
   const [hoursRaw, setHoursRaw] = useState("");
+  const [cardId, setCardId] = useState<ToggleCardId>(DEFAULT_CARD);
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
@@ -348,6 +440,7 @@ function CrewCalculatorPageInner() {
     const initial = readUrlState(sp);
     setCounts({ ...DEFAULT_COUNTS, ...initial.counts });
     setHoursRaw(initial.hours);
+    setCardId(initial.cardId);
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -361,11 +454,15 @@ function CrewCalculatorPageInner() {
       const v = counts[role.id];
       if (v && parseCount(v) > 0) sp.set(role.id.toLowerCase(), v);
     }
+    if (cardId !== DEFAULT_CARD) sp.set("rc", cardId);
     const q = sp.toString();
     router.replace(q ? `?${q}` : "?", { scroll: false });
-  }, [counts, hoursRaw, hydrated, router]);
+  }, [counts, hoursRaw, cardId, hydrated, router]);
 
   const hours = useMemo(() => parseHours(hoursRaw), [hoursRaw]);
+
+  const activeCard = RATE_CARDS[cardId];
+  const activeRoles = useMemo(() => buildRolesFromCard(activeCard), [activeCard]);
 
   const crew = useMemo<Partial<Record<RoleId, number>>>(
     () =>
@@ -375,10 +472,16 @@ function CrewCalculatorPageInner() {
     [counts],
   );
 
-  const result = useMemo(() => calculateCrewCost(crew, hours), [crew, hours]);
+  const result = useMemo(
+    () => calculateForRoles(activeRoles, crew, hours),
+    [activeRoles, crew, hours],
+  );
 
-  // Base-shift comparison (same crew, exactly 10h)
-  const baseResult = useMemo(() => calculateCrewCost(crew, BASE_SHIFT), [crew]);
+  // Base-shift comparison (same crew, exactly 10h, same rate card)
+  const baseResult = useMemo(
+    () => calculateForRoles(activeRoles, crew, BASE_SHIFT),
+    [activeRoles, crew],
+  );
   const overtimePremium = result.grandTotal - baseResult.grandTotal;
 
   const totalCrewSize = result.lines.reduce((s, l) => s + l.count, 0);
@@ -451,7 +554,9 @@ function CrewCalculatorPageInner() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-xl font-bold text-ink">Калькуляция ставок осветителей</h1>
-            <p className="text-sm text-ink-3 mt-0.5">Техническая группа · съёмочный день</p>
+            <p className="text-sm text-ink-3 mt-0.5">
+              Техническая группа · съёмочный день · {TOGGLE_LABELS[cardId].long} (с {formatEffectiveFrom(activeCard.effectiveFrom)})
+            </p>
           </div>
           <div className="text-right text-sm text-ink-3">
             <div>{printDate}</div>
@@ -469,15 +574,47 @@ function CrewCalculatorPageInner() {
 
       {/* ─── Screen header ─── */}
       <header className="print:hidden mb-6">
-        <div className="flex items-baseline gap-3 mb-1">
+        <div className="flex items-baseline justify-between gap-4 flex-wrap mb-1">
           <span className="eyebrow">Калькулятор · Техническая группа</span>
+
+          {/* Rate card toggle */}
+          <div className="flex items-center gap-2.5">
+            <span className="eyebrow">Тариф</span>
+            <div role="radiogroup" aria-label="Версия тарифа" className="inline-flex rounded-md border border-border bg-surface overflow-hidden">
+              {TOGGLE_CARD_IDS.map((id) => {
+                const active = cardId === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setCardId(id)}
+                    className={`h-8 px-3 text-xs font-semibold uppercase tracking-wide font-cond transition-colors ${
+                      active
+                        ? "bg-ink text-surface"
+                        : "bg-surface text-ink-2 hover:bg-surface-subtle"
+                    }`}
+                    title={`${TOGGLE_LABELS[id].long} · с ${formatEffectiveFrom(RATE_CARDS[id].effectiveFrom)}`}
+                  >
+                    {TOGGLE_LABELS[id].short}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[11px] text-ink-3 italic hidden sm:inline">
+              с {formatEffectiveFrom(activeCard.effectiveFrom)}
+            </span>
+          </div>
         </div>
         <h1 className="font-cond text-3xl sm:text-4xl font-bold text-ink leading-tight tracking-tight">
           Расчёт смены осветителей
         </h1>
         <p className="text-sm text-ink-2 mt-2 max-w-2xl">
           Базовая смена до 10 часов плюс прогрессивная переработка по трём ставкам.
-          Параметры сохраняются в URL — можно поделиться ссылкой на расчёт.
+          Активный тариф — <span className="font-semibold text-ink">{TOGGLE_LABELS[cardId].long}</span>{" "}
+          (с {formatEffectiveFrom(activeCard.effectiveFrom)}). Параметры сохраняются в URL —
+          можно поделиться ссылкой на расчёт.
         </p>
       </header>
 
@@ -664,7 +801,7 @@ function CrewCalculatorPageInner() {
             </header>
 
             <div className="px-3 py-2 divide-y divide-border/60">
-              {ROLES.map((role) => {
+              {activeRoles.map((role) => {
                 const n = parseCount(counts[role.id]);
                 return (
                   <RoleRow
@@ -683,8 +820,10 @@ function CrewCalculatorPageInner() {
           <details className="rounded-lg border border-border bg-surface overflow-hidden">
             <summary className="px-4 py-3 cursor-pointer flex items-center justify-between hover:bg-surface-subtle">
               <div>
-                <div className="eyebrow">Справочник</div>
-                <div className="text-sm font-semibold text-ink mt-0.5">Применённые ставки</div>
+                <div className="eyebrow">Справочник · {TOGGLE_LABELS[cardId].long}</div>
+                <div className="text-sm font-semibold text-ink mt-0.5">
+                  Применённые ставки <span className="text-ink-3 font-normal text-xs">· с {formatEffectiveFrom(activeCard.effectiveFrom)}</span>
+                </div>
               </div>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ink-3 transition-transform" aria-hidden>
                 <polyline points="6 9 12 15 18 9" />
@@ -702,7 +841,7 @@ function CrewCalculatorPageInner() {
                   </tr>
                 </thead>
                 <tbody>
-                  {ROLES.map((r) => (
+                  {activeRoles.map((r) => (
                     <tr key={r.id} className="border-t border-border">
                       <td className="px-3 py-2 font-medium text-ink">{r.label}</td>
                       <td className="px-3 py-2 text-right mono-num">{formatMoneyRub(r.shiftRate)}</td>
@@ -964,7 +1103,7 @@ function CrewCalculatorPageInner() {
           {/* Rates ref print */}
           <div className="mt-6 border border-border rounded p-3">
             <div className="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">
-              Применённые ставки
+              Применённые ставки · {TOGGLE_LABELS[cardId].long} (с {formatEffectiveFrom(activeCard.effectiveFrom)})
             </div>
             <table className="w-full text-xs">
               <thead>
@@ -977,7 +1116,7 @@ function CrewCalculatorPageInner() {
                 </tr>
               </thead>
               <tbody>
-                {ROLES.map((r) => (
+                {activeRoles.map((r) => (
                   <tr key={r.id} className="border-b border-border/60">
                     <td className="py-1">{r.label}</td>
                     <td className="py-1 text-right mono-num">{formatMoneyRub(r.shiftRate)}</td>
