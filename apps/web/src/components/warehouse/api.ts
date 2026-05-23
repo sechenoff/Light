@@ -218,6 +218,48 @@ export function getState(sessionId: string): Promise<ChecklistState> {
   );
 }
 
+// ── Vehicles + driver (заполняется на погрузке/разгрузке) ─────────────────────
+
+export interface SessionVehicle {
+  id: string;
+  vehicleId: string;
+  driverName: string | null;
+  driverPhone: string | null;
+  withGenerator: boolean;
+  shiftHours: string | null;
+  kmOutsideMkad: number | null;
+  ttkEntry: boolean;
+  vehicle: { id: string; name: string; slug: string } | null;
+}
+
+/** GET /api/warehouse/sessions/:id/vehicles — машины брони с водителями. */
+export async function listSessionVehicles(
+  sessionId: string,
+): Promise<SessionVehicle[]> {
+  const data = await request<{ vehicles: SessionVehicle[] }>(
+    `/api/warehouse/sessions/${sessionId}/vehicles`,
+  );
+  return data.vehicles;
+}
+
+/**
+ * PATCH /api/warehouse/sessions/:id/vehicles/:bookingVehicleId/driver
+ * Сохранить ФИО + телефон водителя для конкретной машины. `null` очищает,
+ * `undefined` (не передано) не трогает другое поле.
+ */
+export function setSessionDriver(
+  sessionId: string,
+  bookingVehicleId: string,
+  driver: { driverName?: string | null; driverPhone?: string | null },
+): Promise<{ vehicle: { id: string; driverName: string | null; driverPhone: string | null } }> {
+  return request<{
+    vehicle: { id: string; driverName: string | null; driverPhone: string | null };
+  }>(
+    `/api/warehouse/sessions/${sessionId}/vehicles/${bookingVehicleId}/driver`,
+    { method: "PATCH", body: driver },
+  );
+}
+
 // ── Checklist mutations ──────────────────────────────────────────────────────
 
 /** POST /api/warehouse/sessions/:id/check { equipmentUnitId } */
@@ -404,6 +446,8 @@ export const scanApi = {
   listBookings,
   createSession,
   getState,
+  listSessionVehicles,
+  setSessionDriver,
   check,
   uncheck,
   addonSearch,

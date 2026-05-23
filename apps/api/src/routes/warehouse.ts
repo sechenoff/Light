@@ -9,6 +9,7 @@ import { prisma } from "../prisma";
 import { warehouseAuth } from "../middleware/warehouseAuth";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { HttpError } from "../utils/errors";
+import { writeAuditEntry, diffFields } from "../services/audit";
 import {
   createSession,
   completeSession,
@@ -267,6 +268,165 @@ warehouseScanRouter.get("/sessions/:id", warehouseAuth, async (req, res, next) =
     next(err);
   }
 });
+
+// ── Водители при погрузке/возврате ────────────────────────────────────────────
+// GET — список машин брони с текущим водителем (для kiosk UI).
+// PATCH — кузовщик вписывает ФИО/телефон водителя прямо во время выдачи/возврата.
+// Это и есть «учёт, кто ездил за рулём».
+
+const kioskDriverUpdateSchema = z
+  .object({
+    driverName: z.string().trim().max(120).nullable().optional(),
+    driverPhone: z.string().trim().max(40).nullable().optional(),
+  })
+  .refine(
+    (b) => b.driverName !== undefined || b.driverPhone !== undefined,
+    { message: "Передайте driverName и/или driverPhone" },
+  );
+
+/** GET /api/warehouse/sessions/:id/vehicles — машины брони с водителями. */
+warehouseScanRouter.get("/sessions/:id/vehicles", warehouseAuth, async (req, res, next) => {
+  try {
+    const session = await prisma.scanSession.findUnique({
+      where: { id: req.params.id },
+      select: { bookingId: true },
+    });
+    if (!session) throw new HttpError(404, "Сессия не найдена");
+
+    const vehicles = await prisma.bookingVehicle.findMany({
+      where: { bookingId: session.bookingId },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        vehicleId: true,
+        driverName: true,
+        driverPhone: true,
+        withGenerator: true,
+        shiftHours: true,
+        kmOutsideMkad: true,
+        ttkEntry: true,
+        vehicle: { select: { id: true, name: true, slug: true } },
+      },
+    });
+
+    res.json({
+      vehicles: vehicles.map((v) => ({
+        ...v,
+        shiftHours: v.shiftHours != null ? v.shiftHours.toString() : null,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/warehouse/sessions/:id/vehicles/:bookingVehicleId/driver
+ * Кузовщик вписывает водителя при погрузке/разгрузке.
+ *
+ * Body: `{ driverName?: string | null, driverPhone?: string | null }`.
+ *   - `null` очищает поле, `undefined` (не передано) не трогает другое.
+ *   - Пустая строка после trim → null.
+ *
+ * Идемпотентность: тот же payload — не пишет AuditEntry.
+ * Аудит `BOOKING_VEHICLE_DRIVER_SET` пишется с workerName + sessionId
+ * в payload. Atribuция: req.adminUser.userId (если SA/WH-сессия) либо "_system_"
+ * (PIN-only кузовщик).
+ */
+warehouseScanRouter.patch(
+  "/sessions/:id/vehicles/:bookingVehicleId/driver",
+  warehouseAuth,
+  async (req, res, next) => {
+    try {
+      const { id: sessionId, bookingVehicleId } = req.params;
+      const body = kioskDriverUpdateSchema.parse(req.body);
+
+      const session = await prisma.scanSession.findUnique({
+        where: { id: sessionId },
+        select: { id: true, bookingId: true, operation: true },
+      });
+      if (!session) throw new HttpError(404, "Сессия не найдена");
+
+      const existing = await prisma.bookingVehicle.findUnique({
+        where: { id: bookingVehicleId },
+        include: { vehicle: { select: { name: true } } },
+      });
+      if (!existing) throw new HttpError(404, "Машина брони не найдена");
+      if (existing.bookingId !== session.bookingId) {
+        throw new HttpError(404, "Машина не относится к этой брони");
+      }
+
+      // Нормализация: пустая строка после trim → null
+      const nextName =
+        body.driverName === undefined
+          ? existing.driverName
+          : body.driverName?.trim()
+            ? body.driverName.trim()
+            : null;
+      const nextPhone =
+        body.driverPhone === undefined
+          ? existing.driverPhone
+          : body.driverPhone?.trim()
+            ? body.driverPhone.trim()
+            : null;
+
+      if (nextName === existing.driverName && nextPhone === existing.driverPhone) {
+        res.json({
+          vehicle: {
+            id: existing.id,
+            driverName: existing.driverName,
+            driverPhone: existing.driverPhone,
+          },
+        });
+        return;
+      }
+
+      const workerName = req.warehouseWorker?.name ?? "_unknown_";
+      // Atribuция: для PIN-only кузовщика используем "_system_" пользователя.
+      // ВАЖНО: workerName + sessionId записываются в audit payload — настоящая атрибуция
+      // не теряется; см. CLAUDE.md «Warehouse worker name (audit) — dual namespace».
+      const auditUserId = req.adminUser?.userId ?? "_system_";
+
+      const updated = await prisma.$transaction(async (tx) => {
+        const v = await tx.bookingVehicle.update({
+          where: { id: bookingVehicleId },
+          data: { driverName: nextName, driverPhone: nextPhone },
+        });
+        await writeAuditEntry({
+          tx,
+          userId: auditUserId,
+          action: "BOOKING_VEHICLE_DRIVER_SET",
+          entityType: "Booking",
+          entityId: session.bookingId,
+          before: diffFields({
+            vehicleName: existing.vehicle?.name ?? null,
+            driverName: existing.driverName,
+            driverPhone: existing.driverPhone,
+          }),
+          after: diffFields({
+            vehicleName: existing.vehicle?.name ?? null,
+            driverName: nextName,
+            driverPhone: nextPhone,
+            via: session.operation === "ISSUE" ? "kiosk-issue" : "kiosk-return",
+            workerName,
+            scanSessionId: sessionId,
+          }),
+        });
+        return v;
+      });
+
+      res.json({
+        vehicle: {
+          id: updated.id,
+          driverName: updated.driverName,
+          driverPhone: updated.driverPhone,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // POST /api/warehouse/sessions/:id/scan — REMOVED (dead barcode-scan path).
 // Складской UI использует чек-лист: /check, /uncheck, /state, /items, /complete.

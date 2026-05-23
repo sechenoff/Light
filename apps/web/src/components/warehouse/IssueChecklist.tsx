@@ -44,6 +44,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useScanSession } from "./useScanSession";
 import { AddonSearch } from "./AddonSearch";
+import { DriverPanel } from "./DriverPanel";
 import type {
   ChecklistItem,
   ChecklistState,
@@ -739,6 +740,9 @@ export function IssueChecklist({
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <div className="flex-1 px-2.5 pb-4 pt-3 lg:px-4">
+        {/* Водители — заполняется в момент погрузки. */}
+        <DriverPanel sessionId={sessionId} operation="ISSUE" />
+
         {/* Desktop heading line with progress + bulk actions + «+ Добор» chip. */}
         <div className="mb-2 hidden items-center gap-3 px-1 lg:flex">
           <h2 className="text-[15px] font-semibold text-ink">
