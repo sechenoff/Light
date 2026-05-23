@@ -163,14 +163,21 @@ function WarehouseScanInner({
     goStep("booking");
   }, [openSession, goStep]);
 
-  // Same as backToBooking, but also bumps listVersion → BookingList refetches.
-  // Wire this into `onComplete`/`onDone` (= «Готово» from the result screen);
-  // the plain `onBack` path keeps `backToBooking` because nothing changed.
-  const backToBookingAfterComplete = useCallback(async () => {
+  // Triggered the moment a successful /complete response comes back — bumps
+  // both list versions so the LEFT pane (desktop) refetches immediately,
+  // without waiting for the operator to press «Готово» on the result screen.
+  // Was the cause of «бронь не уходит из списка приёмки»: BookingList only
+  // refetched on listVersion change, which previously was bumped only on
+  // «Готово» click.
+  const bumpListsAfterComplete = useCallback(() => {
     setListVersion((v) => v + 1);
-    // Also bump in-work version — if a RETURN session just completed, the
-    // booking should drop off both lists (ISSUED → RETURNED).
     setInWorkVersion((v) => v + 1);
+  }, []);
+
+  // Same as backToBooking, kept as the «Готово» handler. The list refetch is
+  // already done by bumpListsAfterComplete the moment the response arrived,
+  // so this is now pure navigation.
+  const backToBookingAfterComplete = useCallback(async () => {
     await backToBooking();
   }, [backToBooking]);
 
@@ -298,6 +305,7 @@ function WarehouseScanInner({
               projectName={projectName}
               onBack={backToBooking}
               onComplete={backToBookingAfterComplete}
+              onCompleted={bumpListsAfterComplete}
             />
           ) : (
             <ReturnChecklist
@@ -305,6 +313,7 @@ function WarehouseScanInner({
               projectName={projectName}
               onBack={backToBooking}
               onDone={backToBookingAfterComplete}
+              onCompleted={bumpListsAfterComplete}
             />
           )
         }

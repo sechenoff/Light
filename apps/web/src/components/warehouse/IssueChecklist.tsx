@@ -392,12 +392,20 @@ export function IssueChecklist({
   projectName,
   onBack,
   onComplete,
+  onCompleted,
 }: {
   sessionId: string;
   projectName: string;
   onBack: () => void;
-  /** Advance to the next page (e.g. back to the bookings list). */
+  /** Advance to the next page (e.g. back to the bookings list) on «Готово». */
   onComplete?: () => void;
+  /**
+   * Fires the moment a successful /complete response arrives — BEFORE the
+   * operator sees the result screen. The parent uses this to refetch the
+   * booking list slot (desktop left pane) so the just-issued booking drops
+   * off the ISSUE list immediately.
+   */
+  onCompleted?: () => void;
 }) {
   const session = useScanSession();
   const { state, loading, error, openSession, refresh } = session;
@@ -646,6 +654,10 @@ export function IssueChecklist({
       const res = await scanApi.complete(sessionId, payload);
       setResult(res);
       setPhase("result");
+      // Fire-and-forget: parent refetches booking lists (desktop left pane)
+      // so the just-issued booking drops off the ISSUE list immediately,
+      // before the operator clicks «Готово». Don't throw out of here.
+      try { onCompleted?.(); } catch { /* swallow — UX side-effect only */ }
     } catch (err: unknown) {
       // 409 ADJUSTMENT_CONFLICTS_WITH_SCANS: an operator-supplied adjustment
       // tried to release units that are already scanned. Surface the server

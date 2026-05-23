@@ -37,6 +37,13 @@ function unitStatusFor(reason: ProblemReason): "MISSING" | "RETIRED" {
 }
 
 export async function createProblemItem(args: CreateProblemArgs, tx?: TxClient) {
+  // Данные — в одной транзакции (ProblemItem + EquipmentUnit). Audit
+  // пишется ПОСЛЕ commit как best-effort: `AuditEntry.userId` — FK на
+  // `AdminUser.id`, а `createdBy` в warehouse-flow приходит как имя
+  // кладовщика/username (не id). Audit-insert внутри tx даёт P2003 и
+  // откатывает создание ProblemItem — это была причина «потеряшки нигде не
+  // появлялись» при стандартной приёмке. См. createRepair и
+  // completeSession.BOOKING_STATUS_CHANGED для того же паттерна.
   const run = async (db: TxClient) => {
     const unit = await db.equipmentUnit.findUnique({ where: { id: args.equipmentUnitId } });
     if (!unit) throw new HttpError(404, "Единица не найдена", "UNIT_NOT_FOUND");
@@ -61,15 +68,32 @@ export async function createProblemItem(args: CreateProblemArgs, tx?: TxClient) 
       where: { id: args.equipmentUnitId },
       data: { status: newUnitStatus },
     });
-    await writeAuditEntry({
-      tx: db, userId: args.createdBy, action: "PROBLEM_ITEM_CREATE",
-      entityType: "ProblemItem", entityId: args.equipmentUnitId,
-      before: { status: unit.status },
-      after: { reason: args.reason, problemStatus: status, unitStatus: newUnitStatus, problemItemId: pi.id },
-    });
-    return pi;
+    return { pi, unitStatusBefore: unit.status, newUnitStatus, status };
   };
-  return tx ? run(tx) : prisma.$transaction(run);
+
+  const { pi, unitStatusBefore, newUnitStatus, status } = tx
+    ? await run(tx)
+    : await prisma.$transaction(run);
+
+  // Audit — best-effort, ВНЕ tx (см. комментарий выше). Если caller передал
+  // свой tx, аудит всё равно пишется отдельно через global prisma — это
+  // намеренно: атомарность audit с бизнес-операцией не критична, а
+  // выживаемость бизнес-объекта при сбое audit — критична.
+  await writeAuditEntry({
+    userId: args.createdBy,
+    action: "PROBLEM_ITEM_CREATE",
+    entityType: "ProblemItem",
+    entityId: args.equipmentUnitId,
+    before: { status: unitStatusBefore },
+    after: { reason: args.reason, problemStatus: status, unitStatus: newUnitStatus, problemItemId: pi.id },
+  }).catch((err) => {
+    console.warn(
+      "[createProblemItem] audit failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+
+  return pi;
 }
 
 export async function resolveProblemItem(

@@ -152,12 +152,20 @@ export function ReturnChecklist({
   projectName,
   onBack,
   onDone,
+  onCompleted,
 }: {
   sessionId: string;
   projectName: string;
   onBack: () => void;
-  /** Back to the bookings list after a completed приёмка. */
+  /** Back to the bookings list after a completed приёмка («Готово»). */
   onDone?: () => void;
+  /**
+   * Fires the moment a successful /complete response arrives — BEFORE the
+   * operator sees the result screen. The parent uses this to refetch the
+   * booking list slot (desktop left pane) so the just-returned booking drops
+   * off immediately, without waiting for the «Готово» button.
+   */
+  onCompleted?: () => void;
 }) {
   const session = useScanSession();
   const { state, loading, error, openSession, check } = session;
@@ -639,6 +647,10 @@ export function ReturnChecklist({
       const payload = buildPayload();
       const res = await scanApi.complete(sessionId, payload);
       setResult(res);
+      // Fire-and-forget: parent refetches booking lists (desktop left pane)
+      // so the just-handled booking drops off immediately, before the operator
+      // even clicks «Готово». Don't throw out of here.
+      try { onCompleted?.(); } catch { /* swallow — UX side-effect only */ }
     } catch (err: unknown) {
       setSubmitError(
         isScanApiError(err)

@@ -43,7 +43,14 @@ export async function createRepair(args: {
   sourceBookingId?: string;
   createdBy: string;
 }) {
-  return prisma.$transaction(async (tx: TxClient) => {
+  // Данные — в одной транзакции (Repair + EquipmentUnit). Audit пишется
+  // ПОСЛЕ commit как best-effort: `AuditEntry.userId` — FK на `AdminUser.id`,
+  // а `createdBy` в warehouse-flow приходит как имя кладовщика/username (не
+  // id). Audit-insert внутри tx даёт P2003 и откатывает создание Repair —
+  // именно из-за этого «приёмка завершалась», но карточка ремонта не
+  // появлялась в /repair. Документированный паттерн: audit = observability,
+  // не бизнес-инвариант (см. completeSession.BOOKING_STATUS_CHANGED).
+  const repair = await prisma.$transaction(async (tx: TxClient) => {
     // 1. Проверить: нет активной Repair на эту единицу
     const existing = await tx.repair.findFirst({
       where: {
@@ -62,7 +69,7 @@ export async function createRepair(args: {
     }
 
     // 3. Создать Repair
-    const repair = await tx.repair.create({
+    const created = await tx.repair.create({
       data: {
         unitId: args.unitId,
         reason: args.reason,
@@ -81,19 +88,25 @@ export async function createRepair(args: {
       data: { status: "MAINTENANCE" },
     });
 
-    // 5. Аудит
-    await writeAuditEntry({
-      tx,
-      userId: args.createdBy,
-      action: "REPAIR_CREATE",
-      entityType: "Repair",
-      entityId: repair.id,
-      before: null,
-      after: { status: repair.status, unitId: repair.unitId, reason: repair.reason },
-    });
-
-    return repair;
+    return created;
   });
+
+  // 5. Аудит — best-effort, ВНЕ tx (см. комментарий выше).
+  await writeAuditEntry({
+    userId: args.createdBy,
+    action: "REPAIR_CREATE",
+    entityType: "Repair",
+    entityId: repair.id,
+    before: null,
+    after: { status: repair.status, unitId: repair.unitId, reason: repair.reason },
+  }).catch((err) => {
+    console.warn(
+      "[createRepair] audit failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+
+  return repair;
 }
 
 // ─── assignRepair ────────────────────────────────────────────────────────────
