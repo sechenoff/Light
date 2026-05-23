@@ -568,6 +568,47 @@ export default function BookingDetailPage() {
           })()}
 
           <div className="lg:col-span-4 space-y-4">
+            {/* Транспорт и водители — заполняется на погрузке.
+                Поставлен в самый верх правой колонки, чтобы был первым после оборудования. */}
+            {((booking.vehicles?.length ?? 0) > 0) && (
+              <div className="rounded-lg border border-accent-border bg-surface shadow-xs overflow-hidden">
+                <div className="p-3 border-b border-accent-border bg-accent-soft flex items-center justify-between">
+                  <p className="eyebrow text-accent-bright">🚐 Транспорт и водители</p>
+                  <span className="text-xs text-ink-3">
+                    {booking.vehicles!.length} {booking.vehicles!.length === 1 ? "машина" : booking.vehicles!.length < 5 ? "машины" : "машин"}
+                  </span>
+                </div>
+                <div className="p-3 space-y-2">
+                  {booking.vehicles!.map((v) => (
+                    <VehicleDriverRow
+                      key={v.id}
+                      bookingId={booking.id}
+                      vehicle={v}
+                      canEdit={user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE"}
+                      onUpdated={(next) => {
+                        setBooking((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                vehicles: prev.vehicles?.map((veh) =>
+                                  veh.id === v.id
+                                    ? { ...veh, driverName: next.driverName, driverPhone: next.driverPhone }
+                                    : veh,
+                                ),
+                              }
+                            : prev,
+                        );
+                      }}
+                    />
+                  ))}
+                  {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+                    <p className="text-xs text-ink-3 px-1 pt-1">
+                      Заполняется при погрузке — ведём учёт, кто ездил за рулём.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
             {(booking.status === "CONFIRMED" || booking.status === "ISSUED" || booking.status === "RETURNED") && (
               <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden no-print">
                 <div className="p-3 border-b border-border bg-surface-subtle">
@@ -1001,47 +1042,6 @@ export default function BookingDetailPage() {
               </div>
             </div>
 
-            {/* Транспорт и водители — заполняется на погрузке */}
-            {((booking.vehicles?.length ?? 0) > 0) && (
-              <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-                <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
-                  <p className="eyebrow">Транспорт и водители</p>
-                  <span className="text-xs text-ink-3">
-                    {booking.vehicles!.length} {booking.vehicles!.length === 1 ? "машина" : booking.vehicles!.length < 5 ? "машины" : "машин"}
-                  </span>
-                </div>
-                <div className="p-3 space-y-2">
-                  {booking.vehicles!.map((v) => (
-                    <VehicleDriverRow
-                      key={v.id}
-                      bookingId={booking.id}
-                      vehicle={v}
-                      canEdit={user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE"}
-                      onUpdated={(next) => {
-                        // Локальное обновление, чтобы UI отразил изменения без полного re-fetch.
-                        setBooking((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                vehicles: prev.vehicles?.map((veh) =>
-                                  veh.id === v.id
-                                    ? { ...veh, driverName: next.driverName, driverPhone: next.driverPhone }
-                                    : veh,
-                                ),
-                              }
-                            : prev,
-                        );
-                      }}
-                    />
-                  ))}
-                  {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
-                    <p className="text-xs text-ink-3 px-1 pt-1">
-                      Заполняется при погрузке — ведём учёт, кто ездил за рулём.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
 
             {booking.estimate ? (
               <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
