@@ -30,12 +30,23 @@ function readApiKeyFromApi() {
   return "";
 }
 
+// Абсолютные пути от расположения этого файла. PM2 разворачивает относительные
+// cwd/script от ТЕКУЩЕГО шелла, а не от ecosystem.config.js, поэтому без __dirname
+// `pm2 start ecosystem.config.js` из любого подкаталога ломал пути (см. bug
+// "Script not found: apps/api/apps/api/dist/index.js" из deploy.sh, который
+// делал `cd apps/api` перед запуском PM2).
+const ROOT = __dirname;
+const apiCwd = path.join(ROOT, "apps/api");
+const webCwd = path.join(ROOT, "apps/web");
+const botCwd = path.join(ROOT, "apps/bot");
+const logsDir = path.join(ROOT, "logs");
+
 module.exports = {
   apps: [
     // ── Backend API ────────────────────────────────────────────────────────────
     {
       name: "api",
-      cwd: "./apps/api",
+      cwd: apiCwd,
       script: "dist/index.js",
       instances: 1,
       autorestart: true,
@@ -43,8 +54,8 @@ module.exports = {
       max_memory_restart: "512M",
       env: { NODE_ENV: "production", PORT: 4000 },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
-      error_file: "../../logs/api-error.log",
-      out_file:   "../../logs/api-out.log",
+      error_file: path.join(logsDir, "api-error.log"),
+      out_file:   path.join(logsDir, "api-out.log"),
     },
 
     // ── Web (Next.js) ─────────────────────────────────────────────────────────
@@ -52,7 +63,7 @@ module.exports = {
     // (см. readApiKeyFromApi() выше). Нет ручной синхронизации между .env-файлами.
     {
       name: "web",
-      cwd: "./apps/web",
+      cwd: webCwd,
       script: "npm",
       args: "start",
       instances: 1,
@@ -65,14 +76,14 @@ module.exports = {
         API_KEY: readApiKeyFromApi(),
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
-      error_file: "../../logs/web-error.log",
-      out_file:   "../../logs/web-out.log",
+      error_file: path.join(logsDir, "web-error.log"),
+      out_file:   path.join(logsDir, "web-out.log"),
     },
 
     // ── Light Rental Bot ──────────────────────────────────────────────────────
     {
       name: "rental-bot",
-      cwd: "./apps/bot",
+      cwd: botCwd,
       script: "dist/index.js",
       instances: 1,
       autorestart: true,
@@ -86,8 +97,8 @@ module.exports = {
         WEBHOOK_SECRET: "",   // Set on production for security
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
-      error_file: "../../logs/rental-bot-error.log",
-      out_file:   "../../logs/rental-bot-out.log",
+      error_file: path.join(logsDir, "rental-bot-error.log"),
+      out_file:   path.join(logsDir, "rental-bot-out.log"),
     },
 
     // ── Overdue invoice recompute cron ────────────────────────────────────────
@@ -97,14 +108,15 @@ module.exports = {
     // to ensure the "_system_" AdminUser exists for audit entries (T3).
     {
       name: "overdue-recompute",
-      script: "./apps/api/scripts/pm2-cron-overdue.cjs",
+      cwd: ROOT,
+      script: path.join(ROOT, "apps/api/scripts/pm2-cron-overdue.cjs"),
       cron_restart: "0 2 * * *",
       autorestart: false,
       watch: false,
       env: { NODE_ENV: "production" },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
-      error_file: "../../logs/overdue-cron-error.log",
-      out_file:   "../../logs/overdue-cron-out.log",
+      error_file: path.join(logsDir, "overdue-cron-error.log"),
+      out_file:   path.join(logsDir, "overdue-cron-out.log"),
     },
   ],
 };
