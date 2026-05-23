@@ -122,16 +122,22 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
 
   const mainAfterDiscount  = main  ? new Decimal(main.totalAfterDiscount.toString())  : new Decimal(0);
   const addonAfterDiscount = addon ? new Decimal(addon.totalAfterDiscount.toString()) : new Decimal(0);
-  // Equipment after discount = MAIN + ADDON (both already include their own discount).
-  // For bookings without ANY estimate (DRAFT pre-confirm), fall back to legacy stored value.
-  const equipmentAfterDiscount = main
-    ? mainAfterDiscount.add(addonAfterDiscount)
-    : new Decimal(booking.finalAmount.toString());
 
   const transportSubtotal = booking.transportSubtotalRub
     ? new Decimal(booking.transportSubtotalRub.toString())
     : new Decimal(0);
-  const finalAmount = equipmentAfterDiscount.add(transportSubtotal);
+
+  // With a MAIN Estimate: finalAmount = (MAIN + ADDON after-discount) + transport.
+  // Without one (DRAFT / PENDING_APPROVAL pre-confirm, or legacy rows): we cannot
+  // recompute finalAmount safely — there is no source of truth. The old code read
+  // booking.finalAmount and re-added transport on every call, inflating finalAmount
+  // by transport on each recompute (regression covered by
+  // recomputeBookingFinanceFallback.test). Now we leave finalAmount untouched and
+  // only refresh derived fields (amountPaid, amountOutstanding, paymentStatus).
+  const finalAmount = main
+    ? mainAfterDiscount.add(addonAfterDiscount).add(transportSubtotal)
+    : new Decimal(booking.finalAmount.toString());
+
   const amountPaid  = sumDec(booking.payments.map((p) => p.amount.toString()));
   const amountOutstanding = Decimal.max(finalAmount.sub(amountPaid), new Decimal(0));
   const status = calcBookingPaymentStatus({
@@ -146,20 +152,29 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
         .sort((a, b) => b.getTime() - a.getTime())[0] ?? null
     : null;
 
-  const updated = await tx.booking.update({
-    where: { id: bookingId },
-    data: {
-      totalEstimateAmount: totalEstimateAmount.toDecimalPlaces(2).toString(),
-      discountAmount: discountAmount.toDecimalPlaces(2).toString(),
-      finalAmount: finalAmount.toDecimalPlaces(2).toString(),
-      addonAmount: addonAfterDiscount.toDecimalPlaces(2).toString(),
-      amountPaid: amountPaid.toDecimalPlaces(2).toString(),
-      amountOutstanding: amountOutstanding.toDecimalPlaces(2).toString(),
-      paymentStatus: status,
-      isFullyPaid,
-      actualPaymentDate,
-    },
-  });
+  // Without MAIN Estimate skip writing finalAmount / totalEstimateAmount /
+  // discountAmount / addonAmount: there's no authoritative source for them here.
+  const data: Prisma.BookingUpdateInput = main
+    ? {
+        totalEstimateAmount: totalEstimateAmount.toDecimalPlaces(2).toString(),
+        discountAmount: discountAmount.toDecimalPlaces(2).toString(),
+        finalAmount: finalAmount.toDecimalPlaces(2).toString(),
+        addonAmount: addonAfterDiscount.toDecimalPlaces(2).toString(),
+        amountPaid: amountPaid.toDecimalPlaces(2).toString(),
+        amountOutstanding: amountOutstanding.toDecimalPlaces(2).toString(),
+        paymentStatus: status,
+        isFullyPaid,
+        actualPaymentDate,
+      }
+    : {
+        amountPaid: amountPaid.toDecimalPlaces(2).toString(),
+        amountOutstanding: amountOutstanding.toDecimalPlaces(2).toString(),
+        paymentStatus: status,
+        isFullyPaid,
+        actualPaymentDate,
+      };
+
+  const updated = await tx.booking.update({ where: { id: bookingId }, data });
 
   if (previousStatus !== status) {
     await tx.bookingFinanceEvent.create({
