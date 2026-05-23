@@ -1,0 +1,1013 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · Карточка брони — взгляд руководителя</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#09090b;--ink-2:#52525b;--ink-3:#a1a1aa;--ink-4:#d4d4d8;
+  --bg:#f7f7f8;--surface:#fff;--surface-m:#fafafa;--surface-s:#f4f4f5;--surface-2:#f1f5f9;
+  --border:#e4e4e7;--border-s:#d4d4d8;--border-dark:#18181b;
+  --accent:#1e3a8a;--accent-b:#1d4ed8;--accent-s:#eff6ff;--accent-br:#bfdbfe;
+  --emerald:#047857;--emerald-s:#d1fae5;--emerald-br:#a7f3d0;
+  --rose:#9f1239;--rose-s:#ffe4e6;--rose-br:#fecdd3;
+  --amber:#a16207;--amber-s:#fef3c7;--amber-br:#fde68a;
+  --indigo:#4338ca;--indigo-s:#e0e7ff;--indigo-br:#c7d2fe;
+  --teal:#0f766e;--teal-s:#ccfbf1;--teal-br:#99f6e4;
+  --slate:#334155;--slate-s:#f1f5f9;
+  --r:4px;--r-lg:6px;
+  --shadow-xs:0 1px 0 rgba(9,9,11,.03);
+  --shadow:0 1px 3px rgba(9,9,11,.05),0 0 0 1px rgba(9,9,11,.02);
+  --shadow-md:0 8px 32px -12px rgba(9,9,11,.14);
+}
+html{font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+body{font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:var(--bg);padding:24px 16px;font-size:13.5px}
+.mono{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.cond{font-family:'IBM Plex Sans Condensed',system-ui,sans-serif}
+.eyebrow{font-family:'IBM Plex Sans Condensed',system-ui,sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+
+/* ─── Section labels (between scenes) ─── */
+.scene{max-width:1320px;margin:0 auto 56px}
+.scene-h{max-width:1320px;margin:0 auto 12px;display:flex;align-items:center;gap:12px;padding:0 4px}
+.scene-h .num{width:28px;height:28px;border-radius:50%;background:var(--indigo);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.scene-h h2{font-size:17px;font-weight:600}
+.scene-h p{font-size:12px;color:var(--ink-2);margin-top:2px}
+
+.app{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.04)}
+
+/* ─── TOP BAR ─── */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 24px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:10}
+.crumbs{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-2);flex-wrap:wrap}
+.crumbs a{color:var(--accent-b);text-decoration:none}
+.crumbs a:hover{text-decoration:underline}
+.crumbs .sep{color:var(--ink-3)}
+.crumbs .id{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-3);padding:2px 8px;background:var(--surface-s);border-radius:var(--r)}
+.role-pill{font-size:10.5px;padding:3px 10px;border-radius:99px;font-weight:600;background:var(--indigo-s);color:var(--indigo);border:1px solid var(--indigo-br)}
+
+/* ─── PRIMARY ACTION BAR (always visible) ─── */
+.actionbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 24px;background:var(--surface-m);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.actionbar-l{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.actionbar-r{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:12.5px;font-weight:500;padding:7px 14px;border-radius:var(--r);border:1px solid var(--border-s);background:var(--surface);color:var(--ink);cursor:pointer;transition:.12s;white-space:nowrap}
+.btn:hover{background:var(--surface-s)}
+.btn .ico{opacity:.7}
+.btn-primary{background:var(--accent-b);color:#fff;border-color:var(--accent-b);font-weight:600}
+.btn-primary:hover{background:var(--accent);color:#fff}
+.btn-emerald{background:var(--emerald);color:#fff;border-color:var(--emerald);font-weight:600}
+.btn-emerald:hover{background:#065f46;color:#fff}
+.btn-rose{background:var(--surface);color:var(--rose);border-color:var(--rose-br)}
+.btn-rose:hover{background:var(--rose-s)}
+.btn-ghost{border-color:transparent;background:transparent;color:var(--ink-2)}
+.btn-ghost:hover{background:var(--surface-s);color:var(--ink)}
+.btn-sm{padding:5px 10px;font-size:11.5px}
+.btn-group{display:inline-flex;border:1px solid var(--border-s);border-radius:var(--r);overflow:hidden}
+.btn-group .btn{border:0;border-right:1px solid var(--border);border-radius:0;background:var(--surface)}
+.btn-group .btn:last-child{border-right:0}
+.btn-group .btn:hover{background:var(--surface-s)}
+
+/* ─── HERO ─── */
+.hero{padding:22px 28px 16px;border-bottom:1px solid var(--border);background:var(--surface)}
+.hero-grid{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:start}
+.hero h1{font-size:22px;font-weight:600;line-height:1.25;color:var(--ink);letter-spacing:-.01em}
+.hero h1 .sub-id{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--ink-3);font-weight:400;margin-left:8px;letter-spacing:0}
+.hero-meta{display:flex;align-items:center;gap:14px;margin-top:8px;font-size:13px;color:var(--ink-2);flex-wrap:wrap}
+.hero-meta .sep{color:var(--ink-3)}
+.hero-meta .pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 9px;border-radius:99px;border:1px solid var(--border)}
+.hero-meta .pill.warn{background:var(--amber-s);color:var(--amber);border-color:var(--amber-br)}
+.hero-meta .pill.ok{background:var(--emerald-s);color:var(--emerald);border-color:var(--emerald-br)}
+.hero-meta .pill.info{background:var(--accent-s);color:var(--accent-b);border-color:var(--accent-br)}
+.hero-meta .pill.rose{background:var(--rose-s);color:var(--rose);border-color:var(--rose-br)}
+.hero-amount{text-align:right}
+.hero-amount .label{font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.08em;font-weight:600;font-family:'IBM Plex Sans Condensed',sans-serif}
+.hero-amount .v{font-family:'IBM Plex Mono',monospace;font-size:32px;font-weight:600;color:var(--ink);line-height:1.1;letter-spacing:-.02em}
+.hero-amount .v .rub{font-size:18px;color:var(--ink-3);font-weight:500;margin-left:2px}
+.hero-amount .delta{font-size:11.5px;color:var(--ink-3);margin-top:4px}
+.hero-amount .delta .paid{color:var(--emerald);font-weight:500}
+.hero-amount .delta .owed{color:var(--rose);font-weight:500}
+
+/* ─── ALERTS ─── */
+.alert{margin:14px 28px 0;padding:10px 14px;border-radius:var(--r);display:flex;gap:10px;align-items:flex-start;font-size:12.5px}
+.alert .ico{flex-shrink:0;font-size:14px;margin-top:1px}
+.alert strong{font-weight:600;display:block;margin-bottom:2px}
+.alert-amber{background:var(--amber-s);border:1px solid var(--amber-br);color:var(--amber)}
+.alert-rose{background:var(--rose-s);border:1px solid var(--rose-br);color:var(--rose)}
+.alert-info{background:var(--accent-s);border:1px solid var(--accent-br);color:var(--accent-b)}
+
+/* ─── PAGE GRID ─── */
+.page{display:grid;grid-template-columns:1fr 340px;gap:18px;padding:18px 24px 28px;background:var(--bg);align-items:start}
+.left{display:flex;flex-direction:column;gap:14px;min-width:0}
+.right{display:flex;flex-direction:column;gap:14px;position:sticky;top:64px}
+
+/* ─── CARDS ─── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-xs)}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface-m);flex-wrap:wrap}
+.card-h h3{font-size:13px;font-weight:600;color:var(--ink)}
+.card-h .h-sub{font-size:11.5px;color:var(--ink-3);font-weight:400;margin-left:4px}
+.card-h-actions{display:flex;gap:6px;align-items:center}
+.card-h-actions .link{font-size:11.5px;color:var(--accent-b);text-decoration:none;cursor:pointer}
+.card-h-actions .link:hover{text-decoration:underline}
+.card-b{padding:14px 16px}
+
+/* ─── META STRIP (3 cols) ─── */
+.meta{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:0;background:var(--surface)}
+.meta .col{padding:14px 18px;border-right:1px solid var(--border)}
+.meta .col:last-child{border-right:0}
+.meta .col .label{font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-family:'IBM Plex Sans Condensed',sans-serif;margin-bottom:5px}
+.meta .col .val{font-size:14.5px;font-weight:500;color:var(--ink);line-height:1.3}
+.meta .col .val-sub{font-size:12px;color:var(--ink-2);margin-top:3px}
+.meta .col .val-sub a{color:var(--accent-b);text-decoration:none}
+.meta .col .chips{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.meta .col .chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:99px;background:var(--surface-s);color:var(--ink-2);border:1px solid var(--border)}
+
+/* ─── EQUIPMENT TABLE ─── */
+.eq-table{width:100%;border-collapse:collapse;font-size:13px}
+.eq-table thead{background:var(--surface-m)}
+.eq-table th{padding:9px 14px;text-align:left;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface-m);z-index:1}
+.eq-table th.r{text-align:right}
+.eq-table td{padding:9px 14px;border-bottom:1px solid var(--surface-s);vertical-align:middle}
+.eq-table td.r{text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-variant-numeric:tabular-nums}
+.eq-cat-row td{padding:5px 14px;background:var(--surface-s);color:var(--ink-2);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-family:'IBM Plex Sans Condensed',sans-serif}
+.eq-cat-row td .count{color:var(--ink-3);font-weight:400;margin-left:6px;letter-spacing:0;text-transform:none}
+.eq-name{font-weight:500;color:var(--ink);font-size:13px}
+.eq-sub{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+.eq-qty{display:inline-block;min-width:28px;padding:2px 8px;background:var(--accent-s);color:var(--accent-b);border-radius:var(--r);font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:12px;text-align:center;border:1px solid var(--accent-br)}
+.avail{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-3)}
+.avail .ok{color:var(--emerald)}
+.avail .warn{color:var(--amber)}
+.avail .err{color:var(--rose)}
+.avail-dot{width:6px;height:6px;border-radius:50%;background:var(--emerald)}
+.avail-dot.warn{background:var(--amber)}
+.avail-dot.err{background:var(--rose)}
+.eq-table tbody tr:hover{background:var(--surface-m)}
+.eq-table tfoot td{padding:10px 14px;font-weight:600;font-size:13px;background:var(--surface-m);border-top:2px solid var(--border)}
+.eq-table tfoot tr.subtotal td{font-weight:500;font-size:12.5px;color:var(--ink-2);background:var(--surface);border-top:1px solid var(--border)}
+.eq-table tfoot tr.discount td{color:var(--rose);font-weight:500;font-size:12.5px;background:var(--surface);border-top:0}
+
+/* ─── TRANSPORT ─── */
+.transport-row{display:grid;grid-template-columns:auto 1fr auto;gap:14px;padding:11px 16px;border-bottom:1px solid var(--surface-s);align-items:center}
+.transport-row:last-child{border-bottom:0}
+.transport-ico{width:32px;height:32px;border-radius:var(--r);background:var(--slate-s);color:var(--slate);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.transport-info .name{font-weight:500;font-size:13px}
+.transport-info .specs{font-size:11.5px;color:var(--ink-3);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap}
+.transport-info .specs .b{color:var(--ink-2)}
+.transport-amt{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px;color:var(--ink)}
+
+/* ─── CREW ─── */
+.crew-row{display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:10px 16px;border-bottom:1px solid var(--surface-s);align-items:center}
+.crew-row:last-child{border-bottom:0}
+.crew-avatar{width:32px;height:32px;border-radius:50%;background:var(--accent-s);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;flex-shrink:0}
+.crew-info .name{font-weight:500;font-size:13px}
+.crew-info .role{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+.crew-amt{text-align:right;font-family:'IBM Plex Mono',monospace}
+.crew-amt .v{font-weight:600;font-size:13px;color:var(--ink)}
+.crew-amt .calc{font-size:11px;color:var(--ink-3)}
+
+/* ─── LOGISTICS ─── */
+.log-row{display:grid;grid-template-columns:120px 1fr auto;gap:14px;padding:8px 0;font-size:13px;align-items:center;border-bottom:1px dashed var(--surface-s)}
+.log-row:last-child{border-bottom:0}
+.log-row .lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);font-family:'IBM Plex Sans Condensed',sans-serif}
+.log-row .val{color:var(--ink)}
+.log-row .val-sub{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+.log-row .act{font-size:11.5px;color:var(--accent-b);cursor:pointer}
+.log-row .act:hover{text-decoration:underline}
+
+/* ─── RIGHT: FINANCE PANEL ─── */
+.fin-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow)}
+.fin-h{padding:14px 18px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,var(--surface),var(--surface-m))}
+.fin-h .label{font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-b);font-family:'IBM Plex Sans Condensed',sans-serif}
+.fin-h .total{font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:600;color:var(--ink);line-height:1.1;letter-spacing:-.02em;margin-top:4px}
+.fin-h .total .rub{font-size:15px;color:var(--ink-3);margin-left:2px;font-weight:500}
+.fin-h .kv{display:flex;gap:10px;margin-top:10px;font-size:12px;flex-wrap:wrap}
+.fin-h .kv .item{flex:1;min-width:0}
+.fin-h .kv .item .l{font-size:10.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;font-family:'IBM Plex Sans Condensed',sans-serif;font-weight:600;margin-bottom:2px}
+.fin-h .kv .item .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13.5px}
+.fin-h .kv .paid .v{color:var(--emerald)}
+.fin-h .kv .owed .v{color:var(--rose)}
+
+.fin-breakdown{padding:12px 18px;font-size:12.5px;border-bottom:1px solid var(--border);background:var(--surface)}
+.fin-row{display:flex;justify-content:space-between;padding:3px 0}
+.fin-row .l{color:var(--ink-2)}
+.fin-row .v{font-family:'IBM Plex Mono',monospace;color:var(--ink-2)}
+.fin-row.discount .v{color:var(--rose)}
+.fin-row.total{margin-top:6px;padding-top:8px;border-top:1px solid var(--border);font-weight:600}
+.fin-row.total .l,.fin-row.total .v{color:var(--ink)}
+
+.fin-actions{padding:12px 18px;display:flex;flex-direction:column;gap:6px}
+.fin-actions .btn{width:100%;justify-content:center;text-align:center}
+
+.fin-payments{padding:0 18px 14px}
+.fin-payments .label{font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:10px 0 8px;font-family:'IBM Plex Sans Condensed',sans-serif}
+.pay-row{display:grid;grid-template-columns:1fr auto;gap:8px;padding:7px 0;border-bottom:1px solid var(--surface-s);font-size:12px;align-items:center}
+.pay-row:last-child{border-bottom:0}
+.pay-row .info .a{font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--emerald)}
+.pay-row .info .m{margin:0 6px;color:var(--ink-3)}
+.pay-row .info .n{color:var(--ink-2)}
+.pay-row .date{font-size:11px;color:var(--ink-3);text-align:right}
+
+/* ─── PROFITABILITY (new feature) ─── */
+.prof-card{background:linear-gradient(180deg,var(--indigo-s),var(--surface));border:1px solid var(--indigo-br);border-radius:var(--r-lg);overflow:hidden}
+.prof-h{padding:12px 16px;border-bottom:1px solid var(--indigo-br);display:flex;justify-content:space-between;align-items:center}
+.prof-h .label{font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--indigo);font-family:'IBM Plex Sans Condensed',sans-serif}
+.prof-h .info-ico{color:var(--indigo);opacity:.6;cursor:help}
+.prof-b{padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.prof-cell .l{font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;font-family:'IBM Plex Sans Condensed',sans-serif;margin-bottom:3px}
+.prof-cell .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:18px;color:var(--ink);line-height:1}
+.prof-cell .v.margin{color:var(--emerald)}
+.prof-cell .sub{font-size:10.5px;color:var(--ink-3);margin-top:2px}
+.prof-bar{height:6px;background:var(--surface);border-radius:99px;overflow:hidden;margin-top:8px}
+.prof-bar-fill{height:100%;background:var(--emerald);width:62%;border-radius:99px}
+
+/* ─── SCAN SESSIONS ─── */
+.scan-row{display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:10px 16px;border-bottom:1px solid var(--surface-s);align-items:center;font-size:12.5px}
+.scan-row:last-child{border-bottom:0}
+.scan-pill{display:inline-flex;align-items:center;font-size:10.5px;padding:3px 8px;border-radius:99px;font-weight:600;letter-spacing:.04em}
+.scan-pill.issue{background:var(--accent-s);color:var(--accent-b);border:1px solid var(--accent-br)}
+.scan-pill.ret{background:var(--emerald-s);color:var(--emerald);border:1px solid var(--emerald-br)}
+.scan-info .w{font-weight:500}
+.scan-info .d{font-size:11px;color:var(--ink-3);margin-top:1px}
+.scan-meta{text-align:right;font-size:11px;color:var(--ink-3)}
+.scan-meta .ok{color:var(--emerald);font-weight:600}
+
+/* ─── HISTORY / TIMELINE ─── */
+details{cursor:pointer}
+details summary{list-style:none;display:flex;justify-content:space-between;align-items:center;padding:10px 16px;font-size:13px;font-weight:500;background:var(--surface);user-select:none}
+details summary::-webkit-details-marker{display:none}
+details summary:hover{background:var(--surface-m)}
+details summary .chev{color:var(--ink-3);font-size:11px;transition:transform .15s}
+details[open] summary{border-bottom:1px solid var(--border)}
+details[open] summary .chev{transform:rotate(180deg)}
+
+.timeline{padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+.tl-item{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:flex-start}
+.tl-dot{width:8px;height:8px;border-radius:50%;background:var(--ink-3);margin-top:6px}
+.tl-dot.ok{background:var(--emerald)}
+.tl-dot.info{background:var(--accent-b)}
+.tl-dot.warn{background:var(--amber)}
+.tl-dot.rose{background:var(--rose)}
+.tl-body .head{font-size:12.5px;font-weight:500;color:var(--ink)}
+.tl-body .sub{font-size:11px;color:var(--ink-3);margin-top:1px}
+.tl-amount{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-2);text-align:right;font-weight:500}
+
+/* ─── CLIENT SNAPSHOT ─── */
+.client-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.client-h{padding:12px 16px;display:flex;gap:12px;align-items:center;border-bottom:1px solid var(--border)}
+.client-avatar{width:36px;height:36px;border-radius:50%;background:var(--accent-s);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px}
+.client-h .info .n{font-weight:600;font-size:13.5px}
+.client-h .info .c{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+.client-kpis{display:grid;grid-template-columns:1fr 1fr 1fr;padding:0}
+.client-kpis .k{padding:10px 12px;border-right:1px solid var(--border);text-align:center}
+.client-kpis .k:last-child{border-right:0}
+.client-kpis .k .l{font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;font-family:'IBM Plex Sans Condensed',sans-serif;font-weight:600;margin-bottom:3px}
+.client-kpis .k .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;color:var(--ink)}
+.client-kpis .k .v.rose{color:var(--rose)}
+.client-kpis .k .v.emerald{color:var(--emerald)}
+
+/* ─── SHARE BAR ─── */
+.share{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--surface-m);border-radius:var(--r);font-size:12px;color:var(--ink-2)}
+.share input{flex:1;border:1px solid var(--border);background:var(--surface);padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;border-radius:var(--r);color:var(--ink-2);min-width:0}
+
+/* ─── MOBILE: sticky bottom CTA ─── */
+.bottom-cta{display:none}
+
+@media(max-width:980px){
+  .page{grid-template-columns:1fr}
+  .right{position:static}
+  .meta{grid-template-columns:1fr}
+  .meta .col{border-right:0;border-bottom:1px solid var(--border)}
+  .meta .col:last-child{border-bottom:0}
+  .hero-grid{grid-template-columns:1fr}
+  .hero-amount{text-align:left}
+  .prof-b{grid-template-columns:1fr}
+  .bottom-cta{display:flex}
+}
+
+/* ─── PRINT VIEW (scene 2) — styled like the doc on paper ─── */
+.print-view{background:#fff;border:1px solid var(--border-s);border-radius:0;box-shadow:0 4px 24px rgba(0,0,0,.08);padding:36px 44px;font-size:13px;max-width:820px;margin:0 auto}
+.print-hd{display:flex;justify-content:space-between;align-items:start;border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:18px}
+.print-hd .logo{font-weight:700;font-size:18px;letter-spacing:-.02em}
+.print-hd .logo .sub{display:block;font-size:11px;font-weight:400;color:var(--ink-2);margin-top:2px;letter-spacing:0}
+.print-hd .doc-no{text-align:right;font-size:12px;color:var(--ink-2)}
+.print-hd .doc-no .big{font-weight:600;font-size:14px;color:var(--ink)}
+.print-block{margin-bottom:22px}
+.print-block h4{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-2);margin-bottom:6px;font-weight:600;font-family:'IBM Plex Sans Condensed',sans-serif}
+.print-block .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.print-block .row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px}
+.print-block .row .l{color:var(--ink-2)}
+.print-table{width:100%;border-collapse:collapse;font-size:12px}
+.print-table th{text-align:left;padding:6px 8px;font-weight:600;background:#f5f5f5;border-bottom:1px solid var(--ink-3);text-transform:uppercase;font-size:10.5px;letter-spacing:.08em;font-family:'IBM Plex Sans Condensed',sans-serif}
+.print-table th.r{text-align:right}
+.print-table td{padding:6px 8px;border-bottom:1px solid #eee;font-size:12px}
+.print-table td.r{text-align:right;font-family:'IBM Plex Mono',monospace}
+.print-table tfoot td{font-weight:600;border-top:2px solid var(--ink);background:#fafafa}
+.print-foot{margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:30px;font-size:11.5px;color:var(--ink-2)}
+.print-foot .sig{border-top:1px solid var(--ink);padding-top:6px;margin-top:50px}
+
+/* ─── COMMENTARY ─── */
+.note{max-width:1320px;margin:0 auto 56px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px 28px}
+.note h3{font-size:15px;font-weight:600;margin-bottom:10px}
+.note ul{padding-left:18px;margin:6px 0}
+.note ul li{font-size:13px;color:var(--ink);padding:3px 0;line-height:1.5}
+.note ul li strong{color:var(--ink);font-weight:600}
+.note .col-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:12px}
+@media(max-width:780px){.note .col-grid{grid-template-columns:1fr}}
+.note .num-list{counter-reset:n;padding:0;list-style:none}
+.note .num-list li{counter-increment:n;padding-left:30px;position:relative;font-size:13px;padding:8px 0 8px 32px}
+.note .num-list li::before{content:counter(n);position:absolute;left:0;top:8px;width:22px;height:22px;border-radius:50%;background:var(--indigo);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700}
+.tag{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:99px;background:var(--accent-s);color:var(--accent-b);border:1px solid var(--accent-br);font-weight:500;margin-left:6px;letter-spacing:.02em}
+.tag.new{background:var(--emerald-s);color:var(--emerald);border-color:var(--emerald-br)}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     INTRO
+     ════════════════════════════════════════════════════════════════════ -->
+<div class="note">
+  <h3>Карточка брони — взгляд руководителя</h3>
+  <p style="color:var(--ink-2);font-size:13px">
+    Текущая <code>/bookings/[id]</code> показывает много данных, но без явной иерархии:
+    оборудование, финансы, скан-сессии и журнал лежат в одном ряду карточек, а ключевые действия
+    (PDF, XML, печать, оплата) прячутся в правой колонке. Этот мокап перестраивает страницу
+    под сценарий руководителя: открыл → понял суть за 3 секунды → распечатал PDF/выгрузил XML → одобрил.
+  </p>
+  <div class="col-grid">
+    <div>
+      <h3 style="font-size:13px;margin-top:14px">Что добавлено vs текущей страницы</h3>
+      <ul>
+        <li><strong>Hero-блок</strong> с большой суммой, статусом, продолжительностью и квик-метриками.</li>
+        <li><strong>Action bar</strong> — PDF Смета / PDF Счёт / PDF Акт / XML 1С / Печать всегда видны.</li>
+        <li><strong>Прибыльность брони</strong> <span class="tag new">NEW</span> — gross, себестоимость, маржа.</li>
+        <li><strong>Логистика</strong> <span class="tag new">NEW</span> — время выдачи/возврата, адрес, контакт.</li>
+        <li><strong>Команда</strong> <span class="tag new">NEW</span> — гаффер, осветители, ставки (из Gaffer CRM).</li>
+        <li><strong>Профиль клиента</strong> <span class="tag new">NEW</span> — броней всего, текущий долг, повторность.</li>
+        <li><strong>Share-link</strong> <span class="tag new">NEW</span> — публичная read-only ссылка для клиента.</li>
+        <li><strong>Конфликты по календарю</strong> <span class="tag new">NEW</span> — если оборудование занято где-то ещё.</li>
+        <li><strong>Print view</strong> — отдельная вёрстка под печать (нижняя сцена).</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="font-size:13px;margin-top:14px">Что переиспользует существующий API</h3>
+      <ul>
+        <li><code>GET /api/bookings/:id/invoice.pdf</code> — счёт</li>
+        <li><code>GET /api/bookings/:id/act.pdf</code> — акт (после возврата)</li>
+        <li><code>GET /api/bookings/:id/full-estimate/export/pdf</code> — смета с транспортом</li>
+        <li><code>GET /api/bookings/:id/full-estimate/export/xlsx</code> — то же в Excel</li>
+        <li><code>GET /api/bookings/:id/full-estimate.xml</code> — XML для 1С/учётки <span class="tag">уже есть</span></li>
+        <li><code>POST /api/bookings/:id/approve</code> / <code>/reject</code></li>
+      </ul>
+      <h3 style="font-size:13px;margin-top:14px">Новый бекенд (минимум)</h3>
+      <ul>
+        <li><code>GET /api/bookings/:id/profitability</code> — gross/cost/margin</li>
+        <li><code>GET /api/bookings/:id/conflicts</code> — list of overlapping bookings</li>
+        <li><code>GET /api/clients/:id/snapshot</code> — total/debt/repeat</li>
+        <li><code>POST /api/bookings/:id/share-link</code> — публичный токен</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     SCENE 1 — Main manager view (CONFIRMED booking)
+     ════════════════════════════════════════════════════════════════════ -->
+<div class="scene-h">
+  <div class="num">1</div>
+  <div><h2>Главный экран · бронь «Подтверждено»</h2><p>SUPER_ADMIN видит полную картину. Все ключевые действия в action-bar.</p></div>
+</div>
+
+<div class="scene">
+<div class="app">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="crumbs">
+      <a href="#">← Брони</a>
+      <span class="sep">/</span>
+      <span>23.05.2026 · Захар Родомский · Тест-проект</span>
+      <span class="id">cmpi6nas8...rea8</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="role-pill">Руководитель</span>
+    </div>
+  </div>
+
+  <!-- Primary action bar — always visible -->
+  <div class="actionbar">
+    <div class="actionbar-l">
+      <div class="btn-group">
+        <button class="btn btn-sm"><span class="ico">📄</span> Смета PDF</button>
+        <button class="btn btn-sm"><span class="ico">📄</span> Счёт PDF</button>
+        <button class="btn btn-sm" disabled title="Акт доступен после возврата" style="opacity:.5"><span class="ico">📄</span> Акт PDF</button>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-sm"><span class="ico">📊</span> Смета XLSX</button>
+        <button class="btn btn-sm"><span class="ico">⟨/⟩</span> XML для 1С</button>
+      </div>
+      <button class="btn btn-sm"><span class="ico">🖨</span> Печать</button>
+      <button class="btn btn-sm"><span class="ico">📥</span> Архив всех файлов <span style="font-size:10.5px;color:var(--ink-3);margin-left:3px">.zip</span></button>
+    </div>
+    <div class="actionbar-r">
+      <button class="btn btn-sm btn-ghost"><span class="ico">📋</span> Дублировать</button>
+      <button class="btn btn-sm btn-ghost"><span class="ico">📅</span> В календарь</button>
+      <button class="btn btn-sm btn-ghost"><span class="ico">⋯</span></button>
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-grid">
+      <div>
+        <h1>23.05.2026 · Захар Родомский · Тест-проект <span class="sub-id"># cmpi6nas8</span></h1>
+        <div class="hero-meta">
+          <span class="pill ok">● Подтверждено</span>
+          <span class="pill info">● Оплачено частично · 50%</span>
+          <span class="sep">·</span>
+          <span>📅 23 май → 24 май · <strong>1 смена</strong></span>
+          <span class="sep">·</span>
+          <span>👤 создал <strong>admin</strong>, 22 май 13:45</span>
+          <span class="sep">·</span>
+          <span>✓ согласовал <strong>sechenoff</strong>, 22 май 14:02</span>
+        </div>
+      </div>
+      <div class="hero-amount">
+        <div class="label">Сумма брони</div>
+        <div class="v">74 623<span class="rub">₽</span></div>
+        <div class="delta">
+          <span class="paid">37 312 ₽</span> получено
+          <span style="color:var(--ink-3);margin:0 4px">·</span>
+          <span class="owed">37 311 ₽</span> к получению
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Conflict alert (если в эти даты что-то пересекается) -->
+  <div class="alert alert-amber" style="margin-top:0">
+    <span class="ico">⚠</span>
+    <div>
+      <strong>Пересечение: Aputure LS 1200x PRO (Blair)</strong>
+      24 мая 14:00 нужен на другой брони (Ivanov · clip-08). На возврат у вас 14:00 — будет 30 мин пересечения.
+      <a href="#" style="color:var(--amber);text-decoration:underline;margin-left:4px">Открыть конфликт →</a>
+    </div>
+  </div>
+
+  <!-- Page grid -->
+  <div class="page">
+
+    <!-- LEFT COLUMN -->
+    <div class="left">
+
+      <!-- Meta strip: client / project / dates -->
+      <div class="card" style="padding:0">
+        <div class="meta">
+          <div class="col">
+            <div class="label">Клиент</div>
+            <div class="val">Захар Родомский</div>
+            <div class="val-sub">
+              📞 <a href="tel:+79161234567">+7 (916) 123-45-67</a>
+              <span style="margin:0 6px;color:var(--ink-3)">·</span>
+              ✉ <a href="mailto:zah@example.ru">zah@example.ru</a>
+            </div>
+            <div class="chips">
+              <span class="chip" style="background:var(--accent-s);color:var(--accent-b);border-color:var(--accent-br)">⭐ Повторный · 5 броней</span>
+            </div>
+          </div>
+          <div class="col">
+            <div class="label">Проект</div>
+            <div class="val">Тест-проект</div>
+            <div class="val-sub">Комментарий: Аккуратно с Aputure — последняя смена была с замечанием.</div>
+          </div>
+          <div class="col">
+            <div class="label">Период аренды</div>
+            <div class="val">23.05 13:00 → 24.05 13:00</div>
+            <div class="val-sub">1 смена · 24 часа · сб → вс</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Equipment -->
+      <div class="card">
+        <div class="card-h">
+          <h3>Оборудование <span class="h-sub">· 12 позиций · 28 единиц</span></h3>
+          <div class="card-h-actions">
+            <a class="link" href="#">PDF</a>
+            <span style="color:var(--ink-3)">·</span>
+            <a class="link" href="#">Excel</a>
+            <span style="color:var(--ink-3)">·</span>
+            <a class="link" href="#">XML</a>
+            <span style="color:var(--ink-3)">·</span>
+            <a class="link" href="#">Развернуть в полный экран ↗</a>
+          </div>
+        </div>
+        <div style="overflow:auto;max-height:500px">
+          <table class="eq-table">
+            <thead>
+              <tr>
+                <th style="width:46%">Наименование</th>
+                <th style="width:11%">Бренд</th>
+                <th class="r" style="width:9%">Цена</th>
+                <th class="r" style="width:9%">Кол-во</th>
+                <th class="r" style="width:13%">Сумма</th>
+                <th style="width:12%">Доступно</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="eq-cat-row"><td colspan="6">COB Light <span class="count">· 3 позиции · 5 единиц</span></td></tr>
+              <tr>
+                <td><div class="eq-name">Aputure Electric Storm 26XT 3200-6500K</div><div class="eq-sub">XT 26 · daylight/tungsten</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">Aputure</span></td>
+                <td class="r">3 000 ₽</td>
+                <td class="r"><span class="eq-qty">1</span></td>
+                <td class="r">3 000 ₽</td>
+                <td><span class="avail"><span class="avail-dot"></span> 4/5</span></td>
+              </tr>
+              <tr>
+                <td><div class="eq-name">Aputure LS 1200x PRO (Blair)</div><div class="eq-sub">Bowens, RGB</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">Aputure</span></td>
+                <td class="r">4 500 ₽</td>
+                <td class="r"><span class="eq-qty">2</span></td>
+                <td class="r">9 000 ₽</td>
+                <td><span class="avail"><span class="avail-dot warn"></span> <span class="warn">1/2</span></span></td>
+              </tr>
+              <tr>
+                <td><div class="eq-name">Aputure Storm 400x</div><div class="eq-sub">RGB · Bowens</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">Aputure</span></td>
+                <td class="r">2 200 ₽</td>
+                <td class="r"><span class="eq-qty">2</span></td>
+                <td class="r">4 400 ₽</td>
+                <td><span class="avail"><span class="avail-dot"></span> 6/6</span></td>
+              </tr>
+
+              <tr class="eq-cat-row"><td colspan="6">LED Panel <span class="count">· 2 позиции · 3 единицы</span></td></tr>
+              <tr>
+                <td><div class="eq-name">Nanlite PavoSlim 240 C Long RGBWW</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">Nanlite</span></td>
+                <td class="r">3 500 ₽</td>
+                <td class="r"><span class="eq-qty">1</span></td>
+                <td class="r">3 500 ₽</td>
+                <td><span class="avail"><span class="avail-dot"></span> 3/3</span></td>
+              </tr>
+              <tr>
+                <td><div class="eq-name">Aputure Amaran F22c</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">Aputure</span></td>
+                <td class="r">2 800 ₽</td>
+                <td class="r"><span class="eq-qty">2</span></td>
+                <td class="r">5 600 ₽</td>
+                <td><span class="avail"><span class="avail-dot"></span> 4/4</span></td>
+              </tr>
+
+              <tr class="eq-cat-row"><td colspan="6">Насадки на приборы <span class="count">· 4 позиции · 8 единиц</span></td></tr>
+              <tr>
+                <td><div class="eq-name">Софтбокс Aputure Light Dome II 90</div><div class="eq-sub">Bowens</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">Aputure</span></td>
+                <td class="r">800 ₽</td>
+                <td class="r"><span class="eq-qty">2</span></td>
+                <td class="r">1 600 ₽</td>
+                <td><span class="avail"><span class="avail-dot"></span> 4/5</span></td>
+              </tr>
+              <tr>
+                <td><div class="eq-name">Чайнабол Aputure Lantern 90cm</div><div class="eq-sub">Bowens</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">Aputure</span></td>
+                <td class="r">500 ₽</td>
+                <td class="r"><span class="eq-qty">2</span></td>
+                <td class="r">1 000 ₽</td>
+                <td><span class="avail"><span class="avail-dot"></span> 2/2</span></td>
+              </tr>
+              <tr>
+                <td><div class="eq-name">Отражатель Photoflex 80cm 5-in-1</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">Photoflex</span></td>
+                <td class="r">300 ₽</td>
+                <td class="r"><span class="eq-qty">2</span></td>
+                <td class="r">600 ₽</td>
+                <td><span class="avail"><span class="avail-dot"></span> 6/6</span></td>
+              </tr>
+              <tr>
+                <td><div class="eq-name">Зонт-отражатель серебряный 80cm</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">—</span></td>
+                <td class="r">200 ₽</td>
+                <td class="r"><span class="eq-qty">2</span></td>
+                <td class="r">400 ₽</td>
+                <td><span class="avail"><span class="avail-dot"></span> 8/8</span></td>
+              </tr>
+
+              <tr class="eq-cat-row"><td colspan="6">Стойки и оснастка <span class="count">· 3 позиции · 12 единиц</span></td></tr>
+              <tr>
+                <td><div class="eq-name">Стойка Manfrotto 1004BAC</div><div class="eq-sub">Air-cushioned, до 4 м</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">Manfrotto</span></td>
+                <td class="r">400 ₽</td>
+                <td class="r"><span class="eq-qty">4</span></td>
+                <td class="r">1 600 ₽</td>
+                <td><span class="avail"><span class="avail-dot"></span> 12/14</span></td>
+              </tr>
+              <tr>
+                <td><div class="eq-name">C-stand Avenger A2025F</div><div class="eq-sub">с грипом</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">Avenger</span></td>
+                <td class="r">600 ₽</td>
+                <td class="r"><span class="eq-qty">4</span></td>
+                <td class="r">2 400 ₽</td>
+                <td><span class="avail"><span class="avail-dot"></span> 8/10</span></td>
+              </tr>
+              <tr>
+                <td><div class="eq-name">Sandbag 7 кг</div></td>
+                <td><span style="font-size:11.5px;color:var(--ink-2)">—</span></td>
+                <td class="r">150 ₽</td>
+                <td class="r"><span class="eq-qty">4</span></td>
+                <td class="r">600 ₽</td>
+                <td><span class="avail"><span class="avail-dot"></span> 20/20</span></td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr class="subtotal">
+                <td colspan="4">Сумма оборудования (до скидки)</td>
+                <td class="r">33 700 ₽</td>
+                <td></td>
+              </tr>
+              <tr class="discount">
+                <td colspan="4">Скидка 5%</td>
+                <td class="r">−1 685 ₽</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td colspan="4">Оборудование после скидки</td>
+                <td class="r">32 015 ₽</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- Transport / Vehicles -->
+      <div class="card">
+        <div class="card-h">
+          <h3>Транспорт <span class="h-sub">· 1 машина</span></h3>
+          <div class="card-h-actions">
+            <span style="font-size:11.5px;color:var(--ink-3)">Итого: <span class="mono" style="color:var(--ink);font-weight:600">8 500 ₽</span></span>
+          </div>
+        </div>
+        <div>
+          <div class="transport-row">
+            <div class="transport-ico">🚐</div>
+            <div class="transport-info">
+              <div class="name">Mercedes Sprinter — Лёша</div>
+              <div class="specs">
+                <span class="b">12 ч смена</span>
+                <span>+ генератор 2кВт</span>
+                <span>+ 45 км за МКАД</span>
+                <span>+ заезд в ТТК</span>
+              </div>
+            </div>
+            <div class="transport-amt">8 500 ₽</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Crew (Gaffer CRM integration) -->
+      <div class="card">
+        <div class="card-h">
+          <h3>Команда <span class="h-sub">· 3 человека</span> <span class="tag new">NEW</span></h3>
+          <div class="card-h-actions">
+            <a class="link" href="#">Калькулятор смены →</a>
+          </div>
+        </div>
+        <div>
+          <div class="crew-row">
+            <div class="crew-avatar">ВК</div>
+            <div class="crew-info">
+              <div class="name">Виктор Касаткин</div>
+              <div class="role">Гаффер · 12 ч × 5 000 ₽</div>
+            </div>
+            <div class="crew-amt"><div class="v">60 000 ₽</div><div class="calc">+1 ч переработки 7 500 ₽</div></div>
+          </div>
+          <div class="crew-row">
+            <div class="crew-avatar">МА</div>
+            <div class="crew-info">
+              <div class="name">Михаил Андреев</div>
+              <div class="role">Осветитель · 12 ч × 2 500 ₽</div>
+            </div>
+            <div class="crew-amt"><div class="v">30 000 ₽</div></div>
+          </div>
+          <div class="crew-row">
+            <div class="crew-avatar" style="background:var(--surface-s);color:var(--ink-3)">+</div>
+            <div class="crew-info" style="color:var(--ink-3);font-size:12px">Добавить осветителя / водителя / DIT</div>
+            <div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logistics -->
+      <div class="card">
+        <div class="card-h">
+          <h3>Логистика <span class="tag new">NEW</span></h3>
+          <div class="card-h-actions">
+            <a class="link" href="#">Редактировать</a>
+          </div>
+        </div>
+        <div class="card-b">
+          <div class="log-row">
+            <div class="lbl">Выдача</div>
+            <div><div class="val">23.05.2026 · сб · 13:00</div><div class="val-sub">Склад на Пресне · Звенигородское ш. 9с2</div></div>
+            <a class="act">Запустить сканирование →</a>
+          </div>
+          <div class="log-row">
+            <div class="lbl">Доставка на площадку</div>
+            <div><div class="val">23.05.2026 · 14:30 · Москва, Электрозаводская 27с8</div><div class="val-sub">Лёша на Sprinter · контакт +7 (916) 555-22-11</div></div>
+            <a class="act">На карте →</a>
+          </div>
+          <div class="log-row">
+            <div class="lbl">Возврат</div>
+            <div><div class="val">24.05.2026 · вс · 13:00</div><div class="val-sub">Тот же склад</div></div>
+            <a class="act">Запустить приёмку →</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scan sessions -->
+      <div class="card">
+        <div class="card-h">
+          <h3>Сканирование <span class="h-sub">· 1 сессия</span></h3>
+          <div class="card-h-actions">
+            <a class="link" href="#">Начать сканирование →</a>
+          </div>
+        </div>
+        <div>
+          <div class="scan-row">
+            <span class="scan-pill issue">Выдача</span>
+            <div class="scan-info">
+              <div class="w">Иван Кладовщик</div>
+              <div class="d">23.05.2026 · 13:14 — 13:42</div>
+            </div>
+            <div class="scan-meta"><div>28 сканов</div><div class="ok">✓ Завершена</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History (collapsible) -->
+      <div class="card">
+        <details open>
+          <summary>
+            <span><span class="eyebrow" style="color:var(--ink-2)">История согласования и финансов</span></span>
+            <span class="chev">▾</span>
+          </summary>
+          <div class="timeline">
+            <div class="tl-item"><div class="tl-dot ok"></div>
+              <div class="tl-body">
+                <div class="head">Бронь подтверждена</div>
+                <div class="sub">sechenoff · 22 май 2026, 14:02 · PENDING_APPROVAL → CONFIRMED</div>
+              </div>
+              <div class="tl-amount">+74 623 ₽</div>
+            </div>
+            <div class="tl-item"><div class="tl-dot info"></div>
+              <div class="tl-body">
+                <div class="head">Платёж получен · карта</div>
+                <div class="sub">sechenoff · 22 май 2026, 14:05</div>
+              </div>
+              <div class="tl-amount" style="color:var(--emerald);font-weight:600">+37 312 ₽</div>
+            </div>
+            <div class="tl-item"><div class="tl-dot warn"></div>
+              <div class="tl-body">
+                <div class="head">Отправлена на согласование</div>
+                <div class="sub">admin · 22 май 2026, 13:45 · DRAFT → PENDING_APPROVAL</div>
+              </div>
+              <div class="tl-amount"></div>
+            </div>
+            <div class="tl-item"><div class="tl-dot"></div>
+              <div class="tl-body">
+                <div class="head">Создан черновик</div>
+                <div class="sub">admin · 22 май 2026, 13:30 · 12 позиций, 1 машина</div>
+              </div>
+              <div class="tl-amount"></div>
+            </div>
+          </div>
+        </details>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="right">
+
+      <!-- Finance card -->
+      <div class="fin-card">
+        <div class="fin-h">
+          <div class="label">Финансы · бронь #cmpi6nas8</div>
+          <div class="total">74 623<span class="rub">₽</span></div>
+          <div class="kv">
+            <div class="item paid"><div class="l">Получено</div><div class="v">37 312</div></div>
+            <div class="item owed"><div class="l">К получению</div><div class="v">37 311</div></div>
+            <div class="item"><div class="l">Срок</div><div class="v" style="font-size:11.5px;color:var(--ink-2)">24 май</div></div>
+          </div>
+        </div>
+        <div class="fin-breakdown">
+          <div class="fin-row"><span class="l">Аренда оборудования</span><span class="v">33 700 ₽</span></div>
+          <div class="fin-row discount"><span class="l">Скидка 5%</span><span class="v">−1 685 ₽</span></div>
+          <div class="fin-row"><span class="l">После скидки</span><span class="v">32 015 ₽</span></div>
+          <div class="fin-row"><span class="l">Транспорт (Sprinter)</span><span class="v">8 500 ₽</span></div>
+          <div class="fin-row"><span class="l">Команда (3 чел)</span><span class="v">34 108 ₽</span></div>
+          <div class="fin-row total"><span class="l">Сумма к оплате</span><span class="v">74 623 ₽</span></div>
+        </div>
+        <div class="fin-actions">
+          <button class="btn btn-primary">+ Записать платёж</button>
+          <button class="btn">📄 Скачать счёт PDF</button>
+          <button class="btn" disabled style="opacity:.45">📄 Скачать акт PDF · после возврата</button>
+          <button class="btn">⟨/⟩ Выгрузить XML для 1С</button>
+        </div>
+        <div class="fin-payments">
+          <div class="label">Платежи</div>
+          <div class="pay-row">
+            <div class="info">
+              <span class="a">+37 312 ₽</span>
+              <span class="m">·</span>
+              <span class="n">Карта</span>
+              <span class="m">·</span>
+              <span class="n" style="font-size:11px">первая оплата 50%</span>
+            </div>
+            <div class="date">22 май<br>14:05</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Profitability (NEW) -->
+      <div class="prof-card">
+        <div class="prof-h">
+          <div class="label">Прибыльность брони</div>
+          <div class="info-ico" title="Себестоимость = (амортизация оборудования + смены команды + транспорт + ремонт-по-броне)">ⓘ</div>
+        </div>
+        <div class="prof-b">
+          <div class="prof-cell"><div class="l">Выручка</div><div class="v">74 623 ₽</div><div class="sub">с оборудования + транспорта</div></div>
+          <div class="prof-cell"><div class="l">Себестоимость</div><div class="v">28 100 ₽</div><div class="sub">амортизация + команда</div></div>
+          <div class="prof-cell"><div class="l">Маржа</div><div class="v margin">46 523 ₽</div><div class="sub">прогноз — после возврата уточнится</div></div>
+          <div class="prof-cell"><div class="l">Маржа, %</div><div class="v margin">62%</div><div class="sub">средняя по клиенту 58%</div><div class="prof-bar"><div class="prof-bar-fill"></div></div></div>
+        </div>
+      </div>
+
+      <!-- Client snapshot (NEW) -->
+      <div class="client-card">
+        <div class="client-h">
+          <div class="client-avatar">ЗР</div>
+          <div class="info">
+            <div class="n">Захар Родомский</div>
+            <div class="c">+7 (916) 123-45-67 · повторный · последняя бронь 12 мая</div>
+          </div>
+        </div>
+        <div class="client-kpis">
+          <div class="k"><div class="l">Броней</div><div class="v">5</div></div>
+          <div class="k"><div class="l">Оборот</div><div class="v">382 ₽<sub style="font-size:9px;color:var(--ink-3)">k</sub></div></div>
+          <div class="k"><div class="l">Долг</div><div class="v emerald">0 ₽</div></div>
+        </div>
+      </div>
+
+      <!-- Share link (NEW) -->
+      <div class="card">
+        <div class="card-h">
+          <h3>Поделиться <span class="tag new">NEW</span></h3>
+        </div>
+        <div class="card-b">
+          <div class="share">
+            <input value="svetobazarent.ru/share/b/3f7a-92cd-ee01" readonly>
+            <button class="btn btn-sm">📋</button>
+          </div>
+          <div style="font-size:11px;color:var(--ink-3);margin-top:8px;line-height:1.45">
+            Публичная read-only ссылка для клиента: смета, оборудование, оплаты.
+            Без логина, без редактирования. Истекает 24.05.
+          </div>
+          <div style="display:flex;gap:6px;margin-top:10px">
+            <button class="btn btn-sm" style="flex:1">✉ Отправить на email</button>
+            <button class="btn btn-sm" style="flex:1">💬 Скопировать для Telegram</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     SCENE 2 — Print preview
+     ════════════════════════════════════════════════════════════════════ -->
+<div class="scene-h">
+  <div class="num">2</div>
+  <div><h2>Печатная форма</h2><p>Это и есть PDF Смета — единая вёрстка под печать. Хедер, метаданные, оборудование с группами, итог, подписи.</p></div>
+</div>
+
+<div class="scene">
+<div class="print-view">
+
+  <div class="print-hd">
+    <div>
+      <div class="logo">Light Rental
+        <span class="sub">прокат киносвета · svetobazarent.ru · ИП Сеченов А.А.</span>
+      </div>
+    </div>
+    <div class="doc-no">
+      <div class="big">СМЕТА № 2026-05-23/124</div>
+      <div>от 22 мая 2026 г.</div>
+      <div style="margin-top:8px">бронь <span class="mono">cmpi6nas8</span></div>
+    </div>
+  </div>
+
+  <div class="print-block">
+    <div class="grid2">
+      <div>
+        <h4>Заказчик</h4>
+        <div class="row"><span class="l">ФИО / организация</span><span>Захар Родомский</span></div>
+        <div class="row"><span class="l">Телефон</span><span>+7 (916) 123-45-67</span></div>
+        <div class="row"><span class="l">Email</span><span>zah@example.ru</span></div>
+        <div class="row"><span class="l">Проект</span><span>Тест-проект</span></div>
+      </div>
+      <div>
+        <h4>Сроки</h4>
+        <div class="row"><span class="l">Период аренды</span><span>23.05.2026 13:00 — 24.05.2026 13:00</span></div>
+        <div class="row"><span class="l">Смен</span><span>1</span></div>
+        <div class="row"><span class="l">Выдача</span><span>23.05 13:00 · Звенигородское ш. 9с2</span></div>
+        <div class="row"><span class="l">Возврат</span><span>24.05 13:00 · туда же</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="print-block">
+    <h4>Состав сметы</h4>
+    <table class="print-table">
+      <thead>
+        <tr><th style="width:48%">Наименование</th><th style="width:14%">Бренд</th><th class="r" style="width:12%">Цена</th><th class="r" style="width:10%">Кол-во</th><th class="r" style="width:16%">Сумма</th></tr>
+      </thead>
+      <tbody>
+        <tr style="background:#f7f7f7"><td colspan="5" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;font-weight:600;color:var(--ink-2)">COB Light</td></tr>
+        <tr><td>Aputure Electric Storm 26XT 3200-6500K</td><td>Aputure</td><td class="r">3 000</td><td class="r">1</td><td class="r">3 000</td></tr>
+        <tr><td>Aputure LS 1200x PRO (Blair)</td><td>Aputure</td><td class="r">4 500</td><td class="r">2</td><td class="r">9 000</td></tr>
+        <tr><td>Aputure Storm 400x</td><td>Aputure</td><td class="r">2 200</td><td class="r">2</td><td class="r">4 400</td></tr>
+        <tr style="background:#f7f7f7"><td colspan="5" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;font-weight:600;color:var(--ink-2)">LED Panel</td></tr>
+        <tr><td>Nanlite PavoSlim 240 C Long RGBWW</td><td>Nanlite</td><td class="r">3 500</td><td class="r">1</td><td class="r">3 500</td></tr>
+        <tr><td>Aputure Amaran F22c</td><td>Aputure</td><td class="r">2 800</td><td class="r">2</td><td class="r">5 600</td></tr>
+        <tr style="background:#f7f7f7"><td colspan="5" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;font-weight:600;color:var(--ink-2)">Насадки на приборы</td></tr>
+        <tr><td>Софтбокс Aputure Light Dome II 90</td><td>Aputure</td><td class="r">800</td><td class="r">2</td><td class="r">1 600</td></tr>
+        <tr><td>Чайнабол Aputure Lantern 90cm</td><td>Aputure</td><td class="r">500</td><td class="r">2</td><td class="r">1 000</td></tr>
+        <tr><td>Отражатель Photoflex 80cm 5-in-1</td><td>Photoflex</td><td class="r">300</td><td class="r">2</td><td class="r">600</td></tr>
+        <tr><td>Зонт-отражатель серебряный 80cm</td><td>—</td><td class="r">200</td><td class="r">2</td><td class="r">400</td></tr>
+        <tr style="background:#f7f7f7"><td colspan="5" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;font-weight:600;color:var(--ink-2)">Стойки и оснастка</td></tr>
+        <tr><td>Стойка Manfrotto 1004BAC</td><td>Manfrotto</td><td class="r">400</td><td class="r">4</td><td class="r">1 600</td></tr>
+        <tr><td>C-stand Avenger A2025F</td><td>Avenger</td><td class="r">600</td><td class="r">4</td><td class="r">2 400</td></tr>
+        <tr><td>Sandbag 7 кг</td><td>—</td><td class="r">150</td><td class="r">4</td><td class="r">600</td></tr>
+        <tr style="background:#f7f7f7"><td colspan="5" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;font-weight:600;color:var(--ink-2)">Транспорт</td></tr>
+        <tr><td>Mercedes Sprinter с генератором, 12 ч смена, +45 км за МКАД, +ТТК</td><td>—</td><td class="r">8 500</td><td class="r">1</td><td class="r">8 500</td></tr>
+      </tbody>
+      <tfoot>
+        <tr><td colspan="4" style="text-align:right">Сумма по оборудованию</td><td class="r">33 700</td></tr>
+        <tr><td colspan="4" style="text-align:right;color:var(--rose)">Скидка 5%</td><td class="r" style="color:var(--rose)">−1 685</td></tr>
+        <tr><td colspan="4" style="text-align:right">Транспорт</td><td class="r">8 500</td></tr>
+        <tr><td colspan="4" style="text-align:right;font-size:14px">Итого к оплате</td><td class="r" style="font-size:14px">40 515 ₽</td></tr>
+      </tfoot>
+    </table>
+    <div style="font-size:11px;color:var(--ink-3);margin-top:10px">
+      Команда (гаффер, осветители) — расчёт отдельно по табелю; в смету не включена.
+    </div>
+  </div>
+
+  <div class="print-foot">
+    <div>
+      <div>Заказчик</div>
+      <div class="sig">_______________________ / Захар Родомский /</div>
+    </div>
+    <div>
+      <div>Исполнитель — Light Rental</div>
+      <div class="sig">_______________________ / Сеченов А. А. /</div>
+    </div>
+  </div>
+
+  <div style="text-align:center;margin-top:30px;font-size:10.5px;color:var(--ink-3)">
+    svetobazarent.ru · +7 (495) 000-00-00 · sechenoff@gmail.com
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     COMMENTARY — features to consider
+     ════════════════════════════════════════════════════════════════════ -->
+<div class="note">
+  <h3>Идеи функционала · что обсудить</h3>
+  <ol class="num-list">
+    <li><strong>Profitability snapshot</strong> · отдельная карточка с выручкой / себестоимостью / маржой. Считаем себестоимость как амортизация (за-смену-стоимость единицы из карточки оборудования) + смены команды + транспорт + связанные ремонты. Сравниваем с медианой по клиенту/проекту. <em>Новый эндпоинт <code>GET /api/bookings/:id/profitability</code>.</em></li>
+    <li><strong>Конфликт по календарю прямо в карточке</strong> · оранжевый алёрт сверху, если на даты брони какой-то юнит уже занят в другой брони. Клик — открывается календарь с подсветкой пересечения. <em>Эндпоинт <code>GET /api/bookings/:id/conflicts</code>.</em></li>
+    <li><strong>Команда / Crew block</strong> · интеграция с Gaffer CRM. Назначаем гаффера и осветителей прямо из карточки, по выбору пересчитывается сумма команды (текущий калькулятор уже в <code>packages/shared/crewCalculator</code>). Полезно: моментально вижу, сколько уйдёт команде, и кто за это берётся.</li>
+    <li><strong>Логистика блока «Выдача / Доставка / Возврат»</strong> · разделили три события (со склада, на площадку, обратно). На карте — точка доставки + контакт водителя. Часто клиент звонит «когда привезут?» — теперь ответ в одной строке.</li>
+    <li><strong>Share-link для клиента</strong> · одна кнопка → публичный read-only URL (HMAC-токен, expiry = endDate + 7 дней). Клиент видит свою бронь и счёт без авторизации. Решает кейс «вы можете прислать смету в Telegram?» одним кликом.</li>
+    <li><strong>Архив всех файлов одним кликом</strong> · кнопка «📥 Архив .zip» собирает PDF Сметы + PDF Счёта + XLSX + XML и отдаёт одним zip с осмысленным именем (<code>booking-2026-05-23-rodomski.zip</code>). Бухгалтерия / клиент / 1С — всем нужно разное, дать все варианты сразу.</li>
+    <li><strong>Дублировать бронь</strong> · кнопка в action-bar. Для повторных клиентов: создаётся черновик с тем же оборудованием/командой/машиной, осталось поменять даты. Сейчас приходится пересоздавать вручную.</li>
+    <li><strong>Quick-edit оборудования inline</strong> · хочу из карточки руководителя в ОДИН клик ткнуть в позицию и сменить кол-во или удалить. Сейчас приходится переходить в режим редактирования брони целиком.</li>
+    <li><strong>Доступность 4/5 в строке оборудования</strong> · точка-индикатор справа: зелёная (всё свободно), жёлтая (на пределе), красная (overbook). Помогает увидеть риск до выдачи.</li>
+    <li><strong>Чек-лист до выдачи</strong> · в логистике пунктом «есть подпись клиента / есть копия паспорта / собрано ли всё». До «Подтверждено» → серое, на ISSUED → зелёное.</li>
+    <li><strong>Журнал правок</strong> · в timeline видны все изменения сметы: «+2 Aputure 400x, −1 софтбокс, +1 200 ₽» с автором и временем. Сейчас это лежит в <code>/admin/audit</code>, но к карточке привязки нет.</li>
+    <li><strong>Профиль клиента из карточки</strong> · 5 броней / 382к оборот / 0 ₽ долг — три цифры решают «брать ли в работу при заявке».</li>
+  </ol>
+  <p style="font-size:12.5px;color:var(--ink-2);margin-top:14px;line-height:1.6">
+    <strong>Что вынести на следующий шаг.</strong> Прежде чем кодить — подскажите, какие из этих 12 пунктов вам нужны на этой неделе, а какие можно отложить.
+    Минимум, чтобы закрыть исходный запрос (информативность + PDF/XML/печать): пункты 4, 6 + action-bar + hero-блок. Остальное — пакет «Manager UX v2».
+  </p>
+</div>
+
+</body>
+</html>

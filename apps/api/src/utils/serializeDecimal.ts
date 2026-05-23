@@ -37,6 +37,8 @@ type BookingVehicleRow = {
   kmOutsideMkad: number | null;
   ttkEntry: boolean;
   subtotalRub: { toString(): string } | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
   createdAt: Date;
   vehicle?: { id: string; name: string; slug: string; shiftPriceRub?: { toString(): string } } | null;
 };

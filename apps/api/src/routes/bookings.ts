@@ -62,6 +62,21 @@ const transportVehicleSchema = z.object({
 });
 
 /**
+ * Schema для inline-обновления водителя на конкретной BookingVehicle.
+ * Заполняется при погрузке (выдаче) — ведём учёт, кто ездил за рулём.
+ * Передавайте `null` чтобы очистить поле; `undefined` (не передано) — не трогать.
+ */
+const driverUpdateSchema = z
+  .object({
+    driverName: z.string().trim().max(120).nullable().optional(),
+    driverPhone: z.string().trim().max(40).nullable().optional(),
+  })
+  .refine(
+    (b) => b.driverName !== undefined || b.driverPhone !== undefined,
+    { message: "Передайте driverName и/или driverPhone" },
+  );
+
+/**
  * Транспорт брони: массив машин, у каждой свои параметры (per-row).
  * Машины должны быть DISTINCT (одна и та же машина не дважды).
  */
@@ -1249,6 +1264,103 @@ router.patch("/:id/finance-corrections", rolesGuard(["SUPER_ADMIN"]), async (req
     next(err);
   }
 });
+
+/**
+ * PATCH /api/bookings/:id/vehicles/:bookingVehicleId/driver
+ * Inline-обновление водителя на конкретной BookingVehicle.
+ * Заполняется при погрузке (выдаче) — даёт учёт «кто ездил за рулём».
+ *
+ * Доступ: SUPER_ADMIN + WAREHOUSE (склад заполняет на выдаче).
+ * Body: `{ driverName?: string | null, driverPhone?: string | null }`.
+ *   - передать `null` → очистить поле
+ *   - не передать (undefined) → не трогать
+ * Пишет AuditEntry внутри той же транзакции.
+ */
+router.patch(
+  "/:id/vehicles/:bookingVehicleId/driver",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  async (req, res, next) => {
+    try {
+      const { id: bookingId, bookingVehicleId } = req.params;
+      const body = driverUpdateSchema.parse(req.body);
+
+      if (!req.adminUser) {
+        throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      }
+      const { userId } = req.adminUser;
+
+      const existing = await prisma.bookingVehicle.findUnique({
+        where: { id: bookingVehicleId },
+        include: { vehicle: { select: { name: true } } },
+      });
+      if (!existing) throw new HttpError(404, "Машина брони не найдена");
+      if (existing.bookingId !== bookingId) {
+        throw new HttpError(404, "Машина не относится к этой брони");
+      }
+
+      // Нормализация: пустая строка после trim → null
+      const nextName =
+        body.driverName === undefined
+          ? existing.driverName
+          : body.driverName?.trim()
+            ? body.driverName.trim()
+            : null;
+      const nextPhone =
+        body.driverPhone === undefined
+          ? existing.driverPhone
+          : body.driverPhone?.trim()
+            ? body.driverPhone.trim()
+            : null;
+
+      // Если ничего не меняется — возвращаем как есть, без записи в БД и аудит.
+      if (nextName === existing.driverName && nextPhone === existing.driverPhone) {
+        res.json({
+          vehicle: {
+            id: existing.id,
+            driverName: existing.driverName,
+            driverPhone: existing.driverPhone,
+          },
+        });
+        return;
+      }
+
+      const updated = await prisma.$transaction(async (tx) => {
+        const v = await tx.bookingVehicle.update({
+          where: { id: bookingVehicleId },
+          data: { driverName: nextName, driverPhone: nextPhone },
+        });
+        await writeAuditEntry({
+          tx,
+          userId,
+          action: "BOOKING_VEHICLE_DRIVER_SET",
+          entityType: "Booking",
+          entityId: bookingId,
+          before: diffFields({
+            vehicleName: existing.vehicle?.name ?? null,
+            driverName: existing.driverName,
+            driverPhone: existing.driverPhone,
+          }),
+          after: diffFields({
+            vehicleName: existing.vehicle?.name ?? null,
+            driverName: nextName,
+            driverPhone: nextPhone,
+          }),
+        });
+        return v;
+      });
+
+      res.json({
+        vehicle: {
+          id: updated.id,
+          driverName: updated.driverName,
+          driverPhone: updated.driverPhone,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 /** PATCH /api/bookings/:id/backdate — смена дат задним числом (только SUPER_ADMIN). Пишет AuditEntry. */
 router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
