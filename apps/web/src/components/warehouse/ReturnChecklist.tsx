@@ -42,6 +42,7 @@ import { scanApi } from "./api";
 import { UnitRow } from "./UnitRow";
 import { RepairPanel } from "./RepairPanel";
 import { ProblemPanel } from "./ProblemPanel";
+import { DriverPanel } from "./DriverPanel";
 import { UnitGridRow, type UnitSlot } from "./UnitGridRow";
 import { ReturnResultView } from "./ReturnResultView";
 import { isScanApiError } from "./types";
@@ -744,6 +745,9 @@ export function ReturnChecklist({
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <div className="flex-1 px-2.5 pb-4 pt-3 lg:px-4">
+        {/* Водители — при разгрузке пишем, кто привёз. */}
+        <DriverPanel sessionId={sessionId} operation="RETURN" />
+
         {/* Desktop heading (analog of mockup block 4 right pane). */}
         <div className="mb-2 hidden items-center gap-3 px-1 lg:flex">
           <h2 className="text-[15px] font-semibold text-ink">
