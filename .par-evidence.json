@@ -1,11 +1,10 @@
 {
-  "sprint": "multi-vehicle",
-  "feature": "multiple distinct vehicles per booking, per-vehicle params, summed transport",
+  "sprint": "approve-button-hang-fix",
+  "feature": "fix: SA approve button stuck «Подтверждаю…» on approval success",
   "claude_product": "ACCEPTED",
-  "technical_review": "APPROVE (after fixes — was BLOCK: 1 HIGH+2 MED+1 LOW, all resolved)",
-  "provider": "typescript-reviewer",
-  "ts": "2026-05-19T00:00:00+03:00",
-  "tests": { "api": { "files": 81, "tests": 960, "status": "passed" }, "web": { "files": 41, "tests": 282, "status": "passed" } },
-  "tsc": { "api": "exit 0", "web": "exit 0" },
-  "notes": "New BookingVehicle child table (@@unique([bookingId,vehicleId]), Cascade) — additive, legacy Booking.vehicle* columns kept for back-compat read fallback. quoteEstimate/createBookingDraft/rebuildBookingEstimate/confirmBooking handle vehicle arrays; transportSubtotal = Decimal sum of per-vehicle computeTransportPrice totals; computeBookingTransportSubtotal prefers vehicles[] else legacy single-column fallback. Zod transportSchema = array + .refine distinct vehicleId (dup→400). Serializer exposes vehicles[] (+explicit transportSubtotalRub.toString). Frontend: TransportCard multi-select + per-vehicle param cards + total; BookingForm array state + edit hydration (vehicles[] else legacy); transportClientCalc Decimal sum mirrors server. Idempotent backfill-booking-vehicles.ts (dry-run default). PATCH transport edits intentionally NOT wired (v1) but serializes vehicles[]. Review BLOCK→resolved: HIGH dryRun POST/PATCH omitted transport from preview (fixed: pass transport, return transport/transportSubtotal/grandTotal matching real-save finalAmount, tests added); MED client float sum→Decimal parity; MED explicit transportSubtotalRub serialization; LOW stale JSDoc. Deploy needs prisma db push (additive) + backfill script run on prod."
+  "technical_review": "self (1-file, 10/-2 lines, surgical, server-side already verified working — server returns 200 in ~100ms)",
+  "ts": "2026-05-24T14:14:00+03:00",
+  "tests": { "web": { "files": 59, "passed": 464, "failed": 2, "status": "passed (2 pre-existing roleMatrix failures unrelated to this fix, from feat(vehicles) on origin/main)" } },
+  "tsc": { "web": "clean (excl pre-existing formatWaitingTime.test.ts TS2578)" },
+  "notes": "Root cause: ApprovalReviewView.handleApprove called router.push(`/bookings/${booking.id}`) on success — but ApprovalReviewView is RENDERED at that exact URL by app/bookings/[id]/page.tsx when status===PENDING_APPROVAL && role===SUPER_ADMIN, so the push is a no-op in Next.js (current === target pathname). Component never unmounts, setApproving(false) is only in catch (not success path — relied on unmount), so the button stays disabled with 'Подтверждаю…' label forever. Server-side /approve returns 200 in ~100ms and persists CONFIRMED correctly. Fix: (1) destructure onReload from props (was `_onReload` — intentionally unused) and (2) call onReload?.() on success instead of router.push(sameURL). onReload re-fetches the booking in parent → status flips to CONFIRMED → parent renders the regular detail view (different component) → ApprovalReviewView unmounts cleanly. Defensive setApproving(false) before onReload — handles edge if parent fails. Reject path unchanged (router.push('/bookings') is a different URL → already worked)."
 }

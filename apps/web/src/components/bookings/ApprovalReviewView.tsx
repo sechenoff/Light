@@ -170,7 +170,7 @@ type Props = {
  *
  * No inline editing here — this is purely a confirmation screen.
  */
-export function ApprovalReviewView({ booking, onReload: _onReload, currentUser: _currentUser }: Props) {
+export function ApprovalReviewView({ booking, onReload, currentUser: _currentUser }: Props) {
   const router = useRouter();
 
   // Approval actions state
@@ -205,7 +205,15 @@ export function ApprovalReviewView({ booking, onReload: _onReload, currentUser: 
     try {
       await apiFetch(`/api/bookings/${booking.id}/approve`, { method: "POST" });
       toast.success("Заявка подтверждена, оборудование зарезервировано");
-      router.push(`/bookings/${booking.id}`);
+      // ВАЖНО: ApprovalReviewView рендерится по той же URL `/bookings/[id]`,
+      // на которой мы сейчас находимся. router.push(той же URL) — no-op в
+      // Next.js, компонент не размонтируется → кнопка зависала «Подтверждаю…»
+      // навсегда (баг). Правильный путь — попросить родителя перезагрузить
+      // бронь: parent сделает re-fetch, увидит status=CONFIRMED и сам
+      // переключит view (ApprovalReviewView → обычный booking-detail).
+      // Сбрасываем approving защитно — на случай, если родитель не размонтирует.
+      setApproving(false);
+      onReload?.();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Не удалось одобрить бронь";
       toast.error(msg);
