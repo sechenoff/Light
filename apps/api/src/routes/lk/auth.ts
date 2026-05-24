@@ -9,9 +9,10 @@ const router = Router();
 
 const requestLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === "test" ? 1000 : 5,
+  max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.RATE_LIMIT_DISABLED === "true",
   message: { code: "RATE_LIMIT", error: "Слишком много попыток. Подождите 15 минут." },
 });
 
@@ -27,7 +28,13 @@ router.post("/request-login", requestLoginLimiter, async (req, res, next) => {
     if (account && account.status === "ACTIVE") {
       if (!account.lockedUntil || account.lockedUntil.getTime() < Date.now()) {
         const { rawToken } = await issueMagicLink(prisma, account.id, "LOGIN");
-        await sendLoginEmail({ email: account.email }, rawToken);
+        try {
+          await sendLoginEmail({ email: account.email }, rawToken);
+        } catch (mailErr) {
+          // eslint-disable-next-line no-console
+          console.error("[LK] sendLoginEmail failed:", mailErr);
+          // Swallow — no-enumeration: caller always gets 200
+        }
       }
     }
     // Always 200 — no enumeration
