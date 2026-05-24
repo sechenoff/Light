@@ -36,6 +36,7 @@ import { invoicesRouter } from "./invoices";
 import { refundsRouter } from "./refunds";
 import { creditNotesRouter } from "./creditNotes";
 import { organizationSettingsRouter } from "./organizationSettings";
+import clientPortalAdminRouter from "./clientPortalAdmin";
 
 const router = express.Router();
 
@@ -162,5 +163,8 @@ router.use("/api/credit-notes", creditNotesRouter);
 
 // /api/settings — GET/PATCH organization: SA only
 router.use("/api/settings", organizationSettingsRouter);
+
+// /api/admin/clients/:id — порталные действия (invite/disable/reenable/resend): SUPER_ADMIN only (guard внутри роутера)
+router.use("/api/admin/clients/:id", clientPortalAdminRouter);
 
 export { router };
