@@ -54,16 +54,15 @@ jobs:
         run: NODE_OPTIONS="--max-old-space-size=4096" npm run build -w apps/web
 
       - name: pack build artifacts
-        # Только dist/ + .next/ + public/ + сгенерированный prisma client.
-        # node_modules не упаковываем — на проде ставится через npm ci
-        # (prod нужны runtime деп, включая prisma CLI для db push).
+        # Только dist/ + .next/ + сгенерированный prisma client. У web нет
+        # папки public (Next.js работает без неё). node_modules не упаковываем
+        # — на проде ставится через npm ci (нужен prisma CLI для db push).
         run: |
           tar -czf artifacts.tar.gz \
             packages/shared/dist \
             apps/api/dist \
             apps/bot/dist \
             apps/web/.next \
-            apps/web/public \
             node_modules/.prisma \
             node_modules/@prisma/client
           ls -lh artifacts.tar.gz
