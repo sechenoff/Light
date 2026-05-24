@@ -358,6 +358,10 @@ model Booking {
 
   invoices       Invoice[]
 
+  /// Записи пробега, снятые на возврате этой брони. Опционально (если в броне
+  /// не было машин — пусто). См. модель VehicleMileageLog.
+  mileageLogs    VehicleMileageLog[] @relation("BookingMileageLogs")
+
   /// H5: Дата удержания депозита как штрафа (FORFEIT ветка cancel-with-deposit).
   /// null означает что штраф не применялся.
   forfeitedAt DateTime?
@@ -853,7 +857,10 @@ model RepairWorkLog {
   @@index([repairId])
 }
 
-/// Транспортное средство для доставки оборудования
+/// Транспортное средство для доставки оборудования.
+/// Каждая запись — физический автомобиль (если в парке две Газели, заводятся
+/// двумя строками с разными slug). Это закреплено таблицей пробега/ТО ниже:
+/// журналы привязаны к Vehicle.id, как к экземпляру.
 model Vehicle {
   id                 String   @id @default(cuid())
   name               String                    // "Ford", "Фотон", "Ивеко"
@@ -865,11 +872,82 @@ model Vehicle {
   overtimePercent    Decimal  @default(10)
   displayOrder       Int      @default(0)
   active             Boolean  @default(true)
+
+  /// Гос. номер машины (опционально). Хранится свободной строкой.
+  licensePlate          String?
+  /// Текущий пробег (одометр). Denormalized: последнее записанное значение
+  /// из VehicleMileageLog. Обновляется в транзакции вместе с лог-записью.
+  currentMileage        Int                  @default(0)
+  /// Дата и тип последнего обслуживания (ТО/ремонт). Denormalized из последней
+  /// VehicleServiceLog. Нужно для быстрых списков «когда что делали».
+  lastServiceAt         DateTime?
+  lastServiceMileage    Int?
+  lastServiceKind       VehicleServiceKind?
+  /// Свободные заметки по машине (VIN, страховка, особенности — что хочется).
+  notes                 String?
+
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
   bookings        Booking[]
   bookingVehicles BookingVehicle[]
+  mileageLogs     VehicleMileageLog[]
+  serviceLogs     VehicleServiceLog[]
+}
+
+/// Тип записи в журнале обслуживания. Покрывает и плановое ТО, и разовые
+/// ремонты, и сезонные операции — чтобы у механика была единая лента.
+enum VehicleServiceKind {
+  SCHEDULED_TO     // плановое ТО (масло, фильтры, проверка)
+  OIL_CHANGE       // замена масла
+  TIRE_CHANGE      // шиномонтаж / замена резины
+  REPAIR           // ремонт
+  INSPECTION       // диагностика
+  OTHER            // прочее
+}
+
+/// Откуда взялась запись пробега.
+enum MileageSource {
+  RETURN   // автоматически на возврате брони (mandatory входной поток)
+  MANUAL   // вручную из раздела /vehicles
+}
+
+/// Журнал записей одометра. Каждая запись — снимок на момент.
+model VehicleMileageLog {
+  id          String        @id @default(cuid())
+  vehicleId   String
+  vehicle     Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  mileage     Int                                           // одометр в км
+  recordedAt  DateTime      @default(now())
+  /// Бронь, на возврате которой записан пробег (если source = RETURN).
+  bookingId   String?
+  booking     Booking?      @relation("BookingMileageLogs", fields: [bookingId], references: [id], onDelete: SetNull)
+  source      MileageSource
+  /// Кто записал — имя кладовщика (со сканер-сессии) или AdminUser.username.
+  recordedBy  String
+  note        String?
+  createdAt   DateTime      @default(now())
+
+  @@index([vehicleId, recordedAt])
+}
+
+/// Журнал ТО и ремонтов. Хронология обслуживания каждой машины.
+model VehicleServiceLog {
+  id           String              @id @default(cuid())
+  vehicleId    String
+  vehicle      Vehicle             @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  kind         VehicleServiceKind
+  performedAt  DateTime                            // когда сделали работу
+  mileage      Int?                                // одометр на момент (если знаем)
+  description  String                              // что именно делали
+  cost         Decimal?                            // стоимость (₽)
+  /// Путь к чеку/наряд-заказу (относительно apps/api/uploads/, как в Expense).
+  documentUrl  String?
+  createdBy    String                              // AdminUser.id
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([vehicleId, performedAt])
 }
 
 /// Задача (to-do item)
@@ -1227,4 +1305,80 @@ model RepairPhoto {
   createdAt DateTime @default(now())
 
   @@index([repairId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Feedback (internal bug/idea/comment tracker)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Категория обратной связи: поломка / идея / комментарий.
+enum FeedbackCategory {
+  BUG      // 🐛 Поломка / баг
+  IDEA     // 💡 Идея / улучшение
+  COMMENT  // 💬 Комментарий / вопрос
+}
+
+/// Статус заявки обратной связи.
+enum FeedbackStatus {
+  NEW          // только пришло, никто не взял
+  IN_PROGRESS  // в работе
+  DONE         // решено / реализовано
+  REJECTED     // отклонено / не будет делаться
+}
+
+/// Заявка обратной связи. Сюда сотрудники складывают баги, идеи, комментарии
+/// прямо из веб-интерфейса. Виджет (плавающая кнопка) автозахватывает URL и
+/// viewport, чтобы был контекст. Фото прикладываются как FeedbackPhoto.
+model FeedbackItem {
+  id          String           @id @default(cuid())
+  category    FeedbackCategory
+  status      FeedbackStatus   @default(NEW)
+  title       String
+  description String
+
+  // Автозахваченный контекст
+  pageUrl     String?           // URL, с которого был отправлен фидбек
+  viewport    String?           // "1440x900" — поможет повторить баг
+  userAgent   String?           // короткая строка для распознавания браузера
+
+  // Авторство и закрытие
+  createdBy   String            // AdminUser.id (no FK, как Repair/Task)
+  resolvedBy  String?           // кто перевёл в DONE/REJECTED
+  resolvedAt  DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  photos      FeedbackPhoto[]
+  comments    FeedbackComment[]
+
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+  @@index([createdBy])
+}
+
+/// Прикреплённое фото к заявке обратной связи. Файлы хранятся в
+/// uploads/feedback/{feedbackId}/. Путь в БД — относительный от UPLOAD_ROOT.
+model FeedbackPhoto {
+  id         String       @id @default(cuid())
+  feedbackId String
+  feedback   FeedbackItem @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  filePath   String       // относительный путь от apps/api/uploads/
+  createdBy  String
+  createdAt  DateTime     @default(now())
+
+  @@index([feedbackId])
+}
+
+/// Комментарий к заявке обратной связи. Все три роли могут добавлять.
+model FeedbackComment {
+  id         String       @id @default(cuid())
+  feedbackId String
+  feedback   FeedbackItem @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  authorId   String       // AdminUser.id
+  body       String
+  createdAt  DateTime     @default(now())
+
+  @@index([feedbackId, createdAt])
 }
