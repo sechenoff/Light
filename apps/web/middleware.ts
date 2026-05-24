@@ -30,6 +30,7 @@ function isPublic(pathname: string): boolean {
   if (pathname === "/favicon.ico") return true;
   if (pathname.startsWith("/warehouse/scan")) return true; // PIN-авторизация внутри
   if (pathname.startsWith("/gaffer")) return true; // отдельный модуль со своей auth-логикой в layout
+  if (pathname.startsWith("/lk")) return true; // Customer Portal — magic-link auth внутри LkShell
   return false;
 }
 

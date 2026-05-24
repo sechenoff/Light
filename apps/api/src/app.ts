@@ -15,6 +15,7 @@ import { apiKeyAuth } from "./middleware/apiKeyAuth";
 import { botScopeGuard } from "./middleware/botScopeGuard";
 import { sessionParser } from "./middleware/sessionAuth";
 import { warehousePublicRouter, warehouseScanRouter } from "./routes/warehouse";
+import lkRouter from "./routes/lk";
 
 function isMalformedJsonBodyError(err: unknown): boolean {
   return (
@@ -69,6 +70,8 @@ app.use("/api/gaffer", gafferRouter);
 app.use("/api/warehouse", warehousePublicRouter);
 // sessionParser здесь нужен для fallback warehouseAuth → main session (SA/WH без PIN)
 app.use("/api/warehouse", sessionParser, warehouseScanRouter);
+// LK (клиентский портал) — публичный (до apiKeyAuth), собственная auth система (lkAuth cookie/Bearer).
+app.use("/api/lk", lkRouter);
 app.use(apiKeyAuth);
 app.use(sessionParser);
 app.use(botScopeGuard);

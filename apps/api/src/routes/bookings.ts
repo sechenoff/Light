@@ -28,9 +28,7 @@ import { calcBookingPaymentStatus, computeBookingTimeline, computeRelatedExpense
 import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { writeAuditEntry, diffFields } from "../services/audit";
-import { renderInvoicePdf, coalesceWithEnv, type InvoiceLine } from "../services/documentExport/invoice/renderInvoicePdf";
-import { renderActPdf, type ActLine } from "../services/documentExport/act/renderActPdf";
-import { getSettings } from "../services/organizationService";
+import { buildBookingEstimatePdf, buildBookingActPdf } from "../services/documentExport/bookingPdf";
 import { toMoscowDateString, fromMoscowDateString } from "../utils/moscowDate";
 
 const router = express.Router();
@@ -1683,11 +1681,7 @@ router.get(
     try {
       const booking = await prisma.booking.findUnique({
         where: { id: req.params.id },
-        include: {
-          client: true,
-          estimates: { include: { lines: true } },
-          items: { include: { equipment: true } },
-        },
+        select: { id: true, status: true, legacyFinance: true },
       });
       if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
 
@@ -1714,53 +1708,7 @@ router.get(
         }
       }
 
-      const orgSettings = await getSettings();
-      const org = coalesceWithEnv(orgSettings);
-      const invoiceNumber = `LR-DRAFT-${booking.id.slice(0, 8).toUpperCase()}`;
-      const invoiceDate = new Date().toLocaleDateString("ru-RU");
-
-      // Строки берём из estimate.lines если есть, иначе из booking.items
-      let lines: InvoiceLine[];
-      let subtotal: string;
-      let discountPercent: string | null = null;
-      let discountAmount: string | null = null;
-      let totalAfterDiscount: string;
-
-      const mainEstimate = booking.estimates?.find((e) => e.kind === "MAIN");
-      if (mainEstimate) {
-        lines = mainEstimate.lines.map((l, i) => ({
-          index: i + 1,
-          name: l.nameSnapshot,
-          quantity: l.quantity,
-          unitPrice: l.unitPrice.toString(),
-          lineSum: l.lineSum.toString(),
-        }));
-        subtotal = mainEstimate.subtotal.toString();
-        if (mainEstimate.discountPercent && new Decimal(mainEstimate.discountPercent.toString()).greaterThan(0)) {
-          discountPercent = mainEstimate.discountPercent.toString();
-          discountAmount = mainEstimate.discountAmount.toString();
-        }
-        totalAfterDiscount = mainEstimate.totalAfterDiscount.toString();
-      } else {
-        lines = booking.items.map((item, i) => {
-          const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
-          const lineSum = new Decimal(rate.toString()).mul(item.quantity);
-          return {
-            index: i + 1,
-            name: item.equipment?.name ?? item.customName ?? "—",
-            quantity: item.quantity,
-            unitPrice: rate.toString(),
-            lineSum: lineSum.toString(),
-          };
-        });
-        subtotal = booking.finalAmount.toString();
-        totalAfterDiscount = booking.finalAmount.toString();
-      }
-
-      const pdfBuf = await renderInvoicePdf(
-        { invoiceNumber, invoiceDate, clientName: booking.client.name, lines, subtotal, discountPercent, discountAmount, totalAfterDiscount },
-        org,
-      );
+      const pdfBuf = await buildBookingEstimatePdf(booking.id);
 
       const dateStr = new Date().toISOString().slice(0, 10);
       const filename = `Счёт_${booking.id.slice(0, 8)}_${dateStr}.pdf`;
@@ -1782,11 +1730,7 @@ router.get(
     try {
       const booking = await prisma.booking.findUnique({
         where: { id: req.params.id },
-        include: {
-          client: true,
-          estimates: { include: { lines: true } },
-          items: { include: { equipment: true } },
-        },
+        select: { id: true, status: true, amountOutstanding: true },
       });
       if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
 
@@ -1806,43 +1750,7 @@ router.get(
         });
       }
 
-      const orgSettings = await getSettings();
-      const org = coalesceWithEnv(orgSettings);
-      const actNumber = `LR-ACT-${booking.id.slice(0, 8).toUpperCase()}`;
-      const actDate = new Date().toLocaleDateString("ru-RU");
-
-      let actLines: ActLine[];
-      let totalAmount: string;
-
-      const mainEstimate = booking.estimates?.find((e) => e.kind === "MAIN");
-      if (mainEstimate) {
-        actLines = mainEstimate.lines.map((l, i) => ({
-          index: i + 1,
-          name: l.nameSnapshot,
-          quantity: l.quantity,
-          unitPrice: l.unitPrice.toString(),
-          lineSum: l.lineSum.toString(),
-        }));
-        totalAmount = mainEstimate.totalAfterDiscount.toString();
-      } else {
-        actLines = booking.items.map((item, i) => {
-          const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
-          const lineSum = new Decimal(rate.toString()).mul(item.quantity);
-          return {
-            index: i + 1,
-            name: item.equipment?.name ?? item.customName ?? "—",
-            quantity: item.quantity,
-            unitPrice: rate.toString(),
-            lineSum: lineSum.toString(),
-          };
-        });
-        totalAmount = booking.finalAmount.toString();
-      }
-
-      const pdfBuf = await renderActPdf(
-        { actNumber, actDate, clientName: booking.client.name, lines: actLines, totalAmount },
-        org,
-      );
+      const pdfBuf = await buildBookingActPdf(booking.id);
 
       const dateStr = new Date().toISOString().slice(0, 10);
       const filename = `Акт_${booking.id.slice(0, 8)}_${dateStr}.pdf`;

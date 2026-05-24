@@ -41,6 +41,29 @@ const webCwd = path.join(ROOT, "apps/web");
 const botCwd = path.join(ROOT, "apps/bot");
 const logsDir = path.join(ROOT, "logs");
 
+/**
+ * Crash-loop guard для всех долгоживущих процессов.
+ *
+ *  - `min_uptime: "30s"` — процесс должен прожить минимум 30 секунд, чтобы
+ *    PM2 считал его «стабильным». Если упал раньше — это посчитается
+ *    рестартом в crash-loop счётчике.
+ *  - `max_restarts: 5` — после 5 подряд «нестабильных» рестартов PM2
+ *    переводит процесс в `errored` и БОЛЬШЕ НЕ ПОДНИМАЕТ. Это критически
+ *    важно: раньше PM2 безмолвно рестартил web 38 раз на битых `.next/`
+ *    chunk-ах, выжирая CPU. Теперь через 2-3 минуты он остановится и
+ *    `pm2 list` сразу покажет проблему.
+ *  - `restart_delay: 5000` — пауза 5 сек между попытками. Не хаммерим
+ *    рестартами; вместе с min_uptime это даёт реалистичное окно «либо
+ *    процесс зашёл, либо точно сломан».
+ *
+ * Вернуть процесс после `errored`: `pm2 reload <name>` или `pm2 restart <name>`.
+ */
+const crashLoopGuard = {
+  min_uptime: "30s",
+  max_restarts: 5,
+  restart_delay: 5000,
+};
+
 module.exports = {
   apps: [
     // ── Backend API ────────────────────────────────────────────────────────────
@@ -52,6 +75,7 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: "512M",
+      ...crashLoopGuard,
       env: { NODE_ENV: "production", PORT: 4000 },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       error_file: path.join(logsDir, "api-error.log"),
@@ -70,6 +94,7 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: "512M",
+      ...crashLoopGuard,
       env: {
         NODE_ENV: "production",
         PORT: 3000,
@@ -89,6 +114,7 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: "256M",
+      ...crashLoopGuard,
       env: {
         NODE_ENV: "production",
         API_BASE_URL: "http://localhost:4000",

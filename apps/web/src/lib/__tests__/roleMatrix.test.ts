@@ -15,7 +15,7 @@ describe("menuByRole — grouped sections", () => {
     }
   });
 
-  it("SUPER_ADMIN has sections: Главное, Задачи, Склад, Бронирование, Каталог, Мастерская, Финансы, Настройки, Система", () => {
+  it("SUPER_ADMIN has sections: Главное, Задачи, Склад, Бронирование, Каталог, Мастерская, Финансы, Аналитика, Настройки, Система", () => {
     const titles = menuByRole.SUPER_ADMIN.map((s) => s.title);
     expect(titles).toEqual([
       "Главное",
@@ -25,6 +25,7 @@ describe("menuByRole — grouped sections", () => {
       "Каталог",
       "Мастерская",
       "Финансы",
+      "Аналитика",
       "Настройки",
       "Система",
     ]);
@@ -44,8 +45,9 @@ describe("menuByRole — grouped sections", () => {
     ]);
   });
 
-  it("WAREHOUSE has sections: Главное, Задачи, Склад, Бронирование, Каталог, Мастерская, Финансы (no Система)", () => {
+  it("WAREHOUSE has sections: Главное, Задачи, Склад, Бронирование, Каталог, Мастерская, Финансы, Система", () => {
     // L1: WAREHOUSE теперь видит Финансы→Счета в режиме read-only (без CTAs создания/выпуска/аннулирования)
+    // Система: «Обратная связь» (внутренний фидбэк-виджет).
     const titles = menuByRole.WAREHOUSE.map((s) => s.title);
     expect(titles).toEqual([
       "Главное",
@@ -55,6 +57,7 @@ describe("menuByRole — grouped sections", () => {
       "Каталог",
       "Мастерская",
       "Финансы",
+      "Система",
     ]);
   });
 
@@ -66,9 +69,9 @@ describe("menuByRole — grouped sections", () => {
     expect(finance!.items[0].href).toBe("/finance/invoices");
   });
 
-  it("TECHNICIAN has sections: Главное, Задачи, Мастерская, Каталог", () => {
+  it("TECHNICIAN has sections: Главное, Задачи, Мастерская, Каталог, Система", () => {
     const titles = menuByRole.TECHNICIAN.map((s) => s.title);
-    expect(titles).toEqual(["Главное", "Задачи", "Мастерская", "Каталог"]);
+    expect(titles).toEqual(["Главное", "Задачи", "Мастерская", "Каталог", "Система"]);
   });
 
   it("every item has href, label, and icon", () => {

@@ -20,6 +20,7 @@ import { equipmentUnitsRouter } from "./equipmentUnits";
 import { equipmentUnitsGlobalRouter } from "./equipmentUnitsGlobal";
 import { importSessionsRouter } from "./importSessions";
 import { dashboardRouter } from "./dashboard";
+import { equipmentStatsRouter } from "./equipmentStats";
 import { calendarRouter } from "./calendar";
 import { adminUsersRouter } from "./adminUsers";
 import auditRouter from "./audit";
@@ -36,6 +37,7 @@ import { invoicesRouter } from "./invoices";
 import { refundsRouter } from "./refunds";
 import { creditNotesRouter } from "./creditNotes";
 import { organizationSettingsRouter } from "./organizationSettings";
+import clientPortalAdminRouter from "./clientPortalAdmin";
 
 const router = express.Router();
 
@@ -115,6 +117,9 @@ router.use("/api/warehouse", warehouseRouter);
 // /api/dashboard — SUPER_ADMIN, WAREHOUSE, TECHNICIAN
 router.use("/api/dashboard", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), dashboardRouter);
 
+// /api/equipment-stats — SUPER_ADMIN only (read-only analytics)
+router.use("/api/equipment-stats", rolesGuard(["SUPER_ADMIN"]), equipmentStatsRouter);
+
 // /api/calendar — SUPER_ADMIN, WAREHOUSE
 router.use("/api/calendar", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), calendarRouter);
 
@@ -162,5 +167,8 @@ router.use("/api/credit-notes", creditNotesRouter);
 
 // /api/settings — GET/PATCH organization: SA only
 router.use("/api/settings", organizationSettingsRouter);
+
+// /api/admin/clients/:id — порталные действия (invite/disable/reenable/resend): SUPER_ADMIN only (guard внутри роутера)
+router.use("/api/admin/clients/:id", clientPortalAdminRouter);
 
 export { router };

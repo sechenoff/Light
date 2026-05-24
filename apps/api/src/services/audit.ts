@@ -24,7 +24,8 @@ type AuditEntityType =
   | "OrgSettings"
   | "ProblemItem"
   | "Feedback"
-  | "SlangAlias";
+  | "SlangAlias"
+  | "ClientPortalAccount";
 
 /**
  * Записывает событие в аудит-лог.

@@ -1,72 +1,258 @@
-name: Deploy (rsync)
+name: Build & Deploy (CI builds, prod only reloads)
 
-# Reliable deploy: the GitHub runner checks out main and rsyncs the tree to
-# the server over the working SSH channel, then builds and does a DETERMINISTIC
-# pm2 (re)start from ecosystem for api/rental-bot (deploy.sh's `pm2 reload` is
-# unreliable for these cluster apps — it exhausts pm2's restart budget and
-# leaves them `errored`). Health-gated: the run fails if the API isn't up.
-# Does NOT depend on the server being able to git-fetch from GitHub.
+# Билд на GitHub runner (7 ГБ RAM) → артефакты rsync'нутся на прод → прод делает
+# только npm ci + prisma + pm2 reload + healthcheck. На прод OOM-kill при сборке
+# больше невозможен — самая тяжёлая операция (next build) ушла с VPS.
+#
+# Старый pipeline (билд на проде) приводил к серии инцидентов:
+#  - tsc + next build брали 2-3 ГБ heap при 3.3 ГБ RAM на VPS → OOM-kill
+#  - битый .next/ оставался → web в crash loop с TypeError clientModules undefined
+#  - api оставался без node_modules после прерванного npm install
+# См. концепт light-rental-ci-deploy для исторического контекста.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
-  deploy-rsync:
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 1: build всё на GH runner. Здесь столько памяти, сколько нужно.
+  # ─────────────────────────────────────────────────────────────────────────
+  build:
     runs-on: ubuntu-latest
-    concurrency:
-      group: deploy-production
-      cancel-in-progress: false
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Rsync repo tree to server
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: npm ci (workspace, full)
+        run: npm ci --no-audit --no-fund
+
+      - name: prisma generate
+        run: cd apps/api && npx prisma generate
+
+      - name: build shared (CJS+ESM)
+        run: npm run build -w packages/shared
+
+      - name: build api (tsc → dist/)
+        run: npm run build -w apps/api
+
+      - name: build rental-bot (tsc → dist/)
+        run: npm run build -w apps/bot
+
+      - name: build web (next build → .next/)
+        # 4 ГБ heap — GH runner это выдержит легко. На VPS такое не вытянуть.
+        run: NODE_OPTIONS="--max-old-space-size=4096" npm run build -w apps/web
+
+      - name: pack build artifacts
+        # Только dist/ + .next/ + сгенерированный prisma client. У web нет
+        # папки public (Next.js работает без неё). node_modules не упаковываем
+        # — на проде ставится через npm ci (нужен prisma CLI для db push).
+        run: |
+          tar -czf artifacts.tar.gz \
+            packages/shared/dist \
+            apps/api/dist \
+            apps/bot/dist \
+            apps/web/.next \
+            node_modules/.prisma \
+            node_modules/@prisma/client
+          ls -lh artifacts.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: artifacts.tar.gz
+          retention-days: 3
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 2: rsync исходники + artifacts на прод, npm ci runtime, pm2 reload.
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: setup SSH
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_id
           chmod 600 ~/.ssh/deploy_id
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: rsync source tree (без dist, .next, node_modules — приходят отдельно)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          # ВАЖНО про --exclude: всё что прод имеет, но git — нет, должно быть в
+          # exclude'ах, иначе rsync --delete их удалит. Это уже валило прод:
+          # logs/ снёсся → PM2 не мог писать → api crash loop.
           rsync -az --delete \
-            --exclude '.git' --exclude 'node_modules' \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude 'dist' \
+            --exclude '.next' \
             --exclude '.env' --exclude '.env.*' --exclude '*.env' \
-            --exclude '*.db' --exclude 'data/' --exclude 'storage/' --exclude 'backups/' --exclude 'uploads/' \
+            --exclude '*.db' \
+            --exclude 'logs/' \
+            --exclude 'data/' --exclude 'storage/' --exclude 'backups/' --exclude 'uploads/' \
+            --exclude 'artifacts.tar.gz' \
             -e "ssh -i ~/.ssh/deploy_id -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
             ./ "$DEPLOY_USER@$DEPLOY_HOST:/opt/light-rental-system/"
 
-      - name: Build, deterministic pm2 restart, health-gate
+      - name: scp build artifacts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/deploy_id -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            artifacts.tar.gz \
+            "$DEPLOY_USER@$DEPLOY_HOST:/opt/light-rental-system/artifacts.tar.gz"
+
+      - name: install runtime deps, unpack, migrate, reload, healthcheck
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          command_timeout: 15m
+          command_timeout: 10m
           script_stop: true
           script: |
-            set -e
+            set -euo pipefail
             cd /opt/light-rental-system
-            npm install
-            chmod +x deploy.sh
-            ./deploy.sh --api --rental-bot --web || echo "deploy.sh returned non-zero (continuing to deterministic pm2 restart)"
-            # deploy.sh uses `pm2 reload` which is unreliable for these cluster
-            # apps; force a clean restart from ecosystem so they end ONLINE.
-            for app in api rental-bot; do
-              pm2 delete "$app" >/dev/null 2>&1 || true
-              pm2 start ecosystem.config.js --only "$app" --update-env
+
+            # На случай если rsync с --delete снёс logs/ (хотя в exclude список
+            # она добавлена) — пересоздаём, иначе PM2 не сможет писать и каждый
+            # процесс падает в crash loop.
+            mkdir -p logs
+
+            echo "▶ atomic stop: web"
+            # Останавливаем web перед npm ci, чтобы не оставить его на исчезающих
+            # node_modules (crash loop). API/bot переживают reload — их трогать не нужно.
+            pm2 stop web >/dev/null 2>&1 || true
+
+            # Где-то на проде установлен скрытый NODE_ENV=production (источник
+            # не нашёл — ни /etc/environment, ни .npmrc, ни /root/.bashrc), и
+            # без явного NODE_ENV=development npm ci не ставит devDeps →
+            # `tsc not found` → весь билд падает. Этот случай уже валил серию
+            # деплоев. Билд уже сделан на GH runner, но нам нужны prisma CLI +
+            # tsx для миграций и seed-скриптов, а они тоже devDeps.
+            export NODE_ENV=development
+
+            echo "▶ npm ci (runtime + dev deps; build уже сделан на GH runner)"
+            # Полный ci нужен, потому что:
+            #   - prisma CLI (devDep) нужен для db push
+            #   - next start подтягивает Next.js (prodDep)
+            #   - на проде нет tsc/jest/eslint в активном использовании — только их
+            #     наличие в node_modules не мешает.
+            # Без heap-cap билд не делается, npm ci сам по себе не OOM'ит.
+            npm ci --no-audit --no-fund
+
+            echo "▶ распаковываем pre-built артефакты"
+            tar -xzf artifacts.tar.gz
+            rm -f artifacts.tar.gz
+
+            echo "▶ prisma generate (на случай если client structure изменилась)"
+            cd apps/api
+            npx prisma generate >/dev/null
+
+            # DB backup + push
+            DB_FILE=prisma/rental.db
+            if [ -f "$DB_FILE" ]; then
+              mkdir -p ../../backups
+              cp "$DB_FILE" "../../backups/rental_$(date +%Y-%m-%d_%H-%M-%S).db"
+              ls -1t ../../backups/rental_*.db 2>/dev/null | tail -n +11 | xargs -r rm --
+              echo "  ✓ DB backed up"
+            fi
+            npx prisma db push --accept-data-loss
+            npx tsx scripts/seed-admin-users.ts || true
+            npx tsx scripts/seed-system-user.ts || true
+            cd ../..
+
+            # Sync API_KEY для web (страховка; ecosystem.config.js делает то же
+            # на каждый reload, но .env.local используется при build-time
+            # и при ручных npm start вне PM2).
+            if [ -f apps/api/.env ]; then
+              KEY=$(grep -E '^API_KEYS=' apps/api/.env | head -1 | sed -E 's/^API_KEYS=//' | cut -d',' -f1 | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+              if [ -n "${KEY:-}" ]; then
+                touch apps/web/.env.local
+                if grep -q '^API_KEY=' apps/web/.env.local; then
+                  sed -i "s|^API_KEY=.*|API_KEY=$KEY|" apps/web/.env.local
+                else
+                  echo "API_KEY=$KEY" >> apps/web/.env.local
+                fi
+              fi
+            fi
+
+            echo "▶ PM2 reload (api, rental-bot, web)"
+            for app in api rental-bot web; do
+              pm2 describe "$app" >/dev/null 2>&1 \
+                && pm2 reload ecosystem.config.js --only "$app" --update-env \
+                || pm2 start ecosystem.config.js --only "$app"
             done
-            pm2 save
+            pm2 save --force >/dev/null
+
+            echo "▶ healthcheck (ждём 10 сек для прогрева)"
             sleep 10
+
+            FAIL=0
+
+            api_code=$(curl -s -o /dev/null -m 8 -w '%{http_code}' http://127.0.0.1:4000/health || echo 000)
+            echo "  API /health → $api_code"
+            if [ "$api_code" != "200" ]; then
+              echo "    ✗ API не отвечает"
+              pm2 logs api --nostream --lines 40 --err
+              FAIL=1
+            fi
+
+            web_code=$(curl -s -o /dev/null -m 8 -w '%{http_code}' http://127.0.0.1:3000/api/auth/me || echo 000)
+            echo "  Web /api/auth/me → $web_code (ожидался 401)"
+            # Используем if/elif вместо case с пустыми ветками — у appleboy/ssh-action
+            # был bash syntax error «unexpected token ';;'» на пустой ветке case.
+            if [ "$web_code" = "401" ] || [ "$web_code" = "200" ]; then
+              true
+            else
+              echo "    ✗ Web прокси не работает"
+              pm2 logs web --nostream --lines 40 --err
+              FAIL=1
+            fi
+
+            if pm2 describe rental-bot >/dev/null 2>&1 && pm2 jlist | grep -q '"name":"rental-bot".*"status":"online"'; then
+              echo "  rental-bot → online"
+            else
+              echo "  ✗ rental-bot НЕ online"
+              pm2 logs rental-bot --nostream --lines 40 --err
+              FAIL=1
+            fi
+
+            if [ "$FAIL" -ne 0 ]; then
+              echo ""
+              echo "✗ DEPLOY FAILED — посмотрите логи выше"
+              pm2 list
+              exit 1
+            fi
+
+            echo ""
+            echo "✓ Deploy OK"
             pm2 list
-            echo "--- health gate ---"
-            code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' http://127.0.0.1:4000/health || echo 000)
-            echo "localhost:4000/health -> $code"
-            test "$code" = "200"
-            pi=$(curl -s -o /dev/null -m 10 -w '%{http_code}' http://127.0.0.1:4000/api/problem-items || echo 000)
-            echo "localhost:4000/api/problem-items -> $pi (expect 401 = feature route live)"
-            case "$pi" in 401|403) echo "feature route OK";; *) echo "feature route NOT live"; exit 1;; esac
-            echo "--- deployed ---"; git rev-parse --short HEAD 2>/dev/null || echo "(rsync tree)"
