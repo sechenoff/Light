@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import { formatMoneyRub, pluralize } from "../../../lib/format";
 import { AddEquipmentSearch } from "./AddEquipmentSearch";
 
@@ -83,9 +84,10 @@ export function EquipmentEditTable({
             <tbody>
               {categories.map((cat) => {
                 const catItems = grouped.get(cat)!;
+                // HIGH #4 — key должен быть на Fragment, shorthand <> ключи не принимает.
                 return (
-                  <>
-                    <tr key={`cat-${cat}`} className="border-t border-border bg-surface-subtle">
+                  <Fragment key={`cat-${cat}`}>
+                    <tr className="border-t border-border bg-surface-subtle">
                       <td
                         colSpan={5}
                         className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3"
@@ -150,7 +152,7 @@ export function EquipmentEditTable({
                         </tr>
                       );
                     })}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -164,13 +166,16 @@ export function EquipmentEditTable({
           startISO={startISO}
           endISO={endISO}
           onSelect={(row) =>
+            // HIGH #5 — `totalQuantity: row.totalQuantity` (раньше копировалось
+            // availableQuantity → искажало UI «доступно X из Y», особенно когда
+            // free < total). AddEquipmentSearch уже отдаёт оба поля.
             onAdd({
               equipmentId: row.equipmentId,
               name: row.name,
               category: row.category,
               rentalRatePerShift: row.rentalRatePerShift,
               availableQuantity: row.availableQuantity,
-              totalQuantity: row.availableQuantity,
+              totalQuantity: row.totalQuantity,
             })
           }
         />

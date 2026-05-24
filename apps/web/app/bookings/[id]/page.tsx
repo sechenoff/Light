@@ -372,17 +372,12 @@ export default function BookingDetailPage() {
         booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN" ? (
           <ApprovalReviewView
             booking={booking}
-            onReload={() => {
-              // Re-fetch booking by re-triggering the effect via a state change
-              const controller = new AbortController();
-              fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"}/api/bookings/${id}`, {
-                signal: controller.signal,
-                credentials: "include",
-              })
-                .then((r) => r.json())
-                .then((data) => setBooking(data.booking))
-                .catch(() => {});
-            }}
+            // HIGH #2 — reloadBooking() уже есть в этом же компоненте (L250):
+            // ходит через Next /api/[...path] proxy, через apiFetch (credentials,
+            // централизованная обработка ошибок). Прямой fetch на NEXT_PUBLIC_…
+            // в prod-сборке указывал на http://localhost:4000 — это и был
+            // источник падений inline-saves.
+            onReload={() => { void reloadBooking(); }}
             currentUser={user!}
           />
         ) : (

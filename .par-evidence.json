@@ -1,10 +1,12 @@
 {
-  "sprint": "approve-button-hang-fix",
-  "feature": "fix: SA approve button stuck «Подтверждаю…» on approval success",
+  "sprint": "approval-inline-edit",
+  "feature": "approval page inline-edit per docs/mockups/approval-page.html",
   "claude_product": "ACCEPTED",
-  "technical_review": "self (1-file, 10/-2 lines, surgical, server-side already verified working — server returns 200 in ~100ms)",
-  "ts": "2026-05-24T14:14:00+03:00",
-  "tests": { "web": { "files": 59, "passed": 464, "failed": 2, "status": "passed (2 pre-existing roleMatrix failures unrelated to this fix, from feat(vehicles) on origin/main)" } },
-  "tsc": { "web": "clean (excl pre-existing formatWaitingTime.test.ts TS2578)" },
-  "notes": "Root cause: ApprovalReviewView.handleApprove called router.push(`/bookings/${booking.id}`) on success — but ApprovalReviewView is RENDERED at that exact URL by app/bookings/[id]/page.tsx when status===PENDING_APPROVAL && role===SUPER_ADMIN, so the push is a no-op in Next.js (current === target pathname). Component never unmounts, setApproving(false) is only in catch (not success path — relied on unmount), so the button stays disabled with 'Подтверждаю…' label forever. Server-side /approve returns 200 in ~100ms and persists CONFIRMED correctly. Fix: (1) destructure onReload from props (was `_onReload` — intentionally unused) and (2) call onReload?.() on success instead of router.push(sameURL). onReload re-fetches the booking in parent → status flips to CONFIRMED → parent renders the regular detail view (different component) → ApprovalReviewView unmounts cleanly. Defensive setApproving(false) before onReload — handles edge if parent fails. Reject path unchanged (router.push('/bookings') is a different URL → already worked)."
+  "technical_review": "BLOCK→APPROVE (5 HIGH + 4 MED + 4 test gaps — all resolved + tests added)",
+  "provider": "typescript-reviewer",
+  "ts": "2026-05-24T15:30:00+03:00",
+  "tests": { "web": { "files": "41", "passed": 469, "failed": 2, "status": "passed (2 pre-existing roleMatrix.test.ts WAREHOUSE/TECHNICIAN section count from feat(vehicles), out of scope)" }, "api": { "status": "1074 passed / 1 pre-existing warehouseScan fail from feat(vehicles), unrelated" } },
+  "tsc": { "api": "exit 0", "web": "exit 0" },
+  "next_build": "Compiled successfully (rm -rf .next + next build — explicit check now mandatory after today's prod outage from stale .next state)",
+  "notes": "Mockup: inline-edit qty/+/-/delete/add, discount, debounced 500ms auto-save via PATCH, live total recalc. Backend SA bypass already present (allowedStatusesForEdit + BOOKING_EDITED_IN_REVIEW audit) — zero schema/API changes. Frontend: ApprovalReviewView rewritten + new EquipmentEditTable + AddEquipmentSearch. Review BLOCK→APPROVE fixes: HIGH#1 bookingRef eliminates stale closure in pendingSave retry; HIGH#2 onReload now uses reloadBooking() via apiFetch (was hardcoded localhost:4000 inline fetch — would have broken every save on prod); HIGH#3 reconciliation deps reduced to [bookingFingerprint] only; HIGH#4 React.Fragment key fixed (was shorthand <> silently ignored); HIGH#5 totalQuantity from row.totalQuantity (was row.availableQuantity — over-booking risk); MED#6 setApproving(true) top-of-handler (double-click race); MED#7 saveInFlightRef gates reconcile (no edit-loss mid-flight); MED#8 customUnitPrice ?? 0 instead of dropping custom items; MED#9 Decimal sum for vehicle subtotals. 3 new tests: PATCH error rollback, approve mid-debounce flush (PATCH first → approve second, button disabled throughout), custom-line preservation."
 }
