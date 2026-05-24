@@ -153,14 +153,14 @@ async function aggregateIncidents(
 
   const out = new Map<string, IncidentEntry>();
   for (const r of repairs) {
-    const eid = r.unit.equipmentId;
+    const eid = r.unit?.equipmentId;
     if (!eid) continue;
     const e = out.get(eid) ?? { repairCount: 0, problemCount: 0 };
     e.repairCount += 1;
     out.set(eid, e);
   }
   for (const p of problems) {
-    const eid = p.equipmentUnit.equipmentId;
+    const eid = p.equipmentUnit?.equipmentId;
     if (!eid) continue;
     const e = out.get(eid) ?? { repairCount: 0, problemCount: 0 };
     e.problemCount += 1;
@@ -188,7 +188,7 @@ async function aggregateRepairCosts(
 
   const out = new Map<string, Decimal>();
   for (const ex of expenses) {
-    const eid = ex.linkedRepair?.unit.equipmentId;
+    const eid = ex.linkedRepair?.unit?.equipmentId;
     if (!eid) continue;
     const prev = out.get(eid) ?? new Decimal(0);
     out.set(eid, prev.plus(ex.amount));
