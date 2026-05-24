@@ -133,6 +133,69 @@ async function aggregateRevenue(
   return out;
 }
 
+type IncidentEntry = { repairCount: number; problemCount: number };
+
+async function aggregateIncidents(
+  prismaClient: PrismaClient,
+  rangeFrom: Date,
+  rangeTo: Date,
+): Promise<Map<string, IncidentEntry>> {
+  const [repairs, problems] = await Promise.all([
+    prismaClient.repair.findMany({
+      where: { createdAt: { gte: rangeFrom, lte: rangeTo } },
+      select: { unit: { select: { equipmentId: true } } },
+    }),
+    prismaClient.problemItem.findMany({
+      where: { createdAt: { gte: rangeFrom, lte: rangeTo } },
+      select: { equipmentUnit: { select: { equipmentId: true } } },
+    }),
+  ]);
+
+  const out = new Map<string, IncidentEntry>();
+  for (const r of repairs) {
+    const eid = r.unit.equipmentId;
+    if (!eid) continue;
+    const e = out.get(eid) ?? { repairCount: 0, problemCount: 0 };
+    e.repairCount += 1;
+    out.set(eid, e);
+  }
+  for (const p of problems) {
+    const eid = p.equipmentUnit.equipmentId;
+    if (!eid) continue;
+    const e = out.get(eid) ?? { repairCount: 0, problemCount: 0 };
+    e.problemCount += 1;
+    out.set(eid, e);
+  }
+  return out;
+}
+
+async function aggregateRepairCosts(
+  prismaClient: PrismaClient,
+  rangeFrom: Date,
+  rangeTo: Date,
+): Promise<Map<string, Decimal>> {
+  const expenses = await prismaClient.expense.findMany({
+    where: {
+      approved: true,
+      linkedRepairId: { not: null },
+      expenseDate: { gte: rangeFrom, lte: rangeTo },
+    },
+    select: {
+      amount: true,
+      linkedRepair: { select: { unit: { select: { equipmentId: true } } } },
+    },
+  });
+
+  const out = new Map<string, Decimal>();
+  for (const ex of expenses) {
+    const eid = ex.linkedRepair?.unit.equipmentId;
+    if (!eid) continue;
+    const prev = out.get(eid) ?? new Decimal(0);
+    out.set(eid, prev.plus(ex.amount));
+  }
+  return out;
+}
+
 /**
  * Computes equipment analytics over a rolling window.
  *
@@ -147,18 +210,22 @@ export async function computeEquipmentStats(
   const rangeTo = new Date();
   const rangeFrom = new Date(rangeTo.getTime() - periodDays * 24 * 60 * 60 * 1000);
 
-  const [allEquipment, demandMap, revenueMap] = await Promise.all([
+  const [allEquipment, demandMap, revenueMap, incidentsMap, repairCostsMap] = await Promise.all([
     prismaClient.equipment.findMany({
       select: { id: true, name: true, category: true, totalQuantity: true },
       orderBy: [{ category: "asc" }, { name: "asc" }],
     }),
     aggregateDemand(prismaClient, rangeFrom, rangeTo),
     aggregateRevenue(prismaClient, rangeFrom, rangeTo),
+    aggregateIncidents(prismaClient, rangeFrom, rangeTo),
+    aggregateRepairCosts(prismaClient, rangeFrom, rangeTo),
   ]);
 
   const rows: EquipmentStatRow[] = allEquipment.map((e) => {
     const d = demandMap.get(e.id) ?? { bookingsCount: 0, qtyShifts: 0 };
     const rev = revenueMap.get(e.id) ?? new Decimal(0);
+    const inc = incidentsMap.get(e.id) ?? { repairCount: 0, problemCount: 0 };
+    const repairCost = repairCostsMap.get(e.id) ?? new Decimal(0);
     const divisor = e.totalQuantity > 0 ? e.totalQuantity : 1;
     const revPerUnit = rev.div(divisor);
     return {
@@ -170,9 +237,9 @@ export async function computeEquipmentStats(
       qtyShifts: d.qtyShifts,
       revenueRub: rev.toString(),
       revenuePerStorageUnit: revPerUnit.toString(),
-      repairCount: 0,
-      problemCount: 0,
-      repairCostRub: "0",
+      repairCount: inc.repairCount,
+      problemCount: inc.problemCount,
+      repairCostRub: repairCost.toString(),
       lastBookingAt: null,
     };
   });
@@ -191,8 +258,18 @@ export async function computeEquipmentStats(
     })
     .slice(0, 10);
 
+  const quality = rows
+    .filter((r) => r.repairCount + r.problemCount > 0)
+    .sort((a, b) => {
+      const byIncidents = (b.repairCount + b.problemCount) - (a.repairCount + a.problemCount);
+      if (byIncidents !== 0) return byIncidents;
+      return new Decimal(b.repairCostRub).comparedTo(new Decimal(a.repairCostRub));
+    })
+    .slice(0, 10);
+
   const activeCount = rows.filter((r) => r.bookingsCount > 0).length;
   const totalRevenue = rows.reduce((acc, r) => acc.plus(r.revenueRub), new Decimal(0));
+  const totalRepairCost = rows.reduce((acc, r) => acc.plus(r.repairCostRub), new Decimal(0));
 
   return {
     period: periodLabel(periodDays),
@@ -203,12 +280,12 @@ export async function computeEquipmentStats(
       dormantCount: rows.length - activeCount,
       totalCount: rows.length,
       revenueRub: totalRevenue.toString(),
-      repairCostRub: "0",
+      repairCostRub: totalRepairCost.toString(),
     },
     demand,
     deadStock: [],
     revenue,
-    quality: [],
+    quality,
     table: rows,
   };
 }

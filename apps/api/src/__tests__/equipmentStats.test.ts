@@ -326,3 +326,91 @@ describe("GET /api/equipment-stats — revenue", () => {
     expect(res.body.kpi.revenueRub).toBe("5000");
   });
 });
+
+describe("GET /api/equipment-stats — quality", () => {
+  it("counts repairs, problem items, and approved repair expenses in the window per equipment", async () => {
+    await clearScenario();
+    const apu = await makeEquipment({ name: "Прожектор Aputure", totalQuantity: 5, rate: 1000 });
+    const sb = await makeEquipment({ name: "Софтбокс 60x90", category: "Свет", totalQuantity: 2, rate: 300 });
+    await makeClient("Клиент A");
+
+    const apuUnit = await prisma.equipmentUnit.create({
+      data: { equipmentId: apu.id, status: "AVAILABLE", barcode: "LR-APU-001", barcodePayload: "APU001:xx" },
+    });
+    const sbUnit = await prisma.equipmentUnit.create({
+      data: { equipmentId: sb.id, status: "AVAILABLE", barcode: "LR-SB-001", barcodePayload: "SB001:xx" },
+    });
+
+    // Repair in window
+    const r1 = await prisma.repair.create({
+      data: {
+        unitId: apuUnit.id,
+        status: "IN_REPAIR",
+        urgency: "NORMAL",
+        reason: "Сгорела лампа",
+        createdBy: "tester",
+        createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+    // Repair outside 90-day window (100 days ago)
+    await prisma.repair.create({
+      data: {
+        unitId: apuUnit.id,
+        status: "CLOSED",
+        urgency: "NORMAL",
+        reason: "Старая поломка",
+        createdBy: "tester",
+        createdAt: new Date(Date.now() - 100 * 24 * 60 * 60 * 1000),
+      },
+    });
+    // ProblemItem on Софтбокс in window
+    await prisma.problemItem.create({
+      data: {
+        equipmentUnitId: sbUnit.id,
+        reason: "LOST",
+        comment: "Не вернули",
+        status: "SEARCHING",
+        createdBy: "tester",
+        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+      },
+    });
+    // Approved expense linked to r1 in window
+    await prisma.expense.create({
+      data: {
+        category: "REPAIR",
+        name: "Запчасть",
+        amount: 2000,
+        expenseDate: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000),
+        linkedRepairId: r1.id,
+        approved: true,
+      },
+    });
+    // Expense outside window — must be ignored
+    await prisma.expense.create({
+      data: {
+        category: "REPAIR",
+        name: "Старая запчасть",
+        amount: 500,
+        expenseDate: new Date(Date.now() - 100 * 24 * 60 * 60 * 1000),
+        linkedRepairId: r1.id,
+        approved: true,
+      },
+    });
+
+    const res = await request(app).get("/api/equipment-stats?period=90").set(AUTH_SA());
+    expect(res.status).toBe(200);
+
+    const tableById = new Map<string, any>(res.body.table.map((r: any) => [r.id, r]));
+    expect(tableById.get(apu.id).repairCount).toBe(1);
+    expect(tableById.get(apu.id).problemCount).toBe(0);
+    expect(tableById.get(apu.id).repairCostRub).toBe("2000");
+    expect(tableById.get(sb.id).repairCount).toBe(0);
+    expect(tableById.get(sb.id).problemCount).toBe(1);
+
+    expect(res.body.quality).toHaveLength(2);
+    // Aputure (1 repair + 0 problems = 1) vs Софтбокс (0 + 1 = 1) → tie; tiebreak by repairCostRub desc → Aputure first
+    expect(res.body.quality[0].id).toBe(apu.id);
+
+    expect(res.body.kpi.repairCostRub).toBe("2000");
+  });
+});
