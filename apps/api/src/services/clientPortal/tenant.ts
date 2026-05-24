@@ -1,14 +1,6 @@
 import type { Request } from "express";
 import { HttpError } from "../../utils/errors";
 
-declare global {
-  namespace Express {
-    interface Request {
-      clientPortal?: { accountId: string; clientId: string; email: string };
-    }
-  }
-}
-
 export function lkClientId(req: Request): string {
   const cp = req.clientPortal;
   if (!cp?.clientId) throw new HttpError(401, "Не авторизован", "UNAUTHENTICATED");
