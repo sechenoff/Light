@@ -169,6 +169,29 @@ async function aggregateIncidents(
   return out;
 }
 
+async function getLastBookingMap(prismaClient: PrismaClient): Promise<Map<string, Date>> {
+  // All-time (not limited to the window) — used to label dead stock.
+  const items = await prismaClient.bookingItem.findMany({
+    where: {
+      equipmentId: { not: null },
+      booking: { status: { in: [...RENTAL_BOOKING_STATUSES] } },
+    },
+    select: {
+      equipmentId: true,
+      booking: { select: { startDate: true } },
+    },
+  });
+  const out = new Map<string, Date>();
+  for (const it of items) {
+    if (!it.equipmentId) continue;
+    const prev = out.get(it.equipmentId);
+    if (!prev || it.booking.startDate.getTime() > prev.getTime()) {
+      out.set(it.equipmentId, it.booking.startDate);
+    }
+  }
+  return out;
+}
+
 async function aggregateRepairCosts(
   prismaClient: PrismaClient,
   rangeFrom: Date,
@@ -210,7 +233,7 @@ export async function computeEquipmentStats(
   const rangeTo = new Date();
   const rangeFrom = new Date(rangeTo.getTime() - periodDays * 24 * 60 * 60 * 1000);
 
-  const [allEquipment, demandMap, revenueMap, incidentsMap, repairCostsMap] = await Promise.all([
+  const [allEquipment, demandMap, revenueMap, incidentsMap, repairCostsMap, lastBookingMap] = await Promise.all([
     prismaClient.equipment.findMany({
       select: { id: true, name: true, category: true, totalQuantity: true },
       orderBy: [{ category: "asc" }, { name: "asc" }],
@@ -219,6 +242,7 @@ export async function computeEquipmentStats(
     aggregateRevenue(prismaClient, rangeFrom, rangeTo),
     aggregateIncidents(prismaClient, rangeFrom, rangeTo),
     aggregateRepairCosts(prismaClient, rangeFrom, rangeTo),
+    getLastBookingMap(prismaClient),
   ]);
 
   const rows: EquipmentStatRow[] = allEquipment.map((e) => {
@@ -240,7 +264,7 @@ export async function computeEquipmentStats(
       repairCount: inc.repairCount,
       problemCount: inc.problemCount,
       repairCostRub: repairCost.toString(),
-      lastBookingAt: null,
+      lastBookingAt: lastBookingMap.get(e.id)?.toISOString() ?? null,
     };
   });
 
@@ -267,6 +291,17 @@ export async function computeEquipmentStats(
     })
     .slice(0, 10);
 
+  const deadStock = rows
+    .filter((r) => r.bookingsCount === 0)
+    .sort((a, b) => {
+      // never-rented (null lastBookingAt) first, then oldest lastBookingAt first
+      if (a.lastBookingAt === null && b.lastBookingAt === null) return 0;
+      if (a.lastBookingAt === null) return -1;
+      if (b.lastBookingAt === null) return 1;
+      return a.lastBookingAt.localeCompare(b.lastBookingAt);
+    })
+    .slice(0, 10);
+
   const activeCount = rows.filter((r) => r.bookingsCount > 0).length;
   const totalRevenue = rows.reduce((acc, r) => acc.plus(r.revenueRub), new Decimal(0));
   const totalRepairCost = rows.reduce((acc, r) => acc.plus(r.repairCostRub), new Decimal(0));
@@ -283,7 +318,7 @@ export async function computeEquipmentStats(
       repairCostRub: totalRepairCost.toString(),
     },
     demand,
-    deadStock: [],
+    deadStock,
     revenue,
     quality,
     table: rows,

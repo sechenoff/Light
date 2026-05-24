@@ -414,3 +414,46 @@ describe("GET /api/equipment-stats — quality", () => {
     expect(res.body.kpi.repairCostRub).toBe("2000");
   });
 });
+
+describe("GET /api/equipment-stats — dead stock", () => {
+  it("lists never-rented equipment first, then by lastBookingAt asc", async () => {
+    await clearScenario();
+    const neverRented = await makeEquipment({ name: "Старый блин", totalQuantity: 1, rate: 200 });
+    const oldRental = await makeEquipment({ name: "Тренога Manfrotto", totalQuantity: 3, rate: 500 });
+    const recentRental = await makeEquipment({ name: "Прожектор Aputure", totalQuantity: 5, rate: 1000 });
+    const client = await makeClient("Клиент A");
+
+    // recentRental: booking 5 days ago → in 30d window AND in 90d window
+    await makeBooking({
+      clientId: client.id,
+      projectName: "Свежий",
+      status: "RETURNED",
+      startDaysAgo: 5,
+      endDaysAgo: 3,
+      items: [{ equipmentId: recentRental.id, equipmentName: recentRental.name, quantity: 1, unitPrice: 1000 }],
+    });
+    // oldRental: booking 50 days ago → NOT in 30d window but in 90d window
+    await makeBooking({
+      clientId: client.id,
+      projectName: "Старый",
+      status: "RETURNED",
+      startDaysAgo: 50,
+      endDaysAgo: 48,
+      items: [{ equipmentId: oldRental.id, equipmentName: oldRental.name, quantity: 2, unitPrice: 500 }],
+    });
+
+    // period=30 → both oldRental and neverRented appear in deadStock (neverRented first)
+    const res30 = await request(app).get("/api/equipment-stats?period=30").set(AUTH_SA());
+    expect(res30.status).toBe(200);
+    const dead30Ids = res30.body.deadStock.map((r: any) => r.id);
+    expect(dead30Ids[0]).toBe(neverRented.id); // null lastBookingAt sorts first
+    expect(dead30Ids).toContain(oldRental.id);
+    expect(dead30Ids).not.toContain(recentRental.id);
+
+    // The neverRented row has lastBookingAt = null; oldRental has a real date
+    const neverRow = res30.body.deadStock.find((r: any) => r.id === neverRented.id);
+    const oldRow = res30.body.deadStock.find((r: any) => r.id === oldRental.id);
+    expect(neverRow.lastBookingAt).toBe(null);
+    expect(oldRow.lastBookingAt).not.toBe(null);
+  });
+});
