@@ -20,6 +20,7 @@ import { equipmentUnitsRouter } from "./equipmentUnits";
 import { equipmentUnitsGlobalRouter } from "./equipmentUnitsGlobal";
 import { importSessionsRouter } from "./importSessions";
 import { dashboardRouter } from "./dashboard";
+import { equipmentStatsRouter } from "./equipmentStats";
 import { calendarRouter } from "./calendar";
 import { adminUsersRouter } from "./adminUsers";
 import auditRouter from "./audit";
@@ -114,6 +115,9 @@ router.use("/api/warehouse", warehouseRouter);
 
 // /api/dashboard — SUPER_ADMIN, WAREHOUSE, TECHNICIAN
 router.use("/api/dashboard", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), dashboardRouter);
+
+// /api/equipment-stats — SUPER_ADMIN only (read-only analytics)
+router.use("/api/equipment-stats", rolesGuard(["SUPER_ADMIN"]), equipmentStatsRouter);
 
 // /api/calendar — SUPER_ADMIN, WAREHOUSE
 router.use("/api/calendar", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), calendarRouter);
