@@ -3,26 +3,39 @@
 #
 # Использование:
 #   chmod +x deploy.sh
-#   ./deploy.sh            # полный деплой
+#   ./deploy.sh            # полный деплой (api + rental-bot + web)
 #   ./deploy.sh --api      # только API
-#   ./deploy.sh --prod-bot # только prod-bot
+#   ./deploy.sh --rental-bot # только rental-bot
 #   ./deploy.sh --web      # только фронтенд
 #
 # Требования на сервере:
 #   Node.js >= 20, npm >= 10, pm2 (npm i -g pm2)
+#
+# Стабильность (см. почему этот скрипт такой):
+#   1. ОСТАНАВЛИВАЕМ web перед `npm ci`. `npm ci` стирает node_modules; если в
+#      это время живой PM2 web падает на исчезнувшие модули — он входит в
+#      crash loop (видели в проде, 35+ рестартов на битых .next/). Stop ДО
+#      install + start ТОЛЬКО после успешного билда = атомарность.
+#   2. Удаляем `apps/web/.next` перед билдом — если прошлый билд упал по OOM
+#      на половине, остаются битые chunk-файлы, которые рантайм-Next пытается
+#      грузить и валится на `Cannot read properties of undefined (reading
+#      'clientModules')`.
+#   3. NODE_OPTIONS=--max-old-space-size=1536 — кап на heap билда. На VPS с
+#      3.3 ГБ RAM это страхует от OOM, у нас 6 ГБ swap покрывает overflow.
+#   4. Healthcheck в конце — curl /api/health (внутри VPS) и /api/auth/me
+#      через прокси. Если 2xx-401 не пришёл — exit 1, чтобы автоматизация
+#      (CI, cron, ручной запуск) узнала о провале сразу, а не через жалобу.
 
 set -euo pipefail
 
 DEPLOY_ALL=true
 DEPLOY_API=false
-DEPLOY_PROD_BOT=false
 DEPLOY_RENTAL_BOT=false
 DEPLOY_WEB=false
 
 for arg in "$@"; do
   case $arg in
     --api)        DEPLOY_ALL=false; DEPLOY_API=true ;;
-    --prod-bot)   DEPLOY_ALL=false; DEPLOY_PROD_BOT=true ;;
     --rental-bot) DEPLOY_ALL=false; DEPLOY_RENTAL_BOT=true ;;
     --web)        DEPLOY_ALL=false; DEPLOY_WEB=true ;;
   esac
@@ -30,7 +43,6 @@ done
 
 if $DEPLOY_ALL; then
   DEPLOY_API=true
-  DEPLOY_PROD_BOT=true
   DEPLOY_RENTAL_BOT=true
   DEPLOY_WEB=true
 fi
@@ -43,10 +55,19 @@ echo "║   Light Rental System  · Deploy      ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 
+# ── (1) Атомарность: останавливаем web перед npm ci ──────────────────────────
+# Web — самый чувствительный к битым node_modules: рантайм next start активно
+# подгружает chunks; пропавшие модули → crash loop. API/bot переживают потерю
+# node_modules лучше (только при reload).
+if $DEPLOY_WEB; then
+  echo "▶ stop: pm2 stop web (атомарность билда)"
+  pm2 stop web > /dev/null 2>&1 || true
+  echo "  ✓ web остановлен (поднимем после успешной сборки)"
+fi
+
 # ── Root workspace install (hoists deps для всех приложений) ──────────────────
-# Используем `npm ci`: clean install строго по package-lock.json. Это гарантирует
-# воспроизводимый деплой и чинит случаи, когда обычный `npm install` оставляет
-# частичное дерево зависимостей (например, при добавлении новых модулей).
+# `npm ci` — clean install строго по package-lock.json. Гарантирует
+# воспроизводимый деплой и чинит частичные деревья после прерванных install'ов.
 cd "$ROOT"
 echo "▶ root: npm ci (workspaces, clean install)"
 npm ci --no-audit --no-fund
@@ -105,23 +126,6 @@ if $DEPLOY_API; then
   echo "  ✓ API готов"
 fi
 
-# ── prod-bot ──────────────────────────────────────────────────────────────────
-if $DEPLOY_PROD_BOT; then
-  echo "▶ prod-bot: install + build"
-  cd "$ROOT/apps/prod-bot"
-
-  [ ! -f .env ] && { echo "  ⚠ .env не найден. Скопируйте .env.production → .env"; exit 1; }
-
-  # Deps уже установлены корневым `npm ci` в начале скрипта.
-  npm run build
-
-  pm2 describe prod-bot > /dev/null 2>&1 \
-    && pm2 reload prod-bot \
-    || pm2 start "$ROOT/ecosystem.config.js" --only prod-bot
-
-  echo "  ✓ prod-bot готов"
-fi
-
 # ── rental-bot ────────────────────────────────────────────────────────────────
 if $DEPLOY_RENTAL_BOT; then
   echo "▶ rental-bot: build"
@@ -167,11 +171,21 @@ if $DEPLOY_WEB; then
     fi
   fi
 
-  # Deps уже установлены корневым `npm ci` в начале скрипта (workspace hoisting).
-  npm run build
+  # ── (2) Чистый билд: всегда удаляем .next, чтобы не унаследовать битые
+  # артефакты от прошлого OOM-killed билда. На холодную сборка ~30-60s,
+  # на горячую обычно дороже из-за кэша → разница в десятки секунд,
+  # но мы получаем гарантированно консистентный билд.
+  echo "▶ web: rm -rf .next (чистый билд)"
+  rm -rf .next
+
+  # ── (3) Heap-cap для билда: 1.5 ГБ. С 6 ГБ swap на VPS это ОК.
+  # Без cap билд Next запросто берёт 2-3 ГБ и triggers OOM-kill на 3.3 ГБ RAM.
+  echo "▶ web: build (heap ≤ 1.5 ГБ)"
+  NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=1536" npm run build
 
   # ecosystem.config.js на каждом reload читает API_KEYS из apps/api/.env
   # и подставляет в env web-процесса как API_KEY. --update-env обязателен.
+  # Используем start (а не reload), потому что мы остановили web в начале.
   pm2 describe web > /dev/null 2>&1 \
     && pm2 reload "$ROOT/ecosystem.config.js" --only web --update-env \
     || pm2 start "$ROOT/ecosystem.config.js" --only web
@@ -179,8 +193,63 @@ if $DEPLOY_WEB; then
   echo "  ✓ web готов"
 fi
 
-echo ""
 pm2 save --force > /dev/null
+
+# ── (4) Healthcheck после деплоя ─────────────────────────────────────────────
+# Пингуем то, что задеплоили. Без этого скрипт говорил «✓ Деплой завершён»
+# даже когда api/web в crash loop — узнавали через жалобу пользователя.
+echo ""
+echo "▶ healthcheck"
+
+HEALTH_FAIL=false
+
+# Ждём 5 секунд: PM2 reload не атомарен — старый процесс ещё дослуживает,
+# новый поднимается. До этого порта curl может получить EOF.
+sleep 5
+
+if $DEPLOY_API; then
+  if curl -fsS --max-time 5 http://127.0.0.1:4000/health > /dev/null 2>&1; then
+    echo "  ✓ API: http://127.0.0.1:4000/health → 200"
+  else
+    echo "  ✗ API: http://127.0.0.1:4000/health НЕ отвечает"
+    echo "    pm2 logs api --lines 50 — посмотрите ошибки"
+    HEALTH_FAIL=true
+  fi
+fi
+
+if $DEPLOY_WEB; then
+  # /api/auth/me на проде → 401 (не залогинены). Проверяем не код, а сам факт
+  # ответа: web-прокси → api → 401. Если что-то развалилось — 502/504/timeout.
+  HTTP_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 http://127.0.0.1:3000/api/auth/me || echo "000")
+  case "$HTTP_CODE" in
+    401|200)
+      echo "  ✓ Web: http://127.0.0.1:3000/api/auth/me → $HTTP_CODE (proxy жив)"
+      ;;
+    *)
+      echo "  ✗ Web: http://127.0.0.1:3000/api/auth/me → $HTTP_CODE (ожидался 401)"
+      echo "    pm2 logs web --lines 50 — посмотрите ошибки"
+      HEALTH_FAIL=true
+      ;;
+  esac
+fi
+
+if $DEPLOY_RENTAL_BOT; then
+  # У бота нет HTTP — проверяем только что PM2 показывает online.
+  if pm2 describe rental-bot 2>/dev/null | grep -q "status.*online"; then
+    echo "  ✓ rental-bot: pm2 status online"
+  else
+    echo "  ✗ rental-bot: pm2 status НЕ online"
+    HEALTH_FAIL=true
+  fi
+fi
+
+echo ""
+if $HEALTH_FAIL; then
+  echo "✗ Деплой завершён С ОШИБКАМИ. Проверьте pm2 logs выше."
+  pm2 list
+  exit 1
+fi
+
 echo "✓ Деплой завершён"
 echo ""
 pm2 list
