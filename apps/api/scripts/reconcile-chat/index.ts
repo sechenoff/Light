@@ -61,6 +61,26 @@ async function main() {
       await runApply({ batchId, confirm: argv.confirm, skipPush });
       break;
     }
+    case "apply-slang-manual": {
+      const { runApplySlangManual } = await import("./phases/applySlangManual");
+      const batchId = argv.batchId ?? new Date().toISOString();
+      const skipPush = process.argv.includes("--skip-push");
+      await runApplySlangManual(batchId, argv.confirm, skipPush);
+      break;
+    }
+    case "apply-update-overdue": {
+      const { runApplyUpdateOverdue } = await import("./phases/applyUpdateOverdue");
+      const batchId = argv.batchId ?? new Date().toISOString();
+      const skipPush = process.argv.includes("--skip-push");
+      await runApplyUpdateOverdue(batchId, argv.confirm, skipPush);
+      break;
+    }
+    case "rollback": {
+      const { runRollback } = await import("./phases/rollback");
+      if (!argv.batchId) { console.error("--batch-id required for rollback"); process.exit(1); }
+      await runRollback(argv.batchId, argv.confirm);
+      break;
+    }
     default:
       console.error(`phase ${argv.phase} not implemented yet`);
       process.exit(1);
