@@ -43,6 +43,11 @@ async function main() {
       await runParse();
       break;
     }
+    case "match": {
+      const { runMatch } = await import("./phases/match");
+      await runMatch();
+      break;
+    }
     default:
       console.error(`phase ${argv.phase} not implemented yet`);
       process.exit(1);
