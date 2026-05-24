@@ -1,12 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../prisma";
 import { issueMagicLink } from "../../services/clientPortal/magicLink";
 import { sendLoginEmail } from "../../services/clientPortal/mailer";
 import { HttpError } from "../../utils/errors";
-
-const prisma = new PrismaClient();
 const router = Router();
 
 const requestLoginLimiter = rateLimit({
