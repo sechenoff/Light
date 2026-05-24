@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { execSync } from "node:child_process";
 import path from "node:path";
-import { issueMagicLink, consumeMagicLink, hashToken } from "../services/clientPortal/magicLink";
+import { issueMagicLink, consumeMagicLink, hashToken, invalidateUnusedInvites } from "../services/clientPortal/magicLink";
 
 const TEST_DB = path.resolve(__dirname, `../../prisma/test-lk-magic-${process.pid}.db`);
 process.env.DATABASE_URL = `file:${TEST_DB}`;
@@ -68,6 +68,47 @@ describe("magicLink", () => {
 
     const r2 = await consumeMagicLink(prisma, rawToken, { ip: "1.1.1.1", ua: "test" });
     expect(r2).toBeNull();
+  });
+
+  test("invalidateUnusedInvites expires active INVITE tokens for the account, does not touch LOGIN or other accounts", async () => {
+    const acc1 = await makeAccount();
+    const acc2 = await makeAccount();
+
+    // Issue two INVITE tokens for acc1
+    await issueMagicLink(prisma, acc1.id, "INVITE");
+    await issueMagicLink(prisma, acc1.id, "INVITE");
+
+    // Issue a LOGIN token for acc1 (should NOT be touched)
+    await issueMagicLink(prisma, acc1.id, "LOGIN");
+
+    // Issue an INVITE for acc2 (should NOT be touched)
+    await issueMagicLink(prisma, acc2.id, "INVITE");
+
+    const before = Date.now();
+    await prisma.$transaction((tx) => invalidateUnusedInvites(tx, acc1.id));
+
+    // Both INVITE tokens for acc1 must now be expired (expiresAt <= now)
+    const acc1Invites = await prisma.clientPortalMagicLink.findMany({
+      where: { accountId: acc1.id, purpose: "INVITE" },
+    });
+    expect(acc1Invites).toHaveLength(2);
+    for (const link of acc1Invites) {
+      expect(link.expiresAt.getTime()).toBeLessThanOrEqual(before + 100); // small buffer for test timing
+    }
+
+    // LOGIN token for acc1 must be unaffected (expiresAt still in the future)
+    const acc1Login = await prisma.clientPortalMagicLink.findFirst({
+      where: { accountId: acc1.id, purpose: "LOGIN" },
+    });
+    expect(acc1Login).not.toBeNull();
+    expect(acc1Login!.expiresAt.getTime()).toBeGreaterThan(Date.now());
+
+    // INVITE for acc2 must be unaffected (expiresAt still in the future)
+    const acc2Invite = await prisma.clientPortalMagicLink.findFirst({
+      where: { accountId: acc2.id, purpose: "INVITE" },
+    });
+    expect(acc2Invite).not.toBeNull();
+    expect(acc2Invite!.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
   test("consumeMagicLink rejects expired token", async () => {

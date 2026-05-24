@@ -76,5 +76,6 @@ export async function invalidateUnusedInvites(
 ): Promise<void> {
   await tx.clientPortalMagicLink.updateMany({
     where: { accountId, purpose: "INVITE", usedAt: null, expiresAt: { gt: new Date() } },
+    data: { expiresAt: new Date() },
   });
 }
