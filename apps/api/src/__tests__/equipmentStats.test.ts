@@ -232,3 +232,59 @@ describe("GET /api/equipment-stats — master table", () => {
     expect(res.body.kpi.activeCount).toBe(0);
   });
 });
+
+describe("GET /api/equipment-stats — demand", () => {
+  it("counts distinct bookings and qty×shifts per equipment in the window", async () => {
+    await clearScenario();
+    const apu = await makeEquipment({ name: "Прожектор Aputure", totalQuantity: 5, rate: 1000 });
+    const man = await makeEquipment({ name: "Тренога Manfrotto", totalQuantity: 3, rate: 500 });
+    const client = await makeClient("Клиент A");
+
+    // B1: CONFIRMED, last 10..8 days (2 shifts), apu×2 + man×1
+    await makeBooking({
+      clientId: client.id,
+      projectName: "Проект 1",
+      status: "CONFIRMED",
+      startDaysAgo: 10,
+      endDaysAgo: 8,
+      items: [
+        { equipmentId: apu.id, equipmentName: apu.name, quantity: 2, unitPrice: 1000 },
+        { equipmentId: man.id, equipmentName: man.name, quantity: 1, unitPrice: 500 },
+      ],
+    });
+    // B2: ISSUED, last 5..3 days (2 shifts), apu×1
+    await makeBooking({
+      clientId: client.id,
+      projectName: "Проект 2",
+      status: "ISSUED",
+      startDaysAgo: 5,
+      endDaysAgo: 3,
+      items: [{ equipmentId: apu.id, equipmentName: apu.name, quantity: 1, unitPrice: 1000 }],
+    });
+    // B3: CANCELLED → must be excluded
+    await makeBooking({
+      clientId: client.id,
+      projectName: "Проект 3 (отменён)",
+      status: "CANCELLED",
+      startDaysAgo: 2,
+      endDaysAgo: 1,
+      items: [{ equipmentId: apu.id, equipmentName: apu.name, quantity: 9, unitPrice: 1000 }],
+    });
+
+    const res = await request(app).get("/api/equipment-stats?period=90").set(AUTH_SA());
+    expect(res.status).toBe(200);
+
+    const tableById = new Map<string, any>(res.body.table.map((r: any) => [r.id, r]));
+    expect(tableById.get(apu.id).bookingsCount).toBe(2);   // B1 + B2
+    expect(tableById.get(apu.id).qtyShifts).toBe(2 * 2 + 1 * 2); // = 6
+    expect(tableById.get(man.id).bookingsCount).toBe(1);   // B1
+    expect(tableById.get(man.id).qtyShifts).toBe(1 * 2);   // = 2
+
+    expect(res.body.demand).toHaveLength(2);
+    expect(res.body.demand[0].id).toBe(apu.id);  // top = Aputure (2 bookings)
+    expect(res.body.demand[1].id).toBe(man.id);
+
+    expect(res.body.kpi.activeCount).toBe(2);
+    expect(res.body.kpi.dormantCount).toBe(0);
+  });
+});
