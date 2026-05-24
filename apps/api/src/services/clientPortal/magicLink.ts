@@ -46,28 +46,33 @@ export type ConsumeResult = {
   purpose: ClientPortalMagicLinkPurpose;
 };
 
+export async function consumeMagicLinkInTx(
+  tx: Prisma.TransactionClient,
+  rawToken: string,
+  meta: { ip: string | null; ua: string | null },
+): Promise<ConsumeResult | null> {
+  const tokenHash = hashToken(rawToken);
+  const link = await tx.clientPortalMagicLink.findUnique({ where: { tokenHash } });
+  if (!link) return null;
+  if (link.usedAt) return null;
+  if (link.expiresAt.getTime() < Date.now()) return null;
+
+  // Race-safe: only one tx wins
+  const updated = await tx.clientPortalMagicLink.updateMany({
+    where: { id: link.id, usedAt: null },
+    data: { usedAt: new Date(), ip: meta.ip ?? undefined, ua: meta.ua ?? undefined },
+  });
+  if (updated.count === 0) return null;
+
+  return { accountId: link.accountId, purpose: link.purpose };
+}
+
 export async function consumeMagicLink(
   client: PrismaClient,
   rawToken: string,
   meta: { ip: string | null; ua: string | null },
 ): Promise<ConsumeResult | null> {
-  const tokenHash = hashToken(rawToken);
-
-  return client.$transaction(async (tx) => {
-    const link = await tx.clientPortalMagicLink.findUnique({ where: { tokenHash } });
-    if (!link) return null;
-    if (link.usedAt) return null;
-    if (link.expiresAt.getTime() < Date.now()) return null;
-
-    // Race-safe: only one tx wins
-    const updated = await tx.clientPortalMagicLink.updateMany({
-      where: { id: link.id, usedAt: null },
-      data: { usedAt: new Date(), ip: meta.ip ?? undefined, ua: meta.ua ?? undefined },
-    });
-    if (updated.count === 0) return null;
-
-    return { accountId: link.accountId, purpose: link.purpose };
-  });
+  return client.$transaction(async (tx) => consumeMagicLinkInTx(tx, rawToken, meta));
 }
 
 export async function invalidateUnusedInvites(
