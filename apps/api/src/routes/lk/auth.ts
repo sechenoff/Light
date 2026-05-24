@@ -6,6 +6,7 @@ import { issueMagicLink } from "../../services/clientPortal/magicLink";
 import { loginViaMagicLink } from "../../services/clientPortal/portalAccountService";
 import { sendLoginEmail } from "../../services/clientPortal/mailer";
 import { signLkSession, LK_COOKIE_NAME, lkCookieOptions } from "../../services/clientPortal/session";
+import { verifyPassword } from "../../services/clientPortal/password";
 import { lkAuth } from "../../middleware/lkAuth";
 import { HttpError } from "../../utils/errors";
 const router = Router();
@@ -41,6 +42,56 @@ router.post("/request-login", requestLoginLimiter, async (req, res, next) => {
       }
     }
     // Always 200 — no enumeration
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const passwordLoginSchema = z.object({
+  email: z.string().email().toLowerCase().trim(),
+  password: z.string().min(1).max(200),
+});
+
+router.post("/password-login", requestLoginLimiter, async (req, res, next) => {
+  try {
+    const parsed = passwordLoginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new HttpError(401, "Неверные учётные данные", "INVALID_CREDENTIALS");
+    }
+    const { email, password } = parsed.data;
+
+    const account = await prisma.clientPortalAccount.findUnique({ where: { email } });
+    // Constant-time-ish: always run bcrypt even when account missing/has no password
+    const hash = account?.passwordHash ?? "$2a$10$invalidsaltinvalidsaltinvalidsaltinvalidsalt";
+    const ok = await verifyPassword(password, hash);
+
+    if (!account || account.status !== "ACTIVE" || !account.passwordHash || !ok) {
+      throw new HttpError(401, "Неверные учётные данные", "INVALID_CREDENTIALS");
+    }
+
+    if (account.lockedUntil && account.lockedUntil.getTime() > Date.now()) {
+      throw new HttpError(401, "Неверные учётные данные", "INVALID_CREDENTIALS");
+    }
+
+    const meta = {
+      ip: (req.ip ?? null) || null,
+      ua: (req.get("user-agent") ?? null) || null,
+    };
+
+    await prisma.clientPortalAccount.update({
+      where: { id: account.id },
+      data: {
+        lastLoginAt: new Date(),
+        lastLoginIp: meta.ip ?? undefined,
+        lastLoginUa: meta.ua ?? undefined,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
+    });
+
+    const token = signLkSession({ accountId: account.id, clientId: account.clientId, email: account.email });
+    res.cookie(LK_COOKIE_NAME, token, lkCookieOptions());
     res.json({ ok: true });
   } catch (err) {
     next(err);

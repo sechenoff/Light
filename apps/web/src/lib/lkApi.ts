@@ -41,5 +41,11 @@ export const lkApi = {
     fetchJson<{ ok: true }>("/api/lk/auth/request-login", { method: "POST", body: JSON.stringify({ email }) }),
   verify: (token: string) =>
     fetchJson<{ ok: true }>("/api/lk/auth/verify", { method: "POST", body: JSON.stringify({ token }), silent401: true }),
+  passwordLogin: (email: string, password: string) =>
+    fetchJson<{ ok: true }>("/api/lk/auth/password-login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+      silent401: true,
+    }),
   logout: () => fetchJson<{ ok: true }>("/api/lk/auth/logout", { method: "POST" }),
 };

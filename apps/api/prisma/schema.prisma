@@ -1409,6 +1409,7 @@ model ClientPortalAccount {
   lastLoginUa         String?
   failedLoginAttempts Int                       @default(0)
   lockedUntil         DateTime?
+  passwordHash        String?
   invitedBy           String?
   disabledAt          DateTime?
   disabledBy          String?
