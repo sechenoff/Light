@@ -104,6 +104,9 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
           set -euo pipefail
+          # ВАЖНО про --exclude: всё что прод имеет, но git — нет, должно быть в
+          # exclude'ах, иначе rsync --delete их удалит. Это уже валило прод:
+          # logs/ снёсся → PM2 не мог писать → api crash loop.
           rsync -az --delete \
             --exclude '.git' \
             --exclude 'node_modules' \
@@ -111,6 +114,7 @@ jobs:
             --exclude '.next' \
             --exclude '.env' --exclude '.env.*' --exclude '*.env' \
             --exclude '*.db' \
+            --exclude 'logs/' \
             --exclude 'data/' --exclude 'storage/' --exclude 'backups/' --exclude 'uploads/' \
             --exclude 'artifacts.tar.gz' \
             -e "ssh -i ~/.ssh/deploy_id -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
@@ -138,12 +142,25 @@ jobs:
             set -euo pipefail
             cd /opt/light-rental-system
 
+            # На случай если rsync с --delete снёс logs/ (хотя в exclude список
+            # она добавлена) — пересоздаём, иначе PM2 не сможет писать и каждый
+            # процесс падает в crash loop.
+            mkdir -p logs
+
             echo "▶ atomic stop: web"
             # Останавливаем web перед npm ci, чтобы не оставить его на исчезающих
             # node_modules (crash loop). API/bot переживают reload — их трогать не нужно.
             pm2 stop web >/dev/null 2>&1 || true
 
-            echo "▶ npm ci (runtime deps; build уже сделан на GH runner)"
+            # Где-то на проде установлен скрытый NODE_ENV=production (источник
+            # не нашёл — ни /etc/environment, ни .npmrc, ни /root/.bashrc), и
+            # без явного NODE_ENV=development npm ci не ставит devDeps →
+            # `tsc not found` → весь билд падает. Этот случай уже валил серию
+            # деплоев. Билд уже сделан на GH runner, но нам нужны prisma CLI +
+            # tsx для миграций и seed-скриптов, а они тоже devDeps.
+            export NODE_ENV=development
+
+            echo "▶ npm ci (runtime + dev deps; build уже сделан на GH runner)"
             # Полный ci нужен, потому что:
             #   - prisma CLI (devDep) нужен для db push
             #   - next start подтягивает Next.js (prodDep)
@@ -211,14 +228,15 @@ jobs:
 
             web_code=$(curl -s -o /dev/null -m 8 -w '%{http_code}' http://127.0.0.1:3000/api/auth/me || echo 000)
             echo "  Web /api/auth/me → $web_code (ожидался 401)"
-            case "$web_code" in
-              401|200) ;;
-              *)
-                echo "    ✗ Web прокси не работает"
-                pm2 logs web --nostream --lines 40 --err
-                FAIL=1
-                ;;
-            esac
+            # Используем if/elif вместо case с пустыми ветками — у appleboy/ssh-action
+            # был bash syntax error «unexpected token ';;'» на пустой ветке case.
+            if [ "$web_code" = "401" ] || [ "$web_code" = "200" ]; then
+              true
+            else
+              echo "    ✗ Web прокси не работает"
+              pm2 logs web --nostream --lines 40 --err
+              FAIL=1
+            fi
 
             if pm2 describe rental-bot >/dev/null 2>&1 && pm2 jlist | grep -q '"name":"rental-bot".*"status":"online"'; then
               echo "  rental-bot → online"

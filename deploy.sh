@@ -65,11 +65,23 @@ if $DEPLOY_WEB; then
   echo "  ✓ web остановлен (поднимем после успешной сборки)"
 fi
 
+# Где-то на проде живёт скрытый NODE_ENV=production (источник не нашли — ни
+# /etc/environment, ни .npmrc, ни ~/.bashrc). Без явного NODE_ENV=development
+# npm ci пропускает devDeps → tsc/next/prisma CLI отсутствуют → tools падают
+# с «tsc not found» / «prisma not found». Этот случай уже валил несколько
+# деплоев подряд. Билд сейчас требует tsc и tsx, поэтому dev-deps нужны.
+export NODE_ENV=development
+
+# logs/ нужна PM2 для записи stdout/stderr. Если её снесли (например, прошлым
+# rsync --delete без proper exclude'а) — PM2-процессы падают и не могут даже
+# залогировать причину. Гарантируем существование.
+mkdir -p "$ROOT/logs"
+
 # ── Root workspace install (hoists deps для всех приложений) ──────────────────
 # `npm ci` — clean install строго по package-lock.json. Гарантирует
 # воспроизводимый деплой и чинит частичные деревья после прерванных install'ов.
 cd "$ROOT"
-echo "▶ root: npm ci (workspaces, clean install)"
+echo "▶ root: npm ci (workspaces, clean install, NODE_ENV=development для devDeps)"
 npm ci --no-audit --no-fund
 echo "  ✓ workspace deps установлены"
 
