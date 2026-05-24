@@ -105,3 +105,130 @@ describe("GET /api/equipment-stats — access control", () => {
     expect(res.body.table).toEqual([]);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────
+// Seed helpers reused across multi-task scenarios
+// ──────────────────────────────────────────────────────────────────
+
+async function clearScenario() {
+  // Delete in FK-safe order
+  await prisma.estimateLine.deleteMany();
+  await prisma.estimate.deleteMany();
+  await prisma.bookingItemUnit.deleteMany();
+  await prisma.bookingItem.deleteMany();
+  await prisma.expense.deleteMany();
+  await prisma.problemItem.deleteMany();
+  await prisma.repair.deleteMany();
+  await prisma.booking.deleteMany();
+  await prisma.equipmentUnit.deleteMany();
+  await prisma.equipment.deleteMany();
+  await prisma.client.deleteMany();
+}
+
+async function makeEquipment(opts: { name: string; category?: string; totalQuantity: number; rate: number }) {
+  return prisma.equipment.create({
+    data: {
+      importKey: `${opts.category ?? "Свет"}||${opts.name.toUpperCase()}||||`,
+      name: opts.name,
+      category: opts.category ?? "Свет",
+      totalQuantity: opts.totalQuantity,
+      stockTrackingMode: "COUNT",
+      rentalRatePerShift: opts.rate,
+    },
+  });
+}
+
+async function makeClient(name = "Тестовый клиент") {
+  return prisma.client.create({ data: { name } });
+}
+
+type SeedBookingItem = { equipmentId: string | null; equipmentName?: string; category?: string; quantity: number; unitPrice: number };
+
+async function makeBooking(opts: {
+  clientId: string;
+  projectName: string;
+  status: "DRAFT" | "PENDING_APPROVAL" | "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
+  startDaysAgo: number;
+  endDaysAgo: number;
+  items: SeedBookingItem[];
+  withEstimate?: boolean; // default true when status not DRAFT
+}) {
+  const now = Date.now();
+  const startDate = new Date(now - opts.startDaysAgo * 24 * 60 * 60 * 1000);
+  const endDate = new Date(now - opts.endDaysAgo * 24 * 60 * 60 * 1000);
+  const shifts = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)));
+  const subtotal = opts.items.reduce((acc, it) => acc + it.quantity * it.unitPrice * shifts, 0);
+
+  const booking = await prisma.booking.create({
+    data: {
+      clientId: opts.clientId,
+      projectName: opts.projectName,
+      startDate,
+      endDate,
+      status: opts.status,
+      finalAmount: subtotal,
+      totalEstimateAmount: subtotal,
+    },
+  });
+
+  for (const item of opts.items) {
+    await prisma.bookingItem.create({
+      data: {
+        bookingId: booking.id,
+        equipmentId: item.equipmentId,
+        quantity: item.quantity,
+        customName: item.equipmentId === null ? (item.equipmentName ?? "Кастомная позиция") : null,
+        customCategory: item.equipmentId === null ? (item.category ?? "Свет") : null,
+        customUnitPrice: item.equipmentId === null ? item.unitPrice : null,
+      },
+    });
+  }
+
+  const wantEstimate = opts.withEstimate ?? (opts.status !== "DRAFT");
+  if (wantEstimate) {
+    const est = await prisma.estimate.create({
+      data: {
+        bookingId: booking.id,
+        kind: "MAIN",
+        shifts,
+        subtotal,
+        discountAmount: 0,
+        totalAfterDiscount: subtotal,
+      },
+    });
+    for (const item of opts.items) {
+      await prisma.estimateLine.create({
+        data: {
+          estimateId: est.id,
+          equipmentId: item.equipmentId,
+          categorySnapshot: item.category ?? "Свет",
+          nameSnapshot: item.equipmentName ?? "(catalog)",
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          lineSum: item.quantity * item.unitPrice * shifts,
+        },
+      });
+    }
+  }
+  return booking;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Master-table — catalog visibility
+// ──────────────────────────────────────────────────────────────────
+
+describe("GET /api/equipment-stats — master table", () => {
+  it("lists every catalog equipment row even when nothing is rented", async () => {
+    await clearScenario();
+    await makeEquipment({ name: "Прожектор Aputure", totalQuantity: 5, rate: 1000 });
+    await makeEquipment({ name: "Тренога Manfrotto", totalQuantity: 3, rate: 500 });
+
+    const res = await request(app).get("/api/equipment-stats").set(AUTH_SA());
+    expect(res.status).toBe(200);
+    expect(res.body.table).toHaveLength(2);
+    expect(res.body.table.map((r: any) => r.name).sort()).toEqual(["Прожектор Aputure", "Тренога Manfrotto"]);
+    expect(res.body.kpi.totalCount).toBe(2);
+    expect(res.body.kpi.dormantCount).toBe(2);
+    expect(res.body.kpi.activeCount).toBe(0);
+  });
+});

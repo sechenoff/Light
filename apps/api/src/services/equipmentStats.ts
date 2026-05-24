@@ -53,15 +53,37 @@ export async function computeEquipmentStats(
   const rangeTo = new Date();
   const rangeFrom = new Date(rangeTo.getTime() - periodDays * 24 * 60 * 60 * 1000);
 
-  // Phase 1 placeholder: return an empty payload. Aggregations are added in later tasks.
+  const allEquipment = await prismaClient.equipment.findMany({
+    select: { id: true, name: true, category: true, totalQuantity: true },
+    orderBy: [{ category: "asc" }, { name: "asc" }],
+  });
+
+  const rows: EquipmentStatRow[] = allEquipment.map((e) => ({
+    id: e.id,
+    name: e.name,
+    category: e.category,
+    totalQuantity: e.totalQuantity,
+    bookingsCount: 0,
+    qtyShifts: 0,
+    revenueRub: "0",
+    revenuePerStorageUnit: "0",
+    repairCount: 0,
+    problemCount: 0,
+    repairCostRub: "0",
+    lastBookingAt: null,
+  }));
+
+  const activeCount = rows.filter((r) => r.bookingsCount > 0).length;
+  const dormantCount = rows.length - activeCount;
+
   return {
     period: periodLabel(periodDays),
     rangeFrom: rangeFrom.toISOString(),
     rangeTo: rangeTo.toISOString(),
     kpi: {
-      activeCount: 0,
-      dormantCount: 0,
-      totalCount: 0,
+      activeCount,
+      dormantCount,
+      totalCount: rows.length,
       revenueRub: "0",
       repairCostRub: "0",
     },
@@ -69,6 +91,6 @@ export async function computeEquipmentStats(
     deadStock: [],
     revenue: [],
     quality: [],
-    table: [],
+    table: rows,
   };
 }
