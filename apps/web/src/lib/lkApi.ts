@@ -1,11 +1,12 @@
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+async function fetchJson<T>(url: string, init?: RequestInit & { silent401?: boolean }): Promise<T> {
+  const { silent401, ...fetchInit } = init || {};
   const res = await fetch(url, {
     credentials: "include",
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    ...fetchInit,
+    headers: { "Content-Type": "application/json", ...(fetchInit?.headers || {}) },
   });
   if (res.status === 401) {
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/lk/login")) {
+    if (!silent401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/lk/login")) {
       window.location.href = "/lk/login";
     }
     throw new Error("UNAUTHENTICATED");
@@ -39,6 +40,6 @@ export const lkApi = {
   requestLogin: (email: string) =>
     fetchJson<{ ok: true }>("/api/lk/auth/request-login", { method: "POST", body: JSON.stringify({ email }) }),
   verify: (token: string) =>
-    fetchJson<{ ok: true }>("/api/lk/auth/verify", { method: "POST", body: JSON.stringify({ token }) }),
+    fetchJson<{ ok: true }>("/api/lk/auth/verify", { method: "POST", body: JSON.stringify({ token }), silent401: true }),
   logout: () => fetchJson<{ ok: true }>("/api/lk/auth/logout", { method: "POST" }),
 };
