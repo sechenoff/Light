@@ -288,3 +288,41 @@ describe("GET /api/equipment-stats — demand", () => {
     expect(res.body.kpi.dormantCount).toBe(0);
   });
 });
+
+describe("GET /api/equipment-stats — revenue", () => {
+  it("sums EstimateLine.lineSum (MAIN + ADDON) per equipment and ranks by revenue per storage unit", async () => {
+    await clearScenario();
+    const apu = await makeEquipment({ name: "Прожектор Aputure", totalQuantity: 5, rate: 1000 });
+    const man = await makeEquipment({ name: "Тренога Manfrotto", totalQuantity: 1, rate: 500 });
+    const client = await makeClient("Клиент A");
+
+    // B1: 2 shifts, apu×2 (lineSum=4000), man×1 (lineSum=1000)
+    await makeBooking({
+      clientId: client.id,
+      projectName: "Проект 1",
+      status: "CONFIRMED",
+      startDaysAgo: 10,
+      endDaysAgo: 8,
+      items: [
+        { equipmentId: apu.id, equipmentName: apu.name, quantity: 2, unitPrice: 1000 },
+        { equipmentId: man.id, equipmentName: man.name, quantity: 1, unitPrice: 500 },
+      ],
+    });
+
+    const res = await request(app).get("/api/equipment-stats?period=90").set(AUTH_SA());
+    expect(res.status).toBe(200);
+
+    const tableById = new Map<string, any>(res.body.table.map((r: any) => [r.id, r]));
+    expect(tableById.get(apu.id).revenueRub).toBe("4000");
+    expect(tableById.get(man.id).revenueRub).toBe("1000");
+    // 4000 / 5 = 800 vs 1000 / 1 = 1000 → Manfrotto wins on per-unit-of-storage revenue
+    expect(tableById.get(apu.id).revenuePerStorageUnit).toBe("800");
+    expect(tableById.get(man.id).revenuePerStorageUnit).toBe("1000");
+
+    expect(res.body.revenue).toHaveLength(2);
+    expect(res.body.revenue[0].id).toBe(man.id); // ranked by revenuePerStorageUnit desc
+    expect(res.body.revenue[1].id).toBe(apu.id);
+
+    expect(res.body.kpi.revenueRub).toBe("5000");
+  });
+});

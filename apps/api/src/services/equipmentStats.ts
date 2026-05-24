@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
 
 export type EquipmentStatRow = {
   id: string;
@@ -105,6 +106,33 @@ async function aggregateDemand(
   return out;
 }
 
+async function aggregateRevenue(
+  prismaClient: PrismaClient,
+  rangeFrom: Date,
+  rangeTo: Date,
+): Promise<Map<string, Decimal>> {
+  const lines = await prismaClient.estimateLine.findMany({
+    where: {
+      equipmentId: { not: null },
+      estimate: {
+        booking: {
+          status: { in: [...RENTAL_BOOKING_STATUSES] },
+          startDate: { gte: rangeFrom, lte: rangeTo },
+        },
+      },
+    },
+    select: { equipmentId: true, lineSum: true },
+  });
+
+  const out = new Map<string, Decimal>();
+  for (const line of lines) {
+    if (!line.equipmentId) continue;
+    const prev = out.get(line.equipmentId) ?? new Decimal(0);
+    out.set(line.equipmentId, prev.plus(line.lineSum));
+  }
+  return out;
+}
+
 /**
  * Computes equipment analytics over a rolling window.
  *
@@ -119,16 +147,20 @@ export async function computeEquipmentStats(
   const rangeTo = new Date();
   const rangeFrom = new Date(rangeTo.getTime() - periodDays * 24 * 60 * 60 * 1000);
 
-  const [allEquipment, demandMap] = await Promise.all([
+  const [allEquipment, demandMap, revenueMap] = await Promise.all([
     prismaClient.equipment.findMany({
       select: { id: true, name: true, category: true, totalQuantity: true },
       orderBy: [{ category: "asc" }, { name: "asc" }],
     }),
     aggregateDemand(prismaClient, rangeFrom, rangeTo),
+    aggregateRevenue(prismaClient, rangeFrom, rangeTo),
   ]);
 
   const rows: EquipmentStatRow[] = allEquipment.map((e) => {
     const d = demandMap.get(e.id) ?? { bookingsCount: 0, qtyShifts: 0 };
+    const rev = revenueMap.get(e.id) ?? new Decimal(0);
+    const divisor = e.totalQuantity > 0 ? e.totalQuantity : 1;
+    const revPerUnit = rev.div(divisor);
     return {
       id: e.id,
       name: e.name,
@@ -136,8 +168,8 @@ export async function computeEquipmentStats(
       totalQuantity: e.totalQuantity,
       bookingsCount: d.bookingsCount,
       qtyShifts: d.qtyShifts,
-      revenueRub: "0",
-      revenuePerStorageUnit: "0",
+      revenueRub: rev.toString(),
+      revenuePerStorageUnit: revPerUnit.toString(),
       repairCount: 0,
       problemCount: 0,
       repairCostRub: "0",
@@ -150,7 +182,17 @@ export async function computeEquipmentStats(
     .sort((a, b) => b.bookingsCount - a.bookingsCount || b.qtyShifts - a.qtyShifts)
     .slice(0, 10);
 
+  const revenue = rows
+    .filter((r) => new Decimal(r.revenueRub).gt(0))
+    .sort((a, b) => {
+      const byUnit = new Decimal(b.revenuePerStorageUnit).comparedTo(new Decimal(a.revenuePerStorageUnit));
+      if (byUnit !== 0) return byUnit;
+      return new Decimal(b.revenueRub).comparedTo(new Decimal(a.revenueRub));
+    })
+    .slice(0, 10);
+
   const activeCount = rows.filter((r) => r.bookingsCount > 0).length;
+  const totalRevenue = rows.reduce((acc, r) => acc.plus(r.revenueRub), new Decimal(0));
 
   return {
     period: periodLabel(periodDays),
@@ -160,12 +202,12 @@ export async function computeEquipmentStats(
       activeCount,
       dormantCount: rows.length - activeCount,
       totalCount: rows.length,
-      revenueRub: "0",
+      revenueRub: totalRevenue.toString(),
       repairCostRub: "0",
     },
     demand,
     deadStock: [],
-    revenue: [],
+    revenue,
     quality: [],
     table: rows,
   };
