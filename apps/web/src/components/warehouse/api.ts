@@ -229,7 +229,11 @@ export interface SessionVehicle {
   shiftHours: string | null;
   kmOutsideMkad: number | null;
   ttkEntry: boolean;
-  vehicle: { id: string; name: string; slug: string } | null;
+  /**
+   * Базовые поля машины. `currentMileage` — текущий пробег для отображения
+   * «было / стало» в форме ввода одометра на возврате.
+   */
+  vehicle: { id: string; name: string; slug: string; currentMileage: number } | null;
 }
 
 /** GET /api/warehouse/sessions/:id/vehicles — машины брони с водителями. */

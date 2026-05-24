@@ -45,6 +45,7 @@ import { ProblemPanel } from "./ProblemPanel";
 import { DriverPanel } from "./DriverPanel";
 import { UnitGridRow, type UnitSlot } from "./UnitGridRow";
 import { ReturnResultView } from "./ReturnResultView";
+import { VehicleMileagePanel } from "./VehicleMileagePanel";
 import { isScanApiError } from "./types";
 import type {
   ChecklistItem,
@@ -55,6 +56,7 @@ import type {
   ProblemUnitInput,
   RepairUnitInput,
   ReturnOutcome,
+  VehicleMileageEntry,
 } from "./types";
 import { pluralize } from "../../lib/format";
 
@@ -191,6 +193,14 @@ export function ReturnChecklist({
   );
   // Completion result → switches the whole panel to the RESULT view.
   const [result, setResult] = useState<CompleteResult | null>(null);
+
+  // Пробег машин: текущие entries (приходят из VehicleMileagePanel via onChange)
+  // и флаг валидности (заполнены все строки + mileage ≥ currentMileage).
+  // attemptedSubmit включает per-row ошибки в панели только после нажатия
+  // «Завершить приёмку» — чтобы пустые поля не выглядели «красными» сразу.
+  const [vehicleMileages, setVehicleMileages] = useState<VehicleMileageEntry[]>([]);
+  const [vehicleMileagesValid, setVehicleMileagesValid] = useState<boolean>(true);
+  const [attemptedSubmit, setAttemptedSubmit] = useState<boolean>(false);
 
   // Per-unit row DOM refs — used to scroll/focus the FIRST errored row into
   // view on a failed «Завершить приёмку» (kiosk a11y: the operator must not
@@ -508,18 +518,25 @@ export function ReturnChecklist({
   /**
    * Run validation, commit row + summary error state. Returns the computed
    * errors map (empty ⇒ valid) so the caller can also focus the first row.
+   *
+   * Помимо per-row outcomes валидирует блок «Пробег машин»: если есть
+   * BookingVehicle и хотя бы один пробег пустой/некорректный — validity
+   * приходит false из VehicleMileagePanel, и мы добавляем строку в summary.
    */
   function validate(): Record<string, string> {
     const errs = computeRowErrors();
     setRowErrors(errs);
     const count = Object.keys(errs).length;
+    const messages: string[] = [];
     if (count > 0) {
-      setValidationSummary(
+      messages.push(
         `Не заполнено ${count} ${pluralize(count, "позиция", "позиции", "позиций")} — проверьте отмеченные строки`,
       );
-    } else {
-      setValidationSummary(null);
     }
+    if (!vehicleMileagesValid) {
+      messages.push("Введите пробег для каждой машины брони");
+    }
+    setValidationSummary(messages.length > 0 ? messages.join(". ") : null);
     return errs;
   }
 
@@ -594,6 +611,7 @@ export function ReturnChecklist({
     const payload: CompletePayload = {};
     if (repairUnits.length > 0) payload.repairUnits = repairUnits;
     if (problemUnits.length > 0) payload.problemUnits = problemUnits;
+    if (vehicleMileages.length > 0) payload.vehicleMileages = vehicleMileages;
     return payload;
   }
 
@@ -638,9 +656,16 @@ export function ReturnChecklist({
   async function handleComplete() {
     if (submitting || bulkBusy) return;
     setSubmitError(null);
+    setAttemptedSubmit(true);
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       focusFirstError(errs);
+      return;
+    }
+    if (!vehicleMileagesValid) {
+      // Per-row подсветка панели уже включится через attemptedSubmit=true.
+      // Summary показывает validate(). Дополнительная навигация к панели не
+      // нужна — она над футером и видна.
       return;
     }
     setSubmitting(true);
@@ -905,6 +930,20 @@ export function ReturnChecklist({
             </div>
           </section>
         ))}
+      </div>
+
+      {/*
+        Блок «Пробег машин». Рендерится ВНЕ sticky-футера, чтобы можно было
+        прокрутить к ошибкам и видеть всю панель одновременно с действиями.
+        Сама панель пропадает, если в брони нет BookingVehicle.
+      */}
+      <div className="px-2.5 lg:px-4">
+        <VehicleMileagePanel
+          sessionId={sessionId}
+          attemptedSubmit={attemptedSubmit}
+          onChange={setVehicleMileages}
+          onValidityChange={setVehicleMileagesValid}
+        />
       </div>
 
       {/* Sticky «Завершить приёмку →» footer (mockup .ph-bottom). */}

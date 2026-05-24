@@ -6,6 +6,13 @@ import { prisma } from "../prisma";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { HttpError } from "../utils/errors";
 import { writeAuditEntry } from "../services/audit";
+import {
+  listVehicles,
+  getVehicleDetail,
+  updateVehicleMeta,
+  logMileageManual,
+  addServiceLog,
+} from "../services/vehicleService";
 
 const router = express.Router();
 
@@ -134,5 +141,128 @@ router.patch("/admin/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) =
     next(err);
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fleet management — пробег, ТО, ремонты. Доступно SUPER_ADMIN + WAREHOUSE для
+// мутаций; GET-эндпоинты — всем трём ролям (через router-level rolesGuard
+// в routes/index.ts).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** GET /api/vehicles/fleet — список машин с пробегом и датой последнего ТО. */
+router.get("/fleet", async (req, res, next) => {
+  try {
+    const includeInactive =
+      req.query.includeInactive === "true" || req.query.includeInactive === "1";
+    const vehicles = await listVehicles({ includeInactive });
+    res.json({ vehicles });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/vehicles/fleet/:id — детальная карточка машины + журналы. */
+router.get("/fleet/:id", async (req, res, next) => {
+  try {
+    const detail = await getVehicleDetail(req.params.id);
+    res.json(detail);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const metaPatchSchema = z.object({
+  licensePlate: z.string().trim().max(32).nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+});
+
+/** PATCH /api/vehicles/fleet/:id/meta — обновить гос. номер / заметки. */
+router.patch(
+  "/fleet/:id/meta",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  async (req, res, next) => {
+    try {
+      const body = metaPatchSchema.parse(req.body);
+      if (!req.adminUser?.userId) {
+        throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      }
+      const v = await updateVehicleMeta(req.params.id, body, req.adminUser.userId);
+      res.json({ vehicle: v });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+const manualMileageSchema = z.object({
+  mileage: z.number().int().min(0),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+/** POST /api/vehicles/fleet/:id/mileage — записать пробег вручную. */
+router.post(
+  "/fleet/:id/mileage",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  async (req, res, next) => {
+    try {
+      const body = manualMileageSchema.parse(req.body);
+      if (!req.adminUser?.userId) {
+        throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      }
+      const log = await logMileageManual({
+        vehicleId: req.params.id,
+        mileage: body.mileage,
+        note: body.note ?? null,
+        recordedBy: req.adminUser.username,
+        userId: req.adminUser.userId,
+      });
+      res.status(201).json({ log });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+const serviceKindEnum = z.enum([
+  "SCHEDULED_TO",
+  "OIL_CHANGE",
+  "TIRE_CHANGE",
+  "REPAIR",
+  "INSPECTION",
+  "OTHER",
+]);
+
+const addServiceSchema = z.object({
+  kind: serviceKindEnum,
+  performedAt: z.string().datetime(),
+  mileage: z.number().int().min(0).nullable().optional(),
+  description: z.string().trim().min(3).max(2000),
+  cost: z.number().min(0).nullable().optional(),
+});
+
+/** POST /api/vehicles/fleet/:id/service — добавить запись ТО / ремонта. */
+router.post(
+  "/fleet/:id/service",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
+  async (req, res, next) => {
+    try {
+      const body = addServiceSchema.parse(req.body);
+      if (!req.adminUser?.userId) {
+        throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      }
+      const log = await addServiceLog({
+        vehicleId: req.params.id,
+        kind: body.kind,
+        performedAt: new Date(body.performedAt),
+        mileage: body.mileage ?? null,
+        description: body.description,
+        cost: body.cost ?? null,
+        userId: req.adminUser.userId,
+      });
+      res.status(201).json({ log });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 export { router as vehiclesRouter };

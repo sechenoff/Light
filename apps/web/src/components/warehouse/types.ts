@@ -252,6 +252,12 @@ export interface IssuanceAdjustment {
   actualQuantity: number;
 }
 
+export interface VehicleMileageEntry {
+  vehicleId: string;
+  /** Одометр (км) — целое неотрицательное. Backend требует ≥ currentMileage. */
+  mileage: number;
+}
+
 export interface CompletePayload {
   repairUnits?: RepairUnitInput[];
   problemUnits?: ProblemUnitInput[];
@@ -261,6 +267,12 @@ export interface CompletePayload {
    * `mainOriginalAfterDiscount` will hold the pre-adjustment snapshot.
    */
   issuanceAdjustments?: IssuanceAdjustment[];
+  /**
+   * Пробеги машин на возврате. Backend требует запись по каждой машине брони,
+   * mileage ≥ Vehicle.currentMileage. Иначе 400 VEHICLE_MILEAGE_REQUIRED /
+   * 409 MILEAGE_DECREASE.
+   */
+  vehicleMileages?: VehicleMileageEntry[];
 }
 
 // ── Summary / complete response (mirrors GET /summary, POST /complete) ────────

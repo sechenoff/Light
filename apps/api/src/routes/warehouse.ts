@@ -305,7 +305,7 @@ warehouseScanRouter.get("/sessions/:id/vehicles", warehouseAuth, async (req, res
         shiftHours: true,
         kmOutsideMkad: true,
         ttkEntry: true,
-        vehicle: { select: { id: true, name: true, slug: true } },
+        vehicle: { select: { id: true, name: true, slug: true, currentMileage: true } },
       },
     });
 
@@ -528,12 +528,21 @@ const issuanceAdjustmentSchema = z.object({
   actualQuantity: z.number().int().min(0),
 });
 
+const vehicleMileageEntrySchema = z.object({
+  vehicleId: z.string().min(1),
+  mileage: z.number().int().min(0),
+});
+
 const completeSessionBodySchema = z.object({
   repairUnits: z.array(repairUnitSchema).optional(),
   problemUnits: z.array(problemUnitSchema).optional(),
   // Task 8: per-position quantity adjustments (ISSUE only).
   // Forwarded to completeSession(...).options.issuanceAdjustments.
   issuanceAdjustments: z.array(issuanceAdjustmentSchema).optional(),
+  // Пробеги машин брони на возврате. Обязательны на RETURN, если в брони
+  // есть BookingVehicle — это валидирует сам completeSession. Здесь только
+  // Zod-форма: каждая запись { vehicleId, mileage ≥ 0 }.
+  vehicleMileages: z.array(vehicleMileageEntrySchema).optional(),
 }).optional();
 
 /** POST /api/warehouse/sessions/:id/complete — завершить сессию */
@@ -548,6 +557,7 @@ warehouseScanRouter.post("/sessions/:id/complete", warehouseAuth, async (req, re
       problemUnits,
       createdBy: req.warehouseWorker?.name,
       issuanceAdjustments: body?.issuanceAdjustments,
+      vehicleMileages: body?.vehicleMileages,
     });
 
     // Enrich unit ID arrays with name and barcode data

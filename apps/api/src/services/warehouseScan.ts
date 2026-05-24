@@ -18,6 +18,7 @@ import { writeAuditEntry } from "./audit";
 import { recreateMainEstimate } from "./mainEstimate";
 import { recomputeAddonEstimate } from "./addonEstimate";
 import { recomputeBookingFinance } from "./finance";
+import { recordReturnMileages } from "./vehicleService";
 
 type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
 
@@ -250,6 +251,13 @@ export async function completeSession(
     createdBy?: string;
     /** Task 7: per-position quantity adjustments at ISSUE completion. */
     issuanceAdjustments?: IssuanceAdjustment[];
+    /**
+     * Пробеги по машинам брони, снятые на возврате. Обязательны на RETURN,
+     * если в брони есть хотя бы один BookingVehicle. По каждой машине брони
+     * должна быть запись `{ vehicleId, mileage }`; mileage ≥ Vehicle.currentMileage.
+     * См. {@link recordReturnMileages}.
+     */
+    vehicleMileages?: Array<{ vehicleId: string; mileage: number }>;
   },
 ): Promise<ReconciliationSummary> {
   // Загружаем сессию со сканами и информацией о брони
@@ -326,6 +334,65 @@ export async function completeSession(
           });
         }
       }
+    }
+  }
+
+  // ── Обязательный ввод пробега машин (RETURN-only) ──────────────────────────
+  // Если в брони есть BookingVehicle — кладовщик обязан ввести пробег по
+  // каждой машине. Это бизнес-инвариант: без пробега невозможно посчитать
+  // переплату/добор за километраж и поддерживать актуальный одометр для ТО.
+  // Валидируем ДО транзакции, чтобы фронт мог открыть форму ввода без
+  // отката физического возврата.
+  const vehicleMileageEntries = options?.vehicleMileages ?? [];
+  if (session.operation === "RETURN") {
+    const bookingVehicles = await prisma.bookingVehicle.findMany({
+      where: { bookingId: session.bookingId },
+      select: { vehicleId: true, vehicle: { select: { name: true } } },
+    });
+    if (bookingVehicles.length > 0) {
+      const requiredVehicleIds = new Set(bookingVehicles.map((bv) => bv.vehicleId));
+      const providedVehicleIds = new Set(vehicleMileageEntries.map((e) => e.vehicleId));
+
+      const missing = bookingVehicles
+        .filter((bv) => !providedVehicleIds.has(bv.vehicleId))
+        .map((bv) => ({ vehicleId: bv.vehicleId, name: bv.vehicle?.name ?? "" }));
+      if (missing.length > 0) {
+        throw new HttpError(
+          400,
+          "Введите пробег для каждой машины этой брони перед завершением возврата",
+          "VEHICLE_MILEAGE_REQUIRED",
+          { missing },
+        );
+      }
+      const extra = vehicleMileageEntries
+        .filter((e) => !requiredVehicleIds.has(e.vehicleId))
+        .map((e) => e.vehicleId);
+      if (extra.length > 0) {
+        throw new HttpError(
+          400,
+          "Указаны пробеги для машин, не привязанных к этой брони",
+          "VEHICLE_NOT_IN_BOOKING",
+          { extra },
+        );
+      }
+      for (const e of vehicleMileageEntries) {
+        if (!Number.isInteger(e.mileage) || e.mileage < 0) {
+          throw new HttpError(
+            400,
+            "Пробег должен быть неотрицательным целым числом",
+            "INVALID_MILEAGE",
+            { vehicleId: e.vehicleId, attempted: e.mileage },
+          );
+        }
+      }
+    } else if (vehicleMileageEntries.length > 0) {
+      // В броне нет машин, но пробеги переданы — некорректный ввод.
+      throw new HttpError(
+        400,
+        "В брони нет машин, пробеги указывать нельзя",
+        "VEHICLE_NOT_IN_BOOKING",
+        { extra: vehicleMileageEntries.map((e) => e.vehicleId) },
+      );
     }
   }
 
@@ -667,6 +734,19 @@ export async function completeSession(
         where: { id: session.bookingId },
         data: { status: "RETURNED" },
       });
+
+      // Записываем пробеги машин внутри той же транзакции — если позже что-то
+      // упадёт, RETURNED-статус и пробеги откатятся вместе. На входе уже
+      // валидировано: full coverage и mileage ≥ currentMileage проверяет сам
+      // recordReturnMileages (тоже throws 409 в случае несоответствия).
+      if (vehicleMileageEntries.length > 0) {
+        await recordReturnMileages({
+          tx,
+          bookingId: session.bookingId,
+          recordedBy: session.workerName,
+          entries: vehicleMileageEntries,
+        });
+      }
     }
 
     await tx.scanSession.update({
