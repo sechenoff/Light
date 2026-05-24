@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Статистика техники — мокап</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:#0F1115; --ink-2:#3A3E47; --ink-3:#6B7180;
+    --surface:#FFFFFF; --surface-2:#F6F7F9;
+    --border:#E5E7EB; --border-strong:#CBD0D8;
+    --accent:#1F4FFF; --accent-bright:#1538D6;
+    --rose:#B8344C; --rose-soft:#FCE7EA; --rose-border:#F6BFC9;
+    --amber:#9A6B17; --amber-soft:#FBF3E1;
+    --emerald:#0B6B45; --emerald-soft:#DBF1E6;
+    --teal:#0E7490; --teal-soft:#DBF1F3;
+    --indigo:#3730A3; --indigo-soft:#E0E1FA;
+  }
+  *{box-sizing:border-box}
+  body{font-family:"IBM Plex Sans",system-ui,sans-serif;color:var(--ink);background:var(--surface-2);margin:0;padding:32px 24px;line-height:1.4}
+  .page{max-width:1200px;margin:0 auto}
+  .eyebrow{font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
+  .h1{font-size:28px;font-weight:600;margin:0 0 4px}
+  .h2{font-size:18px;font-weight:600;margin:0}
+  .mono{font-family:"IBM Plex Mono",monospace;font-weight:500}
+  .header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:32px;gap:16px;flex-wrap:wrap}
+  .period{display:inline-flex;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:4px}
+  .period button{font-family:inherit;font-size:13px;font-weight:500;padding:6px 14px;border:none;background:transparent;border-radius:999px;cursor:pointer;color:var(--ink-3)}
+  .period button.active{background:var(--accent);color:white}
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px}
+  .kpi .lbl{font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px}
+  .kpi .val{font-size:26px;font-weight:600;font-family:"IBM Plex Mono",monospace}
+  .kpi .sub{font-size:12px;color:var(--ink-3);margin-top:2px}
+  .kpi .sub.rose{color:var(--rose)}
+  .section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 18px 6px;margin-bottom:16px}
+  .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .section-head .title{display:flex;gap:10px;align-items:center}
+  .section-head .icon{font-size:18px}
+  .section-head a{font-size:12px;color:var(--accent);text-decoration:none;font-weight:500}
+  .row{display:grid;grid-template-columns:1fr auto auto;gap:12px;padding:10px 0;border-top:1px solid var(--border);font-size:14px;align-items:center}
+  .row:first-of-type{border-top:none}
+  .row .meta{font-size:12px;color:var(--ink-3)}
+  .row .num{font-family:"IBM Plex Mono",monospace;font-weight:500;text-align:right}
+  .row .trail{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3);text-align:right}
+  table.master{width:100%;border-collapse:collapse;font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  table.master th, table.master td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}
+  table.master th{background:var(--surface-2);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);cursor:pointer}
+  table.master td.num{font-family:"IBM Plex Mono",monospace;text-align:right}
+  table.master tr:hover td{background:var(--surface-2)}
+  .chips{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .chip{font-size:12px;background:var(--surface);border:1px solid var(--border);padding:5px 12px;border-radius:999px;cursor:pointer}
+  .chip.active{background:var(--accent);color:white;border-color:var(--accent)}
+  @media (max-width:760px){
+    .kpi-row{grid-template-columns:repeat(2,1fr)}
+    .row{grid-template-columns:1fr auto}
+    .row .trail{grid-column:1/-1;text-align:left;padding-top:2px}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      <div class="eyebrow">Аналитика</div>
+      <h1 class="h1">Статистика техники</h1>
+    </div>
+    <div class="period">
+      <button>30 дней</button>
+      <button class="active">90 дней</button>
+      <button>Год</button>
+    </div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi"><div class="lbl">Активных позиций</div><div class="val">234 / 567</div><div class="sub">за 90 дней</div></div>
+    <div class="kpi"><div class="lbl">Мёртвый груз</div><div class="val">198</div><div class="sub rose">позиций без аренды</div></div>
+    <div class="kpi"><div class="lbl">Выручка за период</div><div class="val">1 248 ₽</div><div class="sub">тысяч</div></div>
+    <div class="kpi"><div class="lbl">Расход на ремонт</div><div class="val">87 ₽</div><div class="sub">тысяч</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><div class="title"><span class="icon">🔥</span><h2 class="h2">Чаще всего берут</h2></div><a href="#">Все позиции →</a></div>
+    <div class="row"><div><div>Прожектор Aputure LS 600d</div><div class="meta">Свет</div></div><div class="num">17 броней · 88 ед.-смен</div><div class="trail">312 000 ₽</div></div>
+    <div class="row"><div><div>Софтбокс 60×90</div><div class="meta">Свет</div></div><div class="num">14 броней · 56 ед.-смен</div><div class="trail">94 000 ₽</div></div>
+    <div class="row"><div><div>Тренога Manfrotto 1041BAC</div><div class="meta">Опоры</div></div><div class="num">12 броней · 40 ед.-смен</div><div class="trail">52 000 ₽</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><div class="title"><span class="icon">💤</span><h2 class="h2">Мёртвый груз</h2></div><a href="#">Все позиции →</a></div>
+    <div class="row"><div><div>Старый светофильтр 3200K</div><div class="meta">Свет · 6 шт. на складе</div></div><div class="num">никогда не брали</div><div class="trail"></div></div>
+    <div class="row"><div><div>Кабель XLR 50 м</div><div class="meta">Звук · 2 шт.</div></div><div class="num">не брали с 12 ноября 2025</div><div class="trail"></div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><div class="title"><span class="icon">💰</span><h2 class="h2">Лучшая доходность на единицу склада</h2></div><a href="#">Все позиции →</a></div>
+    <div class="row"><div><div>Aputure LS 1200d Pro</div><div class="meta">Свет · 2 шт.</div></div><div class="num">152 000 ₽/ед</div><div class="trail">304 000 ₽</div></div>
+    <div class="row"><div><div>Шторки Aputure</div><div class="meta">Свет · 3 шт.</div></div><div class="num">38 000 ₽/ед</div><div class="trail">114 000 ₽</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><div class="title"><span class="icon">🔧</span><h2 class="h2">Проблемные позиции</h2></div><a href="#">Все позиции →</a></div>
+    <div class="row"><div><div>Aputure LS 300x</div><div class="meta">Свет</div></div><div class="num">3 ремонта · 0 потерь</div><div class="trail">24 000 ₽ на ремонт</div></div>
+    <div class="row"><div><div>Радиосистема Sennheiser</div><div class="meta">Звук</div></div><div class="num">1 ремонт · 2 потери</div><div class="trail">8 500 ₽</div></div>
+  </div>
+
+  <div style="height:8px"></div>
+  <div class="eyebrow">Все позиции</div>
+
+  <div class="chips"><span class="chip active">Все</span><span class="chip">Без аренды</span><span class="chip">С поломками</span></div>
+
+  <table class="master">
+    <thead><tr><th>Позиция</th><th>Категория</th><th>Σ кол-во</th><th>Броней</th><th>Ед.-смен</th><th>Выручка ₽</th><th>₽/ед склада</th><th>Ремонтов</th><th>Потерь</th></tr></thead>
+    <tbody>
+      <tr><td>Aputure LS 600d</td><td>Свет</td><td class="num">5</td><td class="num">17</td><td class="num">88</td><td class="num">312 000</td><td class="num">62 400</td><td class="num">1</td><td class="num">0</td></tr>
+      <tr><td>Aputure LS 1200d Pro</td><td>Свет</td><td class="num">2</td><td class="num">8</td><td class="num">22</td><td class="num">304 000</td><td class="num">152 000</td><td class="num">0</td><td class="num">0</td></tr>
+      <tr><td>Софтбокс 60×90</td><td>Свет</td><td class="num">4</td><td class="num">14</td><td class="num">56</td><td class="num">94 000</td><td class="num">23 500</td><td class="num">0</td><td class="num">1</td></tr>
+    </tbody>
+  </table>
+</div>
+</body>
+</html>
