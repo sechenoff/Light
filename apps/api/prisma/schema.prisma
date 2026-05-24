@@ -211,7 +211,8 @@ model Client {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  bookings Booking[]
+  bookings      Booking[]
+  portalAccount ClientPortalAccount?
 
   @@index([name])
 }
@@ -1381,4 +1382,59 @@ model FeedbackComment {
   createdAt  DateTime     @default(now())
 
   @@index([feedbackId, createdAt])
+}
+
+// ─── Customer Portal ──────────────────────────────────────────────────────────
+
+enum ClientPortalAccountStatus {
+  PENDING
+  ACTIVE
+  DISABLED
+}
+
+enum ClientPortalMagicLinkPurpose {
+  INVITE
+  LOGIN
+}
+
+model ClientPortalAccount {
+  id                  String                    @id @default(cuid())
+  clientId            String                    @unique
+  email               String                    @unique
+  status              ClientPortalAccountStatus @default(PENDING)
+  invitedAt           DateTime?
+  acceptedAt          DateTime?
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+  lastLoginUa         String?
+  failedLoginAttempts Int                       @default(0)
+  lockedUntil         DateTime?
+  invitedBy           String?
+  disabledAt          DateTime?
+  disabledBy          String?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+  client     Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  magicLinks ClientPortalMagicLink[]
+
+  @@index([email])
+  @@index([status])
+}
+
+model ClientPortalMagicLink {
+  id        String                       @id @default(cuid())
+  accountId String
+  tokenHash String                       @unique
+  purpose   ClientPortalMagicLinkPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  ip        String?
+  ua        String?
+  createdAt DateTime                     @default(now())
+
+  account ClientPortalAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, purpose])
+  @@index([expiresAt])
 }
