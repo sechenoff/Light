@@ -10,7 +10,6 @@ import { buildBookingEstimatePdf, buildBookingActPdf } from "../../services/docu
 const router = Router();
 
 const VISIBLE_STATUSES = [
-  "PENDING_APPROVAL",
   "CONFIRMED",
   "ISSUED",
   "RETURNED",

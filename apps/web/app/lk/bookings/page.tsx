@@ -15,7 +15,6 @@ const FILTERS: { label: string; value: LkBookingStatus | "ALL" }[] = [
 ];
 
 const STATUS_LABEL: Record<LkBookingStatus, string> = {
-  PENDING_APPROVAL: "На согласовании",
   CONFIRMED: "Подтверждена",
   ISSUED: "В работе",
   RETURNED: "Возвращена",

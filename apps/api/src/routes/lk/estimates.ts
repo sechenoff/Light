@@ -7,7 +7,6 @@ import { lkClientId } from "../../services/clientPortal/tenant";
 const router = Router();
 
 const VISIBLE_STATUSES = [
-  "PENDING_APPROVAL",
   "CONFIRMED",
   "ISSUED",
   "RETURNED",

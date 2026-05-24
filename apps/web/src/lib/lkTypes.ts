@@ -1,4 +1,4 @@
-export type LkBookingStatus = "PENDING_APPROVAL" | "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
+export type LkBookingStatus = "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
 
 export type LkBookingListItem = {
   id: string;

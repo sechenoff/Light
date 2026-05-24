@@ -7,7 +7,6 @@ import type { LkBookingDetail, LkBookingStatus } from "../../../../src/lib/lkTyp
 import { formatRub } from "../../../../src/lib/format";
 
 const STATUS_LABEL: Record<LkBookingStatus, string> = {
-  PENDING_APPROVAL: "На согласовании",
   CONFIRMED: "Подтверждена",
   ISSUED: "В работе",
   RETURNED: "Возвращена",
@@ -15,7 +14,6 @@ const STATUS_LABEL: Record<LkBookingStatus, string> = {
 };
 
 const STATUS_CLASS: Record<LkBookingStatus, string> = {
-  PENDING_APPROVAL: "text-amber",
   CONFIRMED: "text-teal",
   ISSUED: "text-accent-bright",
   RETURNED: "text-ink-2",
