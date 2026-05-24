@@ -32,8 +32,21 @@ function parseArgv(argv: string[]): Argv {
 async function main() {
   const argv = parseArgv(process.argv.slice(2));
   console.log(`[reconcile] phase=${argv.phase} confirm=${argv.confirm}`);
-  console.error("phases not implemented yet");
-  process.exit(1);
+  switch (argv.phase) {
+    case "prepare": {
+      const { runPrepare } = await import("./phases/prepare");
+      await runPrepare();
+      break;
+    }
+    case "parse": {
+      const { runParse } = await import("./phases/parse");
+      await runParse();
+      break;
+    }
+    default:
+      console.error(`phase ${argv.phase} not implemented yet`);
+      process.exit(1);
+  }
 }
 
 main().catch((err) => {
