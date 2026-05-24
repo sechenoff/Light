@@ -22,7 +22,8 @@ type AuditEntityType =
   | "Refund"
   | "CreditNote"
   | "OrgSettings"
-  | "ProblemItem";
+  | "ProblemItem"
+  | "Feedback";
 
 /**
  * Записывает событие в аудит-лог.

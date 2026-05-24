@@ -42,6 +42,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Мастерская",
       items: [
         { href: "/repair", label: "Ремонты", icon: "wrench" },
+        { href: "/vehicles", label: "Автопарк", icon: "truck" },
       ],
     },
     {
@@ -66,6 +67,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
         { href: "/admin", label: "Админка", icon: "settings" },
         { href: "/admin/clients", label: "Клиенты", icon: "people" },
         { href: "/crew-calculator", label: "Калькулятор", icon: "calc" },
+        { href: "/feedback", label: "Обратная связь", icon: "feedback" },
       ],
     },
   ],
@@ -107,6 +109,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Мастерская",
       items: [
         { href: "/repair", label: "Ремонты", icon: "wrench" },
+        { href: "/vehicles", label: "Автопарк", icon: "truck" },
       ],
     },
     {
@@ -114,6 +117,12 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Финансы",
       items: [
         { href: "/finance/invoices", label: "Счета", icon: "invoice" },
+      ],
+    },
+    {
+      title: "Система",
+      items: [
+        { href: "/feedback", label: "Обратная связь", icon: "feedback" },
       ],
     },
   ],
@@ -134,12 +143,19 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Мастерская",
       items: [
         { href: "/repair", label: "Ремонты", icon: "wrench" },
+        { href: "/vehicles", label: "Автопарк", icon: "truck" },
       ],
     },
     {
       title: "Каталог",
       items: [
         { href: "/equipment", label: "Оборудование", icon: "gear" },
+      ],
+    },
+    {
+      title: "Система",
+      items: [
+        { href: "/feedback", label: "Обратная связь", icon: "feedback" },
       ],
     },
   ],

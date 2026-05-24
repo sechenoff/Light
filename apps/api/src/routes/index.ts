@@ -28,6 +28,7 @@ import { expensesRouter } from "./expenses";
 import { repairsRouter } from "./repairs";
 import { problemItemsRouter } from "./problemItems";
 import { tasksRouter } from "./tasks";
+import { feedbackRouter } from "./feedback";
 import { clientsRouter } from "./clients";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { vehiclesRouter } from "./vehicles";
@@ -138,6 +139,10 @@ router.use("/api/problem-items", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), probl
 // /api/tasks — SUPER_ADMIN, WAREHOUSE, TECHNICIAN (router-level guard; дополнительные per-route проверки внутри tasksRouter)
 // НЕ добавлять в botScopeGuard whitelist — openclaw-* ключи должны получать 403 BOT_SCOPE_FORBIDDEN
 router.use("/api/tasks", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), tasksRouter);
+
+// /api/feedback — внутренний бэк-трекер (баги/идеи/комменты): все 3 роли могут читать и создавать;
+// status change → SUPER_ADMIN only (проверяется в сервисе); НЕ в botScope whitelist
+router.use("/api/feedback", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), feedbackRouter);
 
 // /api/clients — SUPER_ADMIN, WAREHOUSE (роль проверяется per-route)
 router.use("/api/clients", clientsRouter);
