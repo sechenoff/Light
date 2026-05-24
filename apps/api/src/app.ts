@@ -146,5 +146,18 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   res.status(500).json({ message: publicMessage });
 });
 
+// Customer Portal env validation
+if (process.env.NODE_ENV === "production") {
+  if (!process.env.CLIENT_PORTAL_SESSION_SECRET || process.env.CLIENT_PORTAL_SESSION_SECRET.length < 16) {
+    throw new Error("CLIENT_PORTAL_SESSION_SECRET обязателен в production (минимум 16 символов)");
+  }
+  if (!process.env.CLIENT_PORTAL_TOKEN_SECRET || process.env.CLIENT_PORTAL_TOKEN_SECRET.length < 16) {
+    throw new Error("CLIENT_PORTAL_TOKEN_SECRET обязателен в production (HMAC секрет для magic-link, минимум 16 символов)");
+  }
+  if (!process.env.SMTP_HOST) {
+    throw new Error("SMTP_HOST обязателен в production (для отправки magic-link клиентам портала)");
+  }
+}
+
 export { app };
 
