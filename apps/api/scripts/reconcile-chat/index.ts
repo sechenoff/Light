@@ -54,6 +54,13 @@ async function main() {
       await runDryRun(batchId);
       break;
     }
+    case "apply": {
+      const { runApply } = await import("./phases/apply");
+      const batchId = argv.batchId ?? new Date().toISOString();
+      const skipPush = process.argv.includes("--skip-push");
+      await runApply({ batchId, confirm: argv.confirm, skipPush });
+      break;
+    }
     default:
       console.error(`phase ${argv.phase} not implemented yet`);
       process.exit(1);
