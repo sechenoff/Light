@@ -56,6 +56,12 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       ],
     },
     {
+      title: "Аналитика",
+      items: [
+        { href: "/admin/equipment-stats", label: "Статистика техники", icon: "chart" },
+      ],
+    },
+    {
       title: "Настройки",
       items: [
         { href: "/settings/organization", label: "Организация", icon: "settings" },
