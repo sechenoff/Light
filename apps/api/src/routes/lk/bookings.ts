@@ -5,6 +5,7 @@ import { prisma } from "../../prisma";
 import { lkAuth } from "../../middleware/lkAuth";
 import { lkClientId } from "../../services/clientPortal/tenant";
 import { HttpError } from "../../utils/errors";
+import { buildBookingEstimatePdf, buildBookingActPdf } from "../../services/documentExport/bookingPdf";
 
 const router = Router();
 
@@ -180,6 +181,46 @@ router.get("/:id", lkAuth, async (req, res, next) => {
       hasConfirmedEstimate,
       hasAct: booking.status === "RETURNED",
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/lk/bookings/:id/estimate.pdf ────────────────────────────────────
+
+router.get("/:id/estimate.pdf", lkAuth, async (req, res, next) => {
+  try {
+    const clientId = lkClientId(req);
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      select: { clientId: true, status: true },
+    });
+    if (!booking || booking.clientId !== clientId) throw new HttpError(404, "Не найдено", "NOT_FOUND");
+    if (!VISIBLE_STATUSES.includes(booking.status as any)) throw new HttpError(404, "Не найдено", "NOT_FOUND");
+
+    const pdfBuf = await buildBookingEstimatePdf(req.params.id);
+    res.setHeader("Content-Type", "application/pdf");
+    res.end(pdfBuf);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/lk/bookings/:id/act.pdf ─────────────────────────────────────────
+
+router.get("/:id/act.pdf", lkAuth, async (req, res, next) => {
+  try {
+    const clientId = lkClientId(req);
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      select: { clientId: true, status: true },
+    });
+    if (!booking || booking.clientId !== clientId) throw new HttpError(404, "Не найдено", "NOT_FOUND");
+    if (booking.status !== "RETURNED") throw new HttpError(404, "Не найдено", "NOT_FOUND");
+
+    const pdfBuf = await buildBookingActPdf(req.params.id);
+    res.setHeader("Content-Type", "application/pdf");
+    res.end(pdfBuf);
   } catch (err) {
     next(err);
   }

@@ -285,3 +285,139 @@ describe("GET /api/lk/bookings/:id", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ── PDF endpoint helpers ──────────────────────────────────────────────────────
+
+/** Parse binary response from supertest into a Buffer */
+function parseBinary(res: any, callback: (err: Error | null, body: Buffer) => void) {
+  const chunks: Buffer[] = [];
+  res.on("data", (c: Buffer) => chunks.push(c));
+  res.on("end", () => callback(null, Buffer.concat(chunks)));
+}
+
+// ── GET /api/lk/bookings/:id/estimate.pdf ────────────────────────────────────
+
+describe("GET /api/lk/bookings/:id/estimate.pdf", () => {
+  test("own CONFIRMED booking with MAIN estimate → 200 application/pdf starting with %PDF", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-07-01T10:00:00Z");
+    const e = new Date("2026-07-05T10:00:00Z");
+
+    const booking = await makeBooking(client.id, "CONFIRMED", d, e, "PDF тест");
+    const estimate = await makeEstimate(booking.id, "MAIN");
+    await makeEstimateLine(estimate.id);
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${booking.id}/estimate.pdf`)
+      .set("Cookie", cookie)
+      .buffer(true)
+      .parse(parseBinary);
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/application\/pdf/);
+    const buf = res.body as Buffer;
+    expect(buf.length).toBeGreaterThan(100);
+    expect(buf.slice(0, 4).toString("ascii")).toBe("%PDF");
+  });
+
+  test("own CONFIRMED booking without estimate → 200 (renders from empty items list)", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-07-01T10:00:00Z");
+    const e = new Date("2026-07-05T10:00:00Z");
+
+    const booking = await makeBooking(client.id, "CONFIRMED", d, e, "Без сметы");
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${booking.id}/estimate.pdf`)
+      .set("Cookie", cookie)
+      .buffer(true)
+      .parse(parseBinary);
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/application\/pdf/);
+    const buf = res.body as Buffer;
+    expect(buf.slice(0, 4).toString("ascii")).toBe("%PDF");
+  });
+
+  test("foreign booking → 404", async () => {
+    const { cookie } = await makeClientWithSession();
+    const foreignClient = await prisma.client.create({ data: { name: "Чужой PDF" } });
+    const d = new Date("2026-07-01T10:00:00Z");
+    const e = new Date("2026-07-05T10:00:00Z");
+
+    const foreignBooking = await makeBooking(foreignClient.id, "CONFIRMED", d, e);
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${foreignBooking.id}/estimate.pdf`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(404);
+  });
+
+  test("DRAFT booking owned by self → 404 (not visible)", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-07-01T10:00:00Z");
+    const e = new Date("2026-07-05T10:00:00Z");
+
+    const draft = await makeBooking(client.id, "DRAFT", d, e);
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${draft.id}/estimate.pdf`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── GET /api/lk/bookings/:id/act.pdf ─────────────────────────────────────────
+
+describe("GET /api/lk/bookings/:id/act.pdf", () => {
+  test("own RETURNED booking → 200 application/pdf starting with %PDF", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-07-10T10:00:00Z");
+    const e = new Date("2026-07-15T10:00:00Z");
+
+    const booking = await makeBooking(client.id, "RETURNED", d, e, "Акт тест");
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${booking.id}/act.pdf`)
+      .set("Cookie", cookie)
+      .buffer(true)
+      .parse(parseBinary);
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/application\/pdf/);
+    const buf = res.body as Buffer;
+    expect(buf.length).toBeGreaterThan(100);
+    expect(buf.slice(0, 4).toString("ascii")).toBe("%PDF");
+  });
+
+  test("CONFIRMED booking → 404 (act not available yet)", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-07-10T10:00:00Z");
+    const e = new Date("2026-07-15T10:00:00Z");
+
+    const booking = await makeBooking(client.id, "CONFIRMED", d, e);
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${booking.id}/act.pdf`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(404);
+  });
+
+  test("foreign RETURNED booking → 404", async () => {
+    const { cookie } = await makeClientWithSession();
+    const foreignClient = await prisma.client.create({ data: { name: "Чужой акт" } });
+    const d = new Date("2026-07-10T10:00:00Z");
+    const e = new Date("2026-07-15T10:00:00Z");
+
+    const foreignBooking = await makeBooking(foreignClient.id, "RETURNED", d, e);
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${foreignBooking.id}/act.pdf`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(404);
+  });
+});
