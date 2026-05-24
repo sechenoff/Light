@@ -173,6 +173,8 @@ describe("GET /api/lk/bookings", () => {
     expect(page1.status).toBe(200);
     expect(page1.body.items).toHaveLength(2);
     expect(page1.body.nextCursor).toBeTruthy();
+    // compound cursor must encode both ISO date and id separated by "|"
+    expect(page1.body.nextCursor).toContain("|");
 
     // Request second page using cursor
     const page2 = await request(app)

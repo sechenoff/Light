@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import { lkAuth } from "../../middleware/lkAuth";
 import { lkClientId } from "../../services/clientPortal/tenant";
@@ -21,15 +22,40 @@ const listQuery = z.object({
   status: z.enum(VISIBLE_STATUSES).optional(),
 });
 
+// Compound cursor for (startDate DESC, id DESC) ordering.
+// Encodes both fields to avoid gaps/duplicates when multiple bookings share the same startDate.
+type CompoundCursor = { startDate: Date; id: string };
+
+function encodeCursor(c: CompoundCursor): string {
+  return `${c.startDate.toISOString()}|${c.id}`;
+}
+
+function decodeCursor(s: string | undefined): CompoundCursor | null {
+  if (!s) return null;
+  const [iso, id] = s.split("|");
+  if (!iso || !id) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return { startDate: d, id };
+}
+
 router.get("/", lkAuth, async (req, res, next) => {
   try {
     const q = listQuery.parse(req.query);
     const clientId = lkClientId(req);
 
-    const where = {
+    const cursor = decodeCursor(q.cursor);
+    const where: Prisma.BookingWhereInput = {
       clientId,
       status: q.status ? q.status : { in: [...VISIBLE_STATUSES] as any },
-      ...(q.cursor ? { id: { lt: q.cursor } } : {}),
+      ...(cursor
+        ? {
+            OR: [
+              { startDate: { lt: cursor.startDate } },
+              { startDate: cursor.startDate, id: { lt: cursor.id } },
+            ],
+          }
+        : {}),
     };
 
     const items = await prisma.booking.findMany({
@@ -43,14 +69,17 @@ router.get("/", lkAuth, async (req, res, next) => {
         endDate: true,
         status: true,
         finalAmount: true,
-        amountPaid: true,
+        amountOutstanding: true,
         _count: { select: { items: true } },
       },
     });
 
     const hasMore = items.length > q.limit;
     const slice = hasMore ? items.slice(0, q.limit) : items;
-    const nextCursor = hasMore ? slice[slice.length - 1].id : null;
+    const last = slice[slice.length - 1];
+    const nextCursor = hasMore
+      ? encodeCursor({ startDate: last.startDate, id: last.id })
+      : null;
 
     res.json({
       items: slice.map((b) => ({
@@ -61,9 +90,7 @@ router.get("/", lkAuth, async (req, res, next) => {
         endDate: b.endDate.toISOString(),
         status: b.status,
         finalAmount: b.finalAmount.toString(),
-        amountOutstanding: (
-          Number(b.finalAmount) - Number(b.amountPaid)
-        ).toString(),
+        amountOutstanding: b.amountOutstanding.toString(),
         itemCount: b._count.items,
       })),
       nextCursor,
@@ -86,14 +113,10 @@ router.get("/:id", lkAuth, async (req, res, next) => {
         endDate: true,
         finalAmount: true,
         amountPaid: true,
+        amountOutstanding: true,
         comment: true,
         estimateOptionalNote: true,
         projectName: true,
-        items: {
-          select: {
-            quantity: true,
-          },
-        },
         estimates: {
           select: {
             kind: true,
@@ -151,9 +174,7 @@ router.get("/:id", lkAuth, async (req, res, next) => {
         booking.finalAmount.toString(),
       finalAmount: booking.finalAmount.toString(),
       amountPaid: booking.amountPaid.toString(),
-      amountOutstanding: (
-        Number(booking.finalAmount) - Number(booking.amountPaid)
-      ).toString(),
+      amountOutstanding: booking.amountOutstanding.toString(),
       comment: booking.comment ?? null,
       optionalNote: booking.estimateOptionalNote ?? null,
       hasConfirmedEstimate,
