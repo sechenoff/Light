@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../../src/lib/api";
 import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
-import { formatRub, formatWaitingTime } from "../../src/lib/format";
+import { formatRub, formatWaitingTime, pluralize } from "../../src/lib/format";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 
 type BookingItemMini = {
@@ -40,24 +40,45 @@ type BookingRow = {
 };
 
 
-function formatBookingPeriod(startDate: string, endDate: string): string {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const sameDay =
-    start.toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" }) ===
-    end.toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" });
-  if (sameDay) {
-    return (
-      start.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" }) +
-      " — " +
-      end.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" })
-    );
+// Дата смены — день, когда оборудование нужно клиенту на площадке.
+// На уровне модели это startDate брони.
+function formatShiftDate(startDate: string): string {
+  return new Date(startDate).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Europe/Moscow",
+  });
+}
+
+// Сколько дней прошло с ожидаемой даты оплаты. 0 если ещё не наступила или не задана.
+function daysOverdue(expectedPaymentDate: string | null): number {
+  if (!expectedPaymentDate) return 0;
+  const expectedMs = new Date(expectedPaymentDate).getTime();
+  const nowMs = Date.now();
+  if (nowMs <= expectedMs) return 0;
+  return Math.floor((nowMs - expectedMs) / (1000 * 60 * 60 * 24));
+}
+
+// Тултип для строки брони: показывает просрочку платежа или срок оплаты.
+function paymentTooltip(r: BookingRow): string {
+  if (r.paymentStatus === "PAID") {
+    return "Платёж получен";
   }
-  return (
-    start.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", timeZone: "Europe/Moscow" }) +
-    " — " +
-    end.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", timeZone: "Europe/Moscow" })
-  );
+  const overdue = daysOverdue(r.expectedPaymentDate);
+  if (overdue > 0) {
+    return `Просрочено на ${overdue} ${pluralize(overdue, "день", "дня", "дней")}`;
+  }
+  if (r.expectedPaymentDate) {
+    const dateStr = new Date(r.expectedPaymentDate).toLocaleDateString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone: "Europe/Moscow",
+    });
+    return `Срок оплаты: ${dateStr}`;
+  }
+  return "Не оплачен";
 }
 
 function BookingHistoryPageInner() {
@@ -66,7 +87,8 @@ function BookingHistoryPageInner() {
   const searchParams = useSearchParams();
   const [rows, setRows] = useState<BookingRow[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>(() => searchParams?.get("status") ?? "");
-  const [paymentFilter, setPaymentFilter] = useState<string>("");
+  // Бинарный фильтр оплаты: "" — все, "PAID" — оплачено, "UNPAID" — всё остальное.
+  const [paymentFilter, setPaymentFilter] = useState<"" | "PAID" | "UNPAID">("");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -134,19 +156,6 @@ function BookingHistoryPageInner() {
     }
   };
 
-  const paymentStatusText = (s: BookingRow["paymentStatus"]) => {
-    switch (s) {
-      case "NOT_PAID":
-        return "Не оплачен";
-      case "PARTIALLY_PAID":
-        return "Частично";
-      case "PAID":
-        return "Оплачен";
-      case "OVERDUE":
-        return "Просрочен";
-    }
-  };
-
   async function removeBooking(id: string) {
     if (!confirm("Удалить бронь? Действие нельзя отменить.")) return;
     setBusyId(id);
@@ -177,7 +186,8 @@ function BookingHistoryPageInner() {
   }
 
   const filteredRows = useMemo(() => rows.filter((r) => {
-    if (paymentFilter && r.paymentStatus !== paymentFilter) return false;
+    if (paymentFilter === "PAID" && r.paymentStatus !== "PAID") return false;
+    if (paymentFilter === "UNPAID" && r.paymentStatus === "PAID") return false;
     if (dateFrom || dateTo) {
       const startStr = new Date(r.startDate).toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" }); // YYYY-MM-DD
       if (dateFrom && startStr < dateFrom) return false;
@@ -236,12 +246,14 @@ function BookingHistoryPageInner() {
               <option value="RETURNED">Возвращено</option>
               <option value="CANCELLED">Отменено</option>
             </select>
-            <select className="rounded border border-border px-2 py-1 text-xs bg-surface" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
+            <select
+              className="rounded border border-border px-2 py-1 text-xs bg-surface"
+              value={paymentFilter}
+              onChange={(e) => setPaymentFilter(e.target.value as "" | "PAID" | "UNPAID")}
+            >
               <option value="">Все статусы оплаты</option>
-              <option value="NOT_PAID">Не оплачен</option>
-              <option value="PARTIALLY_PAID">Частично</option>
               <option value="PAID">Оплачен</option>
-              <option value="OVERDUE">Просрочен</option>
+              <option value="UNPAID">Не оплачен</option>
             </select>
             <div className="text-xs text-ink-3">{loading ? "Загрузка..." : `Всего: ${filteredRows.length}`}</div>
           </div>
@@ -250,7 +262,7 @@ function BookingHistoryPageInner() {
           <table className="min-w-[960px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
-                <th className="text-left px-3 py-2 font-medium">Период</th>
+                <th className="text-left px-3 py-2 font-medium">Дата смены</th>
                 <th className="text-left px-3 py-2 font-medium">Клиент</th>
                 <th className="text-left px-3 py-2 font-medium">Проект</th>
                 <th className="text-left px-3 py-2 font-medium">Статус</th>
@@ -261,9 +273,13 @@ function BookingHistoryPageInner() {
             </thead>
             <tbody>
               {filteredRows.map((r) => (
-                <tr key={r.id} className="border-t border-border hover:bg-surface-muted transition-colors">
+                <tr
+                  key={r.id}
+                  className="border-t border-border hover:bg-surface-muted transition-colors"
+                  title={paymentTooltip(r)}
+                >
                   <td className="px-3 py-2 text-ink-2 whitespace-nowrap mono-num">
-                    {formatBookingPeriod(r.startDate, r.endDate)}
+                    {formatShiftDate(r.startDate)}
                   </td>
                   <td className="px-3 py-2 text-ink-2">{r.client.name}</td>
                   <td className="px-3 py-2">
@@ -297,16 +313,21 @@ function BookingHistoryPageInner() {
                     )}
                   </td>
                   <td className="px-3 py-2">
+                    {/*
+                      Бинарная семантика: либо оплачено (emerald/ok), либо нет.
+                      Если не оплачено и срок прошёл — красим в rose (alert),
+                      чтобы взгляд на список сразу выделял просрочки.
+                      Детали (на сколько дней) — в тултипе строки (title на tr).
+                    */}
                     <StatusPill
                       variant={
-                        // Контраст плохо/хорошо: оплачено = emerald (ok),
-                        // просрочено = rose (alert) — не путать с amber.
-                        r.paymentStatus === "PAID" ? "ok"
-                        : r.paymentStatus === "PARTIALLY_PAID" ? "limited"
-                        : r.paymentStatus === "OVERDUE" ? "alert"
-                        : "none"
+                        r.paymentStatus === "PAID"
+                          ? "ok"
+                          : daysOverdue(r.expectedPaymentDate) > 0
+                          ? "alert"
+                          : "none"
                       }
-                      label={paymentStatusText(r.paymentStatus)}
+                      label={r.paymentStatus === "PAID" ? "Оплачен" : "Не оплачен"}
                     />
                   </td>
                   <td className="px-3 py-2 text-right mono-num text-ink">{formatRub(r.amountOutstanding)}</td>
