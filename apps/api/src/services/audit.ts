@@ -23,7 +23,8 @@ type AuditEntityType =
   | "CreditNote"
   | "OrgSettings"
   | "ProblemItem"
-  | "Feedback";
+  | "Feedback"
+  | "ClientPortalAccount";
 
 /**
  * Записывает событие в аудит-лог.

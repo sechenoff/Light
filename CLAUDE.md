@@ -663,6 +663,127 @@ Telegram нормализация: если не начинается с `@` —
 - Tenant-изоляция через `gafferWhere(req)` / `assertGafferTenant()` — никакого прямого `req.gafferUser.id` в сервисах без этих хелперов.
 - Ошибки через `HttpError` из `utils/errors.ts`; error-код передаётся как строка в третий параметр (`details`), что соответствует паттерну `res.body.details` в тестах.
 
+## Customer Portal `/lk` (Подпроект 1+2)
+
+Отдельный клиентский портал для гафферов — rental clients (НЕ Gaffer CRM `/gaffer`). Magic-link auth по приглашению админа, 1:1 с `Client`.
+
+### Auth и модели
+
+- `ClientPortalAccount` (1:1 с `Client`) + `ClientPortalMagicLink` (HMAC-SHA256 tokenHash, single-use, INVITE TTL 24h / LOGIN TTL 15m).
+- JWT cookie `lk_session`, secret `CLIENT_PORTAL_SESSION_SECRET`, отдельная цепочка `lkAuth` (НЕ `apiKeyAuth`).
+- Token HMAC secret `CLIENT_PORTAL_TOKEN_SECRET`.
+- Email через `nodemailer`; в dev — console-fallback при отсутствии `SMTP_HOST`.
+- `req.clientPortal` объявлен в `apps/api/src/types/express.d.ts` (единая точка с adminUser/gafferUser/warehouseWorker).
+
+### Маршруты (frontend)
+
+- `/lk` — dashboard
+- `/lk/bookings`, `/lk/bookings/[id]` — история заказов + детали (read-only)
+- `/lk/estimates` — список MAIN-смет с кнопкой «Скачать PDF»
+- `/lk/debt` — инвойсы клиента (ISSUED / PARTIAL_PAID / OVERDUE), просроченные строки тинтуются rose
+- `/lk/stats` — top-20 оборудования + «Твой типовой набор» (≥40% в последних 10 бронях, пусто если выборка <3)
+- `/lk/crew-calculator` — порт shared crew-calculator, stateless
+- `/lk/tools` — ссылка на внешний https://calc.svetobazarent.ru/
+
+Login flow (вне `LkShell`):
+- `/lk/login` — форма email
+- `/lk/login/sent` — экран подтверждения
+- `/lk/verify?token=...` — приёмник magic-link, использует `silent401: true` в `lkApi`
+
+Layout `apps/web/app/lk/layout.tsx` — client component с `usePathname`-bypass для auth-маршрутов (без route group).
+
+### API (backend)
+
+Все под `/api/lk/*`, НЕ `apiKeyAuth`, через `lkAuth` middleware:
+
+| Маршрут | Метод | Действие |
+|---|---|---|
+| `/api/lk/auth/request-login` | POST | Magic-link email (always 200, no enumeration, rate limit 5/15min) |
+| `/api/lk/auth/verify` | POST | Consume token (тонкий controller → `loginViaMagicLink` сервис) |
+| `/api/lk/auth/logout` | POST | Clear cookie |
+| `/api/lk/me` | GET | Account + client info |
+| `/api/lk/bookings` | GET | List with compound cursor `(startDate, id)`, filter `?status=`, DRAFT исключён |
+| `/api/lk/bookings/:id` | GET | Detail with MAIN-estimate snapshot |
+| `/api/lk/bookings/:id/estimate.pdf` | GET | Reuse `buildBookingEstimatePdf` сервис |
+| `/api/lk/bookings/:id/act.pdf` | GET | Reuse `buildBookingActPdf` сервис; gate `status === "RETURNED"` (без debt-блока — клиент видит акт даже при задолженности) |
+| `/api/lk/estimates` | GET | List `kind: "MAIN"` only (no CONFIRMED — enum has only MAIN/ADDON) |
+| `/api/lk/debt` | GET | Per-client invoices с outstanding > 0 |
+| `/api/lk/stats?period=180d\|365d\|all` | GET | Top equipment + typical kit |
+
+Admin (под обычным `apiKeyAuth + rolesGuard(["SUPER_ADMIN"])`):
+
+| Маршрут | Метод | Действие |
+|---|---|---|
+| `/api/admin/clients/:id/portal-invite` | POST | Upsert account + INVITE token + email + audit |
+| `/api/admin/clients/:id/portal-account` | GET | Read current account state |
+| `/api/admin/clients/:id/portal-account/disable` | POST | Mark DISABLED + audit |
+| `/api/admin/clients/:id/portal-account/reenable` | POST | Restore ACTIVE + audit |
+| `/api/admin/clients/:id/portal-account/resend` | POST | Invalidate prior INVITE, issue new + email + audit |
+
+### Сервисы
+
+- `apps/api/src/services/clientPortal/session.ts` — `signLkSession` / `verifyLkSession`, lazy `getSecret()`
+- `apps/api/src/services/clientPortal/magicLink.ts` — `issueMagicLink`, `consumeMagicLink` + `consumeMagicLinkInTx`, `invalidateUnusedInvites`. `hashToken` HMAC-SHA256.
+- `apps/api/src/services/clientPortal/mailer.ts` — `sendInviteEmail`, `sendLoginEmail`. HTML body escapes `clientName` через `escHtml`.
+- `apps/api/src/services/clientPortal/tenant.ts` — `lkClientId(req)`, `assertLkClientOwns(entity, req)`.
+- `apps/api/src/services/clientPortal/portalAccountService.ts` — `loginViaMagicLink(rawToken, meta)`: atomic `$transaction` для consume + account state machine (PENDING → ACTIVE, lastLogin*, failedLoginAttempts=0). DISABLED → INVALID_TOKEN (no enumeration).
+- `apps/api/src/services/clientPortal/statsService.ts` — `computeLkStats(prisma, clientId, period)`: top equipment + typical kit (последние 10 броней, threshold 0.4).
+- `apps/api/src/services/documentExport/bookingPdf.ts` — `buildBookingEstimatePdf` / `buildBookingActPdf`, reused admin-route + lk-route.
+
+### Конвенции
+
+- `clientId` ВСЕГДА из `req.clientPortal.clientId` (JWT). Никогда из query/body.
+- `assertLkClientOwns()` на каждом read-endpoint, либо инлайн-проверка `booking.clientId !== clientId → 404`.
+- DRAFT-брони не возвращаются клиенту. Видимые статусы: `PENDING_APPROVAL | CONFIRMED | ISSUED | RETURNED | CANCELLED`.
+- Estimate видны только `kind=MAIN` (исторически план говорил «CONFIRMED», но `EstimateKind` enum фактически `MAIN | ADDON`).
+- `BookingItem` не несёт денежных полей — `unitPrice/lineSum/categorySnapshot/nameSnapshot` живут на `EstimateLine`. Detail-эндпоинт фолбэчится на MAIN estimate snapshot.
+- Audit: admin-actions → обычный `AuditEntry` в `$transaction` с мутацией. Portal-side login события → `ClientPortalMagicLink.usedAt/ip/ua` + `ClientPortalAccount.failedLoginAttempts/lockedUntil` (НЕ AuditEntry, чтобы не расслаблять FK на `AdminUser`).
+- Compound cursor pagination `{createdAt|startDate}_iso|id` — корректный keyset для compound order. Использован в `/lk/bookings` и `/lk/estimates`.
+- Decimal-арифметика: для long-running агрегатов используется `Decimal.add` / `Decimal.sub` (`@prisma/client/runtime/library`). Для одноразовых сериализаций `.toString()` достаточно.
+- `lkApi` 401-redirect skipping `/lk/login`; `verify` использует `silent401: true` для inline error при невалидном токене.
+
+### Env vars (новые)
+
+- `CLIENT_PORTAL_SESSION_SECRET` — ≥16 символов в production (lazy-throw в `session.ts`)
+- `CLIENT_PORTAL_TOKEN_SECRET` — ≥16 символов в production (HMAC, lazy-throw в `magicLink.ts`)
+- `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_SECURE` (default false = STARTTLS), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` — для отправки magic-link email. В dev: если `SMTP_HOST` не задан и NODE_ENV не production → fallback `console.log` ссылки. Production без SMTP_HOST падает в `mailer.ts:getTransport`.
+- `PUBLIC_BASE_URL` — основа magic-link URL (default `http://localhost:3000`).
+
+### Тесты
+
+- `lkSession.test.ts` — JWT sign/verify roundtrip
+- `lkMagicLink.test.ts` — hashToken determinism, race-safe consume, invalidateUnusedInvites
+- `lkAuthRequestLogin.test.ts` — no-enumeration, ACTIVE/DISABLED branches, rate-limit
+- `lkAuthVerify.test.ts` — PENDING→ACTIVE, lastLoginAt, replay 401, /me, /logout
+- `clientPortalAdmin.test.ts` — 17 тестов: invite/disable/reenable/resend по всем ролям, audit, EMAIL_TAKEN, ACCOUNT_DISABLED guards
+- `lkBookings.test.ts` — список, фильтр статуса, compound cursor, detail с MAIN estimate, PDF endpoints (estimate.pdf, act.pdf) с tenant + status gates
+- `lkEstimates.test.ts` — MAIN-only фильтр, tenant isolation, pagination, pdfUrl
+- `lkDebt.test.ts` — outstanding > 0, isOverdue, tenant isolation, Decimal math
+- `lkStats.test.ts` — top sorting, sample<3 empty, threshold 0.4, period filter
+
+### Out of scope (Подпроект 3, отдельная спека)
+
+- Самозаказ: корзина, «Заказать набор», self-create Booking.
+- Email-дайджесты, нотификации.
+- Multi-tenant Client (1 аккаунт → много Client).
+- Загрузка документов с портала.
+- Передача параметров во внешний `calc.svetobazarent.ru` (только ссылка-кнопка).
+
+### Key Files (новые)
+
+| File | Purpose |
+|------|---------|
+| `apps/api/src/middleware/lkAuth.ts` | `req.clientPortal` populator |
+| `apps/api/src/services/clientPortal/*` | session, magicLink, mailer, tenant, portalAccountService, statsService |
+| `apps/api/src/services/documentExport/bookingPdf.ts` | Shared PDF assembly для admin + lk |
+| `apps/api/src/routes/lk/*` | auth.ts, me.ts, bookings.ts, estimates.ts, debt.ts, stats.ts, index.ts |
+| `apps/api/src/routes/clientPortalAdmin.ts` | Admin invite/disable/reenable/resend |
+| `apps/web/app/lk/layout.tsx` | Conditional shell (auth routes bypass LkShell) |
+| `apps/web/src/components/lk/*` | LkShell, LkNav, StatsTopTable, TypicalKitGrid |
+| `apps/web/src/components/admin/ClientPortalAccessCard.tsx` | Inline админ-card в `/bookings/[id]` для SUPER_ADMIN |
+| `apps/web/src/lib/lkApi.ts`, `lkTypes.ts` | Frontend data layer |
+| `apps/web/src/hooks/useLkSession.ts` | `useLkSession` hook |
+
 ## Finance Phase 3 (Backend B1–B6)
 
 ### Новые API-маршруты

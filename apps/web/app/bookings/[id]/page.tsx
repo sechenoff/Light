@@ -23,6 +23,7 @@ import { RefundModal } from "../../../src/components/finance/RefundModal";
 import { CreateInvoiceModal } from "../../../src/components/finance/CreateInvoiceModal";
 import { CancelWithDepositModal } from "../../../src/components/finance/CancelWithDepositModal";
 import { CreditNoteApplyModal } from "../../../src/components/finance/CreditNoteApplyModal";
+import { ClientPortalAccessCard } from "../../../src/components/admin/ClientPortalAccessCard";
 import { AddonEstimateSection } from "../../../src/components/bookings/AddonEstimateSection";
 import { VehicleDriverRow } from "../../../src/components/bookings/VehicleDriverRow";
 
@@ -1042,6 +1043,13 @@ export default function BookingDetailPage() {
               </div>
             </div>
 
+            {/* Доступ в клиентский кабинет — только для SUPER_ADMIN */}
+            {user?.role === "SUPER_ADMIN" && booking.client?.id && (
+              <ClientPortalAccessCard
+                clientId={booking.client.id}
+                defaultEmail={booking.client.email ?? null}
+              />
+            )}
 
             {booking.estimate ? (
               <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">

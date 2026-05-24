@@ -19,6 +19,12 @@ declare global {
         name: string | null;
         onboardingCompletedAt: Date | null;
       };
+      /** Customer Portal: сессия аутентифицированного клиента (заполняется lkAuth) */
+      clientPortal?: {
+        accountId: string;
+        clientId: string;
+        email: string;
+      };
     }
   }
 }
