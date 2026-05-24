@@ -5,7 +5,7 @@ import { extractQty, phraseNoQty } from "../lib/normalize";
 
 export const GROUP_WINDOW_HOURS = 24;
 const XLSX_FILENAME_RE = /^(\d{1,2})[.,](\d{1,2})\s+(.+?)\s+(\d+)\.xlsx$/i;
-const NON_ESTIMATE_KEYWORDS = ["инвентар", "комплект", "база"];
+const NON_ESTIMATE_KEYWORDS = ["инвентар", "комплект", "база", "svetobaza", "прайс"];
 
 interface RawMessage {
   id: number;
@@ -69,7 +69,8 @@ export function parseTelegramChat(jsonPath: string): ChatEntry[] {
   // First pass: all xlsx messages
   for (const m of msgs) {
     if (!m.file || !m.file.toLowerCase().endsWith(".xlsx")) continue;
-    const isNonEstimate = NON_ESTIMATE_KEYWORDS.some((kw) => m.file!.toLowerCase().includes(kw));
+    const fileLower = m.file!.toLowerCase();
+    const isNonEstimate = NON_ESTIMATE_KEYWORDS.some((kw) => fileLower.includes(kw)) || !parseXlsxFilename(m.file);
     if (isNonEstimate) {
       entries.push({
         id: `entry-${m.id}`,

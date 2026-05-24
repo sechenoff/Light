@@ -48,6 +48,12 @@ async function main() {
       await runMatch();
       break;
     }
+    case "dry-run": {
+      const { runDryRun } = await import("./phases/dryRun");
+      const batchId = argv.batchId ?? new Date().toISOString();
+      await runDryRun(batchId);
+      break;
+    }
     default:
       console.error(`phase ${argv.phase} not implemented yet`);
       process.exit(1);
