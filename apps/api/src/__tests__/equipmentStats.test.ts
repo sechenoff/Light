@@ -457,3 +457,58 @@ describe("GET /api/equipment-stats — dead stock", () => {
     expect(oldRow.lastBookingAt).not.toBe(null);
   });
 });
+
+describe("GET /api/equipment-stats — edge cases", () => {
+  it("excludes custom BookingItem (equipmentId=null) from every aggregate", async () => {
+    await clearScenario();
+    const apu = await makeEquipment({ name: "Прожектор Aputure", totalQuantity: 5, rate: 1000 });
+    const client = await makeClient("Клиент A");
+
+    // Booking with one catalog item + one custom item
+    await makeBooking({
+      clientId: client.id,
+      projectName: "Микс",
+      status: "CONFIRMED",
+      startDaysAgo: 10,
+      endDaysAgo: 8,
+      items: [
+        { equipmentId: apu.id, equipmentName: apu.name, quantity: 1, unitPrice: 1000 },
+        { equipmentId: null, equipmentName: "Самопальная штука", category: "Свет", quantity: 3, unitPrice: 999 },
+      ],
+    });
+
+    const res = await request(app).get("/api/equipment-stats?period=90").set(AUTH_SA());
+    expect(res.status).toBe(200);
+    expect(res.body.table).toHaveLength(1); // only the catalog row
+    expect(res.body.table[0].id).toBe(apu.id);
+    expect(res.body.table[0].revenueRub).toBe("2000"); // 1 × 1000 × 2 shifts, custom line excluded
+    expect(res.body.kpi.revenueRub).toBe("2000");
+  });
+
+  it("excludes bookings whose startDate is older than the requested window", async () => {
+    await clearScenario();
+    const apu = await makeEquipment({ name: "Прожектор Aputure", totalQuantity: 5, rate: 1000 });
+    const client = await makeClient("Клиент A");
+    // booking 50 days ago — inside 90d, outside 30d
+    await makeBooking({
+      clientId: client.id,
+      projectName: "Полтора месяца назад",
+      status: "RETURNED",
+      startDaysAgo: 50,
+      endDaysAgo: 48,
+      items: [{ equipmentId: apu.id, equipmentName: apu.name, quantity: 1, unitPrice: 1000 }],
+    });
+
+    const res30 = await request(app).get("/api/equipment-stats?period=30").set(AUTH_SA());
+    const res90 = await request(app).get("/api/equipment-stats?period=90").set(AUTH_SA());
+    const apu30 = res30.body.table.find((r: any) => r.id === apu.id);
+    const apu90 = res90.body.table.find((r: any) => r.id === apu.id);
+    expect(apu30.bookingsCount).toBe(0);
+    expect(apu90.bookingsCount).toBe(1);
+  });
+
+  it("rejects invalid period value with 400", async () => {
+    const res = await request(app).get("/api/equipment-stats?period=abc").set(AUTH_SA());
+    expect(res.status).toBe(400);
+  });
+});
