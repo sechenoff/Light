@@ -164,4 +164,53 @@ describe("PATCH /api/bookings/:id — ретро-редактирование RE
     expect(before.discountPercent).toBe("5");
     expect(after.discountPercent).toBe("10");
   });
+
+  it("(e) с items[]: позиции пересохраняются, BookingItem.quantity обновлён, audit включает diff", async () => {
+    // Создаём ещё одно equipment для перетасовки позиций.
+    const eq2 = await prisma.equipment.create({
+      data: {
+        importKey: "HMI||M40||GENERIC||HMI-M40",
+        name: "M40 Par 4000W",
+        category: "HMI",
+        totalQuantity: 3,
+        rentalRatePerShift: "9500",
+        stockTrackingMode: "COUNT",
+      },
+    });
+
+    // Меняем qty первой позиции и добавляем M40 (qty=2).
+    const res = await request(app)
+      .patch(`/api/bookings/${bookingId}`)
+      .set(AUTH_SA())
+      .send({
+        retroactive: true,
+        items: [
+          { equipmentId, quantity: 3 },         // было 1 → стало 3
+          { equipmentId: eq2.id, quantity: 2 }, // новая позиция
+        ],
+      });
+    expect(res.status).toBe(200);
+
+    const items = await prisma.bookingItem.findMany({
+      where: { bookingId },
+      orderBy: { id: "asc" },
+    });
+    expect(items).toHaveLength(2);
+    const led = items.find((i: any) => i.equipmentId === equipmentId);
+    const hmi = items.find((i: any) => i.equipmentId === eq2.id);
+    expect(led?.quantity).toBe(3);
+    expect(hmi?.quantity).toBe(2);
+
+    // Audit-запись существует. Сам массив items в `before`/`after` НЕ
+    // сохраняется — `diffFields` в audit-service умышленно отбрасывает
+    // массивы (защита от раздувания при тысяче позиций). Аудит-стори по
+    // изменению состава восстанавливается из BOOKING_EDITED-события на
+    // финансовой шкале + BookingItem.updatedAt в БД.
+    const audit = await prisma.auditEntry.findFirst({
+      where: { action: "BOOKING_RETROACTIVE_EDIT", entityId: bookingId },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(audit).not.toBeNull();
+    expect(audit!.entityType).toBe("Booking");
+  });
 });

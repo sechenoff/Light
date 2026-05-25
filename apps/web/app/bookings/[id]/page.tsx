@@ -11,6 +11,7 @@ import { SectionHeader } from "../../../src/components/SectionHeader";
 import { formatMoneyRub, formatRub } from "../../../src/lib/format";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { RejectBookingModal } from "../../../src/components/bookings/RejectBookingModal";
+import { EquipmentPickerModal } from "../../../src/components/bookings/EquipmentPickerModal";
 import { ChangeClientModal } from "../../../src/components/bookings/ChangeClientModal";
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
 import { ApprovalContext } from "../../../src/components/bookings/ApprovalContext";
@@ -210,18 +211,42 @@ export default function BookingDetailPage() {
   const [creditNoteOpen, setCreditNoteOpen] = useState(false);
 
   // ── Ретро-редактирование закрытой брони (SUPER_ADMIN + RETURNED) ──────────
-  // Минимальный набор полей: название проекта, комментарий, % скидки.
+  // Меняется: название проекта, комментарий, % скидки, состав позиций
+  // (qty, удалить, добавить). Транспорт пока не редактируется inline.
   // Backend сохраняет в той же транзакции и пишет audit BOOKING_RETROACTIVE_EDIT.
-  // Поля items[]/transport[] в этой итерации НЕ редактируются inline (см.
-  // мокап booking-detail-v2.html State 3 — там полноценная таблица; здесь
-  // упрощённая версия). Полный inline-редактор позиций — отдельная PR.
+  type RetroEditItem = {
+    /** id существующего BookingItem ИЛИ "__new-N" для добавленного inline */
+    id: string;
+    equipmentId: string | null;
+    customName?: string | null;
+    customUnitPrice?: number | null;
+    quantity: number;
+    /** Снапшот для display + подсветка изменений */
+    equipment?: {
+      id: string;
+      name: string;
+      category: string;
+      brand?: string | null;
+      model?: string | null;
+    } | null;
+    customCategory?: string | null;
+    /** UI-only: оригинальное qty для подсветки «было N → стало M» */
+    originalQuantity?: number;
+    /** UI-only: помечен на удаление (но строка остаётся видимой как strikethrough) */
+    _deleted?: boolean;
+    /** UI-only: добавлено в этом сеансе (подсветка emerald-soft) */
+    _added?: boolean;
+  };
   const [retroEditMode, setRetroEditMode] = useState(false);
   const [retroEdits, setRetroEdits] = useState<{
     projectName?: string;
     comment?: string | null;
     discountPercent?: number | null;
+    items?: RetroEditItem[];
   }>({});
   const [retroBusy, setRetroBusy] = useState(false);
+  /** Модалка для добавления новой позиции (equipment picker) */
+  const [retroPickerOpen, setRetroPickerOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -276,6 +301,24 @@ export default function BookingDetailPage() {
       projectName: booking.projectName,
       comment: booking.comment ?? "",
       discountPercent: booking.discountPercent ? Number(booking.discountPercent) : null,
+      items: booking.items.map((it) => ({
+        id: it.id,
+        equipmentId: it.equipmentId,
+        customName: it.customName ?? null,
+        customUnitPrice: it.customUnitPrice ? Number(it.customUnitPrice) : null,
+        quantity: it.quantity,
+        equipment: it.equipment
+          ? {
+              id: it.equipment.id,
+              name: it.equipment.name,
+              category: it.equipment.category,
+              brand: it.equipment.brand ?? null,
+              model: it.equipment.model ?? null,
+            }
+          : null,
+        customCategory: it.customCategory ?? null,
+        originalQuantity: it.quantity,
+      })),
     });
     setRetroEditMode(true);
   }
@@ -283,6 +326,77 @@ export default function BookingDetailPage() {
   function cancelRetroEdit() {
     setRetroEditMode(false);
     setRetroEdits({});
+    setRetroPickerOpen(false);
+  }
+
+  /** Меняет qty конкретной позиции в retro-edit. */
+  function updateRetroItemQty(itemId: string, qty: number) {
+    setRetroEdits((s) => ({
+      ...s,
+      items: s.items?.map((i) => (i.id === itemId ? { ...i, quantity: Math.max(0, qty) } : i)),
+    }));
+  }
+
+  /** Помечает на удаление / возвращает обратно. */
+  function toggleRetroItemDeleted(itemId: string) {
+    setRetroEdits((s) => ({
+      ...s,
+      items: s.items
+        ?.map((i) => (i.id === itemId ? { ...i, _deleted: !i._deleted } : i))
+        // Если строка _added и _deleted одновременно — просто убираем из массива
+        // (она ещё не сохранена в БД, нет смысла держать как strikethrough).
+        .filter((i) => !(i._added && i._deleted)),
+    }));
+  }
+
+  /** Добавляет новую позицию из equipment-picker'а. */
+  function addRetroItemFromEquipment(eq: {
+    id: string;
+    name: string;
+    category: string;
+    brand?: string | null;
+    model?: string | null;
+  }) {
+    setRetroEdits((s) => {
+      const items = s.items ?? [];
+      // Если такое equipment уже есть — не дублируем, увеличиваем qty.
+      const existing = items.find(
+        (i) => i.equipmentId === eq.id && !i._deleted,
+      );
+      if (existing) {
+        return {
+          ...s,
+          items: items.map((i) =>
+            i.id === existing.id ? { ...i, quantity: i.quantity + 1 } : i,
+          ),
+        };
+      }
+      const newId = `__new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      return {
+        ...s,
+        items: [
+          ...items,
+          {
+            id: newId,
+            equipmentId: eq.id,
+            customName: null,
+            customUnitPrice: null,
+            quantity: 1,
+            equipment: {
+              id: eq.id,
+              name: eq.name,
+              category: eq.category,
+              brand: eq.brand ?? null,
+              model: eq.model ?? null,
+            },
+            customCategory: null,
+            originalQuantity: 0,
+            _added: true,
+          },
+        ],
+      };
+    });
+    setRetroPickerOpen(false);
   }
 
   async function saveRetroEdit() {
@@ -303,6 +417,33 @@ export default function BookingDetailPage() {
       if (nextDiscount !== currentDiscount) {
         body.discountPercent = nextDiscount;
       }
+
+      // Items — отправляем если что-то поменялось (qty, состав).
+      // Backend (PATCH с items) делает полную замену: deleteMany + createMany.
+      // Фильтруем _deleted и строки с qty=0; backend требует minLength=1.
+      const editedItems = retroEdits.items ?? [];
+      const itemsChanged =
+        editedItems.length !== booking.items.length ||
+        editedItems.some(
+          (i) =>
+            i._added ||
+            i._deleted ||
+            i.quantity !== (i.originalQuantity ?? i.quantity),
+        );
+      if (itemsChanged) {
+        const filtered = editedItems.filter((i) => !i._deleted && i.quantity > 0);
+        if (filtered.length === 0) {
+          toast.error("Нельзя оставить бронь без позиций — отмените удаление хотя бы одной.");
+          return;
+        }
+        body.items = filtered.map((i) => ({
+          equipmentId: i.equipmentId,
+          quantity: i.quantity,
+          customName: i.customName ?? undefined,
+          customUnitPrice: i.customUnitPrice ?? undefined,
+        }));
+      }
+
       if (Object.keys(body).length === 1) {
         // Только retroactive: true — нет реальных изменений.
         toast.info("Нет изменений для сохранения");
@@ -709,11 +850,36 @@ export default function BookingDetailPage() {
               priceByName.set(l.nameSnapshot, { unitPrice: l.unitPrice, lineSum: l.lineSum });
             }
             const showPrices = estLines.length > 0;
-            const colCount = showPrices ? 5 : 3;
+            // В retro-edit добавляется столбец «✕» (delete) + цены в таблице отображаются read-only.
+            const colCount = (showPrices ? 5 : 3) + (retroEditMode ? 1 : 0);
+            // Источник правды для рендера: либо живые items, либо retro-edits.
+            // В retro-edits сохранены original quantities — нужно для подсветки изменений.
+            const displayItems = retroEditMode && retroEdits.items
+              ? retroEdits.items
+              : booking.items.map((it) => ({
+                  id: it.id,
+                  equipmentId: it.equipmentId,
+                  equipment: it.equipment,
+                  customName: it.customName ?? null,
+                  customCategory: it.customCategory ?? null,
+                  quantity: it.quantity,
+                  originalQuantity: it.quantity,
+                  _deleted: false,
+                  _added: false,
+                }));
             return (
               <div className="lg:col-span-8 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-                <div className="p-3 border-b border-border bg-surface-subtle">
-                  <p className="eyebrow">Позиции брони ({booking.items.length})</p>
+                <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
+                  <p className="eyebrow">Позиции брони ({displayItems.filter((i) => !(i as any)._deleted).length})</p>
+                  {retroEditMode && (
+                    <button
+                      type="button"
+                      onClick={() => setRetroPickerOpen(true)}
+                      className="rounded border border-amber-border bg-amber-soft text-amber px-2.5 py-1 text-xs font-medium hover:bg-amber hover:text-white transition-colors no-print"
+                    >
+                      + Добавить позицию
+                    </button>
+                  )}
                 </div>
                 <div className="overflow-auto max-h-[560px]">
                   <table className="min-w-[860px] w-full text-sm">
@@ -724,23 +890,62 @@ export default function BookingDetailPage() {
                         <th className="px-3 py-2 w-[100px] font-medium text-right">Кол-во</th>
                         {showPrices && <th className="px-3 py-2 w-[120px] font-medium text-right">Цена</th>}
                         {showPrices && <th className="px-3 py-2 w-[130px] font-medium text-right">Сумма</th>}
+                        {retroEditMode && <th className="px-3 py-2 w-[40px] no-print"></th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {booking.items.map((it) => {
+                      {displayItems.map((it) => {
                         const price =
                           (it.equipmentId ? priceByEquipmentId.get(it.equipmentId) : undefined) ??
                           priceByName.get(it.equipment?.name ?? it.customName ?? "");
+                        const anyIt = it as RetroEditItem;
+                        const qtyChanged =
+                          retroEditMode &&
+                          anyIt.originalQuantity !== undefined &&
+                          anyIt.quantity !== anyIt.originalQuantity &&
+                          !anyIt._added;
+                        const rowClass = anyIt._deleted
+                          ? "border-t border-border bg-rose-soft"
+                          : anyIt._added
+                            ? "border-t border-border bg-emerald-soft"
+                            : qtyChanged
+                              ? "border-t border-border bg-amber-soft"
+                              : "border-t border-border";
                         return (
-                          <tr key={it.id} className="border-t border-border">
+                          <tr key={it.id} className={rowClass}>
                             <td className="px-3 py-2 text-ink-2">{it.equipment?.category ?? it.customCategory ?? "—"}</td>
                             <td className="px-3 py-2">
-                              <div className="font-medium text-ink">{it.equipment?.name ?? it.customName ?? "—"}</div>
+                              <div className={`font-medium text-ink ${anyIt._deleted ? "line-through text-ink-3" : ""}`}>
+                                {it.equipment?.name ?? it.customName ?? "—"}
+                              </div>
                               <div className="text-xs text-ink-3">
                                 {it.equipment?.brand ? it.equipment.brand : ""} {it.equipment?.model ? `· ${it.equipment.model}` : ""}
+                                {qtyChanged && (
+                                  <span className="text-amber ml-1">
+                                    · было {anyIt.originalQuantity} → стало {anyIt.quantity}
+                                  </span>
+                                )}
+                                {anyIt._added && <span className="text-emerald ml-1">· новая позиция</span>}
+                                {anyIt._deleted && <span className="text-rose ml-1">· к удалению</span>}
                               </div>
                             </td>
-                            <td className="px-3 py-2 font-medium text-right mono-num">{it.quantity}</td>
+                            <td className="px-3 py-2 text-right mono-num">
+                              {retroEditMode ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  value={anyIt.quantity}
+                                  disabled={anyIt._deleted}
+                                  onChange={(e) =>
+                                    updateRetroItemQty(it.id, Number(e.target.value) || 0)
+                                  }
+                                  className="w-16 text-right rounded border border-amber-border bg-white px-1 py-0.5 mono-num text-sm focus:outline-none focus:ring-1 focus:ring-amber disabled:bg-rose-soft disabled:text-ink-3"
+                                />
+                              ) : (
+                                <span className="font-medium">{it.quantity}</span>
+                              )}
+                            </td>
                             {showPrices && (
                               <td className="px-3 py-2 text-right mono-num text-ink-2">
                                 {price ? formatMoneyRub(price.unitPrice) : "—"}
@@ -751,10 +956,23 @@ export default function BookingDetailPage() {
                                 {price ? formatMoneyRub(price.lineSum) : "—"}
                               </td>
                             )}
+                            {retroEditMode && (
+                              <td className="px-3 py-2 text-center no-print">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleRetroItemDeleted(it.id)}
+                                  aria-label={anyIt._deleted ? "Вернуть строку" : "Удалить строку"}
+                                  title={anyIt._deleted ? "Вернуть строку" : "Удалить строку"}
+                                  className={`text-base ${anyIt._deleted ? "text-accent-bright hover:text-accent" : "text-rose hover:text-rose/80"}`}
+                                >
+                                  {anyIt._deleted ? "↩" : "✕"}
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
-                      {booking.items.length === 0 ? (
+                      {displayItems.length === 0 ? (
                         <tr>
                           <td className="px-3 py-6 text-center text-ink-3" colSpan={colCount}>
                             Нет позиций
@@ -1530,6 +1748,13 @@ export default function BookingDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Equipment picker для retro-edit: добавление новой позиции в RETURNED-бронь */}
+      <EquipmentPickerModal
+        open={retroPickerOpen}
+        onPick={addRetroItemFromEquipment}
+        onClose={() => setRetroPickerOpen(false)}
+      />
 
       {/* VoidPaymentModal — T11 */}
       <VoidPaymentModal
