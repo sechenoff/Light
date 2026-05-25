@@ -66,6 +66,8 @@ type BookingDetail = {
   totalEstimateAmount?: string | null;
   discountAmount?: string | null;
   finalAmount?: string | null;
+  /** Ручной override итоговой суммы. `null` → автоматический расчёт. */
+  manualFinalAmount?: string | null;
   amountPaid?: string | null;
   amountOutstanding?: string | null;
   expectedPaymentDate?: string | null;
@@ -264,6 +266,14 @@ export default function BookingDetailPage() {
     projectName?: string;
     comment?: string | null;
     discountPercent?: number | null;
+    /**
+     * Ручной override итоговой суммы брони.
+     *  - undefined → не трогаем поле (по умолчанию при entering edit-mode)
+     *  - "" пустая строка → null (очистить override на бэке, вернуть auto)
+     *  - строка-число → новый override
+     * Хранится как string для контролируемого input'а; парсится при submit.
+     */
+    manualFinalAmount?: string;
     items?: RetroEditItem[];
     vehicles?: RetroEditVehicle[];
   }>({});
@@ -324,6 +334,7 @@ export default function BookingDetailPage() {
       projectName: booking.projectName,
       comment: booking.comment ?? "",
       discountPercent: booking.discountPercent ? Number(booking.discountPercent) : null,
+      manualFinalAmount: booking.manualFinalAmount ?? "",
       vehicles: (booking.vehicles ?? []).map((v) => ({
         bookingVehicleId: v.id,
         vehicleName: v.vehicle?.name ?? "Машина",
@@ -462,6 +473,23 @@ export default function BookingDetailPage() {
       const nextDiscount = retroEdits.discountPercent ?? null;
       if (nextDiscount !== currentDiscount) {
         body.discountPercent = nextDiscount;
+      }
+
+      // manualFinalAmount: пустая строка → null (очистить override),
+      // непустая → парсим число. Сравниваем с текущим (string).
+      const currentOverride = booking.manualFinalAmount ?? "";
+      const nextOverrideRaw = (retroEdits.manualFinalAmount ?? "").trim();
+      if (nextOverrideRaw !== currentOverride) {
+        if (nextOverrideRaw === "") {
+          body.manualFinalAmount = null;
+        } else {
+          const n = Number.parseFloat(nextOverrideRaw.replace(",", "."));
+          if (!Number.isFinite(n) || n < 0) {
+            toast.error("Итог брони должен быть неотрицательным числом");
+            return;
+          }
+          body.manualFinalAmount = n;
+        }
       }
 
       // Items — отправляем если что-то поменялось (qty, состав).
@@ -756,6 +784,49 @@ export default function BookingDetailPage() {
                       </span>
                     )}
                   </label>
+                  {/*
+                    Ручной override итоговой суммы. Используется когда фактическая
+                    сумма по итогам переговоров отличается от автомата сметы.
+                    Пустое поле → null → автопересчёт. Сохраняется в Booking.
+                    manualFinalAmount. recomputeBookingFinance подставляет это
+                    значение в finalAmount.
+                  */}
+                  <label className="block md:col-span-3 mt-2 pt-3 border-t border-amber-border/40">
+                    <span className="eyebrow block mb-1">Итог брони, ₽ (ручной override)</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={retroEdits.manualFinalAmount ?? ""}
+                        onChange={(e) =>
+                          setRetroEdits((s) => ({ ...s, manualFinalAmount: e.target.value }))
+                        }
+                        placeholder={`автомат: ${formatMoneyRub(booking.finalAmount ?? "0")}`}
+                        className="w-56 mono-num rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
+                      />
+                      {(retroEdits.manualFinalAmount ?? "").trim() !== "" && (
+                        <button
+                          type="button"
+                          onClick={() => setRetroEdits((s) => ({ ...s, manualFinalAmount: "" }))}
+                          className="text-xs text-accent-bright hover:text-accent"
+                          title="Очистить override — итог вернётся к автоматическому расчёту"
+                        >
+                          ↺ Сбросить (вернуть автомат)
+                        </button>
+                      )}
+                    </div>
+                    <span className="block mt-1 text-xs text-ink-3">
+                      Пустое поле — итог считается автоматически (
+                      <span className="mono-num">{formatMoneyRub(booking.finalAmount ?? "0")}</span>
+                      ). Заполните, если фактическая сумма по итогам переговоров отличается от сметы.
+                      {booking.manualFinalAmount != null && (
+                        <span className="text-amber">
+                          {" "}Сейчас override активен:{" "}
+                          <span className="mono-num">{formatMoneyRub(booking.manualFinalAmount)}</span>.
+                        </span>
+                      )}
+                    </span>
+                  </label>
                 </div>
                 <p className="mt-3 text-xs text-ink-3">
                   Изменение позиций оборудования и транспорта в этой версии недоступно inline —
@@ -957,11 +1028,22 @@ export default function BookingDetailPage() {
 
                 <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5 no-print">
                   <div className="rounded-lg border border-border bg-surface shadow-xs p-3">
-                    <p className="eyebrow">Итого</p>
+                    <p className="eyebrow">
+                      Итого
+                      {booking.manualFinalAmount != null && (
+                        <span className="ml-1.5 align-middle inline-block bg-amber text-white text-[9px] px-1 py-0.5 rounded font-semibold tracking-wide">
+                          РУЧНОЙ
+                        </span>
+                      )}
+                    </p>
                     <p className="mt-1.5 font-cond text-2xl font-semibold mono-num text-ink">
                       {formatMoneyRub(total)}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-ink-3">оборудование + транспорт − скидка</p>
+                    <p className="mt-0.5 text-[11px] text-ink-3">
+                      {booking.manualFinalAmount != null
+                        ? "override SUPER_ADMIN'а — автомат не применяется"
+                        : "оборудование + транспорт − скидка"}
+                    </p>
                   </div>
                   <div className={`rounded-lg border shadow-xs p-3 ${paidCardTone ? "border-emerald-border bg-gradient-to-b from-emerald-soft to-surface" : "border-border bg-surface"}`}>
                     <p className="eyebrow">Оплачено</p>
@@ -1223,6 +1305,9 @@ export default function BookingDetailPage() {
                   editedComment={retroEdits.comment ?? ""}
                   originalDiscountPercent={booking.discountPercent ? Number(booking.discountPercent) : null}
                   editedDiscountPercent={retroEdits.discountPercent ?? null}
+                  originalManualFinalAmount={booking.manualFinalAmount ?? null}
+                  editedManualFinalAmount={retroEdits.manualFinalAmount ?? ""}
+                  autoFinalAmount={booking.finalAmount ?? "0"}
                   itemsAdded={itemsAdded}
                   itemsRemoved={itemsRemoved}
                   itemsQtyChanged={itemsQtyChanged}

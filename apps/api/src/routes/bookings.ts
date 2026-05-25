@@ -142,6 +142,16 @@ const bookingUpdateSchema = z.object({
    */
   retroactive: z.boolean().optional().default(false),
   /**
+   * Ручной override итоговой суммы брони. Доступно только в retroactive-режиме.
+   * - `null` → очистить override, вернуть автоматический расчёт.
+   * - число → перетирает finalAmount; amountOutstanding / paymentStatus
+   *   пересчитываются от этой суммы.
+   * Используется когда фактическая сумма по итогам переговоров отличается от
+   * сметы (например, скидка «на месте», или возврат с допуслугами без
+   * добавления позиций).
+   */
+  manualFinalAmount: z.number().min(0).optional().nullable(),
+  /**
    * In-place правки транспорта в retro-mode: водитель, телефон, итоговый
    * пробег по каждой машине брони. Это НЕ полная замена транспорта (как
    * body.transport ниже) — точечные изменения по bookingVehicleId.
@@ -535,6 +545,15 @@ router.patch("/:id", async (req, res, next) => {
           discountPercent: body.discountPercent === undefined ? undefined : body.discountPercent != null ? new Decimal(body.discountPercent) : null,
           expectedPaymentDate: resolvedExpectedPaymentDate,
           skipPartialDay: body.skipPartialDay === undefined ? undefined : body.skipPartialDay,
+          // manualFinalAmount — override итоговой суммы. Доступно только
+          // в retroactive-режиме (вне его поле в body игнорируется через
+          // условие ниже). null очищает override, число — устанавливает.
+          manualFinalAmount:
+            retroactiveEdit && body.manualFinalAmount !== undefined
+              ? body.manualFinalAmount === null
+                ? null
+                : new Decimal(body.manualFinalAmount)
+              : undefined,
         },
         include: {
           client: true,
@@ -715,6 +734,7 @@ router.patch("/:id", async (req, res, next) => {
             projectName: existing.projectName,
             discountPercent: existing.discountPercent?.toString() ?? null,
             finalAmount: beforeFinalAmount?.toString() ?? null,
+            manualFinalAmount: (existing as any).manualFinalAmount?.toString() ?? null,
             items: beforeItems,
           },
           after: {
@@ -722,6 +742,7 @@ router.patch("/:id", async (req, res, next) => {
             projectName: freshBooking?.projectName ?? existing.projectName,
             discountPercent: freshBooking?.discountPercent?.toString() ?? null,
             finalAmount: afterFinalAmount?.toString() ?? null,
+            manualFinalAmount: (freshBooking as any)?.manualFinalAmount?.toString() ?? null,
             items: afterItems,
           },
         });

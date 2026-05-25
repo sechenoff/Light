@@ -281,6 +281,66 @@ describe("PATCH /api/bookings/:id — ретро-редактирование RE
     expect(log!.mileage).toBe(newMileage);
   });
 
+  it("(h) manualFinalAmount: PATCH с числом → finalAmount=число; null → возврат к автомату", async () => {
+    // Установить override 123456.78
+    const set = await request(app)
+      .patch(`/api/bookings/${bookingId}`)
+      .set(AUTH_SA())
+      .send({ retroactive: true, manualFinalAmount: 123456.78 });
+    expect(set.status).toBe(200);
+
+    const overrideRow = await prisma.booking.findUnique({ where: { id: bookingId } });
+    expect(overrideRow?.manualFinalAmount?.toString()).toBe("123456.78");
+    expect(overrideRow?.finalAmount.toString()).toBe("123456.78");
+
+    // Очистить override (null) — finalAmount пересчитается от сметы.
+    const beforeAuto = overrideRow?.totalEstimateAmount.toString() ?? "0";
+    const clr = await request(app)
+      .patch(`/api/bookings/${bookingId}`)
+      .set(AUTH_SA())
+      .send({ retroactive: true, manualFinalAmount: null });
+    expect(clr.status).toBe(200);
+
+    const cleared = await prisma.booking.findUnique({ where: { id: bookingId } });
+    expect(cleared?.manualFinalAmount).toBeNull();
+    // finalAmount уже не равен 123456.78 — он пересчитался recomputeBookingFinance
+    expect(cleared?.finalAmount.toString()).not.toBe("123456.78");
+    // sanity: использовали totalEstimateAmount как точку отсчёта (без discount/transport
+    // у нашего тестового booking — finalAmount будет равен estimate-after-discount или
+    // упасть в значение из booking.finalAmount без MAIN-estimate).
+    void beforeAuto; // лишняя ссылка чтобы не дропнуть переменную линтером
+  });
+
+  it("(i) WAREHOUSE не может ставить manualFinalAmount — поле игнорируется", async () => {
+    // Подготовка: убедимся что override сейчас null
+    await prisma.booking.update({ where: { id: bookingId }, data: { manualFinalAmount: null } });
+
+    // WAREHOUSE без retroactive — обычный PATCH запрещён на RETURNED, поэтому
+    // отправляем на DRAFT-копию. Создадим временную бронь в CONFIRMED где
+    // PATCH разрешён, и проверим что поле manualFinalAmount игнорируется.
+    const draftBooking = await prisma.booking.create({
+      data: {
+        clientId: (await prisma.client.findFirst({ where: { name: "Тест-Клиент RETRO" } }))!.id,
+        projectName: "WH-тест",
+        startDate: new Date("2026-04-12T09:00:00.000Z"),
+        endDate: new Date("2026-04-13T09:00:00.000Z"),
+        status: "CONFIRMED",
+      },
+    });
+    await prisma.bookingItem.create({
+      data: { bookingId: draftBooking.id, equipmentId, quantity: 1 },
+    });
+
+    const res = await request(app)
+      .patch(`/api/bookings/${draftBooking.id}`)
+      .set(AUTH_WH())
+      .send({ manualFinalAmount: 99999.99 });
+    expect(res.status).toBe(200); // PATCH сам по себе разрешён на CONFIRMED для WAREHOUSE
+    const after = await prisma.booking.findUnique({ where: { id: draftBooking.id } });
+    // manualFinalAmount не применён (retroactiveEdit === false для WH)
+    expect(after?.manualFinalAmount).toBeNull();
+  });
+
   it("(g) endMileage меньше текущего → 409 MILEAGE_DECREASE, всё откатывается", async () => {
     const beforeVehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
     const beforeMileage = beforeVehicle.currentMileage;

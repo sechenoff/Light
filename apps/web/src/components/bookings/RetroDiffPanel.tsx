@@ -32,6 +32,12 @@ interface Props {
   originalDiscountPercent: number | null;
   editedDiscountPercent: number | null;
 
+  /** Итог-override (manualFinalAmount). null/"" = автомат, число = override */
+  originalManualFinalAmount: string | null;
+  editedManualFinalAmount: string;
+  /** Автоматически вычисленный итог (для подсказки «вернётся к авто») */
+  autoFinalAmount: string;
+
   /** Items diff — массивы со своими отметками _added/_deleted/changedQty */
   itemsAdded: number;
   itemsRemoved: number;
@@ -40,6 +46,10 @@ interface Props {
   /** Транспорт — кол-во машин с изменёнными полями */
   vehiclesDriverChanged: number;
   vehiclesMileageChanged: number;
+}
+
+function formatRu(n: number): string {
+  return n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 }
 
 function trim(s: string | null | undefined): string {
@@ -53,6 +63,9 @@ export function RetroDiffPanel({
   editedComment,
   originalDiscountPercent,
   editedDiscountPercent,
+  originalManualFinalAmount,
+  editedManualFinalAmount,
+  autoFinalAmount,
   itemsAdded,
   itemsRemoved,
   itemsQtyChanged,
@@ -94,6 +107,31 @@ export function RetroDiffPanel({
       id: "discount",
       label: "Скидка",
       detail: `${oldDisc ?? 0}% → ${newDisc ?? 0}%`,
+      tone: "amber",
+    });
+  }
+
+  // manualFinalAmount diff: пустая edited-строка = clear override.
+  const editedOverrideRaw = editedManualFinalAmount.trim();
+  const origOverride = originalManualFinalAmount ?? "";
+  if (editedOverrideRaw !== origOverride) {
+    let detail: string;
+    if (editedOverrideRaw === "") {
+      // Сброс override → возврат к автомату
+      const orig = origOverride === "" ? "—" : `${formatRu(Number(origOverride))} ₽`;
+      detail = `${orig} → авто (${formatRu(Number(autoFinalAmount))} ₽)`;
+    } else {
+      const newN = Number.parseFloat(editedOverrideRaw.replace(",", "."));
+      const orig = origOverride === ""
+        ? `авто (${formatRu(Number(autoFinalAmount))} ₽)`
+        : `${formatRu(Number(origOverride))} ₽`;
+      const newFmt = Number.isFinite(newN) ? `${formatRu(newN)} ₽` : editedOverrideRaw;
+      detail = `${orig} → ${newFmt}`;
+    }
+    rows.push({
+      id: "manual-final",
+      label: editedOverrideRaw === "" ? "Сброс ручного итога" : "Итог брони (ручной)",
+      detail,
       tone: "amber",
     });
   }

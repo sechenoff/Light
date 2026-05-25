@@ -71,6 +71,7 @@ export function serializeBookingForApi(b: BookingWithItemsEquipment) {
     totalEstimateAmount: (b as any).totalEstimateAmount?.toString?.() ?? (b as any).totalEstimateAmount ?? null,
     discountAmount: (b as any).discountAmount?.toString?.() ?? (b as any).discountAmount ?? null,
     finalAmount: (b as any).finalAmount?.toString?.() ?? (b as any).finalAmount ?? null,
+    manualFinalAmount: (b as any).manualFinalAmount != null ? (b as any).manualFinalAmount.toString() : null,
     transportSubtotalRub: (b as any).transportSubtotalRub != null ? (b as any).transportSubtotalRub.toString() : null,
     amountPaid: (b as any).amountPaid?.toString?.() ?? (b as any).amountPaid ?? null,
     amountOutstanding: (b as any).amountOutstanding?.toString?.() ?? (b as any).amountOutstanding ?? null,

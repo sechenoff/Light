@@ -134,9 +134,17 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
   // by transport on each recompute (regression covered by
   // recomputeBookingFinanceFallback.test). Now we leave finalAmount untouched and
   // only refresh derived fields (amountPaid, amountOutstanding, paymentStatus).
-  const finalAmount = main
+  const computedFinalAmount = main
     ? mainAfterDiscount.add(addonAfterDiscount).add(transportSubtotal)
     : new Decimal(booking.finalAmount.toString());
+
+  // Manual override: SUPER_ADMIN мог зафиксировать «фактическую сумму после
+  // переговоров» через retro-edit. Если задан — он перетирает автомат для
+  // финансовых расчётов (amountOutstanding, paymentStatus и т.д.). Сам
+  // финальный finalAmount пишется ниже из этой переменной.
+  const finalAmount = booking.manualFinalAmount
+    ? new Decimal(booking.manualFinalAmount.toString())
+    : computedFinalAmount;
 
   const amountPaid  = sumDec(booking.payments.map((p) => p.amount.toString()));
   const amountOutstanding = Decimal.max(finalAmount.sub(amountPaid), new Decimal(0));

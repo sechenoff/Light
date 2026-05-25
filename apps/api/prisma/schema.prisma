@@ -304,6 +304,14 @@ model Booking {
   totalEstimateAmount Decimal @default(0)
   discountAmount Decimal @default(0)
   finalAmount Decimal @default(0)
+  /// Ручной override итоговой суммы брони. Если null — finalAmount считается
+  /// автоматически (estimate.totalAfterDiscount + transportSubtotal). Если
+  /// задан — recomputeBookingFinance подставляет это значение в finalAmount,
+  /// игнорируя автоматический расчёт.
+  /// Доступно для редактирования только SUPER_ADMIN'у с retroactive=true.
+  /// Использование: фиксация фактической суммы по итогам переговоров после
+  /// возврата (когда автомат сметы не отражает реальную сделку).
+  manualFinalAmount Decimal?
   paymentStatus BookingPaymentStatus @default(NOT_PAID)
   expectedPaymentDate DateTime?
   actualPaymentDate DateTime?
