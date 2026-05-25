@@ -234,9 +234,14 @@ router.get("/", async (req, res, next) => {
       statusFilter = parsed.data;
     }
     const where = statusFilter ? { status: statusFilter } : {};
+    // Сортировка по ДАТЕ СМЕНЫ (startDate desc), а не по createdAt — иначе
+    // импортированные задним числом старые брони (2023) с свежим createdAt
+    // вылетают в начало списка перед свежими 2026-съёмками. Естественный
+    // порядок для оператора: сначала ближайшие/свежие смены.
+    // id desc для детерминизма при одинаковом startDate.
     const bookings = await prisma.booking.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ startDate: "desc" }, { id: "desc" }],
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
