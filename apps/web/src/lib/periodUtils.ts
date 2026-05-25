@@ -5,7 +5,7 @@
 
 import { toMoscowDateString, moscowTodayStart, addDays } from "./moscowDate";
 
-export type PeriodKey = "today" | "7d" | "30d" | "month" | "quarter" | "year" | "custom";
+export type PeriodKey = "today" | "7d" | "30d" | "month" | "quarter" | "year" | "all" | "custom";
 
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
   today: "Сегодня",
@@ -14,10 +14,11 @@ export const PERIOD_LABELS: Record<PeriodKey, string> = {
   month: "Месяц",
   quarter: "Квартал",
   year: "Год",
+  all: "Всё время",
   custom: "Период",
 };
 
-export const PERIOD_OPTIONS: PeriodKey[] = ["today", "7d", "30d", "month", "quarter", "year"];
+export const PERIOD_OPTIONS: PeriodKey[] = ["today", "7d", "30d", "month", "quarter", "year", "all"];
 
 export interface PeriodRange {
   from: string; // ISO datetime
@@ -87,6 +88,15 @@ export function derivePeriodRange(period: PeriodKey): PeriodRange {
       return {
         from: yearStart.toISOString(),
         to: new Date(yearEnd.getTime() - 1).toISOString(),
+      };
+    }
+    case "all": {
+      // Очень широкий диапазон: захватывает весь импорт исторических платежей (с 2020-01-01)
+      // до конца текущего дня. Используется когда нужно увидеть всё, без фильтра по дате.
+      const farPast = new Date("2020-01-01T00:00:00+03:00");
+      return {
+        from: farPast.toISOString(),
+        to: new Date(tomorrowStart.getTime() - 1).toISOString(),
       };
     }
     default:

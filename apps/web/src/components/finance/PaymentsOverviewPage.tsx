@@ -155,7 +155,9 @@ export function PaymentsOverviewPage() {
   );
 
   // Period
-  const initialPeriod = (searchParams.get("period") as PeriodKey | null) ?? "month";
+  // Default — "Всё время": страница показывает все исторические платежи без фильтра
+  // (включая массовый импорт смен 2023–2026). Период можно сузить кнопкой PeriodSelector.
+  const initialPeriod = (searchParams.get("period") as PeriodKey | null) ?? "all";
   const [period, setPeriod] = useState<PeriodKey>(initialPeriod);
 
   // Method filter (null = all)
