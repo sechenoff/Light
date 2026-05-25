@@ -30,6 +30,8 @@ let superAdminToken: string;
 let warehouseToken: string;
 let equipmentId: string;
 let bookingId: string;
+let vehicleId: string;
+let bookingVehicleId: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -97,6 +99,36 @@ beforeAll(async () => {
   await prisma.bookingItem.create({
     data: { bookingId, equipmentId, quantity: 1 },
   });
+
+  // Seed машины + привязки к броне — для тестов vehicleEdits.
+  const vehicle = await prisma.vehicle.create({
+    data: {
+      slug: "ivk-retro",
+      name: "Ивеко RETRO",
+      shiftPriceRub: "14000",
+      hasGeneratorOption: false,
+      displayOrder: 1,
+      shiftHours: 12,
+      overtimePercent: "10",
+      active: true,
+      currentMileage: 50000,
+    },
+  });
+  vehicleId = vehicle.id;
+  const bv = await prisma.bookingVehicle.create({
+    data: {
+      bookingId,
+      vehicleId,
+      withGenerator: false,
+      shiftHours: "12",
+      skipOvertime: false,
+      kmOutsideMkad: 0,
+      ttkEntry: false,
+      driverName: null,
+      driverPhone: null,
+    },
+  });
+  bookingVehicleId = bv.id;
 });
 
 afterAll(async () => {
@@ -212,5 +244,73 @@ describe("PATCH /api/bookings/:id — ретро-редактирование RE
     });
     expect(audit).not.toBeNull();
     expect(audit!.entityType).toBe("Booking");
+  });
+
+  it("(f) с vehicleEdits: driverName/Phone обновляются + endMileage пишет VehicleMileageLog", async () => {
+    const before = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
+    const newMileage = before.currentMileage + 175;
+
+    const res = await request(app)
+      .patch(`/api/bookings/${bookingId}`)
+      .set(AUTH_SA())
+      .send({
+        retroactive: true,
+        vehicleEdits: [
+          {
+            bookingVehicleId,
+            driverName: "Александр Кораблёв",
+            driverPhone: "+7 (916) 555-44-33",
+            endMileage: newMileage,
+          },
+        ],
+      });
+    expect(res.status).toBe(200);
+
+    const bv = await prisma.bookingVehicle.findUnique({ where: { id: bookingVehicleId } });
+    expect(bv?.driverName).toBe("Александр Кораблёв");
+    expect(bv?.driverPhone).toBe("+7 (916) 555-44-33");
+
+    const vehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
+    expect(vehicle?.currentMileage).toBe(newMileage);
+
+    const log = await prisma.vehicleMileageLog.findFirst({
+      where: { vehicleId, bookingId, source: "MANUAL" },
+      orderBy: { recordedAt: "desc" },
+    });
+    expect(log).not.toBeNull();
+    expect(log!.mileage).toBe(newMileage);
+  });
+
+  it("(g) endMileage меньше текущего → 409 MILEAGE_DECREASE, всё откатывается", async () => {
+    const beforeVehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
+    const beforeMileage = beforeVehicle.currentMileage;
+    const beforeBv = await prisma.bookingVehicle.findUnique({ where: { id: bookingVehicleId } });
+    const beforeDriver = beforeBv?.driverName;
+
+    const res = await request(app)
+      .patch(`/api/bookings/${bookingId}`)
+      .set(AUTH_SA())
+      .send({
+        retroactive: true,
+        // Сначала пытаемся менять driverName на новое значение — должно
+        // быть откатано вместе с MILEAGE_DECREASE-ошибкой.
+        vehicleEdits: [
+          {
+            bookingVehicleId,
+            driverName: "Не должен сохраниться",
+            endMileage: beforeMileage - 100,
+          },
+        ],
+      });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("MILEAGE_DECREASE");
+
+    // driverName не изменился — транзакция откачена.
+    const bv = await prisma.bookingVehicle.findUnique({ where: { id: bookingVehicleId } });
+    expect(bv?.driverName).toBe(beforeDriver);
+
+    // currentMileage машины не изменён.
+    const vehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
+    expect(vehicle?.currentMileage).toBe(beforeMileage);
   });
 });

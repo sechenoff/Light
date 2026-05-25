@@ -12,6 +12,7 @@ import { formatMoneyRub, formatRub } from "../../../src/lib/format";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { RejectBookingModal } from "../../../src/components/bookings/RejectBookingModal";
 import { EquipmentPickerModal } from "../../../src/components/bookings/EquipmentPickerModal";
+import { RetroDiffPanel } from "../../../src/components/bookings/RetroDiffPanel";
 import { ChangeClientModal } from "../../../src/components/bookings/ChangeClientModal";
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
 import { ApprovalContext } from "../../../src/components/bookings/ApprovalContext";
@@ -121,7 +122,13 @@ type BookingDetail = {
   vehicles?: Array<{
     id: string;
     vehicleId: string;
-    vehicle?: { id: string; name: string; slug: string } | null;
+    vehicle?: {
+      id: string;
+      name: string;
+      slug: string;
+      /** Текущий пробег (актуальное значение для подсказки «было N км») */
+      currentMileage?: number;
+    } | null;
     withGenerator: boolean;
     shiftHours: string | null;
     skipOvertime: boolean;
@@ -237,12 +244,28 @@ export default function BookingDetailPage() {
     /** UI-only: добавлено в этом сеансе (подсветка emerald-soft) */
     _added?: boolean;
   };
+  type RetroEditVehicle = {
+    /** id BookingVehicle (его передаём в PATCH vehicleEdits) */
+    bookingVehicleId: string;
+    /** Имя машины для отображения («Газель», «Ивеко») */
+    vehicleName: string;
+    /** Текущее значение пробега машины — для подсказки «было N км» */
+    originalCurrentMileage: number;
+    driverName: string;
+    driverPhone: string;
+    /** Пользователь вводит итоговый одометр после смены; пустая строка = не трогать */
+    endMileage: string;
+    /** Снимок исходных значений для diff-панели */
+    originalDriverName: string;
+    originalDriverPhone: string;
+  };
   const [retroEditMode, setRetroEditMode] = useState(false);
   const [retroEdits, setRetroEdits] = useState<{
     projectName?: string;
     comment?: string | null;
     discountPercent?: number | null;
     items?: RetroEditItem[];
+    vehicles?: RetroEditVehicle[];
   }>({});
   const [retroBusy, setRetroBusy] = useState(false);
   /** Модалка для добавления новой позиции (equipment picker) */
@@ -301,6 +324,16 @@ export default function BookingDetailPage() {
       projectName: booking.projectName,
       comment: booking.comment ?? "",
       discountPercent: booking.discountPercent ? Number(booking.discountPercent) : null,
+      vehicles: (booking.vehicles ?? []).map((v) => ({
+        bookingVehicleId: v.id,
+        vehicleName: v.vehicle?.name ?? "Машина",
+        originalCurrentMileage: v.vehicle?.currentMileage ?? 0,
+        driverName: v.driverName ?? "",
+        driverPhone: v.driverPhone ?? "",
+        endMileage: "",
+        originalDriverName: v.driverName ?? "",
+        originalDriverPhone: v.driverPhone ?? "",
+      })),
       items: booking.items.map((it) => ({
         id: it.id,
         equipmentId: it.equipmentId,
@@ -327,6 +360,19 @@ export default function BookingDetailPage() {
     setRetroEditMode(false);
     setRetroEdits({});
     setRetroPickerOpen(false);
+  }
+
+  /** Обновляет одно поле машины в retro-edit. */
+  function updateRetroVehicle(
+    bookingVehicleId: string,
+    patch: Partial<Pick<RetroEditVehicle, "driverName" | "driverPhone" | "endMileage">>,
+  ) {
+    setRetroEdits((s) => ({
+      ...s,
+      vehicles: s.vehicles?.map((v) =>
+        v.bookingVehicleId === bookingVehicleId ? { ...v, ...patch } : v,
+      ),
+    }));
   }
 
   /** Меняет qty конкретной позиции в retro-edit. */
@@ -444,6 +490,52 @@ export default function BookingDetailPage() {
         }));
       }
 
+      // Транспорт: формируем vehicleEdits — только реально изменившиеся поля
+      // по каждой машине, чтобы не дёргать BookingVehicle.update без нужды.
+      const editedVehicles = retroEdits.vehicles ?? [];
+      const vehicleEdits: Array<{
+        bookingVehicleId: string;
+        driverName?: string | null;
+        driverPhone?: string | null;
+        endMileage?: number;
+      }> = [];
+      for (const v of editedVehicles) {
+        const patch: {
+          bookingVehicleId: string;
+          driverName?: string | null;
+          driverPhone?: string | null;
+          endMileage?: number;
+        } = { bookingVehicleId: v.bookingVehicleId };
+        if (v.driverName !== v.originalDriverName) {
+          patch.driverName = v.driverName.trim() === "" ? null : v.driverName.trim();
+        }
+        if (v.driverPhone !== v.originalDriverPhone) {
+          patch.driverPhone = v.driverPhone.trim() === "" ? null : v.driverPhone.trim();
+        }
+        const trimmed = v.endMileage.trim();
+        if (trimmed !== "") {
+          const n = Number.parseInt(trimmed, 10);
+          if (!Number.isFinite(n) || n < 0) {
+            toast.error(`Пробег "${v.vehicleName}" должен быть целым числом ≥ 0`);
+            return;
+          }
+          if (n < v.originalCurrentMileage) {
+            toast.error(
+              `Пробег "${v.vehicleName}" не может уменьшаться (было ${v.originalCurrentMileage} км)`,
+            );
+            return;
+          }
+          if (n !== v.originalCurrentMileage) {
+            patch.endMileage = n;
+          }
+        }
+        // Если в патче только bookingVehicleId — изменений нет, пропускаем
+        if (Object.keys(patch).length > 1) vehicleEdits.push(patch);
+      }
+      if (vehicleEdits.length > 0) {
+        body.vehicleEdits = vehicleEdits;
+      }
+
       if (Object.keys(body).length === 1) {
         // Только retroactive: true — нет реальных изменений.
         toast.info("Нет изменений для сохранения");
@@ -556,19 +648,20 @@ export default function BookingDetailPage() {
 
   return (
     <div className="p-4 pb-24 md:pb-4">
-      {/* Parent top-bar — hidden when ApprovalReviewView is rendered; that view brings its own header */}
+      {/* Parent top-bar — hidden when ApprovalReviewView is rendered; that view brings its own header.
+          Сам заголовок брони отрисован ниже в Hero-секции (по мокапу v2) — здесь только
+          breadcrumb-style ссылки и action-кнопки, чтобы не было дубля заголовка. */}
       {!showApprovalView && (
         <div className="flex items-center justify-between flex-wrap gap-3 no-print">
-          <SectionHeader
-            eyebrow="Бронирование"
-            title={booking ? bookingTitle(booking) : `Бронь: ${id}`}
-          />
+          <Link
+            href="/bookings"
+            className="text-xs text-ink-3 hover:text-ink transition-colors"
+          >
+            ← К списку броней
+          </Link>
           <div className="flex items-center gap-2 flex-wrap">
-            <Link href="/bookings" className="rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-muted transition-colors">
-              ← Брони
-            </Link>
             <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors">
-              Новая бронь
+              + Новая бронь
             </Link>
             {/*
               Ретро-редактирование: только SUPER_ADMIN на закрытой (RETURNED)
@@ -584,12 +677,6 @@ export default function BookingDetailPage() {
               >
                 ✎ Редактировать задним числом
               </button>
-            )}
-            {booking && (
-              <StatusPill
-                variant={statusVariant(booking.status)}
-                label={statusText(booking.status)}
-              />
             )}
           </div>
         </div>
@@ -795,6 +882,119 @@ export default function BookingDetailPage() {
             onApplied={() => { setCreditNoteOpen(false); reloadBooking(); }}
           />
 
+          {/* ───────── Hero + Finance strip ────────────────────────────────────
+              По мокапу docs/mockups/booking-detail-v2.html: первый блок
+              страницы — крупный заголовок брони (eyebrow + проект + пилы +
+              мета), под ним полоса из 4 финансовых карточек. Это «лицо»
+              страницы.
+
+              В retro-edit режиме скрываем (пользователь работает с формами).
+          */}
+          {!retroEditMode && (() => {
+            const startD = new Date(booking.startDate);
+            const endD = new Date(booking.endDate);
+            const tz = { timeZone: "Europe/Moscow" } as const;
+            const heroDate = startD.toLocaleDateString("ru-RU", {
+              day: "2-digit", month: "long", year: "numeric", ...tz,
+            });
+            const project =
+              booking.projectName?.trim() && booking.projectName.trim() !== "Проект"
+                ? booking.projectName.trim()
+                : "Без названия";
+            // Кол-во смен (приблизительно: целые сутки между startDate и endDate)
+            const msPerDay = 24 * 60 * 60 * 1000;
+            const shifts = Math.max(1, Math.ceil((endD.getTime() - startD.getTime()) / msPerDay));
+            const periodStr =
+              startD.toLocaleDateString("ru-RU", { day: "2-digit", month: "short", ...tz }) +
+              " – " +
+              endD.toLocaleDateString("ru-RU", { day: "2-digit", month: "short", ...tz });
+
+            // Платёжный статус → пилка (отдельная функция)
+            const payStatus = booking.paymentStatus ?? "NOT_PAID";
+            const payLabel =
+              payStatus === "PAID" ? "Оплачено"
+              : payStatus === "PARTIALLY_PAID" ? "Частично"
+              : payStatus === "OVERDUE" ? "Просрочено"
+              : "Не оплачено";
+            const payVariant: "ok" | "warn" | "alert" | "none" =
+              payStatus === "PAID" ? "ok"
+              : payStatus === "OVERDUE" ? "alert"
+              : payStatus === "PARTIALLY_PAID" ? "warn"
+              : "none";
+
+            const total = booking.finalAmount ?? "0";
+            const paid = booking.amountPaid ?? "0";
+            const outstanding = booking.amountOutstanding ?? "0";
+            const discountPct = booking.discountPercent ? Number(booking.discountPercent) : 0;
+            const discountAmount = booking.discountAmount ?? "0";
+
+            // Финансовые карточки — стили под мокап. Цветовая семантика:
+            //  • Оплачено → emerald, если PAID; иначе нейтральный
+            //  • Остаток → rose, если OVERDUE; иначе нейтральный
+            //  • Итого / Скидка — нейтральные.
+            const paidCardTone = payStatus === "PAID" ? "fin--ok" : "";
+            const outstandingTone =
+              payStatus === "OVERDUE" ? "fin--alert" : "";
+
+            return (
+              <>
+                <section className="mb-5 no-print">
+                  <p className="eyebrow text-ink-3">Бронь · {heroDate}</p>
+                  <h1 className="mt-1 font-cond text-3xl md:text-4xl leading-tight tracking-tight text-ink">
+                    {project}
+                  </h1>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-3">
+                    <StatusPill variant={statusVariant(booking.status)} label={statusText(booking.status)} />
+                    <StatusPill variant={payVariant} label={payLabel} />
+                    <span className="text-border-strong">·</span>
+                    <span>{booking.client.name}</span>
+                    <span className="text-border-strong">·</span>
+                    <span className="mono-num">
+                      {periodStr} · {shifts} {shifts === 1 ? "смена" : shifts < 5 ? "смены" : "смен"}
+                    </span>
+                  </div>
+                </section>
+
+                <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5 no-print">
+                  <div className="rounded-lg border border-border bg-surface shadow-xs p-3">
+                    <p className="eyebrow">Итого</p>
+                    <p className="mt-1.5 font-cond text-2xl font-semibold mono-num text-ink">
+                      {formatMoneyRub(total)}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-ink-3">оборудование + транспорт − скидка</p>
+                  </div>
+                  <div className={`rounded-lg border shadow-xs p-3 ${paidCardTone ? "border-emerald-border bg-gradient-to-b from-emerald-soft to-surface" : "border-border bg-surface"}`}>
+                    <p className="eyebrow">Оплачено</p>
+                    <p className={`mt-1.5 font-cond text-2xl font-semibold mono-num ${paidCardTone ? "text-emerald" : "text-ink"}`}>
+                      {formatMoneyRub(paid)}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-ink-3">
+                      {payStatus === "PAID" ? "100% оплачено" : "по платежам"}
+                    </p>
+                  </div>
+                  <div className={`rounded-lg border shadow-xs p-3 ${outstandingTone ? "border-rose-border bg-gradient-to-b from-rose-soft to-surface" : "border-border bg-surface"}`}>
+                    <p className="eyebrow">Остаток</p>
+                    <p className={`mt-1.5 font-cond text-2xl font-semibold mono-num ${outstandingTone ? "text-rose" : Number(outstanding) === 0 ? "text-ink-3" : "text-ink"}`}>
+                      {formatMoneyRub(outstanding)}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-ink-3">
+                      {payStatus === "OVERDUE" ? "просрочен" : Number(outstanding) === 0 ? "ничего не должны" : "к оплате"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-surface shadow-xs p-3">
+                    <p className="eyebrow">Скидка</p>
+                    <p className="mt-1.5 font-cond text-2xl font-semibold mono-num text-rose">
+                      {discountPct > 0 ? `−${discountPct}%` : "—"}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-ink-3">
+                      {discountPct > 0 ? `−${formatMoneyRub(discountAmount)}` : "не применялась"}
+                    </p>
+                  </div>
+                </section>
+              </>
+            );
+          })()}
+
           {/*
             Печатная шапка-реквизиты. Видна ТОЛЬКО при печати через @media print
             (`.print-only-block { display:none }` по умолчанию → `display:block`
@@ -987,6 +1187,50 @@ export default function BookingDetailPage() {
           })()}
 
           <div className="lg:col-span-4 space-y-4">
+            {/* RetroDiffPanel — видна только в retro-режиме. В САМОМ верху
+                правой колонки, чтобы оператор всегда видел сводку своих
+                правок без необходимости скроллить.
+            */}
+            {retroEditMode && (() => {
+              // Подсчитываем agg'и из текущего retroEdits state.
+              const items = retroEdits.items ?? [];
+              const vehicles = retroEdits.vehicles ?? [];
+              const itemsAdded = items.filter((i) => i._added && !i._deleted).length;
+              const itemsRemoved = items.filter((i) => i._deleted && !i._added).length;
+              const itemsQtyChanged = items.filter(
+                (i) =>
+                  !i._added &&
+                  !i._deleted &&
+                  i.originalQuantity !== undefined &&
+                  i.quantity !== i.originalQuantity,
+              ).length;
+              const vehiclesDriverChanged = vehicles.filter(
+                (v) =>
+                  v.driverName !== v.originalDriverName ||
+                  v.driverPhone !== v.originalDriverPhone,
+              ).length;
+              const vehiclesMileageChanged = vehicles.filter((v) => {
+                const t = v.endMileage.trim();
+                if (t === "") return false;
+                const n = Number.parseInt(t, 10);
+                return Number.isFinite(n) && n !== v.originalCurrentMileage;
+              }).length;
+              return (
+                <RetroDiffPanel
+                  originalProjectName={booking.projectName}
+                  editedProjectName={retroEdits.projectName}
+                  originalComment={booking.comment ?? ""}
+                  editedComment={retroEdits.comment ?? ""}
+                  originalDiscountPercent={booking.discountPercent ? Number(booking.discountPercent) : null}
+                  editedDiscountPercent={retroEdits.discountPercent ?? null}
+                  itemsAdded={itemsAdded}
+                  itemsRemoved={itemsRemoved}
+                  itemsQtyChanged={itemsQtyChanged}
+                  vehiclesDriverChanged={vehiclesDriverChanged}
+                  vehiclesMileageChanged={vehiclesMileageChanged}
+                />
+              );
+            })()}
             {/* Транспорт и водители — заполняется на погрузке.
                 Поставлен в самый верх правой колонки, чтобы был первым после оборудования. */}
             {((booking.vehicles?.length ?? 0) > 0) && (
@@ -998,28 +1242,99 @@ export default function BookingDetailPage() {
                   </span>
                 </div>
                 <div className="p-3 space-y-2">
-                  {booking.vehicles!.map((v) => (
-                    <VehicleDriverRow
-                      key={v.id}
-                      bookingId={booking.id}
-                      vehicle={v}
-                      canEdit={user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE"}
-                      onUpdated={(next) => {
-                        setBooking((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                vehicles: prev.vehicles?.map((veh) =>
-                                  veh.id === v.id
-                                    ? { ...veh, driverName: next.driverName, driverPhone: next.driverPhone }
-                                    : veh,
-                                ),
-                              }
-                            : prev,
-                        );
-                      }}
-                    />
-                  ))}
+                  {retroEditMode ? (
+                    /*
+                      В retro-режиме показываем кастомную inline-форму:
+                      driverName / driverPhone / endMileage. Сохраняется
+                      централизованно через PATCH /api/bookings/:id с
+                      retroactive:true. VehicleDriverRow в retro-mode не
+                      используется — у него отдельный endpoint для warehouse
+                      kiosk и он не вписывается в общий save flow.
+                    */
+                    (retroEdits.vehicles ?? []).map((rv) => {
+                      const original = booking.vehicles!.find((v) => v.id === rv.bookingVehicleId);
+                      return (
+                        <div
+                          key={rv.bookingVehicleId}
+                          className="rounded-lg border border-amber-border bg-amber-soft/40 p-3 space-y-2"
+                        >
+                          <div className="flex items-baseline justify-between">
+                            <p className="text-sm font-medium text-ink">{rv.vehicleName}</p>
+                            <span className="text-xs text-ink-3 mono-num">
+                              {original?.shiftHours ? `${original.shiftHours} ч` : ""}
+                              {original?.kmOutsideMkad ? ` · ${original.kmOutsideMkad} км вне МКАД` : ""}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <label className="block">
+                              <span className="eyebrow block mb-1">Водитель</span>
+                              <input
+                                type="text"
+                                value={rv.driverName}
+                                onChange={(e) =>
+                                  updateRetroVehicle(rv.bookingVehicleId, { driverName: e.target.value })
+                                }
+                                className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
+                                placeholder="ФИО"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="eyebrow block mb-1">Телефон</span>
+                              <input
+                                type="text"
+                                value={rv.driverPhone}
+                                onChange={(e) =>
+                                  updateRetroVehicle(rv.bookingVehicleId, { driverPhone: e.target.value })
+                                }
+                                className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber mono-num"
+                                placeholder="+7 (XXX) XXX-XX-XX"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="eyebrow block mb-1">Пробег после смены, км</span>
+                              <input
+                                type="number"
+                                min={rv.originalCurrentMileage}
+                                step={1}
+                                value={rv.endMileage}
+                                onChange={(e) =>
+                                  updateRetroVehicle(rv.bookingVehicleId, { endMileage: e.target.value })
+                                }
+                                placeholder={`≥ ${rv.originalCurrentMileage}`}
+                                className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber mono-num"
+                              />
+                              <span className="block mt-1 text-xs text-ink-3">
+                                было {rv.originalCurrentMileage.toLocaleString("ru-RU")} км
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    booking.vehicles!.map((v) => (
+                      <VehicleDriverRow
+                        key={v.id}
+                        bookingId={booking.id}
+                        vehicle={v}
+                        canEdit={user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE"}
+                        onUpdated={(next) => {
+                          setBooking((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  vehicles: prev.vehicles?.map((veh) =>
+                                    veh.id === v.id
+                                      ? { ...veh, driverName: next.driverName, driverPhone: next.driverPhone }
+                                      : veh,
+                                  ),
+                                }
+                              : prev,
+                          );
+                        }}
+                      />
+                    ))
+                  )}
                   {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
                     <p className="text-xs text-ink-3 px-1 pt-1">
                       Заполняется при погрузке — ведём учёт, кто ездил за рулём.

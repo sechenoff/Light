@@ -141,6 +141,26 @@ const bookingUpdateSchema = z.object({
    * дополнение к обычной BOOKING_EDITED — для финансового аудита.
    */
   retroactive: z.boolean().optional().default(false),
+  /**
+   * In-place правки транспорта в retro-mode: водитель, телефон, итоговый
+   * пробег по каждой машине брони. Это НЕ полная замена транспорта (как
+   * body.transport ниже) — точечные изменения по bookingVehicleId.
+   *
+   * - driverName / driverPhone — простой update BookingVehicle.
+   * - endMileage — записывает VehicleMileageLog (source=MANUAL, recordedBy =
+   *   AdminUser.username), обновляет Vehicle.currentMileage; 409
+   *   MILEAGE_DECREASE если меньше текущего.
+   *
+   * Игнорируется когда retroactive !== true.
+   */
+  vehicleEdits: z.array(
+    z.object({
+      bookingVehicleId: z.string().min(1),
+      driverName: z.string().nullable().optional(),
+      driverPhone: z.string().nullable().optional(),
+      endMileage: z.number().int().min(0).nullable().optional(),
+    }),
+  ).optional(),
   /** Транспорт (опционально) */
   transport: transportSchema,
 });
@@ -505,7 +525,7 @@ router.patch("/:id", async (req, res, next) => {
           })),
         });
       }
-      return tx.booking.update({
+      const updated = await tx.booking.update({
         where: { id },
         data: {
           projectName: body.projectName?.trim() || undefined,
@@ -522,6 +542,70 @@ router.patch("/:id", async (req, res, next) => {
           estimates: { include: { lines: true } },
         },
       });
+
+      // ── vehicleEdits — точечные правки транспорта в retro-mode ───────────
+      // Применяются ВНУТРИ той же транзакции что и update брони, чтобы
+      // отказ MILEAGE_DECREASE откатывал ВСЁ редактирование (а не оставлял
+      // booking обновлённым с битым транспортом).
+      if (retroactiveEdit && body.vehicleEdits && body.vehicleEdits.length > 0) {
+        for (const edit of body.vehicleEdits) {
+          const bv = await tx.bookingVehicle.findUnique({
+            where: { id: edit.bookingVehicleId },
+            include: { vehicle: true },
+          });
+          if (!bv || bv.bookingId !== id) {
+            throw new HttpError(
+              404,
+              `Машина брони ${edit.bookingVehicleId} не найдена`,
+              "VEHICLE_NOT_IN_BOOKING",
+            );
+          }
+
+          // 1. driverName / driverPhone (если переданы — null очищает, undefined не трогает)
+          const driverPatch: { driverName?: string | null; driverPhone?: string | null } = {};
+          if (edit.driverName !== undefined) driverPatch.driverName = edit.driverName;
+          if (edit.driverPhone !== undefined) driverPatch.driverPhone = edit.driverPhone;
+          if (Object.keys(driverPatch).length > 0) {
+            await tx.bookingVehicle.update({
+              where: { id: edit.bookingVehicleId },
+              data: driverPatch,
+            });
+          }
+
+          // 2. endMileage — записываем VehicleMileageLog (MANUAL) и
+          //    обновляем Vehicle.currentMileage. Проверяем не-убывание.
+          if (edit.endMileage !== undefined && edit.endMileage !== null) {
+            const current = bv.vehicle.currentMileage;
+            if (edit.endMileage < current) {
+              throw new HttpError(
+                409,
+                `Пробег "${bv.vehicle.name}" (${edit.endMileage}) меньше текущего (${current}). Одометр не уменьшается.`,
+                "MILEAGE_DECREASE",
+                { vehicleId: bv.vehicleId, current, attempted: edit.endMileage },
+              );
+            }
+            // Не дублируем запись если значение не изменилось.
+            if (edit.endMileage !== current) {
+              await tx.vehicleMileageLog.create({
+                data: {
+                  vehicleId: bv.vehicleId,
+                  mileage: edit.endMileage,
+                  source: "MANUAL",
+                  bookingId: id,
+                  recordedBy: req.adminUser?.username ?? "_system_",
+                  note: "Ретро-правка пробега",
+                },
+              });
+              await tx.vehicle.update({
+                where: { id: bv.vehicleId },
+                data: { currentMileage: edit.endMileage },
+              });
+            }
+          }
+        }
+      }
+
+      return updated;
     });
 
     // Пересчитываем смету и финансы — у CONFIRMED/ISSUED брони смета должна
