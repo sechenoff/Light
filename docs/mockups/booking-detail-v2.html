@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Бронь · Светобаза · мокап v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ───────── Design tokens (IBM Plex canon из CLAUDE.md) ───────── */
+:root{
+  --ink:           oklch(20% 0.012 250);
+  --ink-2:         oklch(36% 0.012 250);
+  --ink-3:         oklch(52% 0.008 250);
+  --surface:       oklch(99.5% 0.003 250);
+  --surface-muted: oklch(97.5% 0.005 250);
+  --border:        oklch(91% 0.006 250);
+  --border-strong: oklch(82% 0.008 250);
+
+  --accent:         oklch(45% 0.16 252);
+  --accent-bright:  oklch(52% 0.18 252);
+  --accent-soft:    oklch(95% 0.03 252);
+  --accent-border:  oklch(82% 0.06 252);
+
+  --emerald:         oklch(50% 0.13 155);
+  --emerald-soft:    oklch(95% 0.04 155);
+  --emerald-border:  oklch(82% 0.07 155);
+
+  --amber:          oklch(60% 0.14 75);
+  --amber-soft:     oklch(95% 0.05 75);
+  --amber-border:   oklch(82% 0.09 75);
+
+  --rose:           oklch(54% 0.16 22);
+  --rose-soft:      oklch(95% 0.04 22);
+  --rose-border:    oklch(82% 0.08 22);
+
+  --teal:           oklch(54% 0.12 195);
+  --teal-soft:      oklch(94% 0.04 195);
+  --teal-border:    oklch(80% 0.07 195);
+
+  --indigo:         oklch(48% 0.16 280);
+  --indigo-soft:    oklch(94% 0.04 280);
+
+  --slate-soft:     oklch(96% 0.006 250);
+
+  --text-base: 14px;
+  --radius:   8px;
+  --radius-sm: 6px;
+  --shadow-xs: 0 1px 0 rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 2px 4px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{font-family:"IBM Plex Sans","Helvetica Neue",sans-serif;font-size:var(--text-base);color:var(--ink);background:var(--surface-muted);line-height:1.4;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent}
+input,select,textarea{font:inherit}
+
+/* ───────── Utilities ───────── */
+.eyebrow{font-family:"IBM Plex Sans Condensed";font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.mono-num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.muted{color:var(--ink-3)}
+
+/* ───────── Mockup separator (для multi-state HTML) ───────── */
+.mockup-section{padding-bottom:60px}
+.mockup-title-bar{background:var(--ink);color:#fff;padding:14px 24px;margin-bottom:20px;border-radius:0}
+.mockup-title-bar h2{font-family:"IBM Plex Sans Condensed";font-weight:600;font-size:18px;letter-spacing:.02em}
+.mockup-title-bar p{font-size:12px;opacity:.75;margin-top:2px}
+
+/* ───────── App shell ───────── */
+.appbar{background:var(--surface);border-bottom:1px solid var(--border)}
+.appbar-inner{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:24px;padding:10px 20px;height:52px}
+.brand{font-family:"IBM Plex Sans Condensed";font-weight:700;font-size:16px;letter-spacing:.02em}
+.brand .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent-bright);margin-right:6px;vertical-align:1px}
+.nav{display:flex;gap:4px;flex:1}
+.nav a{padding:6px 10px;border-radius:var(--radius-sm);color:var(--ink-2);font-weight:500;font-size:13px}
+.nav a.active{background:var(--accent-soft);color:var(--accent)}
+.nav a:hover:not(.active){background:var(--surface-muted)}
+.user-chip{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid var(--border);border-radius:99px;font-size:12px;color:var(--ink-2)}
+.avatar{width:24px;height:24px;border-radius:50%;background:var(--indigo);color:#fff;display:grid;place-items:center;font-weight:600;font-size:11px}
+
+/* ───────── Main container ───────── */
+.container{max-width:1280px;margin:0 auto;padding:20px 20px 80px}
+.back{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3);margin-bottom:14px}
+.back:hover{color:var(--ink)}
+
+/* ───────── Hero ───────── */
+.hero{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;margin-bottom:20px}
+.hero h1{font-family:"IBM Plex Sans Condensed";font-weight:600;font-size:32px;letter-spacing:-.01em;line-height:1.15;margin-top:4px}
+.hero .meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;color:var(--ink-3);font-size:13px}
+.hero .meta .dot-sep{color:var(--border-strong)}
+.hero-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ───────── Buttons ───────── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-weight:500;color:var(--ink-2);background:var(--surface);transition:.15s ease;line-height:1}
+.btn:hover{background:var(--surface-muted);border-color:var(--border-strong)}
+.btn--primary{background:var(--accent-bright);color:#fff;border-color:var(--accent-bright)}
+.btn--primary:hover{background:var(--accent);border-color:var(--accent)}
+.btn--ghost{background:transparent}
+.btn--danger{color:var(--rose);border-color:var(--rose-border)}
+.btn--danger:hover{background:var(--rose-soft)}
+.btn--warn{color:var(--amber);border-color:var(--amber-border);background:var(--amber-soft)}
+.btn--warn:hover{background:var(--amber);color:#fff;border-color:var(--amber)}
+.btn--lg{padding:10px 18px;font-size:14px}
+
+/* ───────── Status pill ───────── */
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600;line-height:1.4;letter-spacing:.02em;border:1px solid transparent}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill--ok       {background:var(--emerald-soft);color:var(--emerald);border-color:var(--emerald-border)}
+.pill--warn     {background:var(--amber-soft);color:var(--amber);border-color:var(--amber-border)}
+.pill--info     {background:var(--accent-soft);color:var(--accent);border-color:var(--accent-border)}
+.pill--edit     {background:var(--teal-soft);color:var(--teal);border-color:var(--teal-border)}
+.pill--alert    {background:var(--rose-soft);color:var(--rose);border-color:var(--rose-border)}
+.pill--neutral  {background:var(--slate-soft);color:var(--ink-3);border-color:var(--border)}
+
+/* ───────── Finance strip ───────── */
+.fin{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.fin-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow-xs)}
+.fin-card .num{font-family:"IBM Plex Sans Condensed";font-weight:600;font-size:24px;letter-spacing:-.01em;margin-top:6px;font-variant-numeric:tabular-nums}
+.fin-card .sub{font-size:11px;color:var(--ink-3);margin-top:4px}
+.fin-card.fin-card--ok{background:linear-gradient(180deg,var(--emerald-soft) 0%,var(--surface) 60%);border-color:var(--emerald-border)}
+.fin-card.fin-card--ok .num{color:var(--emerald)}
+.fin-card.fin-card--alert{background:linear-gradient(180deg,var(--rose-soft) 0%,var(--surface) 60%);border-color:var(--rose-border)}
+.fin-card.fin-card--alert .num{color:var(--rose)}
+
+/* ───────── Grid layout ───────── */
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:start}
+.col-main,.col-side{display:flex;flex-direction:column;gap:16px}
+
+/* ───────── Card primitive ───────── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-xs)}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.card-head .sub{color:var(--ink-3);font-size:12px;font-weight:400}
+.card-body{padding:14px 16px}
+
+/* ───────── Period block ───────── */
+.dates{display:grid;grid-template-columns:1fr auto 1fr auto;gap:16px;align-items:center}
+.date-cell .num{font-family:"IBM Plex Sans Condensed";font-weight:600;font-size:20px;letter-spacing:-.005em}
+.date-cell .sub{font-size:11px;color:var(--ink-3);margin-top:2px}
+.dates-arrow{color:var(--border-strong);font-size:20px}
+.shifts-cell{padding-left:16px;border-left:1px solid var(--border)}
+.shifts-cell .num{font-family:"IBM Plex Sans Condensed";font-weight:600;font-size:20px;color:var(--accent)}
+
+/* ───────── Equipment table ───────── */
+.lines{width:100%;border-collapse:collapse}
+.lines th,.lines td{text-align:left;padding:10px 16px;font-size:13px}
+.lines th{background:var(--slate-soft);color:var(--ink-3);font-weight:500;font-size:11px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--border)}
+.lines tr{border-bottom:1px solid var(--border)}
+.lines tr:last-child{border-bottom:0}
+.lines td.right,.lines th.right{text-align:right}
+.lines .item-name{font-weight:500}
+.lines .item-sub{color:var(--ink-3);font-size:11px;margin-top:2px}
+.cat{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.cat-led{background:var(--accent-soft);color:var(--accent)}
+.cat-hmi{background:var(--amber-soft);color:var(--amber)}
+.cat-stand{background:var(--indigo-soft);color:var(--indigo)}
+.cat-filter{background:var(--teal-soft);color:var(--teal)}
+.cat-cable{background:var(--slate-soft);color:var(--ink-2)}
+.lines tfoot tr{background:var(--slate-soft);font-weight:600}
+.lines tfoot tr.row-discount{color:var(--rose);font-weight:500}
+.lines tfoot tr.row-total{font-weight:700}
+
+/* ───────── Vehicles ───────── */
+.vehicles{display:flex;flex-direction:column}
+.vehicle{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)}
+.vehicle:last-child{border-bottom:0}
+.vehicle-name{font-weight:500}
+.vehicle-meta{text-align:right}
+.vehicle-meta .price{font-family:"IBM Plex Mono";font-weight:500;font-variant-numeric:tabular-nums}
+.vehicle-meta .km{font-size:11px;color:var(--ink-3);margin-top:2px}
+.vehicle-driver{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-3);background:var(--surface-muted);padding:2px 8px;border-radius:99px;margin-top:6px}
+
+/* ───────── Side panel ───────── */
+.client-name{font-family:"IBM Plex Sans Condensed";font-weight:600;font-size:18px}
+.client-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);margin-top:6px}
+.client-row .ico{color:var(--ink-3);width:14px;text-align:center}
+.client-stats{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--ink-3)}
+.link{color:var(--accent-bright);font-weight:500;font-size:13px;display:inline-flex;align-items:center;gap:4px;margin-top:10px}
+.link:hover{color:var(--accent)}
+
+.docs{display:flex;flex-direction:column;gap:2px}
+.docs li{list-style:none}
+.docs a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);font-size:13px;color:var(--ink-2)}
+.docs a:hover{background:var(--surface-muted)}
+.docs .ico{color:var(--ink-3);font-size:14px;width:16px}
+.docs a.disabled{color:var(--ink-3);cursor:not-allowed}
+.docs a.disabled:hover{background:transparent}
+
+.payments li{list-style:none;display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+.payments li:last-child{border-bottom:0}
+.pay-amount{font-family:"IBM Plex Sans Condensed";font-weight:600;font-size:16px;font-variant-numeric:tabular-nums}
+.pay-sub{font-size:11px;color:var(--ink-3);margin-top:2px}
+
+/* ───────── Timeline ───────── */
+.timeline{list-style:none;position:relative;padding-left:18px}
+.timeline::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:1px;background:var(--border)}
+.timeline li{position:relative;padding-bottom:14px}
+.timeline li:last-child{padding-bottom:0}
+.timeline li::before{content:"";position:absolute;left:-18px;top:6px;width:11px;height:11px;border-radius:50%;background:var(--surface);border:2px solid var(--border-strong)}
+.timeline li.evt-ok::before{border-color:var(--emerald);background:var(--emerald-soft)}
+.timeline li.evt-warn::before{border-color:var(--amber);background:var(--amber-soft)}
+.timeline li.evt-info::before{border-color:var(--accent);background:var(--accent-soft)}
+.timeline li.evt-alert::before{border-color:var(--rose);background:var(--rose-soft)}
+.timeline .when{font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.timeline .what{font-weight:500;font-size:13px;margin-top:2px}
+.timeline .who{font-size:11px;color:var(--ink-3);margin-top:1px}
+
+/* ───────── Comment ───────── */
+.comment-block{background:var(--surface-muted);border-left:3px solid var(--border-strong);padding:10px 14px;border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13px;color:var(--ink-2);line-height:1.5}
+.comment-block.warn{border-left-color:var(--amber);background:var(--amber-soft)}
+
+/* ───────── Edit mode primitives ───────── */
+.edit-banner{background:var(--amber-soft);border:1px solid var(--amber-border);border-radius:var(--radius);padding:12px 16px;display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.edit-banner .ico{font-size:20px}
+.edit-banner-text{flex:1}
+.edit-banner-text strong{display:block;color:var(--amber);font-size:13px;margin-bottom:2px}
+.edit-banner-text p{font-size:12px;color:var(--ink-2)}
+.edit-pill{background:var(--amber);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:.04em;text-transform:uppercase}
+
+.input{font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--amber-border);background:#fff;border-radius:var(--radius-sm);color:var(--ink);width:100%;font-variant-numeric:tabular-nums}
+.input:focus{outline:0;border-color:var(--amber);box-shadow:0 0 0 3px var(--amber-soft)}
+.input--small{width:64px;text-align:right}
+.input--inline{display:inline-block;width:auto;min-width:120px}
+
+.edit-marker{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-left:6px;vertical-align:middle}
+
+/* ───────── Sticky save bar ───────── */
+.save-bar{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:2px solid var(--amber);box-shadow:0 -4px 16px rgba(0,0,0,.08);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;z-index:100}
+.save-bar-info{display:flex;align-items:center;gap:10px}
+.save-bar-info .ico{font-size:20px}
+.save-bar-info .text{font-size:13px;color:var(--ink-2)}
+.save-bar-info .text strong{color:var(--amber);font-weight:600}
+.save-bar-actions{display:flex;gap:10px}
+
+/* ───────── Responsive ───────── */
+@media (max-width:1024px){
+  .grid{grid-template-columns:1fr}
+  .fin{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:640px){
+  .container{padding:16px 12px 60px}
+  .hero h1{font-size:24px}
+  .fin{grid-template-columns:1fr 1fr}
+  .fin-card .num{font-size:20px}
+  .dates{grid-template-columns:1fr;gap:8px}
+  .dates-arrow{display:none}
+  .shifts-cell{padding-left:0;border-left:0;padding-top:8px;border-top:1px solid var(--border)}
+  .lines th,.lines td{padding:8px 10px}
+  .nav{display:none}
+}
+
+/* ───────── PRINT-only styles ──────────────────────────────────────────────
+   Когда пользователь жмёт «Печать», страница превращается в A4-документ
+   (смета). Не печатаем: AppShell, action-кнопки, sidebar (Documents/
+   Payments/History/DangerZone), Edit-banner. Печатаем: шапка с реквизитами
+   организации + клиент/даты + позиции + транспорт + итоги + подписи.
+*/
+@media print{
+  @page{size:A4;margin:14mm}
+  html,body{background:#fff;color:#000;font-size:11pt}
+  .no-print{display:none !important}
+  .appbar,.back,.hero-actions,.col-side,.edit-banner,.save-bar{display:none !important}
+  .container{max-width:none;padding:0}
+  .mockup-title-bar{display:none}
+  .hero{margin-bottom:8mm}
+  .hero h1{font-size:20pt}
+  .fin{grid-template-columns:repeat(4,1fr);gap:4mm;margin-bottom:8mm}
+  .fin-card{box-shadow:none;border:1px solid #999;padding:4mm}
+  .fin-card.fin-card--ok,.fin-card.fin-card--alert{background:#fff !important}
+  .fin-card.fin-card--ok .num,.fin-card.fin-card--alert .num{color:#000}
+  .grid{grid-template-columns:1fr;gap:6mm}
+  .card{box-shadow:none;border:1px solid #999;break-inside:avoid;page-break-inside:avoid}
+  .lines th{background:#eee !important;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .cat{background:#eee !important;color:#000 !important;border:1px solid #999;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .pill{background:#fff !important;color:#000 !important;border:1px solid #999}
+  /* «Печатная шапка» — реквизиты, документ № */
+  .print-header{display:block !important;border-bottom:2px solid #000;padding-bottom:4mm;margin-bottom:6mm}
+  .print-signatures{display:grid !important}
+}
+.print-header{display:none}
+.print-signatures{display:none}
+
+.print-header-inner{display:flex;justify-content:space-between;align-items:flex-end}
+.print-header-org{font-family:"IBM Plex Sans Condensed";font-weight:700;font-size:14pt}
+.print-header-org-sub{font-size:9pt;color:#444;margin-top:2pt}
+.print-header-doc{text-align:right;font-size:10pt}
+.print-header-doc .num{font-family:"IBM Plex Mono";font-weight:600}
+
+.print-signatures{margin-top:14mm;grid-template-columns:1fr 1fr;gap:24mm;break-inside:avoid;page-break-inside:avoid}
+.sig-block{font-size:10pt}
+.sig-line{border-top:1px solid #000;margin-top:18mm;padding-top:2pt;font-size:9pt;color:#444}
+
+/* «Кнопка только для скрина» / «Только в печати» */
+.screen-only{}
+.print-only{display:none}
+@media print{
+  .screen-only{display:none !important}
+  .print-only{display:block}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     STATE 1 · MAIN VIEW
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="mockup-section">
+<div class="mockup-title-bar screen-only no-print">
+  <h2>1 · Главный вид — статус «Возвращено», оплачено</h2>
+  <p>Что видит SUPER_ADMIN, когда открывает закрытую бронь. Слева — фактические данные съёмки, справа — служебная панель.</p>
+</div>
+
+<header class="appbar no-print">
+  <div class="appbar-inner">
+    <div class="brand"><span class="dot"></span>Светобаза</div>
+    <nav class="nav">
+      <a>Мой день</a>
+      <a>Задачи</a>
+      <a>Склад</a>
+      <a class="active">Бронирование</a>
+      <a>Оборудование</a>
+      <a>Мастерская</a>
+      <a>Финансы</a>
+    </nav>
+    <div class="user-chip">
+      <span class="avatar">ВС</span>
+      <span>Виталий · Руководитель</span>
+    </div>
+  </div>
+</header>
+
+<!-- Print header — виден только в печати -->
+<div class="print-header print-only">
+  <div class="print-header-inner">
+    <div>
+      <div class="print-header-org">Светобаза · аренда осветительного оборудования</div>
+      <div class="print-header-org-sub">ИП Сеченов В.А. · ИНН 7700000000 · +7 (495) 123-45-67 · svetobazarent.ru</div>
+    </div>
+    <div class="print-header-doc">
+      <div>Смета к броне</div>
+      <div class="num">№ cmplec...zon3 от 19.05.2026</div>
+    </div>
+  </div>
+</div>
+
+<main class="container">
+
+  <a class="back no-print" href="/bookings">← Список броней</a>
+
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Бронь · 17 мая 2026</p>
+      <h1>Реклама Газпрома · 3 смены</h1>
+      <div class="meta">
+        <span class="pill pill--ok"><span class="dot"></span>Возвращено</span>
+        <span class="pill pill--ok">Оплачено</span>
+        <span class="dot-sep">·</span>
+        <span>Захар Родомский</span>
+        <span class="dot-sep">·</span>
+        <span class="mono-num">17–19 мая · 3 смены</span>
+      </div>
+    </div>
+    <div class="hero-actions no-print">
+      <button class="btn btn--ghost" onclick="window.print()" aria-label="Печать">🖨 Печать</button>
+      <button class="btn">Смета PDF</button>
+      <button class="btn">Акт PDF</button>
+      <button class="btn btn--warn">✎ Редактировать задним числом</button>
+    </div>
+  </section>
+
+  <section class="fin">
+    <div class="fin-card">
+      <p class="eyebrow">Итого</p>
+      <p class="num">186&nbsp;400&nbsp;₽</p>
+      <p class="sub">оборудование + транспорт − скидка</p>
+    </div>
+    <div class="fin-card fin-card--ok">
+      <p class="eyebrow">Оплачено</p>
+      <p class="num">186&nbsp;400&nbsp;₽</p>
+      <p class="sub">04.05.2026 · Перевод</p>
+    </div>
+    <div class="fin-card">
+      <p class="eyebrow">Остаток</p>
+      <p class="num" style="color:var(--ink-3)">0&nbsp;₽</p>
+      <p class="sub">100% оплачено</p>
+    </div>
+    <div class="fin-card">
+      <p class="eyebrow">Скидка</p>
+      <p class="num" style="color:var(--rose)">−8%</p>
+      <p class="sub">−16&nbsp;200&nbsp;₽</p>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="col-main">
+      <article class="card">
+        <header class="card-head">
+          <span class="eyebrow">Период съёмки</span>
+          <span class="sub">Москва · в зоне МКАД</span>
+        </header>
+        <div class="card-body">
+          <div class="dates">
+            <div class="date-cell">
+              <p class="num mono-num">17.05.2026</p>
+              <p class="sub">Выдача · 09:00 · отсканировано</p>
+            </div>
+            <div class="dates-arrow">→</div>
+            <div class="date-cell">
+              <p class="num mono-num">19.05.2026</p>
+              <p class="sub">Возврат · 21:00 · отсканировано</p>
+            </div>
+            <div class="shifts-cell">
+              <p class="num">3 смены</p>
+              <p class="sub">по 12 часов</p>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-head">
+          <span class="eyebrow">Комментарий гафера</span>
+        </header>
+        <div class="card-body">
+          <div class="comment-block">
+            Свет — нейтральный 5600K. Объект — крыша Москва-Сити, заезд 5:30 утра. Один SkyPanel под навес, нужен генератор Honda 5кВт на резерв.
+          </div>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-head">
+          <span class="eyebrow">Оборудование</span>
+          <span class="sub">6 позиций · 28 единиц · смета подтверждена</span>
+        </header>
+        <table class="lines">
+          <thead>
+            <tr>
+              <th>Категория</th>
+              <th>Наименование</th>
+              <th class="right">Кол-во</th>
+              <th class="right">Цена / смена</th>
+              <th class="right">Сумма</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="cat cat-led">LED</span></td>
+              <td>
+                <div class="item-name">SkyPanel S60-C</div>
+                <div class="item-sub">ARRI · 3000–10000 K</div>
+              </td>
+              <td class="right mono-num">4</td>
+              <td class="right mono-num">12 000 ₽</td>
+              <td class="right mono-num">144 000 ₽</td>
+            </tr>
+            <tr>
+              <td><span class="cat cat-hmi">HMI</span></td>
+              <td>
+                <div class="item-name">M40 Par 4000W</div>
+                <div class="item-sub">ARRI · с балластом</div>
+              </td>
+              <td class="right mono-num">2</td>
+              <td class="right mono-num">9 500 ₽</td>
+              <td class="right mono-num">57 000 ₽</td>
+            </tr>
+            <tr>
+              <td><span class="cat cat-stand">Стойки</span></td>
+              <td>
+                <div class="item-name">C-Stand 40&quot;</div>
+                <div class="item-sub">Avenger</div>
+              </td>
+              <td class="right mono-num">12</td>
+              <td class="right mono-num">450 ₽</td>
+              <td class="right mono-num">5 400 ₽</td>
+            </tr>
+            <tr>
+              <td><span class="cat cat-filter">Фильтры</span></td>
+              <td>
+                <div class="item-name">Рассеивающие шифоны 1×1 м</div>
+                <div class="item-sub">CTB / CTO / Опал · набор</div>
+              </td>
+              <td class="right mono-num">6</td>
+              <td class="right mono-num">350 ₽</td>
+              <td class="right mono-num">2 100 ₽</td>
+            </tr>
+            <tr>
+              <td><span class="cat cat-cable">Кабель</span></td>
+              <td>
+                <div class="item-name">Power 16A · 25 м</div>
+                <div class="item-sub">CEE 16A IP44</div>
+              </td>
+              <td class="right mono-num">8</td>
+              <td class="right mono-num">220 ₽</td>
+              <td class="right mono-num">1 760 ₽</td>
+            </tr>
+            <tr>
+              <td><span class="cat cat-stand">Генератор</span></td>
+              <td>
+                <div class="item-name">Honda EU65is · 5 кВт</div>
+                <div class="item-sub">тихий, инверторный</div>
+              </td>
+              <td class="right mono-num">1</td>
+              <td class="right mono-num">4 800 ₽</td>
+              <td class="right mono-num">4 800 ₽</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4">Итого по оборудованию · 3 смены</td>
+              <td class="right mono-num">215 060 ₽</td>
+            </tr>
+            <tr class="row-discount">
+              <td colspan="4">Скидка 8%</td>
+              <td class="right mono-num">−17 205 ₽</td>
+            </tr>
+            <tr class="row-total">
+              <td colspan="4">К оплате за оборудование</td>
+              <td class="right mono-num">197 855 ₽</td>
+            </tr>
+          </tfoot>
+        </table>
+      </article>
+
+      <article class="card">
+        <header class="card-head">
+          <span class="eyebrow">Транспорт</span>
+          <span class="sub">2 машины · пробег зафиксирован</span>
+        </header>
+        <ul class="vehicles">
+          <li class="vehicle">
+            <div>
+              <div class="vehicle-name">Ивеко · 5 м</div>
+              <div class="vehicle-driver"><span>👤</span> Александр Кораблёв · +7 (916) 555-44-33</div>
+            </div>
+            <div class="vehicle-meta">
+              <div class="price">14 000 ₽</div>
+              <div class="km mono-num">смена 12 ч · пробег 287 → 463 км</div>
+            </div>
+          </li>
+          <li class="vehicle">
+            <div>
+              <div class="vehicle-name">Газель · 3 м</div>
+              <div class="vehicle-driver"><span>👤</span> Сергей Воронов · +7 (905) 111-22-33</div>
+            </div>
+            <div class="vehicle-meta">
+              <div class="price">9 000 ₽</div>
+              <div class="km mono-num">смена 12 ч · пробег 84 240 → 84 412 км</div>
+            </div>
+          </li>
+        </ul>
+      </article>
+
+      <article class="card no-print">
+        <header class="card-head">
+          <span class="eyebrow">Складские сессии</span>
+          <span class="sub">2 сессии · все позиции отсканированы</span>
+        </header>
+        <ul class="vehicles">
+          <li class="vehicle">
+            <div>
+              <div class="vehicle-name">Выдача · 17.05.2026 09:14</div>
+              <div class="vehicle-driver"><span>📦</span> Иван Кладовщик · 28 / 28 единиц · 0 замен</div>
+            </div>
+            <div class="vehicle-meta">
+              <span class="pill pill--ok">Завершена</span>
+            </div>
+          </li>
+          <li class="vehicle">
+            <div>
+              <div class="vehicle-name">Возврат · 19.05.2026 21:43</div>
+              <div class="vehicle-driver"><span>📦</span> Иван Кладовщик · 28 / 28 единиц · 1 в ремонт</div>
+            </div>
+            <div class="vehicle-meta">
+              <span class="pill pill--ok">Завершена</span>
+            </div>
+          </li>
+        </ul>
+      </article>
+
+    </div>
+
+    <aside class="col-side no-print">
+
+      <article class="card">
+        <header class="card-head"><span class="eyebrow">Клиент</span></header>
+        <div class="card-body">
+          <p class="client-name">Захар Родомский</p>
+          <p class="client-row"><span class="ico">📞</span><a href="tel:+79165551234">+7 (916) 555-12-34</a></p>
+          <p class="client-row"><span class="ico">✉</span><a href="mailto:zakhar@example.com">zakhar@example.com</a></p>
+          <div class="client-stats mono-num">5 прошлых броней · 624 200 ₽ оборот за год</div>
+          <a class="link" href="/clients/abc">Открыть карточку клиента →</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-head"><span class="eyebrow">Документы</span></header>
+        <div class="card-body" style="padding:8px">
+          <ul class="docs">
+            <li><a><span class="ico">📄</span><span>Смета PDF</span></a></li>
+            <li><a><span class="ico">📊</span><span>Смета XLSX</span></a></li>
+            <li><a><span class="ico">🧾</span><span>Счёт LR-2026-0142 PDF</span></a></li>
+            <li><a><span class="ico">📑</span><span>Акт PDF</span></a></li>
+            <li><a class="disabled"><span class="ico">📎</span><span>Доб-смета · нет</span></a></li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-head">
+          <span class="eyebrow">Платежи</span>
+          <button class="btn" style="padding:4px 10px;font-size:11px">+ Платёж</button>
+        </header>
+        <div class="card-body">
+          <ul class="payments">
+            <li>
+              <div>
+                <div class="pay-amount">186 400 ₽</div>
+                <div class="pay-sub">04.05.2026 · Перевод</div>
+              </div>
+              <span class="pill pill--ok">Получено</span>
+            </li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-head"><span class="eyebrow">История</span></header>
+        <div class="card-body">
+          <ol class="timeline">
+            <li class="evt-ok">
+              <div class="when mono-num">19.05.2026 · 21:43</div>
+              <div class="what">Возврат завершён</div>
+              <div class="who">Иван Кладовщик</div>
+            </li>
+            <li class="evt-info">
+              <div class="when mono-num">17.05.2026 · 09:14</div>
+              <div class="what">Выдано клиенту</div>
+              <div class="who">Иван Кладовщик</div>
+            </li>
+            <li class="evt-ok">
+              <div class="when mono-num">04.05.2026 · 14:22</div>
+              <div class="what">Оплачено полностью</div>
+              <div class="who">sechenoff</div>
+            </li>
+            <li class="evt-ok">
+              <div class="when mono-num">02.05.2026 · 11:23</div>
+              <div class="what">Одобрено</div>
+              <div class="who">sechenoff</div>
+            </li>
+            <li class="evt-warn">
+              <div class="when mono-num">01.05.2026 · 18:40</div>
+              <div class="what">Отправлено на согласование</div>
+              <div class="who">admin</div>
+            </li>
+            <li>
+              <div class="when mono-num">01.05.2026 · 18:35</div>
+              <div class="what">Создана</div>
+              <div class="who">admin</div>
+            </li>
+          </ol>
+        </div>
+      </article>
+
+      <article class="card" style="border-color:var(--rose-border)">
+        <header class="card-head" style="background:var(--rose-soft)">
+          <span class="eyebrow" style="color:var(--rose)">Опасная зона</span>
+        </header>
+        <div class="card-body">
+          <button class="btn btn--danger" style="width:100%">Удалить бронь</button>
+          <p class="sub" style="font-size:11px;color:var(--ink-3);margin-top:8px">Удаление зафиксируется в аудит-логе. Финансовые события сохранятся.</p>
+        </div>
+      </article>
+
+    </aside>
+  </section>
+
+  <!-- Signatures — только в печати -->
+  <div class="print-signatures print-only">
+    <div class="sig-block">
+      <strong>Исполнитель</strong><br>
+      ИП Сеченов В.А.
+      <div class="sig-line">подпись · дата</div>
+    </div>
+    <div class="sig-block">
+      <strong>Заказчик</strong><br>
+      Захар Родомский
+      <div class="sig-line">подпись · дата</div>
+    </div>
+  </div>
+</main>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     STATE 2 · PRINT PREVIEW
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="mockup-section screen-only">
+<div class="mockup-title-bar">
+  <h2>2 · Печатная версия (Ctrl/⌘+P над State 1)</h2>
+  <p>Та же страница, но через @media print: AppShell, навигация, кнопки и боковая колонка скрываются. Появляется шапка с реквизитами организации и блок подписей внизу. Цвета — чёрно-белая палитра, статусы — обводки. Подходит под A4.</p>
+</div>
+
+<div style="background:#fff;border:1px solid var(--border);box-shadow:0 4px 12px rgba(0,0,0,.08);padding:14mm;max-width:794px;margin:0 auto;font-size:11pt;color:#000">
+
+  <!-- Print header -->
+  <div style="border-bottom:2px solid #000;padding-bottom:4mm;margin-bottom:6mm">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end">
+      <div>
+        <div style="font-family:'IBM Plex Sans Condensed';font-weight:700;font-size:14pt">Светобаза · аренда осветительного оборудования</div>
+        <div style="font-size:9pt;color:#444;margin-top:2pt">ИП Сеченов В.А. · ИНН 7700000000 · +7 (495) 123-45-67 · svetobazarent.ru</div>
+      </div>
+      <div style="text-align:right;font-size:10pt">
+        <div>Смета к броне</div>
+        <div class="mono-num" style="font-weight:600">№ cmplec...zon3 от 19.05.2026</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hero (print) -->
+  <div style="margin-bottom:6mm">
+    <div class="eyebrow" style="color:#444">Бронь · 17 мая 2026</div>
+    <h1 style="font-family:'IBM Plex Sans Condensed';font-weight:600;font-size:20pt;margin-top:2mm">Реклама Газпрома · 3 смены</h1>
+    <div style="margin-top:3mm;font-size:10pt;color:#222">
+      <span style="border:1px solid #000;padding:1pt 5pt;border-radius:99px;font-size:9pt;font-weight:600">Возвращено</span>
+      <span style="border:1px solid #000;padding:1pt 5pt;border-radius:99px;font-size:9pt;font-weight:600;margin-left:4pt">Оплачено</span>
+      · Захар Родомский · <span class="mono-num">17–19 мая · 3 смены</span>
+    </div>
+  </div>
+
+  <!-- Finance -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin-bottom:6mm">
+    <div style="border:1px solid #999;padding:3mm">
+      <div class="eyebrow" style="color:#444">Итого</div>
+      <div class="mono-num" style="font-weight:700;font-size:14pt;margin-top:1mm">186 400 ₽</div>
+    </div>
+    <div style="border:1px solid #999;padding:3mm">
+      <div class="eyebrow" style="color:#444">Оплачено</div>
+      <div class="mono-num" style="font-weight:700;font-size:14pt;margin-top:1mm">186 400 ₽</div>
+    </div>
+    <div style="border:1px solid #999;padding:3mm">
+      <div class="eyebrow" style="color:#444">Остаток</div>
+      <div class="mono-num" style="font-weight:700;font-size:14pt;margin-top:1mm">0 ₽</div>
+    </div>
+    <div style="border:1px solid #999;padding:3mm">
+      <div class="eyebrow" style="color:#444">Скидка</div>
+      <div class="mono-num" style="font-weight:700;font-size:14pt;margin-top:1mm">−8%</div>
+    </div>
+  </div>
+
+  <!-- Период + клиент в 2 колонки -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6mm;margin-bottom:6mm">
+    <div style="border:1px solid #999;padding:3mm">
+      <div class="eyebrow" style="color:#444">Период съёмки</div>
+      <div class="mono-num" style="font-weight:600;font-size:11pt;margin-top:2mm">17.05.2026 09:00 → 19.05.2026 21:00</div>
+      <div style="font-size:9pt;color:#444;margin-top:1mm">3 смены по 12 ч · Москва, в зоне МКАД</div>
+    </div>
+    <div style="border:1px solid #999;padding:3mm">
+      <div class="eyebrow" style="color:#444">Клиент</div>
+      <div style="font-weight:600;font-size:11pt;margin-top:2mm">Захар Родомский</div>
+      <div style="font-size:9pt;color:#444;margin-top:1mm">+7 (916) 555-12-34 · zakhar@example.com</div>
+    </div>
+  </div>
+
+  <!-- Equipment table -->
+  <table style="width:100%;border-collapse:collapse;margin-bottom:6mm;font-size:10pt">
+    <thead>
+      <tr style="background:#eee">
+        <th style="border:1px solid #999;padding:2mm;text-align:left">Категория</th>
+        <th style="border:1px solid #999;padding:2mm;text-align:left">Наименование</th>
+        <th style="border:1px solid #999;padding:2mm;text-align:right">Кол-во</th>
+        <th style="border:1px solid #999;padding:2mm;text-align:right">Цена</th>
+        <th style="border:1px solid #999;padding:2mm;text-align:right">Сумма</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="border:1px solid #999;padding:2mm">LED</td>
+        <td style="border:1px solid #999;padding:2mm">SkyPanel S60-C · ARRI</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">4</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">12 000</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">144 000</td>
+      </tr>
+      <tr>
+        <td style="border:1px solid #999;padding:2mm">HMI</td>
+        <td style="border:1px solid #999;padding:2mm">M40 Par 4000W · ARRI</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">2</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">9 500</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">57 000</td>
+      </tr>
+      <tr>
+        <td style="border:1px solid #999;padding:2mm">Стойки</td>
+        <td style="border:1px solid #999;padding:2mm">C-Stand 40" · Avenger</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">12</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">450</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">5 400</td>
+      </tr>
+      <tr>
+        <td style="border:1px solid #999;padding:2mm">Фильтры</td>
+        <td style="border:1px solid #999;padding:2mm">Рассеивающие шифоны 1×1 м</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">6</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">350</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">2 100</td>
+      </tr>
+      <tr>
+        <td style="border:1px solid #999;padding:2mm">Кабель</td>
+        <td style="border:1px solid #999;padding:2mm">Power 16A · 25 м</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">8</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">220</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">1 760</td>
+      </tr>
+      <tr>
+        <td style="border:1px solid #999;padding:2mm">Генератор</td>
+        <td style="border:1px solid #999;padding:2mm">Honda EU65is · 5 кВт</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">1</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">4 800</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">4 800</td>
+      </tr>
+      <tr style="background:#eee;font-weight:600">
+        <td colspan="4" style="border:1px solid #999;padding:2mm;text-align:right">Итого по оборудованию · 3 смены</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">215 060</td>
+      </tr>
+      <tr style="background:#fafafa">
+        <td colspan="4" style="border:1px solid #999;padding:2mm;text-align:right">Скидка 8%</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">−17 205</td>
+      </tr>
+      <tr style="background:#eee;font-weight:700">
+        <td colspan="4" style="border:1px solid #999;padding:2mm;text-align:right">К оплате за оборудование</td>
+        <td class="mono-num" style="border:1px solid #999;padding:2mm;text-align:right">197 855</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Transport -->
+  <div style="border:1px solid #999;padding:3mm;margin-bottom:6mm">
+    <div class="eyebrow" style="color:#444;margin-bottom:2mm">Транспорт</div>
+    <table style="width:100%;font-size:10pt">
+      <tr>
+        <td style="padding:1mm 0">Ивеко · 5 м · Александр Кораблёв · пробег 287 → 463 км</td>
+        <td class="mono-num" style="text-align:right;font-weight:600">14 000 ₽</td>
+      </tr>
+      <tr>
+        <td style="padding:1mm 0">Газель · 3 м · Сергей Воронов · пробег 84 240 → 84 412 км</td>
+        <td class="mono-num" style="text-align:right;font-weight:600">9 000 ₽</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Signatures -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24mm;margin-top:14mm">
+    <div style="font-size:10pt">
+      <strong>Исполнитель</strong><br>
+      ИП Сеченов В.А.
+      <div style="border-top:1px solid #000;margin-top:18mm;padding-top:2pt;font-size:9pt;color:#444">подпись · дата</div>
+    </div>
+    <div style="font-size:10pt">
+      <strong>Заказчик</strong><br>
+      Захар Родомский
+      <div style="border-top:1px solid #000;margin-top:18mm;padding-top:2pt;font-size:9pt;color:#444">подпись · дата</div>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     STATE 3 · EDIT RETURNED (только SUPER_ADMIN)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="mockup-section">
+<div class="mockup-title-bar screen-only">
+  <h2>3 · Редактирование задним числом (только SUPER_ADMIN)</h2>
+  <p>Кнопка «✎ Редактировать задним числом» (в hero) разблокирует страницу. Появляется amber-баннер с предупреждением, поля становятся inline-input'ами, поля с правкой получают точку справа от лейбла. Внизу — sticky-bar «Сохранить изменения». Каждое изменение пишется в AuditEntry как BOOKING_RETROACTIVE_EDIT.</p>
+</div>
+
+<header class="appbar">
+  <div class="appbar-inner">
+    <div class="brand"><span class="dot"></span>Светобаза</div>
+    <nav class="nav">
+      <a>Мой день</a>
+      <a>Задачи</a>
+      <a>Склад</a>
+      <a class="active">Бронирование</a>
+      <a>Оборудование</a>
+      <a>Мастерская</a>
+      <a>Финансы</a>
+    </nav>
+    <div class="user-chip">
+      <span class="avatar">ВС</span>
+      <span>Виталий · Руководитель</span>
+    </div>
+  </div>
+</header>
+
+<main class="container" style="padding-bottom:100px">
+
+  <a class="back" href="/bookings">← Список броней</a>
+
+  <!-- Amber edit-mode banner -->
+  <div class="edit-banner">
+    <span class="ico">⚠</span>
+    <div class="edit-banner-text">
+      <strong>Режим редактирования закрытой брони</strong>
+      <p>Изменения попадут в аудит-лог как <span class="mono-num">BOOKING_RETROACTIVE_EDIT</span>. Сметы и счёт-факты не перевыпускаются автоматически — после сохранения проверьте финансы.</p>
+    </div>
+    <button class="btn btn--ghost">Отменить редактирование</button>
+  </div>
+
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Бронь · 17 мая 2026</p>
+      <h1>Реклама Газпрома · 3 смены</h1>
+      <div class="meta">
+        <span class="pill pill--ok"><span class="dot"></span>Возвращено</span>
+        <span class="pill pill--ok">Оплачено</span>
+        <span class="edit-pill">Редактирование</span>
+        <span class="dot-sep">·</span>
+        <span>Захар Родомский</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="col-main">
+
+      <!-- Проект (edit) -->
+      <article class="card">
+        <header class="card-head">
+          <span class="eyebrow">Проект <span class="edit-marker" title="Поле изменено"></span></span>
+        </header>
+        <div class="card-body">
+          <label class="eyebrow" style="display:block;margin-bottom:6px">Название проекта</label>
+          <input class="input" value="Реклама Газпрома · 3 смены" />
+          <label class="eyebrow" style="display:block;margin:14px 0 6px">Комментарий гафера</label>
+          <textarea class="input" rows="3" style="resize:vertical">Свет — нейтральный 5600K. Объект — крыша Москва-Сити, заезд 5:30 утра. Один SkyPanel под навес, нужен генератор Honda 5кВт на резерв.</textarea>
+        </div>
+      </article>
+
+      <!-- Финансы (edit) -->
+      <article class="card">
+        <header class="card-head">
+          <span class="eyebrow">Финансы <span class="edit-marker" title="Скидка изменена"></span></span>
+          <span class="sub">Скидка пересчитает итог</span>
+        </header>
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;align-items:end">
+            <div>
+              <label class="eyebrow" style="display:block;margin-bottom:6px">Итого, до скидки</label>
+              <div class="mono-num" style="font-size:18px;font-weight:600;padding:5px 8px">215 060 ₽</div>
+            </div>
+            <div>
+              <label class="eyebrow" style="display:block;margin-bottom:6px">Скидка, %</label>
+              <input class="input mono-num" value="10" type="number" min="0" max="100" step="0.5" />
+              <p class="sub" style="font-size:11px;color:var(--amber);margin-top:4px">Было 8%</p>
+            </div>
+            <div>
+              <label class="eyebrow" style="display:block;margin-bottom:6px">Итог</label>
+              <div class="mono-num" style="font-size:18px;font-weight:600;padding:5px 8px;color:var(--amber)">193 554 ₽</div>
+              <p class="sub" style="font-size:11px;color:var(--ink-3);margin-top:4px">Было 186 400 ₽</p>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Оборудование (edit qty + добавить позицию) -->
+      <article class="card">
+        <header class="card-head">
+          <span class="eyebrow">Оборудование <span class="edit-marker" title="Изменено количество SkyPanel"></span></span>
+          <button class="btn" style="padding:4px 10px;font-size:11px">+ Добавить позицию</button>
+        </header>
+        <table class="lines">
+          <thead>
+            <tr>
+              <th>Категория</th>
+              <th>Наименование</th>
+              <th class="right" style="width:80px">Кол-во</th>
+              <th class="right">Цена / смена</th>
+              <th class="right">Сумма</th>
+              <th style="width:32px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:var(--amber-soft)">
+              <td><span class="cat cat-led">LED</span></td>
+              <td>
+                <div class="item-name">SkyPanel S60-C</div>
+                <div class="item-sub" style="color:var(--amber)">было 4 → стало 6</div>
+              </td>
+              <td class="right"><input class="input input--small mono-num" value="6" type="number" min="0" /></td>
+              <td class="right mono-num">12 000 ₽</td>
+              <td class="right mono-num">216 000 ₽</td>
+              <td style="text-align:center"><button class="btn btn--ghost btn--danger" style="padding:4px 6px;font-size:13px" aria-label="Удалить">✕</button></td>
+            </tr>
+            <tr>
+              <td><span class="cat cat-hmi">HMI</span></td>
+              <td>
+                <div class="item-name">M40 Par 4000W</div>
+                <div class="item-sub">ARRI · с балластом</div>
+              </td>
+              <td class="right"><input class="input input--small mono-num" value="2" type="number" min="0" /></td>
+              <td class="right mono-num">9 500 ₽</td>
+              <td class="right mono-num">57 000 ₽</td>
+              <td style="text-align:center"><button class="btn btn--ghost btn--danger" style="padding:4px 6px;font-size:13px" aria-label="Удалить">✕</button></td>
+            </tr>
+            <tr>
+              <td><span class="cat cat-stand">Стойки</span></td>
+              <td>
+                <div class="item-name">C-Stand 40"</div>
+                <div class="item-sub">Avenger</div>
+              </td>
+              <td class="right"><input class="input input--small mono-num" value="12" type="number" min="0" /></td>
+              <td class="right mono-num">450 ₽</td>
+              <td class="right mono-num">5 400 ₽</td>
+              <td style="text-align:center"><button class="btn btn--ghost btn--danger" style="padding:4px 6px;font-size:13px" aria-label="Удалить">✕</button></td>
+            </tr>
+            <tr style="background:var(--rose-soft)">
+              <td><span class="cat cat-filter">Фильтры</span></td>
+              <td>
+                <div class="item-name" style="text-decoration:line-through;color:var(--ink-3)">Рассеивающие шифоны 1×1 м</div>
+                <div class="item-sub" style="color:var(--rose)">помечено к удалению</div>
+              </td>
+              <td class="right"><input class="input input--small mono-num" value="0" type="number" min="0" style="border-color:var(--rose-border)"/></td>
+              <td class="right mono-num">350 ₽</td>
+              <td class="right mono-num" style="color:var(--ink-3);text-decoration:line-through">2 100 ₽</td>
+              <td style="text-align:center"><button class="btn btn--ghost" style="padding:4px 6px;font-size:13px;color:var(--accent-bright)" aria-label="Вернуть">↩</button></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="row-total">
+              <td colspan="4">Новый итог по оборудованию</td>
+              <td class="right mono-num">278 400 ₽</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </article>
+
+      <!-- Транспорт (edit пробега и водителя) -->
+      <article class="card">
+        <header class="card-head">
+          <span class="eyebrow">Транспорт <span class="edit-marker" title="Пробег Ивеко изменён"></span></span>
+        </header>
+        <ul class="vehicles">
+          <li class="vehicle" style="align-items:flex-start;padding:14px 16px">
+            <div style="flex:1">
+              <div class="vehicle-name">Ивеко · 5 м</div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px">
+                <div>
+                  <label class="eyebrow" style="display:block;margin-bottom:4px">Водитель</label>
+                  <input class="input" value="Александр Кораблёв" />
+                </div>
+                <div>
+                  <label class="eyebrow" style="display:block;margin-bottom:4px">Телефон</label>
+                  <input class="input mono-num" value="+7 (916) 555-44-33" />
+                </div>
+                <div>
+                  <label class="eyebrow" style="display:block;margin-bottom:4px">Пробег после смены, км</label>
+                  <input class="input mono-num" value="479" type="number" />
+                  <p class="sub" style="font-size:10px;color:var(--amber);margin-top:2px">Было 463 (+16)</p>
+                </div>
+              </div>
+            </div>
+          </li>
+          <li class="vehicle" style="align-items:flex-start;padding:14px 16px">
+            <div style="flex:1">
+              <div class="vehicle-name">Газель · 3 м</div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px">
+                <div>
+                  <label class="eyebrow" style="display:block;margin-bottom:4px">Водитель</label>
+                  <input class="input" value="Сергей Воронов" />
+                </div>
+                <div>
+                  <label class="eyebrow" style="display:block;margin-bottom:4px">Телефон</label>
+                  <input class="input mono-num" value="+7 (905) 111-22-33" />
+                </div>
+                <div>
+                  <label class="eyebrow" style="display:block;margin-bottom:4px">Пробег после смены, км</label>
+                  <input class="input mono-num" value="84412" type="number" />
+                </div>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </article>
+    </div>
+
+    <!-- Right column в edit-режиме -->
+    <aside class="col-side">
+
+      <!-- Аудит изменений (live) -->
+      <article class="card" style="border-color:var(--amber-border)">
+        <header class="card-head" style="background:var(--amber-soft)">
+          <span class="eyebrow" style="color:var(--amber)">Что изменится при сохранении</span>
+        </header>
+        <div class="card-body">
+          <ul style="list-style:none;font-size:12px;color:var(--ink-2);display:flex;flex-direction:column;gap:8px">
+            <li>
+              <strong>Скидка</strong>
+              <div class="mono-num" style="color:var(--ink-3);font-size:11px">8% → 10%</div>
+            </li>
+            <li>
+              <strong>SkyPanel S60-C</strong>
+              <div class="mono-num" style="color:var(--ink-3);font-size:11px">4 шт → 6 шт</div>
+            </li>
+            <li>
+              <strong>Удалена позиция</strong>
+              <div style="color:var(--rose);font-size:11px">Рассеивающие шифоны (6 шт · 2 100 ₽)</div>
+            </li>
+            <li>
+              <strong>Пробег Ивеко</strong>
+              <div class="mono-num" style="color:var(--ink-3);font-size:11px">463 км → 479 км</div>
+            </li>
+            <li style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
+              <strong>Итог брони</strong>
+              <div class="mono-num" style="font-weight:600;font-size:14px;color:var(--amber)">186 400 → 254 360 ₽</div>
+              <div class="sub" style="font-size:10px;color:var(--ink-3);margin-top:2px">+67 960 ₽ долг клиента</div>
+            </li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- Клиент (read-only в edit-режиме) -->
+      <article class="card">
+        <header class="card-head"><span class="eyebrow">Клиент <span class="sub" style="font-weight:400;color:var(--ink-3);text-transform:none">меняется через карточку</span></span></header>
+        <div class="card-body">
+          <p class="client-name">Захар Родомский</p>
+          <p class="client-row"><span class="ico">📞</span>+7 (916) 555-12-34</p>
+          <p class="client-row"><span class="ico">✉</span>zakhar@example.com</p>
+        </div>
+      </article>
+
+      <!-- Платежи (read-only) -->
+      <article class="card">
+        <header class="card-head"><span class="eyebrow">Платежи <span class="sub" style="font-weight:400;color:var(--ink-3);text-transform:none">не редактируются</span></span></header>
+        <div class="card-body">
+          <ul class="payments">
+            <li>
+              <div>
+                <div class="pay-amount">186 400 ₽</div>
+                <div class="pay-sub">04.05.2026 · Перевод</div>
+              </div>
+              <span class="pill pill--ok">Получено</span>
+            </li>
+          </ul>
+          <div style="margin-top:10px;padding:8px 10px;background:var(--rose-soft);border:1px solid var(--rose-border);border-radius:var(--radius-sm);font-size:11px;color:var(--rose)">
+            ⚠ После сохранения у клиента появится долг 67 960 ₽
+          </div>
+        </div>
+      </article>
+
+    </aside>
+  </section>
+</main>
+
+<!-- Sticky save bar -->
+<div class="save-bar">
+  <div class="save-bar-info">
+    <span class="ico">⚠</span>
+    <div class="text">
+      <strong>4 изменения · итог +67 960 ₽</strong>
+      <div class="sub" style="font-size:11px;color:var(--ink-3)">Будет записано в аудит как BOOKING_RETROACTIVE_EDIT</div>
+    </div>
+  </div>
+  <div class="save-bar-actions">
+    <button class="btn btn--ghost">Отменить</button>
+    <button class="btn btn--warn btn--lg">Сохранить изменения</button>
+  </div>
+</div>
+
+</div>
+
+</body>
+</html>

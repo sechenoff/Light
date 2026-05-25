@@ -209,6 +209,20 @@ export default function BookingDetailPage() {
   const [cancelDepositOpen, setCancelDepositOpen] = useState(false);
   const [creditNoteOpen, setCreditNoteOpen] = useState(false);
 
+  // ── Ретро-редактирование закрытой брони (SUPER_ADMIN + RETURNED) ──────────
+  // Минимальный набор полей: название проекта, комментарий, % скидки.
+  // Backend сохраняет в той же транзакции и пишет audit BOOKING_RETROACTIVE_EDIT.
+  // Поля items[]/transport[] в этой итерации НЕ редактируются inline (см.
+  // мокап booking-detail-v2.html State 3 — там полноценная таблица; здесь
+  // упрощённая версия). Полный inline-редактор позиций — отдельная PR.
+  const [retroEditMode, setRetroEditMode] = useState(false);
+  const [retroEdits, setRetroEdits] = useState<{
+    projectName?: string;
+    comment?: string | null;
+    discountPercent?: number | null;
+  }>({});
+  const [retroBusy, setRetroBusy] = useState(false);
+
   useEffect(() => {
     const controller = new AbortController();
     let isActive = true;
@@ -255,6 +269,64 @@ export default function BookingDetailPage() {
     const fresh = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${id}`);
     setBooking(fresh.booking);
   }
+
+  function enterRetroEdit() {
+    if (!booking) return;
+    setRetroEdits({
+      projectName: booking.projectName,
+      comment: booking.comment ?? "",
+      discountPercent: booking.discountPercent ? Number(booking.discountPercent) : null,
+    });
+    setRetroEditMode(true);
+  }
+
+  function cancelRetroEdit() {
+    setRetroEditMode(false);
+    setRetroEdits({});
+  }
+
+  async function saveRetroEdit() {
+    if (!booking || retroBusy) return;
+    setRetroBusy(true);
+    try {
+      const body: Record<string, unknown> = { retroactive: true };
+      if (retroEdits.projectName !== undefined && retroEdits.projectName !== booking.projectName) {
+        body.projectName = retroEdits.projectName;
+      }
+      const currentComment = booking.comment ?? "";
+      const nextComment = retroEdits.comment ?? "";
+      if (nextComment !== currentComment) {
+        body.comment = nextComment === "" ? null : nextComment;
+      }
+      const currentDiscount = booking.discountPercent ? Number(booking.discountPercent) : null;
+      const nextDiscount = retroEdits.discountPercent ?? null;
+      if (nextDiscount !== currentDiscount) {
+        body.discountPercent = nextDiscount;
+      }
+      if (Object.keys(body).length === 1) {
+        // Только retroactive: true — нет реальных изменений.
+        toast.info("Нет изменений для сохранения");
+        setRetroEditMode(false);
+        return;
+      }
+      await apiFetch(`/api/bookings/${booking.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      toast.success("Изменения сохранены. Запись в аудит-логе.");
+      setRetroEditMode(false);
+      setRetroEdits({});
+      await reloadBooking();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Не удалось сохранить изменения");
+    } finally {
+      setRetroBusy(false);
+    }
+  }
+
+  // Только SUPER_ADMIN видит retro-edit-кнопку на закрытой броне.
+  const canRetroEdit =
+    user?.role === "SUPER_ADMIN" && booking?.status === "RETURNED";
 
   async function loadInvoices() {
     if (!id) return;
@@ -357,6 +429,21 @@ export default function BookingDetailPage() {
             <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors">
               Новая бронь
             </Link>
+            {/*
+              Ретро-редактирование: только SUPER_ADMIN на закрытой (RETURNED)
+              брони. Кнопка прячется когда уже в режиме редактирования (там
+              работает sticky-bar внизу). См. saveRetroEdit().
+            */}
+            {canRetroEdit && !retroEditMode && (
+              <button
+                type="button"
+                onClick={enterRetroEdit}
+                className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-white transition-colors"
+                title="Изменить уже закрытую бронь — попадёт в аудит-лог"
+              >
+                ✎ Редактировать задним числом
+              </button>
+            )}
             {booking && (
               <StatusPill
                 variant={statusVariant(booking.status)}
@@ -389,7 +476,67 @@ export default function BookingDetailPage() {
             currentUser={user!}
           />
         ) : (
-        <div className="mt-4">
+        <div className={`mt-4 ${retroEditMode ? "pb-24" : ""}`}>
+          {retroEditMode && (
+            <div className="mb-4 rounded-lg border border-amber-border bg-amber-soft px-4 py-3 flex items-start gap-3 no-print">
+              <span className="text-lg" aria-hidden>⚠</span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber">Режим редактирования закрытой брони</p>
+                <p className="mt-1 text-xs text-ink-2">
+                  Изменения попадут в аудит-лог как{" "}
+                  <span className="font-mono">BOOKING_RETROACTIVE_EDIT</span>. Сметы и счёт-факты
+                  не перевыпускаются автоматически — после сохранения проверьте финансы.
+                </p>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 max-w-3xl">
+                  <label className="block">
+                    <span className="eyebrow block mb-1">Проект</span>
+                    <input
+                      type="text"
+                      value={retroEdits.projectName ?? ""}
+                      onChange={(e) => setRetroEdits((s) => ({ ...s, projectName: e.target.value }))}
+                      className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
+                    />
+                  </label>
+                  <label className="block md:col-span-2">
+                    <span className="eyebrow block mb-1">Комментарий гафера</span>
+                    <textarea
+                      rows={2}
+                      value={retroEdits.comment ?? ""}
+                      onChange={(e) => setRetroEdits((s) => ({ ...s, comment: e.target.value }))}
+                      className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber resize-y"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="eyebrow block mb-1">Скидка, %</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={retroEdits.discountPercent ?? ""}
+                      onChange={(e) =>
+                        setRetroEdits((s) => ({
+                          ...s,
+                          discountPercent: e.target.value === "" ? null : Number(e.target.value),
+                        }))
+                      }
+                      className="w-32 mono-num rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
+                    />
+                    {booking.discountPercent != null && (
+                      <span className="block mt-1 text-xs text-ink-3">
+                        Было {Number(booking.discountPercent)}%
+                      </span>
+                    )}
+                  </label>
+                </div>
+                <p className="mt-3 text-xs text-ink-3">
+                  Изменение позиций оборудования и транспорта в этой версии недоступно inline —
+                  для правки состава бронирования используйте полный редактор (отдельный экран).
+                </p>
+              </div>
+            </div>
+          )}
+
           {booking.status === "DRAFT" && booking.rejectionReason && (
             <div className="mb-4 rounded border-l-4 border-rose bg-rose-soft px-4 py-3 text-sm text-ink">
               <div className="eyebrow mb-1 text-rose">Отклонено руководителем</div>
@@ -506,6 +653,48 @@ export default function BookingDetailPage() {
             clientId={booking.client.id}
             onApplied={() => { setCreditNoteOpen(false); reloadBooking(); }}
           />
+
+          {/*
+            Печатная шапка-реквизиты. Видна ТОЛЬКО при печати через @media print
+            (`.print-only-block { display:none }` по умолчанию → `display:block`
+            в print-блоке ниже). На экране не должна занимать пиксели.
+          */}
+          <div className="print-only-block">
+            <div className="print-header">
+              <div className="print-header-inner">
+                <div>
+                  <div className="print-org">Светобаза · аренда осветительного оборудования</div>
+                  <div className="print-org-sub">
+                    ИП Сеченов В.А. · ИНН 7700000000 · +7 (495) 123-45-67 · svetobazarent.ru
+                  </div>
+                </div>
+                <div className="print-doc">
+                  <div>Смета к броне</div>
+                  <div className="print-doc-num">
+                    № {booking.id.slice(0, 8)}… от {new Date().toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" })}
+                  </div>
+                </div>
+              </div>
+              <div className="print-hero">
+                <div className="print-eyebrow">
+                  Бронь · {new Date(booking.startDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric", timeZone: "Europe/Moscow" })}
+                </div>
+                <h1 className="print-title">{booking.projectName}</h1>
+                <div className="print-meta">
+                  <span>{statusText(booking.status)}</span>
+                  {booking.paymentStatus && <span> · {(() => {
+                    switch (booking.paymentStatus) {
+                      case "PAID": return "Оплачено";
+                      case "PARTIALLY_PAID": return "Частично оплачено";
+                      case "OVERDUE": return "Просрочено";
+                      default: return "Не оплачено";
+                    }
+                  })()}</span>}
+                  <span> · {booking.client.name}</span>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 print-booking">
           {(() => {
@@ -1216,6 +1405,22 @@ export default function BookingDetailPage() {
             </div>
           </div>
           </div>
+
+          {/* Подписи — только в печати, А4-friendly */}
+          <div className="print-only-block">
+            <div className="print-signatures">
+              <div className="sig-block">
+                <strong>Исполнитель</strong>
+                <div>ИП Сеченов В.А.</div>
+                <div className="sig-line">подпись · дата</div>
+              </div>
+              <div className="sig-block">
+                <strong>Заказчик</strong>
+                <div>{booking.client.name}</div>
+                <div className="sig-line">подпись · дата</div>
+              </div>
+            </div>
+          </div>
         </div>
         )
       ) : (
@@ -1287,6 +1492,45 @@ export default function BookingDetailPage() {
         />
       )}
 
+      {/*
+        Sticky save-bar — виден только в retro-edit режиме. Показывает короткое
+        summary («что изменится») и две кнопки. Высота резервируется в
+        контейнере выше через pb-24 чтобы не перекрывать контент.
+      */}
+      {retroEditMode && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface border-t-2 border-amber shadow-lg no-print">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 text-sm">
+              <span className="text-amber" aria-hidden>⚠</span>
+              <div>
+                <p className="font-semibold text-amber">Ретро-редактирование</p>
+                <p className="text-xs text-ink-3">
+                  Запись будет помечена как <span className="font-mono">BOOKING_RETROACTIVE_EDIT</span> в аудит-логе.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={cancelRetroEdit}
+                disabled={retroBusy}
+                className="rounded border border-border bg-surface px-4 py-2 text-sm text-ink-2 hover:bg-surface-muted disabled:opacity-50"
+              >
+                Отменить
+              </button>
+              <button
+                type="button"
+                onClick={saveRetroEdit}
+                disabled={retroBusy}
+                className="rounded bg-amber text-white px-4 py-2 text-sm font-semibold hover:bg-amber/90 disabled:opacity-50"
+              >
+                {retroBusy ? "Сохраняем..." : "Сохранить изменения"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* VoidPaymentModal — T11 */}
       <VoidPaymentModal
         open={voidPaymentId !== null}
@@ -1299,24 +1543,114 @@ export default function BookingDetailPage() {
       />
 
       <style jsx global>{`
+        /* По умолчанию печатные элементы скрыты на экране */
+        .print-only-block { display: none; }
+
         @media print {
-          body * {
-            visibility: hidden;
-          }
-          .print-booking,
-          .print-booking * {
+          @page { size: A4; margin: 14mm; }
+          html, body { background: #fff !important; color: #000 !important; font-size: 11pt; }
+
+          /* Скрываем всё */
+          body * { visibility: hidden; }
+
+          /* Печатаем только print-booking + print-only-block */
+          .print-booking, .print-booking *,
+          .print-only-block, .print-only-block * {
             visibility: visible;
           }
-          .print-booking {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            background: white;
+
+          .print-only-block { display: block; }
+          .print-booking,
+          .print-only-block.print-signatures-wrapper {
+            position: static;
           }
-          .no-print {
-            display: none !important;
+
+          /* Хорошая полиграфия для шапки */
+          .print-header {
+            border-bottom: 2px solid #000;
+            padding-bottom: 4mm;
+            margin-bottom: 6mm;
           }
+          .print-header-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+          }
+          .print-org {
+            font-family: "IBM Plex Sans Condensed", "Helvetica Neue", sans-serif;
+            font-weight: 700;
+            font-size: 14pt;
+          }
+          .print-org-sub {
+            font-size: 9pt;
+            color: #444;
+            margin-top: 2pt;
+          }
+          .print-doc {
+            text-align: right;
+            font-size: 10pt;
+          }
+          .print-doc-num {
+            font-family: "IBM Plex Mono", ui-monospace, monospace;
+            font-weight: 600;
+          }
+          .print-hero { margin-top: 4mm; }
+          .print-eyebrow {
+            font-family: "IBM Plex Sans Condensed", sans-serif;
+            font-weight: 600;
+            font-size: 9pt;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #444;
+          }
+          .print-title {
+            font-family: "IBM Plex Sans Condensed", sans-serif;
+            font-weight: 600;
+            font-size: 18pt;
+            margin-top: 1mm;
+          }
+          .print-meta {
+            font-size: 10pt;
+            color: #222;
+            margin-top: 2mm;
+          }
+
+          /* Подписи в конце */
+          .print-signatures {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24mm;
+            margin-top: 14mm;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .sig-block { font-size: 10pt; }
+          .sig-block > strong { display: block; }
+          .sig-line {
+            border-top: 1px solid #000;
+            margin-top: 18mm;
+            padding-top: 2pt;
+            font-size: 9pt;
+            color: #444;
+          }
+
+          /* Снижаем декоративные эффекты, чтобы экономить тонер */
+          .shadow-xs, .shadow-sm, .shadow-md { box-shadow: none !important; }
+          .bg-amber-soft, .bg-rose-soft, .bg-emerald-soft, .bg-accent-soft {
+            background: #fff !important;
+          }
+          /* Карточкам — простая чёрная рамка */
+          .print-booking .border, .print-booking [class*="border-"] {
+            border-color: #999 !important;
+          }
+          /* Цветные пилы → чёрно-белые контуры */
+          .print-booking .pill, .print-booking [class*="pill--"] {
+            background: #fff !important;
+            color: #000 !important;
+            border: 1px solid #999 !important;
+          }
+
+          .no-print { display: none !important; }
         }
       `}</style>
     </div>

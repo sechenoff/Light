@@ -134,6 +134,13 @@ const bookingUpdateSchema = z.object({
   skipPartialDay: z.boolean().optional(),
   /** Если true — возвращает превью изменений брони без записи в БД */
   dryRun: z.boolean().optional().default(false),
+  /**
+   * Ретро-редактирование закрытой брони (RETURNED). Доступно ТОЛЬКО SUPER_ADMIN.
+   * Без этого флага PATCH на RETURNED → 409 BOOKING_EDIT_FORBIDDEN.
+   * При сохранении пишется отдельная audit-запись BOOKING_RETROACTIVE_EDIT в
+   * дополнение к обычной BOOKING_EDITED — для финансового аудита.
+   */
+  retroactive: z.boolean().optional().default(false),
   /** Транспорт (опционально) */
   transport: transportSchema,
 });
@@ -423,14 +430,22 @@ router.patch("/:id", async (req, res, next) => {
     }
 
     const isSuperAdmin = req.adminUser?.role === "SUPER_ADMIN";
-    const allowedStatusesForEdit = isSuperAdmin
-      ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL"]
-      : ["DRAFT", "CONFIRMED"];
+    // SUPER_ADMIN с явным флагом `retroactive: true` может править RETURNED.
+    // Это «правка задним числом» — фиксируется отдельным audit-action ниже.
+    // Без флага RETURNED не редактируется никем (закрытая бронь, как и было).
+    const retroactiveEdit = isSuperAdmin && body.retroactive === true;
+    const allowedStatusesForEdit = retroactiveEdit
+      ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL", "RETURNED"]
+      : isSuperAdmin
+        ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL"]
+        : ["DRAFT", "CONFIRMED"];
     if (!allowedStatusesForEdit.includes(existing.status)) {
       const reason =
         existing.status === "PENDING_APPROVAL"
           ? "Бронь на согласовании — править может только руководитель"
-          : "Редактирование доступно для черновиков и подтверждённых броней.";
+          : existing.status === "RETURNED"
+            ? "Бронь возвращена. Для правки задним числом передайте `retroactive: true` (только руководитель)."
+            : "Редактирование доступно для черновиков и подтверждённых броней.";
       throw new HttpError(409, reason, "BOOKING_EDIT_FORBIDDEN");
     }
 
@@ -587,6 +602,44 @@ router.patch("/:id", async (req, res, next) => {
           entityId: id,
           before: { items: beforeItems, finalAmount: beforeFinalAmount?.toString() ?? null },
           after: { items: afterItems, finalAmount: afterFinalAmount?.toString() ?? null },
+        });
+      } catch {
+        // Аудит — observability, не блокируем ответ
+      }
+    }
+
+    // Аудит ретро-правки закрытой брони. Пишется ОТДЕЛЬНО от BOOKING_EDITED
+    // (createFinanceEvent), потому что финансово-чувствительная операция —
+    // меняет уже зафиксированную смету RETURNED-брони и видна в /admin/audit
+    // как отдельная категория для финансового контроля.
+    if (retroactiveEdit && req.adminUser?.userId) {
+      const afterFinalAmount = freshBooking?.finalAmount ?? null;
+      const afterItems = freshBooking?.items?.map((i: any) => ({
+        equipmentId: i.equipmentId,
+        quantity: i.quantity,
+        customName: (i as any).customName ?? null,
+        customUnitPrice: (i as any).customUnitPrice?.toString() ?? null,
+      })) ?? [];
+      try {
+        await writeAuditEntry({
+          userId: req.adminUser.userId,
+          action: "BOOKING_RETROACTIVE_EDIT",
+          entityType: "Booking",
+          entityId: id,
+          before: {
+            status: existing.status,
+            projectName: existing.projectName,
+            discountPercent: existing.discountPercent?.toString() ?? null,
+            finalAmount: beforeFinalAmount?.toString() ?? null,
+            items: beforeItems,
+          },
+          after: {
+            status: freshBooking?.status ?? existing.status,
+            projectName: freshBooking?.projectName ?? existing.projectName,
+            discountPercent: freshBooking?.discountPercent?.toString() ?? null,
+            finalAmount: afterFinalAmount?.toString() ?? null,
+            items: afterItems,
+          },
         });
       } catch {
         // Аудит — observability, не блокируем ответ
