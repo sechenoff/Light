@@ -12,7 +12,9 @@ const router = express.Router();
 
 const listQuerySchema = z.object({
   search: z.string().trim().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  // max=500 — у нас в БД 250+ клиентов после массового импорта смен; при ?search
+  // выдача всё равно сужена, но без поиска (открытие селекта) нужен полный список.
+  limit: z.coerce.number().int().min(1).max(500).default(20),
 });
 
 const clientBodySchema = z.object({
