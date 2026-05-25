@@ -160,8 +160,12 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
         .sort((a, b) => b.getTime() - a.getTime())[0] ?? null
     : null;
 
-  // Without MAIN Estimate skip writing finalAmount / totalEstimateAmount /
-  // discountAmount / addonAmount: there's no authoritative source for them here.
+  // Without MAIN Estimate skip writing totalEstimateAmount / discountAmount /
+  // addonAmount: there's no authoritative source for them here. BUT if
+  // manualFinalAmount is set, finalAmount IS authoritative (operator-fixed) —
+  // we must write it even without MAIN, otherwise UI sees `amountOutstanding`
+  // recomputed from override but `finalAmount` stuck on a stale value.
+  const overrideActive = booking.manualFinalAmount != null;
   const data: Prisma.BookingUpdateInput = main
     ? {
         totalEstimateAmount: totalEstimateAmount.toDecimalPlaces(2).toString(),
@@ -174,13 +178,25 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
         isFullyPaid,
         actualPaymentDate,
       }
-    : {
-        amountPaid: amountPaid.toDecimalPlaces(2).toString(),
-        amountOutstanding: amountOutstanding.toDecimalPlaces(2).toString(),
-        paymentStatus: status,
-        isFullyPaid,
-        actualPaymentDate,
-      };
+    : overrideActive
+      ? {
+          // Без MAIN, но с активным override: пишем finalAmount чтобы
+          // он совпал с amountOutstanding/paymentStatus, которые посчитаны
+          // от override. Без этого UI ловит инконсистентность.
+          finalAmount: finalAmount.toDecimalPlaces(2).toString(),
+          amountPaid: amountPaid.toDecimalPlaces(2).toString(),
+          amountOutstanding: amountOutstanding.toDecimalPlaces(2).toString(),
+          paymentStatus: status,
+          isFullyPaid,
+          actualPaymentDate,
+        }
+      : {
+          amountPaid: amountPaid.toDecimalPlaces(2).toString(),
+          amountOutstanding: amountOutstanding.toDecimalPlaces(2).toString(),
+          paymentStatus: status,
+          isFullyPaid,
+          actualPaymentDate,
+        };
 
   const updated = await tx.booking.update({ where: { id: bookingId }, data });
 

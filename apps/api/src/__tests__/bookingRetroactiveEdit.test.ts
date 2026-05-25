@@ -341,6 +341,43 @@ describe("PATCH /api/bookings/:id — ретро-редактирование RE
     expect(after?.manualFinalAmount).toBeNull();
   });
 
+  it("(j) override применяется и без MAIN-estimate: finalAmount/amountOutstanding консистентны", async () => {
+    // Создаём «битую» бронь без MAIN-estimate (как тестовый случай из прода):
+    // status=RETURNED, finalAmount уже зафиксирован, эстимат не создан.
+    const client = await prisma.client.findFirst({ where: { name: "Тест-Клиент RETRO" } });
+    const broken = await prisma.booking.create({
+      data: {
+        clientId: client!.id,
+        projectName: "Без сметы",
+        startDate: new Date("2026-04-14T09:00:00.000Z"),
+        endDate: new Date("2026-04-15T09:00:00.000Z"),
+        status: "RETURNED",
+        finalAmount: "150000",
+        totalEstimateAmount: "0",
+        discountAmount: "0",
+        amountOutstanding: "260000", // legacy инконсистентность (как в проде)
+        amountPaid: "0",
+      },
+    });
+    await prisma.bookingItem.create({
+      data: { bookingId: broken.id, equipmentId, quantity: 1 },
+    });
+
+    // Установить override 260000.
+    const res = await request(app)
+      .patch(`/api/bookings/${broken.id}`)
+      .set(AUTH_SA())
+      .send({ retroactive: true, manualFinalAmount: 260000 });
+    expect(res.status).toBe(200);
+
+    const after = await prisma.booking.findUnique({ where: { id: broken.id } });
+    // Главное: finalAmount подтянулся к override (раньше оставался 150000).
+    expect(after?.finalAmount.toString()).toBe("260000");
+    expect(after?.manualFinalAmount?.toString()).toBe("260000");
+    // amountOutstanding пересчитался от override — 260000 - 0 = 260000.
+    expect(after?.amountOutstanding.toString()).toBe("260000");
+  });
+
   it("(g) endMileage меньше текущего → 409 MILEAGE_DECREASE, всё откатывается", async () => {
     const beforeVehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
     const beforeMileage = beforeVehicle.currentMileage;
