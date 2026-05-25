@@ -11,6 +11,7 @@ import { SectionHeader } from "../../../src/components/SectionHeader";
 import { formatMoneyRub, formatRub } from "../../../src/lib/format";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { RejectBookingModal } from "../../../src/components/bookings/RejectBookingModal";
+import { ChangeClientModal } from "../../../src/components/bookings/ChangeClientModal";
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
 import { ApprovalContext } from "../../../src/components/bookings/ApprovalContext";
 import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalReviewView";
@@ -198,6 +199,7 @@ export default function BookingDetailPage() {
   const [err, setErr] = useState<string | null>(null);
   const { user } = useCurrentUser();
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [changeClientOpen, setChangeClientOpen] = useState(false);
   const [actionBusy, setActionBusy] = useState<null | "submit" | "approve" | "reject">(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [voidPaymentId, setVoidPaymentId] = useState<string | null>(null);
@@ -461,6 +463,15 @@ export default function BookingDetailPage() {
             loading={actionBusy === "reject"}
             onClose={() => setRejectOpen(false)}
             onSubmit={handleReject}
+          />
+
+          <ChangeClientModal
+            open={changeClientOpen}
+            bookingId={booking.id}
+            currentClientId={booking.client.id}
+            currentClientName={booking.client.name}
+            onClose={() => setChangeClientOpen(false)}
+            onSuccess={() => { setChangeClientOpen(false); reloadBooking(); }}
           />
 
           {/* Finance Phase 2 modals */}
@@ -1017,8 +1028,19 @@ export default function BookingDetailPage() {
                 <p className="eyebrow">Данные заказа</p>
               </div>
               <div className="p-3 text-sm text-ink space-y-2">
-                <div>
-                  <span className="text-ink-3">Клиент:</span> <span className="font-medium">{booking.client.name}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-ink-3">Клиент:</span>{" "}
+                  <span className="font-medium">{booking.client.name}</span>
+                  {user?.role === "SUPER_ADMIN" && booking.status !== "PENDING_APPROVAL" && (
+                    <button
+                      type="button"
+                      aria-label="Сменить клиента"
+                      onClick={() => setChangeClientOpen(true)}
+                      className="ml-1 rounded border border-border px-2 py-0.5 text-xs text-ink-3 hover:bg-surface-soft hover:text-ink transition-colors"
+                    >
+                      Сменить
+                    </button>
+                  )}
                 </div>
                 <div>
                   <span className="text-ink-3">Проект:</span>{" "}

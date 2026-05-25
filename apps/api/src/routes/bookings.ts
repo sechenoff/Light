@@ -1429,6 +1429,77 @@ const rejectSchema = z.object({
   reason: z.string().min(1, "Укажите причину отклонения").max(2000),
 });
 
+const changeClientSchema = z.object({
+  clientId: z.string().min(1, "Укажите идентификатор клиента"),
+});
+
+/**
+ * POST /api/bookings/:id/change-client — переназначить клиента брони (только SUPER_ADMIN).
+ * Пишет AuditEntry BOOKING_CLIENT_CHANGED в той же транзакции.
+ */
+router.post(
+  "/:id/change-client",
+  rolesGuard(["SUPER_ADMIN"]),
+  async (req, res, next) => {
+    try {
+      if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      const { clientId: newClientId } = changeClientSchema.parse(req.body);
+
+      // 1. Загружаем текущую бронь со старым клиентом
+      const existing = await prisma.booking.findUnique({
+        where: { id: req.params.id },
+        include: { client: { select: { id: true, name: true } } },
+      });
+      if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+
+      // 2. Редактирование заблокировано в PENDING_APPROVAL
+      if (existing.status === "PENDING_APPROVAL") {
+        throw new HttpError(409, "Бронь на согласовании — редактирование недоступно", "BOOKING_EDIT_FORBIDDEN");
+      }
+
+      // 3. Проверяем, что ничего не меняется
+      if (existing.clientId === newClientId) {
+        throw new HttpError(400, "Бронь уже принадлежит этому клиенту", "NO_CHANGE");
+      }
+
+      // 4. Проверяем, что новый клиент существует
+      const newClient = await prisma.client.findUnique({
+        where: { id: newClientId },
+        select: { id: true, name: true },
+      });
+      if (!newClient) throw new HttpError(400, "Клиент не найден", "INVALID_CLIENT_ID");
+
+      // 5. Транзакция: обновить + аудит
+      const updated = await prisma.$transaction(async (tx) => {
+        const updatedBooking = await tx.booking.update({
+          where: { id: existing.id },
+          data: { clientId: newClientId },
+          include: {
+            client: true,
+            items: { include: { equipment: true } },
+          },
+        });
+
+        await writeAuditEntry({
+          tx,
+          userId: req.adminUser!.userId,
+          action: "BOOKING_CLIENT_CHANGED",
+          entityType: "Booking",
+          entityId: existing.id,
+          before: { clientId: existing.client.id, clientName: existing.client.name },
+          after: { clientId: newClient.id, clientName: newClient.name },
+        });
+
+        return updatedBooking;
+      });
+
+      res.json({ booking: serializeBookingForApi(updated as any) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 /** POST /api/bookings/:id/submit-for-approval — DRAFT → PENDING_APPROVAL (SUPER_ADMIN + WAREHOUSE). */
 router.post(
   "/:id/submit-for-approval",
