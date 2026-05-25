@@ -192,8 +192,14 @@ if $DEPLOY_WEB; then
 
   # ── (3) Heap-cap для билда: 1.5 ГБ. С 6 ГБ swap на VPS это ОК.
   # Без cap билд Next запросто берёт 2-3 ГБ и triggers OOM-kill на 3.3 ГБ RAM.
-  echo "▶ web: build (heap ≤ 1.5 ГБ)"
-  NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=1536" npm run build
+  #
+  # NODE_ENV=production обязателен для самого `next build` (даже если выше
+  # выставили development для npm ci). Без него Next грузит dev-runtime React,
+  # который при prerender статических страниц ловит «Cannot read properties of
+  # null (reading 'useContext')» на /_not-found, /_error и прочих авто-страницах
+  # — билд падает в самом конце с npm error code 1.
+  echo "▶ web: build (heap ≤ 1.5 ГБ, NODE_ENV=production)"
+  NODE_ENV=production NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=1536" npm run build
 
   # ecosystem.config.js на каждом reload читает API_KEYS из apps/api/.env
   # и подставляет в env web-процесса как API_KEY. --update-env обязателен.
