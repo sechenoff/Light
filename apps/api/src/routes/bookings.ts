@@ -186,6 +186,7 @@ const bookingStatusEnum = z.enum([
 router.get("/", async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit ?? 50), 200);
+    const cursor = typeof req.query.cursor === "string" && req.query.cursor.length > 0 ? req.query.cursor : null;
     const statusParam = req.query.status as string | undefined;
     let statusFilter: z.infer<typeof bookingStatusEnum> | undefined;
     if (statusParam) {
@@ -199,7 +200,8 @@ router.get("/", async (req, res, next) => {
     const bookings = await prisma.booking.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      take: limit,
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
         id: true,
         status: true,
@@ -237,8 +239,11 @@ router.get("/", async (req, res, next) => {
         },
       },
     });
+    const hasMore = bookings.length > limit;
+    const items = hasMore ? bookings.slice(0, limit) : bookings;
+    const nextCursor = hasMore ? items[items.length - 1].id : null;
     res.json({
-      bookings: bookings.map((b) => {
+      bookings: items.map((b) => {
         const lastScan = b.scanSessions[0] ?? null;
         return {
           ...b,
@@ -255,6 +260,7 @@ router.get("/", async (req, res, next) => {
           lastScanStatus: lastScan?.status ?? null,
         };
       }),
+      nextCursor,
     });
   } catch (err) {
     next(err);

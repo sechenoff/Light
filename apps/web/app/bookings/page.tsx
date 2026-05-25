@@ -94,20 +94,25 @@ function BookingHistoryPageInner() {
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  const PAGE_SIZE = 50;
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   useEffect(() => {
     const controller = new AbortController();
     let isActive = true;
     async function load() {
       setLoading(true);
       try {
-        const url = statusFilter
-          ? `/api/bookings?limit=100&status=${encodeURIComponent(statusFilter)}`
-          : `/api/bookings?limit=100`;
-        const data = await apiFetch<{ bookings: BookingRow[] }>(url, {
-          signal: controller.signal,
-        });
+        const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+        if (statusFilter) params.set("status", statusFilter);
+        const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(
+          `/api/bookings?${params.toString()}`,
+          { signal: controller.signal }
+        );
         if (!isActive) return;
         setRows(data.bookings);
+        setNextCursor(data.nextCursor ?? null);
       } catch (e: any) {
         const isAbort = e?.name === "AbortError" || e?.message === "signal is aborted without reason";
         if (!isAbort) {
@@ -124,6 +129,25 @@ function BookingHistoryPageInner() {
       controller.abort();
     };
   }, [statusFilter]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), cursor: nextCursor });
+      if (statusFilter) params.set("status", statusFilter);
+      const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(
+        `/api/bookings?${params.toString()}`
+      );
+      setRows((prev) => [...prev, ...data.bookings]);
+      setNextCursor(data.nextCursor ?? null);
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to load more bookings", e);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   const statusText = (s: BookingRow["status"]) => {
     switch (s) {
@@ -176,8 +200,11 @@ function BookingHistoryPageInner() {
         method: "POST",
         body: JSON.stringify({ action }),
       });
-      const data = await apiFetch<{ bookings: BookingRow[] }>("/api/bookings?limit=100");
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (statusFilter) params.set("status", statusFilter);
+      const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(`/api/bookings?${params.toString()}`);
       setRows(data.bookings);
+      setNextCursor(data.nextCursor ?? null);
     } catch (e: any) {
       alert(e?.message ?? "Не удалось обновить статус");
     } finally {
@@ -414,6 +441,24 @@ function BookingHistoryPageInner() {
             </tbody>
           </table>
         </div>
+
+        {nextCursor && (
+          <div className="mt-4 flex items-center justify-center">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="rounded-md border border-border bg-surface px-4 py-2 text-sm text-ink-1 hover:bg-accent-soft disabled:opacity-50"
+            >
+              {loadingMore ? "Загружаю..." : "Загрузить ещё"}
+            </button>
+          </div>
+        )}
+        {!nextCursor && rows.length > 0 && (
+          <div className="mt-4 text-center text-xs text-ink-3">
+            Показаны все брони ({rows.length} {pluralize(rows.length, "запись", "записи", "записей")})
+          </div>
+        )}
       </div>
 
     </div>
