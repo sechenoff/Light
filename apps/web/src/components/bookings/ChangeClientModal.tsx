@@ -4,19 +4,23 @@ import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { toast } from "../ToastProvider";
 
-type ClientOption = {
+interface ClientOption {
   id: string;
   name: string;
-};
+}
 
-type Props = {
+interface Props {
   open: boolean;
   currentClientId: string;
   currentClientName: string;
   onClose: () => void;
   onSuccess: () => void;
   bookingId: string;
-};
+}
+
+const SEARCH_DEBOUNCE_MS = 250;
+const INITIAL_LIMIT = 50;
+const SEARCH_LIMIT = 30;
 
 export function ChangeClientModal({
   open,
@@ -29,55 +33,91 @@ export function ChangeClientModal({
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [fetchingClients, setFetchingClients] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // Загружаем список клиентов при открытии модалки
+  // Reset on open/close.
   useEffect(() => {
     if (!open) {
       setSearch("");
       setSelectedId("");
       setError(null);
+      setClients([]);
       return;
     }
-
     setTimeout(() => searchRef.current?.focus(), 50);
+  }, [open]);
 
-    setFetchingClients(true);
-    apiFetch<{ clients: ClientOption[] }>("/api/clients?limit=200")
-      .then((data) => {
-        // Исключаем текущего клиента из списка
-        setClients(data.clients.filter((c) => c.id !== currentClientId));
-      })
-      .catch(() => {
-        setError("Не удалось загрузить список клиентов");
-      })
-      .finally(() => setFetchingClients(false));
-  }, [open, currentClientId]);
+  // Debounced server-side search.
+  useEffect(() => {
+    if (!open) return;
+
+    const trimmed = search.trim();
+    const timer = window.setTimeout(() => {
+      let cancelled = false;
+      setFetchingClients(true);
+      setError(null);
+
+      const params = new URLSearchParams();
+      if (trimmed) {
+        params.set("search", trimmed);
+        params.set("limit", String(SEARCH_LIMIT));
+      } else {
+        params.set("limit", String(INITIAL_LIMIT));
+      }
+
+      apiFetch<{ clients: ClientOption[] }>(`/api/clients?${params.toString()}`)
+        .then((data) => {
+          if (cancelled) return;
+          setClients(data.clients.filter((c) => c.id !== currentClientId));
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          const message = e instanceof Error ? e.message : "Не удалось загрузить список клиентов";
+          setError(message);
+          setClients([]);
+        })
+        .finally(() => {
+          if (!cancelled) setFetchingClients(false);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [open, search, currentClientId]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !loading) onClose();
+      if (e.key === "Escape" && !submitting && !creating) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, loading, onClose]);
+  }, [open, submitting, creating, onClose]);
 
   if (!open) return null;
 
-  const filtered = search.trim()
-    ? clients.filter((c) => c.name.toLowerCase().includes(search.trim().toLowerCase()))
-    : clients;
+  const trimmedSearch = search.trim();
+  // Покажем «+ Создать клиента» если введено ≥2 символа и среди подгруженных
+  // совпадений нет точного (без учёта регистра). Это позволяет создать нового
+  // клиента сразу из модалки, не уходя в отдельный экран.
+  const hasExactMatch = clients.some(
+    (c) => c.name.toLowerCase() === trimmedSearch.toLowerCase(),
+  );
+  const canCreate = trimmedSearch.length >= 2 && !hasExactMatch;
 
-  const disabled = loading || !selectedId;
+  const confirmDisabled = submitting || creating || !selectedId;
 
-  async function handleConfirm() {
+  async function handleConfirm(): Promise<void> {
     if (!selectedId) return;
     setError(null);
-    setLoading(true);
+    setSubmitting(true);
     try {
       await apiFetch(`/api/bookings/${bookingId}/change-client`, {
         method: "POST",
@@ -85,17 +125,55 @@ export function ChangeClientModal({
       });
       toast.success("Клиент изменён");
       onSuccess();
-    } catch (e: any) {
-      setError(e?.message ?? "Не удалось сменить клиента");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Не удалось сменить клиента";
+      setError(message);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
+    }
+  }
+
+  async function handleCreate(): Promise<void> {
+    if (!canCreate || !trimmedSearch) return;
+    setError(null);
+    setCreating(true);
+    try {
+      const res = await apiFetch<{ client: ClientOption }>("/api/clients", {
+        method: "POST",
+        body: JSON.stringify({ name: trimmedSearch }),
+      });
+      // Сразу переключаемся на нового клиента и подтверждаем смену.
+      const newClient = res.client;
+      setClients((prev) => [newClient, ...prev]);
+      setSelectedId(newClient.id);
+      setSearch(newClient.name);
+      toast.success(`Клиент «${newClient.name}» создан`);
+
+      // Сразу применяем смену — пользователь редко хочет создать и не назначить.
+      try {
+        await apiFetch(`/api/bookings/${bookingId}/change-client`, {
+          method: "POST",
+          body: JSON.stringify({ clientId: newClient.id }),
+        });
+        toast.success("Клиент назначен на бронь");
+        onSuccess();
+      } catch (assignErr: unknown) {
+        const message =
+          assignErr instanceof Error ? assignErr.message : "Не удалось назначить клиента на бронь";
+        setError(message);
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Не удалось создать клиента";
+      setError(message);
+    } finally {
+      setCreating(false);
     }
   }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
-      onClick={() => !loading && onClose()}
+      onClick={() => !submitting && !creating && onClose()}
     >
       <div
         className="w-full max-w-md rounded-lg bg-surface p-6 shadow-lg"
@@ -124,21 +202,23 @@ export function ChangeClientModal({
             setSearch(e.target.value);
             setSelectedId("");
           }}
-          disabled={loading || fetchingClients}
+          disabled={submitting || creating}
           placeholder="Поиск по имени…"
-          className="mb-2 w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none"
+          className="mb-2 w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none disabled:opacity-50"
         />
 
         {fetchingClients ? (
           <div className="h-40 flex items-center justify-center text-sm text-ink-3">Загрузка…</div>
         ) : (
           <div className="h-40 overflow-y-auto rounded border border-border bg-surface-subtle">
-            {filtered.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-ink-3">
-                {search.trim() ? "Клиенты не найдены" : "Нет доступных клиентов"}
+            {clients.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-ink-3 px-3 text-center">
+                {trimmedSearch
+                  ? `Клиент «${trimmedSearch}» не найден — создайте нового кнопкой ниже`
+                  : "Начните ввод имени"}
               </div>
             ) : (
-              filtered.map((c) => (
+              clients.map((c) => (
                 <button
                   key={c.id}
                   type="button"
@@ -157,13 +237,28 @@ export function ChangeClientModal({
           </div>
         )}
 
+        {/* Inline-создание нового клиента: появляется, как только введено ≥2 символа
+            и среди совпадений нет точного. Создаёт клиента + сразу назначает на бронь. */}
+        {canCreate && (
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={creating || submitting}
+            className="mt-2 w-full rounded border border-dashed border-accent-border bg-accent-soft px-3 py-2 text-sm text-accent hover:bg-accent-soft/80 disabled:opacity-50 transition-colors text-left"
+          >
+            {creating
+              ? `Создаю «${trimmedSearch}»…`
+              : `+ Создать нового клиента «${trimmedSearch}» и назначить на бронь`}
+          </button>
+        )}
+
         {error && <p className="mt-2 text-xs text-rose">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            disabled={loading}
+            disabled={submitting || creating}
             className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-soft disabled:opacity-50"
           >
             Отмена
@@ -171,10 +266,10 @@ export function ChangeClientModal({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={disabled}
+            disabled={confirmDisabled}
             className="rounded bg-accent px-4 py-2 text-sm text-white hover:bg-accent/90 disabled:opacity-50"
           >
-            {loading ? "Сохраняю…" : "Сменить клиента"}
+            {submitting ? "Сохраняю…" : "Сменить клиента"}
           </button>
         </div>
       </div>
