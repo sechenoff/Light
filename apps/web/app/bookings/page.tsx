@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../../src/lib/api";
 import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
+import { ClientPickerPopover } from "../../src/components/bookings/ClientPickerPopover";
 import { formatRub, formatWaitingTime, pluralize } from "../../src/lib/format";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 
@@ -308,7 +309,42 @@ function BookingHistoryPageInner() {
                   <td className="px-3 py-2 text-ink-2 whitespace-nowrap mono-num">
                     {formatShiftDate(r.startDate)}
                   </td>
-                  <td className="px-3 py-2 text-ink-2">{r.client.name}</td>
+                  <td className="px-3 py-2 text-ink-2">
+                    {isSuperAdmin ? (
+                      <ClientPickerPopover
+                        bookingId={r.id}
+                        currentClientId={r.client.id}
+                        currentClientName={r.client.name}
+                        onAssigned={(newClient) => {
+                          // Оптимистичное локальное обновление — без перезапроса всего списка.
+                          setRows((prev) =>
+                            prev.map((row) =>
+                              row.id === r.id
+                                ? { ...row, client: { id: newClient.id, name: newClient.name } }
+                                : row,
+                            ),
+                          );
+                        }}
+                      >
+                        {(triggerProps) => {
+                          const { ref, ...rest } = triggerProps;
+                          return (
+                            <button
+                              type="button"
+                              ref={ref as React.Ref<HTMLButtonElement>}
+                              {...(rest as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+                              className="text-left text-ink-2 border-b border-dotted border-border hover:border-accent hover:text-accent transition-colors -my-0.5 py-0.5 max-w-[200px] truncate"
+                              title="Сменить клиента"
+                            >
+                              {r.client.name}
+                            </button>
+                          );
+                        }}
+                      </ClientPickerPopover>
+                    ) : (
+                      r.client.name
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     {r.projectName?.trim() === "Проект" ? (
                       <span className="text-ink-3">Без названия</span>
