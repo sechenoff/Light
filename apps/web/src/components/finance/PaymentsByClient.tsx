@@ -3,11 +3,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { formatRub } from "../../lib/format";
+import { toMoscowDateString } from "../../lib/moscowDate";
 import { StatusPill } from "../StatusPill";
 import { RecordPaymentModal } from "./RecordPaymentModal";
 import { StatusCell } from "./StatusCell";
 import type { OverviewItem } from "./PaymentsTable";
 import type { PaymentsFilter } from "./PaymentsFilterBar";
+
+/** Converts ISO datetime to YYYY-MM-DD for /api/finance/payments-by-client (Zod regex). */
+function toDateParam(iso: string): string {
+  try {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+    return toMoscowDateString(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
 
 interface ClientRow {
   id: string;
@@ -32,8 +43,8 @@ interface ClientsResponse {
 
 function buildClientQuery(filter: PaymentsFilter): string {
   const params = new URLSearchParams();
-  if (filter.from) params.set("from", filter.from);
-  if (filter.to) params.set("to", filter.to);
+  if (filter.from) params.set("from", toDateParam(filter.from));
+  if (filter.to) params.set("to", toDateParam(filter.to));
   if (filter.amountMin) params.set("amountMin", filter.amountMin);
   if (filter.amountMax) params.set("amountMax", filter.amountMax);
   if (filter.paymentStatuses.length > 0 && filter.paymentStatuses.length < 4) {
@@ -46,8 +57,8 @@ function buildOverviewQuery(clientId: string, filter: PaymentsFilter): string {
   const params = new URLSearchParams();
   params.set("clientId", clientId);
   params.set("limit", "50");
-  if (filter.from) params.set("from", filter.from);
-  if (filter.to) params.set("to", filter.to);
+  if (filter.from) params.set("from", toDateParam(filter.from));
+  if (filter.to) params.set("to", toDateParam(filter.to));
   return `?${params.toString()}`;
 }
 
