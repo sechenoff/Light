@@ -30,6 +30,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
         { href: "/bookings", label: "Список броней", icon: "booking" },
         { href: "/bookings/new", label: "Новая бронь", icon: "plus" },
         { href: "/calendar", label: "Календарь", icon: "calendar" },
+        { href: "/bookings/archive", label: "Архив", icon: "alert" },
       ],
     },
     {

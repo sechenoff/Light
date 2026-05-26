@@ -182,7 +182,7 @@ function BookingHistoryPageInner() {
   };
 
   async function removeBooking(id: string) {
-    if (!confirm("Удалить бронь? Действие нельзя отменить.")) return;
+    if (!confirm("Отправить бронь в архив?\n\nБронь пропадёт из списка, но останется в БД — её можно вернуть из /bookings/archive. Окончательное удаление — только оттуда.")) return;
     setBusyId(id);
     try {
       await apiFetch<{ ok: boolean }>(`/api/bookings/${id}`, { method: "DELETE" });
@@ -421,7 +421,7 @@ function BookingHistoryPageInner() {
                       {isSuperAdmin && (
                         <button
                           type="button"
-                          title="Удалить"
+                          title="В архив (можно восстановить из /bookings/archive)"
                           className="text-rose hover:text-rose/80 disabled:opacity-40"
                           disabled={busyId === r.id}
                           onClick={() => removeBooking(r.id)}

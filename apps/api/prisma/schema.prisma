@@ -312,6 +312,15 @@ model Booking {
   /// Использование: фиксация фактической суммы по итогам переговоров после
   /// возврата (когда автомат сметы не отражает реальную сделку).
   manualFinalAmount Decimal?
+
+  /// Soft-delete: когда бронь «удалена» из списка — она не стирается из БД,
+  /// а помечается deletedAt = now(). Архив виден на /bookings/archive
+  /// (только SUPER_ADMIN), там можно восстановить или удалить навсегда.
+  /// null = обычная (живая) бронь. Все list-эндпоинты по умолчанию фильтруют
+  /// deletedAt: null.
+  deletedAt DateTime?
+  /// AdminUser.id того, кто архивировал. Информационно — для UI «удалил Иван».
+  deletedBy String?
   paymentStatus BookingPaymentStatus @default(NOT_PAID)
   expectedPaymentDate DateTime?
   actualPaymentDate DateTime?
@@ -390,6 +399,9 @@ model Booking {
   @@index([clientId])
   @@index([expectedPaymentDate])
   @@index([paymentStatus])
+  /// Композитный индекс: основной фильтр списка броней теперь
+  /// `WHERE deletedAt IS NULL ORDER BY startDate DESC`.
+  @@index([deletedAt, startDate])
 }
 
 /// Транспорт брони: одна машина со своими параметрами (per-row).

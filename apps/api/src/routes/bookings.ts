@@ -233,7 +233,15 @@ router.get("/", async (req, res, next) => {
       }
       statusFilter = parsed.data;
     }
-    const where = statusFilter ? { status: statusFilter } : {};
+    // ?archived=true → только архивированные (для страницы /bookings/archive).
+    // По умолчанию (без флага) — только живые брони (deletedAt: null).
+    // Принимаем "true"/"1" как truthy, остальное — false.
+    const archivedParam = typeof req.query.archived === "string" ? req.query.archived : "";
+    const archivedFilter = archivedParam === "true" || archivedParam === "1";
+    const where: Prisma.BookingWhereInput = {
+      ...(statusFilter ? { status: statusFilter } : {}),
+      ...(archivedFilter ? { deletedAt: { not: null } } : { deletedAt: null }),
+    };
     // Сортировка по ДАТЕ СМЕНЫ (startDate desc), а не по createdAt — иначе
     // импортированные задним числом старые брони (2023) с свежим createdAt
     // вылетают в начало списка перед свежими 2026-съёмками. Естественный
@@ -273,6 +281,8 @@ router.get("/", async (req, res, next) => {
         confirmedAt: true,
         createdAt: true,
         updatedAt: true,
+        deletedAt: true,
+        deletedBy: true,
         _count: { select: { scanSessions: true } },
         scanSessions: {
           select: { operation: true, status: true },
@@ -864,28 +874,136 @@ router.post("/:id/status", async (req, res, next) => {
   }
 });
 
+/**
+ * DELETE /api/bookings/:id — мягкое удаление (архивация).
+ * Бронь не стирается из БД, а помечается `deletedAt = now()` и пропадает из
+ * всех list-эндпоинтов. Восстановление — POST /:id/restore. Окончательное
+ * удаление — DELETE /:id/purge (требует уже архивированную бронь).
+ *
+ * Только SUPER_ADMIN. Аудит-action BOOKING_ARCHIVED.
+ */
 router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const id = req.params.id;
     const userId = req.adminUser!.userId;
     const existing = await prisma.booking.findUnique({
       where: { id },
-      select: { id: true, status: true, projectName: true, startDate: true, endDate: true },
+      select: { id: true, status: true, projectName: true, startDate: true, endDate: true, deletedAt: true },
     });
     if (!existing) throw new HttpError(404, "Booking not found");
+    if (existing.deletedAt) {
+      throw new HttpError(409, "Бронь уже в архиве", "BOOKING_ALREADY_ARCHIVED");
+    }
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.booking.update({
+        where: { id },
+        data: { deletedAt: new Date(), deletedBy: userId },
+      });
       await writeAuditEntry({
         tx,
         userId,
-        action: "BOOKING_DELETE",
+        action: "BOOKING_ARCHIVED",
+        entityType: "Booking",
+        entityId: id,
+        before: diffFields(existing as Record<string, unknown>),
+        after: { deletedAt: new Date().toISOString(), deletedBy: userId },
+      });
+    });
+    res.json({ ok: true, archived: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/bookings/:id/restore — восстановить архивированную бронь.
+ * Только SUPER_ADMIN. 409 если бронь не была архивирована.
+ */
+router.post("/:id/restore", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const userId = req.adminUser!.userId;
+    const existing = await prisma.booking.findUnique({
+      where: { id },
+      select: { id: true, deletedAt: true, deletedBy: true, projectName: true, status: true },
+    });
+    if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+    if (!existing.deletedAt) {
+      throw new HttpError(409, "Бронь не в архиве — восстанавливать нечего", "BOOKING_NOT_ARCHIVED");
+    }
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.booking.update({
+        where: { id },
+        data: { deletedAt: null, deletedBy: null },
+      });
+      await writeAuditEntry({
+        tx,
+        userId,
+        action: "BOOKING_RESTORED",
+        entityType: "Booking",
+        entityId: id,
+        before: { deletedAt: existing.deletedAt!.toISOString(), deletedBy: existing.deletedBy },
+        after: null,
+      });
+    });
+    res.json({ ok: true, restored: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/bookings/:id/purge — окончательное удаление из БД.
+ * Доступно только для УЖЕ архивированных броней (защита от случайного
+ * hard-delete живой брони). Cascade удалит зависимости (BookingItem,
+ * BookingVehicle и т.д. с onDelete: Cascade в схеме).
+ *
+ * Только SUPER_ADMIN. Аудит-action BOOKING_PURGED.
+ */
+router.delete("/:id/purge", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const userId = req.adminUser!.userId;
+    const existing = await prisma.booking.findUnique({
+      where: { id },
+      select: { id: true, status: true, projectName: true, startDate: true, endDate: true, deletedAt: true },
+    });
+    if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+    if (!existing.deletedAt) {
+      throw new HttpError(
+        409,
+        "Можно удалить навсегда только архивированную бронь. Сначала отправьте в архив.",
+        "BOOKING_NOT_ARCHIVED",
+      );
+    }
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Audit ПЕРЕД delete — иначе FK Restrict от AuditEntry на AdminUser
+      // блокирует. Сам entityId записываем, ссылок на удалённую запись нет.
+      await writeAuditEntry({
+        tx,
+        userId,
+        action: "BOOKING_PURGED",
         entityType: "Booking",
         entityId: id,
         before: diffFields(existing as Record<string, unknown>),
         after: null,
       });
-      await tx.booking.delete({ where: { id } });
+      try {
+        await tx.booking.delete({ where: { id } });
+      } catch (e: any) {
+        // P2003 FK violation — например, остались AuditEntry-записи через
+        // другие связанные сущности. Возвращаем 409 с подсказкой.
+        if (e?.code === "P2003") {
+          throw new HttpError(
+            409,
+            "Бронь связана с историей аудита/финансов. Полное удаление невозможно.",
+            "BOOKING_HAS_RELATIONS",
+          );
+        }
+        throw e;
+      }
     });
-    res.json({ ok: true });
+    res.json({ ok: true, purged: true });
   } catch (err) {
     next(err);
   }
