@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense, useMemo } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -99,16 +99,28 @@ function BookingHistoryPageInner() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // Все фильтры (статус/оплата/даты) теперь серверные — это даёт полный
+  // результат по всей базе, а не по уже подгруженной странице, и согласует
+  // поведение фильтров. Курсор-пагинация сохраняется внутри отфильтрованного
+  // набора.
+  function buildListParams(cursor?: string): string {
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+    if (cursor) params.set("cursor", cursor);
+    if (statusFilter) params.set("status", statusFilter);
+    if (paymentFilter) params.set("paid", paymentFilter);
+    if (dateFrom) params.set("from", dateFrom);
+    if (dateTo) params.set("to", dateTo);
+    return params.toString();
+  }
+
   useEffect(() => {
     const controller = new AbortController();
     let isActive = true;
     async function load() {
       setLoading(true);
       try {
-        const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
-        if (statusFilter) params.set("status", statusFilter);
         const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(
-          `/api/bookings?${params.toString()}`,
+          `/api/bookings?${buildListParams()}`,
           { signal: controller.signal }
         );
         if (!isActive) return;
@@ -129,16 +141,15 @@ function BookingHistoryPageInner() {
       isActive = false;
       controller.abort();
     };
-  }, [statusFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, paymentFilter, dateFrom, dateTo]);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const params = new URLSearchParams({ limit: String(PAGE_SIZE), cursor: nextCursor });
-      if (statusFilter) params.set("status", statusFilter);
       const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(
-        `/api/bookings?${params.toString()}`
+        `/api/bookings?${buildListParams(nextCursor)}`
       );
       setRows((prev) => [...prev, ...data.bookings]);
       setNextCursor(data.nextCursor ?? null);
@@ -201,9 +212,7 @@ function BookingHistoryPageInner() {
         method: "POST",
         body: JSON.stringify({ action }),
       });
-      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
-      if (statusFilter) params.set("status", statusFilter);
-      const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(`/api/bookings?${params.toString()}`);
+      const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(`/api/bookings?${buildListParams()}`);
       setRows(data.bookings);
       setNextCursor(data.nextCursor ?? null);
     } catch (e: any) {
@@ -213,16 +222,9 @@ function BookingHistoryPageInner() {
     }
   }
 
-  const filteredRows = useMemo(() => rows.filter((r) => {
-    if (paymentFilter === "PAID" && r.paymentStatus !== "PAID") return false;
-    if (paymentFilter === "UNPAID" && r.paymentStatus === "PAID") return false;
-    if (dateFrom || dateTo) {
-      const startStr = new Date(r.startDate).toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" }); // YYYY-MM-DD
-      if (dateFrom && startStr < dateFrom) return false;
-      if (dateTo && startStr > dateTo) return false;
-    }
-    return true;
-  }), [rows, paymentFilter, dateFrom, dateTo]);
+  // Все фильтры теперь серверные — рендерим строки как есть, без клиентского
+  // фильтра по подгруженной странице (раньше это давало неполный результат).
+  const filteredRows = rows;
 
 
   return (
@@ -283,7 +285,7 @@ function BookingHistoryPageInner() {
               <option value="PAID">Оплачен</option>
               <option value="UNPAID">Не оплачен</option>
             </select>
-            <div className="text-xs text-ink-3">{loading ? "Загрузка..." : `Всего: ${filteredRows.length}`}</div>
+            <div className="text-xs text-ink-3">{loading ? "Загрузка..." : `Показано: ${filteredRows.length}${nextCursor ? "+" : ""}`}</div>
           </div>
         </div>
         <div className="overflow-auto">
