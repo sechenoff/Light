@@ -220,18 +220,19 @@ export function SummaryPanel({
         <div className="flex flex-col gap-2">
           <button
             type="button"
-            disabled={!canSubmit}
+            disabled={!canSubmit || submitting}
             onClick={onSubmitForApproval}
             className="w-full rounded bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-ink disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Отправить на согласование →
+            {submitting ? "Отправка…" : "Отправить на согласование →"}
           </button>
           <button
             type="button"
+            disabled={!canSubmit || submitting}
             onClick={onSaveDraft}
-            className="w-full rounded border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink-2 hover:bg-surface-muted"
+            className="w-full rounded border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink-2 hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Сохранить черновик
+            {submitting ? "Сохранение…" : "Сохранить черновик"}
           </button>
         </div>
       )}
