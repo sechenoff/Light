@@ -150,7 +150,7 @@ const bookingUpdateSchema = z.object({
    * сметы (например, скидка «на месте», или возврат с допуслугами без
    * добавления позиций).
    */
-  manualFinalAmount: z.number().min(0).optional().nullable(),
+  manualFinalAmount: z.number().finite().min(0).max(1_000_000_000).optional().nullable(),
   /**
    * In-place правки транспорта в retro-mode: водитель, телефон, итоговый
    * пробег по каждой машине брони. Это НЕ полная замена транспорта (как
