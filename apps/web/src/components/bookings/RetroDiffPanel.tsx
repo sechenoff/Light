@@ -13,6 +13,8 @@
 
 import type { ReactNode } from "react";
 
+import { pluralize } from "../../lib/format";
+
 interface DiffItemRow {
   id: string;
   /** Display name машины/проекта/etc */
@@ -136,27 +138,27 @@ export function RetroDiffPanel({
     });
   }
 
+  const pos = (n: number) => pluralize(n, "позиция", "позиции", "позиций");
+  const veh = (n: number) => pluralize(n, "машина", "машины", "машин");
+
   if (itemsQtyChanged > 0) {
     rows.push({
       id: "items-qty",
-      label: `Изменено количество: ${itemsQtyChanged}`,
-      detail: itemsQtyChanged === 1 ? "позиция" : itemsQtyChanged < 5 ? "позиции" : "позиций",
+      label: `Изменено количество: ${itemsQtyChanged} ${pos(itemsQtyChanged)}`,
       tone: "amber",
     });
   }
   if (itemsAdded > 0) {
     rows.push({
       id: "items-added",
-      label: `Добавлено: ${itemsAdded}`,
-      detail: itemsAdded === 1 ? "позиция" : itemsAdded < 5 ? "позиции" : "позиций",
+      label: `Добавлено: ${itemsAdded} ${pos(itemsAdded)}`,
       tone: "emerald",
     });
   }
   if (itemsRemoved > 0) {
     rows.push({
       id: "items-removed",
-      label: `К удалению: ${itemsRemoved}`,
-      detail: itemsRemoved === 1 ? "позиция" : itemsRemoved < 5 ? "позиции" : "позиций",
+      label: `К удалению: ${itemsRemoved} ${pos(itemsRemoved)}`,
       tone: "rose",
     });
   }
@@ -164,16 +166,14 @@ export function RetroDiffPanel({
   if (vehiclesDriverChanged > 0) {
     rows.push({
       id: "vehicles-driver",
-      label: `Водитель: ${vehiclesDriverChanged}`,
-      detail: vehiclesDriverChanged === 1 ? "машина" : vehiclesDriverChanged < 5 ? "машины" : "машин",
+      label: `Водитель изменён: ${vehiclesDriverChanged} ${veh(vehiclesDriverChanged)}`,
       tone: "amber",
     });
   }
   if (vehiclesMileageChanged > 0) {
     rows.push({
       id: "vehicles-mileage",
-      label: `Пробег: ${vehiclesMileageChanged}`,
-      detail: vehiclesMileageChanged === 1 ? "машина" : vehiclesMileageChanged < 5 ? "машины" : "машин",
+      label: `Пробег изменён: ${vehiclesMileageChanged} ${veh(vehiclesMileageChanged)}`,
       tone: "amber",
     });
   }

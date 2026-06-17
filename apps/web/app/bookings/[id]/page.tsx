@@ -331,6 +331,18 @@ export default function BookingDetailPage() {
     setBooking(fresh.booking);
   }
 
+  async function archiveBooking() {
+    if (!id) return;
+    if (!confirm("Отправить бронь в архив?\n\nБронь пропадёт из списка, но останется в БД — её можно вернуть из /bookings/archive.")) return;
+    try {
+      await apiFetch(`/api/bookings/${id}`, { method: "DELETE" });
+      toast.success("Бронь отправлена в архив");
+      window.location.href = "/bookings";
+    } catch (e: any) {
+      toast.error(e?.message ?? "Не удалось архивировать бронь");
+    }
+  }
+
   function enterRetroEdit() {
     if (!booking) return;
     setRetroEdits({
@@ -714,6 +726,18 @@ export default function BookingDetailPage() {
                 title="Изменить уже закрытую бронь — попадёт в аудит-лог"
               >
                 ✎ Редактировать задним числом
+              </button>
+            )}
+            {/* В архив — только SUPER_ADMIN, на не-архивной броне, не в retro-edit.
+                Раньше архивировать можно было лишь из списка. */}
+            {user?.role === "SUPER_ADMIN" && !isArchived && !retroEditMode && (
+              <button
+                type="button"
+                onClick={archiveBooking}
+                className="rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors"
+                title="Отправить в архив (можно восстановить из /bookings/archive)"
+              >
+                В архив
               </button>
             )}
           </div>

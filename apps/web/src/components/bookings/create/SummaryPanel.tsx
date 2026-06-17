@@ -75,12 +75,15 @@ export function SummaryPanel({
   // Transport: prefer server quote, fallback to local calculation.
   // Multi-vehicle: array of per-vehicle breakdowns; total = sum.
   const transportRows = quote?.transport ?? transportBreakdowns ?? [];
-  const transportTotal = transportRows.reduce((acc, t) => acc + Number(t.total), 0);
+  // round2 защищает суммы от float-артефактов (0.1+0.2) до отображения.
+  // Это превью; авторитетный расчёт денег — на бэкенде через Decimal.
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const transportTotal = round2(transportRows.reduce((acc, t) => acc + Number(t.total), 0));
 
   // Grand total: prefer server, fallback to local
   const grandTotal = quote?.grandTotal
     ? Number(quote.grandTotal)
-    : equipTotal + transportTotal;
+    : round2(equipTotal + transportTotal);
   // Legacy: subtotal for backward compat in display
   const subtotal = equipSubtotal;
   const total = grandTotal;
