@@ -29,7 +29,7 @@ import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { writeAuditEntry, diffFields } from "../services/audit";
 import { buildBookingEstimatePdf, buildBookingActPdf } from "../services/documentExport/bookingPdf";
-import { toMoscowDateString, fromMoscowDateString } from "../utils/moscowDate";
+import { toMoscowDateString, fromMoscowDateString, addDays } from "../utils/moscowDate";
 
 const router = express.Router();
 
@@ -238,9 +238,31 @@ router.get("/", async (req, res, next) => {
     // Принимаем "true"/"1" как truthy, остальное — false.
     const archivedParam = typeof req.query.archived === "string" ? req.query.archived : "";
     const archivedFilter = archivedParam === "true" || archivedParam === "1";
+
+    // Серверный фильтр оплаты. Бинарный (как UI): PAID | UNPAID(всё кроме PAID).
+    const paidParam = typeof req.query.paid === "string" ? req.query.paid : "";
+    const paidWhere: Prisma.BookingWhereInput =
+      paidParam === "PAID"
+        ? { paymentStatus: "PAID" }
+        : paidParam === "UNPAID"
+          ? { paymentStatus: { not: "PAID" } }
+          : {};
+
+    // Серверный фильтр по ДАТЕ СМЕНЫ (startDate). from/to — YYYY-MM-DD в МСК,
+    // включительно по обе границы (to = до начала следующего дня).
+    const fromParam = typeof req.query.from === "string" ? req.query.from : "";
+    const toParam = typeof req.query.to === "string" ? req.query.to : "";
+    const startDateRange: Prisma.DateTimeFilter = {};
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fromParam)) startDateRange.gte = fromMoscowDateString(fromParam);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(toParam)) startDateRange.lt = addDays(fromMoscowDateString(toParam), 1);
+    const dateWhere: Prisma.BookingWhereInput =
+      Object.keys(startDateRange).length > 0 ? { startDate: startDateRange } : {};
+
     const where: Prisma.BookingWhereInput = {
       ...(statusFilter ? { status: statusFilter } : {}),
       ...(archivedFilter ? { deletedAt: { not: null } } : { deletedAt: null }),
+      ...paidWhere,
+      ...dateWhere,
     };
     // Сортировка по ДАТЕ СМЕНЫ (startDate desc), а не по createdAt — иначе
     // импортированные задним числом старые брони (2023) с свежим createdAt

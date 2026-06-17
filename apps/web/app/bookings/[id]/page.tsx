@@ -2137,9 +2137,9 @@ export default function BookingDetailPage() {
         summary («что изменится») и две кнопки. Высота резервируется в
         контейнере выше через pb-24 чтобы не перекрывать контент.
       */}
+      {/* z-50 (выше плавающей кнопки фидбэка z-40), чтобы FAB не перехватывал
+          клик по «Сохранить»; pr на actions-группе уводит кнопки левее FAB. */}
       {retroEditMode && (
-        {/* z-50 (выше плавающей кнопки фидбэка z-40), чтобы FAB не перехватывал
-            клик по «Сохранить»; pr на actions-группе уводит кнопки левее FAB. */}
         <div className="fixed bottom-0 left-0 right-0 z-50 bg-surface border-t-2 border-amber shadow-lg no-print">
           <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3 text-sm">
