@@ -56,6 +56,8 @@ type BookingDetail = {
   legacyFinance?: boolean;
   status: "DRAFT" | "PENDING_APPROVAL" | "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
   rejectionReason?: string | null;
+  /** Soft-delete: бронь в архиве. Когда задано — все действия read-only. */
+  deletedAt?: string | null;
   scanSessions?: ScanSession[];
   projectName: string;
   startDate: string;
@@ -585,9 +587,13 @@ export default function BookingDetailPage() {
     }
   }
 
-  // Только SUPER_ADMIN видит retro-edit-кнопку на закрытой броне.
+  // Бронь в архиве — все мутации заблокированы на бэкенде (BOOKING_ARCHIVED),
+  // на фронте показываем read-only баннер и прячем кнопки действий.
+  const isArchived = Boolean(booking?.deletedAt);
+
+  // Только SUPER_ADMIN видит retro-edit-кнопку на закрытой (и не архивной) броне.
   const canRetroEdit =
-    user?.role === "SUPER_ADMIN" && booking?.status === "RETURNED";
+    user?.role === "SUPER_ADMIN" && booking?.status === "RETURNED" && !isArchived;
 
   async function loadInvoices() {
     if (!id) return;
@@ -836,6 +842,22 @@ export default function BookingDetailPage() {
             </div>
           )}
 
+          {isArchived && (
+            <div className="mb-4 rounded border-l-4 border-amber bg-amber-soft px-4 py-3 text-sm text-ink no-print">
+              <div className="eyebrow mb-1 text-amber">Бронь в архиве</div>
+              <div>
+                Эта бронь удалена из основного списка и доступна только для чтения.
+                Действия (редактирование, платежи, смена статуса) заблокированы.
+              </div>
+              <Link
+                href="/bookings/archive"
+                className="mt-2 inline-block text-xs text-accent-bright hover:text-accent font-medium"
+              >
+                Восстановить из архива →
+              </Link>
+            </div>
+          )}
+
           {booking.status === "DRAFT" && booking.rejectionReason && (
             <div className="mb-4 rounded border-l-4 border-rose bg-rose-soft px-4 py-3 text-sm text-ink">
               <div className="eyebrow mb-1 text-rose">Отклонено руководителем</div>
@@ -871,7 +893,7 @@ export default function BookingDetailPage() {
           )}
 
           <div className="mb-4 flex flex-wrap gap-2">
-            {booking.status === "DRAFT" && (user?.role === "WAREHOUSE" || user?.role === "SUPER_ADMIN") && (
+            {!isArchived && booking.status === "DRAFT" && (user?.role === "WAREHOUSE" || user?.role === "SUPER_ADMIN") && (
               <button
                 type="button"
                 onClick={handleSubmitForApproval}
@@ -881,7 +903,7 @@ export default function BookingDetailPage() {
                 {actionBusy === "submit" ? "Отправляю…" : "Отправить на согласование"}
               </button>
             )}
-            {booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN" && (
+            {!isArchived && booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN" && (
               <>
                 <button
                   type="button"
@@ -1608,8 +1630,8 @@ export default function BookingDetailPage() {
 
                   {/* CTA row (desktop) */}
                   <div className="hidden md:flex flex-wrap gap-2">
-                    {/* Записать платёж: SA всегда; WH при ISSUED|RETURNED */}
-                    {(user?.role === "SUPER_ADMIN" ||
+                    {/* Записать платёж: SA всегда; WH при ISSUED|RETURNED. Не для архивных. */}
+                    {!isArchived && (user?.role === "SUPER_ADMIN" ||
                       (user?.role === "WAREHOUSE" &&
                         (booking.status === "ISSUED" || booking.status === "RETURNED") &&
                         (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
@@ -1838,7 +1860,7 @@ export default function BookingDetailPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-ink-3">Клиент:</span>{" "}
                   <span className="font-medium">{booking.client.name}</span>
-                  {user?.role === "SUPER_ADMIN" && booking.status !== "PENDING_APPROVAL" && (
+                  {user?.role === "SUPER_ADMIN" && booking.status !== "PENDING_APPROVAL" && !isArchived && (
                     <button
                       type="button"
                       aria-label="Сменить клиента"
@@ -2048,8 +2070,8 @@ export default function BookingDetailPage() {
       {booking && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") &&
         booking.status !== "CANCELLED" && booking.status !== "DRAFT" && booking.status !== "PENDING_APPROVAL" && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex gap-2 px-3 py-3 bg-surface border-t border-border shadow-lg no-print">
-          {/* ₽ Платёж — primary */}
-          {(user?.role === "SUPER_ADMIN" ||
+          {/* ₽ Платёж — primary. Не для архивных. */}
+          {!isArchived && (user?.role === "SUPER_ADMIN" ||
             ((booking.status === "ISSUED" || booking.status === "RETURNED") &&
               (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
           ) && (

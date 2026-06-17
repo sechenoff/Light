@@ -203,4 +203,45 @@ describe("Soft-delete броней: archive / restore / purge", () => {
     const purge = await request(app).delete(`/api/bookings/${id}/purge`).set(AUTH_WH());
     expect(purge.status).toBe(403);
   });
+
+  it("(i) архивную бронь нельзя менять: PATCH / status / submit → 409 BOOKING_ARCHIVED", async () => {
+    const id = await makeBooking();
+    await request(app).delete(`/api/bookings/${id}`).set(AUTH_SA()); // archive
+
+    const patch = await request(app)
+      .patch(`/api/bookings/${id}`)
+      .set(AUTH_SA())
+      .send({ projectName: "Меняем архивную" });
+    expect(patch.status).toBe(409);
+    expect(patch.body.code).toBe("BOOKING_ARCHIVED");
+
+    const status = await request(app)
+      .post(`/api/bookings/${id}/status`)
+      .set(AUTH_SA())
+      .send({ action: "cancel" });
+    expect(status.status).toBe(409);
+    expect(status.body.code).toBe("BOOKING_ARCHIVED");
+
+    const submit = await request(app)
+      .post(`/api/bookings/${id}/submit-for-approval`)
+      .set(AUTH_SA())
+      .send({});
+    expect(submit.status).toBe(409);
+    expect(submit.body.code).toBe("BOOKING_ARCHIVED");
+
+    // projectName не изменился
+    const after = await prisma.booking.findUnique({ where: { id } });
+    expect(after?.projectName).not.toBe("Меняем архивную");
+  });
+
+  it("(j) платёж на архивную бронь → 409 BOOKING_ARCHIVED", async () => {
+    const id = await makeBooking();
+    await request(app).delete(`/api/bookings/${id}`).set(AUTH_SA()); // archive
+    const pay = await request(app)
+      .post(`/api/payments`)
+      .set(AUTH_SA())
+      .send({ bookingId: id, amount: 1000, method: "CASH", receivedAt: new Date().toISOString() });
+    expect(pay.status).toBe(409);
+    expect(pay.body.code).toBe("BOOKING_ARCHIVED");
+  });
 });
