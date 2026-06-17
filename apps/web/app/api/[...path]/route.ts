@@ -67,6 +67,14 @@ async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResp
     }
   }
 
+  // Таймаут на upstream: без него зависший бэкенд (например, медленный LLM в
+  // /api/bookings/parse-gaffer-review) держит запрос открытым бесконечно, а
+  // клиент остаётся в спиннере «Распознаю…». AbortController даёт
+  // детерминированный 504. 130s покрывает тяжёлые LLM-вызовы с запасом.
+  const UPSTREAM_TIMEOUT_MS = 130_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+
   try {
     const upstream = await fetch(targetUrl, {
       method: req.method,
@@ -74,6 +82,7 @@ async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResp
       body: body && body.byteLength > 0 ? body : undefined,
       redirect: "manual",
       cache: "no-store",
+      signal: controller.signal,
     });
 
     const resHeaders = new Headers(upstream.headers);
@@ -83,6 +92,16 @@ async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResp
       headers: resHeaders,
     });
   } catch (err: unknown) {
+    // Таймаут (AbortController) → 504, чтобы apiFetch выбросил ошибку и фронт
+    // вышел из загрузки с понятным сообщением, а не висел вечно.
+    if (err instanceof Error && err.name === "AbortError") {
+      const msg = "Бэкенд не ответил вовремя (таймаут). Попробуйте ещё раз или используйте ручной режим.";
+      return NextResponse.json(
+        { message: msg, error: msg, code: "API_UPSTREAM_TIMEOUT" },
+        { status: 504 },
+      );
+    }
+
     const cause =
       typeof err === "object" && err !== null && "cause" in err
         ? (err as { cause: { code?: string } }).cause
@@ -99,6 +118,8 @@ async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResp
       : `Не удалось обратиться к API: ${err instanceof Error ? err.message : String(err)}`;
 
     return NextResponse.json({ message: msg, error: msg, code: "API_UPSTREAM_UNAVAILABLE" }, { status: 503 });
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
