@@ -4,7 +4,7 @@
  * Простая модалка-выбор оборудования. Используется в retro-edit броне для
  * добавления новой позиции в RETURNED-бронь. По дизайн-канону:
  *  • Esc / backdrop click — закрытие
- *  • focus trap не нужен (одно поле + список — клавиатура tab/enter)
+ *  • focus trap (Tab/Shift+Tab циклятся внутри модалки — фокус не утекает на фон)
  *  • debounce 200ms на поиск
  *
  * Контракт:
@@ -38,6 +38,7 @@ export function EquipmentPickerModal({ open, onPick, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // Auto-focus search field when modal opens.
   useEffect(() => {
@@ -91,11 +92,33 @@ export function EquipmentPickerModal({ open, onPick, onClose }: Props) {
     };
   }, [query, open]);
 
-  // Esc → close.
+  // Esc → close; Tab/Shift+Tab — focus trap внутри модалки.
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const root = dialogRef.current;
+      if (!root) return;
+      const focusable = root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === first || !root.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -110,7 +133,13 @@ export function EquipmentPickerModal({ open, onPick, onClose }: Props) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-2xl bg-surface rounded-lg border border-border shadow-xl overflow-hidden flex flex-col max-h-[70vh]">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Добавить позицию"
+        className="w-full max-w-2xl bg-surface rounded-lg border border-border shadow-xl overflow-hidden flex flex-col max-h-[70vh]"
+      >
         <header className="p-4 border-b border-border flex items-center justify-between">
           <div>
             <p className="eyebrow">Добавить позицию</p>

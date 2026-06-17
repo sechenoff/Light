@@ -637,9 +637,10 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     if (!pickupISO || !returnISO) {
       toast.error("Сначала укажите даты съёмки — выдача и возврат");
       if (typeof document !== "undefined") {
-        const el =
-          document.getElementById("booking-pickup-datetime") ||
-          document.querySelector('input[type="datetime-local"]');
+        // Поля дат — раздельные input[type=date] + input[type=time]; целимся
+        // в первый date-инпут (раньше селектор искал #booking-pickup-datetime /
+        // datetime-local, которых на странице нет — скролл не срабатывал).
+        const el = document.querySelector('input[type="date"]');
         if (el) {
           (el as HTMLElement).scrollIntoView({ behavior: "smooth", block: "center" });
           (el as HTMLInputElement).focus?.();

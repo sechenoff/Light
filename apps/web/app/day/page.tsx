@@ -201,7 +201,9 @@ function DaySuperAdmin({ username }: { username: string }) {
             value={
               <>
                 {repairStats?.openCount ?? "—"}
-                <span className="text-sm text-ink-3 font-normal ml-1">единиц</span>
+                <span className="text-sm text-ink-3 font-normal ml-1">
+                  {pluralize(repairStats?.openCount ?? 0, "единица", "единицы", "единиц")}
+                </span>
               </>
             }
             sub={
