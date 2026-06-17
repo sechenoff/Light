@@ -619,7 +619,27 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
 
   // ── AI handlers ──
   async function handleParse() {
-    if (!pickupISO || !returnISO) return;
+    // Без дат AI-парсинг не запускаем — startDate/endDate нужны для расчёта
+    // числа смен и матчинга по доступности. Раньше тут был silent return,
+    // и пользователь жал «Распознать» без эффекта, думая что AI сломан.
+    // Теперь показываем понятный toast + скроллим к полю дат.
+    if (!pickupISO || !returnISO) {
+      toast.error("Сначала укажите даты съёмки — выдача и возврат");
+      if (typeof document !== "undefined") {
+        const el =
+          document.getElementById("booking-pickup-datetime") ||
+          document.querySelector('input[type="datetime-local"]');
+        if (el) {
+          (el as HTMLElement).scrollIntoView({ behavior: "smooth", block: "center" });
+          (el as HTMLInputElement).focus?.();
+        }
+      }
+      return;
+    }
+    if (!gafferText.trim()) {
+      toast.error("Поле заявки пустое — вставьте текст от гафера");
+      return;
+    }
     setParsing(true);
     try {
       const res = await apiFetch<GafferReviewApiResponse>("/api/bookings/parse-gaffer-review", {
