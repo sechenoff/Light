@@ -357,7 +357,11 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
         setAdjustments(newAdj);
       })
       .catch(() => {
-        if (!cancelled) setCatalog([]);
+        if (!cancelled) {
+          setCatalog([]);
+          // Раньше пустой каталог при сбое выглядел как «нет оборудования».
+          toast.error("Не удалось загрузить каталог оборудования. Обновите страницу.");
+        }
       })
       .finally(() => {
         if (!cancelled) setCatalogLoading(false);
