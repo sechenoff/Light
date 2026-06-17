@@ -216,6 +216,7 @@ export default function BookingDetailPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [voidPaymentId, setVoidPaymentId] = useState<string | null>(null);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [invoicesError, setInvoicesError] = useState(false);
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [refundInvoiceId, setRefundInvoiceId] = useState<string | null>(null);
   const [cancelDepositOpen, setCancelDepositOpen] = useState(false);
@@ -600,8 +601,11 @@ export default function BookingDetailPage() {
     try {
       const data = await apiFetch<{ items: InvoiceItem[] }>(`/api/invoices?bookingId=${id}`);
       setInvoices(data.items);
+      setInvoicesError(false);
     } catch {
-      // Non-fatal; invoices section will just show empty
+      // Сбой загрузки счетов больше не выглядит как «счетов нет» — показываем
+      // ошибку, чтобы оператор не создал дубликат счёта по ошибке.
+      setInvoicesError(true);
     }
   }
 
@@ -725,15 +729,12 @@ export default function BookingDetailPage() {
           <ApprovalReviewView
             booking={booking}
             onReload={() => {
-              // Re-fetch booking by re-triggering the effect via a state change
-              const controller = new AbortController();
-              fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"}/api/bookings/${id}`, {
-                signal: controller.signal,
-                credentials: "include",
-              })
-                .then((r) => r.json())
-                .then((data) => setBooking(data.booking))
-                .catch(() => {});
+              // Перезагрузка через общий apiFetch-хелпер (проверяет res.ok,
+              // парсит ошибки, идёт через прокси с X-API-Key). Раньше был raw
+              // fetch с пустым .catch — сбой оставлял устаревшее состояние молча.
+              reloadBooking().catch((e) =>
+                toast.error(e instanceof Error ? e.message : "Не удалось обновить бронь"),
+              );
             }}
             currentUser={user!}
           />
@@ -1707,7 +1708,14 @@ export default function BookingDetailPage() {
                           + Создать счёт
                         </button>
                       </div>
-                      {invoices.length === 0 ? (
+                      {invoicesError ? (
+                        <div className="text-xs text-rose py-2">
+                          Не удалось загрузить счета.{" "}
+                          <button type="button" onClick={() => loadInvoices()} className="underline hover:text-rose/80">
+                            Повторить
+                          </button>
+                        </div>
+                      ) : invoices.length === 0 ? (
                         <div className="text-xs text-ink-3 py-2">Счетов пока нет</div>
                       ) : (
                         <div className="border border-border rounded-lg overflow-hidden">
