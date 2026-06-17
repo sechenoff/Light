@@ -1256,8 +1256,15 @@ export default function BookingDetailPage() {
                               </td>
                             )}
                             {showPrices && (
-                              <td className="px-3 py-2 text-right mono-num font-medium text-ink">
-                                {price ? formatMoneyRub(price.lineSum) : "—"}
+                              <td className={`px-3 py-2 text-right mono-num font-medium ${qtyChanged ? "text-amber" : "text-ink"}`}>
+                                {price
+                                  ? retroEditMode && !anyIt._deleted
+                                    // Live-пересчёт суммы строки при правке кол-ва:
+                                    // цена за смену × текущее кол-во (бэкенд пересчитает
+                                    // окончательно на сохранении, но оператор видит эффект сразу).
+                                    ? formatMoneyRub(String(Number(price.unitPrice) * anyIt.quantity))
+                                    : formatMoneyRub(price.lineSum)
+                                  : "—"}
                               </td>
                             )}
                             {retroEditMode && (
