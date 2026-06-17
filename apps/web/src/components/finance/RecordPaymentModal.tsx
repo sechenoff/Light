@@ -241,17 +241,32 @@ export function RecordPaymentModal({
   // D2: determine if we should show invoice selector
   const showInvoiceSelector = legacyFinance === false && !!effectiveBookingId;
 
+  // Валидность суммы — гейтит кнопку «Записать платёж» (раньше была всегда
+  // активна, и пустой/нулевой сабмит только тостил). Переплата (сумма больше
+  // остатка) не блокирует — это легитимный кейс, но мягко предупреждаем.
+  const amtNum = Number(amount);
+  const amountValid = amount.trim() !== "" && Number.isFinite(amtNum) && amtNum > 0;
+  const outstandingNum =
+    bookingContext?.amountOutstanding != null ? Number(bookingContext.amountOutstanding) : null;
+  const isOverpay =
+    amountValid && outstandingNum != null && Number.isFinite(outstandingNum) && amtNum > outstandingNum;
+
   return (
     <div
       className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-surface rounded-lg border border-border shadow-xl w-full max-w-md">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="record-payment-title"
+        className="bg-surface rounded-lg border border-border shadow-xl w-full max-w-md"
+      >
         {/* Header */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-border">
           <div>
             <p className="eyebrow text-ink-3 mb-0.5">Финансы</p>
-            <h2 className="text-base font-semibold text-ink">Записать платёж</h2>
+            <h2 id="record-payment-title" className="text-base font-semibold text-ink">Записать платёж</h2>
           </div>
           <button
             onClick={onClose}
@@ -347,7 +362,13 @@ export function RecordPaymentModal({
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0"
               min="0"
+              aria-invalid={amount.trim() !== "" && !amountValid}
             />
+            {isOverpay && outstandingNum != null && (
+              <p className="mt-1 text-xs text-amber">
+                ⚠ Сумма больше остатка ({formatRub(String(outstandingNum))}) — будет переплата.
+              </p>
+            )}
           </div>
 
           {/* Method */}
@@ -398,8 +419,8 @@ export function RecordPaymentModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving}
-            className="px-5 py-2 text-sm bg-accent-bright text-white rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            disabled={saving || !amountValid}
+            className="px-5 py-2 text-sm bg-accent-bright text-white rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? "Сохранение…" : "Записать платёж"}
           </button>
