@@ -378,6 +378,14 @@ describe("PATCH /api/bookings/:id — ретро-редактирование RE
     expect(after?.amountOutstanding.toString()).toBe("260000");
   });
 
+  it("(k) manualFinalAmount сверх верхней границы → 400 (Zod)", async () => {
+    const res = await request(app)
+      .patch(`/api/bookings/${bookingId}`)
+      .set(AUTH_SA())
+      .send({ retroactive: true, manualFinalAmount: 2_000_000_000 });
+    expect(res.status).toBe(400);
+  });
+
   it("(g) endMileage меньше текущего → 409 MILEAGE_DECREASE, всё откатывается", async () => {
     const beforeVehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
     const beforeMileage = beforeVehicle.currentMileage;

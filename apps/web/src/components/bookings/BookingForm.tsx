@@ -404,7 +404,14 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   }, [selected, offCatalogItems, customItems, unmatchedFromAi]);
 
   const canSubmit = Boolean(
-    clientName.trim() && (selected.size > 0 || offCatalogItems.length > 0 || customItems.length > 0) && pickupISO && returnISO && !submitting,
+    clientName.trim() &&
+      (selected.size > 0 || offCatalogItems.length > 0 || customItems.length > 0) &&
+      pickupISO &&
+      returnISO &&
+      // Дата начала строго раньше возврата — иначе бэкенд вернёт 400, а кнопка
+      // раньше оставалась активной.
+      new Date(pickupISO) < new Date(returnISO) &&
+      !submitting,
   );
 
   // Default shiftHours for a newly-toggled vehicle = current rental duration.
@@ -499,7 +506,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
           projectName: projectName.trim() || "Проект",
           startDate: pickupISO,
           endDate: returnISO,
-          discountPercent: discountPercent || 0,
+          discountPercent: Math.min(100, Math.max(0, discountPercent || 0)),
           skipPartialDay,
           items,
           transport: transportPayload,
@@ -769,7 +776,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
         projectName: projectName.trim() || "Проект",
         startDate: pickupISO,
         endDate: returnISO,
-        discountPercent: discountPercent || 0,
+        discountPercent: Math.min(100, Math.max(0, discountPercent || 0)),
         skipPartialDay,
         comment: finalComment,
         items,
