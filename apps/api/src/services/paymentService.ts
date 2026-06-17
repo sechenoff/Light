@@ -84,6 +84,14 @@ export async function createPayment(args: CreatePaymentArgs): Promise<Payment> {
   // Validate booking exists
   const booking = await prisma.booking.findUnique({ where: { id: args.bookingId } });
   if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+  // Архивную (soft-deleted) бронь нельзя трогать финансово.
+  if (booking.deletedAt) {
+    throw new HttpError(
+      409,
+      "Бронь в архиве — платёж записать нельзя. Сначала восстановите её из архива.",
+      "BOOKING_ARCHIVED",
+    );
+  }
 
   const amount = new Decimal(args.amount.toString());
   const role: UserRole = args.creatorRole ?? "SUPER_ADMIN";

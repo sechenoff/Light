@@ -390,9 +390,32 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
+/**
+ * Гард архивных броней. Soft-deleted бронь (deletedAt != null) скрыта из всех
+ * списков и не должна меняться: ни статус, ни финансы, ни состав. Вызывается в
+ * начале каждого state-changing роута. Восстановление/окончательное удаление
+ * (/restore, /purge) специально НЕ используют этот гард — они оперируют именно
+ * архивными бронями.
+ */
+async function assertBookingNotArchived(id: string): Promise<void> {
+  const b = await prisma.booking.findUnique({
+    where: { id },
+    select: { id: true, deletedAt: true },
+  });
+  if (!b) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+  if (b.deletedAt) {
+    throw new HttpError(
+      409,
+      "Бронь в архиве — действие недоступно. Сначала восстановите её из архива.",
+      "BOOKING_ARCHIVED",
+    );
+  }
+}
+
 router.patch("/:id", async (req, res, next) => {
   try {
     const id = req.params.id;
+    await assertBookingNotArchived(id);
     const body = bookingUpdateSchema.parse(req.body);
     const existing = await prisma.booking.findUnique({
       where: { id },
@@ -776,6 +799,7 @@ router.post("/:id/status", async (req, res, next) => {
   try {
     const id = req.params.id;
     const body = bookingStatusActionSchema.parse(req.body);
+    await assertBookingNotArchived(id);
     const booking = await prisma.booking.findUnique({ where: { id } });
     if (!booking) throw new HttpError(404, "Booking not found");
 
@@ -1363,6 +1387,7 @@ router.post("/draft", async (req, res, next) => {
 router.post("/:id/confirm", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const id = req.params.id;
+    await assertBookingNotArchived(id);
     const isBot = req.botAccess === true;
     const booking = await prisma.booking.findUnique({
       where: { id },
@@ -1459,6 +1484,7 @@ router.patch("/:id/finance-corrections", rolesGuard(["SUPER_ADMIN"]), async (req
   try {
     const id = req.params.id;
     const body = financeCorrectionsSchema.parse(req.body);
+    await assertBookingNotArchived(id);
 
     if (!req.adminUser) {
       throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
@@ -1568,6 +1594,7 @@ router.patch(
     try {
       const { id: bookingId, bookingVehicleId } = req.params;
       const body = driverUpdateSchema.parse(req.body);
+      await assertBookingNotArchived(bookingId);
 
       if (!req.adminUser) {
         throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
@@ -1652,6 +1679,7 @@ router.patch("/:id/backdate", rolesGuard(["SUPER_ADMIN"]), async (req, res, next
   try {
     const id = req.params.id;
     const body = backdateSchema.parse(req.body);
+    await assertBookingNotArchived(id);
 
     // После rolesGuard req.adminUser гарантированно есть, но защищаемся явно
     if (!req.adminUser) {
@@ -1725,6 +1753,7 @@ router.post(
     try {
       if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
       const { clientId: newClientId } = changeClientSchema.parse(req.body);
+      await assertBookingNotArchived(req.params.id);
 
       // 1. Загружаем текущую бронь со старым клиентом
       const existing = await prisma.booking.findUnique({
@@ -1788,6 +1817,7 @@ router.post(
   async (req, res, next) => {
     try {
       if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      await assertBookingNotArchived(req.params.id);
       const updated = await submitForApproval(req.params.id, req.adminUser.userId);
       res.json({ booking: serializeBookingForApi(updated as any) });
     } catch (err) {
@@ -1803,6 +1833,7 @@ router.post(
   async (req, res, next) => {
     try {
       if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      await assertBookingNotArchived(req.params.id);
       const updated = await approveBooking(req.params.id, req.adminUser.userId);
 
       // Finance side-effects — same pattern as POST /:id/confirm
@@ -1835,6 +1866,7 @@ router.post(
     try {
       if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
       const body = rejectSchema.parse(req.body);
+      await assertBookingNotArchived(req.params.id);
       const updated = await rejectBooking(req.params.id, req.adminUser.userId, body.reason);
       res.json({ booking: serializeBookingForApi(updated as any) });
     } catch (err) {
@@ -1873,6 +1905,7 @@ router.post(
     try {
       const userId = req.adminUser!.userId;
       const body = cancelWithDepositSchema.parse(req.body);
+      await assertBookingNotArchived(req.params.id);
 
       const booking = await prisma.booking.findUnique({
         where: { id: req.params.id },
