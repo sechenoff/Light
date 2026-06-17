@@ -2097,13 +2097,16 @@ export default function BookingDetailPage() {
               ₽ Платёж
             </button>
           )}
-          {/* PDF Счёт */}
-          <button
-            className="flex-1 rounded border border-border px-2 py-2.5 text-sm font-medium hover:bg-surface-subtle transition-colors"
-            onClick={() => download(`/api/bookings/${booking.id}/invoice.pdf`, `Счёт_${booking.id}.pdf`)}
-          >
-            📄 Счёт
-          </button>
+          {/* PDF Счёт — только legacy-финансы (как на десктопе). У Phase-2
+              броней легаси-invoice.pdf отдаёт 409/неверный PDF. */}
+          {booking.legacyFinance !== false && (
+            <button
+              className="flex-1 rounded border border-border px-2 py-2.5 text-sm font-medium hover:bg-surface-subtle transition-colors"
+              onClick={() => download(`/api/bookings/${booking.id}/invoice.pdf`, `Счёт_${booking.id}.pdf`)}
+            >
+              📄 Счёт
+            </button>
+          )}
           {/* PDF Акт */}
           {(() => {
             const canAct = booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0;
