@@ -210,6 +210,14 @@ export function RetroDiffPanel({
             ))}
           </ul>
         )}
+        {editedOverrideRaw !== "" && (itemsAdded + itemsRemoved + itemsQtyChanged) > 0 && (
+          <p className="mt-3 rounded border border-rose-border bg-rose-soft px-2.5 py-2 text-xs text-rose">
+            ⚠ Задан ручной итог — он перекроет изменения позиций: сумма брони
+            станет {formatRu(Number(editedOverrideRaw.replace(",", ".")))} ₽ независимо
+            от правок состава. Очистите ручной итог, если хотите, чтобы сумма
+            считалась по позициям.
+          </p>
+        )}
         <p className="mt-3 pt-3 border-t border-amber-border text-xs text-ink-3">
           После сохранения смета и финансы пересчитаются автоматически. Запись в
           аудит-логе появится как <span className="font-mono">BOOKING_RETROACTIVE_EDIT</span>.
