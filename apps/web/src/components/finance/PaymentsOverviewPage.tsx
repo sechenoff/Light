@@ -329,9 +329,8 @@ export function PaymentsOverviewPage() {
             <div className="flex items-center gap-2 flex-wrap">
               {/* Period selector */}
               <PeriodSelector value={period} onChange={handlePeriodChange} />
-              <button className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface rounded-lg hover:bg-surface-subtle transition-colors">
-                📊 Экспорт XLSX
-              </button>
+              {/* FIN-02: кнопка «Экспорт XLSX» была без onClick (тупик) — эндпоинта
+                  экспорта платежей нет. Убрана, чтобы не создавать ложного аффорданса. */}
               {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
                 <button
                   onClick={() => setRecordPaymentOpen(true)}

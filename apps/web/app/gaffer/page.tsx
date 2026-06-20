@@ -100,8 +100,18 @@ function OverdueIncomingPanel({
 }: {
   rows: GafferDashboardOverdueIncomingRow[];
 }) {
-  function handleReminder(projectCode: string) {
-    toast.info(`AI-напоминание для ${projectCode} в разработке`);
+  // gaffer-reminder: раньше кнопка показывала toast «AI-напоминание в разработке»
+  // (тупик). Делаем рабочее действие без AI — копируем готовый текст напоминания.
+  async function handleReminder(row: GafferDashboardOverdueIncomingRow) {
+    const text =
+      `Здравствуйте! Напоминаю об оплате по проекту «${row.projectTitle}» (${row.projectCode}) — ` +
+      `остаток ${formatRub(row.remaining)}, просрочка ${row.overdueDays} дн.`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Текст напоминания скопирован");
+    } catch {
+      toast.info(text);
+    }
   }
 
   return (
@@ -140,7 +150,7 @@ function OverdueIncomingPanel({
                 </span>
                 <button
                   className="block text-xs text-gaffer-accent underline mt-0.5"
-                  onClick={() => handleReminder(row.projectCode)}
+                  onClick={() => handleReminder(row)}
                   type="button"
                 >
                   Напомнить
@@ -372,7 +382,9 @@ export default function GafferDashboardPage() {
   }, []);
 
   const greetWord = greetingWord(now.getHours());
-  const userName = user?.name || "Дмитрий";
+  // gaffer-dashboard-name-fallback: «Дмитрий» был захардкоженным плейсхолдером из
+  // мокапа — у пользователя без имени выглядел как чужой аккаунт. Берём реальные данные.
+  const userName = user?.name || user?.email?.split("@")[0] || "гаффер";
   const activeProjects = data?.meta.activeProjects ?? 0;
   const openObligationCount = data?.kpi.openObligationCount ?? 0;
   const cashGap14d = data ? parseFloat(data.kpi.cashGap14d) : 0;
