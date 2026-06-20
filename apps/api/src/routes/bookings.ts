@@ -940,11 +940,16 @@ router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
     if (existing.deletedAt) {
       throw new HttpError(409, "Бронь уже в архиве", "BOOKING_ALREADY_ARCHIVED");
     }
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const released = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.booking.update({
         where: { id },
         data: { deletedAt: new Date(), deletedBy: userId },
       });
+      // BD-2: архивация не-терминальной брони (CONFIRMED/ISSUED/PENDING_APPROVAL)
+      // обязана освободить UNIT-резервы — иначе equipmentUnit застревает в ISSUED
+      // и выпадает из учёта доступности (бронь-то скрыта и больше не сканируется).
+      // releaseBookingUnits идемпотентен: для терминальных броней (нет резервов) → no-op.
+      const rel = await releaseBookingUnits(id, tx);
       await writeAuditEntry({
         tx,
         userId,
@@ -952,10 +957,16 @@ router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
         entityType: "Booking",
         entityId: id,
         before: diffFields(existing as Record<string, unknown>),
-        after: { deletedAt: new Date().toISOString(), deletedBy: userId },
+        after: {
+          deletedAt: new Date().toISOString(),
+          deletedBy: userId,
+          releasedReservations: rel.releasedReservations,
+          freedUnits: rel.freedUnitIds.length,
+        },
       });
+      return rel;
     });
-    res.json({ ok: true, archived: true });
+    res.json({ ok: true, archived: true, releasedReservations: released.releasedReservations, freedUnits: released.freedUnitIds.length });
   } catch (err) {
     next(err);
   }

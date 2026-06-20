@@ -380,7 +380,17 @@ export default function EquipmentManagePage() {
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {inlineEditId === r.id ? (
+                    {/* eu-1: у UNIT-позиции количество = число единиц, правится только
+                        через генерацию/удаление единиц. Поле read-only с ссылкой. */}
+                    {r.stockTrackingMode === "UNIT" ? (
+                      <a
+                        href={`/equipment/${r.id}/units`}
+                        className="text-slate-600 hover:underline"
+                        title="Количество поштучных позиций меняется в «Управлении единицами»"
+                      >
+                        {r.totalQuantity} <span className="text-[10px] text-slate-400">шт →</span>
+                      </a>
+                    ) : inlineEditId === r.id ? (
                       <input
                         className="w-20 rounded border border-slate-300 px-2 py-1 text-sm text-right"
                         type="number"

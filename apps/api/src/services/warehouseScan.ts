@@ -716,11 +716,32 @@ export async function completeSession(
         }
       }
 
-      // Юниты НЕ отсканированные → остаются ISSUED, помечаем как пропущенные
+      // ws-1: единицы, которые НЕ отсканированы и НЕ помечены оператором как
+      // ремонт/проблема, — «не приняты». Раньше они молча оставались ISSUED при
+      // RETURNED-броне: застревали в выданном пуле, выпадали из учёта доступности
+      // и больше не сканировались. Теперь переводим их в MISSING — единица покидает
+      // «выданный» статус, корректно исключается из доступности (availability eu-2)
+      // и показывается оператору блоком «Не принято». MISSING обратим: менеджер
+      // вернёт в AVAILABLE, если единица найдётся.
+      const flaggedUnitIds = new Set<string>();
+      for (const r of options?.repairUnits ?? []) {
+        if ("equipmentUnitId" in r) flaggedUnitIds.add(r.equipmentUnitId);
+      }
+      for (const p of options?.problemUnits ?? []) {
+        if ("equipmentUnitId" in p) flaggedUnitIds.add(p.equipmentUnitId);
+      }
+      const trulyMissingUnitIds: string[] = [];
       for (const reservation of allReservations) {
-        if (!scannedUnitIds.has(reservation.equipmentUnitId)) {
-          summary.missing.push(reservation.equipmentUnitId);
-        }
+        if (scannedUnitIds.has(reservation.equipmentUnitId)) continue;
+        if (flaggedUnitIds.has(reservation.equipmentUnitId)) continue; // обрабатываются post-tx
+        summary.missing.push(reservation.equipmentUnitId);
+        trulyMissingUnitIds.push(reservation.equipmentUnitId);
+      }
+      if (trulyMissingUnitIds.length > 0) {
+        await tx.equipmentUnit.updateMany({
+          where: { id: { in: trulyMissingUnitIds }, status: "ISSUED" },
+          data: { status: "MISSING" },
+        });
       }
 
       // RETURN-сессия завершилась — переводим бронь в RETURNED. Оператор
