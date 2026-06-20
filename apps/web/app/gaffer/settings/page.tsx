@@ -100,8 +100,9 @@ export default function GafferSettingsPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // gaffer-settings-fake-save: всё на странице автосохраняется по мере правки —
+  // кнопка ничего не «сохраняла». Это просто навигация на дашборд, без ложного тоста.
   function handleDone() {
-    toast.success("Настройки сохранены");
     router.push("/gaffer");
   }
 
@@ -247,10 +248,10 @@ export default function GafferSettingsPage() {
           <button
             type="button"
             onClick={handleDone}
-            aria-label="Сохранить и вернуться на дашборд"
+            aria-label="Готово — вернуться на дашборд"
             className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-3 text-[14px] transition-colors"
           >
-            Сохранить
+            Готово
           </button>
           <p className="text-[11px] text-ink-3 mt-2 text-center">
             Изменения сохраняются автоматически при редактировании

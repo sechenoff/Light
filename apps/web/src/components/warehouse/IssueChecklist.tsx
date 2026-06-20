@@ -363,7 +363,9 @@ function LiveFinanceBlock({
         aria-label={
           allChecked
             ? "Готово, выдать — оформить выдачу с текущими количествами"
-            : `Завершить выдачу — отмечено ${checkedCount} из ${totalCount} позиций (остальные считаются не выданными)`
+            /* ws-2: «Выдано» — маркер сборки, на количество не влияет (выдаётся значение
+               степпера). Раньше подпись ложно обещала «остальные не выданы». */
+            : `Завершить выдачу — собрано ${checkedCount} из ${totalCount} позиций (выдаётся указанное количество)`
         }
         className={`!mt-3 block w-full rounded-lg px-4 py-3 text-center text-[14px] font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60 ${
           allChecked ? "bg-emerald" : "bg-amber"
@@ -378,8 +380,8 @@ function LiveFinanceBlock({
       {!allChecked && unmarked > 0 && !submitting && (
         <p className="mt-1 text-center text-[11px] text-ink-3">
           {unmarked === 1
-            ? "Осталась 1 позиция без отметки «Выдано»"
-            : `Осталось ${unmarked} позиций без отметки «Выдано»`}
+            ? "1 позиция ещё не собрана — выдаётся указанное количество"
+            : `${unmarked} позиций ещё не собрано — выдаётся указанное количество`}
         </p>
       )}
     </div>

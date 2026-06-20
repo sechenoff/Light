@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
 import { formatRub } from "../../../src/lib/format";
@@ -178,6 +178,10 @@ export default function RepairDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // dd-08 / repair-action-param-dead: ?action=take|write-off с /day должен сразу
+  // запустить действие, а не открывать просто карточку. Флаг — чтобы сработало 1 раз.
+  const actionHandledRef = useRef(false);
 
   const { user, loading: authLoading } = useRequireRole(ALL_ROLES as unknown as ("SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN")[]);
 
@@ -212,6 +216,26 @@ export default function RepairDetailPage() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [user, id]);
+
+  // dd-08: после загрузки ремонта применяем ?action один раз и чистим query.
+  useEffect(() => {
+    if (!repair || actionHandledRef.current) return;
+    const action = searchParams.get("action");
+    if (!action) return;
+    actionHandledRef.current = true;
+    const isActiveRepair = !["CLOSED", "WROTE_OFF"].includes(repair.status);
+    if (
+      action === "take" &&
+      repair.status === "WAITING_REPAIR" &&
+      (user?.role === "SUPER_ADMIN" || user?.role === "TECHNICIAN")
+    ) {
+      void handleTakeToWork();
+    } else if (action === "write-off" && user?.role === "SUPER_ADMIN" && isActiveRepair && repair.unit) {
+      setShowWriteOffConfirm(true);
+    }
+    router.replace(`/repair/${id}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repair, searchParams, user, id]);
 
   function showToast(msg: string) {
     setToast(msg);
