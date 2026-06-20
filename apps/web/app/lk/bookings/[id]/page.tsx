@@ -3,15 +3,11 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { lkApi } from "../../../../src/lib/lkApi";
-import type { LkBookingDetail, LkBookingStatus } from "../../../../src/lib/lkTypes";
-import { formatRub } from "../../../../src/lib/format";
+import { LK_STATUS_LABEL, type LkBookingDetail, type LkBookingStatus } from "../../../../src/lib/lkTypes";
+import { formatRub, pluralize } from "../../../../src/lib/format";
 
-const STATUS_LABEL: Record<LkBookingStatus, string> = {
-  CONFIRMED: "Подтверждена",
-  ISSUED: "В работе",
-  RETURNED: "Возвращена",
-  CANCELLED: "Отменена",
-};
+// Общий словарь подписей статусов (дубль удалён, lk-dashboard-raw-status).
+const STATUS_LABEL = LK_STATUS_LABEL;
 
 const STATUS_CLASS: Record<LkBookingStatus, string> = {
   CONFIRMED: "text-teal",
@@ -78,7 +74,7 @@ export default function LkBookingDetailPage() {
             {new Date(b.endDate).toLocaleDateString("ru-RU")}
           </span>
           <span>·</span>
-          <span>{b.shifts} {b.shifts === 1 ? "смена" : b.shifts >= 2 && b.shifts <= 4 ? "смены" : "смен"}</span>
+          <span>{b.shifts} {pluralize(b.shifts, "смена", "смены", "смен")}</span>
           <span>·</span>
           <span className={STATUS_CLASS[b.status]}>{STATUS_LABEL[b.status]}</span>
         </div>

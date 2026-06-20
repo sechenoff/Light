@@ -275,7 +275,8 @@ router.post("/:id/approve", async (req, res, next) => {
       data: {
         status: "APPROVED",
         reviewedAt: new Date(),
-        reviewedBy: body.reviewedBy ?? "admin",
+        // admin-06: пишем реального проверяющего (JWT-сессия), а не строку "admin".
+        reviewedBy: req.adminUser?.username ?? body.reviewedBy ?? "admin",
         proposedEquipmentId: equipmentId,
       },
     });
@@ -292,7 +293,8 @@ router.post("/:id/approve", async (req, res, next) => {
 router.post("/:id/reject", async (req, res, next) => {
   try {
     const { id } = req.params;
-    const reviewedBy = (req.body as any)?.reviewedBy ?? "admin";
+    // admin-06: реальный проверяющий из JWT-сессии, не строка "admin".
+    const reviewedBy = req.adminUser?.username ?? (req.body as any)?.reviewedBy ?? "admin";
 
     const updated = await prisma.slangLearningCandidate.update({
       where: { id },
