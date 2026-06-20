@@ -114,12 +114,19 @@ router.get("/today", async (req, res, next) => {
  */
 router.get("/pending-approvals", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (_req, res, next) => {
   try {
-    const bookings = await prisma.booking.findMany({
-      where: { status: "PENDING_APPROVAL" },
-      include: { client: true },
-      orderBy: { startDate: "asc" },
-      take: 20,
-    });
+    // dd-05: total раньше = bookings.length (обрезано take:20) → при >20 застревал
+    // на 20, алерт/футер занижали число. Берём честный count под тем же where.
+    // Заодно исключаем архивные (deletedAt) — их в очереди согласования быть не должно.
+    const where = { status: "PENDING_APPROVAL" as const, deletedAt: null };
+    const [bookings, total] = await Promise.all([
+      prisma.booking.findMany({
+        where,
+        include: { client: true },
+        orderBy: { startDate: "asc" },
+        take: 20,
+      }),
+      prisma.booking.count({ where }),
+    ]);
 
     res.json({
       bookings: bookings.map((b) => ({
@@ -130,7 +137,7 @@ router.get("/pending-approvals", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async
         endDate: b.endDate.toISOString(),
         finalAmount: b.finalAmount.toString(),
       })),
-      total: bookings.length,
+      total,
     });
   } catch (err) {
     next(err);

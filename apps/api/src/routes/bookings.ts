@@ -269,6 +269,9 @@ router.get("/", async (req, res, next) => {
     // вылетают в начало списка перед свежими 2026-съёмками. Естественный
     // порядок для оператора: сначала ближайшие/свежие смены.
     // id desc для детерминизма при одинаковом startDate.
+    // BL-4: помимо страницы возвращаем честный totalCount под тем же where,
+    // чтобы UI показывал «Показано N из M», а не вводящее в заблуждение «N+».
+    const totalCount = await prisma.booking.count({ where });
     const bookings = await prisma.booking.findMany({
       where,
       orderBy: [{ startDate: "desc" }, { id: "desc" }],

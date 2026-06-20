@@ -57,16 +57,39 @@ export default function BookingsArchivePage() {
   const [rows, setRows] = useState<ArchivedBooking[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // BL-5: архив раньше грузился одним запросом limit=200 без пагинации — при >200
+  // архивных броней остальные молча обрезались. Теперь курсорная пагинация (как
+  // в основном списке): первая страница + «Загрузить ещё».
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
+  // BL-8: единая функция загрузки вместо дублирующих load() + inline-fetch.
   async function load() {
     try {
-      const data = await apiFetch<{ bookings: ArchivedBooking[] }>(
-        "/api/bookings?archived=true&limit=200",
+      const data = await apiFetch<{ bookings: ArchivedBooking[]; nextCursor: string | null }>(
+        "/api/bookings?archived=true&limit=50",
       );
       setRows(data.bookings);
+      setNextCursor(data.nextCursor ?? null);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить архив");
+    }
+  }
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await apiFetch<{ bookings: ArchivedBooking[]; nextCursor: string | null }>(
+        `/api/bookings?archived=true&limit=50&cursor=${encodeURIComponent(nextCursor)}`,
+      );
+      setRows((prev) => [...(prev ?? []), ...data.bookings]);
+      setNextCursor(data.nextCursor ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось загрузить архив");
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -75,11 +98,12 @@ export default function BookingsArchivePage() {
     let cancelled = false;
     void (async () => {
       try {
-        const data = await apiFetch<{ bookings: ArchivedBooking[] }>(
-          "/api/bookings?archived=true&limit=200",
+        const data = await apiFetch<{ bookings: ArchivedBooking[]; nextCursor: string | null }>(
+          "/api/bookings?archived=true&limit=50",
         );
         if (cancelled) return;
         setRows(data.bookings);
+        setNextCursor(data.nextCursor ?? null);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Не удалось загрузить архив");
@@ -240,6 +264,18 @@ export default function BookingsArchivePage() {
             </tbody>
           </table>
         </div>
+        {nextCursor && (
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-muted disabled:opacity-40"
+            >
+              {loadingMore ? "Загружаю..." : "Загрузить ещё"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

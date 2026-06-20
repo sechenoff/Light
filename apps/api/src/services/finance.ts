@@ -458,6 +458,10 @@ export async function computeFinanceDashboard(asOf: Date = new Date()) {
     if (daysOverdue > acc.maxDaysOverdue) acc.maxDaysOverdue = daysOverdue;
     clientMap.set(b.clientId, acc);
   }
+  // F2: честный счётчик клиентов с просрочкой по ВСЕЙ выборке. Раньше overdueCount
+  // на фронте выводился из topDebtors (slice(0,5)) и не превышал 5, даже если
+  // просроченных клиентов больше.
+  const overdueClientsCount = Array.from(clientMap.values()).filter((c) => c.maxDaysOverdue > 0).length;
   const topDebtors = Array.from(clientMap.values())
     .sort((a, b) => b.outstanding.cmp(a.outstanding))
     .slice(0, 5)
@@ -488,6 +492,7 @@ export async function computeFinanceDashboard(asOf: Date = new Date()) {
     })),
     trend,
     topDebtors,
+    overdueClientsCount,
     // Legacy keys (superset — keep for existing consumers)
     ...legacyData,
   };

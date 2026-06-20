@@ -25,10 +25,16 @@ export default function LkDashboardPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [b, d] = await Promise.all([lkApi.bookings(), lkApi.debt()]);
+        // lk-active-count: число активных раньше считалось из первой страницы
+        // общего списка (≤20) — занижалось. Запрашиваем ISSUED отдельным фильтром.
+        const [b, active, d] = await Promise.all([
+          lkApi.bookings(),
+          lkApi.bookings(undefined, "ISSUED"),
+          lkApi.debt(),
+        ]);
         if (cancelled) return;
         setRecent(b.items.slice(0, 5));
-        setActiveCount(b.items.filter((i) => i.status === "ISSUED").length);
+        setActiveCount(active.items.length);
         setDebtTotal(d.totalOutstanding);
         setOverdueCount(d.overdueCount);
       } catch {
