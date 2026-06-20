@@ -97,6 +97,8 @@ function BookingHistoryPageInner() {
 
   const PAGE_SIZE = 50;
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  // BL-4: общее число броней под текущим фильтром (с сервера) — для «Показано N из M».
+  const [totalCount, setTotalCount] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
   // Все фильтры (статус/оплата/даты) теперь серверные — это даёт полный
@@ -119,13 +121,14 @@ function BookingHistoryPageInner() {
     async function load() {
       setLoading(true);
       try {
-        const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(
+        const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null; totalCount?: number }>(
           `/api/bookings?${buildListParams()}`,
           { signal: controller.signal }
         );
         if (!isActive) return;
         setRows(data.bookings);
         setNextCursor(data.nextCursor ?? null);
+        setTotalCount(data.totalCount ?? null);
       } catch (e: any) {
         const isAbort = e?.name === "AbortError" || e?.message === "signal is aborted without reason";
         if (!isAbort) {
@@ -212,9 +215,10 @@ function BookingHistoryPageInner() {
         method: "POST",
         body: JSON.stringify({ action }),
       });
-      const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(`/api/bookings?${buildListParams()}`);
+      const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null; totalCount?: number }>(`/api/bookings?${buildListParams()}`);
       setRows(data.bookings);
       setNextCursor(data.nextCursor ?? null);
+      setTotalCount(data.totalCount ?? null);
     } catch (e: any) {
       alert(e?.message ?? "Не удалось обновить статус");
     } finally {
@@ -285,7 +289,7 @@ function BookingHistoryPageInner() {
               <option value="PAID">Оплачен</option>
               <option value="UNPAID">Не оплачен</option>
             </select>
-            <div className="text-xs text-ink-3">{loading ? "Загрузка..." : `Показано: ${filteredRows.length}${nextCursor ? "+" : ""}`}</div>
+            <div className="text-xs text-ink-3">{loading ? "Загрузка..." : totalCount !== null ? `Показано: ${filteredRows.length} из ${totalCount}` : `Показано: ${filteredRows.length}`}</div>
           </div>
         </div>
         <div className="overflow-auto">

@@ -185,10 +185,13 @@ function DaySuperAdmin({ username }: { username: string }) {
         <DayTasksWidget dashboard={dashboard} />
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* dd-03/dd-04: KPI считает сумму смет ТОЛЬКО по выдачам сегодня (начислено,
+              не получено). Раньше подпись была «N выдач · M возвратов», что не сходилось
+              с суммой (она по выдачам). Делаем подпись однородной сумме + явно «по сметам». */}
           <DayKpiCard
-            eyebrow="Сегодня"
+            eyebrow="Выдачи сегодня"
             value={formatRub(todayRevenue)}
-            sub={`${pickups.length} ${pluralize(pickups.length, "выдача", "выдачи", "выдач")} · ${returns.length} ${pluralize(returns.length, "возврат", "возврата", "возвратов")}`}
+            sub={`${pickups.length} ${pluralize(pickups.length, "выдача", "выдачи", "выдач")} · по сметам`}
           />
           <DayKpiCard
             eyebrow="Долги"

@@ -52,6 +52,8 @@ interface Dashboard {
   upcomingWeek: UpcomingEntry[];
   trend: TrendEntry[];
   topDebtors: TopDebtor[];
+  /** F2: число клиентов с просрочкой по всей выборке (не из обрезанного topDebtors). */
+  overdueClientsCount?: number;
   summary: {
     totalReceivables: string;
     overdueReceivables: string;
@@ -199,9 +201,12 @@ function FinancePageInner() {
   const spent = Number(data.spentThisMonth);
   const outstanding = Number(data.totalOutstanding);
 
-  const overdueCount = data.topDebtors.filter(
-    (d) => d.overdueDays !== null && d.overdueDays > 0
-  ).length;
+  // F2: честный счётчик просроченных клиентов с сервера (по всей выборке), а не
+  // из обрезанного topDebtors (≤5). Fallback на старое поведение, если поля нет.
+  const overdueCount =
+    typeof data.overdueClientsCount === "number"
+      ? data.overdueClientsCount
+      : data.topDebtors.filter((d) => d.overdueDays !== null && d.overdueDays > 0).length;
 
   // Маржа от нулевой выручки бессмысленна → formatMarginPercent вернёт «—».
   const marginLabel = formatMarginPercent(net, earned);
@@ -301,7 +306,7 @@ function FinancePageInner() {
             <span className="text-amber">⚡ Сегодня сделать:</span>
             <span className="text-ink">
               {overdueCount > 0 && (
-                <><Link href="/finance/invoices?status=OVERDUE" className="text-amber font-semibold hover:underline">{overdueCount} {pluralize(overdueCount, "счёт просрочен", "счёта просрочены", "счётов просрочены")} ≥ 7 дней</Link></>
+                <><Link href="/finance/debts?overdueOnly=true" className="text-amber font-semibold hover:underline">{overdueCount} {pluralize(overdueCount, "клиент с просрочкой", "клиента с просрочкой", "клиентов с просрочкой")}</Link></>
               )}
             </span>
             <Link href="/finance/invoices?status=OVERDUE" className="ml-auto px-3 py-1 text-[12px] font-medium border border-amber-border rounded-lg text-amber hover:bg-amber-border/20 whitespace-nowrap">
