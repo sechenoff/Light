@@ -1,5 +1,15 @@
 export type LkBookingStatus = "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
 
+// lk-dashboard-raw-status: единый источник русских подписей статусов для портала.
+// Раньше дашборд показывал ENUM (ISSUED/CONFIRMED), а списки — русские подписи,
+// объявленные дважды локально. Теперь — один словарь.
+export const LK_STATUS_LABEL: Record<LkBookingStatus, string> = {
+  CONFIRMED: "Подтверждена",
+  ISSUED: "В работе",
+  RETURNED: "Возвращена",
+  CANCELLED: "Отменена",
+};
+
 export type LkBookingListItem = {
   id: string;
   bookingNo: string;

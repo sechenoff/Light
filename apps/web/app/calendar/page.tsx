@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../src/lib/api";
 import { CalendarTooltip } from "../../src/components/CalendarTooltip";
 import { buildOccupancyMap, type CalendarEvent } from "../../src/lib/calendarUtils";
+import { toMoscowDateString } from "../../src/lib/moscowDate";
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -36,7 +37,9 @@ function addDaysStr(dateStr: string, days: number): string {
 }
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  // cal-tz-today-mismatch: «сегодня» считаем в московской зоне (а не UTC) — иначе
+  // поздним вечером по МСК колонка «сегодня» уезжала на завтра.
+  return toMoscowDateString(new Date());
 }
 
 function buildDays(start: string, count: number): string[] {
