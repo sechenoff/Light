@@ -16,12 +16,18 @@ interface TabDef {
 export function AdminTabNav({ counts }: AdminTabNavProps) {
   const pathname = usePathname();
 
+  // admin-03: /admin/audit и /admin/roles были рабочими, но недостижимыми из UI
+  // (ни в меню, ни в табах). Аудит — ключевой инструмент руководителя. Добавлены.
+  // admin-01: «Настройки» теперь ведут на реальную /settings/organization
+  // (страница /admin/settings редиректит туда же).
   const tabs: TabDef[] = [
     { href: "/admin/users", label: "👤 Пользователи", count: counts?.users },
     { href: "/admin/slang", label: "🗣 Словарь сленга", count: counts?.slang },
     { href: "/admin/imports", label: "📑 Импорт прайсов", count: counts?.imports },
     { href: "/admin/vehicles", label: "🚐 Транспорт" },
-    { href: "/admin/settings", label: "⚙️ Настройки" },
+    { href: "/admin/audit", label: "📋 Аудит" },
+    { href: "/admin/roles", label: "🛡 Права" },
+    { href: "/settings/organization", label: "⚙️ Настройки" },
     { href: "/admin/more", label: "🔧 Ещё" },
   ];
 

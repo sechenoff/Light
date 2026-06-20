@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+
 const TABS = [
   { href: "/finance", label: "Сводка" },
   { href: "/finance/invoices", label: "Счета" },
@@ -11,12 +13,19 @@ const TABS = [
   { href: "/finance/expenses", label: "Расходы" },
 ];
 
+// F1: кладовщику доступны только «Счета» — остальные финансовые роуты SA-only
+// (rolesGuard на API + useRequireRole на страницах). Раньше таб-нав показывал все
+// 5 вкладок, и WAREHOUSE кликал в 403/редирект. Фильтруем по роли.
+const WAREHOUSE_ALLOWED = new Set(["/finance/invoices"]);
+
 export function FinanceTabNav({ debtCount }: { debtCount?: number }) {
   const pathname = usePathname();
+  const { user } = useCurrentUser();
+  const tabs = user?.role === "WAREHOUSE" ? TABS.filter((t) => WAREHOUSE_ALLOWED.has(t.href)) : TABS;
 
   return (
     <div className="flex border-b border-border bg-surface px-6">
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const active =
           tab.href === "/finance"
             ? pathname === "/finance"
