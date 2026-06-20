@@ -338,6 +338,7 @@ router.get("/", async (req, res, next) => {
         };
       }),
       nextCursor,
+      totalCount,
     });
   } catch (err) {
     next(err);
