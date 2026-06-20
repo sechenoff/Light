@@ -210,9 +210,12 @@ export default function AdminUsersPage() {
     {} as Partial<Record<UserRole, number>>
   );
 
+  // admin-07: служебная запись _system_ не должна попадать в счётчики «Всего».
+  const realUserCount = (users ?? []).filter((u) => u.id !== "_system_").length;
+
   return (
     <div className="p-6 space-y-6">
-      <AdminTabNav counts={{ users: users?.length }} />
+      <AdminTabNav counts={{ users: realUserCount }} />
 
       {/* Header */}
       <div>
@@ -482,7 +485,7 @@ export default function AdminUsersPage() {
       {/* Legend */}
       {users && users.length > 0 && (
         <div className="flex items-center gap-4 flex-wrap text-xs text-ink-3 pt-2 border-t border-border">
-          <span>Всего: {users.length}</span>
+          <span>Всего: {realUserCount}</span>
           {(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"] as UserRole[]).map((role) =>
             roleCounts[role] ? (
               <span key={role}>

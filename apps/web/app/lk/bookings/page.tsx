@@ -3,23 +3,21 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { lkApi } from "../../../src/lib/lkApi";
-import type { LkBookingListItem, LkBookingStatus } from "../../../src/lib/lkTypes";
+import { LK_STATUS_LABEL, type LkBookingListItem, type LkBookingStatus } from "../../../src/lib/lkTypes";
 import { formatRub } from "../../../src/lib/format";
 
+// lk-bookings-filter-label-drift: фильтр «Активные» расходился с подписью статуса
+// «В работе» для одного и того же ISSUED. Унифицируем на «В работе».
 const FILTERS: { label: string; value: LkBookingStatus | "ALL" }[] = [
   { label: "Все", value: "ALL" },
-  { label: "Активные", value: "ISSUED" },
+  { label: "В работе", value: "ISSUED" },
   { label: "Подтверждённые", value: "CONFIRMED" },
   { label: "Возвращённые", value: "RETURNED" },
   { label: "Отменённые", value: "CANCELLED" },
 ];
 
-const STATUS_LABEL: Record<LkBookingStatus, string> = {
-  CONFIRMED: "Подтверждена",
-  ISSUED: "В работе",
-  RETURNED: "Возвращена",
-  CANCELLED: "Отменена",
-};
+// Используем общий словарь подписей (дубль удалён).
+const STATUS_LABEL = LK_STATUS_LABEL;
 
 function BookingsView() {
   const params = useSearchParams();

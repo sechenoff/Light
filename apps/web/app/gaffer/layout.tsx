@@ -137,7 +137,7 @@ function GafferSidebar({
     { href: "/gaffer", label: "Дашборд", icon: "◉" },
     { href: "/gaffer/projects", label: "Проекты", icon: "▤" },
     { href: "/gaffer/contacts", label: "Контакты", icon: "☺" },
-    { href: "/gaffer/obligations", label: "Обязательства", icon: "⚖" },
+    { href: "/gaffer/obligations", label: "Долги", icon: "⚖" },
   ];
 
   function isActive(href: string) {

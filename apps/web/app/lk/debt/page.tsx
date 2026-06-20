@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { lkApi } from "../../../src/lib/lkApi";
 import type { LkDebtResponse } from "../../../src/lib/lkTypes";
 import { formatRub } from "../../../src/lib/format";
@@ -67,7 +68,12 @@ export default function LkDebtPage() {
               ) : (
                 data.invoices.map((r) => (
                   <tr key={`${r.bookingId}-${r.invoiceNumber}`} className={r.isOverdue ? "bg-rose-soft" : ""}>
-                    <td className="px-4 py-2">{r.bookingNo}</td>
+                    {/* lk-debt-link: из строки долга можно открыть саму бронь */}
+                    <td className="px-4 py-2">
+                      <Link href={`/lk/bookings/${r.bookingId}`} className="text-accent hover:underline">
+                        {r.bookingNo}
+                      </Link>
+                    </td>
                     <td className="px-4 py-2 mono-num">{r.invoiceNumber || "—"}</td>
                     <td className="px-4 py-2">
                       {r.dueDate ? new Date(r.dueDate).toLocaleDateString("ru-RU") : "—"}

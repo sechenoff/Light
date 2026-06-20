@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { apiFetch } from "../../lib/api";
+import { toMoscowDateString } from "../../lib/moscowDate";
 import { toast } from "../ToastProvider";
 import { TaskAssigneePill } from "./TaskAssigneePill";
 import type { Task } from "./groupTasks";
@@ -237,11 +238,13 @@ export function TaskArchivePage() {
         if (creatorFilter) {
           if (t.createdBy !== creatorFilter) return false;
         }
-        if (dateFrom && t.completedAt) {
-          if (t.completedAt < dateFrom) return false;
-        }
-        if (dateTo && t.completedAt) {
-          if (t.completedAt > dateTo + "T23:59:59Z") return false;
+        // tasks-4: сравниваем в московском date-only домене (а не ISO vs UTC-конец-дня).
+        // Раньше верхняя граница строилась как +T23:59:59Z (UTC) → задачи, выполненные
+        // после 21:00 МСК, могли отфильтроваться не в тот день.
+        if ((dateFrom || dateTo) && t.completedAt) {
+          const doneStr = toMoscowDateString(new Date(t.completedAt));
+          if (dateFrom && doneStr < dateFrom) return false;
+          if (dateTo && doneStr > dateTo) return false;
         }
         return true;
       })
