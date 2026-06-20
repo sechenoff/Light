@@ -168,7 +168,8 @@ function EditModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
         <h2 className="text-base font-semibold text-slate-900 mb-4">Редактировать единицу</h2>
-        <p className="text-xs text-slate-500 mb-4 font-mono">{unit.barcode}</p>
+        {/* eu-5: показываем серийный номер вместо штрихкода */}
+        <p className="text-xs text-slate-500 mb-4">{unit.serialNumber ? `С/н ${unit.serialNumber}` : "Без серийного номера"}</p>
 
         <label className="block text-sm text-slate-700 mb-1">Серийный номер</label>
         <input
@@ -256,10 +257,10 @@ function DeleteConfirm({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
         <h2 className="text-base font-semibold text-slate-900 mb-2">Удалить единицу?</h2>
-        <p className="text-sm text-slate-600 mb-1">Штрихкод: <span className="font-mono">{unit.barcode}</span></p>
-        {unit.serialNumber && (
-          <p className="text-sm text-slate-600 mb-1">Серийный номер: {unit.serialNumber}</p>
-        )}
+        {/* eu-5: идентифицируем по серийному номеру, не по штрихкоду */}
+        <p className="text-sm text-slate-600 mb-1">
+          {unit.serialNumber ? `Серийный номер: ${unit.serialNumber}` : "Единица без серийного номера"}
+        </p>
         <p className="text-xs text-slate-400 mb-4">Это действие необратимо.</p>
         {error && <p className="text-xs text-rose-600 mb-3">{error}</p>}
         <div className="flex gap-2 justify-end">
@@ -430,9 +431,11 @@ export default function UnitsPage() {
         <div className="hidden md:block rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-surface-subtle text-ink-2 border-b border-border text-xs">
+              {/* eu-5: штрихкод-колонка убрана из обычного UI (правило: не показывать
+                  коды LR-XXX-NNN). Ведущий идентификатор — серийный номер. Код остаётся
+                  в данных и используется печатью этикеток. */}
               <tr>
-                <th className="text-left px-4 py-3 font-medium">Штрихкод</th>
-                <th className="text-left px-3 py-3 font-medium">Серийный номер</th>
+                <th className="text-left px-4 py-3 font-medium">Серийный номер</th>
                 <th className="text-left px-3 py-3 font-medium">Статус</th>
                 <th className="text-left px-3 py-3 font-medium">Комментарий</th>
                 <th className="px-3 py-3 text-right font-medium">Действия</th>
@@ -441,8 +444,7 @@ export default function UnitsPage() {
             <tbody className="divide-y divide-border">
               {units.map((unit) => (
                 <tr key={unit.id} className="hover:bg-surface-muted transition-colors">
-                  <td className="px-4 py-3 text-xs text-ink-3 font-mono">{unit.barcode}</td>
-                  <td className="px-3 py-3 text-ink-2">{unit.serialNumber ?? <span className="text-ink-3">—</span>}</td>
+                  <td className="px-4 py-3 text-ink-2">{unit.serialNumber ?? <span className="text-ink-3">—</span>}</td>
                   <td className="px-3 py-3"><UnitStatusBadge status={unit.status} /></td>
                   <td className="px-3 py-3 text-ink-3 text-xs max-w-[200px] truncate">{unit.comment ?? <span className="text-ink-3">—</span>}</td>
                   <td className="px-3 py-3 text-right">
@@ -485,13 +487,13 @@ export default function UnitsPage() {
         <div className="md:hidden space-y-3">
           {units.map((unit) => (
             <div key={unit.id} className="rounded-xl border border-slate-200 bg-white p-4">
+              {/* eu-5: заголовок карточки — серийный номер, не штрихкод. */}
               <div className="flex items-start justify-between mb-2">
-                <span className="font-mono text-xs text-ink-3">{unit.barcode}</span>
+                <span className="text-sm font-medium text-ink">
+                  {unit.serialNumber ? `С/н ${unit.serialNumber}` : "Без серийного номера"}
+                </span>
                 <UnitStatusBadge status={unit.status} />
               </div>
-              {unit.serialNumber && (
-                <p className="text-sm text-slate-600 mb-1">С/н: {unit.serialNumber}</p>
-              )}
               {unit.comment && (
                 <p className="text-xs text-slate-400 mb-3">{unit.comment}</p>
               )}

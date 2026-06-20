@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useLkSession } from "../../src/hooks/useLkSession";
 import { lkApi } from "../../src/lib/lkApi";
-import type { LkBookingListItem } from "../../src/lib/lkTypes";
+import { LK_STATUS_LABEL, type LkBookingListItem } from "../../src/lib/lkTypes";
 import { formatRub } from "../../src/lib/format";
 
 function greeting(): string {
@@ -94,7 +94,7 @@ export default function LkDashboardPage() {
                     <span className="mono-num text-sm">{formatRub(Number(b.finalAmount))}</span>
                   </div>
                   <p className="text-xs text-ink-2 mt-1">
-                    {new Date(b.startDate).toLocaleDateString("ru-RU")} · {b.status} · {b.itemCount} поз.
+                    {new Date(b.startDate).toLocaleDateString("ru-RU")} · {LK_STATUS_LABEL[b.status]} · {b.itemCount} поз.
                   </p>
                 </Link>
               </li>
