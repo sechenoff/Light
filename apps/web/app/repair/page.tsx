@@ -147,9 +147,14 @@ function repairTitle(r: RepairCard): string {
 function RepairRow({
   repair,
   onTake,
+  canTake,
 }: {
   repair: RepairCard;
   onTake: (id: string) => void;
+  /** repair-warehouse-deadend: «Взять в работу» доступно только SA/TECHNICIAN.
+      WAREHOUSE заводит ремонты, но не берёт их — для него показываем «Открыть»,
+      чтобы кнопка не вела в 403. */
+  canTake: boolean;
 }) {
   const router = useRouter();
   const [taking, setTaking] = useState(false);
@@ -217,7 +222,7 @@ function RepairRow({
           )}
         </div>
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-          {repair.status === "WAITING_REPAIR" ? (
+          {repair.status === "WAITING_REPAIR" && canTake ? (
             <button onClick={handleTake} disabled={taking} className="px-3 py-1.5 rounded text-xs font-semibold bg-rose text-white hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap">
               {taking ? "…" : "Взять в работу"}
             </button>
@@ -251,7 +256,7 @@ function RepairRow({
           )}
         </div>
         <div className="pl-11" onClick={(e) => e.stopPropagation()}>
-          {repair.status === "WAITING_REPAIR" ? (
+          {repair.status === "WAITING_REPAIR" && canTake ? (
             <button onClick={handleTake} disabled={taking} className="w-full h-9 rounded text-xs font-semibold bg-rose text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
               {taking ? "…" : "Взять в работу"}
             </button>
@@ -328,6 +333,8 @@ export default function RepairQueuePage() {
   const [queueFilter, setQueueFilter] = useState<"all" | "mine">("all");
 
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  // repair-warehouse-deadend: брать ремонт в работу могут только SA и TECHNICIAN.
+  const canTakeRepairs = user?.role === "SUPER_ADMIN" || user?.role === "TECHNICIAN";
 
   const loadRepairs = useCallback(() => {
     if (!user) return;
@@ -501,7 +508,7 @@ export default function RepairQueuePage() {
         ) : (
           <div className="divide-y divide-border">
             {filteredRepairs.map((r) => (
-              <RepairRow key={r.id} repair={r} onTake={handleTake} />
+              <RepairRow key={r.id} repair={r} onTake={handleTake} canTake={canTakeRepairs} />
             ))}
           </div>
         )}

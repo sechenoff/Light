@@ -104,7 +104,7 @@ export function MasterTable({ rows }: MasterTableProps) {
               <tr
                 key={r.id}
                 className="border-t border-border hover:bg-surface-2 cursor-pointer"
-                onClick={() => router.push(`/equipment/${r.id}`)}
+                onClick={() => router.push(`/equipment/${r.id}/units`)}
               >
                 <td className="px-3 py-2">{r.name}</td>
                 <td className="px-3 py-2 text-ink-3">{r.category}</td>

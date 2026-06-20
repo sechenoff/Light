@@ -60,7 +60,7 @@ export function TopRankedSection({ icon, title, rows, rowKey, allLink, emptyText
             const trail = renderTrail(r, rowKey);
             return (
               <li key={r.id} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center py-2.5">
-                <Link href={`/equipment/${r.id}`} className="text-sm text-ink hover:text-accent">
+                <Link href={`/equipment/${r.id}/units`} className="text-sm text-ink hover:text-accent">
                   <div>{r.name}</div>
                   <div className="text-xs text-ink-3">{r.category}</div>
                 </Link>

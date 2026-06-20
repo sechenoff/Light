@@ -221,6 +221,7 @@ export default function BookingDetailPage() {
   const [refundInvoiceId, setRefundInvoiceId] = useState<string | null>(null);
   const [cancelDepositOpen, setCancelDepositOpen] = useState(false);
   const [creditNoteOpen, setCreditNoteOpen] = useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
 
   // ── Ретро-редактирование закрытой брони (SUPER_ADMIN + RETURNED) ──────────
   // Меняется: название проекта, комментарий, % скидки, состав позиций
@@ -329,6 +330,38 @@ export default function BookingDetailPage() {
     if (!id) return;
     const fresh = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${id}`);
     setBooking(fresh.booking);
+  }
+
+  // BD-1 / BD-4: переходы жизненного цикла прямо со страницы брони (раньше были
+  // только в списке /bookings). issue/return — POST /:id/status. Отмена: при
+  // наличии оплаты открываем модалку распоряжения депозитом (как было), иначе —
+  // обычная отмена статусом (закрывает дыру «CONFIRMED без оплаты не отменить»).
+  async function runLifecycleAction(action: "issue" | "return" | "cancel") {
+    if (!id || !booking) return;
+    if (action === "cancel") {
+      if (Number(booking.amountPaid ?? "0") > 0) {
+        setCancelDepositOpen(true);
+        return;
+      }
+      if (!confirm("Отменить бронь?\n\nРезервы оборудования будут сняты.")) return;
+    }
+    if (action === "issue" && !confirm("Перевести бронь в статус «Выдано»?")) return;
+    if (action === "return" && !confirm("Перевести бронь в статус «Возвращено»?")) return;
+    setLifecycleBusy(true);
+    try {
+      await apiFetch(`/api/bookings/${id}/status`, {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      });
+      toast.success(
+        action === "issue" ? "Бронь выдана" : action === "return" ? "Бронь возвращена" : "Бронь отменена",
+      );
+      await reloadBooking();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Не удалось изменить статус");
+    } finally {
+      setLifecycleBusy(false);
+    }
   }
 
   async function archiveBooking() {
@@ -723,6 +756,51 @@ export default function BookingDetailPage() {
             <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors">
               + Новая бронь
             </Link>
+            {/* BD-1: основные действия жизненного цикла — раньше были только в
+                списке /bookings, на самой странице брони их не было. */}
+            {booking && !isArchived && !retroEditMode && (
+              <>
+                {(["DRAFT", "CONFIRMED"].includes(booking.status) ||
+                  (booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN")) && (
+                  <Link
+                    href={`/bookings/${id}/edit`}
+                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors"
+                  >
+                    ✎ Изменить
+                  </Link>
+                )}
+                {booking.status === "CONFIRMED" && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+                  <button
+                    type="button"
+                    disabled={lifecycleBusy}
+                    onClick={() => runLifecycleAction("issue")}
+                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
+                  >
+                    Выдать
+                  </button>
+                )}
+                {booking.status === "ISSUED" && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
+                  <button
+                    type="button"
+                    disabled={lifecycleBusy}
+                    onClick={() => runLifecycleAction("return")}
+                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
+                  >
+                    Вернуть
+                  </button>
+                )}
+                {!["CANCELLED", "RETURNED"].includes(booking.status) && user?.role === "SUPER_ADMIN" && (
+                  <button
+                    type="button"
+                    disabled={lifecycleBusy}
+                    onClick={() => runLifecycleAction("cancel")}
+                    className="rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors disabled:opacity-40"
+                  >
+                    Отменить
+                  </button>
+                )}
+              </>
+            )}
             {/*
               Ретро-редактирование: только SUPER_ADMIN на закрытой (RETURNED)
               брони. Кнопка прячется когда уже в режиме редактирования (там
