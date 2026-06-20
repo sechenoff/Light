@@ -258,11 +258,25 @@ router.get("/", async (req, res, next) => {
     const dateWhere: Prisma.BookingWhereInput =
       Object.keys(startDateRange).length > 0 ? { startDate: startDateRange } : {};
 
+    // BL-2: текстовый поиск по названию проекта или имени клиента. SQLite Prisma
+    // `contains` регистрозависим — для кириллицы это приемлемо; ищем по обоим полям.
+    const qParam = (typeof req.query.q === "string" ? req.query.q : "").trim();
+    const searchWhere: Prisma.BookingWhereInput =
+      qParam.length > 0
+        ? {
+            OR: [
+              { projectName: { contains: qParam } },
+              { client: { is: { name: { contains: qParam } } } },
+            ],
+          }
+        : {};
+
     const where: Prisma.BookingWhereInput = {
       ...(statusFilter ? { status: statusFilter } : {}),
       ...(archivedFilter ? { deletedAt: { not: null } } : { deletedAt: null }),
       ...paidWhere,
       ...dateWhere,
+      ...searchWhere,
     };
     // Сортировка по ДАТЕ СМЕНЫ (startDate desc), а не по createdAt — иначе
     // импортированные задним числом старые брони (2023) с свежим createdAt

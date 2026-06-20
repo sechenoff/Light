@@ -92,6 +92,10 @@ function BookingHistoryPageInner() {
   const [paymentFilter, setPaymentFilter] = useState<"" | "PAID" | "UNPAID">("");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
+  // BL-2: поиск по клиенту/проекту. searchInput — то что печатает оператор;
+  // searchQuery — дебаунс-значение, уходящее на сервер (через buildListParams).
+  const [searchInput, setSearchInput] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -112,6 +116,7 @@ function BookingHistoryPageInner() {
     if (paymentFilter) params.set("paid", paymentFilter);
     if (dateFrom) params.set("from", dateFrom);
     if (dateTo) params.set("to", dateTo);
+    if (searchQuery.trim()) params.set("q", searchQuery.trim());
     return params.toString();
   }
 
@@ -145,7 +150,13 @@ function BookingHistoryPageInner() {
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, paymentFilter, dateFrom, dateTo]);
+  }, [statusFilter, paymentFilter, dateFrom, dateTo, searchQuery]);
+
+  // BL-2: дебаунс поискового ввода (300 мс) → searchQuery → серверный запрос.
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
@@ -247,6 +258,15 @@ function BookingHistoryPageInner() {
         <div className="p-3 border-b border-border flex items-center justify-between">
           <p className="eyebrow">Фильтры</p>
           <div className="flex flex-wrap items-center gap-2">
+            {/* BL-2: поиск по клиенту/проекту */}
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Поиск по клиенту или проекту"
+              aria-label="Поиск по клиенту или проекту"
+              className="rounded border border-border px-2 py-1 text-xs bg-surface w-56 max-w-full"
+            />
             <div className="flex items-center gap-2">
               <label className="text-xs text-ink-3">С</label>
               <input
