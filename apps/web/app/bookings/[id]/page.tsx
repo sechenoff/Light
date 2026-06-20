@@ -333,10 +333,20 @@ export default function BookingDetailPage() {
 
   async function archiveBooking() {
     if (!id) return;
-    if (!confirm("Отправить бронь в архив?\n\nБронь пропадёт из списка, но останется в БД — её можно вернуть из /bookings/archive.")) return;
+    // BD-2: у не-терминальной брони (резерв/выдача) архивация снимет резервы и
+    // вернёт оборудование в доступные — предупреждаем об этом явно.
+    const st = booking?.status;
+    const hasActiveEquipment = st === "CONFIRMED" || st === "ISSUED" || st === "PENDING_APPROVAL";
+    const baseMsg = "Бронь пропадёт из списка, но останется в БД — её можно вернуть из /bookings/archive.";
+    const equipMsg =
+      st === "ISSUED"
+        ? "\n\n⚠ Оборудование сейчас ВЫДАНО. При архивации резервы будут сняты, а единицы вернутся в «доступные», хотя физически они у клиента. Обычно сначала оформляют возврат. Точно в архив?"
+        : "\n\n⚠ У брони есть зарезервированное оборудование. При архивации резервы будут сняты и единицы вернутся в «доступные».";
+    if (!confirm(`Отправить бронь в архив?\n\n${baseMsg}${hasActiveEquipment ? equipMsg : ""}`)) return;
     try {
-      await apiFetch(`/api/bookings/${id}`, { method: "DELETE" });
-      toast.success("Бронь отправлена в архив");
+      const res = await apiFetch<{ freedUnits?: number }>(`/api/bookings/${id}`, { method: "DELETE" });
+      const freed = res?.freedUnits ?? 0;
+      toast.success(freed > 0 ? `Бронь в архиве · освобождено единиц: ${freed}` : "Бронь отправлена в архив");
       window.location.href = "/bookings";
     } catch (e: any) {
       toast.error(e?.message ?? "Не удалось архивировать бронь");

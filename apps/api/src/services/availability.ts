@@ -79,6 +79,23 @@ export async function getAvailability(args: {
 
   const equipmentIds = equipments.map((e) => e.id);
 
+  // eu-2: для UNIT-позиций база доступности = число ПРИГОДНЫХ к выдаче единиц
+  // (статус AVAILABLE или ISSUED), а НЕ totalQuantity. totalQuantity у UNIT —
+  // служебный счётчик, включающий MAINTENANCE/RETIRED/MISSING; нерабочие единицы
+  // не должны раздувать «Доступно». COUNT-режим остаётся на totalQuantity.
+  const unitEquipmentIds = equipments.filter((e) => e.stockTrackingMode === "UNIT").map((e) => e.id);
+  const usableUnitBase = new Map<string, number>();
+  if (unitEquipmentIds.length > 0) {
+    const grouped = await tx.equipmentUnit.groupBy({
+      by: ["equipmentId"],
+      where: { equipmentId: { in: unitEquipmentIds }, status: { in: ["AVAILABLE", "ISSUED"] } },
+      _count: { _all: true },
+    });
+    for (const g of grouped) usableUnitBase.set(g.equipmentId, g._count._all);
+  }
+  const baseQtyOf = (e: { id: string; stockTrackingMode: string; totalQuantity: number }): number =>
+    e.stockTrackingMode === "UNIT" ? (usableUnitBase.get(e.id) ?? 0) : e.totalQuantity;
+
   // Find all blocking bookings overlapping the requested range.
   const overlappingBookings = await tx.booking.findMany({
     where: {
@@ -95,7 +112,7 @@ export async function getAvailability(args: {
     return equipments.map((e) => ({
       equipment: e,
       occupiedQuantity: 0,
-      availableQuantity: e.totalQuantity,
+      availableQuantity: baseQtyOf(e),
     }));
   }
 
@@ -144,7 +161,7 @@ export async function getAvailability(args: {
       e.stockTrackingMode === "UNIT"
         ? (occupiedUnitsByEquipment.get(e.id)?.size ?? 0)
         : (occupiedCountByEquipment.get(e.id) ?? 0);
-    const available = clampNonNegative(e.totalQuantity - occupied);
+    const available = clampNonNegative(baseQtyOf(e) - occupied);
     return {
       equipment: e,
       occupiedQuantity: occupied,

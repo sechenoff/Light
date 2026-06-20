@@ -62,13 +62,21 @@ export function ReturnResultView({
   const failedTotal = failedBroken.length + failedProblem.length;
   const hasFailures = failedTotal > 0;
 
+  // ws-1: единицы, которые не отсканированы и не помечены (ремонт/проблема) —
+  // «не приняты». Backend перевёл их в MISSING; показываем оператору, чтобы
+  // частичный возврат не читался как чистый успех.
+  const missingItems = result.missingItems ?? [];
+  const missingCount = missingItems.length;
+  const hasMissing = missingCount > 0;
+  const needsAttention = hasFailures || hasMissing;
+
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <div className="flex-1 px-3 pb-6 pt-5 lg:px-5">
         <div className="mx-auto w-full max-w-[460px]">
           {/* Header — emerald only on a clean run; amber attention on any
               failure so a partial result never reads as a walk-away success. */}
-          {hasFailures ? (
+          {needsAttention ? (
             <div className="rounded-lg border border-amber-border bg-amber-soft px-4 py-4 text-center">
               <p className="text-3xl leading-none" aria-hidden="true">
                 ⚠
@@ -129,7 +137,36 @@ export function ReturnResultView({
                 {problemCount}
               </dd>
             </div>
+            {hasMissing && (
+              <div className="flex items-center justify-between rounded-lg border border-rose-border bg-rose-soft px-3 py-2.5">
+                <dt className="text-[13px] font-medium text-rose">
+                  Не принято — осталось у клиента / не отсканировано
+                </dt>
+                <dd className="mono-num text-[15px] font-semibold text-rose">
+                  {missingCount}
+                </dd>
+              </div>
+            )}
           </dl>
+
+          {hasMissing && (
+            <div className="mt-3 rounded-lg border border-rose-border bg-rose-soft px-3 py-3">
+              <p className="text-[13px] font-semibold text-rose">
+                {pluralize(missingCount, "Единица", "Единицы", "Единиц")}{" "}
+                не {pluralize(missingCount, "принята", "приняты", "приняты")} — помечены как «не на складе» (MISSING)
+              </p>
+              <ul className="mt-2 space-y-1">
+                {missingItems.map((u) => (
+                  <li key={u.id} className="text-[12px] leading-snug text-rose">
+                    • {u.name}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] leading-snug text-ink-3">
+                Если единицы найдутся — верните им статус «На складе» в управлении единицами.
+              </p>
+            </div>
+          )}
 
           {hasFailures && (
             <div

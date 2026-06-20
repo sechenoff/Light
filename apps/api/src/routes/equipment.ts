@@ -164,6 +164,16 @@ router.post("/reorder", async (req, res, next) => {
 router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const body = equipmentPatchSchema.parse(req.body);
+    // eu-1: у UNIT-позиции totalQuantity вычисляется из числа EquipmentUnit и не
+    // должен правиться вручную — иначе «Доступно» рассинхронизируется с реальным
+    // числом единиц. Определяем эффективный режим (с учётом возможной смены в этом
+    // же PATCH) и для UNIT игнорируем присланный totalQuantity.
+    const existing = await prisma.equipment.findUnique({
+      where: { id: req.params.id },
+      select: { stockTrackingMode: true },
+    });
+    const effectiveMode = body.stockTrackingMode ?? existing?.stockTrackingMode ?? "COUNT";
+    const totalQuantityData = effectiveMode === "UNIT" ? undefined : body.totalQuantity;
     const updated = await prisma.equipment.update({
       where: { id: req.params.id },
       data: {
@@ -172,7 +182,7 @@ router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
         brand: body.brand === undefined ? undefined : body.brand?.trim() || null,
         model: body.model === undefined ? undefined : body.model?.trim() || null,
         comment: body.comment === undefined ? undefined : body.comment?.trim() || null,
-        totalQuantity: body.totalQuantity,
+        totalQuantity: totalQuantityData,
         stockTrackingMode: body.stockTrackingMode,
         rentalRatePerShift: body.rentalRatePerShift === undefined ? undefined : body.rentalRatePerShift.toFixed(2),
         rentalRateTwoShifts: body.rentalRateTwoShifts === undefined ? undefined : body.rentalRateTwoShifts == null ? null : body.rentalRateTwoShifts.toFixed(2),
