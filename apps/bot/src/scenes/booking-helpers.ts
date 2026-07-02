@@ -16,12 +16,18 @@ export function fmtList(items: MatchedItem[], numbered = false): string {
 }
 
 export function totalCost(items: MatchedItem[], start: string, end: string): number {
-  const days = Math.max(
-    1,
+  // BOT-1: считаем смены той же формулой, что применит API к отправляемому payload.
+  // createBooking шлёт startDate=T09:00, endDate=T23:00 (см. services/api.ts), а API
+  // биллит ceil(длительность/24ч). Для date-only дат это diffDays + 1: например
+  // «10→12 июля» = 2 суток 14 часов = 3 смены. Старая формула (diffDays, без +1)
+  // занижала цену ровно на одну смену на КАЖДОЙ броне.
+  const diffDays = Math.max(
+    0,
     Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000),
   );
+  const shifts = diffDays + 1;
   return items.reduce(
-    (sum, i) => sum + Number(i.rentalRatePerShift) * i.quantity * days,
+    (sum, i) => sum + Number(i.rentalRatePerShift) * i.quantity * shifts,
     0,
   );
 }

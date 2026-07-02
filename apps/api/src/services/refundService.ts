@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { writeAuditEntry, diffFields } from "./audit";
 import { recomputeInvoiceStatus } from "./invoiceService";
+import { recomputeBookingFinance } from "./finance";
 
 type TxClient = Omit<
   Prisma.TransactionClient,
@@ -43,9 +44,13 @@ export async function createRefund(args: CreateRefundArgs, userId: string) {
   // для закрытия race window (concurrent delete между check и create).
   return prisma.$transaction(async (tx) => {
     // Проверяем существование invoice и D8: валидируем, что возврат не превышает оплаченную сумму
+    // MF-1: резолвим бронь возврата, чтобы после создания пересчитать её финансы.
+    let resolvedBookingId: string | null = args.bookingId ?? null;
+
     if (args.invoiceId) {
-      const inv = await tx.invoice.findUnique({ where: { id: args.invoiceId }, select: { id: true } });
+      const inv = await tx.invoice.findUnique({ where: { id: args.invoiceId }, select: { id: true, bookingId: true } });
       if (!inv) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
+      resolvedBookingId = resolvedBookingId ?? inv.bookingId;
 
       // D8: Вычисляем фактически полученную сумму по счёту из платежей (а не из кеша paidAmount)
       // чтобы не зависеть от своевременности обновления paidAmount.
@@ -69,8 +74,9 @@ export async function createRefund(args: CreateRefundArgs, userId: string) {
 
     // Проверяем существование payment, если задан
     if (args.paymentId) {
-      const pay = await tx.payment.findUnique({ where: { id: args.paymentId }, select: { id: true, amount: true } });
+      const pay = await tx.payment.findUnique({ where: { id: args.paymentId }, select: { id: true, amount: true, bookingId: true } });
       if (!pay) throw new HttpError(404, "Платёж не найден", "PAYMENT_NOT_FOUND");
+      resolvedBookingId = resolvedBookingId ?? pay.bookingId;
 
       // D8: Проверяем, что сумма возврата не превышает сумму платежа
       const existingRefundsSum = await tx.refund.aggregate({
@@ -118,6 +124,13 @@ export async function createRefund(args: CreateRefundArgs, userId: string) {
     // Пересчитываем статус счёта после возврата
     if (args.invoiceId) {
       await recomputeInvoiceStatus(args.invoiceId, tx as TxClient);
+    }
+
+    // MF-1: пересчитываем и финансы брони — возврат уменьшает amountPaid и
+    // возвращает долг в amountOutstanding/paymentStatus (иначе бронь оставалась
+    // PAID после полного возврата денег и выпадала из дебиторки).
+    if (resolvedBookingId) {
+      await recomputeBookingFinance(resolvedBookingId, tx as Parameters<typeof recomputeBookingFinance>[1]);
     }
 
     return refund;

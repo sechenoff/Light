@@ -92,18 +92,21 @@ describe('fmtList', () => {
 
 // ── totalCost ────────────────────────────────────────────────────────────────
 
+// BOT-1: смены считаются в API-паритете. createBooking шлёт 09:00→23:00, API
+// биллит ceil(длительность/24ч) ⇒ для date-only дат shifts = diffDays + 1.
+// Старая формула (без +1) занижала цену на смену на каждой броне — тесты
+// кодировали именно её и обновлены под фактический счёт API.
 describe('totalCost', () => {
-  it('считает стоимость за 1 день при разнице 1 сутки', () => {
+  it('10→11 апреля = 2 смены (09:00 первого — 23:00 второго = 38ч)', () => {
     const item = makeItem({ quantity: 1, rentalRatePerShift: '5000' });
     const cost = totalCost([item], '2024-04-10', '2024-04-11');
-    expect(cost).toBe(5000);
+    expect(cost).toBe(5000 * 2);
   });
 
-  it('считает стоимость за несколько дней', () => {
+  it('10→13 апреля = 4 смены (86ч)', () => {
     const item = makeItem({ quantity: 2, rentalRatePerShift: '3000' });
-    // 3 дня
     const cost = totalCost([item], '2024-04-10', '2024-04-13');
-    expect(cost).toBe(2 * 3000 * 3);
+    expect(cost).toBe(2 * 3000 * 4);
   });
 
   it('возвращает 0 для пустого списка', () => {
@@ -111,20 +114,19 @@ describe('totalCost', () => {
     expect(cost).toBe(0);
   });
 
-  it('минимум 1 день когда start === end', () => {
+  it('одна смена когда start === end', () => {
     const item = makeItem({ quantity: 1, rentalRatePerShift: '4000' });
     const cost = totalCost([item], '2024-04-10', '2024-04-10');
     expect(cost).toBe(4000);
   });
 
-  it('суммирует стоимость нескольких позиций', () => {
+  it('суммирует стоимость нескольких позиций (2 смены)', () => {
     const items = [
       makeItem({ quantity: 1, rentalRatePerShift: '5000' }),
       makeItem({ equipmentId: 'eq-2', quantity: 2, rentalRatePerShift: '2000' }),
     ];
-    // 1 день
     const cost = totalCost(items, '2024-04-10', '2024-04-11');
-    expect(cost).toBe(5000 + 2 * 2000);
+    expect(cost).toBe((5000 + 2 * 2000) * 2);
   });
 });
 

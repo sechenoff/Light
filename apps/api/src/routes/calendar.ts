@@ -71,6 +71,8 @@ router.get("/", async (req, res, next) => {
       prisma.booking.findMany({
         where: {
           status: { in: statuses },
+          // RR-2: архивные (soft-deleted) брони не показываем и не считаем занятость.
+          deletedAt: null,
           startDate: { lte: end },
           endDate: { gte: start },
         },
@@ -215,6 +217,8 @@ router.get("/occupancy", async (req, res, next) => {
     const bookings = await prisma.booking.findMany({
       where: {
         status: { in: BLOCKING_STATUSES },
+        // RR-2: архивные брони не входят в heatmap занятости.
+        deletedAt: null,
         startDate: { lte: end },
         endDate: { gte: start },
       },

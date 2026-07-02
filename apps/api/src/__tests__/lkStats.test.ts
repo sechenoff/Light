@@ -7,6 +7,10 @@ const TEST_DB = path.resolve(__dirname, `../../prisma/test-lk-stats-${process.pi
 process.env.DATABASE_URL = `file:${TEST_DB}`;
 process.env.CLIENT_PORTAL_SESSION_SECRET = "test-session-secret-min-sixteen-chars";
 process.env.CLIENT_PORTAL_TOKEN_SECRET = "test-token-secret-min-sixteen-chars";
+// Флаки под полным прогоном: без этих флагов файл ловил rate-limit/429 при
+// параллельной нагрузке (все остальные тест-файлы их ставят — паритет).
+process.env.RATE_LIMIT_DISABLED = "true";
+process.env.NODE_ENV = "test";
 
 let app: any;
 let prisma: any;

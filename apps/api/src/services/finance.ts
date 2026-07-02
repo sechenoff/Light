@@ -146,7 +146,24 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
     ? new Decimal(booking.manualFinalAmount.toString())
     : computedFinalAmount;
 
-  const amountPaid  = sumDec(booking.payments.map((p) => p.amount.toString()));
+  // MF-1: возвраты (Refund) уменьшают фактически полученное по брони. Refund может
+  // ссылаться на бронь напрямую (bookingId), через её инвойс или через её платёж —
+  // агрегируем все три пути. Без этого после полного возврата денег бронь оставалась
+  // PAID/amountOutstanding=0 и клиент с реальным долгом исчезал из дебиторки.
+  const refunds = await tx.refund.findMany({
+    where: {
+      OR: [
+        { bookingId },
+        { invoice: { bookingId } },
+        { payment: { bookingId } },
+      ],
+    },
+    select: { amount: true },
+  });
+  const refundsSum = sumDec(refunds.map((r) => r.amount.toString()));
+
+  const paymentsSum = sumDec(booking.payments.map((p) => p.amount.toString()));
+  const amountPaid = Decimal.max(paymentsSum.sub(refundsSum), new Decimal(0));
   const amountOutstanding = Decimal.max(finalAmount.sub(amountPaid), new Decimal(0));
   const status = calcBookingPaymentStatus({
     finalAmount,

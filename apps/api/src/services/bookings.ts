@@ -776,8 +776,11 @@ export async function releaseBookingUnits(
   bookingId: string,
   tx: ReleaseTx,
 ): Promise<ReleaseBookingUnitsResult> {
+  // RR-1: снимаем только ЖИВЫЕ резервы (returnedAt: null). Возвращённые строки —
+  // это история приёмки (warehouseScan ставит returnedAt, не удаляет), и их юниты
+  // могли уже быть выданы по ДРУГОЙ броне: трогать их статус и стирать историю нельзя.
   const reservations = await tx.bookingItemUnit.findMany({
-    where: { bookingItem: { bookingId } },
+    where: { bookingItem: { bookingId }, returnedAt: null },
     select: { id: true, equipmentUnitId: true },
   });
 

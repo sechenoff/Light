@@ -49,11 +49,13 @@ router.get("/today", async (req, res, next) => {
 
     const userId = req.adminUser?.userId ?? "";
 
+    // RR-4: везде deletedAt: null — архивные брони не должны попадать в операции дня.
     const [pickupsRaw, returnsRaw, activeRaw, myTasks] = await Promise.all([
       // Pickups: CONFIRMED брони начинающиеся сегодня
       prisma.booking.findMany({
         where: {
           status: "CONFIRMED",
+          deletedAt: null,
           startDate: { gte: todayStart, lte: todayEnd },
         },
         include: includeArgs,
@@ -62,13 +64,14 @@ router.get("/today", async (req, res, next) => {
       prisma.booking.findMany({
         where: {
           status: "ISSUED",
+          deletedAt: null,
           endDate: { gte: todayStart, lte: todayEnd },
         },
         include: includeArgs,
       }),
       // Active: все ISSUED брони
       prisma.booking.findMany({
-        where: { status: "ISSUED" },
+        where: { status: "ISSUED", deletedAt: null },
         include: includeArgs,
       }),
       // Мои задачи на сегодня (overdue ∪ today ∪ urgent-undated), до 5
