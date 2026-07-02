@@ -124,10 +124,11 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
     const itemsWithDisplayStatus = items.map((inv) => {
       let displayStatus = inv.status;
       if (
-        inv.status === "ISSUED" &&
+        (inv.status === "ISSUED" || inv.status === "PARTIAL_PAID") &&
         inv.dueDate &&
         inv.dueDate.getTime() < now
       ) {
+        // MF-5: частично оплаченный просроченный счёт тоже показываем OVERDUE.
         displayStatus = "OVERDUE";
       }
       return { ...inv, displayStatus };

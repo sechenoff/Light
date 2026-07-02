@@ -43,7 +43,7 @@ router.get("/", lkAuth, async (req, res, next) => {
     const items = await prisma.estimate.findMany({
       where: {
         kind: "MAIN",
-        booking: { clientId, status: { in: [...VISIBLE_STATUSES] as any } },
+        booking: { clientId, deletedAt: null, status: { in: [...VISIBLE_STATUSES] as any } },
         ...(cursor
           ? {
               OR: [

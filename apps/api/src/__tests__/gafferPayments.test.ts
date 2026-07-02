@@ -179,7 +179,10 @@ describe("Создание IN-платежа", () => {
     expect(res.body.details).toBe("INVALID_AMOUNT");
   });
 
-  it("POST IN с отрицательной суммой → 400 INVALID_AMOUNT", async () => {
+  it("POST IN с отрицательной суммой → 400 (отсекается валидацией суммы)", async () => {
+    // LKG-2: сумма теперь валидируется общим decimalString (регэксп ^\d+(\.\d+)?$),
+    // который отсекает отрицательные значения на Zod-уровне (чистая 400) ещё до
+    // сервисной проверки INVALID_AMOUNT. Поведение — отказ 400 — сохранено.
     const res = await postA("/api/gaffer/payments").send({
       projectId,
       direction: "IN",
@@ -187,7 +190,6 @@ describe("Создание IN-платежа", () => {
       paidAt: "2025-09-17",
     });
     expect(res.status).toBe(400);
-    expect(res.body.details).toBe("INVALID_AMOUNT");
   });
 });
 

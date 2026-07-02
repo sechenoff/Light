@@ -47,6 +47,8 @@ router.get("/", lkAuth, async (req, res, next) => {
     const cursor = decodeCursor(q.cursor);
     const where: Prisma.BookingWhereInput = {
       clientId,
+      // LKG-4: архивные (soft-deleted) брони клиент видеть не должен.
+      deletedAt: null,
       status: q.status ? q.status : { in: [...VISIBLE_STATUSES] as any },
       ...(cursor
         ? {
@@ -108,6 +110,7 @@ router.get("/:id", lkAuth, async (req, res, next) => {
       select: {
         id: true,
         clientId: true,
+        deletedAt: true,
         status: true,
         startDate: true,
         endDate: true,
@@ -138,7 +141,7 @@ router.get("/:id", lkAuth, async (req, res, next) => {
       },
     });
 
-    if (!booking || booking.clientId !== clientId) {
+    if (!booking || booking.clientId !== clientId || booking.deletedAt) {
       throw new HttpError(404, "Не найдено", "NOT_FOUND");
     }
     if (!VISIBLE_STATUSES.includes(booking.status as any)) {
@@ -192,9 +195,10 @@ router.get("/:id/estimate.pdf", lkAuth, async (req, res, next) => {
     const clientId = lkClientId(req);
     const booking = await prisma.booking.findUnique({
       where: { id: req.params.id },
-      select: { clientId: true, status: true },
+      select: { clientId: true, status: true, deletedAt: true },
     });
-    if (!booking || booking.clientId !== clientId) throw new HttpError(404, "Не найдено", "NOT_FOUND");
+    // LKG-4: архивную бронь клиент не открывает и её PDF не качает.
+    if (!booking || booking.clientId !== clientId || booking.deletedAt) throw new HttpError(404, "Не найдено", "NOT_FOUND");
     if (!VISIBLE_STATUSES.includes(booking.status as any)) throw new HttpError(404, "Не найдено", "NOT_FOUND");
 
     const pdfBuf = await buildBookingEstimatePdf(req.params.id);
@@ -212,9 +216,10 @@ router.get("/:id/act.pdf", lkAuth, async (req, res, next) => {
     const clientId = lkClientId(req);
     const booking = await prisma.booking.findUnique({
       where: { id: req.params.id },
-      select: { clientId: true, status: true },
+      select: { clientId: true, status: true, deletedAt: true },
     });
-    if (!booking || booking.clientId !== clientId) throw new HttpError(404, "Не найдено", "NOT_FOUND");
+    // LKG-4: архивную бронь клиент не открывает и её PDF не качает.
+    if (!booking || booking.clientId !== clientId || booking.deletedAt) throw new HttpError(404, "Не найдено", "NOT_FOUND");
     if (booking.status !== "RETURNED") throw new HttpError(404, "Не найдено", "NOT_FOUND");
 
     const pdfBuf = await buildBookingActPdf(req.params.id);
