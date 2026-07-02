@@ -235,7 +235,7 @@ describe("Full ISSUE flow", () => {
 // ──────────────────────────────────────────────────────────────────
 
 describe("Full RETURN flow", () => {
-  it("возвращает 2 из 3 выданных юнитов, 1 остаётся ISSUED и помечается как missing", async () => {
+  it("возвращает 2 из 3 выданных юнитов, 1 переводится в MISSING и помечается как missing", async () => {
     const {
       createSession,
       completeSession,
@@ -269,15 +269,20 @@ describe("Full RETURN flow", () => {
     expect(summary.scanned).toBe(2);
     expect(summary.missing).toHaveLength(1);
 
-    // 4. Проверяем статусы юнитов: 2 стали AVAILABLE, 1 остался ISSUED
+    // 4. Проверяем статусы юнитов: 2 стали AVAILABLE, 1 перешёл в MISSING.
+    // ws-1: не отсканированный и не помеченный (ремонт/проблема) юнит больше НЕ
+    // остаётся в ISSUED при RETURNED-броне — он «не принят» и уходит в MISSING,
+    // чтобы не застревать в выданном пуле и не раздувать доступность.
     const dbUnits = await prisma.equipmentUnit.findMany({
       where: { equipmentId: equipment.id },
       orderBy: { createdAt: "asc" },
     });
     const availableCount = dbUnits.filter((u: any) => u.status === "AVAILABLE").length;
+    const missingCount = dbUnits.filter((u: any) => u.status === "MISSING").length;
     const issuedCount = dbUnits.filter((u: any) => u.status === "ISSUED").length;
     expect(availableCount).toBe(2);
-    expect(issuedCount).toBe(1);
+    expect(missingCount).toBe(1);
+    expect(issuedCount).toBe(0);
 
     // 5. returnedAt задан для 2 возвращённых юнитов
     const returnedBiu = await prisma.bookingItemUnit.findMany({

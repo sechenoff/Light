@@ -277,7 +277,7 @@ describe("H2: equipment units per-route guards", () => {
 // ──────────────────────────────────────────────────────────────────
 
 describe("H4: аудит DELETE /api/bookings/:id", () => {
-  it("после удаления брони создаётся AuditEntry с action=delete", async () => {
+  it("после архивации брони создаётся AuditEntry с action=BOOKING_ARCHIVED", async () => {
     // Создаём клиента и оборудование и бронь напрямую через Prisma
     const client = await prisma.client.create({ data: { name: "Клиент Аудит" } });
     const eq = await prisma.equipment.create({
@@ -315,13 +315,17 @@ describe("H4: аудит DELETE /api/bookings/:id", () => {
     const auditsAfter = await prisma.auditEntry.count({ where: { entityId: booking.id } });
     expect(auditsAfter).toBe(auditsBefore + 1);
 
+    // С фичи архива (2026-05) DELETE — soft-delete: action=BOOKING_ARCHIVED,
+    // after несёт deletedAt/deletedBy (+ BD-2: released-счётчики). Тест обновлён
+    // со старого контракта BOOKING_DELETE / after=null.
     const entry = await prisma.auditEntry.findFirst({
-      where: { entityId: booking.id, action: "BOOKING_DELETE" },
+      where: { entityId: booking.id, action: "BOOKING_ARCHIVED" },
     });
     expect(entry).not.toBeNull();
     expect(entry!.entityType).toBe("Booking");
     expect(JSON.parse(entry!.before)).toMatchObject({ status: "DRAFT" });
-    expect(entry!.after).toBeNull();
+    expect(entry!.after).not.toBeNull();
+    expect(JSON.parse(entry!.after!)).toMatchObject({ deletedBy: expect.any(String) });
   });
 });
 

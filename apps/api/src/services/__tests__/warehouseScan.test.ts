@@ -25,6 +25,12 @@ vi.mock("../../prisma", () => ({
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    // Мок не поспевал за фичей пробега (2026-05-24): RETURN-ветка перед
+    // транзакцией читает bookingVehicle.findMany (проверка обязательного пробега).
+    bookingVehicle: {
+      findMany: vi.fn(),
     },
     bookingItem: {
       findFirst: vi.fn(),
@@ -311,14 +317,25 @@ describe("completeSession", () => {
 
     db.$transaction.mockImplementation(async (fn: any) => fn(db));
     db.equipmentUnit.update.mockResolvedValue({});
+    // ws-1: не отсканированные и не помеченные юниты переводятся в MISSING батчем.
+    db.equipmentUnit.updateMany.mockResolvedValue({ count: 1 });
     db.bookingItemUnit.update.mockResolvedValue({});
     db.scanSession.update.mockResolvedValue({ id: "s1", status: "COMPLETED" });
+    // Фича пробега: у брони нет машин → проверка обязательного пробега пропускается.
+    db.bookingVehicle.findMany.mockResolvedValue([]);
 
     const result = await completeSession("s1");
     expect(result.scanned).toBe(1);
     expect(result.expected).toBe(2);
     expect(result.missing).toContain(notScannedUnitId);
     expect(result.substituted).toEqual([]);
+    // ws-1: недостающий юнит уходит из ISSUED в MISSING (а не остаётся выданным).
+    expect(db.equipmentUnit.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: [notScannedUnitId] }, status: "ISSUED" }),
+        data: { status: "MISSING" },
+      }),
+    );
   });
 });
 
