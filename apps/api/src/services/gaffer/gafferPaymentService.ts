@@ -40,8 +40,17 @@ export interface UpdatePaymentInput {
 
 /** Нормализует paidAt: принимает YYYY-MM-DD или ISO, возвращает Moscow-midnight UTC. */
 function parsePaidAt(value: string): Date {
-  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : value.slice(0, 10);
-  return fromMoscowDateString(dateOnly);
+  // LKG-3: невалидная дата (мусор в paidAt/from/to) раньше валила fromMoscowDateString
+  // необработанным Error → 500. Ловим и отдаём чистую 400.
+  try {
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : value.slice(0, 10);
+    const d = fromMoscowDateString(dateOnly);
+    if (Number.isNaN(d.getTime())) throw new Error("Invalid date");
+    return d;
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    throw new HttpError(400, "Некорректная дата", "INVALID_DATE");
+  }
 }
 
 function serializePayment(p: {
@@ -194,7 +203,18 @@ export async function updatePayment(req: Request, id: string, data: UpdatePaymen
     updateData.amount = amount;
   }
   if (data.paidAt !== undefined) updateData.paidAt = parsePaidAt(data.paidAt);
-  if (data.paymentMethodId !== undefined) updateData.paymentMethodId = data.paymentMethodId;
+  if (data.paymentMethodId !== undefined) {
+    // LKG-1: способ оплаты должен принадлежать тому же tenant'у (иначе можно
+    // привязать чужой GafferPaymentMethod). null — отвязка, пропускаем без проверки.
+    if (data.paymentMethodId) {
+      const method = await prisma.gafferPaymentMethod.findFirst({
+        where: { id: data.paymentMethodId, gafferUserId },
+        select: { id: true },
+      });
+      if (!method) throw new HttpError(404, "Способ оплаты не найден", "NOT_FOUND");
+    }
+    updateData.paymentMethodId = data.paymentMethodId;
+  }
   if (data.comment !== undefined) updateData.comment = data.comment?.trim() ?? null;
 
   const updated = await prisma.gafferPayment.update({

@@ -99,14 +99,19 @@ export async function createPayment(args: CreatePaymentArgs): Promise<Payment> {
   // Валидация лимитов WAREHOUSE (SUPER_ADMIN обходит)
   validateWhLimits(role, { method: args.method, amount }, { status: booking.status });
 
-  // Если передан invoiceId — проверяем существование и статус VOID
+  // Если передан invoiceId — проверяем существование, статус VOID и принадлежность броне
   if (args.invoiceId) {
     const inv = await prisma.invoice.findUnique({
       where: { id: args.invoiceId },
-      select: { id: true, voidedAt: true },
+      select: { id: true, voidedAt: true, bookingId: true },
     });
     if (!inv) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
     if (inv.voidedAt) throw new HttpError(409, "Счёт аннулирован — нельзя привязать платёж", "INVOICE_VOID");
+    // MF-4: платёж брони A не должен закрывать счёт брони B. Без этой сверки
+    // recomputeInvoiceStatus зачитывал бы одни деньги на два разных клиента.
+    if (inv.bookingId !== args.bookingId) {
+      throw new HttpError(409, "Счёт принадлежит другой брони", "INVOICE_BOOKING_MISMATCH");
+    }
   }
 
   // Аудит-экшен зависит от роли

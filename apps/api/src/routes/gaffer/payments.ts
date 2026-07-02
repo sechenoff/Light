@@ -15,6 +15,7 @@ import {
   updatePayment,
   deletePayment,
 } from "../../services/gaffer/gafferPaymentService";
+import { decimalString } from "../../utils/decimalString";
 
 const router = express.Router();
 
@@ -30,7 +31,8 @@ const listQuerySchema = z.object({
 const createPaymentSchema = z.object({
   projectId: z.string().min(1, "Проект обязателен"),
   direction: z.enum(["IN", "OUT"]),
-  amount: z.union([z.string(), z.number()]),
+  // LKG-2: decimalString даёт чистую 400 на «12,5»/«12 000»/мусоре вместо 500 DecimalError.
+  amount: decimalString,
   paidAt: z.string().min(1, "Дата платежа обязательна"),
   paymentMethodId: z.string().optional(),
   memberId: z.string().optional(),
@@ -38,7 +40,7 @@ const createPaymentSchema = z.object({
 });
 
 const updatePaymentSchema = z.object({
-  amount: z.union([z.string(), z.number()]).optional(),
+  amount: decimalString.optional(),
   paidAt: z.string().optional(),
   paymentMethodId: z.string().nullable().optional(),
   comment: z.string().trim().max(500).nullable().optional(),

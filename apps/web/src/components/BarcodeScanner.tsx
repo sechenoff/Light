@@ -28,6 +28,14 @@ export default function BarcodeScanner({
   const containerRef = useRef<HTMLDivElement>(null);
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
+  // formats/fps читаем через ref: иначе, если родитель передаёт formats инлайн-
+  // литералом (новый массив каждый рендер), камера-useEffect с deps [formats,fps]
+  // перезапускался на КАЖДОМ рендере — это ловило «Maximum update depth exceeded»
+  // (мигание камеры, теринг). Стартуем камеру один раз на маунт (deps []).
+  const formatsRef = useRef(formats);
+  formatsRef.current = formats;
+  const fpsRef = useRef(fps);
+  fpsRef.current = fps;
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [torchOn, setTorchOn] = useState(false);
   const [cameraError, setCameraError] = useState(false);
@@ -60,7 +68,7 @@ export default function BarcodeScanner({
     if (!containerRef.current) return;
 
     const scanner = new Html5Qrcode(containerId.current, {
-      formatsToSupport: formats,
+      formatsToSupport: formatsRef.current,
       useBarCodeDetectorIfSupported: true,
       verbose: undefined,
     });
@@ -75,7 +83,7 @@ export default function BarcodeScanner({
     scanner
       .start(
         { facingMode: "environment" },
-        { fps, qrbox: qrboxFunction },
+        { fps: fpsRef.current, qrbox: qrboxFunction },
         (decodedText) => onScanRef.current(decodedText),
         () => {},
       )
@@ -87,7 +95,9 @@ export default function BarcodeScanner({
       scannerRef.current = null;
       scanner.stop().catch(() => {});
     };
-  }, [formats, fps]);
+    // Стартуем камеру один раз на маунт; formats/fps — через ref (см. выше).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleTorch = useCallback(() => {
     const next = !torchOn;

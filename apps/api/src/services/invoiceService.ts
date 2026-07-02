@@ -256,13 +256,18 @@ export async function recomputeInvoiceStatus(invoiceId: string, txArg?: TxClient
 
   const paidAmount = Decimal.max(paymentsSum.sub(refundsSum), new Decimal(0));
 
+  // MF-5: OVERDUE проверяется ДО PARTIAL_PAID. Раньше любой частичный платёж
+  // навсегда снимал сигнал просрочки (ветка PARTIAL_PAID стояла первой, и
+  // просроченный частично-оплаченный счёт никогда не становился OVERDUE — ни здесь,
+  // ни в ночном cron). Теперь: PAID → просрочка → частичная оплата → выставлен → черновик.
+  const isOverdue = invoice.dueDate != null && invoice.dueDate.getTime() < Date.now() && paidAmount.lessThan(total);
   let status: InvoiceStatus;
   if (paidAmount.greaterThanOrEqualTo(total) && total.greaterThan(0)) {
     status = "PAID";
+  } else if (isOverdue) {
+    status = "OVERDUE";
   } else if (paidAmount.greaterThan(0)) {
     status = "PARTIAL_PAID";
-  } else if (invoice.dueDate && invoice.dueDate.getTime() < Date.now() && paidAmount.lessThan(total)) {
-    status = "OVERDUE";
   } else if (invoice.issuedAt) {
     status = "ISSUED";
   } else {
