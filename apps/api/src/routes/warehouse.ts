@@ -211,7 +211,8 @@ warehouseScanRouter.get("/bookings", warehouseAuth, async (req, res, next) => {
     const status = operation === "ISSUE" ? "CONFIRMED" : "ISSUED";
 
     const bookings = await prisma.booking.findMany({
-      where: { status },
+      // RR-4: архивные брони не должны появляться в киоске (их нельзя выдавать).
+      where: { status, deletedAt: null },
       select: {
         id: true,
         client: true,
@@ -873,7 +874,8 @@ warehouseScanRouter.post("/sessions/:id/cancel", warehouseAuth, async (req, res,
 warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
   try {
     const bookings = await prisma.booking.findMany({
-      where: { status: "ISSUED" },
+      // RR-4: архивные брони скрываем и из списка «в работе».
+      where: { status: "ISSUED", deletedAt: null },
       orderBy: { endDate: "asc" },
       include: {
         client: { select: { name: true, phone: true } },

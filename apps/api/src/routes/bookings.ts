@@ -612,6 +612,63 @@ router.patch("/:id", async (req, res, next) => {
             customCategory: !it.equipmentId && it.customName ? CUSTOM_LINE_CATEGORY : null,
           })),
         });
+
+        // BL-01: deleteMany выше каскадно стёр BookingItemUnit (onDelete: Cascade).
+        // Для CONFIRMED-брони резервы юнитов — источник правды доступности: без
+        // перерезервирования UNIT-позиции «освобождаются» и возможна двойная
+        // бронь. Восстанавливаем резервы по новому составу (как confirmBooking).
+        if (existing.status === "CONFIRMED") {
+          const freshItems = await tx.bookingItem.findMany({
+            where: { bookingId: id, equipmentId: { not: null } },
+            select: {
+              id: true,
+              equipmentId: true,
+              quantity: true,
+              equipment: { select: { stockTrackingMode: true, name: true } },
+            },
+          });
+          const unitItems = freshItems.filter((it) => it.equipment?.stockTrackingMode === "UNIT");
+          if (unitItems.length > 0) {
+            // Юниты, занятые ЖИВЫМИ резервами других пересекающихся броней.
+            const overlapping = await tx.bookingItemUnit.findMany({
+              where: {
+                returnedAt: null,
+                bookingItem: {
+                  booking: {
+                    id: { not: id },
+                    status: { in: ["CONFIRMED", "ISSUED"] },
+                    deletedAt: null,
+                    startDate: { lte: end },
+                    endDate: { gte: start },
+                  },
+                },
+              },
+              select: { equipmentUnitId: true },
+            });
+            const takenByOthers = new Set(overlapping.map((r) => r.equipmentUnitId));
+            for (const it of unitItems) {
+              const availableUnits = await tx.equipmentUnit.findMany({
+                where: { equipmentId: it.equipmentId!, status: "AVAILABLE" },
+                select: { id: true },
+                orderBy: { id: "asc" },
+              });
+              const freeUnitIds = availableUnits
+                .map((u) => u.id)
+                .filter((uid) => !takenByOthers.has(uid))
+                .slice(0, it.quantity);
+              if (freeUnitIds.length < it.quantity) {
+                throw new HttpError(
+                  409,
+                  `Недостаточно свободных единиц «${it.equipment?.name ?? it.equipmentId}» на новые даты/количество`,
+                  "NOT_ENOUGH_UNITS",
+                );
+              }
+              await tx.bookingItemUnit.createMany({
+                data: freeUnitIds.map((unitId) => ({ bookingItemId: it.id, equipmentUnitId: unitId })),
+              });
+            }
+          }
+        }
       }
       const updated = await tx.booking.update({
         where: { id },
@@ -966,8 +1023,13 @@ router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
       // BD-2: архивация не-терминальной брони (CONFIRMED/ISSUED/PENDING_APPROVAL)
       // обязана освободить UNIT-резервы — иначе equipmentUnit застревает в ISSUED
       // и выпадает из учёта доступности (бронь-то скрыта и больше не сканируется).
-      // releaseBookingUnits идемпотентен: для терминальных броней (нет резервов) → no-op.
-      const rel = await releaseBookingUnits(id, tx);
+      // RR-1: для терминальных (RETURNED/CANCELLED) release пропускаем — их резервы
+      // либо история приёмки (returnedAt), либо уже сняты cancel-веткой; сам
+      // releaseBookingUnits дополнительно фильтрует returnedAt: null.
+      const isTerminal = existing.status === "RETURNED" || existing.status === "CANCELLED";
+      const rel = isTerminal
+        ? { releasedReservations: 0, freedUnitIds: [] as string[] }
+        : await releaseBookingUnits(id, tx);
       await writeAuditEntry({
         tx,
         userId,

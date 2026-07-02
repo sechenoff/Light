@@ -36,6 +36,8 @@ export async function findAddonConflict(
     where: {
       id: { not: excludeBookingId },
       status: { in: [...BLOCKING_STATUSES] },
+      // RR-2: архивные брони не считаются конфликтом добора.
+      deletedAt: null,
       startDate: { lte: end },
       endDate: { gte: start },
       items: { some: { equipmentId } },

@@ -669,21 +669,40 @@ bookingScene.on("text", async (ctx) => {
       const deleteThinking = () =>
         ctx.telegram.deleteMessage(ctx.chat!.id, thinking.message_id).catch(() => {});
 
+      // BOT-2: try накрывает ТОЛЬКО createBooking. Раньше в тот же try попадали
+      // reply с Markdown-интерполяцией пользовательского ввода — падение reply
+      // (например, непарный `_` в имени клиента → 400 can't parse entities) уводило
+      // в catch с confirmKeyboard, и повторное «Подтвердить» создавало ВТОРУЮ бронь.
+      let booking: Awaited<ReturnType<typeof createBooking>>;
       try {
-        const booking = await createBooking({
+        booking = await createBooking({
           clientName: s.clientName!,
           projectName: s.projectName ?? "",
           startDate: s.startDate!,
           endDate: s.endDate!,
           items: s.items!,
         });
+      } catch (e) {
+        await deleteThinking();
+        const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
+        await ctx.reply(
+          `❌ Не удалось создать бронь: ${msg}\n\nПопробуйте ещё раз или обратитесь к администратору.`,
+          confirmKeyboard,
+        );
+        return;
+      }
 
+      // Бронь СОЗДАНА — дальше только уведомления. Любая их ошибка не должна
+      // возвращать пользователя к повторному подтверждению: сцена закрывается всегда.
+      // BOT-6: пользовательский ввод не интерполируем в Markdown — экранируем.
+      const escMd = (t: string) => t.replace(/([_*[\]`])/g, "\\$1");
+      try {
         await deleteThinking();
 
         await ctx.reply(
           `✅ *Бронь создана!*\n\n` +
-          `👤 Клиент: ${s.clientName}\n` +
-          `🎬 Проект: ${s.projectName || "—"}\n` +
+          `👤 Клиент: ${escMd(s.clientName!)}\n` +
+          `🎬 Проект: ${escMd(s.projectName || "—")}\n` +
           `📅 ${s.startDate} — ${s.endDate}\n\n` +
           `📦 Оборудование:\n${fmtList(s.items!)}\n\n` +
           `_Управление бронью — в системе Light Rental._`,
@@ -693,9 +712,9 @@ bookingScene.on("text", async (ctx) => {
         const adminIds = (process.env.ADMIN_CHAT_IDS ?? "")
           .split(",").map((x) => x.trim()).filter(Boolean);
         const adminMsg =
-          `🔔 *Новая бронь: ${booking.displayName}*\n` +
-          `👤 ${s.clientName}\n` +
-          `🎬 ${s.projectName || "—"}\n` +
+          `🔔 *Новая бронь: ${escMd(booking.displayName)}*\n` +
+          `👤 ${escMd(s.clientName!)}\n` +
+          `🎬 ${escMd(s.projectName || "—")}\n` +
           `📅 ${s.startDate} — ${s.endDate}\n` +
           `📦 ${s.items!.length} позиций\n` +
           `💰 ${totalCost(s.items!, s.startDate!, s.endDate!).toLocaleString("ru-RU")} ₽\n` +
@@ -708,15 +727,11 @@ bookingScene.on("text", async (ctx) => {
           parse_mode: "Markdown",
           ...mainMenuKeyboard,
         });
-        await ctx.scene.leave();
-      } catch (e) {
-        await deleteThinking();
-        const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
-        await ctx.reply(
-          `❌ Не удалось создать бронь: ${msg}\n\nПопробуйте ещё раз или обратитесь к администратору.`,
-          confirmKeyboard,
-        );
+      } catch {
+        // Уведомление не ушло, но бронь есть — сообщаем без Markdown (не упадёт).
+        await ctx.reply("✅ Бронь создана. Управление — в системе Light Rental.", mainMenuKeyboard).catch(() => {});
       }
+      await ctx.scene.leave();
       return;
     }
 

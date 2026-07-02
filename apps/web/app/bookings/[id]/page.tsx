@@ -541,7 +541,10 @@ export default function BookingDetailPage() {
         if (nextOverrideRaw === "") {
           body.manualFinalAmount = null;
         } else {
-          const n = Number.parseFloat(nextOverrideRaw.replace(",", "."));
+          // WEB-1: parseFloat("12 000") === 12 — молча резал суммы с пробелами
+          // (включая NBSP из ru-RU форматирования). Убираем разделители и парсим
+          // строго через Number: мусор даёт NaN и отсекается проверкой ниже.
+          const n = Number(nextOverrideRaw.replace(/[\s  ]/g, "").replace(",", "."));
           if (!Number.isFinite(n) || n < 0) {
             toast.error("Итог брони должен быть неотрицательным числом");
             return;

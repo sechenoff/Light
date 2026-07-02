@@ -100,6 +100,8 @@ export async function getAvailability(args: {
   const overlappingBookings = await tx.booking.findMany({
     where: {
       status: { in: BLOCKING_STATUSES },
+      // RR-2: архивные (soft-deleted) брони не занимают доступность.
+      deletedAt: null,
       startDate: { lte: args.endDate },
       endDate: { gte: args.startDate },
       ...(args.excludeBookingId ? { id: { not: args.excludeBookingId } } : {}),
@@ -157,9 +159,13 @@ export async function getAvailability(args: {
   }
 
   return equipments.map((e) => {
+    // WSU-1: для UNIT-режима occupied = max(число зарезервированных юнитов,
+    // сумма quantity по BookingItem). Quick-add/inline-добор со склада увеличивают
+    // quantity БЕЗ создания BookingItemUnit — если считать только по резервациям,
+    // добранное количество не занимает доступность и возможна двойная выдача.
     const occupied =
       e.stockTrackingMode === "UNIT"
-        ? (occupiedUnitsByEquipment.get(e.id)?.size ?? 0)
+        ? Math.max(occupiedUnitsByEquipment.get(e.id)?.size ?? 0, occupiedCountByEquipment.get(e.id) ?? 0)
         : (occupiedCountByEquipment.get(e.id) ?? 0);
     const available = clampNonNegative(baseQtyOf(e) - occupied);
     return {
