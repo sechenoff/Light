@@ -858,13 +858,53 @@ describe("GET /api/tasks?sort=completedAt-desc", () => {
     expect(res.body.nextCursor).toBeNull();
   });
 
-  it("cursor вместе с sort=completedAt-desc → 400 CURSOR_SORT_UNSUPPORTED", async () => {
+  it("compound-курсор постранично отдаёт DONE по completedAt desc (архив: «Загрузить ещё»)", async () => {
+    const { hashPassword, signSession } = await import("../services/auth");
+    const hash = await hashPassword("cursortest123");
+    const curUser = await prisma.adminUser.create({
+      data: { username: `cursortest_${Date.now()}`, passwordHash: hash, role: "SUPER_ADMIN" },
+    });
+    const curToken = signSession({ userId: curUser.id, username: curUser.username, role: "SUPER_ADMIN" });
+    const AUTH_CUR = () => ({ "X-API-Key": "test-key-1", Authorization: `Bearer ${curToken}` });
+
+    const mk = (title: string, msAgo: number) =>
+      createTaskDirect({
+        title, status: "DONE", urgent: false,
+        createdBy: curUser.id, completedBy: curUser.id,
+        completedAt: new Date(Date.now() - msAgo),
+      });
+    const oldest = await mk("Курсор: самая старая", 3 * 60 * 60 * 1000);
+    const newest = await mk("Курсор: самая свежая", 60 * 1000);
+    const middle = await mk("Курсор: средняя", 60 * 60 * 1000);
+
+    // Первая страница: 2 самых свежих + nextCursor
+    const page1 = await request(app)
+      .get("/api/tasks?filter=created-by-me&status=DONE&sort=completedAt-desc&limit=2")
+      .set(AUTH_CUR());
+    expect(page1.status).toBe(200);
+    expect(page1.body.items.map((t: any) => t.id)).toEqual([newest.id, middle.id]);
+    expect(page1.body.nextCursor).toBe(
+      `${middle.completedAt!.toISOString()}|${middle.id}`,
+    );
+
+    // Вторая страница по курсору: хвост без дублей
+    const page2 = await request(app)
+      .get(
+        `/api/tasks?filter=created-by-me&status=DONE&sort=completedAt-desc&limit=2&cursor=${encodeURIComponent(page1.body.nextCursor)}`,
+      )
+      .set(AUTH_CUR());
+    expect(page2.status).toBe(200);
+    expect(page2.body.items.map((t: any) => t.id)).toEqual([oldest.id]);
+    expect(page2.body.nextCursor).toBeNull();
+  });
+
+  it("невалидный cursor с sort=completedAt-desc → 400 INVALID_CURSOR", async () => {
     const res = await request(app)
       .get("/api/tasks?filter=all&status=DONE&sort=completedAt-desc&cursor=abc123")
       .set(AUTH_SA());
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe("CURSOR_SORT_UNSUPPORTED");
+    expect(res.body.code).toBe("INVALID_CURSOR");
   });
 
   it("невалидный sort → 400", async () => {

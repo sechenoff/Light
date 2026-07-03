@@ -32,16 +32,23 @@ const listQuerySchema = z.object({
   to: z.string().datetime().optional(),
   limit: z.coerce.number().min(1).max(200).optional(),
   offset: z.coerce.number().min(0).optional(),
+  /**
+   * MC1: «Включить аннулированные» — voided-платежи возвращаются в items
+   * (с voidedAt/voidReason). На methodTotals не влияет: агрегаты всегда
+   * считаются только по действующим платежам.
+   */
+  includeVoided: z.enum(["true", "false"]).optional(),
 });
 
 // Чтение и список — только SUPER_ADMIN
 router.get("/", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
-    const query = listQuerySchema.parse(req.query);
+    const { includeVoided, from, to, ...query } = listQuerySchema.parse(req.query);
     const result = await paymentService.listPayments({
       ...query,
-      from: query.from ? new Date(query.from) : undefined,
-      to: query.to ? new Date(query.to) : undefined,
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
+      includeVoided: includeVoided === "true",
     });
     res.json({
       items: result.items.map((p) => ({ ...p, amount: p.amount.toString() })),

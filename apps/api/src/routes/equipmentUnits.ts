@@ -5,6 +5,8 @@ import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { generateBarcodeId, generateBarcodePayload, renderLabelPng, renderLabelsPdf } from "../services/barcode";
 import { rolesGuard } from "../middleware/rolesGuard";
+import { writeAuditEntry } from "../services/audit";
+import { createRepair } from "../services/repairService";
 
 type UnitParams = { equipmentId: string; unitId?: string };
 const router = express.Router({ mergeParams: true });
@@ -300,23 +302,71 @@ router.patch("/:unitId", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, r
       throw new HttpError(404, "Единица оборудования не найдена");
     }
 
-    const updated = await prisma.equipmentUnit.update({
-      where: { id: unitId },
-      data: {
-        serialNumber: body.serialNumber === undefined ? undefined : body.serialNumber,
-        status: body.status,
-        comment: body.comment === undefined ? undefined : body.comment,
-      },
-      select: {
-        id: true,
-        status: true,
-        serialNumber: true,
-        barcode: true,
-        barcodePayload: true,
-        comment: true,
-        createdAt: true,
-      },
+    const statusChanged = body.status !== undefined && body.status !== existing.status;
+
+    // eu-6: «Выдана» — статус процесса выдачи по брони (сканер/киоск), руками его
+    // ставить нельзя: получится ISSUED без ScanSession и рассинхрон склада.
+    if (statusChanged && body.status === "ISSUED") {
+      throw new HttpError(
+        409,
+        "Статус «Выдана» устанавливается только при выдаче по брони через сканирование",
+        "MANUAL_ISSUE_FORBIDDEN"
+      );
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const unit = await tx.equipmentUnit.update({
+        where: { id: unitId },
+        data: {
+          serialNumber: body.serialNumber === undefined ? undefined : body.serialNumber,
+          status: body.status,
+          comment: body.comment === undefined ? undefined : body.comment,
+        },
+        select: {
+          id: true,
+          status: true,
+          serialNumber: true,
+          barcode: true,
+          barcodePayload: true,
+          comment: true,
+          createdAt: true,
+        },
+      });
+
+      // eu-6: ручная смена статуса — аудируемое событие (как scan-session переходы).
+      if (statusChanged) {
+        await writeAuditEntry({
+          tx,
+          userId: req.adminUser!.userId,
+          action: "UNIT_STATUS_MANUAL_CHANGE",
+          entityType: "EquipmentUnit",
+          entityId: unitId!,
+          before: { status: existing.status },
+          after: { status: unit.status },
+        });
+      }
+
+      return unit;
     });
+
+    // eu-6: ручной перевод в «Ремонт» создаёт карточку в мастерской — иначе
+    // единица уходит в MAINTENANCE невидимкой для /repair. Post-tx best-effort
+    // (паттерн createRepair): провал не откатывает смену статуса, дубль при
+    // уже открытой карточке гасится REPAIR_ACTIVE_EXISTS.
+    if (statusChanged && body.status === "MAINTENANCE") {
+      try {
+        await createRepair({
+          unitId: unitId!,
+          reason: body.comment?.trim() || "Ручной перевод в ремонт со страницы единиц",
+          urgency: "NORMAL",
+          createdBy: req.adminUser!.userId,
+        });
+      } catch (e) {
+        if (!(e instanceof HttpError && e.code === "REPAIR_ACTIVE_EXISTS")) {
+          console.error("[equipmentUnits] createRepair после ручного MAINTENANCE не удался:", e);
+        }
+      }
+    }
 
     res.json({ unit: updated });
   } catch (err) {

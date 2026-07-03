@@ -17,6 +17,7 @@ import { PaymentsFilterBar, type PaymentsFilter } from "./PaymentsFilterBar";
 import { PaymentsTable, type OverviewItem } from "./PaymentsTable";
 import { PaymentsTotalsStrip } from "./PaymentsTotalsStrip";
 import { toMoscowDateString } from "../../lib/moscowDate";
+import { FINANCE_TERMS } from "../../lib/financeTerms";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,9 +29,13 @@ interface PaymentItem {
   id: string;
   amount: string;
   method: PaymentMethod;
-  receivedAt: string;
+  /** Может быть null у легаси-платежей (status=RECEIVED без receivedAt) — фолбэк на paymentDate/createdAt. */
+  receivedAt: string | null;
+  paymentDate?: string | null;
+  createdAt?: string | null;
   note: string | null;
   voidedAt: string | null;
+  voidReason?: string | null;
   createdBy: string | null;
   /** H2: разрешённое имя пользователя из AdminUser (вместо cuid) */
   createdByName?: string | null;
@@ -89,12 +94,28 @@ const METHOD_CHIP_LABELS: Record<PaymentMethod, string> = {
   OTHER: "Онлайн",
 };
 
-function formatPaymentDate(iso: string): { date: string; time: string } {
+/**
+ * Дата транзакции с защитой от «Invalid Date»: если даты нет вовсе
+ * (или строка не парсится) — показываем «—», а не мусор.
+ * Экспортирована для юнит-тестов.
+ */
+export function formatPaymentDate(iso: string | null | undefined): { date: string; time: string } {
+  if (!iso) return { date: "—", time: "" };
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return { date: "—", time: "" };
   return {
     date: d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }),
     time: d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
   };
+}
+
+/** Фолбэк-цепочка даты платежа: receivedAt → paymentDate → createdAt (НЕ p.id). */
+export function paymentDateOf(p: {
+  receivedAt: string | null;
+  paymentDate?: string | null;
+  createdAt?: string | null;
+}): string | null {
+  return p.receivedAt ?? p.paymentDate ?? p.createdAt ?? null;
 }
 
 /** Converts ISO datetime to YYYY-MM-DD for API */
@@ -235,6 +256,9 @@ export function PaymentsOverviewPage() {
       params.set("offset", String(offset));
       params.set("from", range.from);
       params.set("to", range.to);
+      // Сервер по умолчанию исключает аннулированные — без параметра чекбокс
+      // «Включить аннулированные» фильтровал бы пустое множество.
+      if (includeVoided) params.set("includeVoided", "true");
       apiFetch<PaymentsListResponse>(`/api/payments?${params}`)
         .then((r) => {
           if (!cancelled) {
@@ -252,7 +276,7 @@ export function PaymentsOverviewPage() {
         });
       return () => { cancelled = true; };
     },
-    []
+    [includeVoided]
   );
 
   useEffect(() => {
@@ -363,8 +387,16 @@ export function PaymentsOverviewPage() {
             <div className="flex items-center gap-2 flex-wrap">
               {/* Period selector */}
               <PeriodSelector value={period} onChange={handlePeriodChange} />
-              {/* FIN-02: кнопка «Экспорт XLSX» была без onClick (тупик) — эндпоинта
-                  экспорта платежей нет. Убрана, чтобы не создавать ложного аффорданса. */}
+              {/* FIN-02 (ревизия): эндпоинт экспорта платежей существует —
+                  GET /api/finance/export/payments.xlsx (SA-only), подключаем его. */}
+              {user?.role === "SUPER_ADMIN" && (
+                <button
+                  onClick={() => { window.location.href = "/api/finance/export/payments.xlsx"; }}
+                  className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface text-ink rounded-lg hover:bg-surface-subtle transition-colors whitespace-nowrap"
+                >
+                  📊 Экспорт XLSX
+                </button>
+              )}
               {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
                 <button
                   onClick={() => setRecordPaymentOpen(true)}
@@ -540,7 +572,7 @@ export function PaymentsOverviewPage() {
                         const amt = Number(p.amount);
                         const isRefund = amt < 0;
                         const isVoided = !!p.voidedAt;
-                        const { date, time } = formatPaymentDate(p.receivedAt ?? p.id);
+                        const { date, time } = formatPaymentDate(paymentDateOf(p));
 
                         return (
                           <tr
@@ -555,7 +587,9 @@ export function PaymentsOverviewPage() {
                               <span className="text-ink-3">{time}</span>
                             </td>
                             <td className="px-3 py-3">
-                              <strong className="text-ink">{p.booking?.client.name ?? "—"}</strong>
+                              <strong className={isVoided ? "text-ink-3 line-through" : "text-ink"}>
+                                {p.booking?.client.name ?? "—"}
+                              </strong>
                             </td>
                             <td className="px-3 py-3">
                               {p.booking ? (
@@ -598,11 +632,21 @@ export function PaymentsOverviewPage() {
                             </td>
                             <td className="px-3 py-3">
                               {isVoided ? (
-                                <StatusPill variant="none" label="Аннулирован" />
+                                <div>
+                                  <StatusPill variant="none" label={FINANCE_TERMS.void} />
+                                  {(p.voidReason ?? p.note) && (
+                                    <div
+                                      className="text-[11px] text-ink-3 mt-0.5 max-w-[160px] truncate"
+                                      title={p.voidReason ?? p.note ?? undefined}
+                                    >
+                                      {p.voidReason ?? p.note}
+                                    </div>
+                                  )}
+                                </div>
                               ) : isRefund ? (
                                 <StatusPill variant="warn" label="Возврат" />
                               ) : (
-                                <StatusPill variant="ok" label="Получен" />
+                                <StatusPill variant="ok" label={FINANCE_TERMS.received} />
                               )}
                             </td>
                             <td className="px-3 py-3">
@@ -626,9 +670,7 @@ export function PaymentsOverviewPage() {
                                   </button>
                                 </div>
                               )}
-                              {isVoided && p.note && (
-                                <span className="text-[11px] text-ink-3 truncate max-w-[80px] block">{p.note}</span>
-                              )}
+                              {/* Причина аннулирования показана в колонке «Статус» */}
                             </td>
                           </tr>
                         );
@@ -643,7 +685,7 @@ export function PaymentsOverviewPage() {
                     const amt = Number(p.amount);
                     const isRefund = amt < 0;
                     const isVoided = !!p.voidedAt;
-                    const { date, time } = formatPaymentDate(p.receivedAt ?? p.id);
+                    const { date, time } = formatPaymentDate(paymentDateOf(p));
                     return (
                       <div
                         key={p.id}
@@ -656,15 +698,25 @@ export function PaymentsOverviewPage() {
                         }`}
                       >
                         <div className="flex justify-between items-center">
-                          <strong className="text-ink text-[13px]">{p.booking?.client.name ?? "—"}</strong>
-                          <span className={`mono-num font-semibold text-[14px] ${isRefund ? "text-amber" : "text-emerald"}`}>
-                            {isRefund ? "" : "+"}{formatRub(amt)}
+                          <strong className={`text-[13px] ${isVoided ? "text-ink-3 line-through" : "text-ink"}`}>
+                            {p.booking?.client.name ?? "—"}
+                          </strong>
+                          <span className={`mono-num font-semibold text-[14px] ${
+                            isVoided ? "text-ink-3 line-through" : isRefund ? "text-amber" : "text-emerald"
+                          }`}>
+                            {isRefund || isVoided ? "" : "+"}{formatRub(amt)}
                           </span>
                         </div>
                         <div className="text-[11px] text-ink-3 mt-1">
-                          {METHOD_LABELS[p.method]} · {date}, {time}
+                          {METHOD_LABELS[p.method]} · {date}{time ? `, ${time}` : ""}
                           {(p.createdByName ?? p.createdBy) && ` · ${p.createdByName ?? p.createdBy}`}
                         </div>
+                        {isVoided && (
+                          <div className="text-[11px] text-rose mt-1">
+                            {FINANCE_TERMS.void}
+                            {(p.voidReason ?? p.note) && <> · {p.voidReason ?? p.note}</>}
+                          </div>
+                        )}
                       </div>
                     );
                   })}

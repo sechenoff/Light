@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../lib/api";
+import { formatRub } from "../../lib/format";
 import { toast } from "../ToastProvider";
 import { toMoscowDateString } from "../../lib/moscowDate";
 
@@ -11,6 +12,22 @@ const KIND_LABELS: Record<string, string> = {
   BALANCE: "Остаток",
   CORRECTION: "Корректировка",
 };
+
+/** Дебаунс поиска брони, мс */
+const SEARCH_DEBOUNCE_MS = 300;
+/** Минимальная длина запроса для поиска */
+const SEARCH_MIN_CHARS = 2;
+
+interface BookingHit {
+  id: string;
+  projectName: string;
+  startDate: string | null;
+  endDate: string | null;
+  finalAmount?: string;
+  amountPaid?: string;
+  amountOutstanding?: string;
+  client: { id?: string; name: string };
+}
 
 interface Props {
   open: boolean;
@@ -22,9 +39,29 @@ interface Props {
   onCreated: () => void;
 }
 
+function formatBookingDates(start: string | null, end: string | null): string {
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  if (start && end) return `${fmt(start)} – ${fmt(end)}`;
+  if (start) return fmt(start);
+  return "—";
+}
+
+/** Строка-сводка найденной брони: клиент · проект · даты · сумма */
+function bookingSummary(b: BookingHit): string {
+  const parts = [b.client.name, b.projectName, formatBookingDates(b.startDate, b.endDate)];
+  if (b.finalAmount != null) parts.push(formatRub(b.finalAmount));
+  return parts.join(" · ");
+}
+
 /**
  * Модалка «Создать счёт» — создаёт Invoice в статусе DRAFT.
  * POST /api/invoices.
+ *
+ * Бронь выбирается через поиск (GET /api/bookings?q=) по клиенту/проекту —
+ * менеджеру не нужно вставлять сырой CUID. Для FULL/BALANCE сумма
+ * автозаполняется из брони и может быть опущена (сервер посчитает сам
+ * через computeTotalFromBooking); для DEPOSIT/CORRECTION сумма обязательна.
  */
 export function CreateInvoiceModal({
   open,
@@ -33,7 +70,10 @@ export function CreateInvoiceModal({
   defaultTotal,
   onCreated,
 }: Props) {
-  const [bookingId, setBookingId] = useState(defaultBookingId ?? "");
+  const [selectedBooking, setSelectedBooking] = useState<BookingHit | null>(null);
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<BookingHit[]>([]);
+  const [searching, setSearching] = useState(false);
   const [kind, setKind] = useState("FULL");
   const [total, setTotal] = useState(defaultTotal ?? "");
   const [dueDate, setDueDate] = useState(() => {
@@ -44,16 +84,20 @@ export function CreateInvoiceModal({
   });
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const bookingRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const bookingId = defaultBookingId ?? selectedBooking?.id ?? "";
 
   useEffect(() => {
     if (open) {
-      setBookingId(defaultBookingId ?? "");
+      setSelectedBooking(null);
+      setQuery("");
+      setHits([]);
       setKind("FULL");
       setTotal(defaultTotal ?? "");
       setNotes("");
       if (!defaultBookingId) {
-        setTimeout(() => bookingRef.current?.focus(), 50);
+        setTimeout(() => searchRef.current?.focus(), 50);
       }
     }
   }, [open, defaultBookingId, defaultTotal]);
@@ -68,7 +112,65 @@ export function CreateInvoiceModal({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const isValid = bookingId.trim().length > 0 && Number(total) > 0 && dueDate.length > 0;
+  // Дебаунс-поиск броней по клиенту/проекту
+  useEffect(() => {
+    if (!open || defaultBookingId) return;
+    const q = query.trim();
+    if (q.length < SEARCH_MIN_CHARS) {
+      setHits([]);
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      apiFetch<{ bookings: BookingHit[] }>(
+        `/api/bookings?q=${encodeURIComponent(q)}&limit=20`
+      )
+        .then((d) => {
+          if (!cancelled) setHits(d.bookings ?? []);
+        })
+        .catch(() => {
+          if (!cancelled) setHits([]);
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [open, defaultBookingId, query]);
+
+  /** Автозаполнение суммы из брони: FULL → итог, BALANCE → остаток. */
+  function autofillTotal(nextKind: string, booking: BookingHit | null) {
+    if (!booking) return;
+    if (nextKind === "FULL" && booking.finalAmount != null) {
+      setTotal(booking.finalAmount);
+    } else if (nextKind === "BALANCE" && booking.amountOutstanding != null) {
+      setTotal(booking.amountOutstanding);
+    }
+  }
+
+  function selectBooking(b: BookingHit) {
+    setSelectedBooking(b);
+    setQuery("");
+    setHits([]);
+    autofillTotal(kind, b);
+  }
+
+  function changeKind(nextKind: string) {
+    setKind(nextKind);
+    autofillTotal(nextKind, selectedBooking);
+  }
+
+  // Для FULL/BALANCE сумму можно не указывать — сервер вычислит из брони.
+  const totalRequired = kind === "DEPOSIT" || kind === "CORRECTION";
+  const totalValid = totalRequired
+    ? Number(total) > 0
+    : total.trim() === "" || Number(total) > 0;
+  const isValid = bookingId.trim().length > 0 && totalValid && dueDate.length > 0;
 
   const handleSubmit = async () => {
     if (!isValid) return;
@@ -79,7 +181,7 @@ export function CreateInvoiceModal({
         body: JSON.stringify({
           bookingId: bookingId.trim(),
           kind,
-          total: Number(total),
+          total: total.trim() !== "" ? Number(total) : undefined,
           dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
           notes: notes.trim() || undefined,
         }),
@@ -116,19 +218,65 @@ export function CreateInvoiceModal({
 
         {/* Body */}
         <div className="px-5 py-4 space-y-3">
-          {/* Booking ID */}
-          <div>
-            <label className="eyebrow block mb-1">ID брони *</label>
-            <input
-              ref={bookingRef}
-              type="text"
-              className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
-              placeholder="Введите ID брони"
-              value={bookingId}
-              onChange={(e) => setBookingId(e.target.value)}
-              disabled={!!defaultBookingId}
-            />
-          </div>
+          {/* Booking selector — поиск вместо сырого CUID */}
+          {!defaultBookingId && (
+            <div>
+              <label className="eyebrow block mb-1">Бронь *</label>
+              {selectedBooking ? (
+                <div className="flex items-start justify-between gap-2 border border-accent-border bg-accent-soft rounded px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-ink truncate">{selectedBooking.client.name}</p>
+                    <p className="text-[11.5px] text-ink-2 truncate">
+                      {selectedBooking.projectName}
+                      {" · "}
+                      {formatBookingDates(selectedBooking.startDate, selectedBooking.endDate)}
+                      {selectedBooking.finalAmount != null && (
+                        <> · <span className="mono-num">{formatRub(selectedBooking.finalAmount)}</span></>
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedBooking(null); setTimeout(() => searchRef.current?.focus(), 50); }}
+                    aria-label="Сбросить бронь"
+                    title="Выбрать другую бронь"
+                    className="text-ink-3 hover:text-ink text-base leading-none flex-shrink-0"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <input
+                    ref={searchRef}
+                    type="text"
+                    className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
+                    placeholder="🔍 Клиент или проект…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                  {query.trim().length >= SEARCH_MIN_CHARS && (
+                    <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-surface border border-border rounded-lg shadow-lg max-h-[220px] overflow-y-auto">
+                      {searching ? (
+                        <p className="px-3 py-2.5 text-xs text-ink-3">Поиск…</p>
+                      ) : hits.length === 0 ? (
+                        <p className="px-3 py-2.5 text-xs text-ink-3">Брони не найдены</p>
+                      ) : (
+                        hits.map((b) => (
+                          <button
+                            key={b.id}
+                            onClick={() => selectBooking(b)}
+                            className="w-full text-left px-3 py-2 text-[12.5px] text-ink hover:bg-surface-subtle border-b border-slate-soft last:border-0"
+                          >
+                            {bookingSummary(b)}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Kind */}
           <div>
@@ -136,7 +284,7 @@ export function CreateInvoiceModal({
             <select
               className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
               value={kind}
-              onChange={(e) => setKind(e.target.value)}
+              onChange={(e) => changeKind(e.target.value)}
             >
               {Object.entries(KIND_LABELS).map(([k, label]) => (
                 <option key={k} value={k}>{label}</option>
@@ -146,7 +294,9 @@ export function CreateInvoiceModal({
 
           {/* Total */}
           <div>
-            <label className="eyebrow block mb-1">Сумма * (₽)</label>
+            <label className="eyebrow block mb-1">
+              Сумма {totalRequired ? "*" : ""} (₽)
+            </label>
             <input
               type="number"
               min="0"
@@ -156,6 +306,11 @@ export function CreateInvoiceModal({
               onChange={(e) => setTotal(e.target.value)}
               placeholder="0.00"
             />
+            {!totalRequired && (
+              <p className="text-[11px] text-ink-3 mt-1">
+                Можно оставить пустым — сумма посчитается из брони
+              </p>
+            )}
           </div>
 
           {/* Due date */}

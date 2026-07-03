@@ -20,7 +20,9 @@ type Props = {
   catalog: AvailabilityRow[];
   catalogLoading: boolean;
   selected: Map<string, CatalogSelectedItem>;
-  offCatalogItems: OffCatalogItem[];
+  /** Legacy: позиции «вне каталога» без цены. Новый флоу конвертирует их
+   *  в произвольные позиции с ценой, поэтому проп опционален. */
+  offCatalogItems?: OffCatalogItem[];
   customItems?: CustomItem[];
 
   // Smart input / AI
@@ -42,8 +44,8 @@ type Props = {
   onAdd: (row: AvailabilityRow) => void;
   onChangeQty: (equipmentId: string, newQty: number) => void;
   onRemove: (equipmentId: string) => void;
-  onChangeOffCatalogQty: (tempId: string, newQty: number) => void;
-  onRemoveOffCatalog: (tempId: string) => void;
+  onChangeOffCatalogQty?: (tempId: string, newQty: number) => void;
+  onRemoveOffCatalog?: (tempId: string) => void;
   onChangeCustomQty?: (tempId: string, newQty: number) => void;
   onRemoveCustom?: (tempId: string) => void;
 
@@ -73,7 +75,7 @@ export function EquipmentCard({
   catalog,
   catalogLoading,
   selected,
-  offCatalogItems,
+  offCatalogItems = [],
   customItems = [],
   gafferText,
   onGafferTextChange,

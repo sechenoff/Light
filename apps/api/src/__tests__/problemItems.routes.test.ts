@@ -40,6 +40,7 @@ let notFoundUnitId: string;
 let notFoundItemId: string;
 let closedUnitId: string;
 let closedItemId: string;
+let sourceBookingId: string;
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -88,6 +89,21 @@ beforeAll(async () => {
   });
   equipmentId = equipment.id;
 
+  // Клиент + бронь для обогащения списка (клиент · проект в реестре)
+  const client = await prisma.client.create({
+    data: { name: "Клиент Потеряшкин", phone: "+7 900 000-00-00" },
+  });
+  const booking = await prisma.booking.create({
+    data: {
+      clientId: client.id,
+      projectName: "Съёмка «Потеряшки»",
+      startDate: new Date("2026-06-01T09:00:00.000Z"),
+      endDate: new Date("2026-06-03T18:00:00.000Z"),
+      status: "ISSUED",
+    },
+  });
+  sourceBookingId = booking.id;
+
   const su = await prisma.equipmentUnit.create({
     data: { equipmentId, barcode: "PI-SEARCH-001", status: "AVAILABLE" },
   });
@@ -109,9 +125,11 @@ beforeAll(async () => {
   });
   closedUnitId = cu.id;
 
-  // SEARCHING item (reason LOST → status SEARCHING, unit MISSING)
+  // SEARCHING item (reason LOST → status SEARCHING, unit MISSING),
+  // привязан к брони — список должен обогатить его booking.client/projectName
   const searching = await createProblemItem({
     equipmentUnitId: searchingUnitId,
+    sourceBookingId,
     reason: "LOST",
     comment: "Не вернулся с площадки",
     createdBy: superAdminId,
@@ -201,6 +219,29 @@ describe("GET /api/problem-items", () => {
       // никаких barcode в выдаче
       expect(item.equipmentUnit?.barcode).toBeUndefined();
     }
+  });
+
+  it("200 — карточка с sourceBookingId обогащена booking (клиент + проект), без barcode", async () => {
+    const res = await request(app)
+      .get("/api/problem-items")
+      .set(auth(superAdminToken));
+    expect(res.status).toBe(200);
+
+    const withBooking = res.body.items.find((i: any) => i.id === searchingItemId);
+    expect(withBooking).toBeDefined();
+    expect(withBooking.booking).toEqual({
+      id: sourceBookingId,
+      projectName: "Съёмка «Потеряшки»",
+      client: { name: "Клиент Потеряшкин", phone: "+7 900 000-00-00" },
+    });
+
+    // карточка без брони → booking: null
+    const withoutBooking = res.body.items.find((i: any) => i.id === closedItemId);
+    expect(withoutBooking).toBeDefined();
+    expect(withoutBooking.booking).toBeNull();
+
+    // никаких barcode нигде в ответе
+    expect(JSON.stringify(res.body)).not.toMatch(/"barcode"/);
   });
 
   it("200 — WAREHOUSE имеет доступ", async () => {

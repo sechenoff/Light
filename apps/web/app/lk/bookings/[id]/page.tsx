@@ -9,6 +9,14 @@ import { formatRub, pluralize } from "../../../../src/lib/format";
 // Общий словарь подписей статусов (дубль удалён, lk-dashboard-raw-status).
 const STATUS_LABEL = LK_STATUS_LABEL;
 
+// Локальное расширение LkBookingDetail: транспорт и счёт добавлены в ответ
+// GET /api/lk/bookings/:id (routes/lk/bookings.ts) и нужны только на этой странице.
+type LkBookingDetailExt = LkBookingDetail & {
+  transportSubtotal: string;
+  hasInvoice: boolean;
+  invoiceNumber: string | null;
+};
+
 const STATUS_CLASS: Record<LkBookingStatus, string> = {
   CONFIRMED: "text-teal",
   ISSUED: "text-accent-bright",
@@ -18,14 +26,14 @@ const STATUS_CLASS: Record<LkBookingStatus, string> = {
 
 export default function LkBookingDetailPage() {
   const params = useParams<{ id: string }>();
-  const [b, setB] = useState<LkBookingDetail | null>(null);
+  const [b, setB] = useState<LkBookingDetailExt | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const r = await lkApi.booking(params.id);
+        const r = (await lkApi.booking(params.id)) as LkBookingDetailExt;
         if (!cancelled) setB(r);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Ошибка загрузки");
@@ -110,14 +118,22 @@ export default function LkBookingDetailPage() {
         </div>
       </section>
 
+      {/* «Итого» = finalAmount (оборудование после скидки + транспорт) — та же
+          база, от которой считаются «Оплачено» и «Остаток», иначе числа не бьются. */}
       <section aria-label="Финансовая сводка" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-surface-2 border border-border rounded-lg p-3">
-          <p className="eyebrow">Итого</p>
-          <p className="mono-num text-lg mt-1">{formatRub(Number(b.totalAfterDiscount))}</p>
-        </div>
         <div className="bg-surface-2 border border-border rounded-lg p-3">
           <p className="eyebrow">Скидка</p>
           <p className="mono-num text-lg mt-1">{formatRub(Number(b.discountAmount))}</p>
+        </div>
+        {Number(b.transportSubtotal) > 0 && (
+          <div className="bg-surface-2 border border-border rounded-lg p-3">
+            <p className="eyebrow">Транспорт и доставка</p>
+            <p className="mono-num text-lg mt-1">{formatRub(Number(b.transportSubtotal))}</p>
+          </div>
+        )}
+        <div className="bg-surface-2 border border-border rounded-lg p-3">
+          <p className="eyebrow">Итого</p>
+          <p className="mono-num text-lg mt-1">{formatRub(Number(b.finalAmount))}</p>
         </div>
         <div className="bg-surface-2 border border-border rounded-lg p-3">
           <p className="eyebrow">Оплачено</p>
@@ -148,8 +164,19 @@ export default function LkBookingDetailPage() {
         </section>
       )}
 
-      {(b.hasConfirmedEstimate || b.hasAct) && (
+      {(b.hasConfirmedEstimate || b.hasAct || b.hasInvoice) && (
         <section aria-label="Документы" className="flex flex-wrap gap-2">
+          {b.hasInvoice && (
+            <a
+              href={`/api/lk/bookings/${b.id}/invoice.pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm hover:bg-surface-2 transition-colors"
+            >
+              <span aria-hidden="true">🧾</span>
+              Счёт {b.invoiceNumber ? `${b.invoiceNumber} ` : ""}PDF
+            </a>
+          )}
           {b.hasConfirmedEstimate && (
             <a
               href={`/api/lk/bookings/${b.id}/estimate.pdf`}

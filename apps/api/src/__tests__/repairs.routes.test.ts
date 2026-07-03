@@ -653,4 +653,76 @@ describe("POST /api/repairs/:id/close", () => {
     const unit = await prisma.equipmentUnit.findUnique({ where: { id: closeUnit.id } });
     expect(unit.status).toBe("AVAILABLE");
   });
+
+  it("200 — close с { expense } создаёт расход атомарно с закрытием", async () => {
+    const closeUnit = await prisma.equipmentUnit.create({
+      data: { equipmentId, barcode: "CLOSE-EXP-001", status: "MAINTENANCE" },
+    });
+    const repair = await prisma.repair.create({
+      data: {
+        unitId: closeUnit.id,
+        reason: "Закрытие с расходом (роут)",
+        urgency: "NORMAL",
+        createdBy: superAdminId,
+        status: "IN_REPAIR",
+        partsCost: 0,
+        totalTimeHours: 0,
+      },
+    });
+
+    const res = await request(app)
+      .post(`/api/repairs/${repair.id}/close`)
+      .set(auth(superAdminToken))
+      .send({ expense: { amount: 4500, description: "Ремонт после смены" } });
+    expect(res.status).toBe(200);
+    expect(res.body.repair.status).toBe("CLOSED");
+
+    const expense = await prisma.expense.findFirst({
+      where: { linkedRepairId: repair.id },
+    });
+    expect(expense).not.toBeNull();
+    expect(expense.category).toBe("REPAIR");
+    expect(expense.amount.toString()).toBe("4500");
+    expect(expense.description).toBe("Ремонт после смены");
+  });
+
+  it("400 — невалидный expense (amount ≤ 0): ремонт НЕ закрыт, расход НЕ создан", async () => {
+    const closeUnit = await prisma.equipmentUnit.create({
+      data: { equipmentId, barcode: "CLOSE-EXP-002", status: "MAINTENANCE" },
+    });
+    const repair = await prisma.repair.create({
+      data: {
+        unitId: closeUnit.id,
+        reason: "Невалидный расход",
+        urgency: "NORMAL",
+        createdBy: superAdminId,
+        status: "IN_REPAIR",
+        partsCost: 0,
+        totalTimeHours: 0,
+      },
+    });
+
+    const res = await request(app)
+      .post(`/api/repairs/${repair.id}/close`)
+      .set(auth(superAdminToken))
+      .send({ expense: { amount: 0, description: "нулевой" } });
+    expect(res.status).toBe(400);
+
+    const still = await prisma.repair.findUnique({ where: { id: repair.id } });
+    expect(still.status).toBe("IN_REPAIR");
+    const orphan = await prisma.expense.findFirst({
+      where: { linkedRepairId: repair.id },
+    });
+    expect(orphan).toBeNull();
+
+    // cleanup: закрываем, чтобы активная карточка не мешала другим тестам
+    await prisma.repair.update({
+      where: { id: repair.id },
+      data: { status: "CLOSED", closedAt: new Date() },
+    });
+    await prisma.equipmentUnit.update({
+      where: { id: closeUnit.id },
+      data: { status: "AVAILABLE" },
+    });
+  });
 });

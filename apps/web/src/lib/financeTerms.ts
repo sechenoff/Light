@@ -8,9 +8,11 @@
  *   «Оплачено» (не «Получено») — сумма фактически внесённых платежей
  *   «К получению» — сумма оставшегося долга (aggregate)
  *   «Просрочено» — когда дата платежа уже прошла
- *   «Частично оплачено» — есть платежи, но ещё не всё
+ *   «Частично оплачено» — есть платежи, но ещё не всё («Частично» — короткая форма для пилюль)
  *   «Аннулирован» — статус аннулированного платежа
- *   «Черновик» — booking/payment в статусе DRAFT
+ *   «Черновик» — booking/payment/invoice в статусе DRAFT (не «К выставлению»)
+ *   «Остаток по счёту» vs «Остаток по броне» — уточняем, к чему относится остаток,
+ *   чтобы разные суммы на /finance/invoices и /bookings не читались как рассинхрон.
  */
 export const FINANCE_TERMS = {
   income: "Приход",
@@ -19,6 +21,7 @@ export const FINANCE_TERMS = {
   paid: "Оплачено",
   overdue: "Просрочено",
   partial: "Частично оплачено",
+  partialShort: "Частично",
   void: "Аннулирован",
   draft: "Черновик",
   billed: "Выставлено",
@@ -26,6 +29,8 @@ export const FINANCE_TERMS = {
   total: "Итог",
   paymentDate: "Дата платежа",
   notPaid: "Не оплачено",
+  invoiceOutstanding: "Остаток по счёту",
+  bookingOutstanding: "Остаток по броне",
 } as const;
 
 export type FinanceTerm = keyof typeof FINANCE_TERMS;

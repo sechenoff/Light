@@ -414,6 +414,8 @@ async function makeUnitBooking(opts: {
 }
 
 describe("(d) POST /:id/status issue — юниты переводятся в ISSUED", () => {
+  // Брони в этих тестах стартуют в будущем (> 24 ч) — гард ранней выдачи
+  // требует осознанного force: true (сам гард тестируется отдельно ниже).
   it("живые резервы → юниты ISSUED, booking.issuedAt проставлен", async () => {
     const { booking, units } = await makeUnitBooking({
       status: "CONFIRMED",
@@ -423,7 +425,7 @@ describe("(d) POST /:id/status issue — юниты переводятся в IS
     const res = await request(app)
       .post(`/api/bookings/${booking.id}/status`)
       .set(AUTH_SA())
-      .send({ action: "issue" });
+      .send({ action: "issue", force: true });
     expect(res.status).toBe(200);
     expect(res.body.booking.status).toBe("ISSUED");
 
@@ -436,9 +438,11 @@ describe("(d) POST /:id/status issue — юниты переводятся в IS
     }
 
     const audit = await prisma.auditEntry.findFirst({
-      where: { action: "BOOKING_UNITS_ISSUED", entityId: booking.id },
+      where: { action: "BOOKING_ISSUED", entityId: booking.id },
     });
     expect(audit).not.toBeNull();
+    // Ранняя выдача с force помечена в аудите
+    expect(JSON.parse(audit.after).forcedEarlyIssue).toBe(true);
   });
 
   it("юнит в MAINTENANCE не трогается ручной выдачей", async () => {
@@ -450,13 +454,60 @@ describe("(d) POST /:id/status issue — юниты переводятся в IS
     const res = await request(app)
       .post(`/api/bookings/${booking.id}/status`)
       .set(AUTH_SA())
-      .send({ action: "issue" });
+      .send({ action: "issue", force: true });
     expect(res.status).toBe(200);
 
     const u0 = await prisma.equipmentUnit.findUnique({ where: { id: units[0].id } });
     const u1 = await prisma.equipmentUnit.findUnique({ where: { id: units[1].id } });
     expect(u0.status).toBe("ISSUED");
     expect(u1.status).toBe("MAINTENANCE"); // ремонтный цикл — не наш
+  });
+
+  it("выдача раньше startDate более чем на сутки без force → 409 ISSUE_TOO_EARLY", async () => {
+    const { booking } = await makeUnitBooking({
+      status: "CONFIRMED",
+      unitStatuses: ["AVAILABLE"],
+    });
+
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/status`)
+      .set(AUTH_SA())
+      .send({ action: "issue" });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("ISSUE_TOO_EARLY");
+    expect(res.body.message).toContain("Аренда начинается");
+
+    // Статус и юниты не тронуты
+    const saved = await prisma.booking.findUnique({ where: { id: booking.id } });
+    expect(saved.status).toBe("CONFIRMED");
+  });
+
+  it("выдача в пределах суток до начала проходит без force", async () => {
+    const soonStart = new Date(Date.now() + 2 * 60 * 60 * 1000); // через 2 часа
+    const soonEnd = new Date(Date.now() + 26 * 60 * 60 * 1000);
+    const booking = await prisma.booking.create({
+      data: {
+        clientId,
+        projectName: `Скорая выдача ${Date.now()}`,
+        startDate: soonStart,
+        endDate: soonEnd,
+        status: "CONFIRMED",
+      },
+    });
+
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/status`)
+      .set(AUTH_SA())
+      .send({ action: "issue" });
+    expect(res.status).toBe(200);
+    expect(res.body.booking.status).toBe("ISSUED");
+
+    // Headline-аудит пишется и для COUNT-брони без UNIT-резервов
+    const audit = await prisma.auditEntry.findFirst({
+      where: { action: "BOOKING_ISSUED", entityId: booking.id },
+    });
+    expect(audit).not.toBeNull();
+    expect(JSON.parse(audit.after).forcedEarlyIssue).toBeUndefined();
   });
 });
 
@@ -489,7 +540,7 @@ describe("(e) POST /:id/status return — юниты освобождаются,
     }
 
     const audit = await prisma.auditEntry.findFirst({
-      where: { action: "BOOKING_UNITS_RETURNED", entityId: booking.id },
+      where: { action: "BOOKING_RETURNED", entityId: booking.id },
     });
     expect(audit).not.toBeNull();
   });

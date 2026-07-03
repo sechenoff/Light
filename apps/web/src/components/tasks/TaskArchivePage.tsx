@@ -157,9 +157,13 @@ export function TaskArchivePage() {
     }
 
     try {
+      // sort=completedAt-desc: свежевыполненные первыми — группы «Сегодня/Вчера»
+      // наполняются с первой страницы, «Загрузить ещё» идёт вглубь истории
+      // по compound-курсору (completedAt, id).
       const params = new URLSearchParams({
         filter: "all",
         status: "DONE",
+        sort: "completedAt-desc",
         limit: "200",
       });
       if (cursor) params.set("cursor", cursor);
@@ -183,40 +187,34 @@ export function TaskArchivePage() {
     }
   }, []);
 
+  // Единая точка загрузки — раньше initial-запрос дублировал loadTasks
+  // (и уже успел разъехаться по параметрам).
   useEffect(() => {
-    let cancelled = false;
-
-    const params = new URLSearchParams({ filter: "all", status: "DONE", limit: "200" });
-    setLoading(true);
-    setError(null);
-
-    apiFetch<TasksListResponse>(`/api/tasks?${params.toString()}`)
-      .then((data) => {
-        if (cancelled) return;
-        setTasks(data.items ?? []);
-        setNextCursor(data.nextCursor ?? null);
-      })
-      .catch((err: Error) => {
-        if (cancelled) return;
-        setError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, []);
+    void loadTasks();
+  }, [loadTasks]);
 
   // ── Вернуть (reopen) ────────────────────────────────────────────────────────
 
   const reopenTask = useCallback(async (id: string) => {
     if (inFlight.current.has(id)) return;
     inFlight.current.add(id);
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+
+    // Optimistic-паттерн со снапшотом (как в useTasksQuery): при ошибке
+    // сервера строка возвращается в список, а не исчезает до перезагрузки.
+    let snapshot: Task | undefined;
+    setTasks((prev) => {
+      snapshot = prev.find((t) => t.id === id);
+      return prev.filter((t) => t.id !== id);
+    });
+
     try {
       await apiFetch(`/api/tasks/${id}/reopen`, { method: "POST" });
       toast.success("Задача возвращена в работу");
     } catch (err: any) {
+      if (snapshot) {
+        // Позиция не важна — filteredTasks пересортирует по completedAt desc
+        setTasks((prev) => (prev.some((t) => t.id === id) ? prev : [...prev, snapshot!]));
+      }
       toast.error(err?.message ?? "Не удалось вернуть задачу");
     } finally {
       inFlight.current.delete(id);
@@ -328,7 +326,10 @@ export function TaskArchivePage() {
             <span className="text-[22px] font-mono font-medium text-emerald tabular-nums">
               {stats.total}
             </span>
-            <span className="text-[11px] text-ink-3">за всё время</span>
+            {/* Честная подпись: пока история догружена не вся, это счёт по загруженным */}
+            <span className="text-[11px] text-ink-3">
+              {nextCursor ? "по загруженным записям" : "за всё время"}
+            </span>
           </div>
           <div className="px-5 py-4 border-r border-border flex flex-col gap-1">
             <span className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium">

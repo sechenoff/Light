@@ -293,8 +293,17 @@ function FinancePageInner() {
           />
           <KpiCard
             eyebrow="Прибыль (период)"
-            value={formatRub(Math.abs(net))}
-            delta={hasMargin ? `маржа ${marginLabel.replace(/^\+/, "")}` : "за период"}
+            /* Убыток показываем со знаком минус, не Math.abs — иначе −80 000 читается как прибыль */
+            value={net < 0 ? `−${formatRub(Math.abs(net))}` : formatRub(net)}
+            delta={
+              net < 0
+                ? hasMargin
+                  ? `убыток за период · маржа ${marginLabel.replace(/^\+/, "")}`
+                  : "убыток за период"
+                : hasMargin
+                  ? `маржа ${marginLabel.replace(/^\+/, "")}`
+                  : "за период"
+            }
             variant={net >= 0 ? "ok" : "alert"}
             sparkPoints={net !== 0 ? SPARK_NET : undefined}
           />
@@ -431,9 +440,12 @@ function FinancePageInner() {
               <p className="eyebrow">Расходы</p>
               <p className="mono-num text-[18px] font-semibold text-ink mt-1">{formatExpenseRub(spent)}</p>
             </div>
-            <div className="bg-emerald-soft/20 border border-emerald-border rounded-lg p-3">
-              <p className="eyebrow">Прибыль</p>
-              <p className="mono-num text-[18px] font-semibold text-emerald mt-1">{formatRub(Math.abs(net))}</p>
+            {/* Цвет/фон по знаку: убыток — rose и со знаком минус, не «зелёная прибыль» */}
+            <div className={`rounded-lg p-3 border ${net >= 0 ? "bg-emerald-soft/20 border-emerald-border" : "bg-rose-soft/30 border-rose-border"}`}>
+              <p className="eyebrow">{net >= 0 ? "Прибыль" : "Убыток"}</p>
+              <p className={`mono-num text-[18px] font-semibold mt-1 ${net >= 0 ? "text-emerald" : "text-rose"}`}>
+                {net < 0 ? `−${formatRub(Math.abs(net))}` : formatRub(net)}
+              </p>
             </div>
           </div>
         </div>

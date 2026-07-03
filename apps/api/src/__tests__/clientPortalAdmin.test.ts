@@ -418,6 +418,72 @@ describe("POST /portal-account/resend", () => {
     expect(links.length).toBe(1);
   });
 
+  it("resend с newEmail обновляет email аккаунта + аудит с before/after", async () => {
+    const client = await prisma.client.create({ data: { name: "Typo Corp" } });
+    const acc = await prisma.clientPortalAccount.create({
+      data: { clientId: client.id, email: "typo@test.ru", status: "PENDING" },
+    });
+
+    const res = await request(app)
+      .post(`/api/admin/clients/${client.id}/portal-account/resend`)
+      .set(AUTH_SA())
+      .send({ newEmail: "Fixed@Test.RU" });
+
+    expect(res.status).toBe(200);
+    // email нормализуется (lowercase) и возвращается в ответе
+    expect(res.body.email).toBe("fixed@test.ru");
+    expect(res.body.inviteUrl).toContain("/lk/verify?token=");
+
+    const accNow = await prisma.clientPortalAccount.findUnique({ where: { id: acc.id } });
+    expect(accNow!.email).toBe("fixed@test.ru");
+
+    // Аудит фиксирует смену адреса
+    const audit = await prisma.auditEntry.findFirst({
+      where: { action: "CLIENT_PORTAL_INVITE_RESENT", entityId: acc.id },
+    });
+    expect(audit).toBeTruthy();
+    expect(JSON.parse(audit!.before)).toMatchObject({ email: "typo@test.ru" });
+    expect(JSON.parse(audit!.after)).toMatchObject({ email: "fixed@test.ru" });
+  });
+
+  it("resend с newEmail, занятым другим клиентом → 409 EMAIL_TAKEN, email не меняется", async () => {
+    const other = await prisma.client.create({ data: { name: "Other Corp" } });
+    await prisma.clientPortalAccount.create({
+      data: { clientId: other.id, email: "taken@test.ru", status: "ACTIVE" },
+    });
+
+    const client = await prisma.client.create({ data: { name: "Conflict Corp" } });
+    const acc = await prisma.clientPortalAccount.create({
+      data: { clientId: client.id, email: "mine@test.ru", status: "PENDING" },
+    });
+
+    const res = await request(app)
+      .post(`/api/admin/clients/${client.id}/portal-account/resend`)
+      .set(AUTH_SA())
+      .send({ newEmail: "taken@test.ru" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("EMAIL_TAKEN");
+    expect(res.body.message).toContain("Email уже используется");
+
+    const accNow = await prisma.clientPortalAccount.findUnique({ where: { id: acc.id } });
+    expect(accNow!.email).toBe("mine@test.ru");
+  });
+
+  it("resend с невалидным newEmail → 400", async () => {
+    const client = await prisma.client.create({ data: { name: "Bad Email Corp" } });
+    await prisma.clientPortalAccount.create({
+      data: { clientId: client.id, email: "ok@test.ru", status: "PENDING" },
+    });
+
+    const res = await request(app)
+      .post(`/api/admin/clients/${client.id}/portal-account/resend`)
+      .set(AUTH_SA())
+      .send({ newEmail: "не-емейл" });
+
+    expect(res.status).toBe(400);
+  });
+
   it("resend для DISABLED аккаунта → 409", async () => {
     const client = await prisma.client.create({ data: { name: "Disabled Resend" } });
     await prisma.clientPortalAccount.create({

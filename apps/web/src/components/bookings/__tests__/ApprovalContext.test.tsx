@@ -140,6 +140,42 @@ describe("ApprovalContext", () => {
     expect(screen.queryByText(/комментарий кладовщика/i)).toBeNull();
   });
 
+  it("passes excludeBookingId so the booking does not conflict with itself", async () => {
+    // База: 2 юнита eq1, вся ёмкость занята рассматриваемой бронью (bk1, PENDING_APPROVAL).
+    // Без excludeBookingId сервер вернул бы availableQuantity=0 → ложный конфликт.
+    // С excludeBookingId=bk1 сервер исключает саму бронь → доступно 2 → «Конфликтов нет».
+    (global.fetch as any).mockImplementation((url: string) => {
+      if (url.includes("/api/availability")) {
+        const selfExcluded = url.includes("excludeBookingId=bk1");
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            rows: [
+              { equipmentId: "eq1", name: "ARRI M18", availableQuantity: selfExcluded ? 2 : 0 },
+              { equipmentId: "eq2", name: "Dedolight 150W", availableQuantity: selfExcluded ? 5 : 0 },
+            ],
+          }),
+        });
+      }
+      if (url.includes("/api/clients/")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ bookingCount: 1, averageCheck: 0, outstandingDebt: 0, hasDebt: false }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+    });
+    render(<ApprovalContext {...BASE_PROPS} />);
+    await waitFor(() => expect(screen.getByText(/конфликтов нет/i)).toBeInTheDocument());
+    expect(screen.queryByText(/конфликты доступности/i)).toBeNull();
+    const availabilityCall = (global.fetch as any).mock.calls
+      .map((c: any[]) => String(c[0]))
+      .find((u: string) => u.includes("/api/availability"));
+    expect(availabilityCall).toContain("excludeBookingId=bk1");
+  });
+
   it("silently hides client stats panel when /api/clients/:id/stats returns 404", async () => {
     (global.fetch as any).mockImplementation((url: string) => {
       if (url.includes("/api/availability")) {

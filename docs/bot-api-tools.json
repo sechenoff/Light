@@ -325,6 +325,10 @@
             "paymentComment": {
               "type": "string",
               "description": "Комментарий по оплате"
+            },
+            "force": {
+              "type": "boolean",
+              "description": "Для action=issue: подтвердить раннюю выдачу. Если выдача раньше startDate более чем на 24 часа, сервер вернёт 409 с кодом ISSUE_TOO_EARLY — повтори запрос с force=true после подтверждения пользователем."
             }
           },
           "required": ["bookingId", "action"],

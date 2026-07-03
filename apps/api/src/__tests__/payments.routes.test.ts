@@ -236,6 +236,37 @@ describe("GET /api/payments — methodTotals по всей выборке", () =
     expect(res.body.methodTotals.cash).toBe("1000.00");
     expect(res.body.methodTotals.transfer).toBe("0.00");
   });
+
+  // MC1: чекбокс «Включить аннулированные» — includeVoided прокидывается в сервис
+  it("?includeVoided=true — voided-платёж возвращается с voidedAt/voidReason, агрегаты без него", async () => {
+    const res = await request(app)
+      .get("/api/payments?includeVoided=true")
+      .set(authHeaders(superAdminToken));
+    expect(res.status).toBe(200);
+    // 4 действующих + 1 аннулированный
+    expect(res.body.total).toBe(5);
+    const voided = res.body.items.find((p: any) => p.voidedAt !== null);
+    expect(voided).toBeDefined();
+    expect(voided.voidReason).toBe("тест");
+    expect(voided.amount).toBe("9999");
+    // methodTotals по-прежнему только по действующим платежам
+    expect(res.body.methodTotals.total).toBe("8500.00");
+    expect(res.body.methodTotals.cash).toBe("1000.00");
+  });
+
+  it("без includeVoided (и с =false) voided-платежи исключены", async () => {
+    const resDefault = await request(app)
+      .get("/api/payments")
+      .set(authHeaders(superAdminToken));
+    expect(resDefault.status).toBe(200);
+    expect(resDefault.body.total).toBe(4);
+    expect(resDefault.body.items.every((p: any) => p.voidedAt === null)).toBe(true);
+
+    const resFalse = await request(app)
+      .get("/api/payments?includeVoided=false")
+      .set(authHeaders(superAdminToken));
+    expect(resFalse.body.total).toBe(4);
+  });
 });
 
 describe("GET /api/finance/dashboard — период from/to", () => {

@@ -58,7 +58,7 @@ import InvoicesPageDefault from "../../../../app/finance/invoices/page";
 
 const ORIGINAL_FETCH = global.fetch;
 
-const SAMPLE_INVOICES = [
+const SAMPLE_INVOICES: Array<Record<string, unknown>> = [
   {
     id: "inv-1",
     number: "INV-001",
@@ -122,18 +122,42 @@ describe("InvoicesPage", () => {
     expect(screen.getAllByText("Рекламная съёмка").length).toBeGreaterThan(0);
   });
 
-  it("renders all status filter tabs", async () => {
+  it("renders all status filter tabs with unified FINANCE_TERMS labels", async () => {
     mockInvoicesResponse([]);
     render(<InvoicesPageDefault />);
 
-    // All tab labels should be visible (labels match the mockup rewrite)
-    expect(screen.getByRole("button", { name: /все/i })).toBeInTheDocument();
-    // DRAFT tab is labelled "К выставлению" in the mockup design
-    expect(screen.getByRole("button", { name: /выставлению/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /выставлено/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /оплачены/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /просрочены/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /аннулированы/i })).toBeInTheDocument();
+    // Лейбл таба = лейбл пилюли (FINANCE_TERMS): «Черновик», не «К выставлению»
+    expect(screen.getByRole("button", { name: "Все" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Черновик" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Выставлено" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Частично оплачено" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Оплачено" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Просрочено" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Аннулирован" })).toBeInTheDocument();
+    // Старый лейбл ушёл
+    expect(screen.queryByText(/выставлению/i)).toBeNull();
+    // FIN-09: мёртвая кнопка «Экспорт XLSX» (без onClick) убрана
+    expect(screen.queryByText(/Экспорт XLSX/)).toBeNull();
+  });
+
+  it("показывает derived OVERDUE (displayStatus) сразу, не дожидаясь ночного cron", async () => {
+    // stored status ISSUED, но сервер отдаёт displayStatus=OVERDUE (dueDate в прошлом)
+    mockInvoicesResponse([
+      {
+        ...SAMPLE_INVOICES[1],
+        status: "ISSUED",
+        displayStatus: "OVERDUE",
+        dueDate: "2026-04-20T00:00:00Z",
+      },
+    ]);
+    render(<InvoicesPageDefault />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("ООО Свет").length).toBeGreaterThan(0);
+    });
+
+    // Пилюля статуса в строке (desktop + mobile) — «Просрочено», не «Выставлено»
+    expect(screen.getAllByText("Просрочено").length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows bulk-issue bar when a DRAFT invoice is selected", async () => {

@@ -14,12 +14,12 @@ type AvailabilityItem = {
 };
 
 function defaultDatetimeLocal(offsetHours = 0): string {
+  // MD-5: раньше setHours(10 + offset) уже переносил дату при offset ≥ 24,
+  // а затем setDate(+1) добавлял ЕЩЁ сутки — дефолтный конец периода уезжал
+  // на 2 дня вперёд. Сдвигаем от «сегодня 10:00» миллисекундами — один раз.
   const d = new Date();
-  d.setHours(10 + offsetHours, 0, 0, 0);
-  if (offsetHours >= 24) {
-    d.setDate(d.getDate() + Math.floor(offsetHours / 24));
-    d.setHours(10, 0, 0, 0);
-  }
+  d.setHours(10, 0, 0, 0);
+  d.setTime(d.getTime() + offsetHours * 60 * 60 * 1000);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -74,26 +74,28 @@ export function QuickAvailabilityCheck() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Поиск оборудования..."
-        className="w-full border border-slate-200 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+        className="w-full border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
       />
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-xs text-slate-500 block mb-0.5">Начало</label>
+          <label htmlFor="qac-start" className="text-xs text-ink-3 block mb-0.5">Начало</label>
           <input
+            id="qac-start"
             type="datetime-local"
             value={start}
             onChange={(e) => setStart(e.target.value)}
-            className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+            className="w-full border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
           />
         </div>
         <div>
-          <label className="text-xs text-slate-500 block mb-0.5">Конец</label>
+          <label htmlFor="qac-end" className="text-xs text-ink-3 block mb-0.5">Конец</label>
           <input
+            id="qac-end"
             type="datetime-local"
             value={end}
             onChange={(e) => setEnd(e.target.value)}
-            className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+            className="w-full border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-accent-bright/30"
           />
         </div>
       </div>
@@ -107,11 +109,11 @@ export function QuickAvailabilityCheck() {
       </button>
 
       {error && (
-        <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded p-2 flex items-center justify-between gap-2">
+        <div className="text-xs text-rose bg-rose-soft border border-rose-border rounded p-2 flex items-center justify-between gap-2">
           <span>{error}</span>
           <button
             onClick={handleCheck}
-            className="text-rose-700 underline shrink-0"
+            className="text-rose underline shrink-0"
           >
             Повторить
           </button>
@@ -119,13 +121,13 @@ export function QuickAvailabilityCheck() {
       )}
 
       {results === null && !error && (
-        <p className="text-xs text-slate-400 text-center py-2">
+        <p className="text-xs text-ink-3 text-center py-2">
           Введите название и нажмите Проверить
         </p>
       )}
 
       {results !== null && results.length === 0 && (
-        <p className="text-xs text-slate-400 text-center py-2">
+        <p className="text-xs text-ink-3 text-center py-2">
           Ничего не найдено
         </p>
       )}
@@ -137,9 +139,9 @@ export function QuickAvailabilityCheck() {
               key={item.equipmentId}
               className="flex items-center justify-between gap-2 text-xs"
             >
-              <span className="text-slate-700 truncate">{item.name}</span>
+              <span className="text-ink-2 truncate">{item.name}</span>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-slate-400">
+                <span className="text-ink-3">
                   {item.occupiedQuantity}/{item.totalQuantity}
                 </span>
                 <StatusBadgeAvailability status={item.availability} />

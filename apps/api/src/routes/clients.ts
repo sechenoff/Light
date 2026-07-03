@@ -52,6 +52,9 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
         comment: true,
         createdAt: true,
         _count: { select: { bookings: true } },
+        // Статус личного кабинета — одним include, без N+1 запросов
+        // per-client к /api/admin/clients/:id/portal-account.
+        portalAccount: { select: { status: true, lastLoginAt: true } },
       },
       orderBy: { name: "asc" },
       take: q.limit,
@@ -65,6 +68,8 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
         comment: c.comment,
         createdAt: c.createdAt,
         bookingCount: c._count.bookings,
+        portalStatus: c.portalAccount?.status ?? null,
+        portalLastLoginAt: c.portalAccount?.lastLoginAt ?? null,
       })),
     });
   } catch (err) {

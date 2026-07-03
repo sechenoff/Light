@@ -4,16 +4,15 @@ export type MenuItem = { href: string; label: string; icon?: string };
 export type MenuSection = { title: string; items: MenuItem[] };
 
 export const menuByRole: Record<UserRole, MenuSection[]> = {
+  // MD-3: 9 секций (5 из них — по одному пункту) слиты в 6, чтобы меню
+  // помещалось на экран ноутбука. «Клиенты» подняты в рабочую зону
+  // «Бронирование» (базовая сущность менеджера, а не служебный инструмент).
+  // «Архив» — нейтральная иконка документа вместо тревожного alert.
   SUPER_ADMIN: [
     {
       title: "Главное",
       items: [
         { href: "/day", label: "Мой день", icon: "home" },
-      ],
-    },
-    {
-      title: "Задачи",
-      items: [
         { href: "/tasks", label: "Мои задачи", icon: "tasks" },
       ],
     },
@@ -30,13 +29,9 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
         { href: "/bookings", label: "Список броней", icon: "booking" },
         { href: "/bookings/new", label: "Новая бронь", icon: "plus" },
         { href: "/calendar", label: "Календарь", icon: "calendar" },
-        { href: "/bookings/archive", label: "Архив", icon: "alert" },
-      ],
-    },
-    {
-      title: "Каталог",
-      items: [
+        { href: "/admin/clients", label: "Клиенты", icon: "people" },
         { href: "/equipment", label: "Оборудование", icon: "gear" },
+        { href: "/bookings/archive", label: "Архив", icon: "invoice" },
       ],
     },
     {
@@ -57,22 +52,11 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       ],
     },
     {
-      title: "Аналитика",
-      items: [
-        { href: "/admin/equipment-stats", label: "Статистика техники", icon: "chart" },
-      ],
-    },
-    {
-      title: "Настройки",
-      items: [
-        { href: "/settings/organization", label: "Организация", icon: "settings" },
-      ],
-    },
-    {
       title: "Система",
       items: [
+        { href: "/admin/equipment-stats", label: "Статистика техники", icon: "chart" },
+        { href: "/settings/organization", label: "Организация", icon: "settings" },
         { href: "/admin", label: "Админка", icon: "settings" },
-        { href: "/admin/clients", label: "Клиенты", icon: "people" },
         { href: "/crew-calculator", label: "Калькулятор", icon: "calc" },
         { href: "/feedback", label: "Обратная связь", icon: "feedback" },
       ],

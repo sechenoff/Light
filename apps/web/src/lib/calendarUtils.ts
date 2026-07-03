@@ -1,3 +1,5 @@
+import { toMoscowDateString } from "./moscowDate";
+
 export type CalendarEvent = {
   id: string;
   bookingId: string;
@@ -16,11 +18,14 @@ type OccupancyEntry = {
 };
 
 /**
- * Извлекает дату (YYYY-MM-DD) из ISO-строки без учёта часового пояса.
- * API отдаёт даты вида "2025-03-06T23:59:59.000Z"; берём только дату.
+ * Извлекает московскую дату (YYYY-MM-DD) из ISO-строки.
+ * MF-3: раньше брались первые 10 символов UTC-строки — бронь с началом
+ * 00:00 МСК (хранится как 21:00Z предыдущего дня) красила соседний день.
+ * Раскладка по дням теперь в московской зоне, как и колонка «сегодня»
+ * (см. cal-tz-today-mismatch в app/calendar/page.tsx).
  */
 function isoToDateStr(iso: string): string {
-  return iso.slice(0, 10);
+  return toMoscowDateString(new Date(iso));
 }
 
 /**

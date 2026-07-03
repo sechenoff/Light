@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ApprovalReviewView } from "../ApprovalReviewView";
 
@@ -89,12 +89,64 @@ const CURRENT_USER = {
   role: "SUPER_ADMIN" as const,
 };
 
+type FetchRoutes = {
+  availabilityRows?: Array<{ equipmentId: string; name: string; availableQuantity: number }>;
+  /** null → эндпоинт статистики клиента отвечает 404 (панель тихо скрывается) */
+  clientStats?: {
+    bookingCount: number;
+    averageCheck: number;
+    outstandingDebt: number;
+    hasDebt: boolean;
+  } | null;
+};
+
+/**
+ * ApprovalReviewView теперь монтирует ApprovalContext, который сам ходит в
+ * /api/availability и /api/clients/:id/stats — мок маршрутизирует по URL.
+ */
+function mockFetchRoutes(routes: FetchRoutes = {}) {
+  (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: unknown) => {
+    const u = String(url);
+    if (u.includes("/api/audit")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [], nextCursor: null }),
+      } as Response);
+    }
+    if (u.includes("/api/availability")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          rows: routes.availabilityRows ?? [
+            { equipmentId: "eq1", name: "ARRI M18", availableQuantity: 5 },
+          ],
+        }),
+      } as Response);
+    }
+    if (u.includes("/api/clients/")) {
+      if (routes.clientStats === null) {
+        return Promise.resolve({ ok: false, status: 404, json: async () => ({}) } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () =>
+          routes.clientStats ?? {
+            bookingCount: 3,
+            averageCheck: 40000,
+            outstandingDebt: 0,
+            hasDebt: false,
+          },
+      } as Response);
+    }
+    return Promise.resolve({ ok: false, status: 404, json: async () => ({}) } as Response);
+  });
+}
+
 function mockAuditEmpty() {
-  (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: async () => ({ items: [], nextCursor: null }),
-  } as Response);
+  mockFetchRoutes();
 }
 
 describe("ApprovalReviewView (read-only)", () => {
@@ -259,5 +311,124 @@ describe("ApprovalReviewView (read-only)", () => {
     expect(
       screen.queryByText(/Смета будет зафиксирована при подтверждении/)
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("ApprovalReviewView — транспорт (multi-vehicle)", () => {
+  const MULTI_VEHICLE_BOOKING = {
+    ...BOOKING,
+    finalAmount: "75000",
+    // Новые брони: vehicles[] заполнен, legacy vehicleId = null.
+    vehicleId: null,
+    vehicle: null,
+    transportSubtotalRub: "30000",
+    vehicles: [
+      {
+        id: "bv1",
+        vehicle: { id: "v1", name: "Газель", slug: "gazel" },
+        withGenerator: false,
+        shiftHours: "12",
+        skipOvertime: false,
+        kmOutsideMkad: null,
+        ttkEntry: false,
+        subtotalRub: "12000",
+      },
+      {
+        id: "bv2",
+        vehicle: { id: "v2", name: "Ивеко", slug: "iveco" },
+        withGenerator: true,
+        shiftHours: "10",
+        skipOvertime: false,
+        kmOutsideMkad: 40,
+        ttkEntry: true,
+        subtotalRub: "18000",
+      },
+    ],
+  };
+
+  it("renders every vehicle from vehicles[] instead of «Не выбран»", () => {
+    mockAuditEmpty();
+    render(
+      <ApprovalReviewView
+        booking={MULTI_VEHICLE_BOOKING}
+        onReload={vi.fn()}
+        currentUser={CURRENT_USER}
+      />
+    );
+    expect(screen.queryByText("Не выбран")).not.toBeInTheDocument();
+    // Каждая машина видна и в карточке «Транспорт», и в разбивке «Итог»
+    expect(screen.getAllByText(/Газель/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/Ивеко/).length).toBeGreaterThanOrEqual(2);
+    // Суммы по машинам присутствуют (карточка + разбивка)
+    expect(screen.getAllByText(/12\s*000,00\s*₽/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/18\s*000,00\s*₽/).length).toBeGreaterThanOrEqual(2);
+    // Атрибуты машины: генератор и км за МКАД
+    expect(screen.getByText(/\+ генератор/)).toBeInTheDocument();
+    expect(screen.getByText(/40 км за МКАД/)).toBeInTheDocument();
+  });
+
+  it("shows «Не выбран» when booking has no vehicles and no legacy vehicleId", () => {
+    mockAuditEmpty();
+    render(
+      <ApprovalReviewView
+        booking={{ ...BOOKING, vehicles: [], vehicleId: null, transportSubtotalRub: null }}
+        onReload={vi.fn()}
+        currentUser={CURRENT_USER}
+      />
+    );
+    expect(screen.getByText("Не выбран")).toBeInTheDocument();
+  });
+});
+
+describe("ApprovalReviewView — контекст согласования (ApprovalContext)", () => {
+  it("shows availability conflict warning on the review screen", async () => {
+    // Запрошено 2 × eq1, доступна 1 → amber-предупреждение о конфликте
+    mockFetchRoutes({
+      availabilityRows: [{ equipmentId: "eq1", name: "ARRI M18", availableQuantity: 1 }],
+    });
+    render(
+      <ApprovalReviewView
+        booking={BOOKING}
+        onReload={vi.fn()}
+        currentUser={CURRENT_USER}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/Конфликты доступности/i)).toBeInTheDocument()
+    );
+    expect(screen.getByText(/запрошено 2, доступно 1/)).toBeInTheDocument();
+  });
+
+  it("shows client debt on the review screen", async () => {
+    mockFetchRoutes({
+      clientStats: { bookingCount: 7, averageCheck: 52000, outstandingDebt: 15000, hasDebt: true },
+    });
+    render(
+      <ApprovalReviewView
+        booking={BOOKING}
+        onReload={vi.fn()}
+        currentUser={CURRENT_USER}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/История клиента/i)).toBeInTheDocument()
+    );
+    expect(screen.getByText(/долг/i)).toBeInTheDocument();
+  });
+
+  it("shows green «no conflicts» line when everything is available", async () => {
+    mockFetchRoutes({
+      availabilityRows: [{ equipmentId: "eq1", name: "ARRI M18", availableQuantity: 5 }],
+    });
+    render(
+      <ApprovalReviewView
+        booking={BOOKING}
+        onReload={vi.fn()}
+        currentUser={CURRENT_USER}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/Конфликтов нет/i)).toBeInTheDocument()
+    );
   });
 });

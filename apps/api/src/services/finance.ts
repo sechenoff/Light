@@ -610,11 +610,54 @@ export async function workbookFromRows(args: { sheetName: string; headers: strin
   return wb.xlsx.writeBuffer();
 }
 
-export async function paymentStatusSyncForAllBookings() {
+// ──────────────────────────────────────────────────────────────────────────────
+// MC1: полный пересчёт финансов всех броней — тяжёлая операция (3–4 запроса на
+// бронь). Раньше выполнялась на КАЖДЫЙ GET dashboard/debts/receivables/экспорт,
+// а страница /finance (Promise.all из dashboard + debts) запускала два полных
+// пересчёта параллельно на SQLite с write-lock.
+//
+// Теперь: не чаще раза в PAYMENT_SYNC_THROTTLE_MS, параллельные вызовы
+// разделяют один in-flight прогон. Вызов остаётся await-ируемым (никаких
+// фоновых записей после ответа — детерминированно для тестов и без гонок
+// с teardown). Это безопасно, потому что sync — лишь страховка от дрейфа:
+// точечный recomputeBookingFinance уже вызывается на каждый платёж/refund/void,
+// а просрочка считается live через isBookingOverdue (см. C3 выше).
+// ──────────────────────────────────────────────────────────────────────────────
+
+export const PAYMENT_SYNC_THROTTLE_MS = 60_000;
+
+let paymentSyncInFlight: Promise<void> | null = null;
+let paymentSyncLastFinishedAt = 0;
+
+async function recomputeFinanceForAllBookings(): Promise<void> {
   const bookings = await prisma.booking.findMany({ select: { id: true } });
   for (const b of bookings) {
     await recomputeBookingFinance(b.id);
   }
+}
+
+export function paymentStatusSyncForAllBookings(): Promise<void> {
+  // Уже идёт прогон — присоединяемся к нему вместо второго параллельного.
+  if (paymentSyncInFlight) return paymentSyncInFlight;
+  // Недавно синхронизировались — пропускаем (данные освежит точечный recompute).
+  if (Date.now() - paymentSyncLastFinishedAt < PAYMENT_SYNC_THROTTLE_MS) {
+    return Promise.resolve();
+  }
+  paymentSyncInFlight = recomputeFinanceForAllBookings()
+    .then(() => {
+      // Отметка только при успехе: после ошибки следующий вызов повторит прогон.
+      paymentSyncLastFinishedAt = Date.now();
+    })
+    .finally(() => {
+      paymentSyncInFlight = null;
+    });
+  return paymentSyncInFlight;
+}
+
+/** Сброс троттлинга полного пересчёта — только для тестов. */
+export function resetPaymentStatusSyncThrottle(): void {
+  paymentSyncInFlight = null;
+  paymentSyncLastFinishedAt = 0;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

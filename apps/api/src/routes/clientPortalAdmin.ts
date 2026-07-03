@@ -45,6 +45,12 @@ const inviteBodySchema = z.object({
   email: z.string().email().toLowerCase().trim(),
 });
 
+// resend: опционально можно исправить адрес (опечатка при приглашении) —
+// аккаунт обновляется и ссылка уходит уже на новый email.
+const resendBodySchema = z.object({
+  newEmail: z.string().email().toLowerCase().trim().optional(),
+});
+
 // ─── POST /portal-invite ─────────────────────────────────────────────────────
 
 router.post("/portal-invite", superAdminGuard, async (req, res, next) => {
@@ -235,6 +241,7 @@ router.post("/portal-account/resend", superAdminGuard, async (req, res, next) =>
   try {
     const clientId = req.params.id;
     const adminUserId = req.adminUser!.userId;
+    const { newEmail } = resendBodySchema.parse(req.body ?? {});
 
     const existing = await prisma.clientPortalAccount.findUnique({
       where: { clientId },
@@ -245,7 +252,25 @@ router.post("/portal-account/resend", superAdminGuard, async (req, res, next) =>
       throw new HttpError(409, "Нельзя переслать приглашение заблокированному аккаунту", "ACCOUNT_DISABLED");
     }
 
-    const { rawToken, expiresAt } = await prisma.$transaction(async (tx) => {
+    // «Отправить на другой адрес»: правим email аккаунта до пересылки ссылки.
+    const emailChanged = Boolean(newEmail) && newEmail !== existing.email;
+
+    const { rawToken, expiresAt, targetEmail } = await prisma.$transaction(async (tx) => {
+      let email = existing.email;
+
+      if (emailChanged && newEmail) {
+        // Email занят другим клиентом — 409 (та же семантика, что у /portal-invite)
+        const taken = await tx.clientPortalAccount.findUnique({ where: { email: newEmail } });
+        if (taken && taken.clientId !== clientId) {
+          throw new HttpError(409, "Email уже используется другим клиентом", "EMAIL_TAKEN");
+        }
+        await tx.clientPortalAccount.update({
+          where: { id: existing.id },
+          data: { email: newEmail },
+        });
+        email = newEmail;
+      }
+
       // Инвалидируем неиспользованные INVITE-токены
       await invalidateUnusedInvites(tx, existing.id);
 
@@ -258,18 +283,18 @@ router.post("/portal-account/resend", superAdminGuard, async (req, res, next) =>
         action: "CLIENT_PORTAL_INVITE_RESENT",
         entityType: "ClientPortalAccount",
         entityId: existing.id,
-        before: null,
-        after: { email: existing.email, expiresAt: link.expiresAt },
+        before: emailChanged ? { email: existing.email } : null,
+        after: { email, expiresAt: link.expiresAt },
       });
 
-      return link;
+      return { rawToken: link.rawToken, expiresAt: link.expiresAt, targetEmail: email };
     });
 
     // Email — вне транзакции. Провал не глотаем молча — см. /portal-invite.
     let emailSent = true;
     try {
       await sendInviteEmail(
-        { email: existing.email, clientName: existing.client?.name },
+        { email: targetEmail, clientName: existing.client?.name },
         rawToken,
       );
     } catch (mailErr) {
@@ -278,7 +303,7 @@ router.post("/portal-account/resend", superAdminGuard, async (req, res, next) =>
       console.error("[LK admin] sendInviteEmail (resend) failed:", mailErr);
     }
 
-    res.json({ expiresAt, emailSent, inviteUrl: buildInviteUrl(rawToken) });
+    res.json({ email: targetEmail, expiresAt, emailSent, inviteUrl: buildInviteUrl(rawToken) });
   } catch (err) {
     next(err);
   }

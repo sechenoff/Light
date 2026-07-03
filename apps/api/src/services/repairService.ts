@@ -178,7 +178,25 @@ export async function setRepairStatus(id: string, nextStatus: RepairStatus, user
 
 // ─── closeRepair ─────────────────────────────────────────────────────────────
 
-export async function closeRepair(id: string, userId: string) {
+export interface CloseRepairExpense {
+  amount: number;
+  description: string;
+}
+
+/**
+ * Закрывает ремонт (unit → AVAILABLE). Опциональный `expense` создаёт расход
+ * категории REPAIR В ТОЙ ЖЕ транзакции, что и закрытие: при любом сбое ни
+ * ремонт не закрыт, ни расход не записан (раньше UI слал два последовательных
+ * запроса — при падении close оставался расход-сирота, а повтор создавал
+ * дубль в финансах). `creatorRole` управляет флагом approved: только
+ * SUPER_ADMIN-расход утверждён сразу (зеркалит expenseService.createExpense).
+ */
+export async function closeRepair(
+  id: string,
+  userId: string,
+  expense?: CloseRepairExpense,
+  creatorRole?: string,
+) {
   return prisma.$transaction(async (tx: TxClient) => {
     const repair = await tx.repair.findUniqueOrThrow({ where: { id } }).catch((e) => notFoundToHttpError(e));
 
@@ -197,6 +215,39 @@ export async function closeRepair(id: string, userId: string) {
       await tx.equipmentUnit.update({
         where: { id: repair.unitId },
         data: { status: "AVAILABLE" },
+      });
+    }
+
+    if (expense) {
+      // Поля зеркалят expenseService.createExpense (legacy backfill name/
+      // expenseDate/comment) — но внутри ЭТОЙ транзакции, а не отдельной.
+      const createdExpense = await tx.expense.create({
+        data: {
+          category: "REPAIR",
+          amount: new Prisma.Decimal(expense.amount),
+          description: expense.description,
+          linkedRepairId: id,
+          approved: creatorRole === "SUPER_ADMIN",
+          createdBy: userId,
+          name: expense.description.slice(0, 100),
+          expenseDate: new Date(),
+          comment: expense.description,
+        },
+      });
+
+      await writeAuditEntry({
+        tx,
+        userId,
+        action: "EXPENSE_CREATE",
+        entityType: "Expense",
+        entityId: createdExpense.id,
+        before: null,
+        after: {
+          category: "REPAIR",
+          amount: createdExpense.amount.toString(),
+          linkedRepairId: id,
+          approved: createdExpense.approved,
+        },
       });
     }
 

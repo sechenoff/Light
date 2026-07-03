@@ -32,7 +32,9 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
   ];
 
   return (
-    <div className="flex gap-0.5 border-b border-border">
+    // overflow-x-auto: 8 вкладок не помещаются на 375px — скроллится сам таб-бар,
+    // а не вся страница (иначе горизонтальный overflow всех /admin-страниц).
+    <div className="flex gap-0.5 border-b border-border overflow-x-auto">
       {tabs.map((tab) => {
         const isActive = pathname === tab.href || pathname.startsWith(tab.href + "/");
         return (
@@ -40,7 +42,7 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
             key={tab.href}
             href={tab.href}
             className={[
-              "-mb-px px-3.5 py-2.5 text-sm border-b-2 transition-colors flex items-center gap-2",
+              "-mb-px px-3.5 py-2.5 text-sm border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap shrink-0",
               isActive
                 ? "text-ink font-medium border-b-2 border-ink bg-surface"
                 : "text-ink-2 border-transparent hover:text-ink hover:bg-surface-muted",

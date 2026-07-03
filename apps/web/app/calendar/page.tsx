@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState, useMemo, useCallback, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../src/lib/api";
 import { CalendarTooltip } from "../../src/components/CalendarTooltip";
@@ -70,6 +71,22 @@ function cellColorClass(occupied: number, total: number): string {
   const pct = occupied / total;
   if (pct >= 0.8) return "text-rose bg-rose-soft";
   return "text-amber bg-amber-soft";
+}
+
+// MF-1: занятость только бронями на согласовании — amber-тинт с пунктиром,
+// чтобы отличать «На согласовании» от подтверждённой занятости.
+const PENDING_CELL_CLASS = "text-amber bg-amber-soft border border-dashed border-amber-border";
+
+function isPendingOnly(occupied: number, bookings: CalendarEvent[]): boolean {
+  return (
+    occupied > 0 &&
+    bookings.some((b) => b.status === "PENDING_APPROVAL") &&
+    bookings.every((b) => b.status === "PENDING_APPROVAL" || b.status === "DRAFT")
+  );
+}
+
+function newBookingHref(equipmentId: string, dateStr: string): string {
+  return `/bookings/new?start=${dateStr}&end=${dateStr}&equipmentId=${equipmentId}`;
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -254,11 +271,25 @@ function CalendarPageInner() {
   }
 
   // ── Мобильная навигация ──
+  // MF-5: на границе загруженного периода не блокируем кнопки, а сдвигаем
+  // период и дозагружаем данные — с телефона можно уйти дальше 7 дней.
   function mobilePrevDay() {
-    setMobileDay((d) => addDaysStr(d, -1));
+    const newDay = addDaysStr(mobileDay, -1);
+    if (newDay < periodStart) {
+      const newStart = addDaysStr(periodStart, -period);
+      setPeriodStart(newStart);
+      syncUrl(newStart, period, category, search);
+    }
+    setMobileDay(newDay);
   }
   function mobileNextDay() {
-    setMobileDay((d) => addDaysStr(d, 1));
+    const newDay = addDaysStr(mobileDay, 1);
+    if (newDay > periodEnd) {
+      const newStart = addDaysStr(periodStart, period);
+      setPeriodStart(newStart);
+      syncUrl(newStart, period, category, search);
+    }
+    setMobileDay(newDay);
   }
 
   // ── Карточки для мобильного дня ──
@@ -468,6 +499,8 @@ function CalendarPageInner() {
                             const isDraftOnly =
                               bookingsOnDay.length > 0 &&
                               bookingsOnDay.every((b) => b.status === "DRAFT");
+                            // MF-1: только брони на согласовании — отдельный amber-стиль
+                            const pendingOnly = isPendingOnly(occupied, bookingsOnDay);
 
                             return (
                               <td
@@ -493,17 +526,24 @@ function CalendarPageInner() {
                                     }))}
                                   >
                                     <span
-                                      className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium cursor-default ${colorClass} ${
-                                        isDraftOnly ? "opacity-50" : ""
-                                      }`}
+                                      title={pendingOnly ? "На согласовании" : undefined}
+                                      className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium cursor-default ${
+                                        pendingOnly ? PENDING_CELL_CLASS : colorClass
+                                      } ${isDraftOnly ? "opacity-50" : ""}`}
                                     >
                                       {occupied}/{resource.totalQuantity}
                                     </span>
                                   </CalendarTooltip>
                                 ) : (
-                                  <span className={`text-xs ${cellColorClass(0, resource.totalQuantity)}`}>
+                                  // MF-4: свободная ячейка — точка входа в создание брони
+                                  <Link
+                                    href={newBookingHref(resource.id, d)}
+                                    title="Создать бронь"
+                                    aria-label={`Создать бронь: ${resource.name}, ${d}`}
+                                    className={`inline-block rounded px-1.5 py-0.5 text-xs ${cellColorClass(0, resource.totalQuantity)} hover:bg-emerald-soft hover:underline transition-colors`}
+                                  >
                                     0/{resource.totalQuantity}
-                                  </span>
+                                  </Link>
                                 )}
                               </td>
                             );
@@ -559,8 +599,7 @@ function CalendarPageInner() {
         <div className="flex items-center justify-between gap-2">
           <button
             onClick={mobilePrevDay}
-            disabled={mobileDay <= periodStart}
-            className="px-3 py-2 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="px-3 py-2 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors"
           >
             ← Пред. день
           </button>
@@ -569,8 +608,7 @@ function CalendarPageInner() {
           </span>
           <button
             onClick={mobileNextDay}
-            disabled={mobileDay >= periodEnd}
-            className="px-3 py-2 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="px-3 py-2 text-sm border border-border rounded-md hover:bg-surface-muted transition-colors"
           >
             След. день →
           </button>
@@ -611,10 +649,11 @@ function CalendarPageInner() {
               const entry = occupancyMap.get(`${resource.id}-${mobileDay}`);
               const occupied = entry?.occupied ?? 0;
               const bookingsOnDay = entry?.bookings ?? [];
-              const colorClass = cellColorClass(
-                occupied,
-                resource.totalQuantity
-              );
+              // MF-1: только брони на согласовании — отдельный amber-стиль
+              const pendingOnly = isPendingOnly(occupied, bookingsOnDay);
+              const colorClass = pendingOnly
+                ? PENDING_CELL_CLASS
+                : cellColorClass(occupied, resource.totalQuantity);
 
               return (
                 <div
@@ -632,14 +671,16 @@ function CalendarPageInner() {
                           : "text-ink-3"
                       }`}
                     >
-                      {occupied}/{resource.totalQuantity} занято
+                      {occupied}/{resource.totalQuantity}{" "}
+                      {pendingOnly ? "на согласовании" : "занято"}
                     </span>
                   </div>
 
-                  {bookingsOnDay.length > 0 && (
+                  {bookingsOnDay.length > 0 ? (
                     <ul className="space-y-1">
                       {bookingsOnDay.map((b) => {
                         const isDraft = b.status === "DRAFT";
+                        const isPending = b.status === "PENDING_APPROVAL";
                         return (
                           <li
                             key={b.id}
@@ -653,16 +694,29 @@ function CalendarPageInner() {
                                   ? "bg-accent-bright"
                                   : b.status === "ISSUED"
                                     ? "bg-amber"
-                                    : "bg-ink-3"
+                                    : isPending
+                                      ? "bg-amber-soft border border-amber"
+                                      : "bg-ink-3"
                               }`}
                             />
                             <span className="text-ink-2">
                               {b.clientName} · {b.quantity} шт.
+                              {isPending && (
+                                <span className="text-amber"> · на согласовании</span>
+                              )}
                             </span>
                           </li>
                         );
                       })}
                     </ul>
+                  ) : (
+                    // MF-4: свободный день — точка входа в создание брони
+                    <Link
+                      href={newBookingHref(resource.id, mobileDay)}
+                      className="inline-block text-xs text-accent-bright hover:text-accent"
+                    >
+                      + Создать бронь
+                    </Link>
                   )}
                 </div>
               );

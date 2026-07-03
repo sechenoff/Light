@@ -26,6 +26,10 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
   // ручной канал доставки, когда письмо не ушло (и просто удобный дубль).
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [emailFailed, setEmailFailed] = useState(false);
+  // «Отправить на другой адрес»: инлайн-правка email в resend-потоке
+  // (исправление опечатки без пересоздания аккаунта).
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
 
   async function refresh() {
     try {
@@ -66,6 +70,12 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
     setMsg(failed ? null : successMsg);
   }
 
+  // API кладёт русское сообщение HttpError в body.message (app.ts);
+  // body.error существует только у отдельных легаси-веток — оставлен фолбэком.
+  function apiErrorMessage(body: { message?: string; error?: string } | null | undefined, fallback: string): string {
+    return body?.message || body?.error || fallback;
+  }
+
   async function invite() {
     setBusy(true);
     setMsg(null);
@@ -79,7 +89,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
       });
       const body = await r.json();
       if (!r.ok) {
-        throw new Error(body.error || "Ошибка при отправке приглашения");
+        throw new Error(apiErrorMessage(body, "Ошибка при отправке приглашения"));
       }
       applyInviteResult(body, "Приглашение отправлено");
       await refresh();
@@ -90,7 +100,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
     }
   }
 
-  async function resend() {
+  async function resend(targetEmail?: string) {
     setBusy(true);
     setMsg(null);
     setEmailFailed(false);
@@ -98,12 +108,19 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
       const r = await fetch(`/api/admin/clients/${clientId}/portal-account/resend`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(targetEmail ? { newEmail: targetEmail } : {}),
       });
       const body = await r.json();
       if (!r.ok) {
-        throw new Error(body.error || "Ошибка");
+        throw new Error(apiErrorMessage(body, "Ошибка"));
       }
-      applyInviteResult(body, "Ссылка повторно отправлена");
+      applyInviteResult(
+        body,
+        targetEmail ? "Email обновлён, ссылка отправлена" : "Ссылка повторно отправлена",
+      );
+      setEditingEmail(false);
+      setNewEmail("");
       await refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Ошибка");
@@ -122,7 +139,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
       });
       if (!r.ok) {
         const body = await r.json();
-        throw new Error(body.error || "Ошибка");
+        throw new Error(apiErrorMessage(body, "Ошибка"));
       }
       setMsg(successMsg);
       await refresh();
@@ -228,13 +245,26 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
 
       <div className="flex flex-wrap gap-2">
         {(account.status === "PENDING" || account.status === "ACTIVE") && (
-          <button
-            onClick={resend}
-            disabled={busy}
-            className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface transition-colors disabled:opacity-50"
-          >
-            Переслать ссылку
-          </button>
+          <>
+            <button
+              onClick={() => resend()}
+              disabled={busy}
+              className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface transition-colors disabled:opacity-50"
+            >
+              Переслать ссылку
+            </button>
+            <button
+              onClick={() => {
+                setEditingEmail((v) => !v);
+                setNewEmail(account.email);
+                setMsg(null);
+              }}
+              disabled={busy}
+              className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface transition-colors disabled:opacity-50"
+            >
+              На другой адрес…
+            </button>
+          </>
         )}
         {account.status !== "DISABLED" && (
           <button
@@ -255,6 +285,39 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
           </button>
         )}
       </div>
+
+      {editingEmail && (
+        <div className="space-y-2">
+          <p className="text-sm text-ink-2">Отправить приглашение на другой адрес (email аккаунта будет обновлён):</p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="email"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              placeholder="email@example.ru"
+              aria-label="Новый email для доступа в кабинет"
+              className="flex-1 min-w-[200px] px-3 py-2 text-sm border border-border rounded-md bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <button
+              onClick={() => resend(newEmail.trim().toLowerCase())}
+              disabled={busy || !newEmail.trim()}
+              className="px-3 py-1.5 text-sm bg-accent-bright text-white rounded-md disabled:opacity-50 hover:opacity-90 transition-opacity"
+            >
+              {busy ? "Отправка…" : "Отправить"}
+            </button>
+            <button
+              onClick={() => {
+                setEditingEmail(false);
+                setNewEmail("");
+              }}
+              disabled={busy}
+              className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface transition-colors disabled:opacity-50"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
 
       {inviteResultBlock}
       {msg && <p className="text-sm text-ink-2">{msg}</p>}

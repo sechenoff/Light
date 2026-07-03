@@ -33,7 +33,7 @@ describe("buildOccupancyMap", () => {
     expect(entry!.bookings).toHaveLength(1);
   });
 
-  it("распределяет многодневное событие по всем дням диапазона", () => {
+  it("распределяет многодневное событие по всем дням диапазона (московская раскладка)", () => {
     const events: CalendarEvent[] = [
       {
         id: "e2",
@@ -42,7 +42,7 @@ describe("buildOccupancyMap", () => {
         title: "Длинный проект",
         clientName: "Клиент 2",
         start: "2025-03-04T00:00:00.000Z",
-        end: "2025-03-06T23:59:59.000Z",
+        end: "2025-03-06T20:00:00.000Z", // 23:00 МСК 6 марта
         quantity: 3,
         status: "CONFIRMED",
       },
@@ -53,6 +53,66 @@ describe("buildOccupancyMap", () => {
     expect(map.get("r2-2025-03-06")?.occupied).toBe(3);
     // Дни вне события не должны быть в карте для этого ресурса
     expect(map.get("r2-2025-03-07")).toBeUndefined();
+  });
+
+  it("MF-3: событие с началом 00:00 МСК (21:00Z накануне) НЕ красит предыдущий московский день", () => {
+    const events: CalendarEvent[] = [
+      {
+        id: "emsk",
+        bookingId: "bmsk",
+        resourceId: "rmsk",
+        title: "Ночной старт",
+        clientName: "Клиент МСК",
+        // 2025-03-02T21:00Z = 2025-03-03 00:00 МСК; конец 20:59Z = 23:59 МСК 3 марта
+        start: "2025-03-02T21:00:00.000Z",
+        end: "2025-03-03T20:59:59.000Z",
+        quantity: 1,
+        status: "CONFIRMED",
+      },
+    ];
+    const map = buildOccupancyMap(events, "2025-03-01", "2025-03-07");
+    expect(map.get("rmsk-2025-03-02")).toBeUndefined();
+    expect(map.get("rmsk-2025-03-03")?.occupied).toBe(1);
+    expect(map.get("rmsk-2025-03-04")).toBeUndefined();
+  });
+
+  it("MF-3: конец 23:59:59Z (02:59 МСК) занимает СЛЕДУЮЩИЙ московский день", () => {
+    const events: CalendarEvent[] = [
+      {
+        id: "emsk2",
+        bookingId: "bmsk2",
+        resourceId: "rmsk2",
+        title: "Поздний возврат",
+        clientName: "Клиент МСК 2",
+        start: "2025-03-05T09:00:00.000Z",
+        end: "2025-03-05T23:59:59.000Z", // = 2025-03-06 02:59 МСК
+        quantity: 2,
+        status: "CONFIRMED",
+      },
+    ];
+    const map = buildOccupancyMap(events, "2025-03-01", "2025-03-07");
+    expect(map.get("rmsk2-2025-03-05")?.occupied).toBe(2);
+    expect(map.get("rmsk2-2025-03-06")?.occupied).toBe(2);
+  });
+
+  it("PENDING_APPROVAL события учитываются в occupied (MF-1: бронь на согласовании резервирует)", () => {
+    const events: CalendarEvent[] = [
+      {
+        id: "ep1",
+        bookingId: "bp1",
+        resourceId: "rp1",
+        title: "На согласовании",
+        clientName: "Клиент",
+        start: "2025-03-03T09:00:00.000Z",
+        end: "2025-03-03T18:00:00.000Z",
+        quantity: 2,
+        status: "PENDING_APPROVAL",
+      },
+    ];
+    const map = buildOccupancyMap(events, "2025-03-01", "2025-03-07");
+    const entry = map.get("rp1-2025-03-03");
+    expect(entry?.occupied).toBe(2);
+    expect(entry?.bookings).toHaveLength(1);
   });
 
   it("суммирует занятость от нескольких событий на одном ресурсе в один день", () => {

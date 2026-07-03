@@ -136,15 +136,25 @@ describe("groupTasks", () => {
     expect(groups.doneToday[0].id).toBe("recent-done");
   });
 
-  it("old DONE tasks go into noDate bucket, not doneToday", () => {
+  it("old DONE tasks (>24h) are excluded from all buckets — they live in the archive", () => {
     const task = makeTask({
       id: "old-done",
       status: "DONE",
       completedAt: "2026-04-14T08:00:00Z", // > 24h ago
     });
+    expect(bucketOf(task, MSK_NOW)).toBeNull();
     const groups = groupTasks([task], MSK_NOW);
+    for (const bucket of Object.values(groups)) {
+      expect(bucket).toHaveLength(0);
+    }
+  });
+
+  it("DONE task without completedAt (anomaly) is excluded, not dumped into noDate", () => {
+    const task = makeTask({ id: "done-no-ts", status: "DONE", completedAt: null });
+    expect(bucketOf(task, MSK_NOW)).toBeNull();
+    const groups = groupTasks([task], MSK_NOW);
+    expect(groups.noDate).toHaveLength(0);
     expect(groups.doneToday).toHaveLength(0);
-    expect(groups.noDate).toHaveLength(1);
   });
 
   it("routes each task to the correct bucket", () => {

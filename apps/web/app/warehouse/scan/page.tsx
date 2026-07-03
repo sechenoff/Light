@@ -23,8 +23,8 @@
  * booking list stays in ScanShell's left pane, the active step in the right.
  */
 
-import { useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCurrentUser } from "../../../src/lib/auth";
 import { toast } from "../../../src/components/ToastProvider";
 import { ScanShell } from "../../../src/components/warehouse/ScanShell";
@@ -46,9 +46,12 @@ import type {
 function WarehouseScanInner({
   hasMainSession,
   workerName,
+  initialBookingId,
 }: {
   hasMainSession: boolean;
   workerName: string;
+  /** Deep-link ?booking=<id> с карточки брони — предвыбор брони после авторизации. */
+  initialBookingId?: string | null;
 }) {
   const router = useRouter();
   const session = useScanSession(hasMainSession ? "operation" : "login");
@@ -79,6 +82,62 @@ function WarehouseScanInner({
   // just completed and might tap it again (backend will refuse, but the UX
   // confusion is real).
   const [listVersion, setListVersion] = useState(0);
+
+  // ── Deep-link ?booking=<id> ────────────────────────────────────────────────
+  // Кнопка «Начать сканирование» на карточке брони передаёт ?booking=. После
+  // авторизации сразу определяем операцию (бронь в списке выдач → ISSUE, в
+  // списке возвратов → RETURN), создаём сессию и открываем чек-лист — шаги
+  // «операция» и «выбор брони» пропускаются. Кнопка «←» (Назад) в шапке
+  // возвращает к списку броней как обычно. Параметр расходуется один раз.
+  const [preselecting, setPreselecting] = useState(Boolean(initialBookingId));
+  const preselectConsumed = useRef(false);
+
+  useEffect(() => {
+    if (!initialBookingId || preselectConsumed.current) return;
+    if (step === "login") return; // ждём авторизацию (PIN или main-session)
+    preselectConsumed.current = true;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [issueList, returnList] = await Promise.all([
+          scanApi.listBookings("ISSUE").catch(() => [] as BookingSummary[]),
+          scanApi.listBookings("RETURN").catch(() => [] as BookingSummary[]),
+        ]);
+        if (cancelled) return;
+
+        const inIssue = issueList.find((b) => b.id === initialBookingId);
+        const booking =
+          inIssue ?? returnList.find((b) => b.id === initialBookingId);
+        if (!booking) {
+          toast.error("Бронь недоступна для сканирования");
+          return;
+        }
+
+        const op: ScanOperation = inIssue ? "ISSUE" : "RETURN";
+        setViewMode(op);
+        setOperation(op);
+        setActiveBooking(booking);
+        const created = await scanApi.createSession(booking.id, op);
+        if (cancelled) return;
+        await openSession(created.id, op);
+        if (cancelled) return;
+        goStep("checklist");
+      } catch {
+        if (!cancelled) toast.error("Не удалось открыть бронь");
+      } finally {
+        if (!cancelled) {
+          setPreselecting(false);
+          // Чистим query, чтобы обновление страницы не запускало предвыбор заново.
+          router.replace("/warehouse/scan");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialBookingId, step, setOperation, openSession, goStep, router]);
 
   const goToLogin = useCallback(() => {
     scanApi.clearWarehouseToken();
@@ -193,6 +252,23 @@ function WarehouseScanInner({
         eyebrow="Склад"
         title="Вход на склад"
         detail={<LoginStep onSuccess={handleLoginSuccess} />}
+      />
+    );
+  }
+
+  // Пока идёт предвыбор брони из deep-link — не мигаем экраном «Выберите
+  // операцию»: показываем нейтральную загрузку до перехода в чек-лист.
+  if (preselecting && step !== "checklist") {
+    return (
+      <ScanShell
+        eyebrow="Склад"
+        title="Открываем бронь…"
+        workerName={workerName}
+        detail={
+          <div className="flex flex-1 items-center justify-center px-4 py-12 text-sm text-ink-3">
+            Загрузка брони…
+          </div>
+        }
       />
     );
   }
@@ -338,8 +414,10 @@ function WarehouseScanInner({
   );
 }
 
-export default function WarehouseScanPage() {
+function WarehouseScanPageBody() {
   const { user, loading } = useCurrentUser();
+  const searchParams = useSearchParams();
+  const initialBookingId = searchParams.get("booking");
 
   if (loading) {
     return (
@@ -357,6 +435,22 @@ export default function WarehouseScanPage() {
     <WarehouseScanInner
       hasMainSession={hasMainSession}
       workerName={workerName}
+      initialBookingId={initialBookingId}
     />
+  );
+}
+
+export default function WarehouseScanPage() {
+  // useSearchParams требует Suspense boundary в Next.js 14 (App Router).
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-surface-muted">
+          <div className="text-sm text-ink-3">Загрузка…</div>
+        </div>
+      }
+    >
+      <WarehouseScanPageBody />
+    </Suspense>
   );
 }

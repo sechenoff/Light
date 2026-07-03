@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../lib/api";
+import { FINANCE_TERMS } from "../../lib/financeTerms";
 
 export interface PaymentsFilter {
   from: string;
@@ -15,11 +16,12 @@ export interface PaymentsFilter {
 const ALL_STATUSES = ["NOT_PAID", "PARTIALLY_PAID", "PAID", "OVERDUE"] as const;
 type PaymentStatus = typeof ALL_STATUSES[number];
 
+// Подписи — из единого глоссария FINANCE_TERMS (T12), не локальные копии.
 const STATUS_LABELS: Record<PaymentStatus, string> = {
-  NOT_PAID: "Не оплачено",
-  PARTIALLY_PAID: "Частично",
-  PAID: "Оплачено",
-  OVERDUE: "Просрочено",
+  NOT_PAID: FINANCE_TERMS.notPaid,
+  PARTIALLY_PAID: FINANCE_TERMS.partialShort,
+  PAID: FINANCE_TERMS.paid,
+  OVERDUE: FINANCE_TERMS.overdue,
 };
 
 interface ClientOption {

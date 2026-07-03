@@ -37,6 +37,30 @@ const voidSchema = z.object({
   reason: z.string().min(3, "Причина обязательна (минимум 3 символа)"),
 });
 
+/** Хранимые статусы, которые на чтении могут отображаться как OVERDUE (см. H6). */
+const OVERDUE_CAPABLE_STATUSES = ["ISSUED", "PARTIAL_PAID"] as const;
+
+/**
+ * MC1: where-фрагмент для одного значения ?status= в displayStatus-семантике.
+ * «Просрочены» включает ISSUED/PARTIAL_PAID с истёкшим dueDate (так их видит
+ * список через displayStatus), а «Выставлено»/«Частично» их исключают —
+ * иначе счётчики вкладок не сходятся с содержимым вкладки.
+ */
+function statusFilterClause(status: string, now: Date): Record<string, unknown> {
+  if (status === "OVERDUE") {
+    return {
+      OR: [
+        { status: "OVERDUE" },
+        { status: { in: [...OVERDUE_CAPABLE_STATUSES] }, dueDate: { lt: now } },
+      ],
+    };
+  }
+  if (status === "ISSUED" || status === "PARTIAL_PAID") {
+    return { status, OR: [{ dueDate: null }, { dueDate: { gte: now } }] };
+  }
+  return { status };
+}
+
 /**
  * POST /api/invoices — SA only
  * Создаёт счёт в статусе DRAFT.
@@ -71,6 +95,8 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
   try {
     const { status, bookingId, limit, offset, createdAfter, createdBefore } = req.query;
 
+    const nowDate = new Date();
+
     // M1: Zod validation for ?status= (comma-separated InvoiceStatus values)
     const where: Record<string, unknown> = {};
     if (status) {
@@ -82,7 +108,8 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
           throw new HttpError(400, `Недопустимый статус счёта: "${s}"`, "INVALID_STATUS_FILTER");
         }
       }
-      where.status = { in: rawStatuses };
+      // MC1: фильтруем по displayStatus-семантике (см. statusFilterClause)
+      where.OR = rawStatuses.map((s) => statusFilterClause(s, nowDate));
     }
     if (bookingId) where.bookingId = bookingId as string;
 
@@ -97,7 +124,13 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
     const take = Math.min(parseInt(limit as string, 10) || 50, 200); // L2: explicit radix 10
     const skip = parseInt(offset as string, 10) || 0;
 
-    const [items, total] = await Promise.all([
+    // MC1: счётчики вкладок считаются по ВСЕЙ выборке без фильтра статуса,
+    // но с учётом остальных фильтров (bookingId, createdAt) — иначе на вкладке
+    // «Оплачены» все прочие счётчики обнуляются.
+    const countsWhere: Record<string, unknown> = { ...where };
+    delete countsWhere.OR;
+
+    const [items, total, statusGroups, derivedOverdueGroups] = await Promise.all([
       prisma.invoice.findMany({
         where,
         include: {
@@ -114,13 +147,48 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
         skip,
       }),
       prisma.invoice.count({ where }),
+      prisma.invoice.groupBy({
+        by: ["status"],
+        where: countsWhere,
+        _count: { _all: true },
+      }),
+      // ISSUED/PARTIAL_PAID с истёкшим dueDate — на чтении показываются как
+      // OVERDUE (displayStatus, см. H6 ниже), поэтому в счётчиках переносим
+      // их из хранимого статуса в OVERDUE.
+      prisma.invoice.groupBy({
+        by: ["status"],
+        where: {
+          ...countsWhere,
+          status: { in: [...OVERDUE_CAPABLE_STATUSES] },
+          dueDate: { lt: nowDate },
+        },
+        _count: { _all: true },
+      }),
     ]);
+
+    const counts: Record<string, number> = {
+      ALL: 0,
+      DRAFT: 0,
+      ISSUED: 0,
+      PARTIAL_PAID: 0,
+      PAID: 0,
+      OVERDUE: 0,
+      VOID: 0,
+    };
+    for (const g of statusGroups) {
+      counts[g.status] = (counts[g.status] ?? 0) + g._count._all;
+      counts.ALL += g._count._all;
+    }
+    for (const g of derivedOverdueGroups) {
+      counts[g.status] -= g._count._all;
+      counts.OVERDUE += g._count._all;
+    }
 
     // H6: Derive displayStatus on read — non-terminal invoices with dueDate < now → OVERDUE.
     // No DB write; cron-based recomputation deferred to Phase 3.
     // TODO Phase 3: Заменить на cron-job, который периодически вызывает recomputeInvoiceStatus
     // для всех просроченных счетов и обновляет статус в БД.
-    const now = Date.now();
+    const now = nowDate.getTime();
     const itemsWithDisplayStatus = items.map((inv) => {
       let displayStatus = inv.status;
       if (
@@ -134,7 +202,7 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
       return { ...inv, displayStatus };
     });
 
-    res.json({ items: itemsWithDisplayStatus, total });
+    res.json({ items: itemsWithDisplayStatus, total, counts });
   } catch (err) {
     next(err);
   }

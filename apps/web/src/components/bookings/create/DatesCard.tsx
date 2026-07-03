@@ -9,6 +9,8 @@ type DatesCardProps = {
   durationDetail: string | null;
   skipPartialDay: boolean;
   onSkipPartialDayChange: (v: boolean) => void;
+  /** Inline-ошибка диапазона (например, «возврат раньше выдачи»). */
+  rangeError?: string | null;
 };
 
 function combine(date: string, time: string): string {
@@ -28,6 +30,7 @@ export function DatesCard({
   durationDetail,
   skipPartialDay,
   onSkipPartialDayChange,
+  rangeError = null,
 }: DatesCardProps) {
   const [pickupDate, pickupTime] = pickupLocal ? pickupLocal.split("T") : ["", ""];
   const [returnDate, returnTime] = returnLocal ? returnLocal.split("T") : ["", ""];
@@ -74,6 +77,12 @@ export function DatesCard({
             onChange={(e) => onReturnChange(combine(returnDate ?? "", e.target.value))}
           />
         </div>
+
+        {rangeError && (
+          <p role="alert" className="mt-2 text-[12px] font-medium text-rose">
+            {rangeError}
+          </p>
+        )}
 
         {(durationTag || durationDetail) && (
           <div className="mt-2 flex items-center gap-2.5 text-[11.5px] text-ink-2">

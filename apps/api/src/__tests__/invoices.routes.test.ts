@@ -423,3 +423,89 @@ describe("PATCH /api/invoices/:id", () => {
     expect(res.status).toBe(409);
   });
 });
+
+// ── MC1: counts по статусам + displayStatus-семантика фильтра ────────────────
+
+describe("GET /api/invoices — counts по статусам", () => {
+  let countsBookingId: string;
+
+  beforeAll(async () => {
+    countsBookingId = await freshBookingId();
+    const past = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const future = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const mk = (i: number, data: Record<string, unknown>) =>
+      prisma.invoice.create({
+        data: {
+          number: `MC1-${Date.now()}-${i}`,
+          bookingId: countsBookingId,
+          kind: "CORRECTION",
+          total: "1000",
+          createdBy: saUserId,
+          ...data,
+        },
+      });
+    await mk(1, { status: "DRAFT" });
+    await mk(2, { status: "ISSUED", dueDate: future, issuedAt: new Date() });
+    // ISSUED с истёкшим dueDate — displayStatus OVERDUE
+    await mk(3, { status: "ISSUED", dueDate: past, issuedAt: new Date() });
+    await mk(4, { status: "PAID", issuedAt: new Date() });
+    await mk(5, { status: "OVERDUE", dueDate: past, issuedAt: new Date() });
+    await mk(6, { status: "VOID", voidedAt: new Date(), voidReason: "тест" });
+  });
+
+  it("counts считаются по всей выборке (фильтр bookingId учтён)", async () => {
+    const res = await request(app)
+      .get(`/api/invoices?bookingId=${countsBookingId}`)
+      .set(SA());
+    expect(res.status).toBe(200);
+    expect(res.body.counts).toEqual({
+      ALL: 6,
+      DRAFT: 1,
+      ISSUED: 1, // просроченный ISSUED уехал в OVERDUE
+      PARTIAL_PAID: 0,
+      PAID: 1,
+      OVERDUE: 2, // stored OVERDUE + derived (ISSUED с истёкшим dueDate)
+      VOID: 1,
+    });
+  });
+
+  it("counts НЕ зависят от активного фильтра ?status= (честные счётчики вкладок)", async () => {
+    const res = await request(app)
+      .get(`/api/invoices?bookingId=${countsBookingId}&status=PAID`)
+      .set(SA());
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].status).toBe("PAID");
+    // Счётчики те же, что и без фильтра статуса
+    expect(res.body.counts.ALL).toBe(6);
+    expect(res.body.counts.OVERDUE).toBe(2);
+    expect(res.body.counts.DRAFT).toBe(1);
+  });
+
+  it("?status=OVERDUE возвращает и stored OVERDUE, и просроченный ISSUED (displayStatus-семантика)", async () => {
+    const res = await request(app)
+      .get(`/api/invoices?bookingId=${countsBookingId}&status=OVERDUE`)
+      .set(SA());
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.items.every((i: any) => i.displayStatus === "OVERDUE")).toBe(true);
+  });
+
+  it("?status=ISSUED исключает просроченный ISSUED (он на вкладке «Просрочены»)", async () => {
+    const res = await request(app)
+      .get(`/api/invoices?bookingId=${countsBookingId}&status=ISSUED`)
+      .set(SA());
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].displayStatus).toBe("ISSUED");
+  });
+
+  it("комма-список ?status=ISSUED,OVERDUE — объединение без дублей", async () => {
+    const res = await request(app)
+      .get(`/api/invoices?bookingId=${countsBookingId}&status=ISSUED,OVERDUE`)
+      .set(SA());
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(3);
+    expect(res.body.total).toBe(3);
+  });
+});

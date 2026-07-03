@@ -2,9 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { SectionHeader } from "../../../src/components/SectionHeader";
+import { StatusPill } from "../../../src/components/StatusPill";
+import { ClientPortalAccessCard } from "../../../src/components/admin/ClientPortalAccessCard";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
 import { toast } from "../../../src/components/ToastProvider";
+
+type PortalStatus = "PENDING" | "ACTIVE" | "DISABLED";
 
 type Client = {
   id: string;
@@ -14,6 +18,15 @@ type Client = {
   comment: string | null;
   bookingCount: number;
   createdAt: string;
+  portalStatus: PortalStatus | null;
+  portalLastLoginAt: string | null;
+};
+
+// Личный кабинет клиента: подпись + variant StatusPill по статусу аккаунта
+const PORTAL_PILL: Record<PortalStatus, { label: string; variant: "ok" | "warn" | "alert" }> = {
+  PENDING: { label: "Ожидает", variant: "warn" },
+  ACTIVE: { label: "Активен", variant: "ok" },
+  DISABLED: { label: "Отключён", variant: "alert" },
 };
 
 // ─── Modal ──────────────────────────────────────────────────────────────────
@@ -264,6 +277,59 @@ function DeleteConfirmModal({ open, clientName, loading, onConfirm, onClose }: D
   );
 }
 
+// ─── Portal Access Modal ─────────────────────────────────────────────────────
+// Обёртка над существующей ClientPortalAccessCard (та же карточка, что на
+// /bookings/[id]) — приглашение доступно прямо из справочника клиентов,
+// в том числе для клиента без единой брони.
+
+type PortalModalProps = {
+  client: Client | null;
+  onClose: () => void;
+};
+
+function PortalAccessModal({ client, onClose }: PortalModalProps) {
+  useEffect(() => {
+    if (!client) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [client, onClose]);
+
+  if (!client) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      onClick={onClose}
+      aria-modal="true"
+      role="dialog"
+      aria-labelledby="portal-access-title"
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-surface p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 id="portal-access-title" className="text-[17px] font-semibold text-ink">
+            {client.name}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-ink-3 hover:text-ink text-xl leading-none"
+            aria-label="Закрыть"
+          >
+            ×
+          </button>
+        </div>
+        <ClientPortalAccessCard clientId={client.id} defaultEmail={client.email} />
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function AdminClientsPage() {
@@ -275,6 +341,7 @@ export default function AdminClientsPage() {
   const [editTarget, setEditTarget] = useState<Client | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [portalTarget, setPortalTarget] = useState<Client | null>(null);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchClients = async (q: string) => {
@@ -407,6 +474,7 @@ export default function AdminClientsPage() {
                 <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Телефон</th>
                 <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Email</th>
                 <th className="px-4 py-2.5 text-right eyebrow text-ink-2 tabular-nums">Броней</th>
+                <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Личный кабинет</th>
                 <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Создан</th>
                 <th className="px-4 py-2.5 text-right eyebrow text-ink-2">Действия</th>
               </tr>
@@ -421,6 +489,34 @@ export default function AdminClientsPage() {
                   <td className="px-4 py-2.5 text-ink-2">{client.phone ?? "—"}</td>
                   <td className="px-4 py-2.5 text-ink-2">{client.email ?? "—"}</td>
                   <td className="px-4 py-2.5 text-right mono-num text-ink">{client.bookingCount}</td>
+                  <td className="px-4 py-2.5">
+                    {client.portalStatus ? (
+                      <button
+                        type="button"
+                        onClick={() => setPortalTarget(client)}
+                        title={
+                          client.portalStatus === "ACTIVE" && client.portalLastLoginAt
+                            ? `Последний вход: ${new Date(client.portalLastLoginAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}`
+                            : undefined
+                        }
+                        aria-label={`Управлять доступом в кабинет клиента ${client.name}`}
+                      >
+                        <StatusPill
+                          variant={PORTAL_PILL[client.portalStatus].variant}
+                          label={PORTAL_PILL[client.portalStatus].label}
+                        />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPortalTarget(client)}
+                        className="text-[12px] text-accent-bright hover:underline"
+                        aria-label={`Пригласить клиента ${client.name} в личный кабинет`}
+                      >
+                        Пригласить
+                      </button>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-ink-3">
                     {new Date(client.createdAt).toLocaleDateString("ru-RU")}
                   </td>
@@ -471,6 +567,15 @@ export default function AdminClientsPage() {
         loading={deleting}
         onConfirm={confirmDelete}
         onClose={cancelDelete}
+      />
+
+      <PortalAccessModal
+        client={portalTarget}
+        onClose={() => {
+          setPortalTarget(null);
+          // Статус мог измениться (приглашён/отключён) — обновляем колонку.
+          void fetchClients(search);
+        }}
       />
     </div>
   );

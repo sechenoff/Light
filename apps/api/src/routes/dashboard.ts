@@ -33,9 +33,10 @@ router.get("/today", async (req, res, next) => {
         throw new HttpError(400, e instanceof Error ? e.message : "Некорректный формат даты");
       }
     } else {
-      const now = new Date();
-      todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
-      todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+      // MD-1: границы «сегодня» — по Москве (как в /task-stats ниже), не по UTC.
+      // Иначе ночью 00:00–03:00 МСК дашборд показывал операции вчерашнего дня.
+      todayStart = moscowTodayStart();
+      todayEnd = new Date(addDays(todayStart, 1).getTime() - 1);
     }
 
     const includeArgs = {

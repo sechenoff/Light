@@ -295,6 +295,8 @@ curl "https://api.example.com/api/availability?from=2026-04-20T10:00:00Z&to=2026
 | `return`  | ISSUED     | RETURNED  |
 | `cancel`  | DRAFT, CONFIRMED | CANCELLED |
 
+**Ранняя выдача (`action=issue`).** Если выдача происходит раньше `startDate` брони более чем на 24 часа, сервер возвращает `409` с кодом `ISSUE_TOO_EARLY`. Это мягкий гард: после подтверждения пользователем повторите тот же запрос с `"force": true` в теле — выдача пройдёт. Выдача и возврат пишутся в аудит (`BOOKING_ISSUED` / `BOOKING_RETURNED`).
+
 ---
 
 ### 4.7 POST /api/bookings/:id/confirm — Подтверждение черновика
@@ -409,6 +411,7 @@ curl "https://api.example.com/api/finance/dashboard" \
 | 403    | `BOT_SCOPE_FORBIDDEN`| Бот-ключ не имеет доступа к этому эндпоинту           |
 | 404    | —                    | Ресурс не найден                                      |
 | 409    | —                    | Конфликт (напр. недопустимый переход статуса)         |
+| 409    | `ISSUE_TOO_EARLY`    | Выдача раньше начала аренды >24ч — повторите с `force: true` |
 | 422    | —                    | Семантическая ошибка (напр. неверный диапазон дат)    |
 | 500    | —                    | Внутренняя ошибка сервера                             |
 | 503    | `DATABASE_UNAVAILABLE`| База данных недоступна                               |

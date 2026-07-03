@@ -184,12 +184,19 @@ function EditModal({
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as UnitStatus)}
-          className="w-full rounded border border-slate-300 px-3 py-2 text-sm mb-3 bg-white"
+          className="w-full rounded border border-slate-300 px-3 py-2 text-sm mb-1 bg-white"
         >
-          {(Object.keys(STATUS_LABELS) as UnitStatus[]).map((s) => (
-            <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-          ))}
+          {/* eu-6: «Выдана» руками не ставится — только через выдачу по брони.
+              Опция видна лишь когда единица уже выдана (чтобы не ломать правку с/н и комментария). */}
+          {(Object.keys(STATUS_LABELS) as UnitStatus[])
+            .filter((s) => s !== "ISSUED" || unit.status === "ISSUED")
+            .map((s) => (
+              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+            ))}
         </select>
+        <p className="text-[11px] text-slate-400 mb-3">
+          Статус «Выдана» устанавливается автоматически при выдаче по брони
+        </p>
 
         <label className="block text-sm text-slate-700 mb-1">Комментарий</label>
         <textarea
@@ -307,11 +314,12 @@ export default function UnitsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [eq, unitsData] = await Promise.all([
-        apiFetch<Equipment>(`/api/equipment/${equipmentId}`),
+      // API отдаёт envelope { equipment: {...} } — без разворачивания шапка была пустой.
+      const [eqData, unitsData] = await Promise.all([
+        apiFetch<{ equipment: Equipment }>(`/api/equipment/${equipmentId}`),
         apiFetch<{ units: EquipmentUnit[] }>(`/api/equipment/${equipmentId}/units`),
       ]);
-      setEquipment(eq);
+      setEquipment(eqData.equipment);
       setUnits(unitsData.units);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка загрузки данных");

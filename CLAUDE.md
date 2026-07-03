@@ -207,7 +207,7 @@ npm run seed                  # Seed database
 - **Import file formats**: `.xlsx`, `.csv`, `.xls` accepted (max 5 MB). Parsed via `xlsx` + `exceljs` libraries.
 - **Import apply uses optimistic locking**: `version` field on `ImportSession` prevents double-apply. `applyChanges()` increments version atomically and rejects stale requests.
 - **Dashboard is home page** — `/` shows operations dashboard (pickups/returns/active + MiniCalendar + availability check), not equipment list.
-- **Calendar BLOCKING_STATUSES** — `["CONFIRMED", "ISSUED"]` used by both `calendar.ts` and `availability.ts`. DRAFT bookings excluded from occupancy calculations.
+- **Calendar BLOCKING_STATUSES** — `["PENDING_APPROVAL", "CONFIRMED", "ISSUED"]` used by `calendar.ts`, `availability.ts` and `addonAvailability.ts` (аудит 2026-07: бронь на согласовании резервирует оборудование; в календаре — amber «На согласовании»). DRAFT bookings excluded. Confirm/approve исключают саму бронь из проверки конфликтов (excludeBookingId).
 - **Hourly precision** — Equipment page and QuickAvailabilityCheck use `datetime-local` inputs. Bookings resolved to exact hour, not just date.
 - **New web dependencies**: `react-day-picker` v9, `@floating-ui/react`, `date-fns` (web only).
 - **Bot scope guard** — `botScopeGuard` middleware (mounted in `app.ts` after `apiKeyAuth`) enforces whitelist for API keys with prefix `openclaw-`. DELETE is globally blocked. Non-whitelisted routes return 403 `{ code: "BOT_SCOPE_FORBIDDEN" }`. Keys without this prefix pass through without restriction.
@@ -222,7 +222,15 @@ npm run seed                  # Seed database
 - **`/api/lk/debt` считает долг по `Booking.amountOutstanding`** — единый источник с админским `/finance/debts` (computeDebts); `isOverdue` — общий хелпер `isBookingOverdue` (expectedPaymentDate/paymentStatus), НЕ endDate. Невоидный счёт — только детализация строки.
 - **portal-invite/resend возвращают `emailSent` + `inviteUrl`** — провал SMTP не маскируется 200-успехом; карточка показывает предупреждение и кнопку «Скопировать ссылку».
 - **Поиск каталога — регистронезависимый для кириллицы** — фильтр в приложении через `toLocaleLowerCase("ru-RU")` (SQLite LIKE регистронезависим только для ASCII). Паттерн как в `availability.ts`.
-- **Главный список задач** — грузит только OPEN + отдельный запрос DONE за 24ч (`completedAfter`, sort `completedAt desc`); для не-дефолтной сортировки cursor запрещён (400 `CURSOR_SORT_UNSUPPORTED`). `TaskEditModal` шлёт dueDate как `YYYY-MM-DD`.
+- **Главный список задач** — грузит только OPEN + отдельный запрос DONE за 24ч (`completedAfter`, sort `completedAt desc`); для не-дефолтной сортировки cursor запрещён (400 `CURSOR_SORT_UNSUPPORTED`), кроме keyset для архива. `TaskEditModal` шлёт dueDate как `YYYY-MM-DD`.
+- **MAIN Estimate создаётся при создании черновика** — `createBookingDraft` (не-dryRun) сразу пишет Estimate-снапшот; `confirmBooking` пересоздаёт его тем же upsert-путём. Экран согласования и экспорт PDF работают для свежих черновиков.
+- **Ручные issue/return: аудит + гард дат** — `POST /:id/status` пишет `BOOKING_ISSUED`/`BOOKING_RETURNED` в транзакции; выдача раньше `startDate` > 24ч → 409 `ISSUE_TOO_EARLY`, повтор с `force: true` (UI ловит code, показывает подтверждение; задокументировано в docs/bot-api.md + bot-api-tools.json).
+- **AdminUser.isActive** — деактивация вместо удаления: login отклоняет `isActive=false`; PATCH-гарды: нельзя менять свою роль, понижать/отключать последнего SUPER_ADMIN (409).
+- **Сортировка списка броней** — актуальные (endDate ≥ МСК-сегодня) по startDate asc, затем прошедшие по startDate desc. Фильтры/страница /bookings в URL.
+- **POST /draft принимает clientPhone** — новому клиенту записывается, существующему без телефона дозаполняется, существующий НЕ перезаписывается.
+- **GET /api/payments?includeVoided=true** — отдаёт аннулированные (voidedAt/voidReason); GET /api/invoices отдаёт `counts` по статусам по всей выборке.
+- **BookingForm: автосейв черновика** — localStorage `lr:bookings:new:draft` (debounce 2с) + beforeunload + плашка восстановления; при URL-префилле из календаря (?start&end&equipmentId) чужой сохранённый черновик не восстанавливается и НЕ перезаписывается.
+- **Ручной перевод юнита в MAINTENANCE** — создаёт Repair-карточку post-tx best-effort (дубль гасится `REPAIR_ACTIVE_EXISTS`); ручной ISSUED запрещён (`MANUAL_ISSUE_FORBIDDEN`); ручные смены статуса аудируются (`UNIT_STATUS_MANUAL_CHANGE`).
 - **Task.dueDate — date-only semantics** — stored as Moscow-midnight UTC (`fromMoscowDateString()`), compared via `toMoscowDateString()`. Never compare raw Date objects — always compare the `YYYY-MM-DD` string in Moscow TZ.
 - **Optimistic mutation pattern (Tasks)** — snapshot → apply → reconcile from server; per-id `useRef<Set<string>>` in-flight guard. `completeTask`: fire-immediately undo-via-reopen; toast action "Отменить" has 6 s window.
 - **Task audit actions** — `TASK_CREATE / TASK_UPDATE / TASK_ASSIGN / TASK_COMPLETE / TASK_REOPEN / TASK_DELETE` written in same `$transaction` as mutation; `entityType: "Task"`. `TASK_ASSIGN` is a distinct action when `assignedTo` changes (for audit searchability).

@@ -55,13 +55,15 @@ const CATEGORY_LABELS: Record<string, string> = {
 // Filter pills definition
 type FilterKey = "all" | GroupKey;
 
+// Пилюли-фильтры выводятся из GROUP_META, чтобы подписи не расходились с легендой
+// донат-диаграммы (раньше «Прочее» показывало аренду, а «Транспорт» — подрядчиков).
 const FILTER_PILLS: { key: FilterKey; label: string; icon: string }[] = [
-  { key: "all",      label: "Все",      icon: "" },
-  { key: "repair",   label: "Запчасти", icon: "🔧" },
-  { key: "other",    label: "Транспорт", icon: "🚗" },
-  { key: "payroll",  label: "Зарплата", icon: "💼" },
-  { key: "purchase", label: "Закупка",  icon: "🛒" },
-  { key: "rent",     label: "Прочее",   icon: "📦" },
+  { key: "all", label: "Все", icon: "" },
+  ...(["repair", "other", "payroll", "purchase", "rent"] as GroupKey[]).map((k) => ({
+    key: k,
+    label: GROUP_META[k].label,
+    icon: GROUP_META[k].icon,
+  })),
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────

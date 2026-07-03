@@ -272,23 +272,25 @@ export default function RepairDetailPage() {
 
   async function closeRepair(createExpense: boolean, workVal: number) {
     await handleAction(async () => {
-      if (createExpense) {
-        const parts = parseFloat(repair?.partsCost ?? "0") || 0;
-        const amount = parts + workVal;
-        if (amount > 0) {
-          await apiFetch("/api/expenses", {
-            method: "POST",
-            body: JSON.stringify({
-              date: new Date().toISOString(),
-              category: "REPAIR",
-              amount,
-              description: `Ремонт ${repair ? repairEquipmentName(repair) : ""}`,
-              linkedRepairId: id,
-            }),
-          });
-        }
-      }
-      await apiFetch(`/api/repairs/${id}/close`, { method: "POST" });
+      // Расход и закрытие — ОДИН запрос: бэкенд создаёт расход в той же
+      // транзакции, что и close. При ошибке ничего не записано — повтор
+      // не создаёт расход-дубль (раньше два последовательных запроса
+      // оставляли расход-сироту при сбое close).
+      const parts = parseFloat(repair?.partsCost ?? "0") || 0;
+      const amount = parts + workVal;
+      const body =
+        createExpense && amount > 0
+          ? {
+              expense: {
+                amount,
+                description: `Ремонт ${repair ? repairEquipmentName(repair) : ""}`.trim(),
+              },
+            }
+          : {};
+      await apiFetch(`/api/repairs/${id}/close`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
     }, "Ремонт закрыт");
     setShowCloseModal(false);
   }

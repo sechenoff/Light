@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
 import { toast } from "../../../src/components/ToastProvider";
+import { AdminTabNav } from "../../../src/components/admin/AdminTabNav";
 
 interface OrgSettings {
   id: string;
@@ -287,6 +288,9 @@ function PageGuard() {
   if (loading || !authorized) return null;
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+      <div className="mb-4">
+        <AdminTabNav />
+      </div>
       <p className="eyebrow text-ink-3 mb-1">Настройки</p>
       <h1 className="text-xl font-semibold text-ink mb-6">Организация</h1>
       <Suspense fallback={<div className="py-8 text-sm text-ink-3">Загрузка…</div>}>

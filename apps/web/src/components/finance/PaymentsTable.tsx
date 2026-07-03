@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatRub } from "../../lib/format";
+import { FINANCE_TERMS } from "../../lib/financeTerms";
 import { RecordPaymentModal } from "./RecordPaymentModal";
 import { BookingQuickEditModal } from "./BookingQuickEditModal";
 import { StatusCell } from "./StatusCell";
@@ -22,11 +23,12 @@ export interface OverviewItem {
   isLegacyImport: boolean;
 }
 
+// Подписи — из единого глоссария FINANCE_TERMS (T12), не локальные копии.
 export const PAYMENT_STATUS_LABELS: Record<string, string> = {
-  PAID: "Оплачено",
-  PARTIALLY_PAID: "Частично",
-  NOT_PAID: "Не оплачено",
-  OVERDUE: "Просрочено",
+  PAID: FINANCE_TERMS.paid,
+  PARTIALLY_PAID: FINANCE_TERMS.partialShort,
+  NOT_PAID: FINANCE_TERMS.notPaid,
+  OVERDUE: FINANCE_TERMS.overdue,
 };
 
 interface Props {
