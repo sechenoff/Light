@@ -26,6 +26,22 @@ type EstimateLine = {
   lineSum: string;
 };
 
+/**
+ * Строка таблицы «Оборудование» на экране согласования.
+ * Строится либо из estimate.lines (снапшот сметы), либо — фолбэк —
+ * из booking.items, когда смета ещё не зафиксирована (черновик,
+ * отправленный на согласование без PATCH). Цены тогда могут быть
+ * неизвестны (custom-позиции) → null → «—».
+ */
+type DisplayLine = {
+  id: string;
+  categorySnapshot: string;
+  nameSnapshot: string;
+  quantity: number;
+  unitPrice: string | null;
+  lineSum: string | null;
+};
+
 type BookingForReview = {
   id: string;
   status: string;
@@ -43,6 +59,9 @@ type BookingForReview = {
     id: string;
     equipmentId: string | null;
     quantity: number;
+    customName?: string | null;
+    customCategory?: string | null;
+    customUnitPrice?: string | null;
     equipment: {
       id: string;
       name: string;
@@ -238,10 +257,36 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
 
   const actionsBusy = approving || rejectBusy;
 
-  // Group estimate lines by category for display
-  const lines: EstimateLine[] = booking.estimate?.lines ?? [];
-  const hasEstimate = lines.length > 0;
-  const linesByCategory = new Map<string, EstimateLine[]>();
+  // Group lines by category for display.
+  // Estimate-снапшот создаётся только в confirmBooking / rebuildBookingEstimate
+  // (PATCH) — основной путь «создать бронь → отправить на согласование» его НЕ
+  // создаёт. Чтобы руководитель видел состав, а не «Нет позиций», при пустой
+  // смете строим строки из booking.items (имя/кол-во/ставка из каталога).
+  const estimateLines: EstimateLine[] = booking.estimate?.lines ?? [];
+  const hasEstimate = estimateLines.length > 0;
+  const lines: DisplayLine[] = hasEstimate
+    ? estimateLines.map((ln) => ({
+        id: ln.id,
+        categorySnapshot: ln.categorySnapshot,
+        nameSnapshot: ln.nameSnapshot,
+        quantity: ln.quantity,
+        unitPrice: ln.unitPrice,
+        lineSum: ln.lineSum,
+      }))
+    : booking.items.map((it) => {
+        // Custom-позиции (вне каталога) несут имя/категорию/цену на самом item.
+        const price = it.equipment?.rentalRatePerShift ?? it.customUnitPrice ?? null;
+        return {
+          id: it.id,
+          categorySnapshot: it.equipment?.category ?? it.customCategory ?? "Прочее",
+          nameSnapshot: it.equipment?.name ?? it.customName ?? "Позиция",
+          quantity: it.quantity,
+          unitPrice: price,
+          lineSum: price != null ? String(Number(price) * it.quantity) : null,
+        };
+      });
+  const hasLines = lines.length > 0;
+  const linesByCategory = new Map<string, DisplayLine[]>();
   for (const ln of lines) {
     const list = linesByCategory.get(ln.categorySnapshot) ?? [];
     list.push(ln);
@@ -362,7 +407,7 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
                 )}
               </p>
             </div>
-            {!hasEstimate ? (
+            {!hasLines ? (
               <div className="px-4 py-6 text-center text-sm text-ink-3">Нет позиций</div>
             ) : (
               <div className="overflow-x-auto">
@@ -386,15 +431,25 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
                         {catLines.map((ln) => (
                           <tr key={ln.id} className="border-t border-border">
                             <td className="px-4 py-2 text-ink font-medium">{ln.nameSnapshot}</td>
-                            <td className="px-4 py-2 text-right mono-num text-ink-2">{formatMoneyRub(ln.unitPrice)} ₽</td>
+                            <td className="px-4 py-2 text-right mono-num text-ink-2">
+                              {ln.unitPrice != null ? `${formatMoneyRub(ln.unitPrice)} ₽` : "—"}
+                            </td>
                             <td className="px-4 py-2 text-center mono-num text-ink">{ln.quantity}</td>
-                            <td className="px-4 py-2 text-right mono-num font-medium text-ink">{formatMoneyRub(ln.lineSum)} ₽</td>
+                            <td className="px-4 py-2 text-right mono-num font-medium text-ink">
+                              {ln.lineSum != null ? `${formatMoneyRub(ln.lineSum)} ₽` : "—"}
+                            </td>
                           </tr>
                         ))}
                       </>
                     ))}
                   </tbody>
                 </table>
+                {!hasEstimate && (
+                  <div className="border-t border-border bg-amber-soft px-4 py-2 text-xs text-amber">
+                    Позиции из состава брони, цены — текущие ставки каталога.
+                    Смета будет зафиксирована при подтверждении.
+                  </div>
+                )}
               </div>
             )}
           </div>

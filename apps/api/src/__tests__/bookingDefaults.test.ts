@@ -82,6 +82,25 @@ describe("createBookingDraft — expectedPaymentDate auto-default", () => {
     expect(epd).toBe("2026-05-10");
   });
 
+  it("Новая бронь создаётся с legacyFinance=false (invoice-слой доступен)", async () => {
+    const { createBookingDraft } = await import("../services/bookings");
+    const { client, equipment } = await makeEquipmentAndClient();
+
+    const booking = await createBookingDraft({
+      clientId: client.id,
+      projectName: "Тест legacyFinance",
+      startDate: new Date("2026-05-08T10:00:00Z"),
+      endDate: new Date("2026-05-10T10:00:00Z"),
+      items: [{ equipmentId: equipment.id, quantity: 1 }],
+    });
+
+    // Схемный @default(true) существует только для строк, живших на момент
+    // миграции (cutover). Create-путь обязан явно ставить false — иначе счета
+    // (Invoice) недоступны для всех новых броней (409 LEGACY_BOOKING).
+    const saved = await prisma.booking.findUnique({ where: { id: booking.id } });
+    expect(saved.legacyFinance).toBe(false);
+  });
+
   it("Бронь с явной датой оплаты сохраняет пользовательское значение", async () => {
     const { createBookingDraft } = await import("../services/bookings");
     const { client, equipment } = await makeEquipmentAndClient();

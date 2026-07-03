@@ -154,3 +154,150 @@ describe("/api/payments", () => {
   // it("DELETE …") — REMOVED вместе с deprecated DELETE /api/payments/:id.
   // Soft-void покрыт voidPayment-тестом в paymentService.test.ts.
 });
+
+describe("GET /api/payments — methodTotals по всей выборке", () => {
+  beforeAll(async () => {
+    // Дополнительные платежи с датами вне текущего месяца (для dashboard-тестов ниже).
+    // Первый платёж (5000 BANK_TRANSFER, receivedAt=сейчас) создан в предыдущем describe.
+    await prisma.payment.createMany({
+      data: [
+        {
+          bookingId,
+          amount: "1000.00",
+          method: "CASH",
+          paymentMethod: "CASH",
+          direction: "INCOME",
+          status: "RECEIVED",
+          receivedAt: new Date("2026-05-02T10:00:00Z"),
+          paymentDate: new Date("2026-05-02T10:00:00Z"),
+        },
+        {
+          bookingId,
+          amount: "2500.00",
+          method: "CARD",
+          paymentMethod: "CARD",
+          direction: "INCOME",
+          status: "RECEIVED",
+          receivedAt: new Date("2026-05-02T11:00:00Z"),
+          paymentDate: new Date("2026-05-02T11:00:00Z"),
+        },
+        // Возврат — отрицательная сумма, не должен попадать в total/cash
+        {
+          bookingId,
+          amount: "-500.00",
+          method: "CASH",
+          paymentMethod: "CASH",
+          direction: "INCOME",
+          status: "RECEIVED",
+          receivedAt: new Date("2026-05-03T10:00:00Z"),
+          paymentDate: new Date("2026-05-03T10:00:00Z"),
+        },
+        // Аннулированный — исключается из агрегатов
+        {
+          bookingId,
+          amount: "9999.00",
+          method: "CASH",
+          paymentMethod: "CASH",
+          direction: "INCOME",
+          status: "RECEIVED",
+          receivedAt: new Date("2026-05-04T10:00:00Z"),
+          paymentDate: new Date("2026-05-04T10:00:00Z"),
+          voidedAt: new Date("2026-05-05T10:00:00Z"),
+          voidReason: "тест",
+        },
+      ],
+    });
+  });
+
+  it("агрегаты считаются по всей отфильтрованной выборке, а не по странице (limit=1)", async () => {
+    const res = await request(app)
+      .get("/api/payments?limit=1")
+      .set(authHeaders(superAdminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    // 4 действующих платежа (voided исключён default-фильтром)
+    expect(res.body.total).toBe(4);
+    // total = 5000 (BANK_TRANSFER) + 1000 (CASH) + 2500 (CARD); возврат и voided не входят
+    expect(res.body.methodTotals).toMatchObject({
+      total: "8500.00",
+      cash: "1000.00",
+      card: "2500.00",
+      transfer: "5000.00",
+      other: "0.00",
+      refunds: "-500.00",
+    });
+  });
+
+  it("агрегаты уважают фильтр method", async () => {
+    const res = await request(app)
+      .get("/api/payments?method=CASH")
+      .set(authHeaders(superAdminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.methodTotals.cash).toBe("1000.00");
+    expect(res.body.methodTotals.transfer).toBe("0.00");
+  });
+});
+
+describe("GET /api/finance/dashboard — период from/to", () => {
+  beforeAll(async () => {
+    // Январский платёж + утверждённый январский расход — вне текущего месяца
+    await prisma.payment.create({
+      data: {
+        bookingId,
+        amount: "7000.00",
+        method: "CASH",
+        paymentMethod: "CASH",
+        direction: "INCOME",
+        status: "RECEIVED",
+        receivedAt: new Date("2026-01-15T10:00:00Z"),
+        paymentDate: new Date("2026-01-15T10:00:00Z"),
+      },
+    });
+    await prisma.expense.create({
+      data: {
+        name: "Тест-расход январь",
+        category: "OTHER",
+        amount: "1500.00",
+        expenseDate: new Date("2026-01-20T10:00:00Z"),
+        approved: true,
+      },
+    });
+  });
+
+  it("403 для WAREHOUSE", async () => {
+    const res = await request(app)
+      .get("/api/finance/dashboard")
+      .set(authHeaders(warehouseToken));
+    expect(res.status).toBe(403);
+  });
+
+  it("?from&to — earned/spent/net считаются за указанный диапазон", async () => {
+    const res = await request(app)
+      .get(
+        "/api/finance/dashboard?from=2026-01-01T00:00:00.000Z&to=2026-01-31T23:59:59.999Z"
+      )
+      .set(authHeaders(superAdminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.earnedThisMonth).toBe("7000.00");
+    expect(res.body.spentThisMonth).toBe("1500.00");
+    expect(res.body.netThisMonth).toBe("5500.00");
+  });
+
+  it("без параметров — прежнее поведение: текущий календарный месяц", async () => {
+    const res = await request(app)
+      .get("/api/finance/dashboard")
+      .set(authHeaders(superAdminToken));
+    expect(res.status).toBe(200);
+    // В текущем месяце получен только платёж 5000 (создан POST-тестом выше с receivedAt=сейчас);
+    // январские и майские платежи не входят
+    expect(res.body.earnedThisMonth).toBe("5000.00");
+    expect(res.body.spentThisMonth).toBe("0.00");
+  });
+
+  it("400 на невалидный from", async () => {
+    const res = await request(app)
+      .get("/api/finance/dashboard?from=не-дата")
+      .set(authHeaders(superAdminToken));
+    expect(res.status).toBe(400);
+  });
+});

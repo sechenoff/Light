@@ -52,23 +52,26 @@ export type LkEstimateListItem = {
   pdfUrl: string;
 };
 
+// lk-debt-by-bookings: долг в ЛК считается по броням (Booking.amountOutstanding),
+// как в админском /finance/debts — единый источник истины. Счёт, если выставлен,
+// приходит как детализация строки.
 export type LkDebtRow = {
   bookingId: string;
   bookingNo: string;
-  invoiceNumber: string | null;
-  issuedAt: string;
-  dueDate: string | null;
+  projectName: string | null;
+  startDate: string;
+  endDate: string;
   finalAmount: string;
   amountPaid: string;
   amountOutstanding: string;
-  ageDays: number;
   isOverdue: boolean;
+  invoice: { number: string; dueDate: string | null } | null;
 };
 
 export type LkDebtResponse = {
   totalOutstanding: string;
   overdueCount: number;
-  invoices: LkDebtRow[];
+  bookings: LkDebtRow[];
 };
 
 export type LkStatsResponse = {

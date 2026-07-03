@@ -34,18 +34,14 @@ router.get("/", async (req, res, next) => {
     const q = querySchema.parse(req.query);
     const categoryOrder = await getMergedCategoryOrder();
 
-    const equipments = await prisma.equipment.findMany({
+    // eq-search: SQLite LIKE регистронезависим только для ASCII — «штатив» не
+    // находил «Штатив». Фильтруем в приложении через toLocaleLowerCase("ru-RU"),
+    // как в availability.ts (каталог ~300 позиций, это дёшево).
+    const searchNeedle = q.search?.trim().toLocaleLowerCase("ru-RU") ?? "";
+
+    const rawEquipments = await prisma.equipment.findMany({
       where: {
         ...(q.category ? { category: q.category } : {}),
-        ...(q.search
-          ? {
-              OR: [
-                { name: { contains: q.search } },
-                { brand: { contains: q.search } },
-                { model: { contains: q.search } },
-              ],
-            }
-          : {}),
       },
       orderBy: { id: "asc" },
       select: {
@@ -64,6 +60,16 @@ router.get("/", async (req, res, next) => {
         units: { select: { status: true } },
       },
     });
+
+    const equipments =
+      searchNeedle.length === 0
+        ? rawEquipments
+        : rawEquipments.filter((e) => {
+            const haystack = [e.name, e.brand ?? "", e.model ?? ""]
+              .join(" ")
+              .toLocaleLowerCase("ru-RU");
+            return haystack.includes(searchNeedle);
+          });
 
     equipments.sort((a, b) => compareEquipmentTransportLast(a, b, categoryOrder));
 

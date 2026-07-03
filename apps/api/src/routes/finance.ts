@@ -57,10 +57,21 @@ router.get("/finance/forecast", superAdminOnly, async (req, res, next) => {
   }
 });
 
-router.get("/finance/dashboard", superAdminOnly, async (_req, res, next) => {
+// Период-пилюли на /finance шлют ?from=&to= (ISO datetime) — KPI earned/spent/net
+// считаются за этот диапазон. Без параметров — прежнее поведение (текущий месяц).
+const dashboardQuerySchema = z.object({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+
+router.get("/finance/dashboard", superAdminOnly, async (req, res, next) => {
   try {
+    const q = dashboardQuerySchema.parse(req.query);
     await paymentStatusSyncForAllBookings();
-    const data = await computeFinanceDashboard();
+    const data = await computeFinanceDashboard(new Date(), {
+      from: q.from ? new Date(q.from) : undefined,
+      to: q.to ? new Date(q.to) : undefined,
+    });
     res.json(data);
   } catch (err) {
     next(err);

@@ -321,6 +321,12 @@ export interface ListTasksInput {
   overdue?: boolean;
   limit?: number;
   cursor?: string;
+  /**
+   * "id-asc" (default) — стабильный порядок создания + keyset-пагинация по id.
+   * "completedAt-desc" — свежевыполненные первыми (секция «Выполнено сегодня»
+   * на главной странице задач); курсорная пагинация не поддерживается.
+   */
+  sort?: "id-asc" | "completedAt-desc";
 }
 
 export async function listTasks(input: ListTasksInput, actor: Actor) {
@@ -331,6 +337,7 @@ export async function listTasks(input: ListTasksInput, actor: Actor) {
     overdue,
     limit = 100,
     cursor,
+    sort = "id-asc",
   } = input;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -356,8 +363,15 @@ export async function listTasks(input: ListTasksInput, actor: Actor) {
     where.dueDate = { lt: todayStart };
   }
 
-  // Keyset pagination via id (cuid, monotonically increasing)
+  // Keyset pagination via id (cuid, monotonically increasing) — только для id-asc
   if (cursor) {
+    if (sort !== "id-asc") {
+      throw new HttpError(
+        400,
+        "Курсорная пагинация не поддерживается для сортировки completedAt-desc",
+        "CURSOR_SORT_UNSUPPORTED",
+      );
+    }
     // Using id > cursor (ascending order)
     where.id = { gt: cursor };
   }
@@ -365,14 +379,18 @@ export async function listTasks(input: ListTasksInput, actor: Actor) {
   const tasks = await prisma.task.findMany({
     where,
     take: limit,
-    orderBy: { id: "asc" },
+    orderBy:
+      sort === "completedAt-desc"
+        ? [{ completedAt: "desc" }, { id: "desc" }]
+        : { id: "asc" },
     include: {
       _count: { select: { comments: true } },
       checklist: { select: { done: true } },
     },
   });
 
-  const nextCursor = tasks.length === limit ? tasks[tasks.length - 1].id : null;
+  const nextCursor =
+    sort === "id-asc" && tasks.length === limit ? tasks[tasks.length - 1].id : null;
   const enriched = await enrichTasksWithUsers(tasks);
 
   const withAggregates = enriched.map((t: any) => {

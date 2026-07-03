@@ -157,4 +157,107 @@ describe("ApprovalReviewView (read-only)", () => {
     expect(editLinks.length).toBeGreaterThan(0);
     expect(editLinks[0].getAttribute("href")).toBe("/bookings/bk1/edit");
   });
+
+  it("falls back to booking.items when estimate is missing (fresh submit path)", () => {
+    // Основной путь «создать бронь → отправить на согласование» не создаёт
+    // Estimate-снапшот — таблица должна строиться из booking.items,
+    // а не показывать «Нет позиций».
+    mockAuditEmpty();
+    render(
+      <ApprovalReviewView
+        booking={{ ...BOOKING, estimate: null }}
+        onReload={vi.fn()}
+        currentUser={CURRENT_USER}
+      />
+    );
+    expect(screen.queryByText("Нет позиций")).not.toBeInTheDocument();
+    // Позиция из items: имя, категория, кол-во
+    expect(screen.getByText("ARRI M18")).toBeInTheDocument();
+    expect(screen.getByText("Свет")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    // Цена/день из equipment.rentalRatePerShift (5000) и сумма (5000 × 2)
+    expect(screen.getByText(/^5\s*000,00\s*₽$/)).toBeInTheDocument();
+    expect(screen.getByText(/^10\s*000,00\s*₽$/)).toBeInTheDocument();
+    // Пометка, что смета ещё не зафиксирована
+    expect(
+      screen.getByText(/Смета будет зафиксирована при подтверждении/)
+    ).toBeInTheDocument();
+  });
+
+  it("uses customName/customCategory/customUnitPrice for off-catalog fallback items", () => {
+    mockAuditEmpty();
+    render(
+      <ApprovalReviewView
+        booking={{
+          ...BOOKING,
+          estimate: null,
+          items: [
+            {
+              id: "item2",
+              equipmentId: null,
+              quantity: 3,
+              equipment: null,
+              customName: "Дым-машина клиента",
+              customCategory: "Спецэффекты",
+              customUnitPrice: "1500",
+            },
+          ],
+        }}
+        onReload={vi.fn()}
+        currentUser={CURRENT_USER}
+      />
+    );
+    expect(screen.queryByText("Нет позиций")).not.toBeInTheDocument();
+    expect(screen.getByText("Дым-машина клиента")).toBeInTheDocument();
+    expect(screen.getByText("Спецэффекты")).toBeInTheDocument();
+    // Цена 1500 и сумма 1500 × 3 = 4500 из custom-полей
+    expect(screen.getByText(/^1\s*500,00\s*₽$/)).toBeInTheDocument();
+    expect(screen.getByText(/^4\s*500,00\s*₽$/)).toBeInTheDocument();
+  });
+
+  it("shows dash for price when fallback item has no equipment and no custom fields", () => {
+    mockAuditEmpty();
+    render(
+      <ApprovalReviewView
+        booking={{
+          ...BOOKING,
+          estimate: null,
+          items: [{ id: "item3", equipmentId: null, quantity: 3, equipment: null }],
+        }}
+        onReload={vi.fn()}
+        currentUser={CURRENT_USER}
+      />
+    );
+    expect(screen.queryByText("Нет позиций")).not.toBeInTheDocument();
+    expect(screen.getByText("Позиция")).toBeInTheDocument();
+    expect(screen.getByText("Прочее")).toBeInTheDocument();
+    // Цена и сумма неизвестны → «—» в двух ячейках
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows «Нет позиций» only when both estimate and items are empty", () => {
+    mockAuditEmpty();
+    render(
+      <ApprovalReviewView
+        booking={{ ...BOOKING, estimate: null, items: [] }}
+        onReload={vi.fn()}
+        currentUser={CURRENT_USER}
+      />
+    );
+    expect(screen.getByText("Нет позиций")).toBeInTheDocument();
+  });
+
+  it("does not show the fallback notice when estimate snapshot exists", () => {
+    mockAuditEmpty();
+    render(
+      <ApprovalReviewView
+        booking={BOOKING}
+        onReload={vi.fn()}
+        currentUser={CURRENT_USER}
+      />
+    );
+    expect(
+      screen.queryByText(/Смета будет зафиксирована при подтверждении/)
+    ).not.toBeInTheDocument();
+  });
 });

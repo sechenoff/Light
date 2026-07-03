@@ -226,6 +226,11 @@ export async function createBookingDraft(args: {
       startDate: args.startDate,
       endDate: args.endDate,
       status: "DRAFT",
+      // Новые брони живут в invoice-модели (Finance Phase 2/3). Схемный
+      // @default(true) существует только для строк, существовавших на момент
+      // миграции (cutover через backfill-finance-cutoff.ts) — без явного
+      // false каждая новая бронь «рождалась legacy» и счета были недоступны.
+      legacyFinance: false,
       comment: args.comment ?? null,
       discountPercent: args.discountPercent != null ? new Decimal(args.discountPercent) : null,
       expectedPaymentDate: resolvedPaymentDate,

@@ -183,6 +183,68 @@ describe("Soft-delete броней: archive / restore / purge", () => {
     expect(audit).not.toBeNull();
   });
 
+  it("(f2) DELETE /purge при наличии счёта → 409 PURGE_HAS_FINANCE, счёт не тронут", async () => {
+    const id = await makeBooking();
+    await request(app).delete(`/api/bookings/${id}`).set(AUTH_SA()); // archive
+    const sa = await prisma.adminUser.findFirst({ where: { username: "arch_sa" } });
+    const invoice = await prisma.invoice.create({
+      data: {
+        number: `LR-TEST-${seq}-INV`,
+        bookingId: id,
+        kind: "FULL",
+        status: "VOID", // даже аннулированный счёт блокирует purge — номерной документ
+        total: "1000",
+        createdBy: sa.id,
+      },
+    });
+
+    const res = await request(app).delete(`/api/bookings/${id}/purge`).set(AUTH_SA());
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("PURGE_HAS_FINANCE");
+    expect(res.body.details).toEqual({ invoices: 1, payments: 0 });
+
+    // Бронь и счёт живы (Cascade не сработал)
+    expect(await prisma.booking.findUnique({ where: { id } })).not.toBeNull();
+    expect(await prisma.invoice.findUnique({ where: { id: invoice.id } })).not.toBeNull();
+  });
+
+  it("(f3) DELETE /purge при не аннулированном платеже → 409 PURGE_HAS_FINANCE, платёж не отвязан", async () => {
+    const id = await makeBooking();
+    await request(app).delete(`/api/bookings/${id}`).set(AUTH_SA()); // archive
+    const payment = await prisma.payment.create({
+      data: { bookingId: id, amount: "5000", status: "RECEIVED", receivedAt: new Date() },
+    });
+
+    const res = await request(app).delete(`/api/bookings/${id}/purge`).set(AUTH_SA());
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("PURGE_HAS_FINANCE");
+    expect(res.body.details).toEqual({ invoices: 0, payments: 1 });
+
+    // Платёж остался привязанным (SetNull не сработал)
+    const after = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(after?.bookingId).toBe(id);
+  });
+
+  it("(f4) DELETE /purge при только аннулированных платежах → purge проходит", async () => {
+    const id = await makeBooking();
+    await request(app).delete(`/api/bookings/${id}`).set(AUTH_SA()); // archive
+    await prisma.payment.create({
+      data: {
+        bookingId: id,
+        amount: "5000",
+        status: "RECEIVED",
+        receivedAt: new Date(),
+        voidedAt: new Date(),
+        voidReason: "Тестовая аннуляция",
+      },
+    });
+
+    const res = await request(app).delete(`/api/bookings/${id}/purge`).set(AUTH_SA());
+    expect(res.status).toBe(200);
+    expect(res.body.purged).toBe(true);
+    expect(await prisma.booking.findUnique({ where: { id } })).toBeNull();
+  });
+
   it("(g) DELETE /purge на живой броне (не в архиве) → 409 BOOKING_NOT_ARCHIVED", async () => {
     const id = await makeBooking();
     const res = await request(app).delete(`/api/bookings/${id}/purge`).set(AUTH_SA());

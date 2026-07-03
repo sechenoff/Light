@@ -359,10 +359,9 @@ function ExpensesPageInner() {
 
   const handleApprove = async (id: string) => {
     try {
-      await apiFetch(`/api/expenses/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ approved: true }),
-      });
+      // PATCH {approved:true} молча срезался Zod-схемой (поля approved там нет) —
+      // используем предназначенный эндпоинт утверждения с аудитом EXPENSE_APPROVE.
+      await apiFetch(`/api/expenses/${id}/approve`, { method: "POST" });
       toast.success("Расход утверждён");
       const cancelled = { v: false };
       await fetchAll(cancelled);

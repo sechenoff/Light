@@ -192,12 +192,14 @@ function DaySuperAdmin({ username }: { username: string }) {
             eyebrow="Выдачи сегодня"
             value={formatRub(todayRevenue)}
             sub={`${pickups.length} ${pluralize(pickups.length, "выдача", "выдачи", "выдач")} · по сметам`}
+            href="/bookings"
           />
           <DayKpiCard
             eyebrow="Долги"
             value={fin ? formatRub(fin.totalOutstanding) : "—"}
             sub={overdue && Number(overdue) > 0 ? `из них просрочено ${formatRub(overdue)}` : "без просрочек"}
             subTone={overdue && Number(overdue) > 0 ? "rose" : "muted"}
+            href="/finance/debts"
           />
           <DayKpiCard
             eyebrow="Ремонт"
@@ -214,6 +216,7 @@ function DaySuperAdmin({ username }: { username: string }) {
                 ? <>≈ {formatRub(repairStats.spentThisMonth)} в {monthLocative}</>
                 : "—"
             }
+            href="/repair"
           />
         </div>
 
