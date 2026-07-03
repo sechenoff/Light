@@ -1,11 +1,19 @@
 import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
+import { Decimal } from "decimal.js";
 import { prisma } from "../../prisma";
 import { lkAuth } from "../../middleware/lkAuth";
 import { lkClientId } from "../../services/clientPortal/tenant";
 import { HttpError } from "../../utils/errors";
 import { buildBookingEstimatePdf, buildBookingActPdf } from "../../services/documentExport/bookingPdf";
+import {
+  renderInvoicePdf,
+  coalesceWithEnv,
+  type InvoiceLine,
+} from "../../services/documentExport/invoice/renderInvoicePdf";
+import { getSettings } from "../../services/organizationService";
+import { buildAttachmentContentDisposition } from "../../utils/contentDisposition";
 
 const router = Router();
 
@@ -117,9 +125,20 @@ router.get("/:id", lkAuth, async (req, res, next) => {
         finalAmount: true,
         amountPaid: true,
         amountOutstanding: true,
+        // Транспорт хранится на брони отдельно от сметы (finalAmount =
+        // totalAfterDiscount сметы + transportSubtotalRub) — без него в ЛК
+        // «Итого» не сходится с «Оплачено + Остаток».
+        transportSubtotalRub: true,
         comment: true,
         estimateOptionalNote: true,
         projectName: true,
+        // Последний невоидный счёт — для кнопки «Счёт PDF» в ЛК.
+        invoices: {
+          where: { status: { not: "VOID" } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { number: true },
+        },
         estimates: {
           select: {
             kind: true,
@@ -175,6 +194,7 @@ router.get("/:id", lkAuth, async (req, res, next) => {
       totalAfterDiscount:
         snapshot?.totalAfterDiscount.toString() ??
         booking.finalAmount.toString(),
+      transportSubtotal: booking.transportSubtotalRub?.toString() ?? "0",
       finalAmount: booking.finalAmount.toString(),
       amountPaid: booking.amountPaid.toString(),
       amountOutstanding: booking.amountOutstanding.toString(),
@@ -182,6 +202,8 @@ router.get("/:id", lkAuth, async (req, res, next) => {
       optionalNote: booking.estimateOptionalNote ?? null,
       hasConfirmedEstimate,
       hasAct: booking.status === "RETURNED",
+      hasInvoice: booking.invoices.length > 0,
+      invoiceNumber: booking.invoices[0]?.number ?? null,
     });
   } catch (err) {
     next(err);
@@ -224,6 +246,103 @@ router.get("/:id/act.pdf", lkAuth, async (req, res, next) => {
 
     const pdfBuf = await buildBookingActPdf(req.params.id);
     res.setHeader("Content-Type", "application/pdf");
+    res.end(pdfBuf);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/lk/bookings/:id/invoice.pdf ─────────────────────────────────────
+// Клиентская выгрузка последнего невоидного счёта по брони. Рендер повторяет
+// admin-маршрут GET /api/invoices/:id/pdf (routes/invoices.ts) — осознанный
+// дубль маппинга Invoice → renderInvoicePdf: общий сервис не выделен, чтобы
+// не трогать admin-роут; tenant-гейты здесь свои (lkAuth + clientId).
+
+router.get("/:id/invoice.pdf", lkAuth, async (req, res, next) => {
+  try {
+    const clientId = lkClientId(req);
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      include: {
+        client: { select: { name: true } },
+        estimates: { include: { lines: true } },
+        items: { include: { equipment: true } },
+        invoices: {
+          where: { status: { not: "VOID" } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    });
+    // LKG-4: архивную бронь клиент не открывает и её PDF не качает.
+    if (!booking || booking.clientId !== clientId || booking.deletedAt) throw new HttpError(404, "Не найдено", "NOT_FOUND");
+    if (!VISIBLE_STATUSES.includes(booking.status as any)) throw new HttpError(404, "Не найдено", "NOT_FOUND");
+
+    const invoice = booking.invoices[0];
+    if (!invoice) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
+
+    const orgSettings = await getSettings();
+    const org = coalesceWithEnv(orgSettings);
+
+    const invoiceDate = invoice.issuedAt
+      ? invoice.issuedAt.toLocaleDateString("ru-RU")
+      : new Date().toLocaleDateString("ru-RU");
+
+    let lines: InvoiceLine[];
+    let subtotal: string;
+    let discountPercent: string | null = null;
+    let discountAmount: string | null = null;
+    let totalAfterDiscount: string;
+
+    const mainEstimate = booking.estimates.find((e) => e.kind === "MAIN");
+    if (mainEstimate) {
+      lines = mainEstimate.lines.map((l, i) => ({
+        index: i + 1,
+        name: l.nameSnapshot,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice.toString(),
+        lineSum: l.lineSum.toString(),
+      }));
+      subtotal = mainEstimate.subtotal.toString();
+      if (mainEstimate.discountPercent && new Decimal(mainEstimate.discountPercent.toString()).greaterThan(0)) {
+        discountPercent = mainEstimate.discountPercent.toString();
+        discountAmount = mainEstimate.discountAmount.toString();
+      }
+      totalAfterDiscount = mainEstimate.totalAfterDiscount.toString();
+    } else {
+      lines = booking.items.map((item, i) => {
+        const rate = item.equipment?.rentalRatePerShift ?? new Decimal(0);
+        const lineSum = new Decimal(rate.toString()).mul(item.quantity);
+        return {
+          index: i + 1,
+          name: item.equipment?.name ?? item.customName ?? "—",
+          quantity: item.quantity,
+          unitPrice: rate.toString(),
+          lineSum: lineSum.toString(),
+        };
+      });
+      subtotal = invoice.total.toString();
+      totalAfterDiscount = invoice.total.toString();
+    }
+
+    const pdfBuf = await renderInvoicePdf(
+      {
+        invoiceNumber: invoice.number,
+        invoiceDate,
+        clientName: booking.client.name,
+        lines,
+        subtotal,
+        discountPercent,
+        discountAmount,
+        totalAfterDiscount,
+      },
+      org,
+    );
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `Счёт_${invoice.number}_${dateStr}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", buildAttachmentContentDisposition(filename, "invoice.pdf"));
     res.end(pdfBuf);
   } catch (err) {
     next(err);

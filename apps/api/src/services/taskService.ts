@@ -323,8 +323,9 @@ export interface ListTasksInput {
   cursor?: string;
   /**
    * "id-asc" (default) — стабильный порядок создания + keyset-пагинация по id.
-   * "completedAt-desc" — свежевыполненные первыми (секция «Выполнено сегодня»
-   * на главной странице задач); курсорная пагинация не поддерживается.
+   * "completedAt-desc" — свежевыполненные первыми (архив + секция «Выполнено
+   * сегодня»); keyset-пагинация по compound-курсору "<completedAt ISO>|<id>"
+   * (конвенция `{iso}|{id}` как в /lk).
    */
   sort?: "id-asc" | "completedAt-desc";
 }
@@ -363,17 +364,31 @@ export async function listTasks(input: ListTasksInput, actor: Actor) {
     where.dueDate = { lt: todayStart };
   }
 
-  // Keyset pagination via id (cuid, monotonically increasing) — только для id-asc
+  // Keyset pagination:
+  //  - id-asc: cursor = id (cuid монотонно растёт) → id > cursor;
+  //  - completedAt-desc: compound-курсор "<completedAt ISO>|<id>" →
+  //    (completedAt, id) строго «дальше» в desc-порядке.
   if (cursor) {
-    if (sort !== "id-asc") {
-      throw new HttpError(
-        400,
-        "Курсорная пагинация не поддерживается для сортировки completedAt-desc",
-        "CURSOR_SORT_UNSUPPORTED",
-      );
+    if (sort === "completedAt-desc") {
+      const sep = cursor.lastIndexOf("|");
+      const iso = sep > 0 ? cursor.slice(0, sep) : "";
+      const cursorId = sep > 0 ? cursor.slice(sep + 1) : "";
+      const cursorDate = new Date(iso);
+      if (!cursorId || Number.isNaN(cursorDate.getTime())) {
+        throw new HttpError(400, "Некорректный курсор", "INVALID_CURSOR");
+      }
+      where.AND = [
+        {
+          OR: [
+            { completedAt: { lt: cursorDate } },
+            { completedAt: cursorDate, id: { lt: cursorId } },
+          ],
+        },
+      ];
+    } else {
+      // Using id > cursor (ascending order)
+      where.id = { gt: cursor };
     }
-    // Using id > cursor (ascending order)
-    where.id = { gt: cursor };
   }
 
   const tasks = await prisma.task.findMany({
@@ -389,8 +404,17 @@ export async function listTasks(input: ListTasksInput, actor: Actor) {
     },
   });
 
-  const nextCursor =
-    sort === "id-asc" && tasks.length === limit ? tasks[tasks.length - 1].id : null;
+  // nextCursor только при полной странице. Для completedAt-desc: аномальные
+  // DONE без completedAt сортируются в конец (NULLs last в desc у SQLite) —
+  // курсор на них не строим, пагинация честно останавливается.
+  const last = tasks.length === limit ? tasks[tasks.length - 1] : null;
+  const nextCursor = !last
+    ? null
+    : sort === "completedAt-desc"
+      ? last.completedAt
+        ? `${last.completedAt.toISOString()}|${last.id}`
+        : null
+      : last.id;
   const enriched = await enrichTasksWithUsers(tasks);
 
   const withAggregates = enriched.map((t: any) => {

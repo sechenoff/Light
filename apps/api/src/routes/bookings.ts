@@ -30,7 +30,7 @@ import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 import { rolesGuard } from "../middleware/rolesGuard";
 import { writeAuditEntry, diffFields } from "../services/audit";
 import { buildBookingEstimatePdf, buildBookingActPdf } from "../services/documentExport/bookingPdf";
-import { toMoscowDateString, fromMoscowDateString, addDays } from "../utils/moscowDate";
+import { toMoscowDateString, fromMoscowDateString, moscowTodayStart, addDays } from "../utils/moscowDate";
 
 const router = express.Router();
 
@@ -98,6 +98,13 @@ const bookingCreateSchema = z.object({
     email: z.string().optional().nullable(),
     comment: z.string().optional().nullable(),
   }),
+  /**
+   * Телефон клиента (плоский alias для client.phone — форма создания брони
+   * шлёт его при сценарии «новый клиент на телефоне»). Семантика в /draft:
+   * новому клиенту записывается, существующему БЕЗ телефона — дозаполняется,
+   * существующий телефон НИКОГДА не перезаписывается.
+   */
+  clientPhone: z.string().trim().max(40).optional().nullable(),
   projectName: z.string().min(1),
   startDate: bookingRangeStringSchema,
   endDate: bookingRangeStringSchema,
@@ -180,6 +187,13 @@ const bookingStatusActionSchema = z.object({
   action: z.enum(["confirm", "issue", "return", "cancel"]),
   expectedPaymentDate: z.string().datetime().optional().nullable(),
   paymentComment: z.string().optional().nullable(),
+  /**
+   * Осознанное подтверждение ранней выдачи. Без него issue раньше startDate
+   * более чем на 24 ч → 409 ISSUE_TOO_EARLY (защита от «не та бронь/не тот
+   * день» одним кликом). UI показывает предупреждение и повторяет запрос
+   * с force: true.
+   */
+  force: z.boolean().optional().default(false),
 });
 
 function isSchemaOutOfSyncError(err: unknown): boolean {
@@ -298,78 +312,147 @@ router.get("/", async (req, res, next) => {
     const dateWhere: Prisma.BookingWhereInput =
       Object.keys(startDateRange).length > 0 ? { startDate: startDateRange } : {};
 
-    // BL-2: текстовый поиск по названию проекта или имени клиента. SQLite Prisma
-    // `contains` регистрозависим — для кириллицы это приемлемо; ищем по обоим полям.
+    // BL-2: текстовый поиск по названию проекта или имени клиента.
+    // SQLite LIKE (Prisma `contains`) регистронезависим только для ASCII —
+    // «мосфильм» молча не находил «Мосфильм». Как в equipment.ts (eq-search):
+    // выбираем лёгких кандидатов (id + имена) под остальными фильтрами,
+    // фильтруем в приложении через toLocaleLowerCase("ru-RU") и подставляем
+    // id: { in } — keyset-пагинация и totalCount продолжают работать как раньше.
     const qParam = (typeof req.query.q === "string" ? req.query.q : "").trim();
-    const searchWhere: Prisma.BookingWhereInput =
-      qParam.length > 0
-        ? {
-            OR: [
-              { projectName: { contains: qParam } },
-              { client: { is: { name: { contains: qParam } } } },
-            ],
-          }
-        : {};
 
-    const where: Prisma.BookingWhereInput = {
+    const whereBase: Prisma.BookingWhereInput = {
       ...(statusFilter ? { status: statusFilter } : {}),
       ...(archivedFilter ? { deletedAt: { not: null } } : { deletedAt: null }),
       ...paidWhere,
       ...dateWhere,
-      ...searchWhere,
     };
-    // Сортировка по ДАТЕ СМЕНЫ (startDate desc), а не по createdAt — иначе
-    // импортированные задним числом старые брони (2023) с свежим createdAt
-    // вылетают в начало списка перед свежими 2026-съёмками. Естественный
-    // порядок для оператора: сначала ближайшие/свежие смены.
-    // id desc для детерминизма при одинаковом startDate.
-    // BL-4: помимо страницы возвращаем честный totalCount под тем же where,
-    // чтобы UI показывал «Показано N из M», а не вводящее в заблуждение «N+».
-    const totalCount = await prisma.booking.count({ where });
-    const bookings = await prisma.booking.findMany({
-      where,
-      orderBy: [{ startDate: "desc" }, { id: "desc" }],
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      select: {
-        id: true,
-        status: true,
-        projectName: true,
-        startDate: true,
-        endDate: true,
-        client: { select: { id: true, name: true } },
-        paymentStatus: true,
-        amountPaid: true,
-        amountOutstanding: true,
-        finalAmount: true,
-        expectedPaymentDate: true,
-        items: {
-          select: {
-            id: true,
-            equipmentId: true,
-            quantity: true,
-            equipment: {
-              select: {
-                id: true,
-                name: true,
-                category: true,
-              },
+
+    let where: Prisma.BookingWhereInput = whereBase;
+    if (qParam.length > 0) {
+      const needle = qParam.toLocaleLowerCase("ru-RU");
+      const candidates = await prisma.booking.findMany({
+        where: whereBase,
+        select: { id: true, projectName: true, client: { select: { name: true } } },
+      });
+      const matchedIds = candidates
+        .filter((c) => `${c.projectName} ${c.client.name}`.toLocaleLowerCase("ru-RU").includes(needle))
+        .map((c) => c.id);
+      where = { ...whereBase, id: { in: matchedIds } };
+    }
+
+    const bookingListSelect = {
+      id: true,
+      status: true,
+      projectName: true,
+      startDate: true,
+      endDate: true,
+      client: { select: { id: true, name: true } },
+      paymentStatus: true,
+      amountPaid: true,
+      amountOutstanding: true,
+      finalAmount: true,
+      expectedPaymentDate: true,
+      items: {
+        select: {
+          id: true,
+          equipmentId: true,
+          quantity: true,
+          equipment: {
+            select: {
+              id: true,
+              name: true,
+              category: true,
             },
           },
         },
-        confirmedAt: true,
-        createdAt: true,
-        updatedAt: true,
-        deletedAt: true,
-        deletedBy: true,
-        _count: { select: { scanSessions: true } },
-        scanSessions: {
-          select: { operation: true, status: true },
-          orderBy: { startedAt: "desc" },
-          take: 1,
-        },
       },
-    });
+      confirmedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      deletedAt: true,
+      deletedBy: true,
+      _count: { select: { scanSessions: true } },
+      scanSessions: {
+        select: { operation: true, status: true },
+        orderBy: { startedAt: "desc" },
+        take: 1,
+      },
+    } satisfies Prisma.BookingSelect;
+    type BookingListRow = Prisma.BookingGetPayload<{ select: typeof bookingListSelect }>;
+
+    // BL-5: сортировка «актуальные сверху». Раньше был плоский startDate desc —
+    // бронь, оформленная на 3 месяца вперёд, месяцами висела первой строкой,
+    // а сегодняшние выдачи/возвраты тонули. Теперь два сегмента:
+    //   1) актуальные и будущие (endDate >= сегодня-МСК) по startDate ASC —
+    //      сегодняшняя/ближайшая смена первой, активные аренды тоже здесь;
+    //   2) прошедшие (endDate < сегодня-МСК) по startDate DESC —
+    //      свежезакрытые выше давних.
+    // Prisma не умеет условный ORDER BY, поэтому сегменты выбираются двумя
+    // запросами. Keyset-курсор продолжает работать: endDate брони-курсора
+    // однозначно определяет сегмент, хвост добирается из следующего сегмента.
+    // BL-4: totalCount под тем же where — UI показывает «Показано N из M».
+    const todayStart = moscowTodayStart();
+    const upcomingWhere: Prisma.BookingWhereInput = { AND: [where, { endDate: { gte: todayStart } }] };
+    const pastWhere: Prisma.BookingWhereInput = { AND: [where, { endDate: { lt: todayStart } }] };
+    const upcomingOrder: Prisma.BookingOrderByWithRelationInput[] = [{ startDate: "asc" }, { id: "asc" }];
+    const pastOrder: Prisma.BookingOrderByWithRelationInput[] = [{ startDate: "desc" }, { id: "desc" }];
+
+    const totalCount = await prisma.booking.count({ where });
+
+    const need = limit + 1;
+    let bookings: BookingListRow[] = [];
+    if (cursor) {
+      const cursorRow = await prisma.booking.findUnique({
+        where: { id: cursor },
+        select: { endDate: true },
+      });
+      if (cursorRow && cursorRow.endDate >= todayStart) {
+        bookings = await prisma.booking.findMany({
+          where: upcomingWhere,
+          orderBy: upcomingOrder,
+          take: need,
+          cursor: { id: cursor },
+          skip: 1,
+          select: bookingListSelect,
+        });
+        if (bookings.length < need) {
+          const fill = await prisma.booking.findMany({
+            where: pastWhere,
+            orderBy: pastOrder,
+            take: need - bookings.length,
+            select: bookingListSelect,
+          });
+          bookings = bookings.concat(fill);
+        }
+      } else if (cursorRow) {
+        bookings = await prisma.booking.findMany({
+          where: pastWhere,
+          orderBy: pastOrder,
+          take: need,
+          cursor: { id: cursor },
+          skip: 1,
+          select: bookingListSelect,
+        });
+      }
+      // Курсор не найден (бронь удалена/архивирована между страницами) —
+      // возвращаем пустую страницу, а не 500 от Prisma.
+    } else {
+      bookings = await prisma.booking.findMany({
+        where: upcomingWhere,
+        orderBy: upcomingOrder,
+        take: need,
+        select: bookingListSelect,
+      });
+      if (bookings.length < need) {
+        const fill = await prisma.booking.findMany({
+          where: pastWhere,
+          orderBy: pastOrder,
+          take: need - bookings.length,
+          select: bookingListSelect,
+        });
+        bookings = bookings.concat(fill);
+      }
+    }
     const hasMore = bookings.length > limit;
     const items = hasMore ? bookings.slice(0, limit) : bookings;
     const nextCursor = hasMore ? items[items.length - 1].id : null;
@@ -1022,6 +1105,24 @@ router.post("/:id/status", async (req, res, next) => {
       throw new HttpError(409, `Недопустимый переход: ${booking.status} -> ${body.action}`);
     }
 
+    // Мягкий гард дат: выдача раньше начала аренды более чем на сутки — почти
+    // всегда промах («не та бронь» / «не тот день»). Не блокируем намертво:
+    // менеджер может выдать заранее осознанно, повторив запрос с force: true
+    // (факт ранней выдачи фиксируется в аудите полем forcedEarlyIssue).
+    const ISSUE_EARLY_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+    if (body.action === "issue" && !body.force) {
+      const msUntilStart = booking.startDate.getTime() - Date.now();
+      if (msUntilStart > ISSUE_EARLY_THRESHOLD_MS) {
+        const [y, m, d] = toMoscowDateString(booking.startDate).split("-");
+        throw new HttpError(
+          409,
+          `Аренда начинается ${d}.${m}.${y} — до начала больше суток. Проверьте бронь; если выдаёте заранее осознанно, подтвердите выдачу.`,
+          "ISSUE_TOO_EARLY",
+          { startDate: booking.startDate.toISOString() },
+        );
+      }
+    }
+
     // NB: ветка `body.action === "confirm"` намеренно удалена (C1).
     // Ни один статус в allowedActionsByStatus не содержит "confirm" — DRAFT
     // подтверждается только через approval workflow (submit-for-approval →
@@ -1127,13 +1228,16 @@ router.post("/:id/status", async (req, res, next) => {
           }
         }
 
-        // Аудит движения юнитов — только при реальных изменениях и наличии
-        // пользователя (bot-канал без AdminUser не должен ронять транзакцию FK).
-        if (reservations.length > 0 && req.adminUser?.userId) {
+        // Аудит выдачи/возврата — headline-событие пишем ВСЕГДА, не только при
+        // UNIT-резервах: физически самые важные операции (оборудование ушло со
+        // склада / вернулось) должны быть видны в /admin/audit и для COUNT-броней.
+        // Пропускаем только канал без AdminUser (bot-ключ) — userId это FK,
+        // синтетический sentinel уронил бы транзакцию.
+        if (req.adminUser?.userId) {
           await writeAuditEntry({
             tx,
             userId: req.adminUser.userId,
-            action: body.action === "issue" ? "BOOKING_UNITS_ISSUED" : "BOOKING_UNITS_RETURNED",
+            action: body.action === "issue" ? "BOOKING_ISSUED" : "BOOKING_RETURNED",
             entityType: "Booking",
             entityId: id,
             before: diffFields({ status: booking.status }),
@@ -1142,6 +1246,7 @@ router.post("/:id/status", async (req, res, next) => {
               via: `status:${body.action}`,
               reservations: reservations.length,
               unitsUpdated: touchedUnits,
+              ...(body.action === "issue" && body.force ? { forcedEarlyIssue: true } : {}),
             }),
           });
         }
@@ -1546,7 +1651,7 @@ router.post("/draft", async (req, res, next) => {
           status: "DRAFT_PREVIEW",
           client: {
             name: body.client.name.trim(),
-            phone: body.client.phone ?? null,
+            phone: body.client.phone ?? body.clientPhone ?? null,
             email: body.client.email ?? null,
           },
           projectName: body.projectName,
@@ -1578,19 +1683,29 @@ router.post("/draft", async (req, res, next) => {
       return;
     }
 
+    // MG-контракт: телефон приходит как client.phone или плоский clientPhone.
+    // Новому клиенту — записываем; существующему без телефона — дозаполняем;
+    // существующий телефон НЕ перезаписываем (форма может прислать устаревший
+    // или частично набранный номер — источник правды остаётся в /admin/clients).
+    const clientName = body.client.name.trim();
+    const providedPhone = (body.client.phone ?? body.clientPhone ?? "").trim() || null;
+    const existingClientRec = await prisma.client.findUnique({
+      where: { name: clientName },
+      select: { phone: true },
+    });
     const client = await prisma.client.upsert({
-      where: { name: body.client.name.trim() },
+      where: { name: clientName },
       update: {
         // Conditional spread: only write fields that were explicitly provided.
         // Prevents the booking form (which only collects `name`) from wiping
-        // existing phone/email/comment on a Client when autocomplete is used.
-        ...(body.client.phone !== undefined ? { phone: body.client.phone } : {}),
+        // existing email/comment on a Client when autocomplete is used.
+        ...(providedPhone && !existingClientRec?.phone ? { phone: providedPhone } : {}),
         ...(body.client.email !== undefined ? { email: body.client.email } : {}),
         ...(body.client.comment !== undefined ? { comment: body.client.comment } : {}),
       },
       create: {
-        name: body.client.name.trim(),
-        phone: body.client.phone ?? null,
+        name: clientName,
+        phone: providedPhone,
         email: body.client.email ?? null,
         comment: body.client.comment ?? null,
       },

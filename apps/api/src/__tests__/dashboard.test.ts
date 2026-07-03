@@ -5,7 +5,7 @@
 import path from "path";
 import { execSync } from "child_process";
 import fs from "fs";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import request from "supertest";
 import type { Express } from "express";
 
@@ -209,6 +209,43 @@ describe("GET /api/dashboard/today", () => {
     expect(res.status).toBe(200);
     const draft = res.body.pickups.find((b: any) => b.clientName === "Клиент черновик");
     expect(draft).toBeUndefined();
+  });
+
+  it("без ?date границы дня считаются по Москве, а не по UTC (MD-1)", async () => {
+    const client = await createClient("Клиент московская полночь");
+    const eq = await createEquipment("Свет московская полночь");
+
+    // «Сейчас» (fake) = завтра 22:30 UTC = 01:30 МСК послезавтра.
+    // Бронь стартует послезавтра в 10:00 UTC (13:00 МСК) — «сегодня» по Москве,
+    // но «завтра» по UTC. Старые UTC-границы её теряли.
+    // Дата в пределах TTL JWT-сессии (7 дней), чтобы токен не протух.
+    const realNow = new Date();
+    const fakeNow = new Date(Date.UTC(
+      realNow.getUTCFullYear(), realNow.getUTCMonth(), realNow.getUTCDate() + 1, 22, 30, 0, 0,
+    ));
+    const startDate = new Date(Date.UTC(
+      realNow.getUTCFullYear(), realNow.getUTCMonth(), realNow.getUTCDate() + 2, 10, 0, 0, 0,
+    ));
+    await createBooking(
+      client.id,
+      eq.id,
+      "CONFIRMED",
+      startDate,
+      new Date(startDate.getTime() + 24 * 60 * 60 * 1000),
+    );
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(fakeNow);
+    try {
+      const res = await request(app).get("/api/dashboard/today").set(AUTH());
+      expect(res.status).toBe(200);
+      const pickup = res.body.pickups.find(
+        (b: any) => b.clientName === "Клиент московская полночь",
+      );
+      expect(pickup).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("позволяет переопределить дату через query param", async () => {

@@ -14,6 +14,8 @@ import { DayOperationsList } from "../../src/components/day/DayOperationsList";
 import type { DayOperation } from "../../src/components/day/DayOperationsList";
 import { DayFooterMetrics } from "../../src/components/day/DayFooterMetrics";
 import { DayTasksWidget } from "../../src/components/day/DayTasksWidget";
+import { DayProblemAlert } from "../../src/components/day/DayProblemAlert";
+import { QuickAvailabilityCheck } from "../../src/components/QuickAvailabilityCheck";
 
 // ── SUPER_ADMIN ──────────────────────────────────────────────────────────────
 
@@ -51,7 +53,17 @@ interface DashboardToday {
     finalAmount: string;
     itemCount: number;
   }>;
-  active: Array<{ id: string }>;
+  // MD-2: active приходит из API в том же виде, что pickups/returns —
+  // типизируем полностью, чтобы показать «Сейчас на площадке».
+  active: Array<{
+    id: string;
+    projectName: string;
+    clientName: string;
+    startDate: string;
+    endDate: string;
+    finalAmount: string;
+    itemCount: number;
+  }>;
   myTasks?: Array<{ id: string; title: string; dueDate: string | null; urgent: boolean; status?: "OPEN" | "DONE" }>;
 }
 
@@ -111,6 +123,7 @@ function DaySuperAdmin({ username }: { username: string }) {
 
   const pickups = dashboard?.pickups ?? [];
   const returns = dashboard?.returns ?? [];
+  const active = dashboard?.active ?? [];
 
   const todayRevenue = sumFinal(pickups);
   const overdue = fin?.summary?.overdueReceivables;
@@ -182,6 +195,8 @@ function DaySuperAdmin({ username }: { username: string }) {
           </DayAlert>
         )}
 
+        <DayProblemAlert />
+
         <DayTasksWidget dashboard={dashboard} />
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -220,6 +235,13 @@ function DaySuperAdmin({ username }: { username: string }) {
           />
         </div>
 
+        {/* MD-5: виджет проверки доступности — сценарий «клиент звонит,
+            свободен ли прибор» прямо с первого экрана. */}
+        <div className="bg-surface border border-border rounded-lg p-3">
+          <p className="text-sm font-semibold text-ink mb-2">Проверка доступности</p>
+          <QuickAvailabilityCheck />
+        </div>
+
         <div className="bg-surface border border-border rounded-lg p-3">
           <div className="flex justify-between items-baseline mb-2">
             <p className="text-sm font-semibold text-ink">Операции сегодня</p>
@@ -227,6 +249,38 @@ function DaySuperAdmin({ username }: { username: string }) {
           </div>
           <DayOperationsList operations={operations} showAmount emptyLabel="На сегодня нет операций" />
         </div>
+
+        {/* MD-2: техника «в поле» — раньше active приходил из API и молча выбрасывался. */}
+        {active.length > 0 && (
+          <div className="bg-surface border border-border rounded-lg p-3">
+            <div className="flex justify-between items-baseline mb-1">
+              <p className="text-sm font-semibold text-ink">
+                Сейчас на площадке: {active.length}{" "}
+                {pluralize(active.length, "бронь", "брони", "броней")}
+              </p>
+              <Link href="/bookings?status=ISSUED" className="text-xs text-accent hover:underline">
+                Все →
+              </Link>
+            </div>
+            <details>
+              <summary className="text-xs text-ink-3 cursor-pointer select-none hover:text-ink">
+                Показать список
+              </summary>
+              <ul className="divide-y divide-border mt-1">
+                {active.map((b) => (
+                  <li key={b.id} className="py-1.5 flex justify-between items-baseline gap-2">
+                    <Link href={`/bookings/${b.id}`} className="text-xs truncate hover:text-accent">
+                      {b.clientName} · {b.projectName}
+                    </Link>
+                    <span className="text-xs text-ink-3 shrink-0">
+                      {b.itemCount} {pluralize(b.itemCount, "позиция", "позиции", "позиций")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </div>
+        )}
 
         <DayFooterMetrics>
           {currEarned ? (
@@ -284,6 +338,8 @@ function DayWarehouse({ username }: { username: string }) {
             linkLabel="Все →"
           />
         )}
+
+        <DayProblemAlert />
 
         <DayTasksWidget dashboard={dashboard} />
 

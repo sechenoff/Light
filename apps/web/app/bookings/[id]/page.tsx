@@ -10,12 +10,10 @@ import { StatusPill } from "../../../src/components/StatusPill";
 import { SectionHeader } from "../../../src/components/SectionHeader";
 import { formatMoneyRub, formatRub } from "../../../src/lib/format";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
-import { RejectBookingModal } from "../../../src/components/bookings/RejectBookingModal";
 import { EquipmentPickerModal } from "../../../src/components/bookings/EquipmentPickerModal";
 import { RetroDiffPanel } from "../../../src/components/bookings/RetroDiffPanel";
 import { ChangeClientModal } from "../../../src/components/bookings/ChangeClientModal";
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
-import { ApprovalContext } from "../../../src/components/bookings/ApprovalContext";
 import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalReviewView";
 import { toast } from "../../../src/components/ToastProvider";
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
@@ -213,9 +211,8 @@ export default function BookingDetailPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const { user } = useCurrentUser();
-  const [rejectOpen, setRejectOpen] = useState(false);
   const [changeClientOpen, setChangeClientOpen] = useState(false);
-  const [actionBusy, setActionBusy] = useState<null | "submit" | "approve" | "reject">(null);
+  const [actionBusy, setActionBusy] = useState<null | "submit" | "instant">(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [voidPaymentId, setVoidPaymentId] = useState<string | null>(null);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
@@ -339,28 +336,42 @@ export default function BookingDetailPage() {
   // только в списке /bookings). issue/return — POST /:id/status. Отмена: при
   // наличии оплаты открываем модалку распоряжения депозитом (как было), иначе —
   // обычная отмена статусом (закрывает дыру «CONFIRMED без оплаты не отменить»).
-  async function runLifecycleAction(action: "issue" | "return" | "cancel") {
+  async function runLifecycleAction(action: "issue" | "return" | "cancel", opts?: { force?: boolean }) {
     if (!id || !booking) return;
-    if (action === "cancel") {
-      if (Number(booking.amountPaid ?? "0") > 0) {
-        setCancelDepositOpen(true);
-        return;
+    const isForcedRetry = opts?.force === true;
+    if (!isForcedRetry) {
+      if (action === "cancel") {
+        if (Number(booking.amountPaid ?? "0") > 0) {
+          setCancelDepositOpen(true);
+          return;
+        }
+        if (!confirm("Отменить бронь?\n\nРезервы оборудования будут сняты.")) return;
       }
-      if (!confirm("Отменить бронь?\n\nРезервы оборудования будут сняты.")) return;
+      if (action === "issue" && !confirm("Перевести бронь в статус «Выдано»?")) return;
+      if (action === "return" && !confirm("Перевести бронь в статус «Возвращено»?")) return;
     }
-    if (action === "issue" && !confirm("Перевести бронь в статус «Выдано»?")) return;
-    if (action === "return" && !confirm("Перевести бронь в статус «Возвращено»?")) return;
     setLifecycleBusy(true);
     try {
       await apiFetch(`/api/bookings/${id}/status`, {
         method: "POST",
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...(isForcedRetry ? { force: true } : {}) }),
       });
       toast.success(
         action === "issue" ? "Бронь выдана" : action === "return" ? "Бронь возвращена" : "Бронь отменена",
       );
       await reloadBooking();
     } catch (e: any) {
+      // Мягкий гард ранней выдачи: сервер вернул 409 ISSUE_TOO_EARLY (до начала
+      // аренды больше суток). Показываем предупреждение и при согласии
+      // повторяем запрос с force: true — сервер зафиксирует раннюю выдачу
+      // в аудите (forcedEarlyIssue).
+      if (action === "issue" && !isForcedRetry && e?.code === "ISSUE_TOO_EARLY") {
+        const serverMsg = typeof e?.message === "string" ? e.message : "До начала аренды больше суток.";
+        if (confirm(`${serverMsg}\n\nВыдать оборудование заранее?`)) {
+          await runLifecycleAction("issue", { force: true });
+        }
+        return;
+      }
       toast.error(e?.message ?? "Не удалось изменить статус");
     } finally {
       setLifecycleBusy(false);
@@ -682,6 +693,36 @@ export default function BookingDetailPage() {
     URL.revokeObjectURL(url);
   }
 
+  /**
+   * Экспорт сметы, когда снапшота ещё нет (старый черновик). Новые черновики
+   * создаются сразу с MAIN-сметой — для них рендерится полный блок экспорта.
+   * У старых черновиков без сметы full-estimate отвечает 404
+   * MAIN_ESTIMATE_NOT_FOUND — вместо alert показываем понятный тост.
+   */
+  async function downloadEstimatePdfWithFallback() {
+    if (!booking) return;
+    try {
+      const res = await apiFetchRaw(`/api/bookings/${booking.id}/full-estimate/export/pdf`, {
+        method: "GET",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        toast.error("Смета ещё не сформирована — сохраните бронь");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const disposition = res.headers.get("content-disposition") ?? "";
+      a.download = getFileNameFromContentDisposition(disposition, `booking-${booking.id}-full.pdf`);
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Смета ещё не сформирована — сохраните бронь");
+    }
+  }
+
   async function handleSubmitForApproval() {
     if (!booking) return;
     setActionBusy("submit");
@@ -698,37 +739,44 @@ export default function BookingDetailPage() {
     }
   }
 
-  async function handleApprove() {
+  /**
+   * SA-шорткат «Согласовать сразу»: DRAFT → PENDING_APPROVAL → CONFIRMED двумя
+   * последовательными вызовами (submit-for-approval, затем approve). Прямой
+   * POST /:id/confirm для веба закрыт (409 USE_APPROVAL_FLOW), а цепочка
+   * сохраняет обе аудит-записи (BOOKING_SUBMITTED + BOOKING_APPROVED).
+   * Если approve падает (например, конфликт доступности) — бронь остаётся в
+   * PENDING_APPROVAL, страница сама переключится на экран согласования, где
+   * SA увидит конфликты и сможет отклонить или поправить.
+   */
+  async function handleApproveNow() {
     if (!booking) return;
-    if (!confirm("Одобрить бронь и перевести её в «Подтверждено»?")) return;
-    setActionBusy("approve");
+    if (
+      !confirm(
+        "Согласовать бронь сразу?\n\nБронь будет отправлена на согласование и тут же одобрена: статус станет «Подтверждено», оборудование будет зарезервировано.",
+      )
+    )
+      return;
+    setActionBusy("instant");
     try {
-      const data = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${booking.id}/approve`, {
-        method: "POST",
-      });
-      setBooking(data.booking);
-      toast.success("Бронь одобрена");
+      const submitted = await apiFetch<{ booking: BookingDetail }>(
+        `/api/bookings/${booking.id}/submit-for-approval`,
+        { method: "POST" },
+      );
+      setBooking(submitted.booking);
+      try {
+        const approved = await apiFetch<{ booking: BookingDetail }>(
+          `/api/bookings/${booking.id}/approve`,
+          { method: "POST" },
+        );
+        setBooking(approved.booking);
+        toast.success("Бронь согласована и подтверждена, оборудование зарезервировано");
+      } catch (e: any) {
+        toast.error(
+          `Бронь отправлена на согласование, но одобрить не удалось: ${e?.message ?? "ошибка"}`,
+        );
+      }
     } catch (e: any) {
-      toast.error(e?.message ?? "Не удалось одобрить бронь");
-    } finally {
-      setActionBusy(null);
-    }
-  }
-
-  async function handleReject(reason: string) {
-    if (!booking) return;
-    setActionBusy("reject");
-    try {
-      const data = await apiFetch<{ booking: BookingDetail }>(`/api/bookings/${booking.id}/reject`, {
-        method: "POST",
-        body: JSON.stringify({ reason }),
-      });
-      setBooking(data.booking);
-      setRejectOpen(false);
-      toast.success("Бронь отклонена и возвращена в черновик");
-    } catch (e: any) {
-      // Don't toast — let modal show inline via thrown error
-      throw e;
+      toast.error(e?.message ?? "Не удалось отправить на согласование");
     } finally {
       setActionBusy(null);
     }
@@ -795,7 +843,11 @@ export default function BookingDetailPage() {
                     Вернуть
                   </button>
                 )}
-                {!["CANCELLED", "RETURNED"].includes(booking.status) && user?.role === "SUPER_ADMIN" && (
+                {/* «Отменить» только там, где сервер разрешает cancel:
+                    из ISSUED допустим лишь return (allowedActionsByStatus),
+                    и cancel-with-deposit тоже ограничен этими тремя статусами —
+                    иначе кнопка гарантированно заканчивалась 409. */}
+                {["DRAFT", "PENDING_APPROVAL", "CONFIRMED"].includes(booking.status) && user?.role === "SUPER_ADMIN" && (
                   <button
                     type="button"
                     disabled={lifecycleBusy}
@@ -954,8 +1006,10 @@ export default function BookingDetailPage() {
                   </label>
                 </div>
                 <p className="mt-3 text-xs text-ink-3">
-                  Изменение позиций оборудования и транспорта в этой версии недоступно inline —
-                  для правки состава бронирования используйте полный редактор (отдельный экран).
+                  Прямо на этой странице правятся: проект, комментарий, скидка, итог (override),
+                  состав и количество позиций — в таблице «Позиции брони» ниже (кнопка
+                  «+ Добавить позицию», ✕ для удаления), а также водители и пробег транспорта.
+                  Даты брони и расчётные параметры транспорта (часы, км) задним числом не меняются.
                 </p>
               </div>
             </div>
@@ -993,19 +1047,10 @@ export default function BookingDetailPage() {
             </div>
           )}
 
-          {booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN" && (
-            <div className="mb-4">
-              <ApprovalContext
-                bookingId={booking.id}
-                clientId={booking.client.id}
-                startDate={booking.startDate}
-                endDate={booking.endDate}
-                itemCount={booking.items.length}
-                comment={booking.comment}
-                items={booking.items}
-              />
-            </div>
-          )}
+          {/* NB: для SA + PENDING_APPROVAL страница целиком заменяется на
+              ApprovalReviewView (ветка выше) — контекст согласования
+              (конфликты доступности, долг клиента) и кнопки «Одобрить»/
+              «Отклонить» живут там, здесь их дублей нет. */}
 
           {user?.role === "SUPER_ADMIN" && (
             <ApprovalTimeline bookingId={booking.id} />
@@ -1022,35 +1067,19 @@ export default function BookingDetailPage() {
                 {actionBusy === "submit" ? "Отправляю…" : "Отправить на согласование"}
               </button>
             )}
-            {!isArchived && booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN" && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleApprove}
-                  disabled={actionBusy !== null}
-                  className="rounded bg-emerald px-4 py-2 text-sm text-white hover:bg-emerald/90 disabled:opacity-50"
-                >
-                  {actionBusy === "approve" ? "Одобряю…" : "Одобрить"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRejectOpen(true)}
-                  disabled={actionBusy !== null}
-                  className="rounded border border-rose px-4 py-2 text-sm text-rose hover:bg-rose-soft disabled:opacity-50"
-                >
-                  Отклонить
-                </button>
-              </>
+            {/* SA согласует сам с собой: один клик вместо двух экранов.
+                Для WAREHOUSE кнопки нет — его брони одобряет руководитель. */}
+            {!isArchived && booking.status === "DRAFT" && user?.role === "SUPER_ADMIN" && (
+              <button
+                type="button"
+                onClick={handleApproveNow}
+                disabled={actionBusy !== null}
+                className="rounded bg-emerald px-4 py-2 text-sm text-white hover:bg-emerald/90 disabled:opacity-50"
+              >
+                {actionBusy === "instant" ? "Согласовываю…" : "✓ Согласовать сразу"}
+              </button>
             )}
           </div>
-
-          <RejectBookingModal
-            open={rejectOpen}
-            bookingDisplayName={booking.displayName ?? booking.projectName}
-            loading={actionBusy === "reject"}
-            onClose={() => setRejectOpen(false)}
-            onSubmit={handleReject}
-          />
 
           <ChangeClientModal
             open={changeClientOpen}
@@ -2160,8 +2189,19 @@ export default function BookingDetailPage() {
                 </div>
               </div>
             ) : (
-              <div className="rounded-lg border border-border bg-surface-subtle p-3 text-sm text-ink-2">
-                Смета пока не сформирована (возможно, это черновик).
+              <div className="rounded-lg border border-border bg-surface-subtle p-3 text-sm text-ink-2 space-y-2">
+                <div>Смета пока не сформирована (возможно, это черновик).</div>
+                {/* CTA вместо тупика: у новых черновиков MAIN-смета создаётся
+                    сразу (тогда выше рендерится полный блок экспорта); у старых
+                    без сметы сервер ответит 404 MAIN_ESTIMATE_NOT_FOUND — покажем
+                    понятный тост вместо молчаливой заглушки. */}
+                <button
+                  type="button"
+                  className="rounded border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-muted transition-colors no-print"
+                  onClick={downloadEstimatePdfWithFallback}
+                >
+                  📄 Скачать смету (PDF)
+                </button>
               </div>
             )}
             <AddonEstimateSection bookingId={booking.id} />

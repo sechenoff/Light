@@ -10,6 +10,11 @@ import { OwnCatalogReview } from "@/components/admin/imports/OwnCatalogReview";
 import { CompetitorReview } from "@/components/admin/imports/CompetitorReview";
 import { SessionHistory } from "@/components/admin/imports/SessionHistory";
 import { RebindModal } from "@/components/admin/imports/RebindModal";
+import {
+  buildOwnResultFromRows,
+  buildCompetitorResultFromRows,
+  type RawSessionRow,
+} from "./rebuild";
 import type {
   ImportSession,
   AnalyzeResultOwn,
@@ -30,6 +35,7 @@ export default function ImportsPage() {
   const [sessions, setSessions] = useState<ImportSession[]>([]);
   const [uploading, setUploading] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [rebindRowId, setRebindRowId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [analyzeFileName, setAnalyzeFileName] = useState("");
@@ -246,11 +252,37 @@ export default function ImportsPage() {
     }
   }
 
-  function handleSelectSession(s: ImportSession) {
+  async function handleSelectSession(s: ImportSession) {
+    setError(null);
     setSession(s);
-    // Navigate to review step with empty result (session already exists)
-    // The user can see the session but we don't re-fetch analysis here
+    setOwnResult(null);
+    setCompetitorResult(null);
+    setHistoryLoading(true);
     setStep("review");
+    try {
+      // Дозагружаем все строки сессии постранично (limit=200 — серверный максимум).
+      const all: RawSessionRow[] = [];
+      let page = 1;
+      let totalPages = 1;
+      do {
+        const res = await apiFetch<{ rows: RawSessionRow[]; totalPages: number }>(
+          `/api/import-sessions/${s.id}/rows?limit=200&page=${page}`
+        );
+        all.push(...(res.rows ?? []));
+        totalPages = res.totalPages ?? 1;
+        page += 1;
+      } while (page <= totalPages);
+
+      if (s.type === "OWN_PRICE_UPDATE") {
+        setOwnResult(buildOwnResultFromRows(s, all));
+      } else {
+        setCompetitorResult(buildCompetitorResultFromRows(s, all));
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось загрузить данные сессии");
+    } finally {
+      setHistoryLoading(false);
+    }
   }
 
   // ── Find rebind row data ─────────────────────────────────────────────────────
@@ -357,8 +389,15 @@ export default function ImportsPage() {
         />
       )}
 
-      {/* Fallback: session loaded but no result yet (opened from history) */}
-      {step === "review" && session && !ownResult && !competitorResult && (
+      {/* Loading: восстанавливаем данные сессии из истории */}
+      {step === "review" && historyLoading && (
+        <div className="py-16 text-center text-sm text-ink-3">
+          Загружаем данные сессии…
+        </div>
+      )}
+
+      {/* Fallback: строки не удалось загрузить (сетевая ошибка и т.п.) */}
+      {step === "review" && session && !historyLoading && !ownResult && !competitorResult && (
         <div className="py-16 text-center text-sm text-ink-3">
           <p className="mb-4">Данные анализа недоступны для этой сессии.</p>
           <button

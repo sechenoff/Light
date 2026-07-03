@@ -5,10 +5,28 @@ import type { BookingStatus } from "@prisma/client";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { parseBookingRangeBound, diffDaysInclusive, assertBookingRangeOrder } from "../utils/dates";
+import { getUsableUnitBaseMap } from "../services/availability";
+import { toMoscowDateString, fromMoscowDateString, addDays } from "../utils/moscowDate";
 
 const router = express.Router();
 
-const BLOCKING_STATUSES: BookingStatus[] = ["CONFIRMED", "ISSUED"];
+// MF-1: PENDING_APPROVAL блокирует наравне с CONFIRMED/ISSUED (синхронно с
+// services/availability.ts) — бронь на согласовании занимает позиции и видна
+// в календаре отдельным стилем («На согласовании»). DRAFT — только по чекбоксу.
+const BLOCKING_STATUSES: BookingStatus[] = ["PENDING_APPROVAL", "CONFIRMED", "ISSUED"];
+
+/**
+ * MF-2: эффективный знаменатель занятости. Для UNIT-оборудования — число
+ * пригодных единиц (AVAILABLE/ISSUED, см. eu-2 в services/availability.ts),
+ * для COUNT — totalQuantity. Календарь обязан считать так же, как проверка
+ * доступности, иначе «3/5» в календаре противоречит «доступно 0» при брони.
+ */
+function effectiveQty(
+  eq: { id: string; stockTrackingMode: string; totalQuantity: number },
+  usableUnitBase: Map<string, number>
+): number {
+  return eq.stockTrackingMode === "UNIT" ? (usableUnitBase.get(eq.id) ?? 0) : eq.totalQuantity;
+}
 
 // ──────────────────────────────────────────────────────────────────
 // Schemas
@@ -95,6 +113,18 @@ router.get("/", async (req, res, next) => {
       }),
     ]);
 
+    // MF-2: usable-база для всех UNIT-позиций (из каталога и из позиций броней)
+    const unitEquipmentIds = new Set<string>();
+    for (const eq of allEquipment) {
+      if (eq.stockTrackingMode === "UNIT") unitEquipmentIds.add(eq.id);
+    }
+    for (const b of bookings) {
+      for (const item of b.items) {
+        if (item.equipment?.stockTrackingMode === "UNIT") unitEquipmentIds.add(item.equipment.id);
+      }
+    }
+    const usableUnitBase = await getUsableUnitBaseMap([...unitEquipmentIds]);
+
     const searchLower = q.search?.trim().toLocaleLowerCase("ru-RU") ?? "";
 
     // Фильтрация по категории и поиску
@@ -124,7 +154,7 @@ router.get("/", async (req, res, next) => {
         id: eq.id,
         name: eq.name,
         category: eq.category,
-        totalQuantity: eq.totalQuantity,
+        totalQuantity: effectiveQty(eq, usableUnitBase),
         trackingMode: eq.stockTrackingMode,
       });
     }
@@ -156,7 +186,7 @@ router.get("/", async (req, res, next) => {
             id: eq.id,
             name: eq.name,
             category: eq.category,
-            totalQuantity: eq.totalQuantity,
+            totalQuantity: effectiveQty(eq, usableUnitBase),
             trackingMode: eq.stockTrackingMode,
           });
         }
@@ -207,13 +237,20 @@ router.get("/occupancy", async (req, res, next) => {
       throw new HttpError(400, "Максимальный период — 90 дней");
     }
 
-    // Суммарная мощность всего оборудования
-    const capacityResult = await prisma.equipment.aggregate({
-      _sum: { totalQuantity: true },
+    // Суммарная мощность всего оборудования.
+    // MF-2: для UNIT-позиций считаем пригодные единицы, а не totalQuantity.
+    const capacityEquipment = await prisma.equipment.findMany({
+      select: { id: true, stockTrackingMode: true, totalQuantity: true },
     });
-    const totalCapacity = capacityResult._sum.totalQuantity ?? 0;
+    const capacityUnitBase = await getUsableUnitBaseMap(
+      capacityEquipment.filter((e) => e.stockTrackingMode === "UNIT").map((e) => e.id)
+    );
+    const totalCapacity = capacityEquipment.reduce(
+      (sum, e) => sum + effectiveQty(e, capacityUnitBase),
+      0
+    );
 
-    // Брони пересекающиеся с диапазоном (только CONFIRMED и ISSUED)
+    // Брони пересекающиеся с диапазоном (PENDING_APPROVAL, CONFIRMED, ISSUED)
     const bookings = await prisma.booking.findMany({
       where: {
         status: { in: BLOCKING_STATUSES },
@@ -227,24 +264,18 @@ router.get("/occupancy", async (req, res, next) => {
       },
     });
 
-    // Генерируем массив дней в диапазоне
+    // Генерируем массив дней в диапазоне.
+    // MF-3: границы дня считаем по Москве (а не UTC) — бронь с временем
+    // 00:00–02:59 МСК хранится как 21:00–23:59Z предыдущего дня и при
+    // UTC-раскладке красила соседний день.
     const days: Array<{ date: string; bookingCount: number; occupancyPercent: number }> = [];
+    const firstMoscowDayStart = fromMoscowDateString(toMoscowDateString(start));
 
     for (let i = 0; i < dayCount; i++) {
-      const dayStart = new Date(Date.UTC(
-        start.getUTCFullYear(),
-        start.getUTCMonth(),
-        start.getUTCDate() + i,
-        0, 0, 0, 0
-      ));
-      const dayEnd = new Date(Date.UTC(
-        start.getUTCFullYear(),
-        start.getUTCMonth(),
-        start.getUTCDate() + i,
-        23, 59, 59, 999
-      ));
+      const dayStart = addDays(firstMoscowDayStart, i);
+      const dayEnd = new Date(addDays(firstMoscowDayStart, i + 1).getTime() - 1);
 
-      const dateStr = dayStart.toISOString().slice(0, 10);
+      const dateStr = toMoscowDateString(dayStart);
 
       // Брони пересекающиеся с этим днём
       const overlapping = bookings.filter(

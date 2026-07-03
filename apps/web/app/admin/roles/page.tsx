@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { StatusPill } from "../../../src/components/StatusPill";
+import { AdminTabNav } from "../../../src/components/admin/AdminTabNav";
 import {
   ROLE_DESCRIPTIONS,
   LEGEND_ITEMS,
@@ -71,11 +71,10 @@ export default function AdminRolesPage() {
 
   return (
     <div className="p-6 max-w-[1280px] mx-auto space-y-6 pb-16">
-      {/* Хлебные крошки + заголовок */}
+      <AdminTabNav />
+
+      {/* Заголовок */}
       <div>
-        <Link href="/admin" className="eyebrow hover:text-accent transition-colors">
-          ← Админка
-        </Link>
         <h1 className="text-2xl font-semibold text-ink mt-2">Матрица прав</h1>
       </div>
 

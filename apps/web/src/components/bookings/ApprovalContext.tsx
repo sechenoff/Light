@@ -26,7 +26,7 @@ type Props = {
   items: Array<{ equipmentId: string | null; quantity: number; equipment: { name: string } | null }>;
 };
 
-export function ApprovalContext({ bookingId: _bookingId, clientId, startDate, endDate, itemCount, comment, items }: Props) {
+export function ApprovalContext({ bookingId, clientId, startDate, endDate, itemCount, comment, items }: Props) {
   const [clientStats, setClientStats] = useState<ClientStats | null>(null);
   const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
   const [conflictChecked, setConflictChecked] = useState(false);
@@ -53,8 +53,12 @@ export function ApprovalContext({ bookingId: _bookingId, clientId, startDate, en
     let cancelled = false;
     const startISO = new Date(startDate).toISOString();
     const endISO = new Date(endDate).toISOString();
+    // excludeBookingId обязателен: BLOCKING_STATUSES включает PENDING_APPROVAL,
+    // поэтому без исключения рассматриваемая бронь считает саму себя занятой
+    // и панель показывает ложный конфликт (approve при этом прошёл бы успешно —
+    // confirmBooking исключает себя так же).
     apiFetch<{ rows: Array<{ equipmentId: string; name: string; availableQuantity: number }> }>(
-      `/api/availability?start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`
+      `/api/availability?start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}&excludeBookingId=${encodeURIComponent(bookingId)}`
     )
       .then((data) => {
         if (cancelled) return;
@@ -76,7 +80,7 @@ export function ApprovalContext({ bookingId: _bookingId, clientId, startDate, en
       .catch(() => { if (!cancelled) setConflictChecked(true); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, itemsKey]);
+  }, [bookingId, startDate, endDate, itemsKey]);
 
   return (
     <div className="space-y-3">

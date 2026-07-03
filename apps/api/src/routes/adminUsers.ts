@@ -51,7 +51,13 @@ const createSchema = z.object({
 const updateSchema = z.object({
   password: z.string().min(3).max(200).optional(),
   role: z.enum(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]).optional(),
+  isActive: z.boolean().optional(),
 });
+
+/** Число активных супер-администраторов — для гардов «последний SUPER_ADMIN». */
+async function countActiveSuperAdmins(): Promise<number> {
+  return prisma.adminUser.count({ where: { role: "SUPER_ADMIN", isActive: true } });
+}
 
 // ──────────────────────────────────────────────
 // GET / — список пользователей
@@ -59,7 +65,7 @@ const updateSchema = z.object({
 router.get("/", async (_req, res, next) => {
   try {
     const users = await prisma.adminUser.findMany({
-      select: { id: true, username: true, role: true, createdAt: true, updatedAt: true },
+      select: { id: true, username: true, role: true, isActive: true, createdAt: true, updatedAt: true },
       orderBy: { createdAt: "asc" },
     });
     res.json({ users });
@@ -83,7 +89,7 @@ router.post("/", async (req, res, next) => {
     const user = await prisma.$transaction(async (tx) => {
       const created = await tx.adminUser.create({
         data: { username: body.username, passwordHash, role: body.role },
-        select: { id: true, username: true, role: true, createdAt: true, updatedAt: true },
+        select: { id: true, username: true, role: true, isActive: true, createdAt: true, updatedAt: true },
       });
       await writeAuditEntry({
         tx,
@@ -103,7 +109,7 @@ router.post("/", async (req, res, next) => {
 });
 
 // ──────────────────────────────────────────────
-// PATCH /:id — изменить пароль или роль
+// PATCH /:id — изменить пароль, роль или статус активности
 // ──────────────────────────────────────────────
 router.patch("/:id", async (req, res, next) => {
   try {
@@ -114,17 +120,44 @@ router.patch("/:id", async (req, res, next) => {
     const existing = await prisma.adminUser.findUnique({ where: { id } });
     if (!existing) throw new HttpError(404, "Пользователь не найден");
 
-    const before = diffFields({ username: existing.username, role: existing.role } as Record<string, unknown>);
+    // Гарды — зеркально DELETE, чтобы нельзя было потерять доступ к админке.
+    const isRoleChange = body.role !== undefined && body.role !== existing.role;
+    const isDeactivation = body.isActive === false && existing.isActive !== false;
 
-    const data: { passwordHash?: string; role?: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" } = {};
+    // Нельзя сменить собственную роль (в т.ч. понизить себя — lockout).
+    if (isRoleChange && id === actorId) {
+      return res.status(409).json({ message: "Нельзя изменить собственную роль" });
+    }
+
+    // Нельзя отключить собственную учётную запись.
+    if (isDeactivation && id === actorId) {
+      return res.status(409).json({ message: "Нельзя отключить собственную учётную запись" });
+    }
+
+    // Нельзя понизить или отключить последнего активного SUPER_ADMIN.
+    if (existing.role === "SUPER_ADMIN" && existing.isActive !== false) {
+      const isDemotion = isRoleChange && body.role !== "SUPER_ADMIN";
+      if ((isDemotion || isDeactivation) && (await countActiveSuperAdmins()) <= 1) {
+        return res.status(409).json({
+          message: isDemotion
+            ? "Нельзя понизить роль последнего супер-администратора"
+            : "Нельзя отключить последнего супер-администратора",
+        });
+      }
+    }
+
+    const before = diffFields({ username: existing.username, role: existing.role, isActive: existing.isActive } as Record<string, unknown>);
+
+    const data: { passwordHash?: string; role?: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN"; isActive?: boolean } = {};
     if (body.password) data.passwordHash = await hashPassword(body.password);
     if (body.role) data.role = body.role;
+    if (body.isActive !== undefined) data.isActive = body.isActive;
 
     const user = await prisma.$transaction(async (tx) => {
       const updated = await tx.adminUser.update({
         where: { id },
         data,
-        select: { id: true, username: true, role: true, createdAt: true, updatedAt: true },
+        select: { id: true, username: true, role: true, isActive: true, createdAt: true, updatedAt: true },
       });
       await writeAuditEntry({
         tx,
@@ -133,7 +166,7 @@ router.patch("/:id", async (req, res, next) => {
         entityType: "AdminUser",
         entityId: id,
         before,
-        after: diffFields({ username: updated.username, role: updated.role } as Record<string, unknown>),
+        after: diffFields({ username: updated.username, role: updated.role, isActive: updated.isActive } as Record<string, unknown>),
       });
       return updated;
     });
@@ -158,10 +191,9 @@ router.delete("/:id", async (req, res, next) => {
       return res.status(409).json({ message: "Нельзя удалить собственную учётную запись" });
     }
 
-    // Нельзя удалить последнего SUPER_ADMIN.
-    if (existing.role === "SUPER_ADMIN") {
-      const superAdminCount = await prisma.adminUser.count({ where: { role: "SUPER_ADMIN" } });
-      if (superAdminCount <= 1) {
+    // Нельзя удалить последнего активного SUPER_ADMIN.
+    if (existing.role === "SUPER_ADMIN" && existing.isActive !== false) {
+      if ((await countActiveSuperAdmins()) <= 1) {
         return res.status(409).json({ message: "Нельзя удалить последнего супер-администратора" });
       }
     }

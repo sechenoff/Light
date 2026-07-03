@@ -3,6 +3,7 @@
  * H1 — rolesGuard на /api/warehouse/workers/*
  * H2 — per-route guards на /api/equipment/:id/units/* и /api/equipment-units/*
  * H4 — аудит-записи при DELETE /api/bookings/:id и CRUD /api/admin-users
+ * MH — PATCH-гарды admin-users (своя роль / последний SUPER_ADMIN) + isActive («уволить»)
  */
 
 import path from "path";
@@ -390,5 +391,155 @@ describe("H4: аудит /api/admin-users CRUD", () => {
     expect(entry).not.toBeNull();
     expect(entry!.after).toBeNull();
     expect(JSON.parse(entry!.before)).toMatchObject({ role: "WAREHOUSE" });
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// MH: PATCH-гарды /api/admin-users (роль/isActive) + логин отключённого
+// ──────────────────────────────────────────────────────────────────
+
+describe("MH: PATCH /api/admin-users гарды и isActive", () => {
+  let saId: string; // holistic_super_admin — единственный активный SUPER_ADMIN
+  let inactiveSaToken: string; // валидный JWT деактивированного SA (stale-JWT сценарий)
+  let inactiveSaId: string;
+
+  beforeAll(async () => {
+    const sa = await prisma.adminUser.findUnique({ where: { username: "holistic_super_admin" } });
+    saId = sa.id;
+
+    // Деактивированный SUPER_ADMIN с ещё живым JWT — единственный способ
+    // атаковать «последнего активного SA» не попадая под self-guard.
+    const { hashPassword, signSession } = await import("../services/auth");
+    const hash = await hashPassword("test-pass-123");
+    const inactive = await prisma.adminUser.create({
+      data: { username: "holistic_inactive_sa", passwordHash: hash, role: "SUPER_ADMIN", isActive: false },
+    });
+    inactiveSaId = inactive.id;
+    inactiveSaToken = signSession({ userId: inactive.id, username: inactive.username, role: "SUPER_ADMIN" });
+  });
+
+  function INACTIVE_SA() {
+    return { "X-API-Key": "test-key-holistic", Authorization: `Bearer ${inactiveSaToken}` };
+  }
+
+  it("PATCH смена собственной роли → 409", async () => {
+    const res = await request(app)
+      .patch(`/api/admin-users/${saId}`)
+      .set(SA())
+      .send({ role: "WAREHOUSE" });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("Нельзя изменить собственную роль");
+
+    const still = await prisma.adminUser.findUnique({ where: { id: saId } });
+    expect(still.role).toBe("SUPER_ADMIN");
+  });
+
+  it("PATCH отключение собственной учётной записи → 409", async () => {
+    const res = await request(app)
+      .patch(`/api/admin-users/${saId}`)
+      .set(SA())
+      .send({ isActive: false });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("Нельзя отключить собственную учётную запись");
+  });
+
+  it("PATCH понижение последнего активного SUPER_ADMIN → 409", async () => {
+    const res = await request(app)
+      .patch(`/api/admin-users/${saId}`)
+      .set(INACTIVE_SA())
+      .send({ role: "TECHNICIAN" });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("Нельзя понизить роль последнего супер-администратора");
+  });
+
+  it("PATCH отключение последнего активного SUPER_ADMIN → 409", async () => {
+    const res = await request(app)
+      .patch(`/api/admin-users/${saId}`)
+      .set(INACTIVE_SA())
+      .send({ isActive: false });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("Нельзя отключить последнего супер-администратора");
+  });
+
+  it("DELETE последнего активного SUPER_ADMIN → 409", async () => {
+    const res = await request(app)
+      .delete(`/api/admin-users/${saId}`)
+      .set(INACTIVE_SA());
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("Нельзя удалить последнего супер-администратора");
+  });
+
+  it("PATCH понижение SA при наличии второго активного SA → 200", async () => {
+    // Активируем второго SA — теперь понижение разрешено.
+    await prisma.adminUser.update({ where: { id: inactiveSaId }, data: { isActive: true } });
+
+    const res = await request(app)
+      .patch(`/api/admin-users/${inactiveSaId}`)
+      .set(SA())
+      .send({ role: "WAREHOUSE" });
+    expect(res.status).toBe(200);
+    expect(res.body.user.role).toBe("WAREHOUSE");
+  });
+
+  it("PATCH isActive=false обычного пользователя → 200, логин → 401 «Учётная запись отключена»", async () => {
+    const createRes = await request(app)
+      .post("/api/admin-users")
+      .set(SA())
+      .send({ username: "fired_employee", password: "pass123", role: "WAREHOUSE" });
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.user.isActive).toBe(true);
+    const userId = createRes.body.user.id;
+
+    // Пока активен — логин работает.
+    const loginOk = await request(app)
+      .post("/api/auth/login")
+      .send({ username: "fired_employee", password: "pass123" });
+    expect(loginOk.status).toBe(200);
+
+    // «Увольняем».
+    const patchRes = await request(app)
+      .patch(`/api/admin-users/${userId}`)
+      .set(SA())
+      .send({ isActive: false });
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.user.isActive).toBe(false);
+
+    const loginBlocked = await request(app)
+      .post("/api/auth/login")
+      .send({ username: "fired_employee", password: "pass123" });
+    expect(loginBlocked.status).toBe(401);
+    expect(loginBlocked.body.message).toBe("Учётная запись отключена");
+
+    // Аудит фиксирует деактивацию.
+    const entry = await prisma.auditEntry.findFirst({
+      where: { entityId: userId, action: "ADMIN_USER_UPDATE", entityType: "AdminUser" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(entry).not.toBeNull();
+    expect(JSON.parse(entry!.after)).toMatchObject({ isActive: false });
+  });
+
+  it("PATCH isActive=true возвращает доступ — логин снова 200", async () => {
+    const user = await prisma.adminUser.findUnique({ where: { username: "fired_employee" } });
+    const res = await request(app)
+      .patch(`/api/admin-users/${user.id}`)
+      .set(SA())
+      .send({ isActive: true });
+    expect(res.status).toBe(200);
+    expect(res.body.user.isActive).toBe(true);
+
+    const login = await request(app)
+      .post("/api/auth/login")
+      .send({ username: "fired_employee", password: "pass123" });
+    expect(login.status).toBe(200);
+  });
+
+  it("GET /api/admin-users отдаёт isActive в каждой строке", async () => {
+    const res = await request(app).get("/api/admin-users").set(SA());
+    expect(res.status).toBe(200);
+    expect(res.body.users.length).toBeGreaterThan(0);
+    for (const u of res.body.users) {
+      expect(typeof u.isActive).toBe("boolean");
+    }
   });
 });

@@ -825,6 +825,9 @@ model AdminUser {
   username     String    @unique
   passwordHash String
   role         UserRole  @default(WAREHOUSE)
+  /// «Уволен/отключён»: false блокирует логин, сохраняя аудит-историю.
+  /// Удаление AdminUser с AuditEntry невозможно (FK Restrict) — деактивация вместо удаления.
+  isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

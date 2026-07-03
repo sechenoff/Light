@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { apiFetch } from "../../src/lib/api";
 import { StatusPill } from "../../src/components/StatusPill";
@@ -10,6 +10,14 @@ import { SectionHeader } from "../../src/components/SectionHeader";
 import { ClientPickerPopover } from "../../src/components/bookings/ClientPickerPopover";
 import { ConfirmActionModal } from "../../src/components/bookings/ConfirmActionModal";
 import { CancelWithDepositModal } from "../../src/components/finance/CancelWithDepositModal";
+import {
+  filtersToQueryString,
+  formatBookingPeriod,
+  formatShiftDate,
+  paymentPill,
+  paymentTooltip,
+  readListFiltersFromParams,
+} from "../../src/components/bookings/bookingListHelpers";
 import { formatRub, formatWaitingTime, pluralize } from "../../src/lib/format";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 
@@ -42,48 +50,6 @@ type BookingRow = {
   lastScanStatus?: string | null;
 };
 
-
-// Дата смены — день, когда оборудование нужно клиенту на площадке.
-// На уровне модели это startDate брони.
-function formatShiftDate(startDate: string): string {
-  return new Date(startDate).toLocaleDateString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    timeZone: "Europe/Moscow",
-  });
-}
-
-// Сколько дней прошло с ожидаемой даты оплаты. 0 если ещё не наступила или не задана.
-function daysOverdue(expectedPaymentDate: string | null): number {
-  if (!expectedPaymentDate) return 0;
-  const expectedMs = new Date(expectedPaymentDate).getTime();
-  const nowMs = Date.now();
-  if (nowMs <= expectedMs) return 0;
-  return Math.floor((nowMs - expectedMs) / (1000 * 60 * 60 * 24));
-}
-
-// Тултип для строки брони: показывает просрочку платежа или срок оплаты.
-function paymentTooltip(r: BookingRow): string {
-  if (r.paymentStatus === "PAID") {
-    return "Платёж получен";
-  }
-  const overdue = daysOverdue(r.expectedPaymentDate);
-  if (overdue > 0) {
-    return `Просрочено на ${overdue} ${pluralize(overdue, "день", "дня", "дней")}`;
-  }
-  if (r.expectedPaymentDate) {
-    const dateStr = new Date(r.expectedPaymentDate).toLocaleDateString("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      timeZone: "Europe/Moscow",
-    });
-    return `Срок оплаты: ${dateStr}`;
-  }
-  return "Не оплачен";
-}
-
 // Чистый заголовок строки для модалок: дата · клиент · проект (без суммы).
 function bookingRowTitle(r: BookingRow): string {
   const project =
@@ -95,16 +61,21 @@ function BookingHistoryPageInner() {
   const { user } = useCurrentUser();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [rows, setRows] = useState<BookingRow[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>(() => searchParams?.get("status") ?? "");
+  // Все фильтры инициализируются из URL — ссылкой «все неоплаченные за июнь»
+  // можно поделиться, F5 и «назад» не сбрасывают контекст фильтрации.
+  const [initialFilters] = useState(() => readListFiltersFromParams(searchParams));
+  const [statusFilter, setStatusFilter] = useState<string>(initialFilters.status);
   // Бинарный фильтр оплаты: "" — все, "PAID" — оплачено, "UNPAID" — всё остальное.
-  const [paymentFilter, setPaymentFilter] = useState<"" | "PAID" | "UNPAID">("");
-  const [dateFrom, setDateFrom] = useState<string>("");
-  const [dateTo, setDateTo] = useState<string>("");
+  const [paymentFilter, setPaymentFilter] = useState<"" | "PAID" | "UNPAID">(initialFilters.paid);
+  const [dateFrom, setDateFrom] = useState<string>(initialFilters.from);
+  const [dateTo, setDateTo] = useState<string>(initialFilters.to);
   // BL-2: поиск по клиенту/проекту. searchInput — то что печатает оператор;
   // searchQuery — дебаунс-значение, уходящее на сервер (через buildListParams).
-  const [searchInput, setSearchInput] = useState<string>("");
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchInput, setSearchInput] = useState<string>(initialFilters.q);
+  const [searchQuery, setSearchQuery] = useState<string>(initialFilters.q);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   // Подтверждение необратимых действий (RETURNED/CANCELLED — терминальные
@@ -177,6 +148,20 @@ function BookingHistoryPageInner() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  // Зеркалим фильтры в URL (router.replace — без засорения истории браузера).
+  // Курсор пагинации в URL не живёт: он опак и не имеет смысла в чужой сессии.
+  useEffect(() => {
+    const qs = filtersToQueryString({
+      status: statusFilter,
+      paid: paymentFilter,
+      from: dateFrom,
+      to: dateTo,
+      q: searchQuery,
+    });
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, paymentFilter, dateFrom, dateTo, searchQuery]);
+
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
@@ -238,27 +223,70 @@ function BookingHistoryPageInner() {
     }
   }
 
-  async function reloadList() {
-    const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null; totalCount?: number }>(
-      `/api/bookings?${buildListParams()}`
+  // Точечное обновление одной строки из ответа API — статусное действие не
+  // сбрасывает подгруженные страницы и скролл-позицию (паттерн — как
+  // оптимистичное обновление клиента в ClientPickerPopover ниже).
+  function mergeRowFromApi(id: string, booking: Partial<BookingRow>) {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === id
+          ? {
+              ...row,
+              status: booking.status ?? row.status,
+              paymentStatus: booking.paymentStatus ?? row.paymentStatus,
+              amountPaid: booking.amountPaid ?? row.amountPaid,
+              amountOutstanding: booking.amountOutstanding ?? row.amountOutstanding,
+              finalAmount: booking.finalAmount ?? row.finalAmount,
+              expectedPaymentDate:
+                booking.expectedPaymentDate !== undefined
+                  ? booking.expectedPaymentDate
+                  : row.expectedPaymentDate,
+              confirmedAt: booking.confirmedAt !== undefined ? booking.confirmedAt : row.confirmedAt,
+              updatedAt: booking.updatedAt ?? row.updatedAt,
+            }
+          : row,
+      ),
     );
-    setRows(data.bookings);
-    setNextCursor(data.nextCursor ?? null);
-    setTotalCount(data.totalCount ?? null);
   }
 
-  async function runStatusAction(id: string, action: "confirm" | "issue" | "return" | "cancel") {
+  async function runStatusAction(
+    id: string,
+    action: "confirm" | "issue" | "return" | "cancel",
+    opts?: { force?: boolean },
+  ) {
+    const isForcedRetry = opts?.force === true;
     setBusyId(id);
     try {
-      await apiFetch(`/api/bookings/${id}/status`, {
+      const data = await apiFetch<{ booking: Partial<BookingRow> }>(`/api/bookings/${id}/status`, {
         method: "POST",
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...(isForcedRetry ? { force: true } : {}) }),
       });
-      await reloadList();
+      mergeRowFromApi(id, data.booking ?? {});
     } catch (e: any) {
+      // Мягкий гард ранней выдачи: 409 ISSUE_TOO_EARLY (до начала аренды больше
+      // суток). Предупреждаем и при согласии повторяем с force: true — ранняя
+      // выдача фиксируется сервером в аудите (forcedEarlyIssue).
+      if (action === "issue" && !isForcedRetry && e?.code === "ISSUE_TOO_EARLY") {
+        const serverMsg = typeof e?.message === "string" ? e.message : "До начала аренды больше суток.";
+        if (confirm(`${serverMsg}\n\nВыдать оборудование заранее?`)) {
+          await runStatusAction(id, "issue", { force: true });
+        }
+        return;
+      }
       alert(e?.message ?? "Не удалось обновить статус");
     } finally {
       setBusyId(null);
+    }
+  }
+
+  // После отмены с распоряжением депозитом суммы меняются на сервере —
+  // перечитываем ОДНУ бронь и обновляем её строку, не сбрасывая пагинацию.
+  async function refreshRow(id: string) {
+    try {
+      const data = await apiFetch<{ booking: Partial<BookingRow> }>(`/api/bookings/${id}`);
+      mergeRowFromApi(id, data.booking ?? {});
+    } catch {
+      // Не критично: строка обновится при следующей загрузке списка.
     }
   }
 
@@ -284,6 +312,131 @@ function BookingHistoryPageInner() {
   // фильтра по подгруженной странице (раньше это давало неполный результат).
   const filteredRows = rows;
 
+  // Один набор действий для десктопной таблицы и мобильных карточек —
+  // никакого дрейфа между двумя представлениями.
+  function renderRowActions(r: BookingRow) {
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        <Link className="text-xs text-accent-bright hover:text-accent font-medium" href={`/bookings/${r.id}`}>
+          Открыть
+        </Link>
+        {(["DRAFT", "CONFIRMED"].includes(r.status) || (r.status === "PENDING_APPROVAL" && isSuperAdmin)) ? (
+          <Link
+            href={`/bookings/${r.id}/edit`}
+            title="Редактировать"
+            className="text-ink-3 hover:text-ink"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          </Link>
+        ) : (
+          <span className="text-border cursor-not-allowed">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          </span>
+        )}
+        {isSuperAdmin && (
+          <button
+            type="button"
+            title="В архив (можно восстановить из /bookings/archive)"
+            className="text-rose hover:text-rose/80 disabled:opacity-40"
+            disabled={busyId === r.id}
+            onClick={() => removeBooking(r.id)}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" />
+              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+            </svg>
+          </button>
+        )}
+        {r.status === "CONFIRMED" ? (
+          <button
+            type="button"
+            className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-muted disabled:opacity-40"
+            disabled={busyId === r.id}
+            onClick={() => runStatusAction(r.id, "issue")}
+          >
+            Выдать
+          </button>
+        ) : null}
+        {r.status === "ISSUED" ? (
+          <button
+            type="button"
+            className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-muted disabled:opacity-40"
+            disabled={busyId === r.id}
+            onClick={() => setConfirmAction({ row: r, action: "return" })}
+          >
+            Вернуть
+          </button>
+        ) : null}
+        {/* Гейт зеркалит /bookings/[id] и серверные правила:
+            из ISSUED отмена запрещена (allowedActions), оплаченную
+            бронь отменяет только SUPER_ADMIN (депозит-мастер и
+            /cancel-with-deposit — SA-only). Иначе кладовщик
+            проходил бы 3 шага мастера и получал 403/409. */}
+        {!["CANCELLED", "RETURNED", "ISSUED"].includes(r.status) &&
+        (isSuperAdmin || Number(r.amountPaid ?? "0") === 0) ? (
+          <button
+            type="button"
+            className="text-xs rounded border border-rose-border text-rose px-2 py-1 hover:bg-rose-soft disabled:opacity-40"
+            disabled={busyId === r.id}
+            onClick={() => requestCancel(r)}
+          >
+            Отменить
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  // Пилюля статуса брони + сопутствующие индикаторы (aging, сканирования) —
+  // тоже общие для таблицы и карточек.
+  function renderStatusCell(r: BookingRow) {
+    return (
+      <>
+        <StatusPill
+          variant={statusVariant(r.status)}
+          label={statusText(r.status)}
+        />
+        {r.status === "PENDING_APPROVAL" && (() => {
+          const aging = formatWaitingTime(r.updatedAt, r.createdAt);
+          return aging ? (
+            <div className={`mt-0.5 text-xs ${aging.className}`}>ждёт {aging.text}</div>
+          ) : null;
+        })()}
+        {r.hasScanSessions && (
+          <span className="ml-1 inline-block" title={
+            r.lastScanOperation === "ISSUE" && r.lastScanStatus === "COMPLETED" ? "Выдача отсканирована" :
+            r.lastScanOperation === "RETURN" && r.lastScanStatus === "COMPLETED" ? "Возврат завершён" :
+            "Есть сканирования"
+          }>
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline text-accent-bright">
+              <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><line x1="7" y1="12" x2="17" y2="12" />
+            </svg>
+          </span>
+        )}
+      </>
+    );
+  }
+
+  // Пилюля оплаты: «Оплачено» / «Частично N из M» / «Не оплачено» — термины
+  // согласованы с /finance (financeTerms.ts, StatusCell, /finance/debts).
+  function renderPaymentCell(r: BookingRow) {
+    const pill = paymentPill(r);
+    return (
+      <>
+        <StatusPill variant={pill.variant} label={pill.label} />
+        {pill.sub && (
+          <div className="mt-0.5 text-xs text-ink-3 mono-num whitespace-nowrap">{pill.sub}</div>
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="p-4">
@@ -355,15 +508,17 @@ function BookingHistoryPageInner() {
             <div className="text-xs text-ink-3">{loading ? "Загрузка..." : totalCount !== null ? `Показано: ${filteredRows.length} из ${totalCount}` : `Показано: ${filteredRows.length}`}</div>
           </div>
         </div>
-        <div className="overflow-auto">
-          <table className="min-w-[960px] w-full text-sm">
+        <div className="hidden md:block overflow-auto">
+          <table className="min-w-[1040px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
-                <th className="text-left px-3 py-2 font-medium">Дата смены</th>
+                {/* Период «смена — возврат»: из списка видно, у кого сегодня возврат */}
+                <th className="text-left px-3 py-2 font-medium">Даты</th>
                 <th className="text-left px-3 py-2 font-medium">Клиент</th>
                 <th className="text-left px-3 py-2 font-medium">Проект</th>
                 <th className="text-left px-3 py-2 font-medium">Статус</th>
                 <th className="text-left px-3 py-2 font-medium">Оплата</th>
+                <th className="text-right px-3 py-2 font-medium">Сумма</th>
                 <th className="text-right px-3 py-2 font-medium">Остаток</th>
                 <th className="px-3 py-2 font-medium">Действия</th>
               </tr>
@@ -375,8 +530,8 @@ function BookingHistoryPageInner() {
                   className="border-t border-border hover:bg-surface-muted transition-colors"
                   title={paymentTooltip(r)}
                 >
-                  <td className="px-3 py-2 text-ink-2 whitespace-nowrap mono-num">
-                    {formatShiftDate(r.startDate)}
+                  <td className="px-3 py-2 text-ink-2 whitespace-nowrap mono-num" title="Смена — возврат">
+                    {formatBookingPeriod(r.startDate, r.endDate)}
                   </td>
                   <td className="px-3 py-2 text-ink-2">
                     {isSuperAdmin ? (
@@ -421,136 +576,64 @@ function BookingHistoryPageInner() {
                       <span className="text-ink-2">{r.projectName}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
-                    <StatusPill
-                      variant={statusVariant(r.status)}
-                      label={statusText(r.status)}
-                    />
-                    {r.status === "PENDING_APPROVAL" && (() => {
-                      const aging = formatWaitingTime(r.updatedAt, r.createdAt);
-                      return aging ? (
-                        <div className={`mt-0.5 text-xs ${aging.className}`}>ждёт {aging.text}</div>
-                      ) : null;
-                    })()}
-                    {r.hasScanSessions && (
-                      <span className="ml-1 inline-block" title={
-                        r.lastScanOperation === "ISSUE" && r.lastScanStatus === "COMPLETED" ? "Выдача отсканирована" :
-                        r.lastScanOperation === "RETURN" && r.lastScanStatus === "COMPLETED" ? "Возврат завершён" :
-                        "Есть сканирования"
-                      }>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline text-accent-bright">
-                          <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><line x1="7" y1="12" x2="17" y2="12" />
-                        </svg>
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    {/*
-                      Бинарная семантика: либо оплачено (emerald/ok), либо нет.
-                      Если не оплачено и срок прошёл — красим в rose (alert),
-                      чтобы взгляд на список сразу выделял просрочки.
-                      Детали (на сколько дней) — в тултипе строки (title на tr).
-                    */}
-                    <StatusPill
-                      variant={
-                        r.paymentStatus === "PAID"
-                          ? "ok"
-                          : daysOverdue(r.expectedPaymentDate) > 0
-                          ? "alert"
-                          : "none"
-                      }
-                      label={r.paymentStatus === "PAID" ? "Оплачен" : "Не оплачен"}
-                    />
-                  </td>
+                  <td className="px-3 py-2">{renderStatusCell(r)}</td>
+                  <td className="px-3 py-2">{renderPaymentCell(r)}</td>
+                  <td className="px-3 py-2 text-right mono-num text-ink-2">{formatRub(r.finalAmount)}</td>
                   <td className="px-3 py-2 text-right mono-num text-ink">{formatRub(r.amountOutstanding)}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <Link className="text-xs text-accent-bright hover:text-accent font-medium" href={`/bookings/${r.id}`}>
-                        Открыть
-                      </Link>
-                      {(["DRAFT", "CONFIRMED"].includes(r.status) || (r.status === "PENDING_APPROVAL" && isSuperAdmin)) ? (
-                        <Link
-                          href={`/bookings/${r.id}/edit`}
-                          title="Редактировать"
-                          className="text-ink-3 hover:text-ink"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />
-                          </svg>
-                        </Link>
-                      ) : (
-                        <span className="text-border cursor-not-allowed">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />
-                          </svg>
-                        </span>
-                      )}
-                      {isSuperAdmin && (
-                        <button
-                          type="button"
-                          title="В архив (можно восстановить из /bookings/archive)"
-                          className="text-rose hover:text-rose/80 disabled:opacity-40"
-                          disabled={busyId === r.id}
-                          onClick={() => removeBooking(r.id)}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M3 6h18" />
-                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                          </svg>
-                        </button>
-                      )}
-                      {r.status === "CONFIRMED" ? (
-                        <button
-                          type="button"
-                          className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-muted disabled:opacity-40"
-                          disabled={busyId === r.id}
-                          onClick={() => runStatusAction(r.id, "issue")}
-                        >
-                          Выдать
-                        </button>
-                      ) : null}
-                      {r.status === "ISSUED" ? (
-                        <button
-                          type="button"
-                          className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-muted disabled:opacity-40"
-                          disabled={busyId === r.id}
-                          onClick={() => setConfirmAction({ row: r, action: "return" })}
-                        >
-                          Вернуть
-                        </button>
-                      ) : null}
-                      {/* Гейт зеркалит /bookings/[id] и серверные правила:
-                          из ISSUED отмена запрещена (allowedActions), оплаченную
-                          бронь отменяет только SUPER_ADMIN (депозит-мастер и
-                          /cancel-with-deposit — SA-only). Иначе кладовщик
-                          проходил бы 3 шага мастера и получал 403/409. */}
-                      {!["CANCELLED", "RETURNED", "ISSUED"].includes(r.status) &&
-                      (isSuperAdmin || Number(r.amountPaid ?? "0") === 0) ? (
-                        <button
-                          type="button"
-                          className="text-xs rounded border border-rose-border text-rose px-2 py-1 hover:bg-rose-soft disabled:opacity-40"
-                          disabled={busyId === r.id}
-                          onClick={() => requestCancel(r)}
-                        >
-                          Отменить
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
+                  <td className="px-3 py-2">{renderRowActions(r)}</td>
                 </tr>
               ))}
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-ink-3" colSpan={7}>
+                  <td className="px-3 py-6 text-center text-ink-3" colSpan={8}>
                     Нет данных
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
+        </div>
+
+        {/* Мобильное card-представление (паттерн — как на /finance/payments):
+            те же данные и те же действия, без горизонтального скролла таблицы */}
+        <div className="md:hidden p-3 space-y-2">
+          {filteredRows.map((r) => (
+            <div
+              key={r.id}
+              className="border border-border rounded-lg p-3 bg-surface"
+              title={paymentTooltip(r)}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <strong className="text-ink text-[13px] block truncate">{r.client.name}</strong>
+                  <div className="text-xs text-ink-3 truncate">
+                    {r.projectName?.trim() === "Проект" ? "Без названия" : r.projectName}
+                  </div>
+                </div>
+                <span className="mono-num font-semibold text-[14px] text-ink whitespace-nowrap">
+                  {formatRub(r.finalAmount)}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-ink-2 mono-num" title="Смена — возврат">
+                {formatBookingPeriod(r.startDate, r.endDate)}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>{renderStatusCell(r)}</span>
+                <span>{renderPaymentCell(r)}</span>
+                {Number(r.amountOutstanding ?? "0") > 0 && (
+                  <span className="text-xs text-ink-2">
+                    Остаток: <span className="mono-num text-ink">{formatRub(r.amountOutstanding)}</span>
+                  </span>
+                )}
+              </div>
+              <div className="mt-2 pt-2 border-t border-border border-dashed">
+                {renderRowActions(r)}
+              </div>
+            </div>
+          ))}
+          {filteredRows.length === 0 && (
+            <div className="py-6 text-center text-ink-3 text-sm">Нет данных</div>
+          )}
         </div>
 
         {nextCursor && (
@@ -598,8 +681,9 @@ function BookingHistoryPageInner() {
           clientName={cancelDepositRow.client.name}
           depositTotal={Number(cancelDepositRow.amountPaid ?? "0")}
           onCancelled={() => {
+            const id = cancelDepositRow.id;
             setCancelDepositRow(null);
-            reloadList().catch(() => {});
+            refreshRow(id);
           }}
         />
       )}

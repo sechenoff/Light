@@ -9,7 +9,17 @@ type ClientProjectCardProps = {
   onProjectNameChange: (v: string) => void;
   /** When true, the client name field is read-only (edit mode — client cannot be changed after creation). */
   clientReadOnly?: boolean;
+  /** Телефон нового клиента (create-режим, клиент создаётся на лету). */
+  clientPhone?: string;
+  onClientPhoneChange?: (v: string) => void;
+  /** Показать поле телефона (обычно = «будет создан новый клиент»). */
+  showPhoneField?: boolean;
+  /** Автокомплит сообщает, будет ли создан новый клиент. */
+  onNewClientChange?: (isNew: boolean) => void;
 };
+
+const INPUT_CLS =
+  "w-full rounded border border-border-strong px-3 py-2 text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft";
 
 export function ClientProjectCard({
   clientName,
@@ -17,6 +27,10 @@ export function ClientProjectCard({
   projectName,
   onProjectNameChange,
   clientReadOnly = false,
+  clientPhone = "",
+  onClientPhoneChange,
+  showPhoneField = false,
+  onNewClientChange,
 }: ClientProjectCardProps) {
   const initials = clientName
     .trim()
@@ -49,9 +63,28 @@ export function ClientProjectCard({
               value={clientName}
               onChange={onClientNameChange}
               placeholder="Название компании / заказчика"
+              onWillCreateNewChange={onNewClientChange}
             />
           )}
         </div>
+
+        {/* Телефон нового клиента — создаётся на лету вместе с бронью */}
+        {!clientReadOnly && showPhoneField && onClientPhoneChange && (
+          <div>
+            <label className="flex justify-between text-[11.5px] text-ink-2 mb-1.5">
+              <span>Телефон</span>
+              <span className="text-ink-3 italic text-[11px]">нового клиента · опционально</span>
+            </label>
+            <input
+              type="tel"
+              maxLength={40}
+              className={INPUT_CLS}
+              value={clientPhone}
+              onChange={(e) => onClientPhoneChange(e.target.value)}
+              placeholder="+7 916 123-45-67"
+            />
+          </div>
+        )}
 
         {/* Project name field */}
         <div>

@@ -54,6 +54,17 @@ const assignSchema = z.object({
   assigneeId: z.string().min(1),
 });
 
+// Опциональный расход при закрытии — создаётся атомарно с close в одной
+// транзакции (см. closeRepair в services/repairService.ts).
+const closeSchema = z.object({
+  expense: z
+    .object({
+      amount: z.number().positive(),
+      description: z.string().min(1),
+    })
+    .optional(),
+});
+
 const REPAIR_STATUSES = ["WAITING_REPAIR", "IN_REPAIR", "WAITING_PARTS", "CLOSED", "WROTE_OFF"] as const;
 const REPAIR_URGENCIES = ["NOT_URGENT", "NORMAL", "URGENT"] as const;
 
@@ -401,7 +412,13 @@ repairsRouter.post(
   rolesGuard(["TECHNICIAN", "SUPER_ADMIN"]),
   async (req, res, next) => {
     try {
-      const repair = await closeRepair(req.params.id, req.adminUser!.userId);
+      const { expense } = closeSchema.parse(req.body ?? {});
+      const repair = await closeRepair(
+        req.params.id,
+        req.adminUser!.userId,
+        expense,
+        req.adminUser!.role as string,
+      );
       res.json({ repair: serializeRepair(repair) });
     } catch (err) {
       next(err);

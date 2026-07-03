@@ -243,6 +243,58 @@ describe("GET /api/calendar", () => {
     expect(event).toBeUndefined();
   });
 
+  it("MF-1: PENDING_APPROVAL виден в календаре БЕЗ includeDrafts", async () => {
+    const client = await createClient("Клиент пендинг кал");
+    const eq = await createEquipment("Оборудование пендинг кал");
+
+    await createBooking(
+      client.id,
+      eq.id,
+      "PENDING_APPROVAL",
+      new Date("2025-11-01T00:00:00.000Z"),
+      new Date("2025-11-05T23:59:59.999Z"),
+      "Пендинг проект кал"
+    );
+
+    const res = await request(app)
+      .get("/api/calendar?start=2025-11-01&end=2025-11-30")
+      .set(AUTH());
+    expect(res.status).toBe(200);
+    const event = res.body.events.find((e: any) => e.title === "Пендинг проект кал");
+    expect(event).toBeDefined();
+    expect(event.status).toBe("PENDING_APPROVAL");
+  });
+
+  it("MF-2: для UNIT-ресурса totalQuantity = число пригодных единиц (без MAINTENANCE/MISSING)", async () => {
+    eqCounter++;
+    const eq = await prisma.equipment.create({
+      data: {
+        importKey: `СВЕТ||UNIT-КАЛ||${eqCounter}||`,
+        name: "UNIT-прибор кал",
+        category: "Свет",
+        totalQuantity: 5,
+        stockTrackingMode: "UNIT",
+        rentalRatePerShift: 500,
+      },
+    });
+    const statuses = ["AVAILABLE", "AVAILABLE", "ISSUED", "MAINTENANCE", "MISSING"];
+    for (let i = 0; i < statuses.length; i++) {
+      await prisma.equipmentUnit.create({
+        data: { equipmentId: eq.id, barcode: `CAL-UNIT-${i}`, status: statuses[i] },
+      });
+    }
+
+    const res = await request(app)
+      .get("/api/calendar?start=2025-12-01&end=2025-12-07")
+      .set(AUTH());
+    expect(res.status).toBe(200);
+    const resource = res.body.resources.find((r: any) => r.name === "UNIT-прибор кал");
+    expect(resource).toBeDefined();
+    // 2 AVAILABLE + 1 ISSUED = 3 пригодных; MAINTENANCE и MISSING не раздувают знаменатель
+    expect(resource.totalQuantity).toBe(3);
+    expect(resource.trackingMode).toBe("UNIT");
+  });
+
   it("включает DRAFT при includeDrafts=true", async () => {
     const client = await createClient("Клиент черновик кал2");
     const eq = await createEquipment("Оборудование черновик кал2");
@@ -317,6 +369,54 @@ describe("GET /api/calendar/occupancy", () => {
     // bookingCount на 4й день зависит от других тестов, но структура должна быть
     expect(day4).toBeDefined();
     expect(typeof day4.occupancyPercent).toBe("number");
+  });
+
+  it("MF-3: границы дня — московские: бронь с 00:00 МСК не красит предыдущий день", async () => {
+    const client = await createClient("Клиент Окк МСК");
+    const eq = await createEquipment("Прожектор Окк МСК", "Свет", 10);
+
+    // 2025-10-05T21:00Z = 2025-10-06 00:00 МСК; конец 20:00Z = 23:00 МСК 6 октября.
+    // По UTC-раскладке бронь красила бы 5 октября — по Москве не должна.
+    await createBooking(
+      client.id,
+      eq.id,
+      "CONFIRMED",
+      new Date("2025-10-05T21:00:00.000Z"),
+      new Date("2025-10-06T20:00:00.000Z"),
+      "Октябрь ночной старт"
+    );
+
+    const res = await request(app)
+      .get("/api/calendar/occupancy?start=2025-10-01&end=2025-10-07")
+      .set(AUTH());
+    expect(res.status).toBe(200);
+
+    const day5 = res.body.days.find((d: any) => d.date === "2025-10-05");
+    const day6 = res.body.days.find((d: any) => d.date === "2025-10-06");
+    expect(day5.bookingCount).toBe(0);
+    expect(day6.bookingCount).toBeGreaterThan(0);
+  });
+
+  it("MF-1: PENDING_APPROVAL входит в heatmap занятости", async () => {
+    const client = await createClient("Клиент Окк Пендинг");
+    const eq = await createEquipment("Прожектор Окк Пендинг", "Свет", 10);
+
+    await createBooking(
+      client.id,
+      eq.id,
+      "PENDING_APPROVAL",
+      new Date("2025-10-15T06:00:00.000Z"),
+      new Date("2025-10-15T18:00:00.000Z"),
+      "Октябрь пендинг"
+    );
+
+    const res = await request(app)
+      .get("/api/calendar/occupancy?start=2025-10-14&end=2025-10-16")
+      .set(AUTH());
+    expect(res.status).toBe(200);
+    const day15 = res.body.days.find((d: any) => d.date === "2025-10-15");
+    expect(day15.bookingCount).toBeGreaterThan(0);
+    expect(day15.occupancyPercent).toBeGreaterThan(0);
   });
 
   it("возвращает правильную структуру дней", async () => {

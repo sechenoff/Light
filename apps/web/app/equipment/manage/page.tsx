@@ -275,6 +275,11 @@ export default function EquipmentManagePage() {
   return (
     <div className="p-4 space-y-4">
       {/* Шапка */}
+      <div>
+        <Link href="/equipment" className="text-sm text-slate-500 hover:text-slate-900">
+          ← Каталог
+        </Link>
+      </div>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-semibold">Оборудование: редактор</h1>
         <div className="flex items-center gap-2 flex-wrap">
@@ -311,7 +316,7 @@ export default function EquipmentManagePage() {
           </div>
         </div>
         <div className="overflow-auto">
-          <table className="min-w-[1100px] w-full text-sm">
+          <table className="min-w-[1250px] w-full text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-3 py-2 text-left w-[90px]">Порядок</th>
@@ -319,6 +324,8 @@ export default function EquipmentManagePage() {
                 <th className="px-3 py-2 text-left">Наименование</th>
                 <th className="px-3 py-2 text-right">Кол-во</th>
                 <th className="px-3 py-2 text-right">Смена</th>
+                <th className="px-3 py-2 text-right">2 смены</th>
+                <th className="px-3 py-2 text-right">Проект</th>
                 <th className="px-3 py-2 text-center w-[190px]">Действия</th>
               </tr>
             </thead>
@@ -368,15 +375,45 @@ export default function EquipmentManagePage() {
                   </td>
                   <td className="px-3 py-2">
                     {inlineEditId === r.id ? (
-                      <input
-                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                        value={inlineForm.name}
-                        onChange={(e) => setInlineForm((p) => ({ ...p, name: e.target.value }))}
-                      />
+                      <div className="space-y-1">
+                        <input
+                          className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                          value={inlineForm.name}
+                          onChange={(e) => setInlineForm((p) => ({ ...p, name: e.target.value }))}
+                        />
+                        <div className="flex gap-1">
+                          <input
+                            className="w-1/2 rounded border border-slate-300 px-2 py-1 text-xs"
+                            placeholder="Бренд"
+                            value={inlineForm.brand}
+                            onChange={(e) => setInlineForm((p) => ({ ...p, brand: e.target.value }))}
+                          />
+                          <input
+                            className="w-1/2 rounded border border-slate-300 px-2 py-1 text-xs"
+                            placeholder="Модель"
+                            value={inlineForm.model}
+                            onChange={(e) => setInlineForm((p) => ({ ...p, model: e.target.value }))}
+                          />
+                        </div>
+                      </div>
                     ) : isSuperAdmin ? (
-                      <button className="text-left hover:underline" onClick={() => beginInlineEdit(r)}>{r.name}</button>
+                      <button className="text-left hover:underline" onClick={() => beginInlineEdit(r)}>
+                        {r.name}
+                        {(r.brand || r.model) && (
+                          <span className="block text-xs text-slate-400">
+                            {[r.brand, r.model].filter(Boolean).join(" · ")}
+                          </span>
+                        )}
+                      </button>
                     ) : (
-                      <span>{r.name}</span>
+                      <span>
+                        {r.name}
+                        {(r.brand || r.model) && (
+                          <span className="block text-xs text-slate-400">
+                            {[r.brand, r.model].filter(Boolean).join(" · ")}
+                          </span>
+                        )}
+                      </span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -391,13 +428,28 @@ export default function EquipmentManagePage() {
                         {r.totalQuantity} <span className="text-[10px] text-slate-400">шт →</span>
                       </a>
                     ) : inlineEditId === r.id ? (
-                      <input
-                        className="w-20 rounded border border-slate-300 px-2 py-1 text-sm text-right"
-                        type="number"
-                        min={0}
-                        value={inlineForm.totalQuantity}
-                        onChange={(e) => setInlineForm((p) => ({ ...p, totalQuantity: e.target.value }))}
-                      />
+                      <div className="flex flex-col items-end gap-1">
+                        <input
+                          className="w-20 rounded border border-slate-300 px-2 py-1 text-sm text-right"
+                          type="number"
+                          min={0}
+                          value={inlineForm.totalQuantity}
+                          onChange={(e) => setInlineForm((p) => ({ ...p, totalQuantity: e.target.value }))}
+                        />
+                        {/* Перевод COUNT→UNIT: после сохранения количество управляется
+                            генерацией единиц. Обратный переход UNIT→COUNT не предлагаем. */}
+                        <select
+                          className="w-28 rounded border border-slate-300 px-1 py-0.5 text-xs bg-white"
+                          title="Режим учёта. Поштучный: количество = число единиц"
+                          value={inlineForm.stockTrackingMode}
+                          onChange={(e) =>
+                            setInlineForm((p) => ({ ...p, stockTrackingMode: e.target.value as "COUNT" | "UNIT" }))
+                          }
+                        >
+                          <option value="COUNT">Кол-во</option>
+                          <option value="UNIT">Поштучно</option>
+                        </select>
+                      </div>
                     ) : isSuperAdmin ? (
                       <button className="hover:underline" onClick={() => beginInlineEdit(r)}>{r.totalQuantity}</button>
                     ) : (
@@ -418,6 +470,44 @@ export default function EquipmentManagePage() {
                       <button className="hover:underline" onClick={() => beginInlineEdit(r)}>{r.rentalRatePerShift}</button>
                     ) : (
                       <span>{r.rentalRatePerShift}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {inlineEditId === r.id ? (
+                      <input
+                        className="w-24 rounded border border-slate-300 px-2 py-1 text-sm text-right"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="—"
+                        value={inlineForm.rentalRateTwoShifts}
+                        onChange={(e) => setInlineForm((p) => ({ ...p, rentalRateTwoShifts: e.target.value }))}
+                      />
+                    ) : isSuperAdmin ? (
+                      <button className="hover:underline" onClick={() => beginInlineEdit(r)}>
+                        {r.rentalRateTwoShifts ?? <span className="text-slate-300">—</span>}
+                      </button>
+                    ) : (
+                      <span>{r.rentalRateTwoShifts ?? "—"}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {inlineEditId === r.id ? (
+                      <input
+                        className="w-24 rounded border border-slate-300 px-2 py-1 text-sm text-right"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="—"
+                        value={inlineForm.rentalRatePerProject}
+                        onChange={(e) => setInlineForm((p) => ({ ...p, rentalRatePerProject: e.target.value }))}
+                      />
+                    ) : isSuperAdmin ? (
+                      <button className="hover:underline" onClick={() => beginInlineEdit(r)}>
+                        {r.rentalRatePerProject ?? <span className="text-slate-300">—</span>}
+                      </button>
+                    ) : (
+                      <span>{r.rentalRatePerProject ?? "—"}</span>
                     )}
                   </td>
                   <td className="px-3 py-2">
@@ -452,7 +542,7 @@ export default function EquipmentManagePage() {
               ))}
               {rows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-slate-500" colSpan={6}>
+                  <td className="px-3 py-6 text-center text-slate-500" colSpan={8}>
                     Нет позиций
                   </td>
                 </tr>
@@ -550,6 +640,24 @@ export default function EquipmentManagePage() {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Бренд</label>
+                  <input
+                    className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    placeholder="например, Aputure"
+                    value={addForm.brand}
+                    onChange={(e) => setAddForm((p) => ({ ...p, brand: e.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Модель</label>
+                  <input
+                    className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    placeholder="например, LS 600d"
+                    value={addForm.model}
+                    onChange={(e) => setAddForm((p) => ({ ...p, model: e.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
                   <label className="text-xs text-slate-500">Кол-во</label>
                   <input
                     className="rounded border border-slate-300 px-2 py-1.5 text-sm"
@@ -559,7 +667,25 @@ export default function EquipmentManagePage() {
                     onChange={(e) => setAddForm((p) => ({ ...p, totalQuantity: e.target.value }))}
                   />
                 </div>
-                <div className="flex flex-col gap-1 col-span-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Режим учёта</label>
+                  <select
+                    className="rounded border border-slate-300 px-2 py-1.5 text-sm bg-white"
+                    value={addForm.stockTrackingMode}
+                    onChange={(e) =>
+                      setAddForm((p) => ({ ...p, stockTrackingMode: e.target.value as "COUNT" | "UNIT" }))
+                    }
+                  >
+                    <option value="COUNT">Количественный</option>
+                    <option value="UNIT">Поштучный (единицы)</option>
+                  </select>
+                  {addForm.stockTrackingMode === "UNIT" && (
+                    <p className="text-[11px] text-slate-400">
+                      Количество далее управляется генерацией единиц в «Управлении единицами»
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1">
                   <label className="text-xs text-slate-500">Ставка за смену</label>
                   <input
                     className="rounded border border-slate-300 px-2 py-1.5 text-sm"
@@ -568,6 +694,39 @@ export default function EquipmentManagePage() {
                     step="0.01"
                     value={addForm.rentalRatePerShift}
                     onChange={(e) => setAddForm((p) => ({ ...p, rentalRatePerShift: e.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Ставка за 2 смены</label>
+                  <input
+                    className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="не задана"
+                    value={addForm.rentalRateTwoShifts}
+                    onChange={(e) => setAddForm((p) => ({ ...p, rentalRateTwoShifts: e.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Ставка за проект</label>
+                  <input
+                    className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="не задана"
+                    value={addForm.rentalRatePerProject}
+                    onChange={(e) => setAddForm((p) => ({ ...p, rentalRatePerProject: e.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-500">Комментарий</label>
+                  <input
+                    className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    placeholder="необязательно"
+                    value={addForm.comment}
+                    onChange={(e) => setAddForm((p) => ({ ...p, comment: e.target.value }))}
                   />
                 </div>
               </div>

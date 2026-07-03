@@ -13,6 +13,7 @@ type AdminUserRow = {
   id: string;
   username: string;
   role: UserRole;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -123,6 +124,26 @@ export default function AdminUsersPage() {
       setCreateError(e instanceof Error ? e.message : "Ошибка создания");
     } finally {
       setCreating(false);
+    }
+  }
+
+  // «Уволить»: реально работавшего сотрудника удалить нельзя (аудит-история),
+  // поэтому основной сценарий — деактивация. Кнопка удаления остаётся для
+  // никогда не работавших (без записей аудита).
+  async function handleToggleActive(u: AdminUserRow) {
+    if (u.isActive) {
+      if (!window.confirm(`Отключить учётную запись «${u.username}»? Пользователь не сможет войти в систему.`)) {
+        return;
+      }
+    }
+    try {
+      await apiFetch(`/api/admin-users/${u.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: !u.isActive }),
+      });
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Ошибка");
     }
   }
 
@@ -374,7 +395,10 @@ export default function AdminUsersPage() {
               {filtered.map((u) => {
                 const colors = roleColor(u.role);
                 return (
-                  <tr key={u.id} className="hover:bg-surface-muted transition-colors">
+                  <tr
+                    key={u.id}
+                    className={`hover:bg-surface-muted transition-colors ${u.isActive ? "" : "opacity-60"}`}
+                  >
                     {/* Avatar + name */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
@@ -437,16 +461,30 @@ export default function AdminUsersPage() {
                       <span className="mono-num text-xs text-ink-3">{formatDate(u.createdAt)}</span>
                     </td>
 
-                    {/* Status */}
+                    {/* Status — тумблер по реальному полю isActive */}
                     <td className="px-4 py-3 hidden lg:table-cell">
-                      <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium bg-emerald-soft text-emerald border border-emerald-border">
-                        ● активен
-                      </span>
+                      <button
+                        onClick={() => handleToggleActive(u)}
+                        title={u.isActive ? "Отключить доступ" : "Включить доступ"}
+                        className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium border transition-colors ${
+                          u.isActive
+                            ? "bg-emerald-soft text-emerald border-emerald-border hover:bg-emerald-soft/70"
+                            : "bg-surface-muted text-ink-3 border-border hover:bg-surface"
+                        }`}
+                      >
+                        {u.isActive ? "● активен" : "○ отключён"}
+                      </button>
                     </td>
 
                     {/* Actions */}
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleToggleActive(u)}
+                          className="text-xs text-ink-2 hover:text-ink underline transition-colors lg:hidden"
+                        >
+                          {u.isActive ? "Отключить" : "Включить"}
+                        </button>
                         <button
                           onClick={() => handleChangePassword(u.id, u.username)}
                           className="text-xs text-ink-2 hover:text-ink underline transition-colors"

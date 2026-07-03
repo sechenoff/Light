@@ -131,7 +131,7 @@ router.get("/finance/debts.xlsx", superAdminOnly, async (req, res, next) => {
       for (const project of debt.projects) {
         rows.push([
           debt.clientName,
-          "", // Контакт (email/phone) — Client.phone недоступен через computeDebts; фронт добавит в Phase 2
+          [debt.clientPhone, debt.clientEmail].filter(Boolean).join(" · ") || "—",
           Number(project.amountOutstanding),
           project.expectedPaymentDate
             ? project.expectedPaymentDate.toLocaleDateString("ru-RU")

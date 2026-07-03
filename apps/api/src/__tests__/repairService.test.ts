@@ -271,6 +271,91 @@ describe("closeRepair", () => {
       closeRepair(repair.id, superAdminId),
     ).rejects.toMatchObject({ status: 400, details: "REPAIR_ALREADY_CLOSED" });
   });
+
+  it("close с expense: расход REPAIR создаётся в той же транзакции + аудит EXPENSE_CREATE", async () => {
+    const { createRepair, closeRepair } = await import("../services/repairService");
+
+    const repair = await createRepair({
+      unitId,
+      reason: "Закрытие с расходом",
+      urgency: "NORMAL",
+      createdBy: warehouseId,
+    });
+
+    const closed = await closeRepair(
+      repair.id,
+      superAdminId,
+      { amount: 3500, description: "Ремонт Прожектор Тест" },
+      "SUPER_ADMIN",
+    );
+    expect(closed.status).toBe("CLOSED");
+
+    const expense = await prisma.expense.findFirst({
+      where: { linkedRepairId: repair.id },
+    });
+    expect(expense).not.toBeNull();
+    expect(expense.category).toBe("REPAIR");
+    expect(expense.amount.toString()).toBe("3500");
+    expect(expense.description).toBe("Ремонт Прожектор Тест");
+    expect(expense.approved).toBe(true); // SUPER_ADMIN → сразу утверждён
+    expect(expense.createdBy).toBe(superAdminId);
+
+    const audit = await prisma.auditEntry.findFirst({
+      where: { entityType: "Expense", action: "EXPENSE_CREATE", entityId: expense.id },
+    });
+    expect(audit).not.toBeNull();
+  });
+
+  it("close с expense от TECHNICIAN → approved=false (нужно утверждение SA)", async () => {
+    const { createRepair, closeRepair } = await import("../services/repairService");
+
+    const repair = await createRepair({
+      unitId,
+      reason: "Закрытие техником с расходом",
+      urgency: "NORMAL",
+      createdBy: technicianId,
+    });
+
+    await closeRepair(
+      repair.id,
+      technicianId,
+      { amount: 1200, description: "Ремонт силами техника" },
+      "TECHNICIAN",
+    );
+
+    const expense = await prisma.expense.findFirst({
+      where: { linkedRepairId: repair.id },
+    });
+    expect(expense).not.toBeNull();
+    expect(expense.approved).toBe(false);
+  });
+
+  it("атомарность: close уже закрытого ремонта с expense → расход НЕ создаётся", async () => {
+    const { createRepair, closeRepair } = await import("../services/repairService");
+
+    const repair = await createRepair({
+      unitId,
+      reason: "Атомарность close+expense",
+      urgency: "NORMAL",
+      createdBy: warehouseId,
+    });
+    await closeRepair(repair.id, superAdminId);
+
+    await expect(
+      closeRepair(
+        repair.id,
+        superAdminId,
+        { amount: 9999, description: "Дубль при гонке" },
+        "SUPER_ADMIN",
+      ),
+    ).rejects.toMatchObject({ status: 400, details: "REPAIR_ALREADY_CLOSED" });
+
+    // Расход-сирота не появился: повтор запроса не искажает финансы
+    const orphan = await prisma.expense.findFirst({
+      where: { linkedRepairId: repair.id },
+    });
+    expect(orphan).toBeNull();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -87,7 +87,38 @@ const listProblemItems: RequestHandler = async (req, res, next) => {
       nextCursor = rows[rows.length - 1].id; // курсор = последний возвращённый элемент
     }
 
-    res.json({ items: rows, nextCursor });
+    // Обогащение бронью (клиент + проект): у ProblemItem.sourceBookingId нет
+    // Prisma-relation, поэтому batch-fetch одним запросом (без N+1). Менеджеру
+    // по потеряшке первым делом нужно позвонить клиенту — без имени клиента
+    // и проекта карточка была тупиком (#хвост-cuid). Barcode по-прежнему
+    // НЕ отдаём.
+    const bookingIds = [
+      ...new Set(
+        rows
+          .map((r) => r.sourceBookingId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const bookings = bookingIds.length
+      ? await prisma.booking.findMany({
+          where: { id: { in: bookingIds } },
+          select: {
+            id: true,
+            projectName: true,
+            client: { select: { name: true, phone: true } },
+          },
+        })
+      : [];
+    const bookingMap = new Map(bookings.map((b) => [b.id, b]));
+
+    const items = rows.map((r) => ({
+      ...r,
+      booking: r.sourceBookingId
+        ? (bookingMap.get(r.sourceBookingId) ?? null)
+        : null,
+    }));
+
+    res.json({ items, nextCursor });
   } catch (err) {
     next(err);
   }

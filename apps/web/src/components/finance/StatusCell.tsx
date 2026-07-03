@@ -1,6 +1,7 @@
 "use client";
 
 import { formatRub, pluralize } from "../../lib/format";
+import { FINANCE_TERMS } from "../../lib/financeTerms";
 import type { OverviewItem } from "./PaymentsTable";
 
 export const BOOKING_STATUS_LABELS: Record<string, string> = {
@@ -35,11 +36,12 @@ export function StatusCell({ item, onPay }: Props) {
     ? "text-amber"
     : "text-rose";
 
+  // Подписи — из единого глоссария FINANCE_TERMS (T12).
   const labelText = isPaid
-    ? "✓ Оплачено"
+    ? `✓ ${FINANCE_TERMS.paid}`
     : isPartial
-    ? "◐ Частично"
-    : "● Не оплачено";
+    ? `◐ ${FINANCE_TERMS.partialShort}`
+    : `● ${FINANCE_TERMS.notPaid}`;
 
   const ctaAmount = isPaid ? null : item.amountOutstanding;
 

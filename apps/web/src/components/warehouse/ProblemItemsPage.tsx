@@ -18,8 +18,10 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useRequireRole } from "../../hooks/useRequireRole";
 import { apiFetch } from "../../lib/api";
+import { toMoscowDateString } from "../../lib/moscowDate";
 import { toast } from "../ToastProvider";
 import { StatusPill, type StatusPillVariant } from "../StatusPill";
 import { ResolveProblemModal, type ResolveOutcome } from "./ResolveProblemModal";
@@ -54,6 +56,13 @@ interface ProblemItem {
     equipment: { name: string; category: string };
   } | null;
   quantity: number;
+  // Обогащение бронью (batch-fetch на бэкенде): клиент + проект, чтобы
+  // менеджер сразу видел, кому звонить. null — если бронь не привязана.
+  booking: {
+    id: string;
+    projectName: string;
+    client: { name: string; phone: string | null } | null;
+  } | null;
 }
 
 interface ProblemItemsResponse {
@@ -124,6 +133,46 @@ function formatDayMonthYear(iso: string | null | undefined): string | null {
 function bookingRef(sourceBookingId: string | null): string {
   if (!sourceBookingId) return "—";
   return `#${sourceBookingId.slice(-6).toUpperCase()}`;
+}
+
+/**
+ * Просроченная «Ожидается»: expectedBackDate уже в прошлом (МСК date-only).
+ * Такие строки тонируются rose — сигнал «пора звонить и разбираться».
+ */
+function isOverdueExpected(item: ProblemItem): boolean {
+  if (item.status !== "EXPECTED" || !item.expectedBackDate) return false;
+  const d = new Date(item.expectedBackDate);
+  if (Number.isNaN(d.getTime())) return false;
+  return toMoscowDateString(d) < toMoscowDateString(new Date());
+}
+
+/**
+ * Клик по строке/карточке ведёт на /bookings/[id], но клики по вложенным
+ * интерактивным элементам (кнопки разбора, ссылки) не должны уводить со
+ * страницы — guard через closest.
+ */
+function isInteractiveTarget(e: React.MouseEvent): boolean {
+  return Boolean((e.target as HTMLElement).closest("a, button"));
+}
+
+// ── Ячейка «Бронь» (клиент · проект, либо fallback #хвост-id) ─────────────────
+
+function BookingInfo({ item }: { item: ProblemItem }) {
+  if (item.booking) {
+    return (
+      <span className="min-w-0">
+        <span className="block truncate text-[13px] font-medium text-ink">
+          {item.booking.client?.name ?? "—"}
+        </span>
+        <span className="block truncate text-xs text-ink-3">
+          {item.booking.projectName}
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span className="mono-num text-ink-2">{bookingRef(item.sourceBookingId)}</span>
+  );
 }
 
 // ── Карточка «закрыто» (resolutionNote + кем/когда) ───────────────────────────
@@ -210,14 +259,28 @@ function itemEquipment(item: ProblemItem): {
 function ProblemCard({
   item,
   onResolve,
+  onOpenBooking,
 }: {
   item: ProblemItem;
   onResolve: (item: ProblemItem, outcome: ResolveOutcome) => void;
+  onOpenBooking: (bookingId: string) => void;
 }) {
   const expected = formatDayMonthYear(item.expectedBackDate);
   const created = formatDayMonthYear(item.createdAt);
+  const overdue = isOverdueExpected(item);
+  const clickable = Boolean(item.sourceBookingId);
   return (
-    <div className="rounded-lg border border-border bg-surface p-4 shadow-xs space-y-3">
+    <div
+      onClick={(e) => {
+        if (!clickable || isInteractiveTarget(e)) return;
+        onOpenBooking(item.sourceBookingId!);
+      }}
+      className={`rounded-lg border p-4 shadow-xs space-y-3 ${
+        overdue
+          ? "border-rose-border bg-rose-soft/50"
+          : "border-border bg-surface"
+      } ${clickable ? "cursor-pointer" : ""}`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="eyebrow">{itemEquipment(item).category}</p>
@@ -235,14 +298,24 @@ function ProblemCard({
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
         <span>
-          Бронь: <span className="mono-num text-ink-2">{bookingRef(item.sourceBookingId)}</span>
+          Бронь:{" "}
+          {item.booking ? (
+            <span className="text-ink-2">
+              {item.booking.client?.name ?? "—"} · {item.booking.projectName}
+            </span>
+          ) : (
+            <span className="mono-num text-ink-2">{bookingRef(item.sourceBookingId)}</span>
+          )}
         </span>
         <span>
           Причина: <span className="text-ink-2">{REASON_LABEL[item.reason]}</span>
         </span>
         {expected && (
           <span>
-            Ожидается к: <span className="text-ink-2">{expected}</span>
+            Ожидается к:{" "}
+            <span className={overdue ? "font-medium text-rose" : "text-ink-2"}>
+              {expected}
+            </span>
           </span>
         )}
         <span>
@@ -264,14 +337,28 @@ function ProblemCard({
 function ProblemRow({
   item,
   onResolve,
+  onOpenBooking,
 }: {
   item: ProblemItem;
   onResolve: (item: ProblemItem, outcome: ResolveOutcome) => void;
+  onOpenBooking: (bookingId: string) => void;
 }) {
   const expected = formatDayMonthYear(item.expectedBackDate);
   const created = formatDayMonthYear(item.createdAt);
+  const overdue = isOverdueExpected(item);
+  const clickable = Boolean(item.sourceBookingId);
   return (
-    <tr className="border-b border-border align-top hover:bg-surface-muted">
+    <tr
+      onClick={(e) => {
+        if (!clickable || isInteractiveTarget(e)) return;
+        onOpenBooking(item.sourceBookingId!);
+      }}
+      className={`border-b border-border align-top ${
+        overdue
+          ? "bg-rose-soft/50 hover:bg-rose-soft"
+          : "hover:bg-surface-muted"
+      } ${clickable ? "cursor-pointer" : ""}`}
+    >
       <td className="py-3 px-3">
         <p className="eyebrow">{itemEquipment(item).category}</p>
         <p className="text-sm font-medium text-ink mt-0.5">
@@ -279,8 +366,8 @@ function ProblemRow({
           {itemEquipment(item).qty > 1 ? ` ×${itemEquipment(item).qty}` : ""}
         </p>
       </td>
-      <td className="py-3 px-3 text-xs mono-num text-ink-2 whitespace-nowrap">
-        {bookingRef(item.sourceBookingId)}
+      <td className="py-3 px-3 text-xs whitespace-nowrap max-w-[200px]">
+        <BookingInfo item={item} />
       </td>
       <td className="py-3 px-3 text-[13px] text-ink-2 whitespace-nowrap">
         {REASON_LABEL[item.reason]}
@@ -288,7 +375,11 @@ function ProblemRow({
       <td className="py-3 px-3 text-[13px] text-ink-2 max-w-[280px]">
         <span className="block break-words">{item.comment || "—"}</span>
       </td>
-      <td className="py-3 px-3 text-xs text-ink-2 whitespace-nowrap">
+      <td
+        className={`py-3 px-3 text-xs whitespace-nowrap ${
+          overdue ? "font-medium text-rose" : "text-ink-2"
+        }`}
+      >
         {expected ?? "—"}
       </td>
       <td className="py-3 px-3 whitespace-nowrap">
@@ -311,10 +402,18 @@ function ProblemRow({
 // ── Страница ──────────────────────────────────────────────────────────────────
 
 export function ProblemItemsPage() {
+  const router = useRouter();
   const { authorized, loading: authLoading } = useRequireRole([
     "SUPER_ADMIN",
     "WAREHOUSE",
   ]);
+
+  const openBooking = useCallback(
+    (bookingId: string) => {
+      router.push(`/bookings/${bookingId}`);
+    },
+    [router],
+  );
 
   const [items, setItems] = useState<ProblemItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -563,7 +662,12 @@ export function ProblemItemsPage() {
                 </thead>
                 <tbody>
                   {items.map((item) => (
-                    <ProblemRow key={item.id} item={item} onResolve={openResolve} />
+                    <ProblemRow
+                      key={item.id}
+                      item={item}
+                      onResolve={openResolve}
+                      onOpenBooking={openBooking}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -573,7 +677,12 @@ export function ProblemItemsPage() {
           {/* Список — карточки (mobile) */}
           <div className="md:hidden space-y-3">
             {items.map((item) => (
-              <ProblemCard key={item.id} item={item} onResolve={openResolve} />
+              <ProblemCard
+                key={item.id}
+                item={item}
+                onResolve={openResolve}
+                onOpenBooking={openBooking}
+              />
             ))}
           </div>
         </>

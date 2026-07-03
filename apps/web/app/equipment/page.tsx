@@ -8,6 +8,7 @@ import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
 import { formatRub } from "../../src/lib/format";
 import { toMoscowDateString } from "../../src/lib/moscowDate";
+import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 
 const UNIT_STATUS_LABELS: Record<string, string> = {
   AVAILABLE: "на складе",
@@ -27,6 +28,8 @@ type CatalogRow = {
   totalQuantity: number;
   stockTrackingMode: "COUNT" | "UNIT";
   rentalRatePerShift: string;
+  rentalRateTwoShifts: string | null;
+  rentalRatePerProject: string | null;
   comment: string | null;
   unitStatusCounts: Record<string, number> | null;
 };
@@ -107,6 +110,8 @@ function getQuickPeriod(type: "today" | "tomorrow" | "week"): { start: string; e
 }
 
 export default function EquipmentPage() {
+  const { user } = useCurrentUser();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
   // Empty until mounted: server and client render the same markup, then the
   // effect below fills the real Moscow-TZ default (avoids hydration mismatch).
   const [start, setStart] = useState("");
@@ -115,6 +120,8 @@ export default function EquipmentPage() {
   const deferredSearch = useDeferredValue(search);
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [categories, setCategories] = useState<string[]>([]);
+  // eq-retry: инкремент перезапускает эффект загрузки каталога (кнопка «Попробовать снова»).
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   const [catalog, setCatalog] = useState<CatalogRow[]>([]);
   const [availMap, setAvailMap] = useState<Map<string, AvailInfo>>(new Map());
@@ -161,7 +168,7 @@ export default function EquipmentPage() {
     }
     load();
     return () => controller.abort();
-  }, [deferredSearch, category]);
+  }, [deferredSearch, category, reloadNonce]);
 
   // Load availability overlay (non-blocking — catalog shows regardless)
   useEffect(() => {
@@ -186,6 +193,18 @@ export default function EquipmentPage() {
     load();
     return () => controller.abort();
   }, [start, end]);
+
+  // Вторичная строка ставок: «2 смены … · проект …» — если поля заполнены.
+  function secondaryRates(r: CatalogRow): string | null {
+    const parts: string[] = [];
+    if (r.rentalRateTwoShifts && Number(r.rentalRateTwoShifts) > 0) {
+      parts.push(`2 смены ${formatRub(r.rentalRateTwoShifts)}`);
+    }
+    if (r.rentalRatePerProject && Number(r.rentalRatePerProject) > 0) {
+      parts.push(`проект ${formatRub(r.rentalRatePerProject)}`);
+    }
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }
 
   function unitStatusSummary(counts: Record<string, number> | null | undefined, total: number): string | null {
     if (!counts) return null;
@@ -285,6 +304,14 @@ export default function EquipmentPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {isSuperAdmin && (
+            <Link
+              className="rounded border border-border bg-surface px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle transition-colors"
+              href="/equipment/manage"
+            >
+              Управление каталогом
+            </Link>
+          )}
           <Link
             className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent transition-colors"
             href={bookingHref}
@@ -323,7 +350,7 @@ export default function EquipmentPage() {
               <div className="text-sm font-medium text-rose-600">Ошибка загрузки каталога</div>
               <div className="text-xs text-slate-500">{catalogError}</div>
               <button
-                onClick={() => setSearch(search)}
+                onClick={() => setReloadNonce((n) => n + 1)}
                 className="mt-2 text-xs text-slate-600 underline hover:text-slate-900"
               >
                 Попробовать снова
@@ -331,7 +358,9 @@ export default function EquipmentPage() {
             </div>
           </div>
         ) : (
-          <div className="overflow-auto">
+          <>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-auto">
             <table className="min-w-[980px] w-full text-sm">
               <thead className="bg-surface-subtle text-ink-2 border-b border-border">
                 <tr>
@@ -354,9 +383,17 @@ export default function EquipmentPage() {
                 ) : catalog.length === 0 ? (
                   <tr>
                     <td className="px-3 py-8 text-center text-ink-3" colSpan={7}>
-                      {search || category
-                        ? "Ничего не найдено по фильтрам"
-                        : "Каталог пуст — добавьте технику через Администратор → Импорт оборудования"}
+                      {search || category ? (
+                        "Ничего не найдено по фильтрам"
+                      ) : (
+                        <>
+                          Каталог пуст — добавьте позиции в{" "}
+                          <Link href="/equipment/manage" className="underline hover:text-ink">
+                            управлении каталогом
+                          </Link>{" "}
+                          или импортируйте из Excel (Администратор → Ещё → Импорт оборудования)
+                        </>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -405,7 +442,12 @@ export default function EquipmentPage() {
                             r.totalQuantity
                           )}
                         </td>
-                        <td className="px-3 py-2 font-medium text-right mono-num">{formatRub(r.rentalRatePerShift)}</td>
+                        <td className="px-3 py-2 font-medium text-right mono-num">
+                          {formatRub(r.rentalRatePerShift)}
+                          {secondaryRates(r) && (
+                            <div className="text-[11px] font-normal text-ink-3 whitespace-nowrap">{secondaryRates(r)}</div>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-ink-2">{r.category}</td>
                         <td className="px-3 py-2 text-right mono-num text-ink-2">
                           {avail ? avail.occupiedQuantity : <span className="text-ink-3">—</span>}
@@ -421,6 +463,72 @@ export default function EquipmentPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile card list (паттерн PaymentsOverviewPage) */}
+          <div className="md:hidden">
+            {loadingCatalog ? (
+              <div className="px-3 py-8 text-center text-ink-3 text-sm">Загрузка...</div>
+            ) : catalog.length === 0 ? (
+              <div className="px-3 py-8 text-center text-ink-3 text-sm">
+                {search || category ? (
+                  "Ничего не найдено по фильтрам"
+                ) : (
+                  <>
+                    Каталог пуст — добавьте позиции в{" "}
+                    <Link href="/equipment/manage" className="underline hover:text-ink">
+                      управлении каталогом
+                    </Link>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="p-3 space-y-2">
+                {catalog.map((r) => {
+                  const avail = availMap.get(r.id);
+                  const isFullyUnavailable = avail && avail.availableQuantity <= 0;
+                  return (
+                    <div
+                      key={r.id}
+                      className={`border border-border rounded-lg bg-surface p-3 ${isFullyUnavailable ? "opacity-50" : ""}`}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0">
+                          <div className="font-medium text-ink text-[13px]">
+                            {r.name}
+                            {r.model ? <span className="text-ink-3 font-normal"> · {r.model}</span> : null}
+                          </div>
+                          <div className="text-[11px] text-ink-3 mt-0.5">
+                            {r.category}
+                            {r.brand ? ` · ${r.brand}` : ""}
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="mono-num font-semibold text-[14px] text-ink">{formatRub(r.rentalRatePerShift)}</div>
+                          {secondaryRates(r) && (
+                            <div className="text-[10px] text-ink-3 whitespace-nowrap">{secondaryRates(r)}</div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center mt-2">
+                        <div className="text-[11px] text-ink-2">
+                          {avail
+                            ? `Доступно ${avail.availableQuantity} из ${r.totalQuantity}`
+                            : `Всего ${r.totalQuantity}`}
+                        </div>
+                        {statusBadge(avail, r.totalQuantity)}
+                      </div>
+                      {r.stockTrackingMode === "UNIT" && unitStatusSummary(r.unitStatusCounts, r.totalQuantity) && (
+                        <div className="text-[11px] text-ink-3 mt-1">
+                          {unitStatusSummary(r.unitStatusCounts, r.totalQuantity)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          </>
         )}
       </div>
     </div>

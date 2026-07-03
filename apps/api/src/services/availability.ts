@@ -24,10 +24,37 @@ export type AvailabilityRow = {
   availableQuantity: number;
 };
 
-const BLOCKING_STATUSES: BookingStatus[] = ["CONFIRMED", "ISSUED"];
+// MF-1: PENDING_APPROVAL резервирует оборудование наравне с CONFIRMED/ISSUED —
+// бронь, отправленная на согласование, в одном клике от подтверждения и не должна
+// продаваться второй раз, пока руководитель её рассматривает. DRAFT по-прежнему
+// не блокирует (осознанное решение). ВАЖНО: confirmBooking передаёт
+// excludeBookingId, чтобы PENDING_APPROVAL-бронь не блокировала собственный approve.
+const BLOCKING_STATUSES: BookingStatus[] = ["PENDING_APPROVAL", "CONFIRMED", "ISSUED"];
 
 function clampNonNegative(n: number) {
   return n < 0 ? 0 : n;
+}
+
+/**
+ * eu-2: для UNIT-позиций база доступности = число ПРИГОДНЫХ к выдаче единиц
+ * (статус AVAILABLE или ISSUED), а НЕ totalQuantity. totalQuantity у UNIT —
+ * служебный счётчик, включающий MAINTENANCE/RETIRED/MISSING; нерабочие единицы
+ * не должны раздувать «Доступно». Переиспользуется календарём (/api/calendar),
+ * чтобы календарь и проверка доступности считали одинаково.
+ */
+export async function getUsableUnitBaseMap(
+  unitEquipmentIds: string[],
+  tx: TxClient = prisma
+): Promise<Map<string, number>> {
+  const usableUnitBase = new Map<string, number>();
+  if (unitEquipmentIds.length === 0) return usableUnitBase;
+  const grouped = await tx.equipmentUnit.groupBy({
+    by: ["equipmentId"],
+    where: { equipmentId: { in: unitEquipmentIds }, status: { in: ["AVAILABLE", "ISSUED"] } },
+    _count: { _all: true },
+  });
+  for (const g of grouped) usableUnitBase.set(g.equipmentId, g._count._all);
+  return usableUnitBase;
 }
 
 export async function getAvailability(args: {
@@ -79,20 +106,9 @@ export async function getAvailability(args: {
 
   const equipmentIds = equipments.map((e) => e.id);
 
-  // eu-2: для UNIT-позиций база доступности = число ПРИГОДНЫХ к выдаче единиц
-  // (статус AVAILABLE или ISSUED), а НЕ totalQuantity. totalQuantity у UNIT —
-  // служебный счётчик, включающий MAINTENANCE/RETIRED/MISSING; нерабочие единицы
-  // не должны раздувать «Доступно». COUNT-режим остаётся на totalQuantity.
+  // eu-2: см. getUsableUnitBaseMap — COUNT-режим остаётся на totalQuantity.
   const unitEquipmentIds = equipments.filter((e) => e.stockTrackingMode === "UNIT").map((e) => e.id);
-  const usableUnitBase = new Map<string, number>();
-  if (unitEquipmentIds.length > 0) {
-    const grouped = await tx.equipmentUnit.groupBy({
-      by: ["equipmentId"],
-      where: { equipmentId: { in: unitEquipmentIds }, status: { in: ["AVAILABLE", "ISSUED"] } },
-      _count: { _all: true },
-    });
-    for (const g of grouped) usableUnitBase.set(g.equipmentId, g._count._all);
-  }
+  const usableUnitBase = await getUsableUnitBaseMap(unitEquipmentIds, tx);
   const baseQtyOf = (e: { id: string; stockTrackingMode: string; totalQuantity: number }): number =>
     e.stockTrackingMode === "UNIT" ? (usableUnitBase.get(e.id) ?? 0) : e.totalQuantity;
 

@@ -15,20 +15,59 @@ describe("menuByRole — grouped sections", () => {
     }
   });
 
-  it("SUPER_ADMIN has sections: Главное, Задачи, Склад, Бронирование, Каталог, Мастерская, Финансы, Аналитика, Настройки, Система", () => {
+  it("SUPER_ADMIN has 6 merged sections: Главное, Склад, Бронирование, Мастерская, Финансы, Система (MD-3)", () => {
     const titles = menuByRole.SUPER_ADMIN.map((s) => s.title);
     expect(titles).toEqual([
       "Главное",
-      "Задачи",
       "Склад",
       "Бронирование",
-      "Каталог",
       "Мастерская",
       "Финансы",
-      "Аналитика",
-      "Настройки",
       "Система",
     ]);
+  });
+
+  it("SUPER_ADMIN: слияние секций не потеряло ни одного пункта (MD-3)", () => {
+    const hrefs = menuByRole.SUPER_ADMIN.flatMap((s) => s.items.map((i) => i.href));
+    expect(hrefs.sort()).toEqual(
+      [
+        "/day",
+        "/tasks",
+        "/warehouse/scan",
+        "/warehouse/problems",
+        "/bookings",
+        "/bookings/new",
+        "/calendar",
+        "/admin/clients",
+        "/equipment",
+        "/bookings/archive",
+        "/repair",
+        "/vehicles",
+        "/finance",
+        "/finance/invoices",
+        "/finance/payments",
+        "/finance/debts",
+        "/finance/expenses",
+        "/admin/equipment-stats",
+        "/settings/organization",
+        "/admin",
+        "/crew-calculator",
+        "/feedback",
+      ].sort(),
+    );
+  });
+
+  it("SUPER_ADMIN: «Клиенты» — в рабочей зоне «Бронирование», а не в «Системе» (MD-3)", () => {
+    const booking = menuByRole.SUPER_ADMIN.find((s) => s.title === "Бронирование");
+    expect(booking!.items.map((i) => i.href)).toContain("/admin/clients");
+  });
+
+  it("SUPER_ADMIN: у «Архива» нейтральная иконка, не alert (MD-3)", () => {
+    const archive = menuByRole.SUPER_ADMIN
+      .flatMap((s) => s.items)
+      .find((i) => i.href === "/bookings/archive");
+    expect(archive).toBeDefined();
+    expect(archive!.icon).not.toBe("alert");
   });
 
   it("SUPER_ADMIN Финансы section has 5 items including /finance/invoices", () => {

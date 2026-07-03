@@ -1,6 +1,8 @@
 import { prisma } from "../prisma";
 
-const BLOCKING_STATUSES = ["CONFIRMED", "ISSUED"] as const;
+// PENDING_APPROVAL резервирует оборудование (единая политика с availability.ts
+// и calendar.ts) — quick-add на выдаче предупреждает и о бронях на согласовании.
+const BLOCKING_STATUSES = ["PENDING_APPROVAL", "CONFIRMED", "ISSUED"] as const;
 
 export interface AddonConflict {
   bookingId: string;

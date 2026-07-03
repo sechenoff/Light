@@ -14,6 +14,7 @@ import { LegacyBookingImportModal } from "../../../src/components/finance/Legacy
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 import { AIReminderModal } from "../../../src/components/finance/AIReminderModal";
 import { BookingPaymentsModal } from "../../../src/components/finance/BookingPaymentsModal";
+import { ContactChips } from "../../../src/components/finance/ContactChips";
 import type { UserRole } from "../../../src/lib/auth";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
@@ -724,7 +725,16 @@ function DebtsPageInner() {
 
                         {/* Client / Project */}
                         <td className="px-3 py-2.5 leading-tight">
-                          <div className="font-semibold text-ink text-[13.5px]">{row.clientName}</div>
+                          <div className="flex items-center gap-1.5">
+                            <div className="font-semibold text-ink text-[13.5px]">{row.clientName}</div>
+                            {/* Кому звонить: tel:/mailto: чипы прямо в строке долга */}
+                            <ContactChips
+                              phone={row.clientPhone}
+                              email={row.clientEmail}
+                              clientName={row.clientName}
+                              outstanding={Number(row.totalClientOutstanding)}
+                            />
+                          </div>
                           <div className="text-[11.5px] text-ink-2">{row.projectName}</div>
                         </td>
 
@@ -797,7 +807,15 @@ function DebtsPageInner() {
                         {pill.label}
                       </span>
                     </div>
-                    <div className="font-semibold text-ink text-[14px] mb-0.5">{row.clientName}</div>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <div className="font-semibold text-ink text-[14px]">{row.clientName}</div>
+                      <ContactChips
+                        phone={row.clientPhone}
+                        email={row.clientEmail}
+                        clientName={row.clientName}
+                        outstanding={Number(row.totalClientOutstanding)}
+                      />
+                    </div>
                     <div className="text-[12px] text-ink-2 mb-2">{row.projectName}</div>
                     <div className="flex items-end justify-between mb-3">
                       <span className="mono-num font-semibold text-[18px] text-rose">{formatRub(row.amountOutstanding)}</span>

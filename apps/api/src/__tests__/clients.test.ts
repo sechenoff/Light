@@ -127,6 +127,33 @@ describe("GET /api/clients", () => {
     const names = res.body.clients.map((c: any) => c.name);
     expect(names).toContain("Иванов Продакшн");
   });
+
+  it("list exposes portalStatus/portalLastLoginAt without N+1 (single include)", async () => {
+    const withPortal = await prisma.client.create({ data: { name: "С кабинетом" } });
+    const lastLogin = new Date("2026-06-15T12:00:00Z");
+    await prisma.clientPortalAccount.create({
+      data: {
+        clientId: withPortal.id,
+        email: "portal@test.ru",
+        status: "ACTIVE",
+        lastLoginAt: lastLogin,
+      },
+    });
+    await prisma.client.create({ data: { name: "Без кабинета" } });
+
+    const res = await request(app)
+      .get("/api/clients")
+      .set(AUTH_SA());
+
+    expect(res.status).toBe(200);
+    const active = res.body.clients.find((c: any) => c.name === "С кабинетом");
+    expect(active.portalStatus).toBe("ACTIVE");
+    expect(new Date(active.portalLastLoginAt).getTime()).toBe(lastLogin.getTime());
+
+    const none = res.body.clients.find((c: any) => c.name === "Без кабинета");
+    expect(none.portalStatus).toBeNull();
+    expect(none.portalLastLoginAt).toBeNull();
+  });
 });
 
 describe("POST /api/clients", () => {

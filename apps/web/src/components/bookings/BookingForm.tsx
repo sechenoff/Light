@@ -31,7 +31,6 @@ import type {
   CatalogRowAdjustment,
   CatalogSelectedItem,
   CustomItem,
-  OffCatalogItem,
   GafferReviewApiResponse,
   QuoteResponse,
   ValidationCheck,
@@ -108,9 +107,95 @@ function isoToDatetimeLocal(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// ─── Черновик формы в localStorage (только create-режим) ─────────────────────
+// Менеджер 10 минут собирает смету по телефону — случайный клик по меню/Back
+// не должен терять работу. Автосейв с debounce + восстановление при повторном
+// открытии /bookings/new. В edit-режиме источник истины — сервер, localStorage
+// не применяется (там работает только beforeunload-гард).
+
+const DRAFT_STORAGE_KEY = "lr:bookings:new:draft";
+const DRAFT_AUTOSAVE_DEBOUNCE_MS = 2000;
+
+type FormDraftSnapshot = {
+  savedAt: number;
+  clientName: string;
+  clientPhone: string;
+  projectName: string;
+  bookingComment: string;
+  discountPercent: number;
+  pickupLocal: string;
+  returnLocal: string;
+  skipPartialDay: boolean;
+  gafferText: string;
+  selected: CatalogSelectedItem[];
+  customItems: CustomItem[];
+  selectedVehicles: SelectedVehicle[];
+  expectedPaymentDateLocal: string;
+};
+
+function readDraftSnapshot(): FormDraftSnapshot | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Partial<FormDraftSnapshot> | null;
+    if (!p || typeof p !== "object" || typeof p.savedAt !== "number") return null;
+    return {
+      savedAt: p.savedAt,
+      clientName: typeof p.clientName === "string" ? p.clientName : "",
+      clientPhone: typeof p.clientPhone === "string" ? p.clientPhone : "",
+      projectName: typeof p.projectName === "string" ? p.projectName : "",
+      bookingComment: typeof p.bookingComment === "string" ? p.bookingComment : "",
+      discountPercent: typeof p.discountPercent === "number" ? p.discountPercent : 50,
+      pickupLocal: typeof p.pickupLocal === "string" ? p.pickupLocal : "",
+      returnLocal: typeof p.returnLocal === "string" ? p.returnLocal : "",
+      skipPartialDay: Boolean(p.skipPartialDay),
+      gafferText: typeof p.gafferText === "string" ? p.gafferText : "",
+      selected: Array.isArray(p.selected) ? p.selected : [],
+      customItems: Array.isArray(p.customItems) ? p.customItems : [],
+      selectedVehicles: Array.isArray(p.selectedVehicles) ? p.selectedVehicles : [],
+      expectedPaymentDateLocal:
+        typeof p.expectedPaymentDateLocal === "string" ? p.expectedPaymentDateLocal : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearDraftSnapshot(): void {
+  try {
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+  } catch {
+    /* localStorage недоступен — ничего не чистим */
+  }
+}
+
+function formatDraftTime(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Источник, из которого открыта модалка произвольной позиции (для cleanup). */
+type CustomPrefillSource =
+  | { kind: "unmatched"; phrase: string }
+  | { kind: "review"; reviewId: string }
+  | null;
+
+type CustomModalPrefill = {
+  name: string;
+  quantity: number;
+  source: CustomPrefillSource;
+};
+
+type BookingFormInnerProps = BookingFormProps & {
+  /** «Начать заново» из плашки восстановления — ремаунт формы с дефолтами. */
+  onResetForm?: () => void;
+};
+
 // ─── Inner component (uses useSearchParams, must be wrapped in Suspense) ─────
 
-function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps) {
+function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: BookingFormInnerProps) {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -119,33 +204,60 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   // ── Search params (only used in create mode) ──
   const startParam = isEdit ? null : sp.get("start");
   const endParam = isEdit ? null : sp.get("end");
+  // Контракт с календарём: ?start=&end=&equipmentId= — префилл дат + позиция.
+  const equipmentIdParam = isEdit ? null : sp.get("equipmentId");
+
+  // ── Восстановление черновика (create; URL-префилл из календаря приоритетнее) ──
+  // Если пришли по ссылке из календаря, а в localStorage лежит чужой черновик —
+  // НЕ восстанавливаем его, но и не даём автосейву затереть/удалить: иначе
+  // просто открытие ссылки уничтожало сохранённую работу без действий юзера.
+  const preservedForeignDraftRef = useRef(false);
+  const [draft] = useState<FormDraftSnapshot | null>(() => {
+    if (isEdit) return null;
+    if (startParam || endParam || equipmentIdParam) {
+      if (readDraftSnapshot()) preservedForeignDraftRef.current = true;
+      return null;
+    }
+    return readDraftSnapshot();
+  });
+  const [draftBannerVisible, setDraftBannerVisible] = useState(Boolean(draft));
+  // После успешного сохранения / «Начать заново» автосейв выключается,
+  // чтобы отложенный debounce-таймер не записал черновик обратно.
+  const draftPersistDisabledRef = useRef(false);
 
   // ── Client / project ──
   const [clientName, setClientName] = useState(
-    isEdit ? (initialBooking?.client.name ?? "") : "",
+    isEdit ? (initialBooking?.client.name ?? "") : (draft?.clientName ?? ""),
   );
+  // Телефон нового клиента (create): показывается, когда автокомплит понимает,
+  // что клиент будет создан на лету. Backend: новому клиенту записывается,
+  // существующему без телефона — дозаполняется, существующий не перетирается.
+  const [clientPhone, setClientPhone] = useState(draft?.clientPhone ?? "");
+  const [isNewClient, setIsNewClient] = useState(false);
   const [projectName, setProjectName] = useState(
-    isEdit ? (initialBooking?.projectName ?? "") : "",
+    isEdit ? (initialBooking?.projectName ?? "") : (draft?.projectName ?? ""),
   );
   const [bookingComment, setBookingComment] = useState(
-    isEdit ? (initialBooking?.comment ?? "") : "",
+    isEdit ? (initialBooking?.comment ?? "") : (draft?.bookingComment ?? ""),
   );
   const [discountPercent, setDiscountPercent] = useState(
-    isEdit ? Number(initialBooking?.discountPercent ?? "0") : 50,
+    isEdit ? Number(initialBooking?.discountPercent ?? "0") : (draft?.discountPercent ?? 50),
   );
 
   // ── Dates ──
   const [pickupLocal, setPickupLocal] = useState(() => {
     if (isEdit && initialBooking) return isoToDatetimeLocal(initialBooking.startDate);
+    if (draft?.pickupLocal) return draft.pickupLocal;
     return pickupFromSearchParam(startParam, defaultPickupDatetimeLocal());
   });
   const [returnLocal, setReturnLocal] = useState(() => {
     if (isEdit && initialBooking) return isoToDatetimeLocal(initialBooking.endDate);
+    if (draft?.returnLocal) return draft.returnLocal;
     return returnFromSearchParam(endParam, pickupFromSearchParam(startParam, defaultPickupDatetimeLocal()));
   });
   // «Не считать вторые сутки» — прощать хвост ≤ 4 ч сверх целых суток.
   const [skipPartialDay, setSkipPartialDay] = useState<boolean>(
-    isEdit && initialBooking ? Boolean(initialBooking.skipPartialDay) : false,
+    isEdit && initialBooking ? Boolean(initialBooking.skipPartialDay) : (draft?.skipPartialDay ?? false),
   );
   // Отслеживаем смену именно этого флага, чтобы пересчитать смету мгновенно
   // (без debounce) при клике по чекбоксу.
@@ -153,11 +265,20 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   // Возврат тронут вручную → не перетираем авто-+24ч на смене выдачи.
   // create: старт false (первый выбор выдачи ставит +24ч; если возврат уже
   // введён вручную и валиден — сохраняется, иначе чинится +24ч). edit: старт
-  // true (сохранённый возврат брони не трогаем при правке выдачи).
-  const returnTouchedRef = useRef(isEdit);
+  // true (сохранённый возврат брони не трогаем при правке выдачи). Черновик
+  // из localStorage — тоже «трогали руками», не перетираем.
+  const returnTouchedRef = useRef(isEdit || Boolean(draft));
 
   const pickupISO = useMemo(() => datetimeLocalToISO(pickupLocal), [pickupLocal]);
   const returnISO = useMemo(() => datetimeLocalToISO(returnLocal), [returnLocal]);
+
+  // Возврат раньше (или в момент) выдачи — inline-ошибка у полей дат.
+  // При невалидном диапазоне запросы каталога/сметы не отправляются: раньше
+  // сервер отвечал 400, catch чистил каталог и показывал ложный toast
+  // «Не удалось загрузить каталог. Обновите страницу».
+  const dateOrderInvalid = Boolean(
+    pickupISO && returnISO && new Date(returnISO).getTime() <= new Date(pickupISO).getTime(),
+  );
 
   const rentalDuration = useMemo(() => {
     if (!pickupISO || !returnISO) return null;
@@ -175,8 +296,13 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   const [catalog, setCatalog] = useState<AvailabilityRow[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
 
-  // Build initial selected map from booking items when editing (catalog items only)
+  // Build initial selected map from booking items when editing (catalog items
+  // only), or from the restored localStorage draft in create mode.
   const [selected, setSelected] = useState<Map<string, CatalogSelectedItem>>(() => {
+    if (!isEdit && draft) {
+      // availableQuantity/dailyPrice обновятся при первой загрузке каталога.
+      return new Map(draft.selected.map((s) => [s.equipmentId, s]));
+    }
     if (!isEdit || !initialBooking) return new Map();
     const m = new Map<string, CatalogSelectedItem>();
     for (const it of initialBooking.items) {
@@ -196,12 +322,12 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
 
-  const [offCatalogItems, setOffCatalogItems] = useState<OffCatalogItem[]>([]);
   const [adjustments, setAdjustments] = useState<Map<string, CatalogRowAdjustment>>(new Map());
 
   // Custom (non-catalog) items — initialized from booking items without equipmentId
   const [customItems, setCustomItems] = useState<CustomItem[]>(() => {
-    if (!isEdit || !initialBooking) return [];
+    if (!isEdit) return draft?.customItems ?? [];
+    if (!initialBooking) return [];
     return initialBooking.items
       .filter((it) => it.equipmentId == null)
       .map((it) => ({
@@ -212,13 +338,18 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
       }));
   });
   const [customModalOpen, setCustomModalOpen] = useState(false);
+  // Префилл модалки произвольной позиции — когда она открыта из AI-«не
+  // распознано» или review-панели («Вне каталога»). Такие позиции теперь
+  // становятся НАСТОЯЩИМИ custom-позициями сметы (customName + customUnitPrice),
+  // а не текстом в комментарии брони.
+  const [customModalPrefill, setCustomModalPrefill] = useState<CustomModalPrefill | null>(null);
 
   // Search + tabs
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<string>("all");
 
   // AI flow (always starts at defaults — no AI state carries over in edit mode)
-  const [gafferText, setGafferText] = useState("");
+  const [gafferText, setGafferText] = useState(isEdit ? "" : (draft?.gafferText ?? ""));
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState(false);
   const [parseResolved, setParseResolved] = useState(0);
@@ -238,7 +369,8 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   // else from legacy single vehicle* columns (back-compat with old bookings).
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
   const [selectedVehicles, setSelectedVehicles] = useState<SelectedVehicle[]>(() => {
-    if (!isEdit || !initialBooking) return [];
+    if (!isEdit) return draft?.selectedVehicles ?? [];
+    if (!initialBooking) return [];
     if (initialBooking.vehicles && initialBooking.vehicles.length > 0) {
       return initialBooking.vehicles.map((v) => ({
         vehicleId: v.vehicleId,
@@ -265,11 +397,6 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     }
     return [];
   });
-  // Vehicles whose shiftHours the user manually set — excluded from
-  // auto-derive-from-dates. In edit mode, all initial vehicles are "dirty".
-  const shiftHoursDirtyRef = useRef<Set<string>>(
-    new Set(isEdit ? selectedVehicles.map((s) => s.vehicleId) : []),
-  );
 
   // ── expectedPaymentDate — пользовательское значение (опционально) ──
   // Пустая строка = использовать default из настроек организации
@@ -278,6 +405,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
       // F1: use toMoscowDateString to avoid 1-day backward drift on edit-save cycles
       return toMoscowDateString(new Date(initialBooking.expectedPaymentDate));
     }
+    if (!isEdit && draft?.expectedPaymentDateLocal) return draft.expectedPaymentDateLocal;
     return "";
   });
 
@@ -300,25 +428,129 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     return () => { cancelled = true; };
   }, []);
 
-  // ── Auto-update each non-dirty vehicle's shiftHours from rentalDuration ──
+  // ── Автосейв черновика в localStorage (create, debounce 2 с) ──
   useEffect(() => {
-    if (!rentalDuration) return;
-    const hours = Math.max(1, Math.ceil(rentalDuration.totalHours));
-    setSelectedVehicles((prev) => {
-      let changed = false;
-      const next = prev.map((s) => {
-        if (shiftHoursDirtyRef.current.has(s.vehicleId)) return s;
-        if (s.shiftHours === hours) return s;
-        changed = true;
-        return { ...s, shiftHours: hours };
-      });
-      return changed ? next : prev;
-    });
-  }, [rentalDuration]);
+    if (isEdit) return;
+    // Префилл из календаря при существующем чужом черновике: автосейв выключен
+    // на весь этот заход, чтобы не перезаписать сохранённую работу.
+    if (preservedForeignDraftRef.current) return;
+    const timer = setTimeout(() => {
+      if (draftPersistDisabledRef.current) return;
+      const meaningful =
+        clientName.trim().length > 0 ||
+        selected.size > 0 ||
+        customItems.length > 0 ||
+        bookingComment.trim().length > 0 ||
+        gafferText.trim().length > 0 ||
+        selectedVehicles.length > 0;
+      try {
+        if (!meaningful) {
+          window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+          return;
+        }
+        const snapshot: FormDraftSnapshot = {
+          savedAt: Date.now(),
+          clientName,
+          clientPhone,
+          projectName,
+          bookingComment,
+          discountPercent,
+          pickupLocal,
+          returnLocal,
+          skipPartialDay,
+          gafferText,
+          selected: Array.from(selected.values()),
+          customItems,
+          selectedVehicles,
+          expectedPaymentDateLocal,
+        };
+        window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(snapshot));
+      } catch {
+        /* localStorage может быть недоступен (private mode / quota) — форму не роняем */
+      }
+    }, DRAFT_AUTOSAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [
+    isEdit,
+    clientName,
+    clientPhone,
+    projectName,
+    bookingComment,
+    discountPercent,
+    pickupLocal,
+    returnLocal,
+    skipPartialDay,
+    gafferText,
+    selected,
+    customItems,
+    selectedVehicles,
+    expectedPaymentDateLocal,
+  ]);
+
+  // ── beforeunload-гард: не терять несохранённый ввод при закрытии вкладки ──
+  // create: гард при непустой форме. edit: гард только когда есть реальные
+  // отличия от загруженной брони (подпись пользовательского ввода).
+  const formSignature = useMemo(
+    () =>
+      JSON.stringify({
+        clientName,
+        projectName,
+        bookingComment,
+        discountPercent,
+        pickupLocal,
+        returnLocal,
+        skipPartialDay,
+        expectedPaymentDateLocal,
+        // Только id+кол-во: цены/доступность обновляет загрузка каталога,
+        // это не пользовательский ввод.
+        items: Array.from(selected.values()).map((s) => [s.equipmentId, s.quantity]),
+        customItems: customItems.map((c) => [c.name, c.unitPrice, c.quantity]),
+        vehicles: selectedVehicles,
+      }),
+    [
+      clientName,
+      projectName,
+      bookingComment,
+      discountPercent,
+      pickupLocal,
+      returnLocal,
+      skipPartialDay,
+      expectedPaymentDateLocal,
+      selected,
+      customItems,
+      selectedVehicles,
+    ],
+  );
+  const initialSignatureRef = useRef<string | null>(null);
+  if (initialSignatureRef.current === null) initialSignatureRef.current = formSignature;
+
+  const hasMeaningfulInput =
+    clientName.trim().length > 0 ||
+    selected.size > 0 ||
+    customItems.length > 0 ||
+    bookingComment.trim().length > 0 ||
+    gafferText.trim().length > 0 ||
+    selectedVehicles.length > 0;
+  const shouldGuardUnload = isEdit
+    ? formSignature !== initialSignatureRef.current
+    : hasMeaningfulInput;
+
+  useEffect(() => {
+    if (!shouldGuardUnload) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [shouldGuardUnload]);
+
+  // ?equipmentId= из календаря применяется один раз после первой загрузки каталога.
+  const urlEquipmentAppliedRef = useRef(false);
 
   // ── Catalog fetch (on dates change) ──
   useEffect(() => {
-    if (!pickupISO || !returnISO) return;
+    if (!pickupISO || !returnISO || dateOrderInvalid) return;
     let cancelled = false;
     setCatalogLoading(true);
     const params = new URLSearchParams({ start: pickupISO, end: returnISO });
@@ -355,6 +587,31 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
           return next;
         });
         setAdjustments(newAdj);
+        // Контракт с календарём: ?equipmentId= — добавляем позицию (qty 1)
+        // после первой загрузки каталога. Одноразово.
+        if (equipmentIdParam && !urlEquipmentAppliedRef.current) {
+          urlEquipmentAppliedRef.current = true;
+          const row = res.rows.find((r) => r.equipmentId === equipmentIdParam);
+          if (!row) {
+            toast.error("Оборудование из ссылки не найдено в каталоге");
+          } else if (row.availableQuantity <= 0) {
+            toast.error(`«${row.name}» недоступно на выбранные даты`);
+          } else {
+            setSelected((prev) => {
+              if (prev.has(row.equipmentId)) return prev;
+              const next = new Map(prev);
+              next.set(row.equipmentId, {
+                equipmentId: row.equipmentId,
+                name: row.name,
+                category: row.category,
+                quantity: 1,
+                dailyPrice: row.rentalRatePerShift,
+                availableQuantity: row.availableQuantity,
+              });
+              return next;
+            });
+          }
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -367,7 +624,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
         if (!cancelled) setCatalogLoading(false);
       });
     return () => { cancelled = true; };
-  }, [pickupISO, returnISO, isEdit, bookingId]);
+  }, [pickupISO, returnISO, dateOrderInvalid, isEdit, bookingId, equipmentIdParam]);
 
   // ── Derived ──
   const apiItems = useMemo(
@@ -388,60 +645,55 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
 
   const checks = useMemo<ValidationCheck[]>(() => {
     const list: ValidationCheck[] = [];
-    if (selected.size > 0 && offCatalogItems.length === 0 && customItems.length === 0 && unmatchedFromAi.length === 0) {
+    if (selected.size > 0 && customItems.length === 0 && unmatchedFromAi.length === 0) {
       list.push({ type: "ok", label: "Все позиции распознаны", detail: "" });
     }
     if (unmatchedFromAi.length > 0) {
-      list.push({ type: "warn", label: `${unmatchedFromAi.length} не распознано`, detail: "добавьте вручную или проигнорируйте" });
-    }
-    if (offCatalogItems.length > 0) {
-      list.push({ type: "tip", label: `${offCatalogItems.length} вне каталога`, detail: "позиции сохранятся с ручным описанием" });
+      list.push({ type: "warn", label: `${unmatchedFromAi.length} не распознано`, detail: "добавьте с ценой или проигнорируйте" });
     }
     if (customItems.length > 0) {
       list.push({ type: "tip", label: `${customItems.length} ${pluralize(customItems.length, "произвольная позиция", "произвольные позиции", "произвольных позиций")}`, detail: "услуги, расходники, субаренда" });
     }
     return list;
-  }, [selected, offCatalogItems, customItems, unmatchedFromAi]);
+  }, [selected, customItems, unmatchedFromAi]);
 
   const canSubmit = Boolean(
     clientName.trim() &&
-      (selected.size > 0 || offCatalogItems.length > 0 || customItems.length > 0) &&
+      (selected.size > 0 || customItems.length > 0) &&
       pickupISO &&
       returnISO &&
       // Дата начала строго раньше возврата — иначе бэкенд вернёт 400, а кнопка
       // раньше оставалась активной.
-      new Date(pickupISO) < new Date(returnISO) &&
+      !dateOrderInvalid &&
       !submitting,
   );
-
-  // Default shiftHours for a newly-toggled vehicle = current rental duration.
-  const defaultShiftHours = rentalDuration
-    ? Math.max(1, Math.ceil(rentalDuration.totalHours))
-    : 12;
 
   function handleToggleVehicle(vehicleId: string, checked: boolean) {
     setSelectedVehicles((prev) => {
       if (checked) {
         if (prev.some((s) => s.vehicleId === vehicleId)) return prev;
+        // Дефолт «Часы смены» = стандартная смена машины (без переработки).
+        // Раньше подставлялась вся длительность аренды (72 ч для 3 суток) —
+        // транспорт молча дорожал в разы за счёт «переработки».
+        const standardShiftHours =
+          vehicles.find((v) => v.id === vehicleId)?.shiftHours ?? 12;
         return [
           ...prev,
           {
             vehicleId,
             withGenerator: false,
-            shiftHours: defaultShiftHours,
+            shiftHours: Math.max(1, standardShiftHours),
             skipOvertime: false,
             kmOutsideMkad: 0,
             ttkEntry: false,
           },
         ];
       }
-      shiftHoursDirtyRef.current.delete(vehicleId);
       return prev.filter((s) => s.vehicleId !== vehicleId);
     });
   }
 
   function handlePatchVehicle(vehicleId: string, patch: Partial<SelectedVehicle>) {
-    if (patch.shiftHours !== undefined) shiftHoursDirtyRef.current.add(vehicleId);
     setSelectedVehicles((prev) =>
       prev.map((s) => (s.vehicleId === vehicleId ? { ...s, ...patch } : s)),
     );
@@ -479,7 +731,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   // ── Debounced quote ──
   useEffect(() => {
     const hasSomething = apiItems.length > 0 || customItems.length > 0 || transportPayload !== null;
-    if (!clientName.trim() || !hasSomething || !pickupISO || !returnISO) {
+    if (!clientName.trim() || !hasSomething || !pickupISO || !returnISO || dateOrderInvalid) {
       setQuote(null);
       return;
     }
@@ -520,7 +772,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
       }
     }, debounceMs);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [clientName, projectName, pickupISO, returnISO, discountPercent, skipPartialDay, apiItems, customItems, transportPayload]);
+  }, [clientName, projectName, pickupISO, returnISO, dateOrderInvalid, discountPercent, skipPartialDay, apiItems, customItems, transportPayload]);
 
   // ── Date handlers ──
   function handlePickupChange(v: string) {
@@ -602,20 +854,18 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     });
   }
 
-  function handleChangeOffCatalogQty(tempId: string, newQty: number) {
-    setOffCatalogItems((prev) =>
-      prev.map((it) => (it.tempId === tempId ? { ...it, quantity: Math.max(1, newQty) } : it)),
-    );
-  }
-
-  function handleRemoveOffCatalog(tempId: string) {
-    setOffCatalogItems((prev) => prev.filter((it) => it.tempId !== tempId));
-  }
-
   // ── Custom item handlers ──
   function handleAddCustom(payload: { name: string; unitPrice: number; quantity: number }) {
     const tempId = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setCustomItems((prev) => [...prev, { tempId, ...payload }]);
+    // Модалка была открыта из AI-потока — убираем исходную строку из очереди.
+    const source = customModalPrefill?.source;
+    if (source?.kind === "unmatched") {
+      setUnmatchedFromAi((prev) => prev.filter((p) => p !== source.phrase));
+    } else if (source?.kind === "review") {
+      setPendingReview((prev) => prev.filter((p) => p.reviewId !== source.reviewId));
+    }
+    setCustomModalPrefill(null);
   }
 
   function handleChangeCustomQty(tempId: string, qty: number) {
@@ -646,6 +896,10 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
           (el as HTMLInputElement).focus?.();
         }
       }
+      return;
+    }
+    if (dateOrderInvalid) {
+      toast.error("Возврат раньше выдачи — исправьте даты и повторите распознавание");
       return;
     }
     if (!gafferText.trim()) {
@@ -694,9 +948,15 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   function handleIgnoreUnmatched() { setUnmatchedFromAi([]); }
 
   function handleAddOffCatalog(phrase: string) {
-    const tempId = `off-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setOffCatalogItems((prev) => [...prev, { tempId, name: phrase, quantity: 1 }]);
-    setUnmatchedFromAi((prev) => prev.filter((p) => p !== phrase));
+    // «Вне каталога» = настоящая произвольная позиция с ценой: открываем
+    // модалку с префиллом. Строка уходит из «не распознано» только после
+    // подтверждения (отмена модалки ничего не теряет).
+    setCustomModalPrefill({
+      name: phrase,
+      quantity: 1,
+      source: { kind: "unmatched", phrase },
+    });
+    setCustomModalOpen(true);
   }
 
   // ── Review panel handlers ──
@@ -742,9 +1002,14 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   function handleReviewOffCatalog(reviewId: string) {
     const item = pendingReview.find((p) => p.reviewId === reviewId);
     if (!item) return;
-    const tempId = `off-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setOffCatalogItems((prev) => [...prev, { tempId, name: item.interpretedName || item.gafferPhrase, quantity: item.quantity }]);
-    setPendingReview((prev) => prev.filter((p) => p.reviewId !== reviewId));
+    // «Вне каталога» из review-панели → произвольная позиция с ценой.
+    // Карточка уходит из панели только после подтверждения в модалке.
+    setCustomModalPrefill({
+      name: item.interpretedName || item.gafferPhrase,
+      quantity: item.quantity,
+      source: { kind: "review", reviewId },
+    });
+    setCustomModalOpen(true);
   }
 
   function handleReviewSkip(reviewId: string) {
@@ -759,11 +1024,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
   async function saveDraft(): Promise<string | null> {
     setSubmitting(true);
     try {
-      const offCatalogSuffix =
-        offCatalogItems.length > 0
-          ? "\n\nВне каталога:\n" + offCatalogItems.map((o) => `— ${o.name} × ${o.quantity}`).join("\n")
-          : "";
-      const finalComment = (bookingComment.trim() + offCatalogSuffix).trim() || undefined;
+      const finalComment = bookingComment.trim() || undefined;
       const items = [
         ...apiItems,
         ...customItems.map((c) => ({
@@ -774,6 +1035,8 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
       ];
       const body = {
         client: { name: clientName.trim() },
+        // Телефон нового клиента (существующему сервер телефон не перетирает)
+        ...(clientPhone.trim() ? { clientPhone: clientPhone.trim() } : {}),
         projectName: projectName.trim() || "Проект",
         startDate: pickupISO,
         endDate: returnISO,
@@ -788,6 +1051,9 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
           : {}),
       };
       const res = await apiFetch<{ booking: { id: string } }>("/api/bookings/draft", { method: "POST", body: JSON.stringify(body) });
+      // Бронь на сервере — локальный черновик больше не нужен.
+      draftPersistDisabledRef.current = true;
+      clearDraftSnapshot();
       toast.success("Черновик сохранён");
       return res.booking.id;
     } catch (err: unknown) {
@@ -821,11 +1087,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     if (!bookingId || !pickupISO || !returnISO) return;
     setSubmitting(true);
     try {
-      const offCatalogSuffix =
-        offCatalogItems.length > 0
-          ? "\n\nВне каталога:\n" + offCatalogItems.map((o) => `— ${o.name} × ${o.quantity}`).join("\n")
-          : "";
-      const finalComment = (bookingComment.trim() + offCatalogSuffix).trim() || null;
+      const finalComment = bookingComment.trim() || null;
       const items = [
         ...apiItems,
         ...customItems.map((c) => ({
@@ -857,6 +1119,14 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // «Начать заново» из плашки восстановления: чистим localStorage и
+  // ремаунтим форму с дефолтами (key-эпоха в обёртке BookingForm).
+  function handleDiscardDraft() {
+    draftPersistDisabledRef.current = true;
+    clearDraftSnapshot();
+    onResetForm?.();
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -894,12 +1164,40 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
       <div className="mx-auto grid max-w-[1280px] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] items-start gap-5 px-4 py-5 md:px-8 md:py-7">
         {/* Left column: Client, Dates, Equipment, Comment */}
         <div className="flex flex-col gap-3.5">
+          {draftBannerVisible && draft && (
+            <div
+              role="status"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-border bg-amber-soft px-4 py-2.5 text-[13px] text-ink"
+            >
+              <span>Восстановлен черновик от {formatDraftTime(draft.savedAt)}</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDraftBannerVisible(false)}
+                  className="rounded bg-accent-bright px-3 py-1 text-[12px] font-medium text-white hover:opacity-90"
+                >
+                  Продолжить
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDiscardDraft}
+                  className="rounded border border-border bg-surface px-3 py-1 text-[12px] text-ink-2 hover:bg-surface-muted"
+                >
+                  Начать заново
+                </button>
+              </div>
+            </div>
+          )}
           <ClientProjectCard
             clientName={clientName}
             projectName={projectName}
             onClientNameChange={setClientName}
             onProjectNameChange={setProjectName}
             clientReadOnly={isEdit}
+            clientPhone={clientPhone}
+            onClientPhoneChange={setClientPhone}
+            showPhoneField={!isEdit && isNewClient}
+            onNewClientChange={setIsNewClient}
           />
           <DatesCard
             pickupLocal={pickupLocal}
@@ -910,13 +1208,13 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
             durationDetail={durationDetail}
             skipPartialDay={skipPartialDay}
             onSkipPartialDayChange={setSkipPartialDay}
+            rangeError={dateOrderInvalid ? "Возврат раньше выдачи — проверьте дату и время" : null}
           />
 
           <EquipmentCard
             catalog={catalog}
             catalogLoading={catalogLoading}
             selected={selected}
-            offCatalogItems={offCatalogItems}
             customItems={customItems}
             adjustments={adjustments}
             gafferText={gafferText}
@@ -935,11 +1233,12 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
             onAdd={handleAdd}
             onChangeQty={handleChangeQty}
             onRemove={handleRemove}
-            onChangeOffCatalogQty={handleChangeOffCatalogQty}
-            onRemoveOffCatalog={handleRemoveOffCatalog}
             onChangeCustomQty={handleChangeCustomQty}
             onRemoveCustom={handleRemoveCustom}
-            onOpenCustomModal={() => setCustomModalOpen(true)}
+            onOpenCustomModal={() => {
+              setCustomModalPrefill(null);
+              setCustomModalOpen(true);
+            }}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             activeTab={activeTab}
@@ -997,7 +1296,7 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
             localDiscount={localDiscount}
             localTotal={localTotal}
             discountPercent={discountPercent}
-            itemCount={selected.size + offCatalogItems.length + customItems.length}
+            itemCount={selected.size + customItems.length}
             shifts={shifts}
             isLoadingQuote={loadingQuote}
             checks={checks}
@@ -1006,11 +1305,9 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
             onSaveEdit={isEdit ? handleSaveEdit : undefined}
             canSubmit={canSubmit}
             selectedItems={selected}
-            offCatalogItems={offCatalogItems}
             customItems={customItems}
             transportBreakdowns={localTransport?.breakdowns ?? []}
             onRemoveItem={handleRemove}
-            onRemoveOffCatalog={handleRemoveOffCatalog}
             onRemoveCustom={handleRemoveCustom}
             mode={mode}
             submitting={submitting}
@@ -1029,8 +1326,13 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
       {/* Custom item modal */}
       <AddCustomItemModal
         isOpen={customModalOpen}
-        onClose={() => setCustomModalOpen(false)}
+        onClose={() => {
+          setCustomModalOpen(false);
+          setCustomModalPrefill(null);
+        }}
         onAdd={handleAddCustom}
+        initialName={customModalPrefill?.name}
+        initialQuantity={customModalPrefill?.quantity}
       />
     </div>
   );
@@ -1039,9 +1341,15 @@ function BookingFormInner({ mode, initialBooking, bookingId }: BookingFormProps)
 // ─── Public export (wraps inner in Suspense for useSearchParams) ──────────────
 
 export function BookingForm(props: BookingFormProps): JSX.Element {
+  // Эпоха-ключ: «Начать заново» ремаунтит форму с дефолтными initializers.
+  const [formEpoch, setFormEpoch] = useState(0);
   return (
     <Suspense fallback={<div className="p-8 text-center text-ink-3">Загрузка…</div>}>
-      <BookingFormInner {...props} />
+      <BookingFormInner
+        key={formEpoch}
+        {...props}
+        onResetForm={() => setFormEpoch((e) => e + 1)}
+      />
     </Suspense>
   );
 }

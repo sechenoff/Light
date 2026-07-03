@@ -14,18 +14,22 @@ const API_BASE_URL = resolveApiBaseUrl();
 
 type ApiError = Error & {
   status: number;
+  /** Машинный код ошибки бэкенда (HttpError code, например ISSUE_TOO_EARLY) — для ветвления UI. */
+  code?: string;
   details?: unknown;
 };
 
 class ApiFetchError extends Error implements ApiError {
   status: number;
+  code?: string;
   details?: unknown;
 
-  constructor(message: string, status: number, details?: unknown) {
+  constructor(message: string, status: number, details?: unknown, code?: string) {
     super(message);
     this.name = "ApiFetchError";
     this.status = status;
     this.details = details;
+    this.code = code;
   }
 }
 
@@ -62,7 +66,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
           : text.trimStart().startsWith("<")
             ? `Сервер вернул страницу ошибки (HTTP ${res.status}) вместо JSON — чаще всего не запущен API или сбой прокси Next. Запустите бэкенд: npm run dev -w apps/api`
             : `Request failed: ${res.status}`;
-    throw new ApiFetchError(message, res.status, jsonObject?.details ?? json);
+    const code = typeof jsonObject?.code === "string" ? jsonObject.code : undefined;
+    throw new ApiFetchError(message, res.status, jsonObject?.details ?? json, code);
   }
 
   return (await res.json()) as T;

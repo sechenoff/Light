@@ -6,26 +6,32 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (payload: { name: string; unitPrice: number; quantity: number }) => void;
+  /** Префилл названия (например, фраза гафера из AI-«не распознано»). */
+  initialName?: string;
+  /** Префилл количества (из review-панели). */
+  initialQuantity?: number;
 };
 
-export function AddCustomItemModal({ isOpen, onClose, onAdd }: Props) {
+export function AddCustomItemModal({ isOpen, onClose, onAdd, initialName, initialQuantity }: Props) {
   const [name, setName] = useState("");
   const [unitPriceStr, setUnitPriceStr] = useState("");
   const [quantityStr, setQuantityStr] = useState("1");
   const [error, setError] = useState<string | null>(null);
 
   const nameRef = useRef<HTMLInputElement>(null);
+  const priceRef = useRef<HTMLInputElement>(null);
 
-  // Reset fields on open; focus name
+  // Reset fields on open (учитывая префилл); focus: имя, а при префилле — цена
   useEffect(() => {
     if (isOpen) {
-      setName("");
+      setName(initialName ?? "");
       setUnitPriceStr("");
-      setQuantityStr("1");
+      setQuantityStr(String(initialQuantity && initialQuantity >= 1 ? initialQuantity : 1));
       setError(null);
-      setTimeout(() => nameRef.current?.focus(), 50);
+      const target = initialName ? priceRef : nameRef;
+      setTimeout(() => target.current?.focus(), 50);
     }
-  }, [isOpen]);
+  }, [isOpen, initialName, initialQuantity]);
 
   // Esc-close
   useEffect(() => {
@@ -116,6 +122,7 @@ export function AddCustomItemModal({ isOpen, onClose, onAdd }: Props) {
             </label>
             <input
               id="custom-unit-price"
+              ref={priceRef}
               type="number"
               value={unitPriceStr}
               onChange={(e) => setUnitPriceStr(e.target.value)}

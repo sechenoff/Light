@@ -20,6 +20,11 @@ type Props = {
   placeholder?: string;
   id?: string;
   autoFocus?: boolean;
+  /**
+   * Сообщает родителю, будет ли создан новый клиент (введённое имя не имеет
+   * точного совпадения в БД). Родитель по этому флагу показывает поле телефона.
+   */
+  onWillCreateNewChange?: (willCreateNew: boolean) => void;
 };
 
 /**
@@ -39,6 +44,7 @@ export function ClientAutocomplete({
   placeholder = "Название компании / заказчика",
   id,
   autoFocus = false,
+  onWillCreateNewChange,
 }: Props) {
   const [options, setOptions] = useState<Client[]>([]);
   const [open, setOpen] = useState(false);
@@ -211,6 +217,15 @@ export function ClientAutocomplete({
     trimmedValue.length > 0 &&
     !isSelectedExisting &&
     !hasExactMatch;
+
+  // Репортим родителю только реальные переходы (без спама на каждый рендер).
+  const lastReportedNewRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!onWillCreateNewChange) return;
+    if (lastReportedNewRef.current === willCreateNew) return;
+    lastReportedNewRef.current = willCreateNew;
+    onWillCreateNewChange(willCreateNew);
+  }, [willCreateNew, onWillCreateNewChange]);
 
   if (readOnly) {
     return (

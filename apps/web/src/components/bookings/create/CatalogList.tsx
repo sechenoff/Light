@@ -8,7 +8,8 @@ import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, Custom
 type Props = {
   rows: AvailabilityRow[];
   selected: Map<string, CatalogSelectedItem>;
-  offCatalogItems: OffCatalogItem[];
+  /** Legacy: позиции «вне каталога» без цены (новый флоу их не создаёт). */
+  offCatalogItems?: OffCatalogItem[];
   customItems?: CustomItem[];
   activeTab: string; // "all" or category name
   searchQuery: string;
@@ -16,8 +17,8 @@ type Props = {
   onAdd: (row: AvailabilityRow) => void;
   onChangeQty: (equipmentId: string, newQty: number) => void;
   onRemove: (equipmentId: string) => void;
-  onChangeOffCatalogQty: (tempId: string, newQty: number) => void;
-  onRemoveOffCatalog: (tempId: string) => void;
+  onChangeOffCatalogQty?: (tempId: string, newQty: number) => void;
+  onRemoveOffCatalog?: (tempId: string) => void;
   onChangeCustomQty?: (tempId: string, newQty: number) => void;
   onRemoveCustom?: (tempId: string) => void;
 };
@@ -25,7 +26,7 @@ type Props = {
 export function CatalogList({
   rows,
   selected,
-  offCatalogItems,
+  offCatalogItems = [],
   customItems = [],
   activeTab,
   searchQuery,
@@ -156,8 +157,8 @@ export function CatalogList({
                   aria-label="Уменьшить количество"
                   onClick={() =>
                     item.quantity - 1 <= 0
-                      ? onRemoveOffCatalog(item.tempId)
-                      : onChangeOffCatalogQty(item.tempId, item.quantity - 1)
+                      ? onRemoveOffCatalog?.(item.tempId)
+                      : onChangeOffCatalogQty?.(item.tempId, item.quantity - 1)
                   }
                   className="flex h-7 w-7 items-center justify-center text-ink-2 hover:bg-emerald-soft"
                 >
@@ -169,7 +170,7 @@ export function CatalogList({
                 <button
                   type="button"
                   aria-label="Увеличить количество"
-                  onClick={() => onChangeOffCatalogQty(item.tempId, item.quantity + 1)}
+                  onClick={() => onChangeOffCatalogQty?.(item.tempId, item.quantity + 1)}
                   className="flex h-7 w-7 items-center justify-center text-ink-2 hover:bg-emerald-soft"
                 >
                   +
@@ -177,7 +178,7 @@ export function CatalogList({
                 <button
                   type="button"
                   aria-label="Удалить позицию"
-                  onClick={() => onRemoveOffCatalog(item.tempId)}
+                  onClick={() => onRemoveOffCatalog?.(item.tempId)}
                   className="flex h-7 w-7 items-center justify-center border-l border-emerald-border text-rose hover:bg-rose-soft"
                 >
                   ×

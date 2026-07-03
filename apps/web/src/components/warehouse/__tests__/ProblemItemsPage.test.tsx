@@ -20,6 +20,11 @@ vi.mock("../../../hooks/useRequireRole", () => ({
   }),
 }));
 
+const routerPush = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: routerPush, replace: vi.fn() }),
+}));
+
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
 vi.mock("../../ToastProvider", () => ({
@@ -74,6 +79,32 @@ const CLOSED_ITEM = {
   equipmentUnit: {
     id: "eu-2",
     equipment: { name: "Tripod Manfrotto", category: "Опоры" },
+  },
+};
+
+// Просроченная «Ожидается» с обогащённой бронью (клиент + проект):
+// expectedBackDate в прошлом → rose-подсветка строки, клик → /bookings/[id].
+const OVERDUE_BOOKING_ITEM = {
+  id: "pi-overdue",
+  equipmentUnitId: "eu-3",
+  sourceBookingId: "ckbooking000456UVWXYZ",
+  reason: "LEFT_ON_SITE" as const,
+  comment: "Остался в павильоне",
+  expectedBackDate: "2026-05-01T00:00:00.000Z",
+  status: "EXPECTED" as const,
+  createdBy: "ivan",
+  createdAt: "2026-04-28T08:00:00.000Z",
+  resolvedAt: null,
+  resolvedBy: null,
+  resolutionNote: null,
+  equipmentUnit: {
+    id: "eu-3",
+    equipment: { name: "Nanlux 1200", category: "Свет" },
+  },
+  booking: {
+    id: "ckbooking000456UVWXYZ",
+    projectName: "Ночная смена",
+    client: { name: "Кино-Про", phone: "+7 999 111-22-33" },
   },
 };
 
@@ -404,5 +435,61 @@ describe("ProblemItemsPage", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     expect(apiFetch).toHaveBeenCalledTimes(3); // list, resolve(409), refetch
+  });
+
+  it("booking-enriched row shows «Клиент · Проект» and click navigates to /bookings/[id]", async () => {
+    apiFetch.mockResolvedValueOnce({
+      items: [OVERDUE_BOOKING_ITEM],
+      nextCursor: null,
+    });
+    render(<ProblemItemsPage />);
+    await waitFor(() =>
+      expect(screen.getAllByText("Nanlux 1200").length).toBeGreaterThan(0),
+    );
+
+    // клиент + проект вместо #хвост-cuid (desktop + mobile copies)
+    expect(screen.getAllByText("Кино-Про").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Ночная смена/).length).toBeGreaterThan(0);
+
+    // клик по строке (не по кнопке) → навигация на карточку брони
+    fireEvent.click(screen.getAllByText("Кино-Про")[0]);
+    expect(routerPush).toHaveBeenCalledWith(
+      "/bookings/ckbooking000456UVWXYZ",
+    );
+
+    // клик по кнопке разбора НЕ навигирует (открывает модалку)
+    routerPush.mockClear();
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Отметить «Найдено»" })[0],
+    );
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("overdue EXPECTED row (expectedBackDate in the past) gets rose tinting", async () => {
+    apiFetch.mockResolvedValueOnce({
+      items: [OVERDUE_BOOKING_ITEM, OPEN_ITEM],
+      nextCursor: null,
+    });
+    render(<ProblemItemsPage />);
+    await waitFor(() =>
+      expect(screen.getAllByText("Nanlux 1200").length).toBeGreaterThan(0),
+    );
+
+    // desktop <tr> просроченной EXPECTED — тонирована rose
+    const overdueRow = screen
+      .getAllByText("Nanlux 1200")
+      .map((el) => el.closest("tr"))
+      .find((tr): tr is HTMLTableRowElement => tr !== null);
+    expect(overdueRow).toBeDefined();
+    expect(overdueRow!.className).toContain("bg-rose-soft");
+
+    // не-просроченная строка (SEARCHING, без expectedBackDate) — без rose
+    const normalRow = screen
+      .getAllByText("Aputure 600d")
+      .map((el) => el.closest("tr"))
+      .find((tr): tr is HTMLTableRowElement => tr !== null);
+    expect(normalRow).toBeDefined();
+    expect(normalRow!.className).not.toContain("bg-rose-soft");
   });
 });

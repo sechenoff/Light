@@ -297,6 +297,47 @@ export async function createBookingDraft(args: {
           finalAmount: finalAmount.toDecimalPlaces(2).toString(),
         },
       });
+
+      // MB-контракт: MAIN Estimate-снапшот создаётся сразу при создании
+      // черновика (раньше — только при confirm), чтобы карточка брони
+      // показывала строки сметы до согласования. Конфликта по
+      // @@unique([bookingId, kind]) на confirm нет: и confirmBooking, и
+      // rebuildBookingEstimate перед созданием удаляют существующий MAIN
+      // (deleteMany / delete), а не создают вслепую.
+      await prisma.estimate.create({
+        data: {
+          bookingId: booking.id,
+          kind: "MAIN",
+          currency: "RUB",
+          shifts: quote.shifts,
+          subtotal: quote.subtotal.toDecimalPlaces(2).toString(),
+          discountPercent: quote.discountPercent.equals(0)
+            ? null
+            : quote.discountPercent.toDecimalPlaces(2).toString(),
+          discountAmount: quote.discountAmount.toDecimalPlaces(2).toString(),
+          totalAfterDiscount: quote.totalAfterDiscount.toDecimalPlaces(2).toString(),
+          commentSnapshot: args.comment ?? null,
+          optionalNote: args.estimateOptionalNote?.trim() || null,
+          includeOptionalInExport: args.estimateIncludeOptionalInExport ?? false,
+          hoursSummaryText: formatExportHourCalculationLine(
+            args.startDate,
+            args.endDate,
+            args.skipPartialDay ?? false,
+          ),
+          lines: {
+            create: quote.lines.map((l) => ({
+              equipmentId: l.equipmentId,
+              categorySnapshot: l.categorySnapshot,
+              nameSnapshot: l.nameSnapshot,
+              brandSnapshot: l.brandSnapshot,
+              modelSnapshot: l.modelSnapshot,
+              quantity: l.quantity,
+              unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
+              lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+            })),
+          },
+        },
+      });
     } catch {
       // Не блокируем создание брони, если пересчёт не удался
     }
@@ -304,7 +345,11 @@ export async function createBookingDraft(args: {
 
   const withTotals = await prisma.booking.findUnique({
     where: { id: booking.id },
-    include: { items: true, vehicles: { include: { vehicle: true } } },
+    include: {
+      items: true,
+      vehicles: { include: { vehicle: true } },
+      estimates: { include: { lines: true } },
+    },
   });
   return withTotals!;
 }
@@ -523,6 +568,9 @@ export async function confirmBooking(bookingId: string) {
       startDate: booking.startDate,
       endDate: booking.endDate,
       equipmentIds: requestedItemsSorted.map((i) => i.equipmentId),
+      // MF-1: PENDING_APPROVAL теперь блокирует доступность — исключаем саму бронь,
+      // иначе она конфликтовала бы сама с собой при approve (PENDING_APPROVAL → CONFIRMED).
+      excludeBookingId: bookingId,
       tx,
     });
     const availabilityById = new Map(availability.map((a) => [a.equipment.id, a]));

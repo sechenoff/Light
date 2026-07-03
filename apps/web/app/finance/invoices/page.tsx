@@ -25,6 +25,9 @@ interface Invoice {
   number: string | null;
   kind: InvoiceKind;
   status: InvoiceStatus;
+  /** H6: derived-статус с сервера — ISSUED/PARTIAL_PAID с истёкшим dueDate приходит как OVERDUE
+   *  сразу, не дожидаясь ночного cron. Опционален для обратной совместимости. */
+  displayStatus?: InvoiceStatus;
   total: string;
   paidAmount: string;
   dueDate: string | null;
@@ -39,6 +42,24 @@ interface Invoice {
 interface InvoicesResponse {
   items: Invoice[];
   total: number;
+  /** Счётчики по статусам по всей выборке (если сервер их отдаёт). */
+  counts?: Partial<Record<InvoiceStatus | "ALL", number>>;
+}
+
+/**
+ * Эффективный статус счёта для UI: displayStatus с сервера, иначе derived-фолбэк
+ * (просроченный ISSUED/PARTIAL_PAID → OVERDUE), иначе stored-статус.
+ */
+function effectiveStatus(inv: Invoice): InvoiceStatus {
+  if (inv.displayStatus) return inv.displayStatus;
+  if (
+    (inv.status === "ISSUED" || inv.status === "PARTIAL_PAID") &&
+    inv.dueDate &&
+    new Date(inv.dueDate).getTime() < Date.now()
+  ) {
+    return "OVERDUE";
+  }
+  return inv.status;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -77,14 +98,16 @@ function periodToDates(period: PeriodKey): { createdAfter?: string; createdBefor
   return { createdAfter: start.toISOString(), createdBefore: end.toISOString() };
 }
 
+// Единая терминология: лейбл таба = лейбл пилюли в строке (FINANCE_TERMS),
+// чтобы «К выставлению» в фильтре не превращалось в «Черновик» в таблице.
 const STATUS_TABS: Array<{ key: InvoiceStatus | "ALL"; label: string }> = [
   { key: "ALL", label: "Все" },
-  { key: "DRAFT", label: "К выставлению" },
-  { key: "ISSUED", label: "Выставлено" },
-  { key: "PARTIAL_PAID", label: "Частично" },
-  { key: "PAID", label: "Оплачены" },
-  { key: "OVERDUE", label: "Просрочены" },
-  { key: "VOID", label: "Аннулированы" },
+  { key: "DRAFT", label: FINANCE_TERMS.draft },
+  { key: "ISSUED", label: FINANCE_TERMS.billed },
+  { key: "PARTIAL_PAID", label: FINANCE_TERMS.partial },
+  { key: "PAID", label: FINANCE_TERMS.paid },
+  { key: "OVERDUE", label: FINANCE_TERMS.overdue },
+  { key: "VOID", label: FINANCE_TERMS.void },
 ];
 
 const KIND_LABELS: Record<InvoiceKind, string> = {
@@ -146,6 +169,7 @@ function InvoicesPage() {
   );
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState<Partial<Record<InvoiceStatus | "ALL", number>>>({});
   const [loading, setLoading] = useState(false);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -165,6 +189,8 @@ function InvoicesPage() {
     setSelected(new Set());
     try {
       const params = new URLSearchParams();
+      // Сервер (MC1) фильтрует ?status= в displayStatus-семантике: «Просрочено»
+      // включает ISSUED/PARTIAL_PAID с истёкшим dueDate, не дожидаясь ночного cron.
       if (statusTab !== "ALL") params.set("status", statusTab);
       if (search.trim()) params.set("search", search.trim());
       params.set("limit", "100");
@@ -174,6 +200,26 @@ function InvoicesPage() {
       const data = await apiFetch<InvoicesResponse>(`/api/invoices?${params}`);
       setInvoices(data.items);
       setTotal(data.total);
+
+      // Счётчики вкладок — по всей выборке, не по текущей (отфильтрованной) странице.
+      if (data.counts) {
+        setCounts({ ALL: data.counts.ALL ?? data.total, ...data.counts });
+      } else {
+        // Фолбэк, пока сервер не отдаёт counts: нефильтрованный по статусу запрос
+        // в тех же рамках search/period, счёт по displayStatus.
+        const cParams = new URLSearchParams();
+        if (search.trim()) cParams.set("search", search.trim());
+        cParams.set("limit", "200");
+        if (createdAfter) cParams.set("createdAfter", createdAfter);
+        if (createdBefore) cParams.set("createdBefore", createdBefore);
+        const all = await apiFetch<InvoicesResponse>(`/api/invoices?${cParams}`);
+        const next: Partial<Record<InvoiceStatus | "ALL", number>> = { ALL: all.total };
+        for (const inv of all.items) {
+          const s = effectiveStatus(inv);
+          next[s] = (next[s] ?? 0) + 1;
+        }
+        setCounts(next);
+      }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Ошибка загрузки счетов");
     } finally {
@@ -259,7 +305,12 @@ function InvoicesPage() {
     }
   }
 
-  const allSelectableIds = invoices.filter((inv) => inv.status === "DRAFT").map((inv) => inv.id);
+  // Вкладка со статусом сужается по displayStatus: derived-OVERDUE не показывается
+  // в «Выставлено» и наоборот попадает в «Просрочено» без ожидания cron.
+  const visibleInvoices =
+    statusTab === "ALL" ? invoices : invoices.filter((inv) => effectiveStatus(inv) === statusTab);
+
+  const allSelectableIds = visibleInvoices.filter((inv) => inv.status === "DRAFT").map((inv) => inv.id);
   const allSelected = allSelectableIds.length > 0 && allSelectableIds.every((id) => selected.has(id));
 
   function toggleSelectAll() {
@@ -276,13 +327,6 @@ function InvoicesPage() {
 
   const selectedCount = selected.size;
   const draftSelectedCount = invoices.filter((inv) => selected.has(inv.id) && inv.status === "DRAFT").length;
-
-  // Counts per status (loaded from server totals or client side)
-  const counts = STATUS_TABS.reduce((acc, tab) => {
-    if (tab.key === "ALL") acc[tab.key] = invoices.length;
-    else acc[tab.key] = invoices.filter((inv) => inv.status === tab.key).length;
-    return acc;
-  }, {} as Record<string, number>);
 
   return (
     <div className="min-h-screen bg-surface-subtle">
@@ -357,9 +401,8 @@ function InvoicesPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface text-ink rounded-lg hover:bg-surface-subtle transition-colors">
-              📊 Экспорт XLSX
-            </button>
+            {/* FIN-09: кнопка «Экспорт XLSX» была без onClick (тупик) — эндпоинта
+                экспорта счетов нет. Убрана, чтобы не создавать ложного аффорданса. */}
             {isSA && (
               <button
                 onClick={() => setCreateOpen(true)}
@@ -403,7 +446,7 @@ function InvoicesPage() {
         {/* Table — desktop */}
         {loading ? (
           <div className="text-center py-12 text-ink-3 text-sm">Загрузка…</div>
-        ) : invoices.length === 0 ? (
+        ) : visibleInvoices.length === 0 ? (
           <div className="text-center py-16 text-ink-2 bg-surface border border-border rounded-lg">
             <p className="text-[15px] font-medium mb-2">Счетов нет</p>
             <p className="text-sm text-ink-3">Создайте счёт на странице брони → «Создать счёт»</p>
@@ -430,17 +473,18 @@ function InvoicesPage() {
                     <th className="px-3 py-3 text-left eyebrow">Тип</th>
                     <th className="px-3 py-3 text-right eyebrow">Сумма</th>
                     <th className="px-3 py-3 text-right eyebrow">Оплачено</th>
-                    <th className="px-3 py-3 text-right eyebrow">Остаток</th>
+                    <th className="px-3 py-3 text-right eyebrow">{FINANCE_TERMS.invoiceOutstanding}</th>
                     <th className="px-3 py-3 text-left eyebrow">Срок</th>
                     <th className="px-3 py-3 text-left eyebrow">Статус</th>
                     <th className="px-3 py-3 w-24"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {invoices.map((inv) => {
+                  {visibleInvoices.map((inv) => {
                     const outstanding = Math.max(0, Number(inv.total) - Number(inv.paidAmount));
                     const overdueDays = daysOverdue(inv.dueDate);
                     const isVoid = inv.status === "VOID";
+                    const effStatus = effectiveStatus(inv);
                     return (
                       <tr
                         key={inv.id}
@@ -488,7 +532,8 @@ function InvoicesPage() {
                           )}
                         </td>
                         <td className="px-3 py-3">
-                          <StatusPill variant={statusVariant(inv.status)} label={statusLabel(inv.status)} />
+                          {/* displayStatus: просрочка видна сразу, не после ночного cron */}
+                          <StatusPill variant={statusVariant(effStatus)} label={statusLabel(effStatus)} />
                         </td>
                         <td className="px-3 py-3">
                           {isVoid ? (
@@ -550,27 +595,28 @@ function InvoicesPage() {
             <div className="md:hidden">
               {/* Status pills summary on mobile */}
               <div className="flex gap-2 flex-wrap mb-3">
-                {counts["OVERDUE"] > 0 && (
+                {(counts["OVERDUE"] ?? 0) > 0 && (
                   <span className="px-2.5 py-1 rounded-full text-[12px] font-medium bg-rose-soft text-rose border border-rose-border">
-                    Просрочено · {counts["OVERDUE"]}
+                    {FINANCE_TERMS.overdue} · {counts["OVERDUE"]}
                   </span>
                 )}
-                {counts["ISSUED"] > 0 && (
+                {(counts["ISSUED"] ?? 0) > 0 && (
                   <span className="px-2.5 py-1 rounded-full text-[12px] font-medium bg-accent-soft text-accent-bright border border-accent-border">
-                    Выставлено · {counts["ISSUED"]}
+                    {FINANCE_TERMS.billed} · {counts["ISSUED"]}
                   </span>
                 )}
-                {counts["PAID"] > 0 && (
+                {(counts["PAID"] ?? 0) > 0 && (
                   <span className="px-2.5 py-1 rounded-full text-[12px] font-medium bg-emerald-soft text-emerald border border-emerald-border">
-                    Оплачено · {counts["PAID"]}
+                    {FINANCE_TERMS.paid} · {counts["PAID"]}
                   </span>
                 )}
               </div>
               <div className="space-y-3">
-                {invoices.map((inv) => {
+                {visibleInvoices.map((inv) => {
                   const outstanding = Math.max(0, Number(inv.total) - Number(inv.paidAmount));
                   const overdueDays = daysOverdue(inv.dueDate);
-                  const isOverdueSt = inv.status === "OVERDUE";
+                  const effStatus = effectiveStatus(inv);
+                  const isOverdueSt = effStatus === "OVERDUE";
                   return (
                     <div
                       key={inv.id}
@@ -592,7 +638,7 @@ function InvoicesPage() {
                             {isOverdueSt && overdueDays && ` · срок ${formatDate(inv.dueDate)}`}
                           </div>
                         </div>
-                        <StatusPill variant={statusVariant(inv.status)} label={statusLabel(inv.status)} />
+                        <StatusPill variant={statusVariant(effStatus)} label={statusLabel(effStatus)} />
                       </div>
                       <div className="mono-num text-[18px] font-semibold mb-3">
                         {formatRub(Number(inv.total))}

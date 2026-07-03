@@ -156,7 +156,7 @@ router.post("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next
   }
 });
 
-router.post("/reorder", async (req, res, next) => {
+router.post("/reorder", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const body = z.object({ ids: z.array(z.string()).min(1) }).parse(req.body);
     await prisma.$transaction(body.ids.map((id, index) => prisma.equipment.update({ where: { id }, data: { sortOrder: index } })));

@@ -31,6 +31,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  await prisma.invoice.deleteMany();
   await prisma.estimateLine.deleteMany();
   await prisma.estimate.deleteMany();
   await prisma.bookingItem.deleteMany();
@@ -93,6 +94,22 @@ async function makeEstimateLine(estimateId: string) {
       quantity: 2,
       unitPrice: "500",
       lineSum: "1000",
+    },
+  });
+}
+
+let invoiceSeq = 0;
+async function makeInvoice(bookingId: string, status: string = "ISSUED") {
+  invoiceSeq += 1;
+  return prisma.invoice.create({
+    data: {
+      number: `LR-TEST-${process.pid}-${invoiceSeq}`,
+      bookingId,
+      kind: "FULL",
+      status,
+      total: "1000",
+      issuedAt: new Date("2026-06-01T00:00:00Z"),
+      createdBy: "test-admin",
     },
   });
 }
@@ -229,6 +246,91 @@ describe("GET /api/lk/bookings/:id", () => {
       quantity: 2,
     });
     expect(res.body.bookingNo).toMatch(/^#[A-Z0-9]{6}$/);
+  });
+
+  test("detail includes transportSubtotal so that Итого = finalAmount = totalAfterDiscount + transport", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-06-01T10:00:00Z");
+    const e = new Date("2026-06-05T10:00:00Z");
+
+    const booking = await prisma.booking.create({
+      data: {
+        clientId: client.id,
+        projectName: "С транспортом",
+        startDate: d,
+        endDate: e,
+        status: "CONFIRMED",
+        transportSubtotalRub: "20000",
+        finalAmount: "120000",
+        amountPaid: "0",
+        amountOutstanding: "120000",
+      },
+    });
+    const estimate = await prisma.estimate.create({
+      data: {
+        bookingId: booking.id,
+        kind: "MAIN",
+        shifts: 1,
+        subtotal: "200000",
+        discountAmount: "100000",
+        totalAfterDiscount: "100000",
+      },
+    });
+    await makeEstimateLine(estimate.id);
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${booking.id}`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.totalAfterDiscount).toBe("100000");
+    expect(res.body.transportSubtotal).toBe("20000");
+    expect(res.body.finalAmount).toBe("120000");
+    // Итого (finalAmount) сходится с Оплачено + Остаток
+    expect(Number(res.body.finalAmount)).toBe(
+      Number(res.body.amountPaid) + Number(res.body.amountOutstanding),
+    );
+  });
+
+  test("detail without transport returns transportSubtotal='0'", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-06-01T10:00:00Z");
+    const e = new Date("2026-06-05T10:00:00Z");
+
+    const booking = await makeBooking(client.id, "CONFIRMED", d, e);
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${booking.id}`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.transportSubtotal).toBe("0");
+  });
+
+  test("detail exposes hasInvoice/invoiceNumber for non-void invoice, ignores VOID", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-06-01T10:00:00Z");
+    const e = new Date("2026-06-05T10:00:00Z");
+
+    const withInvoice = await makeBooking(client.id, "ISSUED", d, e, "Со счётом");
+    const inv = await makeInvoice(withInvoice.id, "ISSUED");
+
+    const voidOnly = await makeBooking(client.id, "ISSUED", d, e, "Только VOID");
+    await makeInvoice(voidOnly.id, "VOID");
+
+    const res1 = await request(app)
+      .get(`/api/lk/bookings/${withInvoice.id}`)
+      .set("Cookie", cookie);
+    expect(res1.status).toBe(200);
+    expect(res1.body.hasInvoice).toBe(true);
+    expect(res1.body.invoiceNumber).toBe(inv.number);
+
+    const res2 = await request(app)
+      .get(`/api/lk/bookings/${voidOnly.id}`)
+      .set("Cookie", cookie);
+    expect(res2.status).toBe(200);
+    expect(res2.body.hasInvoice).toBe(false);
+    expect(res2.body.invoiceNumber).toBeNull();
   });
 
   test("RETURNED booking has hasAct=true", async () => {
@@ -419,5 +521,98 @@ describe("GET /api/lk/bookings/:id/act.pdf", () => {
       .set("Cookie", cookie);
 
     expect(res.status).toBe(404);
+  });
+});
+
+// ── GET /api/lk/bookings/:id/invoice.pdf ─────────────────────────────────────
+
+describe("GET /api/lk/bookings/:id/invoice.pdf", () => {
+  test("own booking with non-void invoice → 200 application/pdf starting with %PDF", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-07-01T10:00:00Z");
+    const e = new Date("2026-07-05T10:00:00Z");
+
+    const booking = await makeBooking(client.id, "ISSUED", d, e, "Счёт тест");
+    const estimate = await makeEstimate(booking.id, "MAIN");
+    await makeEstimateLine(estimate.id);
+    await makeInvoice(booking.id, "ISSUED");
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${booking.id}/invoice.pdf`)
+      .set("Cookie", cookie)
+      .buffer(true)
+      .parse(parseBinary);
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/application\/pdf/);
+    const buf = res.body as Buffer;
+    expect(buf.length).toBeGreaterThan(100);
+    expect(buf.slice(0, 4).toString("ascii")).toBe("%PDF");
+  });
+
+  test("booking without invoice → 404 INVOICE_NOT_FOUND", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-07-01T10:00:00Z");
+    const e = new Date("2026-07-05T10:00:00Z");
+
+    const booking = await makeBooking(client.id, "CONFIRMED", d, e);
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${booking.id}/invoice.pdf`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("INVOICE_NOT_FOUND");
+  });
+
+  test("booking with only VOID invoice → 404", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-07-01T10:00:00Z");
+    const e = new Date("2026-07-05T10:00:00Z");
+
+    const booking = await makeBooking(client.id, "ISSUED", d, e);
+    await makeInvoice(booking.id, "VOID");
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${booking.id}/invoice.pdf`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(404);
+  });
+
+  test("foreign booking with invoice → 404 (tenant gate)", async () => {
+    const { cookie } = await makeClientWithSession();
+    const foreignClient = await prisma.client.create({ data: { name: "Чужой счёт" } });
+    const d = new Date("2026-07-01T10:00:00Z");
+    const e = new Date("2026-07-05T10:00:00Z");
+
+    const foreignBooking = await makeBooking(foreignClient.id, "ISSUED", d, e);
+    await makeInvoice(foreignBooking.id, "ISSUED");
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${foreignBooking.id}/invoice.pdf`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(404);
+  });
+
+  test("DRAFT booking owned by self → 404 (not visible)", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-07-01T10:00:00Z");
+    const e = new Date("2026-07-05T10:00:00Z");
+
+    const draft = await makeBooking(client.id, "DRAFT", d, e);
+    await makeInvoice(draft.id, "ISSUED");
+
+    const res = await request(app)
+      .get(`/api/lk/bookings/${draft.id}/invoice.pdf`)
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(404);
+  });
+
+  test("401 without cookie", async () => {
+    const res = await request(app).get("/api/lk/bookings/some-id/invoice.pdf");
+    expect(res.status).toBe(401);
   });
 });

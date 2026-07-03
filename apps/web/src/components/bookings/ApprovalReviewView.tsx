@@ -9,6 +9,7 @@ import { formatMoneyRub, pluralize } from "../../lib/format";
 import { StatusPill } from "../StatusPill";
 import { RoleBadge } from "../RoleBadge";
 import { RejectBookingModal } from "./RejectBookingModal";
+import { ApprovalContext } from "./ApprovalContext";
 import { toast } from "../ToastProvider";
 import type { CurrentUser } from "../../lib/auth";
 
@@ -82,7 +83,18 @@ type BookingForReview = {
     totalAfterDiscount: string;
     lines: EstimateLine[];
   };
-  // Transport snapshot
+  // Transport snapshot. Новые брони хранят транспорт в vehicles[]
+  // (multi-vehicle) — legacy-колонки vehicleId/vehicle* остаются null.
+  vehicles?: Array<{
+    id: string;
+    vehicle?: { id: string; name: string; slug: string } | null;
+    withGenerator: boolean;
+    shiftHours: string | null;
+    skipOvertime: boolean;
+    kmOutsideMkad: number | null;
+    ttkEntry: boolean;
+    subtotalRub: string | null;
+  }>;
   vehicleId?: string | null;
   vehicleWithGenerator?: boolean;
   vehicleShiftHours?: string | null;
@@ -298,8 +310,15 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
     ? (auditItems.find((it) => it.action === "BOOKING_SUBMITTED")?.user?.role ?? null)
     : null;
 
-  // Transport display
-  const hasTransport = Boolean(booking.vehicleId && booking.transportSubtotalRub);
+  // Transport display — читаем vehicles[] (как основная карточка брони и блок
+  // «Из чего складывается сумма»): новые брони создаются с vehicles[] и
+  // vehicleId = null, поэтому проверка только legacy-колонки показывала бы
+  // «Не выбран» при живом транспорте, а разбивка не сходилась бы с итогом.
+  const multiVehicles = booking.vehicles ?? [];
+  const hasMultiVehicles = multiVehicles.length > 0;
+  const hasLegacyTransport =
+    !hasMultiVehicles && Boolean(booking.vehicleId && booking.transportSubtotalRub);
+  const hasTransport = hasMultiVehicles || hasLegacyTransport;
   const transportName = booking.vehicle?.name ?? null;
 
   // ----------------------------------------------------------------------- render ---
@@ -397,6 +416,21 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
             </div>
           </div>
 
+          {/* Контекст решения: конфликты доступности (amber) + история/долг
+              клиента (rose при долге). Раньше блок жил в мёртвой else-ветке
+              page.tsx и на реальном экране согласования не рендерился —
+              руководитель принимал решение вслепую. Комментарий не передаём:
+              ниже есть своя карточка «Комментарий кладовщика». */}
+          <ApprovalContext
+            bookingId={booking.id}
+            clientId={booking.client.id}
+            startDate={booking.startDate}
+            endDate={booking.endDate}
+            itemCount={booking.items.length}
+            comment={null}
+            items={booking.items}
+          />
+
           {/* Equipment card — read-only table */}
           <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
             <div className="border-b border-border bg-surface-subtle px-4 py-2.5">
@@ -461,6 +495,34 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
             </div>
             {!hasTransport ? (
               <div className="p-4 text-sm text-ink-3">Не выбран</div>
+            ) : hasMultiVehicles ? (
+              <div className="divide-y divide-border">
+                {multiVehicles.map((v) => (
+                  <div key={v.id} className="p-4 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium text-ink">
+                          {v.vehicle?.name ?? "Транспорт"}
+                          {v.withGenerator && (
+                            <span className="ml-2 rounded bg-amber-soft px-1.5 py-0.5 text-[11px] text-amber">+ генератор</span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-xs text-ink-3 space-x-2">
+                          {v.shiftHours && <span>{Number(v.shiftHours)} ч.</span>}
+                          {v.skipOvertime && <span>· без переработки</span>}
+                          {v.kmOutsideMkad != null && Number(v.kmOutsideMkad) > 0 && (
+                            <span>· {v.kmOutsideMkad} км за МКАД</span>
+                          )}
+                          {v.ttkEntry && <span>· ТТК</span>}
+                        </div>
+                      </div>
+                      <div className="mono-num text-ink font-medium whitespace-nowrap">
+                        {formatMoneyRub(v.subtotalRub ?? "0")} ₽
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="p-4 text-sm">
                 <div className="flex items-start justify-between gap-3">
@@ -581,7 +643,18 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
                     </span>
                   </div>
                 )}
-                {hasTransport && (
+                {/* Транспорт в разбивке: по машине на строку (multi-vehicle),
+                    чтобы «Аренда − Скидка + Транспорт» сходилось с итогом. */}
+                {hasMultiVehicles &&
+                  multiVehicles.map((v) => (
+                    <div key={v.id} className="flex justify-between">
+                      <span className="text-ink-2">
+                        Транспорт{v.vehicle?.name ? ` (${v.vehicle.name})` : ""}
+                      </span>
+                      <span className="mono-num">{formatMoneyRub(v.subtotalRub ?? "0")} ₽</span>
+                    </div>
+                  ))}
+                {hasLegacyTransport && (
                   <div className="flex justify-between">
                     <span className="text-ink-2">
                       Транспорт{transportName ? ` (${transportName})` : ""}

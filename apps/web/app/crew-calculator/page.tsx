@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useMemo, useState, useCallback, useEffect } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import {
@@ -574,6 +575,20 @@ function CrewCalculatorPageInner() {
 
       {/* ─── Screen header ─── */}
       <header className="print:hidden mb-6">
+        {/* MD-4: страница рендерится standalone (без AppShell) — без явной ссылки
+            назад пункт меню «Калькулятор» был навигационным тупиком. */}
+        <div className="mb-3">
+          <Link
+            href="/day"
+            className="inline-flex items-center gap-1.5 text-sm text-ink-3 hover:text-ink transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+            Назад в систему
+          </Link>
+        </div>
         <div className="flex items-baseline justify-between gap-4 flex-wrap mb-1">
           <span className="eyebrow">Калькулятор · Техническая группа</span>
 

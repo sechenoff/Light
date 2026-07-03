@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { authenticate, signSession, SESSION_COOKIE_NAME, sessionCookieOptions } from "../services/auth";
 import { requireAdmin } from "../middleware/sessionAuth";
+import { prisma } from "../prisma";
 
 const router = express.Router();
 
@@ -21,6 +22,15 @@ router.post("/login", async (req, res, next) => {
     const session = await authenticate(body.username, body.password);
     if (!session) {
       return res.status(401).json({ message: "Неверный логин или пароль" });
+    }
+    // «Уволенные» сотрудники (isActive=false) не могут войти — деактивация вместо
+    // удаления (удаление блокирует FK аудит-истории). Уже выданные JWT живут до TTL.
+    const account = await prisma.adminUser.findUnique({
+      where: { id: session.userId },
+      select: { isActive: true },
+    });
+    if (account && account.isActive === false) {
+      return res.status(401).json({ message: "Учётная запись отключена" });
     }
     const token = signSession(session);
     res.cookie(SESSION_COOKIE_NAME, token, sessionCookieOptions());
