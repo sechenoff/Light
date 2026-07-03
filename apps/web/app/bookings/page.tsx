@@ -8,6 +8,8 @@ import { apiFetch } from "../../src/lib/api";
 import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
 import { ClientPickerPopover } from "../../src/components/bookings/ClientPickerPopover";
+import { ConfirmActionModal } from "../../src/components/bookings/ConfirmActionModal";
+import { CancelWithDepositModal } from "../../src/components/finance/CancelWithDepositModal";
 import { formatRub, formatWaitingTime, pluralize } from "../../src/lib/format";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 
@@ -82,6 +84,13 @@ function paymentTooltip(r: BookingRow): string {
   return "Не оплачен";
 }
 
+// Чистый заголовок строки для модалок: дата · клиент · проект (без суммы).
+function bookingRowTitle(r: BookingRow): string {
+  const project =
+    r.projectName?.trim() && r.projectName.trim() !== "Проект" ? r.projectName.trim() : null;
+  return [formatShiftDate(r.startDate), r.client.name, project].filter(Boolean).join(" · ");
+}
+
 function BookingHistoryPageInner() {
   const { user } = useCurrentUser();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
@@ -98,6 +107,16 @@ function BookingHistoryPageInner() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Подтверждение необратимых действий (RETURNED/CANCELLED — терминальные
+  // статусы, пути назад через UI нет): «Вернуть» и «Отменить» идут через
+  // модалку. «Выдать» остаётся в один клик — переход обратим возвратом.
+  const [confirmAction, setConfirmAction] = useState<null | {
+    row: BookingRow;
+    action: "return" | "cancel";
+  }>(null);
+  // Отмена ОПЛАЧЕННОЙ брони — как на странице брони: обязательная модалка
+  // распоряжения депозитом (возврат / кредит / штраф), не простой cancel.
+  const [cancelDepositRow, setCancelDepositRow] = useState<BookingRow | null>(null);
 
   const PAGE_SIZE = 50;
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -219,6 +238,15 @@ function BookingHistoryPageInner() {
     }
   }
 
+  async function reloadList() {
+    const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null; totalCount?: number }>(
+      `/api/bookings?${buildListParams()}`
+    );
+    setRows(data.bookings);
+    setNextCursor(data.nextCursor ?? null);
+    setTotalCount(data.totalCount ?? null);
+  }
+
   async function runStatusAction(id: string, action: "confirm" | "issue" | "return" | "cancel") {
     setBusyId(id);
     try {
@@ -226,15 +254,30 @@ function BookingHistoryPageInner() {
         method: "POST",
         body: JSON.stringify({ action }),
       });
-      const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null; totalCount?: number }>(`/api/bookings?${buildListParams()}`);
-      setRows(data.bookings);
-      setNextCursor(data.nextCursor ?? null);
-      setTotalCount(data.totalCount ?? null);
+      await reloadList();
     } catch (e: any) {
       alert(e?.message ?? "Не удалось обновить статус");
     } finally {
       setBusyId(null);
     }
+  }
+
+  // «Отменить» из списка: оплаченная бронь обязана пройти через модалку
+  // распоряжения депозитом (как на /bookings/[id]), иначе — обычное
+  // подтверждение отмены.
+  function requestCancel(row: BookingRow) {
+    if (Number(row.amountPaid ?? "0") > 0) {
+      setCancelDepositRow(row);
+      return;
+    }
+    setConfirmAction({ row, action: "cancel" });
+  }
+
+  async function handleConfirmAction() {
+    if (!confirmAction) return;
+    const { row, action } = confirmAction;
+    await runStatusAction(row.id, action);
+    setConfirmAction(null);
   }
 
   // Все фильтры теперь серверные — рендерим строки как есть, без клиентского
@@ -474,17 +517,23 @@ function BookingHistoryPageInner() {
                           type="button"
                           className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-muted disabled:opacity-40"
                           disabled={busyId === r.id}
-                          onClick={() => runStatusAction(r.id, "return")}
+                          onClick={() => setConfirmAction({ row: r, action: "return" })}
                         >
                           Вернуть
                         </button>
                       ) : null}
-                      {!["CANCELLED", "RETURNED"].includes(r.status) ? (
+                      {/* Гейт зеркалит /bookings/[id] и серверные правила:
+                          из ISSUED отмена запрещена (allowedActions), оплаченную
+                          бронь отменяет только SUPER_ADMIN (депозит-мастер и
+                          /cancel-with-deposit — SA-only). Иначе кладовщик
+                          проходил бы 3 шага мастера и получал 403/409. */}
+                      {!["CANCELLED", "RETURNED", "ISSUED"].includes(r.status) &&
+                      (isSuperAdmin || Number(r.amountPaid ?? "0") === 0) ? (
                         <button
                           type="button"
                           className="text-xs rounded border border-rose-border text-rose px-2 py-1 hover:bg-rose-soft disabled:opacity-40"
                           disabled={busyId === r.id}
-                          onClick={() => runStatusAction(r.id, "cancel")}
+                          onClick={() => requestCancel(r)}
                         >
                           Отменить
                         </button>
@@ -523,6 +572,37 @@ function BookingHistoryPageInner() {
         )}
       </div>
 
+      <ConfirmActionModal
+        open={confirmAction !== null}
+        title={confirmAction?.action === "return" ? "Возврат брони" : "Отмена брони"}
+        subtitle={confirmAction ? bookingRowTitle(confirmAction.row) : undefined}
+        message={
+          confirmAction?.action === "return"
+            ? "Перевести бронь в статус «Возвращено»?\n\nСтатус финальный: оборудование вернётся в доступные, изменить статус обратно через интерфейс будет нельзя."
+            : "Отменить бронь?\n\nРезервы оборудования будут сняты, бронь перейдёт в финальный статус «Отменено» — вернуть её через интерфейс будет нельзя."
+        }
+        confirmLabel={confirmAction?.action === "return" ? "Вернуть" : "Отменить бронь"}
+        tone={confirmAction?.action === "return" ? "primary" : "danger"}
+        loading={confirmAction !== null && busyId === confirmAction.row.id}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={handleConfirmAction}
+      />
+
+      {cancelDepositRow && (
+        <CancelWithDepositModal
+          open={cancelDepositRow !== null}
+          onClose={() => setCancelDepositRow(null)}
+          bookingId={cancelDepositRow.id}
+          bookingDisplayName={bookingRowTitle(cancelDepositRow)}
+          clientId={cancelDepositRow.client.id}
+          clientName={cancelDepositRow.client.name}
+          depositTotal={Number(cancelDepositRow.amountPaid ?? "0")}
+          onCancelled={() => {
+            setCancelDepositRow(null);
+            reloadList().catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 }

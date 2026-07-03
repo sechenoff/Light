@@ -81,6 +81,9 @@ type BookingDetail = {
     receivedAt: string | null;
     direction: string;
     note: string | null;
+    /** Аннулирование: платёж помечен voidedAt (direction/status не меняются). */
+    voidedAt?: string | null;
+    voidReason?: string | null;
   }>;
   financeEvents?: Array<{
     id: string;
@@ -1911,22 +1914,33 @@ export default function BookingDetailPage() {
                       <p className="eyebrow mb-2">Платежи</p>
                       <div className="divide-y divide-border">
                         {(booking.payments ?? []).map((p) => {
-                          const isVoided = p.direction === "VOID";
+                          // Аннулирование пишет voidedAt (paymentService.voidPayment);
+                          // direction остаётся INCOME — никакого значения "VOID" в
+                          // enum PaymentDirection нет. Сервер исключает voided из
+                          // сумм (recomputeBookingFinance), здесь — только отображение.
+                          const isVoided = Boolean(p.voidedAt);
                           return (
                             <div
                               key={p.id}
-                              className={`flex items-center justify-between gap-2 py-2.5 text-sm ${isVoided ? "opacity-40 line-through" : ""}`}
+                              className={`flex items-center justify-between gap-2 py-2.5 text-sm ${isVoided ? "opacity-60" : ""}`}
                             >
                               <div className="min-w-0">
-                                <span className={`font-semibold mono-num ${isVoided ? "" : "text-emerald"}`}>
-                                  +{formatMoneyRub(p.amount)}
+                                <span className={isVoided ? "line-through" : ""}>
+                                  <span className={`font-semibold mono-num ${isVoided ? "text-ink-3" : "text-emerald"}`}>
+                                    +{formatMoneyRub(p.amount)}
+                                  </span>
+                                  <span className="text-ink-3 mx-1.5">·</span>
+                                  <span className={isVoided ? "text-ink-3" : "text-ink-2"}>{paymentMethodLabel(p.method)}</span>
+                                  {p.note && <span className="text-xs text-ink-3 ml-1.5 truncate">{p.note}</span>}
                                 </span>
-                                <span className="text-ink-3 mx-1.5">·</span>
-                                <span className="text-ink-2">{paymentMethodLabel(p.method)}</span>
-                                {p.note && <span className="text-xs text-ink-3 ml-1.5 truncate">{p.note}</span>}
                                 <div className="text-xs text-ink-3 mt-0.5">
                                   {p.receivedAt ? new Date(p.receivedAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" }) : "—"}
                                 </div>
+                                {isVoided && (
+                                  <div className="text-xs text-rose mt-0.5">
+                                    Аннулирован{p.voidReason ? `: ${p.voidReason}` : ""}
+                                  </div>
+                                )}
                               </div>
                               {!isVoided && user?.role === "SUPER_ADMIN" && (
                                 <div className="flex gap-1.5 shrink-0">

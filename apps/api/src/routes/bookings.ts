@@ -5,6 +5,7 @@ import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
 import { createBookingDraft, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, CUSTOM_LINE_CATEGORY } from "../services/bookings";
+import type { BookingTransportSnapshot } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking } from "../services/bookingApproval";
 import { HttpError } from "../utils/errors";
 import {
@@ -220,6 +221,45 @@ const bookingStatusEnum = z.enum([
   "CANCELLED",
 ]);
 
+/**
+ * Считает per-vehicle снапшоты транспорта по актуальным ценам машин —
+ * для персистенции в BookingVehicle. Общий код POST /draft и PATCH /:id.
+ */
+async function computeTransportSnapshots(
+  transport: Array<z.infer<typeof transportVehicleSchema>>,
+): Promise<BookingTransportSnapshot[]> {
+  const { computeTransportPrice: calcTransport } = await import("../services/transportCalculator");
+  const snapshots: BookingTransportSnapshot[] = [];
+  for (const entry of transport) {
+    const vehicle = await prisma.vehicle.findUnique({ where: { id: entry.vehicleId } });
+    if (!vehicle) throw new HttpError(400, `Машина не найдена: ${entry.vehicleId}`, "VEHICLE_NOT_FOUND");
+    const breakdown = calcTransport({
+      vehicle: {
+        shiftPriceRub: vehicle.shiftPriceRub.toString(),
+        hasGeneratorOption: vehicle.hasGeneratorOption,
+        generatorPriceRub: vehicle.generatorPriceRub?.toString() ?? null,
+        shiftHours: vehicle.shiftHours,
+        overtimePercent: vehicle.overtimePercent.toString(),
+      },
+      withGenerator: entry.withGenerator,
+      shiftHours: entry.shiftHours,
+      skipOvertime: entry.skipOvertime,
+      kmOutsideMkad: entry.kmOutsideMkad,
+      ttkEntry: entry.ttkEntry,
+    });
+    snapshots.push({
+      vehicleId: entry.vehicleId,
+      withGenerator: entry.withGenerator,
+      shiftHours: entry.shiftHours,
+      skipOvertime: entry.skipOvertime,
+      kmOutsideMkad: entry.kmOutsideMkad,
+      ttkEntry: entry.ttkEntry,
+      subtotalRub: breakdown.total,
+    });
+  }
+  return snapshots;
+}
+
 router.get("/", async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit ?? 50), 200);
@@ -409,6 +449,10 @@ router.get("/:id", async (req, res, next) => {
           receivedAt: (p.receivedAt ?? p.paymentDate)?.toISOString() ?? null,
           direction: p.direction,
           note: p.note ?? p.comment ?? null,
+          // Аннулированные платежи остаются в выборке — UI помечает их
+          // зачёркнутыми по voidedAt и показывает причину (voidReason).
+          voidedAt: p.voidedAt?.toISOString() ?? null,
+          voidReason: p.voidReason ?? null,
         })),
         financeEvents: financeEvents.map((ev: any) => ({
           ...ev,
@@ -495,7 +539,8 @@ router.patch("/:id", async (req, res, next) => {
       // grandTotal mirrors the non-dryRun PATCH path: equipment total-after-discount
       // + transportSubtotal. When the dryRun body carries `transport`, use that;
       // otherwise fall back to the booking's persisted transportSubtotalRub
-      // (PATCH v1 doesn't mutate transport — same source as the wasInReview recompute).
+      // (transport не передан — PATCH его не тронет; same source as the
+      // wasInReview recompute).
       const dryRunTransportSubtotal =
         body.transport != null
           ? estimate.transportSubtotal
@@ -599,6 +644,23 @@ router.patch("/:id", async (req, res, next) => {
       }
     }
 
+    // Транспорт: полная замена состава машин брони (пересоздание BookingVehicle
+    // по образцу POST /draft). `undefined` — поле не передано, не трогаем;
+    // `null` или `[]` — убрать транспорт. Снапшоты считаем ДО транзакции,
+    // чтобы держать её короткой. Для RETURNED-брони сюда можно попасть только
+    // в retroactive-режиме (гард allowedStatusesForEdit выше).
+    let transportReplacement: BookingTransportSnapshot[] | undefined;
+    if (body.transport !== undefined) {
+      transportReplacement =
+        body.transport === null || body.transport.length === 0
+          ? []
+          : await computeTransportSnapshots(body.transport);
+    }
+    const transportReplacementSubtotal =
+      transportReplacement !== undefined
+        ? transportReplacement.reduce((acc, t) => acc.add(new Decimal(t.subtotalRub)), new Decimal(0))
+        : null;
+
     const booking = await prisma.$transaction(async (tx) => {
       if (body.items) {
         await tx.bookingItem.deleteMany({ where: { bookingId: id } });
@@ -670,6 +732,41 @@ router.patch("/:id", async (req, res, next) => {
           }
         }
       }
+      // Замена транспорта: пересоздаём BookingVehicle из body.transport.
+      // Раньше PATCH молча игнорировал транспорт (v1) — форма редактирования
+      // обещала правку, показывала новую сумму, но в БД оставался старый состав.
+      if (transportReplacement !== undefined) {
+        // Водитель (driverName/driverPhone) заполняется «при погрузке» отдельным
+        // endpoint'ом и НЕ приходит в body.transport — форма редактирования шлёт
+        // transport при каждом сохранении, поэтому без переноса любая правка
+        // брони молча стирала бы ФИО/телефон водителя. Переносим по vehicleId
+        // (состав уникален: @@unique([bookingId, vehicleId])).
+        const previousVehicles = await tx.bookingVehicle.findMany({
+          where: { bookingId: id },
+          select: { vehicleId: true, driverName: true, driverPhone: true },
+        });
+        const driverByVehicleId = new Map(
+          previousVehicles.map((v) => [v.vehicleId, { driverName: v.driverName, driverPhone: v.driverPhone }]),
+        );
+        await tx.bookingVehicle.deleteMany({ where: { bookingId: id } });
+        if (transportReplacement.length > 0) {
+          await tx.bookingVehicle.createMany({
+            data: transportReplacement.map((t) => ({
+              bookingId: id,
+              vehicleId: t.vehicleId,
+              withGenerator: t.withGenerator,
+              shiftHours: new Decimal(t.shiftHours),
+              skipOvertime: t.skipOvertime,
+              kmOutsideMkad: t.kmOutsideMkad,
+              ttkEntry: t.ttkEntry,
+              subtotalRub: new Decimal(t.subtotalRub),
+              driverName: driverByVehicleId.get(t.vehicleId)?.driverName ?? null,
+              driverPhone: driverByVehicleId.get(t.vehicleId)?.driverPhone ?? null,
+            })),
+          });
+        }
+      }
+
       const updated = await tx.booking.update({
         where: { id },
         data: {
@@ -680,6 +777,16 @@ router.patch("/:id", async (req, res, next) => {
           discountPercent: body.discountPercent === undefined ? undefined : body.discountPercent != null ? new Decimal(body.discountPercent) : null,
           expectedPaymentDate: resolvedExpectedPaymentDate,
           skipPartialDay: body.skipPartialDay === undefined ? undefined : body.skipPartialDay,
+          // Транспорт заменён: обновляем итог и гасим legacy-колонку vehicleId,
+          // иначе fallback в computeBookingTransportSubtotal «воскресит» старый
+          // одиночный транспорт при очистке vehicles[].
+          ...(transportReplacement !== undefined
+            ? {
+                transportSubtotalRub:
+                  transportReplacement.length > 0 ? transportReplacementSubtotal : null,
+                vehicleId: null,
+              }
+            : {}),
           // manualFinalAmount — override итоговой суммы. Доступно только
           // в retroactive-режиме (вне его поле в body игнорируется через
           // условие ниже). null очищает override, число — устанавливает.
@@ -796,11 +903,13 @@ router.patch("/:id", async (req, res, next) => {
           skipPartialDay: body.skipPartialDay !== undefined ? body.skipPartialDay : (existing.skipPartialDay ?? false),
         });
         // finalAmount = equipment-after-discount + transportSubtotal.
-        // Transport is on the booking (vehicleId + transportSubtotalRub) —
-        // use current value from `existing` since PATCH doesn't change transport in v1.
-        const transportSubtotal = existing.transportSubtotalRub
-          ? new Decimal(existing.transportSubtotalRub.toString())
-          : new Decimal(0);
+        // Если PATCH заменил транспорт — берём новый итог; иначе — сохранённый.
+        const transportSubtotal =
+          transportReplacementSubtotal !== null
+            ? transportReplacementSubtotal
+            : existing.transportSubtotalRub
+              ? new Decimal(existing.transportSubtotalRub.toString())
+              : new Decimal(0);
         const finalAmount = new Decimal(quote.totalAfterDiscount).add(transportSubtotal);
         await prisma.booking.update({
           where: { id },
@@ -816,8 +925,8 @@ router.patch("/:id", async (req, res, next) => {
     }
 
     // Перечитываем бронь после пересчёта, чтобы вернуть актуальные суммы.
-    // Включаем vehicles[] для гидрации формы редактирования (PATCH не меняет
-    // транспорт в v1, но клиенту нужны машины для отображения/правок).
+    // Включаем vehicles[] для гидрации формы редактирования (после замены
+    // транспорта клиент видит уже новый состав машин).
     const freshBooking = await prisma.booking.findUnique({
       where: { id },
       include: {
@@ -970,10 +1079,73 @@ router.post("/:id/status", async (req, res, next) => {
         return u;
       });
     } else {
-      updated = await prisma.booking.update({
-        where: { id },
-        data: bookingUpdateData,
-        include: bookingInclude,
+      // Ручные «Выдать»/«Вернуть» (без киоска) обязаны реконсилировать
+      // UNIT-резервы в той же транзакции — раньше менялся только статус брони,
+      // и юниты застревали в ISSUED (после ручного «Вернуть») или числились
+      // AVAILABLE на руках у клиента (после ручного «Выдать»). Семантика
+      // согласована с warehouseScan.completeSession: юниты, уже обработанные
+      // сканером или живущие своим циклом (MAINTENANCE/RETIRED/MISSING),
+      // не трогаем — фильтруем по текущему статусу.
+      updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const u = await tx.booking.update({
+          where: { id },
+          data: {
+            ...bookingUpdateData,
+            // Момент фактической выдачи — как в киоске: пишем только если ещё null.
+            ...(body.action === "issue" && !booking.issuedAt ? { issuedAt: new Date() } : {}),
+          },
+          include: bookingInclude,
+        });
+
+        // Живые резервы брони (returnedAt: null) — история приёмки не трогается.
+        const reservations = await tx.bookingItemUnit.findMany({
+          where: { bookingItem: { bookingId: id }, returnedAt: null },
+          select: { id: true, equipmentUnitId: true },
+        });
+        let touchedUnits = 0;
+        if (reservations.length > 0) {
+          const unitIds = Array.from(new Set(reservations.map((r) => r.equipmentUnitId)));
+          if (body.action === "issue") {
+            // Выдача: только свободные юниты → ISSUED (выданные сканером уже ISSUED).
+            const res = await tx.equipmentUnit.updateMany({
+              where: { id: { in: unitIds }, status: "AVAILABLE" },
+              data: { status: "ISSUED" },
+            });
+            touchedUnits = res.count;
+          } else {
+            // Возврат: резервы закрываем returnedAt (сохраняем историю, как
+            // scan-return), выданные юниты → AVAILABLE.
+            await tx.bookingItemUnit.updateMany({
+              where: { id: { in: reservations.map((r) => r.id) } },
+              data: { returnedAt: new Date() },
+            });
+            const res = await tx.equipmentUnit.updateMany({
+              where: { id: { in: unitIds }, status: "ISSUED" },
+              data: { status: "AVAILABLE" },
+            });
+            touchedUnits = res.count;
+          }
+        }
+
+        // Аудит движения юнитов — только при реальных изменениях и наличии
+        // пользователя (bot-канал без AdminUser не должен ронять транзакцию FK).
+        if (reservations.length > 0 && req.adminUser?.userId) {
+          await writeAuditEntry({
+            tx,
+            userId: req.adminUser.userId,
+            action: body.action === "issue" ? "BOOKING_UNITS_ISSUED" : "BOOKING_UNITS_RETURNED",
+            entityType: "Booking",
+            entityId: id,
+            before: diffFields({ status: booking.status }),
+            after: diffFields({
+              status: nextStatus,
+              via: `status:${body.action}`,
+              reservations: reservations.length,
+              unitsUpdated: touchedUnits,
+            }),
+          });
+        }
+        return u;
       });
     }
     let warning: string | null = null;
@@ -1114,6 +1286,24 @@ router.delete("/:id/purge", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) 
       );
     }
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Финансовый гард: purge каскадно уничтожил бы счета (Invoice onDelete:
+      // Cascade — номерной документ, дыра/повтор в нумерации) и отвязал бы
+      // платежи (Payment onDelete: SetNull — деньги-«сироты» без клиента в
+      // /finance/payments). Блокируем при любых счетах и любых не аннулированных
+      // платежах. Проверка внутри транзакции — платёж, созданный между
+      // проверкой и delete, не проскочит (SQLite write-lock).
+      const [invoiceCount, paymentCount] = await Promise.all([
+        tx.invoice.count({ where: { bookingId: id } }),
+        tx.payment.count({ where: { bookingId: id, voidedAt: null } }),
+      ]);
+      if (invoiceCount > 0 || paymentCount > 0) {
+        throw new HttpError(
+          409,
+          "Нельзя удалить бронь навсегда: с ней связаны счета или платежи. Сначала аннулируйте счета и платежи.",
+          "PURGE_HAS_FINANCE",
+          { invoices: invoiceCount, payments: paymentCount },
+        );
+      }
       // Audit ПЕРЕД delete — иначе FK Restrict от AuditEntry на AdminUser
       // блокирует. Сам entityId записываем, ссылок на удалённую запись нет.
       await writeAuditEntry({
@@ -1159,29 +1349,20 @@ router.post("/quote", async (req, res, next) => {
       throw new HttpError(400, e instanceof Error ? e.message : "Некорректный период аренды");
     }
 
-    // clientId doesn't matter for the quote calc right now; use dummy created/found for snapshot later if desired.
-    const client = await prisma.client.upsert({
+    // /quote — чистое read-превью: клиента НЕ создаём и НЕ обновляем.
+    // Раньше здесь был upsert по имени — дебаунс-превью формы засорял
+    // справочник частичными именами («Мосфи», «Мосфил», …). Клиент создаётся
+    // только в не-dryRun POST /draft. Паттерн — как в dryRun-ветке /draft.
+    const existingClient = await prisma.client.findFirst({
       where: { name: body.client.name.trim() },
-      update: {
-        // Conditional spread: only write fields that were explicitly provided.
-        // Prevents the booking form (which only collects `name`) from wiping
-        // existing phone/email/comment on a Client when autocomplete is used.
-        ...(body.client.phone !== undefined ? { phone: body.client.phone } : {}),
-        ...(body.client.email !== undefined ? { email: body.client.email } : {}),
-        ...(body.client.comment !== undefined ? { comment: body.client.comment } : {}),
-      },
-      create: {
-        name: body.client.name.trim(),
-        phone: body.client.phone ?? null,
-        email: body.client.email ?? null,
-        comment: body.client.comment ?? null,
-      },
+      select: { id: true },
     });
+    const clientIdForQuote = existingClient?.id ?? "dry-run-placeholder";
 
     const estimate = await quoteEstimate({
       startDate: start,
       endDate: end,
-      clientId: client.id,
+      clientId: clientIdForQuote,
       discountPercent: body.discountPercent ?? null,
       items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
       transport: body.transport ?? null,
@@ -1416,46 +1597,10 @@ router.post("/draft", async (req, res, next) => {
     });
 
     // Compute per-vehicle transport snapshots if provided
-    let transportSnapshots: Array<{
-      vehicleId: string;
-      withGenerator: boolean;
-      shiftHours: number;
-      skipOvertime: boolean;
-      kmOutsideMkad: number;
-      ttkEntry: boolean;
-      subtotalRub: string;
-    }> | null = null;
-    if (body.transport && body.transport.length > 0) {
-      const { computeTransportPrice: calcTransport } = await import("../services/transportCalculator");
-      transportSnapshots = [];
-      for (const entry of body.transport) {
-        const vehicleForDraft = await prisma.vehicle.findUnique({ where: { id: entry.vehicleId } });
-        if (!vehicleForDraft) throw new HttpError(400, `Vehicle not found: ${entry.vehicleId}`);
-        const breakdown = calcTransport({
-          vehicle: {
-            shiftPriceRub: vehicleForDraft.shiftPriceRub.toString(),
-            hasGeneratorOption: vehicleForDraft.hasGeneratorOption,
-            generatorPriceRub: vehicleForDraft.generatorPriceRub?.toString() ?? null,
-            shiftHours: vehicleForDraft.shiftHours,
-            overtimePercent: vehicleForDraft.overtimePercent.toString(),
-          },
-          withGenerator: entry.withGenerator,
-          shiftHours: entry.shiftHours,
-          skipOvertime: entry.skipOvertime,
-          kmOutsideMkad: entry.kmOutsideMkad,
-          ttkEntry: entry.ttkEntry,
-        });
-        transportSnapshots.push({
-          vehicleId: entry.vehicleId,
-          withGenerator: entry.withGenerator,
-          shiftHours: entry.shiftHours,
-          skipOvertime: entry.skipOvertime,
-          kmOutsideMkad: entry.kmOutsideMkad,
-          ttkEntry: entry.ttkEntry,
-          subtotalRub: breakdown.total,
-        });
-      }
-    }
+    const transportSnapshots: BookingTransportSnapshot[] | null =
+      body.transport && body.transport.length > 0
+        ? await computeTransportSnapshots(body.transport)
+        : null;
 
     const booking = await createBookingDraft({
       clientId: client.id,

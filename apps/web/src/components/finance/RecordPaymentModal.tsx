@@ -47,6 +47,11 @@ interface Props {
    * Если true или undefined — легаси-режим, селектор скрыт.
    */
   legacyFinance?: boolean;
+  /**
+   * Предвыбранный счёт (например, при записи платежа со строки конкретного счёта
+   * на /finance/invoices). Работает только при legacyFinance === false.
+   */
+  defaultInvoiceId?: string;
   onCreated: () => void;
 }
 
@@ -73,6 +78,7 @@ export function RecordPaymentModal({
   defaultMethod = "CASH",
   bookingContext,
   legacyFinance,
+  defaultInvoiceId,
   onCreated,
 }: Props) {
   const [bookingId, setBookingId] = useState(defaultBookingId ?? "");
@@ -159,17 +165,20 @@ export function RecordPaymentModal({
         if (cancelled) return;
         const openInvoices = (d.items ?? []).filter((inv) => inv.status !== "VOID");
         setInvoices(openInvoices);
-        // Default: earliest unpaid (first by createdAt asc — server returns desc, so last item)
-        // Actually server returns desc, so the "oldest" is the last. Pick first non-paid as default.
+        // Приоритет — явно предвыбранный счёт (клик «₽» на строке счёта),
+        // иначе первый неоплаченный.
+        const preselected = defaultInvoiceId
+          ? openInvoices.find((inv) => inv.id === defaultInvoiceId)
+          : undefined;
         const defaultInv = openInvoices.find(
           (inv) => inv.status !== "PAID"
         );
-        setInvoiceId(defaultInv?.id ?? "");
+        setInvoiceId(preselected?.id ?? defaultInv?.id ?? "");
       })
       .catch(() => { if (!cancelled) setInvoices([]); })
       .finally(() => { if (!cancelled) setInvoicesLoading(false); });
     return () => { cancelled = true; };
-  }, [open, legacyFinance, effectiveBookingId]);
+  }, [open, legacyFinance, effectiveBookingId, defaultInvoiceId]);
 
   // Reset form on open
   useEffect(() => {

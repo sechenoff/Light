@@ -44,39 +44,54 @@ export default function LkDebtPage() {
         </div>
       </section>
 
+      {/* lk-debt-by-bookings: строки — брони с остатком (единый источник с админкой),
+          счёт (если выставлен) — детализация строки */}
       <section className="bg-surface-2 border border-border rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-ink-2">
               <tr>
                 <th className="px-4 py-2">Бронь</th>
+                <th className="px-4 py-2">Проект</th>
+                <th className="px-4 py-2">Даты</th>
                 <th className="px-4 py-2">Счёт</th>
-                <th className="px-4 py-2">Срок</th>
                 <th className="px-4 py-2 text-right">Сумма</th>
                 <th className="px-4 py-2 text-right">Оплачено</th>
                 <th className="px-4 py-2 text-right">Остаток</th>
-                <th className="px-4 py-2 text-right">Возраст</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {data.invoices.length === 0 ? (
+              {data.bookings.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-6 text-center text-ink-2">
                     Долгов нет 👍
                   </td>
                 </tr>
               ) : (
-                data.invoices.map((r) => (
-                  <tr key={`${r.bookingId}-${r.invoiceNumber}`} className={r.isOverdue ? "bg-rose-soft" : ""}>
+                data.bookings.map((r) => (
+                  <tr key={r.bookingId} className={r.isOverdue ? "bg-rose-soft" : ""}>
                     {/* lk-debt-link: из строки долга можно открыть саму бронь */}
                     <td className="px-4 py-2">
                       <Link href={`/lk/bookings/${r.bookingId}`} className="text-accent hover:underline">
                         {r.bookingNo}
                       </Link>
                     </td>
-                    <td className="px-4 py-2 mono-num">{r.invoiceNumber || "—"}</td>
+                    <td className="px-4 py-2">{r.projectName || "—"}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      {new Date(r.startDate).toLocaleDateString("ru-RU")} –{" "}
+                      {new Date(r.endDate).toLocaleDateString("ru-RU")}
+                    </td>
                     <td className="px-4 py-2">
-                      {r.dueDate ? new Date(r.dueDate).toLocaleDateString("ru-RU") : "—"}
+                      {r.invoice ? (
+                        <span className="mono-num">
+                          {r.invoice.number}
+                          {r.invoice.dueDate
+                            ? ` · до ${new Date(r.invoice.dueDate).toLocaleDateString("ru-RU")}`
+                            : ""}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-4 py-2 text-right mono-num">{formatRub(Number(r.finalAmount))}</td>
                     <td className="px-4 py-2 text-right mono-num">{formatRub(Number(r.amountPaid))}</td>
@@ -85,7 +100,6 @@ export default function LkDebtPage() {
                     >
                       {formatRub(Number(r.amountOutstanding))}
                     </td>
-                    <td className="px-4 py-2 text-right">{r.isOverdue ? `${r.ageDays} дн.` : "—"}</td>
                   </tr>
                 ))
               )}

@@ -78,7 +78,9 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh, onRecordP
 
   return (
     <>
-      <div className="border border-border rounded-lg overflow-hidden shadow-xs">
+      {/* overflow-x-auto: на узких экранах (375px) таблица шире вьюпорта —
+          без горизонтального скролла колонка «Статус оплаты» с CTA «Оплатить» отсекалась */}
+      <div className="border border-border rounded-lg overflow-x-auto shadow-xs">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-subtle">
@@ -86,7 +88,7 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh, onRecordP
               <th className="text-left px-4 py-3 eyebrow">Период</th>
               <th className="text-left px-4 py-3 eyebrow">Клиент / проект</th>
               <th className="text-right pl-4 pr-8 py-3 eyebrow w-[140px]">Сумма</th>
-              <th className="text-left px-4 py-3 eyebrow w-[440px] min-w-[440px]">Статус оплаты</th>
+              <th className="text-left px-4 py-3 eyebrow w-[440px] min-w-[320px]">Статус оплаты</th>
               <th className="px-2 py-3 w-[40px]"></th>
             </tr>
           </thead>

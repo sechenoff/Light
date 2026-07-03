@@ -46,6 +46,8 @@ router.get("/", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
     res.json({
       items: result.items.map((p) => ({ ...p, amount: p.amount.toString() })),
       total: result.total,
+      // Агрегаты по методам по всей отфильтрованной выборке — для чипов сумм на «Платежах»
+      methodTotals: result.methodTotals,
     });
   } catch (err) {
     next(err);

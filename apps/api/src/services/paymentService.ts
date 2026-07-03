@@ -306,7 +306,12 @@ export async function listPayments(args: ListPaymentsArgs) {
 
   const where: Prisma.PaymentWhereInput = { AND: andClauses };
 
-  const [rawItems, total] = await Promise.all([
+  // Агрегаты по методам считаются по ВСЕЙ отфильтрованной выборке (не по странице),
+  // чтобы чипы сумм на «Платежах» не занижались limit'ом. Аннулированные исключаются
+  // всегда — UI суммирует только действующие платежи.
+  const totalsBase: Prisma.PaymentWhereInput[] = [...andClauses, { voidedAt: null }];
+
+  const [rawItems, total, methodGroups, refundAgg] = await Promise.all([
     prisma.payment.findMany({
       where,
       include: {
@@ -323,7 +328,40 @@ export async function listPayments(args: ListPaymentsArgs) {
       skip: offset,
     }),
     prisma.payment.count({ where }),
+    prisma.payment.groupBy({
+      by: ["method"],
+      where: { AND: [...totalsBase, { amount: { gte: 0 } }] },
+      _sum: { amount: true },
+    }),
+    prisma.payment.aggregate({
+      where: { AND: [...totalsBase, { amount: { lt: 0 } }] },
+      _sum: { amount: true },
+    }),
   ]);
+
+  let totalIncome = new Decimal(0);
+  let cash = new Decimal(0);
+  let card = new Decimal(0);
+  let transfer = new Decimal(0);
+  let other = new Decimal(0);
+  for (const g of methodGroups) {
+    const sum = new Decimal(g._sum.amount?.toString() ?? "0");
+    totalIncome = totalIncome.add(sum);
+    if (g.method === "CASH") cash = cash.add(sum);
+    else if (g.method === "CARD") card = card.add(sum);
+    else if (g.method === "BANK_TRANSFER") transfer = transfer.add(sum);
+    else other = other.add(sum);
+  }
+  const refunds = new Decimal(refundAgg._sum.amount?.toString() ?? "0");
+
+  const methodTotals = {
+    total: totalIncome.toFixed(2),
+    cash: cash.toFixed(2),
+    card: card.toFixed(2),
+    transfer: transfer.toFixed(2),
+    other: other.toFixed(2),
+    refunds: refunds.toFixed(2),
+  };
 
   // H2: резолвим createdBy (AdminUser.id) → username для отображения «Кто принял»
   const createdByIds = [...new Set(rawItems.map((p) => p.createdBy).filter((id): id is string => id != null))];
@@ -340,5 +378,5 @@ export async function listPayments(args: ListPaymentsArgs) {
     createdByName: p.createdBy ? (adminUserMap.get(p.createdBy) ?? null) : null,
   }));
 
-  return { items, total };
+  return { items, total, methodTotals };
 }

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { toast } from "../ToastProvider";
 
 type PortalAccount = {
   id: string;
@@ -21,6 +22,10 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState(defaultEmail ?? "");
   const [msg, setMsg] = useState<string | null>(null);
+  // lk-invite-fallback: ссылка-приглашение из последнего invite/resend —
+  // ручной канал доставки, когда письмо не ушло (и просто удобный дубль).
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [emailFailed, setEmailFailed] = useState(false);
 
   async function refresh() {
     try {
@@ -54,9 +59,17 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
     };
   }, [clientId]);
 
+  function applyInviteResult(body: { emailSent?: boolean; inviteUrl?: string | null }, successMsg: string) {
+    setInviteUrl(body.inviteUrl ?? null);
+    const failed = body.emailSent === false;
+    setEmailFailed(failed);
+    setMsg(failed ? null : successMsg);
+  }
+
   async function invite() {
     setBusy(true);
     setMsg(null);
+    setEmailFailed(false);
     try {
       const r = await fetch(`/api/admin/clients/${clientId}/portal-invite`, {
         method: "POST",
@@ -64,11 +77,33 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
+      const body = await r.json();
       if (!r.ok) {
-        const body = await r.json();
         throw new Error(body.error || "Ошибка при отправке приглашения");
       }
-      setMsg("Приглашение отправлено");
+      applyInviteResult(body, "Приглашение отправлено");
+      await refresh();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resend() {
+    setBusy(true);
+    setMsg(null);
+    setEmailFailed(false);
+    try {
+      const r = await fetch(`/api/admin/clients/${clientId}/portal-account/resend`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        throw new Error(body.error || "Ошибка");
+      }
+      applyInviteResult(body, "Ссылка повторно отправлена");
       await refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Ошибка");
@@ -98,6 +133,36 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
     }
   }
 
+  async function copyInviteUrl() {
+    if (!inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      toast.success("Ссылка-приглашение скопирована");
+    } catch {
+      toast.error("Не удалось скопировать ссылку");
+    }
+  }
+
+  // Блок результата invite/resend: amber-предупреждение при провале письма
+  // и кнопка ручного fallback «Скопировать ссылку» — в любом случае.
+  const inviteResultBlock = (
+    <>
+      {emailFailed && (
+        <p className="text-sm text-amber bg-amber-soft border border-amber-border rounded-md px-3 py-2">
+          Письмо не отправлено — отправьте ссылку вручную
+        </p>
+      )}
+      {inviteUrl && (
+        <button
+          onClick={copyInviteUrl}
+          className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface transition-colors"
+        >
+          Скопировать ссылку
+        </button>
+      )}
+    </>
+  );
+
   if (loading) {
     return (
       <div className="rounded-lg border border-border bg-surface-2 p-4">
@@ -126,6 +191,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
         >
           {busy ? "Отправка…" : "Дать доступ в кабинет"}
         </button>
+        {inviteResultBlock}
         {msg && <p className="text-sm text-ink-2">{msg}</p>}
       </div>
     );
@@ -163,7 +229,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
       <div className="flex flex-wrap gap-2">
         {(account.status === "PENDING" || account.status === "ACTIVE") && (
           <button
-            onClick={() => action("resend", "Ссылка повторно отправлена")}
+            onClick={resend}
             disabled={busy}
             className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-surface transition-colors disabled:opacity-50"
           >
@@ -190,6 +256,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
         )}
       </div>
 
+      {inviteResultBlock}
       {msg && <p className="text-sm text-ink-2">{msg}</p>}
     </div>
   );

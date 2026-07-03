@@ -58,7 +58,7 @@ export async function createInvoice(args: CreateInvoiceArgs, userId: string) {
 
   // H1: Запрет создания инвойсов для pre-cutoff (legacy) броней
   if (booking.legacyFinance) {
-    throw new HttpError(409, "Нельзя создать счёт для старой брони (legacyFinance=true). Используйте прямые платежи.", "LEGACY_BOOKING");
+    throw new HttpError(409, "Эта бронь ведётся по старой финансовой схеме — счета для неё недоступны. Принимайте платежи напрямую.", "LEGACY_BOOKING");
   }
 
   // H1: Запрет создания инвойсов для отменённых броней

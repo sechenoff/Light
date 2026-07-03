@@ -202,7 +202,9 @@ export function PaymentsByClient({ filter }: Props) {
 
               {/* Expanded bookings */}
               {isOpen && (
-                <div className="border-t border-border bg-surface-subtle">
+                // overflow-x-auto: на 375px вложенная таблица шире вьюпорта — без скролла
+                // колонка «Статус оплаты» с CTA «Оплатить» была недостижима
+                <div className="border-t border-border bg-surface-subtle overflow-x-auto">
                   {isLoadingBookings ? (
                     <p className="px-5 py-4 text-xs text-ink-3">Загрузка броней…</p>
                   ) : bookingsForClient.length === 0 ? (
@@ -214,7 +216,7 @@ export function PaymentsByClient({ filter }: Props) {
                           <th className="text-left px-5 py-2 eyebrow">Дата</th>
                           <th className="text-left px-4 py-2 eyebrow w-[110px]">Проект</th>
                           <th className="text-right px-4 py-2 eyebrow">Сумма</th>
-                          <th className="text-left px-4 py-2 eyebrow w-[440px] min-w-[440px]">Статус оплаты</th>
+                          <th className="text-left px-4 py-2 eyebrow w-[440px] min-w-[320px]">Статус оплаты</th>
                         </tr>
                       </thead>
                       <tbody>

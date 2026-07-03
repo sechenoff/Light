@@ -27,6 +27,18 @@ const router = Router({ mergeParams: true });
 
 const superAdminGuard = rolesGuard(["SUPER_ADMIN"]);
 
+/**
+ * Ссылка-приглашение — та же, что уходит в письме (mailer.ts строит её так же).
+ * Возвращается менеджеру в ответе, чтобы при провале SMTP он мог отправить
+ * ссылку клиенту вручную (мессенджер и т.п.). Токен восстановить из БД
+ * невозможно (хранится только HMAC-hash), поэтому единственная точка выдачи —
+ * момент создания.
+ */
+function buildInviteUrl(rawToken: string): string {
+  const base = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
+  return `${base}/lk/verify?token=${encodeURIComponent(rawToken)}`;
+}
+
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 
 const inviteBodySchema = z.object({
@@ -103,15 +115,25 @@ router.post("/portal-invite", superAdminGuard, async (req, res, next) => {
       return { account: acc, rawToken: link.rawToken, expiresAt: link.expiresAt };
     });
 
-    // Email — вне транзакции (сбой не должен откатывать аудит)
+    // Email — вне транзакции (сбой не должен откатывать аудит).
+    // Провал НЕ глотаем молча: менеджер получает emailSent:false + inviteUrl
+    // для ручной отправки ссылки клиенту.
+    let emailSent = true;
     try {
       await sendInviteEmail({ email: account.email, clientName: client.name }, rawToken);
     } catch (mailErr) {
+      emailSent = false;
       // eslint-disable-next-line no-console
       console.error("[LK admin] sendInviteEmail failed:", mailErr);
     }
 
-    res.json({ accountId: account.id, email: account.email, expiresAt });
+    res.json({
+      accountId: account.id,
+      email: account.email,
+      expiresAt,
+      emailSent,
+      inviteUrl: buildInviteUrl(rawToken),
+    });
   } catch (err) {
     next(err);
   }
@@ -243,18 +265,20 @@ router.post("/portal-account/resend", superAdminGuard, async (req, res, next) =>
       return link;
     });
 
-    // Email — вне транзакции
+    // Email — вне транзакции. Провал не глотаем молча — см. /portal-invite.
+    let emailSent = true;
     try {
       await sendInviteEmail(
         { email: existing.email, clientName: existing.client?.name },
         rawToken,
       );
     } catch (mailErr) {
+      emailSent = false;
       // eslint-disable-next-line no-console
       console.error("[LK admin] sendInviteEmail (resend) failed:", mailErr);
     }
 
-    res.json({ expiresAt });
+    res.json({ expiresAt, emailSent, inviteUrl: buildInviteUrl(rawToken) });
   } catch (err) {
     next(err);
   }

@@ -409,10 +409,26 @@ async function computeMonthlyTrend(asOf: Date) {
   return results;
 }
 
-export async function computeFinanceDashboard(asOf: Date = new Date()) {
+/** Явный диапазон дат для KPI earned/spent/net (период-пилюли на /finance). */
+export interface FinanceDashboardRange {
+  from?: Date;
+  to?: Date;
+}
+
+export async function computeFinanceDashboard(asOf: Date = new Date(), range?: FinanceDashboardRange) {
   const monthS = startOfMonth(asOf);
   const monthNextS = new Date(asOf.getFullYear(), asOf.getMonth() + 1, 1, 0, 0, 0, 0);
   const weekEnd = new Date(asOf.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  // Период для earned/spent/net: явный from/to из query (пилюли «Сегодня/7 дней/…»)
+  // или прежнее поведение — текущий календарный месяц.
+  const hasRange = Boolean(range?.from || range?.to);
+  const periodDateFilter: { gte?: Date; lt?: Date; lte?: Date } = hasRange
+    ? {
+        ...(range?.from ? { gte: range.from } : {}),
+        ...(range?.to ? { lte: range.to } : {}),
+      }
+    : { gte: monthS, lt: monthNextS };
 
   const [totalOutstandingAgg, earnedAgg, spentAgg, upcomingWeek, trend, debtorsData] = await Promise.all([
     prisma.booking.aggregate({
@@ -424,14 +440,14 @@ export async function computeFinanceDashboard(asOf: Date = new Date()) {
         direction: "INCOME",
         voidedAt: null,
         OR: [
-          { receivedAt: { gte: monthS, lt: monthNextS } },
-          { AND: [{ receivedAt: null }, { paymentDate: { gte: monthS, lt: monthNextS } }, { status: "RECEIVED" }] },
+          { receivedAt: periodDateFilter },
+          { AND: [{ receivedAt: null }, { paymentDate: periodDateFilter }, { status: "RECEIVED" }] },
         ],
       },
       _sum: { amount: true },
     }),
     prisma.expense.aggregate({
-      where: { approved: true, expenseDate: { gte: monthS, lt: monthNextS } },
+      where: { approved: true, expenseDate: periodDateFilter },
       _sum: { amount: true },
     }),
     prisma.booking.findMany({

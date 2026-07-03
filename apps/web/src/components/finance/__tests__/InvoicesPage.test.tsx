@@ -37,6 +37,15 @@ vi.mock("../../finance/VoidInvoiceModal", () => ({
     open ? <div data-testid="void-invoice-modal" /> : null,
 }));
 
+// Stub RecordPaymentModal, capturing props — проверяем привязку платежа к счёту
+const recordPaymentModalProps: Array<Record<string, unknown>> = [];
+vi.mock("../../finance/RecordPaymentModal", () => ({
+  RecordPaymentModal: (props: { open: boolean } & Record<string, unknown>) => {
+    recordPaymentModalProps.push(props);
+    return props.open ? <div data-testid="record-payment-modal" /> : null;
+  },
+}));
+
 // Stub ToastProvider
 vi.mock("../../ToastProvider", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -146,6 +155,33 @@ describe("InvoicesPage", () => {
       expect(screen.getByText(/выбрано/i)).toBeInTheDocument();
       // Button label is "Выставить выбранные" in the mockup design
       expect(screen.getByRole("button", { name: /выставить выбранные/i })).toBeInTheDocument();
+    });
+  });
+
+  it("кнопка ₽ на строке счёта открывает RecordPaymentModal с legacyFinance=false и предвыбранным счётом", async () => {
+    mockInvoicesResponse();
+    recordPaymentModalProps.length = 0;
+    render(<InvoicesPageDefault />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("ООО Свет").length).toBeGreaterThan(0);
+    });
+
+    // ₽-кнопка есть только у ISSUED/PARTIAL_PAID/OVERDUE (inv-2, booking-002)
+    const payButtons = screen.getAllByRole("button", { name: "Записать платёж" });
+    fireEvent.click(payButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("record-payment-modal")).toBeInTheDocument();
+    });
+
+    const openProps = recordPaymentModalProps.find((p) => p.open === true);
+    expect(openProps).toBeDefined();
+    // Платёж должен уходить с invoiceId → recomputeInvoiceStatus закроет счёт
+    expect(openProps).toMatchObject({
+      defaultBookingId: "booking-002",
+      defaultInvoiceId: "inv-2",
+      legacyFinance: false,
     });
   });
 });

@@ -166,7 +166,8 @@ export function TasksPage() {
 
   const handleSaveEdit = useCallback(
     (id: string, patch: Partial<Task>) => {
-      updateTask(id, patch);
+      // Возвращает Promise<boolean> — модалка не закрывается при false (ошибке)
+      return updateTask(id, patch);
     },
     [updateTask],
   );

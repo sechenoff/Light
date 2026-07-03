@@ -10,9 +10,19 @@
 import path from "node:path";
 import fs from "node:fs";
 import { execSync } from "node:child_process";
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import request from "supertest";
 import type { Express } from "express";
+
+// Мокаем mailer, чтобы в отдельных тестах имитировать провал SMTP.
+// По умолчанию — реальная реализация (в test-окружении это dev-fallback в консоль).
+vi.mock("../services/clientPortal/mailer", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/clientPortal/mailer")>();
+  return {
+    ...actual,
+    sendInviteEmail: vi.fn(actual.sendInviteEmail),
+  };
+});
 
 const TEST_DB = path.resolve(__dirname, `../../prisma/test-lk-admin-${process.pid}.db`);
 process.env.DATABASE_URL = `file:${TEST_DB}`;
@@ -114,6 +124,9 @@ describe("POST /api/admin/clients/:id/portal-invite", () => {
     expect(res.body.email).toBe("client@acme.ru");
     expect(res.body.accountId).toBeTruthy();
     expect(res.body.expiresAt).toBeTruthy();
+    // Письмо ушло (dev-fallback в тестах) + ссылка-приглашение возвращается всегда
+    expect(res.body.emailSent).toBe(true);
+    expect(res.body.inviteUrl).toContain("/lk/verify?token=");
 
     // Аккаунт создан в статусе PENDING
     const acc = await prisma.clientPortalAccount.findUnique({ where: { clientId: client.id } });
@@ -206,6 +219,33 @@ describe("POST /api/admin/clients/:id/portal-invite", () => {
       .set(AUTH_SA())
       .send({ email: "not-an-email" });
     expect(res.status).toBe(400);
+  });
+
+  it("провал SMTP → 200 + emailSent:false + inviteUrl (аккаунт создан)", async () => {
+    const mailer = await import("../services/clientPortal/mailer");
+    vi.mocked(mailer.sendInviteEmail).mockRejectedValueOnce(new Error("SMTP down"));
+
+    const client = await prisma.client.create({ data: { name: "SMTP Fail Corp" } });
+    const res = await request(app)
+      .post(`/api/admin/clients/${client.id}/portal-invite`)
+      .set(AUTH_SA())
+      .send({ email: "smtp.fail@acme.ru" });
+
+    // HTTP всё ещё 200 — аккаунт и токен созданы, только письмо не ушло
+    expect(res.status).toBe(200);
+    expect(res.body.emailSent).toBe(false);
+    expect(res.body.inviteUrl).toContain("/lk/verify?token=");
+
+    // Аккаунт создан несмотря на провал письма
+    const acc = await prisma.clientPortalAccount.findUnique({ where: { clientId: client.id } });
+    expect(acc).toBeTruthy();
+    expect(acc!.status).toBe("PENDING");
+
+    // INVITE-токен создан — ссылка из ответа рабочая
+    const link = await prisma.clientPortalMagicLink.findFirst({
+      where: { accountId: acc!.id, purpose: "INVITE" },
+    });
+    expect(link).toBeTruthy();
   });
 });
 
@@ -336,6 +376,8 @@ describe("POST /portal-account/resend", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.expiresAt).toBeTruthy();
+    expect(res.body.emailSent).toBe(true);
+    expect(res.body.inviteUrl).toContain("/lk/verify?token=");
 
     // Старый токен инвалидирован
     const oldLinkNow = await prisma.clientPortalMagicLink.findUnique({ where: { id: oldLink.id } });
@@ -350,6 +392,30 @@ describe("POST /portal-account/resend", () => {
     // Аудит записан
     const audit = await prisma.auditEntry.findFirst({ where: { action: "CLIENT_PORTAL_INVITE_RESENT" } });
     expect(audit).toBeTruthy();
+  });
+
+  it("resend при провале SMTP → 200 + emailSent:false + inviteUrl", async () => {
+    const mailer = await import("../services/clientPortal/mailer");
+    vi.mocked(mailer.sendInviteEmail).mockRejectedValueOnce(new Error("SMTP down"));
+
+    const client = await prisma.client.create({ data: { name: "Resend SMTP Fail" } });
+    const acc = await prisma.clientPortalAccount.create({
+      data: { clientId: client.id, email: "resend.fail@test.ru", status: "PENDING" },
+    });
+
+    const res = await request(app)
+      .post(`/api/admin/clients/${client.id}/portal-account/resend`)
+      .set(AUTH_SA());
+
+    expect(res.status).toBe(200);
+    expect(res.body.emailSent).toBe(false);
+    expect(res.body.inviteUrl).toContain("/lk/verify?token=");
+
+    // Токен всё равно переиздан — ссылка из ответа рабочая
+    const links = await prisma.clientPortalMagicLink.findMany({
+      where: { accountId: acc.id, purpose: "INVITE" },
+    });
+    expect(links.length).toBe(1);
   });
 
   it("resend для DISABLED аккаунта → 409", async () => {

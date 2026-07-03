@@ -64,6 +64,7 @@ const listQuerySchema = z.object({
   overdue: z.coerce.boolean().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional().default(100),
   cursor: z.string().optional(),
+  sort: z.enum(["id-asc", "completedAt-desc"]).optional().default("id-asc"),
 });
 
 const commentBodySchema = z.object({ body: z.string().trim().min(1, "Пустой комментарий").max(5000) });

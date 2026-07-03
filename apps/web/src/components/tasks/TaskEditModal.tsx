@@ -13,7 +13,11 @@ interface AdminUserOption {
 interface TaskEditModalProps {
   task: Task;
   assigneeOptions?: AdminUserOption[];
-  onSave: (id: string, patch: Partial<Task>) => void;
+  /**
+   * Возвращает false, если сохранение не удалось — модалка остаётся открытой
+   * (ошибку показывает toast в useTasksQuery). void/true — успех, закрываем.
+   */
+  onSave: (id: string, patch: Partial<Task>) => Promise<boolean | void> | boolean | void;
   onClose: () => void;
 }
 
@@ -39,6 +43,8 @@ export function TaskEditModal({
       return "";
     }
   });
+
+  const [saving, setSaving] = useState(false);
 
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -82,20 +88,28 @@ export function TaskEditModal({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  function handleSave() {
+  async function handleSave() {
     const trimmedTitle = title.trim();
-    if (!trimmedTitle) return;
+    if (!trimmedTitle || saving) return;
 
     const patch: Partial<Task> = {
       title: trimmedTitle,
       description: description.trim() || null,
       urgent,
       assignedTo,
-      dueDate: dueDate ? new Date(`${dueDate}T00:00:00+03:00`).toISOString() : null,
+      // API (moscowDateSchema) принимает только "YYYY-MM-DD" — отдаём значение
+      // <input type="date"> как есть, как это делает TaskCreateModal.resolvedDueDate().
+      dueDate: dueDate || null,
     };
 
-    onSave(task.id, patch);
-    onClose();
+    setSaving(true);
+    try {
+      const result = await onSave(task.id, patch);
+      // false = сохранение не удалось (toast уже показан) — не закрываем модалку
+      if (result !== false) onClose();
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -213,11 +227,11 @@ export function TaskEditModal({
             Отмена
           </button>
           <button
-            onClick={handleSave}
-            disabled={!title.trim()}
+            onClick={() => void handleSave()}
+            disabled={!title.trim() || saving}
             className="px-4 py-2 text-sm font-semibold bg-accent-bright text-white rounded-lg hover:bg-accent disabled:opacity-50 transition-colors"
           >
-            Сохранить
+            {saving ? "Сохранение…" : "Сохранить"}
           </button>
         </div>
       </div>

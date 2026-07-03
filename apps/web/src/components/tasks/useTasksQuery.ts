@@ -14,6 +14,33 @@ interface TasksListResponse {
   nextCursor: string | null;
 }
 
+// Секция «Выполнено сегодня» показывает DONE за последние 24 часа —
+// грузим их отдельным запросом с сортировкой по completedAt desc.
+const DONE_RECENT_LIMIT = 50;
+const DONE_TODAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Главный список = открытые задачи + выполненные за последние 24 часа.
+ *
+ * Раньше был один запрос status=ALL&limit=200 с сортировкой id asc — как только
+ * суммарное число задач (включая всю DONE-историю) превышало 200, свежесозданные
+ * задачи тихо выпадали из первой страницы. Открытых сотни не бывает, а DONE-история
+ * больше не конкурирует за окно выборки.
+ */
+export async function fetchMainTaskLists(filter: TaskFilter): Promise<Task[]> {
+  const [open, done] = await Promise.all([
+    apiFetch<TasksListResponse>(`/api/tasks?filter=${filter}&status=OPEN&limit=200`),
+    apiFetch<TasksListResponse>(
+      `/api/tasks?filter=${filter}&status=DONE&sort=completedAt-desc&limit=${DONE_RECENT_LIMIT}`,
+    ),
+  ]);
+  const nowMs = Date.now();
+  const recentDone = (done.items ?? []).filter(
+    (t) => t.completedAt && nowMs - new Date(t.completedAt).getTime() < DONE_TODAY_WINDOW_MS,
+  );
+  return [...(open.items ?? []), ...recentDone];
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useTasksQuery(filter: TaskFilter) {
@@ -36,10 +63,10 @@ export function useTasksQuery(filter: TaskFilter) {
     setLoading(true);
     setError(null);
 
-    apiFetch<TasksListResponse>(`/api/tasks?filter=${filter}&status=ALL&limit=200`)
-      .then((data) => {
+    fetchMainTaskLists(filter)
+      .then((items) => {
         if (cancelled) return;
-        setTasks(data.items ?? []);
+        setTasks(items);
       })
       .catch((err: Error) => {
         if (cancelled) return;
@@ -61,8 +88,8 @@ export function useTasksQuery(filter: TaskFilter) {
 
     const poll = () => {
       if (pollBlocked.current) return;
-      apiFetch<TasksListResponse>(`/api/tasks?filter=${filter}&status=ALL&limit=200`)
-        .then((data) => setTasks(data.items ?? []))
+      fetchMainTaskLists(filter)
+        .then((items) => setTasks(items))
         .catch(() => {
           /* keep last good state; errors surfaced on user actions */
         });
@@ -141,8 +168,8 @@ export function useTasksQuery(filter: TaskFilter) {
   // ── updateTask ──────────────────────────────────────────────────────────────
 
   const updateTask = useCallback(
-    async (id: string, patch: Partial<Task>) => {
-      if (inFlight.current.has(`update-${id}`)) return;
+    async (id: string, patch: Partial<Task>): Promise<boolean> => {
+      if (inFlight.current.has(`update-${id}`)) return false;
       inFlight.current.add(`update-${id}`);
       pollBlocked.current = true;
 
@@ -159,11 +186,13 @@ export function useTasksQuery(filter: TaskFilter) {
           body: JSON.stringify(patch),
         });
         setTasks((t) => t.map((x) => (x.id === id ? updated : x)));
+        return true;
       } catch (err: any) {
         setTasks((t) =>
           t.map((x) => (x.id === id && snapshot ? snapshot : x)),
         );
         toast.error(err?.message ?? "Не удалось обновить задачу");
+        return false;
       } finally {
         inFlight.current.delete(`update-${id}`);
         pollBlocked.current = false;

@@ -153,7 +153,12 @@ function InvoicesPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [voidInvoiceId, setVoidInvoiceId] = useState<string | null>(null);
-  const [recordPaymentBookingId, setRecordPaymentBookingId] = useState<string | null>(null);
+  // Платёж со строки счёта: несём и bookingId, и invoiceId, чтобы платёж
+  // привязался к счёту (invoiceId в POST /api/payments → recomputeInvoiceStatus).
+  const [recordPaymentTarget, setRecordPaymentTarget] = useState<{
+    bookingId: string;
+    invoiceId: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -503,7 +508,7 @@ function InvoicesPage() {
                               {/* ₽ payment button for issued/overdue */}
                               {["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (
                                 <button
-                                  onClick={() => setRecordPaymentBookingId(inv.booking.id)}
+                                  onClick={() => setRecordPaymentTarget({ bookingId: inv.booking.id, invoiceId: inv.id })}
                                   className="w-7 h-7 flex items-center justify-center border border-border rounded hover:border-accent-bright hover:text-accent-bright text-[12px] font-mono"
                                   aria-label="Записать платёж"
                                   title="Записать платёж"
@@ -595,7 +600,7 @@ function InvoicesPage() {
                       <div className="flex gap-2">
                         {["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (
                           <button
-                            onClick={() => setRecordPaymentBookingId(inv.booking.id)}
+                            onClick={() => setRecordPaymentTarget({ bookingId: inv.booking.id, invoiceId: inv.id })}
                             className="flex-1 py-2 text-[12px] bg-accent-bright text-white rounded-lg font-medium hover:opacity-90"
                           >
                             ₽ Платёж
@@ -639,10 +644,14 @@ function InvoicesPage() {
           onVoided={() => { setVoidInvoiceId(null); load(); }}
         />
         <RecordPaymentModal
-          open={!!recordPaymentBookingId}
-          defaultBookingId={recordPaymentBookingId ?? undefined}
-          onClose={() => setRecordPaymentBookingId(null)}
-          onCreated={() => { setRecordPaymentBookingId(null); load(); }}
+          open={!!recordPaymentTarget}
+          defaultBookingId={recordPaymentTarget?.bookingId}
+          /* Счета существуют только у post-cutoff броней — legacyFinance здесь всегда false.
+             Без этого пропа селектор счетов скрыт и платёж уходил БЕЗ invoiceId. */
+          legacyFinance={false}
+          defaultInvoiceId={recordPaymentTarget?.invoiceId}
+          onClose={() => setRecordPaymentTarget(null)}
+          onCreated={() => { setRecordPaymentTarget(null); load(); }}
         />
       </div>
     </div>

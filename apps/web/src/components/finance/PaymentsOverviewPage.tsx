@@ -44,9 +44,20 @@ interface PaymentItem {
   isRefund?: boolean;
 }
 
+/** Серверные агрегаты по методам — считаются по всей отфильтрованной выборке. */
+interface ServerMethodTotals {
+  total: string;
+  cash: string;
+  card: string;
+  transfer: string;
+  other: string;
+  refunds: string;
+}
+
 interface PaymentsListResponse {
   items: PaymentItem[];
   total: number;
+  methodTotals?: ServerMethodTotals;
 }
 
 // For booking-level overview
@@ -122,6 +133,18 @@ interface MethodTotals {
   refunds: number;
 }
 
+function fromServerMethodTotals(mt: ServerMethodTotals): MethodTotals {
+  return {
+    total: Number(mt.total),
+    cash: Number(mt.cash),
+    card: Number(mt.card),
+    transfer: Number(mt.transfer),
+    other: Number(mt.other),
+    refunds: Number(mt.refunds),
+  };
+}
+
+/** Fallback по загруженной странице — используется, только если сервер не вернул methodTotals. */
 function computeMethodTotals(items: PaymentItem[]): MethodTotals {
   const totals: MethodTotals = { total: 0, cash: 0, card: 0, transfer: 0, other: 0, refunds: 0 };
   for (const item of items) {
@@ -193,22 +216,31 @@ export function PaymentsOverviewPage() {
   // ── Individual payments tab ──────────────────────────────────────────────────
 
   const [payments, setPayments] = useState<PaymentItem[]>([]);
+  /** Общее число платежей по фильтру (для «Показать ещё»). */
+  const [paymentsTotal, setPaymentsTotal] = useState(0);
+  /** Серверные агрегаты по методам — по всей выборке, не по загруженной странице. */
+  const [serverMethodTotals, setServerMethodTotals] = useState<MethodTotals | null>(null);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [paymentsError, setPaymentsError] = useState<string | null>(null);
 
+  const PAYMENTS_PAGE_SIZE = 100;
+
   const fetchPayments = useCallback(
-    (period_: PeriodKey) => {
+    (period_: PeriodKey, offset = 0, append = false) => {
       let cancelled = false;
       setPaymentsLoading(true);
       const range = derivePeriodRange(period_);
       const params = new URLSearchParams();
-      params.set("limit", "100");
+      params.set("limit", String(PAYMENTS_PAGE_SIZE));
+      params.set("offset", String(offset));
       params.set("from", range.from);
       params.set("to", range.to);
       apiFetch<PaymentsListResponse>(`/api/payments?${params}`)
         .then((r) => {
           if (!cancelled) {
-            setPayments(r.items);
+            setPayments((prev) => (append ? [...prev, ...r.items] : r.items));
+            setPaymentsTotal(r.total);
+            setServerMethodTotals(r.methodTotals ? fromServerMethodTotals(r.methodTotals) : null);
             setPaymentsError(null);
           }
         })
@@ -293,7 +325,9 @@ export function PaymentsOverviewPage() {
 
   // ── Derived data ──────────────────────────────────────────────────────────────
 
-  const methodTotals = computeMethodTotals(payments);
+  // Чипы сумм: серверные агрегаты по всей выборке; fallback на клиентский подсчёт
+  // по загруженной странице (старые ответы без methodTotals).
+  const methodTotals = serverMethodTotals ?? computeMethodTotals(payments);
 
   // Filtered payments for display
   const filteredPayments = payments.filter((p) => {
@@ -635,6 +669,21 @@ export function PaymentsOverviewPage() {
                     );
                   })}
                 </div>
+
+                {/* Пагинация: сервер отдаёт страницами по 100, total — по всей выборке */}
+                {payments.length < paymentsTotal && (
+                  <div className="mt-4 text-center">
+                    <button
+                      onClick={() => fetchPayments(period, payments.length, true)}
+                      disabled={paymentsLoading}
+                      className="px-4 py-2 text-sm border border-border rounded-lg text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
+                    >
+                      {paymentsLoading
+                        ? "Загрузка…"
+                        : `Показать ещё (${payments.length} из ${paymentsTotal})`}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </>

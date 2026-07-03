@@ -816,3 +816,62 @@ describe("GET /api/tasks?status=ALL", () => {
     expect(items.every((t) => t.status === "OPEN")).toBe(true);
   });
 });
+
+// ─── 10. sort=completedAt-desc — секция «Выполнено сегодня» на главной ─────────
+
+describe("GET /api/tasks?sort=completedAt-desc", () => {
+  it("возвращает DONE задачи по completedAt desc (свежевыполненные первыми), nextCursor=null", async () => {
+    // Изолируем через отдельного пользователя
+    const { hashPassword, signSession } = await import("../services/auth");
+    const hash = await hashPassword("sorttest123");
+    const sortUser = await prisma.adminUser.create({
+      data: { username: `sorttest_${Date.now()}`, passwordHash: hash, role: "SUPER_ADMIN" },
+    });
+    const sortToken = signSession({ userId: sortUser.id, username: sortUser.username, role: "SUPER_ADMIN" });
+    const AUTH_SORT = () => ({ "X-API-Key": "test-key-1", Authorization: `Bearer ${sortToken}` });
+
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const justNow = new Date();
+
+    // Создаём в порядке, НЕ совпадающем с порядком выполнения (id asc ≠ completedAt desc)
+    const oldDone = await createTaskDirect({
+      title: "Выполнена сутки назад", status: "DONE", urgent: false,
+      createdBy: sortUser.id, completedBy: sortUser.id, completedAt: dayAgo,
+    });
+    const freshDone = await createTaskDirect({
+      title: "Выполнена только что", status: "DONE", urgent: false,
+      createdBy: sortUser.id, completedBy: sortUser.id, completedAt: justNow,
+    });
+    const midDone = await createTaskDirect({
+      title: "Выполнена час назад", status: "DONE", urgent: false,
+      createdBy: sortUser.id, completedBy: sortUser.id, completedAt: hourAgo,
+    });
+
+    const res = await request(app)
+      .get("/api/tasks?filter=created-by-me&status=DONE&sort=completedAt-desc&limit=50")
+      .set(AUTH_SORT());
+
+    expect(res.status).toBe(200);
+    const ids = res.body.items.map((t: any) => t.id);
+    expect(ids).toEqual([freshDone.id, midDone.id, oldDone.id]);
+    expect(res.body.nextCursor).toBeNull();
+  });
+
+  it("cursor вместе с sort=completedAt-desc → 400 CURSOR_SORT_UNSUPPORTED", async () => {
+    const res = await request(app)
+      .get("/api/tasks?filter=all&status=DONE&sort=completedAt-desc&cursor=abc123")
+      .set(AUTH_SA());
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("CURSOR_SORT_UNSUPPORTED");
+  });
+
+  it("невалидный sort → 400", async () => {
+    const res = await request(app)
+      .get("/api/tasks?filter=all&sort=garbage")
+      .set(AUTH_SA());
+
+    expect(res.status).toBe(400);
+  });
+});
