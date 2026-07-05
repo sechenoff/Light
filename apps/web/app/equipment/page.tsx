@@ -9,14 +9,7 @@ import { SectionHeader } from "../../src/components/SectionHeader";
 import { formatRub } from "../../src/lib/format";
 import { toMoscowDateString } from "../../src/lib/moscowDate";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
-
-const UNIT_STATUS_LABELS: Record<string, string> = {
-  AVAILABLE: "на складе",
-  ISSUED: "выдана",
-  MAINTENANCE: "ремонт",
-  RETIRED: "списана",
-  MISSING: "утеряна",
-};
+import { unitStatusLabel } from "../../src/lib/unitStatus";
 
 type CatalogRow = {
   id: string;
@@ -210,7 +203,7 @@ export default function EquipmentPage() {
     if (!counts) return null;
     const parts = Object.entries(counts)
       .filter(([, n]) => n > 0)
-      .map(([status, n]) => `${n} ${UNIT_STATUS_LABELS[status] ?? status}`);
+      .map(([status, n]) => `${n} ${unitStatusLabel(status)}`);
     if (parts.length === 0) return null;
     return `${total} ед: ${parts.join(", ")}`;
   }

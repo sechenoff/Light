@@ -6,8 +6,10 @@ import { writeAuditEntry } from "./audit";
 import { confirmBooking } from "./bookings";
 
 /**
- * Отправить черновик на согласование руководителю.
- * DRAFT → PENDING_APPROVAL. Очищает rejectionReason (если был после предыдущего отклонения).
+ * Отправить на согласование руководителю.
+ * DRAFT → PENDING_APPROVAL, либо CONFIRMED → PENDING_APPROVAL (повторное
+ * согласование после правки уже подтверждённой брони — кладовщик изменил
+ * состав/даты и возвращает бронь руководителю). Очищает rejectionReason.
  * Пишет AuditEntry "BOOKING_SUBMITTED".
  */
 export async function submitForApproval(bookingId: string, userId: string) {
@@ -17,10 +19,10 @@ export async function submitForApproval(bookingId: string, userId: string) {
       select: { id: true, status: true, rejectionReason: true },
     });
     if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
-    if (booking.status !== "DRAFT") {
+    if (booking.status !== "DRAFT" && booking.status !== "CONFIRMED") {
       throw new HttpError(
         409,
-        "Отправить на согласование можно только черновик",
+        "Отправить на согласование можно только черновик или подтверждённую бронь",
         "INVALID_BOOKING_STATE",
       );
     }

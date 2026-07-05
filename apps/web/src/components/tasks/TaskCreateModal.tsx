@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toMoscowDateString, addDays } from "../../lib/moscowDate";
+import { TaskBookingPicker } from "./TaskBookingPicker";
+import type { RelatedBookingRef } from "./groupTasks";
 
 // ── Типы ──────────────────────────────────────────────────────────────────────
 
@@ -12,9 +14,13 @@ export interface TaskCreateModalProps {
     dueDate: string | null;
     assignedTo: string | null;
     description?: string | null;
+    relatedBookingId?: string | null;
+    relatedClientId?: string | null;
   }) => Promise<void> | void;
   onClose: () => void;
   assigneeOptions: Array<{ id: string; username: string }>;
+  /** Предзаполненная привязка к брони (например, при создании из /bookings/[id]). */
+  initialBooking?: RelatedBookingRef | null;
 }
 
 type DatePill = "none" | "today" | "tomorrow" | "dayAfter" | "custom";
@@ -41,6 +47,7 @@ export function TaskCreateModal({
   onSubmit,
   onClose,
   assigneeOptions,
+  initialBooking = null,
 }: TaskCreateModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -49,6 +56,7 @@ export function TaskCreateModal({
   const [datePill, setDatePill] = useState<DatePill>("none");
   const [customDate, setCustomDate] = useState<string>("");
   const [assignedTo, setAssignedTo] = useState<string>("");
+  const [relatedBooking, setRelatedBooking] = useState<RelatedBookingRef | null>(initialBooking);
   const [submitting, setSubmitting] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -100,6 +108,10 @@ export function TaskCreateModal({
         dueDate: resolvedDueDate(),
         assignedTo: assignedTo || null,
         description: showDescription && description.trim() ? description.trim() : null,
+        relatedBookingId: relatedBooking?.id ?? null,
+        // Привязка к брони автоматически подтягивает клиента брони —
+        // «позвонить клиенту по брони» линкует и бронь, и клиента.
+        relatedClientId: relatedBooking?.clientId ?? null,
       });
     } finally {
       setSubmitting(false);
@@ -319,6 +331,19 @@ export function TaskCreateModal({
               </div>
             </div>
           )}
+
+          {/* Связать с бронью */}
+          <div className="mt-5">
+            <p className="text-[10px] font-mono uppercase tracking-[0.07em] text-ink-3 font-medium mb-2.5">
+              Связать с бронью
+              <span className="ml-1.5 text-ink-3 text-[11px] font-normal normal-case tracking-normal font-sans">необязательно</span>
+            </p>
+            <TaskBookingPicker
+              value={relatedBooking}
+              onChange={setRelatedBooking}
+              disabled={submitting}
+            />
+          </div>
 
           {/* Срочность */}
           <div className="mt-5">

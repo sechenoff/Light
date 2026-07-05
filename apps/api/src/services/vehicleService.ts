@@ -4,6 +4,22 @@ import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { writeAuditEntry } from "./audit";
 
+/**
+ * Ссылка на бронь, на которой машина сейчас занята (или ближайшую предстоящую).
+ * Нужна, чтобы менеджер со списка /vehicles видел занятость и мог ответить
+ * на звонок «есть ли газель на завтра».
+ */
+export interface ActiveBookingRef {
+  bookingId: string;
+  projectName: string;
+  clientName: string | null;
+  startDate: string;
+  endDate: string;
+  status: "CONFIRMED" | "ISSUED";
+  /** true — машина физически выдана прямо сейчас (ISSUED и период включает сегодня). */
+  isCurrent: boolean;
+}
+
 /** Сериализованный summary автомобиля для списков. */
 export interface VehicleSummary {
   id: string;
@@ -16,6 +32,75 @@ export interface VehicleSummary {
   lastServiceKind: string | null;
   notes: string | null;
   active: boolean;
+  /** Активная/ближайшая бронь с этой машиной. null — машина свободна. */
+  activeBooking: ActiveBookingRef | null;
+}
+
+/**
+ * Брони, блокирующие машину: подтверждённые и выданные (не удалённые).
+ * DRAFT / PENDING_APPROVAL / RETURNED / CANCELLED машину не занимают.
+ */
+const OCCUPYING_STATUSES = ["CONFIRMED", "ISSUED"] as const;
+
+/**
+ * Для набора машин находит по одной «активной» броне на каждую:
+ * приоритет — выданная прямо сейчас (ISSUED, период включает сегодня),
+ * иначе ближайшая по startDate предстоящая/текущая бронь.
+ * Один запрос без N+1: тянем все занимающие BookingVehicle разом.
+ */
+async function loadActiveBookings(
+  vehicleIds: string[],
+): Promise<Map<string, ActiveBookingRef>> {
+  const result = new Map<string, ActiveBookingRef>();
+  if (vehicleIds.length === 0) return result;
+
+  const now = new Date();
+  const rows = await prisma.bookingVehicle.findMany({
+    where: {
+      vehicleId: { in: vehicleIds },
+      booking: {
+        status: { in: [...OCCUPYING_STATUSES] },
+        deletedAt: null,
+        // Только текущие/будущие: закончившиеся брони не занимают машину.
+        endDate: { gte: now },
+      },
+    },
+    select: {
+      vehicleId: true,
+      booking: {
+        select: {
+          id: true,
+          projectName: true,
+          startDate: true,
+          endDate: true,
+          status: true,
+          client: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: { booking: { startDate: "asc" } },
+  });
+
+  for (const row of rows) {
+    const b = row.booking;
+    const isCurrent =
+      b.status === "ISSUED" && b.startDate <= now && b.endDate >= now;
+    const candidate: ActiveBookingRef = {
+      bookingId: b.id,
+      projectName: b.projectName,
+      clientName: b.client?.name ?? null,
+      startDate: b.startDate.toISOString(),
+      endDate: b.endDate.toISOString(),
+      status: b.status as "CONFIRMED" | "ISSUED",
+      isCurrent,
+    };
+    const existing = result.get(row.vehicleId);
+    // Приоритет: выданная сейчас важнее просто ближайшей предстоящей.
+    if (!existing || (candidate.isCurrent && !existing.isCurrent)) {
+      result.set(row.vehicleId, candidate);
+    }
+  }
+  return result;
 }
 
 /** Запись журнала пробега (для UI). */
@@ -41,18 +126,21 @@ export interface ServiceLogView {
   createdBy: string;
 }
 
-function toSummary(v: {
-  id: string;
-  name: string;
-  slug: string;
-  licensePlate: string | null;
-  currentMileage: number;
-  lastServiceAt: Date | null;
-  lastServiceMileage: number | null;
-  lastServiceKind: string | null;
-  notes: string | null;
-  active: boolean;
-}): VehicleSummary {
+function toSummary(
+  v: {
+    id: string;
+    name: string;
+    slug: string;
+    licensePlate: string | null;
+    currentMileage: number;
+    lastServiceAt: Date | null;
+    lastServiceMileage: number | null;
+    lastServiceKind: string | null;
+    notes: string | null;
+    active: boolean;
+  },
+  activeBooking: ActiveBookingRef | null = null,
+): VehicleSummary {
   return {
     id: v.id,
     name: v.name,
@@ -64,6 +152,7 @@ function toSummary(v: {
     lastServiceKind: v.lastServiceKind,
     notes: v.notes,
     active: v.active,
+    activeBooking,
   };
 }
 
@@ -74,7 +163,8 @@ export async function listVehicles(opts?: { includeInactive?: boolean }): Promis
     where,
     orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
   });
-  return rows.map(toSummary);
+  const active = await loadActiveBookings(rows.map((r) => r.id));
+  return rows.map((r) => toSummary(r, active.get(r.id) ?? null));
 }
 
 /** Детальная карточка машины: summary + журналы пробега и ТО. */
@@ -93,9 +183,10 @@ export async function getVehicleDetail(vehicleId: string): Promise<{
   if (!vehicle) {
     throw new HttpError(404, "Машина не найдена", "VEHICLE_NOT_FOUND");
   }
+  const active = await loadActiveBookings([vehicle.id]);
   return {
     vehicle: {
-      ...toSummary(vehicle),
+      ...toSummary(vehicle, active.get(vehicle.id) ?? null),
       shiftPriceRub: vehicle.shiftPriceRub.toString(),
       shiftHours: vehicle.shiftHours,
     },

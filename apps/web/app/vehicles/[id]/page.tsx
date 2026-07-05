@@ -8,6 +8,7 @@ import { apiFetch } from "../../../src/lib/api";
 import { SectionHeader } from "../../../src/components/SectionHeader";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
+import { BOOKING_STATUS_LABELS } from "../../../src/components/finance/StatusCell";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,16 @@ type ServiceKind =
   | "REPAIR"
   | "INSPECTION"
   | "OTHER";
+
+interface ActiveBookingRef {
+  bookingId: string;
+  projectName: string;
+  clientName: string | null;
+  startDate: string;
+  endDate: string;
+  status: "CONFIRMED" | "ISSUED";
+  isCurrent: boolean;
+}
 
 interface VehicleHead {
   id: string;
@@ -32,6 +43,7 @@ interface VehicleHead {
   active: boolean;
   shiftPriceRub: string;
   shiftHours: number;
+  activeBooking: ActiveBookingRef | null;
 }
 
 interface MileageLog {
@@ -184,6 +196,12 @@ export default function VehicleDetailPage() {
       <section className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card label="Текущий пробег" value={formatKm(vehicle.currentMileage)} valueClass="mono-num" />
         <Card
+          label="Ставка смены"
+          value={formatRub(vehicle.shiftPriceRub)}
+          sub={`Смена ${vehicle.shiftHours} ч`}
+          valueClass="mono-num"
+        />
+        <Card
           label="Последнее ТО / ремонт"
           value={vehicle.lastServiceAt ? formatDate(vehicle.lastServiceAt) : "—"}
           sub={
@@ -198,6 +216,9 @@ export default function VehicleDetailPage() {
           valueClass="mono-num"
         />
       </section>
+
+      {/* Занятость: активная / ближайшая бронь */}
+      <ActiveBookingBanner booking={vehicle.activeBooking} />
 
       {vehicle.notes && (
         <section className="mt-3 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-2">
@@ -338,6 +359,45 @@ function Card({
       <p className={`mt-1 text-lg text-ink ${valueClass ?? ""}`}>{value}</p>
       {sub && <p className="mt-0.5 text-xs text-ink-3">{sub}</p>}
     </div>
+  );
+}
+
+function ActiveBookingBanner({ booking }: { booking: ActiveBookingRef | null }) {
+  if (!booking) {
+    return (
+      <section className="mt-3 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-3">
+        Сейчас машина свободна — активных или предстоящих броней нет.
+      </section>
+    );
+  }
+  const tone = booking.isCurrent
+    ? "border-amber-border bg-amber-soft"
+    : "border-border bg-surface";
+  return (
+    <Link
+      href={`/bookings/${booking.bookingId}`}
+      className={`mt-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 shadow-xs transition-colors hover:border-accent ${tone}`}
+    >
+      <div className="flex items-center gap-2.5">
+        <StatusPill
+          variant={booking.isCurrent ? "warn" : "info"}
+          label={
+            booking.isCurrent
+              ? "На брони сейчас"
+              : BOOKING_STATUS_LABELS[booking.status] ?? booking.status
+          }
+        />
+        <div>
+          <p className="text-sm text-ink font-medium">
+            {booking.clientName ?? booking.projectName}
+          </p>
+          <p className="text-xs text-ink-3 mono-num">
+            {formatDate(booking.startDate)} — {formatDate(booking.endDate)}
+          </p>
+        </div>
+      </div>
+      <span className="text-xs text-accent-bright shrink-0">Открыть бронь →</span>
+    </Link>
   );
 }
 

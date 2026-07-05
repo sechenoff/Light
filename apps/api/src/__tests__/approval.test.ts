@@ -143,9 +143,21 @@ describe("POST /api/bookings/:id/submit-for-approval", () => {
     expect(res.status).toBe(403);
   });
 
-  it("не-DRAFT бронь → 409", async () => {
+  it("CONFIRMED бронь → PENDING_APPROVAL (повторное согласование после правок)", async () => {
     const booking = await createDraftBooking();
     await prisma.booking.update({ where: { id: booking.id }, data: { status: "CONFIRMED" } });
+    const res = await request(app)
+      .post(`/api/bookings/${booking.id}/submit-for-approval`)
+      .set(AUTH_WH())
+      .send({});
+    expect(res.status).toBe(200);
+    const after = await prisma.booking.findUnique({ where: { id: booking.id } });
+    expect(after?.status).toBe("PENDING_APPROVAL");
+  });
+
+  it("выданную (ISSUED) бронь нельзя отправить на согласование → 409", async () => {
+    const booking = await createDraftBooking();
+    await prisma.booking.update({ where: { id: booking.id }, data: { status: "ISSUED" } });
     const res = await request(app)
       .post(`/api/bookings/${booking.id}/submit-for-approval`)
       .set(AUTH_WH())

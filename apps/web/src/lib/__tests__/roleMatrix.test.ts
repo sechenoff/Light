@@ -32,7 +32,7 @@ describe("menuByRole — grouped sections", () => {
     expect(hrefs.sort()).toEqual(
       [
         "/day",
-        "/tasks",
+        "/tasks?filter=my",
         "/warehouse/scan",
         "/warehouse/problems",
         "/bookings",

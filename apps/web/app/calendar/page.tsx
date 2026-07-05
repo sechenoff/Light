@@ -136,7 +136,16 @@ function CalendarPageInner() {
   const [search, setSearch] = useState<string>(
     () => searchParams.get("search") ?? ""
   );
-  const [includeDrafts, setIncludeDrafts] = useState<boolean>(false);
+  // cal-search-server: зафиксированный (по Enter/кнопке) запрос, который уходит
+  // на сервер — он ищет и по названию оборудования, и по клиенту/проекту брони.
+  // Живой `search` фильтрует только по имени ресурса на клиенте для мгновенного
+  // отклика; серверный слой добавляет строки, найденные по клиенту/проекту.
+  const [appliedSearch, setAppliedSearch] = useState<string>(
+    () => searchParams.get("search") ?? ""
+  );
+  const [includeDrafts, setIncludeDrafts] = useState<boolean>(
+    () => searchParams.get("drafts") === "1"
+  );
   const [periodStart, setPeriodStart] = useState<string>(
     () => searchParams.get("date") ?? todayStr()
   );
@@ -162,12 +171,15 @@ function CalendarPageInner() {
 
   // ── Обновляем URL при изменении параметров ──
   const syncUrl = useCallback(
-    (date: string, per: number, cat: string, q: string) => {
+    (date: string, per: number, cat: string, q: string, drafts: boolean) => {
       const params = new URLSearchParams();
       params.set("date", date);
       params.set("period", String(per));
       if (cat) params.set("category", cat);
       if (q) params.set("search", q);
+      // cal-drafts-url: чекбокс черновиков теперь часть URL-состояния, как
+      // date/period/category/search — пошаренная ссылка сохраняет черновики.
+      if (drafts) params.set("drafts", "1");
       router.replace(`/calendar?${params.toString()}`);
     },
     [router]
@@ -184,6 +196,7 @@ function CalendarPageInner() {
           end: periodEnd,
         });
         if (category) params.set("category", category);
+        if (appliedSearch.trim()) params.set("search", appliedSearch.trim());
         if (includeDrafts) params.set("includeDrafts", "true");
 
         const data = await apiFetch<CalendarResponse>(
@@ -203,7 +216,7 @@ function CalendarPageInner() {
         setLoading(false);
       }
     },
-    [periodStart, periodEnd, category, includeDrafts]
+    [periodStart, periodEnd, category, appliedSearch, includeDrafts]
   );
 
   useEffect(() => {
@@ -213,11 +226,27 @@ function CalendarPageInner() {
   }, [fetchData, retryKey]);
 
   // ── Фильтрация ресурсов по поисковому запросу (клиентская сторона) ──
+  // cal-search-server: если запрос уже ушёл на сервер (appliedSearch), сервер
+  // вернул ресурсы, найденные и по имени оборудования, и по клиенту/проекту
+  // (через events). Такие «клиент/проект»-совпадения не проходят фильтр по
+  // имени — оставляем их по наличию событий. Пока запрос ещё не зафиксирован,
+  // а живой `search` уже введён, фильтруем оптимистично только по имени.
+  const eventResourceIds = useMemo(
+    () => new Set(events.map((e) => e.resourceId)),
+    [events]
+  );
   const filteredResources = useMemo(() => {
-    if (!search.trim()) return resources;
-    const needle = search.trim().toLowerCase();
-    return resources.filter((r) => r.name.toLowerCase().includes(needle));
-  }, [resources, search]);
+    const live = search.trim().toLowerCase();
+    if (!live) return resources;
+    const applied = appliedSearch.trim().toLowerCase();
+    return resources.filter((r) => {
+      if (r.name.toLowerCase().includes(live)) return true;
+      // Совпадение по клиенту/проекту с сервера: ресурс не по имени, но у него
+      // есть события в отфильтрованном сервером наборе.
+      if (applied && applied === live && eventResourceIds.has(r.id)) return true;
+      return false;
+    });
+  }, [resources, events, eventResourceIds, search, appliedSearch]);
 
   // ── Фильтрация событий для отображаемых ресурсов ──
   const filteredEvents = useMemo(() => {
@@ -247,18 +276,18 @@ function CalendarPageInner() {
     const newStart = addDaysStr(periodStart, -period);
     setPeriodStart(newStart);
     setMobileDay(newStart);
-    syncUrl(newStart, period, category, search);
+    syncUrl(newStart, period, category, appliedSearch, includeDrafts);
   }
   function navNext() {
     const newStart = addDaysStr(periodStart, period);
     setPeriodStart(newStart);
     setMobileDay(newStart);
-    syncUrl(newStart, period, category, search);
+    syncUrl(newStart, period, category, appliedSearch, includeDrafts);
   }
   function goToday() {
     setPeriodStart(today);
     setMobileDay(today);
-    syncUrl(today, period, category, search);
+    syncUrl(today, period, category, appliedSearch, includeDrafts);
   }
 
   function toggleCategory(cat: string) {
@@ -278,7 +307,7 @@ function CalendarPageInner() {
     if (newDay < periodStart) {
       const newStart = addDaysStr(periodStart, -period);
       setPeriodStart(newStart);
-      syncUrl(newStart, period, category, search);
+      syncUrl(newStart, period, category, appliedSearch, includeDrafts);
     }
     setMobileDay(newDay);
   }
@@ -287,7 +316,7 @@ function CalendarPageInner() {
     if (newDay > periodEnd) {
       const newStart = addDaysStr(periodStart, period);
       setPeriodStart(newStart);
-      syncUrl(newStart, period, category, search);
+      syncUrl(newStart, period, category, appliedSearch, includeDrafts);
     }
     setMobileDay(newDay);
   }
@@ -303,9 +332,10 @@ function CalendarPageInner() {
   const showAllMobile = mobileDayResources.length === 0;
   const mobileDisplayResources = showAllMobile ? filteredResources : mobileDayResources;
 
-  // ── Поиск: применяем с задержкой или кнопкой ──
+  // ── Поиск: фиксируем запрос (Enter/кнопка) → уходит на сервер + в URL ──
   function applySearch() {
-    syncUrl(periodStart, period, category, search);
+    setAppliedSearch(search);
+    syncUrl(periodStart, period, category, search, includeDrafts);
   }
 
   // ── Пустое состояние ──
@@ -328,7 +358,7 @@ function CalendarPageInner() {
                 key={p}
                 onClick={() => {
                   setPeriod(p);
-                  syncUrl(periodStart, p, category, search);
+                  syncUrl(periodStart, p, category, appliedSearch, includeDrafts);
                 }}
                 className={`px-3 py-1.5 transition-colors ${
                   period === p
@@ -346,7 +376,7 @@ function CalendarPageInner() {
             value={category}
             onChange={(e) => {
               setCategory(e.target.value);
-              syncUrl(periodStart, period, e.target.value, search);
+              syncUrl(periodStart, period, e.target.value, appliedSearch, includeDrafts);
             }}
             className="border border-border rounded-md px-3 py-1.5 text-sm bg-surface text-ink-2 focus:outline-none focus:ring-2 focus:ring-accent-bright"
           >
@@ -373,7 +403,10 @@ function CalendarPageInner() {
             <input
               type="checkbox"
               checked={includeDrafts}
-              onChange={(e) => setIncludeDrafts(e.target.checked)}
+              onChange={(e) => {
+                setIncludeDrafts(e.target.checked);
+                syncUrl(periodStart, period, category, appliedSearch, e.target.checked);
+              }}
               className="rounded border-border"
             />
             Показывать черновики
@@ -576,7 +609,7 @@ function CalendarPageInner() {
             value={category}
             onChange={(e) => {
               setCategory(e.target.value);
-              syncUrl(periodStart, period, e.target.value, search);
+              syncUrl(periodStart, period, e.target.value, appliedSearch, includeDrafts);
             }}
             className="border border-border rounded-md px-2 py-2 text-sm bg-surface text-ink-2 focus:outline-none focus:ring-2 focus:ring-accent-bright"
           >
@@ -682,29 +715,36 @@ function CalendarPageInner() {
                         const isDraft = b.status === "DRAFT";
                         const isPending = b.status === "PENDING_APPROVAL";
                         return (
-                          <li
-                            key={b.id}
-                            className={`flex items-start gap-1.5 text-xs ${
-                              isDraft ? "opacity-50" : ""
-                            }`}
-                          >
-                            <span
-                              className={`mt-1 flex-shrink-0 w-2 h-2 rounded-full ${
-                                b.status === "CONFIRMED"
-                                  ? "bg-accent-bright"
-                                  : b.status === "ISSUED"
-                                    ? "bg-amber"
-                                    : isPending
-                                      ? "bg-amber-soft border border-amber"
-                                      : "bg-ink-3"
+                          <li key={b.id}>
+                            <Link
+                              href={`/bookings/${b.bookingId}`}
+                              className={`flex items-start gap-1.5 text-xs rounded px-1 py-0.5 -mx-1 hover:bg-surface-muted transition-colors ${
+                                isDraft ? "opacity-50" : ""
                               }`}
-                            />
-                            <span className="text-ink-2">
-                              {b.clientName} · {b.quantity} шт.
-                              {isPending && (
-                                <span className="text-amber"> · на согласовании</span>
-                              )}
-                            </span>
+                            >
+                              <span
+                                className={`mt-1 flex-shrink-0 w-2 h-2 rounded-full ${
+                                  b.status === "CONFIRMED"
+                                    ? "bg-accent-bright"
+                                    : b.status === "ISSUED"
+                                      ? "bg-amber"
+                                      : isPending
+                                        ? "bg-amber-soft border border-amber"
+                                        : "bg-ink-3"
+                                }`}
+                              />
+                              <span className="min-w-0">
+                                <span className="text-ink font-medium truncate block">
+                                  {b.title}
+                                </span>
+                                <span className="text-ink-2">
+                                  {b.clientName} · {b.quantity} шт.
+                                  {isPending && (
+                                    <span className="text-amber"> · на согласовании</span>
+                                  )}
+                                </span>
+                              </span>
+                            </Link>
                           </li>
                         );
                       })}

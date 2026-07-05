@@ -8,6 +8,26 @@ import { apiFetch } from "../../../../src/lib/api";
 import { BookingForm, type BookingDetail } from "../../../../src/components/bookings/BookingForm";
 import { useCurrentUser } from "../../../../src/hooks/useCurrentUser";
 
+/** Женский род статуса брони — единый канон подписей (см. page.tsx statusText). */
+function statusLabel(s: BookingDetail["status"]): string {
+  switch (s) {
+    case "DRAFT":
+      return "Черновик";
+    case "PENDING_APPROVAL":
+      return "На согласовании";
+    case "CONFIRMED":
+      return "Подтверждена";
+    case "ISSUED":
+      return "Выдана";
+    case "RETURNED":
+      return "Возвращена";
+    case "CANCELLED":
+      return "Отменена";
+    default:
+      return s;
+  }
+}
+
 export default function BookingEditPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useCurrentUser();
@@ -47,7 +67,7 @@ export default function BookingEditPage() {
   if (!editableStatuses.includes(booking.status)) {
     return (
       <div className="p-8 text-center text-ink-2">
-        Редактирование недоступно для статуса «{booking.status}».{" "}
+        Редактирование недоступно для статуса «{statusLabel(booking.status)}».{" "}
         <Link href={`/bookings/${id}`} className="underline">
           Открыть бронь
         </Link>

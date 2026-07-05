@@ -2,8 +2,16 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { apiFetch } from "../../src/lib/api";
+
+// Принимаем ?from= только как относительный путь своего домена:
+// одиночный «/…», но не «//host» и не «/\». Иначе — на /day.
+// Защита от open-redirect на странице логина (фишинг-вектор).
+function safeRedirect(from: string | null): string {
+  if (!from) return "/day";
+  if (from[0] !== "/" || from[1] === "/" || from[1] === "\\") return "/day";
+  return from;
+}
 
 type LoginResponse = {
   user: { userId: string; username: string; role: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" };
@@ -20,7 +28,7 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("from") || "/day";
+  const redirectTo = safeRedirect(searchParams.get("from"));
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -56,11 +64,9 @@ function LoginForm() {
     <main className="min-h-screen bg-accent flex items-center justify-center p-6">
       <div className="w-full max-w-[360px]">
         <div className="text-center mb-8">
-          <Link href="/" className="inline-block">
-            <h1 className="text-xl font-semibold text-white tracking-tight">
-              Svetobaza Rental
-            </h1>
-          </Link>
+          <h1 className="text-xl font-semibold text-white tracking-tight">
+            Svetobaza Rental
+          </h1>
           <p className="text-accent-border text-xs mt-1.5 eyebrow">Вход в систему</p>
         </div>
 
@@ -112,15 +118,6 @@ function LoginForm() {
           >
             {loading ? "Вход..." : "Войти"}
           </button>
-
-          <div className="pt-2 text-center">
-            <Link
-              href="/"
-              className="text-xs text-ink-3 hover:text-ink-2 transition-colors"
-            >
-              ← На главную
-            </Link>
-          </div>
 
           {process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true" && (
             <div className="pt-4 mt-4 border-t border-border">

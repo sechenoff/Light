@@ -26,7 +26,7 @@ function isoDaysFromNow(days: number): string {
 }
 
 describe("DayProblemAlert (MD-6)", () => {
-  it("показывает амбер-алерт, когда есть EXPECTED с прошедшим expectedBackDate", async () => {
+  it("показывает rose-алерт со счётчиком, когда есть EXPECTED с прошедшим expectedBackDate", async () => {
     mockProblemItems([
       { id: "p1", status: "EXPECTED", expectedBackDate: isoDaysFromNow(-3) },
       { id: "p2", status: "EXPECTED", expectedBackDate: isoDaysFromNow(-1) },
@@ -37,9 +37,11 @@ describe("DayProblemAlert (MD-6)", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText(/Потеряшки: 2 единицы просрочили срок досдачи/),
+        screen.getByText(/Потеряшки: единицы просрочили срок досдачи/),
       ).toBeInTheDocument(),
     );
+    // счётчик просроченных вынесен в бейдж
+    expect(screen.getByText("2")).toBeInTheDocument();
     const link = screen.getByRole("link", { name: "Реестр →" });
     expect(link).toHaveAttribute("href", "/warehouse/problems");
   });

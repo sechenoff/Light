@@ -1,5 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
+
 import { DayTasksWidget } from "../DayTasksWidget";
 
 const ORIGINAL_FETCH = global.fetch;
@@ -61,5 +66,21 @@ describe("DayTasksWidget", () => {
     await waitFor(() =>
       expect(screen.getByText("Задач на сегодня нет")).toBeInTheDocument(),
     );
+  });
+
+  it("shows loading (not empty) while parent dashboard is still null", () => {
+    // dashboard === null означает «родитель ещё грузит» — виджет не должен
+    // мелькать ложным «Задач на сегодня нет».
+    render(<DayTasksWidget dashboard={null} />);
+
+    expect(screen.getByText("Загрузка…")).toBeInTheDocument();
+    expect(screen.queryByText("Задач на сегодня нет")).not.toBeInTheDocument();
+  });
+
+  it("renders empty state immediately when dashboard prop has empty myTasks", () => {
+    render(<DayTasksWidget dashboard={{ myTasks: [] }} />);
+
+    expect(screen.getByText("Задач на сегодня нет")).toBeInTheDocument();
+    expect(screen.queryByText("Загрузка…")).not.toBeInTheDocument();
   });
 });

@@ -108,9 +108,40 @@ router.get("/categories", async (_req, res, next) => {
   }
 });
 
+// Нормализация для поиска дублей: тримминг + регистронезависимость (ru-RU),
+// схлопывание внутренних пробелов. «Aputure LS 600d» == «aputure  ls 600d».
+function normalizeForDedup(value: string | null | undefined): string {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU");
+}
+
 router.post("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const body = equipmentCreateSchema.parse(req.body);
+
+    // eq-dup: не даём завести прибор дважды — иначе брони и остатки расщепятся
+    // между двумя строками и «Доступно» будет врать. Совпадением считаем
+    // одинаковые name (+ brand + model) без учёта регистра и лишних пробелов.
+    const needleName = normalizeForDedup(body.name);
+    const needleBrand = normalizeForDedup(body.brand);
+    const needleModel = normalizeForDedup(body.model);
+    const existingRows = await prisma.equipment.findMany({
+      select: { id: true, name: true, brand: true, model: true },
+    });
+    const duplicate = existingRows.find(
+      (e) =>
+        normalizeForDedup(e.name) === needleName &&
+        normalizeForDedup(e.brand) === needleBrand &&
+        normalizeForDedup(e.model) === needleModel,
+    );
+    if (duplicate) {
+      const label = [body.name.trim(), body.brand?.trim(), body.model?.trim()].filter(Boolean).join(" · ");
+      return res.status(409).json({
+        message: `Похожая позиция уже есть: «${label}». Отредактируйте существующую вместо создания дубля.`,
+        code: "EQUIPMENT_DUPLICATE",
+        duplicateId: duplicate.id,
+      });
+    }
+
     const max = await prisma.equipment.aggregate({ _max: { sortOrder: true } });
     const nextSortOrder = (max._max.sortOrder ?? -1) + 1;
     const created = await prisma.equipment.create({

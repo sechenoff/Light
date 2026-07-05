@@ -222,6 +222,12 @@ export default function BookingDetailPage() {
   const [cancelDepositOpen, setCancelDepositOpen] = useState(false);
   const [creditNoteOpen, setCreditNoteOpen] = useState(false);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  // F-EXTEND: продление выданной (ISSUED) брони — инлайн-поле новой даты возврата.
+  const [extendOpen, setExtendOpen] = useState(false);
+  const [extendEndDate, setExtendEndDate] = useState("");
+  const [extendBusy, setExtendBusy] = useState(false);
+  // F-EXTEND: повторная отправка на согласование правленной CONFIRMED-брони (WAREHOUSE).
+  const [resubmitBusy, setResubmitBusy] = useState(false);
 
   // ── Ретро-редактирование закрытой брони (SUPER_ADMIN + RETURNED) ──────────
   // Меняется: название проекта, комментарий, % скидки, состав позиций
@@ -397,6 +403,85 @@ export default function BookingDetailPage() {
       window.location.href = "/bookings";
     } catch (e: any) {
       toast.error(e?.message ?? "Не удалось архивировать бронь");
+    }
+  }
+
+  /**
+   * F-EXTEND (1): продлить выданную бронь. Оператор вводит новую дату возврата,
+   * шлём PATCH с extendEndDate. Бэкенд-контракт (PATCH ISSUED с extendEndDate)
+   * реализует кластер C-BOOK-API — если сервер его ещё не принимает, PATCH
+   * вернёт 409 BOOKING_EDIT_FORBIDDEN, и мы показываем это тостом, не роняя UI.
+   */
+  function openExtend() {
+    if (!booking) return;
+    // Префилл текущей датой возврата в формате datetime-local (Europe/Moscow).
+    const d = new Date(booking.endDate);
+    // Приводим к московскому времени и парсим компоненты в формат datetime-local.
+    const parts = new Intl.DateTimeFormat("ru-RU", {
+      timeZone: "Europe/Moscow",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(d);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+    setExtendEndDate(`${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`);
+    setExtendOpen(true);
+  }
+
+  async function submitExtend() {
+    if (!booking || extendBusy) return;
+    if (!extendEndDate) {
+      toast.error("Укажите новую дату возврата");
+      return;
+    }
+    const nextEnd = new Date(extendEndDate);
+    if (Number.isNaN(nextEnd.getTime())) {
+      toast.error("Некорректная дата возврата");
+      return;
+    }
+    if (nextEnd.getTime() <= new Date(booking.endDate).getTime()) {
+      toast.error("Новая дата возврата должна быть позже текущей");
+      return;
+    }
+    setExtendBusy(true);
+    try {
+      await apiFetch(`/api/bookings/${booking.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ extendEndDate: nextEnd.toISOString() }),
+      });
+      toast.success("Аренда продлена");
+      setExtendOpen(false);
+      setExtendEndDate("");
+      await reloadBooking();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Не удалось продлить аренду");
+    } finally {
+      setExtendBusy(false);
+    }
+  }
+
+  /**
+   * F-EXTEND (2): WAREHOUSE правил уже подтверждённую бронь и хочет отправить её
+   * на повторное согласование. Бэкенд-переход CONFIRMED → PENDING_APPROVAL
+   * реализует кластер C-BOOK-API. Пока submit-for-approval принимает только
+   * DRAFT — сервер вернёт 409, показываем тостом. Если сервер вернёт бронь в
+   * PENDING_APPROVAL — состояние обновится и страница переключится на экран
+   * согласования (для SA) или покажет баннер «на согласовании».
+   */
+  async function resubmitForApproval() {
+    if (!booking || resubmitBusy) return;
+    if (!confirm("Отправить изменённую бронь на повторное согласование руководителю?")) return;
+    setResubmitBusy(true);
+    try {
+      const data = await apiFetch<{ booking: BookingDetail }>(
+        `/api/bookings/${booking.id}/submit-for-approval`,
+        { method: "POST" },
+      );
+      setBooking(data.booking);
+      toast.success("Бронь отправлена на повторное согласование");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Не удалось отправить на согласование");
+    } finally {
+      setResubmitBusy(false);
     }
   }
 
@@ -843,6 +928,32 @@ export default function BookingDetailPage() {
                     Вернуть
                   </button>
                 )}
+                {/* F-EXTEND (1): продление выданной брони — только SUPER_ADMIN.
+                    Клиент оставил оборудование ещё на день — сдвигаем дату
+                    возврата, не дожидаясь физического возврата. */}
+                {booking.status === "ISSUED" && user?.role === "SUPER_ADMIN" && !extendOpen && (
+                  <button
+                    type="button"
+                    disabled={lifecycleBusy}
+                    onClick={openExtend}
+                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
+                  >
+                    Продлить аренду
+                  </button>
+                )}
+                {/* F-EXTEND (2): бронь правили после одобрения — WAREHOUSE может
+                    отправить её на повторное согласование руководителю. */}
+                {booking.status === "CONFIRMED" && user?.role === "WAREHOUSE" && (
+                  <button
+                    type="button"
+                    disabled={resubmitBusy}
+                    onClick={resubmitForApproval}
+                    className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-white transition-colors disabled:opacity-40"
+                    title="Отправить изменённую бронь на повторное согласование"
+                  >
+                    {resubmitBusy ? "Отправляю…" : "На согласование"}
+                  </button>
+                )}
                 {/* «Отменить» только там, где сервер разрешает cancel:
                     из ISSUED допустим лишь return (allowedActionsByStatus),
                     и cancel-with-deposit тоже ограничен этими тремя статусами —
@@ -887,6 +998,47 @@ export default function BookingDetailPage() {
               </button>
             )}
           </div>
+          {/* F-EXTEND (1): инлайн-поле продления выданной брони. */}
+          {extendOpen && booking && booking.status === "ISSUED" && (
+            <div className="w-full mt-3 rounded-lg border border-border bg-surface-subtle p-3 no-print">
+              <p className="eyebrow mb-2">Продлить аренду</p>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="block">
+                  <span className="block mb-1 text-xs text-ink-3">Новая дата возврата</span>
+                  <input
+                    type="datetime-local"
+                    value={extendEndDate}
+                    onChange={(e) => setExtendEndDate(e.target.value)}
+                    className="rounded border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={extendBusy}
+                  onClick={submitExtend}
+                  className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors disabled:opacity-40"
+                >
+                  {extendBusy ? "Сохраняю…" : "Продлить"}
+                </button>
+                <button
+                  type="button"
+                  disabled={extendBusy}
+                  onClick={() => { setExtendOpen(false); setExtendEndDate(""); }}
+                  className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
+                >
+                  Отмена
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-ink-3">
+                Текущая дата возврата:{" "}
+                {new Date(booking.endDate).toLocaleString("ru-RU", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                  timeZone: "Europe/Moscow",
+                })}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -896,18 +1048,69 @@ export default function BookingDetailPage() {
         <div className="mt-4 text-rose">{err}</div>
       ) : booking ? (
         booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN" ? (
-          <ApprovalReviewView
-            booking={booking}
-            onReload={() => {
-              // Перезагрузка через общий apiFetch-хелпер (проверяет res.ok,
-              // парсит ошибки, идёт через прокси с X-API-Key). Раньше был raw
-              // fetch с пустым .catch — сбой оставлял устаревшее состояние молча.
-              reloadBooking().catch((e) =>
-                toast.error(e instanceof Error ? e.message : "Не удалось обновить бронь"),
-              );
-            }}
-            currentUser={user!}
-          />
+          <>
+            {/* Экран согласования (ApprovalReviewView) даёт только «Одобрить»/
+                «Отклонить»/«Редактировать». Но сервер разрешает cancel из
+                PENDING_APPROVAL, а руководителю бывает нужно сразу отменить
+                бронь (клиент отказался) или отправить в архив, не выдумывая
+                причину отклонения. Плюс показываем уже полученную оплату —
+                депозит мог быть записан ещё на DRAFT и на экране согласования
+                финансы иначе не видны. */}
+            {!isArchived && (
+              <div className="mb-3 flex flex-wrap items-center justify-end gap-2 no-print">
+                {Number(booking.amountPaid ?? "0") > 0 && (
+                  <span className="mr-auto text-xs text-ink-3">
+                    Уже оплачено:{" "}
+                    <span className="mono-num text-ink-2">
+                      {formatMoneyRub(booking.amountPaid ?? "0")}
+                    </span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  disabled={lifecycleBusy}
+                  onClick={() => runLifecycleAction("cancel")}
+                  className="rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors disabled:opacity-40"
+                >
+                  Отменить бронь
+                </button>
+                <button
+                  type="button"
+                  onClick={archiveBooking}
+                  className="rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors"
+                  title="Отправить в архив (можно восстановить из /bookings/archive)"
+                >
+                  В архив
+                </button>
+              </div>
+            )}
+            {/* Модалка распоряжения депозитом при отмене — runLifecycleAction
+                открывает её, когда amountPaid > 0. Основной экземпляр живёт в
+                ветке обычного вида ниже, но она там не смонтирована при
+                showApprovalView, поэтому дублируем здесь. */}
+            <CancelWithDepositModal
+              open={cancelDepositOpen}
+              onClose={() => setCancelDepositOpen(false)}
+              bookingId={booking.id}
+              bookingDisplayName={booking.displayName ?? booking.projectName}
+              clientId={booking.client.id}
+              clientName={booking.client.name}
+              depositTotal={Number(booking.amountPaid ?? "0")}
+              onCancelled={() => { setCancelDepositOpen(false); reloadBooking(); }}
+            />
+            <ApprovalReviewView
+              booking={booking}
+              onReload={() => {
+                // Перезагрузка через общий apiFetch-хелпер (проверяет res.ok,
+                // парсит ошибки, идёт через прокси с X-API-Key). Раньше был raw
+                // fetch с пустым .catch — сбой оставлял устаревшее состояние молча.
+                reloadBooking().catch((e) =>
+                  toast.error(e instanceof Error ? e.message : "Не удалось обновить бронь"),
+                );
+              }}
+              currentUser={user!}
+            />
+          </>
         ) : (
         <div className={`mt-4 ${retroEditMode ? "pb-24" : ""}`}>
           {retroEditMode && (
@@ -1637,11 +1840,6 @@ export default function BookingDetailPage() {
                     </div>
                   ) : (
                     <div className="text-ink-3 text-sm">Нет сессий сканирования</div>
-                  )}
-                  {booking.status === "CONFIRMED" && (booking.scanSessions ?? []).some(s => s.operation === "ISSUE" && s.status === "COMPLETED") && (
-                    <div className="text-xs text-accent bg-accent-soft border border-accent-border rounded-lg px-3 py-2">
-                      Выдача отсканирована — переведите заказ в статус «Выдан»
-                    </div>
                   )}
                   {(booking.status === "CONFIRMED" || booking.status === "ISSUED") && (
                     <Link

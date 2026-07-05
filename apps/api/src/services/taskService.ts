@@ -41,6 +41,112 @@ export async function validateAssignee(
   }
 }
 
+// ─── validateRelatedBooking / Client ──────────────────────────────────────────
+
+/**
+ * Проверяет, что relatedBookingId ссылается на существующую бронь.
+ * null/undefined — допустимо (задача без привязки).
+ */
+export async function validateRelatedBooking(
+  bookingId: string | null | undefined,
+  tx?: TxClient,
+): Promise<void> {
+  if (bookingId == null) return;
+  const client = tx ?? prisma;
+  const booking = await (client as any).booking.findUnique({
+    where: { id: bookingId },
+    select: { id: true },
+  });
+  if (!booking) {
+    throw new HttpError(400, "Бронь не найдена", "INVALID_RELATED_BOOKING");
+  }
+}
+
+/**
+ * Проверяет, что relatedClientId ссылается на существующего клиента.
+ * null/undefined — допустимо.
+ */
+export async function validateRelatedClient(
+  clientId: string | null | undefined,
+  tx?: TxClient,
+): Promise<void> {
+  if (clientId == null) return;
+  const client = tx ?? prisma;
+  const found = await (client as any).client.findUnique({
+    where: { id: clientId },
+    select: { id: true },
+  });
+  if (!found) {
+    throw new HttpError(400, "Клиент не найден", "INVALID_RELATED_CLIENT");
+  }
+}
+
+// ─── enrichTasksWithRelated ───────────────────────────────────────────────────
+
+/** Краткая карточка связанной брони для чипа-ссылки. */
+export interface RelatedBookingRef {
+  id: string;
+  projectName: string;
+  clientId: string;
+  clientName: string;
+}
+
+/** Краткая карточка связанного клиента для чипа-ссылки. */
+export interface RelatedClientRef {
+  id: string;
+  name: string;
+}
+
+/**
+ * Обогащает задачи связанной бронью/клиентом одним batch-запросом (без N+1).
+ * Для брони подтягивается projectName + имя клиента. Явный relatedClientId
+ * резолвится отдельно (задача может быть привязана к клиенту без брони).
+ */
+export async function enrichTasksWithRelated<
+  T extends { relatedBookingId: string | null; relatedClientId: string | null },
+>(tasks: T[]): Promise<Array<T & {
+  relatedBooking: RelatedBookingRef | null;
+  relatedClient: RelatedClientRef | null;
+}>> {
+  if (tasks.length === 0) return [] as any;
+
+  const bookingIds = new Set<string>();
+  const clientIds = new Set<string>();
+  for (const t of tasks) {
+    if (t.relatedBookingId) bookingIds.add(t.relatedBookingId);
+    if (t.relatedClientId) clientIds.add(t.relatedClientId);
+  }
+
+  const bookings =
+    bookingIds.size > 0
+      ? await prisma.booking.findMany({
+          where: { id: { in: Array.from(bookingIds) } },
+          select: { id: true, projectName: true, clientId: true, client: { select: { name: true } } },
+        })
+      : [];
+  const bookingMap = new Map(
+    bookings.map((b) => [
+      b.id,
+      { id: b.id, projectName: b.projectName, clientId: b.clientId, clientName: b.client.name },
+    ]),
+  );
+
+  const clients =
+    clientIds.size > 0
+      ? await prisma.client.findMany({
+          where: { id: { in: Array.from(clientIds) } },
+          select: { id: true, name: true },
+        })
+      : [];
+  const clientMap = new Map(clients.map((c) => [c.id, { id: c.id, name: c.name }]));
+
+  return tasks.map((t) => ({
+    ...t,
+    relatedBooking: t.relatedBookingId ? (bookingMap.get(t.relatedBookingId) ?? null) : null,
+    relatedClient: t.relatedClientId ? (clientMap.get(t.relatedClientId) ?? null) : null,
+  })) as any;
+}
+
 // ─── enrichTasksWithUsers ─────────────────────────────────────────────────────
 
 /**
@@ -85,11 +191,15 @@ export interface CreateTaskInput {
   urgent?: boolean;
   dueDate?: string | null; // "YYYY-MM-DD" or null
   assignedTo?: string | null;
+  relatedBookingId?: string | null;
+  relatedClientId?: string | null;
 }
 
 export async function createTask(input: CreateTaskInput, actor: Actor) {
   return prisma.$transaction(async (tx) => {
     await validateAssignee(input.assignedTo, tx as unknown as TxClient);
+    await validateRelatedBooking(input.relatedBookingId, tx as unknown as TxClient);
+    await validateRelatedClient(input.relatedClientId, tx as unknown as TxClient);
 
     const task = await tx.task.create({
       data: {
@@ -99,6 +209,8 @@ export async function createTask(input: CreateTaskInput, actor: Actor) {
         dueDate: input.dueDate ? fromMoscowDateString(input.dueDate) : null,
         createdBy: actor.userId,
         assignedTo: input.assignedTo ?? null,
+        relatedBookingId: input.relatedBookingId ?? null,
+        relatedClientId: input.relatedClientId ?? null,
         status: "OPEN",
       },
     });
@@ -125,6 +237,8 @@ export interface UpdateTaskInput {
   dueDate?: string | null; // "YYYY-MM-DD" or null
   assignedTo?: string | null;
   urgent?: boolean;
+  relatedBookingId?: string | null;
+  relatedClientId?: string | null;
 }
 
 export async function updateTask(id: string, patch: UpdateTaskInput, actor: Actor) {
@@ -138,8 +252,10 @@ export async function updateTask(id: string, patch: UpdateTaskInput, actor: Acto
     const isAssignee = existing.assignedTo === actor.userId;
     const isSA = actor.role === "SUPER_ADMIN";
 
-    // Content fields: title, description, dueDate, assignedTo
-    const contentKeys: (keyof UpdateTaskInput)[] = ["title", "description", "dueDate", "assignedTo"];
+    // Content fields: title, description, dueDate, assignedTo, related links
+    const contentKeys: (keyof UpdateTaskInput)[] = [
+      "title", "description", "dueDate", "assignedTo", "relatedBookingId", "relatedClientId",
+    ];
     const wantsContentChange = contentKeys.some((k) => k in patch);
 
     if (wantsContentChange && !isCreator && !isSA) {
@@ -157,6 +273,12 @@ export async function updateTask(id: string, patch: UpdateTaskInput, actor: Acto
     if (assignedToChanged) {
       await validateAssignee(patch.assignedTo, tx as unknown as TxClient);
     }
+    if ("relatedBookingId" in patch && patch.relatedBookingId !== existing.relatedBookingId) {
+      await validateRelatedBooking(patch.relatedBookingId, tx as unknown as TxClient);
+    }
+    if ("relatedClientId" in patch && patch.relatedClientId !== existing.relatedClientId) {
+      await validateRelatedClient(patch.relatedClientId, tx as unknown as TxClient);
+    }
 
     // Build update data
     const updateData: Record<string, unknown> = {};
@@ -164,6 +286,8 @@ export async function updateTask(id: string, patch: UpdateTaskInput, actor: Acto
     if ("description" in patch) updateData.description = patch.description ?? null;
     if ("urgent" in patch && patch.urgent !== undefined) updateData.urgent = patch.urgent;
     if ("assignedTo" in patch) updateData.assignedTo = patch.assignedTo ?? null;
+    if ("relatedBookingId" in patch) updateData.relatedBookingId = patch.relatedBookingId ?? null;
+    if ("relatedClientId" in patch) updateData.relatedClientId = patch.relatedClientId ?? null;
     if ("dueDate" in patch) {
       updateData.dueDate = patch.dueDate ? fromMoscowDateString(patch.dueDate) : null;
     }
@@ -415,7 +539,8 @@ export async function listTasks(input: ListTasksInput, actor: Actor) {
         ? `${last.completedAt.toISOString()}|${last.id}`
         : null
       : last.id;
-  const enriched = await enrichTasksWithUsers(tasks);
+  const enrichedUsers = await enrichTasksWithUsers(tasks);
+  const enriched = await enrichTasksWithRelated(enrichedUsers);
 
   const withAggregates = enriched.map((t: any) => {
     const checklist = (t.checklist ?? []) as Array<{ done: boolean }>;
@@ -455,9 +580,10 @@ export async function getTask(id: string) {
 
   const userMap = new Map(users.map((u) => [u.id, u]));
 
-  const [comments, checklist] = await Promise.all([
+  const [comments, checklist, [withRelated]] = await Promise.all([
     listComments(task.id),
     listChecklist(task.id),
+    enrichTasksWithRelated([task]),
   ]);
 
   return {
@@ -465,9 +591,46 @@ export async function getTask(id: string) {
     createdByUser: userMap.get(task.createdBy) ?? null,
     assignedToUser: task.assignedTo ? (userMap.get(task.assignedTo) ?? null) : null,
     completedByUser: task.completedBy ? (userMap.get(task.completedBy) ?? null) : null,
+    relatedBooking: withRelated?.relatedBooking ?? null,
+    relatedClient: withRelated?.relatedClient ?? null,
     comments,
     checklist,
   };
+}
+
+// ─── searchBookingsForLink (task↔booking picker) ──────────────────────────────
+
+/**
+ * Лёгкий поиск броней для привязки задачи. Возвращает id + projectName + имя
+ * клиента, без вложенных позиций/смет. Регистронезависимый поиск по-русски
+ * (как в bookings.ts eq-search): SQLite LIKE игнорит кириллицу, поэтому
+ * фильтруем кандидатов в приложении через toLocaleLowerCase("ru-RU").
+ * DRAFT-брони включены — менеджер может ставить задачу и на черновик.
+ * Архивные (deletedAt != null) исключены.
+ */
+export async function searchBookingsForLink(
+  q: string,
+  limit = 10,
+): Promise<RelatedBookingRef[]> {
+  const needle = q.trim().toLocaleLowerCase("ru-RU");
+  if (needle.length === 0) return [];
+
+  const candidates = await prisma.booking.findMany({
+    where: { deletedAt: null },
+    select: { id: true, projectName: true, clientId: true, client: { select: { name: true } } },
+    orderBy: { startDate: "desc" },
+    take: 200,
+  });
+
+  const matched: RelatedBookingRef[] = [];
+  for (const c of candidates) {
+    const hay = `${c.projectName} ${c.client.name}`.toLocaleLowerCase("ru-RU");
+    if (hay.includes(needle)) {
+      matched.push({ id: c.id, projectName: c.projectName, clientId: c.clientId, clientName: c.client.name });
+      if (matched.length >= limit) break;
+    }
+  }
+  return matched;
 }
 
 // ─── getMyTasksForToday (dashboard widget) ────────────────────────────────────

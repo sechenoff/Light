@@ -915,3 +915,213 @@ describe("GET /api/tasks?sort=completedAt-desc", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ─── 11. Связь задачи с бронью/клиентом (F-TASKLINK) ──────────────────────────
+
+describe("Task ↔ booking/client link", () => {
+  let linkClient: any;
+  let linkBooking: any;
+
+  beforeAll(async () => {
+    linkClient = await prisma.client.create({
+      data: { name: `Мосфильм ${Date.now()}` },
+    });
+    linkBooking = await prisma.booking.create({
+      data: {
+        clientId: linkClient.id,
+        projectName: "Съёмка рекламы",
+        startDate: new Date("2026-06-01T00:00:00.000Z"),
+        endDate: new Date("2026-06-03T00:00:00.000Z"),
+      },
+    });
+  });
+
+  it("POST создаёт задачу с relatedBookingId + relatedClientId", async () => {
+    const res = await request(app)
+      .post("/api/tasks")
+      .set(AUTH_SA())
+      .send({
+        title: "Позвонить клиенту по брони",
+        relatedBookingId: linkBooking.id,
+        relatedClientId: linkClient.id,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.task.relatedBookingId).toBe(linkBooking.id);
+    expect(res.body.task.relatedClientId).toBe(linkClient.id);
+    // enrichOne подтягивает карточку брони для чипа
+    expect(res.body.task.relatedBooking).toMatchObject({
+      id: linkBooking.id,
+      projectName: "Съёмка рекламы",
+      clientName: linkClient.name,
+    });
+  });
+
+  it("POST с несуществующей бронью → 400 INVALID_RELATED_BOOKING", async () => {
+    const res = await request(app)
+      .post("/api/tasks")
+      .set(AUTH_SA())
+      .send({ title: "Кривая привязка", relatedBookingId: "nope-booking-id" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details ?? res.body.code).toMatch(/INVALID_RELATED_BOOKING/);
+  });
+
+  it("POST с несуществующим клиентом → 400 INVALID_RELATED_CLIENT", async () => {
+    const res = await request(app)
+      .post("/api/tasks")
+      .set(AUTH_SA())
+      .send({ title: "Кривой клиент", relatedClientId: "nope-client-id" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details ?? res.body.code).toMatch(/INVALID_RELATED_CLIENT/);
+  });
+
+  it("GET /:id отдаёт relatedBooking с projectName + clientName", async () => {
+    const created = await createTaskDirect({
+      title: "Задача со связью",
+      status: "OPEN",
+      urgent: false,
+      createdBy: saUser.id,
+      relatedBookingId: linkBooking.id,
+    });
+
+    const res = await request(app).get(`/api/tasks/${created.id}`).set(AUTH_SA());
+
+    expect(res.status).toBe(200);
+    expect(res.body.task.relatedBooking).toMatchObject({
+      id: linkBooking.id,
+      projectName: "Съёмка рекламы",
+      clientName: linkClient.name,
+    });
+  });
+
+  it("GET список включает relatedBooking (без N+1, batch lookup)", async () => {
+    const created = await createTaskDirect({
+      title: "Список со связью",
+      status: "OPEN",
+      urgent: false,
+      createdBy: saUser.id,
+      assignedTo: saUser.id,
+      relatedBookingId: linkBooking.id,
+    });
+
+    const res = await request(app)
+      .get("/api/tasks?filter=all&limit=200")
+      .set(AUTH_SA());
+
+    expect(res.status).toBe(200);
+    const found = res.body.items.find((t: any) => t.id === created.id);
+    expect(found).toBeDefined();
+    expect(found.relatedBooking?.projectName).toBe("Съёмка рекламы");
+  });
+
+  it("PATCH привязывает и отвязывает бронь; аудит TASK_UPDATE", async () => {
+    const createRes = await request(app)
+      .post("/api/tasks")
+      .set(AUTH_SA())
+      .send({ title: "Задача для привязки" });
+    const taskId = createRes.body.task.id;
+
+    // Привязка
+    const attach = await request(app)
+      .patch(`/api/tasks/${taskId}`)
+      .set(AUTH_SA())
+      .send({ relatedBookingId: linkBooking.id });
+    expect(attach.status).toBe(200);
+    expect(attach.body.task.relatedBookingId).toBe(linkBooking.id);
+    expect(attach.body.task.relatedBooking?.projectName).toBe("Съёмка рекламы");
+
+    const audit = await prisma.auditEntry.findFirst({
+      where: { entityType: "Task", entityId: taskId, action: "TASK_UPDATE" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(audit).not.toBeNull();
+    const after = typeof audit!.after === "string" ? JSON.parse(audit!.after) : audit!.after;
+    expect(after.relatedBookingId).toBe(linkBooking.id);
+
+    // Отвязка (null)
+    const detach = await request(app)
+      .patch(`/api/tasks/${taskId}`)
+      .set(AUTH_SA())
+      .send({ relatedBookingId: null });
+    expect(detach.status).toBe(200);
+    expect(detach.body.task.relatedBookingId).toBeNull();
+    expect(detach.body.task.relatedBooking).toBeNull();
+  });
+
+  it("PATCH на несуществующую бронь → 400 INVALID_RELATED_BOOKING", async () => {
+    const createRes = await request(app)
+      .post("/api/tasks")
+      .set(AUTH_SA())
+      .send({ title: "Задача для кривой привязки" });
+    const taskId = createRes.body.task.id;
+
+    const res = await request(app)
+      .patch(`/api/tasks/${taskId}`)
+      .set(AUTH_SA())
+      .send({ relatedBookingId: "no-such-booking" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details ?? res.body.code).toMatch(/INVALID_RELATED_BOOKING/);
+  });
+});
+
+// ─── 12. GET /booking-search — поиск броней для привязки ──────────────────────
+
+describe("GET /api/tasks/booking-search", () => {
+  let searchClient: any;
+
+  beforeAll(async () => {
+    searchClient = await prisma.client.create({
+      data: { name: `Ленфильм ${Date.now()}` },
+    });
+    await prisma.booking.create({
+      data: {
+        clientId: searchClient.id,
+        projectName: "Клип для группы",
+        startDate: new Date("2026-07-01T00:00:00.000Z"),
+        endDate: new Date("2026-07-02T00:00:00.000Z"),
+      },
+    });
+  });
+
+  it("находит бронь по имени клиента (регистронезависимо, по-русски)", async () => {
+    const res = await request(app)
+      .get(`/api/tasks/booking-search?q=${encodeURIComponent("ленфильм")}`)
+      .set(AUTH_SA());
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.bookings)).toBe(true);
+    const found = res.body.bookings.find((b: any) => b.clientName === searchClient.name);
+    expect(found).toBeDefined();
+    expect(found.projectName).toBe("Клип для группы");
+  });
+
+  it("находит бронь по названию проекта", async () => {
+    const res = await request(app)
+      .get(`/api/tasks/booking-search?q=${encodeURIComponent("Клип для группы")}`)
+      .set(AUTH_SA());
+
+    expect(res.status).toBe(200);
+    expect(res.body.bookings.some((b: any) => b.projectName === "Клип для группы")).toBe(true);
+  });
+
+  it("пустой q → пустой массив", async () => {
+    const res = await request(app)
+      .get("/api/tasks/booking-search?q=")
+      .set(AUTH_SA());
+
+    expect(res.status).toBe(200);
+    expect(res.body.bookings).toEqual([]);
+  });
+
+  it("не перехватывается роутом GET /:id", async () => {
+    const res = await request(app)
+      .get("/api/tasks/booking-search?q=zzznomatch")
+      .set(AUTH_SA());
+    // Если бы ушло в /:id → 404 TASK_NOT_FOUND. Здесь — 200 с пустым списком.
+    expect(res.status).toBe(200);
+    expect(res.body.bookings).toEqual([]);
+  });
+});

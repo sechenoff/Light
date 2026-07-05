@@ -14,6 +14,20 @@ function greeting(): string {
   return "добрый вечер";
 }
 
+/**
+ * Число активных (ISSUED) броней — из totalCount ответа /api/lk/bookings,
+ * а не из длины страницы. lkApi.bookings() типизирован без totalCount
+ * (общий тип списка), поэтому здесь отдельный узкий запрос.
+ */
+async function fetchIssuedCount(): Promise<number> {
+  const res = await fetch("/api/lk/bookings?status=ISSUED", {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const body = (await res.json()) as { totalCount?: number; items?: unknown[] };
+  return body.totalCount ?? body.items?.length ?? 0;
+}
+
 export default function LkDashboardPage() {
   const { me } = useLkSession();
   const [recent, setRecent] = useState<LkBookingListItem[] | null>(null);
@@ -26,15 +40,17 @@ export default function LkDashboardPage() {
     (async () => {
       try {
         // lk-active-count: число активных раньше считалось из первой страницы
-        // общего списка (≤20) — занижалось. Запрашиваем ISSUED отдельным фильтром.
+        // общего списка (≤20) — занижалось. Запрашиваем ISSUED отдельным фильтром
+        // и берём totalCount из ответа (полное число по фильтру, а не размер
+        // страницы) — иначе счётчик снова упирался бы в limit при >20 бронях.
         const [b, active, d] = await Promise.all([
           lkApi.bookings(),
-          lkApi.bookings(undefined, "ISSUED"),
+          fetchIssuedCount(),
           lkApi.debt(),
         ]);
         if (cancelled) return;
         setRecent(b.items.slice(0, 5));
-        setActiveCount(active.items.length);
+        setActiveCount(active);
         setDebtTotal(d.totalOutstanding);
         setOverdueCount(d.overdueCount);
       } catch {

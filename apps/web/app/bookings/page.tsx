@@ -19,6 +19,7 @@ import {
   readListFiltersFromParams,
 } from "../../src/components/bookings/bookingListHelpers";
 import { formatRub, formatWaitingTime, pluralize } from "../../src/lib/format";
+import { toast } from "../../src/components/ToastProvider";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 
 type BookingItemMini = {
@@ -88,6 +89,11 @@ function BookingHistoryPageInner() {
   // Отмена ОПЛАЧЕННОЙ брони — как на странице брони: обязательная модалка
   // распоряжения депозитом (возврат / кредит / штраф), не простой cancel.
   const [cancelDepositRow, setCancelDepositRow] = useState<BookingRow | null>(null);
+  // Подтверждение отправки в архив — модалкой канона (не браузерный confirm()).
+  const [archiveRow, setArchiveRow] = useState<BookingRow | null>(null);
+  // Мягкий гард ранней выдачи (409 ISSUE_TOO_EARLY): подтверждение модалкой,
+  // при согласии повторяем действие с force: true. Храним строку и текст сервера.
+  const [earlyIssue, setEarlyIssue] = useState<null | { row: BookingRow; message: string }>(null);
 
   const PAGE_SIZE = 50;
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -186,13 +192,13 @@ function BookingHistoryPageInner() {
       case "PENDING_APPROVAL":
         return "На согласовании";
       case "CONFIRMED":
-        return "Подтверждено";
+        return "Подтверждена";
       case "ISSUED":
-        return "Выдано";
+        return "Выдана";
       case "RETURNED":
-        return "Возвращено";
+        return "Возвращена";
       case "CANCELLED":
-        return "Отменено";
+        return "Отменена";
     }
   };
 
@@ -211,13 +217,13 @@ function BookingHistoryPageInner() {
   };
 
   async function removeBooking(id: string) {
-    if (!confirm("Отправить бронь в архив?\n\nБронь пропадёт из списка, но останется в БД — её можно вернуть из /bookings/archive. Окончательное удаление — только оттуда.")) return;
     setBusyId(id);
     try {
       await apiFetch<{ ok: boolean }>(`/api/bookings/${id}`, { method: "DELETE" });
       setRows((prev) => prev.filter((r) => r.id !== id));
+      setArchiveRow(null);
     } catch (e: any) {
-      alert(e?.message ?? "Не удалось удалить бронь");
+      toast.error(e?.message ?? "Не удалось отправить бронь в архив");
     } finally {
       setBusyId(null);
     }
@@ -268,12 +274,29 @@ function BookingHistoryPageInner() {
       // выдача фиксируется сервером в аудите (forcedEarlyIssue).
       if (action === "issue" && !isForcedRetry && e?.code === "ISSUE_TOO_EARLY") {
         const serverMsg = typeof e?.message === "string" ? e.message : "До начала аренды больше суток.";
-        if (confirm(`${serverMsg}\n\nВыдать оборудование заранее?`)) {
-          await runStatusAction(id, "issue", { force: true });
-        }
+        const row = rows.find((r) => r.id === id);
+        if (row) setEarlyIssue({ row, message: serverMsg });
         return;
       }
-      alert(e?.message ?? "Не удалось обновить статус");
+      toast.error(e?.message ?? "Не удалось обновить статус");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // Одобрение из списка: PENDING_APPROVAL → CONFIRMED в один клик (SUPER_ADMIN).
+  // Отклонение справедливо требует причину (на /bookings/[id]), но одобрение —
+  // одно действие, поэтому без модалки. Строка обновляется точечно.
+  async function approveBooking(id: string) {
+    setBusyId(id);
+    try {
+      const data = await apiFetch<{ booking: Partial<BookingRow> }>(`/api/bookings/${id}/approve`, {
+        method: "POST",
+      });
+      mergeRowFromApi(id, data.booking ?? {});
+      toast.success("Бронь подтверждена, оборудование зарезервировано");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Не удалось одобрить бронь");
     } finally {
       setBusyId(null);
     }
@@ -320,6 +343,19 @@ function BookingHistoryPageInner() {
         <Link className="text-xs text-accent-bright hover:text-accent font-medium" href={`/bookings/${r.id}`}>
           Открыть
         </Link>
+        {/* Одобрение в один клик для руководителя — снимает ежедневную рутину
+            «алерт → список → открыть → одобрить». Отклонение с причиной
+            по-прежнему на /bookings/[id]. */}
+        {r.status === "PENDING_APPROVAL" && isSuperAdmin ? (
+          <button
+            type="button"
+            className="text-xs rounded border border-emerald-border text-emerald px-2 py-1 hover:bg-emerald-soft disabled:opacity-40"
+            disabled={busyId === r.id}
+            onClick={() => approveBooking(r.id)}
+          >
+            Одобрить
+          </button>
+        ) : null}
         {(["DRAFT", "CONFIRMED"].includes(r.status) || (r.status === "PENDING_APPROVAL" && isSuperAdmin)) ? (
           <Link
             href={`/bookings/${r.id}/edit`}
@@ -345,7 +381,7 @@ function BookingHistoryPageInner() {
             title="В архив (можно восстановить из /bookings/archive)"
             className="text-rose hover:text-rose/80 disabled:opacity-40"
             disabled={busyId === r.id}
-            onClick={() => removeBooking(r.id)}
+            onClick={() => setArchiveRow(r)}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6h18" />
@@ -404,7 +440,12 @@ function BookingHistoryPageInner() {
           label={statusText(r.status)}
         />
         {r.status === "PENDING_APPROVAL" && (() => {
-          const aging = formatWaitingTime(r.updatedAt, r.createdAt);
+          // Возраст ожидания считаем от createdAt — единственного стабильного
+          // момента: updatedAt сбрасывается любой мутацией брони (правка SA в
+          // PENDING_APPROVAL, пересчёт финансов), и «ждёт N дней» никогда не
+          // эскалировал бы для реально зависшей брони. Момента submit на Booking
+          // нет (schema), createdAt — корректная нижняя граница ожидания.
+          const aging = formatWaitingTime(null, r.createdAt);
           return aging ? (
             <div className={`mt-0.5 text-xs ${aging.className}`}>ждёт {aging.text}</div>
           ) : null;
@@ -491,10 +532,10 @@ function BookingHistoryPageInner() {
               <option value="">Все статусы брони</option>
               <option value="DRAFT">Черновик</option>
               <option value="PENDING_APPROVAL">На согласовании</option>
-              <option value="CONFIRMED">Подтверждено</option>
-              <option value="ISSUED">Выдано</option>
-              <option value="RETURNED">Возвращено</option>
-              <option value="CANCELLED">Отменено</option>
+              <option value="CONFIRMED">Подтверждена</option>
+              <option value="ISSUED">Выдана</option>
+              <option value="RETURNED">Возвращена</option>
+              <option value="CANCELLED">Отменена</option>
             </select>
             <select
               className="rounded border border-border px-2 py-1 text-xs bg-surface"
@@ -669,6 +710,44 @@ function BookingHistoryPageInner() {
         loading={confirmAction !== null && busyId === confirmAction.row.id}
         onClose={() => setConfirmAction(null)}
         onConfirm={handleConfirmAction}
+      />
+
+      <ConfirmActionModal
+        open={archiveRow !== null}
+        title="В архив"
+        subtitle={archiveRow ? bookingRowTitle(archiveRow) : undefined}
+        message={
+          "Отправить бронь в архив?\n\nБронь пропадёт из списка, но останется в БД — её можно вернуть из архива (/bookings/archive). Окончательное удаление — только оттуда."
+        }
+        confirmLabel="В архив"
+        tone="danger"
+        loading={archiveRow !== null && busyId === archiveRow.id}
+        onClose={() => setArchiveRow(null)}
+        onConfirm={() => {
+          if (archiveRow) removeBooking(archiveRow.id);
+        }}
+      />
+
+      <ConfirmActionModal
+        open={earlyIssue !== null}
+        title="Ранняя выдача"
+        subtitle={earlyIssue ? bookingRowTitle(earlyIssue.row) : undefined}
+        message={
+          earlyIssue
+            ? `${earlyIssue.message}\n\nВыдать оборудование заранее? Ранняя выдача будет зафиксирована в аудите.`
+            : ""
+        }
+        confirmLabel="Выдать заранее"
+        tone="primary"
+        loading={earlyIssue !== null && busyId === earlyIssue.row.id}
+        onClose={() => setEarlyIssue(null)}
+        onConfirm={() => {
+          if (earlyIssue) {
+            const id = earlyIssue.row.id;
+            setEarlyIssue(null);
+            runStatusAction(id, "issue", { force: true });
+          }
+        }}
       />
 
       {cancelDepositRow && (

@@ -12,9 +12,15 @@ type SummaryPanelProps = {
   itemCount: number;
   shifts: number;
   isLoadingQuote: boolean;
+  /** true, когда серверный пересчёт сметы упал — показываем предварительный
+   *  локальный расчёт с честной пометкой, а не выдаём его за «обновлено». */
+  quoteError?: boolean;
   checks: ValidationCheck[];
   // Create-mode buttons (required when mode="create" or mode not provided)
   onSubmitForApproval?: () => void;
+  /** SUPER_ADMIN-only: создать и сразу подтвердить (одобряющий сам себе).
+   *  Когда задан — становится основным CTA, «на согласование» уходит вторичным. */
+  onCreateAndConfirm?: () => void;
   onSaveDraft?: () => void;
   // Edit-mode button
   onSaveEdit?: () => void;
@@ -50,8 +56,10 @@ export function SummaryPanel({
   itemCount,
   shifts,
   isLoadingQuote,
+  quoteError = false,
   checks,
   onSubmitForApproval,
+  onCreateAndConfirm,
   onSaveDraft,
   onSaveEdit,
   canSubmit,
@@ -116,10 +124,19 @@ export function SummaryPanel({
       {/* Header */}
       <div className="flex items-baseline justify-between">
         <p className="eyebrow">Расчёт</p>
-        <span className="text-xs text-ink-3">
-          {isLoadingQuote ? "считаю..." : "обновлено сейчас"}
+        <span className={`text-xs ${quoteError && !isLoadingQuote ? "text-amber" : "text-ink-3"}`}>
+          {isLoadingQuote
+            ? "считаю..."
+            : quoteError
+              ? "не удалось пересчитать"
+              : "обновлено сейчас"}
         </span>
       </div>
+      {quoteError && !isLoadingQuote && (
+        <p className="-mt-2 text-[11px] text-amber">
+          Показан предварительный расчёт — сервер недоступен.
+        </p>
+      )}
 
       {/* Big total */}
       <div>
@@ -218,6 +235,35 @@ export function SummaryPanel({
               Отмена
             </a>
           )}
+        </div>
+      ) : onCreateAndConfirm ? (
+        // SUPER_ADMIN: прямой путь «создать и подтвердить». «На согласование»
+        // остаётся доступным вторичным действием, черновик — третьим.
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            disabled={!canSubmit || submitting}
+            onClick={onCreateAndConfirm}
+            className="w-full rounded bg-accent-bright px-4 py-2.5 text-sm font-medium text-white hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {submitting ? "Создание…" : "Создать и подтвердить →"}
+          </button>
+          <button
+            type="button"
+            disabled={!canSubmit || submitting}
+            onClick={onSubmitForApproval}
+            className="w-full rounded border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink-2 hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {submitting ? "Отправка…" : "Отправить на согласование"}
+          </button>
+          <button
+            type="button"
+            disabled={!canSubmit || submitting}
+            onClick={onSaveDraft}
+            className="w-full rounded border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink-2 hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {submitting ? "Сохранение…" : "Сохранить черновик"}
+          </button>
         </div>
       ) : (
         <div className="flex flex-col gap-2">

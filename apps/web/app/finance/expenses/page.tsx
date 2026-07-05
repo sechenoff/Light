@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
-import { formatRub } from "../../../src/lib/format";
+import { formatRub, pluralize } from "../../../src/lib/format";
+import { PERIOD_LABELS } from "../../../src/lib/periodUtils";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { PeriodSelector } from "../../../src/components/finance/PeriodSelector";
 import { ExpenseDocumentUpload } from "../../../src/components/finance/ExpenseDocumentUpload";
@@ -354,9 +355,14 @@ function ExpensesPageInner() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Удалить расход?")) return;
-    await apiFetch(`/api/expenses/${id}`, { method: "DELETE" });
-    const cancelled = { v: false };
-    await fetchAll(cancelled);
+    try {
+      await apiFetch(`/api/expenses/${id}`, { method: "DELETE" });
+      toast.success("Расход удалён");
+      const cancelled = { v: false };
+      await fetchAll(cancelled);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось удалить расход");
+    }
   };
 
   const handleApprove = async (id: string) => {
@@ -433,7 +439,7 @@ function ExpensesPageInner() {
             <p className="mono-num text-[24px] font-semibold text-rose leading-tight">
               −{formatRub(approvedTotal)}
             </p>
-            <p className="text-xs text-ink-3 mt-1">{approvedItems.length} операций</p>
+            <p className="text-xs text-ink-3 mt-1">{approvedItems.length} {pluralize(approvedItems.length, "операция", "операции", "операций")}</p>
           </div>
 
           {/* Pending */}
@@ -450,7 +456,7 @@ function ExpensesPageInner() {
               {formatRub(pendingTotal)}
             </p>
             <p className="text-xs text-amber mt-1">
-              {pendingItems.length} {pendingItems.length === 1 ? "операция" : "операции"} — {showPendingOnly ? "сбросить фильтр" : "открыть фильтр"}
+              {pendingItems.length} {pluralize(pendingItems.length, "операция", "операции", "операций")} — {showPendingOnly ? "сбросить фильтр" : "открыть фильтр"}
             </p>
           </button>
 
@@ -680,7 +686,7 @@ function ExpensesPageInner() {
         {/* Mobile card list */}
         <div className="md:hidden">
           <div className="mb-3">
-            <p className="eyebrow text-rose mb-1">Расходы · {period}</p>
+            <p className="eyebrow text-rose mb-1">Расходы · {PERIOD_LABELS[period]}</p>
             <p className="mono-num text-[26px] font-semibold text-rose">−{formatRub(totalAll)}</p>
             <p className="text-xs text-ink-3 mt-0.5">{approvedItems.length} утверждено · {pendingItems.length} ждут</p>
           </div>

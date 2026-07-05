@@ -138,7 +138,9 @@ export function EquipmentCard({
     return sum;
   }, [selected, shifts]);
 
-  const isAi = gafferText.includes("\n") || gafferText.length > 40;
+  // Только многострочный ввод = список от гафера, для которого поиск по
+  // каталогу отключаем. Длинный однострочный запрос остаётся живым фильтром.
+  const isGafferList = gafferText.includes("\n");
 
   const [catalogExpanded, setCatalogExpanded] = useState(false);
 
@@ -160,11 +162,12 @@ export function EquipmentCard({
             value={gafferText}
             onValueChange={(v) => {
               onGafferTextChange(v);
-              // Compute AI mode from the NEW value, not from stale state,
-              // otherwise the previous search text lingers in searchQuery
-              // when the user pastes a gaffer list.
-              const nextIsAi = v.includes("\n") || v.length > 40;
-              onSearchQueryChange(nextIsAi ? "" : v);
+              // Многострочный ввод — это список от гафера, им фильтровать
+              // каталог бессмысленно (обнуляем поиск). А вот длинный
+              // ОДНОСТРОЧНЫЙ запрос — это по-прежнему поиск: фильтруем каталог,
+              // не глотая его молча из-за длины (>40 символов).
+              const isGafferList = v.includes("\n");
+              onSearchQueryChange(isGafferList ? "" : v);
             }}
             onParse={onParse}
             onClear={onClear}
@@ -237,7 +240,7 @@ export function EquipmentCard({
               offCatalogItems={offCatalogItems}
               customItems={customItems}
               activeTab={activeTab}
-              searchQuery={isAi ? "" : searchQuery}
+              searchQuery={isGafferList ? "" : searchQuery}
               adjustments={adjustments}
               onAdd={onAdd}
               onChangeQty={onChangeQty}

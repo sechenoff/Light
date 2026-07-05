@@ -5,7 +5,7 @@ import type { BookingStatus } from "@prisma/client";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { parseBookingRangeBound, diffDaysInclusive, assertBookingRangeOrder } from "../utils/dates";
-import { getUsableUnitBaseMap } from "../services/availability";
+import { getUsableUnitBaseMap, getLostCountByEquipmentMap } from "../services/availability";
 import { toMoscowDateString, fromMoscowDateString, addDays } from "../utils/moscowDate";
 
 const router = express.Router();
@@ -18,14 +18,20 @@ const BLOCKING_STATUSES: BookingStatus[] = ["PENDING_APPROVAL", "CONFIRMED", "IS
 /**
  * MF-2: эффективный знаменатель занятости. Для UNIT-оборудования — число
  * пригодных единиц (AVAILABLE/ISSUED, см. eu-2 в services/availability.ts),
- * для COUNT — totalQuantity. Календарь обязан считать так же, как проверка
- * доступности, иначе «3/5» в календаре противоречит «доступно 0» при брони.
+ * для COUNT — totalQuantity минус открытые COUNT-потеряшки (F-LOST-1, см.
+ * getLostCountByEquipmentMap в services/availability.ts). Календарь обязан
+ * считать так же, как проверка доступности, иначе «3/5» в календаре
+ * противоречит «доступно 0» при брони, а безъюнитная потеря продолжает
+ * «продаваться» в heatmap и per-resource capacity.
  */
 function effectiveQty(
   eq: { id: string; stockTrackingMode: string; totalQuantity: number },
-  usableUnitBase: Map<string, number>
+  usableUnitBase: Map<string, number>,
+  lostCountBase: Map<string, number>
 ): number {
-  return eq.stockTrackingMode === "UNIT" ? (usableUnitBase.get(eq.id) ?? 0) : eq.totalQuantity;
+  if (eq.stockTrackingMode === "UNIT") return usableUnitBase.get(eq.id) ?? 0;
+  const base = eq.totalQuantity - (lostCountBase.get(eq.id) ?? 0);
+  return base < 0 ? 0 : base;
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -113,17 +119,25 @@ router.get("/", async (req, res, next) => {
       }),
     ]);
 
-    // MF-2: usable-база для всех UNIT-позиций (из каталога и из позиций броней)
+    // MF-2: usable-база для всех UNIT-позиций (из каталога и из позиций броней).
+    // F-LOST-1: lost-база для всех COUNT-позиций — те же источники.
     const unitEquipmentIds = new Set<string>();
+    const countEquipmentIds = new Set<string>();
     for (const eq of allEquipment) {
       if (eq.stockTrackingMode === "UNIT") unitEquipmentIds.add(eq.id);
+      else countEquipmentIds.add(eq.id);
     }
     for (const b of bookings) {
       for (const item of b.items) {
-        if (item.equipment?.stockTrackingMode === "UNIT") unitEquipmentIds.add(item.equipment.id);
+        if (!item.equipment) continue;
+        if (item.equipment.stockTrackingMode === "UNIT") unitEquipmentIds.add(item.equipment.id);
+        else countEquipmentIds.add(item.equipment.id);
       }
     }
-    const usableUnitBase = await getUsableUnitBaseMap([...unitEquipmentIds]);
+    const [usableUnitBase, lostCountBase] = await Promise.all([
+      getUsableUnitBaseMap([...unitEquipmentIds]),
+      getLostCountByEquipmentMap([...countEquipmentIds]),
+    ]);
 
     const searchLower = q.search?.trim().toLocaleLowerCase("ru-RU") ?? "";
 
@@ -154,7 +168,7 @@ router.get("/", async (req, res, next) => {
         id: eq.id,
         name: eq.name,
         category: eq.category,
-        totalQuantity: effectiveQty(eq, usableUnitBase),
+        totalQuantity: effectiveQty(eq, usableUnitBase, lostCountBase),
         trackingMode: eq.stockTrackingMode,
       });
     }
@@ -186,7 +200,7 @@ router.get("/", async (req, res, next) => {
             id: eq.id,
             name: eq.name,
             category: eq.category,
-            totalQuantity: effectiveQty(eq, usableUnitBase),
+            totalQuantity: effectiveQty(eq, usableUnitBase, lostCountBase),
             trackingMode: eq.stockTrackingMode,
           });
         }
@@ -218,6 +232,14 @@ router.get("/", async (req, res, next) => {
 // GET /api/calendar/occupancy
 // ──────────────────────────────────────────────────────────────────
 
+/**
+ * @deprecated ОСИРОТЕВШИЙ эндпоинт (cal-occupancy-orphan). Единственный
+ * потребитель heatmap — `apps/web/src/components/MiniCalendar.tsx`, который
+ * нигде не смонтирован (см. комментарий в `apps/web/app/dashboard/page.tsx`:
+ * «компонент сохранён» — вместо него пункт «Календарь» в меню). Код рабочий и
+ * покрыт тестами (`calendar.test.ts`); НЕ удалён намеренно — если MiniCalendar
+ * вернут на /day, эндпоинт снова понадобится. До тех пор — мёртвая ветка.
+ */
 router.get("/occupancy", async (req, res, next) => {
   try {
     const q = occupancyQuerySchema.parse(req.query);
@@ -239,14 +261,20 @@ router.get("/occupancy", async (req, res, next) => {
 
     // Суммарная мощность всего оборудования.
     // MF-2: для UNIT-позиций считаем пригодные единицы, а не totalQuantity.
+    // F-LOST-1: для COUNT-позиций вычитаем открытые потеряшки из totalQuantity.
     const capacityEquipment = await prisma.equipment.findMany({
       select: { id: true, stockTrackingMode: true, totalQuantity: true },
     });
-    const capacityUnitBase = await getUsableUnitBaseMap(
-      capacityEquipment.filter((e) => e.stockTrackingMode === "UNIT").map((e) => e.id)
-    );
+    const [capacityUnitBase, capacityLostBase] = await Promise.all([
+      getUsableUnitBaseMap(
+        capacityEquipment.filter((e) => e.stockTrackingMode === "UNIT").map((e) => e.id)
+      ),
+      getLostCountByEquipmentMap(
+        capacityEquipment.filter((e) => e.stockTrackingMode !== "UNIT").map((e) => e.id)
+      ),
+    ]);
     const totalCapacity = capacityEquipment.reduce(
-      (sum, e) => sum + effectiveQty(e, capacityUnitBase),
+      (sum, e) => sum + effectiveQty(e, capacityUnitBase, capacityLostBase),
       0
     );
 

@@ -160,6 +160,37 @@ describe("SummaryPanel", () => {
     expect(container.querySelector(".text-accent")).toBeTruthy();
   });
 
+  it("does not render 'Создать и подтвердить' when onCreateAndConfirm absent", () => {
+    render(<SummaryPanel {...defaultProps} />);
+    expect(screen.queryByRole("button", { name: /подтвердить/i })).not.toBeInTheDocument();
+  });
+
+  it("renders 'Создать и подтвердить' primary CTA for SUPER_ADMIN", () => {
+    render(<SummaryPanel {...defaultProps} onCreateAndConfirm={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /создать и подтвердить/i })).toBeInTheDocument();
+    // «на согласование» и «черновик» остаются доступны как вторичные
+    expect(screen.getByRole("button", { name: /согласован/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /черновик/i })).toBeInTheDocument();
+  });
+
+  it("calls onCreateAndConfirm when primary CTA clicked", () => {
+    const onConfirm = vi.fn();
+    render(<SummaryPanel {...defaultProps} onCreateAndConfirm={onConfirm} canSubmit={true} />);
+    fireEvent.click(screen.getByRole("button", { name: /создать и подтвердить/i }));
+    expect(onConfirm).toHaveBeenCalledOnce();
+  });
+
+  it("disables 'Создать и подтвердить' when canSubmit is false", () => {
+    render(<SummaryPanel {...defaultProps} onCreateAndConfirm={vi.fn()} canSubmit={false} />);
+    expect(screen.getByRole("button", { name: /создать и подтвердить/i })).toBeDisabled();
+  });
+
+  it("shows 'не удалось пересчитать' when quoteError and not loading", () => {
+    render(<SummaryPanel {...defaultProps} quoteError={true} isLoadingQuote={false} />);
+    expect(screen.getByText(/не удалось пересчитать/i)).toBeInTheDocument();
+    expect(screen.queryByText(/обновлено сейчас/i)).not.toBeInTheDocument();
+  });
+
   it("renders as aside element", () => {
     const { container } = render(<SummaryPanel {...defaultProps} />);
     const root = container.firstChild as HTMLElement;

@@ -9,7 +9,7 @@ export function CommentCard({ value, onChange }: CommentCardProps) {
   return (
     <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden">
       <div className="px-5 py-3 border-b border-border bg-surface-muted flex items-center justify-between">
-        <h3 className="eyebrow text-ink">4. Для руководителя</h3>
+        <h3 className="eyebrow text-ink">4. Комментарий к брони</h3>
         <span className="text-[11px] text-ink-3 italic">опционально</span>
       </div>
       <div className="p-5">

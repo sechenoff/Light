@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useRequireRole } from "@/hooks/useRequireRole";
 import { AdminTabNav } from "@/components/admin/AdminTabNav";
@@ -67,9 +67,14 @@ export default function AdminUsersPage() {
   const [newRole, setNewRole] = useState<UserRole>("WAREHOUSE");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+
+  // Password change modal
+  const [pwTarget, setPwTarget] = useState<{ id: string; username: string } | null>(null);
 
   // Search
   const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Role change inline
   const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
@@ -106,6 +111,21 @@ export default function AdminUsersPage() {
     return () => { cancelled = true; };
   }, [authorized]);
 
+  // Хоткей «/» фокусирует поиск (kbd-бейдж рядом с полем это обещает).
+  // Игнорируем нажатие, если фокус уже в поле ввода/textarea/select.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/") return;
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setCreateError(null);
@@ -118,6 +138,7 @@ export default function AdminUsersPage() {
       setNewUsername("");
       setNewPassword("");
       setNewRole("WAREHOUSE");
+      setShowNewPassword(false);
       setShowCreate(false);
       await load();
     } catch (e) {
@@ -157,22 +178,11 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function handleChangePassword(id: string, username: string) {
-    const password = window.prompt(`Новый пароль для «${username}»:`);
-    if (!password) return;
-    if (password.length < 3) {
-      alert("Пароль должен быть не короче 3 символов");
-      return;
-    }
-    try {
-      await apiFetch(`/api/admin-users/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ password }),
-      });
-      alert("Пароль изменён");
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Ошибка");
-    }
+  async function handleChangePassword(id: string, password: string) {
+    await apiFetch(`/api/admin-users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ password }),
+    });
   }
 
   async function applyRoleChange(id: string, current: UserRole, next: UserRole) {
@@ -252,6 +262,7 @@ export default function AdminUsersPage() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 text-sm select-none">⌕</span>
           <input
+            ref={searchRef}
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -316,15 +327,24 @@ export default function AdminUsersPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink-2 mb-1">Пароль</label>
-                <input
-                  type="text"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  disabled={creating}
-                  placeholder="Минимум 3 символа"
-                  className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-accent/30"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    disabled={creating}
+                    placeholder="Минимум 3 символа"
+                    className="w-full px-3 py-2 pr-16 border border-border rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-ink-2 hover:text-ink"
+                  >
+                    {showNewPassword ? "Скрыть" : "Показать"}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink-2 mb-1">Роль</label>
@@ -411,7 +431,7 @@ export default function AdminUsersPage() {
                         </div>
                         <div>
                           <div className="font-medium text-ink">{u.username}</div>
-                          <div className="text-[11px] font-mono text-ink-3">{u.username}@local</div>
+                          <div className="text-[11px] text-ink-3">{roleLabel(u.role)}</div>
                         </div>
                       </div>
                     </td>
@@ -486,7 +506,7 @@ export default function AdminUsersPage() {
                           {u.isActive ? "Отключить" : "Включить"}
                         </button>
                         <button
-                          onClick={() => handleChangePassword(u.id, u.username)}
+                          onClick={() => setPwTarget({ id: u.id, username: u.username })}
                           className="text-xs text-ink-2 hover:text-ink underline transition-colors"
                         >
                           Пароль
@@ -533,6 +553,140 @@ export default function AdminUsersPage() {
           )}
         </div>
       )}
+
+      {pwTarget && (
+        <ChangePasswordModal
+          username={pwTarget.username}
+          onClose={() => setPwTarget(null)}
+          onSubmit={(password) => handleChangePassword(pwTarget.id, password)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Change Password Modal ─────────────────────────────────────────────────────
+
+function ChangePasswordModal({
+  username,
+  onClose,
+  onSubmit,
+}: {
+  username: string;
+  onClose: () => void;
+  onSubmit: (password: string) => Promise<void>;
+}) {
+  const [password, setPassword] = useState("");
+  const [show, setShow] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !saving) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [saving, onClose]);
+
+  const trimmedLen = password.trim().length;
+  const disabled = saving || trimmedLen < 3;
+
+  async function handleSave() {
+    if (trimmedLen < 3) {
+      setError("Пароль должен быть не короче 3 символов");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await onSubmit(password);
+      setDone(true);
+      setTimeout(onClose, 900);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      onClick={() => !saving && onClose()}
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-surface p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="eyebrow mb-2">Смена пароля</div>
+        <h2 className="mb-4 text-lg font-semibold text-ink">{username}</h2>
+
+        {done ? (
+          <div className="rounded-lg bg-emerald-soft border border-emerald-border text-emerald text-sm px-3 py-2">
+            Пароль изменён
+          </div>
+        ) : (
+          <>
+            <label htmlFor="new-user-password" className="mb-2 block text-sm text-ink-2">
+              Новый пароль <span className="text-rose">*</span>
+            </label>
+            <div className="relative">
+              <input
+                id="new-user-password"
+                ref={inputRef}
+                type={show ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !disabled) handleSave();
+                }}
+                disabled={saving}
+                placeholder="Минимум 3 символа"
+                className="w-full rounded border border-border bg-surface px-3 py-2 pr-16 text-sm text-ink focus:border-accent focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShow((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-ink-2 hover:text-ink"
+              >
+                {show ? "Скрыть" : "Показать"}
+              </button>
+            </div>
+
+            {error && (
+              <div className="mt-3 rounded bg-rose-soft border border-rose-border text-rose text-xs px-3 py-2">
+                {error}
+              </div>
+            )}
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={saving}
+                className="px-4 py-2 text-sm text-ink-2 hover:text-ink transition-colors disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={disabled}
+                className="bg-accent-bright hover:bg-accent text-white font-medium rounded-lg px-4 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? "Сохраняем…" : "Изменить пароль"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

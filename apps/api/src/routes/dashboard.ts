@@ -132,6 +132,13 @@ router.get("/pending-approvals", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async
       prisma.booking.count({ where }),
     ]);
 
+    // repair-cluster dd-approval-overdue: бронь на согласовании, у которой дата
+    // выдачи уже прошла, «зависла» — руководитель не решил вовремя. Считаем это
+    // на сервере (авторитетный флаг), чтобы UI не дублировал date-math и подсвечивал
+    // «просрочено согласование». Граница «сегодня» — по Москве, как везде в дашборде.
+    const todayStart = moscowTodayStart();
+    const overdueCount = bookings.filter((b) => b.startDate < todayStart).length;
+
     res.json({
       bookings: bookings.map((b) => ({
         id: b.id,
@@ -140,8 +147,12 @@ router.get("/pending-approvals", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async
         startDate: b.startDate.toISOString(),
         endDate: b.endDate.toISOString(),
         finalAmount: b.finalAmount.toString(),
+        // true, если дата выдачи уже прошла — бронь застряла в согласовании.
+        approvalOverdue: b.startDate < todayStart,
       })),
       total,
+      // Сколько из показанных броней просрочено (для отдельной подписи в алерте).
+      overdueCount,
     });
   } catch (err) {
     next(err);

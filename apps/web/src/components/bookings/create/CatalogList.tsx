@@ -43,7 +43,15 @@ export function CatalogList({
     const q = searchQuery.trim().toLowerCase();
     return rows.filter((r) => {
       if (activeTab !== "all" && r.category !== activeTab) return false;
-      if (q && !r.name.toLowerCase().includes(q)) return false;
+      if (q) {
+        // Ищем по названию, бренду, модели и категории — как серверный
+        // поиск /api/availability (availability.ts). Раньше фильтр смотрел
+        // только на r.name, из-за чего запросы по бренду/модели не находились.
+        const haystack = [r.name, r.brand ?? "", r.model ?? "", r.category]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
       return true;
     });
   }, [rows, activeTab, searchQuery]);

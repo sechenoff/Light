@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { StatusPill } from "../StatusPill";
 import { TaskAssigneePill } from "./TaskAssigneePill";
 import type { Task } from "./groupTasks";
@@ -41,12 +42,12 @@ function dueDateVariant(
   if (!dueDate) return "none";
   const todayStr = toMoscowDateString(now);
   const dueStr = toMoscowDateString(new Date(dueDate));
+  // Семантика по срочности (синхронно с заголовками групп в TaskGroupList):
+  // просрочено → alert (rose), сегодня → warn (amber), дальше → спокойный info.
+  // Раньше было инвертировано: «сегодня» красили в info, а задачу через 2-3 дня
+  // в amber — сегодняшний дедлайн визуально терялся.
   if (dueStr < todayStr) return "alert";
-  if (dueStr === todayStr) return "info";
-  // within 3 days
-  const diffMs = new Date(dueDate).getTime() - new Date(`${todayStr}T00:00:00+03:00`).getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  if (diffDays <= 3) return "warn";
+  if (dueStr === todayStr) return "warn";
   return "info";
 }
 
@@ -224,6 +225,21 @@ export function TaskCard({
             {" · "}
             {formatCreatedAt(task.createdAt)}
           </p>
+        )}
+        {/* Чип связанной брони */}
+        {task.relatedBooking && (
+          <div className="mt-1">
+            <Link
+              href={`/bookings/${task.relatedBooking.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 rounded-md border border-accent-border bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-bright hover:underline max-w-full"
+            >
+              <span aria-hidden>📋</span>
+              <span className="truncate">
+                {task.relatedBooking.projectName} · {task.relatedBooking.clientName}
+              </span>
+            </Link>
+          </div>
         )}
         {/* Чипы: комментарии + чеклист */}
         {((task.commentCount ?? 0) > 0 || (task.checklistSummary?.total ?? 0) > 0) && (
