@@ -310,6 +310,46 @@ describe("GET /api/dashboard/pending-approvals", () => {
       expect(b.status).toBeUndefined();
     }
   });
+
+  it("помечает бронь с прошедшей датой выдачи как approvalOverdue + считает overdueCount", async () => {
+    const client = await createClient("OverdueApprovalClient");
+    const equipment = await createEquipment("OverdueApprovalEquipment");
+    // Бронь на согласовании, у которой дата выдачи была неделю назад → зависла.
+    const weekAgoStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const weekAgoEnd = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+    const overdue = await createBooking(
+      client.id, equipment.id, "PENDING_APPROVAL", weekAgoStart, weekAgoEnd,
+    );
+
+    const res = await request(app)
+      .get("/api/dashboard/pending-approvals")
+      .set(AUTH());
+
+    expect(res.status).toBe(200);
+    expect(res.body.overdueCount).toBeGreaterThanOrEqual(1);
+    const flagged = res.body.bookings.find((b: any) => b.id === overdue.id);
+    expect(flagged).toBeDefined();
+    expect(flagged.approvalOverdue).toBe(true);
+  });
+
+  it("не помечает бронь с будущей датой выдачи как approvalOverdue", async () => {
+    const client = await createClient("FreshApprovalClient");
+    const equipment = await createEquipment("FreshApprovalEquipment");
+    const future = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+    const futureEnd = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000);
+    const fresh = await createBooking(
+      client.id, equipment.id, "PENDING_APPROVAL", future, futureEnd,
+    );
+
+    const res = await request(app)
+      .get("/api/dashboard/pending-approvals")
+      .set(AUTH());
+
+    expect(res.status).toBe(200);
+    const flagged = res.body.bookings.find((b: any) => b.id === fresh.id);
+    expect(flagged).toBeDefined();
+    expect(flagged.approvalOverdue).toBe(false);
+  });
 });
 
 describe("GET /api/dashboard/repair-stats", () => {

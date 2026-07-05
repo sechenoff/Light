@@ -7,6 +7,7 @@ import { Html5QrcodeSupportedFormats } from "html5-qrcode";
 import type { BarcodeScannerProps } from "@/components/BarcodeScanner";
 import { StatusPill, type StatusPillVariant } from "../../../src/components/StatusPill";
 import { apiFetch } from "../../../src/lib/api";
+import { useRequireRole } from "../../../src/hooks/useRequireRole";
 
 const BarcodeScanner = dynamic<BarcodeScannerProps>(
   () => import("@/components/BarcodeScanner"),
@@ -758,11 +759,20 @@ function ScannerApp() {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-// Доступ защищён middleware.ts + сессией пользователя.
+// middleware.ts гарантирует лишь наличие сессии (любой залогиненный юзер).
+// Сканер показывает штрихкоды (LR-коды) и lookup-эндпоинт доступен всем трём
+// ролям — поэтому ролевую проверку делаем на странице: только Руководитель и
+// Кладовщик, как и остальные barcode-инструменты. Техник → редирект на /day.
+function ScannerPageGuarded() {
+  const { authorized, loading } = useRequireRole(["SUPER_ADMIN", "WAREHOUSE"]);
+  if (loading || !authorized) return null;
+  return <ScannerApp />;
+}
+
 export default function AdminScannerPage() {
   return (
     <Suspense fallback={null}>
-      <ScannerApp />
+      <ScannerPageGuarded />
     </Suspense>
   );
 }

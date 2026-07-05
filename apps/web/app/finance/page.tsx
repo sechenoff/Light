@@ -87,6 +87,30 @@ function formatEventDate(iso: string): string {
     d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
+/**
+ * Строит polyline-points из реальной помесячной динамики (data.trend, 12 мес).
+ * Нормализует значения в высоту viewBox 0..28 (инверсия Y — больше значение выше).
+ * Возвращает undefined, если данных нет или все значения равны (плоская линия
+ * бессмысленна — не рисуем фейковый «рост»).
+ */
+function buildSparkPoints(values: number[]): string | undefined {
+  if (values.length < 2) return undefined;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (max === min) return undefined; // плоско — нет тренда для показа
+  const stepX = 120 / (values.length - 1);
+  const top = 3;
+  const bottom = 25;
+  return values
+    .map((v, i) => {
+      const x = Math.round(i * stepX);
+      const norm = (v - min) / (max - min); // 0..1
+      const y = bottom - norm * (bottom - top);
+      return `${x},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
 // ── Activity feed entry (local type for mockup rendering) ─────────────────────
 
 interface ActivityEntry {
@@ -172,7 +196,7 @@ function FinancePageInner() {
   }
 
   useEffect(() => {
-    if (!authorized) return;
+    if (!authorized || !isSA) return;
     let cancelled = false;
     const range = derivePeriodRange(period);
     (async () => {
@@ -190,9 +214,39 @@ function FinancePageInner() {
       }
     })();
     return () => { cancelled = true; };
-  }, [authorized, period]);
+  }, [authorized, isSA, period]);
 
   if (loading || !authorized) return null;
+
+  // Все /api/finance/* эндпоинты — SUPER_ADMIN only. WAREHOUSE попадает на страницу
+  // через меню (roleMatrix), но данные ему недоступны. Вместо страницы-ошибки 403
+  // показываем понятную заглушку. NB: пункт «Финансы» стоит убрать из меню WAREHOUSE
+  // в src/lib/roleMatrix.ts (вне этого кластера).
+  if (!isSA) {
+    return (
+      <div className="pb-10 bg-surface-subtle min-h-screen">
+        <FinanceTabNav />
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16">
+          <div className="bg-surface border border-border rounded-lg px-6 py-14 text-center shadow-xs">
+            <p className="text-3xl mb-3">🔒</p>
+            <p className="eyebrow text-ink-3 mb-1">Финансы</p>
+            <h1 className="text-[18px] font-semibold text-ink mb-2">Раздел доступен руководителю</h1>
+            <p className="text-sm text-ink-2 max-w-md mx-auto">
+              Финансовая сводка, долги и счета видны только пользователям с ролью «Руководитель».
+              Если вам нужен доступ — обратитесь к руководителю.
+            </p>
+            <Link
+              href="/day"
+              className="inline-block mt-5 px-4 py-2 text-[13px] font-medium bg-accent-bright text-white rounded-lg hover:opacity-90 transition-opacity"
+            >
+              ← На главную
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (dataError) return <div className="p-8 text-rose text-sm">Ошибка: {dataError}</div>;
   if (!data) return <div className="p-8 text-ink-3 text-sm">Загрузка…</div>;
 
@@ -212,12 +266,15 @@ function FinancePageInner() {
   const marginLabel = formatMarginPercent(net, earned);
   const hasMargin = marginLabel !== "—";
 
-  // Хардкод-спарклайны — чистая декорация, не данные. На пустом периоде
-  // (метрика == 0) не рисуем фейковый «тренд» по нулям.
-  const SPARK_EARNED = "0,22 12,18 24,20 36,14 48,16 60,10 72,12 84,7 96,9 108,5 120,3";
-  const SPARK_SPENT = "0,18 12,16 24,20 36,18 48,14 60,16 72,12 84,16 96,11 108,14 120,12";
-  const SPARK_DEBT = "0,16 12,17 24,15 36,18 48,16 60,19 72,17 84,21 96,19 108,22 120,20";
-  const SPARK_NET = "0,20 12,17 24,18 36,12 48,14 60,9 72,11 84,5 96,8 108,4 120,2";
+  // Спарклайны строятся из реальной помесячной динамики (data.trend, 12 мес),
+  // а не из захардкоженных точек. Задолженность помесячного ряда не имеет —
+  // для неё спарклайн не рисуем (число без фейкового тренда).
+  const trendEarned = data.trend.map((t) => Number(t.earned));
+  const trendSpent = data.trend.map((t) => Number(t.spent));
+  const trendNet = data.trend.map((t) => Number(t.net));
+  const SPARK_EARNED = buildSparkPoints(trendEarned);
+  const SPARK_SPENT = buildSparkPoints(trendSpent);
+  const SPARK_NET = buildSparkPoints(trendNet);
 
   return (
     <div className="pb-10 bg-surface-subtle min-h-screen">
@@ -273,7 +330,7 @@ function FinancePageInner() {
             delta={hasMargin ? `${marginLabel} маржа за период` : "за период"}
             variant="ok"
             href={`/finance/payments?period=${period}`}
-            sparkPoints={earned > 0 ? SPARK_EARNED : undefined}
+            sparkPoints={SPARK_EARNED}
           />
           <KpiCard
             eyebrow="Расходы"
@@ -281,7 +338,7 @@ function FinancePageInner() {
             delta="операции за период"
             variant="default"
             href={`/finance/expenses?period=${period}`}
-            sparkPoints={spent > 0 ? SPARK_SPENT : undefined}
+            sparkPoints={SPARK_SPENT}
           />
           <KpiCard
             eyebrow="Задолженность"
@@ -289,7 +346,7 @@ function FinancePageInner() {
             delta={`${overdueCount} ${pluralize(overdueCount, "клиент просрочен", "клиента просрочены", "клиентов просрочены")}`}
             variant="alert"
             href="/finance/debts"
-            sparkPoints={outstanding > 0 ? SPARK_DEBT : undefined}
+            sparkPoints={undefined}
           />
           <KpiCard
             eyebrow="Прибыль (период)"
@@ -376,12 +433,16 @@ function FinancePageInner() {
                           />
                         </td>
                         <td className="px-3 py-3">
-                          <button
-                            onClick={() => setRecordPaymentOpen(true)}
-                            className="px-2.5 py-1 text-[11px] border border-border bg-surface rounded hover:border-accent-bright hover:text-accent-bright transition-colors whitespace-nowrap"
+                          {/* Должник — это клиент (возможно, несколько броней);
+                              платёж привязывается к конкретной броне, поэтому
+                              ведём на дебиторку, где у каждой брони есть «Оплатить»
+                              с префиллом остатка (а не пустая модалка). */}
+                          <Link
+                            href="/finance/debts"
+                            className="px-2.5 py-1 text-[11px] border border-border bg-surface rounded hover:border-accent-bright hover:text-accent-bright transition-colors whitespace-nowrap inline-block"
                           >
                             ₽ Платёж
-                          </button>
+                          </Link>
                         </td>
                       </tr>
                     ))

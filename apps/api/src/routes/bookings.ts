@@ -91,9 +91,18 @@ const transportSchema = z
   .optional()
   .nullable();
 
+/** Имя клиента: непустое после trim и не плейсхолдер («—», «-», «–», точки). */
+const clientNameSchema = z
+  .string()
+  .min(1)
+  .refine((s) => {
+    const t = s.trim();
+    return t.length > 0 && !/^[-–—.\s]+$/.test(t);
+  }, "Укажите имя клиента (нельзя «—» или пустое)");
+
 const bookingCreateSchema = z.object({
   client: z.object({
-    name: z.string().min(1),
+    name: clientNameSchema,
     phone: z.string().optional().nullable(),
     email: z.string().optional().nullable(),
     comment: z.string().optional().nullable(),
@@ -149,6 +158,13 @@ const bookingUpdateSchema = z.object({
    * дополнение к обычной BOOKING_EDITED — для финансового аудита.
    */
   retroactive: z.boolean().optional().default(false),
+  /**
+   * F-EXTEND: продление ВЫДАННОЙ (ISSUED) брони. Только SUPER_ADMIN.
+   * ISO-дата нового возврата — становится новой endDate, смета/финансы
+   * пересчитываются, пишется отдельный audit-action BOOKING_EXTENDED.
+   * Без этого флага PATCH на ISSUED → 409 BOOKING_EDIT_FORBIDDEN.
+   */
+  extendEndDate: z.string().refine((s) => !isNaN(Date.parse(s)), "Invalid date").optional(),
   /**
    * Ручной override итоговой суммы брони. Доступно только в retroactive-режиме.
    * - `null` → очистить override, вернуть автоматический расчёт.
@@ -352,20 +368,10 @@ router.get("/", async (req, res, next) => {
       amountOutstanding: true,
       finalAmount: true,
       expectedPaymentDate: true,
-      items: {
-        select: {
-          id: true,
-          equipmentId: true,
-          quantity: true,
-          equipment: {
-            select: {
-              id: true,
-              name: true,
-              category: true,
-            },
-          },
-        },
-      },
+      // BL-list-slim: список броней НЕ рендерит состав позиций (items) и
+      // displayName — раньше на страницу в 50 броней тянулись сотни вложенных
+      // equipment-объектов и лишние JOIN'ы. Оставляем только счётчик позиций
+      // (_count.items) на случай подписи «N позиций»; полный состав — в detail.
       confirmedAt: true,
       createdAt: true,
       updatedAt: true,
@@ -670,18 +676,25 @@ router.patch("/:id", async (req, res, next) => {
     // Это «правка задним числом» — фиксируется отдельным audit-action ниже.
     // Без флага RETURNED не редактируется никем (закрытая бронь, как и было).
     const retroactiveEdit = isSuperAdmin && body.retroactive === true;
+    // F-EXTEND: продление выданной брони — только SUPER_ADMIN, только для ISSUED,
+    // только при переданном extendEndDate (иначе ISSUED не редактируется).
+    const isExtendIssued = isSuperAdmin && body.extendEndDate != null && existing.status === "ISSUED";
     const allowedStatusesForEdit = retroactiveEdit
       ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL", "RETURNED"]
-      : isSuperAdmin
-        ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL"]
-        : ["DRAFT", "CONFIRMED"];
+      : isExtendIssued
+        ? ["ISSUED"]
+        : isSuperAdmin
+          ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL"]
+          : ["DRAFT", "CONFIRMED"];
     if (!allowedStatusesForEdit.includes(existing.status)) {
       const reason =
         existing.status === "PENDING_APPROVAL"
           ? "Бронь на согласовании — править может только руководитель"
           : existing.status === "RETURNED"
             ? "Бронь возвращена. Для правки задним числом передайте `retroactive: true` (только руководитель)."
-            : "Редактирование доступно для черновиков и подтверждённых броней.";
+            : existing.status === "ISSUED"
+              ? "Бронь выдана. Доступно только продление срока возврата (только руководитель)."
+              : "Редактирование доступно для черновиков и подтверждённых броней.";
       throw new HttpError(409, reason, "BOOKING_EDIT_FORBIDDEN");
     }
 
@@ -694,6 +707,8 @@ router.patch("/:id", async (req, res, next) => {
     let end = existing.endDate;
     if (body.startDate) start = parseBookingRangeBound(body.startDate, "start");
     if (body.endDate) end = parseBookingRangeBound(body.endDate, "end");
+    // F-EXTEND: новый срок возврата для выданной брони (ISO exact).
+    if (isExtendIssued && body.extendEndDate) end = new Date(body.extendEndDate);
     assertBookingRangeOrder(start, end);
 
     // F4+F5: compute resolved expectedPaymentDate for PATCH
@@ -1071,6 +1086,29 @@ router.patch("/:id", async (req, res, next) => {
             finalAmount: afterFinalAmount?.toString() ?? null,
             manualFinalAmount: (freshBooking as any)?.manualFinalAmount?.toString() ?? null,
             items: afterItems,
+          },
+        });
+      } catch {
+        // Аудит — observability, не блокируем ответ
+      }
+    }
+
+    // F-EXTEND: аудит продления выданной брони — отдельный action для
+    // финансового контроля (меняет срок и сумму уже выданной аренды).
+    if (isExtendIssued && req.adminUser?.userId) {
+      try {
+        await writeAuditEntry({
+          userId: req.adminUser.userId,
+          action: "BOOKING_EXTENDED",
+          entityType: "Booking",
+          entityId: id,
+          before: {
+            endDate: existing.endDate.toISOString(),
+            finalAmount: beforeFinalAmount?.toString() ?? null,
+          },
+          after: {
+            endDate: (freshBooking?.endDate ?? end).toISOString(),
+            finalAmount: freshBooking?.finalAmount?.toString() ?? null,
           },
         });
       } catch {

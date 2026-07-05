@@ -13,7 +13,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Главное",
       items: [
         { href: "/day", label: "Мой день", icon: "home" },
-        { href: "/tasks", label: "Мои задачи", icon: "tasks" },
+        { href: "/tasks?filter=my", label: "Мои задачи", icon: "tasks" },
       ],
     },
     {
@@ -47,7 +47,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
         { href: "/finance", label: "Обзор", icon: "money" },
         { href: "/finance/invoices", label: "Счета", icon: "invoice" },
         { href: "/finance/payments", label: "Платежи", icon: "receipt" },
-        { href: "/finance/debts", label: "Дебиторка", icon: "alert" },
+        { href: "/finance/debts", label: "Долги", icon: "alert" },
         { href: "/finance/expenses", label: "Расходы", icon: "expense" },
       ],
     },
@@ -72,7 +72,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
     {
       title: "Задачи",
       items: [
-        { href: "/tasks", label: "Мои задачи", icon: "tasks" },
+        { href: "/tasks?filter=my", label: "Мои задачи", icon: "tasks" },
       ],
     },
     {
@@ -127,7 +127,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
     {
       title: "Задачи",
       items: [
-        { href: "/tasks", label: "Мои задачи", icon: "tasks" },
+        { href: "/tasks?filter=my", label: "Мои задачи", icon: "tasks" },
       ],
     },
     {

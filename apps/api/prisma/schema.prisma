@@ -988,6 +988,12 @@ model Task {
   completedBy String?    // AdminUser.id
   completedAt DateTime?
 
+  /// Опциональная привязка задачи к брони проката (Booking.id, no FK — как createdBy).
+  /// null = задача не связана с бронью. Показывается чипом-ссылкой в карточке/панели.
+  relatedBookingId String?
+  /// Опциональная привязка к клиенту (Client.id, no FK). null = не связана.
+  relatedClientId  String?
+
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -997,6 +1003,7 @@ model Task {
   @@index([status, assignedTo])
   @@index([status, dueDate])
   @@index([createdBy, status])
+  @@index([relatedBookingId])
 }
 
 model TaskComment {

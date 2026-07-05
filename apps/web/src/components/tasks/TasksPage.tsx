@@ -372,6 +372,9 @@ export function TasksPage() {
           currentUserId={user.userId}
           isSuperAdmin={user.role === "SUPER_ADMIN"}
           onClose={closeDetail}
+          onComplete={handleComplete}
+          onReopen={handleReopen}
+          onEdit={(task) => setEditingTask(task)}
         />
       )}
     </div>

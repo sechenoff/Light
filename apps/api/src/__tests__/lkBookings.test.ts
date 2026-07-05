@@ -150,6 +150,28 @@ describe("GET /api/lk/bookings", () => {
     expect(res.body.nextCursor).toBeNull();
   });
 
+  test("totalCount reflects full match count, not page size (active-bookings dashboard tile)", async () => {
+    const { client, cookie } = await makeClientWithSession();
+    const d = new Date("2026-05-01T10:00:00Z");
+    const e = new Date("2026-05-10T10:00:00Z");
+
+    // 3 ISSUED + 1 CONFIRMED (excluded from ?status=ISSUED)
+    for (let i = 0; i < 3; i++) {
+      await makeBooking(client.id, "ISSUED", d, e, `Выдана ${i}`);
+    }
+    await makeBooking(client.id, "CONFIRMED", d, e, "Подтверждена");
+
+    // limit=2 → page holds 2, but totalCount must be 3 (all ISSUED)
+    const res = await request(app)
+      .get("/api/lk/bookings?status=ISSUED&limit=2")
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.totalCount).toBe(3);
+    expect(res.body.nextCursor).toBeTruthy();
+  });
+
   test("status filter returns only bookings with that status", async () => {
     const { client, cookie } = await makeClientWithSession();
     const d = new Date("2026-05-01T10:00:00Z");

@@ -151,6 +151,18 @@ function daysOverdue(dueDate: string | null): number | null {
   return d > 0 ? d : null;
 }
 
+/**
+ * Черновики счетов имеют технический номер `DRAFT-<uuid>` (нужен для уникальности
+ * до присвоения реального LR-YYYY-NNNN при выставлении). В UX его показывать нельзя.
+ */
+function invoiceNumberLabel(number: string | null): string {
+  if (!number || number.startsWith("DRAFT-")) return "Черновик";
+  return number;
+}
+function invoiceFileSlug(inv: { number: string | null; id: string }): string {
+  return inv.number && !inv.number.startsWith("DRAFT-") ? inv.number : inv.id;
+}
+
 // ── Main page component ───────────────────────────────────────────────────────
 
 function InvoicesPage() {
@@ -297,7 +309,7 @@ function InvoicesPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `invoice-${inv.number ?? inv.id}.pdf`;
+      a.download = `invoice-${invoiceFileSlug(inv)}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -505,7 +517,7 @@ function InvoicesPage() {
                         </td>
                         <td className="px-3 py-3">
                           <span className={`font-mono text-xs bg-surface-subtle border border-border rounded px-1.5 py-0.5 ${isVoid ? "line-through" : ""}`}>
-                            {inv.number ?? "—"}
+                            {invoiceNumberLabel(inv.number)}
                           </span>
                         </td>
                         <td className="px-3 py-3">
@@ -629,7 +641,7 @@ function InvoicesPage() {
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <span className="font-mono text-xs bg-surface-subtle border border-border rounded px-1.5 py-0.5">
-                            {inv.number ?? "Черновик"}
+                            {invoiceNumberLabel(inv.number)}
                           </span>
                           <div className="mt-1.5 font-semibold text-ink text-sm">{inv.booking.client.name}</div>
                           <div className="text-[11px] text-ink-3 mt-0.5">

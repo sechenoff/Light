@@ -172,4 +172,60 @@ describe("TaskCard", () => {
     // and the detail panel must NOT have been requested
     expect(onOpen).not.toHaveBeenCalled();
   });
+
+  it("due pill for a task due today uses the warn (amber) variant, not calm info", () => {
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" });
+    const { container } = render(
+      <TaskCard
+        task={makeTask({ dueDate: `${today}T00:00:00+03:00` })}
+        onComplete={vi.fn()}
+        onReopen={vi.fn()}
+        onUpdate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    // warn variant renders text-warn; the old (inverted) code used info → text-accent.
+    expect(container.querySelector(".text-warn")).not.toBeNull();
+    expect(container.querySelector(".text-accent")).toBeNull();
+  });
+
+  it("renders a clickable booking chip linking to the booking when relatedBooking is present", () => {
+    render(
+      <TaskCard
+        task={makeTask({
+          relatedBooking: {
+            id: "bk1",
+            projectName: "Съёмка рекламы",
+            clientId: "cl1",
+            clientName: "Мосфильм",
+          },
+        })}
+        onComplete={vi.fn()}
+        onReopen={vi.fn()}
+        onUpdate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    const link = screen.getByRole("link", { name: /Съёмка рекламы · Мосфильм/ });
+    expect(link).toHaveAttribute("href", "/bookings/bk1");
+  });
+
+  it("clicking the booking chip does NOT open the detail panel", () => {
+    const onOpen = vi.fn();
+    render(
+      <TaskCard
+        task={makeTask({
+          id: "tChip",
+          relatedBooking: { id: "bk2", projectName: "Клип", clientId: "cl2", clientName: "Ленфильм" },
+        })}
+        onComplete={vi.fn()}
+        onReopen={vi.fn()}
+        onUpdate={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenDetail={onOpen}
+      />,
+    );
+    fireEvent.click(screen.getByRole("link", { name: /Клип · Ленфильм/ }));
+    expect(onOpen).not.toHaveBeenCalled();
+  });
 });

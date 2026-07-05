@@ -29,7 +29,7 @@ export function TransportCard({
 
   return (
     <section className="rounded-lg border border-border bg-surface p-5 shadow-xs">
-      <h2 className="mb-1 text-sm font-semibold text-ink">4. Транспорт</h2>
+      <h2 className="mb-1 text-sm font-semibold text-ink">Транспорт</h2>
       <p className="mb-4 text-xs text-ink-3">
         {selected.length === 0
           ? "Без транспорта — отметьте машины ниже"

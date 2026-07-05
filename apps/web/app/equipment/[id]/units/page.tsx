@@ -4,12 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, apiFetchRaw } from "../../../../src/lib/api";
-import { StatusPill, type StatusPillVariant } from "../../../../src/components/StatusPill";
+import { StatusPill } from "../../../../src/components/StatusPill";
 import { SectionHeader } from "../../../../src/components/SectionHeader";
+import { UNIT_STATUS_LABELS, unitStatusLabel, unitStatusVariant, type UnitStatus } from "../../../../src/lib/unitStatus";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-type UnitStatus = "AVAILABLE" | "ISSUED" | "MAINTENANCE" | "RETIRED" | "MISSING";
 
 type EquipmentUnit = {
   id: string;
@@ -30,27 +29,11 @@ type Equipment = {
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
-const STATUS_LABELS: Record<UnitStatus, string> = {
-  AVAILABLE:   "На складе",
-  ISSUED:      "Выдана",
-  MAINTENANCE: "Ремонт",
-  RETIRED:     "Списана",
-  MISSING:     "Утеряна",
-};
-
-const STATUS_VARIANT: Record<UnitStatus, StatusPillVariant> = {
-  AVAILABLE:   "full",
-  ISSUED:      "limited",
-  MAINTENANCE: "warn",
-  RETIRED:     "none",
-  MISSING:     "none",
-};
-
 function UnitStatusBadge({ status }: { status: UnitStatus }) {
   return (
     <StatusPill
-      variant={STATUS_VARIANT[status] ?? "none"}
-      label={STATUS_LABELS[status] ?? status}
+      variant={unitStatusVariant(status)}
+      label={unitStatusLabel(status)}
     />
   );
 }
@@ -188,10 +171,10 @@ function EditModal({
         >
           {/* eu-6: «Выдана» руками не ставится — только через выдачу по брони.
               Опция видна лишь когда единица уже выдана (чтобы не ломать правку с/н и комментария). */}
-          {(Object.keys(STATUS_LABELS) as UnitStatus[])
+          {(Object.keys(UNIT_STATUS_LABELS) as UnitStatus[])
             .filter((s) => s !== "ISSUED" || unit.status === "ISSUED")
             .map((s) => (
-              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+              <option key={s} value={s}>{UNIT_STATUS_LABELS[s]}</option>
             ))}
         </select>
         <p className="text-[11px] text-slate-400 mb-3">

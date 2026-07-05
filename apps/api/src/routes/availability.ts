@@ -50,10 +50,16 @@ router.get("/", async (req, res, next) => {
       rentalRatePerShift: r.equipment.rentalRatePerShift.toString(),
       occupiedQuantity: r.occupiedQuantity,
       availableQuantity: r.availableQuantity,
+      // «Частично» = есть реальные брони, но не всё разобрано. Порог считаем от
+      // фактической занятости (occupiedQuantity), а НЕ от totalQuantity: у UNIT-
+      // позиций база доступности = число пригодных единиц (usableUnitBase), которая
+      // меньше totalQuantity при наличии единиц в ремонте/списании. Сравнение с
+      // totalQuantity ложно давало «Частично» при нуле броней (5 всего, 1 в ремонте,
+      // 0 забронировано → available=4 < 5). Теперь PARTIAL строго при occupied > 0.
       availability:
         r.availableQuantity <= 0
           ? "UNAVAILABLE"
-          : r.availableQuantity < r.equipment.totalQuantity
+          : r.occupiedQuantity > 0
             ? "PARTIAL"
             : "AVAILABLE",
       comment: r.equipment.comment,

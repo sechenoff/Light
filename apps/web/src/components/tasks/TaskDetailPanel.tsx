@@ -1,17 +1,24 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { useTaskDetail } from "./useTaskDetail";
 import { TaskComments } from "./TaskComments";
 import { TaskChecklist } from "./TaskChecklist";
 import { TaskAssigneePill } from "./TaskAssigneePill";
 import { StatusPill } from "../StatusPill";
+import type { Task } from "./groupTasks";
 
 interface Props {
   taskId: string;
   currentUserId?: string;
   isSuperAdmin: boolean;
   onClose: () => void;
+  /** Отметить выполненной / вернуть в работу (idempotent). Опционально. */
+  onComplete?: (id: string) => void;
+  onReopen?: (id: string) => void;
+  /** Открыть модалку редактирования. Опционально. */
+  onEdit?: (task: Task) => void;
 }
 
 function fmtDate(iso: string | null): string {
@@ -25,7 +32,21 @@ function fmtDate(iso: string | null): string {
   }
 }
 
-export function TaskDetailPanel({ taskId, currentUserId, isSuperAdmin, onClose }: Props) {
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("ru-RU", {
+      day: "numeric", month: "short", timeZone: "Europe/Moscow",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+export function TaskDetailPanel({
+  taskId, currentUserId, isSuperAdmin, onClose,
+  onComplete, onReopen, onEdit,
+}: Props) {
   const {
     task, loading, notFound,
     addComment, deleteComment,
@@ -112,6 +133,37 @@ export function TaskDetailPanel({ taskId, currentUserId, isSuperAdmin, onClose }
 
         {task && (
           <div className="p-5 space-y-6">
+            {/* Действия: Выполнить / Вернуть + Редактировать */}
+            {(onComplete || onReopen || (onEdit && canEdit)) && (
+              <div className="flex flex-wrap items-center gap-2">
+                {task.status === "DONE"
+                  ? onReopen && (
+                      <button
+                        onClick={() => onReopen(task.id)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-surface px-3.5 py-2 text-sm font-medium text-ink hover:bg-surface-muted transition-colors"
+                      >
+                        ↩ Вернуть в работу
+                      </button>
+                    )
+                  : onComplete && (
+                      <button
+                        onClick={() => onComplete(task.id)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-teal px-3.5 py-2 text-sm font-medium text-white hover:opacity-90 transition-opacity"
+                      >
+                        ✓ Выполнить
+                      </button>
+                    )}
+                {onEdit && canEdit && (
+                  <button
+                    onClick={() => onEdit(task as unknown as Task)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-sm text-ink-2 hover:bg-surface-muted transition-colors"
+                  >
+                    ✎ Редактировать
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Meta */}
             <div className="flex flex-wrap items-center gap-2.5">
               <StatusPill
@@ -122,6 +174,40 @@ export function TaskDetailPanel({ taskId, currentUserId, isSuperAdmin, onClose }
               <TaskAssigneePill user={task.assignedToUser} />
               <span className="text-[12px] text-ink-3">срок: {fmtDate(task.dueDate)}</span>
             </div>
+
+            {/* Кто поставил + когда */}
+            {task.createdByUser && (
+              <p className="text-[12px] text-ink-3 -mt-3">
+                поставил <b className="text-ink-2 font-medium">{task.createdByUser.username}</b>
+                {task.createdAt ? ` · ${fmtDateTime(task.createdAt)}` : ""}
+              </p>
+            )}
+
+            {/* Связанная бронь / клиент */}
+            {(task.relatedBooking || task.relatedClient) && (
+              <div className="flex flex-wrap items-center gap-2 -mt-3">
+                {task.relatedBooking && (
+                  <Link
+                    href={`/bookings/${task.relatedBooking.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-accent-border bg-accent-soft px-2.5 py-1 text-[12px] font-medium text-accent-bright hover:underline max-w-full"
+                  >
+                    <span aria-hidden>📋</span>
+                    <span className="truncate">
+                      {task.relatedBooking.projectName} · {task.relatedBooking.clientName}
+                    </span>
+                  </Link>
+                )}
+                {task.relatedClient && !task.relatedBooking && (
+                  <Link
+                    href={`/finance/debts?client=${task.relatedClient.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-muted px-2.5 py-1 text-[12px] font-medium text-ink-2 hover:underline max-w-full"
+                  >
+                    <span aria-hidden>👤</span>
+                    <span className="truncate">{task.relatedClient.name}</span>
+                  </Link>
+                )}
+              </div>
+            )}
 
             {/* Description */}
             {task.description?.trim() && (

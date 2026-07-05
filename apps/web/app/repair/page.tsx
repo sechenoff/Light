@@ -77,7 +77,7 @@ const STATUS_FILTERS: { key: StatusFilter; label: string; colorClass: string; ac
   },
   {
     key: "WAITING_REPAIR",
-    label: "🆕 Ждут ремонта",
+    label: "🆕 Ждёт ремонта",
     colorClass: "border-rose text-rose",
     activeClass: "bg-rose text-white border-rose",
   },
@@ -425,7 +425,7 @@ export default function RepairQueuePage() {
           <KpiCard eyebrow="Починено за месяц" value={String(stats.closedThisMonth)} />
           <KpiCard eyebrow="Списано" value={String(stats.writtenOffThisMonth)} />
           <KpiCard eyebrow="В ремонте сейчас" value={String(stats.openCount)} />
-          <KpiCard eyebrow="Расходы за месяц" value={formatRub(stats.spentThisMonth)} />
+          <KpiCard eyebrow="Одобренные расходы" value={formatRub(stats.spentThisMonth)} />
         </div>
       )}
 
@@ -548,7 +548,7 @@ function ArchiveTable({ repairs }: { repairs: RepairCard[] }) {
           <p className="eyebrow">Поломка</p>
           <p className="eyebrow">В работе</p>
           <p className="eyebrow">Результат</p>
-          <p className="eyebrow">Расход</p>
+          <p className="eyebrow">Запчасти</p>
         </div>
         <div className="divide-y divide-border">
           {closed.map((r) => {

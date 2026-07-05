@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { SectionHeader } from "../../../src/components/SectionHeader";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { ClientPortalAccessCard } from "../../../src/components/admin/ClientPortalAccessCard";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
+import { formatRub } from "../../../src/lib/format";
 import { toast } from "../../../src/components/ToastProvider";
 
 type PortalStatus = "PENDING" | "ACTIVE" | "DISABLED";
@@ -337,6 +339,9 @@ export default function AdminClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState("");
   const [fetching, setFetching] = useState(false);
+  // Долг по клиенту (clientId → сумма). Источник — /api/finance/debts (тот же,
+  // что дебиторка), чтобы «Долг» в справочнике совпадал с /finance/debts.
+  const [debtByClient, setDebtByClient] = useState<Record<string, string>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Client | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
@@ -357,9 +362,23 @@ export default function AdminClientsPage() {
     }
   };
 
+  const fetchDebts = async () => {
+    try {
+      const data = await apiFetch<{ debts: { clientId: string; totalOutstanding: string }[] }>(
+        "/api/finance/debts",
+      );
+      const map: Record<string, string> = {};
+      for (const d of data.debts) map[d.clientId] = d.totalOutstanding;
+      setDebtByClient(map);
+    } catch {
+      // Долг — необязательная колонка: при ошибке показываем «—», не мешаем списку.
+    }
+  };
+
   useEffect(() => {
     if (!authorized) return;
     void fetchClients(search);
+    void fetchDebts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized]);
 
@@ -474,6 +493,7 @@ export default function AdminClientsPage() {
                 <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Телефон</th>
                 <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Email</th>
                 <th className="px-4 py-2.5 text-right eyebrow text-ink-2 tabular-nums">Броней</th>
+                <th className="px-4 py-2.5 text-right eyebrow text-ink-2 tabular-nums">Долг</th>
                 <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Личный кабинет</th>
                 <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Создан</th>
                 <th className="px-4 py-2.5 text-right eyebrow text-ink-2">Действия</th>
@@ -488,7 +508,32 @@ export default function AdminClientsPage() {
                   <td className="px-4 py-2.5 font-medium text-ink">{client.name}</td>
                   <td className="px-4 py-2.5 text-ink-2">{client.phone ?? "—"}</td>
                   <td className="px-4 py-2.5 text-ink-2">{client.email ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-right mono-num text-ink">{client.bookingCount}</td>
+                  <td className="px-4 py-2.5 text-right mono-num text-ink">
+                    {client.bookingCount > 0 ? (
+                      <Link
+                        href={`/bookings?q=${encodeURIComponent(client.name)}`}
+                        className="text-accent-bright hover:underline"
+                        aria-label={`Брони клиента ${client.name}`}
+                      >
+                        {client.bookingCount}
+                      </Link>
+                    ) : (
+                      <span className="text-ink-3">0</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-right mono-num">
+                    {debtByClient[client.id] && Number(debtByClient[client.id]) > 0 ? (
+                      <Link
+                        href={`/finance/debts?client=${encodeURIComponent(client.id)}`}
+                        className="text-rose hover:underline"
+                        aria-label={`Долг клиента ${client.name}`}
+                      >
+                        {formatRub(Number(debtByClient[client.id]))}
+                      </Link>
+                    ) : (
+                      <span className="text-ink-3">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5">
                     {client.portalStatus ? (
                       <button

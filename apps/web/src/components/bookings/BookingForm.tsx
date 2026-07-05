@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { apiFetch } from "../../lib/api";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { pluralize } from "../../lib/format";
 import { toMoscowDateString, addDays } from "../../lib/moscowDate";
 import { toast } from "../ToastProvider";
@@ -198,8 +199,13 @@ type BookingFormInnerProps = BookingFormProps & {
 function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: BookingFormInnerProps) {
   const router = useRouter();
   const sp = useSearchParams();
+  const { user } = useCurrentUser();
 
   const isEdit = mode === "edit";
+  // SUPER_ADMIN сам себе одобряющий: даём прямой путь «создать и подтвердить»
+  // (черновик → на согласование → одобрить одной цепочкой), чтобы не гонять
+  // руководителя на страницу брони ради лишнего клика «Одобрить».
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
 
   // ── Search params (only used in create mode) ──
   const startParam = isEdit ? null : sp.get("start");
@@ -363,6 +369,9 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
   // Quote
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [loadingQuote, setLoadingQuote] = useState(false);
+  // true, когда серверный пересчёт /quote упал — панель показывает
+  // предварительный локальный расчёт, а не выдаёт его за авторитетный.
+  const [quoteError, setQuoteError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Transport — multi-vehicle. Init from initialBooking.vehicles[] if present,
@@ -733,6 +742,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
     const hasSomething = apiItems.length > 0 || customItems.length > 0 || transportPayload !== null;
     if (!clientName.trim() || !hasSomething || !pickupISO || !returnISO || dateOrderInvalid) {
       setQuote(null);
+      setQuoteError(false);
       return;
     }
     let cancelled = false;
@@ -764,9 +774,15 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
           transport: transportPayload,
         };
         const data = await apiFetch<QuoteResponse>("/api/bookings/quote", { method: "POST", body: JSON.stringify(body) });
-        if (!cancelled) setQuote(data);
+        if (!cancelled) {
+          setQuote(data);
+          setQuoteError(false);
+        }
       } catch {
-        if (!cancelled) setQuote(null);
+        if (!cancelled) {
+          setQuote(null);
+          setQuoteError(true);
+        }
       } finally {
         if (!cancelled) setLoadingQuote(false);
       }
@@ -1082,6 +1098,25 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
     }
   }
 
+  // SUPER_ADMIN: создать и сразу подтвердить (черновик → на согласование →
+  // одобрить). Прямой confirm из веба закрыт (USE_APPROVAL_FLOW), поэтому
+  // проводим бронь по штатной цепочке, но без ухода со страницы на «Одобрить».
+  async function handleCreateAndConfirm() {
+    const id = await saveDraft();
+    if (!id) return;
+    try {
+      await apiFetch(`/api/bookings/${id}/submit-for-approval`, { method: "POST" });
+      await apiFetch(`/api/bookings/${id}/approve`, { method: "POST" });
+      toast.success("Бронь создана и подтверждена");
+    } catch (err: unknown) {
+      // Черновик уже создан — не теряем его, ведём на страницу брони, где
+      // руководитель увидит текущий статус и сможет завершить согласование.
+      toast.error((err as { message?: string })?.message ?? "Не удалось подтвердить бронь");
+    } finally {
+      router.push(`/bookings/${id}`);
+    }
+  }
+
   // Edit mode: PATCH existing booking
   async function handleSaveEdit() {
     if (!bookingId || !pickupISO || !returnISO) return;
@@ -1299,8 +1334,10 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             itemCount={selected.size + customItems.length}
             shifts={shifts}
             isLoadingQuote={loadingQuote}
+            quoteError={quoteError}
             checks={checks}
             onSubmitForApproval={isEdit ? undefined : handleSubmitForApproval}
+            onCreateAndConfirm={isEdit || !isSuperAdmin ? undefined : handleCreateAndConfirm}
             onSaveDraft={isEdit ? undefined : handleSaveDraftClick}
             onSaveEdit={isEdit ? handleSaveEdit : undefined}
             canSubmit={canSubmit}

@@ -144,6 +144,72 @@ describe("POST /api/equipment/reorder rolesGuard", () => {
 });
 
 // ─────────────────────────────────────────────────────
+// POST /api/equipment — защита от дублей
+// ─────────────────────────────────────────────────────
+
+describe("POST /api/equipment duplicate guard", () => {
+  it("rejects a case/whitespace-insensitive duplicate name+brand+model with 409", async () => {
+    const first = await request(app)
+      .post("/api/equipment")
+      .set(AUTH())
+      .send({
+        category: "кабели",
+        name: "Aputure LS 600d",
+        brand: "Aputure",
+        model: "LS 600d",
+        totalQuantity: 1,
+        stockTrackingMode: "COUNT",
+        rentalRatePerShift: 1000,
+      });
+    expect(first.status).toBe(200);
+
+    const dup = await request(app)
+      .post("/api/equipment")
+      .set(AUTH())
+      .send({
+        category: "кабели",
+        name: "  aputure  ls 600d ",
+        brand: "APUTURE",
+        model: "ls 600d",
+        totalQuantity: 1,
+        stockTrackingMode: "COUNT",
+        rentalRatePerShift: 1000,
+      });
+    expect(dup.status).toBe(409);
+    expect(dup.body.code).toBe("EQUIPMENT_DUPLICATE");
+    expect(dup.body.duplicateId).toBe(first.body.equipment.id);
+  });
+
+  it("allows a different model (not a duplicate)", async () => {
+    await request(app)
+      .post("/api/equipment")
+      .set(AUTH())
+      .send({
+        category: "штативы",
+        name: "Manfrotto",
+        brand: "Manfrotto",
+        model: "055",
+        totalQuantity: 1,
+        stockTrackingMode: "COUNT",
+        rentalRatePerShift: 500,
+      });
+    const other = await request(app)
+      .post("/api/equipment")
+      .set(AUTH())
+      .send({
+        category: "штативы",
+        name: "Manfrotto",
+        brand: "Manfrotto",
+        model: "190",
+        totalQuantity: 1,
+        stockTrackingMode: "COUNT",
+        rentalRatePerShift: 500,
+      });
+    expect(other.status).toBe(200);
+  });
+});
+
+// ─────────────────────────────────────────────────────
 // PATCH /api/equipment/:id/units/:unitId — ручные статусы
 // ─────────────────────────────────────────────────────
 

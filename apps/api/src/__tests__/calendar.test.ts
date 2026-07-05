@@ -295,6 +295,55 @@ describe("GET /api/calendar", () => {
     expect(resource.trackingMode).toBe("UNIT");
   });
 
+  it("F-LOST-1: COUNT-потеряшки уменьшают totalQuantity ресурса (как в проверке доступности)", async () => {
+    const client = await createClient("Клиент потеряшки кал");
+    // COUNT-позиция: totalQuantity=20
+    const eq = await createEquipment("COUNT-удлинитель кал", "Свет", 20);
+    const booking = await prisma.booking.create({
+      data: {
+        clientId: client.id,
+        projectName: "Проект потеряшки кал",
+        startDate: new Date("2026-01-01T00:00:00.000Z"),
+        endDate: new Date("2026-01-02T00:00:00.000Z"),
+        status: "RETURNED",
+        items: { create: [{ equipmentId: eq.id, quantity: 20 }] },
+      },
+      include: { items: true },
+    });
+    const bookingItem = booking.items[0];
+
+    // 5 SEARCHING + 2 WROTE_OFF = -7 из базы; 3 FOUND не вычитается
+    await prisma.problemItem.create({
+      data: {
+        bookingItemId: bookingItem.id, quantity: 5, sourceBookingId: booking.id,
+        reason: "LOST", comment: "утеряны", status: "SEARCHING", createdBy: "tester",
+      },
+    });
+    await prisma.problemItem.create({
+      data: {
+        bookingItemId: bookingItem.id, quantity: 2, sourceBookingId: booking.id,
+        reason: "DESTROYED", comment: "сломаны", status: "WROTE_OFF", createdBy: "tester",
+      },
+    });
+    await prisma.problemItem.create({
+      data: {
+        bookingItemId: bookingItem.id, quantity: 3, sourceBookingId: booking.id,
+        reason: "LEFT_ON_SITE", comment: "нашлись", status: "FOUND", createdBy: "tester",
+      },
+    });
+
+    // Окно НЕ пересекает бронь — проверяем только базу (totalQuantity ресурса).
+    const res = await request(app)
+      .get("/api/calendar?start=2026-03-01&end=2026-03-07")
+      .set(AUTH());
+    expect(res.status).toBe(200);
+    const resource = res.body.resources.find((r: any) => r.name === "COUNT-удлинитель кал");
+    expect(resource).toBeDefined();
+    // 20 − (5 + 2) = 13; FOUND (3) не вычитается
+    expect(resource.totalQuantity).toBe(13);
+    expect(resource.trackingMode).toBe("COUNT");
+  });
+
   it("включает DRAFT при includeDrafts=true", async () => {
     const client = await createClient("Клиент черновик кал2");
     const eq = await createEquipment("Оборудование черновик кал2");

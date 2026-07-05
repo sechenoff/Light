@@ -4,6 +4,18 @@ import { toMoscowDateString, addDays } from "../../lib/moscowDate";
 
 export type TaskBucket = "overdue" | "today" | "tomorrow" | "thisWeek" | "later" | "noDate" | "doneToday";
 
+export interface RelatedBookingRef {
+  id: string;
+  projectName: string;
+  clientId: string;
+  clientName: string;
+}
+
+export interface RelatedClientRef {
+  id: string;
+  name: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -17,9 +29,13 @@ export interface Task {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  relatedBookingId?: string | null;
+  relatedClientId?: string | null;
   assignedToUser?: { id: string; username: string } | null;
   createdByUser?: { id: string; username: string } | null;
   completedByUser?: { id: string; username: string } | null;
+  relatedBooking?: RelatedBookingRef | null;
+  relatedClient?: RelatedClientRef | null;
   commentCount?: number;
   checklistSummary?: { done: number; total: number };
 }

@@ -7,6 +7,17 @@ import { apiFetch } from "../../src/lib/api";
 import { SectionHeader } from "../../src/components/SectionHeader";
 import { StatusPill } from "../../src/components/StatusPill";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
+import { BOOKING_STATUS_LABELS } from "../../src/components/finance/StatusCell";
+
+interface ActiveBookingRef {
+  bookingId: string;
+  projectName: string;
+  clientName: string | null;
+  startDate: string;
+  endDate: string;
+  status: "CONFIRMED" | "ISSUED";
+  isCurrent: boolean;
+}
 
 interface VehicleSummary {
   id: string;
@@ -19,6 +30,7 @@ interface VehicleSummary {
   lastServiceKind: string | null;
   notes: string | null;
   active: boolean;
+  activeBooking: ActiveBookingRef | null;
 }
 
 const SERVICE_KIND_LABEL: Record<string, string> = {
@@ -40,6 +52,15 @@ function formatDate(iso: string | null): string {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: "Europe/Moscow",
+  });
+}
+
+/** Короткая дата «дд.мм» — для компактного диапазона брони в списке. */
+function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
     timeZone: "Europe/Moscow",
   });
 }
@@ -90,16 +111,27 @@ export default function VehiclesPage() {
       <SectionHeader
         eyebrow="Автопарк"
         title="Машины"
+        actions={
+          user.role === "SUPER_ADMIN" ? (
+            <Link
+              href="/admin/vehicles"
+              className="text-xs text-accent-bright hover:text-accent font-medium"
+            >
+              Управление тарифами →
+            </Link>
+          ) : undefined
+        }
       />
 
       <div className="mt-4 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
         <div className="overflow-auto">
-          <table className="min-w-[720px] w-full text-sm">
+          <table className="min-w-[860px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
                 <th className="text-left px-3 py-2 font-medium">Машина</th>
                 <th className="text-left px-3 py-2 font-medium">Гос. номер</th>
                 <th className="text-right px-3 py-2 font-medium">Пробег</th>
+                <th className="text-left px-3 py-2 font-medium">Занятость</th>
                 <th className="text-left px-3 py-2 font-medium">Последнее ТО / ремонт</th>
                 <th className="text-left px-3 py-2 font-medium">Статус</th>
                 <th className="px-3 py-2"></th>
@@ -108,21 +140,21 @@ export default function VehiclesPage() {
             <tbody>
               {vehicles === null && !error && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-ink-3">
+                  <td colSpan={7} className="px-3 py-6 text-center text-ink-3">
                     Загрузка...
                   </td>
                 </tr>
               )}
               {error && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-rose">
+                  <td colSpan={7} className="px-3 py-6 text-center text-rose">
                     {error}
                   </td>
                 </tr>
               )}
               {vehicles && vehicles.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-ink-3">
+                  <td colSpan={7} className="px-3 py-6 text-center text-ink-3">
                     В парке пока нет машин
                   </td>
                 </tr>
@@ -142,6 +174,35 @@ export default function VehiclesPage() {
                     </td>
                     <td className="px-3 py-2 text-right mono-num text-ink">
                       {formatKm(v.currentMileage)}
+                    </td>
+                    <td className="px-3 py-2">
+                      {v.activeBooking ? (
+                        <Link
+                          href={`/bookings/${v.activeBooking.bookingId}`}
+                          className="group inline-flex flex-col gap-0.5"
+                        >
+                          <span className="inline-flex items-center gap-1.5">
+                            <StatusPill
+                              variant={v.activeBooking.isCurrent ? "warn" : "info"}
+                              label={
+                                v.activeBooking.isCurrent
+                                  ? "На брони"
+                                  : BOOKING_STATUS_LABELS[v.activeBooking.status] ??
+                                    v.activeBooking.status
+                              }
+                            />
+                            <span className="text-xs text-ink-3 mono-num">
+                              {formatShortDate(v.activeBooking.startDate)}–
+                              {formatShortDate(v.activeBooking.endDate)}
+                            </span>
+                          </span>
+                          <span className="text-xs text-accent-bright group-hover:text-accent truncate max-w-[220px]">
+                            {v.activeBooking.clientName ?? v.activeBooking.projectName}
+                          </span>
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-ink-3">Свободна</span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-ink-2">
                       {v.lastServiceAt ? (

@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { UserRole } from "../../src/lib/auth";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
 import { apiFetch } from "../../src/lib/api";
+import { toast } from "../../src/components/ToastProvider";
 import { formatRub, pluralize, MONTHS_LOCATIVE } from "../../src/lib/format";
 import { DayHeader } from "../../src/components/day/DayHeader";
 import { DayAlert } from "../../src/components/day/DayAlert";
@@ -91,6 +92,18 @@ function sumFinal(bookings: Array<{ finalAmount: string }>): number {
   return bookings.reduce((acc, b) => acc + Number(b.finalAmount || 0), 0);
 }
 
+// Приветствие по времени суток в МСК (UTC+3), единое для всех трёх ролей.
+// 5–11 → утро, 12–17 → день, 18–22 → вечер, 23–4 → ночь.
+function greetingFor(username: string): string {
+  const mskHour = (new Date().getUTCHours() + 3) % 24;
+  let part: string;
+  if (mskHour >= 5 && mskHour < 12) part = "доброе утро";
+  else if (mskHour >= 12 && mskHour < 18) part = "добрый день";
+  else if (mskHour >= 18 && mskHour < 23) part = "добрый вечер";
+  else part = "доброй ночи";
+  return `${part}, ${username}`;
+}
+
 function deltaPct(currentStr: string, prevStr: string): number | null {
   const c = Number(currentStr);
   const p = Number(prevStr);
@@ -106,18 +119,26 @@ function DaySuperAdmin({ username }: { username: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    // Одно ненавязчивое уведомление, если хотя бы один запрос упал —
+    // иначе упавший API неотличим от «нет данных» (KPI застынет на «—»).
+    let notified = false;
+    const notifyError = () => {
+      if (cancelled || notified) return;
+      notified = true;
+      toast.error("Часть данных дня не загрузилась. Обновите страницу");
+    };
     apiFetch<FinanceDashboard>("/api/finance/dashboard")
       .then((d) => { if (!cancelled) setFin(d); })
-      .catch(() => {});
+      .catch(notifyError);
     apiFetch<DashboardToday>("/api/dashboard/today")
       .then((d) => { if (!cancelled) setDashboard(d); })
-      .catch(() => {});
+      .catch(notifyError);
     apiFetch<PendingApprovalsResponse>("/api/dashboard/pending-approvals")
       .then((d) => { if (!cancelled) setPending(d); })
-      .catch(() => {});
+      .catch(notifyError);
     apiFetch<RepairStats>("/api/dashboard/repair-stats")
       .then((d) => { if (!cancelled) setRepairStats(d); })
-      .catch(() => {});
+      .catch(notifyError);
     return () => { cancelled = true; };
   }, []);
 
@@ -173,7 +194,7 @@ function DaySuperAdmin({ username }: { username: string }) {
 
   return (
     <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
-      <DayHeader greeting={`утро, ${username} ✨`} summary={summary} />
+      <DayHeader greeting={`${greetingFor(username)} ✨`} summary={summary} />
       <div className="p-4 space-y-3">
         {pending && pending.total > 0 && (
           <DayAlert
@@ -310,12 +331,18 @@ function DayWarehouse({ username }: { username: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    let notified = false;
+    const notifyError = () => {
+      if (cancelled || notified) return;
+      notified = true;
+      toast.error("Часть данных дня не загрузилась. Обновите страницу");
+    };
     apiFetch<DashboardToday>("/api/dashboard/today")
       .then((d) => { if (!cancelled) setDashboard(d); })
-      .catch(() => { /* не блокируем */ });
+      .catch(notifyError);
     apiFetch<PendingApprovalsResponse>("/api/dashboard/pending-approvals")
       .then((d) => { if (!cancelled) setPending(d); })
-      .catch(() => { /* не блокируем */ });
+      .catch(notifyError);
     return () => { cancelled = true; };
   }, []);
 
@@ -328,7 +355,7 @@ function DayWarehouse({ username }: { username: string }) {
 
   return (
     <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
-      <DayHeader greeting={`доброе утро, ${username} 👋`} summary={summary} />
+      <DayHeader greeting={`${greetingFor(username)} 👋`} summary={summary} />
       <div className="p-4 space-y-3">
         {pending && pending.total > 0 && (
           <DayAlert
@@ -436,10 +463,16 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
 
   useEffect(() => {
     let cancelled = false;
+    let notified = false;
+    const notifyError = () => {
+      if (cancelled || notified) return;
+      notified = true;
+      toast.error("Часть данных дня не загрузилась. Обновите страницу");
+    };
 
     apiFetch<{ repairs: RepairListItem[] }>("/api/repairs?status=WAITING_REPAIR&limit=20")
       .then((d) => { if (!cancelled) setNewRepairs(d.repairs); })
-      .catch(() => { if (!cancelled) setNewRepairs([]); });
+      .catch(() => { if (!cancelled) { setNewRepairs([]); notifyError(); } });
 
     // Без userId нет смысла запрашивать «назначенные мне» — у пользователя
     // ещё нет связки на AdminUser (старые сессии). Сразу показываем «Свободно».
@@ -448,14 +481,14 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
         `/api/repairs?assignedTo=${encodeURIComponent(userId)}&status=IN_REPAIR,WAITING_PARTS&limit=20`,
       )
         .then((d) => { if (!cancelled) setMyRepairs(d.repairs); })
-        .catch(() => { if (!cancelled) setMyRepairs([]); });
+        .catch(() => { if (!cancelled) { setMyRepairs([]); notifyError(); } });
     } else {
       setMyRepairs([]);
     }
 
     apiFetch<RepairStats>("/api/dashboard/repair-stats")
       .then((d) => { if (!cancelled) setStats(d); })
-      .catch(() => { /* не блокируем */ });
+      .catch(notifyError);
 
     return () => { cancelled = true; };
   }, [userId]);
@@ -489,7 +522,7 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
 
   return (
     <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
-      <DayHeader greeting={`привет, ${username} 🔧`} summary={summary} />
+      <DayHeader greeting={`${greetingFor(username)} 🔧`} summary={summary} />
       <div className="p-4 space-y-3">
         {newRepairs && newRepairs.length > 0 && (
           <div className="bg-surface border border-rose-border rounded-lg p-4">

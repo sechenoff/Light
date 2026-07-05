@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { useRequireRole } from "@/hooks/useRequireRole";
 import { AdminTabNav } from "@/components/admin/AdminTabNav";
@@ -242,12 +243,20 @@ export default function AdminVehiclesPage() {
     <div className="p-6 space-y-6">
       <AdminTabNav />
 
-      <div>
-        <p className="eyebrow mb-1">Транспорт</p>
-        <h1 className="text-lg font-semibold text-ink">Управление машинами</h1>
-        <p className="mt-1 text-xs text-ink-3">
-          Здесь можно изменить ставку смены, стоимость генератора и другие параметры.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="eyebrow mb-1">Транспорт</p>
+          <h1 className="text-lg font-semibold text-ink">Управление машинами</h1>
+          <p className="mt-1 text-xs text-ink-3">
+            Здесь можно изменить ставку смены, стоимость генератора и другие параметры.
+          </p>
+        </div>
+        <Link
+          href="/vehicles"
+          className="shrink-0 text-xs text-accent-bright hover:text-accent font-medium"
+        >
+          Автопарк и журнал →
+        </Link>
       </div>
 
       {loadingVehicles ? (

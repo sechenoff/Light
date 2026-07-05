@@ -22,16 +22,25 @@ import {
   listTasks,
   getTask,
   enrichTasksWithUsers,
+  enrichTasksWithRelated,
+  searchBookingsForLink,
 } from "../services/taskService";
 import {
   addComment, deleteComment,
   addChecklistItem, patchChecklistItem, deleteChecklistItem,
 } from "../services/taskCollabService";
 
-async function enrichOne<T extends { createdBy: string; assignedTo: string | null; completedBy: string | null }>(
-  task: T,
-): Promise<any> {
-  const [enriched] = await enrichTasksWithUsers([task]);
+async function enrichOne<
+  T extends {
+    createdBy: string;
+    assignedTo: string | null;
+    completedBy: string | null;
+    relatedBookingId: string | null;
+    relatedClientId: string | null;
+  },
+>(task: T): Promise<any> {
+  const [withUsers] = await enrichTasksWithUsers([task]);
+  const [enriched] = await enrichTasksWithRelated([withUsers]);
   return enriched;
 }
 
@@ -47,6 +56,8 @@ const createTaskSchema = z.object({
   urgent: z.boolean().optional().default(false),
   dueDate: moscowDateSchema.nullable().optional(),
   assignedTo: z.string().min(1).nullable().optional(),
+  relatedBookingId: z.string().min(1).nullable().optional(),
+  relatedClientId: z.string().min(1).nullable().optional(),
 });
 
 const updateTaskSchema = z.object({
@@ -55,6 +66,8 @@ const updateTaskSchema = z.object({
   dueDate: moscowDateSchema.nullable().optional(),
   assignedTo: z.string().min(1).nullable().optional(),
   urgent: z.boolean().optional(),
+  relatedBookingId: z.string().min(1).nullable().optional(),
+  relatedClientId: z.string().min(1).nullable().optional(),
 });
 
 const listQuerySchema = z.object({
@@ -130,6 +143,23 @@ tasksRouter.post(
       const actor = { userId: req.adminUser!.userId, role: req.adminUser!.role as any };
       const task = await createTask(body, actor);
       res.status(201).json({ task: serializeTask(await enrichOne(task)) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── GET /booking-search ──────────────────────────────────────────────────────
+// ВАЖНО: регистрируется ДО GET /:id, иначе "/booking-search" уйдёт в :id.
+
+tasksRouter.get(
+  "/booking-search",
+  rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]),
+  async (req, res, next) => {
+    try {
+      const q = typeof req.query.q === "string" ? req.query.q : "";
+      const bookings = await searchBookingsForLink(q);
+      res.json({ bookings });
     } catch (err) {
       next(err);
     }

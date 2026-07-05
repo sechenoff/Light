@@ -55,7 +55,7 @@ interface RepairDetail {
 // ── Константы ─────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<RepairStatus, string> = {
-  WAITING_REPAIR: "В очереди",
+  WAITING_REPAIR: "Ждёт ремонта",
   IN_REPAIR:      "В работе",
   WAITING_PARTS:  "Ждёт запчасти",
   CLOSED:         "Закрыт",
@@ -63,14 +63,22 @@ const STATUS_LABELS: Record<RepairStatus, string> = {
 };
 
 const STATUS_PILL_CLASSES: Record<RepairStatus, string> = {
-  WAITING_REPAIR: "bg-rose-100 text-rose-700 border border-rose-200",
-  IN_REPAIR:      "bg-amber-100 text-amber-700 border border-amber-200",
-  WAITING_PARTS:  "bg-purple-100 text-purple-700 border border-purple-200",
-  CLOSED:         "bg-emerald-100 text-emerald-700 border border-emerald-200",
-  WROTE_OFF:      "bg-slate-100 text-slate-600 border border-slate-200",
+  WAITING_REPAIR: "bg-rose-soft text-rose border border-rose-border",
+  IN_REPAIR:      "bg-amber-soft text-amber border border-amber-border",
+  WAITING_PARTS:  "bg-indigo-soft text-indigo border border-indigo-border",
+  CLOSED:         "bg-emerald-soft text-emerald border border-emerald-border",
+  WROTE_OFF:      "bg-surface-muted text-ink-3 border border-border",
 };
 
 const ALL_ROLES = ["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"] as const;
+
+/**
+ * Ставка оценки работ по ремонту, ₽/ч. Используется как значение по умолчанию
+ * в модалке закрытия — оператор может отредактировать сумму вручную. Вынесена
+ * в именованную константу, чтобы правка рыночной ставки не искала magic-number
+ * в JSX. FUTURE: перенести в настройки организации (/settings/organization).
+ */
+const REPAIR_HOURLY_RATE = 2000;
 
 // ── Хелперы ───────────────────────────────────────────────────────────────────
 
@@ -104,10 +112,9 @@ function CloseWithExpenseModal({
   onSkip: () => void;
   onCancel: () => void;
 }) {
-  const HOURLY_RATE = 2000;
   const hours = parseFloat(repair.totalTimeHours) || 0;
   const parts = parseFloat(repair.partsCost) || 0;
-  const defaultValuation = Math.round(hours * HOURLY_RATE);
+  const defaultValuation = Math.round(hours * REPAIR_HOURLY_RATE);
   const [workVal, setWorkVal] = useState(String(defaultValuation));
   const [includeWork, setIncludeWork] = useState(defaultValuation > 0);
 
@@ -342,10 +349,10 @@ export default function RepairDetailPage() {
   if (loading) {
     return (
       <div className="space-y-0">
-        <div className="h-24 bg-slate-700 animate-pulse" />
+        <div className="h-24 bg-ink animate-pulse" />
         <div className="p-4 space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 bg-slate-100 rounded-lg animate-pulse" />
+            <div key={i} className="h-20 bg-surface-muted rounded-lg animate-pulse" />
           ))}
         </div>
       </div>
@@ -355,7 +362,7 @@ export default function RepairDetailPage() {
   if (error || !repair) {
     return (
       <div className="p-6">
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+        <div className="bg-rose-soft border border-rose-border rounded-lg px-4 py-3 text-sm text-rose">
           {error ?? "Ремонт не найден"}
         </div>
       </div>
@@ -373,10 +380,10 @@ export default function RepairDetailPage() {
   return (
     <div className="min-h-screen bg-surface-muted">
       {/* Тёмная шапка */}
-      <div className="bg-[#0f172a] text-white px-4 py-4">
+      <div className="bg-ink text-white px-4 py-4">
         <button
           onClick={() => router.push("/repair")}
-          className="text-xs text-slate-400 hover:text-slate-200 transition-colors mb-3 block"
+          className="text-xs text-white/60 hover:text-white/90 transition-colors mb-3 block"
         >
           ← Мастерская
         </button>
@@ -385,13 +392,13 @@ export default function RepairDetailPage() {
             <h1 className="text-base font-semibold leading-tight">
               {repairEquipmentName(repair)}
               {repair.bookingItem && !repair.unit && repair.bookingItem.quantity > 1 && (
-                <span className="text-slate-400 font-normal"> ×{repair.bookingItem.quantity}</span>
+                <span className="text-white/60 font-normal"> ×{repair.bookingItem.quantity}</span>
               )}
             </h1>
             {repair.unit?.barcode && (
-              <p className="text-xs text-slate-400 font-mono mt-0.5">{repair.unit.barcode}</p>
+              <p className="text-xs text-white/60 font-mono mt-0.5">{repair.unit.barcode}</p>
             )}
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-white/60 mt-1">
               Поломка №R-{repair.id.slice(-6)} · {repair.status === "WAITING_REPAIR" ? "поступила" : "взята в работу"} {formatDate(repair.createdAt)}
             </p>
           </div>
@@ -499,7 +506,7 @@ export default function RepairDetailPage() {
                 />
               </div>
               {workLogError && (
-                <p className="text-xs text-rose-600">{workLogError}</p>
+                <p className="text-xs text-rose">{workLogError}</p>
               )}
               <button
                 type="submit"
@@ -552,7 +559,7 @@ export default function RepairDetailPage() {
               <button
                 onClick={() => hasWork ? setShowCloseModal(true) : closeRepair(false, 0)}
                 disabled={actionLoading}
-                className="flex-1 min-w-[160px] h-11 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                className="flex-1 min-w-[160px] h-11 bg-emerald text-white text-sm font-medium rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
                 ✓ Починил — вернуть в парк
               </button>
@@ -563,7 +570,7 @@ export default function RepairDetailPage() {
               <button
                 onClick={() => handleStatusChange("WAITING_PARTS")}
                 disabled={actionLoading}
-                className="flex-1 min-w-[160px] h-11 border border-purple-300 text-purple-700 text-sm font-medium rounded-lg hover:bg-purple-50 disabled:opacity-50 transition-colors"
+                className="flex-1 min-w-[160px] h-11 border border-indigo-border text-indigo text-sm font-medium rounded-lg hover:bg-indigo-soft disabled:opacity-50 transition-colors"
               >
                 ⏸ Пауза — ждём запчасти
               </button>
@@ -585,7 +592,7 @@ export default function RepairDetailPage() {
               <button
                 onClick={() => setShowWriteOffConfirm(true)}
                 disabled={actionLoading}
-                className="flex-1 min-w-[160px] h-11 border border-rose-300 text-rose-700 text-sm font-medium rounded-lg hover:bg-rose-50 disabled:opacity-50 transition-colors"
+                className="flex-1 min-w-[160px] h-11 border border-rose-border text-rose text-sm font-medium rounded-lg hover:bg-rose-soft disabled:opacity-50 transition-colors"
               >
                 ✗ Не чинится — списать
               </button>

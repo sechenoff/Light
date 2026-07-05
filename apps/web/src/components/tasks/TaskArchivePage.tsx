@@ -517,7 +517,7 @@ function ArchiveTaskRow({
   const creator = task.createdByUser;
 
   return (
-    <div className="grid grid-cols-[22px_1fr_auto_auto_auto_auto] gap-3.5 items-center px-5 py-3 opacity-85 hover:bg-surface-muted hover:opacity-100 transition-all group">
+    <div className="grid grid-cols-[22px_1fr_auto_auto_auto] gap-3.5 items-center px-5 py-3 opacity-85 hover:bg-surface-muted hover:opacity-100 transition-all group">
       {/* Зелёная галочка */}
       <span className="w-5 h-5 rounded-[6px] bg-emerald border-2 border-emerald text-white text-xs font-bold flex items-center justify-center shrink-0">
         ✓
@@ -556,14 +556,6 @@ function ArchiveTaskRow({
       >
         ↩ Вернуть
       </button>
-
-      {/* Row-menu — появляется при hover */}
-      <span
-        aria-hidden="true"
-        className="text-base text-ink-3 px-1.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity select-none"
-      >
-        ⋯
-      </span>
     </div>
   );
 }

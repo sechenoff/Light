@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { Task } from "./groupTasks";
+import type { Task, RelatedBookingRef } from "./groupTasks";
+import { TaskBookingPicker } from "./TaskBookingPicker";
 
 // ── Типы ──────────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,9 @@ export function TaskEditModal({
   const [description, setDescription] = useState(task.description ?? "");
   const [urgent, setUrgent] = useState(task.urgent);
   const [assignedTo, setAssignedTo] = useState<string | null>(task.assignedTo);
+  const [relatedBooking, setRelatedBooking] = useState<RelatedBookingRef | null>(
+    task.relatedBooking ?? null,
+  );
   const [dueDate, setDueDate] = useState<string>(() => {
     if (!task.dueDate) return "";
     // Конвертируем ISO → "YYYY-MM-DD" для <input type="date">
@@ -100,6 +104,8 @@ export function TaskEditModal({
       // API (moscowDateSchema) принимает только "YYYY-MM-DD" — отдаём значение
       // <input type="date"> как есть, как это делает TaskCreateModal.resolvedDueDate().
       dueDate: dueDate || null,
+      relatedBookingId: relatedBooking?.id ?? null,
+      relatedClientId: relatedBooking?.clientId ?? null,
     };
 
     setSaving(true);
@@ -203,6 +209,16 @@ export function TaskEditModal({
             </select>
           </div>
         )}
+
+        {/* Связать с бронью */}
+        <div>
+          <label className="eyebrow mb-1 block">Связанная бронь</label>
+          <TaskBookingPicker
+            value={relatedBooking}
+            onChange={setRelatedBooking}
+            disabled={saving}
+          />
+        </div>
 
         {/* Срочность */}
         <div className="flex items-center gap-3">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
 import { toast } from "../ToastProvider";
 import { toMoscowDateString } from "../../lib/moscowDate";
@@ -52,9 +53,12 @@ export function DayTasksWidget({
   className?: string;
   dashboard?: DashboardTodayWithTasks | null;
 }) {
+  const router = useRouter();
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [openCount, setOpenCount] = useState<number | null>(null);
-  const [loading, setLoading] = useState(dashboard === undefined);
+  // dashboard === null означает «родитель ещё грузит» — это тоже загрузка,
+  // иначе мелькнёт ложное «Задач на сегодня нет» до прихода данных.
+  const [loading, setLoading] = useState(dashboard == null);
   const [creating, setCreating] = useState(false);
   const [assigneeOptions, setAssigneeOptions] = useState<Array<{ id: string; username: string }>>([]);
 
@@ -83,10 +87,16 @@ export function DayTasksWidget({
     };
   }, []);
 
-  // Если dashboard передан как prop — берём myTasks из него, не делаем отдельный запрос
+  // Если dashboard передан как prop — берём myTasks из него, не делаем отдельный запрос.
+  // dashboard === null → родитель ещё грузит: держим состояние загрузки, не показываем
+  // пустой список (иначе флеш ложного «Задач нет»).
   useEffect(() => {
+    if (dashboard === null) {
+      setLoading(true);
+      return;
+    }
     if (dashboard !== undefined) {
-      setTasks(dashboard?.myTasks ?? []);
+      setTasks(dashboard.myTasks ?? []);
       setLoading(false);
       return;
     }
@@ -232,8 +242,13 @@ export function DayTasksWidget({
               body: JSON.stringify(input),
             });
             setCreating(false);
-            // Перезагружаем список задач
+            // Перезагружаем список задач. Виджет показывает только задачи на сегодня
+            // (мои, срок ≤ сегодня или срочные без даты) — задача с дефолтами сюда
+            // может не попасть, поэтому подтверждаем тостом со ссылкой на список.
             loadTasks();
+            toast.success("Задача создана", {
+              action: { label: "Открыть", onClick: () => router.push("/tasks?filter=my") },
+            });
           }}
           onClose={() => setCreating(false)}
           assigneeOptions={assigneeOptions}

@@ -118,7 +118,16 @@ export async function resolveProblemItem(
         data: { status: "AVAILABLE" },
       });
     }
-    // FUTURE: outcome === "NOT_FOUND" → создать «долг гафера» (раздел долгов). Не реализуем сейчас.
+    // F-LOST-3 (осознанный SKIP): outcome === "NOT_FOUND" должен породить «долг
+    // клиента» за невозврат. Честной привязки к деньгам без новой схемы нет:
+    //   1. «Долг» в системе = booking.amountOutstanding (см. computeDebts). Expense —
+    //      это РАСХОД компании, а не дебиторка клиента, и в /finance/debts не попадает;
+    //      писать сюда Expense перевернуло бы смысл (компания платит за свою потерю).
+    //   2. Сумма компенсации нигде не хранится: у ProblemItem/EquipmentUnit/Equipment
+    //      нет закупочной/оценочной стоимости, а выводить её из rentalRatePerShift —
+    //      выдуманное бизнес-правило.
+    // Нужно продуктовое решение (как оценивается компенсация) + новое поле под сумму,
+    // после чего — ADDON-строка/инвойс-коррекция на sourceBooking. Схема заморожена → не тут.
     await writeAuditEntry({
       tx, userId: resolvedBy, action: "PROBLEM_ITEM_RESOLVE",
       entityType: "ProblemItem", entityId: pi.equipmentUnitId ?? pi.id,

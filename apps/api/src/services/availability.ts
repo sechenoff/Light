@@ -57,6 +57,39 @@ export async function getUsableUnitBaseMap(
   return usableUnitBase;
 }
 
+/**
+ * F-LOST-1: сколько единиц COUNT-позиции сейчас безвозвратно вне оборота из-за
+ * открытых «потеряшек». UNIT-потеряшка честно выводит юнит (status MISSING) и уже
+ * учтена в usableUnitBase. Для COUNT нет юнита — потеря живёт строкой ProblemItem
+ * (bookingItemId + quantity, equipmentUnitId = null). Пока карточка не закрыта как
+ * FOUND (найдено, вернулось в оборот), это количество физически недоступно и должно
+ * уменьшать эффективный totalQuantity — иначе календарь и проверка доступности
+ * продолжают «продавать» утерянное. equipmentId берём с bookingItem, не с самой
+ * потеряшки. WROTE_OFF/NOT_FOUND/SEARCHING/EXPECTED — все «не в наличии»; только
+ * FOUND исключаем.
+ */
+export async function getLostCountByEquipmentMap(
+  countEquipmentIds: string[],
+  tx: TxClient = prisma
+): Promise<Map<string, number>> {
+  const lostByEquipment = new Map<string, number>();
+  if (countEquipmentIds.length === 0) return lostByEquipment;
+  const lostRows = await tx.problemItem.findMany({
+    where: {
+      equipmentUnitId: null,
+      status: { not: "FOUND" },
+      bookingItem: { equipmentId: { in: countEquipmentIds } },
+    },
+    select: { quantity: true, bookingItem: { select: { equipmentId: true } } },
+  });
+  for (const row of lostRows) {
+    const equipmentId = row.bookingItem?.equipmentId;
+    if (!equipmentId) continue;
+    lostByEquipment.set(equipmentId, (lostByEquipment.get(equipmentId) ?? 0) + row.quantity);
+  }
+  return lostByEquipment;
+}
+
 export async function getAvailability(args: {
   startDate: Date;
   endDate: Date;
@@ -106,11 +139,17 @@ export async function getAvailability(args: {
 
   const equipmentIds = equipments.map((e) => e.id);
 
-  // eu-2: см. getUsableUnitBaseMap — COUNT-режим остаётся на totalQuantity.
+  // eu-2: см. getUsableUnitBaseMap. F-LOST-1: COUNT-база = totalQuantity минус
+  // открытые COUNT-потеряшки (getLostCountByEquipmentMap) — утерянное безъюнитное
+  // количество не должно оставаться в наличии.
   const unitEquipmentIds = equipments.filter((e) => e.stockTrackingMode === "UNIT").map((e) => e.id);
+  const countEquipmentIds = equipments.filter((e) => e.stockTrackingMode !== "UNIT").map((e) => e.id);
   const usableUnitBase = await getUsableUnitBaseMap(unitEquipmentIds, tx);
+  const lostCountBase = await getLostCountByEquipmentMap(countEquipmentIds, tx);
   const baseQtyOf = (e: { id: string; stockTrackingMode: string; totalQuantity: number }): number =>
-    e.stockTrackingMode === "UNIT" ? (usableUnitBase.get(e.id) ?? 0) : e.totalQuantity;
+    e.stockTrackingMode === "UNIT"
+      ? (usableUnitBase.get(e.id) ?? 0)
+      : clampNonNegative(e.totalQuantity - (lostCountBase.get(e.id) ?? 0));
 
   // Find all blocking bookings overlapping the requested range.
   const overlappingBookings = await tx.booking.findMany({

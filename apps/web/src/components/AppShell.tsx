@@ -302,6 +302,21 @@ function SidebarContent({
 
   const sections: MenuSection[] = user ? menuByRole[user.role] : [];
 
+  // Один активный пункт: самый длинный href (по pathname, без query), совпадающий
+  // точно или как префикс текущего пути. Иначе на /bookings/new подсвечивались бы
+  // сразу «Список броней» и «Новая бронь» (и аналогично /admin/*).
+  const hrefPath = (href: string) => href.split(/[?#]/)[0];
+  const activeHref = sections
+    .flatMap((s) => s.items)
+    .filter((item) => {
+      const p = hrefPath(item.href);
+      return pathname === p || pathname.startsWith(p + "/");
+    })
+    .reduce<string | null>(
+      (best, item) => (best === null || hrefPath(item.href).length > hrefPath(best).length ? item.href : best),
+      null,
+    );
+
   return (
     <div className="flex flex-col h-full">
       {/* Logo */}
@@ -336,11 +351,7 @@ function SidebarContent({
             </p>
             <ul className="space-y-0.5">
               {section.items.map((item) => {
-                const active =
-                  pathname === item.href ||
-                  (item.href !== "/day" &&
-                    item.href !== "/finance" &&
-                    pathname.startsWith(item.href + "/"));
+                const active = item.href === activeHref;
                 return (
                   <li key={item.href}>
                     <Link

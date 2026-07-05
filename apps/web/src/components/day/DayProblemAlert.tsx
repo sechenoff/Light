@@ -13,9 +13,10 @@ interface ProblemItemRow {
 }
 
 /**
- * MD-6: амбер-алерт на «Моём дне» (SA/WAREHOUSE) о просроченных потеряшках —
+ * MD-6: rose-алерт на «Моём дне» (SA/WAREHOUSE) о просроченных потеряшках —
  * карточках EXPECTED («остался на площадке, ждём досдачу»), у которых
- * expectedBackDate уже прошёл по Москве.
+ * expectedBackDate уже прошёл по Москве. Просроченный срок досдачи — сигнал
+ * «нужно действие», поэтому rose (не amber): единица зависла сверх обещанного.
  *
  * NB: /api/problem-items не умеет фильтровать по expectedBackDate, поэтому
  * считаем на клиенте по первой странице реестра (limit 200 — максимум API).
@@ -46,8 +47,9 @@ export function DayProblemAlert() {
 
   return (
     <DayAlert
-      variant="amber"
-      title={`⏳ Потеряшки: ${overdueCount} ${pluralize(
+      variant="rose"
+      count={overdueCount}
+      title={`⏳ Потеряшки: ${pluralize(
         overdueCount,
         "единица просрочила",
         "единицы просрочили",

@@ -68,21 +68,34 @@ router.get("/", lkAuth, async (req, res, next) => {
         : {}),
     };
 
-    const items = await prisma.booking.findMany({
-      where,
-      orderBy: [{ startDate: "desc" }, { id: "desc" }],
-      take: q.limit + 1,
-      select: {
-        id: true,
-        projectName: true,
-        startDate: true,
-        endDate: true,
-        status: true,
-        finalAmount: true,
-        amountOutstanding: true,
-        _count: { select: { items: true } },
-      },
-    });
+    // totalCount игнорирует курсор — это полное число броней по фильтру
+    // (клиент + видимые статусы [+ ?status]), а не размер текущей страницы.
+    // Дашборд ЛК показывает «Активные брони» из totalCount, иначе счётчик
+    // упирался бы в limit страницы (≤20) при большом числе выданных броней.
+    const countWhere: Prisma.BookingWhereInput = {
+      clientId,
+      deletedAt: null,
+      status: q.status ? q.status : { in: [...VISIBLE_STATUSES] as any },
+    };
+
+    const [items, totalCount] = await Promise.all([
+      prisma.booking.findMany({
+        where,
+        orderBy: [{ startDate: "desc" }, { id: "desc" }],
+        take: q.limit + 1,
+        select: {
+          id: true,
+          projectName: true,
+          startDate: true,
+          endDate: true,
+          status: true,
+          finalAmount: true,
+          amountOutstanding: true,
+          _count: { select: { items: true } },
+        },
+      }),
+      prisma.booking.count({ where: countWhere }),
+    ]);
 
     const hasMore = items.length > q.limit;
     const slice = hasMore ? items.slice(0, q.limit) : items;
@@ -104,6 +117,7 @@ router.get("/", lkAuth, async (req, res, next) => {
         itemCount: b._count.items,
       })),
       nextCursor,
+      totalCount,
     });
   } catch (err) {
     next(err);
