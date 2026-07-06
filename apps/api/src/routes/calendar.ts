@@ -49,11 +49,6 @@ const calendarQuerySchema = z.object({
     .transform((v) => v === "true"),
 });
 
-const occupancyQuerySchema = z.object({
-  start: z.string(),
-  end: z.string(),
-});
-
 // ──────────────────────────────────────────────────────────────────
 // GET /api/calendar
 // ──────────────────────────────────────────────────────────────────
@@ -223,109 +218,6 @@ router.get("/", async (req, res, next) => {
       resources: Array.from(resourcesMap.values()),
       events,
     });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// ──────────────────────────────────────────────────────────────────
-// GET /api/calendar/occupancy
-// ──────────────────────────────────────────────────────────────────
-
-/**
- * @deprecated ОСИРОТЕВШИЙ эндпоинт (cal-occupancy-orphan). Единственный
- * потребитель heatmap — `apps/web/src/components/MiniCalendar.tsx`, который
- * нигде не смонтирован (см. комментарий в `apps/web/app/dashboard/page.tsx`:
- * «компонент сохранён» — вместо него пункт «Календарь» в меню). Код рабочий и
- * покрыт тестами (`calendar.test.ts`); НЕ удалён намеренно — если MiniCalendar
- * вернут на /day, эндпоинт снова понадобится. До тех пор — мёртвая ветка.
- */
-router.get("/occupancy", async (req, res, next) => {
-  try {
-    const q = occupancyQuerySchema.parse(req.query);
-
-    let start: Date;
-    let end: Date;
-    try {
-      start = parseBookingRangeBound(q.start, "start");
-      end = parseBookingRangeBound(q.end, "end");
-      assertBookingRangeOrder(start, end);
-    } catch (e) {
-      throw new HttpError(400, e instanceof Error ? e.message : "Некорректный период");
-    }
-
-    const dayCount = diffDaysInclusive(start, end);
-    if (dayCount > 90) {
-      throw new HttpError(400, "Максимальный период — 90 дней");
-    }
-
-    // Суммарная мощность всего оборудования.
-    // MF-2: для UNIT-позиций считаем пригодные единицы, а не totalQuantity.
-    // F-LOST-1: для COUNT-позиций вычитаем открытые потеряшки из totalQuantity.
-    const capacityEquipment = await prisma.equipment.findMany({
-      select: { id: true, stockTrackingMode: true, totalQuantity: true },
-    });
-    const [capacityUnitBase, capacityLostBase] = await Promise.all([
-      getUsableUnitBaseMap(
-        capacityEquipment.filter((e) => e.stockTrackingMode === "UNIT").map((e) => e.id)
-      ),
-      getLostCountByEquipmentMap(
-        capacityEquipment.filter((e) => e.stockTrackingMode !== "UNIT").map((e) => e.id)
-      ),
-    ]);
-    const totalCapacity = capacityEquipment.reduce(
-      (sum, e) => sum + effectiveQty(e, capacityUnitBase, capacityLostBase),
-      0
-    );
-
-    // Брони пересекающиеся с диапазоном (PENDING_APPROVAL, CONFIRMED, ISSUED)
-    const bookings = await prisma.booking.findMany({
-      where: {
-        status: { in: BLOCKING_STATUSES },
-        // RR-2: архивные брони не входят в heatmap занятости.
-        deletedAt: null,
-        startDate: { lte: end },
-        endDate: { gte: start },
-      },
-      include: {
-        items: { select: { quantity: true } },
-      },
-    });
-
-    // Генерируем массив дней в диапазоне.
-    // MF-3: границы дня считаем по Москве (а не UTC) — бронь с временем
-    // 00:00–02:59 МСК хранится как 21:00–23:59Z предыдущего дня и при
-    // UTC-раскладке красила соседний день.
-    const days: Array<{ date: string; bookingCount: number; occupancyPercent: number }> = [];
-    const firstMoscowDayStart = fromMoscowDateString(toMoscowDateString(start));
-
-    for (let i = 0; i < dayCount; i++) {
-      const dayStart = addDays(firstMoscowDayStart, i);
-      const dayEnd = new Date(addDays(firstMoscowDayStart, i + 1).getTime() - 1);
-
-      const dateStr = toMoscowDateString(dayStart);
-
-      // Брони пересекающиеся с этим днём
-      const overlapping = bookings.filter(
-        (b) => b.startDate <= dayEnd && b.endDate >= dayStart
-      );
-
-      const occupiedQuantity = overlapping.reduce(
-        (sum, b) => sum + b.items.reduce((s, item) => s + item.quantity, 0),
-        0
-      );
-
-      const occupancyPercent =
-        totalCapacity > 0 ? Math.min(100, (occupiedQuantity / totalCapacity) * 100) : 0;
-
-      days.push({
-        date: dateStr,
-        bookingCount: overlapping.length,
-        occupancyPercent: Math.round(occupancyPercent * 100) / 100,
-      });
-    }
-
-    res.json({ days, totalCapacity });
   } catch (err) {
     next(err);
   }
