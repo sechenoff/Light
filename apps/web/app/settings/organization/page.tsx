@@ -5,6 +5,9 @@ import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
 import { toast } from "../../../src/components/ToastProvider";
 import { AdminTabNav } from "../../../src/components/admin/AdminTabNav";
+import { CatalogTab } from "../../../src/components/settings/CatalogTab";
+import { EquipmentImportTab } from "../../../src/components/settings/EquipmentImportTab";
+import { PricelistTab } from "../../../src/components/settings/PricelistTab";
 
 interface OrgSettings {
   id: string;
@@ -283,19 +286,50 @@ function OrgSettingsForm() {
   );
 }
 
+type SettingsTab = "org" | "catalog" | "import" | "pricelist";
+
+const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
+  { id: "org", label: "Организация" },
+  { id: "catalog", label: "Каталог" },
+  { id: "import", label: "Импорт оборудования" },
+  { id: "pricelist", label: "Прайслист бота" },
+];
+
 function PageGuard() {
   const { authorized, loading } = useRequireRole(["SUPER_ADMIN"]);
+  const [tab, setTab] = useState<SettingsTab>("org");
   if (loading || !authorized) return null;
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
       <div className="mb-4">
         <AdminTabNav />
       </div>
       <p className="eyebrow text-ink-3 mb-1">Настройки</p>
-      <h1 className="text-xl font-semibold text-ink mb-6">Организация</h1>
-      <Suspense fallback={<div className="py-8 text-sm text-ink-3">Загрузка…</div>}>
-        <OrgSettingsForm />
-      </Suspense>
+      <h1 className="text-xl font-semibold text-ink mb-5">Настройки</h1>
+
+      {/* Inner tabs: организация + инструменты, вынесенные из «Ещё» */}
+      <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto">
+        {SETTINGS_TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-3.5 py-2 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap ${
+              tab === t.id ? "border-ink text-ink font-medium" : "border-transparent text-ink-2 hover:text-ink"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "org" && (
+        <Suspense fallback={<div className="py-8 text-sm text-ink-3">Загрузка…</div>}>
+          <OrgSettingsForm />
+        </Suspense>
+      )}
+      {tab === "catalog" && <CatalogTab />}
+      {tab === "import" && <EquipmentImportTab />}
+      {tab === "pricelist" && <PricelistTab />}
     </div>
   );
 }
