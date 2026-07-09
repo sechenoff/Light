@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 
 export type AvailabilityStatus = "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
@@ -33,9 +33,13 @@ export function useAvailability() {
   const [items, setItems] = useState<AvailabilityItem[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Стале-гард: при быстрой смене дат (useEffect-потребители) применяется
+  // только ответ последнего check() — устаревший не затирает свежий.
+  const requestIdRef = useRef(0);
 
   const check = useCallback(
     async (params: AvailabilityCheckParams): Promise<AvailabilityItem[] | null> => {
+      const requestId = ++requestIdRef.current;
       setLoading(true);
       setError(null);
       try {
@@ -48,13 +52,15 @@ export function useAvailability() {
         const data = await apiFetch<{ rows: AvailabilityItem[] }>(
           `/api/availability?${qs.toString()}`
         );
+        if (requestId !== requestIdRef.current) return null; // устаревший ответ
         setItems(data.rows);
         return data.rows;
       } catch (e) {
+        if (requestId !== requestIdRef.current) return null;
         setError(e instanceof Error ? e.message : "Ошибка при проверке доступности");
         return null;
       } finally {
-        setLoading(false);
+        if (requestId === requestIdRef.current) setLoading(false);
       }
     },
     []
