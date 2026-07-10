@@ -455,7 +455,7 @@ function DebtsPageInner() {
         <div className="flex items-end justify-between gap-3 mb-5">
           <div>
             <p className="eyebrow text-ink-3 mb-1">ФИНАНСЫ</p>
-            <h1 className="text-[24px] font-semibold text-ink tracking-tight mb-1">Дебиторка</h1>
+            <h1 className="text-[24px] font-semibold text-ink tracking-tight mb-1">Долги</h1>
             <p className="text-[13px] text-ink-2">
               {totalClients} {pluralize(totalClients, "клиент", "клиента", "клиентов")}
               {" · "}{allRows.length} открытых {pluralize(allRows.length, "долг", "долга", "долгов")}
@@ -654,7 +654,7 @@ function DebtsPageInner() {
             {allRows.length === 0 ? (
               <>
                 <p className="text-2xl mb-2">🎉</p>
-                <p className="eyebrow mb-1">Дебиторка</p>
+                <p className="eyebrow mb-1">Долги</p>
                 <p className="text-[15px] font-medium text-ink mb-1">Долгов нет</p>
                 <p className="text-sm text-ink-2">Все клиенты закрыли свои брони.</p>
               </>
