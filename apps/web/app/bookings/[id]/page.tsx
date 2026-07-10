@@ -16,6 +16,10 @@ import { ChangeClientModal } from "../../../src/components/bookings/ChangeClient
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
 import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalReviewView";
 import { toast } from "../../../src/components/ToastProvider";
+import {
+  bookingStatusLabel as statusText,
+  bookingStatusVariant as statusVariant,
+} from "../../../src/lib/bookingConstants";
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 import { VoidPaymentModal } from "../../../src/components/finance/VoidPaymentModal";
 import { FinanceTimeline } from "../../../src/components/finance/FinanceTimeline";
@@ -165,23 +169,6 @@ function bookingTitle(b: BookingDetail): string {
   return [date, b.client.name, project].filter(Boolean).join(" · ");
 }
 
-function statusText(s: BookingDetail["status"]) {
-  switch (s) {
-    case "DRAFT":
-      return "Черновик";
-    case "PENDING_APPROVAL":
-      return "На согласовании";
-    case "CONFIRMED":
-      return "Подтверждено";
-    case "ISSUED":
-      return "Выдано";
-    case "RETURNED":
-      return "Возвращено";
-    case "CANCELLED":
-      return "Отменено";
-  }
-}
-
 function paymentMethodLabel(method: string | null): string {
   switch (method) {
     case "CASH": return "Наличные";
@@ -189,17 +176,6 @@ function paymentMethodLabel(method: string | null): string {
     case "BANK_TRANSFER": return "Перевод";
     case "OTHER": return "Другое";
     default: return method ?? "—";
-  }
-}
-
-function statusVariant(s: BookingDetail["status"]): "info" | "warn" | "full" | "edit" | "ok" | "none" | "view" {
-  switch (s) {
-    case "DRAFT": return "view";
-    case "PENDING_APPROVAL": return "warn";
-    case "CONFIRMED": return "full";
-    case "ISSUED": return "edit";
-    case "RETURNED": return "ok";
-    case "CANCELLED": return "none";
   }
 }
 

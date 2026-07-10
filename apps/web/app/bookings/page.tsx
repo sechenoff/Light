@@ -5,6 +5,10 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { apiFetch } from "../../src/lib/api";
+import {
+  bookingStatusLabel as statusText,
+  bookingStatusVariant as statusVariant,
+} from "../../src/lib/bookingConstants";
 import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
 import { ClientPickerPopover } from "../../src/components/bookings/ClientPickerPopover";
@@ -184,37 +188,6 @@ function BookingHistoryPageInner() {
       setLoadingMore(false);
     }
   }
-
-  const statusText = (s: BookingRow["status"]) => {
-    switch (s) {
-      case "DRAFT":
-        return "Черновик";
-      case "PENDING_APPROVAL":
-        return "На согласовании";
-      case "CONFIRMED":
-        return "Подтверждена";
-      case "ISSUED":
-        return "Выдана";
-      case "RETURNED":
-        return "Возвращена";
-      case "CANCELLED":
-        return "Отменена";
-    }
-  };
-
-  // Семантика жизненного цикла: каждая стадия — свой variant (не два
-  // одинаковых зелёных). CONFIRMED/ISSUED — нейтрально-активные (accent/teal),
-  // RETURNED — «хорошо, закрыто» (emerald), CANCELLED — нейтрально гашёный.
-  const statusVariant = (s: BookingRow["status"]): "view" | "warn" | "ok" | "info" | "edit" | "none" => {
-    switch (s) {
-      case "DRAFT": return "view";          // slate — черновик
-      case "PENDING_APPROVAL": return "warn"; // amber — ждёт согласования
-      case "CONFIRMED": return "info";       // accent — подтверждено, активно
-      case "ISSUED": return "edit";          // teal — выдано, в работе
-      case "RETURNED": return "ok";          // emerald — возвращено, закрыто
-      case "CANCELLED": return "none";       // gray — отменено
-    }
-  };
 
   async function removeBooking(id: string) {
     setBusyId(id);

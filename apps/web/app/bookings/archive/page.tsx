@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { apiFetch } from "../../../src/lib/api";
+import { BOOKING_STATUS_LABELS as STATUS_LABEL } from "../../../src/lib/bookingConstants";
 import { SectionHeader } from "../../../src/components/SectionHeader";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { formatRub } from "../../../src/lib/format";
@@ -21,15 +22,6 @@ interface ArchivedBooking {
   deletedAt: string | null;
   deletedBy: string | null;
 }
-
-const STATUS_LABEL: Record<ArchivedBooking["status"], string> = {
-  DRAFT: "Черновик",
-  PENDING_APPROVAL: "На согласовании",
-  CONFIRMED: "Подтверждено",
-  ISSUED: "Выдано",
-  RETURNED: "Возвращено",
-  CANCELLED: "Отменено",
-};
 
 function formatShiftDate(iso: string): string {
   return new Date(iso).toLocaleDateString("ru-RU", {
