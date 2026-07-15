@@ -15,6 +15,7 @@ import { RetroDiffPanel } from "../../../src/components/bookings/RetroDiffPanel"
 import { ChangeClientModal } from "../../../src/components/bookings/ChangeClientModal";
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
 import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalReviewView";
+import { BookingHeader } from "../../../src/components/bookings/BookingHeader";
 import { toast } from "../../../src/components/ToastProvider";
 import {
   bookingStatusLabel as statusText,
@@ -860,162 +861,27 @@ export default function BookingDetailPage() {
           Сам заголовок брони отрисован ниже в Hero-секции (по мокапу v2) — здесь только
           breadcrumb-style ссылки и action-кнопки, чтобы не было дубля заголовка. */}
       {!showApprovalView && (
-        <div className="flex items-center justify-between flex-wrap gap-3 no-print">
-          <Link
-            href="/bookings"
-            className="text-xs text-ink-3 hover:text-ink transition-colors"
-          >
-            ← К списку броней
-          </Link>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors">
-              + Новая бронь
-            </Link>
-            {/* BD-1: основные действия жизненного цикла — раньше были только в
-                списке /bookings, на самой странице брони их не было. */}
-            {booking && !isArchived && !retroEditMode && (
-              <>
-                {(["DRAFT", "CONFIRMED"].includes(booking.status) ||
-                  (booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN")) && (
-                  <Link
-                    href={`/bookings/${id}/edit`}
-                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors"
-                  >
-                    ✎ Изменить
-                  </Link>
-                )}
-                {booking.status === "CONFIRMED" && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
-                  <button
-                    type="button"
-                    disabled={lifecycleBusy}
-                    onClick={() => runLifecycleAction("issue")}
-                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
-                  >
-                    Выдать
-                  </button>
-                )}
-                {booking.status === "ISSUED" && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
-                  <button
-                    type="button"
-                    disabled={lifecycleBusy}
-                    onClick={() => runLifecycleAction("return")}
-                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
-                  >
-                    Вернуть
-                  </button>
-                )}
-                {/* F-EXTEND (1): продление выданной брони — только SUPER_ADMIN.
-                    Клиент оставил оборудование ещё на день — сдвигаем дату
-                    возврата, не дожидаясь физического возврата. */}
-                {booking.status === "ISSUED" && user?.role === "SUPER_ADMIN" && !extendOpen && (
-                  <button
-                    type="button"
-                    disabled={lifecycleBusy}
-                    onClick={openExtend}
-                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
-                  >
-                    Продлить аренду
-                  </button>
-                )}
-                {/* F-EXTEND (2): бронь правили после одобрения — WAREHOUSE может
-                    отправить её на повторное согласование руководителю. */}
-                {booking.status === "CONFIRMED" && user?.role === "WAREHOUSE" && (
-                  <button
-                    type="button"
-                    disabled={resubmitBusy}
-                    onClick={resubmitForApproval}
-                    className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-white transition-colors disabled:opacity-40"
-                    title="Отправить изменённую бронь на повторное согласование"
-                  >
-                    {resubmitBusy ? "Отправляю…" : "На согласование"}
-                  </button>
-                )}
-                {/* «Отменить» только там, где сервер разрешает cancel:
-                    из ISSUED допустим лишь return (allowedActionsByStatus),
-                    и cancel-with-deposit тоже ограничен этими тремя статусами —
-                    иначе кнопка гарантированно заканчивалась 409. */}
-                {["DRAFT", "PENDING_APPROVAL", "CONFIRMED"].includes(booking.status) && user?.role === "SUPER_ADMIN" && (
-                  <button
-                    type="button"
-                    disabled={lifecycleBusy}
-                    onClick={() => runLifecycleAction("cancel")}
-                    className="rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors disabled:opacity-40"
-                  >
-                    Отменить
-                  </button>
-                )}
-              </>
-            )}
-            {/*
-              Ретро-редактирование: только SUPER_ADMIN на закрытой (RETURNED)
-              брони. Кнопка прячется когда уже в режиме редактирования (там
-              работает sticky-bar внизу). См. saveRetroEdit().
-            */}
-            {canRetroEdit && !retroEditMode && (
-              <button
-                type="button"
-                onClick={enterRetroEdit}
-                className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-white transition-colors"
-                title="Изменить уже закрытую бронь — попадёт в аудит-лог"
-              >
-                ✎ Редактировать задним числом
-              </button>
-            )}
-            {/* В архив — только SUPER_ADMIN, на не-архивной броне, не в retro-edit.
-                Раньше архивировать можно было лишь из списка. */}
-            {user?.role === "SUPER_ADMIN" && !isArchived && !retroEditMode && (
-              <button
-                type="button"
-                onClick={archiveBooking}
-                className="rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors"
-                title="Отправить в архив (можно восстановить из /bookings/archive)"
-              >
-                В архив
-              </button>
-            )}
-          </div>
-          {/* F-EXTEND (1): инлайн-поле продления выданной брони. */}
-          {extendOpen && booking && booking.status === "ISSUED" && (
-            <div className="w-full mt-3 rounded-lg border border-border bg-surface-subtle p-3 no-print">
-              <p className="eyebrow mb-2">Продлить аренду</p>
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="block">
-                  <span className="block mb-1 text-xs text-ink-3">Новая дата возврата</span>
-                  <input
-                    type="datetime-local"
-                    value={extendEndDate}
-                    onChange={(e) => setExtendEndDate(e.target.value)}
-                    className="rounded border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent"
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={extendBusy}
-                  onClick={submitExtend}
-                  className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors disabled:opacity-40"
-                >
-                  {extendBusy ? "Сохраняю…" : "Продлить"}
-                </button>
-                <button
-                  type="button"
-                  disabled={extendBusy}
-                  onClick={() => { setExtendOpen(false); setExtendEndDate(""); }}
-                  className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
-                >
-                  Отмена
-                </button>
-              </div>
-              <p className="mt-2 text-xs text-ink-3">
-                Текущая дата возврата:{" "}
-                {new Date(booking.endDate).toLocaleString("ru-RU", {
-                  dateStyle: "short",
-                  timeStyle: "short",
-                  timeZone: "Europe/Moscow",
-                })}
-              </p>
-            </div>
-          )}
-        </div>
+        <BookingHeader
+          bookingId={id}
+          booking={booking}
+          userRole={user?.role}
+          isArchived={isArchived}
+          retroEditMode={retroEditMode}
+          canRetroEdit={canRetroEdit}
+          lifecycleBusy={lifecycleBusy}
+          resubmitBusy={resubmitBusy}
+          extendOpen={extendOpen}
+          extendEndDate={extendEndDate}
+          extendBusy={extendBusy}
+          onLifecycleAction={runLifecycleAction}
+          onArchive={archiveBooking}
+          onResubmit={resubmitForApproval}
+          onEnterRetroEdit={enterRetroEdit}
+          onOpenExtend={openExtend}
+          onChangeExtendDate={setExtendEndDate}
+          onSubmitExtend={submitExtend}
+          onCancelExtend={() => { setExtendOpen(false); setExtendEndDate(""); }}
+        />
       )}
 
       {loading ? (
