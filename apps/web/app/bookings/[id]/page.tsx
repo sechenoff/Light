@@ -16,6 +16,7 @@ import { ChangeClientModal } from "../../../src/components/bookings/ChangeClient
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
 import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalReviewView";
 import { BookingHeader } from "../../../src/components/bookings/BookingHeader";
+import { useBookingLifecycle } from "../../../src/components/bookings/useBookingLifecycle";
 import { toast } from "../../../src/components/ToastProvider";
 import {
   bookingStatusLabel as statusText,
@@ -198,7 +199,6 @@ export default function BookingDetailPage() {
   const [refundInvoiceId, setRefundInvoiceId] = useState<string | null>(null);
   const [cancelDepositOpen, setCancelDepositOpen] = useState(false);
   const [creditNoteOpen, setCreditNoteOpen] = useState(false);
-  const [lifecycleBusy, setLifecycleBusy] = useState(false);
   // F-EXTEND: продление выданной (ISSUED) брони — инлайн-поле новой даты возврата.
   const [extendOpen, setExtendOpen] = useState(false);
   const [extendEndDate, setExtendEndDate] = useState("");
@@ -315,51 +315,15 @@ export default function BookingDetailPage() {
     setBooking(fresh.booking);
   }
 
-  // BD-1 / BD-4: переходы жизненного цикла прямо со страницы брони (раньше были
-  // только в списке /bookings). issue/return — POST /:id/status. Отмена: при
-  // наличии оплаты открываем модалку распоряжения депозитом (как было), иначе —
-  // обычная отмена статусом (закрывает дыру «CONFIRMED без оплаты не отменить»).
-  async function runLifecycleAction(action: "issue" | "return" | "cancel", opts?: { force?: boolean }) {
-    if (!id || !booking) return;
-    const isForcedRetry = opts?.force === true;
-    if (!isForcedRetry) {
-      if (action === "cancel") {
-        if (Number(booking.amountPaid ?? "0") > 0) {
-          setCancelDepositOpen(true);
-          return;
-        }
-        if (!confirm("Отменить бронь?\n\nРезервы оборудования будут сняты.")) return;
-      }
-      if (action === "issue" && !confirm("Перевести бронь в статус «Выдано»?")) return;
-      if (action === "return" && !confirm("Перевести бронь в статус «Возвращено»?")) return;
-    }
-    setLifecycleBusy(true);
-    try {
-      await apiFetch(`/api/bookings/${id}/status`, {
-        method: "POST",
-        body: JSON.stringify({ action, ...(isForcedRetry ? { force: true } : {}) }),
-      });
-      toast.success(
-        action === "issue" ? "Бронь выдана" : action === "return" ? "Бронь возвращена" : "Бронь отменена",
-      );
-      await reloadBooking();
-    } catch (e: any) {
-      // Мягкий гард ранней выдачи: сервер вернул 409 ISSUE_TOO_EARLY (до начала
-      // аренды больше суток). Показываем предупреждение и при согласии
-      // повторяем запрос с force: true — сервер зафиксирует раннюю выдачу
-      // в аудите (forcedEarlyIssue).
-      if (action === "issue" && !isForcedRetry && e?.code === "ISSUE_TOO_EARLY") {
-        const serverMsg = typeof e?.message === "string" ? e.message : "До начала аренды больше суток.";
-        if (confirm(`${serverMsg}\n\nВыдать оборудование заранее?`)) {
-          await runLifecycleAction("issue", { force: true });
-        }
-        return;
-      }
-      toast.error(e?.message ?? "Не удалось изменить статус");
-    } finally {
-      setLifecycleBusy(false);
-    }
-  }
+  // BD-1 / BD-4: переходы жизненного цикла (issue/return/cancel) вынесены в
+  // useBookingLifecycle (фаза 4.3). Отмена при наличии оплаты открывает модалку
+  // распоряжения депозитом.
+  const { lifecycleBusy, runLifecycleAction } = useBookingLifecycle({
+    bookingId: id,
+    booking,
+    reloadBooking,
+    onCancelWithDeposit: () => setCancelDepositOpen(true),
+  });
 
   async function archiveBooking() {
     if (!id) return;
