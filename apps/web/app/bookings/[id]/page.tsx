@@ -17,6 +17,7 @@ import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimel
 import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalReviewView";
 import { BookingHeader } from "../../../src/components/bookings/BookingHeader";
 import { useBookingLifecycle } from "../../../src/components/bookings/useBookingLifecycle";
+import { useExtendRental } from "../../../src/components/bookings/useExtendRental";
 import { toast } from "../../../src/components/ToastProvider";
 import {
   bookingStatusLabel as statusText,
@@ -200,9 +201,6 @@ export default function BookingDetailPage() {
   const [cancelDepositOpen, setCancelDepositOpen] = useState(false);
   const [creditNoteOpen, setCreditNoteOpen] = useState(false);
   // F-EXTEND: продление выданной (ISSUED) брони — инлайн-поле новой даты возврата.
-  const [extendOpen, setExtendOpen] = useState(false);
-  const [extendEndDate, setExtendEndDate] = useState("");
-  const [extendBusy, setExtendBusy] = useState(false);
   // F-EXTEND: повторная отправка на согласование правленной CONFIRMED-брони (WAREHOUSE).
   const [resubmitBusy, setResubmitBusy] = useState(false);
 
@@ -347,58 +345,16 @@ export default function BookingDetailPage() {
     }
   }
 
-  /**
-   * F-EXTEND (1): продлить выданную бронь. Оператор вводит новую дату возврата,
-   * шлём PATCH с extendEndDate. Бэкенд-контракт (PATCH ISSUED с extendEndDate)
-   * реализует кластер C-BOOK-API — если сервер его ещё не принимает, PATCH
-   * вернёт 409 BOOKING_EDIT_FORBIDDEN, и мы показываем это тостом, не роняя UI.
-   */
-  function openExtend() {
-    if (!booking) return;
-    // Префилл текущей датой возврата в формате datetime-local (Europe/Moscow).
-    const d = new Date(booking.endDate);
-    // Приводим к московскому времени и парсим компоненты в формат datetime-local.
-    const parts = new Intl.DateTimeFormat("ru-RU", {
-      timeZone: "Europe/Moscow",
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", hour12: false,
-    }).formatToParts(d);
-    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-    setExtendEndDate(`${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`);
-    setExtendOpen(true);
-  }
-
-  async function submitExtend() {
-    if (!booking || extendBusy) return;
-    if (!extendEndDate) {
-      toast.error("Укажите новую дату возврата");
-      return;
-    }
-    const nextEnd = new Date(extendEndDate);
-    if (Number.isNaN(nextEnd.getTime())) {
-      toast.error("Некорректная дата возврата");
-      return;
-    }
-    if (nextEnd.getTime() <= new Date(booking.endDate).getTime()) {
-      toast.error("Новая дата возврата должна быть позже текущей");
-      return;
-    }
-    setExtendBusy(true);
-    try {
-      await apiFetch(`/api/bookings/${booking.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ extendEndDate: nextEnd.toISOString() }),
-      });
-      toast.success("Аренда продлена");
-      setExtendOpen(false);
-      setExtendEndDate("");
-      await reloadBooking();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Не удалось продлить аренду");
-    } finally {
-      setExtendBusy(false);
-    }
-  }
+  // F-EXTEND (1): продление выданной брони вынесено в useExtendRental (фаза 4.4).
+  const {
+    extendOpen,
+    extendEndDate,
+    extendBusy,
+    openExtend,
+    submitExtend,
+    cancelExtend,
+    setExtendEndDate,
+  } = useExtendRental({ booking, reloadBooking });
 
   /**
    * F-EXTEND (2): WAREHOUSE правил уже подтверждённую бронь и хочет отправить её
@@ -844,7 +800,7 @@ export default function BookingDetailPage() {
           onOpenExtend={openExtend}
           onChangeExtendDate={setExtendEndDate}
           onSubmitExtend={submitExtend}
-          onCancelExtend={() => { setExtendOpen(false); setExtendEndDate(""); }}
+          onCancelExtend={cancelExtend}
         />
       )}
 
