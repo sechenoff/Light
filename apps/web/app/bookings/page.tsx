@@ -11,7 +11,7 @@ import {
 } from "../../src/lib/bookingConstants";
 import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
-import { ClientPickerPopover } from "../../src/components/bookings/ClientPickerPopover";
+import { BookingRowMenu, type BookingRowMenuItem } from "../../src/components/bookings/BookingRowMenu";
 import { ConfirmActionModal } from "../../src/components/bookings/ConfirmActionModal";
 import { CancelWithDepositModal } from "../../src/components/finance/CancelWithDepositModal";
 import {
@@ -22,6 +22,7 @@ import {
   paymentTooltip,
   readListFiltersFromParams,
 } from "../../src/components/bookings/bookingListHelpers";
+import { rememberBookingsListQuery } from "../../src/components/bookings/bookingsListNav";
 import { formatRub, formatWaitingTime, pluralize } from "../../src/lib/format";
 import { toast } from "../../src/components/ToastProvider";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
@@ -83,12 +84,12 @@ function BookingHistoryPageInner() {
   const [searchQuery, setSearchQuery] = useState<string>(initialFilters.q);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  // Подтверждение необратимых действий (RETURNED/CANCELLED — терминальные
-  // статусы, пути назад через UI нет): «Вернуть» и «Отменить» идут через
-  // модалку. «Выдать» остаётся в один клик — переход обратим возвратом.
+  // Подтверждение статусных действий модалкой. «Вернуть»/«Отменить» —
+  // необратимые (терминальные статусы). «Выдать» тоже через подтверждение:
+  // на строке кнопка легко мис-тапается пальцем, а выдача резервирует юниты.
   const [confirmAction, setConfirmAction] = useState<null | {
     row: BookingRow;
-    action: "return" | "cancel";
+    action: "issue" | "return" | "cancel";
   }>(null);
   // Отмена ОПЛАЧЕННОЙ брони — как на странице брони: обязательная модалка
   // распоряжения депозитом (возврат / кредит / штраф), не простой cancel.
@@ -169,6 +170,9 @@ function BookingHistoryPageInner() {
       q: searchQuery,
     });
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    // Запоминаем фильтры для «← К списку» на карточке брони — возврат
+    // приводит на тот же отфильтрованный список, а не на голый /bookings.
+    rememberBookingsListQuery(qs ? `?${qs}` : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, paymentFilter, dateFrom, dateTo, searchQuery]);
 
@@ -203,8 +207,7 @@ function BookingHistoryPageInner() {
   }
 
   // Точечное обновление одной строки из ответа API — статусное действие не
-  // сбрасывает подгруженные страницы и скролл-позицию (паттерн — как
-  // оптимистичное обновление клиента в ClientPickerPopover ниже).
+  // сбрасывает подгруженные страницы и скролл-позицию.
   function mergeRowFromApi(id: string, booking: Partial<BookingRow>) {
     setRows((prev) =>
       prev.map((row) =>
@@ -257,24 +260,6 @@ function BookingHistoryPageInner() {
     }
   }
 
-  // Одобрение из списка: PENDING_APPROVAL → CONFIRMED в один клик (SUPER_ADMIN).
-  // Отклонение справедливо требует причину (на /bookings/[id]), но одобрение —
-  // одно действие, поэтому без модалки. Строка обновляется точечно.
-  async function approveBooking(id: string) {
-    setBusyId(id);
-    try {
-      const data = await apiFetch<{ booking: Partial<BookingRow> }>(`/api/bookings/${id}/approve`, {
-        method: "POST",
-      });
-      mergeRowFromApi(id, data.booking ?? {});
-      toast.success("Бронь подтверждена, оборудование зарезервировано");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Не удалось одобрить бронь");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   // После отмены с распоряжением депозитом суммы меняются на сервере —
   // перечитываем ОДНУ бронь и обновляем её строку, не сбрасывая пагинацию.
   async function refreshRow(id: string) {
@@ -308,97 +293,71 @@ function BookingHistoryPageInner() {
   // фильтра по подгруженной странице (раньше это давало неполный результат).
   const filteredRows = rows;
 
+  // Второстепенные/деструктивные действия строки — под меню «⋯».
+  // Правила гейтинга зеркалят /bookings/[id] и сервер: редактировать можно
+  // DRAFT/CONFIRMED (PENDING — только SA); отмена запрещена из ISSUED и
+  // терминальных статусов, оплаченную бронь отменяет только SA (депозит-мастер
+  // SA-only); архив — SA.
+  function rowMenuItems(r: BookingRow): BookingRowMenuItem[] {
+    const items: BookingRowMenuItem[] = [];
+    const canEdit =
+      ["DRAFT", "CONFIRMED"].includes(r.status) ||
+      (r.status === "PENDING_APPROVAL" && isSuperAdmin);
+    if (canEdit) {
+      items.push({
+        key: "edit",
+        label: "Изменить",
+        onSelect: () => router.push(`/bookings/${r.id}/edit`),
+      });
+    }
+    const canCancel =
+      !["CANCELLED", "RETURNED", "ISSUED"].includes(r.status) &&
+      (isSuperAdmin || Number(r.amountPaid ?? "0") === 0);
+    if (canCancel) {
+      items.push({ key: "cancel", label: "Отменить бронь", danger: true, onSelect: () => requestCancel(r) });
+    }
+    if (isSuperAdmin) {
+      items.push({ key: "archive", label: "В архив", danger: true, onSelect: () => setArchiveRow(r) });
+    }
+    return items;
+  }
+
   // Один набор действий для десктопной таблицы и мобильных карточек —
-  // никакого дрейфа между двумя представлениями.
+  // никакого дрейфа между двумя представлениями. На виду — только ОДНО
+  // главное действие статуса, остальное убрано под «⋯».
   function renderRowActions(r: BookingRow) {
+    const menuItems = rowMenuItems(r);
     return (
-      <div className="flex items-center gap-2 flex-wrap">
-        <Link className="text-xs text-accent-bright hover:text-accent font-medium" href={`/bookings/${r.id}`}>
-          Открыть
-        </Link>
-        {/* Одобрение в один клик для руководителя — снимает ежедневную рутину
-            «алерт → список → открыть → одобрить». Отклонение с причиной
-            по-прежнему на /bookings/[id]. */}
+      <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+        {/* Главное действие статуса. Согласование ведёт на экран согласования
+            (состав + смета + история), а не резервирует юниты одним кликом. */}
         {r.status === "PENDING_APPROVAL" && isSuperAdmin ? (
-          <button
-            type="button"
-            className="text-xs rounded border border-emerald-border text-emerald px-2 py-1 hover:bg-emerald-soft disabled:opacity-40"
-            disabled={busyId === r.id}
-            onClick={() => approveBooking(r.id)}
-          >
-            Одобрить
-          </button>
-        ) : null}
-        {(["DRAFT", "CONFIRMED"].includes(r.status) || (r.status === "PENDING_APPROVAL" && isSuperAdmin)) ? (
           <Link
-            href={`/bookings/${r.id}/edit`}
-            title="Редактировать"
-            className="text-ink-3 hover:text-ink"
+            href={`/bookings/${r.id}`}
+            className="text-xs rounded border border-emerald-border text-emerald px-2.5 py-1 font-medium hover:bg-emerald-soft transition-colors"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />
-            </svg>
+            Согласовать →
           </Link>
-        ) : (
-          <span className="text-border cursor-not-allowed">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />
-            </svg>
-          </span>
-        )}
-        {isSuperAdmin && (
+        ) : r.status === "CONFIRMED" ? (
           <button
             type="button"
-            title="В архив (можно восстановить из /bookings/archive)"
-            className="text-rose hover:text-rose/80 disabled:opacity-40"
+            className="text-xs rounded border border-accent-border text-accent-bright px-2.5 py-1 font-medium hover:bg-accent-soft disabled:opacity-40 transition-colors"
             disabled={busyId === r.id}
-            onClick={() => setArchiveRow(r)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18" />
-              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-            </svg>
-          </button>
-        )}
-        {r.status === "CONFIRMED" ? (
-          <button
-            type="button"
-            className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-muted disabled:opacity-40"
-            disabled={busyId === r.id}
-            onClick={() => runStatusAction(r.id, "issue")}
+            onClick={() => setConfirmAction({ row: r, action: "issue" })}
           >
             Выдать
           </button>
-        ) : null}
-        {r.status === "ISSUED" ? (
+        ) : r.status === "ISSUED" ? (
           <button
             type="button"
-            className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-muted disabled:opacity-40"
+            className="text-xs rounded border border-accent-border text-accent-bright px-2.5 py-1 font-medium hover:bg-accent-soft disabled:opacity-40 transition-colors"
             disabled={busyId === r.id}
             onClick={() => setConfirmAction({ row: r, action: "return" })}
           >
             Вернуть
           </button>
         ) : null}
-        {/* Гейт зеркалит /bookings/[id] и серверные правила:
-            из ISSUED отмена запрещена (allowedActions), оплаченную
-            бронь отменяет только SUPER_ADMIN (депозит-мастер и
-            /cancel-with-deposit — SA-only). Иначе кладовщик
-            проходил бы 3 шага мастера и получал 403/409. */}
-        {!["CANCELLED", "RETURNED", "ISSUED"].includes(r.status) &&
-        (isSuperAdmin || Number(r.amountPaid ?? "0") === 0) ? (
-          <button
-            type="button"
-            className="text-xs rounded border border-rose-border text-rose px-2 py-1 hover:bg-rose-soft disabled:opacity-40"
-            disabled={busyId === r.id}
-            onClick={() => requestCancel(r)}
-          >
-            Отменить
-          </button>
-        ) : null}
+        {menuItems.length > 0 && <BookingRowMenu items={menuItems} />}
       </div>
     );
   }
@@ -541,47 +500,25 @@ function BookingHistoryPageInner() {
               {filteredRows.map((r) => (
                 <tr
                   key={r.id}
-                  className="border-t border-border hover:bg-surface-muted transition-colors"
+                  className="border-t border-border hover:bg-surface-muted transition-colors cursor-pointer"
                   title={paymentTooltip(r)}
+                  onClick={() => router.push(`/bookings/${r.id}`)}
                 >
                   <td className="px-3 py-2 text-ink-2 whitespace-nowrap mono-num" title="Смена — возврат">
                     {formatBookingPeriod(r.startDate, r.endDate)}
                   </td>
                   <td className="px-3 py-2 text-ink-2">
-                    {isSuperAdmin ? (
-                      <ClientPickerPopover
-                        bookingId={r.id}
-                        currentClientId={r.client.id}
-                        currentClientName={r.client.name}
-                        onAssigned={(newClient) => {
-                          // Оптимистичное локальное обновление — без перезапроса всего списка.
-                          setRows((prev) =>
-                            prev.map((row) =>
-                              row.id === r.id
-                                ? { ...row, client: { id: newClient.id, name: newClient.name } }
-                                : row,
-                            ),
-                          );
-                        }}
-                      >
-                        {(triggerProps) => {
-                          const { ref, ...rest } = triggerProps;
-                          return (
-                            <button
-                              type="button"
-                              ref={ref as React.Ref<HTMLButtonElement>}
-                              {...(rest as React.ButtonHTMLAttributes<HTMLButtonElement>)}
-                              className="text-left text-ink-2 border-b border-dotted border-border hover:border-accent hover:text-accent transition-colors -my-0.5 py-0.5 max-w-[200px] truncate"
-                              title="Сменить клиента"
-                            >
-                              {r.client.name}
-                            </button>
-                          );
-                        }}
-                      </ClientPickerPopover>
-                    ) : (
-                      r.client.name
-                    )}
+                    {/* Клик по клиенту фильтрует список его бронями (частый
+                        сценарий), а не меняет клиента брони — смена клиента
+                        живёт на карточке брони, где ей и место. */}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setSearchInput(r.client.name); }}
+                      className="text-left text-ink-2 border-b border-dotted border-border hover:border-accent hover:text-accent transition-colors -my-0.5 py-0.5 max-w-[200px] truncate"
+                      title={`Показать брони клиента «${r.client.name}»`}
+                    >
+                      {r.client.name}
+                    </button>
                   </td>
                   <td className="px-3 py-2">
                     {r.projectName?.trim() === "Проект" ? (
@@ -614,12 +551,20 @@ function BookingHistoryPageInner() {
           {filteredRows.map((r) => (
             <div
               key={r.id}
-              className="border border-border rounded-lg p-3 bg-surface"
+              className="border border-border rounded-lg p-3 bg-surface cursor-pointer active:bg-surface-muted transition-colors"
               title={paymentTooltip(r)}
+              onClick={() => router.push(`/bookings/${r.id}`)}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <strong className="text-ink text-[13px] block truncate">{r.client.name}</strong>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setSearchInput(r.client.name); }}
+                    className="text-ink text-[13px] font-semibold block truncate max-w-full text-left border-b border-dotted border-transparent hover:border-accent hover:text-accent transition-colors"
+                    title={`Показать брони клиента «${r.client.name}»`}
+                  >
+                    {r.client.name}
+                  </button>
                   <div className="text-xs text-ink-3 truncate">
                     {r.projectName?.trim() === "Проект" ? "Без названия" : r.projectName}
                   </div>
@@ -671,15 +616,29 @@ function BookingHistoryPageInner() {
 
       <ConfirmActionModal
         open={confirmAction !== null}
-        title={confirmAction?.action === "return" ? "Возврат брони" : "Отмена брони"}
+        title={
+          confirmAction?.action === "issue"
+            ? "Выдача оборудования"
+            : confirmAction?.action === "return"
+              ? "Возврат брони"
+              : "Отмена брони"
+        }
         subtitle={confirmAction ? bookingRowTitle(confirmAction.row) : undefined}
         message={
-          confirmAction?.action === "return"
-            ? "Перевести бронь в статус «Возвращено»?\n\nСтатус финальный: оборудование вернётся в доступные, изменить статус обратно через интерфейс будет нельзя."
-            : "Отменить бронь?\n\nРезервы оборудования будут сняты, бронь перейдёт в финальный статус «Отменено» — вернуть её через интерфейс будет нельзя."
+          confirmAction?.action === "issue"
+            ? "Выдать оборудование по этой брони?\n\nЮниты перейдут в статус «Выдано» и будут списаны со склада."
+            : confirmAction?.action === "return"
+              ? "Перевести бронь в статус «Возвращено»?\n\nСтатус финальный: оборудование вернётся в доступные, изменить статус обратно через интерфейс будет нельзя."
+              : "Отменить бронь?\n\nРезервы оборудования будут сняты, бронь перейдёт в финальный статус «Отменено» — вернуть её через интерфейс будет нельзя."
         }
-        confirmLabel={confirmAction?.action === "return" ? "Вернуть" : "Отменить бронь"}
-        tone={confirmAction?.action === "return" ? "primary" : "danger"}
+        confirmLabel={
+          confirmAction?.action === "issue"
+            ? "Выдать"
+            : confirmAction?.action === "return"
+              ? "Вернуть"
+              : "Отменить бронь"
+        }
+        tone={confirmAction?.action === "cancel" ? "danger" : "primary"}
         loading={confirmAction !== null && busyId === confirmAction.row.id}
         onClose={() => setConfirmAction(null)}
         onConfirm={handleConfirmAction}

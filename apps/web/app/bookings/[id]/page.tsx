@@ -35,6 +35,7 @@ import { BookingItemsTable } from "../../../src/components/bookings/BookingItems
 import { RetroDiffSummary } from "../../../src/components/bookings/RetroDiffSummary";
 import { BookingOrderInfoSection } from "../../../src/components/bookings/BookingOrderInfoSection";
 import { BookingMobileCta } from "../../../src/components/bookings/BookingMobileCta";
+import { readBookingsListHref } from "../../../src/components/bookings/bookingsListNav";
 import { toast } from "../../../src/components/ToastProvider";
 import {
   bookingStatusLabel as statusText,
@@ -292,7 +293,7 @@ export default function BookingDetailPage() {
       const res = await apiFetch<{ freedUnits?: number }>(`/api/bookings/${id}`, { method: "DELETE" });
       const freed = res?.freedUnits ?? 0;
       toast.success(freed > 0 ? `Бронь в архиве · освобождено единиц: ${freed}` : "Бронь отправлена в архив");
-      window.location.href = "/bookings";
+      window.location.href = readBookingsListHref();
     } catch (e: any) {
       toast.error(e?.message ?? "Не удалось архивировать бронь");
     }

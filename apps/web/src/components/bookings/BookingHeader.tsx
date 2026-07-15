@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import type { UserRole } from "@/lib/auth";
 import type { BookingStatus } from "@/lib/bookingConstants";
+import { readBookingsListHref } from "./bookingsListNav";
 
 /**
  * Шапка карточки брони (фаза 4.2): breadcrumb + action-кнопки жизненного цикла
@@ -53,10 +55,18 @@ export function BookingHeader({
   onSubmitExtend,
   onCancelExtend,
 }: BookingHeaderProps) {
+  // «← К списку» возвращает на список с теми же фильтрами, что были активны
+  // (sessionStorage). Читаем после маунта — на SSR sessionStorage нет, поэтому
+  // useState-инициализатор дал бы «/bookings» и рассинхрон гидратации.
+  const [backHref, setBackHref] = useState("/bookings");
+  useEffect(() => {
+    setBackHref(readBookingsListHref());
+  }, []);
+
   return (
     <div className="flex items-center justify-between flex-wrap gap-3 no-print">
       <Link
-        href="/bookings"
+        href={backHref}
         className="text-xs text-ink-3 hover:text-ink transition-colors"
       >
         ← К списку броней

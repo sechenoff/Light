@@ -10,6 +10,7 @@ import { StatusPill } from "../StatusPill";
 import { RoleBadge } from "../RoleBadge";
 import { RejectBookingModal } from "./RejectBookingModal";
 import { ApprovalContext } from "./ApprovalContext";
+import { readBookingsListHref } from "./bookingsListNav";
 import { toast } from "../ToastProvider";
 
 // ------------------------------------------------------------------ types ---
@@ -202,6 +203,13 @@ type Props = {
 export function ApprovalReviewView({ booking, onReload }: Props) {
   const router = useRouter();
 
+  // «← Брони» возвращает на список с сохранёнными фильтрами (sessionStorage).
+  // После маунта — SSR не имеет sessionStorage (иначе рассинхрон гидратации).
+  const [backHref, setBackHref] = useState("/bookings");
+  useEffect(() => {
+    setBackHref(readBookingsListHref());
+  }, []);
+
   // Approval actions state
   const [approving, setApproving] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -260,7 +268,7 @@ export function ApprovalReviewView({ booking, onReload }: Props) {
         body: JSON.stringify({ reason }),
       });
       toast.success("Заявка отклонена, возвращена кладовщику");
-      router.push("/bookings");
+      router.push(readBookingsListHref());
     } catch (e: unknown) {
       setRejectBusy(false);
       throw e; // let modal show inline error
@@ -331,7 +339,7 @@ export function ApprovalReviewView({ booking, onReload }: Props) {
       {/* Breadcrumb + status + role pills */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm">
-          <Link href="/bookings" className="text-ink-3 hover:text-ink">
+          <Link href={backHref} className="text-ink-3 hover:text-ink">
             ← Брони
           </Link>
           <span className="text-ink-3">/</span>
