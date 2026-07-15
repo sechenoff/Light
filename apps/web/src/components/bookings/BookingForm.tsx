@@ -19,6 +19,7 @@ import {
 } from "../../lib/rentalTime";
 
 import { ClientProjectCard } from "./create/ClientProjectCard";
+import { StepsNav, type StepDef } from "./create/StepsNav";
 import { DatesCard } from "./create/DatesCard";
 import { EquipmentCard } from "./create/EquipmentCard";
 import { TransportCard } from "./create/TransportCard";
@@ -373,6 +374,9 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
   // предварительный локальный расчёт, а не выдаёт его за авторитетный.
   const [quoteError, setQuoteError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Была попытка сохранить с невыполненными требованиями → todo-подсказки
+  // становятся rose-ошибками, невалидный шаг подсвечивается в рейке.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   // Transport — multi-vehicle. Init from initialBooking.vehicles[] if present,
   // else from legacy single vehicle* columns (back-compat with old bookings).
@@ -652,8 +656,30 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
   const localDiscount = (localSubtotal * clampedDiscount) / 100;
   const localTotal = localSubtotal - localDiscount;
 
+  // ── Требования к сохранению (для чеклиста, шагов и валидации по клику) ──
+  const clientOk = clientName.trim().length > 0;
+  const datesOk = Boolean(pickupISO && returnISO) && !dateOrderInvalid;
+  const hasItems = selected.size > 0 || customItems.length > 0;
+  const formValid = clientOk && datesOk && hasItems;
+
   const checks = useMemo<ValidationCheck[]>(() => {
     const list: ValidationCheck[] = [];
+    // Невыполненные требования — постоянный чеклист рядом с кнопками (вместо
+    // молча задизейбленной кнопки). После попытки сохранить — rose-ошибки.
+    const reqType = submitAttempted ? ("error" as const) : ("todo" as const);
+    if (!clientOk) {
+      list.push({ type: reqType, label: "Укажите клиента", detail: "шаг 1 — имя обязательно" });
+    }
+    if (dateOrderInvalid) {
+      // Текст намеренно НЕ дублирует inline-ошибку DatesCard («Возврат раньше
+      // выдачи…») — тест ищет её через findByText и должен найти ровно одну.
+      list.push({ type: "error", label: "Исправьте даты", detail: "шаг 2 — возврат раньше выдачи" });
+    } else if (!datesOk) {
+      list.push({ type: reqType, label: "Укажите даты", detail: "шаг 2 — выдача и возврат" });
+    }
+    if (!hasItems) {
+      list.push({ type: reqType, label: "Добавьте оборудование", detail: "шаг 3 — каталог, AI-заявка или произвольная позиция" });
+    }
     if (selected.size > 0 && customItems.length === 0 && unmatchedFromAi.length === 0) {
       list.push({ type: "ok", label: "Все позиции распознаны", detail: "" });
     }
@@ -664,18 +690,53 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
       list.push({ type: "tip", label: `${customItems.length} ${pluralize(customItems.length, "произвольная позиция", "произвольные позиции", "произвольных позиций")}`, detail: "услуги, расходники, субаренда" });
     }
     return list;
-  }, [selected, customItems, unmatchedFromAi]);
+  }, [selected, customItems, unmatchedFromAi, clientOk, datesOk, dateOrderInvalid, hasItems, submitAttempted]);
 
-  const canSubmit = Boolean(
-    clientName.trim() &&
-      (selected.size > 0 || customItems.length > 0) &&
-      pickupISO &&
-      returnISO &&
-      // Дата начала строго раньше возврата — иначе бэкенд вернёт 400, а кнопка
-      // раньше оставалась активной.
-      !dateOrderInvalid &&
-      !submitting,
-  );
+  // Кнопки больше не гасятся молча при незаполненной форме: клик по ним
+  // запускает inline-валидацию (validateForSubmit) со скроллом к проблемному
+  // шагу. Блокируется только сам процесс сохранения.
+  const canSubmit = !submitting;
+
+  // ── Шаги: рейка-навигация + статусы (см. StepsNav) ──
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  function scrollToStep(id: string) {
+    sectionRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  const detailsFilled = bookingComment.trim().length > 0 || expectedPaymentDateLocal.length > 0;
+  const steps: StepDef[] = [
+    {
+      id: "step-client",
+      label: "Клиент и проект",
+      state: clientOk ? "complete" : submitAttempted ? "error" : "idle",
+    },
+    {
+      id: "step-dates",
+      label: "Даты",
+      state: dateOrderInvalid ? "error" : datesOk ? "complete" : submitAttempted ? "error" : "idle",
+    },
+    {
+      id: "step-equipment",
+      label: "Оборудование",
+      state: hasItems ? "complete" : submitAttempted ? "error" : "idle",
+    },
+    {
+      id: "step-details",
+      label: "Детали",
+      state: detailsFilled ? "complete" : "idle",
+      optional: true,
+    },
+  ];
+
+  // Валидация по клику на кнопку сохранения: вместо toast — подсветка шага,
+  // inline-ошибка у поля и автоскролл к первому невалидному шагу.
+  function validateForSubmit(): boolean {
+    if (formValid) return true;
+    setSubmitAttempted(true);
+    if (!clientOk) scrollToStep("step-client");
+    else if (!datesOk) scrollToStep("step-dates");
+    else scrollToStep("step-equipment");
+    return false;
+  }
 
   function handleToggleVehicle(vehicleId: string, checked: boolean) {
     setSelectedVehicles((prev) => {
@@ -1081,11 +1142,13 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
   }
 
   async function handleSaveDraftClick() {
+    if (!validateForSubmit()) return;
     const id = await saveDraft();
     if (id) router.push(`/bookings/${id}`);
   }
 
   async function handleSubmitForApproval() {
+    if (!validateForSubmit()) return;
     const id = await saveDraft();
     if (!id) return;
     try {
@@ -1102,6 +1165,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
   // одобрить). Прямой confirm из веба закрыт (USE_APPROVAL_FLOW), поэтому
   // проводим бронь по штатной цепочке, но без ухода со страницы на «Одобрить».
   async function handleCreateAndConfirm() {
+    if (!validateForSubmit()) return;
     const id = await saveDraft();
     if (!id) return;
     try {
@@ -1119,6 +1183,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
 
   // Edit mode: PATCH existing booking
   async function handleSaveEdit() {
+    if (!validateForSubmit()) return;
     if (!bookingId || !pickupISO || !returnISO) return;
     setSubmitting(true);
     try {
@@ -1187,13 +1252,20 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
 
   return (
     <div>
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-surface px-4 md:px-8 py-3 shadow-xs">
-        <div className="flex items-center gap-3 text-[13px]">
-          {breadcrumb}
+      <header className="sticky top-0 z-20 border-b border-border bg-surface shadow-xs">
+        <div className="flex items-center justify-between px-4 md:px-8 py-3">
+          <div className="flex items-center gap-3 text-[13px]">
+            {breadcrumb}
+          </div>
+          {isEdit && (
+            <div className="text-sm font-medium text-ink">{headerTitle}</div>
+          )}
         </div>
-        {isEdit && (
-          <div className="text-sm font-medium text-ink">{headerTitle}</div>
-        )}
+        {/* Рейка шагов (4.8): статус секций + клик-переход. Не wizard —
+            секции остаются на странице, менеджер свободно прыгает между ними. */}
+        <div className="border-t border-border">
+          <StepsNav steps={steps} onStepClick={scrollToStep} />
+        </div>
       </header>
 
       <div className="mx-auto grid max-w-[1280px] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] items-start gap-5 px-4 py-5 md:px-8 md:py-7">
@@ -1223,29 +1295,47 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
               </div>
             </div>
           )}
-          <ClientProjectCard
-            clientName={clientName}
-            projectName={projectName}
-            onClientNameChange={setClientName}
-            onProjectNameChange={setProjectName}
-            clientReadOnly={isEdit}
-            clientPhone={clientPhone}
-            onClientPhoneChange={setClientPhone}
-            showPhoneField={!isEdit && isNewClient}
-            onNewClientChange={setIsNewClient}
-          />
-          <DatesCard
-            pickupLocal={pickupLocal}
-            returnLocal={returnLocal}
-            onPickupChange={handlePickupChange}
-            onReturnChange={handleReturnChange}
-            durationTag={durationTag}
-            durationDetail={durationDetail}
-            skipPartialDay={skipPartialDay}
-            onSkipPartialDayChange={setSkipPartialDay}
-            rangeError={dateOrderInvalid ? "Возврат раньше выдачи — проверьте дату и время" : null}
-          />
+          <div ref={(el) => { sectionRefs.current["step-client"] = el; }} className="scroll-mt-28">
+            <ClientProjectCard
+              clientName={clientName}
+              projectName={projectName}
+              onClientNameChange={setClientName}
+              onProjectNameChange={setProjectName}
+              clientReadOnly={isEdit}
+              clientPhone={clientPhone}
+              onClientPhoneChange={setClientPhone}
+              showPhoneField={!isEdit && isNewClient}
+              onNewClientChange={setIsNewClient}
+              errorText={
+                submitAttempted && !clientOk
+                  ? "Укажите клиента — без него бронь не сохранить"
+                  : null
+              }
+            />
+          </div>
+          <div ref={(el) => { sectionRefs.current["step-dates"] = el; }} className="scroll-mt-28">
+            <DatesCard
+              pickupLocal={pickupLocal}
+              returnLocal={returnLocal}
+              onPickupChange={handlePickupChange}
+              onReturnChange={handleReturnChange}
+              durationTag={durationTag}
+              durationDetail={durationDetail}
+              skipPartialDay={skipPartialDay}
+              onSkipPartialDayChange={setSkipPartialDay}
+              rangeError={dateOrderInvalid ? "Возврат раньше выдачи — проверьте дату и время" : null}
+            />
+          </div>
 
+          <div
+            ref={(el) => { sectionRefs.current["step-equipment"] = el; }}
+            className="flex scroll-mt-28 flex-col gap-2"
+          >
+          {submitAttempted && !hasItems && (
+            <div role="alert" className="rounded-md border border-rose-border bg-rose-soft px-4 py-2.5 text-[13px] text-rose">
+              Добавьте хотя бы одну позицию — из каталога, через AI-заявку или произвольной позицией.
+            </div>
+          )}
           <EquipmentCard
             catalog={catalog}
             catalogLoading={catalogLoading}
@@ -1287,7 +1377,12 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             onReviewSkip={handleReviewSkip}
             onReviewSkipAll={handleReviewSkipAll}
           />
+          </div>
 
+          <div
+            ref={(el) => { sectionRefs.current["step-details"] = el; }}
+            className="flex scroll-mt-28 flex-col gap-3.5"
+          >
           <CommentCard value={bookingComment} onChange={setBookingComment} />
 
           {/* Срок оплаты */}
@@ -1319,6 +1414,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
                 Оставь пустым для default-значения из настроек организации
               </p>
             )}
+          </div>
           </div>
         </div>
 
@@ -1380,6 +1476,16 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
 export function BookingForm(props: BookingFormProps): JSX.Element {
   // Эпоха-ключ: «Начать заново» ремаунтит форму с дефолтными initializers.
   const [formEpoch, setFormEpoch] = useState(0);
+  // Форма инициализирует state из localStorage-черновика, которого нет при
+  // SSR — любая зависящая от него условная ветка (плашка восстановления,
+  // статусы шагов, подсказки автокомплита) давала бы hydration-mismatch.
+  // Рендерим форму только после маунта: сервер и первый клиентский рендер
+  // одинаково отдают fallback. SSR-ценности у формы за авторизацией нет.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) {
+    return <div className="p-8 text-center text-ink-3">Загрузка…</div>;
+  }
   return (
     <Suspense fallback={<div className="p-8 text-center text-ink-3">Загрузка…</div>}>
       <BookingFormInner

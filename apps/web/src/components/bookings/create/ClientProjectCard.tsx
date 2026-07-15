@@ -16,6 +16,8 @@ type ClientProjectCardProps = {
   showPhoneField?: boolean;
   /** Автокомплит сообщает, будет ли создан новый клиент. */
   onNewClientChange?: (isNew: boolean) => void;
+  /** Inline-ошибка поля клиента (появляется после попытки сохранить пустым). */
+  errorText?: string | null;
 };
 
 const INPUT_CLS =
@@ -31,6 +33,7 @@ export function ClientProjectCard({
   onClientPhoneChange,
   showPhoneField = false,
   onNewClientChange,
+  errorText = null,
 }: ClientProjectCardProps) {
   const initials = clientName
     .trim()
@@ -65,6 +68,11 @@ export function ClientProjectCard({
               placeholder="Название компании / заказчика"
               onWillCreateNewChange={onNewClientChange}
             />
+          )}
+          {errorText && (
+            <p role="alert" className="mt-1.5 text-[12px] text-rose">
+              {errorText}
+            </p>
           )}
         </div>
 
