@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AiRequestZone } from "./AiRequestZone";
+import { AiRequestModal } from "./AiRequestModal";
 import { AiResultBanner } from "./AiResultBanner";
 import { CatalogBrowser } from "./CatalogBrowser";
 import { EquipmentCartZone } from "./EquipmentCartZone";
@@ -92,7 +92,6 @@ export function EquipmentCard({
   unmatchedFromAi,
   successBannerDismissed,
   onParse,
-  onClear,
   onDismissSuccess,
   onIgnoreUnmatched,
   onAddOffCatalog,
@@ -118,11 +117,13 @@ export function EquipmentCard({
   onReviewSkip,
   onReviewSkipAll,
 }: Props) {
-  // AI-зона: открывается кнопкой или пастой многострочного текста в поиск.
+  // Модалка AI-заявки: открывается кнопкой или пастой многострочного текста
+  // в поиск. Закрытие (Esc/крестик/фон/Отмена) НЕ стирает текст — gafferText
+  // живёт в BookingForm и автосейвится в черновик.
   const [aiOpen, setAiOpen] = useState(false);
 
-  // AI разобрал заявку → появилась панель подтверждения; зону сворачиваем,
-  // чтобы не дублировать контекст (текст к этому моменту уже очищен parent'ом).
+  // AI разобрал заявку → появилась панель подтверждения; модалку закрываем
+  // (текст к этому моменту уже очищен parent'ом).
   useEffect(() => {
     if (pendingReview.length > 0) setAiOpen(false);
   }, [pendingReview.length]);
@@ -137,16 +138,11 @@ export function EquipmentCard({
     return sum;
   }, [selected, shifts, customItems]);
 
-  function handleAiCancel() {
-    setAiOpen(false);
-    onClear();
-  }
-
   function handleSearchPaste(e: React.ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData("text");
     if (!text.includes("\n")) return;
     // Многострочная паста — это заявка от гафера, не поисковый запрос:
-    // перекидываем текст в AI-зону (input всё равно съел бы переводы строк).
+    // перекидываем текст в модалку (input всё равно съел бы переводы строк).
     e.preventDefault();
     onGafferTextChange(text);
     onSearchQueryChange("");
@@ -251,15 +247,16 @@ export function EquipmentCard({
             <span className="rounded bg-surface-deep px-1.5 py-0.5 font-mono text-[10px] text-ink-3">AI</span>
           </button>
         </div>
-        <AiRequestZone
-          open={aiOpen}
-          text={gafferText}
-          onTextChange={onGafferTextChange}
-          onParse={onParse}
-          onCancel={handleAiCancel}
-          parsing={parsing}
-        />
       </div>
+
+      <AiRequestModal
+        open={aiOpen}
+        text={gafferText}
+        onTextChange={onGafferTextChange}
+        onParse={onParse}
+        onClose={() => setAiOpen(false)}
+        parsing={parsing}
+      />
 
       {/* Каталог */}
       {catalogLoading ? (
