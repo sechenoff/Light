@@ -89,10 +89,11 @@ describe("BookingForm in edit mode", () => {
     expect(screen.getByText("Студия Свет")).toBeInTheDocument();
   });
 
-  it("shows both booking items in the SummaryPanel mini-list", () => {
+  it("shows both booking items in «Состав» AND the SummaryPanel mini-list", () => {
     render(<BookingForm mode="edit" initialBooking={BOOKING} bookingId="booking-123" />);
-    expect(screen.getByText("Arri SkyPanel S60")).toBeInTheDocument();
-    expect(screen.getByText("Godox SL200")).toBeInTheDocument();
+    // Редизайн блока «Оборудование»: позиция видна в зоне «Состав» + в мини-списке «Расчёта»
+    expect(screen.getAllByText("Arri SkyPanel S60").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Godox SL200").length).toBeGreaterThanOrEqual(2);
   });
 
   it("renders 'Сохранить изменения' button", () => {

@@ -1,12 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { SmartInput } from "./SmartInput";
+import { useEffect, useMemo, useState } from "react";
+import { AiRequestZone } from "./AiRequestZone";
 import { AiResultBanner } from "./AiResultBanner";
-import { CatalogList } from "./CatalogList";
+import { CatalogBrowser } from "./CatalogBrowser";
+import { EquipmentCartZone } from "./EquipmentCartZone";
 import { ReviewPanel } from "./ReviewPanel";
 import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem, PendingReviewItem } from "./types";
 import { formatMoneyRub, pluralize } from "../../../lib/format";
+
+// Блок «3. Оборудование» v2 (утверждённые мокапы booking-equipment-v2 /
+// -variants «C» / -mobile «М1»). Две зоны вместо стены чипов и вложенного
+// скролла: «Состав» (выбранное — сверху, собственным списком) и «Добавить»
+// (поиск + кнопка AI-заявки + каталог-проводник: desktop — категории слева,
+// mobile — drill-down). Контракт props сохранён — state живёт в BookingForm.
 
 type EquipmentSelection = {
   equipmentId: string;
@@ -52,7 +59,7 @@ type Props = {
   // Custom item modal
   onOpenCustomModal: () => void;
 
-  // Search + tab state (controlled)
+  // Search + category state (controlled)
   searchQuery: string;
   onSearchQueryChange: (q: string) => void;
   activeTab: string;
@@ -80,7 +87,6 @@ export function EquipmentCard({
   gafferText,
   onGafferTextChange,
   parsing,
-  parsed,
   parseResolved,
   parseTotal,
   unmatchedFromAi,
@@ -112,37 +118,40 @@ export function EquipmentCard({
   onReviewSkip,
   onReviewSkipAll,
 }: Props) {
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of catalog) set.add(r.category);
-    return Array.from(set);
-  }, [catalog]);
+  // AI-зона: открывается кнопкой или пастой многострочного текста в поиск.
+  const [aiOpen, setAiOpen] = useState(false);
 
-  const selectedByCat = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const item of selected.values()) map.set(item.category, (map.get(item.category) ?? 0) + 1);
-    return map;
-  }, [selected]);
+  // AI разобрал заявку → появилась панель подтверждения; зону сворачиваем,
+  // чтобы не дублировать контекст (текст к этому моменту уже очищен parent'ом).
+  useEffect(() => {
+    if (pendingReview.length > 0) setAiOpen(false);
+  }, [pendingReview.length]);
 
   const totalPositions = selected.size + offCatalogItems.length + customItems.length;
-  const totalUnits =
-    Array.from(selected.values()).reduce((acc, it) => acc + it.quantity, 0) +
-    offCatalogItems.reduce((acc, it) => acc + it.quantity, 0) +
-    customItems.reduce((acc, it) => acc + it.quantity, 0);
-
   const totalPrice = useMemo(() => {
     let sum = 0;
     for (const item of selected.values()) {
       sum += Number(item.dailyPrice) * item.quantity * shifts;
     }
+    for (const c of customItems) sum += c.unitPrice * c.quantity;
     return sum;
-  }, [selected, shifts]);
+  }, [selected, shifts, customItems]);
 
-  // Только многострочный ввод = список от гафера, для которого поиск по
-  // каталогу отключаем. Длинный однострочный запрос остаётся живым фильтром.
-  const isGafferList = gafferText.includes("\n");
+  function handleAiCancel() {
+    setAiOpen(false);
+    onClear();
+  }
 
-  const [catalogExpanded, setCatalogExpanded] = useState(false);
+  function handleSearchPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const text = e.clipboardData.getData("text");
+    if (!text.includes("\n")) return;
+    // Многострочная паста — это заявка от гафера, не поисковый запрос:
+    // перекидываем текст в AI-зону (input всё равно съел бы переводы строк).
+    e.preventDefault();
+    onGafferTextChange(text);
+    onSearchQueryChange("");
+    setAiOpen(true);
+  }
 
   return (
     <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden mb-3.5">
@@ -150,55 +159,33 @@ export function EquipmentCard({
       <div className="px-5 py-3 border-b border-border bg-surface-muted flex items-center justify-between">
         <h3 className="eyebrow text-ink">3. Оборудование</h3>
         <span className="font-mono text-[12px] text-ink-2">
-          {totalPositions} {pluralize(totalPositions, "позиция", "позиции", "позиций")} · {formatMoneyRub(totalPrice)} ₽
+          {totalPositions > 0 ? (
+            <>
+              <span className="font-semibold text-ink">
+                {totalPositions} {pluralize(totalPositions, "позиция", "позиции", "позиций")}
+              </span>{" "}
+              · {formatMoneyRub(totalPrice)} ₽
+            </>
+          ) : (
+            "нет позиций"
+          )}
         </span>
       </div>
 
-      {/* Sticky controls (smart input + tabs) */}
-      <div className="sticky top-12 z-10 bg-surface">
-        {/* Smart input */}
-        <div className="px-5 pt-4 pb-2.5">
-          <SmartInput
-            value={gafferText}
-            onValueChange={(v) => {
-              onGafferTextChange(v);
-              // Многострочный ввод — это список от гафера, им фильтровать
-              // каталог бессмысленно (обнуляем поиск). А вот длинный
-              // ОДНОСТРОЧНЫЙ запрос — это по-прежнему поиск: фильтруем каталог,
-              // не глотая его молча из-за длины (>40 символов).
-              const isGafferList = v.includes("\n");
-              onSearchQueryChange(isGafferList ? "" : v);
-            }}
-            onParse={onParse}
-            onClear={onClear}
-            parsing={parsing}
-            parsed={parsed}
-          />
-          <div className="mt-2 flex justify-end">
-            <button
-              type="button"
-              onClick={onOpenCustomModal}
-              className="rounded border border-border bg-surface px-3 py-1 text-[12.5px] text-ink-2 hover:bg-surface-muted hover:text-ink"
-            >
-              + Произвольная позиция
-            </button>
-          </div>
-        </div>
-
-        {/* Category chips */}
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-5 pb-3 pt-2">
-          <ChipButton label="Все" active={activeTab === "all"} onClick={() => onActiveTabChange("all")} count={null} />
-          {categories.map((cat) => (
-            <ChipButton
-              key={cat}
-              label={cat}
-              active={activeTab === cat}
-              onClick={() => onActiveTabChange(cat)}
-              count={selectedByCat.get(cat) ?? null}
-            />
-          ))}
-        </div>
-      </div>
+      {/* ── Зона 1: Состав ── */}
+      <EquipmentCartZone
+        selected={selected}
+        customItems={customItems}
+        offCatalogItems={offCatalogItems}
+        adjustments={adjustments}
+        onChangeQty={onChangeQty}
+        onRemove={onRemove}
+        onChangeCustomQty={onChangeCustomQty}
+        onRemoveCustom={onRemoveCustom}
+        onChangeOffCatalogQty={onChangeOffCatalogQty}
+        onRemoveOffCatalog={onRemoveOffCatalog}
+        onOpenCustomModal={onOpenCustomModal}
+      />
 
       {/* AI banner — no-op when pendingReview is active (parseResolved/parseTotal are zeroed) */}
       {pendingReview.length === 0 && (
@@ -215,7 +202,7 @@ export function EquipmentCard({
 
       {/* Review panel — shown above catalog when AI parse yields items */}
       {pendingReview.length > 0 && (
-        <div className="mx-5 mb-3 mt-3">
+        <div className="mx-5 mb-3 mt-1">
           <ReviewPanel
             items={pendingReview}
             pickupISO={pickupISO}
@@ -228,83 +215,70 @@ export function EquipmentCard({
         </div>
       )}
 
-      {/* Catalog */}
-      {catalogLoading ? (
-        <div className="px-5 py-12 text-center text-[13px] text-ink-3">Загружаю каталог...</div>
-      ) : (
-        <>
-          <div className={catalogExpanded ? "" : "max-h-[300px] overflow-y-auto"}>
-            <CatalogList
-              rows={catalog}
-              selected={selected}
-              offCatalogItems={offCatalogItems}
-              customItems={customItems}
-              activeTab={activeTab}
-              searchQuery={isGafferList ? "" : searchQuery}
-              adjustments={adjustments}
-              onAdd={onAdd}
-              onChangeQty={onChangeQty}
-              onRemove={onRemove}
-              onChangeOffCatalogQty={onChangeOffCatalogQty}
-              onRemoveOffCatalog={onRemoveOffCatalog}
-              onChangeCustomQty={onChangeCustomQty}
-              onRemoveCustom={onRemoveCustom}
+      {/* ── Зона 2: Добавить (поиск + AI + каталог-проводник) ── */}
+      <div className="sticky top-12 z-10 border-t border-border bg-surface-muted px-5 py-2.5">
+        <div className="flex gap-2">
+          <div className="relative min-w-0 flex-1">
+            <svg
+              aria-hidden="true"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => onSearchQueryChange(e.target.value)}
+              onPaste={handleSearchPaste}
+              placeholder="Найти: название, бренд, модель…"
+              className="h-[38px] w-full rounded-md border border-border bg-surface pl-8 pr-3 text-[13px] text-ink outline-none focus:border-accent-bright focus:shadow-[0_0_0_3px_theme(colors.accent.soft)]"
             />
           </div>
           <button
             type="button"
-            onClick={() => setCatalogExpanded(!catalogExpanded)}
-            className="w-full border-t border-border bg-surface-muted py-2 text-[12px] font-medium text-accent-bright hover:bg-surface-subtle"
+            onClick={() => setAiOpen(true)}
+            className="flex h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright"
           >
-            {catalogExpanded ? "↑ Свернуть каталог" : "↓ Развернуть каталог"}
+            <span className="hidden sm:inline">Заявка от гафера</span>
+            <span className="sm:hidden">Заявка</span>
+            <span className="rounded bg-surface-deep px-1.5 py-0.5 font-mono text-[10px] text-ink-3">AI</span>
           </button>
-        </>
-      )}
-
-      {/* Footer */}
-      <div className="flex items-center justify-between border-t border-border bg-surface-muted px-5 py-3">
-        <div className="text-[12.5px] text-ink-2">
-          {totalPositions === 0 ? (
-            <span>Ничего не выбрано</span>
-          ) : (
-            <>
-              <strong className="text-ink">{totalPositions} {pluralize(totalPositions, "позиция", "позиции", "позиций")}</strong>
-              <span> · {totalUnits} {pluralize(totalUnits, "единица", "единицы", "единиц")}</span>
-            </>
-          )}
         </div>
-        <div className="font-mono text-[14px] font-semibold">{formatMoneyRub(totalPrice)} ₽</div>
+        <AiRequestZone
+          open={aiOpen}
+          text={gafferText}
+          onTextChange={onGafferTextChange}
+          onParse={onParse}
+          onCancel={handleAiCancel}
+          parsing={parsing}
+        />
       </div>
-    </div>
-  );
-}
 
-function ChipButton({
-  label,
-  active,
-  onClick,
-  count,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  count: number | null;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
-        active
-          ? "bg-accent-soft text-accent-bright border border-accent-border font-semibold"
-          : "border border-border text-ink-2 hover:text-ink hover:border-border-strong",
-      ].join(" ")}
-    >
-      {label}
-      {count !== null && count > 0 && (
-        <span className={`font-mono text-[10px] ${active ? "text-accent" : "text-emerald"}`}>{count}</span>
+      {/* Каталог */}
+      {catalogLoading ? (
+        <div className="border-t border-border px-5 py-12 text-center text-[13px] text-ink-3">
+          Загружаю каталог...
+        </div>
+      ) : (
+        <CatalogBrowser
+          rows={catalog}
+          selected={selected}
+          adjustments={adjustments}
+          activeTab={activeTab}
+          onActiveTabChange={onActiveTabChange}
+          searchQuery={searchQuery}
+          onAdd={onAdd}
+          onChangeQty={onChangeQty}
+          onRemove={onRemove}
+        />
       )}
-    </button>
+    </div>
   );
 }
