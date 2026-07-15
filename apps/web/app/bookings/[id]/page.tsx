@@ -30,6 +30,11 @@ import {
   BookingFinancePanel,
   type InvoiceItem,
 } from "../../../src/components/bookings/BookingFinancePanel";
+import { BookingHero } from "../../../src/components/bookings/BookingHero";
+import { BookingTransportSection } from "../../../src/components/bookings/BookingTransportSection";
+import { BookingScanSection } from "../../../src/components/bookings/BookingScanSection";
+import { BookingEstimateSection } from "../../../src/components/bookings/BookingEstimateSection";
+import { BookingJournalSection } from "../../../src/components/bookings/BookingJournalSection";
 import { toast } from "../../../src/components/ToastProvider";
 import {
   bookingStatusLabel as statusText,
@@ -775,171 +780,9 @@ export default function BookingDetailPage() {
             onApplied={() => { dispatchFinanceModal({ type: "closeCreditNote" }); reloadBooking(); }}
           />
 
-          {/* ───────── Hero + Finance strip ────────────────────────────────────
-              По мокапу docs/mockups/booking-detail-v2.html: первый блок
-              страницы — крупный заголовок брони (eyebrow + проект + пилы +
-              мета), под ним полоса из 4 финансовых карточек. Это «лицо»
-              страницы.
-
-              В retro-edit режиме скрываем (пользователь работает с формами).
-          */}
-          {!retroEditMode && (() => {
-            const startD = new Date(booking.startDate);
-            const endD = new Date(booking.endDate);
-            const tz = { timeZone: "Europe/Moscow" } as const;
-            const heroDate = startD.toLocaleDateString("ru-RU", {
-              day: "2-digit", month: "long", year: "numeric", ...tz,
-            });
-            const project =
-              booking.projectName?.trim() && booking.projectName.trim() !== "Проект"
-                ? booking.projectName.trim()
-                : "Без названия";
-            // Кол-во смен (приблизительно: целые сутки между startDate и endDate)
-            const msPerDay = 24 * 60 * 60 * 1000;
-            const shifts = Math.max(1, Math.ceil((endD.getTime() - startD.getTime()) / msPerDay));
-            const periodStr =
-              startD.toLocaleDateString("ru-RU", { day: "2-digit", month: "short", ...tz }) +
-              " – " +
-              endD.toLocaleDateString("ru-RU", { day: "2-digit", month: "short", ...tz });
-
-            // Платёжный статус → пилка (отдельная функция)
-            const payStatus = booking.paymentStatus ?? "NOT_PAID";
-            const payLabel =
-              payStatus === "PAID" ? "Оплачено"
-              : payStatus === "PARTIALLY_PAID" ? "Частично"
-              : payStatus === "OVERDUE" ? "Просрочено"
-              : "Не оплачено";
-            const payVariant: "ok" | "warn" | "alert" | "none" =
-              payStatus === "PAID" ? "ok"
-              : payStatus === "OVERDUE" ? "alert"
-              : payStatus === "PARTIALLY_PAID" ? "warn"
-              : "none";
-
-            const total = booking.finalAmount ?? "0";
-            const paid = booking.amountPaid ?? "0";
-            const outstanding = booking.amountOutstanding ?? "0";
-            const discountPct = booking.discountPercent ? Number(booking.discountPercent) : 0;
-            const discountAmount = booking.discountAmount ?? "0";
-
-            // Финансовые карточки — стили под мокап. Цветовая семантика:
-            //  • Оплачено → emerald, если PAID; иначе нейтральный
-            //  • Остаток → rose, если OVERDUE; иначе нейтральный
-            //  • Итого / Скидка — нейтральные.
-            const paidCardTone = payStatus === "PAID" ? "fin--ok" : "";
-            const outstandingTone =
-              payStatus === "OVERDUE" ? "fin--alert" : "";
-
-            return (
-              <>
-                <section className="mb-5 no-print">
-                  <p className="eyebrow text-ink-3">Бронь · {heroDate}</p>
-                  <h1 className="mt-1 font-cond text-3xl md:text-4xl leading-tight tracking-tight text-ink">
-                    {project}
-                  </h1>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-3">
-                    <StatusPill variant={statusVariant(booking.status)} label={statusText(booking.status)} />
-                    <StatusPill variant={payVariant} label={payLabel} />
-                    <span className="text-border-strong">·</span>
-                    <span>{booking.client.name}</span>
-                    <span className="text-border-strong">·</span>
-                    <span className="mono-num">
-                      {periodStr} · {shifts} {shifts === 1 ? "смена" : shifts < 5 ? "смены" : "смен"}
-                    </span>
-                  </div>
-                </section>
-
-                <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5 no-print">
-                  <div className="rounded-lg border border-border bg-surface shadow-xs p-3">
-                    <p className="eyebrow">
-                      Итого
-                      {booking.manualFinalAmount != null && (
-                        <span className="ml-1.5 align-middle inline-block bg-amber text-white text-[9px] px-1 py-0.5 rounded font-semibold tracking-wide">
-                          РУЧНОЙ
-                        </span>
-                      )}
-                    </p>
-                    <p className="mt-1.5 font-cond text-2xl font-semibold mono-num text-ink">
-                      {formatMoneyRub(total)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-ink-3">
-                      {booking.manualFinalAmount != null
-                        ? "override SUPER_ADMIN'а — автомат не применяется"
-                        : "оборудование + транспорт − скидка"}
-                    </p>
-                  </div>
-                  <div className={`rounded-lg border shadow-xs p-3 ${paidCardTone ? "border-emerald-border bg-gradient-to-b from-emerald-soft to-surface" : "border-border bg-surface"}`}>
-                    <p className="eyebrow">Оплачено</p>
-                    <p className={`mt-1.5 font-cond text-2xl font-semibold mono-num ${paidCardTone ? "text-emerald" : "text-ink"}`}>
-                      {formatMoneyRub(paid)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-ink-3">
-                      {payStatus === "PAID" ? "100% оплачено" : "по платежам"}
-                    </p>
-                  </div>
-                  <div className={`rounded-lg border shadow-xs p-3 ${outstandingTone ? "border-rose-border bg-gradient-to-b from-rose-soft to-surface" : "border-border bg-surface"}`}>
-                    <p className="eyebrow">Остаток</p>
-                    <p className={`mt-1.5 font-cond text-2xl font-semibold mono-num ${outstandingTone ? "text-rose" : Number(outstanding) === 0 ? "text-ink-3" : "text-ink"}`}>
-                      {formatMoneyRub(outstanding)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-ink-3">
-                      {payStatus === "OVERDUE" ? "просрочен" : Number(outstanding) === 0 ? "ничего не должны" : "к оплате"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-border bg-surface shadow-xs p-3">
-                    <p className="eyebrow">Скидка</p>
-                    <p className="mt-1.5 font-cond text-2xl font-semibold mono-num text-rose">
-                      {discountPct > 0 ? `−${discountPct}%` : "—"}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-ink-3">
-                      {discountPct > 0 ? `−${formatMoneyRub(discountAmount)}` : "не применялась"}
-                    </p>
-                  </div>
-                </section>
-              </>
-            );
-          })()}
-
-          {/*
-            Печатная шапка-реквизиты. Видна ТОЛЬКО при печати через @media print
-            (`.print-only-block { display:none }` по умолчанию → `display:block`
-            в print-блоке ниже). На экране не должна занимать пиксели.
-          */}
-          <div className="print-only-block">
-            <div className="print-header">
-              <div className="print-header-inner">
-                <div>
-                  <div className="print-org">Светобаза · аренда осветительного оборудования</div>
-                  <div className="print-org-sub">
-                    ИП Сеченов В.А. · ИНН 7700000000 · +7 (495) 123-45-67 · svetobazarent.ru
-                  </div>
-                </div>
-                <div className="print-doc">
-                  <div>Смета к броне</div>
-                  <div className="print-doc-num">
-                    № {booking.id.slice(0, 8)}… от {new Date().toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" })}
-                  </div>
-                </div>
-              </div>
-              <div className="print-hero">
-                <div className="print-eyebrow">
-                  Бронь · {new Date(booking.startDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric", timeZone: "Europe/Moscow" })}
-                </div>
-                <h1 className="print-title">{booking.projectName}</h1>
-                <div className="print-meta">
-                  <span>{statusText(booking.status)}</span>
-                  {booking.paymentStatus && <span> · {(() => {
-                    switch (booking.paymentStatus) {
-                      case "PAID": return "Оплачено";
-                      case "PARTIALLY_PAID": return "Частично оплачено";
-                      case "OVERDUE": return "Просрочено";
-                      default: return "Не оплачено";
-                    }
-                  })()}</span>}
-                  <span> · {booking.client.name}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* Hero + финансовые карточки + печатная шапка — вынесено в BookingHero (фаза 4.10).
+              Экранная часть скрыта в retro-режиме, печатная — рендерится всегда. */}
+          <BookingHero booking={booking} showHero={!retroEditMode} />
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 print-booking">
           {(() => {
@@ -1145,169 +988,35 @@ export default function BookingDetailPage() {
                 />
               );
             })()}
-            {/* Транспорт и водители — заполняется на погрузке.
-                Поставлен в самый верх правой колонки, чтобы был первым после оборудования. */}
-            {((booking.vehicles?.length ?? 0) > 0) && (
-              <div className="rounded-lg border border-accent-border bg-surface shadow-xs overflow-hidden">
-                <div className="p-3 border-b border-accent-border bg-accent-soft flex items-center justify-between">
-                  <p className="eyebrow text-accent-bright">🚐 Транспорт и водители</p>
-                  <span className="text-xs text-ink-3">
-                    {booking.vehicles!.length} {booking.vehicles!.length === 1 ? "машина" : booking.vehicles!.length < 5 ? "машины" : "машин"}
-                  </span>
-                </div>
-                <div className="p-3 space-y-2">
-                  {retroEditMode ? (
-                    /*
-                      В retro-режиме показываем кастомную inline-форму:
-                      driverName / driverPhone / endMileage. Сохраняется
-                      централизованно через PATCH /api/bookings/:id с
-                      retroactive:true. VehicleDriverRow в retro-mode не
-                      используется — у него отдельный endpoint для warehouse
-                      kiosk и он не вписывается в общий save flow.
-                    */
-                    (retroEdits.vehicles ?? []).map((rv) => {
-                      const original = booking.vehicles!.find((v) => v.id === rv.bookingVehicleId);
-                      return (
-                        <div
-                          key={rv.bookingVehicleId}
-                          className="rounded-lg border border-amber-border bg-amber-soft/40 p-3 space-y-2"
-                        >
-                          <div className="flex items-baseline justify-between">
-                            <p className="text-sm font-medium text-ink">{rv.vehicleName}</p>
-                            <span className="text-xs text-ink-3 mono-num">
-                              {original?.shiftHours ? `${original.shiftHours} ч` : ""}
-                              {original?.kmOutsideMkad ? ` · ${original.kmOutsideMkad} км вне МКАД` : ""}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            <label className="block">
-                              <span className="eyebrow block mb-1">Водитель</span>
-                              <input
-                                type="text"
-                                value={rv.driverName}
-                                onChange={(e) =>
-                                  updateRetroVehicle(rv.bookingVehicleId, { driverName: e.target.value })
-                                }
-                                className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
-                                placeholder="ФИО"
-                              />
-                            </label>
-                            <label className="block">
-                              <span className="eyebrow block mb-1">Телефон</span>
-                              <input
-                                type="text"
-                                value={rv.driverPhone}
-                                onChange={(e) =>
-                                  updateRetroVehicle(rv.bookingVehicleId, { driverPhone: e.target.value })
-                                }
-                                className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber mono-num"
-                                placeholder="+7 (XXX) XXX-XX-XX"
-                              />
-                            </label>
-                            <label className="block">
-                              <span className="eyebrow block mb-1">Пробег после смены, км</span>
-                              <input
-                                type="number"
-                                min={rv.originalCurrentMileage}
-                                step={1}
-                                value={rv.endMileage}
-                                onChange={(e) =>
-                                  updateRetroVehicle(rv.bookingVehicleId, { endMileage: e.target.value })
-                                }
-                                placeholder={`≥ ${rv.originalCurrentMileage}`}
-                                className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber mono-num"
-                              />
-                              <span className="block mt-1 text-xs text-ink-3">
-                                было {rv.originalCurrentMileage.toLocaleString("ru-RU")} км
-                              </span>
-                            </label>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    booking.vehicles!.map((v) => (
-                      <VehicleDriverRow
-                        key={v.id}
-                        bookingId={booking.id}
-                        vehicle={v}
-                        canEdit={user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE"}
-                        onUpdated={(next) => {
-                          setBooking((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  vehicles: prev.vehicles?.map((veh) =>
-                                    veh.id === v.id
-                                      ? { ...veh, driverName: next.driverName, driverPhone: next.driverPhone }
-                                      : veh,
-                                  ),
-                                }
-                              : prev,
-                          );
-                        }}
-                      />
-                    ))
-                  )}
-                  {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
-                    <p className="text-xs text-ink-3 px-1 pt-1">
-                      Заполняется при погрузке — ведём учёт, кто ездил за рулём.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-            {(booking.status === "CONFIRMED" || booking.status === "ISSUED" || booking.status === "RETURNED") && (
-              <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden no-print">
-                <div className="p-3 border-b border-border bg-surface-subtle">
-                  <p className="eyebrow">Сканирование</p>
-                </div>
-                <div className="p-3 text-sm text-ink space-y-3">
-                  {(booking.scanSessions ?? []).length > 0 ? (
-                    <div className="space-y-2">
-                      {(booking.scanSessions ?? []).map((ss) => (
-                        <div key={ss.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border bg-surface-subtle">
-                          <div className="flex items-center gap-2">
-                            <StatusPill
-                              variant={ss.operation === "ISSUE" ? "info" : "ok"}
-                              label={ss.operation === "ISSUE" ? "Выдача" : "Возврат"}
-                            />
-                            <span className="text-ink-2">{ss.workerName}</span>
-                          </div>
-                          <div className="text-right text-xs text-ink-3">
-                            <div>{new Date(ss.createdAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}</div>
-                            <div className="flex items-center gap-1 justify-end">
-                              <span>{ss._count.scanRecords} скан. ·</span>
-                              <StatusPill
-                                variant={ss.status === "COMPLETED" ? "ok" : ss.status === "ACTIVE" ? "edit" : "none"}
-                                label={ss.status === "COMPLETED" ? "Завершена" : ss.status === "ACTIVE" ? "Активна" : "Отменена"}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-ink-3 text-sm">Нет сессий сканирования</div>
-                  )}
-                  {(booking.status === "CONFIRMED" || booking.status === "ISSUED") && (
-                    <Link
-                      href={`/warehouse/scan?booking=${booking.id}`}
-                      className="inline-flex items-center gap-1.5 rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-muted transition-colors"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-                        <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-                        <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-                        <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-                        <line x1="7" y1="12" x2="17" y2="12" />
-                      </svg>
-                      Начать сканирование
-                    </Link>
-                  )}
-                </div>
-              </div>
-            )}
+
+            {/* Транспорт и сканирование — вынесены в компоненты (фаза 4.10). */}
+            <BookingTransportSection
+              bookingId={booking.id}
+              vehicles={booking.vehicles}
+              userRole={user?.role}
+              retroEditMode={retroEditMode}
+              retroVehicles={retroEdits.vehicles}
+              onUpdateRetroVehicle={updateRetroVehicle}
+              onDriverUpdated={(vehicleRowId, next) => {
+                setBooking((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        vehicles: prev.vehicles?.map((veh) =>
+                          veh.id === vehicleRowId
+                            ? { ...veh, driverName: next.driverName, driverPhone: next.driverPhone }
+                            : veh,
+                        ),
+                      }
+                    : prev,
+                );
+              }}
+            />
+            <BookingScanSection
+              bookingId={booking.id}
+              bookingStatus={booking.status}
+              scanSessions={booking.scanSessions}
+            />
 
             {/* ── ФИНАНСЫ ── вынесено в BookingFinancePanel (фаза 4.7);
                 модалки остаются на этой странице и открываются через dispatch. */}
@@ -1374,158 +1083,14 @@ export default function BookingDetailPage() {
               />
             )}
 
-            {booking.estimate ? (
-              <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-                <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
-                  <p className="eyebrow">Смета (только оборудование)</p>
-                  <span className="text-xs text-ink-3">Шифты: {booking.estimate.shifts}</span>
-                </div>
-                <div className="p-3 space-y-3">
-                  <div className="text-sm flex justify-between">
-                    <span className="text-ink-2">Итого</span>
-                    <span className="font-medium mono-num">{formatMoneyRub(booking.estimate.subtotal)}</span>
-                  </div>
-                  <div className="text-sm flex justify-between">
-                    <span className="text-ink-2">Скидка</span>
-                    <span className="font-medium mono-num">-{formatMoneyRub(booking.estimate.discountAmount)}</span>
-                  </div>
-                  <div className="text-sm flex justify-between pt-1 border-t border-border">
-                    <span className="font-semibold text-ink">После скидки</span>
-                    <span className="font-semibold text-ink mono-num">{formatMoneyRub(booking.estimate.totalAfterDiscount)}</span>
-                  </div>
-                  {((booking.vehicles?.length ?? 0) > 0 || Boolean(booking.vehicleId)) &&
-                    Number(booking.transportSubtotalRub ?? "0") > 0 && (
-                      <div className="text-xs text-ink-3 rounded bg-surface-subtle px-2 py-1.5">
-                        Без транспорта. Полная сумма к оплате — в блоке «Финансы» выше
-                        ({formatMoneyRub(booking.finalAmount ?? "0")}).
-                      </div>
-                    )}
-
-                  <div className="space-y-2 no-print">
-                    {/* Equipment-only smeta */}
-                    <div>
-                      <p className="text-xs text-ink-3 mb-1.5">Только оборудование:</p>
-                      <div className="flex gap-2">
-                        <button
-                          className="flex-1 rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
-                          onClick={() =>
-                            download(
-                              `/api/estimates/${booking.estimate!.id}/export/xlsx`,
-                              `estimate-${booking.estimate!.id}.xlsx`,
-                            )
-                          }
-                        >
-                          📊 Excel
-                        </button>
-                        <button
-                          className="flex-1 rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
-                          onClick={() =>
-                            download(
-                              `/api/estimates/${booking.estimate!.id}/export/pdf`,
-                              `estimate-${booking.estimate!.id}.pdf`,
-                            )
-                          }
-                        >
-                          📄 PDF
-                        </button>
-                      </div>
-                    </div>
-                    {/* Full smeta — includes transport. Highlighted as primary action. */}
-                    <div>
-                      <p className="text-xs text-ink-3 mb-1.5">Полная смета (с транспортом):</p>
-                      <div className="flex gap-2 flex-wrap">
-                        <button
-                          className="flex-1 min-w-[80px] rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
-                          onClick={() =>
-                            download(
-                              `/api/bookings/${booking.id}/full-estimate/export/xlsx`,
-                              `booking-${booking.id}-full.xlsx`,
-                            )
-                          }
-                        >
-                          📊 Excel
-                        </button>
-                        <button
-                          className="flex-1 min-w-[80px] rounded bg-accent-bright text-white px-3 py-2 text-sm hover:bg-accent transition-colors"
-                          onClick={() =>
-                            download(
-                              `/api/bookings/${booking.id}/full-estimate/export/pdf`,
-                              `booking-${booking.id}-full.pdf`,
-                            )
-                          }
-                        >
-                          📄 PDF
-                        </button>
-                        <button
-                          className="flex-1 min-w-[80px] rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
-                          onClick={() =>
-                            download(
-                              `/api/bookings/${booking.id}/full-estimate.xml`,
-                              `booking-${booking.id}.xml`,
-                            )
-                          }
-                          title="Выгрузка для 1С и учётных систем"
-                        >
-                          ⟨/⟩ XML
-                        </button>
-                        <button
-                          className="flex-1 min-w-[80px] rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
-                          onClick={() => window.print()}
-                        >
-                          🖨 Печать
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Позиции сметы показаны выше в таблице «Позиции брони»
-                      (с ценами/суммами) — здесь не дублируем. */}
-                  <div className="text-xs text-ink-3 border-t border-border pt-2">
-                    Состав позиций — в таблице «Позиции брони» (с ценами).
-                  </div>
-
-                  {booking.estimate.commentSnapshot ? <div className="text-xs text-ink-3">{booking.estimate.commentSnapshot}</div> : null}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-border bg-surface-subtle p-3 text-sm text-ink-2 space-y-2">
-                <div>Смета пока не сформирована (возможно, это черновик).</div>
-                {/* CTA вместо тупика: у новых черновиков MAIN-смета создаётся
-                    сразу (тогда выше рендерится полный блок экспорта); у старых
-                    без сметы сервер ответит 404 MAIN_ESTIMATE_NOT_FOUND — покажем
-                    понятный тост вместо молчаливой заглушки. */}
-                <button
-                  type="button"
-                  className="rounded border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-muted transition-colors no-print"
-                  onClick={downloadEstimatePdfWithFallback}
-                >
-                  📄 Скачать смету (PDF)
-                </button>
-              </div>
-            )}
+            {/* Смета и журнал изменений — вынесены в компоненты (фаза 4.10). */}
+            <BookingEstimateSection
+              booking={booking}
+              onDownload={download}
+              onDownloadEstimateFallback={downloadEstimatePdfWithFallback}
+            />
             <AddonEstimateSection bookingId={booking.id} />
-            <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-              <div className="p-3 border-b border-border bg-surface-subtle">
-                <p className="eyebrow">Журнал изменений</p>
-              </div>
-              <div className="max-h-[280px] overflow-auto">
-                {(booking.financeEvents ?? []).map((ev) => (
-                  <div key={ev.id} className="px-3 py-2 border-b border-border text-sm flex items-center justify-between gap-2">
-                    <div>
-                      <div className="font-medium text-ink">{ev.eventType}</div>
-                      <div className="text-xs text-ink-3">{new Date(ev.createdAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}</div>
-                    </div>
-                    <div className="text-right text-xs text-ink-2">
-                      {ev.statusFrom || ev.statusTo ? `${ev.statusFrom ?? "—"} → ${ev.statusTo ?? "—"}` : ""}
-                      {ev.amountDelta ? <div className="mono-num">{formatMoneyRub(ev.amountDelta)}</div> : null}
-                    </div>
-                  </div>
-                ))}
-                {(booking.financeEvents ?? []).length === 0 ? (
-                  <div className="px-3 py-4 text-sm text-ink-3">Пока нет событий.</div>
-                ) : null}
-              </div>
-            </div>
+            <BookingJournalSection financeEvents={booking.financeEvents} />
           </div>
           </div>
 
