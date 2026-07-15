@@ -154,6 +154,51 @@ describe("GET /api/clients", () => {
     expect(none.portalStatus).toBeNull();
     expect(none.portalLastLoginAt).toBeNull();
   });
+
+  it("sort=recent: клиенты с бронями по свежести последней брони, затем новейшие без броней", async () => {
+    const older = await prisma.client.create({ data: { name: "Recent Старая Бронь" } });
+    const newer = await prisma.client.create({ data: { name: "Recent Свежая Бронь" } });
+    const noBookings = await prisma.client.create({ data: { name: "Recent Без Броней" } });
+
+    await prisma.booking.create({
+      data: {
+        clientId: older.id,
+        projectName: "Старый проект",
+        startDate: new Date("2026-01-10T10:00:00Z"),
+        endDate: new Date("2026-01-11T10:00:00Z"),
+        createdAt: new Date("2026-01-01T10:00:00Z"),
+      },
+    });
+    await prisma.booking.create({
+      data: {
+        clientId: newer.id,
+        projectName: "Свежий проект",
+        startDate: new Date("2026-06-10T10:00:00Z"),
+        endDate: new Date("2026-06-11T10:00:00Z"),
+        createdAt: new Date("2026-06-01T10:00:00Z"),
+      },
+    });
+
+    const res = await request(app)
+      .get("/api/clients?sort=recent&limit=50")
+      .set(AUTH_SA());
+
+    expect(res.status).toBe(200);
+    const names = res.body.clients.map((c: any) => c.name);
+    // Свежая бронь раньше старой
+    expect(names.indexOf("Recent Свежая Бронь")).toBeLessThan(names.indexOf("Recent Старая Бронь"));
+    // Клиенты с бронями раньше клиентов без броней
+    expect(names.indexOf("Recent Старая Бронь")).toBeLessThan(names.indexOf("Recent Без Броней"));
+    expect(names).toContain("Recent Без Броней");
+  });
+
+  it("sort=recent уважает limit", async () => {
+    const res = await request(app)
+      .get("/api/clients?sort=recent&limit=2")
+      .set(AUTH_SA());
+    expect(res.status).toBe(200);
+    expect(res.body.clients.length).toBeLessThanOrEqual(2);
+  });
 });
 
 describe("POST /api/clients", () => {
