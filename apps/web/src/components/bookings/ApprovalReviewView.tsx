@@ -11,7 +11,6 @@ import { RoleBadge } from "../RoleBadge";
 import { RejectBookingModal } from "./RejectBookingModal";
 import { ApprovalContext } from "./ApprovalContext";
 import { toast } from "../ToastProvider";
-import type { CurrentUser } from "../../lib/auth";
 
 // ------------------------------------------------------------------ types ---
 
@@ -191,7 +190,6 @@ function formatTs(iso: string): string {
 type Props = {
   booking: BookingForReview;
   onReload: () => void;
-  currentUser: CurrentUser;
 };
 
 /**
@@ -201,7 +199,7 @@ type Props = {
  *
  * No inline editing here — this is purely a confirmation screen.
  */
-export function ApprovalReviewView({ booking, onReload, currentUser: _currentUser }: Props) {
+export function ApprovalReviewView({ booking, onReload }: Props) {
   const router = useRouter();
 
   // Approval actions state
@@ -213,18 +211,20 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
   const [auditItems, setAuditItems] = useState<AuditItem[] | null>(null);
 
   // ---- fetch audit timeline ----
+  // Через общий apiFetch (фаза 4.9): стандартные заголовки/обработка ошибок.
+  // Хронология — вспомогательная: при любом сбое просто не показываем её
+  // (auditItems остаётся null), как и раньше.
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/audit?entityType=Booking&entityId=${encodeURIComponent(booking.id)}&limit=100`, {
-      credentials: "include",
-    })
-      .then(async (res) => {
-        if (cancelled || !res.ok) return;
-        const data = (await res.json()) as { items: AuditItem[] };
+    apiFetch<{ items: AuditItem[] }>(
+      `/api/audit?entityType=Booking&entityId=${encodeURIComponent(booking.id)}&limit=100`,
+    )
+      .then((data) => {
+        if (cancelled) return;
         const filtered = (data.items ?? [])
           .filter((it) => REVIEW_ACTIONS.has(it.action))
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-        if (!cancelled) setAuditItems(filtered);
+        setAuditItems(filtered);
       })
       .catch(() => {});
     return () => { cancelled = true; };

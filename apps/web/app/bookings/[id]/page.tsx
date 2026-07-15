@@ -558,7 +558,6 @@ export default function BookingDetailPage() {
                   toast.error(e instanceof Error ? e.message : "Не удалось обновить бронь"),
                 );
               }}
-              currentUser={user!}
             />
           </>
         ) : (
