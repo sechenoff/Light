@@ -11,7 +11,6 @@ import { SectionHeader } from "../../../src/components/SectionHeader";
 import { formatMoneyRub, formatRub } from "../../../src/lib/format";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { EquipmentPickerModal } from "../../../src/components/bookings/EquipmentPickerModal";
-import { RetroDiffPanel } from "../../../src/components/bookings/RetroDiffPanel";
 import { ChangeClientModal } from "../../../src/components/bookings/ChangeClientModal";
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
 import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalReviewView";
@@ -22,10 +21,7 @@ import {
   financeModalInitialState,
   financeModalReducer,
 } from "../../../src/components/bookings/financeModalReducer";
-import {
-  useRetroEdit,
-  type RetroEditItem,
-} from "../../../src/components/bookings/useRetroEdit";
+import { useRetroEdit } from "../../../src/components/bookings/useRetroEdit";
 import {
   BookingFinancePanel,
   type InvoiceItem,
@@ -35,6 +31,10 @@ import { BookingTransportSection } from "../../../src/components/bookings/Bookin
 import { BookingScanSection } from "../../../src/components/bookings/BookingScanSection";
 import { BookingEstimateSection } from "../../../src/components/bookings/BookingEstimateSection";
 import { BookingJournalSection } from "../../../src/components/bookings/BookingJournalSection";
+import { BookingItemsTable } from "../../../src/components/bookings/BookingItemsTable";
+import { RetroDiffSummary } from "../../../src/components/bookings/RetroDiffSummary";
+import { BookingOrderInfoSection } from "../../../src/components/bookings/BookingOrderInfoSection";
+import { BookingMobileCta } from "../../../src/components/bookings/BookingMobileCta";
 import { toast } from "../../../src/components/ToastProvider";
 import {
   bookingStatusLabel as statusText,
@@ -785,209 +785,19 @@ export default function BookingDetailPage() {
           <BookingHero booking={booking} showHero={!retroEditMode} />
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 print-booking">
-          {(() => {
-            // Единый список позиций. Когда есть снапшот сметы — показываем
-            // цены/суммы прямо здесь (раньше дублировалось отдельным списком
-            // «Смета → Позиции»). Сопоставление по equipmentId, затем по имени.
-            const estLines = booking.estimate?.lines ?? [];
-            const priceByEquipmentId = new Map<string, { unitPrice: string; lineSum: string }>();
-            const priceByName = new Map<string, { unitPrice: string; lineSum: string }>();
-            for (const l of estLines) {
-              if (l.equipmentId) priceByEquipmentId.set(l.equipmentId, { unitPrice: l.unitPrice, lineSum: l.lineSum });
-              priceByName.set(l.nameSnapshot, { unitPrice: l.unitPrice, lineSum: l.lineSum });
-            }
-            const showPrices = estLines.length > 0;
-            // В retro-edit добавляется столбец «✕» (delete) + цены в таблице отображаются read-only.
-            const colCount = (showPrices ? 5 : 3) + (retroEditMode ? 1 : 0);
-            // Источник правды для рендера: либо живые items, либо retro-edits.
-            // В retro-edits сохранены original quantities — нужно для подсветки изменений.
-            const displayItems = retroEditMode && retroEdits.items
-              ? retroEdits.items
-              : booking.items.map((it) => ({
-                  id: it.id,
-                  equipmentId: it.equipmentId,
-                  equipment: it.equipment,
-                  customName: it.customName ?? null,
-                  customCategory: it.customCategory ?? null,
-                  quantity: it.quantity,
-                  originalQuantity: it.quantity,
-                  _deleted: false,
-                  _added: false,
-                }));
-            return (
-              <div className="lg:col-span-8 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-                <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
-                  <p className="eyebrow">Позиции брони ({displayItems.filter((i) => !(i as any)._deleted).length})</p>
-                  {retroEditMode && (
-                    <button
-                      type="button"
-                      onClick={() => setRetroPickerOpen(true)}
-                      className="rounded border border-amber-border bg-amber-soft text-amber px-2.5 py-1 text-xs font-medium hover:bg-amber hover:text-white transition-colors no-print"
-                    >
-                      + Добавить позицию
-                    </button>
-                  )}
-                </div>
-                <div className="overflow-auto max-h-[560px]">
-                  <table className="min-w-[860px] w-full text-sm">
-                    <thead className="bg-surface-subtle text-ink-2 border-b border-border sticky top-0">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-medium">Категория</th>
-                        <th className="text-left px-3 py-2 font-medium">Наименование</th>
-                        <th className="px-3 py-2 w-[100px] font-medium text-right">Кол-во</th>
-                        {showPrices && <th className="px-3 py-2 w-[120px] font-medium text-right">Цена</th>}
-                        {showPrices && <th className="px-3 py-2 w-[130px] font-medium text-right">Сумма</th>}
-                        {retroEditMode && <th className="px-3 py-2 w-[40px] no-print"></th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayItems.map((it) => {
-                        const price =
-                          (it.equipmentId ? priceByEquipmentId.get(it.equipmentId) : undefined) ??
-                          priceByName.get(it.equipment?.name ?? it.customName ?? "");
-                        const anyIt = it as RetroEditItem;
-                        const qtyChanged =
-                          retroEditMode &&
-                          anyIt.originalQuantity !== undefined &&
-                          anyIt.quantity !== anyIt.originalQuantity &&
-                          !anyIt._added;
-                        const rowClass = anyIt._deleted
-                          ? "border-t border-border bg-rose-soft"
-                          : anyIt._added
-                            ? "border-t border-border bg-emerald-soft"
-                            : qtyChanged
-                              ? "border-t border-border bg-amber-soft"
-                              : "border-t border-border";
-                        return (
-                          <tr key={it.id} className={rowClass}>
-                            <td className="px-3 py-2 text-ink-2">{it.equipment?.category ?? it.customCategory ?? "—"}</td>
-                            <td className="px-3 py-2">
-                              <div className={`font-medium text-ink ${anyIt._deleted ? "line-through text-ink-3" : ""}`}>
-                                {it.equipment?.name ?? it.customName ?? "—"}
-                              </div>
-                              <div className="text-xs text-ink-3">
-                                {it.equipment?.brand ? it.equipment.brand : ""} {it.equipment?.model ? `· ${it.equipment.model}` : ""}
-                                {qtyChanged && (
-                                  <span className="text-amber ml-1">
-                                    · было {anyIt.originalQuantity} → стало {anyIt.quantity}
-                                  </span>
-                                )}
-                                {anyIt._added && <span className="text-emerald ml-1">· новая позиция</span>}
-                                {anyIt._deleted && <span className="text-rose ml-1">· к удалению</span>}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2 text-right mono-num">
-                              {retroEditMode ? (
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={anyIt.quantity}
-                                  disabled={anyIt._deleted}
-                                  onChange={(e) =>
-                                    updateRetroItemQty(it.id, Number(e.target.value) || 0)
-                                  }
-                                  className="w-16 text-right rounded border border-amber-border bg-white px-1 py-0.5 mono-num text-sm focus:outline-none focus:ring-1 focus:ring-amber disabled:bg-rose-soft disabled:text-ink-3"
-                                />
-                              ) : (
-                                <span className="font-medium">{it.quantity}</span>
-                              )}
-                            </td>
-                            {showPrices && (
-                              <td className="px-3 py-2 text-right mono-num text-ink-2">
-                                {price ? formatMoneyRub(price.unitPrice) : "—"}
-                              </td>
-                            )}
-                            {showPrices && (
-                              <td className={`px-3 py-2 text-right mono-num font-medium ${qtyChanged ? "text-amber" : "text-ink"}`}>
-                                {price
-                                  ? retroEditMode && !anyIt._deleted
-                                    // Live-пересчёт суммы строки при правке кол-ва:
-                                    // цена за смену × текущее кол-во (бэкенд пересчитает
-                                    // окончательно на сохранении, но оператор видит эффект сразу).
-                                    ? formatMoneyRub(String(Number(price.unitPrice) * anyIt.quantity))
-                                    : formatMoneyRub(price.lineSum)
-                                  : "—"}
-                              </td>
-                            )}
-                            {retroEditMode && (
-                              <td className="px-3 py-2 text-center no-print">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleRetroItemDeleted(it.id)}
-                                  aria-label={anyIt._deleted ? "Вернуть строку" : "Удалить строку"}
-                                  title={anyIt._deleted ? "Вернуть строку" : "Удалить строку"}
-                                  className={`text-base ${anyIt._deleted ? "text-accent-bright hover:text-accent" : "text-rose hover:text-rose/80"}`}
-                                >
-                                  {anyIt._deleted ? "↩" : "✕"}
-                                </button>
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                      {displayItems.length === 0 ? (
-                        <tr>
-                          <td className="px-3 py-6 text-center text-ink-3" colSpan={colCount}>
-                            Нет позиций
-                          </td>
-                        </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            );
-          })()}
+          {/* Таблица позиций — вынесена в BookingItemsTable (фаза 4.10). */}
+          <BookingItemsTable
+            booking={booking}
+            retroEditMode={retroEditMode}
+            retroItems={retroEdits.items}
+            onOpenPicker={() => setRetroPickerOpen(true)}
+            onUpdateQty={updateRetroItemQty}
+            onToggleDeleted={toggleRetroItemDeleted}
+          />
 
           <div className="lg:col-span-4 space-y-4">
-            {/* RetroDiffPanel — видна только в retro-режиме. В САМОМ верху
-                правой колонки, чтобы оператор всегда видел сводку своих
-                правок без необходимости скроллить.
-            */}
-            {retroEditMode && (() => {
-              // Подсчитываем agg'и из текущего retroEdits state.
-              const items = retroEdits.items ?? [];
-              const vehicles = retroEdits.vehicles ?? [];
-              const itemsAdded = items.filter((i) => i._added && !i._deleted).length;
-              const itemsRemoved = items.filter((i) => i._deleted && !i._added).length;
-              const itemsQtyChanged = items.filter(
-                (i) =>
-                  !i._added &&
-                  !i._deleted &&
-                  i.originalQuantity !== undefined &&
-                  i.quantity !== i.originalQuantity,
-              ).length;
-              const vehiclesDriverChanged = vehicles.filter(
-                (v) =>
-                  v.driverName !== v.originalDriverName ||
-                  v.driverPhone !== v.originalDriverPhone,
-              ).length;
-              const vehiclesMileageChanged = vehicles.filter((v) => {
-                const t = v.endMileage.trim();
-                if (t === "") return false;
-                const n = Number.parseInt(t, 10);
-                return Number.isFinite(n) && n !== v.originalCurrentMileage;
-              }).length;
-              return (
-                <RetroDiffPanel
-                  originalProjectName={booking.projectName}
-                  editedProjectName={retroEdits.projectName}
-                  originalComment={booking.comment ?? ""}
-                  editedComment={retroEdits.comment ?? ""}
-                  originalDiscountPercent={booking.discountPercent ? Number(booking.discountPercent) : null}
-                  editedDiscountPercent={retroEdits.discountPercent ?? null}
-                  originalManualFinalAmount={booking.manualFinalAmount ?? null}
-                  editedManualFinalAmount={retroEdits.manualFinalAmount ?? ""}
-                  autoFinalAmount={booking.finalAmount ?? "0"}
-                  itemsAdded={itemsAdded}
-                  itemsRemoved={itemsRemoved}
-                  itemsQtyChanged={itemsQtyChanged}
-                  vehiclesDriverChanged={vehiclesDriverChanged}
-                  vehiclesMileageChanged={vehiclesMileageChanged}
-                />
-              );
-            })()}
+            {/* Сводка правок retro-режима — вынесена в RetroDiffSummary (фаза 4.10). */}
+            {retroEditMode && <RetroDiffSummary booking={booking} retroEdits={retroEdits} />}
 
             {/* Транспорт и сканирование — вынесены в компоненты (фаза 4.10). */}
             <BookingTransportSection
@@ -1032,48 +842,14 @@ export default function BookingDetailPage() {
               onDownloadInvoicePdf={downloadInvoicePdf}
             />
 
-            {/* Данные заказа */}
-            <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-              <div className="p-3 border-b border-border bg-surface-subtle">
-                <p className="eyebrow">Данные заказа</p>
-              </div>
-              <div className="p-3 text-sm text-ink space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-ink-3">Клиент:</span>{" "}
-                  <span className="font-medium">{booking.client.name}</span>
-                  {user?.role === "SUPER_ADMIN" && booking.status !== "PENDING_APPROVAL" && !isArchived && (
-                    <button
-                      type="button"
-                      aria-label="Сменить клиента"
-                      onClick={() => setChangeClientOpen(true)}
-                      className="ml-1 rounded border border-border px-2 py-0.5 text-xs text-ink-3 hover:bg-surface-soft hover:text-ink transition-colors"
-                    >
-                      Сменить
-                    </button>
-                  )}
-                </div>
-                <div>
-                  <span className="text-ink-3">Проект:</span>{" "}
-                  {booking.projectName?.trim() === "Проект" ? (
-                    <span className="font-medium text-ink-3">Без названия</span>
-                  ) : (
-                    <span className="font-medium">{booking.projectName}</span>
-                  )}
-                </div>
-                <div>
-                  <span className="text-ink-3">Период:</span>{" "}
-                  <span className="font-medium">
-                    {new Date(booking.startDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })} —{" "}
-                    {new Date(booking.endDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
-                  </span>
-                </div>
-                {booking.comment ? (
-                  <div>
-                    <span className="text-ink-3">Комментарий:</span> <span>{booking.comment}</span>
-                  </div>
-                ) : null}
-              </div>
-            </div>
+            {/* Данные заказа — вынесено в BookingOrderInfoSection (фаза 4.10). */}
+            <BookingOrderInfoSection
+              booking={booking}
+              canChangeClient={
+                user?.role === "SUPER_ADMIN" && booking.status !== "PENDING_APPROVAL" && !isArchived
+              }
+              onChangeClient={() => setChangeClientOpen(true)}
+            />
 
             {/* Доступ в клиентский кабинет — только для SUPER_ADMIN */}
             {user?.role === "SUPER_ADMIN" && booking.client?.id && (
@@ -1114,52 +890,14 @@ export default function BookingDetailPage() {
       ) : (
         <div className="mt-4 text-ink-3">Бронь не найдена.</div>
       )}
-      {/* B2: Mobile-only sticky bottom CTA (390px). Mirrors the inline CTAs in the finance block. */}
-      {booking && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") &&
-        booking.status !== "CANCELLED" && booking.status !== "DRAFT" && booking.status !== "PENDING_APPROVAL" && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex gap-2 px-3 py-3 bg-surface border-t border-border shadow-lg no-print">
-          {/* ₽ Платёж — primary. Не для архивных. */}
-          {!isArchived && (user?.role === "SUPER_ADMIN" ||
-            ((booking.status === "ISSUED" || booking.status === "RETURNED") &&
-              (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
-          ) && (
-            <button
-              className="flex-1 rounded bg-accent-bright text-white px-2 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
-              onClick={() => dispatchFinanceModal({ type: "openPayment" })}
-            >
-              ₽ Платёж
-            </button>
-          )}
-          {/* PDF Счёт — только legacy-финансы (как на десктопе). У Phase-2
-              броней легаси-invoice.pdf отдаёт 409/неверный PDF. */}
-          {booking.legacyFinance !== false && (
-            <button
-              className="flex-1 rounded border border-border px-2 py-2.5 text-sm font-medium hover:bg-surface-subtle transition-colors"
-              onClick={() => download(`/api/bookings/${booking.id}/invoice.pdf`, `Счёт_${booking.id}.pdf`)}
-            >
-              📄 Счёт
-            </button>
-          )}
-          {/* PDF Акт */}
-          {(() => {
-            const canAct = booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0;
-            const actHint = "Акт доступен после возврата оборудования и закрытия долга";
-            return (
-              <button
-                className={`flex-1 rounded border px-2 py-2.5 text-sm font-medium transition-colors ${
-                  canAct ? "border-border hover:bg-surface-subtle" : "border-border text-ink-3 opacity-50 cursor-not-allowed"
-                }`}
-                title={canAct ? "Скачать акт PDF" : actHint}
-                aria-label={canAct ? "Скачать акт PDF" : actHint}
-                disabled={!canAct}
-                onClick={canAct ? () => download(`/api/bookings/${booking.id}/act.pdf`, `Акт_${booking.id}.pdf`) : undefined}
-              >
-                PDF Акт
-              </button>
-            );
-          })()}
-        </div>
-      )}
+      {/* Mobile sticky CTA — вынесено в BookingMobileCta (фаза 4.10). */}
+      <BookingMobileCta
+        booking={booking}
+        userRole={user?.role}
+        isArchived={isArchived}
+        dispatch={dispatchFinanceModal}
+        onDownload={download}
+      />
 
       {/* RecordPaymentModal — T2 */}
       {booking && (
