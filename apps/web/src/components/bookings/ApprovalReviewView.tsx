@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -456,8 +456,10 @@ export function ApprovalReviewView({ booking, onReload }: Props) {
                   </thead>
                   <tbody>
                     {Array.from(linesByCategory.entries()).map(([cat, catLines]) => (
-                      <>
-                        <tr key={`cat-${cat}`} className="border-t border-border bg-surface-subtle">
+                      // Fragment с key: элемент списка — весь блок категории, а не
+                      // внутренние <tr> (безымянный <> давал React-warning про key).
+                      <Fragment key={cat}>
+                        <tr className="border-t border-border bg-surface-subtle">
                           <td colSpan={4} className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
                             {cat}
                           </td>
@@ -474,7 +476,7 @@ export function ApprovalReviewView({ booking, onReload }: Props) {
                             </td>
                           </tr>
                         ))}
-                      </>
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
