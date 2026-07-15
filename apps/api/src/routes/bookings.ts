@@ -462,6 +462,21 @@ router.get("/", async (req, res, next) => {
     const hasMore = bookings.length > limit;
     const items = hasMore ? bookings.slice(0, limit) : bookings;
     const nextCursor = hasMore ? items[items.length - 1].id : null;
+
+    // Разрешаем deletedBy (AdminUser.id) → username для страницы архива.
+    // Один batch-запрос и только когда на странице есть архивные брони
+    // (в живом списке deletedBy всегда null → запрос не выполняется).
+    const deletedByIds = Array.from(
+      new Set(items.map((b) => b.deletedBy).filter((x): x is string => Boolean(x))),
+    );
+    const deletedByUsers = deletedByIds.length
+      ? await prisma.adminUser.findMany({
+          where: { id: { in: deletedByIds } },
+          select: { id: true, username: true },
+        })
+      : [];
+    const deletedByNameById = new Map(deletedByUsers.map((u) => [u.id, u.username]));
+
     res.json({
       bookings: items.map((b) => {
         const lastScan = b.scanSessions[0] ?? null;
@@ -470,6 +485,7 @@ router.get("/", async (req, res, next) => {
           amountPaid: b.amountPaid.toString(),
           amountOutstanding: b.amountOutstanding.toString(),
           finalAmount: b.finalAmount.toString(),
+          deletedByName: b.deletedBy ? (deletedByNameById.get(b.deletedBy) ?? null) : null,
           displayName: buildBookingHumanName({
             startDate: b.startDate,
             clientName: b.client.name,

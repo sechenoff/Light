@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -105,6 +105,28 @@ function BookingHistoryPageInner() {
   // BL-4: общее число броней под текущим фильтром (с сервера) — для «Показано N из M».
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Ошибка загрузки списка — вместо молчаливого console.error показываем баннер
+  // с «Повторить» (реген reloadKey перезапускает эффект загрузки).
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  // Подпись активных фильтров (без курсора) — гард от гонки «Загрузить ещё»:
+  // если фильтр сменился, пока летит дозагрузка, её ответ отбрасывается.
+  const filterSigRef = useRef("");
+
+  // Есть ли активные фильтры — влияет на текст пустого состояния
+  // («ничего не найдено по фильтрам» vs «броней ещё нет»).
+  const hasActiveFilters = Boolean(
+    statusFilter || paymentFilter || dateFrom || dateTo || searchQuery.trim(),
+  );
+
+  function resetFilters() {
+    setStatusFilter("");
+    setPaymentFilter("");
+    setDateFrom("");
+    setDateTo("");
+    setSearchInput("");
+    setSearchQuery("");
+  }
 
   // Все фильтры (статус/оплата/даты) теперь серверные — это даёт полный
   // результат по всей базе, а не по уже подгруженной странице, и согласует
@@ -126,6 +148,7 @@ function BookingHistoryPageInner() {
     let isActive = true;
     async function load() {
       setLoading(true);
+      setLoadError(null);
       try {
         const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null; totalCount?: number }>(
           `/api/bookings?${buildListParams()}`,
@@ -137,9 +160,12 @@ function BookingHistoryPageInner() {
         setTotalCount(data.totalCount ?? null);
       } catch (e: any) {
         const isAbort = e?.name === "AbortError" || e?.message === "signal is aborted without reason";
-        if (!isAbort) {
-          // eslint-disable-next-line no-console
-          console.error("Failed to load bookings", e);
+        if (!isAbort && isActive) {
+          // Больше не молчим: показываем баннер ошибки вместо ложного «Нет данных».
+          setLoadError(e?.message ?? "Не удалось загрузить список броней");
+          setRows([]);
+          setNextCursor(null);
+          setTotalCount(null);
         }
       } finally {
         if (isActive) setLoading(false);
@@ -151,7 +177,7 @@ function BookingHistoryPageInner() {
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, paymentFilter, dateFrom, dateTo, searchQuery]);
+  }, [statusFilter, paymentFilter, dateFrom, dateTo, searchQuery, reloadKey]);
 
   // BL-2: дебаунс поискового ввода (300 мс) → searchQuery → серверный запрос.
   useEffect(() => {
@@ -173,21 +199,29 @@ function BookingHistoryPageInner() {
     // Запоминаем фильтры для «← К списку» на карточке брони — возврат
     // приводит на тот же отфильтрованный список, а не на голый /bookings.
     rememberBookingsListQuery(qs ? `?${qs}` : "");
+    // Подпись фильтров для гарда гонки дозагрузки (qs без курсора уникально
+    // описывает текущий фильтр-набор).
+    filterSigRef.current = qs;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, paymentFilter, dateFrom, dateTo, searchQuery]);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
+    // Снимок подписи фильтров: если пользователь сменит фильтр, пока летит
+    // дозагрузка, её ответ нельзя дописывать к уже перезагруженному списку.
+    const sigAtStart = filterSigRef.current;
     setLoadingMore(true);
     try {
       const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(
         `/api/bookings?${buildListParams(nextCursor)}`
       );
+      if (filterSigRef.current !== sigAtStart) return; // фильтр сменился — отбрасываем
       setRows((prev) => [...prev, ...data.bookings]);
       setNextCursor(data.nextCursor ?? null);
     } catch (e: any) {
-      // eslint-disable-next-line no-console
-      console.error("Failed to load more bookings", e);
+      if (filterSigRef.current === sigAtStart) {
+        toast.error(e?.message ?? "Не удалось загрузить ещё");
+      }
     } finally {
       setLoadingMore(false);
     }
@@ -198,6 +232,8 @@ function BookingHistoryPageInner() {
     try {
       await apiFetch<{ ok: boolean }>(`/api/bookings/${id}`, { method: "DELETE" });
       setRows((prev) => prev.filter((r) => r.id !== id));
+      // Синхронизируем счётчик «Показано N из M» — иначе «49 из 120» врёт.
+      setTotalCount((c) => (c !== null ? Math.max(0, c - 1) : c));
       setArchiveRow(null);
     } catch (e: any) {
       toast.error(e?.message ?? "Не удалось отправить бронь в архив");
@@ -411,6 +447,40 @@ function BookingHistoryPageInner() {
     );
   }
 
+  // Состояния контента списка (взаимоисключающие):
+  //  - ошибка загрузки → баннер с «Повторить» (вместо ложного «Нет данных»);
+  //  - первая загрузка → скелетон (не пустота);
+  //  - пусто → «ничего не найдено по фильтрам» / «броней ещё нет».
+  const showErrorBanner = loadError !== null && rows.length === 0;
+  const showSkeleton = loading && rows.length === 0 && loadError === null;
+  const showEmpty = !loading && loadError === null && rows.length === 0;
+
+  // Пустое состояние — контекстно-зависимое: под фильтром зовём их сбросить,
+  // на чистой базе — создать первую бронь.
+  function renderEmptyState() {
+    return hasActiveFilters ? (
+      <div className="flex flex-col items-center gap-2">
+        <span className="text-ink-3">Ничего не найдено под текущими фильтрами.</span>
+        <button
+          type="button"
+          onClick={resetFilters}
+          className="text-accent-bright hover:text-accent font-medium"
+        >
+          Сбросить фильтры
+        </button>
+      </div>
+    ) : (
+      <div className="flex flex-col items-center gap-2">
+        <span className="text-ink-3">Броней пока нет.</span>
+        <Link href="/bookings/new" className="text-accent-bright hover:text-accent font-medium">
+          Создать первую бронь
+        </Link>
+      </div>
+    );
+  }
+
+  const SKELETON_KEYS = ["s1", "s2", "s3", "s4", "s5", "s6"];
+
   return (
     <div className="p-4">
       <SectionHeader
@@ -478,10 +548,36 @@ function BookingHistoryPageInner() {
               <option value="PAID">Оплачен</option>
               <option value="UNPAID">Не оплачен</option>
             </select>
-            <div className="text-xs text-ink-3">{loading ? "Загрузка..." : totalCount !== null ? `Показано: ${filteredRows.length} из ${totalCount}` : `Показано: ${filteredRows.length}`}</div>
+            <div className="text-xs text-ink-3">
+              {loadError
+                ? "—"
+                : loading && rows.length === 0
+                  ? "Загрузка..."
+                  : totalCount !== null
+                    ? `Показано: ${filteredRows.length} из ${totalCount}`
+                    : `Показано: ${filteredRows.length}`}
+            </div>
           </div>
         </div>
-        <div className="hidden md:block overflow-auto">
+
+        {/* Ошибка загрузки — баннер с «Повторить» вместо молчаливого пустого списка. */}
+        {showErrorBanner && (
+          <div className="m-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-rose-border bg-rose-soft px-4 py-3">
+            <div className="text-sm text-rose">
+              <div className="font-semibold">Не удалось загрузить список</div>
+              <div className="text-xs text-rose/80">{loadError}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="rounded border border-rose-border bg-surface px-3 py-1.5 text-sm text-rose hover:bg-rose-soft"
+            >
+              Повторить
+            </button>
+          </div>
+        )}
+
+        <div className={`hidden overflow-auto ${showErrorBanner ? "" : "md:block"}`}>
           <table className="min-w-[1040px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
@@ -497,6 +593,16 @@ function BookingHistoryPageInner() {
               </tr>
             </thead>
             <tbody>
+              {showSkeleton &&
+                SKELETON_KEYS.map((k) => (
+                  <tr key={k} className="border-t border-border">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <td key={i} className="px-3 py-3">
+                        <div className="h-3 rounded bg-surface-muted animate-pulse" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
               {filteredRows.map((r) => (
                 <tr
                   key={r.id}
@@ -534,10 +640,10 @@ function BookingHistoryPageInner() {
                   <td className="px-3 py-2">{renderRowActions(r)}</td>
                 </tr>
               ))}
-              {filteredRows.length === 0 ? (
+              {showEmpty ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-ink-3" colSpan={8}>
-                    Нет данных
+                  <td className="px-3 py-10 text-center text-sm" colSpan={8}>
+                    {renderEmptyState()}
                   </td>
                 </tr>
               ) : null}
@@ -547,7 +653,15 @@ function BookingHistoryPageInner() {
 
         {/* Мобильное card-представление (паттерн — как на /finance/payments):
             те же данные и те же действия, без горизонтального скролла таблицы */}
-        <div className="md:hidden p-3 space-y-2">
+        <div className={`p-3 space-y-2 ${showErrorBanner ? "hidden" : "md:hidden"}`}>
+          {showSkeleton &&
+            SKELETON_KEYS.map((k) => (
+              <div key={k} className="border border-border rounded-lg p-3 bg-surface space-y-2">
+                <div className="h-3.5 w-2/3 rounded bg-surface-muted animate-pulse" />
+                <div className="h-3 w-1/3 rounded bg-surface-muted animate-pulse" />
+                <div className="h-5 w-1/2 rounded bg-surface-muted animate-pulse" />
+              </div>
+            ))}
           {filteredRows.map((r) => (
             <div
               key={r.id}
@@ -590,8 +704,8 @@ function BookingHistoryPageInner() {
               </div>
             </div>
           ))}
-          {filteredRows.length === 0 && (
-            <div className="py-6 text-center text-ink-3 text-sm">Нет данных</div>
+          {showEmpty && (
+            <div className="py-10 text-center text-sm">{renderEmptyState()}</div>
           )}
         </div>
 

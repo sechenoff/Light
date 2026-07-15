@@ -10,6 +10,7 @@ import { StatusPill } from "../../../src/components/StatusPill";
 import { formatRub } from "../../../src/lib/format";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { toast } from "../../../src/components/ToastProvider";
+import { ConfirmActionModal } from "../../../src/components/bookings/ConfirmActionModal";
 
 interface ArchivedBooking {
   id: string;
@@ -21,6 +22,15 @@ interface ArchivedBooking {
   finalAmount?: string | null;
   deletedAt: string | null;
   deletedBy: string | null;
+  /** Имя (username) того, кто архивировал — резолвится сервером из deletedBy. */
+  deletedByName?: string | null;
+}
+
+/** Заголовок для модалок: дата · клиент · проект. */
+function archivedTitle(r: ArchivedBooking): string {
+  const project =
+    r.projectName?.trim() && r.projectName.trim() !== "Проект" ? r.projectName.trim() : null;
+  return [formatShiftDate(r.startDate), r.client.name, project].filter(Boolean).join(" · ");
 }
 
 function formatShiftDate(iso: string): string {
@@ -54,6 +64,10 @@ export default function BookingsArchivePage() {
   // в основном списке): первая страница + «Загрузить ещё».
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Подтверждения: restore — обычное (бронь может вернуться в CONFIRMED/ISSUED
+  // и потребовать резервов), purge — typed-confirm (необратимое стирание из БД).
+  const [restoreRow, setRestoreRow] = useState<ArchivedBooking | null>(null);
+  const [purgeRow, setPurgeRow] = useState<ArchivedBooking | null>(null);
 
   // BL-8: единая функция загрузки вместо дублирующих load() + inline-fetch.
   async function load() {
@@ -106,11 +120,12 @@ export default function BookingsArchivePage() {
     };
   }, [roleLoading, user]);
 
-  async function restore(id: string) {
+  async function doRestore(id: string) {
     setBusyId(id);
     try {
       await apiFetch<{ ok: boolean }>(`/api/bookings/${id}/restore`, { method: "POST" });
       toast.success("Бронь восстановлена");
+      setRestoreRow(null);
       await load();
     } catch (err: any) {
       toast.error(err?.message ?? "Не удалось восстановить");
@@ -119,17 +134,12 @@ export default function BookingsArchivePage() {
     }
   }
 
-  async function purge(id: string, projectName: string) {
-    const confirmed = window.confirm(
-      `Удалить бронь «${projectName}» НАВСЕГДА? Это действие нельзя отменить.\n\n` +
-      "Бронь, позиции и связанные финансовые события будут полностью стерты из БД. " +
-      "Аудит-запись о финальном удалении сохранится.",
-    );
-    if (!confirmed) return;
+  async function doPurge(id: string) {
     setBusyId(id);
     try {
       await apiFetch<{ ok: boolean }>(`/api/bookings/${id}/purge`, { method: "DELETE" });
       toast.success("Бронь удалена навсегда");
+      setPurgeRow(null);
       await load();
     } catch (err: any) {
       toast.error(err?.message ?? "Не удалось удалить");
@@ -220,8 +230,11 @@ export default function BookingsArchivePage() {
                   <td className="px-3 py-2 text-right mono-num text-ink">
                     {formatRub(r.finalAmount ?? "0")}
                   </td>
-                  <td className="px-3 py-2 text-ink-3 mono-num text-xs">
-                    {formatArchivedAt(r.deletedAt)}
+                  <td className="px-3 py-2 text-ink-3 mono-num text-xs whitespace-nowrap">
+                    <div>{formatArchivedAt(r.deletedAt)}</div>
+                    {r.deletedByName && (
+                      <div className="text-ink-3">кто: {r.deletedByName}</div>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
@@ -233,7 +246,7 @@ export default function BookingsArchivePage() {
                       </Link>
                       <button
                         type="button"
-                        onClick={() => restore(r.id)}
+                        onClick={() => setRestoreRow(r)}
                         disabled={busyId === r.id}
                         className="text-xs rounded border border-emerald-border bg-emerald-soft text-emerald px-2 py-1 hover:bg-emerald hover:text-white transition-colors disabled:opacity-50"
                         title="Вернуть бронь в основной список"
@@ -242,7 +255,7 @@ export default function BookingsArchivePage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => purge(r.id, r.projectName || "—")}
+                        onClick={() => setPurgeRow(r)}
                         disabled={busyId === r.id}
                         className="text-xs rounded border border-rose-border bg-rose-soft text-rose px-2 py-1 hover:bg-rose hover:text-white transition-colors disabled:opacity-50"
                         title="Удалить из БД навсегда"
@@ -269,6 +282,39 @@ export default function BookingsArchivePage() {
           </div>
         )}
       </div>
+
+      <ConfirmActionModal
+        open={restoreRow !== null}
+        title="Восстановление брони"
+        subtitle={restoreRow ? archivedTitle(restoreRow) : undefined}
+        message={
+          "Вернуть бронь в основной список?\n\nОна восстановится с прежним статусом. Если статус активный (подтверждена/выдана), проверьте, что оборудование на её даты свободно."
+        }
+        confirmLabel="Восстановить"
+        tone="primary"
+        loading={restoreRow !== null && busyId === restoreRow.id}
+        onClose={() => setRestoreRow(null)}
+        onConfirm={() => {
+          if (restoreRow) doRestore(restoreRow.id);
+        }}
+      />
+
+      <ConfirmActionModal
+        open={purgeRow !== null}
+        title="Удалить навсегда"
+        subtitle={purgeRow ? archivedTitle(purgeRow) : undefined}
+        message={
+          "Бронь, позиции и связанные финансовые события будут полностью стёрты из БД — это действие нельзя отменить. Аудит-запись о финальном удалении сохранится."
+        }
+        confirmLabel="Удалить навсегда"
+        tone="danger"
+        requireTyped="УДАЛИТЬ"
+        loading={purgeRow !== null && busyId === purgeRow.id}
+        onClose={() => setPurgeRow(null)}
+        onConfirm={() => {
+          if (purgeRow) doPurge(purgeRow.id);
+        }}
+      />
     </div>
   );
 }
