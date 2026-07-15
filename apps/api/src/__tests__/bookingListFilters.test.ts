@@ -101,4 +101,61 @@ describe("GET /api/bookings — серверные фильтры", () => {
     expect(rows.length).toBe(1);
     expect(rows[0].projectName).toBe("LF 2");
   });
+
+  it("?paid=NOT_PAID возвращает только NOT_PAID (LF 4)", async () => {
+    const rows = await list("limit=200&paid=NOT_PAID");
+    expect(rows.length).toBe(1);
+    expect(rows[0].projectName).toBe("LF 4");
+  });
+
+  it("?paid=PARTIALLY_PAID — точный статус (в фикстуре нет → 0)", async () => {
+    const rows = await list("limit=200&paid=PARTIALLY_PAID");
+    expect(rows.length).toBe(0);
+  });
+
+  it("?paid=OVERDUE ловит статус OVERDUE (LF 5), но не NOT_PAID без срока", async () => {
+    const rows = await list("limit=200&paid=OVERDUE");
+    expect(rows.length).toBe(1);
+    expect(rows[0].projectName).toBe("LF 5");
+  });
+
+  it("?paid=OVERDUE также ловит просроченный NOT_PAID по expectedPaymentDate", async () => {
+    // Бронь NOT_PAID со сроком оплаты в прошлом — cron ещё не перекинул в OVERDUE.
+    const past = await prisma.booking.create({
+      data: {
+        clientId, projectName: "LF Overdue Date",
+        startDate: new Date("2026-05-18T09:00:00.000Z"), endDate: new Date("2026-05-18T09:00:00.000Z"),
+        status: "RETURNED", paymentStatus: "NOT_PAID", finalAmount: "1000",
+        expectedPaymentDate: new Date("2020-01-01T00:00:00.000Z"),
+      },
+    });
+    const rows = await list("limit=200&paid=OVERDUE");
+    const names = rows.map((r) => r.projectName);
+    expect(names).toContain("LF 5");
+    expect(names).toContain("LF Overdue Date");
+    await prisma.booking.delete({ where: { id: past.id } });
+  });
+
+  it("GET /summary/counts — pendingApproval / overdue / issued по живым броням", async () => {
+    const res = await request(app).get("/api/bookings/summary/counts").set(AUTH());
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("pendingApproval");
+    expect(res.body).toHaveProperty("overdue");
+    expect(res.body).toHaveProperty("issued");
+    // Все брони фикстуры — RETURNED, поэтому pendingApproval=0, issued=0.
+    expect(res.body.pendingApproval).toBe(0);
+    expect(res.body.issued).toBe(0);
+    // Просрочка: LF 5 (статус OVERDUE).
+    expect(res.body.overdue).toBe(1);
+  });
+
+  it("list-serializer больше не отдаёт displayName и сырой _count", async () => {
+    const rows = await list("limit=1");
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]).not.toHaveProperty("displayName");
+    expect(rows[0]).not.toHaveProperty("_count");
+    expect(rows[0]).not.toHaveProperty("scanSessions");
+    // Производные поля остаются.
+    expect(rows[0]).toHaveProperty("hasScanSessions");
+  });
 });

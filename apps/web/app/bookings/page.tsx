@@ -21,18 +21,12 @@ import {
   paymentPill,
   paymentTooltip,
   readListFiltersFromParams,
+  type PaidFilter,
 } from "../../src/components/bookings/bookingListHelpers";
 import { rememberBookingsListQuery } from "../../src/components/bookings/bookingsListNav";
 import { formatRub, formatWaitingTime, pluralize } from "../../src/lib/format";
 import { toast } from "../../src/components/ToastProvider";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
-
-type BookingItemMini = {
-  id: string;
-  equipmentId: string;
-  quantity: number;
-  equipment: { id: string; name: string; category: string };
-};
 
 type BookingRow = {
   id: string;
@@ -41,9 +35,7 @@ type BookingRow = {
   projectName: string;
   startDate: string;
   endDate: string;
-  displayName: string;
   client: { id: string; name: string };
-  items: BookingItemMini[];
   amountPaid: string;
   amountOutstanding: string;
   finalAmount: string;
@@ -74,8 +66,8 @@ function BookingHistoryPageInner() {
   // можно поделиться, F5 и «назад» не сбрасывают контекст фильтрации.
   const [initialFilters] = useState(() => readListFiltersFromParams(searchParams));
   const [statusFilter, setStatusFilter] = useState<string>(initialFilters.status);
-  // Бинарный фильтр оплаты: "" — все, "PAID" — оплачено, "UNPAID" — всё остальное.
-  const [paymentFilter, setPaymentFilter] = useState<"" | "PAID" | "UNPAID">(initialFilters.paid);
+  // Фильтр оплаты: "" | PAID | UNPAID | NOT_PAID | PARTIALLY_PAID | OVERDUE.
+  const [paymentFilter, setPaymentFilter] = useState<PaidFilter>(initialFilters.paid);
   const [dateFrom, setDateFrom] = useState<string>(initialFilters.from);
   const [dateTo, setDateTo] = useState<string>(initialFilters.to);
   // BL-2: поиск по клиенту/проекту. searchInput — то что печатает оператор;
@@ -112,6 +104,44 @@ function BookingHistoryPageInner() {
   // Подпись активных фильтров (без курсора) — гард от гонки «Загрузить ещё»:
   // если фильтр сменился, пока летит дозагрузка, её ответ отбрасывается.
   const filterSigRef = useRef("");
+
+  // Счётчики для пресет-чипов («Ждут согласования · N» и т.п.) — по всей базе,
+  // не зависят от текущего фильтра. Обновляются на маунте и после мутаций.
+  const [counts, setCounts] = useState<{ pendingApproval: number; overdue: number; issued: number } | null>(null);
+
+  async function refreshCounts() {
+    try {
+      const data = await apiFetch<{ pendingApproval: number; overdue: number; issued: number }>(
+        "/api/bookings/summary/counts",
+      );
+      setCounts(data);
+    } catch {
+      // Чипы — вспомогательные: их отсутствие не ломает список.
+    }
+  }
+
+  useEffect(() => {
+    void refreshCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Пресет-чип: применяет свой фильтр, сбрасывая конфликтующие; повторный клик
+  // по активному чипу — снимает фильтр.
+  function applyPreset(preset: "pendingApproval" | "overdue" | "issued") {
+    if (preset === "pendingApproval") {
+      const active = statusFilter === "PENDING_APPROVAL";
+      setStatusFilter(active ? "" : "PENDING_APPROVAL");
+      setPaymentFilter("");
+    } else if (preset === "issued") {
+      const active = statusFilter === "ISSUED";
+      setStatusFilter(active ? "" : "ISSUED");
+      setPaymentFilter("");
+    } else {
+      const active = paymentFilter === "OVERDUE";
+      setPaymentFilter(active ? "" : "OVERDUE");
+      setStatusFilter("");
+    }
+  }
 
   // Есть ли активные фильтры — влияет на текст пустого состояния
   // («ничего не найдено по фильтрам» vs «броней ещё нет»).
@@ -235,6 +265,7 @@ function BookingHistoryPageInner() {
       // Синхронизируем счётчик «Показано N из M» — иначе «49 из 120» врёт.
       setTotalCount((c) => (c !== null ? Math.max(0, c - 1) : c));
       setArchiveRow(null);
+      void refreshCounts();
     } catch (e: any) {
       toast.error(e?.message ?? "Не удалось отправить бронь в архив");
     } finally {
@@ -280,6 +311,7 @@ function BookingHistoryPageInner() {
         body: JSON.stringify({ action, ...(isForcedRetry ? { force: true } : {}) }),
       });
       mergeRowFromApi(id, data.booking ?? {});
+      void refreshCounts();
     } catch (e: any) {
       // Мягкий гард ранней выдачи: 409 ISSUE_TOO_EARLY (до начала аренды больше
       // суток). Предупреждаем и при согласии повторяем с force: true — ранняя
@@ -493,7 +525,32 @@ function BookingHistoryPageInner() {
         }
       />
 
-      <div className="mt-4 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+      {/* Пресет-чипы: быстрый переход к денежно-важным выборкам одним кликом. */}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <PresetChip
+          label="Ждут согласования"
+          count={counts?.pendingApproval ?? null}
+          active={statusFilter === "PENDING_APPROVAL"}
+          tone="amber"
+          onClick={() => applyPreset("pendingApproval")}
+        />
+        <PresetChip
+          label="Просрочена оплата"
+          count={counts?.overdue ?? null}
+          active={paymentFilter === "OVERDUE"}
+          tone="rose"
+          onClick={() => applyPreset("overdue")}
+        />
+        <PresetChip
+          label="На руках"
+          count={counts?.issued ?? null}
+          active={statusFilter === "ISSUED"}
+          tone="teal"
+          onClick={() => applyPreset("issued")}
+        />
+      </div>
+
+      <div className="mt-3 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
         <div className="p-3 border-b border-border flex items-center justify-between">
           <p className="eyebrow">Фильтры</p>
           <div className="flex flex-wrap items-center gap-2">
@@ -542,11 +599,13 @@ function BookingHistoryPageInner() {
             <select
               className="rounded border border-border px-2 py-1 text-xs bg-surface"
               value={paymentFilter}
-              onChange={(e) => setPaymentFilter(e.target.value as "" | "PAID" | "UNPAID")}
+              onChange={(e) => setPaymentFilter(e.target.value as PaidFilter)}
             >
               <option value="">Все статусы оплаты</option>
-              <option value="PAID">Оплачен</option>
-              <option value="UNPAID">Не оплачен</option>
+              <option value="PAID">Оплачено</option>
+              <option value="PARTIALLY_PAID">Частично</option>
+              <option value="NOT_PAID">Не оплачено</option>
+              <option value="OVERDUE">Просрочено</option>
             </select>
             <div className="text-xs text-ink-3">
               {loadError
@@ -582,7 +641,12 @@ function BookingHistoryPageInner() {
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
                 {/* Период «смена — возврат»: из списка видно, у кого сегодня возврат */}
-                <th className="text-left px-3 py-2 font-medium">Даты</th>
+                <th
+                  className="text-left px-3 py-2 font-medium"
+                  title="Порядок: сначала ближайшие и активные аренды, затем прошедшие (свежие выше)"
+                >
+                  Даты <span className="text-ink-3 font-normal">↑</span>
+                </th>
                 <th className="text-left px-3 py-2 font-medium">Клиент</th>
                 <th className="text-left px-3 py-2 font-medium">Проект</th>
                 <th className="text-left px-3 py-2 font-medium">Статус</th>
@@ -813,6 +877,55 @@ function BookingHistoryPageInner() {
         />
       )}
     </div>
+  );
+}
+
+const CHIP_TONES: Record<"amber" | "rose" | "teal", { active: string; idle: string; badge: string }> = {
+  amber: {
+    active: "bg-amber-soft border-amber-border text-amber",
+    idle: "bg-surface border-border text-ink-2 hover:border-amber-border hover:text-amber",
+    badge: "text-amber",
+  },
+  rose: {
+    active: "bg-rose-soft border-rose-border text-rose",
+    idle: "bg-surface border-border text-ink-2 hover:border-rose-border hover:text-rose",
+    badge: "text-rose",
+  },
+  teal: {
+    active: "bg-teal-soft border-teal-border text-teal",
+    idle: "bg-surface border-border text-ink-2 hover:border-teal-border hover:text-teal",
+    badge: "text-teal",
+  },
+};
+
+function PresetChip({
+  label,
+  count,
+  active,
+  tone,
+  onClick,
+}: {
+  label: string;
+  count: number | null;
+  active: boolean;
+  tone: "amber" | "rose" | "teal";
+  onClick: () => void;
+}) {
+  const cls = CHIP_TONES[tone];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+        active ? cls.active : cls.idle
+      }`}
+    >
+      {label}
+      {count !== null && count > 0 && (
+        <span className={`font-mono text-[11px] ${active ? "" : cls.badge}`}>{count}</span>
+      )}
+    </button>
   );
 }
 

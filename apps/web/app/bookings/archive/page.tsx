@@ -68,12 +68,25 @@ export default function BookingsArchivePage() {
   // и потребовать резервов), purge — typed-confirm (необратимое стирание из БД).
   const [restoreRow, setRestoreRow] = useState<ArchivedBooking | null>(null);
   const [purgeRow, setPurgeRow] = useState<ArchivedBooking | null>(null);
+  // Фильтры архива (раньше их не было — искать удалённую бронь среди сотен
+  // было нечем). Тот же серверный API, что и у основного списка.
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  function buildArchiveParams(cursor?: string): string {
+    const params = new URLSearchParams({ archived: "true", limit: "50" });
+    if (cursor) params.set("cursor", cursor);
+    if (statusFilter) params.set("status", statusFilter);
+    if (searchQuery.trim()) params.set("q", searchQuery.trim());
+    return params.toString();
+  }
 
   // BL-8: единая функция загрузки вместо дублирующих load() + inline-fetch.
   async function load() {
     try {
       const data = await apiFetch<{ bookings: ArchivedBooking[]; nextCursor: string | null }>(
-        "/api/bookings?archived=true&limit=50",
+        `/api/bookings?${buildArchiveParams()}`,
       );
       setRows(data.bookings);
       setNextCursor(data.nextCursor ?? null);
@@ -88,7 +101,7 @@ export default function BookingsArchivePage() {
     setLoadingMore(true);
     try {
       const data = await apiFetch<{ bookings: ArchivedBooking[]; nextCursor: string | null }>(
-        `/api/bookings?archived=true&limit=50&cursor=${encodeURIComponent(nextCursor)}`,
+        `/api/bookings?${buildArchiveParams(nextCursor)}`,
       );
       setRows((prev) => [...(prev ?? []), ...data.bookings]);
       setNextCursor(data.nextCursor ?? null);
@@ -99,17 +112,25 @@ export default function BookingsArchivePage() {
     }
   }
 
+  // Дебаунс поиска (300 мс) → searchQuery → серверный запрос.
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   useEffect(() => {
     if (roleLoading || !user) return;
     let cancelled = false;
+    setRows(null);
     void (async () => {
       try {
         const data = await apiFetch<{ bookings: ArchivedBooking[]; nextCursor: string | null }>(
-          "/api/bookings?archived=true&limit=50",
+          `/api/bookings?${buildArchiveParams()}`,
         );
         if (cancelled) return;
         setRows(data.bookings);
         setNextCursor(data.nextCursor ?? null);
+        setError(null);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Не удалось загрузить архив");
@@ -118,7 +139,8 @@ export default function BookingsArchivePage() {
     return () => {
       cancelled = true;
     };
-  }, [roleLoading, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roleLoading, user, statusFilter, searchQuery]);
 
   async function doRestore(id: string) {
     setBusyId(id);
@@ -173,6 +195,38 @@ export default function BookingsArchivePage() {
       </div>
 
       <div className="mt-4 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+        <div className="p-3 border-b border-border flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Поиск по клиенту или проекту"
+            aria-label="Поиск по клиенту или проекту"
+            className="rounded border border-border px-2 py-1 text-xs bg-surface w-56 max-w-full"
+          />
+          <select
+            className="rounded border border-border px-2 py-1 text-xs bg-surface"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">Все статусы</option>
+            <option value="DRAFT">Черновик</option>
+            <option value="PENDING_APPROVAL">На согласовании</option>
+            <option value="CONFIRMED">Подтверждена</option>
+            <option value="ISSUED">Выдана</option>
+            <option value="RETURNED">Возвращена</option>
+            <option value="CANCELLED">Отменена</option>
+          </select>
+          {(searchInput || statusFilter) && (
+            <button
+              type="button"
+              onClick={() => { setSearchInput(""); setSearchQuery(""); setStatusFilter(""); }}
+              className="text-xs text-accent hover:underline"
+            >
+              Сбросить
+            </button>
+          )}
+        </div>
         <div className="overflow-auto">
           <table className="min-w-[920px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
@@ -204,7 +258,9 @@ export default function BookingsArchivePage() {
               {rows && rows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-3 py-10 text-center text-ink-3">
-                    В архиве пока пусто.
+                    {searchQuery || statusFilter
+                      ? "Ничего не найдено под текущими фильтрами."
+                      : "В архиве пока пусто."}
                   </td>
                 </tr>
               )}

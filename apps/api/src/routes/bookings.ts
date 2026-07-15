@@ -252,6 +252,39 @@ const bookingStatusEnum = z.enum([
 ]);
 
 /**
+ * Where-фрагмент фильтра оплаты `?paid=`. Кроме легаси-бинарных PAID/UNPAID
+ * поддерживает точные статусы (NOT_PAID/PARTIALLY_PAID/PAID) и «OVERDUE» —
+ * просрочку: серверный статус OVERDUE ИЛИ (не PAID и срок оплаты в прошлом),
+ * чтобы поймать брони, у которых cron ещё не перекинул статус.
+ */
+function buildPaidWhere(paidParam: string, nowMs: number = Date.now()): Prisma.BookingWhereInput {
+  switch (paidParam) {
+    case "PAID":
+      return { paymentStatus: "PAID" };
+    case "UNPAID":
+      return { paymentStatus: { not: "PAID" } };
+    case "NOT_PAID":
+      return { paymentStatus: "NOT_PAID" };
+    case "PARTIALLY_PAID":
+      return { paymentStatus: "PARTIALLY_PAID" };
+    case "OVERDUE":
+      return {
+        OR: [
+          { paymentStatus: "OVERDUE" },
+          {
+            AND: [
+              { paymentStatus: { not: "PAID" } },
+              { expectedPaymentDate: { lt: new Date(nowMs) } },
+            ],
+          },
+        ],
+      };
+    default:
+      return {};
+  }
+}
+
+/**
  * Считает per-vehicle снапшоты транспорта по актуальным ценам машин —
  * для персистенции в BookingVehicle. Общий код POST /draft и PATCH /:id.
  */
@@ -309,14 +342,9 @@ router.get("/", async (req, res, next) => {
     const archivedParam = typeof req.query.archived === "string" ? req.query.archived : "";
     const archivedFilter = archivedParam === "true" || archivedParam === "1";
 
-    // Серверный фильтр оплаты. Бинарный (как UI): PAID | UNPAID(всё кроме PAID).
+    // Серверный фильтр оплаты: PAID | UNPAID | NOT_PAID | PARTIALLY_PAID | OVERDUE.
     const paidParam = typeof req.query.paid === "string" ? req.query.paid : "";
-    const paidWhere: Prisma.BookingWhereInput =
-      paidParam === "PAID"
-        ? { paymentStatus: "PAID" }
-        : paidParam === "UNPAID"
-          ? { paymentStatus: { not: "PAID" } }
-          : {};
+    const paidWhere = buildPaidWhere(paidParam);
 
     // Серверный фильтр по ДАТЕ СМЕНЫ (startDate). from/to — YYYY-MM-DD в МСК,
     // включительно по обе границы (to = до начала следующего дня).
@@ -479,19 +507,18 @@ router.get("/", async (req, res, next) => {
 
     res.json({
       bookings: items.map((b) => {
-        const lastScan = b.scanSessions[0] ?? null;
+        // Не отдаём сырые агрегаты (_count) и вложенные scanSessions в JSON —
+        // только производные hasScanSessions/lastScan*. displayName в списке не
+        // используется (карточка брони считает свой) — не гоняем его на строку.
+        const { _count, scanSessions, ...rest } = b;
+        const lastScan = scanSessions[0] ?? null;
         return {
-          ...b,
+          ...rest,
           amountPaid: b.amountPaid.toString(),
           amountOutstanding: b.amountOutstanding.toString(),
           finalAmount: b.finalAmount.toString(),
           deletedByName: b.deletedBy ? (deletedByNameById.get(b.deletedBy) ?? null) : null,
-          displayName: buildBookingHumanName({
-            startDate: b.startDate,
-            clientName: b.client.name,
-            totalAfterDiscount: b.finalAmount.toString(),
-          }),
-          hasScanSessions: b._count.scanSessions > 0,
+          hasScanSessions: _count.scanSessions > 0,
           lastScanOperation: lastScan?.operation ?? null,
           lastScanStatus: lastScan?.status ?? null,
         };
@@ -499,6 +526,28 @@ router.get("/", async (req, res, next) => {
       nextCursor,
       totalCount,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/bookings/summary/counts
+ * Счётчики для пресет-чипов списка (все — по живым броням, deletedAt: null):
+ *  - pendingApproval — ждут согласования (status PENDING_APPROVAL);
+ *  - overdue — просрочена оплата (buildPaidWhere("OVERDUE"));
+ *  - issued — на руках (status ISSUED).
+ * Путь /summary/counts не коллизирует с /:id (два сегмента vs один).
+ */
+router.get("/summary/counts", async (_req, res, next) => {
+  try {
+    const live: Prisma.BookingWhereInput = { deletedAt: null };
+    const [pendingApproval, overdue, issued] = await Promise.all([
+      prisma.booking.count({ where: { ...live, status: "PENDING_APPROVAL" } }),
+      prisma.booking.count({ where: { ...live, ...buildPaidWhere("OVERDUE") } }),
+      prisma.booking.count({ where: { ...live, status: "ISSUED" } }),
+    ]);
+    res.json({ pendingApproval, overdue, issued });
   } catch (err) {
     next(err);
   }
