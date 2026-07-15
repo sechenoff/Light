@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 
@@ -18,6 +18,10 @@ import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalRev
 import { BookingHeader } from "../../../src/components/bookings/BookingHeader";
 import { useBookingLifecycle } from "../../../src/components/bookings/useBookingLifecycle";
 import { useExtendRental } from "../../../src/components/bookings/useExtendRental";
+import {
+  financeModalInitialState,
+  financeModalReducer,
+} from "../../../src/components/bookings/financeModalReducer";
 import { toast } from "../../../src/components/ToastProvider";
 import {
   bookingStatusLabel as statusText,
@@ -192,14 +196,13 @@ export default function BookingDetailPage() {
   const { user } = useCurrentUser();
   const [changeClientOpen, setChangeClientOpen] = useState(false);
   const [actionBusy, setActionBusy] = useState<null | "submit" | "instant">(null);
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [voidPaymentId, setVoidPaymentId] = useState<string | null>(null);
+  // Фаза 4.5: шесть финансовых модалок — один reducer вместо шести useState.
+  const [financeModals, dispatchFinanceModal] = useReducer(
+    financeModalReducer,
+    financeModalInitialState,
+  );
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [invoicesError, setInvoicesError] = useState(false);
-  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
-  const [refundInvoiceId, setRefundInvoiceId] = useState<string | null>(null);
-  const [cancelDepositOpen, setCancelDepositOpen] = useState(false);
-  const [creditNoteOpen, setCreditNoteOpen] = useState(false);
   // F-EXTEND: продление выданной (ISSUED) брони — инлайн-поле новой даты возврата.
   // F-EXTEND: повторная отправка на согласование правленной CONFIRMED-брони (WAREHOUSE).
   const [resubmitBusy, setResubmitBusy] = useState(false);
@@ -320,7 +323,7 @@ export default function BookingDetailPage() {
     bookingId: id,
     booking,
     reloadBooking,
-    onCancelWithDeposit: () => setCancelDepositOpen(true),
+    onCancelWithDeposit: () => dispatchFinanceModal({ type: "openCancelDeposit" }),
   });
 
   async function archiveBooking() {
@@ -851,14 +854,14 @@ export default function BookingDetailPage() {
                 ветке обычного вида ниже, но она там не смонтирована при
                 showApprovalView, поэтому дублируем здесь. */}
             <CancelWithDepositModal
-              open={cancelDepositOpen}
-              onClose={() => setCancelDepositOpen(false)}
+              open={financeModals.cancelDepositOpen}
+              onClose={() => dispatchFinanceModal({ type: "closeCancelDeposit" })}
               bookingId={booking.id}
               bookingDisplayName={booking.displayName ?? booking.projectName}
               clientId={booking.client.id}
               clientName={booking.client.name}
               depositTotal={Number(booking.amountPaid ?? "0")}
-              onCancelled={() => { setCancelDepositOpen(false); reloadBooking(); }}
+              onCancelled={() => { dispatchFinanceModal({ type: "closeCancelDeposit" }); reloadBooking(); }}
             />
             <ApprovalReviewView
               booking={booking}
@@ -1057,35 +1060,35 @@ export default function BookingDetailPage() {
 
           {/* Finance Phase 2 modals */}
           <CreateInvoiceModal
-            open={createInvoiceOpen}
-            onClose={() => setCreateInvoiceOpen(false)}
+            open={financeModals.createInvoiceOpen}
+            onClose={() => dispatchFinanceModal({ type: "closeCreateInvoice" })}
             defaultBookingId={booking.id}
             defaultTotal={booking.finalAmount ?? undefined}
-            onCreated={() => { setCreateInvoiceOpen(false); loadInvoices(); }}
+            onCreated={() => { dispatchFinanceModal({ type: "closeCreateInvoice" }); loadInvoices(); }}
           />
           <RefundModal
-            open={!!refundInvoiceId}
-            onClose={() => setRefundInvoiceId(null)}
-            invoiceId={refundInvoiceId ?? undefined}
+            open={!!financeModals.refundInvoiceId}
+            onClose={() => dispatchFinanceModal({ type: "closeRefund" })}
+            invoiceId={financeModals.refundInvoiceId ?? undefined}
             bookingId={booking.id}
-            onSuccess={() => { setRefundInvoiceId(null); reloadBooking(); }}
+            onSuccess={() => { dispatchFinanceModal({ type: "closeRefund" }); reloadBooking(); }}
           />
           <CancelWithDepositModal
-            open={cancelDepositOpen}
-            onClose={() => setCancelDepositOpen(false)}
+            open={financeModals.cancelDepositOpen}
+            onClose={() => dispatchFinanceModal({ type: "closeCancelDeposit" })}
             bookingId={booking.id}
             bookingDisplayName={booking.displayName ?? booking.projectName}
             clientId={booking.client.id}
             clientName={booking.client.name}
             depositTotal={Number(booking.amountPaid ?? "0")}
-            onCancelled={() => { setCancelDepositOpen(false); reloadBooking(); }}
+            onCancelled={() => { dispatchFinanceModal({ type: "closeCancelDeposit" }); reloadBooking(); }}
           />
           <CreditNoteApplyModal
-            open={creditNoteOpen}
-            onClose={() => setCreditNoteOpen(false)}
+            open={financeModals.creditNoteOpen}
+            onClose={() => dispatchFinanceModal({ type: "closeCreditNote" })}
             bookingId={booking.id}
             clientId={booking.client.id}
-            onApplied={() => { setCreditNoteOpen(false); reloadBooking(); }}
+            onApplied={() => { dispatchFinanceModal({ type: "closeCreditNote" }); reloadBooking(); }}
           />
 
           {/* ───────── Hero + Finance strip ────────────────────────────────────
@@ -1753,7 +1756,7 @@ export default function BookingDetailPage() {
                     ) && (
                       <button
                         className="rounded bg-accent-bright text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
-                        onClick={() => setPaymentModalOpen(true)}
+                        onClick={() => dispatchFinanceModal({ type: "openPayment" })}
                       >
                         + Записать платёж
                       </button>
@@ -1765,7 +1768,7 @@ export default function BookingDetailPage() {
                       Number(booking.amountPaid ?? "0") > 0 && (
                         <button
                           className="rounded border border-rose px-3 py-2 text-sm text-rose hover:bg-rose-soft transition-colors"
-                          onClick={() => setCancelDepositOpen(true)}
+                          onClick={() => dispatchFinanceModal({ type: "openCancelDeposit" })}
                         >
                           Отменить бронь
                         </button>
@@ -1809,7 +1812,7 @@ export default function BookingDetailPage() {
                       <div className="flex items-center justify-between mb-2">
                         <p className="eyebrow">Счета</p>
                         <button
-                          onClick={() => setCreateInvoiceOpen(true)}
+                          onClick={() => dispatchFinanceModal({ type: "openCreateInvoice" })}
                           className="text-[11px] px-2 py-1 bg-accent-bright text-white rounded hover:opacity-90"
                         >
                           + Создать счёт
@@ -1873,7 +1876,7 @@ export default function BookingDetailPage() {
                                         )}
                                         {["ISSUED", "PARTIAL_PAID", "PAID"].includes(inv.status) && (
                                           <button
-                                            onClick={() => setRefundInvoiceId(inv.id)}
+                                            onClick={() => dispatchFinanceModal({ type: "openRefund", invoiceId: inv.id })}
                                             className="text-amber hover:underline"
                                           >
                                             ↩ Возврат
@@ -1889,7 +1892,7 @@ export default function BookingDetailPage() {
                         </div>
                       )}
                       <button
-                        onClick={() => setCreditNoteOpen(true)}
+                        onClick={() => dispatchFinanceModal({ type: "openCreditNote" })}
                         className="mt-2 text-[11px] text-accent hover:underline"
                       >
                         Кредит-ноты клиента →
@@ -1935,7 +1938,7 @@ export default function BookingDetailPage() {
                                 <div className="flex gap-1.5 shrink-0">
                                   <button
                                     className="text-xs text-rose border border-rose-border rounded px-2 py-0.5 hover:bg-rose-soft transition-colors"
-                                    onClick={() => setVoidPaymentId(p.id)}
+                                    onClick={() => dispatchFinanceModal({ type: "openVoidPayment", paymentId: p.id })}
                                   >
                                     ⊘ Аннулировать
                                   </button>
@@ -2221,7 +2224,7 @@ export default function BookingDetailPage() {
           ) && (
             <button
               className="flex-1 rounded bg-accent-bright text-white px-2 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
-              onClick={() => setPaymentModalOpen(true)}
+              onClick={() => dispatchFinanceModal({ type: "openPayment" })}
             >
               ₽ Платёж
             </button>
@@ -2260,8 +2263,8 @@ export default function BookingDetailPage() {
       {/* RecordPaymentModal — T2 */}
       {booking && (
         <RecordPaymentModal
-          open={paymentModalOpen}
-          onClose={() => setPaymentModalOpen(false)}
+          open={financeModals.paymentOpen}
+          onClose={() => dispatchFinanceModal({ type: "closePayment" })}
           defaultBookingId={booking.id}
           legacyFinance={booking.legacyFinance !== false ? true : false}
           bookingContext={{
@@ -2273,7 +2276,7 @@ export default function BookingDetailPage() {
             amountOutstanding: booking.amountOutstanding ?? undefined,
           }}
           onCreated={() => {
-            setPaymentModalOpen(false);
+            dispatchFinanceModal({ type: "closePayment" });
             reloadBooking();
           }}
         />
@@ -2329,11 +2332,11 @@ export default function BookingDetailPage() {
 
       {/* VoidPaymentModal — T11 */}
       <VoidPaymentModal
-        open={voidPaymentId !== null}
-        paymentId={voidPaymentId}
-        onClose={() => setVoidPaymentId(null)}
+        open={financeModals.voidPaymentId !== null}
+        paymentId={financeModals.voidPaymentId}
+        onClose={() => dispatchFinanceModal({ type: "closeVoidPayment" })}
         onVoided={() => {
-          setVoidPaymentId(null);
+          dispatchFinanceModal({ type: "closeVoidPayment" });
           reloadBooking();
         }}
       />
