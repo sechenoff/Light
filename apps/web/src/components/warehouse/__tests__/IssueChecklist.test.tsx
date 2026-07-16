@@ -751,10 +751,12 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
       expect(toggle).toHaveAttribute("aria-pressed", "true");
     }
 
-    // The bulk button flipped into «Снять все отметки» mode.
+    // The bulk button flipped into «Снять все отметки» mode — jsdom renders
+    // both the desktop AND the mobile variant (breakpoints don't apply).
     expect(
-      screen.getByRole("button", { name: "Снять все отметки «Выдано»" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button", { name: "Снять все отметки «Выдано»" })
+        .length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("finalize button label is «Завершить (отмечено N из M)» when not all rows marked; «✓ Готово, выдать» when all marked", async () => {
@@ -793,5 +795,97 @@ describe("IssueChecklist (Task 14 unbounded stepper + live finance)", () => {
     expect(finalFinalize).toHaveTextContent(/✓ Готово, выдать/);
     expect(finalFinalize.className).toMatch(/bg-emerald/);
     expect(finalFinalize.className).not.toMatch(/bg-amber/);
+  });
+
+  it("обнулённая строка выпадает из прогресса и её нельзя отметить «Выдано»", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+    await screen.findByText("Aputure 600D");
+
+    // Обнуляем Aputure (qty 2 → 0).
+    const minus = screen.getByRole("button", {
+      name: "Уменьшить количество — Aputure 600D",
+    });
+    fireEvent.click(minus);
+    fireEvent.click(minus);
+
+    // Прогресс-чип: знаменатель сжался до 1 активной позиции (Manfrotto).
+    expect(
+      screen.getAllByLabelText("Выдано 0 из 1 позиций").length,
+    ).toBeGreaterThanOrEqual(1);
+
+    // Кнопка «Выдано» обнулённой строки задизейблена с поясняющим label.
+    const zeroedToggle = screen.getByRole("button", {
+      name: "Позиция снята с выдачи — Aputure 600D",
+    });
+    expect(zeroedToggle).toBeDisabled();
+
+    // Отметив единственную активную строку, получаем зелёный «Готово, выдать».
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Отметить «Выдано» — Manfrotto 1004/,
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: /Готово, выдать/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("отметка «Выдано» снимается автоматически, когда строку обнуляют", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+    await screen.findByText("Aputure 600D");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Отметить «Выдано» — Aputure 600D/ }),
+    );
+    expect(
+      screen.getAllByLabelText("Выдано 1 из 2 позиций").length,
+    ).toBeGreaterThanOrEqual(1);
+
+    const minus = screen.getByRole("button", {
+      name: "Уменьшить количество — Aputure 600D",
+    });
+    fireEvent.click(minus);
+    fireEvent.click(minus);
+
+    // Чек снят вместе с обнулением: 0 из 1.
+    expect(
+      screen.getAllByLabelText("Выдано 0 из 1 позиций").length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("завершение с неотмеченными позициями требует подтверждения; «Всё равно выдать» отправляет", async () => {
+    render(
+      <IssueChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // Ничего не отмечено → жмём «Завершить» → модалка вместо POST.
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Завершить выдачу/ }),
+    );
+    expect(completeSpy).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog", {
+      name: /не все позиции отмечены/i,
+    });
+    expect(dialog).toHaveTextContent(/Отмечено 0 из 2 позиций/);
+
+    // «Вернуться к списку» закрывает без отправки.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Вернуться к списку" }),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(completeSpy).not.toHaveBeenCalled();
+
+    // Повторно: подтверждаем «Всё равно выдать» → POST уходит.
+    fireEvent.click(
+      screen.getByRole("button", { name: /Завершить выдачу/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Всё равно выдать" }),
+    );
+    await waitFor(() => expect(completeSpy).toHaveBeenCalledTimes(1));
   });
 });

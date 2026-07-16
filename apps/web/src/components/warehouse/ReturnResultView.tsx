@@ -38,6 +38,7 @@ export function ReturnResultView({
   result,
   projectName,
   acceptedCount,
+  unitNames,
   onDone,
 }: {
   result: CompleteResult;
@@ -47,9 +48,18 @@ export function ReturnResultView({
    * outcome truth from `ReturnChecklist`. Clamped ≥0 defensively here too.
    */
   acceptedCount: number;
+  /**
+   * unitId → человекочитаемое имя единицы. Failed-массивы бэкенда несут
+   * только id — сырые id оператору не показываем (правило «без id в UX»),
+   * фолбэк «Единица оборудования».
+   */
+  unitNames?: ReadonlyMap<string, string>;
   /** Back to the bookings list. */
   onDone: () => void;
 }) {
+  function unitName(id: string): string {
+    return unitNames?.get(id) ?? "Единица оборудования";
+  }
   const repairCount = result.createdRepairIds?.length ?? 0;
   const problemCount = result.createdProblemItemIds?.length ?? 0;
   const safeAccepted = Math.max(
@@ -190,7 +200,7 @@ export function ReturnResultView({
                         key={f.unitId}
                         className="text-[12px] leading-snug text-rose"
                       >
-                        • {f.reason}: {f.error}
+                        • {unitName(f.unitId)} — {f.error}
                       </li>
                     ))}
                   </ul>
@@ -208,7 +218,7 @@ export function ReturnResultView({
                         key={f.equipmentUnitId}
                         className="text-[12px] leading-snug text-rose"
                       >
-                        • {f.equipmentUnitId}: {f.reason}
+                        • {unitName(f.equipmentUnitId)} — {f.reason}
                       </li>
                     ))}
                   </ul>

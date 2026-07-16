@@ -130,7 +130,7 @@ describe("ReturnResultView", () => {
     expect(screen.queryByText("Приёмка завершена")).not.toBeInTheDocument();
   });
 
-  it("renders the broken-unit failure against its REAL shape (reason: error)", () => {
+  it("renders the broken-unit failure with the unit NAME (from unitNames), never a raw id", () => {
     const { container } = render(
       <ReturnResultView
         result={okResult({
@@ -140,6 +140,7 @@ describe("ReturnResultView", () => {
         })}
         acceptedCount={2}
         projectName="P"
+        unitNames={new Map([["u9", "ARRI SkyPanel S60 — прибор 1 из 2"]])}
         onDone={() => {}}
       />,
     );
@@ -147,13 +148,15 @@ describe("ReturnResultView", () => {
       screen.getByText("Не удалось создать ремонт:"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Разбит байонет: ремонт занят/),
+      screen.getByText(/ARRI SkyPanel S60 — прибор 1 из 2 — ремонт занят/),
     ).toBeInTheDocument();
+    // Raw unit ids never leak to the operator.
+    expect(container.textContent || "").not.toContain("u9");
     // No `undefined` from a wrong field access.
     expect(container.textContent || "").not.toContain("undefined");
   });
 
-  it("renders the problem-unit failure against its REAL shape (equipmentUnitId + reason), no 'undefined'", () => {
+  it("renders the problem-unit failure with a name fallback when unitNames misses the id, no raw id, no 'undefined'", () => {
     const { container } = render(
       <ReturnResultView
         result={okResult({
@@ -169,8 +172,12 @@ describe("ReturnResultView", () => {
     expect(
       screen.getByText("Не удалось завести в «Потеряшки»:"),
     ).toBeInTheDocument();
-    // reason ALREADY holds the error message; the unit id is equipmentUnitId.
-    expect(screen.getByText(/u3: единица уже списана/)).toBeInTheDocument();
+    // Without a name map the view falls back to a generic Russian label —
+    // NEVER the raw equipmentUnitId (правило «без id в UX»).
+    expect(
+      screen.getByText(/Единица оборудования — единица уже списана/),
+    ).toBeInTheDocument();
+    expect(container.textContent || "").not.toContain("u3");
     // The exact regression: a fabricated `{unitId,reason,error}` model
     // rendered "undefined" for every failed problem unit. Never again.
     expect(container.textContent || "").not.toContain("undefined");
@@ -189,13 +196,19 @@ describe("ReturnResultView", () => {
         })}
         acceptedCount={2}
         projectName="P"
+        unitNames={
+          new Map([
+            ["u9", "ARRI SkyPanel S60"],
+            ["u3", "Genaray штатив"],
+          ])
+        }
         onDone={() => {}}
       />,
     );
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent(/Не удалось обработать 2 единицы/);
-    expect(alert).toHaveTextContent(/Разбит байонет: ремонт занят/);
-    expect(alert).toHaveTextContent(/u3: единица уже списана/);
+    expect(alert).toHaveTextContent(/ARRI SkyPanel S60 — ремонт занят/);
+    expect(alert).toHaveTextContent(/Genaray штатив — единица уже списана/);
   });
 
   it("never renders a barcode", () => {

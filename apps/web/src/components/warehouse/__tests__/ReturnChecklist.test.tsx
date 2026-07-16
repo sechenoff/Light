@@ -247,6 +247,43 @@ describe("ReturnChecklist", () => {
     await waitFor(() => expect(checkSpy).toHaveBeenCalledWith("u1"));
   });
 
+  it("переключение с ✓ Принято на 🔧 Ремонт снимает серверную отметку (uncheck)", async () => {
+    render(
+      <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    // Сначала «Принято» — уходит check (юнит помечен возвращённым).
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Aputure 600D \(прибор 1 из 3\) — принять без замечаний/,
+      }),
+    );
+    await waitFor(() => expect(checkSpy).toHaveBeenCalledWith("u1"));
+
+    // Передумали → «Ремонт»: серверная отметка снимается, иначе бэкенд
+    // видит юнит одновременно принятым И ремонтным.
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Aputure 600D \(прибор 1 из 3\) — отправить в ремонт/,
+      }),
+    );
+    await waitFor(() => expect(uncheckSpy).toHaveBeenCalledWith("u1"));
+  });
+
+  it("выбор 🔧 Ремонт БЕЗ предшествующего «Принято» не дёргает uncheck", async () => {
+    render(
+      <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Aputure 600D \(прибор 2 из 3\) — отправить в ремонт/,
+      }),
+    );
+    expect(await screen.findByTestId("repair-panel-u2")).toBeInTheDocument();
+    expect(uncheckSpy).not.toHaveBeenCalled();
+  });
+
   it("selecting 🔧 Ремонт expands the RepairPanel for that unit", async () => {
     render(
       <ReturnChecklist sessionId="s1" projectName="P" onBack={() => {}} />,
@@ -535,13 +572,17 @@ describe("ReturnChecklist", () => {
     expect(
       screen.getByText(/Не удалось обработать 2 единицы/),
     ).toBeInTheDocument();
-    // Broken unit rendered against ITS shape: reason + error.
+    // Broken unit u9 is NOT in the checklist state → generic name fallback,
+    // never the raw id (правило «без id в UX»).
     expect(
-      screen.getByText(/Разбит байонет: ремонт занят/),
+      screen.getByText(/Единица оборудования — ремонт занят/),
     ).toBeInTheDocument();
-    // Problem unit rendered against ITS shape: equipmentUnitId + reason
-    // (reason already holds the error message — no `error` field exists).
-    expect(screen.getByText(/u3: единица уже списана/)).toBeInTheDocument();
+    expect(container.textContent || "").not.toContain("u9");
+    // Problem unit u3 IS in the checklist (Aputure 600D, прибор 3 из 3) —
+    // the human-readable name resolves from the checklist state.
+    expect(
+      screen.getByText(/Aputure 600D — прибор 3 из 3 — единица уже списана/),
+    ).toBeInTheDocument();
 
     // CRITICAL regression guard: the fabricated-shape bug rendered a literal
     // "undefined" for every failed problem unit. It must NEVER appear.

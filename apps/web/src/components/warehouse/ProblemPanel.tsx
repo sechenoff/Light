@@ -58,6 +58,20 @@ const REASON_CHIPS: readonly ReasonChipDef[] = [
   { value: "STOLEN", glyph: "🚨", label: "Украден" },
 ];
 
+/**
+ * Что реально произойдёт с единицей — зеркалит бэкенд-маппинг в
+ * `problemItemService.createProblemItem`: LEFT_ON_SITE → EXPECTED (ожидаем
+ * возврат), LOST/STOLEN → SEARCHING (заявка на поиск), DESTROYED → сразу
+ * WROTE_OFF + unit RETIRED (списание, без поиска). Единая подпись «заявка на
+ * поиск» для всех причин вводила оператора в заблуждение.
+ */
+const REASON_CONSEQUENCE: Record<ProblemReason, string> = {
+  LEFT_ON_SITE: "→ в «Потеряшки» · ожидается возврат",
+  LOST: "→ в «Потеряшки» · заявка на поиск",
+  STOLEN: "→ в «Потеряшки» · заявка на поиск",
+  DESTROYED: "→ списание единицы (без поиска)",
+};
+
 export function ProblemPanel({
   reason,
   onReasonChange,
@@ -66,6 +80,7 @@ export function ProblemPanel({
   expectedBackDate,
   onExpectedBackDateChange,
   disabled = false,
+  fieldIdPrefix = "problem",
 }: {
   reason: ProblemReason | null;
   onReasonChange: (r: ProblemReason) => void;
@@ -83,6 +98,13 @@ export function ProblemPanel({
   /** Receives `YYYY-MM-DD` (or null on clear). NOT ISO datetime — see above. */
   onExpectedBackDateChange: (date: string | null) => void;
   disabled?: boolean;
+  /**
+   * Префикс DOM-id полей (`{prefix}-comment`, `{prefix}-expected-back`).
+   * На приёмке рендерится по одной панели на каждую проблемную единицу —
+   * без уникального префикса id дублируются (невалидный DOM, label/`for`
+   * попадает не в то поле). Передавайте unitId.
+   */
+  fieldIdPrefix?: string;
 }) {
   function selectReason(next: ProblemReason) {
     // Switching away from «Остался на площадке» clears the date — the field
@@ -130,7 +152,7 @@ export function ProblemPanel({
       {reason === "LEFT_ON_SITE" && (
         <div className="mt-2.5 flex items-center gap-2">
           <label
-            htmlFor="problem-expected-back"
+            htmlFor={`${fieldIdPrefix}-expected-back`}
             className="text-[12px] text-rose"
           >
             Ожидается к:
@@ -143,7 +165,7 @@ export function ProblemPanel({
               `new Date(d + "T00:00:00.000Z").toISOString()`, or the API 400s.
               Conversion is intentionally NOT done here (see file header). */}
           <input
-            id="problem-expected-back"
+            id={`${fieldIdPrefix}-expected-back`}
             type="date"
             value={expectedBackDate ?? ""}
             disabled={disabled}
@@ -158,11 +180,11 @@ export function ProblemPanel({
         </div>
       )}
 
-      <label className="sr-only" htmlFor="problem-comment">
+      <label className="sr-only" htmlFor={`${fieldIdPrefix}-comment`}>
         Комментарий (обязательно)
       </label>
       <textarea
-        id="problem-comment"
+        id={`${fieldIdPrefix}-comment`}
         rows={2}
         value={comment}
         disabled={disabled}
@@ -173,7 +195,7 @@ export function ProblemPanel({
       />
 
       <p className="mt-2 text-[11px] leading-snug text-rose">
-        → в список «Потеряшки» · заявка на поиск
+        {reason ? REASON_CONSEQUENCE[reason] : "→ в список «Потеряшки»"}
       </p>
     </div>
   );

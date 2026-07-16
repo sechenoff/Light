@@ -171,7 +171,7 @@ export function ReturnChecklist({
   onCompleted?: () => void;
 }) {
   const session = useScanSession();
-  const { state, loading, error, openSession, check } = session;
+  const { state, loading, error, openSession, check, uncheck } = session;
 
   // Per-unit outcome map — OWNED here (panels are controlled).
   const [outcomes, setOutcomes] = useState<OutcomeMap>({});
@@ -231,6 +231,28 @@ export function ReturnChecklist({
 
   const unitIds = useMemo(() => (state ? allUnitIds(state) : []), [state]);
 
+  // unitId → человекочитаемое имя («SkyPanel S60 — прибор 2 из 3») для
+  // экрана результата: failed-массивы бэкенда несут только id единицы,
+  // а показывать оператору сырой id нельзя (правило «без штрихкодов/id в UX»).
+  const unitNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!state) return m;
+    for (const item of state.items) {
+      if (item.trackingMode === "UNIT" && item.units) {
+        const total = item.units.length;
+        item.units.forEach((u, idx) => {
+          m.set(
+            u.unitId,
+            total > 1
+              ? `${item.equipmentName} — прибор ${idx + 1} из ${total}`
+              : item.equipmentName,
+          );
+        });
+      }
+    }
+    return m;
+  }, [state]);
+
   // ── Outcome mutations ──────────────────────────────────────────────────────
 
   function clearRowError(unitId: string) {
@@ -242,8 +264,22 @@ export function ReturnChecklist({
     });
   }
 
+  /** True when the unit is already marked returned on the server (`checked`). */
+  function isUnitCheckedOnServer(unitId: string): boolean {
+    if (!state) return false;
+    for (const item of state.items) {
+      if (item.trackingMode === "UNIT" && item.units) {
+        const u = item.units.find((x) => x.unitId === unitId);
+        if (u) return u.checked;
+      }
+    }
+    return false;
+  }
+
   function setUnitOutcome(unitId: string, next: ReturnOutcome) {
     clearRowError(unitId);
+    const wasAccepted =
+      outcomes[unitId]?.outcome === "ACCEPTED" || isUnitCheckedOnServer(unitId);
     setOutcomes((prev) => {
       const existing = prev[unitId];
       if (next === "REPAIR") {
@@ -274,6 +310,11 @@ export function ReturnChecklist({
     // `check` (per-id in-flight guard — we never bypass it).
     if (next === "ACCEPTED") {
       void check(unitId).catch(() => undefined);
+    } else if (wasAccepted) {
+      // Оператор передумал: единица уже была отмечена возвращённой на
+      // сервере (check при «Принято»). Снимаем скан — иначе бэкенд видит её
+      // одновременно принятой И ремонтной/проблемной, и сверка искажается.
+      void uncheck(unitId).catch(() => undefined);
     }
   }
 
@@ -706,6 +747,7 @@ export function ReturnChecklist({
         result={result}
         projectName={projectName}
         acceptedCount={acceptedCount}
+        unitNames={unitNameById}
         onDone={() => (onDone ? onDone() : onBack())}
       />
     );
@@ -854,6 +896,7 @@ export function ReturnChecklist({
                               patchProblem(u.unitId, { expectedBackDate: d })
                             }
                             disabled={interactionsDisabled}
+                            fieldIdPrefix={`problem-${u.unitId}`}
                           />
                         )}
 

@@ -283,12 +283,15 @@ function IssueRow({
         type="button"
         onClick={onToggleCheck}
         aria-pressed={checked}
+        disabled={N === 0}
         aria-label={
-          checked
-            ? `Снять отметку «Выдано» — ${item.equipmentName}`
-            : `Отметить «Выдано» — ${item.equipmentName}`
+          N === 0
+            ? `Позиция снята с выдачи — ${item.equipmentName}`
+            : checked
+              ? `Снять отметку «Выдано» — ${item.equipmentName}`
+              : `Отметить «Выдано» — ${item.equipmentName}`
         }
-        className={`flex h-10 min-w-[96px] shrink-0 items-center justify-center gap-1 rounded border px-3 text-[12px] font-semibold transition-colors ${
+        className={`flex h-10 min-w-[96px] shrink-0 items-center justify-center gap-1 rounded border px-3 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
           checked
             ? "border-emerald-border bg-emerald text-white hover:opacity-90"
             : "border-border bg-surface text-ink-2 hover:bg-surface-muted"
@@ -431,6 +434,13 @@ export function IssueChecklist({
   const [checkedRows, setCheckedRows] = useState<Set<string>>(new Set());
 
   function toggleRowChecked(biId: string) {
+    // Обнулённая строка («не выдаём») — отмечать нечего: физической выдачи
+    // по ней нет, а чек раздувал бы прогресс сборки.
+    const intended =
+      intendedQty.get(biId) ??
+      state?.items.find((i) => i.bookingItemId === biId)?.quantity ??
+      0;
+    if (intended === 0 && !checkedRows.has(biId)) return;
     setCheckedRows((prev) => {
       const next = new Set(prev);
       if (next.has(biId)) next.delete(biId);
@@ -441,7 +451,15 @@ export function IssueChecklist({
 
   function checkAllRows() {
     if (!state) return;
-    setCheckedRows(new Set(state.items.map((i) => i.bookingItemId)));
+    setCheckedRows(
+      new Set(
+        state.items
+          .filter(
+            (i) => (intendedQty.get(i.bookingItemId) ?? i.quantity) > 0,
+          )
+          .map((i) => i.bookingItemId),
+      ),
+    );
   }
 
   function uncheckAllRows() {
@@ -494,15 +512,25 @@ export function IssueChecklist({
   }
 
   function setRowQty(biId: string, value: number) {
+    const item = state?.items.find((i) => i.bookingItemId === biId);
+    if (!item) return;
+    const maxN = item.quantity + item.addCap;
+    const clamped = Math.max(0, Math.min(maxN, Math.floor(value)));
     setIntendedQty((m) => {
       const next = new Map(m);
-      const item = state?.items.find((i) => i.bookingItemId === biId);
-      if (!item) return m;
-      const maxN = item.quantity + item.addCap;
-      const clamped = Math.max(0, Math.min(maxN, Math.floor(value)));
       next.set(biId, clamped);
       return next;
     });
+    // Строка обнулена — автоматически снимаем отметку «Выдано»: выдавать
+    // по ней нечего, и она выпадает из прогресса сборки.
+    if (clamped === 0) {
+      setCheckedRows((prev) => {
+        if (!prev.has(biId)) return prev;
+        const next = new Set(prev);
+        next.delete(biId);
+        return next;
+      });
+    }
   }
 
   function bumpRowQty(biId: string, delta: number) {
@@ -550,6 +578,39 @@ export function IssueChecklist({
     }
     return { issuedUnits, addons };
   }, [state, intendedQty]);
+
+  // ── Прогресс сборки: только строки с количеством > 0. ────────────────────
+  // Обнулённые строки («не выдаём») исключаются из знаменателя — иначе
+  // «Готово, выдать» недостижимо (или наоборот, ложно-зелёно) при снятых
+  // позициях. Строка без seed-значения по умолчанию = bi.quantity (> 0).
+  const activeItemIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!state) return ids;
+    for (const item of state.items) {
+      const intended = intendedQty.get(item.bookingItemId) ?? item.quantity;
+      if (intended > 0) ids.add(item.bookingItemId);
+    }
+    return ids;
+  }, [state, intendedQty]);
+  const activeTotal = activeItemIds.size;
+  const activeChecked = useMemo(() => {
+    let n = 0;
+    for (const id of checkedRows) if (activeItemIds.has(id)) n += 1;
+    return n;
+  }, [checkedRows, activeItemIds]);
+
+  // Подтверждение выдачи, когда собраны не все позиции (guard от случайного
+  // «Завершить» на длинном чек-листе).
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    if (!confirmOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setConfirmOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmOpen]);
 
   function handleAddonClick() {
     setAddonOpen(true);
@@ -751,16 +812,16 @@ export function IssueChecklist({
             Чек-лист выдачи
           </h2>
           <span
-            aria-label={`Выдано ${checkedRows.size} из ${state.items.length} позиций`}
+            aria-label={`Выдано ${activeChecked} из ${activeTotal} позиций`}
             className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-ink-2"
           >
-            <span className={checkedRows.size === state.items.length && state.items.length > 0 ? "text-emerald" : ""}>
-              {checkedRows.size}
+            <span className={activeChecked === activeTotal && activeTotal > 0 ? "text-emerald" : ""}>
+              {activeChecked}
             </span>
-            <span className="text-ink-3"> / {state.items.length}</span>
+            <span className="text-ink-3"> / {activeTotal}</span>
             <span className="ml-1 text-ink-3">выдано</span>
           </span>
-          {checkedRows.size < state.items.length ? (
+          {activeChecked < activeTotal ? (
             <button
               type="button"
               onClick={checkAllRows}
@@ -769,7 +830,7 @@ export function IssueChecklist({
             >
               ✓ Все выдано
             </button>
-          ) : (
+          ) : activeTotal > 0 ? (
             <button
               type="button"
               onClick={uncheckAllRows}
@@ -778,7 +839,7 @@ export function IssueChecklist({
             >
               Снять все отметки
             </button>
-          )}
+          ) : null}
           <button
             type="button"
             onClick={handleAddonClick}
@@ -789,18 +850,18 @@ export function IssueChecklist({
           </button>
         </div>
 
-        {/* Mobile heading: progress + bulk «Все выдано» + «+ Добор» chip. */}
+        {/* Mobile heading: progress + bulk check/uncheck + «+ Добор» chip. */}
         <div className="mb-2 flex items-center gap-2 px-0.5 lg:hidden">
           <span
-            aria-label={`Выдано ${checkedRows.size} из ${state.items.length} позиций`}
+            aria-label={`Выдано ${activeChecked} из ${activeTotal} позиций`}
             className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-semibold"
           >
-            <span className={checkedRows.size === state.items.length && state.items.length > 0 ? "text-emerald" : "text-ink-2"}>
-              {checkedRows.size}
+            <span className={activeChecked === activeTotal && activeTotal > 0 ? "text-emerald" : "text-ink-2"}>
+              {activeChecked}
             </span>
-            <span className="text-ink-3"> / {state.items.length} выдано</span>
+            <span className="text-ink-3"> / {activeTotal} выдано</span>
           </span>
-          {checkedRows.size < state.items.length && (
+          {activeChecked < activeTotal ? (
             <button
               type="button"
               onClick={checkAllRows}
@@ -809,7 +870,16 @@ export function IssueChecklist({
             >
               ✓ Все выдано
             </button>
-          )}
+          ) : activeTotal > 0 ? (
+            <button
+              type="button"
+              onClick={uncheckAllRows}
+              aria-label="Снять все отметки «Выдано»"
+              className="ml-auto rounded border border-border px-2 py-1 text-[11px] font-semibold text-ink-2 transition-colors hover:bg-surface-muted"
+            >
+              Снять все отметки
+            </button>
+          ) : null}
         </div>
         <button
           type="button"
@@ -881,12 +951,64 @@ export function IssueChecklist({
       <div className="sticky bottom-0 border-t border-border bg-surface px-3 py-3 lg:px-5">
         <LiveFinanceBlock
           finance={finance}
-          onSubmit={() => void submitToComplete()}
+          onSubmit={() => {
+            // Не все активные позиции отмечены «Выдано» — подтверждаем
+            // явно: на длинном чек-листе легко нажать «Завершить», не
+            // догрузив стеллаж.
+            if (activeChecked < activeTotal) {
+              setConfirmOpen(true);
+              return;
+            }
+            void submitToComplete();
+          }}
           submitting={phase === "submitting"}
-          checkedCount={checkedRows.size}
-          totalCount={state.items.length}
+          checkedCount={activeChecked}
+          totalCount={activeTotal}
         />
       </div>
+
+      {confirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Подтверждение выдачи — не все позиции отмечены"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 lg:items-center lg:p-4"
+          onClick={() => setConfirmOpen(false)}
+        >
+          <div
+            className="w-full max-w-[440px] rounded-t-2xl border border-border bg-surface px-4 pb-5 pt-4 shadow-lg lg:rounded-xl lg:pb-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-[15px] font-semibold text-ink">
+              Не все позиции отмечены
+            </h3>
+            <p className="mt-1.5 text-[13px] leading-snug text-ink-2">
+              Отмечено {activeChecked} из {activeTotal} позиций. Выдача
+              оформится на указанные количества — убедитесь, что всё
+              действительно погружено.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                className="flex-1 rounded-lg border border-border bg-surface px-4 py-3 text-center text-[14px] font-semibold text-ink transition-colors hover:bg-surface-muted"
+              >
+                Вернуться к списку
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmOpen(false);
+                  void submitToComplete();
+                }}
+                className="flex-1 rounded-lg bg-amber px-4 py-3 text-center text-[14px] font-semibold text-white transition-colors hover:opacity-95"
+              >
+                Всё равно выдать
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
