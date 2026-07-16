@@ -665,6 +665,9 @@ interface ClientDebtProject {
   daysOverdue: number | null;
   paymentStatus: string;
   bookingStatus: string;
+  /** Финансовая схема брони: true = legacy (без invoice-слоя). Нужен модалке
+   *  платежа, чтобы показывать селектор счёта только post-cutoff броням. */
+  legacyFinance: boolean;
   /** B1: дата начала брони (booking.startDate) — для сортировки по дате проекта */
   startDate: Date | null;
   /** B1: дата окончания брони (booking.endDate) */
@@ -794,6 +797,7 @@ export async function computeDebts(
       daysOverdue: isOverdue ? daysOverdue : null,
       paymentStatus: b.paymentStatus,
       bookingStatus: b.status,
+      legacyFinance: b.legacyFinance,
       startDate: b.startDate ?? null,
       endDate: b.endDate ?? null,
       clientName: b.client.name,

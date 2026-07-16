@@ -8,7 +8,7 @@ import { toast } from "../ToastProvider";
 interface CreditNote {
   id: string;
   amount: string;
-  remainingAmount: string;
+  remaining: string;
   reason: string;
   expiresAt: string | null;
   appliedToBookingId: string | null;
@@ -43,7 +43,7 @@ export function CreditNoteApplyModal({ open, onClose, bookingId, clientId, onApp
           // Фильтруем: только не применённые + не истёкшие + с остатком > 0
           const applicable = d.items.filter((n) => {
             if (n.appliedToBookingId) return false;
-            if (Number(n.remainingAmount) <= 0) return false;
+            if (Number(n.remaining) <= 0) return false;
             if (n.expiresAt && new Date(n.expiresAt) < new Date()) return false;
             return true;
           });
@@ -114,7 +114,7 @@ export function CreditNoteApplyModal({ open, onClose, bookingId, clientId, onApp
               {notes.map((note) => (
                 <div key={note.id} className="border border-border rounded-lg p-3 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-ink mono-num">{formatRub(Number(note.remainingAmount))}</div>
+                    <div className="text-sm font-medium text-ink mono-num">{formatRub(Number(note.remaining))}</div>
                     <div className="text-xs text-ink-3 mt-0.5">{note.reason}</div>
                     <div className="text-xs text-ink-3">Действует до: {formatExpiry(note.expiresAt)}</div>
                   </div>

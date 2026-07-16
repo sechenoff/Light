@@ -1,15 +1,34 @@
 "use client";
 
+/**
+ * Сводка финансов — «состояние денег за 10 секунд» (редизайн v2, 2026-07).
+ *
+ * Структура (референсы: QuickBooks Cash Flow, Xero Invoices Owed):
+ *  1. KPI за период (Получено нетто с Δ% к прошлому периоду · Расходы · Чистыми)
+ *     + Долг (снимок, от периода не зависит).
+ *  2. Денежный поток — бары 6 мес на реальных платежах (CashflowChart).
+ *  3. Долг по возрасту — кликабельные aging-бакеты по броням (AgingStrip).
+ *  4. Требует внимания: топ-должники + ожидаемые поступления 7 дней
+ *     (пустые панели скрываются).
+ *  5. Прогноз по счетам/броням (ForecastWidget) — скрыт, пока пуст.
+ *
+ * Бизнес живёт по модели «бронь → долг → платёж» (Invoice на проде не
+ * используется), поэтому сводка не зависит от счетов.
+ */
+
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRequireRole } from "../../src/hooks/useRequireRole";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 import { apiFetch } from "../../src/lib/api";
-import { formatRub, formatExpenseRub, formatMarginPercent, pluralize } from "../../src/lib/format";
+import { formatRub, formatExpenseRub, pluralize } from "../../src/lib/format";
 import { FinanceTabNav } from "../../src/components/finance/FinanceTabNav";
 import { ForecastWidget } from "../../src/components/finance/ForecastWidget";
-import { derivePeriodRange, PERIOD_LABELS, PERIOD_OPTIONS, type PeriodKey } from "../../src/lib/periodUtils";
+import { CashflowChart, type TrendEntry } from "../../src/components/finance/CashflowChart";
+import { AgingStrip, type AgingData } from "../../src/components/finance/AgingStrip";
+import { PeriodSelector } from "../../src/components/finance/PeriodSelector";
+import { derivePeriodRange, derivePreviousPeriodRange, PERIOD_LABELS, type PeriodKey } from "../../src/lib/periodUtils";
 import { StatusPill } from "../../src/components/StatusPill";
 import type { UserRole } from "../../src/lib/auth";
 import { RecordPaymentModal } from "../../src/components/finance/RecordPaymentModal";
@@ -18,13 +37,6 @@ import { CreateInvoiceModal } from "../../src/components/finance/CreateInvoiceMo
 const ALLOWED: UserRole[] = ["SUPER_ADMIN", "WAREHOUSE"];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface TrendEntry {
-  month: string;
-  earned: string;
-  spent: string;
-  net: string;
-}
 
 interface UpcomingEntry {
   bookingId: string;
@@ -39,8 +51,6 @@ interface TopDebtor {
   clientName: string;
   outstanding: string;
   overdueDays: number | null;
-  bookingsCount?: number;
-  projectName?: string;
 }
 
 interface Dashboard {
@@ -52,73 +62,19 @@ interface Dashboard {
   upcomingWeek: UpcomingEntry[];
   trend: TrendEntry[];
   topDebtors: TopDebtor[];
-  /** F2: число клиентов с просрочкой по всей выборке (не из обрезанного topDebtors). */
-  overdueClientsCount?: number;
-  summary: {
-    totalReceivables: string;
-    overdueReceivables: string;
-  };
-}
-
-interface DebtsResponse {
-  debts: { clientId: string }[];
-  summary: { totalClients: number; totalOutstanding: string };
+  overdueClientsCount: number;
+  debtorClientsCount: number;
+  aging: AgingData;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function debtorStatusVariant(overdueDays: number | null): "alert" | "warn" | "info" | "view" {
-  if (overdueDays !== null && overdueDays > 7) return "alert";
-  if (overdueDays !== null && overdueDays > 0) return "warn";
-  if (overdueDays === null) return "view";
-  return "info";
-}
-
-function debtorStatusLabel(overdueDays: number | null): string {
-  if (overdueDays !== null && overdueDays > 0) return "Просрочен";
-  if (overdueDays === null) return "Без срока";
-  return "Выставлен";
-}
-
-function formatEventDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) +
-    ", " +
-    d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-}
-
-/**
- * Строит polyline-points из реальной помесячной динамики (data.trend, 12 мес).
- * Нормализует значения в высоту viewBox 0..28 (инверсия Y — больше значение выше).
- * Возвращает undefined, если данных нет или все значения равны (плоская линия
- * бессмысленна — не рисуем фейковый «рост»).
- */
-function buildSparkPoints(values: number[]): string | undefined {
-  if (values.length < 2) return undefined;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  if (max === min) return undefined; // плоско — нет тренда для показа
-  const stepX = 120 / (values.length - 1);
-  const top = 3;
-  const bottom = 25;
-  return values
-    .map((v, i) => {
-      const x = Math.round(i * stepX);
-      const norm = (v - min) / (max - min); // 0..1
-      const y = bottom - norm * (bottom - top);
-      return `${x},${y.toFixed(1)}`;
-    })
-    .join(" ");
-}
-
-// ── Activity feed entry (local type for mockup rendering) ─────────────────────
-
-interface ActivityEntry {
-  icon: string;
-  amount?: string;
-  amountType?: "in" | "out";
-  text: string;
-  sub: string;
+/** Δ% к прошлому периоду: "+18%" / "−7%" / null (нет базы для сравнения). */
+function deltaPercent(current: number, previous: number | null): string | null {
+  if (previous === null || previous <= 0) return null;
+  const pct = Math.round(((current - previous) / previous) * 100);
+  if (pct === 0) return "как в прошлом";
+  return pct > 0 ? `+${pct}% к прошлому` : `−${Math.abs(pct)}% к прошлому`;
 }
 
 // ── KPI card ─────────────────────────────────────────────────────────────────
@@ -126,45 +82,24 @@ interface ActivityEntry {
 function KpiCard({
   eyebrow,
   value,
-  delta,
-  variant,
+  sub,
+  tone,
   href,
-  sparkPoints,
 }: {
   eyebrow: string;
   value: string;
-  delta?: string;
-  variant?: "ok" | "alert" | "default";
+  sub?: string;
+  tone?: "ok" | "alert" | "default";
   href?: string;
-  sparkPoints?: string;
 }) {
-  const borderColor =
-    variant === "ok" ? "border-emerald" : variant === "alert" ? "border-rose" : "border-border";
-  const bgColor =
-    variant === "ok" ? "bg-emerald-soft/20" : variant === "alert" ? "bg-rose-soft/30" : "bg-surface";
-  const valueColor =
-    variant === "ok" ? "text-emerald" : variant === "alert" ? "text-rose" : "text-ink";
-  const sparkColor =
-    variant === "ok" ? "#047857" : variant === "alert" ? "#9f1239" : "#52525b";
-
+  const valueColor = tone === "ok" ? "text-emerald" : tone === "alert" ? "text-rose" : "text-ink";
   const inner = (
-    <div className={`relative border ${borderColor} ${bgColor} rounded-lg px-5 pt-4 pb-4 overflow-hidden shadow-xs h-full`}>
+    <div className="border border-border bg-surface rounded-lg px-5 py-4 shadow-xs h-full">
       <p className="eyebrow mb-2">{eyebrow}</p>
       <p className={`mono-num text-[22px] font-semibold ${valueColor} leading-tight`}>{value}</p>
-      {delta && <p className="text-[11.5px] text-ink-2 mt-1.5">{delta}</p>}
-      {sparkPoints && (
-        <svg viewBox="0 0 120 28" preserveAspectRatio="none" className="w-full h-7 mt-2">
-          <polyline
-            fill="none"
-            stroke={sparkColor}
-            strokeWidth="1.5"
-            points={sparkPoints}
-          />
-        </svg>
-      )}
+      {sub && <p className="text-[11.5px] text-ink-2 mt-1.5">{sub}</p>}
     </div>
   );
-
   if (href) {
     return <Link href={href} className="block hover:opacity-90 transition-opacity h-full">{inner}</Link>;
   }
@@ -180,7 +115,7 @@ function FinancePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [data, setData] = useState<Dashboard | null>(null);
-  const [debtCount, setDebtCount] = useState<number | undefined>(undefined);
+  const [prevEarned, setPrevEarned] = useState<number | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
   const [period, setPeriod] = useState<PeriodKey>(
     (searchParams.get("period") as PeriodKey | null) ?? "month"
@@ -199,15 +134,18 @@ function FinancePageInner() {
     if (!authorized || !isSA) return;
     let cancelled = false;
     const range = derivePeriodRange(period);
+    const prevRange = derivePreviousPeriodRange(period);
     (async () => {
       try {
-        const [dash, debts] = await Promise.all([
+        const [dash, prevDash] = await Promise.all([
           apiFetch<Dashboard>(`/api/finance/dashboard?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`),
-          apiFetch<DebtsResponse>("/api/finance/debts"),
+          prevRange
+            ? apiFetch<Dashboard>(`/api/finance/dashboard?from=${encodeURIComponent(prevRange.from)}&to=${encodeURIComponent(prevRange.to)}`)
+            : Promise.resolve(null),
         ]);
         if (!cancelled) {
           setData(dash);
-          setDebtCount(debts.summary?.totalClients ?? debts.debts?.length ?? 0);
+          setPrevEarned(prevDash ? Number(prevDash.earnedThisMonth) : null);
         }
       } catch (e: unknown) {
         if (!cancelled) setDataError(e instanceof Error ? e.message : String(e));
@@ -218,22 +156,18 @@ function FinancePageInner() {
 
   if (loading || !authorized) return null;
 
-  // Все /api/finance/* эндпоинты — SUPER_ADMIN only. WAREHOUSE попадает на страницу
-  // через меню (roleMatrix), но данные ему недоступны. Вместо страницы-ошибки 403
-  // показываем понятную заглушку. NB: пункт «Финансы» стоит убрать из меню WAREHOUSE
-  // в src/lib/roleMatrix.ts (вне этого кластера).
+  // Все /api/finance/* эндпоинты — SUPER_ADMIN only. WAREHOUSE в меню видит
+  // только «Счета», сюда попадает лишь прямым URL — показываем заглушку.
   if (!isSA) {
     return (
       <div className="pb-10 bg-surface-subtle min-h-screen">
         <FinanceTabNav />
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16">
           <div className="bg-surface border border-border rounded-lg px-6 py-14 text-center shadow-xs">
-            <p className="text-3xl mb-3">🔒</p>
             <p className="eyebrow text-ink-3 mb-1">Финансы</p>
             <h1 className="text-[18px] font-semibold text-ink mb-2">Раздел доступен руководителю</h1>
             <p className="text-sm text-ink-2 max-w-md mx-auto">
               Финансовая сводка, долги и счета видны только пользователям с ролью «Руководитель».
-              Если вам нужен доступ — обратитесь к руководителю.
             </p>
             <Link
               href="/day"
@@ -254,31 +188,14 @@ function FinancePageInner() {
   const earned = Number(data.earnedThisMonth);
   const spent = Number(data.spentThisMonth);
   const outstanding = Number(data.totalOutstanding);
+  const overdueCount = data.overdueClientsCount;
+  const earnedDelta = deltaPercent(earned, prevEarned);
 
-  // F2: честный счётчик просроченных клиентов с сервера (по всей выборке), а не
-  // из обрезанного topDebtors (≤5). Fallback на старое поведение, если поля нет.
-  const overdueCount =
-    typeof data.overdueClientsCount === "number"
-      ? data.overdueClientsCount
-      : data.topDebtors.filter((d) => d.overdueDays !== null && d.overdueDays > 0).length;
-
-  // Маржа от нулевой выручки бессмысленна → formatMarginPercent вернёт «—».
-  const marginLabel = formatMarginPercent(net, earned);
-  const hasMargin = marginLabel !== "—";
-
-  // Спарклайны строятся из реальной помесячной динамики (data.trend, 12 мес),
-  // а не из захардкоженных точек. Задолженность помесячного ряда не имеет —
-  // для неё спарклайн не рисуем (число без фейкового тренда).
-  const trendEarned = data.trend.map((t) => Number(t.earned));
-  const trendSpent = data.trend.map((t) => Number(t.spent));
-  const trendNet = data.trend.map((t) => Number(t.net));
-  const SPARK_EARNED = buildSparkPoints(trendEarned);
-  const SPARK_SPENT = buildSparkPoints(trendSpent);
-  const SPARK_NET = buildSparkPoints(trendNet);
+  const hasAttention = data.topDebtors.length > 0 || data.upcomingWeek.length > 0;
 
   return (
     <div className="pb-10 bg-surface-subtle min-h-screen">
-      <FinanceTabNav debtCount={debtCount} />
+      <FinanceTabNav debtCount={data.debtorClientsCount} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
 
@@ -288,186 +205,142 @@ function FinancePageInner() {
           <div className="flex items-center justify-between gap-3 flex-wrap mt-1">
             <h1 className="text-[22px] font-semibold text-ink tracking-tight">Сводка по деньгам</h1>
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Period pills */}
-              <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1 overflow-x-auto flex-nowrap">
-                {PERIOD_OPTIONS.map((key) => (
-                  <button
-                    key={key}
-                    onClick={() => handlePeriodChange(key)}
-                    className={`px-3 py-1.5 text-[12px] font-medium rounded transition-colors whitespace-nowrap ${
-                      period === key
-                        ? "bg-accent-bright text-white shadow-xs"
-                        : "text-ink-2 hover:text-ink"
-                    }`}
-                  >
-                    {PERIOD_LABELS[key]}
-                  </button>
-                ))}
-              </div>
+              <PeriodSelector value={period} onChange={handlePeriodChange} />
               <button
                 onClick={() => setRecordPaymentOpen(true)}
                 className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-white rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
               >
                 + Записать платёж
               </button>
-              {isSA && (
-                <button
-                  onClick={() => setCreateInvoiceOpen(true)}
-                  className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface text-ink rounded-lg hover:bg-surface-subtle transition-colors whitespace-nowrap"
-                >
-                  + Создать счёт
-                </button>
-              )}
+              <button
+                onClick={() => setCreateInvoiceOpen(true)}
+                className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface text-ink rounded-lg hover:bg-surface-subtle transition-colors whitespace-nowrap"
+              >
+                + Создать счёт
+              </button>
             </div>
           </div>
         </div>
 
-        {/* KPI strip — 4 cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5">
+        {/* KPI strip: три метрики за период + долг-снимок */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-4">
           <KpiCard
-            eyebrow="Получено"
+            eyebrow={`Получено · ${PERIOD_LABELS[period].toLowerCase()}`}
             value={formatRub(earned)}
-            delta={hasMargin ? `${marginLabel} маржа за период` : "за период"}
-            variant="ok"
+            sub={earnedDelta ?? "нетто, с учётом возвратов"}
+            tone="ok"
             href={`/finance/payments?period=${period}`}
-            sparkPoints={SPARK_EARNED}
           />
           <KpiCard
-            eyebrow="Расходы"
+            eyebrow={`Расходы · ${PERIOD_LABELS[period].toLowerCase()}`}
             value={formatExpenseRub(spent)}
-            delta="операции за период"
-            variant="default"
+            sub="утверждённые"
+            tone="default"
             href={`/finance/expenses?period=${period}`}
-            sparkPoints={SPARK_SPENT}
           />
           <KpiCard
-            eyebrow="Задолженность"
-            value={formatRub(outstanding)}
-            delta={`${overdueCount} ${pluralize(overdueCount, "клиент просрочен", "клиента просрочены", "клиентов просрочены")}`}
-            variant="alert"
-            href="/finance/debts"
-            sparkPoints={undefined}
-          />
-          <KpiCard
-            eyebrow="Прибыль (период)"
-            /* Убыток показываем со знаком минус, не Math.abs — иначе −80 000 читается как прибыль */
+            eyebrow={`Чистыми · ${PERIOD_LABELS[period].toLowerCase()}`}
             value={net < 0 ? `−${formatRub(Math.abs(net))}` : formatRub(net)}
-            delta={
-              net < 0
-                ? hasMargin
-                  ? `убыток за период · маржа ${marginLabel.replace(/^\+/, "")}`
-                  : "убыток за период"
-                : hasMargin
-                  ? `маржа ${marginLabel.replace(/^\+/, "")}`
-                  : "за период"
+            sub={net < 0 ? "убыток за период" : "получено минус расходы"}
+            tone={net >= 0 ? "ok" : "alert"}
+          />
+          <KpiCard
+            eyebrow="Долг клиентов · сейчас"
+            value={formatRub(outstanding)}
+            sub={
+              overdueCount > 0
+                ? `${overdueCount} ${pluralize(overdueCount, "клиент просрочен", "клиента просрочены", "клиентов просрочены")}`
+                : `${data.debtorClientsCount} ${pluralize(data.debtorClientsCount, "клиент должен", "клиента должны", "клиентов должны")}`
             }
-            variant={net >= 0 ? "ok" : "alert"}
-            sparkPoints={net !== 0 ? SPARK_NET : undefined}
+            tone={overdueCount > 0 ? "alert" : "default"}
+            href="/finance/debts"
           />
         </div>
 
-        {/* Action ribbon — SA only, hidden when no actions */}
-        {isSA && overdueCount > 0 && (
+        {/* Просрочка — единственный action-баннер (показывается только при наличии) */}
+        {overdueCount > 0 && (
           <div className="mb-4 px-4 py-2.5 rounded-lg border border-amber-border bg-amber-soft flex items-center gap-3 text-[13px] flex-wrap">
-            <span className="text-amber">⚡ Сегодня сделать:</span>
             <span className="text-ink">
-              {overdueCount > 0 && (
-                <><Link href="/finance/debts?overdueOnly=true" className="text-amber font-semibold hover:underline">{overdueCount} {pluralize(overdueCount, "клиент с просрочкой", "клиента с просрочкой", "клиентов с просрочкой")}</Link></>
-              )}
+              <Link href="/finance/debts?overdueOnly=true" className="text-amber font-semibold hover:underline">
+                {overdueCount} {pluralize(overdueCount, "клиент с просрочкой", "клиента с просрочкой", "клиентов с просрочкой")}
+              </Link>
+              {" — стоит напомнить об оплате"}
             </span>
-            <Link href="/finance/invoices?status=OVERDUE" className="ml-auto px-3 py-1 text-[12px] font-medium border border-amber-border rounded-lg text-amber hover:bg-amber-border/20 whitespace-nowrap">
+            <Link
+              href="/finance/debts?overdueOnly=true"
+              className="ml-auto px-3 py-1 text-[12px] font-medium border border-amber-border rounded-lg text-amber hover:bg-amber-border/20 whitespace-nowrap"
+            >
               Открыть →
             </Link>
           </div>
         )}
 
-        {/* Forecast widget — SA only */}
-        {isSA && <ForecastWidget months={6} />}
+        {/* Денежный поток + долг по возрасту */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4 mb-4">
+          <CashflowChart trend={data.trend} monthsToShow={6} />
+          <AgingStrip aging={data.aging} />
+        </div>
 
-        {/* Two-column layout: top debtors + activity feed — SA only */}
-        {isSA && <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "1.3fr 1fr" }}>
-
-          {/* Top debtors panel */}
-          <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
-            <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
-              <h3 className="text-[13.5px] font-semibold text-ink">Топ-должники</h3>
-              <Link href="/finance/debts" className="text-xs text-accent-bright font-medium hover:underline">
-                Все долги →
-              </Link>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[12.5px]">
-                <thead>
-                  <tr className="border-b border-border bg-surface-subtle">
-                    <th className="text-left px-4 py-2.5 eyebrow">Клиент</th>
-                    <th className="text-right px-3 py-2.5 eyebrow">Сумма</th>
-                    <th className="text-right px-3 py-2.5 eyebrow">Просрочка</th>
-                    <th className="px-3 py-2.5 eyebrow">Статус</th>
-                    <th className="w-20 px-3 py-2.5"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.topDebtors.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-ink-3">Нет задолженностей</td>
-                    </tr>
-                  ) : (
-                    data.topDebtors.map((d) => (
-                      <tr key={d.clientId} className="border-b border-slate-soft last:border-0 hover:bg-surface-subtle/50 transition-colors">
-                        <td className="px-4 py-3">
-                          <strong className="text-ink font-medium">{d.clientName}</strong>
-                          {d.projectName && (
-                            <div className="text-[11px] text-ink-3 mt-0.5 truncate max-w-[180px]">{d.projectName}</div>
-                          )}
-                        </td>
-                        <td className="px-3 py-3 text-right mono-num font-medium">{formatRub(d.outstanding)}</td>
-                        <td className="px-3 py-3 text-right mono-num text-ink-2">
-                          {d.overdueDays !== null && d.overdueDays > 0
-                            ? `${d.overdueDays} дн.`
-                            : "—"}
-                        </td>
-                        <td className="px-3 py-3">
-                          <StatusPill
-                            variant={debtorStatusVariant(d.overdueDays)}
-                            label={debtorStatusLabel(d.overdueDays)}
-                          />
-                        </td>
-                        <td className="px-3 py-3">
-                          {/* Должник — это клиент (возможно, несколько броней);
-                              платёж привязывается к конкретной броне, поэтому
-                              ведём на дебиторку, где у каждой брони есть «Оплатить»
-                              с префиллом остатка (а не пустая модалка). */}
-                          <Link
-                            href="/finance/debts"
-                            className="px-2.5 py-1 text-[11px] border border-border bg-surface rounded hover:border-accent-bright hover:text-accent-bright transition-colors whitespace-nowrap inline-block"
-                          >
-                            ₽ Платёж
-                          </Link>
-                        </td>
+        {/* Требует внимания: должники + ожидаемые поступления */}
+        {hasAttention && (
+          <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4 mb-4">
+            {data.topDebtors.length > 0 && (
+              <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
+                <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
+                  <h3 className="text-[13.5px] font-semibold text-ink">Топ-должники</h3>
+                  <Link href="/finance/debts" className="text-xs text-accent-bright font-medium hover:underline">
+                    Все долги →
+                  </Link>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[12.5px]">
+                    <thead>
+                      <tr className="border-b border-border bg-surface-subtle">
+                        <th className="text-left px-4 py-2.5 eyebrow">Клиент</th>
+                        <th className="text-right px-3 py-2.5 eyebrow">Сумма</th>
+                        <th className="text-right px-3 py-2.5 eyebrow">Просрочка</th>
+                        <th className="px-3 py-2.5 eyebrow text-left">Статус</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                    </thead>
+                    <tbody>
+                      {data.topDebtors.map((d) => (
+                        <tr
+                          key={d.clientId}
+                          className="border-b border-slate-soft last:border-0 hover:bg-surface-subtle/50 transition-colors cursor-pointer"
+                          onClick={() => router.push(`/finance/debts?client=${d.clientId}`)}
+                        >
+                          <td className="px-4 py-3">
+                            <strong className="text-ink font-medium">{d.clientName}</strong>
+                          </td>
+                          <td className="px-3 py-3 text-right mono-num font-medium">{formatRub(d.outstanding)}</td>
+                          <td className="px-3 py-3 text-right mono-num text-ink-2">
+                            {d.overdueDays !== null && d.overdueDays > 0 ? `${d.overdueDays} дн.` : "—"}
+                          </td>
+                          <td className="px-3 py-3">
+                            <StatusPill
+                              variant={d.overdueDays !== null ? (d.overdueDays > 7 ? "alert" : "warn") : "view"}
+                              label={d.overdueDays !== null ? "Просрочен" : "Без срока"}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
-          {/* Activity feed panel */}
-          <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
-            <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
-              <h3 className="text-[13.5px] font-semibold text-ink">Ожидаемые поступления</h3>
-              <span className="text-[11.5px] text-ink-3">ближайшие 7 дней</span>
-            </div>
-            <div className="px-4 py-3 flex flex-col gap-3.5">
-              {data.upcomingWeek.length === 0 ? (
-                <p className="text-sm text-ink-3 py-4 text-center">Нет ожидаемых поступлений на этой неделе</p>
-              ) : (
-                data.upcomingWeek.slice(0, 6).map((u) => (
-                  <div key={u.bookingId} className="flex gap-2.5 text-[12.5px]">
-                    <span className="text-base mt-0.5">💰</span>
-                    <div>
+            {data.upcomingWeek.length > 0 && (
+              <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
+                <div className="flex justify-between items-center px-4 py-3.5 border-b border-border">
+                  <h3 className="text-[13.5px] font-semibold text-ink">Ожидаемые поступления</h3>
+                  <span className="text-[11.5px] text-ink-3">7 дней</span>
+                </div>
+                <div className="px-4 py-3 flex flex-col gap-3">
+                  {data.upcomingWeek.slice(0, 6).map((u) => (
+                    <Link key={u.bookingId} href={`/bookings/${u.bookingId}`} className="block text-[12.5px] hover:opacity-80 transition-opacity">
                       <div>
-                        <strong className="text-emerald">+{formatRub(u.amountOutstanding)}</strong>
+                        <strong className="mono-num text-emerald">+{formatRub(u.amountOutstanding)}</strong>
                         {" · "}
                         <span className="text-ink">{u.clientName}</span>
                       </div>
@@ -477,40 +350,16 @@ function FinancePageInner() {
                           <> · срок {new Date(u.expectedPaymentDate).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</>
                         )}
                       </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        </div>}
+        )}
 
-        {/* Mobile KPI (visible md:hidden) */}
-        <div className="md:hidden mt-5">
-          <p className="eyebrow text-ink-3 mb-3">Итог за период</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-emerald-soft/30 border border-emerald-border rounded-lg p-3">
-              <p className="eyebrow">Получено</p>
-              <p className="mono-num text-[18px] font-semibold text-emerald mt-1">{formatRub(earned)}</p>
-            </div>
-            <div className="bg-rose-soft/30 border border-rose-border rounded-lg p-3">
-              <p className="eyebrow">Долги</p>
-              <p className="mono-num text-[18px] font-semibold text-rose mt-1">{formatRub(outstanding)}</p>
-            </div>
-            <div className="bg-surface border border-border rounded-lg p-3">
-              <p className="eyebrow">Расходы</p>
-              <p className="mono-num text-[18px] font-semibold text-ink mt-1">{formatExpenseRub(spent)}</p>
-            </div>
-            {/* Цвет/фон по знаку: убыток — rose и со знаком минус, не «зелёная прибыль» */}
-            <div className={`rounded-lg p-3 border ${net >= 0 ? "bg-emerald-soft/20 border-emerald-border" : "bg-rose-soft/30 border-rose-border"}`}>
-              <p className="eyebrow">{net >= 0 ? "Прибыль" : "Убыток"}</p>
-              <p className={`mono-num text-[18px] font-semibold mt-1 ${net >= 0 ? "text-emerald" : "text-rose"}`}>
-                {net < 0 ? `−${formatRub(Math.abs(net))}` : formatRub(net)}
-              </p>
-            </div>
-          </div>
-        </div>
-
+        {/* Прогноз поступлений — скрыт, пока пуст (см. ForecastWidget) */}
+        <ForecastWidget months={6} />
       </div>
 
       <RecordPaymentModal

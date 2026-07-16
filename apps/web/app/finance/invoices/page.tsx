@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { apiFetch, apiFetchRaw } from "../../../src/lib/api";
-import { formatRub } from "../../../src/lib/format";
+import { formatRub, pluralize } from "../../../src/lib/format";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { CreateInvoiceModal } from "../../../src/components/finance/CreateInvoiceModal";
@@ -213,25 +213,8 @@ function InvoicesPage() {
       setInvoices(data.items);
       setTotal(data.total);
 
-      // Счётчики вкладок — по всей выборке, не по текущей (отфильтрованной) странице.
-      if (data.counts) {
-        setCounts({ ALL: data.counts.ALL ?? data.total, ...data.counts });
-      } else {
-        // Фолбэк, пока сервер не отдаёт counts: нефильтрованный по статусу запрос
-        // в тех же рамках search/period, счёт по displayStatus.
-        const cParams = new URLSearchParams();
-        if (search.trim()) cParams.set("search", search.trim());
-        cParams.set("limit", "200");
-        if (createdAfter) cParams.set("createdAfter", createdAfter);
-        if (createdBefore) cParams.set("createdBefore", createdBefore);
-        const all = await apiFetch<InvoicesResponse>(`/api/invoices?${cParams}`);
-        const next: Partial<Record<InvoiceStatus | "ALL", number>> = { ALL: all.total };
-        for (const inv of all.items) {
-          const s = effectiveStatus(inv);
-          next[s] = (next[s] ?? 0) + 1;
-        }
-        setCounts(next);
-      }
+      // Счётчики вкладок — серверные, по всей выборке (не по странице).
+      setCounts({ ALL: data.counts?.ALL ?? data.total, ...(data.counts ?? {}) });
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Ошибка загрузки счетов");
     } finally {
@@ -430,7 +413,7 @@ function InvoicesPage() {
         {selectedCount > 0 && (
           <div className="flex items-center gap-3 mb-3 px-4 py-2.5 bg-accent-soft border border-accent-border rounded-lg text-[13px]">
             <input type="checkbox" className="rounded" checked={allSelected} onChange={toggleSelectAll} />
-            <span><strong>{selectedCount} счёт{selectedCount > 1 ? "а" : ""}</strong> выбрано</span>
+            <span><strong>{selectedCount} {pluralize(selectedCount, "счёт", "счёта", "счетов")}</strong> выбрано</span>
             {draftSelectedCount > 0 && isSA && (
               <button
                 onClick={bulkIssue}
@@ -440,17 +423,6 @@ function InvoicesPage() {
                 {bulkIssuing ? "Выставляем…" : "Выставить выбранные"}
               </button>
             )}
-            <button
-              onClick={async () => {
-                // Download PDFs for selected invoices that have a number
-                for (const inv of invoices.filter((i) => selected.has(i.id) && i.number)) {
-                  await downloadPdf(inv);
-                }
-              }}
-              className="px-3 py-1.5 border border-border bg-surface rounded text-[12px] hover:bg-surface-subtle"
-            >
-              Скачать все PDF
-            </button>
             <span className="ml-auto text-ink-3 text-[11.5px]">Действие применится только к черновикам</span>
           </div>
         )}
@@ -513,7 +485,7 @@ function InvoicesPage() {
                               onChange={() => toggleSelect(inv.id)}
                             />
                           )}
-                          {isVoid && <input type="checkbox" className="rounded" disabled />}
+
                         </td>
                         <td className="px-3 py-3">
                           <span className={`font-mono text-xs bg-surface-subtle border border-border rounded px-1.5 py-0.5 ${isVoid ? "line-through" : ""}`}>
@@ -539,7 +511,7 @@ function InvoicesPage() {
                         </td>
                         <td className="px-3 py-3 text-ink-2">
                           <div className="text-[12px]">{isVoid ? "—" : formatDate(inv.dueDate)}</div>
-                          {!isVoid && overdueDays && (
+                          {!isVoid && effStatus !== "PAID" && overdueDays && (
                             <div className="text-rose text-[11px]">{overdueDays} дн. проср.</div>
                           )}
                         </td>
@@ -605,24 +577,6 @@ function InvoicesPage() {
 
             {/* Mobile card list */}
             <div className="md:hidden">
-              {/* Status pills summary on mobile */}
-              <div className="flex gap-2 flex-wrap mb-3">
-                {(counts["OVERDUE"] ?? 0) > 0 && (
-                  <span className="px-2.5 py-1 rounded-full text-[12px] font-medium bg-rose-soft text-rose border border-rose-border">
-                    {FINANCE_TERMS.overdue} · {counts["OVERDUE"]}
-                  </span>
-                )}
-                {(counts["ISSUED"] ?? 0) > 0 && (
-                  <span className="px-2.5 py-1 rounded-full text-[12px] font-medium bg-accent-soft text-accent-bright border border-accent-border">
-                    {FINANCE_TERMS.billed} · {counts["ISSUED"]}
-                  </span>
-                )}
-                {(counts["PAID"] ?? 0) > 0 && (
-                  <span className="px-2.5 py-1 rounded-full text-[12px] font-medium bg-emerald-soft text-emerald border border-emerald-border">
-                    {FINANCE_TERMS.paid} · {counts["PAID"]}
-                  </span>
-                )}
-              </div>
               <div className="space-y-3">
                 {visibleInvoices.map((inv) => {
                   const outstanding = Math.max(0, Number(inv.total) - Number(inv.paidAmount));
