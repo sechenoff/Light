@@ -54,8 +54,6 @@ export function derivePeriodRange(period: PeriodKey): PeriodRange {
       const moscowStr = toMoscowDateString(now);
       const [y, m] = moscowStr.split("-").map(Number);
       const monthStart = new Date(`${String(y)}-${String(m).padStart(2, "0")}-01T00:00:00+03:00`);
-      const nextMonthStart = new Date(y, m, 1, 0, 0, 0, 0);
-      nextMonthStart.setMonth(nextMonthStart.getMonth()); // already set
       const nextMs = m === 12
         ? new Date(`${y + 1}-01-01T00:00:00+03:00`)
         : new Date(`${String(y)}-${String(m + 1).padStart(2, "0")}-01T00:00:00+03:00`);
@@ -105,4 +103,56 @@ export function derivePeriodRange(period: PeriodKey): PeriodRange {
         to: new Date(tomorrowStart.getTime() - 1).toISOString(),
       };
   }
+}
+
+/**
+ * Диапазон ПРЕДЫДУЩЕГО периода той же длины — для Δ% в KPI («получено vs
+ * прошлый период»). Для календарных периодов (месяц/квартал/год) — предыдущая
+ * календарная единица; для скользящих (сегодня/7д/30д) — окно той же длины
+ * непосредственно перед текущим. Для «всё время» сравнение не имеет смысла — null.
+ */
+export function derivePreviousPeriodRange(period: PeriodKey): PeriodRange | null {
+  if (period === "all" || period === "custom") return null;
+
+  // Календарные периоды: предыдущая календарная единица (сдвиг на длину окна
+  // дал бы «31 мая» вместо «1 июня» для июля).
+  const moscowStr = toMoscowDateString(new Date());
+  const [y, m] = moscowStr.split("-").map(Number);
+  const msk = (yy: number, mm: number) =>
+    new Date(`${yy}-${String(mm).padStart(2, "0")}-01T00:00:00+03:00`);
+
+  if (period === "month") {
+    const prevY = m === 1 ? y - 1 : y;
+    const prevM = m === 1 ? 12 : m - 1;
+    return {
+      from: msk(prevY, prevM).toISOString(),
+      to: new Date(msk(y, m).getTime() - 1).toISOString(),
+    };
+  }
+  if (period === "quarter") {
+    const qStart = Math.floor((m - 1) / 3) * 3 + 1;
+    const prevQStartM = qStart - 3;
+    const prevY = prevQStartM < 1 ? y - 1 : y;
+    const prevM = prevQStartM < 1 ? prevQStartM + 12 : prevQStartM;
+    return {
+      from: msk(prevY, prevM).toISOString(),
+      to: new Date(msk(qStart === 1 ? y : y, qStart).getTime() - 1).toISOString(),
+    };
+  }
+  if (period === "year") {
+    return {
+      from: msk(y - 1, 1).toISOString(),
+      to: new Date(msk(y, 1).getTime() - 1).toISOString(),
+    };
+  }
+
+  // Скользящие окна (today/7d/30d): окно той же длины непосредственно перед.
+  const cur = derivePeriodRange(period);
+  const from = new Date(cur.from);
+  const to = new Date(cur.to);
+  const lengthMs = to.getTime() - from.getTime() + 1;
+  return {
+    from: new Date(from.getTime() - lengthMs).toISOString(),
+    to: new Date(from.getTime() - 1).toISOString(),
+  };
 }

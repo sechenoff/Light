@@ -47,15 +47,17 @@ describe("ForecastWidget", () => {
     });
   });
 
-  it("shows empty state when all values are zero", async () => {
+  it("renders nothing when all values are zero (пустой прогноз не занимает место)", async () => {
     mockFetch({
       months: [{ month: "2026-04", confirmed: "0", potential: "0", bookingsPipeline: "0" }],
       totals: { confirmed: "0", potential: "0", bookingsPipeline: "0" },
       horizon: { from: "2026-04-01", to: "2026-04-30" },
     });
-    render(<ForecastWidget />);
+    const { container } = render(<ForecastWidget />);
     await waitFor(() => {
-      expect(screen.getByText(/нет прогноза/i)).toBeInTheDocument();
+      // Редизайн 2026-07: при пустых данных виджет возвращает null,
+      // а не мёртвую панель «Нет прогноза по счетам».
+      expect(container.querySelector("h3")).toBeNull();
     });
   });
 

@@ -87,8 +87,15 @@ export async function applyCreditNote(noteId: string, applyToBookingId: string, 
   return prisma.$transaction(async (tx) => {
     // D4: Атомарный conditional update — защита от race condition при параллельных вызовах.
     // updateMany возвращает count: 0 если запись уже применена (appliedAt != null ИЛИ remaining <= 0).
+    // Срок действия проверяется здесь же (раньше expiresAt проверял только UI —
+    // истёкшую ноту можно было применить прямым POST).
     const noteUpdate = await tx.creditNote.updateMany({
-      where: { id: noteId, appliedAt: null, remaining: { gt: 0 } },
+      where: {
+        id: noteId,
+        appliedAt: null,
+        remaining: { gt: 0 },
+        OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
+      },
       data: {
         remaining: "0",
         appliedToBookingId: applyToBookingId,
@@ -96,6 +103,10 @@ export async function applyCreditNote(noteId: string, applyToBookingId: string, 
       },
     });
     if (noteUpdate.count === 0) {
+      const stillThere = await tx.creditNote.findUnique({ where: { id: noteId }, select: { expiresAt: true, appliedAt: true } });
+      if (stillThere?.appliedAt == null && stillThere?.expiresAt && stillThere.expiresAt < now) {
+        throw new HttpError(409, "Срок действия кредит-ноты истёк", "CREDIT_NOTE_EXPIRED");
+      }
       throw new HttpError(409, "Кредит-нота уже применена", "CREDIT_NOTE_ALREADY_APPLIED");
     }
 
@@ -104,11 +115,13 @@ export async function applyCreditNote(noteId: string, applyToBookingId: string, 
 
     const remaining = new Decimal(note.remaining.toString());
 
-    // Ищем первый открытый счёт у брони для привязки синтетического платежа
+    // Ищем первый ВЫСТАВЛЕННЫЙ открытый счёт у брони для привязки синтетического
+    // платежа. DRAFT исключён: платёж по черновику ломал инвариант «оплата
+    // только по выставленному счёту» и уводил recompute в PARTIAL_PAID мимо ISSUED.
     const openInvoice = await tx.invoice.findFirst({
       where: {
         bookingId: applyToBookingId,
-        status: { in: ["DRAFT", "ISSUED", "PARTIAL_PAID", "OVERDUE"] },
+        status: { in: ["ISSUED", "PARTIAL_PAID", "OVERDUE"] },
       },
       orderBy: { createdAt: "asc" },
       select: { id: true },

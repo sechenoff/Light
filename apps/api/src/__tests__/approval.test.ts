@@ -787,27 +787,25 @@ describe("CRITICAL 3 — live overdue: dashboard == debts", () => {
       },
     });
 
-    const { dashboardMetrics, computeDebts, computeFinanceDashboard } = await import("../services/finance");
+    // dashboardMetrics удалён (2026-07 аудит) — единый источник истины теперь
+    // computeFinanceDashboard.summary.overdueReceivables, считающийся тем же
+    // isBookingOverdue, что и computeDebts.
+    const { computeDebts, computeFinanceDashboard } = await import("../services/finance");
 
-    const dash = await dashboardMetrics();
     const debts = await computeDebts();
     const finDash = await computeFinanceDashboard();
 
-    // debts overdue (.toFixed(2) → "25000.00") vs dashboard (.toString() →
-    // "25000") — строковые представления отличаются, но ЧИСЛА должны
-    // совпадать. Инвариант C3 = единый источник истины по величине overdue.
+    // Строковые представления отличаются (.toFixed(2) vs .toString()), но
+    // ЧИСЛА должны совпадать. Инвариант C3 = единый источник истины по overdue.
     const debtsOverdue = Number(debts.summary.totalOverdue);
-    const dashOverdue = Number(dash.summary.overdueReceivables);
     const finDashOverdue = Number(finDash.summary.overdueReceivables);
 
-    // Все три должны учитывать просроченную бронь идентично (≥5000), несмотря
-    // на рассинхронизированный paymentStatus.
+    // Оба учитывают просроченную бронь идентично (≥5000), несмотря на
+    // рассинхронизированный paymentStatus.
     expect(debtsOverdue).toBeGreaterThanOrEqual(5000);
-    expect(dashOverdue).toBe(debtsOverdue);
     expect(finDashOverdue).toBe(debtsOverdue);
 
-    // Бронь присутствует в overdueBookings dashboard (live-фильтр)
-    const inDash = dash.overdueBookings.some((b: any) => b.amountOutstanding === "5000");
-    expect(inDash).toBe(true);
+    // Клиент с просрочкой виден в счётчике дашборда тем же критерием.
+    expect(finDash.overdueClientsCount).toBeGreaterThanOrEqual(1);
   });
 });

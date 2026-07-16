@@ -35,6 +35,8 @@ interface DebtProject {
   daysOverdue: number | null;
   paymentStatus: string;
   bookingStatus?: string;
+  /** Финансовая схема брони: true = legacy (селектор счёта в модалке не нужен). */
+  legacyFinance?: boolean;
   /** B1 */
   startDate: string | null;
   endDate: string | null;
@@ -176,11 +178,13 @@ function SortArrow({ active, order }: { active: boolean; order: SortOrder }) {
 interface ActionMenuProps {
   row: FlatRow;
   onRemind: () => void;
-  onDelete: () => void;
   onPaymentsList: () => void;
 }
 
-function ActionMenu({ row, onRemind, onDelete, onPaymentsList }: ActionMenuProps) {
+// Удаление брони из реестра долгов убрано (аудит 2026-07): деструктивное
+// действие уничтожало финансовую историю прямо со страницы взыскания.
+// Удалить бронь можно со страницы самой брони.
+function ActionMenu({ row, onRemind, onPaymentsList }: ActionMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -234,13 +238,6 @@ function ActionMenu({ row, onRemind, onDelete, onPaymentsList }: ActionMenuProps
           >
             🤖 Напомнить клиенту
           </button>
-          <div className="border-t border-border my-1" />
-          <button
-            onClick={() => { setOpen(false); onDelete(); }}
-            className="w-full text-left px-3.5 py-2 text-[12.5px] text-rose hover:bg-rose-soft"
-          >
-            🗑 Удалить бронь
-          </button>
         </div>
       )}
     </div>
@@ -278,7 +275,7 @@ function DebtsPageInner() {
   // Payment modal state
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentBookingId, setPaymentBookingId] = useState<string | undefined>(undefined);
-  const [paymentContext, setPaymentContext] = useState<{ projectName: string; clientName: string; amountOutstanding: string } | null>(null);
+  const [paymentContext, setPaymentContext] = useState<{ projectName: string; clientName: string; amountOutstanding: string; legacyFinance: boolean } | null>(null);
 
   // BookingPaymentsModal state
   const [paymentsListOpen, setPaymentsListOpen] = useState(false);
@@ -288,18 +285,6 @@ function DebtsPageInner() {
   // AI reminder modal state
   const [reminderClientDebt, setReminderClientDebt] = useState<ClientDebt | null>(null);
   const [reminderRowClientId, setReminderRowClientId] = useState<string | null>(null);
-
-  // Remindable clients
-  const [remindableCount, setRemindableCount] = useState<number | null>(null);
-  const remindableFetched = useRef(false);
-
-  const fetchRemindable = useCallback(() => {
-    let cancelled = false;
-    apiFetch<{ clients: Array<{ clientId: string }> }>("/api/finance/debts/remindable")
-      .then((d) => { if (!cancelled) setRemindableCount(d.clients.length); })
-      .catch(() => { if (!cancelled) setRemindableCount(null); });
-    return () => { cancelled = true; };
-  }, []);
 
   // D7: track in-flight request to abort previous on new call
   const loadAbortRef = useRef<AbortController | null>(null);
@@ -330,12 +315,6 @@ function DebtsPageInner() {
     if (!authorized) return;
     return loadDebts();
   }, [authorized, loadDebts]);
-
-  useEffect(() => {
-    if (!authorized || remindableFetched.current) return;
-    remindableFetched.current = true;
-    fetchRemindable();
-  }, [authorized, fetchRemindable]);
 
   // ── Flatten data ───────────────────────────────────────────────────────────────
 
@@ -378,6 +357,10 @@ function DebtsPageInner() {
   // Status counts
   const openCount = allRows.filter((r) => r.paymentStatus === "NOT_PAID" && (r.daysOverdue === null || r.daysOverdue <= 0)).length;
   const partialCount = allRows.filter((r) => r.paymentStatus === "PARTIALLY_PAID").length;
+  // Долги-старожилы (60+ дней просрочки) — приоритет взыскания
+  const over60Rows = allRows.filter((r) => (r.daysOverdue ?? 0) > 60);
+  const over60Count = over60Rows.length;
+  const over60Sum = over60Rows.reduce((s, r) => s + Number(r.amountOutstanding), 0);
   const overdueCount = allRows.filter((r) => (r.daysOverdue ?? 0) > 0 || r.paymentStatus === "OVERDUE").length;
 
   // Sort rows
@@ -408,7 +391,7 @@ function DebtsPageInner() {
 
   function openPayment(row: FlatRow) {
     setPaymentBookingId(row.bookingId);
-    setPaymentContext({ projectName: row.projectName, clientName: row.clientName, amountOutstanding: row.amountOutstanding });
+    setPaymentContext({ projectName: row.projectName, clientName: row.clientName, amountOutstanding: row.amountOutstanding, legacyFinance: row.legacyFinance ?? true });
     setPaymentOpen(true);
   }
 
@@ -423,17 +406,6 @@ function DebtsPageInner() {
     const clientDebt = data?.debts.find((c) => c.clientId === row.clientId) ?? null;
     setReminderClientDebt(clientDebt);
     setReminderRowClientId(row.clientId);
-  }
-
-  async function handleDelete(row: FlatRow) {
-    if (!confirm(`Удалить бронь «${row.projectName}»? Это действие нельзя отменить.`)) return;
-    try {
-      await apiFetch(`/api/bookings/${row.bookingId}`, { method: "DELETE" });
-      toast.success("Бронь удалена");
-      loadDebts();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Ошибка удаления");
-    }
   }
 
   if (loading || !authorized) return null;
@@ -474,10 +446,13 @@ function DebtsPageInner() {
               </button>
             )}
             <button
-              onClick={() => { window.location.href = "/api/finance/debts.xlsx"; }}
+              onClick={() => {
+                const q = statusFilter === "overdue" ? "?overdueOnly=true" : "";
+                window.location.href = `/api/finance/debts.xlsx${q}`;
+              }}
               className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface rounded-lg hover:bg-surface-subtle"
             >
-              📊 Экспорт всего
+              Экспорт XLSX
             </button>
           </div>
         </div>
@@ -509,12 +484,12 @@ function DebtsPageInner() {
             )}
           </div>
           <div className="bg-surface border border-border rounded-lg px-4 py-3">
-            <p className="eyebrow text-ink-3 mb-0.5">К напоминанию</p>
-            <p className="mono-num text-[17px] font-semibold text-ink">
-              {remindableCount ?? "…"}
+            <p className="eyebrow text-ink-3 mb-0.5">Висит 60+ дней</p>
+            <p className={`mono-num text-[17px] font-semibold ${over60Sum > 0 ? "text-rose" : "text-ink"}`}>
+              {formatRub(over60Sum)}
             </p>
-            {(remindableCount ?? 0) > 0 && (
-              <p className="text-[11px] text-ink-2 mt-0.5">готовы к уведомлению</p>
+            {over60Count > 0 && (
+              <p className="text-[11px] text-rose mt-0.5">{over60Count} {pluralize(over60Count, "долг", "долга", "долгов")} — приоритет взыскания</p>
             )}
           </div>
         </div>
@@ -779,7 +754,6 @@ function DebtsPageInner() {
                             <ActionMenu
                               row={row}
                               onRemind={() => openReminder(row)}
-                              onDelete={() => handleDelete(row)}
                               onPaymentsList={() => openPaymentsList(row)}
                             />
                           </div>
@@ -847,7 +821,6 @@ function DebtsPageInner() {
                       <ActionMenu
                         row={row}
                         onRemind={() => openReminder(row)}
-                        onDelete={() => handleDelete(row)}
                         onPaymentsList={() => openPaymentsList(row)}
                       />
                     </div>
@@ -872,7 +845,7 @@ function DebtsPageInner() {
           amountOutstanding: paymentContext.amountOutstanding,
           client: { name: paymentContext.clientName },
         } : undefined}
-        legacyFinance
+        legacyFinance={paymentContext?.legacyFinance ?? true}
         onCreated={() => { setPaymentOpen(false); loadDebts(); }}
       />
 
@@ -887,7 +860,6 @@ function DebtsPageInner() {
           onReminded={() => {
             setReminderClientDebt(null);
             setReminderRowClientId(null);
-            fetchRemindable();
             loadDebts();
           }}
         />

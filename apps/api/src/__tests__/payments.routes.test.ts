@@ -181,17 +181,6 @@ describe("GET /api/payments — methodTotals по всей выборке", () =
           receivedAt: new Date("2026-05-02T11:00:00Z"),
           paymentDate: new Date("2026-05-02T11:00:00Z"),
         },
-        // Возврат — отрицательная сумма, не должен попадать в total/cash
-        {
-          bookingId,
-          amount: "-500.00",
-          method: "CASH",
-          paymentMethod: "CASH",
-          direction: "INCOME",
-          status: "RECEIVED",
-          receivedAt: new Date("2026-05-03T10:00:00Z"),
-          paymentDate: new Date("2026-05-03T10:00:00Z"),
-        },
         // Аннулированный — исключается из агрегатов
         {
           bookingId,
@@ -207,6 +196,18 @@ describe("GET /api/payments — methodTotals по всей выборке", () =
         },
       ],
     });
+    // Возврат — запись в таблице Refund (отрицательных Payment не существует:
+    // Zod требует amount.positive()). methodTotals.refunds агрегируется отсюда.
+    await prisma.refund.create({
+      data: {
+        bookingId,
+        amount: "500.00",
+        reason: "тестовый возврат",
+        method: "CASH",
+        refundedAt: new Date("2026-05-03T10:00:00Z"),
+        createdBy: "test",
+      },
+    });
   });
 
   it("агрегаты считаются по всей отфильтрованной выборке, а не по странице (limit=1)", async () => {
@@ -215,16 +216,17 @@ describe("GET /api/payments — methodTotals по всей выборке", () =
       .set(authHeaders(superAdminToken));
     expect(res.status).toBe(200);
     expect(res.body.items).toHaveLength(1);
-    // 4 действующих платежа (voided исключён default-фильтром)
-    expect(res.body.total).toBe(4);
-    // total = 5000 (BANK_TRANSFER) + 1000 (CASH) + 2500 (CARD); возврат и voided не входят
+    // 3 действующих платежа (voided исключён default-фильтром)
+    expect(res.body.total).toBe(3);
+    // total = 5000 (BANK_TRANSFER) + 1000 (CASH) + 2500 (CARD); voided не входит.
+    // refunds — из таблицы Refund (положительная сумма возвратов).
     expect(res.body.methodTotals).toMatchObject({
       total: "8500.00",
       cash: "1000.00",
       card: "2500.00",
       transfer: "5000.00",
       other: "0.00",
-      refunds: "-500.00",
+      refunds: "500.00",
     });
   });
 
@@ -243,8 +245,8 @@ describe("GET /api/payments — methodTotals по всей выборке", () =
       .get("/api/payments?includeVoided=true")
       .set(authHeaders(superAdminToken));
     expect(res.status).toBe(200);
-    // 4 действующих + 1 аннулированный
-    expect(res.body.total).toBe(5);
+    // 3 действующих + 1 аннулированный
+    expect(res.body.total).toBe(4);
     const voided = res.body.items.find((p: any) => p.voidedAt !== null);
     expect(voided).toBeDefined();
     expect(voided.voidReason).toBe("тест");
@@ -259,13 +261,13 @@ describe("GET /api/payments — methodTotals по всей выборке", () =
       .get("/api/payments")
       .set(authHeaders(superAdminToken));
     expect(resDefault.status).toBe(200);
-    expect(resDefault.body.total).toBe(4);
+    expect(resDefault.body.total).toBe(3);
     expect(resDefault.body.items.every((p: any) => p.voidedAt === null)).toBe(true);
 
     const resFalse = await request(app)
       .get("/api/payments?includeVoided=false")
       .set(authHeaders(superAdminToken));
-    expect(resFalse.body.total).toBe(4);
+    expect(resFalse.body.total).toBe(3);
   });
 });
 

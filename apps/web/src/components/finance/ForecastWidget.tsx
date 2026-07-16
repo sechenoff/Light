@@ -177,6 +177,10 @@ export function ForecastWidget({ months = 6 }: { months?: number }) {
     (m) => Number(m.confirmed) === 0 && Number(m.potential) === 0 && Number(m.bookingsPipeline) === 0
   );
 
+  // Пустой прогноз не занимает место на сводке мёртвой панелью — на проде
+  // счета не используются, а pipeline появляется только с будущими бронями.
+  if (allZero) return null;
+
   const BAR_HEIGHT = 100;
   const maxValue = data.months.reduce((max, m) => {
     const total = Number(m.confirmed) + Number(m.potential) + Number(m.bookingsPipeline);
@@ -190,12 +194,7 @@ export function ForecastWidget({ months = 6 }: { months?: number }) {
         <span className="text-[11px] text-ink-3">{months} мес.</span>
       </div>
 
-      {allZero ? (
-        <div className="px-5 py-10 text-center">
-          <p className="text-[14px] font-medium text-ink mb-1">Нет прогноза по счетам</p>
-          <p className="text-sm text-ink-2">Создайте счета с датой оплаты, чтобы увидеть прогноз</p>
-        </div>
-      ) : (
+      {(
         <div className="px-5 pb-4 pt-4">
           {/* Bars — horizontal scroll on mobile */}
           <div className="overflow-x-auto">

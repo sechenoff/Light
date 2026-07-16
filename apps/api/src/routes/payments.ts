@@ -123,9 +123,10 @@ const voidSchema = z.object({
 router.post("/:id/void", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const userId = req.adminUser!.userId;
-    const body = voidSchema.safeParse(req.body);
-    const reason = body.success ? body.data.reason : "Аннулирован через POST /void";
-    await paymentService.voidPayment(req.params.id, userId, reason);
+    // Причина обязательна для ЛЮБОГО клиента API — раньше невалидное тело
+    // молча подменялось заглушкой, обходя инвариант «void только с причиной».
+    const body = voidSchema.parse(req.body);
+    await paymentService.voidPayment(req.params.id, userId, body.reason);
     res.json({ ok: true });
   } catch (err) {
     next(err);

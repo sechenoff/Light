@@ -93,7 +93,7 @@ router.post("/", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
  */
 router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
-    const { status, bookingId, limit, offset, createdAfter, createdBefore } = req.query;
+    const { status, bookingId, limit, offset, createdAfter, createdBefore, search } = req.query;
 
     const nowDate = new Date();
 
@@ -112,6 +112,24 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
       where.OR = rawStatuses.map((s) => statusFilterClause(s, nowDate));
     }
     if (bookingId) where.bookingId = bookingId as string;
+
+    // Поиск по № счёта / клиенту / проекту — раньше UI слал ?search=, а сервер
+    // его игнорировал (инпут был no-op). SQLite LIKE регистронезависим только
+    // для ASCII, поэтому для кириллицы добавляем вариант с заглавной буквы.
+    if (search && String(search).trim()) {
+      const q = String(search).trim();
+      const qCap = q.charAt(0).toLocaleUpperCase("ru-RU") + q.slice(1);
+      const variants = [...new Set([q, qCap])];
+      where.AND = [
+        {
+          OR: variants.flatMap((v) => [
+            { number: { contains: v } },
+            { booking: { projectName: { contains: v } } },
+            { booking: { client: { name: { contains: v } } } },
+          ]),
+        },
+      ];
+    }
 
     // D9: Period filtering by createdAt
     if (createdAfter || createdBefore) {

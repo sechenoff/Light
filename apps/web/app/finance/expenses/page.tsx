@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
-import { formatRub, pluralize } from "../../../src/lib/format";
+import { formatRub, formatExpenseRub, pluralize } from "../../../src/lib/format";
 import { PERIOD_LABELS } from "../../../src/lib/periodUtils";
 import { FinanceTabNav } from "../../../src/components/finance/FinanceTabNav";
 import { PeriodSelector } from "../../../src/components/finance/PeriodSelector";
@@ -437,7 +437,7 @@ function ExpensesPageInner() {
           <div className="bg-surface border border-border rounded-[8px] p-4 shadow-xs">
             <p className="eyebrow text-ink-3 mb-1">Утверждено за период</p>
             <p className="mono-num text-[24px] font-semibold text-rose leading-tight">
-              −{formatRub(approvedTotal)}
+              {formatExpenseRub(approvedTotal)}
             </p>
             <p className="text-xs text-ink-3 mt-1">{approvedItems.length} {pluralize(approvedItems.length, "операция", "операции", "операций")}</p>
           </div>
@@ -678,7 +678,7 @@ function ExpensesPageInner() {
           </table>
           {opCountAll > 0 && (
             <div className="px-4 py-2 border-t border-border bg-surface-subtle text-xs text-ink-3">
-              За период: {opCountAll} операций · итого −{formatRub(totalAll)}
+              За период: {opCountAll} операций · итого {formatExpenseRub(totalAll)}
             </div>
           )}
         </div>
@@ -687,7 +687,7 @@ function ExpensesPageInner() {
         <div className="md:hidden">
           <div className="mb-3">
             <p className="eyebrow text-rose mb-1">Расходы · {PERIOD_LABELS[period]}</p>
-            <p className="mono-num text-[26px] font-semibold text-rose">−{formatRub(totalAll)}</p>
+            <p className="mono-num text-[26px] font-semibold text-rose">{formatExpenseRub(totalAll)}</p>
             <p className="text-xs text-ink-3 mt-0.5">{approvedItems.length} утверждено · {pendingItems.length} ждут</p>
           </div>
 

@@ -99,14 +99,19 @@ export async function createPayment(args: CreatePaymentArgs): Promise<Payment> {
   // Валидация лимитов WAREHOUSE (SUPER_ADMIN обходит)
   validateWhLimits(role, { method: args.method, amount }, { status: booking.status });
 
-  // Если передан invoiceId — проверяем существование, статус VOID и принадлежность броне
+  // Если передан invoiceId — проверяем существование, статус и принадлежность броне
   if (args.invoiceId) {
     const inv = await prisma.invoice.findUnique({
       where: { id: args.invoiceId },
-      select: { id: true, voidedAt: true, bookingId: true },
+      select: { id: true, voidedAt: true, issuedAt: true, bookingId: true },
     });
     if (!inv) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
     if (inv.voidedAt) throw new HttpError(409, "Счёт аннулирован — нельзя привязать платёж", "INVOICE_VOID");
+    // Платёж привязывается только к ВЫСТАВЛЕННОМУ счёту: оплата черновика
+    // уводила recompute в PARTIAL_PAID мимо ISSUED.
+    if (!inv.issuedAt) {
+      throw new HttpError(409, "Счёт ещё не выставлен — сначала выставите его", "INVOICE_NOT_ISSUED");
+    }
     // MF-4: платёж брони A не должен закрывать счёт брони B. Без этой сверки
     // recomputeInvoiceStatus зачитывал бы одни деньги на два разных клиента.
     if (inv.bookingId !== args.bookingId) {
@@ -311,6 +316,36 @@ export async function listPayments(args: ListPaymentsArgs) {
   // всегда — UI суммирует только действующие платежи.
   const totalsBase: Prisma.PaymentWhereInput[] = [...andClauses, { voidedAt: null }];
 
+  // Refund-фильтр зеркалит payment-фильтры выборки (период/бронь/клиент):
+  // возвраты — отдельная таблица Refund, НЕ отрицательные Payment (Zod требует
+  // amount.positive(); прежний агрегат amount<0 был пуст по построению).
+  const refundWhere: Prisma.RefundWhereInput = {};
+  if (args.from || args.to) {
+    refundWhere.refundedAt = {
+      ...(args.from ? { gte: args.from } : {}),
+      ...(args.to ? { lte: args.to } : {}),
+    };
+  }
+  if (args.bookingId) {
+    refundWhere.OR = [
+      { bookingId: args.bookingId },
+      { invoice: { bookingId: args.bookingId } },
+      { payment: { bookingId: args.bookingId } },
+    ];
+  } else if (args.clientId) {
+    // У Refund.bookingId нет relation — резолвим брони клиента отдельным
+    // лёгким запросом, чтобы покрыть и bookingId-only возвраты (cancel-with-deposit).
+    const clientBookings = await prisma.booking.findMany({
+      where: { clientId: args.clientId },
+      select: { id: true },
+    });
+    refundWhere.OR = [
+      { bookingId: { in: clientBookings.map((b) => b.id) } },
+      { invoice: { booking: { clientId: args.clientId } } },
+      { payment: { booking: { clientId: args.clientId } } },
+    ];
+  }
+
   const [rawItems, total, methodGroups, refundAgg] = await Promise.all([
     prisma.payment.findMany({
       where,
@@ -322,6 +357,9 @@ export async function listPayments(args: ListPaymentsArgs) {
             client: { select: { id: true, name: true } },
           },
         },
+        // Колонка «Счёт» на /finance/payments: без include платежи с invoiceId
+        // всегда рендерились с «—».
+        invoice: { select: { id: true, number: true, status: true } },
       },
       orderBy: [{ receivedAt: "desc" }, { paymentDate: "desc" }],
       take: limit,
@@ -330,11 +368,11 @@ export async function listPayments(args: ListPaymentsArgs) {
     prisma.payment.count({ where }),
     prisma.payment.groupBy({
       by: ["method"],
-      where: { AND: [...totalsBase, { amount: { gte: 0 } }] },
+      where: { AND: totalsBase },
       _sum: { amount: true },
     }),
-    prisma.payment.aggregate({
-      where: { AND: [...totalsBase, { amount: { lt: 0 } }] },
+    prisma.refund.aggregate({
+      where: refundWhere,
       _sum: { amount: true },
     }),
   ]);

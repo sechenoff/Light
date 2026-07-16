@@ -21,7 +21,7 @@ import { FINANCE_TERMS } from "../../lib/financeTerms";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD" | "OTHER";
+type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD" | "OTHER" | "CREDIT_NOTE";
 type PaymentType = "income" | "refund";
 type ViewTab = "payments" | "bookings" | "clients";
 
@@ -45,8 +45,6 @@ interface PaymentItem {
     client: { id: string; name: string };
   } | null;
   invoice: { id: string; number: string | null } | null;
-  // refund flag (negative amount)
-  isRefund?: boolean;
 }
 
 /** Серверные агрегаты по методам — считаются по всей отфильтрованной выборке. */
@@ -80,18 +78,14 @@ interface OverviewResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Единые подписи методов — в чипах, селектах и таблице один и тот же текст
+// (раньше OTHER был «Онлайн» в чипе и «📦 Другое» в таблице).
 const METHOD_LABELS: Record<PaymentMethod, string> = {
-  CASH: "💵 Наличные",
-  CARD: "💳 Карта",
-  BANK_TRANSFER: "🏦 Перевод",
-  OTHER: "📦 Другое",
-};
-
-const METHOD_CHIP_LABELS: Record<PaymentMethod, string> = {
   CASH: "Наличные",
-  CARD: "Карта (терминал)",
+  CARD: "Карта",
   BANK_TRANSFER: "Перевод",
-  OTHER: "Онлайн",
+  OTHER: "Другое",
+  CREDIT_NOTE: "Кредит-нота",
 };
 
 /**
@@ -171,10 +165,6 @@ function computeMethodTotals(items: PaymentItem[]): MethodTotals {
   for (const item of items) {
     if (item.voidedAt) continue;
     const amt = Number(item.amount);
-    if (amt < 0) {
-      totals.refunds += amt;
-      continue;
-    }
     totals.total += amt;
     if (item.method === "CASH") totals.cash += amt;
     else if (item.method === "CARD") totals.card += amt;
@@ -199,9 +189,9 @@ export function PaymentsOverviewPage() {
   );
 
   // Period
-  // Default — "Всё время": страница показывает все исторические платежи без фильтра
-  // (включая массовый импорт смен 2023–2026). Период можно сузить кнопкой PeriodSelector.
-  const initialPeriod = (searchParams.get("period") as PeriodKey | null) ?? "all";
+  // Default — «Месяц»: рабочий горизонт. «Всё время» доступно пилюлей —
+  // раньше страница по умолчанию грузила всю историю с 2020 года.
+  const initialPeriod = (searchParams.get("period") as PeriodKey | null) ?? "month";
   const [period, setPeriod] = useState<PeriodKey>(initialPeriod);
 
   // Method filter (null = all)
@@ -210,8 +200,6 @@ export function PaymentsOverviewPage() {
   const [includeVoided, setIncludeVoided] = useState(false);
   // Search
   const [search, setSearch] = useState("");
-  // Type filter
-  const [typeFilter, setTypeFilter] = useState<"all" | "income" | "refund">("all");
   // Void/refund modals
   const [voidPaymentId, setVoidPaymentId] = useState<string | null>(null);
   const [refundPaymentId, setRefundPaymentId] = useState<string | null>(null);
@@ -359,9 +347,6 @@ export function PaymentsOverviewPage() {
     if (!includeVoided && p.voidedAt) return false;
     // method filter
     if (methodFilter && p.method !== methodFilter) return false;
-    // type filter
-    if (typeFilter === "income" && Number(p.amount) < 0) return false;
-    if (typeFilter === "refund" && Number(p.amount) >= 0) return false;
     // search
     const q = search.toLowerCase();
     if (q) {
@@ -391,10 +376,15 @@ export function PaymentsOverviewPage() {
                   GET /api/finance/export/payments.xlsx (SA-only), подключаем его. */}
               {user?.role === "SUPER_ADMIN" && (
                 <button
-                  onClick={() => { window.location.href = "/api/finance/export/payments.xlsx"; }}
+                  onClick={() => {
+                    const range = derivePeriodRange(period);
+                    const q = new URLSearchParams({ from: range.from, to: range.to });
+                    if (includeVoided) q.set("includeVoided", "true");
+                    window.location.href = `/api/finance/export/payments.xlsx?${q}`;
+                  }}
                   className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface text-ink rounded-lg hover:bg-surface-subtle transition-colors whitespace-nowrap"
                 >
-                  📊 Экспорт XLSX
+                  Экспорт XLSX
                 </button>
               )}
               {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
@@ -475,25 +465,21 @@ export function PaymentsOverviewPage() {
                         : "bg-surface border-border text-ink-2 hover:bg-surface-subtle"
                     }`}
                   >
-                    <span className="text-[11px] font-medium opacity-80">{METHOD_CHIP_LABELS[m]}</span>
+                    <span className="text-[11px] font-medium opacity-80">{METHOD_LABELS[m]}</span>
                     <strong className={`mono-num text-[14px] ${active ? "text-white" : amtColor}`}>
                       {formatRub(amt)}
                     </strong>
                   </button>
                 );
               })}
-              {/* Refunds chip */}
-              <button
-                onClick={() => setTypeFilter(typeFilter === "refund" ? "all" : "refund")}
-                className={`flex flex-col items-start gap-0.5 px-3.5 py-2.5 rounded-lg border text-[12px] transition-colors ${
-                  typeFilter === "refund"
-                    ? "bg-rose-soft border-rose-border text-rose"
-                    : "bg-surface border-border text-ink-2 hover:bg-surface-subtle"
-                }`}
-              >
-                <span className="text-[11px] font-medium opacity-80">Возвраты</span>
-                <strong className="mono-num text-[14px] text-rose">{formatRub(methodTotals.refunds)}</strong>
-              </button>
+              {/* Возвраты — информационная карточка (сумма Refund за период);
+                  возвраты живут в отдельной таблице и в списке транзакций не строки */}
+              {methodTotals.refunds > 0 && (
+                <div className="flex flex-col items-start gap-0.5 px-3.5 py-2.5 rounded-lg border bg-surface border-border text-[12px]">
+                  <span className="text-[11px] font-medium text-ink-2">Возвраты</span>
+                  <strong className="mono-num text-[14px] text-rose">−{formatRub(methodTotals.refunds)}</strong>
+                </div>
+              )}
             </div>
 
             {/* Filter bar */}
@@ -504,26 +490,6 @@ export function PaymentsOverviewPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <select
-                className="border border-border rounded-lg px-3 py-2 text-[13px] bg-surface"
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value as "all" | "income" | "refund")}
-              >
-                <option value="all">Все типы</option>
-                <option value="income">Приход</option>
-                <option value="refund">Возврат</option>
-              </select>
-              <select
-                className="border border-border rounded-lg px-3 py-2 text-[13px] bg-surface"
-                value={methodFilter ?? ""}
-                onChange={(e) => setMethodFilter((e.target.value as PaymentMethod) || null)}
-              >
-                <option value="">Все методы</option>
-                <option value="CASH">Наличные</option>
-                <option value="CARD">Карта</option>
-                <option value="BANK_TRANSFER">Перевод</option>
-                <option value="OTHER">Другое</option>
-              </select>
               <label className="flex items-center gap-2 text-[13px] text-ink-2 py-1 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -570,7 +536,6 @@ export function PaymentsOverviewPage() {
                     <tbody>
                       {filteredPayments.map((p) => {
                         const amt = Number(p.amount);
-                        const isRefund = amt < 0;
                         const isVoided = !!p.voidedAt;
                         const { date, time } = formatPaymentDate(paymentDateOf(p));
 
@@ -611,9 +576,7 @@ export function PaymentsOverviewPage() {
                             </td>
                             <td className="px-3 py-3 text-ink-2">{METHOD_LABELS[p.method]}</td>
                             <td className="px-3 py-3 text-right mono-num font-semibold">
-                              {isRefund ? (
-                                <span className="text-amber">{formatRub(amt)}</span>
-                              ) : isVoided ? (
+                              {isVoided ? (
                                 <span className="text-ink-3 line-through">{formatRub(amt)}</span>
                               ) : (
                                 <span className="text-emerald">+{formatRub(amt)}</span>
@@ -624,8 +587,6 @@ export function PaymentsOverviewPage() {
                                 <span className="text-[12px]">{p.createdByName}</span>
                               ) : p.createdBy === "_system_" ? (
                                 <span className="text-[12px] text-ink-3">Система</span>
-                              ) : p.createdBy ? (
-                                <span className="text-ink-3">—</span>
                               ) : (
                                 <span className="text-ink-3">—</span>
                               )}
@@ -643,14 +604,12 @@ export function PaymentsOverviewPage() {
                                     </div>
                                   )}
                                 </div>
-                              ) : isRefund ? (
-                                <StatusPill variant="warn" label="Возврат" />
                               ) : (
                                 <StatusPill variant="ok" label={FINANCE_TERMS.received} />
                               )}
                             </td>
                             <td className="px-3 py-3">
-                              {!isVoided && !isRefund && (
+                              {!isVoided && (
                                 <div className="flex gap-1 justify-end">
                                   <button
                                     onClick={() => setRefundPaymentId(p.id)}
@@ -683,18 +642,15 @@ export function PaymentsOverviewPage() {
                 <div className="md:hidden space-y-2 mt-2">
                   {filteredPayments.map((p) => {
                     const amt = Number(p.amount);
-                    const isRefund = amt < 0;
                     const isVoided = !!p.voidedAt;
                     const { date, time } = formatPaymentDate(paymentDateOf(p));
                     return (
                       <div
                         key={p.id}
                         className={`border rounded-lg p-3 ${
-                          isRefund
-                            ? "bg-amber-soft border-amber-border"
-                            : isVoided
-                              ? "bg-surface-subtle border-border opacity-60"
-                              : "bg-surface border-border"
+                          isVoided
+                            ? "bg-surface-subtle border-border opacity-60"
+                            : "bg-surface border-border"
                         }`}
                       >
                         <div className="flex justify-between items-center">
@@ -702,14 +658,14 @@ export function PaymentsOverviewPage() {
                             {p.booking?.client.name ?? "—"}
                           </strong>
                           <span className={`mono-num font-semibold text-[14px] ${
-                            isVoided ? "text-ink-3 line-through" : isRefund ? "text-amber" : "text-emerald"
+                            isVoided ? "text-ink-3 line-through" : "text-emerald"
                           }`}>
-                            {isRefund || isVoided ? "" : "+"}{formatRub(amt)}
+                            {isVoided ? "" : "+"}{formatRub(amt)}
                           </span>
                         </div>
                         <div className="text-[11px] text-ink-3 mt-1">
                           {METHOD_LABELS[p.method]} · {date}{time ? `, ${time}` : ""}
-                          {(p.createdByName ?? p.createdBy) && ` · ${p.createdByName ?? p.createdBy}`}
+                          {p.createdByName && ` · ${p.createdByName}`}
                         </div>
                         {isVoided && (
                           <div className="text-[11px] text-rose mt-1">

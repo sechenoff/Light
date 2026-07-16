@@ -250,96 +250,12 @@ export async function createFinanceEvent(args: {
   });
 }
 
-export async function dashboardMetrics() {
-  const now = new Date();
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - 7);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const [todayIncome, weekIncome, monthIncome, expectedPayments, overdueBookings, allBookings, expensesMonth, allExpenses, allIncome] = await Promise.all([
-    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", voidedAt: null, paymentDate: { gte: dayStart } }, select: { amount: true } }),
-    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", voidedAt: null, paymentDate: { gte: weekStart } }, select: { amount: true } }),
-    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", voidedAt: null, paymentDate: { gte: monthStart } }, select: { amount: true } }),
-    prisma.payment.findMany({
-      where: { direction: "INCOME", status: "PLANNED", voidedAt: null, plannedPaymentDate: { not: null } },
-      include: { booking: { include: { client: true } } },
-      orderBy: { plannedPaymentDate: "asc" },
-      take: 20,
-    }),
-    // C3: кандидаты на просрочку — фильтруем live через isBookingOverdue
-    // (а не по сохранённому paymentStatus, который мог не синхронизироваться).
-    prisma.booking.findMany({
-      where: { status: { not: "CANCELLED" }, amountOutstanding: { gt: 0 } },
-      include: { client: true },
-      orderBy: { expectedPaymentDate: "asc" },
-    }),
-    prisma.booking.findMany({
-      where: { status: { not: "CANCELLED" } },
-      select: { amountOutstanding: true, paymentStatus: true, expectedPaymentDate: true },
-    }),
-    prisma.expense.findMany({ where: { expenseDate: { gte: monthStart } }, select: { amount: true } }),
-    prisma.expense.findMany({ select: { amount: true } }),
-    prisma.payment.findMany({ where: { direction: "INCOME", status: "RECEIVED", voidedAt: null }, select: { amount: true } }),
-  ]);
-
-  const incomeToday = sumDec(todayIncome.map((x) => x.amount.toString()));
-  const incomeWeek = sumDec(weekIncome.map((x) => x.amount.toString()));
-  const incomeMonth = sumDec(monthIncome.map((x) => x.amount.toString()));
-  const monthExpenses = sumDec(expensesMonth.map((x) => x.amount.toString()));
-  const allExpenseSum = sumDec(allExpenses.map((x) => x.amount.toString()));
-  const allIncomeSum = sumDec(allIncome.map((x) => x.amount.toString()));
-  const totalReceivables = sumDec(allBookings.map((b) => b.amountOutstanding.toString()));
-  // C3: overdue считается live (тот же isBookingOverdue, что и в computeDebts).
-  const overdueReceivables = sumDec(
-    allBookings
-      .filter((b) => isBookingOverdue(b, now))
-      .map((b) => b.amountOutstanding.toString()),
-  );
-  const unpaidCount = allBookings.filter((b) => b.paymentStatus === "NOT_PAID").length;
-  const partialCount = allBookings.filter((b) => b.paymentStatus === "PARTIALLY_PAID").length;
-
-  return {
-    incomeToday: incomeToday.toDecimalPlaces(2).toString(),
-    incomeWeek: incomeWeek.toDecimalPlaces(2).toString(),
-    incomeMonth: incomeMonth.toDecimalPlaces(2).toString(),
-    expectedPayments: expectedPayments.map((p) => ({
-      id: p.id,
-      amount: p.amount.toString(),
-      plannedPaymentDate: p.plannedPaymentDate,
-      payerName: p.payerName,
-      booking: p.booking
-        ? {
-            id: p.booking.id,
-            projectName: p.booking.projectName,
-            clientName: p.booking.client.name,
-          }
-        : null,
-    })),
-    overdueBookings: overdueBookings
-      .filter((b) => isBookingOverdue(b, now))
-      .slice(0, 20)
-      .map((b) => ({
-        id: b.id,
-        clientName: b.client.name,
-        projectName: b.projectName,
-        expectedPaymentDate: b.expectedPaymentDate,
-        amountOutstanding: b.amountOutstanding.toString(),
-      })),
-    monthProfit: incomeMonth.sub(monthExpenses).toDecimalPlaces(2).toString(),
-    summary: {
-      totalIncome: allIncomeSum.toDecimalPlaces(2).toString(),
-      totalReceivables: totalReceivables.toDecimalPlaces(2).toString(),
-      overdueReceivables: overdueReceivables.toDecimalPlaces(2).toString(),
-      grossProfit: allIncomeSum.toDecimalPlaces(2).toString(),
-      expenses: allExpenseSum.toDecimalPlaces(2).toString(),
-      netProfit: allIncomeSum.sub(allExpenseSum).toDecimalPlaces(2).toString(),
-      unpaidCount,
-      partialCount,
-    },
-  };
-}
+// dashboardMetrics() удалён (2026-07 финансовый аудит): legacy-набор из 9
+// запросов (включая findMany ВСЕХ payments/expenses в память) давал вторые,
+// расходящиеся версии тех же метрик (income по paymentDate без receivedAt,
+// расходы без approved-фильтра, grossProfit ≡ выручке). Единственный живой
+// потребитель — /day (summary.overdueReceivables) — теперь получает это поле
+// из computeFinanceDashboard без дополнительных запросов.
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Finance Dashboard (Sprint 3)
@@ -364,6 +280,48 @@ function toYYYYMMDD(d: Date): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+/**
+ * Каноническая семантика «получено за период» — единая для KPI, тренда и
+ * календаря: INCOME-платёж, не void; дата платежа = receivedAt ?? paymentDate
+ * (приоритет receivedAt, БЕЗ OR-окон — платёж с receivedAt и paymentDate в
+ * разных месяцах учитывается ровно один раз, по receivedAt); для legacy-строк
+ * без receivedAt требуем status=RECEIVED. Возвраты (Refund.refundedAt в
+ * периоде) вычитаются — «получено» нетто, консистентно с Booking.amountPaid
+ * (MF-1: payments − refunds).
+ */
+function receivedInPeriodWhere(start: Date, endExclusive: Date) {
+  return {
+    direction: "INCOME" as const,
+    voidedAt: null,
+    OR: [
+      { receivedAt: { gte: start, lt: endExclusive } },
+      {
+        AND: [
+          { receivedAt: null },
+          { paymentDate: { gte: start, lt: endExclusive } },
+          { status: "RECEIVED" as const },
+        ],
+      },
+    ],
+  };
+}
+
+async function netReceivedInPeriod(start: Date, endExclusive: Date): Promise<Decimal> {
+  const [incomeAgg, refundAgg] = await Promise.all([
+    prisma.payment.aggregate({
+      where: receivedInPeriodWhere(start, endExclusive),
+      _sum: { amount: true },
+    }),
+    prisma.refund.aggregate({
+      where: { refundedAt: { gte: start, lt: endExclusive } },
+      _sum: { amount: true },
+    }),
+  ]);
+  const income = new Decimal(incomeAgg._sum.amount?.toString() ?? "0");
+  const refunds = new Decimal(refundAgg._sum.amount?.toString() ?? "0");
+  return income.sub(refunds);
+}
+
 async function computeMonthlyTrend(asOf: Date) {
   const months: Array<{ start: Date; nextStart: Date; label: string }> = [];
   for (let i = 11; i >= 0; i--) {
@@ -375,18 +333,8 @@ async function computeMonthlyTrend(asOf: Date) {
 
   const results = await Promise.all(
     months.map(async ({ start, nextStart, label }) => {
-      const [earnedAgg, spentAgg] = await Promise.all([
-        prisma.payment.aggregate({
-          where: {
-            direction: "INCOME",
-            voidedAt: null,
-            AND: [
-              { OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }] },
-              { OR: [{ receivedAt: { gte: start, lt: nextStart } }, { paymentDate: { gte: start, lt: nextStart } }] },
-            ],
-          },
-          _sum: { amount: true },
-        }),
+      const [earned, spentAgg] = await Promise.all([
+        netReceivedInPeriod(start, nextStart),
         prisma.expense.aggregate({
           where: {
             approved: true,
@@ -395,7 +343,6 @@ async function computeMonthlyTrend(asOf: Date) {
           _sum: { amount: true },
         }),
       ]);
-      const earned = new Decimal(earnedAgg._sum.amount?.toString() ?? "0");
       const spent = new Decimal(spentAgg._sum.amount?.toString() ?? "0");
       return {
         month: label,
@@ -423,37 +370,36 @@ export async function computeFinanceDashboard(asOf: Date = new Date(), range?: F
   // Период для earned/spent/net: явный from/to из query (пилюли «Сегодня/7 дней/…»)
   // или прежнее поведение — текущий календарный месяц.
   const hasRange = Boolean(range?.from || range?.to);
-  const periodDateFilter: { gte?: Date; lt?: Date; lte?: Date } = hasRange
-    ? {
-        ...(range?.from ? { gte: range.from } : {}),
-        ...(range?.to ? { lte: range.to } : {}),
-      }
-    : { gte: monthS, lt: monthNextS };
+  const periodStart = hasRange ? (range?.from ?? new Date(0)) : monthS;
+  // netReceivedInPeriod работает с эксклюзивной верхней границей; range.to
+  // приходил как lte-момент конца периода — +1мс сохраняет прежнее включение.
+  const periodEndExclusive = hasRange
+    ? (range?.to ? new Date(range.to.getTime() + 1) : new Date(8640000000000000))
+    : monthNextS;
+  const periodDateFilter: { gte: Date; lt: Date } = { gte: periodStart, lt: periodEndExclusive };
 
-  const [totalOutstandingAgg, earnedAgg, spentAgg, upcomingWeek, trend, debtorsData] = await Promise.all([
+  // Скоуп «долга»: как в computeDebts — подтверждённые живые брони.
+  // DRAFT/PENDING_APPROVAL — ещё не обязательство клиента (смета не согласована),
+  // deletedAt≠null — архив; ни те ни другие не являются дебиторкой.
+  const DEBT_BOOKING_WHERE: Prisma.BookingWhereInput = {
+    status: { in: ["CONFIRMED", "ISSUED", "RETURNED"] },
+    deletedAt: null,
+    amountOutstanding: { gt: 0 },
+  };
+
+  const [totalOutstandingAgg, earnedPeriod, spentAgg, upcomingWeek, trend, debtorsData] = await Promise.all([
     prisma.booking.aggregate({
-      where: { status: { not: "CANCELLED" }, amountOutstanding: { gt: 0 } },
+      where: DEBT_BOOKING_WHERE,
       _sum: { amountOutstanding: true },
     }),
-    prisma.payment.aggregate({
-      where: {
-        direction: "INCOME",
-        voidedAt: null,
-        OR: [
-          { receivedAt: periodDateFilter },
-          { AND: [{ receivedAt: null }, { paymentDate: periodDateFilter }, { status: "RECEIVED" }] },
-        ],
-      },
-      _sum: { amount: true },
-    }),
+    netReceivedInPeriod(periodStart, periodEndExclusive),
     prisma.expense.aggregate({
       where: { approved: true, expenseDate: periodDateFilter },
       _sum: { amount: true },
     }),
     prisma.booking.findMany({
       where: {
-        status: { not: "CANCELLED" },
-        amountOutstanding: { gt: 0 },
+        ...DEBT_BOOKING_WHERE,
         expectedPaymentDate: { gte: asOf, lte: weekEnd },
       },
       include: { client: true },
@@ -462,39 +408,44 @@ export async function computeFinanceDashboard(asOf: Date = new Date(), range?: F
     computeMonthlyTrend(asOf),
     // Top-5 debtors: aggregate per client, top 5 by outstanding desc
     prisma.booking.findMany({
-      where: { status: { not: "CANCELLED" }, amountOutstanding: { gt: 0 } },
+      where: DEBT_BOOKING_WHERE,
       include: { client: true },
       orderBy: { amountOutstanding: "desc" },
     }),
   ]);
 
   const totalOutstanding = new Decimal(totalOutstandingAgg._sum.amountOutstanding?.toString() ?? "0");
-  const earnedThisMonth = new Decimal(earnedAgg._sum.amount?.toString() ?? "0");
+  const earnedThisMonth = earnedPeriod;
   const spentThisMonth = new Decimal(spentAgg._sum.amount?.toString() ?? "0");
   const netThisMonth = earnedThisMonth.sub(spentThisMonth);
 
   // Compute top-5 debtors: aggregate per client
   const now = asOf;
-  const clientMap = new Map<string, { clientId: string; clientName: string; outstanding: Decimal; maxDaysOverdue: number }>();
+  const clientMap = new Map<string, { clientId: string; clientName: string; outstanding: Decimal; maxDaysOverdue: number; isOverdue: boolean }>();
   for (const b of debtorsData) {
     const amt = new Decimal(b.amountOutstanding.toString());
-    const daysOverdue = b.expectedPaymentDate
-      ? Math.floor((now.getTime() - b.expectedPaymentDate.getTime()) / 86400000)
+    // Единый критерий просрочки — isBookingOverdue (учитывает stored OVERDUE),
+    // как на /finance/debts и /lk/debt. daysOverdue — только для подписи
+    // «N дн.», и только если просрочка подтверждена хелпером.
+    const overdue = isBookingOverdue(b, now);
+    const daysOverdue = overdue && b.expectedPaymentDate
+      ? Math.max(1, Math.floor((now.getTime() - b.expectedPaymentDate.getTime()) / 86400000))
       : 0;
     const acc = clientMap.get(b.clientId) ?? {
       clientId: b.clientId,
       clientName: b.client.name,
       outstanding: new Decimal(0),
       maxDaysOverdue: 0,
+      isOverdue: false,
     };
     acc.outstanding = acc.outstanding.add(amt);
+    if (overdue) acc.isOverdue = true;
     if (daysOverdue > acc.maxDaysOverdue) acc.maxDaysOverdue = daysOverdue;
     clientMap.set(b.clientId, acc);
   }
-  // F2: честный счётчик клиентов с просрочкой по ВСЕЙ выборке. Раньше overdueCount
-  // на фронте выводился из topDebtors (slice(0,5)) и не превышал 5, даже если
-  // просроченных клиентов больше.
-  const overdueClientsCount = Array.from(clientMap.values()).filter((c) => c.maxDaysOverdue > 0).length;
+  // F2: честный счётчик клиентов с просрочкой по ВСЕЙ выборке — тем же
+  // критерием isBookingOverdue, что и /finance/debts (?overdueOnly=true).
+  const overdueClientsCount = Array.from(clientMap.values()).filter((c) => c.isOverdue).length;
   const topDebtors = Array.from(clientMap.values())
     .sort((a, b) => b.outstanding.cmp(a.outstanding))
     .slice(0, 5)
@@ -505,11 +456,42 @@ export async function computeFinanceDashboard(asOf: Date = new Date(), range?: F
       overdueDays: c.maxDaysOverdue > 0 ? c.maxDaysOverdue : null,
     }));
 
-  // Legacy dashboardMetrics keys needed by existing consumers
-  const legacyData = await dashboardMetrics();
+  // overdueReceivables — из уже загруженного debtorsData, тем же критерием
+  // isBookingOverdue. Единственный legacy-ключ, оставшийся в контракте
+  // (потребитель — /day). Остальной legacy-набор удалён вместе с dashboardMetrics.
+  const overdueReceivables = sumDec(
+    debtorsData
+      .filter((b) => isBookingOverdue(b, now))
+      .map((b) => b.amountOutstanding.toString()),
+  );
+
+  // Дебиторка по возрасту (AR aging) по БРОНЯМ — не по счетам (invoice-aging
+  // пуст, пока счетами не пользуются). Бакеты от expectedPaymentDate; брони
+  // без срока — отдельный бакет. Считается из уже загруженного debtorsData.
+  const aging = {
+    current: new Decimal(0),   // не просрочен (срок в будущем)
+    d1to30: new Decimal(0),
+    d31to60: new Decimal(0),
+    over60: new Decimal(0),
+    noDue: new Decimal(0),     // срок оплаты не назначен
+  };
+  for (const b of debtorsData) {
+    const amt = new Decimal(b.amountOutstanding.toString());
+    if (!b.expectedPaymentDate) {
+      aging.noDue = aging.noDue.add(amt);
+      continue;
+    }
+    if (!isBookingOverdue(b, now)) {
+      aging.current = aging.current.add(amt);
+      continue;
+    }
+    const days = Math.max(1, Math.floor((now.getTime() - b.expectedPaymentDate.getTime()) / 86400000));
+    if (days <= 30) aging.d1to30 = aging.d1to30.add(amt);
+    else if (days <= 60) aging.d31to60 = aging.d31to60.add(amt);
+    else aging.over60 = aging.over60.add(amt);
+  }
 
   return {
-    // New keys
     asOf: asOf.toISOString(),
     totalOutstanding: totalOutstanding.toFixed(2),
     earnedThisMonth: earnedThisMonth.toFixed(2),
@@ -526,8 +508,17 @@ export async function computeFinanceDashboard(asOf: Date = new Date(), range?: F
     trend,
     topDebtors,
     overdueClientsCount,
-    // Legacy keys (superset — keep for existing consumers)
-    ...legacyData,
+    debtorClientsCount: clientMap.size,
+    aging: {
+      current: aging.current.toFixed(2),
+      d1to30: aging.d1to30.toFixed(2),
+      d31to60: aging.d31to60.toFixed(2),
+      over60: aging.over60.toFixed(2),
+      noDue: aging.noDue.toFixed(2),
+    },
+    summary: {
+      overdueReceivables: overdueReceivables.toDecimalPlaces(2).toString(),
+    },
   };
 }
 
@@ -543,14 +534,10 @@ export async function computePaymentsCalendar(monthStart: Date): Promise<Record<
       select: { expectedPaymentDate: true, amountOutstanding: true },
     }),
     prisma.payment.findMany({
-      where: {
-        direction: "INCOME",
-        voidedAt: null,
-        AND: [
-          { OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }] },
-          { OR: [{ receivedAt: { gte: monthStart, lt: monthNextStart } }, { paymentDate: { gte: monthStart, lt: monthNextStart } }] },
-        ],
-      },
+      // Та же каноническая семантика, что в receivedInPeriodWhere: дата платежа
+      // = receivedAt ?? paymentDate строго внутри месяца — без OR-окна, которое
+      // добирало платежи с датой бакета в ЧУЖОМ месяце.
+      where: receivedInPeriodWhere(monthStart, monthNextStart),
       select: { receivedAt: true, paymentDate: true, amount: true },
     }),
   ]);
@@ -678,6 +665,9 @@ interface ClientDebtProject {
   daysOverdue: number | null;
   paymentStatus: string;
   bookingStatus: string;
+  /** Финансовая схема брони: true = legacy (без invoice-слоя). Нужен модалке
+   *  платежа, чтобы показывать селектор счёта только post-cutoff броням. */
+  legacyFinance: boolean;
   /** B1: дата начала брони (booking.startDate) — для сортировки по дате проекта */
   startDate: Date | null;
   /** B1: дата окончания брони (booking.endDate) */
@@ -705,14 +695,16 @@ const ruCollator = new Intl.Collator("ru");
 
 /**
  * Возвращает агрегированные долги клиентов по броням.
- * Игнорирует: CANCELLED брони, брони с amountOutstanding = 0.
+ * Скоуп долга (единый с computeFinanceDashboard): только подтверждённые живые
+ * брони — CONFIRMED/ISSUED/RETURNED, deletedAt=null, amountOutstanding > 0.
+ * DRAFT/PENDING_APPROVAL — ещё не обязательство клиента (смета не согласована),
+ * архивные брони — не дебиторка.
  */
 export async function computeDebts(
   options: {
     overdueOnly?: boolean;
     minAmount?: number;
-    /** B2: accepted enum; actual per-row sort done on frontend for flat list */
-    sort?: "name" | "amount" | "date" | "startDate" | "status";
+    sort?: "name" | "amount" | "date";
     order?: "asc" | "desc";
   } = {},
 ): Promise<{
@@ -739,15 +731,28 @@ export async function computeDebts(
 
   const bookings = await prisma.booking.findMany({
     where: {
-      status: { not: "CANCELLED" },
+      status: { in: ["CONFIRMED", "ISSUED", "RETURNED"] },
+      deletedAt: null,
       amountOutstanding: { gt: 0 },
     },
     include: {
       client: {
         select: { id: true, name: true, phone: true, email: true, lastReminderAt: true },
       },
-      // D2: count only active INCOME payments (exclude voided + refunds)
-      _count: { select: { payments: { where: { voidedAt: null, direction: "INCOME" } } } },
+      // D2: считаем только реально полученные активные INCOME-платежи —
+      // консистентно с listPayments (модалка «Список платежей»), который
+      // требует RECEIVED/receivedAt и не показывает PLANNED.
+      _count: {
+        select: {
+          payments: {
+            where: {
+              voidedAt: null,
+              direction: "INCOME",
+              OR: [{ status: "RECEIVED" }, { receivedAt: { not: null } }],
+            },
+          },
+        },
+      },
     },
     orderBy: { expectedPaymentDate: "asc" },
   });
@@ -792,6 +797,7 @@ export async function computeDebts(
       daysOverdue: isOverdue ? daysOverdue : null,
       paymentStatus: b.paymentStatus,
       bookingStatus: b.status,
+      legacyFinance: b.legacyFinance,
       startDate: b.startDate ?? null,
       endDate: b.endDate ?? null,
       clientName: b.client.name,
@@ -879,53 +885,9 @@ export interface AgingBucket {
   invoiceCount: number;
 }
 
-/**
- * Возвращает aging-buckets по Invoice.dueDate только для post-cutoff броней.
- * Buckets: текущие (≤0), 1-30, 31-60, 61-90, >90 дней просрочки.
- */
-export async function computeAging(asOf: Date = new Date()): Promise<AgingBucket[]> {
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      status: { in: ["ISSUED", "PARTIAL_PAID", "OVERDUE"] },
-      dueDate: { not: null },
-      booking: { legacyFinance: false },
-    },
-    select: {
-      dueDate: true,
-      total: true,
-      paidAmount: true,
-    },
-  });
-
-  const buckets: AgingBucket[] = [
-    { label: "Текущие", minDays: Number.NEGATIVE_INFINITY, maxDays: 0, total: "0", invoiceCount: 0 },
-    { label: "1–30 дней", minDays: 1, maxDays: 30, total: "0", invoiceCount: 0 },
-    { label: "31–60 дней", minDays: 31, maxDays: 60, total: "0", invoiceCount: 0 },
-    { label: "61–90 дней", minDays: 61, maxDays: 90, total: "0", invoiceCount: 0 },
-    { label: "Свыше 90 дней", minDays: 91, maxDays: null, total: "0", invoiceCount: 0 },
-  ];
-
-  for (const inv of invoices) {
-    if (!inv.dueDate) continue;
-    const outstanding = new Decimal(inv.total.toString()).sub(new Decimal(inv.paidAmount.toString()));
-    if (outstanding.lessThanOrEqualTo(0)) continue;
-
-    const daysOverdue = Math.floor((asOf.getTime() - inv.dueDate.getTime()) / 86400000);
-
-    const bucket = buckets.find((b) => {
-      if (b.maxDays === null) return daysOverdue >= b.minDays;
-      if (b.minDays === Number.NEGATIVE_INFINITY) return daysOverdue <= b.maxDays;
-      return daysOverdue >= b.minDays && daysOverdue <= b.maxDays;
-    });
-
-    if (bucket) {
-      bucket.total = new Decimal(bucket.total).add(outstanding).toFixed(2);
-      bucket.invoiceCount++;
-    }
-  }
-
-  return buckets;
-}
+// computeAging() удалён (2026-07 финансовый аудит): не имел ни одного вызова —
+// /finance/debts?withAging использует computeAgingPerClient, который сам
+// строит те же summary-бакеты (тип AgingBucket ниже — живой, используется им).
 
 // ──────────────────────────────────────────────────────────────────────────────
 // B5 — Finance Phase 3: Related Expenses for a Booking
@@ -1254,11 +1216,12 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
   const pipelineBookings = await prisma.booking.findMany({
     where: {
       status: { in: ["CONFIRMED", "ISSUED", "RETURNED", "PENDING_APPROVAL"] },
+      deletedAt: null,
       startDate: { gte: horizonStart, lte: horizonEnd },
       legacyFinance: false,
       invoices: { none: {} },
     },
-    select: { startDate: true, amountOutstanding: true, finalAmount: true },
+    select: { startDate: true, amountOutstanding: true, amountPaid: true, finalAmount: true },
   });
 
   // Helper: which month slot does a date fall in?
@@ -1300,9 +1263,21 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
   for (const b of pipelineBookings) {
     const label = monthSlotLabel(b.startDate);
     if (!label) continue;
-    // M2: используем amountOutstanding если > 0, иначе finalAmount (бронь без платежей)
+    // M2-фикс (аудит 2026-07): outstanding > 0 → остаток к получению;
+    // outstanding = 0 И ничего не получено → finalAmount (бронь без
+    // финансового состояния); outstanding = 0 И amountPaid > 0 — бронь
+    // ОПЛАЧЕНА, деньги уже получены — в прогноз будущих поступлений не входит
+    // (раньше фолбэк на finalAmount показывал полученное как будущее).
     const outstanding = new Decimal(b.amountOutstanding.toString());
-    const amount = outstanding.gt(0) ? outstanding : new Decimal(b.finalAmount.toString());
+    const paid = new Decimal(b.amountPaid.toString());
+    let amount: Decimal;
+    if (outstanding.gt(0)) {
+      amount = outstanding;
+    } else if (paid.lte(0)) {
+      amount = new Decimal(b.finalAmount.toString());
+    } else {
+      continue; // полностью оплачена
+    }
     if (amount.lte(0)) continue;
     slotData.get(label)!.bookingsPipeline = slotData.get(label)!.bookingsPipeline.add(amount);
   }
