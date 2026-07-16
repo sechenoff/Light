@@ -196,9 +196,15 @@ router.patch(
 const manualMileageSchema = z.object({
   mileage: z.number().int().min(0),
   note: z.string().trim().max(500).nullable().optional(),
+  /** true — режим корректировки (может уменьшать одометр, требует note). */
+  correction: z.boolean().optional(),
 });
 
-/** POST /api/vehicles/fleet/:id/mileage — записать пробег вручную. */
+/**
+ * POST /api/vehicles/fleet/:id/mileage — записать пробег вручную.
+ * С `correction: true` — корректировка ошибочного одометра (снимает запрет на
+ * уменьшение, но требует `note`; source=CORRECTION, отдельный аудит).
+ */
 router.post(
   "/fleet/:id/mileage",
   rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),
@@ -212,6 +218,7 @@ router.post(
         vehicleId: req.params.id,
         mileage: body.mileage,
         note: body.note ?? null,
+        correction: body.correction ?? false,
         recordedBy: req.adminUser.username,
         userId: req.adminUser.userId,
       });

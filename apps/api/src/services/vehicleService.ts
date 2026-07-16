@@ -109,7 +109,7 @@ export interface MileageLogView {
   mileage: number;
   recordedAt: string;
   bookingId: string | null;
-  source: "RETURN" | "MANUAL";
+  source: "RETURN" | "MANUAL" | "CORRECTION";
   recordedBy: string;
   note: string | null;
 }
@@ -195,7 +195,7 @@ export async function getVehicleDetail(vehicleId: string): Promise<{
       mileage: m.mileage,
       recordedAt: m.recordedAt.toISOString(),
       bookingId: m.bookingId,
-      source: m.source as "RETURN" | "MANUAL",
+      source: m.source as MileageLogView["source"],
       recordedBy: m.recordedBy,
       note: m.note,
     })),
@@ -261,27 +261,53 @@ export async function logMileageManual(args: {
   recordedBy: string;
   userId: string;
   note?: string | null;
+  /**
+   * Режим корректировки: исправление ошибочного одометра. Снимает запрет на
+   * уменьшение (одометр можно поправить в любую сторону), но ТРЕБУЕТ причину
+   * (note). Пишется с source=CORRECTION и отдельным аудит-действием, чтобы
+   * downward-правки были отличимы в журнале и аудите. Обычная запись
+   * (correction=false) остаётся строго монотонной вперёд.
+   */
+  correction?: boolean;
 }): Promise<MileageLogView> {
   const v = await prisma.vehicle.findUnique({ where: { id: args.vehicleId } });
   if (!v) {
     throw new HttpError(404, "Машина не найдена", "VEHICLE_NOT_FOUND");
   }
-  if (args.mileage < v.currentMileage) {
+
+  const isCorrection = args.correction === true;
+  const trimmedNote = args.note?.trim() ? args.note.trim() : null;
+
+  if (isCorrection) {
+    // Корректировку нельзя проводить «молча» — обязательно объяснить причину.
+    if (!trimmedNote) {
+      throw new HttpError(
+        400,
+        "Для корректировки укажите причину.",
+        "CORRECTION_NOTE_REQUIRED",
+      );
+    }
+  } else if (args.mileage < v.currentMileage) {
+    // Обычная запись — только вперёд. Для исправления ошибки нужен режим
+    // корректировки (correction=true).
     throw new HttpError(
       409,
-      `Новый пробег (${args.mileage}) меньше текущего (${v.currentMileage}). Одометр не может уменьшаться.`,
+      `Новый пробег (${args.mileage}) меньше текущего (${v.currentMileage}). Одометр не может уменьшаться — используйте корректировку.`,
       "MILEAGE_DECREASE",
       { current: v.currentMileage, attempted: args.mileage },
     );
   }
+
+  const source: "MANUAL" | "CORRECTION" = isCorrection ? "CORRECTION" : "MANUAL";
+
   return prisma.$transaction(async (tx) => {
     const log = await tx.vehicleMileageLog.create({
       data: {
         vehicleId: args.vehicleId,
         mileage: args.mileage,
-        source: "MANUAL",
+        source,
         recordedBy: args.recordedBy,
-        note: args.note ?? null,
+        note: trimmedNote,
       },
     });
     await tx.vehicle.update({
@@ -291,18 +317,18 @@ export async function logMileageManual(args: {
     await writeAuditEntry({
       tx,
       userId: args.userId,
-      action: "VEHICLE_MILEAGE_LOG",
+      action: isCorrection ? "VEHICLE_MILEAGE_CORRECTION" : "VEHICLE_MILEAGE_LOG",
       entityType: "Vehicle",
       entityId: args.vehicleId,
       before: { currentMileage: v.currentMileage },
-      after: { currentMileage: args.mileage, source: "MANUAL", logId: log.id },
+      after: { currentMileage: args.mileage, source, logId: log.id, note: trimmedNote },
     });
     return {
       id: log.id,
       mileage: log.mileage,
       recordedAt: log.recordedAt.toISOString(),
       bookingId: log.bookingId,
-      source: log.source as "MANUAL",
+      source: log.source as MileageLogView["source"],
       recordedBy: log.recordedBy,
       note: log.note,
     };

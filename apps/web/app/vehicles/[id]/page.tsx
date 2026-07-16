@@ -51,7 +51,7 @@ interface MileageLog {
   mileage: number;
   recordedAt: string;
   bookingId: string | null;
-  source: "RETURN" | "MANUAL";
+  source: "RETURN" | "MANUAL" | "CORRECTION";
   recordedBy: string;
   note: string | null;
 }
@@ -272,6 +272,10 @@ export default function VehicleDetailPage() {
                     <td className="px-3 py-2 text-ink-2">
                       {m.source === "RETURN" ? (
                         <span>На возврате брони{m.bookingId ? <> · <Link className="text-accent-bright hover:text-accent" href={`/bookings/${m.bookingId}`}>открыть</Link></> : null}</span>
+                      ) : m.source === "CORRECTION" ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-amber-soft px-1.5 py-0.5 text-[11px] font-medium text-amber">
+                          Корректировка
+                        </span>
                       ) : (
                         "Вручную"
                       )}
@@ -508,12 +512,15 @@ function AddMileageForm({
   onAdded: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
+  // Режим корректировки: снимает запрет «только вперёд», требует причину.
+  const [correction, setCorrection] = useState(false);
   const [mileage, setMileage] = useState<string>("");
   const [note, setNote] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   function reset() {
+    setCorrection(false);
     setMileage("");
     setNote("");
     setErr(null);
@@ -522,8 +529,18 @@ function AddMileageForm({
 
   async function submit() {
     const n = Number.parseInt(mileage, 10);
-    if (!Number.isFinite(n) || n < currentMileage) {
-      setErr(`Введите целое число ≥ ${currentMileage}`);
+    if (!Number.isFinite(n) || n < 0) {
+      setErr("Введите целое число ≥ 0");
+      return;
+    }
+    if (correction) {
+      // Корректировка может уменьшать одометр, но требует объяснение.
+      if (!note.trim()) {
+        setErr("Укажите причину корректировки");
+        return;
+      }
+    } else if (n < currentMileage) {
+      setErr(`Пробег не может уменьшаться. Текущий — ${currentMileage} км. Для исправления включите «Корректировку».`);
       return;
     }
     setBusy(true);
@@ -534,6 +551,7 @@ function AddMileageForm({
         body: JSON.stringify({
           mileage: n,
           note: note.trim() || null,
+          correction,
         }),
       });
       await onAdded();
@@ -564,21 +582,23 @@ function AddMileageForm({
         <input
           type="number"
           inputMode="numeric"
-          min={currentMileage}
+          min={correction ? 0 : currentMileage}
           step={1}
           value={mileage}
           onChange={(e) => setMileage(e.target.value)}
-          placeholder={`≥ ${currentMileage}`}
+          placeholder={correction ? "новое значение" : `≥ ${currentMileage}`}
           className="mono-num w-32 rounded border border-border px-2 py-1 text-sm bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
       <div className="flex-1 min-w-[160px]">
-        <label className="eyebrow mb-1 block">Заметка</label>
+        <label className="eyebrow mb-1 block">
+          {correction ? "Причина корректировки" : "Заметка"}
+        </label>
         <input
           type="text"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="Не обязательно"
+          placeholder={correction ? "Обязательно" : "Не обязательно"}
           className="w-full rounded border border-border px-2 py-1 text-sm bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </div>
@@ -588,7 +608,7 @@ function AddMileageForm({
         disabled={busy}
         className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
       >
-        {busy ? "..." : "Сохранить"}
+        {busy ? "..." : correction ? "Скорректировать" : "Сохранить"}
       </button>
       <button
         type="button"
@@ -597,6 +617,19 @@ function AddMileageForm({
       >
         Отмена
       </button>
+      {/* Тумблер корректировки: по умолчанию выкл (обычная запись — только вперёд). */}
+      <label className="basis-full flex items-center gap-2 pt-1 text-xs text-ink-2 select-none cursor-pointer">
+        <input
+          type="checkbox"
+          checked={correction}
+          onChange={(e) => {
+            setCorrection(e.target.checked);
+            setErr(null);
+          }}
+          className="h-3.5 w-3.5 rounded border-border text-accent-bright focus:ring-accent"
+        />
+        Корректировка — исправить ошибочный пробег (можно уменьшить, нужна причина)
+      </label>
       {err && <p className="basis-full text-xs text-rose">{err}</p>}
     </div>
   );
