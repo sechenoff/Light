@@ -83,8 +83,17 @@ export async function createInvoice(args: CreateInvoiceArgs, userId: string) {
   let total: Decimal;
   if (args.total !== undefined) {
     total = new Decimal(args.total.toString());
-  } else if (args.kind === "FULL" || args.kind === "BALANCE") {
+  } else if (args.kind === "FULL") {
     total = await computeTotalFromBooking(args.bookingId);
+  } else if (args.kind === "BALANCE") {
+    // BALANCE без явной суммы = ОСТАТОК к доплате (amountOutstanding), а не
+    // полная сумма брони — иначе клиент, внёсший депозит, получал бы счёт на
+    // всю бронь целиком.
+    const outstanding = new Decimal(booking.amountOutstanding.toString());
+    if (outstanding.lte(0)) {
+      throw new HttpError(409, "По этой броне нет остатка к доплате — BALANCE-счёт не нужен", "NO_OUTSTANDING_BALANCE");
+    }
+    total = outstanding;
   } else {
     throw new HttpError(400, "Для счёта типа DEPOSIT/CORRECTION необходимо указать сумму", "TOTAL_REQUIRED");
   }
@@ -260,7 +269,13 @@ export async function recomputeInvoiceStatus(invoiceId: string, txArg?: TxClient
   // навсегда снимал сигнал просрочки (ветка PARTIAL_PAID стояла первой, и
   // просроченный частично-оплаченный счёт никогда не становился OVERDUE — ни здесь,
   // ни в ночном cron). Теперь: PAID → просрочка → частичная оплата → выставлен → черновик.
-  const isOverdue = invoice.dueDate != null && invoice.dueDate.getTime() < Date.now() && paidAmount.lessThan(total);
+  // OVERDUE применим только к ВЫСТАВЛЕННЫМ счетам (issuedAt) — черновик с
+  // истёкшим dueDate и частичным платежом не должен перепрыгивать ISSUED.
+  const isOverdue =
+    invoice.issuedAt != null &&
+    invoice.dueDate != null &&
+    invoice.dueDate.getTime() < Date.now() &&
+    paidAmount.lessThan(total);
   let status: InvoiceStatus;
   if (paidAmount.greaterThanOrEqualTo(total) && total.greaterThan(0)) {
     status = "PAID";

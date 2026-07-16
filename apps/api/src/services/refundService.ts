@@ -72,6 +72,40 @@ export async function createRefund(args: CreateRefundArgs, userId: string) {
       }
     }
 
+    // Кап для bookingId-only возврата (cancel-with-deposit до Invoice): не
+    // больше фактически полученного по броне за вычетом уже возвращённого.
+    // Раньше эта ветка не ограничивалась ничем — можно было оформить возврат
+    // больше полученного.
+    if (args.bookingId && !args.invoiceId && !args.paymentId) {
+      const bk = await tx.booking.findUnique({
+        where: { id: args.bookingId },
+        select: { id: true },
+      });
+      if (!bk) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+      const [paymentsSum, refundsSum] = await Promise.all([
+        tx.payment.aggregate({
+          where: { bookingId: args.bookingId, voidedAt: null, direction: "INCOME" },
+          _sum: { amount: true },
+        }),
+        tx.refund.aggregate({
+          where: {
+            OR: [
+              { bookingId: args.bookingId },
+              { invoice: { bookingId: args.bookingId } },
+              { payment: { bookingId: args.bookingId } },
+            ],
+          },
+          _sum: { amount: true },
+        }),
+      ]);
+      const received = new Decimal((paymentsSum._sum.amount ?? 0).toString());
+      const alreadyRefunded = new Decimal((refundsSum._sum.amount ?? 0).toString());
+      const available = received.sub(alreadyRefunded);
+      if (amount.gt(available)) {
+        throw new HttpError(422, `Сумма возврата (${amount}) превышает доступную к возврату по броне (${available.toFixed(2)})`, "REFUND_EXCEEDS_PAID_AMOUNT");
+      }
+    }
+
     // Проверяем существование payment, если задан
     if (args.paymentId) {
       const pay = await tx.payment.findUnique({ where: { id: args.paymentId }, select: { id: true, amount: true, bookingId: true } });
