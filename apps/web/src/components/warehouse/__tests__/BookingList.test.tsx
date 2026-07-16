@@ -97,17 +97,20 @@ describe("BookingList", () => {
     expect(container.textContent || "").not.toMatch(/LR-[A-Z0-9]+-\d+/);
   });
 
-  it("calls createSession and onSelect when a card is tapped", async () => {
+  it("calls createSession and onSelect (with session info) when a card is tapped", async () => {
     const data = [booking("tap00today1", 0, "Тап-проект", "Клиент", 2)];
     vi.spyOn(scanApi, "listBookings").mockResolvedValue(data);
+    const sessionInfo = {
+      id: "sess-1",
+      bookingId: "tap00today1",
+      operation: "ISSUE" as const,
+      status: "ACTIVE",
+      startedAt: "2026-07-12T11:05:00.000Z",
+      resumed: true,
+    };
     const createSpy = vi
       .spyOn(scanApi, "createSession")
-      .mockResolvedValue({
-        id: "sess-1",
-        bookingId: "tap00today1",
-        operation: "ISSUE",
-        status: "ACTIVE",
-      });
+      .mockResolvedValue(sessionInfo);
     const onSelect = vi.fn();
 
     render(
@@ -126,8 +129,10 @@ describe("BookingList", () => {
     await waitFor(() =>
       expect(createSpy).toHaveBeenCalledWith("tap00today1", "ISSUE"),
     );
+    // Третий аргумент — полный ScanSessionInfo (resumed/startedAt), из него
+    // страница решает, показывать ли плашку «Продолжена незавершённая сессия».
     await waitFor(() =>
-      expect(onSelect).toHaveBeenCalledWith("sess-1", data[0]),
+      expect(onSelect).toHaveBeenCalledWith("sess-1", data[0], sessionInfo),
     );
   });
 
@@ -147,6 +152,93 @@ describe("BookingList", () => {
       />,
     );
     await waitFor(() => expect(onUnauth).toHaveBeenCalled());
+  });
+
+  it("просроченные уходят в rose-бакет «Просрочена выдача», не в «Сегодня»", async () => {
+    const data: BookingSummary[] = [
+      booking("aaaaoverdue1", -3, "Забытая выдача", "Клиент А", 2),
+      booking("bbbbbbtoday1", 0, "Плановая выдача", "Клиент Б", 3),
+    ];
+    vi.spyOn(scanApi, "listBookings").mockResolvedValue(data);
+
+    const { container } = render(
+      <BookingList operation="ISSUE" onUnauth={() => {}} onSelect={() => {}} />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("Просрочена выдача")).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/Сегодня ·/)).toBeInTheDocument();
+    // Rose-борт у просроченной карточки.
+    expect(container.innerHTML).toContain("border-l-rose");
+  });
+
+  it("RETURN группируется по endDate (дата возврата), просрочка — «Просрочен возврат»", async () => {
+    // endDate = offset + 2 (см. фикстуру): offset -5 → endDate -3 (просрочен),
+    // offset -2 → endDate сегодня.
+    const data: BookingSummary[] = [
+      booking("aaaretlate01", -5, "Задержали возврат", "Клиент В", 1),
+      booking("bbbrettoday1", -2, "Возврат сегодня", "Клиент Г", 1),
+    ];
+    vi.spyOn(scanApi, "listBookings").mockResolvedValue(data);
+
+    render(
+      <BookingList operation="RETURN" onUnauth={() => {}} onSelect={() => {}} />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("Просрочен возврат")).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/Сегодня ·/)).toBeInTheDocument();
+  });
+
+  it("поиск появляется при длинном списке и фильтрует по клиенту/проекту", async () => {
+    const data = Array.from({ length: 10 }, (_, i) =>
+      booking(`srch${String(i).padStart(8, "0")}`, 0, `Проект ${i}`, i === 3 ? "Мосфильм" : "Клиент", 1),
+    );
+    vi.spyOn(scanApi, "listBookings").mockResolvedValue(data);
+
+    render(
+      <BookingList operation="ISSUE" onUnauth={() => {}} onSelect={() => {}} />,
+    );
+
+    const input = await screen.findByLabelText("Поиск по клиенту или проекту");
+    const { fireEvent } = await import("@testing-library/react");
+    fireEvent.change(input, { target: { value: "мосфильм" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Проект 3")).toBeInTheDocument();
+      expect(screen.queryByText("Проект 5")).toBeNull();
+    });
+  });
+
+  it("кнопка «Обновить» перезапрашивает список; контекстное пустое состояние для ISSUE", async () => {
+    const listSpy = vi.spyOn(scanApi, "listBookings").mockResolvedValue([]);
+    render(
+      <BookingList operation="ISSUE" onUnauth={() => {}} onSelect={() => {}} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/Нет броней, готовых к выдаче/)).toBeInTheDocument(),
+    );
+    expect(listSpy).toHaveBeenCalledTimes(1);
+
+    screen.getByRole("button", { name: "Обновить список броней" }).click();
+    await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(2));
+  });
+
+  it("активная бронь подсвечена (aria-current) на desktop-панели чек-листа", async () => {
+    const data = [booking("actv00today", 0, "Активная", "Клиент", 1)];
+    vi.spyOn(scanApi, "listBookings").mockResolvedValue(data);
+    render(
+      <BookingList
+        operation="ISSUE"
+        activeBookingId="actv00today"
+        onUnauth={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    const card = await screen.findByRole("button", { name: /Активная/ });
+    expect(card).toHaveAttribute("aria-current", "true");
   });
 
   it("re-fetches listBookings when the `version` prop changes (post-complete refresh)", async () => {

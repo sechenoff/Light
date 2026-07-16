@@ -45,6 +45,8 @@ const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass:
   ok: { symbol: "✓", colorClass: "text-emerald" },
   warn: { symbol: "!", colorClass: "text-amber" },
   tip: { symbol: "i", colorClass: "text-accent" },
+  todo: { symbol: "○", colorClass: "text-ink-3" },
+  error: { symbol: "!", colorClass: "text-rose" },
 };
 
 export function SummaryPanel({

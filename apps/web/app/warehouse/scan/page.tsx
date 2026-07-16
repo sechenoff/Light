@@ -38,9 +38,11 @@ import { InWorkList } from "../../../src/components/warehouse/InWorkList";
 import { InWorkDetails } from "../../../src/components/warehouse/InWorkDetails";
 import { useScanSession } from "../../../src/components/warehouse/useScanSession";
 import { scanApi } from "../../../src/components/warehouse/api";
+import { ResumedSessionBanner } from "../../../src/components/warehouse/ResumedSessionBanner";
 import type {
   BookingSummary,
   ScanOperation,
+  ScanSessionInfo,
 } from "../../../src/components/warehouse/types";
 
 function WarehouseScanInner({
@@ -61,6 +63,25 @@ function WarehouseScanInner({
   // Booking selected for the active session (project/client for headers).
   const [activeBooking, setActiveBooking] = useState<BookingSummary | null>(
     null,
+  );
+
+  // createSession вернул уже существующую ACTIVE-сессию → показываем
+  // amber-плашку «Продолжена незавершённая сессия» над чек-листом.
+  // null — сессия новая или плашка скрыта оператором.
+  const [resumedStartedAt, setResumedStartedAt] = useState<string | null>(null);
+  const [showResumedBanner, setShowResumedBanner] = useState(false);
+
+  const noteSessionResumed = useCallback(
+    (info?: { resumed?: boolean; startedAt?: string }) => {
+      if (info?.resumed) {
+        setResumedStartedAt(info.startedAt ?? null);
+        setShowResumedBanner(true);
+      } else {
+        setResumedStartedAt(null);
+        setShowResumedBanner(false);
+      }
+    },
+    [],
   );
 
   // «В работе» view-mode state — only meaningful when viewMode === "IN_WORK".
@@ -120,6 +141,7 @@ function WarehouseScanInner({
         setActiveBooking(booking);
         const created = await scanApi.createSession(booking.id, op);
         if (cancelled) return;
+        noteSessionResumed(created);
         await openSession(created.id, op);
         if (cancelled) return;
         goStep("checklist");
@@ -137,7 +159,15 @@ function WarehouseScanInner({
     return () => {
       cancelled = true;
     };
-  }, [initialBookingId, step, setOperation, openSession, goStep, router]);
+  }, [
+    initialBookingId,
+    step,
+    setOperation,
+    openSession,
+    goStep,
+    router,
+    noteSessionResumed,
+  ]);
 
   const goToLogin = useCallback(() => {
     scanApi.clearWarehouseToken();
@@ -195,6 +225,7 @@ function WarehouseScanInner({
           });
         }
         if (session && session.id) {
+          noteSessionResumed(session);
           await openSession(session.id, "RETURN");
           goStep("checklist");
           return;
@@ -204,23 +235,29 @@ function WarehouseScanInner({
       }
       goStep("booking");
     },
-    [openSession, setOperation, goStep],
+    [openSession, setOperation, goStep, noteSessionResumed],
   );
 
   const handleBookingSelect = useCallback(
-    async (sid: string, booking: BookingSummary) => {
+    async (
+      sid: string,
+      booking: BookingSummary,
+      sessionInfo?: ScanSessionInfo,
+    ) => {
       setActiveBooking(booking);
+      noteSessionResumed(sessionInfo);
       await openSession(sid, operation);
       goStep("checklist");
     },
-    [openSession, operation, goStep],
+    [openSession, operation, goStep, noteSessionResumed],
   );
 
   const backToBooking = useCallback(async () => {
     await openSession(null);
     setActiveBooking(null);
+    noteSessionResumed(undefined);
     goStep("booking");
-  }, [openSession, goStep]);
+  }, [openSession, goStep, noteSessionResumed]);
 
   // Triggered the moment a successful /complete response comes back — bumps
   // both list versions so the LEFT pane (desktop) refetches immediately,
@@ -311,6 +348,7 @@ function WarehouseScanInner({
           workerName={workerName}
           onBack={() => setInWorkSelectedBookingId(null)}
           list={inWorkListSlot}
+          mobileList="hidden"
           detail={
             <InWorkDetails
               bookingId={inWorkSelectedBookingId}
@@ -341,6 +379,7 @@ function WarehouseScanInner({
     <BookingList
       operation={operation}
       version={listVersion}
+      activeBookingId={step === "checklist" ? (activeBooking?.id ?? null) : null}
       onUnauth={goToLogin}
       onSelect={handleBookingSelect}
     />
@@ -374,24 +413,33 @@ function WarehouseScanInner({
         workerName={workerName}
         onBack={backToBooking}
         list={bookingListSlot}
+        mobileList="hidden"
         detail={
-          operation === "ISSUE" ? (
-            <IssueChecklist
-              sessionId={sessionId}
-              projectName={projectName}
-              onBack={backToBooking}
-              onComplete={backToBookingAfterComplete}
-              onCompleted={bumpListsAfterComplete}
-            />
-          ) : (
-            <ReturnChecklist
-              sessionId={sessionId}
-              projectName={projectName}
-              onBack={backToBooking}
-              onDone={backToBookingAfterComplete}
-              onCompleted={bumpListsAfterComplete}
-            />
-          )
+          <>
+            {showResumedBanner && (
+              <ResumedSessionBanner
+                startedAt={resumedStartedAt}
+                onDismiss={() => setShowResumedBanner(false)}
+              />
+            )}
+            {operation === "ISSUE" ? (
+              <IssueChecklist
+                sessionId={sessionId}
+                projectName={projectName}
+                onBack={backToBooking}
+                onComplete={backToBookingAfterComplete}
+                onCompleted={bumpListsAfterComplete}
+              />
+            ) : (
+              <ReturnChecklist
+                sessionId={sessionId}
+                projectName={projectName}
+                onBack={backToBooking}
+                onDone={backToBookingAfterComplete}
+                onCompleted={bumpListsAfterComplete}
+              />
+            )}
+          </>
         }
       />
     );

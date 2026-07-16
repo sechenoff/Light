@@ -39,8 +39,55 @@ describe("ProblemPanel", () => {
     for (const label of REASON_LABELS) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+    // Причина не выбрана — обобщённая подпись без последствия.
     expect(
-      screen.getByText("→ в список «Потеряшки» · заявка на поиск"),
+      screen.getByText("→ в список «Потеряшки»"),
+    ).toBeInTheDocument();
+  });
+
+  it("sub-note reflects the REAL backend consequence per reason", () => {
+    const cases: Array<[
+      "LEFT_ON_SITE" | "LOST" | "STOLEN" | "DESTROYED",
+      string,
+    ]> = [
+      ["LEFT_ON_SITE", "→ в «Потеряшки» · ожидается возврат"],
+      ["LOST", "→ в «Потеряшки» · заявка на поиск"],
+      ["STOLEN", "→ в «Потеряшки» · заявка на поиск"],
+      ["DESTROYED", "→ списание единицы (без поиска)"],
+    ];
+    for (const [reason, note] of cases) {
+      const { unmount } = render(
+        <ProblemPanel
+          reason={reason}
+          onReasonChange={noop}
+          comment=""
+          onCommentChange={noop}
+          expectedBackDate={null}
+          onExpectedBackDateChange={noop}
+        />,
+      );
+      expect(screen.getByText(note)).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("field ids are namespaced by fieldIdPrefix (no DOM-id collisions across rows)", () => {
+    const { container } = render(
+      <ProblemPanel
+        reason="LEFT_ON_SITE"
+        onReasonChange={noop}
+        comment=""
+        onCommentChange={noop}
+        expectedBackDate={null}
+        onExpectedBackDateChange={noop}
+        fieldIdPrefix="problem-unit42"
+      />,
+    );
+    expect(
+      container.querySelector("#problem-unit42-comment"),
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector("#problem-unit42-expected-back"),
     ).toBeInTheDocument();
   });
 

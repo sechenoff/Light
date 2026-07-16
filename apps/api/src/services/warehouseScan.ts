@@ -202,15 +202,19 @@ export async function createSession(
   // Атомарно: либо находим существующую ACTIVE-сессию и возвращаем её,
   // либо создаём новую. Транзакция нужна на случай конкурентного открытия —
   // findFirst + create под одним lock'ом.
+  //
+  // `resumed` — флаг для UI: true, когда вернули уже существующую сессию
+  // (оператор продолжает незавершённую работу — киоск показывает плашку
+  // с временем начала, чтобы resume не выглядел как чистый старт).
   return prisma.$transaction(async (tx: TxClient) => {
     const existing = await tx.scanSession.findFirst({
       where: { bookingId, operation, status: "ACTIVE" },
     });
     if (existing) {
-      return existing;
+      return { ...existing, resumed: true };
     }
 
-    return tx.scanSession.create({
+    const created = await tx.scanSession.create({
       data: {
         bookingId,
         workerName,
@@ -218,6 +222,7 @@ export async function createSession(
         status: "ACTIVE",
       },
     });
+    return { ...created, resumed: false };
   });
 }
 

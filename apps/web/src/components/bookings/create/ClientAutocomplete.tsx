@@ -47,6 +47,10 @@ export function ClientAutocomplete({
   onWillCreateNewChange,
 }: Props) {
   const [options, setOptions] = useState<Client[]>([]);
+  // «Последние клиенты» — показываются при фокусе на ПУСТОМ поле (сортировка
+  // по дате последней брони на сервере). Грузятся лениво один раз на маунт.
+  const [recentOptions, setRecentOptions] = useState<Client[]>([]);
+  const recentLoadedRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   // `selectedName` tracks the last name the user explicitly picked from the
@@ -101,10 +105,27 @@ export function ClientAutocomplete({
     }, 200);
   };
 
+  const fetchRecent = useCallback(async () => {
+    if (recentLoadedRef.current) return;
+    recentLoadedRef.current = true;
+    try {
+      const data = await apiFetch<{ clients: Client[] }>(
+        "/api/clients?sort=recent&limit=8"
+      );
+      setRecentOptions(data.clients);
+    } catch {
+      // Не удалось — просто без «последних»; сброс флага, чтобы попробовать
+      // снова на следующем фокусе.
+      recentLoadedRef.current = false;
+    }
+  }, []);
+
   const handleFocus = () => {
     setOpen(true);
     if (value.trim()) {
       void fetchOptions(value);
+    } else {
+      void fetchRecent();
     }
   };
 
@@ -116,13 +137,15 @@ export function ClientAutocomplete({
   };
 
   // Case-insensitive client-side filter over the fetched superset.
+  // Пустое поле → «последние клиенты» (по дате последней брони).
+  const isRecentMode = !normalizeRu(value);
   const filteredOptions = useMemo(() => {
     const norm = normalizeRu(value);
-    if (!norm) return [];
+    if (!norm) return recentOptions.slice(0, 8);
     return options
       .filter((c) => normalizeRu(c.name).includes(norm))
       .slice(0, 10);
-  }, [options, value]);
+  }, [options, recentOptions, value]);
 
   const hasExactMatch = useMemo(() => {
     const norm = normalizeRu(value);
@@ -281,6 +304,14 @@ export function ClientAutocomplete({
           role="listbox"
           className="absolute z-10 top-full left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-md border border-border bg-surface shadow-sm"
         >
+          {isRecentMode && (
+            <li
+              role="presentation"
+              className="border-b border-border bg-surface-muted px-3 py-1.5 font-cond text-[10px] font-semibold uppercase tracking-wider text-ink-3"
+            >
+              Недавние клиенты
+            </li>
+          )}
           {displayItems.map((item, idx) => {
             const isActive = idx === activeIndex;
             if (item.type === "existing") {

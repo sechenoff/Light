@@ -186,6 +186,13 @@ export interface ScanSessionInfo {
   bookingId: string;
   operation: ScanOperation;
   status: string;
+  /** ISO-время начала сессии (модель ScanSession.startedAt). */
+  startedAt?: string;
+  /**
+   * true — createSession вернул уже существующую ACTIVE-сессию (оператор
+   * продолжает незавершённую работу), false/undefined — сессия новая.
+   */
+  resumed?: boolean;
 }
 
 // ── Auth (mirrors POST /auth + GET /workers/names) ───────────────────────────

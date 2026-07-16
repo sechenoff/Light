@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 
@@ -11,11 +11,36 @@ import { SectionHeader } from "../../../src/components/SectionHeader";
 import { formatMoneyRub, formatRub } from "../../../src/lib/format";
 import { useCurrentUser } from "../../../src/hooks/useCurrentUser";
 import { EquipmentPickerModal } from "../../../src/components/bookings/EquipmentPickerModal";
-import { RetroDiffPanel } from "../../../src/components/bookings/RetroDiffPanel";
 import { ChangeClientModal } from "../../../src/components/bookings/ChangeClientModal";
 import { ApprovalTimeline } from "../../../src/components/bookings/ApprovalTimeline";
 import { ApprovalReviewView } from "../../../src/components/bookings/ApprovalReviewView";
+import { BookingHeader } from "../../../src/components/bookings/BookingHeader";
+import { useBookingLifecycle } from "../../../src/components/bookings/useBookingLifecycle";
+import { useExtendRental } from "../../../src/components/bookings/useExtendRental";
+import {
+  financeModalInitialState,
+  financeModalReducer,
+} from "../../../src/components/bookings/financeModalReducer";
+import { useRetroEdit } from "../../../src/components/bookings/useRetroEdit";
+import {
+  BookingFinancePanel,
+  type InvoiceItem,
+} from "../../../src/components/bookings/BookingFinancePanel";
+import { BookingHero } from "../../../src/components/bookings/BookingHero";
+import { BookingTransportSection } from "../../../src/components/bookings/BookingTransportSection";
+import { BookingScanSection } from "../../../src/components/bookings/BookingScanSection";
+import { BookingEstimateSection } from "../../../src/components/bookings/BookingEstimateSection";
+import { BookingJournalSection } from "../../../src/components/bookings/BookingJournalSection";
+import { BookingItemsTable } from "../../../src/components/bookings/BookingItemsTable";
+import { RetroDiffSummary } from "../../../src/components/bookings/RetroDiffSummary";
+import { BookingOrderInfoSection } from "../../../src/components/bookings/BookingOrderInfoSection";
+import { BookingMobileCta } from "../../../src/components/bookings/BookingMobileCta";
+import { readBookingsListHref } from "../../../src/components/bookings/bookingsListNav";
 import { toast } from "../../../src/components/ToastProvider";
+import {
+  bookingStatusLabel as statusText,
+  bookingStatusVariant as statusVariant,
+} from "../../../src/lib/bookingConstants";
 import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymentModal";
 import { VoidPaymentModal } from "../../../src/components/finance/VoidPaymentModal";
 import { FinanceTimeline } from "../../../src/components/finance/FinanceTimeline";
@@ -36,16 +61,6 @@ type ScanSession = {
   createdAt: string;
   completedAt: string | null;
   _count: { scanRecords: number };
-};
-
-type InvoiceItem = {
-  id: string;
-  number: string | null;
-  kind: "FULL" | "DEPOSIT" | "BALANCE" | "CORRECTION";
-  status: "DRAFT" | "ISSUED" | "PARTIAL_PAID" | "PAID" | "OVERDUE" | "VOID";
-  total: string;
-  paidAmount: string;
-  dueDate: string | null;
 };
 
 type BookingDetail = {
@@ -165,44 +180,6 @@ function bookingTitle(b: BookingDetail): string {
   return [date, b.client.name, project].filter(Boolean).join(" · ");
 }
 
-function statusText(s: BookingDetail["status"]) {
-  switch (s) {
-    case "DRAFT":
-      return "Черновик";
-    case "PENDING_APPROVAL":
-      return "На согласовании";
-    case "CONFIRMED":
-      return "Подтверждено";
-    case "ISSUED":
-      return "Выдано";
-    case "RETURNED":
-      return "Возвращено";
-    case "CANCELLED":
-      return "Отменено";
-  }
-}
-
-function paymentMethodLabel(method: string | null): string {
-  switch (method) {
-    case "CASH": return "Наличные";
-    case "CARD": return "Карта";
-    case "BANK_TRANSFER": return "Перевод";
-    case "OTHER": return "Другое";
-    default: return method ?? "—";
-  }
-}
-
-function statusVariant(s: BookingDetail["status"]): "info" | "warn" | "full" | "edit" | "ok" | "none" | "view" {
-  switch (s) {
-    case "DRAFT": return "view";
-    case "PENDING_APPROVAL": return "warn";
-    case "CONFIRMED": return "full";
-    case "ISSUED": return "edit";
-    case "RETURNED": return "ok";
-    case "CANCELLED": return "none";
-  }
-}
-
 export default function BookingDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -213,83 +190,35 @@ export default function BookingDetailPage() {
   const { user } = useCurrentUser();
   const [changeClientOpen, setChangeClientOpen] = useState(false);
   const [actionBusy, setActionBusy] = useState<null | "submit" | "instant">(null);
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [voidPaymentId, setVoidPaymentId] = useState<string | null>(null);
+  // Фаза 4.5: шесть финансовых модалок — один reducer вместо шести useState.
+  const [financeModals, dispatchFinanceModal] = useReducer(
+    financeModalReducer,
+    financeModalInitialState,
+  );
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [invoicesError, setInvoicesError] = useState(false);
-  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
-  const [refundInvoiceId, setRefundInvoiceId] = useState<string | null>(null);
-  const [cancelDepositOpen, setCancelDepositOpen] = useState(false);
-  const [creditNoteOpen, setCreditNoteOpen] = useState(false);
-  const [lifecycleBusy, setLifecycleBusy] = useState(false);
   // F-EXTEND: продление выданной (ISSUED) брони — инлайн-поле новой даты возврата.
-  const [extendOpen, setExtendOpen] = useState(false);
-  const [extendEndDate, setExtendEndDate] = useState("");
-  const [extendBusy, setExtendBusy] = useState(false);
   // F-EXTEND: повторная отправка на согласование правленной CONFIRMED-брони (WAREHOUSE).
   const [resubmitBusy, setResubmitBusy] = useState(false);
 
-  // ── Ретро-редактирование закрытой брони (SUPER_ADMIN + RETURNED) ──────────
-  // Меняется: название проекта, комментарий, % скидки, состав позиций
-  // (qty, удалить, добавить). Транспорт пока не редактируется inline.
-  // Backend сохраняет в той же транзакции и пишет audit BOOKING_RETROACTIVE_EDIT.
-  type RetroEditItem = {
-    /** id существующего BookingItem ИЛИ "__new-N" для добавленного inline */
-    id: string;
-    equipmentId: string | null;
-    customName?: string | null;
-    customUnitPrice?: number | null;
-    quantity: number;
-    /** Снапшот для display + подсветка изменений */
-    equipment?: {
-      id: string;
-      name: string;
-      category: string;
-      brand?: string | null;
-      model?: string | null;
-    } | null;
-    customCategory?: string | null;
-    /** UI-only: оригинальное qty для подсветки «было N → стало M» */
-    originalQuantity?: number;
-    /** UI-only: помечен на удаление (но строка остаётся видимой как strikethrough) */
-    _deleted?: boolean;
-    /** UI-only: добавлено в этом сеансе (подсветка emerald-soft) */
-    _added?: boolean;
-  };
-  type RetroEditVehicle = {
-    /** id BookingVehicle (его передаём в PATCH vehicleEdits) */
-    bookingVehicleId: string;
-    /** Имя машины для отображения («Газель», «Ивеко») */
-    vehicleName: string;
-    /** Текущее значение пробега машины — для подсказки «было N км» */
-    originalCurrentMileage: number;
-    driverName: string;
-    driverPhone: string;
-    /** Пользователь вводит итоговый одометр после смены; пустая строка = не трогать */
-    endMileage: string;
-    /** Снимок исходных значений для diff-панели */
-    originalDriverName: string;
-    originalDriverPhone: string;
-  };
-  const [retroEditMode, setRetroEditMode] = useState(false);
-  const [retroEdits, setRetroEdits] = useState<{
-    projectName?: string;
-    comment?: string | null;
-    discountPercent?: number | null;
-    /**
-     * Ручной override итоговой суммы брони.
-     *  - undefined → не трогаем поле (по умолчанию при entering edit-mode)
-     *  - "" пустая строка → null (очистить override на бэке, вернуть auto)
-     *  - строка-число → новый override
-     * Хранится как string для контролируемого input'а; парсится при submit.
-     */
-    manualFinalAmount?: string;
-    items?: RetroEditItem[];
-    vehicles?: RetroEditVehicle[];
-  }>({});
-  const [retroBusy, setRetroBusy] = useState(false);
-  /** Модалка для добавления новой позиции (equipment picker) */
-  const [retroPickerOpen, setRetroPickerOpen] = useState(false);
+  // Ретро-редактирование закрытой брони (SUPER_ADMIN + RETURNED) вынесено в
+  // useRetroEdit (фаза 4.6). JSX ретро-режима остаётся ниже (вплетён в
+  // основную таблицу позиций) и читает состояние/обработчики из хука.
+  const {
+    retroEditMode,
+    retroEdits,
+    setRetroEdits,
+    retroBusy,
+    retroPickerOpen,
+    setRetroPickerOpen,
+    enterRetroEdit,
+    cancelRetroEdit,
+    updateRetroVehicle,
+    updateRetroItemQty,
+    toggleRetroItemDeleted,
+    addRetroItemFromEquipment,
+    saveRetroEdit,
+  } = useRetroEdit({ booking, reloadBooking });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -338,51 +267,15 @@ export default function BookingDetailPage() {
     setBooking(fresh.booking);
   }
 
-  // BD-1 / BD-4: переходы жизненного цикла прямо со страницы брони (раньше были
-  // только в списке /bookings). issue/return — POST /:id/status. Отмена: при
-  // наличии оплаты открываем модалку распоряжения депозитом (как было), иначе —
-  // обычная отмена статусом (закрывает дыру «CONFIRMED без оплаты не отменить»).
-  async function runLifecycleAction(action: "issue" | "return" | "cancel", opts?: { force?: boolean }) {
-    if (!id || !booking) return;
-    const isForcedRetry = opts?.force === true;
-    if (!isForcedRetry) {
-      if (action === "cancel") {
-        if (Number(booking.amountPaid ?? "0") > 0) {
-          setCancelDepositOpen(true);
-          return;
-        }
-        if (!confirm("Отменить бронь?\n\nРезервы оборудования будут сняты.")) return;
-      }
-      if (action === "issue" && !confirm("Перевести бронь в статус «Выдано»?")) return;
-      if (action === "return" && !confirm("Перевести бронь в статус «Возвращено»?")) return;
-    }
-    setLifecycleBusy(true);
-    try {
-      await apiFetch(`/api/bookings/${id}/status`, {
-        method: "POST",
-        body: JSON.stringify({ action, ...(isForcedRetry ? { force: true } : {}) }),
-      });
-      toast.success(
-        action === "issue" ? "Бронь выдана" : action === "return" ? "Бронь возвращена" : "Бронь отменена",
-      );
-      await reloadBooking();
-    } catch (e: any) {
-      // Мягкий гард ранней выдачи: сервер вернул 409 ISSUE_TOO_EARLY (до начала
-      // аренды больше суток). Показываем предупреждение и при согласии
-      // повторяем запрос с force: true — сервер зафиксирует раннюю выдачу
-      // в аудите (forcedEarlyIssue).
-      if (action === "issue" && !isForcedRetry && e?.code === "ISSUE_TOO_EARLY") {
-        const serverMsg = typeof e?.message === "string" ? e.message : "До начала аренды больше суток.";
-        if (confirm(`${serverMsg}\n\nВыдать оборудование заранее?`)) {
-          await runLifecycleAction("issue", { force: true });
-        }
-        return;
-      }
-      toast.error(e?.message ?? "Не удалось изменить статус");
-    } finally {
-      setLifecycleBusy(false);
-    }
-  }
+  // BD-1 / BD-4: переходы жизненного цикла (issue/return/cancel) вынесены в
+  // useBookingLifecycle (фаза 4.3). Отмена при наличии оплаты открывает модалку
+  // распоряжения депозитом.
+  const { lifecycleBusy, runLifecycleAction } = useBookingLifecycle({
+    bookingId: id,
+    booking,
+    reloadBooking,
+    onCancelWithDeposit: () => dispatchFinanceModal({ type: "openCancelDeposit" }),
+  });
 
   async function archiveBooking() {
     if (!id) return;
@@ -400,64 +293,22 @@ export default function BookingDetailPage() {
       const res = await apiFetch<{ freedUnits?: number }>(`/api/bookings/${id}`, { method: "DELETE" });
       const freed = res?.freedUnits ?? 0;
       toast.success(freed > 0 ? `Бронь в архиве · освобождено единиц: ${freed}` : "Бронь отправлена в архив");
-      window.location.href = "/bookings";
+      window.location.href = readBookingsListHref();
     } catch (e: any) {
       toast.error(e?.message ?? "Не удалось архивировать бронь");
     }
   }
 
-  /**
-   * F-EXTEND (1): продлить выданную бронь. Оператор вводит новую дату возврата,
-   * шлём PATCH с extendEndDate. Бэкенд-контракт (PATCH ISSUED с extendEndDate)
-   * реализует кластер C-BOOK-API — если сервер его ещё не принимает, PATCH
-   * вернёт 409 BOOKING_EDIT_FORBIDDEN, и мы показываем это тостом, не роняя UI.
-   */
-  function openExtend() {
-    if (!booking) return;
-    // Префилл текущей датой возврата в формате datetime-local (Europe/Moscow).
-    const d = new Date(booking.endDate);
-    // Приводим к московскому времени и парсим компоненты в формат datetime-local.
-    const parts = new Intl.DateTimeFormat("ru-RU", {
-      timeZone: "Europe/Moscow",
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", hour12: false,
-    }).formatToParts(d);
-    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-    setExtendEndDate(`${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`);
-    setExtendOpen(true);
-  }
-
-  async function submitExtend() {
-    if (!booking || extendBusy) return;
-    if (!extendEndDate) {
-      toast.error("Укажите новую дату возврата");
-      return;
-    }
-    const nextEnd = new Date(extendEndDate);
-    if (Number.isNaN(nextEnd.getTime())) {
-      toast.error("Некорректная дата возврата");
-      return;
-    }
-    if (nextEnd.getTime() <= new Date(booking.endDate).getTime()) {
-      toast.error("Новая дата возврата должна быть позже текущей");
-      return;
-    }
-    setExtendBusy(true);
-    try {
-      await apiFetch(`/api/bookings/${booking.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ extendEndDate: nextEnd.toISOString() }),
-      });
-      toast.success("Аренда продлена");
-      setExtendOpen(false);
-      setExtendEndDate("");
-      await reloadBooking();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Не удалось продлить аренду");
-    } finally {
-      setExtendBusy(false);
-    }
-  }
+  // F-EXTEND (1): продление выданной брони вынесено в useExtendRental (фаза 4.4).
+  const {
+    extendOpen,
+    extendEndDate,
+    extendBusy,
+    openExtend,
+    submitExtend,
+    cancelExtend,
+    setExtendEndDate,
+  } = useExtendRental({ booking, reloadBooking });
 
   /**
    * F-EXTEND (2): WAREHOUSE правил уже подтверждённую бронь и хочет отправить её
@@ -482,266 +333,6 @@ export default function BookingDetailPage() {
       toast.error(e?.message ?? "Не удалось отправить на согласование");
     } finally {
       setResubmitBusy(false);
-    }
-  }
-
-  function enterRetroEdit() {
-    if (!booking) return;
-    setRetroEdits({
-      projectName: booking.projectName,
-      comment: booking.comment ?? "",
-      discountPercent: booking.discountPercent ? Number(booking.discountPercent) : null,
-      manualFinalAmount: booking.manualFinalAmount ?? "",
-      vehicles: (booking.vehicles ?? []).map((v) => ({
-        bookingVehicleId: v.id,
-        vehicleName: v.vehicle?.name ?? "Машина",
-        originalCurrentMileage: v.vehicle?.currentMileage ?? 0,
-        driverName: v.driverName ?? "",
-        driverPhone: v.driverPhone ?? "",
-        endMileage: "",
-        originalDriverName: v.driverName ?? "",
-        originalDriverPhone: v.driverPhone ?? "",
-      })),
-      items: booking.items.map((it) => ({
-        id: it.id,
-        equipmentId: it.equipmentId,
-        customName: it.customName ?? null,
-        customUnitPrice: it.customUnitPrice ? Number(it.customUnitPrice) : null,
-        quantity: it.quantity,
-        equipment: it.equipment
-          ? {
-              id: it.equipment.id,
-              name: it.equipment.name,
-              category: it.equipment.category,
-              brand: it.equipment.brand ?? null,
-              model: it.equipment.model ?? null,
-            }
-          : null,
-        customCategory: it.customCategory ?? null,
-        originalQuantity: it.quantity,
-      })),
-    });
-    setRetroEditMode(true);
-  }
-
-  function cancelRetroEdit() {
-    setRetroEditMode(false);
-    setRetroEdits({});
-    setRetroPickerOpen(false);
-  }
-
-  /** Обновляет одно поле машины в retro-edit. */
-  function updateRetroVehicle(
-    bookingVehicleId: string,
-    patch: Partial<Pick<RetroEditVehicle, "driverName" | "driverPhone" | "endMileage">>,
-  ) {
-    setRetroEdits((s) => ({
-      ...s,
-      vehicles: s.vehicles?.map((v) =>
-        v.bookingVehicleId === bookingVehicleId ? { ...v, ...patch } : v,
-      ),
-    }));
-  }
-
-  /** Меняет qty конкретной позиции в retro-edit. */
-  function updateRetroItemQty(itemId: string, qty: number) {
-    setRetroEdits((s) => ({
-      ...s,
-      items: s.items?.map((i) => (i.id === itemId ? { ...i, quantity: Math.max(0, qty) } : i)),
-    }));
-  }
-
-  /** Помечает на удаление / возвращает обратно. */
-  function toggleRetroItemDeleted(itemId: string) {
-    setRetroEdits((s) => ({
-      ...s,
-      items: s.items
-        ?.map((i) => (i.id === itemId ? { ...i, _deleted: !i._deleted } : i))
-        // Если строка _added и _deleted одновременно — просто убираем из массива
-        // (она ещё не сохранена в БД, нет смысла держать как strikethrough).
-        .filter((i) => !(i._added && i._deleted)),
-    }));
-  }
-
-  /** Добавляет новую позицию из equipment-picker'а. */
-  function addRetroItemFromEquipment(eq: {
-    id: string;
-    name: string;
-    category: string;
-    brand?: string | null;
-    model?: string | null;
-  }) {
-    setRetroEdits((s) => {
-      const items = s.items ?? [];
-      // Если такое equipment уже есть — не дублируем, увеличиваем qty.
-      const existing = items.find(
-        (i) => i.equipmentId === eq.id && !i._deleted,
-      );
-      if (existing) {
-        return {
-          ...s,
-          items: items.map((i) =>
-            i.id === existing.id ? { ...i, quantity: i.quantity + 1 } : i,
-          ),
-        };
-      }
-      const newId = `__new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      return {
-        ...s,
-        items: [
-          ...items,
-          {
-            id: newId,
-            equipmentId: eq.id,
-            customName: null,
-            customUnitPrice: null,
-            quantity: 1,
-            equipment: {
-              id: eq.id,
-              name: eq.name,
-              category: eq.category,
-              brand: eq.brand ?? null,
-              model: eq.model ?? null,
-            },
-            customCategory: null,
-            originalQuantity: 0,
-            _added: true,
-          },
-        ],
-      };
-    });
-    setRetroPickerOpen(false);
-  }
-
-  async function saveRetroEdit() {
-    if (!booking || retroBusy) return;
-    setRetroBusy(true);
-    try {
-      const body: Record<string, unknown> = { retroactive: true };
-      if (retroEdits.projectName !== undefined && retroEdits.projectName !== booking.projectName) {
-        body.projectName = retroEdits.projectName;
-      }
-      const currentComment = booking.comment ?? "";
-      const nextComment = retroEdits.comment ?? "";
-      if (nextComment !== currentComment) {
-        body.comment = nextComment === "" ? null : nextComment;
-      }
-      const currentDiscount = booking.discountPercent ? Number(booking.discountPercent) : null;
-      const nextDiscount = retroEdits.discountPercent ?? null;
-      if (nextDiscount !== currentDiscount) {
-        body.discountPercent = nextDiscount;
-      }
-
-      // manualFinalAmount: пустая строка → null (очистить override),
-      // непустая → парсим число. Сравниваем с текущим (string).
-      const currentOverride = booking.manualFinalAmount ?? "";
-      const nextOverrideRaw = (retroEdits.manualFinalAmount ?? "").trim();
-      if (nextOverrideRaw !== currentOverride) {
-        if (nextOverrideRaw === "") {
-          body.manualFinalAmount = null;
-        } else {
-          // WEB-1: parseFloat("12 000") === 12 — молча резал суммы с пробелами
-          // (включая NBSP из ru-RU форматирования). Убираем разделители и парсим
-          // строго через Number: мусор даёт NaN и отсекается проверкой ниже.
-          const n = Number(nextOverrideRaw.replace(/[\s  ]/g, "").replace(",", "."));
-          if (!Number.isFinite(n) || n < 0) {
-            toast.error("Итог брони должен быть неотрицательным числом");
-            return;
-          }
-          body.manualFinalAmount = n;
-        }
-      }
-
-      // Items — отправляем если что-то поменялось (qty, состав).
-      // Backend (PATCH с items) делает полную замену: deleteMany + createMany.
-      // Фильтруем _deleted и строки с qty=0; backend требует minLength=1.
-      const editedItems = retroEdits.items ?? [];
-      const itemsChanged =
-        editedItems.length !== booking.items.length ||
-        editedItems.some(
-          (i) =>
-            i._added ||
-            i._deleted ||
-            i.quantity !== (i.originalQuantity ?? i.quantity),
-        );
-      if (itemsChanged) {
-        const filtered = editedItems.filter((i) => !i._deleted && i.quantity > 0);
-        if (filtered.length === 0) {
-          toast.error("Нельзя оставить бронь без позиций — отмените удаление хотя бы одной.");
-          return;
-        }
-        body.items = filtered.map((i) => ({
-          equipmentId: i.equipmentId,
-          quantity: i.quantity,
-          customName: i.customName ?? undefined,
-          customUnitPrice: i.customUnitPrice ?? undefined,
-        }));
-      }
-
-      // Транспорт: формируем vehicleEdits — только реально изменившиеся поля
-      // по каждой машине, чтобы не дёргать BookingVehicle.update без нужды.
-      const editedVehicles = retroEdits.vehicles ?? [];
-      const vehicleEdits: Array<{
-        bookingVehicleId: string;
-        driverName?: string | null;
-        driverPhone?: string | null;
-        endMileage?: number;
-      }> = [];
-      for (const v of editedVehicles) {
-        const patch: {
-          bookingVehicleId: string;
-          driverName?: string | null;
-          driverPhone?: string | null;
-          endMileage?: number;
-        } = { bookingVehicleId: v.bookingVehicleId };
-        if (v.driverName !== v.originalDriverName) {
-          patch.driverName = v.driverName.trim() === "" ? null : v.driverName.trim();
-        }
-        if (v.driverPhone !== v.originalDriverPhone) {
-          patch.driverPhone = v.driverPhone.trim() === "" ? null : v.driverPhone.trim();
-        }
-        const trimmed = v.endMileage.trim();
-        if (trimmed !== "") {
-          const n = Number.parseInt(trimmed, 10);
-          if (!Number.isFinite(n) || n < 0) {
-            toast.error(`Пробег "${v.vehicleName}" должен быть целым числом ≥ 0`);
-            return;
-          }
-          if (n < v.originalCurrentMileage) {
-            toast.error(
-              `Пробег "${v.vehicleName}" не может уменьшаться (было ${v.originalCurrentMileage} км)`,
-            );
-            return;
-          }
-          if (n !== v.originalCurrentMileage) {
-            patch.endMileage = n;
-          }
-        }
-        // Если в патче только bookingVehicleId — изменений нет, пропускаем
-        if (Object.keys(patch).length > 1) vehicleEdits.push(patch);
-      }
-      if (vehicleEdits.length > 0) {
-        body.vehicleEdits = vehicleEdits;
-      }
-
-      if (Object.keys(body).length === 1) {
-        // Только retroactive: true — нет реальных изменений.
-        toast.info("Нет изменений для сохранения");
-        setRetroEditMode(false);
-        return;
-      }
-      await apiFetch(`/api/bookings/${booking.id}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      });
-      toast.success("Изменения сохранены. Запись в аудит-логе.");
-      setRetroEditMode(false);
-      setRetroEdits({});
-      await reloadBooking();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Не удалось сохранить изменения");
-    } finally {
-      setRetroBusy(false);
     }
   }
 
@@ -884,162 +475,27 @@ export default function BookingDetailPage() {
           Сам заголовок брони отрисован ниже в Hero-секции (по мокапу v2) — здесь только
           breadcrumb-style ссылки и action-кнопки, чтобы не было дубля заголовка. */}
       {!showApprovalView && (
-        <div className="flex items-center justify-between flex-wrap gap-3 no-print">
-          <Link
-            href="/bookings"
-            className="text-xs text-ink-3 hover:text-ink transition-colors"
-          >
-            ← К списку броней
-          </Link>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors">
-              + Новая бронь
-            </Link>
-            {/* BD-1: основные действия жизненного цикла — раньше были только в
-                списке /bookings, на самой странице брони их не было. */}
-            {booking && !isArchived && !retroEditMode && (
-              <>
-                {(["DRAFT", "CONFIRMED"].includes(booking.status) ||
-                  (booking.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN")) && (
-                  <Link
-                    href={`/bookings/${id}/edit`}
-                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors"
-                  >
-                    ✎ Изменить
-                  </Link>
-                )}
-                {booking.status === "CONFIRMED" && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
-                  <button
-                    type="button"
-                    disabled={lifecycleBusy}
-                    onClick={() => runLifecycleAction("issue")}
-                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
-                  >
-                    Выдать
-                  </button>
-                )}
-                {booking.status === "ISSUED" && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
-                  <button
-                    type="button"
-                    disabled={lifecycleBusy}
-                    onClick={() => runLifecycleAction("return")}
-                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
-                  >
-                    Вернуть
-                  </button>
-                )}
-                {/* F-EXTEND (1): продление выданной брони — только SUPER_ADMIN.
-                    Клиент оставил оборудование ещё на день — сдвигаем дату
-                    возврата, не дожидаясь физического возврата. */}
-                {booking.status === "ISSUED" && user?.role === "SUPER_ADMIN" && !extendOpen && (
-                  <button
-                    type="button"
-                    disabled={lifecycleBusy}
-                    onClick={openExtend}
-                    className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
-                  >
-                    Продлить аренду
-                  </button>
-                )}
-                {/* F-EXTEND (2): бронь правили после одобрения — WAREHOUSE может
-                    отправить её на повторное согласование руководителю. */}
-                {booking.status === "CONFIRMED" && user?.role === "WAREHOUSE" && (
-                  <button
-                    type="button"
-                    disabled={resubmitBusy}
-                    onClick={resubmitForApproval}
-                    className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-white transition-colors disabled:opacity-40"
-                    title="Отправить изменённую бронь на повторное согласование"
-                  >
-                    {resubmitBusy ? "Отправляю…" : "На согласование"}
-                  </button>
-                )}
-                {/* «Отменить» только там, где сервер разрешает cancel:
-                    из ISSUED допустим лишь return (allowedActionsByStatus),
-                    и cancel-with-deposit тоже ограничен этими тремя статусами —
-                    иначе кнопка гарантированно заканчивалась 409. */}
-                {["DRAFT", "PENDING_APPROVAL", "CONFIRMED"].includes(booking.status) && user?.role === "SUPER_ADMIN" && (
-                  <button
-                    type="button"
-                    disabled={lifecycleBusy}
-                    onClick={() => runLifecycleAction("cancel")}
-                    className="rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors disabled:opacity-40"
-                  >
-                    Отменить
-                  </button>
-                )}
-              </>
-            )}
-            {/*
-              Ретро-редактирование: только SUPER_ADMIN на закрытой (RETURNED)
-              брони. Кнопка прячется когда уже в режиме редактирования (там
-              работает sticky-bar внизу). См. saveRetroEdit().
-            */}
-            {canRetroEdit && !retroEditMode && (
-              <button
-                type="button"
-                onClick={enterRetroEdit}
-                className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-white transition-colors"
-                title="Изменить уже закрытую бронь — попадёт в аудит-лог"
-              >
-                ✎ Редактировать задним числом
-              </button>
-            )}
-            {/* В архив — только SUPER_ADMIN, на не-архивной броне, не в retro-edit.
-                Раньше архивировать можно было лишь из списка. */}
-            {user?.role === "SUPER_ADMIN" && !isArchived && !retroEditMode && (
-              <button
-                type="button"
-                onClick={archiveBooking}
-                className="rounded border border-rose-border text-rose px-3 py-1.5 text-sm hover:bg-rose-soft transition-colors"
-                title="Отправить в архив (можно восстановить из /bookings/archive)"
-              >
-                В архив
-              </button>
-            )}
-          </div>
-          {/* F-EXTEND (1): инлайн-поле продления выданной брони. */}
-          {extendOpen && booking && booking.status === "ISSUED" && (
-            <div className="w-full mt-3 rounded-lg border border-border bg-surface-subtle p-3 no-print">
-              <p className="eyebrow mb-2">Продлить аренду</p>
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="block">
-                  <span className="block mb-1 text-xs text-ink-3">Новая дата возврата</span>
-                  <input
-                    type="datetime-local"
-                    value={extendEndDate}
-                    onChange={(e) => setExtendEndDate(e.target.value)}
-                    className="rounded border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent"
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={extendBusy}
-                  onClick={submitExtend}
-                  className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors disabled:opacity-40"
-                >
-                  {extendBusy ? "Сохраняю…" : "Продлить"}
-                </button>
-                <button
-                  type="button"
-                  disabled={extendBusy}
-                  onClick={() => { setExtendOpen(false); setExtendEndDate(""); }}
-                  className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
-                >
-                  Отмена
-                </button>
-              </div>
-              <p className="mt-2 text-xs text-ink-3">
-                Текущая дата возврата:{" "}
-                {new Date(booking.endDate).toLocaleString("ru-RU", {
-                  dateStyle: "short",
-                  timeStyle: "short",
-                  timeZone: "Europe/Moscow",
-                })}
-              </p>
-            </div>
-          )}
-        </div>
+        <BookingHeader
+          bookingId={id}
+          booking={booking}
+          userRole={user?.role}
+          isArchived={isArchived}
+          retroEditMode={retroEditMode}
+          canRetroEdit={canRetroEdit}
+          lifecycleBusy={lifecycleBusy}
+          resubmitBusy={resubmitBusy}
+          extendOpen={extendOpen}
+          extendEndDate={extendEndDate}
+          extendBusy={extendBusy}
+          onLifecycleAction={runLifecycleAction}
+          onArchive={archiveBooking}
+          onResubmit={resubmitForApproval}
+          onEnterRetroEdit={enterRetroEdit}
+          onOpenExtend={openExtend}
+          onChangeExtendDate={setExtendEndDate}
+          onSubmitExtend={submitExtend}
+          onCancelExtend={cancelExtend}
+        />
       )}
 
       {loading ? (
@@ -1089,14 +545,14 @@ export default function BookingDetailPage() {
                 ветке обычного вида ниже, но она там не смонтирована при
                 showApprovalView, поэтому дублируем здесь. */}
             <CancelWithDepositModal
-              open={cancelDepositOpen}
-              onClose={() => setCancelDepositOpen(false)}
+              open={financeModals.cancelDepositOpen}
+              onClose={() => dispatchFinanceModal({ type: "closeCancelDeposit" })}
               bookingId={booking.id}
               bookingDisplayName={booking.displayName ?? booking.projectName}
               clientId={booking.client.id}
               clientName={booking.client.name}
               depositTotal={Number(booking.amountPaid ?? "0")}
-              onCancelled={() => { setCancelDepositOpen(false); reloadBooking(); }}
+              onCancelled={() => { dispatchFinanceModal({ type: "closeCancelDeposit" }); reloadBooking(); }}
             />
             <ApprovalReviewView
               booking={booking}
@@ -1108,7 +564,6 @@ export default function BookingDetailPage() {
                   toast.error(e instanceof Error ? e.message : "Не удалось обновить бронь"),
                 );
               }}
-              currentUser={user!}
             />
           </>
         ) : (
@@ -1295,975 +750,107 @@ export default function BookingDetailPage() {
 
           {/* Finance Phase 2 modals */}
           <CreateInvoiceModal
-            open={createInvoiceOpen}
-            onClose={() => setCreateInvoiceOpen(false)}
+            open={financeModals.createInvoiceOpen}
+            onClose={() => dispatchFinanceModal({ type: "closeCreateInvoice" })}
             defaultBookingId={booking.id}
             defaultTotal={booking.finalAmount ?? undefined}
-            onCreated={() => { setCreateInvoiceOpen(false); loadInvoices(); }}
+            onCreated={() => { dispatchFinanceModal({ type: "closeCreateInvoice" }); loadInvoices(); }}
           />
           <RefundModal
-            open={!!refundInvoiceId}
-            onClose={() => setRefundInvoiceId(null)}
-            invoiceId={refundInvoiceId ?? undefined}
+            open={!!financeModals.refundInvoiceId}
+            onClose={() => dispatchFinanceModal({ type: "closeRefund" })}
+            invoiceId={financeModals.refundInvoiceId ?? undefined}
             bookingId={booking.id}
-            onSuccess={() => { setRefundInvoiceId(null); reloadBooking(); }}
+            onSuccess={() => { dispatchFinanceModal({ type: "closeRefund" }); reloadBooking(); }}
           />
           <CancelWithDepositModal
-            open={cancelDepositOpen}
-            onClose={() => setCancelDepositOpen(false)}
+            open={financeModals.cancelDepositOpen}
+            onClose={() => dispatchFinanceModal({ type: "closeCancelDeposit" })}
             bookingId={booking.id}
             bookingDisplayName={booking.displayName ?? booking.projectName}
             clientId={booking.client.id}
             clientName={booking.client.name}
             depositTotal={Number(booking.amountPaid ?? "0")}
-            onCancelled={() => { setCancelDepositOpen(false); reloadBooking(); }}
+            onCancelled={() => { dispatchFinanceModal({ type: "closeCancelDeposit" }); reloadBooking(); }}
           />
           <CreditNoteApplyModal
-            open={creditNoteOpen}
-            onClose={() => setCreditNoteOpen(false)}
+            open={financeModals.creditNoteOpen}
+            onClose={() => dispatchFinanceModal({ type: "closeCreditNote" })}
             bookingId={booking.id}
             clientId={booking.client.id}
-            onApplied={() => { setCreditNoteOpen(false); reloadBooking(); }}
+            onApplied={() => { dispatchFinanceModal({ type: "closeCreditNote" }); reloadBooking(); }}
           />
 
-          {/* ───────── Hero + Finance strip ────────────────────────────────────
-              По мокапу docs/mockups/booking-detail-v2.html: первый блок
-              страницы — крупный заголовок брони (eyebrow + проект + пилы +
-              мета), под ним полоса из 4 финансовых карточек. Это «лицо»
-              страницы.
-
-              В retro-edit режиме скрываем (пользователь работает с формами).
-          */}
-          {!retroEditMode && (() => {
-            const startD = new Date(booking.startDate);
-            const endD = new Date(booking.endDate);
-            const tz = { timeZone: "Europe/Moscow" } as const;
-            const heroDate = startD.toLocaleDateString("ru-RU", {
-              day: "2-digit", month: "long", year: "numeric", ...tz,
-            });
-            const project =
-              booking.projectName?.trim() && booking.projectName.trim() !== "Проект"
-                ? booking.projectName.trim()
-                : "Без названия";
-            // Кол-во смен (приблизительно: целые сутки между startDate и endDate)
-            const msPerDay = 24 * 60 * 60 * 1000;
-            const shifts = Math.max(1, Math.ceil((endD.getTime() - startD.getTime()) / msPerDay));
-            const periodStr =
-              startD.toLocaleDateString("ru-RU", { day: "2-digit", month: "short", ...tz }) +
-              " – " +
-              endD.toLocaleDateString("ru-RU", { day: "2-digit", month: "short", ...tz });
-
-            // Платёжный статус → пилка (отдельная функция)
-            const payStatus = booking.paymentStatus ?? "NOT_PAID";
-            const payLabel =
-              payStatus === "PAID" ? "Оплачено"
-              : payStatus === "PARTIALLY_PAID" ? "Частично"
-              : payStatus === "OVERDUE" ? "Просрочено"
-              : "Не оплачено";
-            const payVariant: "ok" | "warn" | "alert" | "none" =
-              payStatus === "PAID" ? "ok"
-              : payStatus === "OVERDUE" ? "alert"
-              : payStatus === "PARTIALLY_PAID" ? "warn"
-              : "none";
-
-            const total = booking.finalAmount ?? "0";
-            const paid = booking.amountPaid ?? "0";
-            const outstanding = booking.amountOutstanding ?? "0";
-            const discountPct = booking.discountPercent ? Number(booking.discountPercent) : 0;
-            const discountAmount = booking.discountAmount ?? "0";
-
-            // Финансовые карточки — стили под мокап. Цветовая семантика:
-            //  • Оплачено → emerald, если PAID; иначе нейтральный
-            //  • Остаток → rose, если OVERDUE; иначе нейтральный
-            //  • Итого / Скидка — нейтральные.
-            const paidCardTone = payStatus === "PAID" ? "fin--ok" : "";
-            const outstandingTone =
-              payStatus === "OVERDUE" ? "fin--alert" : "";
-
-            return (
-              <>
-                <section className="mb-5 no-print">
-                  <p className="eyebrow text-ink-3">Бронь · {heroDate}</p>
-                  <h1 className="mt-1 font-cond text-3xl md:text-4xl leading-tight tracking-tight text-ink">
-                    {project}
-                  </h1>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-3">
-                    <StatusPill variant={statusVariant(booking.status)} label={statusText(booking.status)} />
-                    <StatusPill variant={payVariant} label={payLabel} />
-                    <span className="text-border-strong">·</span>
-                    <span>{booking.client.name}</span>
-                    <span className="text-border-strong">·</span>
-                    <span className="mono-num">
-                      {periodStr} · {shifts} {shifts === 1 ? "смена" : shifts < 5 ? "смены" : "смен"}
-                    </span>
-                  </div>
-                </section>
-
-                <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5 no-print">
-                  <div className="rounded-lg border border-border bg-surface shadow-xs p-3">
-                    <p className="eyebrow">
-                      Итого
-                      {booking.manualFinalAmount != null && (
-                        <span className="ml-1.5 align-middle inline-block bg-amber text-white text-[9px] px-1 py-0.5 rounded font-semibold tracking-wide">
-                          РУЧНОЙ
-                        </span>
-                      )}
-                    </p>
-                    <p className="mt-1.5 font-cond text-2xl font-semibold mono-num text-ink">
-                      {formatMoneyRub(total)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-ink-3">
-                      {booking.manualFinalAmount != null
-                        ? "override SUPER_ADMIN'а — автомат не применяется"
-                        : "оборудование + транспорт − скидка"}
-                    </p>
-                  </div>
-                  <div className={`rounded-lg border shadow-xs p-3 ${paidCardTone ? "border-emerald-border bg-gradient-to-b from-emerald-soft to-surface" : "border-border bg-surface"}`}>
-                    <p className="eyebrow">Оплачено</p>
-                    <p className={`mt-1.5 font-cond text-2xl font-semibold mono-num ${paidCardTone ? "text-emerald" : "text-ink"}`}>
-                      {formatMoneyRub(paid)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-ink-3">
-                      {payStatus === "PAID" ? "100% оплачено" : "по платежам"}
-                    </p>
-                  </div>
-                  <div className={`rounded-lg border shadow-xs p-3 ${outstandingTone ? "border-rose-border bg-gradient-to-b from-rose-soft to-surface" : "border-border bg-surface"}`}>
-                    <p className="eyebrow">Остаток</p>
-                    <p className={`mt-1.5 font-cond text-2xl font-semibold mono-num ${outstandingTone ? "text-rose" : Number(outstanding) === 0 ? "text-ink-3" : "text-ink"}`}>
-                      {formatMoneyRub(outstanding)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-ink-3">
-                      {payStatus === "OVERDUE" ? "просрочен" : Number(outstanding) === 0 ? "ничего не должны" : "к оплате"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-border bg-surface shadow-xs p-3">
-                    <p className="eyebrow">Скидка</p>
-                    <p className="mt-1.5 font-cond text-2xl font-semibold mono-num text-rose">
-                      {discountPct > 0 ? `−${discountPct}%` : "—"}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-ink-3">
-                      {discountPct > 0 ? `−${formatMoneyRub(discountAmount)}` : "не применялась"}
-                    </p>
-                  </div>
-                </section>
-              </>
-            );
-          })()}
-
-          {/*
-            Печатная шапка-реквизиты. Видна ТОЛЬКО при печати через @media print
-            (`.print-only-block { display:none }` по умолчанию → `display:block`
-            в print-блоке ниже). На экране не должна занимать пиксели.
-          */}
-          <div className="print-only-block">
-            <div className="print-header">
-              <div className="print-header-inner">
-                <div>
-                  <div className="print-org">Светобаза · аренда осветительного оборудования</div>
-                  <div className="print-org-sub">
-                    ИП Сеченов В.А. · ИНН 7700000000 · +7 (495) 123-45-67 · svetobazarent.ru
-                  </div>
-                </div>
-                <div className="print-doc">
-                  <div>Смета к броне</div>
-                  <div className="print-doc-num">
-                    № {booking.id.slice(0, 8)}… от {new Date().toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" })}
-                  </div>
-                </div>
-              </div>
-              <div className="print-hero">
-                <div className="print-eyebrow">
-                  Бронь · {new Date(booking.startDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric", timeZone: "Europe/Moscow" })}
-                </div>
-                <h1 className="print-title">{booking.projectName}</h1>
-                <div className="print-meta">
-                  <span>{statusText(booking.status)}</span>
-                  {booking.paymentStatus && <span> · {(() => {
-                    switch (booking.paymentStatus) {
-                      case "PAID": return "Оплачено";
-                      case "PARTIALLY_PAID": return "Частично оплачено";
-                      case "OVERDUE": return "Просрочено";
-                      default: return "Не оплачено";
-                    }
-                  })()}</span>}
-                  <span> · {booking.client.name}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* Hero + финансовые карточки + печатная шапка — вынесено в BookingHero (фаза 4.10).
+              Экранная часть скрыта в retro-режиме, печатная — рендерится всегда. */}
+          <BookingHero booking={booking} showHero={!retroEditMode} />
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 print-booking">
-          {(() => {
-            // Единый список позиций. Когда есть снапшот сметы — показываем
-            // цены/суммы прямо здесь (раньше дублировалось отдельным списком
-            // «Смета → Позиции»). Сопоставление по equipmentId, затем по имени.
-            const estLines = booking.estimate?.lines ?? [];
-            const priceByEquipmentId = new Map<string, { unitPrice: string; lineSum: string }>();
-            const priceByName = new Map<string, { unitPrice: string; lineSum: string }>();
-            for (const l of estLines) {
-              if (l.equipmentId) priceByEquipmentId.set(l.equipmentId, { unitPrice: l.unitPrice, lineSum: l.lineSum });
-              priceByName.set(l.nameSnapshot, { unitPrice: l.unitPrice, lineSum: l.lineSum });
-            }
-            const showPrices = estLines.length > 0;
-            // В retro-edit добавляется столбец «✕» (delete) + цены в таблице отображаются read-only.
-            const colCount = (showPrices ? 5 : 3) + (retroEditMode ? 1 : 0);
-            // Источник правды для рендера: либо живые items, либо retro-edits.
-            // В retro-edits сохранены original quantities — нужно для подсветки изменений.
-            const displayItems = retroEditMode && retroEdits.items
-              ? retroEdits.items
-              : booking.items.map((it) => ({
-                  id: it.id,
-                  equipmentId: it.equipmentId,
-                  equipment: it.equipment,
-                  customName: it.customName ?? null,
-                  customCategory: it.customCategory ?? null,
-                  quantity: it.quantity,
-                  originalQuantity: it.quantity,
-                  _deleted: false,
-                  _added: false,
-                }));
-            return (
-              <div className="lg:col-span-8 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-                <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
-                  <p className="eyebrow">Позиции брони ({displayItems.filter((i) => !(i as any)._deleted).length})</p>
-                  {retroEditMode && (
-                    <button
-                      type="button"
-                      onClick={() => setRetroPickerOpen(true)}
-                      className="rounded border border-amber-border bg-amber-soft text-amber px-2.5 py-1 text-xs font-medium hover:bg-amber hover:text-white transition-colors no-print"
-                    >
-                      + Добавить позицию
-                    </button>
-                  )}
-                </div>
-                <div className="overflow-auto max-h-[560px]">
-                  <table className="min-w-[860px] w-full text-sm">
-                    <thead className="bg-surface-subtle text-ink-2 border-b border-border sticky top-0">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-medium">Категория</th>
-                        <th className="text-left px-3 py-2 font-medium">Наименование</th>
-                        <th className="px-3 py-2 w-[100px] font-medium text-right">Кол-во</th>
-                        {showPrices && <th className="px-3 py-2 w-[120px] font-medium text-right">Цена</th>}
-                        {showPrices && <th className="px-3 py-2 w-[130px] font-medium text-right">Сумма</th>}
-                        {retroEditMode && <th className="px-3 py-2 w-[40px] no-print"></th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayItems.map((it) => {
-                        const price =
-                          (it.equipmentId ? priceByEquipmentId.get(it.equipmentId) : undefined) ??
-                          priceByName.get(it.equipment?.name ?? it.customName ?? "");
-                        const anyIt = it as RetroEditItem;
-                        const qtyChanged =
-                          retroEditMode &&
-                          anyIt.originalQuantity !== undefined &&
-                          anyIt.quantity !== anyIt.originalQuantity &&
-                          !anyIt._added;
-                        const rowClass = anyIt._deleted
-                          ? "border-t border-border bg-rose-soft"
-                          : anyIt._added
-                            ? "border-t border-border bg-emerald-soft"
-                            : qtyChanged
-                              ? "border-t border-border bg-amber-soft"
-                              : "border-t border-border";
-                        return (
-                          <tr key={it.id} className={rowClass}>
-                            <td className="px-3 py-2 text-ink-2">{it.equipment?.category ?? it.customCategory ?? "—"}</td>
-                            <td className="px-3 py-2">
-                              <div className={`font-medium text-ink ${anyIt._deleted ? "line-through text-ink-3" : ""}`}>
-                                {it.equipment?.name ?? it.customName ?? "—"}
-                              </div>
-                              <div className="text-xs text-ink-3">
-                                {it.equipment?.brand ? it.equipment.brand : ""} {it.equipment?.model ? `· ${it.equipment.model}` : ""}
-                                {qtyChanged && (
-                                  <span className="text-amber ml-1">
-                                    · было {anyIt.originalQuantity} → стало {anyIt.quantity}
-                                  </span>
-                                )}
-                                {anyIt._added && <span className="text-emerald ml-1">· новая позиция</span>}
-                                {anyIt._deleted && <span className="text-rose ml-1">· к удалению</span>}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2 text-right mono-num">
-                              {retroEditMode ? (
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={anyIt.quantity}
-                                  disabled={anyIt._deleted}
-                                  onChange={(e) =>
-                                    updateRetroItemQty(it.id, Number(e.target.value) || 0)
-                                  }
-                                  className="w-16 text-right rounded border border-amber-border bg-white px-1 py-0.5 mono-num text-sm focus:outline-none focus:ring-1 focus:ring-amber disabled:bg-rose-soft disabled:text-ink-3"
-                                />
-                              ) : (
-                                <span className="font-medium">{it.quantity}</span>
-                              )}
-                            </td>
-                            {showPrices && (
-                              <td className="px-3 py-2 text-right mono-num text-ink-2">
-                                {price ? formatMoneyRub(price.unitPrice) : "—"}
-                              </td>
-                            )}
-                            {showPrices && (
-                              <td className={`px-3 py-2 text-right mono-num font-medium ${qtyChanged ? "text-amber" : "text-ink"}`}>
-                                {price
-                                  ? retroEditMode && !anyIt._deleted
-                                    // Live-пересчёт суммы строки при правке кол-ва:
-                                    // цена за смену × текущее кол-во (бэкенд пересчитает
-                                    // окончательно на сохранении, но оператор видит эффект сразу).
-                                    ? formatMoneyRub(String(Number(price.unitPrice) * anyIt.quantity))
-                                    : formatMoneyRub(price.lineSum)
-                                  : "—"}
-                              </td>
-                            )}
-                            {retroEditMode && (
-                              <td className="px-3 py-2 text-center no-print">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleRetroItemDeleted(it.id)}
-                                  aria-label={anyIt._deleted ? "Вернуть строку" : "Удалить строку"}
-                                  title={anyIt._deleted ? "Вернуть строку" : "Удалить строку"}
-                                  className={`text-base ${anyIt._deleted ? "text-accent-bright hover:text-accent" : "text-rose hover:text-rose/80"}`}
-                                >
-                                  {anyIt._deleted ? "↩" : "✕"}
-                                </button>
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                      {displayItems.length === 0 ? (
-                        <tr>
-                          <td className="px-3 py-6 text-center text-ink-3" colSpan={colCount}>
-                            Нет позиций
-                          </td>
-                        </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            );
-          })()}
+          {/* Таблица позиций — вынесена в BookingItemsTable (фаза 4.10). */}
+          <BookingItemsTable
+            booking={booking}
+            retroEditMode={retroEditMode}
+            retroItems={retroEdits.items}
+            onOpenPicker={() => setRetroPickerOpen(true)}
+            onUpdateQty={updateRetroItemQty}
+            onToggleDeleted={toggleRetroItemDeleted}
+          />
 
           <div className="lg:col-span-4 space-y-4">
-            {/* RetroDiffPanel — видна только в retro-режиме. В САМОМ верху
-                правой колонки, чтобы оператор всегда видел сводку своих
-                правок без необходимости скроллить.
-            */}
-            {retroEditMode && (() => {
-              // Подсчитываем agg'и из текущего retroEdits state.
-              const items = retroEdits.items ?? [];
-              const vehicles = retroEdits.vehicles ?? [];
-              const itemsAdded = items.filter((i) => i._added && !i._deleted).length;
-              const itemsRemoved = items.filter((i) => i._deleted && !i._added).length;
-              const itemsQtyChanged = items.filter(
-                (i) =>
-                  !i._added &&
-                  !i._deleted &&
-                  i.originalQuantity !== undefined &&
-                  i.quantity !== i.originalQuantity,
-              ).length;
-              const vehiclesDriverChanged = vehicles.filter(
-                (v) =>
-                  v.driverName !== v.originalDriverName ||
-                  v.driverPhone !== v.originalDriverPhone,
-              ).length;
-              const vehiclesMileageChanged = vehicles.filter((v) => {
-                const t = v.endMileage.trim();
-                if (t === "") return false;
-                const n = Number.parseInt(t, 10);
-                return Number.isFinite(n) && n !== v.originalCurrentMileage;
-              }).length;
-              return (
-                <RetroDiffPanel
-                  originalProjectName={booking.projectName}
-                  editedProjectName={retroEdits.projectName}
-                  originalComment={booking.comment ?? ""}
-                  editedComment={retroEdits.comment ?? ""}
-                  originalDiscountPercent={booking.discountPercent ? Number(booking.discountPercent) : null}
-                  editedDiscountPercent={retroEdits.discountPercent ?? null}
-                  originalManualFinalAmount={booking.manualFinalAmount ?? null}
-                  editedManualFinalAmount={retroEdits.manualFinalAmount ?? ""}
-                  autoFinalAmount={booking.finalAmount ?? "0"}
-                  itemsAdded={itemsAdded}
-                  itemsRemoved={itemsRemoved}
-                  itemsQtyChanged={itemsQtyChanged}
-                  vehiclesDriverChanged={vehiclesDriverChanged}
-                  vehiclesMileageChanged={vehiclesMileageChanged}
-                />
-              );
-            })()}
-            {/* Транспорт и водители — заполняется на погрузке.
-                Поставлен в самый верх правой колонки, чтобы был первым после оборудования. */}
-            {((booking.vehicles?.length ?? 0) > 0) && (
-              <div className="rounded-lg border border-accent-border bg-surface shadow-xs overflow-hidden">
-                <div className="p-3 border-b border-accent-border bg-accent-soft flex items-center justify-between">
-                  <p className="eyebrow text-accent-bright">🚐 Транспорт и водители</p>
-                  <span className="text-xs text-ink-3">
-                    {booking.vehicles!.length} {booking.vehicles!.length === 1 ? "машина" : booking.vehicles!.length < 5 ? "машины" : "машин"}
-                  </span>
-                </div>
-                <div className="p-3 space-y-2">
-                  {retroEditMode ? (
-                    /*
-                      В retro-режиме показываем кастомную inline-форму:
-                      driverName / driverPhone / endMileage. Сохраняется
-                      централизованно через PATCH /api/bookings/:id с
-                      retroactive:true. VehicleDriverRow в retro-mode не
-                      используется — у него отдельный endpoint для warehouse
-                      kiosk и он не вписывается в общий save flow.
-                    */
-                    (retroEdits.vehicles ?? []).map((rv) => {
-                      const original = booking.vehicles!.find((v) => v.id === rv.bookingVehicleId);
-                      return (
-                        <div
-                          key={rv.bookingVehicleId}
-                          className="rounded-lg border border-amber-border bg-amber-soft/40 p-3 space-y-2"
-                        >
-                          <div className="flex items-baseline justify-between">
-                            <p className="text-sm font-medium text-ink">{rv.vehicleName}</p>
-                            <span className="text-xs text-ink-3 mono-num">
-                              {original?.shiftHours ? `${original.shiftHours} ч` : ""}
-                              {original?.kmOutsideMkad ? ` · ${original.kmOutsideMkad} км вне МКАД` : ""}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            <label className="block">
-                              <span className="eyebrow block mb-1">Водитель</span>
-                              <input
-                                type="text"
-                                value={rv.driverName}
-                                onChange={(e) =>
-                                  updateRetroVehicle(rv.bookingVehicleId, { driverName: e.target.value })
-                                }
-                                className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
-                                placeholder="ФИО"
-                              />
-                            </label>
-                            <label className="block">
-                              <span className="eyebrow block mb-1">Телефон</span>
-                              <input
-                                type="text"
-                                value={rv.driverPhone}
-                                onChange={(e) =>
-                                  updateRetroVehicle(rv.bookingVehicleId, { driverPhone: e.target.value })
-                                }
-                                className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber mono-num"
-                                placeholder="+7 (XXX) XXX-XX-XX"
-                              />
-                            </label>
-                            <label className="block">
-                              <span className="eyebrow block mb-1">Пробег после смены, км</span>
-                              <input
-                                type="number"
-                                min={rv.originalCurrentMileage}
-                                step={1}
-                                value={rv.endMileage}
-                                onChange={(e) =>
-                                  updateRetroVehicle(rv.bookingVehicleId, { endMileage: e.target.value })
-                                }
-                                placeholder={`≥ ${rv.originalCurrentMileage}`}
-                                className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber mono-num"
-                              />
-                              <span className="block mt-1 text-xs text-ink-3">
-                                было {rv.originalCurrentMileage.toLocaleString("ru-RU")} км
-                              </span>
-                            </label>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    booking.vehicles!.map((v) => (
-                      <VehicleDriverRow
-                        key={v.id}
-                        bookingId={booking.id}
-                        vehicle={v}
-                        canEdit={user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE"}
-                        onUpdated={(next) => {
-                          setBooking((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  vehicles: prev.vehicles?.map((veh) =>
-                                    veh.id === v.id
-                                      ? { ...veh, driverName: next.driverName, driverPhone: next.driverPhone }
-                                      : veh,
-                                  ),
-                                }
-                              : prev,
-                          );
-                        }}
-                      />
-                    ))
-                  )}
-                  {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
-                    <p className="text-xs text-ink-3 px-1 pt-1">
-                      Заполняется при погрузке — ведём учёт, кто ездил за рулём.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-            {(booking.status === "CONFIRMED" || booking.status === "ISSUED" || booking.status === "RETURNED") && (
-              <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden no-print">
-                <div className="p-3 border-b border-border bg-surface-subtle">
-                  <p className="eyebrow">Сканирование</p>
-                </div>
-                <div className="p-3 text-sm text-ink space-y-3">
-                  {(booking.scanSessions ?? []).length > 0 ? (
-                    <div className="space-y-2">
-                      {(booking.scanSessions ?? []).map((ss) => (
-                        <div key={ss.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border bg-surface-subtle">
-                          <div className="flex items-center gap-2">
-                            <StatusPill
-                              variant={ss.operation === "ISSUE" ? "info" : "ok"}
-                              label={ss.operation === "ISSUE" ? "Выдача" : "Возврат"}
-                            />
-                            <span className="text-ink-2">{ss.workerName}</span>
-                          </div>
-                          <div className="text-right text-xs text-ink-3">
-                            <div>{new Date(ss.createdAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}</div>
-                            <div className="flex items-center gap-1 justify-end">
-                              <span>{ss._count.scanRecords} скан. ·</span>
-                              <StatusPill
-                                variant={ss.status === "COMPLETED" ? "ok" : ss.status === "ACTIVE" ? "edit" : "none"}
-                                label={ss.status === "COMPLETED" ? "Завершена" : ss.status === "ACTIVE" ? "Активна" : "Отменена"}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-ink-3 text-sm">Нет сессий сканирования</div>
-                  )}
-                  {(booking.status === "CONFIRMED" || booking.status === "ISSUED") && (
-                    <Link
-                      href={`/warehouse/scan?booking=${booking.id}`}
-                      className="inline-flex items-center gap-1.5 rounded border border-border px-3 py-1.5 text-sm hover:bg-surface-muted transition-colors"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-                        <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-                        <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-                        <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-                        <line x1="7" y1="12" x2="17" y2="12" />
-                      </svg>
-                      Начать сканирование
-                    </Link>
-                  )}
-                </div>
-              </div>
-            )}
-            {/* ── ФИНАНСЫ ── Mockup-faithful finance block ── */}
-            {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
-              <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-                {/* Header */}
-                <div className="px-4 pt-4 pb-3 border-b border-border bg-surface-subtle">
-                  <p className="eyebrow text-accent-bright mb-1">Финансы</p>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <StatusPill
-                      variant={
-                        booking.paymentStatus === "PAID" ? "ok"
-                        : booking.paymentStatus === "PARTIALLY_PAID" ? "limited"
-                        : booking.paymentStatus === "OVERDUE" ? "alert"
-                        : "none"
+            {/* Сводка правок retro-режима — вынесена в RetroDiffSummary (фаза 4.10). */}
+            {retroEditMode && <RetroDiffSummary booking={booking} retroEdits={retroEdits} />}
+
+            {/* Транспорт и сканирование — вынесены в компоненты (фаза 4.10). */}
+            <BookingTransportSection
+              bookingId={booking.id}
+              vehicles={booking.vehicles}
+              userRole={user?.role}
+              retroEditMode={retroEditMode}
+              retroVehicles={retroEdits.vehicles}
+              onUpdateRetroVehicle={updateRetroVehicle}
+              onDriverUpdated={(vehicleRowId, next) => {
+                setBooking((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        vehicles: prev.vehicles?.map((veh) =>
+                          veh.id === vehicleRowId
+                            ? { ...veh, driverName: next.driverName, driverPhone: next.driverPhone }
+                            : veh,
+                        ),
                       }
-                      label={
-                        booking.paymentStatus === "PAID" ? "Оплачен"
-                        : booking.paymentStatus === "PARTIALLY_PAID" ? "Частично оплачен"
-                        : booking.paymentStatus === "OVERDUE" ? "Просрочен"
-                        : "Не оплачен"
-                      }
-                    />
-                    {booking.expectedPaymentDate && (
-                      <span className="text-xs text-ink-3">
-                        срок {new Date(booking.expectedPaymentDate).toLocaleDateString("ru-RU")}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                    : prev,
+                );
+              }}
+            />
+            <BookingScanSection
+              bookingId={booking.id}
+              bookingStatus={booking.status}
+              scanSessions={booking.scanSessions}
+            />
 
-                <div className="p-4 space-y-4">
-                  {/* KPI mini-strip */}
-                  <div className="grid grid-cols-3 gap-2 p-3 bg-surface-2 rounded-lg">
-                    <div>
-                      <div className="eyebrow text-ink-3 mb-1">Сумма брони</div>
-                      <div className="text-lg font-semibold mono-num text-ink">{formatMoneyRub(booking.finalAmount ?? "0")}</div>
-                    </div>
-                    <div>
-                      <div className="eyebrow text-ink-3 mb-1">Получено</div>
-                      <div className="text-lg font-semibold mono-num text-emerald">{formatMoneyRub(booking.amountPaid ?? "0")}</div>
-                    </div>
-                    <div>
-                      <div className="eyebrow text-ink-3 mb-1">К получению</div>
-                      <div className={`text-lg font-semibold mono-num ${Number(booking.amountOutstanding ?? "0") > 0 ? "text-rose" : "text-ink"}`}>
-                        {formatMoneyRub(booking.amountOutstanding ?? "0")}
-                      </div>
-                    </div>
-                  </div>
+            {/* ── ФИНАНСЫ ── вынесено в BookingFinancePanel (фаза 4.7);
+                модалки остаются на этой странице и открываются через dispatch. */}
+            <BookingFinancePanel
+              booking={booking}
+              userRole={user?.role}
+              isArchived={isArchived}
+              invoices={invoices}
+              invoicesError={invoicesError}
+              dispatch={dispatchFinanceModal}
+              onDownload={download}
+              onReloadInvoices={loadInvoices}
+              onDownloadInvoicePdf={downloadInvoicePdf}
+            />
 
-                  {/* Разбивка «Сумма брони» — единственный источник истины для оператора.
-                      finalAmount = аренда-после-скидки (снапшот сметы) + транспорт.
-                      Показываем явно, чтобы расхождение с блоком «Смета» (там только
-                      оборудование, без транспорта) не сбивало с толку. */}
-                  {(() => {
-                    const equipAfterDiscount = booking.estimate
-                      ? Number(booking.estimate.totalAfterDiscount)
-                      : Number(booking.finalAmount ?? "0") - Number(booking.transportSubtotalRub ?? "0");
-                    const transport = Number(booking.transportSubtotalRub ?? "0");
-                    const transportVehicles = booking.vehicles ?? [];
-                    const hasMultiVehicles = transportVehicles.length > 0;
-                    const hasTransport =
-                      (hasMultiVehicles || Boolean(booking.vehicleId)) && transport > 0;
-                    const finalNum = Number(booking.finalAmount ?? "0");
-                    const discount = booking.estimate ? Number(booking.estimate.discountAmount) : Number(booking.discountAmount ?? "0");
-                    const rentBeforeDiscount = booking.estimate ? Number(booking.estimate.subtotal) : Number(booking.totalEstimateAmount ?? "0");
-                    // Сигнал рассинхрона: снапшот сметы + транспорт ≠ сохранённый finalAmount.
-                    const recomposed = equipAfterDiscount + transport;
-                    const drifted = booking.estimate != null && Math.abs(recomposed - finalNum) > 0.01;
-                    return (
-                      <div className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm space-y-1.5">
-                        <div className="eyebrow text-ink-3 mb-1">Из чего складывается сумма</div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-2">Аренда оборудования</span>
-                          <span className="mono-num text-ink-2">{formatMoneyRub(rentBeforeDiscount)}</span>
-                        </div>
-                        {discount > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-ink-2">
-                              Скидка{booking.estimate?.discountPercent ? ` ${booking.estimate.discountPercent}%` : ""}
-                            </span>
-                            <span className="mono-num text-rose">−{formatMoneyRub(discount)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between">
-                          <span className="text-ink-2">Аренда после скидки</span>
-                          <span className="mono-num text-ink-2">{formatMoneyRub(equipAfterDiscount)}</span>
-                        </div>
-                        {hasTransport && hasMultiVehicles && (
-                          <>
-                            {transportVehicles.map((v) => (
-                              <div key={v.id} className="flex justify-between">
-                                <span className="text-ink-2">
-                                  Транспорт{v.vehicle?.name ? ` (${v.vehicle.name})` : ""}
-                                </span>
-                                <span className="mono-num text-ink-2">
-                                  +{formatMoneyRub(v.subtotalRub ?? "0")}
-                                </span>
-                              </div>
-                            ))}
-                          </>
-                        )}
-                        {hasTransport && !hasMultiVehicles && (
-                          <div className="flex justify-between">
-                            <span className="text-ink-2">
-                              Доставка / транспорт{booking.vehicle?.name ? ` (${booking.vehicle.name})` : ""}
-                            </span>
-                            <span className="mono-num text-ink-2">+{formatMoneyRub(transport)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between border-t border-border pt-1.5 font-semibold">
-                          <span className="text-ink">Сумма брони</span>
-                          <span className="mono-num text-ink">{formatMoneyRub(booking.finalAmount ?? "0")}</span>
-                        </div>
-                        {drifted && (
-                          <div className="mt-1 rounded bg-amber-soft border border-amber-border px-2 py-1 text-xs text-amber">
-                            Смета пересчитана после изменений — итог брони ({formatMoneyRub(finalNum)}) актуальнее
-                            суммы в снапшоте сметы ниже ({formatMoneyRub(recomposed)}).
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                  {/* CTA row (desktop) */}
-                  <div className="hidden md:flex flex-wrap gap-2">
-                    {/* Записать платёж: SA всегда; WH при ISSUED|RETURNED. Не для архивных. */}
-                    {!isArchived && (user?.role === "SUPER_ADMIN" ||
-                      (user?.role === "WAREHOUSE" &&
-                        (booking.status === "ISSUED" || booking.status === "RETURNED") &&
-                        (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
-                    ) && (
-                      <button
-                        className="rounded bg-accent-bright text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
-                        onClick={() => setPaymentModalOpen(true)}
-                      >
-                        + Записать платёж
-                      </button>
-                    )}
-
-                    {/* Отменить с депозитом (SA only) */}
-                    {user?.role === "SUPER_ADMIN" &&
-                      ["DRAFT", "PENDING_APPROVAL", "CONFIRMED"].includes(booking.status) &&
-                      Number(booking.amountPaid ?? "0") > 0 && (
-                        <button
-                          className="rounded border border-rose px-3 py-2 text-sm text-rose hover:bg-rose-soft transition-colors"
-                          onClick={() => setCancelDepositOpen(true)}
-                        >
-                          Отменить бронь
-                        </button>
-                    )}
-
-                    {/* Счёт PDF — legacy */}
-                    {booking.legacyFinance !== false && (
-                      <button
-                        className="rounded border border-border px-3 py-2 text-sm hover:bg-surface-subtle transition-colors"
-                        onClick={() => download(`/api/bookings/${booking.id}/invoice.pdf`, `Счёт_${booking.id}.pdf`)}
-                      >
-                        📄 Скачать счёт PDF
-                      </button>
-                    )}
-
-                    {/* Акт PDF */}
-                    {(() => {
-                      const canAct = booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0;
-                      const actHint = "Акт доступен после возврата оборудования и закрытия долга";
-                      return (
-                        <button
-                          className={`rounded border px-3 py-2 text-sm transition-colors ${
-                            canAct
-                              ? "border-border hover:bg-surface-subtle"
-                              : "border-border text-ink-3 cursor-not-allowed opacity-50"
-                          }`}
-                          title={canAct ? "Скачать акт PDF" : actHint}
-                          aria-label={canAct ? "Скачать акт PDF" : actHint}
-                          disabled={!canAct}
-                          onClick={canAct ? () => download(`/api/bookings/${booking.id}/act.pdf`, `Акт_${booking.id}.pdf`) : undefined}
-                        >
-                          📄 Скачать акт PDF
-                        </button>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Счета (Phase 2, post-cutoff) */}
-                  {booking.legacyFinance === false && user?.role === "SUPER_ADMIN" && (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="eyebrow">Счета</p>
-                        <button
-                          onClick={() => setCreateInvoiceOpen(true)}
-                          className="text-[11px] px-2 py-1 bg-accent-bright text-white rounded hover:opacity-90"
-                        >
-                          + Создать счёт
-                        </button>
-                      </div>
-                      {invoicesError ? (
-                        <div className="text-xs text-rose py-2">
-                          Не удалось загрузить счета.{" "}
-                          <button type="button" onClick={() => loadInvoices()} className="underline hover:text-rose/80">
-                            Повторить
-                          </button>
-                        </div>
-                      ) : invoices.length === 0 ? (
-                        <div className="text-xs text-ink-3 py-2">Счетов пока нет</div>
-                      ) : (
-                        <div className="border border-border rounded-lg overflow-hidden">
-                          <table className="w-full text-xs">
-                            <thead className="bg-surface-subtle border-b border-border text-ink-2">
-                              <tr>
-                                <th className="text-left px-3 py-2 font-medium">№</th>
-                                <th className="text-left px-3 py-2 font-medium">Тип</th>
-                                <th className="text-right px-3 py-2 font-medium">Сумма</th>
-                                <th className="text-right px-3 py-2 font-medium">Срок</th>
-                                <th className="px-3 py-2"></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {invoices.map((inv) => {
-                                const invStatusVariant = (
-                                  inv.status === "DRAFT" ? "view" :
-                                  inv.status === "ISSUED" ? "info" :
-                                  inv.status === "PARTIAL_PAID" ? "warn" :
-                                  inv.status === "PAID" ? "ok" :
-                                  inv.status === "OVERDUE" ? "alert" : "none"
-                                ) as "view" | "info" | "warn" | "ok" | "alert" | "none";
-                                const invStatusLabel = {
-                                  DRAFT: "Черновик", ISSUED: "Выставлен", PARTIAL_PAID: "Частично",
-                                  PAID: "Оплачен", OVERDUE: "Просрочен", VOID: "Аннулирован",
-                                }[inv.status] ?? inv.status;
-                                const kindLabel = { FULL: "Полный", DEPOSIT: "Предоплата", BALANCE: "Остаток", CORRECTION: "Корректировка" }[inv.kind] ?? inv.kind;
-                                return (
-                                  <tr key={inv.id} className="border-t border-border">
-                                    <td className="px-3 py-2 font-mono text-ink-2">{inv.number ?? "—"}</td>
-                                    <td className="px-3 py-2 text-ink-2">{kindLabel}</td>
-                                    <td className="px-3 py-2 text-right mono-num">{formatMoneyRub(inv.total)}</td>
-                                    <td className="px-3 py-2 text-right text-ink-3">
-                                      {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString("ru-RU") : "—"}
-                                    </td>
-                                    <td className="px-3 py-2">
-                                      <div className="flex items-center gap-1.5 justify-end">
-                                        <StatusPill variant={invStatusVariant} label={invStatusLabel} />
-                                        {inv.number && (
-                                          <button
-                                            onClick={() => downloadInvoicePdf(inv)}
-                                            className="text-ink-3 hover:text-accent px-1"
-                                            title="PDF"
-                                            aria-label="Скачать PDF счёта"
-                                          >
-                                            📄
-                                          </button>
-                                        )}
-                                        {["ISSUED", "PARTIAL_PAID", "PAID"].includes(inv.status) && (
-                                          <button
-                                            onClick={() => setRefundInvoiceId(inv.id)}
-                                            className="text-amber hover:underline"
-                                          >
-                                            ↩ Возврат
-                                          </button>
-                                        )}
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                      <button
-                        onClick={() => setCreditNoteOpen(true)}
-                        className="mt-2 text-[11px] text-accent hover:underline"
-                      >
-                        Кредит-ноты клиента →
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Платежи */}
-                  {(booking.payments ?? []).length > 0 && (
-                    <div>
-                      <p className="eyebrow mb-2">Платежи</p>
-                      <div className="divide-y divide-border">
-                        {(booking.payments ?? []).map((p) => {
-                          // Аннулирование пишет voidedAt (paymentService.voidPayment);
-                          // direction остаётся INCOME — никакого значения "VOID" в
-                          // enum PaymentDirection нет. Сервер исключает voided из
-                          // сумм (recomputeBookingFinance), здесь — только отображение.
-                          const isVoided = Boolean(p.voidedAt);
-                          return (
-                            <div
-                              key={p.id}
-                              className={`flex items-center justify-between gap-2 py-2.5 text-sm ${isVoided ? "opacity-60" : ""}`}
-                            >
-                              <div className="min-w-0">
-                                <span className={isVoided ? "line-through" : ""}>
-                                  <span className={`font-semibold mono-num ${isVoided ? "text-ink-3" : "text-emerald"}`}>
-                                    +{formatMoneyRub(p.amount)}
-                                  </span>
-                                  <span className="text-ink-3 mx-1.5">·</span>
-                                  <span className={isVoided ? "text-ink-3" : "text-ink-2"}>{paymentMethodLabel(p.method)}</span>
-                                  {p.note && <span className="text-xs text-ink-3 ml-1.5 truncate">{p.note}</span>}
-                                </span>
-                                <div className="text-xs text-ink-3 mt-0.5">
-                                  {p.receivedAt ? new Date(p.receivedAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" }) : "—"}
-                                </div>
-                                {isVoided && (
-                                  <div className="text-xs text-rose mt-0.5">
-                                    Аннулирован{p.voidReason ? `: ${p.voidReason}` : ""}
-                                  </div>
-                                )}
-                              </div>
-                              {!isVoided && user?.role === "SUPER_ADMIN" && (
-                                <div className="flex gap-1.5 shrink-0">
-                                  <button
-                                    className="text-xs text-rose border border-rose-border rounded px-2 py-0.5 hover:bg-rose-soft transition-colors"
-                                    onClick={() => setVoidPaymentId(p.id)}
-                                  >
-                                    ⊘ Аннулировать
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Хронология денег (SA only, collapsible) */}
-                  {user?.role === "SUPER_ADMIN" && (
-                    <details className="group">
-                      <summary className="cursor-pointer flex items-center justify-between px-3 py-2.5 bg-surface-2 rounded-lg text-sm font-medium text-ink list-none hover:bg-surface-subtle transition-colors">
-                        <span>📊 Хронология денег</span>
-                        <span className="text-ink-3 group-open:rotate-180 transition-transform text-xs">▾</span>
-                      </summary>
-                      <div className="pt-3 px-1">
-                        <FinanceTimeline bookingId={booking.id} />
-                      </div>
-                    </details>
-                  )}
-
-                  {/* Связанные расходы (SA only, collapsible) */}
-                  {user?.role === "SUPER_ADMIN" && (
-                    <details className="group">
-                      <summary className="cursor-pointer flex items-center justify-between px-3 py-2.5 bg-surface-2 rounded-lg text-sm font-medium text-ink list-none hover:bg-surface-subtle transition-colors">
-                        <span>🛒 Связанные расходы</span>
-                        <span className="text-ink-3 group-open:rotate-180 transition-transform text-xs">▾</span>
-                      </summary>
-                      <div className="pt-3 px-1">
-                        <RelatedExpenses bookingId={booking.id} />
-                      </div>
-                    </details>
-                  )}
-
-                  {/* WAREHOUSE finance note */}
-                  {user?.role === "WAREHOUSE" && (
-                    <div className="text-xs text-ink-3 bg-accent-soft border border-accent-border rounded-lg px-3 py-2">
-                      <strong className="text-accent-bright">Доступ склада:</strong> только наличные/карта · до 100 000 ₽ за операцию
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Данные заказа */}
-            <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-              <div className="p-3 border-b border-border bg-surface-subtle">
-                <p className="eyebrow">Данные заказа</p>
-              </div>
-              <div className="p-3 text-sm text-ink space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-ink-3">Клиент:</span>{" "}
-                  <span className="font-medium">{booking.client.name}</span>
-                  {user?.role === "SUPER_ADMIN" && booking.status !== "PENDING_APPROVAL" && !isArchived && (
-                    <button
-                      type="button"
-                      aria-label="Сменить клиента"
-                      onClick={() => setChangeClientOpen(true)}
-                      className="ml-1 rounded border border-border px-2 py-0.5 text-xs text-ink-3 hover:bg-surface-soft hover:text-ink transition-colors"
-                    >
-                      Сменить
-                    </button>
-                  )}
-                </div>
-                <div>
-                  <span className="text-ink-3">Проект:</span>{" "}
-                  {booking.projectName?.trim() === "Проект" ? (
-                    <span className="font-medium text-ink-3">Без названия</span>
-                  ) : (
-                    <span className="font-medium">{booking.projectName}</span>
-                  )}
-                </div>
-                <div>
-                  <span className="text-ink-3">Период:</span>{" "}
-                  <span className="font-medium">
-                    {new Date(booking.startDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })} —{" "}
-                    {new Date(booking.endDate).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
-                  </span>
-                </div>
-                {booking.comment ? (
-                  <div>
-                    <span className="text-ink-3">Комментарий:</span> <span>{booking.comment}</span>
-                  </div>
-                ) : null}
-              </div>
-            </div>
+            {/* Данные заказа — вынесено в BookingOrderInfoSection (фаза 4.10). */}
+            <BookingOrderInfoSection
+              booking={booking}
+              canChangeClient={
+                user?.role === "SUPER_ADMIN" && booking.status !== "PENDING_APPROVAL" && !isArchived
+              }
+              onChangeClient={() => setChangeClientOpen(true)}
+            />
 
             {/* Доступ в клиентский кабинет — только для SUPER_ADMIN */}
             {user?.role === "SUPER_ADMIN" && booking.client?.id && (
@@ -2273,158 +860,14 @@ export default function BookingDetailPage() {
               />
             )}
 
-            {booking.estimate ? (
-              <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-                <div className="p-3 border-b border-border bg-surface-subtle flex items-center justify-between">
-                  <p className="eyebrow">Смета (только оборудование)</p>
-                  <span className="text-xs text-ink-3">Шифты: {booking.estimate.shifts}</span>
-                </div>
-                <div className="p-3 space-y-3">
-                  <div className="text-sm flex justify-between">
-                    <span className="text-ink-2">Итого</span>
-                    <span className="font-medium mono-num">{formatMoneyRub(booking.estimate.subtotal)}</span>
-                  </div>
-                  <div className="text-sm flex justify-between">
-                    <span className="text-ink-2">Скидка</span>
-                    <span className="font-medium mono-num">-{formatMoneyRub(booking.estimate.discountAmount)}</span>
-                  </div>
-                  <div className="text-sm flex justify-between pt-1 border-t border-border">
-                    <span className="font-semibold text-ink">После скидки</span>
-                    <span className="font-semibold text-ink mono-num">{formatMoneyRub(booking.estimate.totalAfterDiscount)}</span>
-                  </div>
-                  {((booking.vehicles?.length ?? 0) > 0 || Boolean(booking.vehicleId)) &&
-                    Number(booking.transportSubtotalRub ?? "0") > 0 && (
-                      <div className="text-xs text-ink-3 rounded bg-surface-subtle px-2 py-1.5">
-                        Без транспорта. Полная сумма к оплате — в блоке «Финансы» выше
-                        ({formatMoneyRub(booking.finalAmount ?? "0")}).
-                      </div>
-                    )}
-
-                  <div className="space-y-2 no-print">
-                    {/* Equipment-only smeta */}
-                    <div>
-                      <p className="text-xs text-ink-3 mb-1.5">Только оборудование:</p>
-                      <div className="flex gap-2">
-                        <button
-                          className="flex-1 rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
-                          onClick={() =>
-                            download(
-                              `/api/estimates/${booking.estimate!.id}/export/xlsx`,
-                              `estimate-${booking.estimate!.id}.xlsx`,
-                            )
-                          }
-                        >
-                          📊 Excel
-                        </button>
-                        <button
-                          className="flex-1 rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
-                          onClick={() =>
-                            download(
-                              `/api/estimates/${booking.estimate!.id}/export/pdf`,
-                              `estimate-${booking.estimate!.id}.pdf`,
-                            )
-                          }
-                        >
-                          📄 PDF
-                        </button>
-                      </div>
-                    </div>
-                    {/* Full smeta — includes transport. Highlighted as primary action. */}
-                    <div>
-                      <p className="text-xs text-ink-3 mb-1.5">Полная смета (с транспортом):</p>
-                      <div className="flex gap-2 flex-wrap">
-                        <button
-                          className="flex-1 min-w-[80px] rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
-                          onClick={() =>
-                            download(
-                              `/api/bookings/${booking.id}/full-estimate/export/xlsx`,
-                              `booking-${booking.id}-full.xlsx`,
-                            )
-                          }
-                        >
-                          📊 Excel
-                        </button>
-                        <button
-                          className="flex-1 min-w-[80px] rounded bg-accent-bright text-white px-3 py-2 text-sm hover:bg-accent transition-colors"
-                          onClick={() =>
-                            download(
-                              `/api/bookings/${booking.id}/full-estimate/export/pdf`,
-                              `booking-${booking.id}-full.pdf`,
-                            )
-                          }
-                        >
-                          📄 PDF
-                        </button>
-                        <button
-                          className="flex-1 min-w-[80px] rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
-                          onClick={() =>
-                            download(
-                              `/api/bookings/${booking.id}/full-estimate.xml`,
-                              `booking-${booking.id}.xml`,
-                            )
-                          }
-                          title="Выгрузка для 1С и учётных систем"
-                        >
-                          ⟨/⟩ XML
-                        </button>
-                        <button
-                          className="flex-1 min-w-[80px] rounded border border-border px-3 py-2 text-sm hover:bg-surface-muted transition-colors"
-                          onClick={() => window.print()}
-                        >
-                          🖨 Печать
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Позиции сметы показаны выше в таблице «Позиции брони»
-                      (с ценами/суммами) — здесь не дублируем. */}
-                  <div className="text-xs text-ink-3 border-t border-border pt-2">
-                    Состав позиций — в таблице «Позиции брони» (с ценами).
-                  </div>
-
-                  {booking.estimate.commentSnapshot ? <div className="text-xs text-ink-3">{booking.estimate.commentSnapshot}</div> : null}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-border bg-surface-subtle p-3 text-sm text-ink-2 space-y-2">
-                <div>Смета пока не сформирована (возможно, это черновик).</div>
-                {/* CTA вместо тупика: у новых черновиков MAIN-смета создаётся
-                    сразу (тогда выше рендерится полный блок экспорта); у старых
-                    без сметы сервер ответит 404 MAIN_ESTIMATE_NOT_FOUND — покажем
-                    понятный тост вместо молчаливой заглушки. */}
-                <button
-                  type="button"
-                  className="rounded border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-muted transition-colors no-print"
-                  onClick={downloadEstimatePdfWithFallback}
-                >
-                  📄 Скачать смету (PDF)
-                </button>
-              </div>
-            )}
+            {/* Смета и журнал изменений — вынесены в компоненты (фаза 4.10). */}
+            <BookingEstimateSection
+              booking={booking}
+              onDownload={download}
+              onDownloadEstimateFallback={downloadEstimatePdfWithFallback}
+            />
             <AddonEstimateSection bookingId={booking.id} />
-            <div className="rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-              <div className="p-3 border-b border-border bg-surface-subtle">
-                <p className="eyebrow">Журнал изменений</p>
-              </div>
-              <div className="max-h-[280px] overflow-auto">
-                {(booking.financeEvents ?? []).map((ev) => (
-                  <div key={ev.id} className="px-3 py-2 border-b border-border text-sm flex items-center justify-between gap-2">
-                    <div>
-                      <div className="font-medium text-ink">{ev.eventType}</div>
-                      <div className="text-xs text-ink-3">{new Date(ev.createdAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}</div>
-                    </div>
-                    <div className="text-right text-xs text-ink-2">
-                      {ev.statusFrom || ev.statusTo ? `${ev.statusFrom ?? "—"} → ${ev.statusTo ?? "—"}` : ""}
-                      {ev.amountDelta ? <div className="mono-num">{formatMoneyRub(ev.amountDelta)}</div> : null}
-                    </div>
-                  </div>
-                ))}
-                {(booking.financeEvents ?? []).length === 0 ? (
-                  <div className="px-3 py-4 text-sm text-ink-3">Пока нет событий.</div>
-                ) : null}
-              </div>
-            </div>
+            <BookingJournalSection financeEvents={booking.financeEvents} />
           </div>
           </div>
 
@@ -2448,58 +891,20 @@ export default function BookingDetailPage() {
       ) : (
         <div className="mt-4 text-ink-3">Бронь не найдена.</div>
       )}
-      {/* B2: Mobile-only sticky bottom CTA (390px). Mirrors the inline CTAs in the finance block. */}
-      {booking && (user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") &&
-        booking.status !== "CANCELLED" && booking.status !== "DRAFT" && booking.status !== "PENDING_APPROVAL" && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex gap-2 px-3 py-3 bg-surface border-t border-border shadow-lg no-print">
-          {/* ₽ Платёж — primary. Не для архивных. */}
-          {!isArchived && (user?.role === "SUPER_ADMIN" ||
-            ((booking.status === "ISSUED" || booking.status === "RETURNED") &&
-              (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
-          ) && (
-            <button
-              className="flex-1 rounded bg-accent-bright text-white px-2 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
-              onClick={() => setPaymentModalOpen(true)}
-            >
-              ₽ Платёж
-            </button>
-          )}
-          {/* PDF Счёт — только legacy-финансы (как на десктопе). У Phase-2
-              броней легаси-invoice.pdf отдаёт 409/неверный PDF. */}
-          {booking.legacyFinance !== false && (
-            <button
-              className="flex-1 rounded border border-border px-2 py-2.5 text-sm font-medium hover:bg-surface-subtle transition-colors"
-              onClick={() => download(`/api/bookings/${booking.id}/invoice.pdf`, `Счёт_${booking.id}.pdf`)}
-            >
-              📄 Счёт
-            </button>
-          )}
-          {/* PDF Акт */}
-          {(() => {
-            const canAct = booking.status === "RETURNED" && Number(booking.amountOutstanding ?? "0") === 0;
-            const actHint = "Акт доступен после возврата оборудования и закрытия долга";
-            return (
-              <button
-                className={`flex-1 rounded border px-2 py-2.5 text-sm font-medium transition-colors ${
-                  canAct ? "border-border hover:bg-surface-subtle" : "border-border text-ink-3 opacity-50 cursor-not-allowed"
-                }`}
-                title={canAct ? "Скачать акт PDF" : actHint}
-                aria-label={canAct ? "Скачать акт PDF" : actHint}
-                disabled={!canAct}
-                onClick={canAct ? () => download(`/api/bookings/${booking.id}/act.pdf`, `Акт_${booking.id}.pdf`) : undefined}
-              >
-                PDF Акт
-              </button>
-            );
-          })()}
-        </div>
-      )}
+      {/* Mobile sticky CTA — вынесено в BookingMobileCta (фаза 4.10). */}
+      <BookingMobileCta
+        booking={booking}
+        userRole={user?.role}
+        isArchived={isArchived}
+        dispatch={dispatchFinanceModal}
+        onDownload={download}
+      />
 
       {/* RecordPaymentModal — T2 */}
       {booking && (
         <RecordPaymentModal
-          open={paymentModalOpen}
-          onClose={() => setPaymentModalOpen(false)}
+          open={financeModals.paymentOpen}
+          onClose={() => dispatchFinanceModal({ type: "closePayment" })}
           defaultBookingId={booking.id}
           legacyFinance={booking.legacyFinance !== false ? true : false}
           bookingContext={{
@@ -2511,7 +916,7 @@ export default function BookingDetailPage() {
             amountOutstanding: booking.amountOutstanding ?? undefined,
           }}
           onCreated={() => {
-            setPaymentModalOpen(false);
+            dispatchFinanceModal({ type: "closePayment" });
             reloadBooking();
           }}
         />
@@ -2567,11 +972,11 @@ export default function BookingDetailPage() {
 
       {/* VoidPaymentModal — T11 */}
       <VoidPaymentModal
-        open={voidPaymentId !== null}
-        paymentId={voidPaymentId}
-        onClose={() => setVoidPaymentId(null)}
+        open={financeModals.voidPaymentId !== null}
+        paymentId={financeModals.voidPaymentId}
+        onClose={() => dispatchFinanceModal({ type: "closeVoidPayment" })}
         onVoided={() => {
-          setVoidPaymentId(null);
+          dispatchFinanceModal({ type: "closeVoidPayment" });
           reloadBooking();
         }}
       />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   open: boolean;
@@ -14,6 +14,9 @@ type Props = {
   confirmLabel: string;
   /** danger — красная кнопка (отмена брони), primary — акцентная */
   tone?: "danger" | "primary";
+  /** Typed-confirmation: слово, которое нужно ввести дословно, чтобы
+   *  разблокировать кнопку (например «УДАЛИТЬ» для необратимого purge). */
+  requireTyped?: string;
   loading?: boolean;
   onClose: () => void;
   onConfirm: () => void;
@@ -32,18 +35,28 @@ export function ConfirmActionModal({
   message,
   confirmLabel,
   tone = "danger",
+  requireTyped,
   loading = false,
   onClose,
   onConfirm,
 }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const [typed, setTyped] = useState("");
+  const typedOk = !requireTyped || typed.trim() === requireTyped;
 
   useEffect(() => {
     if (open) {
-      // Фокус на кнопке подтверждения при открытии
-      setTimeout(() => confirmRef.current?.focus(), 50);
+      setTyped("");
+      // Фокус: при typed-confirmation — на поле ввода, иначе на кнопке.
+      setTimeout(() => {
+        if (requireTyped) {
+          (document.getElementById("confirm-typed-input") as HTMLInputElement | null)?.focus();
+        } else {
+          confirmRef.current?.focus();
+        }
+      }, 50);
     }
-  }, [open]);
+  }, [open, requireTyped]);
 
   useEffect(() => {
     if (!open) return;
@@ -75,7 +88,24 @@ export function ConfirmActionModal({
       >
         <div className="eyebrow mb-2">{title}</div>
         {subtitle && <h2 className="mb-1 text-lg font-semibold text-ink">{subtitle}</h2>}
-        <p className="mb-5 mt-2 whitespace-pre-wrap text-sm text-ink-2">{message}</p>
+        <p className={`mt-2 whitespace-pre-wrap text-sm text-ink-2 ${requireTyped ? "mb-3" : "mb-5"}`}>{message}</p>
+
+        {requireTyped && (
+          <div className="mb-5">
+            <label htmlFor="confirm-typed-input" className="mb-1 block text-xs text-ink-3">
+              Для подтверждения введите <span className="font-mono font-semibold text-ink">{requireTyped}</span>
+            </label>
+            <input
+              id="confirm-typed-input"
+              type="text"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              disabled={loading}
+              autoComplete="off"
+              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink focus:border-rose focus:outline-none disabled:opacity-50"
+            />
+          </div>
+        )}
 
         <div className="flex justify-end gap-2">
           <button
@@ -90,7 +120,7 @@ export function ConfirmActionModal({
             type="button"
             ref={confirmRef}
             onClick={onConfirm}
-            disabled={loading}
+            disabled={loading || !typedOk}
             className={confirmClass}
           >
             {loading ? "Выполняю…" : confirmLabel}

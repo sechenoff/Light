@@ -83,12 +83,6 @@ const BOOKING = {
   },
 };
 
-const CURRENT_USER = {
-  userId: "u1",
-  username: "boss",
-  role: "SUPER_ADMIN" as const,
-};
-
 type FetchRoutes = {
   availabilityRows?: Array<{ equipmentId: string; name: string; availableQuantity: number }>;
   /** null → эндпоинт статистики клиента отвечает 404 (панель тихо скрывается) */
@@ -155,9 +149,7 @@ describe("ApprovalReviewView (read-only)", () => {
     render(
       <ApprovalReviewView
         booking={BOOKING}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     const heading = screen.getByRole("heading", { level: 1 });
     expect(heading.textContent).toContain("Иванов Иван");
@@ -169,9 +161,7 @@ describe("ApprovalReviewView (read-only)", () => {
     render(
       <ApprovalReviewView
         booking={BOOKING}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     // Estimate lines appear
     expect(screen.getByText("ARRI M18")).toBeInTheDocument();
@@ -186,9 +176,7 @@ describe("ApprovalReviewView (read-only)", () => {
     render(
       <ApprovalReviewView
         booking={BOOKING}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     // finalAmount = 45000
     const amountElements = screen.getAllByText(/45\s*000/);
@@ -200,9 +188,7 @@ describe("ApprovalReviewView (read-only)", () => {
     render(
       <ApprovalReviewView
         booking={BOOKING}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     // At least one Edit link should point to the edit page
     const editLinks = screen.getAllByRole("link", { name: /Редактировать/ });
@@ -218,9 +204,7 @@ describe("ApprovalReviewView (read-only)", () => {
     render(
       <ApprovalReviewView
         booking={{ ...BOOKING, estimate: null }}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     expect(screen.queryByText("Нет позиций")).not.toBeInTheDocument();
     // Позиция из items: имя, категория, кол-во
@@ -255,9 +239,7 @@ describe("ApprovalReviewView (read-only)", () => {
             },
           ],
         }}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     expect(screen.queryByText("Нет позиций")).not.toBeInTheDocument();
     expect(screen.getByText("Дым-машина клиента")).toBeInTheDocument();
@@ -276,9 +258,7 @@ describe("ApprovalReviewView (read-only)", () => {
           estimate: null,
           items: [{ id: "item3", equipmentId: null, quantity: 3, equipment: null }],
         }}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     expect(screen.queryByText("Нет позиций")).not.toBeInTheDocument();
     expect(screen.getByText("Позиция")).toBeInTheDocument();
@@ -292,9 +272,7 @@ describe("ApprovalReviewView (read-only)", () => {
     render(
       <ApprovalReviewView
         booking={{ ...BOOKING, estimate: null, items: [] }}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     expect(screen.getByText("Нет позиций")).toBeInTheDocument();
   });
@@ -304,9 +282,7 @@ describe("ApprovalReviewView (read-only)", () => {
     render(
       <ApprovalReviewView
         booking={BOOKING}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     expect(
       screen.queryByText(/Смета будет зафиксирована при подтверждении/)
@@ -351,9 +327,7 @@ describe("ApprovalReviewView — транспорт (multi-vehicle)", () => {
     render(
       <ApprovalReviewView
         booking={MULTI_VEHICLE_BOOKING}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     expect(screen.queryByText("Не выбран")).not.toBeInTheDocument();
     // Каждая машина видна и в карточке «Транспорт», и в разбивке «Итог»
@@ -372,9 +346,7 @@ describe("ApprovalReviewView — транспорт (multi-vehicle)", () => {
     render(
       <ApprovalReviewView
         booking={{ ...BOOKING, vehicles: [], vehicleId: null, transportSubtotalRub: null }}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     expect(screen.getByText("Не выбран")).toBeInTheDocument();
   });
@@ -389,9 +361,7 @@ describe("ApprovalReviewView — контекст согласования (Appr
     render(
       <ApprovalReviewView
         booking={BOOKING}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     await waitFor(() =>
       expect(screen.getByText(/Конфликты доступности/i)).toBeInTheDocument()
@@ -406,9 +376,7 @@ describe("ApprovalReviewView — контекст согласования (Appr
     render(
       <ApprovalReviewView
         booking={BOOKING}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     await waitFor(() =>
       expect(screen.getByText(/История клиента/i)).toBeInTheDocument()
@@ -423,9 +391,7 @@ describe("ApprovalReviewView — контекст согласования (Appr
     render(
       <ApprovalReviewView
         booking={BOOKING}
-        onReload={vi.fn()}
-        currentUser={CURRENT_USER}
-      />
+        onReload={vi.fn()}      />
     );
     await waitFor(() =>
       expect(screen.getByText(/Конфликтов нет/i)).toBeInTheDocument()

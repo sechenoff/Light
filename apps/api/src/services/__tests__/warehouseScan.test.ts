@@ -128,7 +128,9 @@ describe("createSession", () => {
     db.$transaction.mockImplementation(async (fn: any) => fn(db));
 
     const out = await createSession("b1", "Борис", "ISSUE");
-    expect(out).toEqual(existing);
+    // Существующая сессия возвращается с resumed=true — киоск по этому флагу
+    // показывает плашку «Продолжена незавершённая сессия».
+    expect(out).toEqual({ ...existing, resumed: true });
     // create MUST NOT be invoked when an ACTIVE session already exists.
     expect(db.scanSession.create).not.toHaveBeenCalled();
   });
@@ -151,7 +153,7 @@ describe("createSession", () => {
     db.$transaction.mockImplementation(async (fn: any) => fn(db));
 
     const result = await createSession("b1", "Иван", "ISSUE");
-    expect(result).toEqual(mockSession);
+    expect(result).toEqual({ ...mockSession, resumed: false });
     expect(db.scanSession.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -182,7 +184,7 @@ describe("createSession", () => {
     db.$transaction.mockImplementation(async (fn: any) => fn(db));
 
     const result = await createSession("b1", "Петр", "RETURN");
-    expect(result).toEqual(mockSession);
+    expect(result).toEqual({ ...mockSession, resumed: false });
   });
 });
 

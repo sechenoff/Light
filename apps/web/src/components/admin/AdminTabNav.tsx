@@ -28,7 +28,7 @@ export function AdminTabNav({ counts }: AdminTabNavProps) {
     { href: "/admin/audit", label: "📋 Аудит" },
     { href: "/admin/roles", label: "🛡 Права" },
     { href: "/settings/organization", label: "⚙️ Настройки" },
-    { href: "/admin/more", label: "🔧 Ещё" },
+    { href: "/admin/more", label: "🔑 Кладовщики" },
   ];
 
   return (

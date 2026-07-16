@@ -130,14 +130,18 @@ describe("Soft-delete броней: archive / restore / purge", () => {
     expect(ids).not.toContain(id);
   });
 
-  it("(c) GET ?archived=true возвращает только архивированных", async () => {
+  it("(c) GET ?archived=true возвращает только архивированных + deletedByName (username автора)", async () => {
     const id = await makeBooking();
     await request(app).delete(`/api/bookings/${id}`).set(AUTH_SA());
     const res = await request(app).get("/api/bookings?archived=true&limit=200").set(AUTH_SA());
     expect(res.status).toBe(200);
-    const found = (res.body.bookings as Array<{ id: string; deletedAt: string | null }>).find((b) => b.id === id);
+    const found = (
+      res.body.bookings as Array<{ id: string; deletedAt: string | null; deletedByName: string | null }>
+    ).find((b) => b.id === id);
     expect(found).toBeDefined();
     expect(found?.deletedAt).not.toBeNull();
+    // deletedBy (AdminUser.id) резолвится в username — на странице архива видно, кто удалил.
+    expect(found?.deletedByName).toBe("arch_sa");
   });
 
   it("(d) повторный DELETE архивированной → 409 BOOKING_ALREADY_ARCHIVED", async () => {

@@ -25,9 +25,19 @@ export type BookingPaymentStatus = "NOT_PAID" | "PARTIALLY_PAID" | "PAID" | "OVE
 
 // ── Фильтры списка ↔ URL ────────────────────────────────────────────────────
 
+/** Значения фильтра оплаты `?paid=` (серверные, buildPaidWhere). */
+export const PAID_FILTER_VALUES = [
+  "PAID",
+  "UNPAID",
+  "NOT_PAID",
+  "PARTIALLY_PAID",
+  "OVERDUE",
+] as const;
+export type PaidFilter = "" | (typeof PAID_FILTER_VALUES)[number];
+
 export type BookingListFilters = {
   status: string;
-  paid: "" | "PAID" | "UNPAID";
+  paid: PaidFilter;
   from: string;
   to: string;
   q: string;
@@ -45,7 +55,7 @@ export function readListFiltersFromParams(
   const paidRaw = params?.get("paid") ?? "";
   return {
     status: (BOOKING_STATUSES as readonly string[]).includes(statusRaw) ? statusRaw : "",
-    paid: paidRaw === "PAID" || paidRaw === "UNPAID" ? paidRaw : "",
+    paid: (PAID_FILTER_VALUES as readonly string[]).includes(paidRaw) ? (paidRaw as PaidFilter) : "",
     from: params?.get("from") ?? "",
     to: params?.get("to") ?? "",
     q: params?.get("q") ?? "",

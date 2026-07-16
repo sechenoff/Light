@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -10,8 +10,8 @@ import { StatusPill } from "../StatusPill";
 import { RoleBadge } from "../RoleBadge";
 import { RejectBookingModal } from "./RejectBookingModal";
 import { ApprovalContext } from "./ApprovalContext";
+import { readBookingsListHref } from "./bookingsListNav";
 import { toast } from "../ToastProvider";
-import type { CurrentUser } from "../../lib/auth";
 
 // ------------------------------------------------------------------ types ---
 
@@ -191,7 +191,6 @@ function formatTs(iso: string): string {
 type Props = {
   booking: BookingForReview;
   onReload: () => void;
-  currentUser: CurrentUser;
 };
 
 /**
@@ -201,8 +200,15 @@ type Props = {
  *
  * No inline editing here — this is purely a confirmation screen.
  */
-export function ApprovalReviewView({ booking, onReload, currentUser: _currentUser }: Props) {
+export function ApprovalReviewView({ booking, onReload }: Props) {
   const router = useRouter();
+
+  // «← Брони» возвращает на список с сохранёнными фильтрами (sessionStorage).
+  // После маунта — SSR не имеет sessionStorage (иначе рассинхрон гидратации).
+  const [backHref, setBackHref] = useState("/bookings");
+  useEffect(() => {
+    setBackHref(readBookingsListHref());
+  }, []);
 
   // Approval actions state
   const [approving, setApproving] = useState(false);
@@ -213,18 +219,20 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
   const [auditItems, setAuditItems] = useState<AuditItem[] | null>(null);
 
   // ---- fetch audit timeline ----
+  // Через общий apiFetch (фаза 4.9): стандартные заголовки/обработка ошибок.
+  // Хронология — вспомогательная: при любом сбое просто не показываем её
+  // (auditItems остаётся null), как и раньше.
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/audit?entityType=Booking&entityId=${encodeURIComponent(booking.id)}&limit=100`, {
-      credentials: "include",
-    })
-      .then(async (res) => {
-        if (cancelled || !res.ok) return;
-        const data = (await res.json()) as { items: AuditItem[] };
+    apiFetch<{ items: AuditItem[] }>(
+      `/api/audit?entityType=Booking&entityId=${encodeURIComponent(booking.id)}&limit=100`,
+    )
+      .then((data) => {
+        if (cancelled) return;
         const filtered = (data.items ?? [])
           .filter((it) => REVIEW_ACTIONS.has(it.action))
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-        if (!cancelled) setAuditItems(filtered);
+        setAuditItems(filtered);
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -260,7 +268,7 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
         body: JSON.stringify({ reason }),
       });
       toast.success("Заявка отклонена, возвращена кладовщику");
-      router.push("/bookings");
+      router.push(readBookingsListHref());
     } catch (e: unknown) {
       setRejectBusy(false);
       throw e; // let modal show inline error
@@ -331,7 +339,7 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
       {/* Breadcrumb + status + role pills */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm">
-          <Link href="/bookings" className="text-ink-3 hover:text-ink">
+          <Link href={backHref} className="text-ink-3 hover:text-ink">
             ← Брони
           </Link>
           <span className="text-ink-3">/</span>
@@ -456,8 +464,10 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
                   </thead>
                   <tbody>
                     {Array.from(linesByCategory.entries()).map(([cat, catLines]) => (
-                      <>
-                        <tr key={`cat-${cat}`} className="border-t border-border bg-surface-subtle">
+                      // Fragment с key: элемент списка — весь блок категории, а не
+                      // внутренние <tr> (безымянный <> давал React-warning про key).
+                      <Fragment key={cat}>
+                        <tr className="border-t border-border bg-surface-subtle">
                           <td colSpan={4} className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
                             {cat}
                           </td>
@@ -474,7 +484,7 @@ export function ApprovalReviewView({ booking, onReload, currentUser: _currentUse
                             </td>
                           </tr>
                         ))}
-                      </>
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>

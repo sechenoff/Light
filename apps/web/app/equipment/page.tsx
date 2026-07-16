@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useDeferredValue } from "react";
+import { useEffect, useState, useDeferredValue, useMemo } from "react";
 import Link from "next/link";
 
 import { apiFetch } from "../../src/lib/api";
@@ -10,6 +10,9 @@ import { formatRub } from "../../src/lib/format";
 import { toMoscowDateString } from "../../src/lib/moscowDate";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 import { unitStatusLabel } from "../../src/lib/unitStatus";
+import { useAvailability, type AvailabilityItem } from "../../src/hooks/useAvailability";
+import { addHoursToDatetimeLocal, datetimeLocalToISO } from "../../src/lib/rentalTime";
+import { DEFAULT_PICKUP_HOUR } from "../../src/lib/availabilityConstants";
 
 type CatalogRow = {
   id: string;
@@ -27,32 +30,12 @@ type CatalogRow = {
   unitStatusCounts: Record<string, number> | null;
 };
 
-type AvailInfo = {
-  equipmentId: string;
-  occupiedQuantity: number;
-  availableQuantity: number;
-  availability: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
-};
-
 // Called only from a post-mount effect (never during render) so the
 // new Date() here is the client clock — no SSR/CSR hydration mismatch.
+// Каталожный дефолт — московская дата + DEFAULT_PICKUP_HOUR (в отличие от
+// формы брони, где rentalTime.defaultPickupDatetimeLocal() берёт текущий час).
 function defaultPickupDatetimeLocal(): string {
-  return `${toMoscowDateString(new Date())}T10:00`;
-}
-
-function addHoursToDatetimeLocal(dtLocal: string, hours: number): string {
-  const d = new Date(dtLocal);
-  d.setTime(d.getTime() + hours * 60 * 60 * 1000);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${y}-${m}-${day}T${h}:${min}`;
-}
-
-function datetimeLocalToISO(dtLocal: string): string {
-  return new Date(dtLocal).toISOString();
+  return `${toMoscowDateString(new Date())}T${String(DEFAULT_PICKUP_HOUR).padStart(2, "0")}:00`;
 }
 
 function formatDatetimeLocal(d: Date): string {
@@ -80,23 +63,23 @@ function displayDatetime(dtLocal: string): string {
 function getQuickPeriod(type: "today" | "tomorrow" | "week"): { start: string; end: string } {
   const now = new Date();
   if (type === "today") {
-    const s = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0);
+    const s = new Date(now.getFullYear(), now.getMonth(), now.getDate(), DEFAULT_PICKUP_HOUR, 0);
     return {
       start: formatDatetimeLocal(s),
       end: formatDatetimeLocal(new Date(s.getTime() + 24 * 60 * 60 * 1000)),
     };
   }
   if (type === "tomorrow") {
-    const s = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 10, 0);
+    const s = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, DEFAULT_PICKUP_HOUR, 0);
     return {
       start: formatDatetimeLocal(s),
       end: formatDatetimeLocal(new Date(s.getTime() + 24 * 60 * 60 * 1000)),
     };
   }
-  // "week" — Monday 10:00 to Sunday 22:00
+  // "week" — Monday DEFAULT_PICKUP_HOUR:00 to Sunday 22:00
   const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ...
   const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon, 10, 0);
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon, DEFAULT_PICKUP_HOUR, 0);
   const sunday = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000);
   sunday.setHours(22, 0, 0, 0);
   return { start: formatDatetimeLocal(monday), end: formatDatetimeLocal(sunday) };
@@ -117,11 +100,24 @@ export default function EquipmentPage() {
   const [reloadNonce, setReloadNonce] = useState(0);
 
   const [catalog, setCatalog] = useState<CatalogRow[]>([]);
-  const [availMap, setAvailMap] = useState<Map<string, AvailInfo>>(new Map());
 
   const [loadingCatalog, setLoadingCatalog] = useState(true);
-  const [loadingAvail, setLoadingAvail] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  // Единый примитив доступности (фаза 2): стале-гард внутри хука заменяет
+  // прежний AbortController — при быстрой смене дат применяется свежий ответ.
+  const {
+    items: availRows,
+    loading: loadingAvail,
+    error: availError,
+    check: checkAvailability,
+  } = useAvailability();
+
+  // Доступность опциональна: при ошибке каталог показывается без overlay (пустая карта).
+  const availMap = useMemo<Map<string, AvailabilityItem>>(
+    () => (availError || !availRows ? new Map() : new Map(availRows.map((r) => [r.equipmentId, r]))),
+    [availRows, availError]
+  );
 
   // Seed the default date range on the client after mount.
   useEffect(() => {
@@ -166,26 +162,8 @@ export default function EquipmentPage() {
   // Load availability overlay (non-blocking — catalog shows regardless)
   useEffect(() => {
     if (!start || !end) return;
-    const controller = new AbortController();
-    async function load() {
-      setLoadingAvail(true);
-      try {
-        const params = new URLSearchParams({ start: datetimeLocalToISO(start), end: datetimeLocalToISO(end) });
-        const data = await apiFetch<{ rows: AvailInfo[] }>(`/api/availability?${params.toString()}`, {
-          signal: controller.signal,
-        });
-        setAvailMap(new Map(data.rows.map((r) => [r.equipmentId, r])));
-      } catch (e) {
-        if (e instanceof Error && e.name === "AbortError") return;
-        // Availability is optional — show catalog without occupancy info on error
-        setAvailMap(new Map());
-      } finally {
-        setLoadingAvail(false);
-      }
-    }
-    load();
-    return () => controller.abort();
-  }, [start, end]);
+    void checkAvailability({ start, end });
+  }, [start, end, checkAvailability]);
 
   // Вторичная строка ставок: «2 смены … · проект …» — если поля заполнены.
   function secondaryRates(r: CatalogRow): string | null {
@@ -208,7 +186,7 @@ export default function EquipmentPage() {
     return `${total} ед: ${parts.join(", ")}`;
   }
 
-  function statusBadge(avail: AvailInfo | undefined, total: number) {
+  function statusBadge(avail: AvailabilityItem | undefined, total: number) {
     if (!avail) return <span className="text-xs text-ink-3">—</span>;
     if (avail.availability === "AVAILABLE")
       return <StatusPill variant="full" label="Доступно" />;
@@ -221,10 +199,13 @@ export default function EquipmentPage() {
     ? catalog.filter((r) => (availMap.get(r.id)?.availableQuantity ?? 1) > 0).length
     : catalog.length;
 
-  // Guard: datetimeLocalToISO("") throws before the default-range effect runs.
+  // rentalTime.datetimeLocalToISO NaN-safe: null до сидинга дефолтных дат
+  // или при недопечатанном вводе — тогда ссылка без префилла.
+  const startIso = start ? datetimeLocalToISO(start) : null;
+  const endIso = end ? datetimeLocalToISO(end) : null;
   const bookingHref =
-    start && end
-      ? `/bookings/new?start=${datetimeLocalToISO(start)}&end=${datetimeLocalToISO(end)}`
+    startIso && endIso
+      ? `/bookings/new?start=${startIso}&end=${endIso}`
       : "/bookings/new";
 
   return (

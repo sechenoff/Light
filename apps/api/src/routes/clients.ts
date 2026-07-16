@@ -15,7 +15,39 @@ const listQuerySchema = z.object({
   // max=500 — у нас в БД 250+ клиентов после массового импорта смен; при ?search
   // выдача всё равно сужена, но без поиска (открытие селекта) нужен полный список.
   limit: z.coerce.number().int().min(1).max(500).default(20),
+  // recent — «последние клиенты»: по дате последней брони (остаток добивается
+  // новейшими клиентами без броней). Для дропдауна автокомплита на фокусе.
+  sort: z.enum(["name", "recent"]).default("name"),
 });
+
+const clientListSelect = {
+  id: true,
+  name: true,
+  phone: true,
+  email: true,
+  comment: true,
+  createdAt: true,
+  _count: { select: { bookings: true } },
+  // Статус личного кабинета — одним include, без N+1 запросов
+  // per-client к /api/admin/clients/:id/portal-account.
+  portalAccount: { select: { status: true, lastLoginAt: true } },
+} as const;
+
+type ClientListRow = Prisma.ClientGetPayload<{ select: typeof clientListSelect }>;
+
+function serializeClientListRow(c: ClientListRow) {
+  return {
+    id: c.id,
+    name: c.name,
+    phone: c.phone,
+    email: c.email,
+    comment: c.comment,
+    createdAt: c.createdAt,
+    bookingCount: c._count.bookings,
+    portalStatus: c.portalAccount?.status ?? null,
+    portalLastLoginAt: c.portalAccount?.lastLoginAt ?? null,
+  };
+}
 
 const clientBodySchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -39,39 +71,50 @@ const clientPatchSchema = clientBodySchema.partial();
 router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
   try {
     const q = listQuerySchema.parse(req.query);
+
+    // «Последние клиенты» — по дате последней брони (свежие сверху); если
+    // броней меньше лимита, добиваем новейшими клиентами без броней.
+    // ?search сужает выдачу и делает recency бессмысленной — там всегда name.
+    if (q.sort === "recent" && !q.search) {
+      const recentBookings = await prisma.booking.groupBy({
+        by: ["clientId"],
+        where: { deletedAt: null },
+        _max: { createdAt: true },
+        orderBy: { _max: { createdAt: "desc" } },
+        take: q.limit,
+      });
+      const orderedIds = recentBookings.map((b) => b.clientId);
+      const withBookings = await prisma.client.findMany({
+        where: { id: { in: orderedIds } },
+        select: clientListSelect,
+      });
+      const byId = new Map(withBookings.map((c) => [c.id, c]));
+      const ordered = orderedIds
+        .map((id) => byId.get(id))
+        .filter((c): c is ClientListRow => Boolean(c));
+      const fill =
+        ordered.length < q.limit
+          ? await prisma.client.findMany({
+              where: { id: { notIn: orderedIds } },
+              select: clientListSelect,
+              orderBy: { createdAt: "desc" },
+              take: q.limit - ordered.length,
+            })
+          : [];
+      res.json({ clients: [...ordered, ...fill].map(serializeClientListRow) });
+      return;
+    }
+
     const where = q.search
       ? { name: { contains: q.search } }
       : {};
     const clients = await prisma.client.findMany({
       where,
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-        email: true,
-        comment: true,
-        createdAt: true,
-        _count: { select: { bookings: true } },
-        // Статус личного кабинета — одним include, без N+1 запросов
-        // per-client к /api/admin/clients/:id/portal-account.
-        portalAccount: { select: { status: true, lastLoginAt: true } },
-      },
+      select: clientListSelect,
       orderBy: { name: "asc" },
       take: q.limit,
     });
-    res.json({
-      clients: clients.map((c) => ({
-        id: c.id,
-        name: c.name,
-        phone: c.phone,
-        email: c.email,
-        comment: c.comment,
-        createdAt: c.createdAt,
-        bookingCount: c._count.bookings,
-        portalStatus: c.portalAccount?.status ?? null,
-        portalLastLoginAt: c.portalAccount?.lastLoginAt ?? null,
-      })),
-    });
+    res.json({ clients: clients.map(serializeClientListRow) });
   } catch (err) {
     next(err);
   }

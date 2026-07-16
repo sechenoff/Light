@@ -520,3 +520,29 @@ describe("Edge cases", () => {
     await prisma.warehousePin.delete({ where: { id: worker.id } });
   });
 });
+
+// ──────────────────────────────────────────────────────────────────
+// createSession: resumed-флаг (плашка «Продолжена незавершённая сессия»)
+// ──────────────────────────────────────────────────────────────────
+
+describe("createSession resumed-флаг", () => {
+  it("новая сессия → resumed=false; повторное открытие той же брони → тот же id и resumed=true", async () => {
+    const { createSession } = await getScanService();
+
+    const equipment = await createEquipment("Fresnel 650 Resume", "Свет", 2, "UNIT");
+    await generateUnits(equipment.id, 2);
+    const booking = await createBookingDraft("Клиент RESUME", equipment.id, 2);
+    await confirmBooking(booking.id);
+
+    const first = await createSession(booking.id, "Иван", "ISSUE");
+    expect(first.resumed).toBe(false);
+    expect(first.startedAt).toBeTruthy();
+
+    // Идемпотентный повтор — возвращается ТА ЖЕ сессия, но с resumed=true,
+    // чтобы киоск показал плашку продолжения (не выглядело чистым стартом).
+    const second = await createSession(booking.id, "Пётр", "ISSUE");
+    expect(second.id).toBe(first.id);
+    expect(second.resumed).toBe(true);
+    expect(second.startedAt).toEqual(first.startedAt);
+  });
+});

@@ -119,9 +119,11 @@ export type AvailabilityRow = {
   comment: string | null;
 };
 
-/** Validation check item shown in SummaryPanel */
+/** Validation check item shown in SummaryPanel.
+ *  "todo" — обязательное требование ещё не выполнено (нейтральная подсказка);
+ *  "error" — то же требование после попытки сохранить (rose, шаг подсвечен). */
 export type ValidationCheck = {
-  type: "ok" | "warn" | "tip";
+  type: "ok" | "warn" | "tip" | "todo" | "error";
   label: string;
   detail: string;
   actionLabel?: string;

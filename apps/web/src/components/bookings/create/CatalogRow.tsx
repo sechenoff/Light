@@ -7,12 +7,14 @@ type Props = {
   row: AvailabilityRow;
   selectedQty: number;
   adjustment?: CatalogRowAdjustment;
+  /** Ярлык категории справа от названия — для плоских результатов поиска. */
+  showCategoryLabel?: boolean;
   onAdd: (row: AvailabilityRow) => void;
   onChangeQty: (equipmentId: string, newQty: number) => void;
   onRemove: (equipmentId: string) => void;
 };
 
-export function CatalogRow({ row, selectedQty, adjustment, onAdd, onChangeQty, onRemove }: Props) {
+export function CatalogRow({ row, selectedQty, adjustment, showCategoryLabel = false, onAdd, onChangeQty, onRemove }: Props) {
   const isSelected = selectedQty > 0;
   const isUnavailable = row.availableQuantity === 0;
   const isAtMax = selectedQty >= row.availableQuantity;
@@ -35,6 +37,11 @@ export function CatalogRow({ row, selectedQty, adjustment, onAdd, onChangeQty, o
       <div className="min-w-0 flex-1">
         <div className={`text-[13px] font-medium ${isSelected ? "text-emerald" : "text-ink"}`}>
           {row.name}
+          {showCategoryLabel && (
+            <span className="ml-2 whitespace-nowrap rounded bg-surface-deep px-1.5 py-0.5 text-[10.5px] font-normal text-ink-3">
+              {row.category}
+            </span>
+          )}
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-[11.5px] text-ink-3">
           <span className="font-mono">{formatMoneyRub(Number(row.rentalRatePerShift))} ₽/день</span>

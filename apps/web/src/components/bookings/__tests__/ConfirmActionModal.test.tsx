@@ -50,4 +50,36 @@ describe("ConfirmActionModal", () => {
     expect(screen.getByRole("button", { name: "Выполняю…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Отмена" })).toBeDisabled();
   });
+
+  describe("typed-confirmation (requireTyped)", () => {
+    it("держит кнопку заблокированной, пока не введено точное слово", () => {
+      const onConfirm = vi.fn();
+      render(
+        <ConfirmActionModal
+          {...BASE_PROPS}
+          title="Удалить навсегда"
+          confirmLabel="Удалить навсегда"
+          requireTyped="УДАЛИТЬ"
+          onConfirm={onConfirm}
+        />,
+      );
+      const confirmBtn = screen.getByRole("button", { name: "Удалить навсегда" });
+      expect(confirmBtn).toBeDisabled();
+
+      const input = screen.getByRole("textbox");
+      fireEvent.change(input, { target: { value: "удалит" } });
+      expect(confirmBtn).toBeDisabled();
+
+      fireEvent.change(input, { target: { value: "УДАЛИТЬ" } });
+      expect(confirmBtn).toBeEnabled();
+      fireEvent.click(confirmBtn);
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+
+    it("без requireTyped кнопка активна сразу (обратная совместимость)", () => {
+      render(<ConfirmActionModal {...BASE_PROPS} />);
+      expect(screen.queryByRole("textbox")).toBeNull();
+      expect(screen.getByRole("button", { name: "Отменить бронь" })).toBeEnabled();
+    });
+  });
 });

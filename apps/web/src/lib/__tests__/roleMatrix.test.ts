@@ -33,6 +33,7 @@ describe("menuByRole — grouped sections", () => {
       [
         "/day",
         "/tasks?filter=my",
+        "/tasks/archive",
         "/warehouse/scan",
         "/warehouse/problems",
         "/bookings",

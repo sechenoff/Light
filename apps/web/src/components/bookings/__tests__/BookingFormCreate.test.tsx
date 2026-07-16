@@ -245,3 +245,56 @@ describe("BookingForm create — новый клиент с телефоном",
     expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull();
   });
 });
+
+// ─── 4.8: шаги + inline-валидация вместо молча задизейбленной кнопки ─────────
+
+describe("BookingForm create — шаги и inline-валидация (4.8)", () => {
+  it("рендерит рейку шагов с четырьмя шагами", async () => {
+    render(<BookingForm mode="create" />);
+
+    expect(await screen.findByRole("navigation", { name: "Шаги оформления брони" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Шаг 1: Клиент и проект/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Шаг 2: Даты/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Шаг 3: Оборудование/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Шаг 4: Детали/ })).toBeInTheDocument();
+  });
+
+  it("до попытки сохранить чеклист показывает требования нейтрально, шаги без ошибок", async () => {
+    render(<BookingForm mode="create" />);
+
+    expect(await screen.findByText("Укажите клиента")).toBeInTheDocument();
+    expect(screen.getByText("Добавьте оборудование")).toBeInTheDocument();
+    // Шаги не в состоянии ошибки на pristine-форме
+    expect(screen.queryByRole("button", { name: /есть ошибка/ })).toBeNull();
+  });
+
+  it("клик «Сохранить черновик» на пустой форме → inline-ошибки, POST не уходит", async () => {
+    render(<BookingForm mode="create" />);
+
+    const saveBtn = await screen.findByRole("button", { name: /Сохранить черновик/ });
+    expect(saveBtn).not.toBeDisabled();
+    fireEvent.click(saveBtn);
+
+    // Inline-ошибка у поля клиента
+    expect(await screen.findByText(/Укажите клиента — без него бронь не сохранить/)).toBeInTheDocument();
+    // Шаги 1 и 3 подсвечены как ошибочные
+    expect(screen.getByRole("button", { name: /Шаг 1: Клиент и проект — есть ошибка/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Шаг 3: Оборудование — есть ошибка/ })).toBeInTheDocument();
+    // POST /api/bookings/draft не отправлен
+    expect(fetchCalls.some((c) => c.url.includes("/api/bookings/draft"))).toBe(false);
+  });
+
+  it("заполненная форма (черновик из localStorage) → шаги 1-3 «готово», сохранение уходит", async () => {
+    seedDraft();
+    render(<BookingForm mode="create" />);
+
+    expect(await screen.findByRole("button", { name: /Шаг 1: Клиент и проект — готово/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Шаг 2: Даты — готово/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Шаг 3: Оборудование — готово/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Сохранить черновик/ }));
+    await waitFor(() => {
+      expect(fetchCalls.some((c) => c.url.includes("/api/bookings/draft"))).toBe(true);
+    });
+  });
+});

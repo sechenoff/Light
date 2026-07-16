@@ -14,6 +14,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       items: [
         { href: "/day", label: "Мой день", icon: "home" },
         { href: "/tasks?filter=my", label: "Мои задачи", icon: "tasks" },
+        { href: "/tasks/archive", label: "Архив задач", icon: "invoice" },
       ],
     },
     {
@@ -73,6 +74,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Задачи",
       items: [
         { href: "/tasks?filter=my", label: "Мои задачи", icon: "tasks" },
+        { href: "/tasks/archive", label: "Архив задач", icon: "invoice" },
       ],
     },
     {
@@ -128,6 +130,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Задачи",
       items: [
         { href: "/tasks?filter=my", label: "Мои задачи", icon: "tasks" },
+        { href: "/tasks/archive", label: "Архив задач", icon: "invoice" },
       ],
     },
     {

@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { apiFetch } from "../../../src/lib/api";
+import { BOOKING_STATUS_LABELS as STATUS_LABEL } from "../../../src/lib/bookingConstants";
 import { SectionHeader } from "../../../src/components/SectionHeader";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { formatRub } from "../../../src/lib/format";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { toast } from "../../../src/components/ToastProvider";
+import { ConfirmActionModal } from "../../../src/components/bookings/ConfirmActionModal";
 
 interface ArchivedBooking {
   id: string;
@@ -20,16 +22,16 @@ interface ArchivedBooking {
   finalAmount?: string | null;
   deletedAt: string | null;
   deletedBy: string | null;
+  /** Имя (username) того, кто архивировал — резолвится сервером из deletedBy. */
+  deletedByName?: string | null;
 }
 
-const STATUS_LABEL: Record<ArchivedBooking["status"], string> = {
-  DRAFT: "Черновик",
-  PENDING_APPROVAL: "На согласовании",
-  CONFIRMED: "Подтверждено",
-  ISSUED: "Выдано",
-  RETURNED: "Возвращено",
-  CANCELLED: "Отменено",
-};
+/** Заголовок для модалок: дата · клиент · проект. */
+function archivedTitle(r: ArchivedBooking): string {
+  const project =
+    r.projectName?.trim() && r.projectName.trim() !== "Проект" ? r.projectName.trim() : null;
+  return [formatShiftDate(r.startDate), r.client.name, project].filter(Boolean).join(" · ");
+}
 
 function formatShiftDate(iso: string): string {
   return new Date(iso).toLocaleDateString("ru-RU", {
@@ -62,12 +64,29 @@ export default function BookingsArchivePage() {
   // в основном списке): первая страница + «Загрузить ещё».
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Подтверждения: restore — обычное (бронь может вернуться в CONFIRMED/ISSUED
+  // и потребовать резервов), purge — typed-confirm (необратимое стирание из БД).
+  const [restoreRow, setRestoreRow] = useState<ArchivedBooking | null>(null);
+  const [purgeRow, setPurgeRow] = useState<ArchivedBooking | null>(null);
+  // Фильтры архива (раньше их не было — искать удалённую бронь среди сотен
+  // было нечем). Тот же серверный API, что и у основного списка.
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  function buildArchiveParams(cursor?: string): string {
+    const params = new URLSearchParams({ archived: "true", limit: "50" });
+    if (cursor) params.set("cursor", cursor);
+    if (statusFilter) params.set("status", statusFilter);
+    if (searchQuery.trim()) params.set("q", searchQuery.trim());
+    return params.toString();
+  }
 
   // BL-8: единая функция загрузки вместо дублирующих load() + inline-fetch.
   async function load() {
     try {
       const data = await apiFetch<{ bookings: ArchivedBooking[]; nextCursor: string | null }>(
-        "/api/bookings?archived=true&limit=50",
+        `/api/bookings?${buildArchiveParams()}`,
       );
       setRows(data.bookings);
       setNextCursor(data.nextCursor ?? null);
@@ -82,7 +101,7 @@ export default function BookingsArchivePage() {
     setLoadingMore(true);
     try {
       const data = await apiFetch<{ bookings: ArchivedBooking[]; nextCursor: string | null }>(
-        `/api/bookings?archived=true&limit=50&cursor=${encodeURIComponent(nextCursor)}`,
+        `/api/bookings?${buildArchiveParams(nextCursor)}`,
       );
       setRows((prev) => [...(prev ?? []), ...data.bookings]);
       setNextCursor(data.nextCursor ?? null);
@@ -93,17 +112,25 @@ export default function BookingsArchivePage() {
     }
   }
 
+  // Дебаунс поиска (300 мс) → searchQuery → серверный запрос.
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   useEffect(() => {
     if (roleLoading || !user) return;
     let cancelled = false;
+    setRows(null);
     void (async () => {
       try {
         const data = await apiFetch<{ bookings: ArchivedBooking[]; nextCursor: string | null }>(
-          "/api/bookings?archived=true&limit=50",
+          `/api/bookings?${buildArchiveParams()}`,
         );
         if (cancelled) return;
         setRows(data.bookings);
         setNextCursor(data.nextCursor ?? null);
+        setError(null);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Не удалось загрузить архив");
@@ -112,13 +139,15 @@ export default function BookingsArchivePage() {
     return () => {
       cancelled = true;
     };
-  }, [roleLoading, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roleLoading, user, statusFilter, searchQuery]);
 
-  async function restore(id: string) {
+  async function doRestore(id: string) {
     setBusyId(id);
     try {
       await apiFetch<{ ok: boolean }>(`/api/bookings/${id}/restore`, { method: "POST" });
       toast.success("Бронь восстановлена");
+      setRestoreRow(null);
       await load();
     } catch (err: any) {
       toast.error(err?.message ?? "Не удалось восстановить");
@@ -127,17 +156,12 @@ export default function BookingsArchivePage() {
     }
   }
 
-  async function purge(id: string, projectName: string) {
-    const confirmed = window.confirm(
-      `Удалить бронь «${projectName}» НАВСЕГДА? Это действие нельзя отменить.\n\n` +
-      "Бронь, позиции и связанные финансовые события будут полностью стерты из БД. " +
-      "Аудит-запись о финальном удалении сохранится.",
-    );
-    if (!confirmed) return;
+  async function doPurge(id: string) {
     setBusyId(id);
     try {
       await apiFetch<{ ok: boolean }>(`/api/bookings/${id}/purge`, { method: "DELETE" });
       toast.success("Бронь удалена навсегда");
+      setPurgeRow(null);
       await load();
     } catch (err: any) {
       toast.error(err?.message ?? "Не удалось удалить");
@@ -171,6 +195,38 @@ export default function BookingsArchivePage() {
       </div>
 
       <div className="mt-4 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
+        <div className="p-3 border-b border-border flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Поиск по клиенту или проекту"
+            aria-label="Поиск по клиенту или проекту"
+            className="rounded border border-border px-2 py-1 text-xs bg-surface w-56 max-w-full"
+          />
+          <select
+            className="rounded border border-border px-2 py-1 text-xs bg-surface"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">Все статусы</option>
+            <option value="DRAFT">Черновик</option>
+            <option value="PENDING_APPROVAL">На согласовании</option>
+            <option value="CONFIRMED">Подтверждена</option>
+            <option value="ISSUED">Выдана</option>
+            <option value="RETURNED">Возвращена</option>
+            <option value="CANCELLED">Отменена</option>
+          </select>
+          {(searchInput || statusFilter) && (
+            <button
+              type="button"
+              onClick={() => { setSearchInput(""); setSearchQuery(""); setStatusFilter(""); }}
+              className="text-xs text-accent hover:underline"
+            >
+              Сбросить
+            </button>
+          )}
+        </div>
         <div className="overflow-auto">
           <table className="min-w-[920px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
@@ -202,7 +258,9 @@ export default function BookingsArchivePage() {
               {rows && rows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-3 py-10 text-center text-ink-3">
-                    В архиве пока пусто.
+                    {searchQuery || statusFilter
+                      ? "Ничего не найдено под текущими фильтрами."
+                      : "В архиве пока пусто."}
                   </td>
                 </tr>
               )}
@@ -228,8 +286,11 @@ export default function BookingsArchivePage() {
                   <td className="px-3 py-2 text-right mono-num text-ink">
                     {formatRub(r.finalAmount ?? "0")}
                   </td>
-                  <td className="px-3 py-2 text-ink-3 mono-num text-xs">
-                    {formatArchivedAt(r.deletedAt)}
+                  <td className="px-3 py-2 text-ink-3 mono-num text-xs whitespace-nowrap">
+                    <div>{formatArchivedAt(r.deletedAt)}</div>
+                    {r.deletedByName && (
+                      <div className="text-ink-3">кто: {r.deletedByName}</div>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
@@ -241,7 +302,7 @@ export default function BookingsArchivePage() {
                       </Link>
                       <button
                         type="button"
-                        onClick={() => restore(r.id)}
+                        onClick={() => setRestoreRow(r)}
                         disabled={busyId === r.id}
                         className="text-xs rounded border border-emerald-border bg-emerald-soft text-emerald px-2 py-1 hover:bg-emerald hover:text-white transition-colors disabled:opacity-50"
                         title="Вернуть бронь в основной список"
@@ -250,7 +311,7 @@ export default function BookingsArchivePage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => purge(r.id, r.projectName || "—")}
+                        onClick={() => setPurgeRow(r)}
                         disabled={busyId === r.id}
                         className="text-xs rounded border border-rose-border bg-rose-soft text-rose px-2 py-1 hover:bg-rose hover:text-white transition-colors disabled:opacity-50"
                         title="Удалить из БД навсегда"
@@ -277,6 +338,39 @@ export default function BookingsArchivePage() {
           </div>
         )}
       </div>
+
+      <ConfirmActionModal
+        open={restoreRow !== null}
+        title="Восстановление брони"
+        subtitle={restoreRow ? archivedTitle(restoreRow) : undefined}
+        message={
+          "Вернуть бронь в основной список?\n\nОна восстановится с прежним статусом. Если статус активный (подтверждена/выдана), проверьте, что оборудование на её даты свободно."
+        }
+        confirmLabel="Восстановить"
+        tone="primary"
+        loading={restoreRow !== null && busyId === restoreRow.id}
+        onClose={() => setRestoreRow(null)}
+        onConfirm={() => {
+          if (restoreRow) doRestore(restoreRow.id);
+        }}
+      />
+
+      <ConfirmActionModal
+        open={purgeRow !== null}
+        title="Удалить навсегда"
+        subtitle={purgeRow ? archivedTitle(purgeRow) : undefined}
+        message={
+          "Бронь, позиции и связанные финансовые события будут полностью стёрты из БД — это действие нельзя отменить. Аудит-запись о финальном удалении сохранится."
+        }
+        confirmLabel="Удалить навсегда"
+        tone="danger"
+        requireTyped="УДАЛИТЬ"
+        loading={purgeRow !== null && busyId === purgeRow.id}
+        onClose={() => setPurgeRow(null)}
+        onConfirm={() => {
+          if (purgeRow) doPurge(purgeRow.id);
+        }}
+      />
     </div>
   );
 }
