@@ -24,7 +24,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { scanApi } from "./api";
 import { isScanApiError } from "./types";
-import type { BookingSummary, ScanOperation } from "./types";
+import type {
+  BookingSummary,
+  ScanOperation,
+  ScanSessionInfo,
+} from "./types";
 import {
   moscowTodayStart,
   toMoscowDateString,
@@ -161,8 +165,16 @@ export function BookingList({
   activeBookingId?: string | null;
   /** 401 handler — token expired / missing. */
   onUnauth: () => void;
-  /** Called after a session is created for the tapped booking. */
-  onSelect: (sessionId: string, booking: BookingSummary) => void;
+  /**
+   * Called after a session is created for the tapped booking. `session`
+   * carries `resumed`/`startedAt`, чтобы страница показала плашку
+   * «Продолжена незавершённая сессия».
+   */
+  onSelect: (
+    sessionId: string,
+    booking: BookingSummary,
+    session?: ScanSessionInfo,
+  ) => void;
 }) {
   const [bookings, setBookings] = useState<BookingSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -224,7 +236,7 @@ export function BookingList({
     setError(null);
     try {
       const session = await scanApi.createSession(b.id, operation);
-      onSelect(session.id, b);
+      onSelect(session.id, b, session);
     } catch (err: unknown) {
       if (isScanApiError(err) && err.status === 401) {
         onUnauth();

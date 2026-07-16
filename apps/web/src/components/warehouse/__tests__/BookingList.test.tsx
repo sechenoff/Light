@@ -97,17 +97,20 @@ describe("BookingList", () => {
     expect(container.textContent || "").not.toMatch(/LR-[A-Z0-9]+-\d+/);
   });
 
-  it("calls createSession and onSelect when a card is tapped", async () => {
+  it("calls createSession and onSelect (with session info) when a card is tapped", async () => {
     const data = [booking("tap00today1", 0, "Тап-проект", "Клиент", 2)];
     vi.spyOn(scanApi, "listBookings").mockResolvedValue(data);
+    const sessionInfo = {
+      id: "sess-1",
+      bookingId: "tap00today1",
+      operation: "ISSUE" as const,
+      status: "ACTIVE",
+      startedAt: "2026-07-12T11:05:00.000Z",
+      resumed: true,
+    };
     const createSpy = vi
       .spyOn(scanApi, "createSession")
-      .mockResolvedValue({
-        id: "sess-1",
-        bookingId: "tap00today1",
-        operation: "ISSUE",
-        status: "ACTIVE",
-      });
+      .mockResolvedValue(sessionInfo);
     const onSelect = vi.fn();
 
     render(
@@ -126,8 +129,10 @@ describe("BookingList", () => {
     await waitFor(() =>
       expect(createSpy).toHaveBeenCalledWith("tap00today1", "ISSUE"),
     );
+    // Третий аргумент — полный ScanSessionInfo (resumed/startedAt), из него
+    // страница решает, показывать ли плашку «Продолжена незавершённая сессия».
     await waitFor(() =>
-      expect(onSelect).toHaveBeenCalledWith("sess-1", data[0]),
+      expect(onSelect).toHaveBeenCalledWith("sess-1", data[0], sessionInfo),
     );
   });
 
