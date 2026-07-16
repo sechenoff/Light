@@ -46,7 +46,7 @@ export default function LkStatsPage() {
                 "px-3 py-1 text-sm rounded-md border transition-colors",
                 period === p.value
                   ? "bg-accent-bright text-surface border-accent-bright"
-                  : "border-border hover:bg-surface-2",
+                  : "border-border hover:bg-surface-muted",
               ].join(" ")}
             >
               {p.label}

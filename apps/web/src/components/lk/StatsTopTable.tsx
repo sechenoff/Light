@@ -41,7 +41,7 @@ export function StatsTopTable({ items }: { items: LkStatsResponse["topEquipment"
   }
 
   return (
-    <div className="bg-surface-2 border border-border rounded-lg overflow-x-auto">
+    <div className="bg-surface-muted border border-border rounded-lg overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr>

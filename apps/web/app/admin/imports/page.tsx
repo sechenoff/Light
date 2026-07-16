@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useRequireRole } from "@/hooks/useRequireRole";
+import { toast } from "@/components/ToastProvider";
 import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { UploadStep } from "@/components/admin/imports/UploadStep";
 import { AnalysisProgress } from "@/components/admin/imports/AnalysisProgress";
@@ -25,9 +26,98 @@ import type {
 
 type Step = "upload" | "analyzing" | "review";
 
-export default function ImportsPage() {
-  useRequireRole(["SUPER_ADMIN"]);
+// ── Загрузка всех строк сессии постранично (limit=200 — серверный максимум) ──
 
+async function fetchAllRows(sessionId: string): Promise<RawSessionRow[]> {
+  const all: RawSessionRow[] = [];
+  let page = 1;
+  let totalPages = 1;
+  do {
+    const res = await apiFetch<{ rows: RawSessionRow[]; totalPages: number }>(
+      `/api/import-sessions/${sessionId}/rows?limit=200&page=${page}`
+    );
+    all.push(...(res.rows ?? []));
+    totalPages = res.totalPages ?? 1;
+    page += 1;
+  } while (page <= totalPages);
+  return all;
+}
+
+// ── Apply Confirmation Modal ────────────────────────────────────────────────
+
+type ApplyConfirmModalProps = {
+  open: boolean;
+  acceptedCount: number;
+  loading: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+};
+
+function ApplyConfirmModal({ open, acceptedCount, loading, onConfirm, onClose }: ApplyConfirmModalProps) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    // Автофокус на основное действие: Enter подтверждает, Esc отменяет.
+    setTimeout(() => confirmRef.current?.focus(), 50);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !loading) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, loading, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      onClick={() => !loading && onClose()}
+      aria-modal="true"
+      role="dialog"
+      aria-labelledby="apply-import-title"
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-surface p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="apply-import-title" className="text-[17px] font-semibold text-ink mb-2">
+          Применить {acceptedCount} изменений?
+        </h2>
+        <p className="text-[13.5px] text-ink-2 mb-5">
+          Принятые цены будут записаны в каталог. Это действие нельзя отменить.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-muted disabled:opacity-50"
+          >
+            Отмена
+          </button>
+          <button
+            ref={confirmRef}
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="rounded bg-accent-bright px-4 py-2 text-sm text-white hover:bg-accent disabled:opacity-50"
+          >
+            {loading ? "Применяем…" : "Применить"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ImportsPage() {
+  const { authorized, loading } = useRequireRole(["SUPER_ADMIN"]);
+  if (loading || !authorized) return null;
+  return <ImportsPageInner />;
+}
+
+function ImportsPageInner() {
   const [step, setStep] = useState<Step>("upload");
   const [session, setSession] = useState<ImportSession | null>(null);
   const [ownResult, setOwnResult] = useState<AnalyzeResultOwn | null>(null);
@@ -39,9 +129,11 @@ export default function ImportsPage() {
   const [rebindRowId, setRebindRowId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [analyzeFileName, setAnalyzeFileName] = useState("");
+  const [confirmApplyOpen, setConfirmApplyOpen] = useState(false);
 
   // Load session history on mount and when step changes back to upload
   useEffect(() => {
+    if (step !== "upload") return;
     let cancelled = false;
     async function load() {
       try {
@@ -149,20 +241,19 @@ export default function ImportsPage() {
           filter: groupType ? { action: groupType } : {},
         }),
       });
-      // Re-fetch rows from server to get the true state (server skips FLAGGED rows for ACCEPTED)
+      // Re-fetch rows from server to get the true state (server skips FLAGGED rows for ACCEPTED).
+      // Полный пагинационный цикл — иначе строки со 2-й страницы остаются в старом статусе.
       if (ownResult) {
         try {
-          const refreshed = await apiFetch<{ rows: ImportRow[] }>(
-            `/api/import-sessions/${session.id}/rows?limit=200`
-          );
-          const updatedRows = refreshed.rows;
+          const all = await fetchAllRows(session.id);
+          const byId = new Map(all.map((r) => [r.id, r]));
           setOwnResult({
             ...ownResult,
             groups: ownResult.groups.map((g) => ({
               ...g,
               rows: g.rows.map((r) => {
-                const serverRow = updatedRows.find((sr) => sr.id === r.id);
-                return serverRow ?? r;
+                const serverRow = byId.get(r.id);
+                return serverRow ? { ...r, status: serverRow.status } : r;
               }),
             })),
           });
@@ -181,6 +272,7 @@ export default function ImportsPage() {
     setError(null);
     try {
       await apiFetch(`/api/import-sessions/${session.id}/apply`, { method: "POST" });
+      toast.success("Изменения применены");
       setStep("upload");
       setSession(null);
       setOwnResult(null);
@@ -189,6 +281,7 @@ export default function ImportsPage() {
       setError(e instanceof Error ? e.message : "Ошибка применения");
     } finally {
       setApplying(false);
+      setConfirmApplyOpen(false);
     }
   }
 
@@ -260,18 +353,8 @@ export default function ImportsPage() {
     setHistoryLoading(true);
     setStep("review");
     try {
-      // Дозагружаем все строки сессии постранично (limit=200 — серверный максимум).
-      const all: RawSessionRow[] = [];
-      let page = 1;
-      let totalPages = 1;
-      do {
-        const res = await apiFetch<{ rows: RawSessionRow[]; totalPages: number }>(
-          `/api/import-sessions/${s.id}/rows?limit=200&page=${page}`
-        );
-        all.push(...(res.rows ?? []));
-        totalPages = res.totalPages ?? 1;
-        page += 1;
-      } while (page <= totalPages);
+      // Дозагружаем все строки сессии постранично.
+      const all = await fetchAllRows(s.id);
 
       if (s.type === "OWN_PRICE_UPDATE") {
         setOwnResult(buildOwnResultFromRows(s, all));
@@ -311,6 +394,12 @@ export default function ImportsPage() {
   }
 
   const isOwnType = session?.type === "OWN_PRICE_UPDATE";
+  const acceptedCount = ownResult
+    ? ownResult.groups.reduce(
+        (sum, g) => sum + g.rows.filter((r) => r.status === "ACCEPTED").length,
+        0
+      )
+    : 0;
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -373,7 +462,7 @@ export default function ImportsPage() {
           onRebind={(rowId) => setRebindRowId(rowId)}
           onBulkAccept={(groupType) => handleBulkAction("ACCEPTED", groupType)}
           onBulkReject={(groupType) => handleBulkAction("REJECTED", groupType)}
-          onApply={handleApply}
+          onApply={() => setConfirmApplyOpen(true)}
           onExport={handleExport}
           applying={applying}
         />
@@ -412,6 +501,15 @@ export default function ImportsPage() {
           </button>
         </div>
       )}
+
+      {/* Apply confirmation modal */}
+      <ApplyConfirmModal
+        open={confirmApplyOpen}
+        acceptedCount={acceptedCount}
+        loading={applying}
+        onConfirm={() => { void handleApply(); }}
+        onClose={() => setConfirmApplyOpen(false)}
+      />
 
       {/* Rebind modal */}
       {rebindRowId && (

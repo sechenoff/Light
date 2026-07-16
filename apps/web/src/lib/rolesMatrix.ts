@@ -115,7 +115,7 @@ export const MATRIX_SECTIONS: MatrixSection[] = [
       {
         capability: "Мастерская",
         hint: "очередь ремонта, история",
-        super:      { level: "view",    label: "читает" },
+        super:      { level: "full",    label: "полный" },
         warehouse:  { level: "limited", label: "создаёт" },
         technician: { level: "full",    label: "полный" },
       },
@@ -123,7 +123,7 @@ export const MATRIX_SECTIONS: MatrixSection[] = [
         capability: "Клиенты",
         hint: "карточки, история, задолженности",
         super:      { level: "full", label: "полный" },
-        warehouse:  { level: "edit", label: "редактирует" },
+        warehouse:  { level: "view", label: "читает" },
         technician: { level: "none", label: "нет" },
       },
       {
@@ -193,10 +193,10 @@ export const MATRIX_SECTIONS: MatrixSection[] = [
         hint: "автоматически при возврате со статусом «Ждёт ремонта»",
         super: { level: "edit", label: "да" }, warehouse: { level: "full", label: "да" }, technician: { level: "edit", label: "да" } },
       { capability: "Взять в работу / менять статус ремонта",
-        super: { level: "view", label: "читает" }, warehouse: { level: "none", label: "нет" }, technician: { level: "full", label: "полный" } },
+        super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "full", label: "полный" } },
       { capability: "Добавить запись работ / запчасти / время",
-        hint: "журнал с таймкодами",
-        super: { level: "view", label: "читает" }, warehouse: { level: "none", label: "нет" }, technician: { level: "full", label: "полный" } },
+        hint: "журнал с таймкодами; только назначенный техник или руководитель",
+        super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "own", label: "свои" } },
       { capability: "Закрыть ремонт → единица снова «Свободна»",
         super: { level: "edit", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "full", label: "да" } },
       { capability: "Создать расход категории «Ремонт»",
@@ -209,9 +209,10 @@ export const MATRIX_SECTIONS: MatrixSection[] = [
     hint: "CRM-карточки",
     rows: [
       { capability: "Создать клиента",
-        super: { level: "full", label: "да" }, warehouse: { level: "full", label: "да" }, technician: { level: "none", label: "нет" } },
+        hint: "напрямую — только руководитель; у кладовщика клиент создаётся автоматически при создании брони",
+        super: { level: "full", label: "да" }, warehouse: { level: "limited", label: "через бронь" }, technician: { level: "none", label: "нет" } },
       { capability: "Редактировать карточку клиента",
-        super: { level: "full", label: "любого" }, warehouse: { level: "edit", label: "любого" }, technician: { level: "none", label: "нет" } },
+        super: { level: "full", label: "любого" }, warehouse: { level: "none", label: "нет" }, technician: { level: "none", label: "нет" } },
       { capability: "Видеть задолженность клиента",
         super: { level: "full", label: "да" }, warehouse: { level: "limited", label: "сумма и статус" }, technician: { level: "none", label: "нет" } },
       { capability: "Удалить клиента",
@@ -220,11 +221,14 @@ export const MATRIX_SECTIONS: MatrixSection[] = [
   },
   {
     title: "Финансы",
-    hint: "секция доступна только руководителю",
+    hint: "раздел /finance — только руководитель; у кладовщика — лишь приём платежей с лимитами",
     rows: [
       { capability: "Открыть любую финансовую страницу",
         super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "none", label: "нет" } },
-      { capability: "Отмечать оплату, редактировать платежи",
+      { capability: "Принять платёж по брони",
+        hint: "кладовщик: только наличные/карта, ≤ 100 000 ₽, бронь в статусе «Выдана» или «Возвращена»",
+        super: { level: "full", label: "да" }, warehouse: { level: "limited", label: "с лимитами" }, technician: { level: "none", label: "нет" } },
+      { capability: "Редактировать / аннулировать платежи",
         super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "none", label: "нет" } },
       { capability: "Добавить расход",
         super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "none", label: "нет" } },
@@ -306,10 +310,11 @@ export const EDGE_CASES: EdgeCase[] = [
 
 /** Технические заметки — bullet points в футере. */
 export const TECH_NOTES: TechNote[] = [
-  { text: "**Prisma-схема.** В модели `User` поле `role: UserRole` имеет 3 значения: `SUPER_ADMIN`, `WAREHOUSE`, `TECHNICIAN`." },
+  { text: "**Prisma-схема.** В модели `AdminUser` поле `role: UserRole` имеет 3 значения: `SUPER_ADMIN`, `WAREHOUSE`, `TECHNICIAN`." },
   { text: "**Middleware `rolesGuard`** в `apps/api/src/middleware/rolesGuard.ts`. Принимает массив разрешённых ролей, читает `req.adminUser.role`, возвращает `403 { code: \"FORBIDDEN_BY_ROLE\" }`. Навешивается на роуты в `routes/index.ts`." },
   { text: "**Фронт — сокрытие меню.** В `apps/web/src/lib/roleMatrix.ts` объявлен `menuByRole: Record<UserRole, MenuItem[]>`. `AppShell` фильтрует по `currentUser.role`. При попытке прямого URL — `useRequireRole` редиректит на `/day`." },
   { text: "**Аудит-лог.** Таблица `AuditEntry` (`userId, action, entityType, entityId, before, after, createdAt`). Пишется через `writeAuditEntry()` внутри `prisma.$transaction` на деструктивных операциях (delete booking, admin-users CRUD и т.п.)." },
   { text: "**Тесты.** `apps/api/src/__tests__/rolesGuardHolistic.test.ts` — 21 интеграционный тест: TECHNICIAN→403 / WAREHOUSE→2xx / SUPER_ADMIN→2xx на guarded-маршрутах + аудит-проверки." },
   { text: "**`botScopeGuard`** (ограничивает ключи `openclaw-*`) остаётся слоем над `rolesGuard`. Бот-ключ пропускается через `req.botAccess === true`, роль не проверяется." },
+  { text: "**Лимиты платежей кладовщика.** `validateWhLimits` в `apps/api/src/services/paymentService.ts`: WAREHOUSE создаёт платёж только методом `CASH`/`CARD`, суммой ≤ 100 000 ₽ и только по брони в статусе `ISSUED`/`RETURNED`. Нарушение → `403 PAYMENT_LIMIT_EXCEEDED`; успешный платёж пишется в аудит как `PAYMENT_CREATE_BY_WH`. `SUPER_ADMIN` обходит все лимиты." },
 ];

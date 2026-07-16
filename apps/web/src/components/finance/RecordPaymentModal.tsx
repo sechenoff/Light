@@ -422,7 +422,7 @@ export function RecordPaymentModal({
         <div className="flex gap-2 justify-end px-5 pb-5 border-t border-border pt-4">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm border border-border rounded-lg text-ink-2 hover:bg-surface-2 transition-colors"
+            className="px-4 py-2 text-sm border border-border rounded-lg text-ink-2 hover:bg-surface-muted transition-colors"
           >
             Отмена
           </button>

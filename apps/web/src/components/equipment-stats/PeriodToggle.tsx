@@ -1,15 +1,13 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { PERIOD_OPTIONS, type PeriodValue } from "./types";
+import { PERIOD_OPTIONS, parsePeriod, type PeriodValue } from "./types";
 
 export function PeriodToggle() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const raw = searchParams.get("period");
-  const active: PeriodValue =
-    raw === "30" || raw === "365" ? raw : "90";
+  const active: PeriodValue = parsePeriod(searchParams.get("period"));
 
   function setPeriod(value: PeriodValue) {
     const next = new URLSearchParams(searchParams.toString());
@@ -18,7 +16,11 @@ export function PeriodToggle() {
   }
 
   return (
-    <div className="inline-flex items-center bg-surface border border-border rounded-full p-1">
+    <div
+      role="group"
+      aria-label="Период"
+      className="inline-flex items-center bg-surface border border-border rounded-full p-1"
+    >
       {PERIOD_OPTIONS.map((opt) => {
         const isActive = opt.value === active;
         return (

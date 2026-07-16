@@ -14,7 +14,7 @@ const PERIOD_LABEL: Record<"30d" | "90d" | "365d", string> = {
 };
 
 export function EquipmentStatsPage() {
-  const { data, error, loading } = useEquipmentStats();
+  const { data, error, loading, retry } = useEquipmentStats();
 
   return (
     <div className="space-y-2">
@@ -27,36 +27,42 @@ export function EquipmentStatsPage() {
       {loading && !data ? (
         <div className="py-12 text-center text-ink-3">Загружаем…</div>
       ) : error ? (
-        <div className="py-6 px-4 bg-rose-soft border border-rose-border rounded-xl text-rose">
-          {error}
+        <div className="py-6 px-4 bg-rose-soft border border-rose-border rounded-xl text-rose flex items-center justify-between gap-4 flex-wrap">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={retry}
+            className="shrink-0 px-3 py-2 -my-1 text-sm font-medium text-rose bg-surface border border-rose-border rounded-lg hover:bg-rose-soft transition-colors"
+          >
+            Повторить
+          </button>
         </div>
       ) : data ? (
-        <>
+        <div
+          aria-busy={loading}
+          className={loading ? "opacity-50 pointer-events-none" : undefined}
+        >
           <KpiHero kpi={data.kpi} periodLabel={PERIOD_LABEL[data.period]} />
 
           <TopRankedSection
-            icon="🔥"
             title="Чаще всего берут"
             rows={data.demand}
             rowKey="demand"
             emptyText="Нет броней за выбранный период"
           />
           <TopRankedSection
-            icon="💤"
             title="Мёртвый груз"
             rows={data.deadStock}
             rowKey="deadStock"
             emptyText="Все позиции в работе — мёртвого груза нет 🎉"
           />
           <TopRankedSection
-            icon="💰"
             title="Лучшая доходность на единицу склада"
             rows={data.revenue}
             rowKey="revenue"
             emptyText="Нет выручки за выбранный период"
           />
           <TopRankedSection
-            icon="🔧"
             title="Проблемные позиции"
             rows={data.quality}
             rowKey="quality"
@@ -65,7 +71,7 @@ export function EquipmentStatsPage() {
 
           <div className="mt-8 mb-2 eyebrow">Все позиции</div>
           <MasterTable rows={data.table} />
-        </>
+        </div>
       ) : null}
     </div>
   );

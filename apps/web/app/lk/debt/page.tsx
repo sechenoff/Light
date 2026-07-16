@@ -32,11 +32,11 @@ export default function LkDebtPage() {
       </header>
 
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="bg-surface-2 border border-border rounded-lg p-4">
+        <div className="bg-surface-muted border border-border rounded-lg p-4">
           <p className="eyebrow">Общий долг</p>
           <p className="mono-num text-2xl mt-1">{formatRub(Number(data.totalOutstanding))}</p>
         </div>
-        <div className="bg-surface-2 border border-border rounded-lg p-4">
+        <div className="bg-surface-muted border border-border rounded-lg p-4">
           <p className="eyebrow">Просрочено</p>
           <p className={`mono-num text-2xl mt-1 ${data.overdueCount > 0 ? "text-rose" : ""}`}>
             {data.overdueCount}
@@ -46,7 +46,7 @@ export default function LkDebtPage() {
 
       {/* lk-debt-by-bookings: строки — брони с остатком (единый источник с админкой),
           счёт (если выставлен) — детализация строки */}
-      <section className="bg-surface-2 border border-border rounded-lg overflow-hidden">
+      <section className="bg-surface-muted border border-border rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-ink-2">

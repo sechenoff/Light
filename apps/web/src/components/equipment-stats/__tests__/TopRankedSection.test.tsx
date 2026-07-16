@@ -27,7 +27,6 @@ describe("TopRankedSection", () => {
                   row({ id: "b", name: "Manfrotto", bookingsCount: 12, qtyShifts: 40 })];
     render(
       <TopRankedSection
-        icon="🔥"
         title="Чаще всего берут"
         rows={rows}
         rowKey="demand"
@@ -41,7 +40,6 @@ describe("TopRankedSection", () => {
   it("renders an empty-state message when rows are empty", () => {
     render(
       <TopRankedSection
-        icon="💤"
         title="Мёртвый груз"
         rows={[]}
         rowKey="deadStock"

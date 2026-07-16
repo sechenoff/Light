@@ -58,10 +58,10 @@ export default function LkBookingDetailPage() {
   if (!b) {
     return (
       <div className="space-y-4">
-        <div className="h-4 w-24 bg-surface-2 rounded animate-pulse" />
-        <div className="h-8 w-64 bg-surface-2 rounded animate-pulse" />
-        <div className="h-4 w-48 bg-surface-2 rounded animate-pulse" />
-        <div className="mt-4 bg-surface-2 border border-border rounded-lg h-48 animate-pulse" />
+        <div className="h-4 w-24 bg-surface-muted rounded animate-pulse" />
+        <div className="h-8 w-64 bg-surface-muted rounded animate-pulse" />
+        <div className="h-4 w-48 bg-surface-muted rounded animate-pulse" />
+        <div className="mt-4 bg-surface-muted border border-border rounded-lg h-48 animate-pulse" />
       </div>
     );
   }
@@ -88,7 +88,7 @@ export default function LkBookingDetailPage() {
         </div>
       </header>
 
-      <section aria-label="Позиции заказа" className="bg-surface-2 border border-border rounded-lg overflow-hidden">
+      <section aria-label="Позиции заказа" className="bg-surface-muted border border-border rounded-lg overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
           <p className="eyebrow">Позиции</p>
         </div>
@@ -121,25 +121,25 @@ export default function LkBookingDetailPage() {
       {/* «Итого» = finalAmount (оборудование после скидки + транспорт) — та же
           база, от которой считаются «Оплачено» и «Остаток», иначе числа не бьются. */}
       <section aria-label="Финансовая сводка" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-surface-2 border border-border rounded-lg p-3">
+        <div className="bg-surface-muted border border-border rounded-lg p-3">
           <p className="eyebrow">Скидка</p>
           <p className="mono-num text-lg mt-1">{formatRub(Number(b.discountAmount))}</p>
         </div>
         {Number(b.transportSubtotal) > 0 && (
-          <div className="bg-surface-2 border border-border rounded-lg p-3">
+          <div className="bg-surface-muted border border-border rounded-lg p-3">
             <p className="eyebrow">Транспорт и доставка</p>
             <p className="mono-num text-lg mt-1">{formatRub(Number(b.transportSubtotal))}</p>
           </div>
         )}
-        <div className="bg-surface-2 border border-border rounded-lg p-3">
+        <div className="bg-surface-muted border border-border rounded-lg p-3">
           <p className="eyebrow">Итого</p>
           <p className="mono-num text-lg mt-1">{formatRub(Number(b.finalAmount))}</p>
         </div>
-        <div className="bg-surface-2 border border-border rounded-lg p-3">
+        <div className="bg-surface-muted border border-border rounded-lg p-3">
           <p className="eyebrow">Оплачено</p>
           <p className="mono-num text-lg mt-1">{formatRub(Number(b.amountPaid))}</p>
         </div>
-        <div className="bg-surface-2 border border-border rounded-lg p-3">
+        <div className="bg-surface-muted border border-border rounded-lg p-3">
           <p className="eyebrow">Остаток</p>
           <p className={`mono-num text-lg mt-1 ${Number(b.amountOutstanding) > 0 ? "text-rose" : ""}`}>
             {formatRub(Number(b.amountOutstanding))}
@@ -148,7 +148,7 @@ export default function LkBookingDetailPage() {
       </section>
 
       {(b.comment || b.optionalNote) && (
-        <section aria-label="Комментарии" className="bg-surface-2 border border-border rounded-lg p-4 space-y-2">
+        <section aria-label="Комментарии" className="bg-surface-muted border border-border rounded-lg p-4 space-y-2">
           {b.comment && (
             <div>
               <p className="eyebrow mb-1">Комментарий</p>
@@ -171,7 +171,7 @@ export default function LkBookingDetailPage() {
               href={`/api/lk/bookings/${b.id}/invoice.pdf`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm hover:bg-surface-2 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm hover:bg-surface-muted transition-colors"
             >
               <span aria-hidden="true">🧾</span>
               Счёт {b.invoiceNumber ? `${b.invoiceNumber} ` : ""}PDF
@@ -182,7 +182,7 @@ export default function LkBookingDetailPage() {
               href={`/api/lk/bookings/${b.id}/estimate.pdf`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm hover:bg-surface-2 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm hover:bg-surface-muted transition-colors"
             >
               <span aria-hidden="true">📄</span>
               Смета PDF
@@ -193,7 +193,7 @@ export default function LkBookingDetailPage() {
               href={`/api/lk/bookings/${b.id}/act.pdf`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm hover:bg-surface-2 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm hover:bg-surface-muted transition-colors"
             >
               <span aria-hidden="true">📋</span>
               Акт PDF

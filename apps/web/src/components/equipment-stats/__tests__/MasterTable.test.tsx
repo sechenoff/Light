@@ -58,7 +58,7 @@ describe("MasterTable", () => {
 
   it("sorts by Броней desc when column header clicked", () => {
     render(<MasterTable rows={rows} />);
-    fireEvent.click(screen.getByRole("columnheader", { name: /Броней/ }));
+    fireEvent.click(within(screen.getByRole("columnheader", { name: /Броней/ })).getByRole("button"));
     const dataRows = screen.getAllByRole("row").slice(1);
     const names = dataRows.map((r) => within(r).getAllByRole("cell")[0].textContent);
     expect(names).toEqual(["Aputure", "Софтбокс", "Manfrotto"]);

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { SectionHeader } from "../../../src/components/SectionHeader";
 import { StatusPill } from "../../../src/components/StatusPill";
+import { AdminTabNav } from "../../../src/components/admin/AdminTabNav";
 import { ClientPortalAccessCard } from "../../../src/components/admin/ClientPortalAccessCard";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
@@ -221,12 +222,13 @@ type DeleteModalProps = {
 };
 
 function DeleteConfirmModal({ open, clientName, loading, onConfirm, onClose }: DeleteModalProps) {
-  const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    // Auto-focus the primary action so Enter confirms (Esc cancels).
-    setTimeout(() => confirmRef.current?.focus(), 50);
+    // Автофокус на «Отмена»: случайный Enter не должен подтверждать удаление
+    // (Esc также закрывает).
+    setTimeout(() => cancelRef.current?.focus(), 50);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !loading) onClose();
     };
@@ -257,6 +259,7 @@ function DeleteConfirmModal({ open, clientName, loading, onConfirm, onClose }: D
         </p>
         <div className="flex justify-end gap-2">
           <button
+            ref={cancelRef}
             type="button"
             onClick={onClose}
             disabled={loading}
@@ -265,7 +268,6 @@ function DeleteConfirmModal({ open, clientName, loading, onConfirm, onClose }: D
             Отмена
           </button>
           <button
-            ref={confirmRef}
             type="button"
             onClick={onConfirm}
             disabled={loading}
@@ -348,17 +350,27 @@ export default function AdminClientsPage() {
   const [deleting, setDeleting] = useState(false);
   const [portalTarget, setPortalTarget] = useState<Client | null>(null);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAbort = useRef<AbortController | null>(null);
 
   const fetchClients = async (q: string) => {
+    // Гонка debounce-запросов: отменяем предыдущий in-flight запрос, чтобы
+    // поздний ответ не перетёр результаты более нового.
+    searchAbort.current?.abort();
+    const controller = new AbortController();
+    searchAbort.current = controller;
     setFetching(true);
     try {
       const params = q.trim() ? `?search=${encodeURIComponent(q.trim())}&limit=100` : "?limit=100";
-      const data = await apiFetch<{ clients: Client[] }>(`/api/clients${params}`);
+      const data = await apiFetch<{ clients: Client[] }>(`/api/clients${params}`, {
+        signal: controller.signal,
+      });
       setClients(data.clients);
     } catch (e: any) {
+      if (controller.signal.aborted || e?.name === "AbortError") return;
       toast.error(e?.message ?? "Ошибка при загрузке клиентов");
     } finally {
-      setFetching(false);
+      // Спиннер гасит только самый свежий запрос — отменённый не трогает.
+      if (searchAbort.current === controller) setFetching(false);
     }
   };
 
@@ -381,6 +393,15 @@ export default function AdminClientsPage() {
     void fetchDebts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized]);
+
+  // Cleanup: висящий debounce-таймер и in-flight запрос не должны стрелять
+  // после unmount.
+  useEffect(() => {
+    return () => {
+      if (searchDebounce.current) clearTimeout(searchDebounce.current);
+      searchAbort.current?.abort();
+    };
+  }, []);
 
   const handleSearchChange = (v: string) => {
     setSearch(v);
@@ -451,6 +472,10 @@ export default function AdminClientsPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
+      <div className="mb-6">
+        <AdminTabNav />
+      </div>
+
       <SectionHeader
         eyebrow="Администрирование"
         title="Клиенты"
@@ -466,19 +491,28 @@ export default function AdminClientsPage() {
         }
       />
 
-      {/* Search */}
-      <div className="mb-4">
+      {/* Search: <form> — Enter запускает поиск сразу, минуя debounce */}
+      <form
+        role="search"
+        className="mb-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (searchDebounce.current) clearTimeout(searchDebounce.current);
+          void fetchClients(search);
+        }}
+      >
         <input
           type="text"
           value={search}
           onChange={(e) => handleSearchChange(e.target.value)}
           placeholder="Поиск по имени…"
+          aria-label="Поиск клиентов по имени"
           className="w-full max-w-sm rounded border border-border px-3 py-2 text-[13.5px] text-ink bg-surface focus:outline-none focus:border-accent-bright focus:ring-[3px] focus:ring-accent-soft"
         />
-      </div>
+      </form>
 
       {/* Table */}
-      <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden">
+      <div className="bg-surface border border-border rounded-md shadow-xs overflow-x-auto">
         {fetching ? (
           <div className="p-8 text-center text-ink-3 text-sm">Загружаю…</div>
         ) : clients.length === 0 ? (
@@ -486,7 +520,7 @@ export default function AdminClientsPage() {
             {search.trim() ? "Ничего не найдено" : "Клиенты ещё не добавлены"}
           </div>
         ) : (
-          <table className="w-full text-[13px]">
+          <table className="w-full min-w-[720px] text-[13px]">
             <thead>
               <tr className="border-b border-border bg-surface-muted">
                 <th className="px-4 py-2.5 text-left eyebrow text-ink-2">Имя</th>

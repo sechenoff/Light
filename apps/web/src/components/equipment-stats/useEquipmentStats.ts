@@ -1,21 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../../lib/api";
-import type { EquipmentStatsResponse, PeriodValue } from "./types";
+import { parsePeriod, type EquipmentStatsResponse } from "./types";
 
 export function useEquipmentStats() {
   const searchParams = useSearchParams();
-  const rawPeriod = searchParams.get("period");
-  const period: PeriodValue =
-    rawPeriod === "30" || rawPeriod === "365" ? rawPeriod : "90";
+  const period = parsePeriod(searchParams.get("period"));
 
   const [data, setData] = useState<EquipmentStatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -37,5 +35,11 @@ export function useEquipmentStats() {
     };
   }, [period]);
 
-  return { data, error, loading, period };
+  useEffect(() => load(), [load]);
+
+  const retry = useCallback(() => {
+    load();
+  }, [load]);
+
+  return { data, error, loading, period, retry };
 }

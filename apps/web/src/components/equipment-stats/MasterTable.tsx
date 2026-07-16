@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatRub } from "../../lib/format";
 import type { EquipmentStatRow } from "./types";
@@ -81,20 +82,25 @@ export function MasterTable({ rows }: MasterTableProps) {
       </div>
       <div className="overflow-x-auto bg-surface border border-border rounded-xl">
         <table className="w-full text-sm border-collapse">
-          <thead className="bg-surface-2">
+          <thead className="bg-surface-muted">
             <tr>
               {COLUMNS.map((c) => (
                 <th
                   key={c.key}
                   scope="col"
-                  className={
-                    "px-3 py-2.5 text-xs uppercase tracking-wide font-semibold text-ink-3 cursor-pointer select-none " +
-                    (c.align === "right" ? "text-right" : "text-left")
-                  }
-                  onClick={() => onHeader(c.key)}
+                  className="p-0"
                   aria-sort={sortKey === c.key ? (sortDir === 1 ? "ascending" : "descending") : "none"}
                 >
-                  {c.label}{sortKey === c.key ? (sortDir === 1 ? " ↑" : " ↓") : ""}
+                  <button
+                    type="button"
+                    onClick={() => onHeader(c.key)}
+                    className={
+                      "w-full px-3 py-2.5 text-xs uppercase tracking-wide font-semibold text-ink-3 select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset " +
+                      (c.align === "right" ? "text-right" : "text-left")
+                    }
+                  >
+                    {c.label}{sortKey === c.key ? (sortDir === 1 ? " ↑" : " ↓") : ""}
+                  </button>
                 </th>
               ))}
             </tr>
@@ -103,10 +109,18 @@ export function MasterTable({ rows }: MasterTableProps) {
             {visible.map((r) => (
               <tr
                 key={r.id}
-                className="border-t border-border hover:bg-surface-2 cursor-pointer"
+                className="border-t border-border hover:bg-surface-muted cursor-pointer"
                 onClick={() => router.push(`/equipment/${r.id}/units`)}
               >
-                <td className="px-3 py-2">{r.name}</td>
+                <td className="px-3 py-2">
+                  <Link
+                    href={`/equipment/${r.id}/units`}
+                    className="text-ink hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {r.name}
+                  </Link>
+                </td>
                 <td className="px-3 py-2 text-ink-3">{r.category}</td>
                 <td className="px-3 py-2 text-right mono-num">{r.totalQuantity}</td>
                 <td className="px-3 py-2 text-right mono-num">{r.bookingsCount}</td>

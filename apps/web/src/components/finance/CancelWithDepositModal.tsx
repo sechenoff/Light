@@ -234,7 +234,7 @@ export function CancelWithDepositModal({
                       className={`w-full text-left flex gap-3 p-3.5 border rounded-lg transition-colors ${
                         isActive
                           ? `${c.accentClass} ${c.bgClass}`
-                          : "border-border hover:bg-surface-2"
+                          : "border-border hover:bg-surface-muted"
                       }`}
                     >
                       {/* Radio dot */}
@@ -315,7 +315,7 @@ export function CancelWithDepositModal({
                 <label className="eyebrow block mb-1">Клиент</label>
                 <input
                   type="text"
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface-2 text-ink-3 cursor-not-allowed"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface-muted text-ink-3 cursor-not-allowed"
                   value={clientName}
                   disabled
                 />
@@ -387,7 +387,7 @@ export function CancelWithDepositModal({
           {step === 3 && (
             <div className="space-y-3">
               <p className="text-sm font-medium text-ink">Подтвердите операцию</p>
-              <div className="p-4 bg-surface-2 rounded-lg border border-border text-sm space-y-2">
+              <div className="p-4 bg-surface-muted rounded-lg border border-border text-sm space-y-2">
                 <div className="flex justify-between">
                   <span className="text-ink-3">Бронь</span>
                   <span className="text-ink font-medium">{bookingDisplayName}</span>
@@ -441,7 +441,7 @@ export function CancelWithDepositModal({
         <div className="flex justify-between gap-2 px-5 py-4 border-t border-border shrink-0">
           <button
             onClick={step === 1 ? onClose : () => setStep((s) => (s - 1) as 1 | 2 | 3)}
-            className="px-4 py-2 text-sm border border-border rounded-lg text-ink-2 hover:bg-surface-2 transition-colors"
+            className="px-4 py-2 text-sm border border-border rounded-lg text-ink-2 hover:bg-surface-muted transition-colors"
           >
             {step === 1 ? "Закрыть" : "Назад"}
           </button>

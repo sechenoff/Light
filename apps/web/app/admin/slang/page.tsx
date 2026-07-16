@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { useRequireRole } from "@/hooks/useRequireRole";
 import { apiFetch } from "@/lib/api";
+import { toast } from "@/components/ToastProvider";
 import { HealthBanner } from "@/components/admin/slang/HealthBanner";
 import { SlangKpiCards } from "@/components/admin/slang/SlangKpiCards";
 import { ReviewQueue } from "@/components/admin/slang/ReviewQueue";
@@ -82,14 +83,15 @@ export default function SlangPage() {
       });
       triggerRefresh();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Ошибка изменения связи");
+      toast.error(e instanceof Error ? e.message : "Ошибка изменения связи");
       // Refresh to show current state (new may exist, old may still exist)
       triggerRefresh();
     }
   }
 
-  function handleDelete(aliasId: string) {
-    // Optimistically remove the phrase from the correct group
+  async function handleDelete(aliasId: string) {
+    // Optimistically remove the phrase from the correct group, keep snapshot for rollback
+    const snapshot = groups;
     setGroups((prev) =>
       prev
         .map((group) => ({
@@ -99,7 +101,13 @@ export default function SlangPage() {
         }))
         .filter((group) => group.aliases.length > 0),
     );
-    triggerRefresh();
+    try {
+      await apiFetch(`/api/admin/slang-learning/aliases/${aliasId}`, { method: "DELETE" });
+      triggerRefresh();
+    } catch (e: unknown) {
+      setGroups(snapshot);
+      toast.error(e instanceof Error ? e.message : "Ошибка удаления фразы");
+    }
   }
 
   function handleExport() {

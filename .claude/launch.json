@@ -3,21 +3,21 @@
   "configurations": [
     {
       "name": "api",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "-w", "apps/api"],
-      "port": 4000
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "PORT=4100 npm run dev -w apps/api"
+      ],
+      "port": 4100
     },
     {
       "name": "web",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "-w", "apps/web"],
-      "port": 3000
-    },
-    {
-      "name": "mockups",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["http-server", "docs/mockups", "-p", "8090", "-c-1"],
-      "port": 8090
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/web && API_PROXY_TARGET=http://127.0.0.1:4100 npx next dev -p 3100"
+      ],
+      "port": 3100
     }
   ]
 }

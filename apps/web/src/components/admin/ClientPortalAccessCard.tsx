@@ -182,7 +182,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-border bg-surface-2 p-4">
+      <div className="rounded-lg border border-border bg-surface-muted p-4">
         <p className="eyebrow mb-2">Доступ в кабинет</p>
         <p className="text-sm text-ink-2">Загрузка…</p>
       </div>
@@ -191,7 +191,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
 
   if (!account) {
     return (
-      <div className="rounded-lg border border-border bg-surface-2 p-4 space-y-3">
+      <div className="rounded-lg border border-border bg-surface-muted p-4 space-y-3">
         <p className="eyebrow">Доступ в кабинет</p>
         <p className="text-sm text-ink-2">Кабинет не создан. Введите email для отправки приглашения.</p>
         <input
@@ -227,7 +227,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
   };
 
   return (
-    <div className="rounded-lg border border-border bg-surface-2 p-4 space-y-3">
+    <div className="rounded-lg border border-border bg-surface-muted p-4 space-y-3">
       <p className="eyebrow">Доступ в кабинет</p>
 
       <div className="text-sm space-y-1">

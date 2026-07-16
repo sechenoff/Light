@@ -34,7 +34,7 @@ function GafferShell({ children }: { children: React.ReactNode }) {
   // Loading skeleton
   if (loading) {
     return (
-      <div className="min-h-screen bg-surface-2 flex items-center justify-center">
+      <div className="min-h-screen bg-surface-muted flex items-center justify-center">
         <div className="space-y-3 w-64">
           <div className="h-4 bg-border rounded animate-pulse" />
           <div className="h-4 bg-border rounded animate-pulse w-3/4" />

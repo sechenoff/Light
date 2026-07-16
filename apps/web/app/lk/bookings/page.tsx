@@ -92,7 +92,7 @@ function BookingsView() {
             className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
               activeFilter === f.value
                 ? "bg-accent-bright text-surface border-accent-bright"
-                : "border-border text-ink-2 hover:bg-surface-2"
+                : "border-border text-ink-2 hover:bg-surface-muted"
             }`}
           >
             {f.label}
@@ -105,7 +105,7 @@ function BookingsView() {
       ) : items.length === 0 ? (
         <p className="text-ink-2">Нет заказов в этой категории.</p>
       ) : (
-        <div className="bg-surface-2 border border-border rounded-lg divide-y divide-border">
+        <div className="bg-surface-muted border border-border rounded-lg divide-y divide-border">
           {items.map((b) => (
             <Link key={b.id} href={`/lk/bookings/${b.id}`} className="block p-4 hover:bg-surface transition-colors">
               <div className="flex justify-between items-start flex-wrap gap-2">
@@ -136,7 +136,7 @@ function BookingsView() {
         <button
           onClick={loadMore}
           disabled={loadingMore}
-          className="px-4 py-2 border border-border rounded-md hover:bg-surface-2 disabled:opacity-50 transition-colors"
+          className="px-4 py-2 border border-border rounded-md hover:bg-surface-muted disabled:opacity-50 transition-colors"
         >
           {loadingMore ? "Загружаем…" : "Загрузить ещё"}
         </button>

@@ -123,7 +123,7 @@ export function BookingFinancePanel({
 
       <div className="p-4 space-y-4">
         {/* KPI mini-strip */}
-        <div className="grid grid-cols-3 gap-2 p-3 bg-surface-2 rounded-lg">
+        <div className="grid grid-cols-3 gap-2 p-3 bg-surface-muted rounded-lg">
           <div>
             <div className="eyebrow text-ink-3 mb-1">Сумма брони</div>
             <div className="text-lg font-semibold mono-num text-ink">{formatMoneyRub(booking.finalAmount ?? "0")}</div>
@@ -422,7 +422,7 @@ export function BookingFinancePanel({
         {/* Хронология денег (SA only, collapsible) */}
         {userRole === "SUPER_ADMIN" && (
           <details className="group">
-            <summary className="cursor-pointer flex items-center justify-between px-3 py-2.5 bg-surface-2 rounded-lg text-sm font-medium text-ink list-none hover:bg-surface-subtle transition-colors">
+            <summary className="cursor-pointer flex items-center justify-between px-3 py-2.5 bg-surface-muted rounded-lg text-sm font-medium text-ink list-none hover:bg-surface-subtle transition-colors">
               <span>📊 Хронология денег</span>
               <span className="text-ink-3 group-open:rotate-180 transition-transform text-xs">▾</span>
             </summary>
@@ -435,7 +435,7 @@ export function BookingFinancePanel({
         {/* Связанные расходы (SA only, collapsible) */}
         {userRole === "SUPER_ADMIN" && (
           <details className="group">
-            <summary className="cursor-pointer flex items-center justify-between px-3 py-2.5 bg-surface-2 rounded-lg text-sm font-medium text-ink list-none hover:bg-surface-subtle transition-colors">
+            <summary className="cursor-pointer flex items-center justify-between px-3 py-2.5 bg-surface-muted rounded-lg text-sm font-medium text-ink list-none hover:bg-surface-subtle transition-colors">
               <span>🛒 Связанные расходы</span>
               <span className="text-ink-3 group-open:rotate-180 transition-transform text-xs">▾</span>
             </summary>

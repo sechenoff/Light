@@ -70,6 +70,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     throw new ApiFetchError(message, res.status, jsonObject?.details ?? json, code);
   }
 
+  // DELETE-эндпоинты отвечают 204 без тела — res.json() на пустом теле бросил бы SyntaxError
+  if (res.status === 204) {
+    return undefined as unknown as T;
+  }
+
   return (await res.json()) as T;
 }
 

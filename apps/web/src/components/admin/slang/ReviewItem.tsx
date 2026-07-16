@@ -27,7 +27,8 @@ function ConfidenceBadge({ value }: { value: number }) {
 }
 
 export function ReviewItem({ candidate, checked, onCheck, onApprove, onReject, onEdit, acting }: Props) {
-  const isActing = acting === candidate.id;
+  // Любая in-flight операция (в т.ч. batch) блокирует кнопки строки
+  const isActing = acting !== null;
   const hasEquipment = !!candidate.proposedEquipmentId;
 
   return (
@@ -37,6 +38,7 @@ export function ReviewItem({ candidate, checked, onCheck, onApprove, onReject, o
         checked={checked}
         onChange={() => onCheck(candidate.id)}
         className="w-4 h-4 accent-accent shrink-0"
+        aria-label={`Выбрать «${candidate.rawPhrase}»`}
       />
 
       <div className="flex items-center gap-2.5 flex-1 min-w-0">

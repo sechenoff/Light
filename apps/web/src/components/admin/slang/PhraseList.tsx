@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { pluralize } from "@/lib/format";
 import type { SlangAlias } from "./types";
 import { RebindModal } from "./RebindModal";
 
@@ -60,10 +61,13 @@ export function PhraseList({ aliases, equipmentId, onDelete, onRebind }: Props) 
         <div className="bg-surface border border-border rounded-lg overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-3.5 py-2 border-b border-border bg-surface-muted">
-            <span className="eyebrow text-ink-3">{sorted.length} сленговых фраз</span>
+            <span className="eyebrow text-ink-3">
+              {sorted.length} {pluralize(sorted.length, "сленговая фраза", "сленговые фразы", "сленговых фраз")}
+            </span>
             <button
+              disabled
               title="Скоро"
-              className="text-[11px] text-ink-3 cursor-default"
+              className="text-[11px] text-ink-3 cursor-not-allowed py-2 px-2 -my-1"
             >
               + Добавить фразу
             </button>
@@ -109,9 +113,9 @@ export function PhraseList({ aliases, equipmentId, onDelete, onRebind }: Props) 
             <div className="px-3.5 py-2 border-t border-border text-center">
               <button
                 onClick={() => setShowAll(true)}
-                className="text-[12px] text-accent hover:text-accent-bright transition-colors"
+                className="text-[12px] text-accent hover:text-accent-bright transition-colors py-2 px-2 -my-1"
               >
-                + ещё {hiddenCount} фраз — показать все
+                + ещё {hiddenCount} {pluralize(hiddenCount, "фраза", "фразы", "фраз")} — показать все
               </button>
             </div>
           )}
@@ -119,7 +123,7 @@ export function PhraseList({ aliases, equipmentId, onDelete, onRebind }: Props) 
             <div className="px-3.5 py-2 border-t border-border text-center">
               <button
                 onClick={() => setShowAll(false)}
-                className="text-[12px] text-ink-3 hover:text-ink-2 transition-colors"
+                className="text-[12px] text-ink-3 hover:text-ink-2 transition-colors py-2 px-2 -my-1"
               >
                 Свернуть
               </button>

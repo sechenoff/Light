@@ -54,7 +54,7 @@ export default function LkEstimatesPage() {
       ) : items.length === 0 ? (
         <p className="text-ink-2">Подтверждённых смет пока нет.</p>
       ) : (
-        <div className="bg-surface-2 border border-border rounded-lg divide-y divide-border">
+        <div className="bg-surface-muted border border-border rounded-lg divide-y divide-border">
           {items.map((e) => (
             <div key={e.bookingId} className="p-4 flex justify-between items-baseline gap-4">
               <div>
@@ -83,7 +83,7 @@ export default function LkEstimatesPage() {
         <button
           onClick={loadMore}
           disabled={loadingMore}
-          className="px-4 py-2 border border-border rounded-md hover:bg-surface-2 disabled:opacity-50 transition-colors"
+          className="px-4 py-2 border border-border rounded-md hover:bg-surface-muted disabled:opacity-50 transition-colors"
         >
           {loadingMore ? "Загружаем…" : "Загрузить ещё"}
         </button>

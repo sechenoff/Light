@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { toast } from "@/components/ToastProvider";
 import type { SlangCandidate } from "./types";
 import { ReviewItem } from "./ReviewItem";
 import { RebindModal } from "./RebindModal";
@@ -39,13 +40,14 @@ export function ReviewQueue({ candidates, onUpdate }: Props) {
     if (!c || !c.proposedEquipmentId) return;
     setActing(id);
     try {
+      // reviewedBy бэк берёт из JWT-сессии (req.adminUser.username)
       await apiFetch(`/api/admin/slang-learning/${id}/approve`, {
         method: "POST",
-        body: JSON.stringify({ reviewedBy: "admin", equipmentId: c.proposedEquipmentId }),
+        body: JSON.stringify({ equipmentId: c.proposedEquipmentId }),
       });
       onUpdate();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Ошибка подтверждения");
+      toast.error(e instanceof Error ? e.message : "Ошибка подтверждения");
     } finally {
       setActing(null);
     }
@@ -56,11 +58,11 @@ export function ReviewQueue({ candidates, onUpdate }: Props) {
     try {
       await apiFetch(`/api/admin/slang-learning/${id}/reject`, {
         method: "POST",
-        body: JSON.stringify({ reviewedBy: "admin" }),
+        body: JSON.stringify({}),
       });
       onUpdate();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Ошибка отклонения");
+      toast.error(e instanceof Error ? e.message : "Ошибка отклонения");
     } finally {
       setActing(null);
     }
@@ -79,13 +81,13 @@ export function ReviewQueue({ candidates, onUpdate }: Props) {
         const c = candidates.find((x) => x.id === id)!;
         await apiFetch(`/api/admin/slang-learning/${id}/approve`, {
           method: "POST",
-          body: JSON.stringify({ reviewedBy: "admin", equipmentId: c.proposedEquipmentId }),
+          body: JSON.stringify({ equipmentId: c.proposedEquipmentId }),
         });
       }
       setChecked(new Set());
       onUpdate();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Ошибка batch-подтверждения");
+      toast.error(e instanceof Error ? e.message : "Ошибка batch-подтверждения");
       onUpdate(); // Refresh to show partial progress
     } finally {
       setActing(null);
@@ -101,13 +103,13 @@ export function ReviewQueue({ candidates, onUpdate }: Props) {
       for (const id of ids) {
         await apiFetch(`/api/admin/slang-learning/${id}/reject`, {
           method: "POST",
-          body: JSON.stringify({ reviewedBy: "admin" }),
+          body: JSON.stringify({}),
         });
       }
       setChecked(new Set());
       onUpdate();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Ошибка batch-отклонения");
+      toast.error(e instanceof Error ? e.message : "Ошибка batch-отклонения");
       onUpdate(); // Refresh to show partial progress
     } finally {
       setActing(null);
@@ -118,14 +120,14 @@ export function ReviewQueue({ candidates, onUpdate }: Props) {
     if (!editingId) return;
     apiFetch(`/api/admin/slang-learning/${editingId}/approve`, {
       method: "POST",
-      body: JSON.stringify({ reviewedBy: "admin", equipmentId }),
+      body: JSON.stringify({ equipmentId }),
     })
       .then(() => {
         setEditingId(null);
         onUpdate();
       })
       .catch((e: unknown) => {
-        alert(e instanceof Error ? e.message : "Ошибка сохранения");
+        toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
       });
   }
 
@@ -151,6 +153,7 @@ export function ReviewQueue({ candidates, onUpdate }: Props) {
                 onChange={toggleAll}
                 className="w-4 h-4 accent-accent"
                 title="Выбрать все"
+                aria-label="Выбрать все"
               />
               <span className="text-xs font-semibold text-amber">
                 AI предложил связи — подтвердите или исправьте

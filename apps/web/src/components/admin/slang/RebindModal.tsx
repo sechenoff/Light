@@ -72,10 +72,10 @@ export function RebindModal({ phrase, currentEquipmentId, onRebind, onClose }: P
 
   return (
     <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-surface rounded-xl w-[480px] max-h-[520px] shadow-lg overflow-hidden">
+      <div className="bg-surface rounded-xl w-full max-w-[480px] max-h-[520px] shadow-lg overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border">
           <h3 className="text-sm font-semibold text-ink">

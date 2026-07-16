@@ -34,7 +34,7 @@ export function KpiHero({ kpi, periodLabel }: KpiHeroProps) {
       <DayKpiCard
         eyebrow="Расход на ремонт"
         value={<span className="mono-num">{formatRub(kpi.repairCostRub)}</span>}
-        sub="linked-расходы"
+        sub="расходы на ремонт"
       />
     </div>
   );

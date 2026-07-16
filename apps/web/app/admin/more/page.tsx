@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
 import { useRequireRole } from "@/hooks/useRequireRole";
 import { AdminTabNav } from "@/components/admin/AdminTabNav";
+import { StatusPill } from "@/components/StatusPill";
 
 // ── Workers tab ───────────────────────────────────────────────────────────────
 
@@ -38,6 +39,9 @@ function WorkersTab() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // In-flight guard: id кладовщика, чей toggle сейчас в полёте
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
   async function loadWorkers() {
     setLoading(true);
     setError(null);
@@ -54,6 +58,19 @@ function WorkersTab() {
   useEffect(() => {
     loadWorkers();
   }, []);
+
+  // Esc закрывает открытую модалку (смена PIN / удаление)
+  useEffect(() => {
+    if (!resetPinId && !deleteId) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setResetPinId(null);
+        setDeleteId(null);
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [resetPinId, deleteId]);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -79,6 +96,8 @@ function WorkersTab() {
   }
 
   async function handleToggleActive(worker: Worker) {
+    if (togglingId) return; // in-flight guard: не даём двойной клик
+    setTogglingId(worker.id);
     try {
       await apiFetch(`/api/warehouse/workers/${worker.id}`, {
         method: "PATCH",
@@ -87,6 +106,8 @@ function WorkersTab() {
       await loadWorkers();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка обновления");
+    } finally {
+      setTogglingId(null);
     }
   }
 
@@ -142,7 +163,9 @@ function WorkersTab() {
             className="rounded border border-border px-3 py-2 text-sm bg-surface flex-1 min-w-[140px]"
           />
           <input
-            type="text"
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
             placeholder="PIN (4 цифры)"
             value={newPin}
             maxLength={4}
@@ -178,15 +201,15 @@ function WorkersTab() {
                 <th className="px-3 py-3 text-right">Действия</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border">
               {workers.map((w) => (
                 <tr key={w.id} className="hover:bg-surface">
                   <td className="px-4 py-3 font-medium text-ink">{w.name}</td>
                   <td className="px-3 py-3">
                     {w.isActive ? (
-                      <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-emerald-soft text-emerald border-emerald-border">Активен</span>
+                      <StatusPill variant="ok" label="Активен" />
                     ) : (
-                      <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-surface-muted text-ink-2 border-border">Отключён</span>
+                      <StatusPill variant="none" label="Отключён" />
                     )}
                   </td>
                   <td className="px-3 py-3 text-ink-2 text-xs">
@@ -205,21 +228,22 @@ function WorkersTab() {
                       <button
                         type="button"
                         onClick={() => handleToggleActive(w)}
-                        className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface"
+                        disabled={togglingId !== null}
+                        className="text-xs rounded border border-border px-2 py-2 -my-1 text-ink-2 hover:bg-surface disabled:opacity-50"
                       >
                         {w.isActive ? "Отключить" : "Включить"}
                       </button>
                       <button
                         type="button"
                         onClick={() => { setResetPinId(w.id); setResetPinValue(""); setResetPinError(null); }}
-                        className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface"
+                        className="text-xs rounded border border-border px-2 py-2 -my-1 text-ink-2 hover:bg-surface"
                       >
                         Сменить PIN
                       </button>
                       <button
                         type="button"
                         onClick={() => { setDeleteId(w.id); setDeleteError(null); }}
-                        className="text-xs rounded border border-rose-border px-2 py-1 text-rose hover:bg-rose-soft"
+                        className="text-xs rounded border border-rose-border px-2 py-2 -my-1 text-rose hover:bg-rose-soft"
                       >
                         Удалить
                       </button>
@@ -240,9 +264,9 @@ function WorkersTab() {
               <div className="flex items-center justify-between mb-2">
                 <span className="font-medium text-ink">{w.name}</span>
                 {w.isActive ? (
-                  <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-emerald-soft text-emerald border-emerald-border">Активен</span>
+                  <StatusPill variant="ok" label="Активен" />
                 ) : (
-                  <span className="inline-flex items-center rounded border px-2 py-0.5 text-xs bg-surface-muted text-ink-2 border-border">Отключён</span>
+                  <StatusPill variant="none" label="Отключён" />
                 )}
               </div>
               <p className="text-xs text-ink-3 mb-1">
@@ -256,7 +280,8 @@ function WorkersTab() {
                 <button
                   type="button"
                   onClick={() => handleToggleActive(w)}
-                  className="text-xs rounded border border-border px-2 py-1.5 text-ink-2 hover:bg-surface"
+                  disabled={togglingId !== null}
+                  className="text-xs rounded border border-border px-2 py-2 text-ink-2 hover:bg-surface disabled:opacity-50"
                 >
                   {w.isActive ? "Отключить" : "Включить"}
                 </button>
@@ -289,10 +314,18 @@ function WorkersTab() {
       {/* Reset PIN modal */}
       {resetPinId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-xs bg-surface rounded-2xl border border-border shadow-lg p-6">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Сменить PIN"
+            className="w-full max-w-xs bg-surface rounded-2xl border border-border shadow-lg p-6"
+          >
             <h2 className="text-base font-semibold text-ink mb-4">Сменить PIN</h2>
             <input
-              type="text"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              autoFocus
               placeholder="Новый PIN (4 цифры)"
               value={resetPinValue}
               maxLength={4}
@@ -324,7 +357,12 @@ function WorkersTab() {
       {/* Delete confirm */}
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-xs bg-surface rounded-2xl border border-border shadow-lg p-6">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Удалить кладовщика"
+            className="w-full max-w-xs bg-surface rounded-2xl border border-border shadow-lg p-6"
+          >
             <h2 className="text-base font-semibold text-ink mb-2">Удалить кладовщика?</h2>
             <p className="text-sm text-ink-2 mb-4">
               {workers.find((w) => w.id === deleteId)?.name}
@@ -333,6 +371,7 @@ function WorkersTab() {
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
+                autoFocus
                 onClick={() => setDeleteId(null)}
                 className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface"
               >

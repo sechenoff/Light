@@ -43,7 +43,7 @@ export default function LkLoginPage() {
   const isSubmitting = passwordSubmitting || magicSubmitting;
 
   return (
-    <div className="w-full max-w-[360px] bg-surface-2 border border-border rounded-xl p-6 space-y-5">
+    <div className="w-full max-w-[360px] bg-surface-muted border border-border rounded-xl p-6 space-y-5">
       <div>
         <h1 className="text-xl font-medium">Вход в личный кабинет</h1>
       </div>
@@ -100,7 +100,7 @@ export default function LkLoginPage() {
         <button
           type="submit"
           disabled={isSubmitting || !email}
-          className="w-full px-4 py-2 border border-border text-ink bg-surface rounded-md disabled:opacity-50 hover:bg-surface-2"
+          className="w-full px-4 py-2 border border-border text-ink bg-surface rounded-md disabled:opacity-50 hover:bg-surface-muted"
         >
           {magicSubmitting ? "Отправляем…" : "Получить ссылку"}
         </button>

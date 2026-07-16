@@ -2,6 +2,7 @@
 
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { StatusPill } from "../../../src/components/StatusPill";
+import { SectionHeader } from "../../../src/components/SectionHeader";
 import { AdminTabNav } from "../../../src/components/admin/AdminTabNav";
 import {
   ROLE_DESCRIPTIONS,
@@ -67,16 +68,17 @@ function renderInline(text: string): React.ReactNode[] {
 
 export default function AdminRolesPage() {
   const { authorized, loading } = useRequireRole(["SUPER_ADMIN"]);
-  if (loading || !authorized) return null;
+  if (loading) {
+    return <div className="p-6 text-sm text-ink-3">Проверка доступа…</div>;
+  }
+  if (!authorized) return null;
 
   return (
     <div className="p-6 max-w-[1280px] mx-auto space-y-6 pb-16">
       <AdminTabNav />
 
       {/* Заголовок */}
-      <div>
-        <h1 className="text-2xl font-semibold text-ink mt-2">Матрица прав</h1>
-      </div>
+      <SectionHeader eyebrow="Справочник" title="Матрица прав" className="mt-2" />
 
       {/* Intro-блок */}
       <div className="bg-indigo-soft border border-indigo-border rounded-lg p-5">
@@ -89,27 +91,29 @@ export default function AdminRolesPage() {
       </div>
 
       {/* Шапка трёх ролей */}
-      <div className="grid grid-cols-[260px_1fr_1fr_1fr] bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
-        <div className="p-5 bg-slate-soft border-r border-border flex items-end eyebrow">
-          Раздел / Роль
-        </div>
-        {ROLE_KEYS.map((key) => {
-          const d = ROLE_DESCRIPTIONS[key];
-          return (
-            <div key={key} className="relative p-5 border-r border-border last:border-r-0">
-              <div className={`absolute top-0 left-0 right-0 h-[3px] ${ROLE_STRIPE[key]}`} />
-              <span className={`inline-block text-[10.5px] font-cond font-semibold uppercase tracking-wider px-2 py-0.5 rounded border ${ROLE_TAG_CLS[key]} mb-2.5`}>
-                {d.tag}
-              </span>
-              <div className="text-lg font-semibold text-ink leading-tight">{d.title}</div>
-              <div className="text-[11px] font-cond font-semibold uppercase tracking-wide text-ink-3 mt-0.5 mb-2">
-                {d.subtitle}
+      <div className="bg-surface border border-border rounded-lg shadow-xs overflow-x-auto">
+        <div className="grid grid-cols-[260px_1fr_1fr_1fr] min-w-[680px]">
+          <div className="p-5 bg-slate-soft border-r border-border flex items-end eyebrow">
+            Раздел / Роль
+          </div>
+          {ROLE_KEYS.map((key) => {
+            const d = ROLE_DESCRIPTIONS[key];
+            return (
+              <div key={key} className="relative p-5 border-r border-border last:border-r-0">
+                <div className={`absolute top-0 left-0 right-0 h-[3px] ${ROLE_STRIPE[key]}`} />
+                <span className={`inline-block text-[10.5px] font-cond font-semibold uppercase tracking-wider px-2 py-0.5 rounded border ${ROLE_TAG_CLS[key]} mb-2.5`}>
+                  {d.tag}
+                </span>
+                <div className="text-lg font-semibold text-ink leading-tight">{d.title}</div>
+                <div className="text-[11px] font-cond font-semibold uppercase tracking-wide text-ink-3 mt-0.5 mb-2">
+                  {d.subtitle}
+                </div>
+                <p className="text-[12.5px] text-ink-2 leading-relaxed">{d.desc}</p>
+                <p className="mono-num text-[11px] text-ink-3 mt-2.5">{d.count}</p>
               </div>
-              <p className="text-[12.5px] text-ink-2 leading-relaxed">{d.desc}</p>
-              <p className="mono-num text-[11px] text-ink-3 mt-2.5">{d.count}</p>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* Легенда */}
@@ -124,8 +128,8 @@ export default function AdminRolesPage() {
       </div>
 
       {/* Матрица */}
-      <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-surface border border-border rounded-lg shadow-xs overflow-x-auto">
+        <table className="w-full min-w-[680px] text-sm">
           <colgroup>
             <col style={{ width: "260px" }} />
             <col />
@@ -216,7 +220,7 @@ function MatrixTableRow({ row }: { row: MatrixRow }) {
         const roleKey = key === "SUPER_ADMIN" ? "super" : key === "WAREHOUSE" ? "warehouse" : "technician";
         const cell = row[roleKey];
         return (
-          <td key={key} className={`px-5 py-3 text-center align-middle border-l border-border last:border-r-0 ${ROLE_CELL_BG[key]}`}>
+          <td key={key} className={`px-5 py-3 text-center align-middle border-l border-border ${ROLE_CELL_BG[key]}`}>
             <StatusPill variant={cell.level} label={cell.label} />
           </td>
         );

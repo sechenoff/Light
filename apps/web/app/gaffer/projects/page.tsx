@@ -274,7 +274,7 @@ export default function GafferProjectsPage() {
       </div>
 
       {/* Chips — wrap on mobile so «Архив» не уезжает за край */}
-      <div className="flex flex-wrap gap-2 px-4 py-2 border-b border-border bg-surface-2">
+      <div className="flex flex-wrap gap-2 px-4 py-2 border-b border-border bg-surface-muted">
         {CHIPS.map((c) => (
           <button
             key={c.key}

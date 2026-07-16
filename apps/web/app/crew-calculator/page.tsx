@@ -216,7 +216,7 @@ function HourRibbon({ hours }: { hours: number }) {
           return (
             <div
               key={i}
-              className={`absolute top-0 bottom-0 ${palette.bg} ${i === 0 ? "" : "border-l border-white"}`}
+              className={`absolute top-0 bottom-0 ${palette.bg} ${i === 0 ? "" : "border-l border-surface"}`}
               style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
               title={`${seg.label}: ${seg.from}–${seg.to.toFixed(seg.to % 1 === 0 ? 0 : 1)} ч`}
             >
@@ -564,10 +564,10 @@ function CrewCalculatorPageInner() {
           </div>
         </div>
         <div className="mt-3 flex gap-6 text-sm border-t border-border pt-3">
-          <div><span className="text-ink-3">Рабочих часов:</span> <span className="font-semibold">{hoursLabel}</span></div>
-          <div><span className="text-ink-3">Человек в команде:</span> <span className="font-semibold">{totalCrewSize}</span></div>
+          <div><span className="text-ink-3">Рабочих часов:</span> <span className="font-semibold mono-num">{hoursLabel}</span></div>
+          <div><span className="text-ink-3">Человек в команде:</span> <span className="font-semibold mono-num">{totalCrewSize}</span></div>
           {overtimeHours > 0 && (
-            <div><span className="text-ink-3">Переработка:</span> <span className="font-semibold text-amber">{overtimeHours} ч</span></div>
+            <div><span className="text-ink-3">Переработка:</span> <span className="font-semibold mono-num text-amber">{overtimeHours} ч</span></div>
           )}
           <div className="ml-auto"><span className="text-ink-3">Итого:</span> <span className="font-bold text-lg mono-num">{formatMoneyRub(result.grandTotal)} ₽</span></div>
         </div>
@@ -785,7 +785,7 @@ function CrewCalculatorPageInner() {
                   <button
                     type="button"
                     onClick={reset}
-                    className="text-xs text-ink-3 hover:text-ink underline-offset-2 hover:underline"
+                    className="text-xs text-ink-3 hover:text-ink underline-offset-2 hover:underline py-2 px-2 -my-1"
                   >
                     сбросить
                   </button>

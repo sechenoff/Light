@@ -7,15 +7,21 @@ const router = express.Router();
 
 const updateSchema = z.object({
   legalName: z.string().optional(),
-  inn: z.string().regex(/^\d{10}(\d{2})?$/, "ИНН должен содержать 10 или 12 цифр").optional(),
-  kpp: z.string().optional(),
-  bankName: z.string().optional(),
-  bankBik: z.string().optional(),
-  rschet: z.string().optional(),
-  kschet: z.string().optional(),
-  address: z.string().optional(),
-  phone: z.string().optional(),
-  email: z.string().email().optional(),
+  // Пустая строка = очистка (колонка не-nullable с default "")
+  inn: z
+    .string()
+    .regex(/^\d{10}(\d{2})?$/, "ИНН должен содержать 10 или 12 цифр")
+    .or(z.literal(""))
+    .optional(),
+  // Nullable-колонки: null = очистка поля
+  kpp: z.string().nullable().optional(),
+  bankName: z.string().nullable().optional(),
+  bankBik: z.string().nullable().optional(),
+  rschet: z.string().nullable().optional(),
+  kschet: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  email: z.string().email().nullable().optional(),
   invoiceNumberPrefix: z.string().min(1).max(10).optional(),
   migrationCutoffAt: z.string().datetime().optional(),
   defaultPaymentTermsDays: z.number().int().min(0).max(90).optional(),

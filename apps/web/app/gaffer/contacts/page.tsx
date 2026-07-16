@@ -100,7 +100,7 @@ function ContactCard({
   }
 
   return (
-    <div className={`relative border-b border-border hover:bg-surface-2 transition-colors ${isArchived ? "opacity-60" : ""}`}>
+    <div className={`relative border-b border-border hover:bg-surface-muted transition-colors ${isArchived ? "opacity-60" : ""}`}>
       <Link
         href={`/gaffer/contacts/${contact.id}`}
         className="flex gap-[10px] py-3 items-start px-4 pr-12"
@@ -398,7 +398,7 @@ export default function GafferContactsPage() {
       </div>
 
       {/* Chips filter */}
-      <div className="flex gap-2 px-4 py-2 border-b border-border overflow-x-auto bg-surface-2">
+      <div className="flex gap-2 px-4 py-2 border-b border-border overflow-x-auto bg-surface-muted">
         {CHIPS.map((c) => (
           <button
             key={c.key}

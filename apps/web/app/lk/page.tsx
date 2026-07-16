@@ -72,7 +72,7 @@ export default function LkDashboardPage() {
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Link
           href="/lk/debt"
-          className="bg-surface-2 border border-border rounded-lg p-4 hover:border-border-bright"
+          className="bg-surface-muted border border-border rounded-lg p-4 hover:border-border-bright"
         >
           <p className="eyebrow">Долг</p>
           <p className="mono-num text-2xl mt-1">{debtTotal !== null ? formatRub(Number(debtTotal)) : "—"}</p>
@@ -80,14 +80,14 @@ export default function LkDashboardPage() {
         </Link>
         <Link
           href="/lk/bookings?status=ISSUED"
-          className="bg-surface-2 border border-border rounded-lg p-4 hover:border-border-bright"
+          className="bg-surface-muted border border-border rounded-lg p-4 hover:border-border-bright"
         >
           <p className="eyebrow">Активные брони</p>
           <p className="mono-num text-2xl mt-1">{activeCount}</p>
         </Link>
         <Link
           href="/lk/stats"
-          className="bg-surface-2 border border-border rounded-lg p-4 hover:border-border-bright"
+          className="bg-surface-muted border border-border rounded-lg p-4 hover:border-border-bright"
         >
           <p className="eyebrow">Статистика</p>
           <p className="text-sm text-ink-2 mt-1">Топ оборудования + твой типовой набор</p>
@@ -101,7 +101,7 @@ export default function LkDashboardPage() {
         ) : recent.length === 0 ? (
           <p className="text-ink-2">Заказов пока нет.</p>
         ) : (
-          <ul className="divide-y divide-border bg-surface-2 border border-border rounded-lg">
+          <ul className="divide-y divide-border bg-surface-muted border border-border rounded-lg">
             {recent.map((b) => (
               <li key={b.id}>
                 <Link href={`/lk/bookings/${b.id}`} className="block p-3 hover:bg-surface">

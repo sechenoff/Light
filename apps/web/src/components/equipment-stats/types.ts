@@ -33,6 +33,10 @@ export type EquipmentStatsResponse = {
 
 export type PeriodValue = "30" | "90" | "365";
 
+export function parsePeriod(raw: string | null): PeriodValue {
+  return raw === "30" || raw === "365" ? raw : "90";
+}
+
 export const PERIOD_OPTIONS: { value: PeriodValue; label: string }[] = [
   { value: "30", label: "30 дней" },
   { value: "90", label: "90 дней" },

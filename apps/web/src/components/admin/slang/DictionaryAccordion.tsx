@@ -150,37 +150,42 @@ export function DictionaryAccordion({ groups, onDelete, onRebind, onExport }: Pr
 
       {/* Table */}
       <div className="bg-surface border border-border rounded-lg overflow-hidden">
-        {/* Table header */}
-        <div
-          className="grid gap-3 px-4 py-2 bg-surface-muted border-b border-border eyebrow text-ink-3"
-          style={{ gridTemplateColumns: "minmax(0,1fr) 120px 80px 80px 36px" }}
-        >
-          <span>Прибор</span>
-          <span>Категория</span>
-          <span className="text-right">Фраз</span>
-          <span className="text-right">Исп.</span>
-          <span />
+        {/* Горизонтальный скролл сетки на узких экранах — шапка и строки скроллятся вместе */}
+        <div className="overflow-x-auto">
+          <div className="min-w-[560px]">
+            {/* Table header */}
+            <div
+              className="grid gap-3 px-4 py-2 bg-surface-muted border-b border-border eyebrow text-ink-3"
+              style={{ gridTemplateColumns: "minmax(0,1fr) 120px 80px 80px 36px" }}
+            >
+              <span>Прибор</span>
+              <span>Категория</span>
+              <span className="text-right">Фраз</span>
+              <span className="text-right">Исп.</span>
+              <span />
+            </div>
+
+            {/* Empty state */}
+            {groups.length === 0 && (
+              <div className="py-10 text-center text-sm text-ink-3">Словарь пуст</div>
+            )}
+            {groups.length > 0 && filtered.length === 0 && (
+              <div className="py-10 text-center text-sm text-ink-3">Ничего не найдено</div>
+            )}
+
+            {/* Rows */}
+            {filtered.map((group) => (
+              <EquipmentRow
+                key={group.equipment.id}
+                group={group}
+                expanded={expandedId === group.equipment.id}
+                onToggle={() => handleToggle(group.equipment.id)}
+                onDeletePhrase={onDelete}
+                onRebindPhrase={onRebind}
+              />
+            ))}
+          </div>
         </div>
-
-        {/* Empty state */}
-        {groups.length === 0 && (
-          <div className="py-10 text-center text-sm text-ink-3">Словарь пуст</div>
-        )}
-        {groups.length > 0 && filtered.length === 0 && (
-          <div className="py-10 text-center text-sm text-ink-3">Ничего не найдено</div>
-        )}
-
-        {/* Rows */}
-        {filtered.map((group) => (
-          <EquipmentRow
-            key={group.equipment.id}
-            group={group}
-            expanded={expandedId === group.equipment.id}
-            onToggle={() => handleToggle(group.equipment.id)}
-            onDeletePhrase={onDelete}
-            onRebindPhrase={onRebind}
-          />
-        ))}
 
         {/* Footer */}
         <div className="px-4 py-2.5 border-t border-border bg-surface-muted flex justify-between items-center text-[11.5px] text-ink-3">

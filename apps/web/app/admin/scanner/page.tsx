@@ -207,6 +207,82 @@ function LookupCard({ result }: { result: LookupResult }) {
   );
 }
 
+// ── Delete Unit Confirmation Modal ───────────────────────────────────────────
+
+type DeleteUnitModalProps = {
+  open: boolean;
+  barcode: string;
+  loading: boolean;
+  error: string | null;
+  onConfirm: () => void;
+  onClose: () => void;
+};
+
+function DeleteUnitConfirmModal({ open, barcode, loading, error, onConfirm, onClose }: DeleteUnitModalProps) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    // Автофокус на основное действие: Enter подтверждает, Esc отменяет.
+    setTimeout(() => confirmRef.current?.focus(), 50);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !loading) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, loading, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      onClick={() => !loading && onClose()}
+      aria-modal="true"
+      role="dialog"
+      aria-labelledby="delete-unit-title"
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-surface p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="delete-unit-title" className="text-[17px] font-semibold text-ink mb-2">
+          Удалить единицу?
+        </h2>
+        <p className="text-[13.5px] text-ink-2 mb-2">
+          Единица со штрихкодом{" "}
+          <span className="font-mono font-medium text-ink">{barcode}</span> будет удалена.
+          Это действие нельзя отменить.
+        </p>
+        {error && (
+          <p className="mb-2 px-3 py-2 text-sm text-rose bg-rose-soft border border-rose-border rounded-lg">
+            {error}
+          </p>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-muted disabled:opacity-50"
+          >
+            Отмена
+          </button>
+          <button
+            ref={confirmRef}
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="rounded bg-rose px-4 py-2 text-sm text-white hover:bg-rose/90 disabled:opacity-50"
+          >
+            {loading ? "Удаляю…" : "Удалить"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Scanner Component ────────────────────────────────────────────────────
 
 function ScannerApp() {
@@ -238,6 +314,12 @@ function ScannerApp() {
   const [batchManual, setBatchManual] = useState("");
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+
+  // ── Batch delete confirmation state
+  const [deleteCandidate, setDeleteCandidate] = useState<BatchItem | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Deduplicate scan calls
   const lastScanRef = useRef<{ value: string; ts: number }>({ value: "", ts: 0 });
@@ -411,6 +493,7 @@ function ScannerApp() {
       // Check for duplicate within this session
       const isDuplicate = batchItems.some((item) => item.barcode === barcode);
       if (isDuplicate) {
+        setBatchError("Этот штрихкод уже отсканирован в текущей серии");
         flash("amber");
         vibrate([50, 50, 50]);
         scanningRef.current = false;
@@ -418,6 +501,7 @@ function ScannerApp() {
       }
 
       setBatchLoading(true);
+      setBatchError(null);
       try {
         const data = await apiFetch<{ unit: UnitResult }>(
           `/api/equipment/${batchEquipment.id}/units/batch-assign`,
@@ -433,9 +517,11 @@ function ScannerApp() {
         const e = err as { status?: number; message?: string };
         if (e?.status === 409) {
           // Already assigned elsewhere — amber flash
+          setBatchError(e?.message ?? "Штрихкод уже привязан к другой единице");
           flash("amber");
           vibrate([50, 50, 50]);
         } else {
+          setBatchError(e?.message ?? "Ошибка привязки штрихкода");
           flash("red");
           vibrate([50, 50, 50]);
         }
@@ -449,20 +535,28 @@ function ScannerApp() {
 
   async function handleBatchDelete(item: BatchItem) {
     if (!batchEquipment) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
     try {
       await apiFetch(
         `/api/equipment/${batchEquipment.id}/units/${item.unit.id}`,
         { method: "DELETE" },
       );
       setBatchItems((prev) => prev.filter((i) => i.unit.id !== item.unit.id));
-    } catch (err: any) {
-      if (err?.status === 404) {
+      setDeleteCandidate(null);
+    } catch (err: unknown) {
+      const e = err as { status?: number; message?: string };
+      if (e?.status === 404) {
         // Already deleted server-side, remove from list
         setBatchItems((prev) => prev.filter((i) => i.unit.id !== item.unit.id));
+        setDeleteCandidate(null);
       } else {
+        setDeleteError(e?.message ?? "Не удалось удалить единицу");
         flash("red");
         vibrate([50, 50, 50]);
       }
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -491,6 +585,7 @@ function ScannerApp() {
     lastScanRef.current = { value: "", ts: 0 };
     setAssignResult(null);
     setAssignError(null);
+    setBatchError(null);
   }
 
   return (
@@ -503,11 +598,15 @@ function ScannerApp() {
           <span
             className={`w-2.5 h-2.5 rounded-full ${online ? "bg-emerald" : "bg-rose"}`}
             title={online ? "Онлайн" : "Офлайн"}
+            aria-hidden
           />
+          <span className="sr-only" role="status">
+            {online ? "Есть соединение с сервером" : "Нет соединения с сервером"}
+          </span>
           {/* Close → /admin */}
           <button
             onClick={() => router.push("/admin")}
-            className="text-ink-3 hover:text-white text-2xl leading-none pb-0.5"
+            className="min-w-[36px] min-h-[36px] inline-flex items-center justify-center rounded-full bg-surface text-ink text-xl leading-none hover:bg-surface-muted transition-colors"
             aria-label="Закрыть"
           >
             ×
@@ -697,12 +796,20 @@ function ScannerApp() {
                     onClick={() => {
                       setBatchEquipment(null);
                       setBatchItems([]);
+                      setBatchError(null);
                     }}
-                    className="ml-2 px-3 py-1.5 text-xs font-medium bg-accent text-white rounded-lg"
+                    className="ml-2 px-3 py-2 text-xs font-medium bg-accent text-white rounded-lg"
                   >
                     Готово
                   </button>
                 </div>
+
+                {/* Batch error */}
+                {batchError && (
+                  <div className="mb-3 px-4 py-3 text-sm text-rose bg-rose-soft border border-rose-border rounded-xl">
+                    {batchError}
+                  </div>
+                )}
 
                 {/* Manual input */}
                 <form onSubmit={handleBatchManualSubmit} className="flex gap-2 mb-3">
@@ -734,8 +841,11 @@ function ScannerApp() {
                           {item.barcode}
                         </span>
                         <button
-                          onClick={() => handleBatchDelete(item)}
-                          className="ml-2 text-ink-3 hover:text-rose text-lg leading-none shrink-0"
+                          onClick={() => {
+                            setDeleteError(null);
+                            setDeleteCandidate(item);
+                          }}
+                          className="ml-2 shrink-0 inline-flex items-center justify-center min-w-[36px] min-h-[36px] -my-2 text-ink-3 hover:text-rose text-lg leading-none"
                           aria-label="Удалить"
                         >
                           ×
@@ -753,6 +863,21 @@ function ScannerApp() {
           </div>
         )}
       </div>
+
+      {/* ── Delete confirmation modal (batch mode) ────────────────────────── */}
+      <DeleteUnitConfirmModal
+        open={deleteCandidate !== null}
+        barcode={deleteCandidate?.barcode ?? ""}
+        loading={deleteLoading}
+        error={deleteError}
+        onConfirm={() => {
+          if (deleteCandidate) void handleBatchDelete(deleteCandidate);
+        }}
+        onClose={() => {
+          setDeleteCandidate(null);
+          setDeleteError(null);
+        }}
+      />
     </div>
   );
 }
@@ -765,7 +890,16 @@ function ScannerApp() {
 // Кладовщик, как и остальные barcode-инструменты. Техник → редирект на /day.
 function ScannerPageGuarded() {
   const { authorized, loading } = useRequireRole(["SUPER_ADMIN", "WAREHOUSE"]);
-  if (loading || !authorized) return null;
+  if (loading) {
+    return (
+      <div className="flex flex-col h-screen bg-accent overflow-hidden">
+        <div className="mx-4 mt-4 h-10 rounded-xl bg-surface/10 animate-pulse" />
+        <div className="mx-4 mt-3 h-[60vh] rounded-xl bg-surface/10 animate-pulse" />
+        <div className="flex-1 mt-3 bg-surface rounded-t-3xl" />
+      </div>
+    );
+  }
+  if (!authorized) return null;
   return <ScannerApp />;
 }
 

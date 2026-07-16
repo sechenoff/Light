@@ -1790,7 +1790,7 @@ function GafferProjectDetailContent() {
                     )}
 
                     {/* Bulk presets strip */}
-                    <div className="mt-4 bg-surface-2 border border-border rounded-md p-3">
+                    <div className="mt-4 bg-surface-muted border border-border rounded-md p-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] text-ink-3 uppercase tracking-wide">Смен</span>
                         {[1, 2, 3].map((n) => (
@@ -1813,7 +1813,7 @@ function GafferProjectDetailContent() {
                     {/* Per-member table */}
                     {editSelectedMembers.length > 0 && (
                       <div className="mt-3 border border-border rounded-md overflow-hidden bg-surface">
-                        <div className="flex items-baseline justify-between px-3 py-2 bg-surface-2 border-b border-border">
+                        <div className="flex items-baseline justify-between px-3 py-2 bg-surface-muted border-b border-border">
                           <span className="eyebrow">Смены участников</span>
                           <span className="text-[11px] text-ink-3">
                             часы можно поменять индивидуально
