@@ -311,6 +311,7 @@ function WarehouseScanInner({
           workerName={workerName}
           onBack={() => setInWorkSelectedBookingId(null)}
           list={inWorkListSlot}
+          mobileList="hidden"
           detail={
             <InWorkDetails
               bookingId={inWorkSelectedBookingId}
@@ -341,6 +342,7 @@ function WarehouseScanInner({
     <BookingList
       operation={operation}
       version={listVersion}
+      activeBookingId={step === "checklist" ? (activeBooking?.id ?? null) : null}
       onUnauth={goToLogin}
       onSelect={handleBookingSelect}
     />
@@ -374,6 +376,7 @@ function WarehouseScanInner({
         workerName={workerName}
         onBack={backToBooking}
         list={bookingListSlot}
+        mobileList="hidden"
         detail={
           operation === "ISSUE" ? (
             <IssueChecklist

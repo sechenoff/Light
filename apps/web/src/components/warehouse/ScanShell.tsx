@@ -33,6 +33,14 @@ interface ScanShellProps {
    * only `detail` is rendered, centered.
    */
   list?: ReactNode;
+  /**
+   * Поведение list-слота на мобильном:
+   *  - "stack" (default) — список над detail (шаг выбора брони);
+   *  - "hidden" — список скрыт, виден только на lg+ (шаг чек-листа:
+   *    раньше оператор скроллил мимо ВСЕГО списка броней, чтобы добраться
+   *    до чек-листа — на каждой выдаче/приёмке).
+   */
+  mobileList?: "stack" | "hidden";
   /** Right detail slot (checklist / placeholder / login form). */
   detail: ReactNode;
 }
@@ -44,6 +52,7 @@ export function ScanShell({
   onLogout,
   onBack,
   list,
+  mobileList = "stack",
   detail,
 }: ScanShellProps) {
   const twoPane = list != null;
@@ -94,7 +103,11 @@ export function ScanShell({
       {twoPane ? (
         <div className="mx-auto w-full max-w-[1180px] flex-1 lg:grid lg:grid-cols-[minmax(280px,360px)_1fr]">
           {/* Left = list slot. On desktop: scrollable, right divider. */}
-          <aside className="border-b border-border bg-surface-muted lg:overflow-y-auto lg:border-b-0 lg:border-r">
+          <aside
+            className={`border-b border-border bg-surface-muted lg:overflow-y-auto lg:border-b-0 lg:border-r ${
+              mobileList === "hidden" ? "hidden lg:block" : ""
+            }`}
+          >
             {list}
           </aside>
           {/* Right = detail slot. */}
