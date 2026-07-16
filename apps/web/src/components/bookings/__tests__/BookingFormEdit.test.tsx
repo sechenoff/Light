@@ -7,6 +7,7 @@ import { BookingForm, type BookingDetail } from "../BookingForm";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   useSearchParams: () => ({ get: () => null }),
+  usePathname: () => "/bookings/booking-123/edit",
   useParams: () => ({ id: "booking-123" }),
 }));
 
