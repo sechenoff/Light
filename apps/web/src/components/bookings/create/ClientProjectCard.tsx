@@ -43,8 +43,12 @@ export function ClientProjectCard({
     .join("");
 
   return (
-    <div className="bg-surface border border-border rounded-md shadow-xs overflow-hidden mb-3.5">
-      <div className="px-5 py-3 border-b border-border bg-surface-muted">
+    // NB: без overflow-hidden — иначе абсолютный дропдаун автокомплита клиента
+    // («Недавние клиенты») режется по нижней границе карточки. Скругление
+    // верхних углов шапки — через rounded-t (радиус минус 1px бордюра), а не
+    // клиппингом контейнера.
+    <div className="bg-surface border border-border rounded-md shadow-xs mb-3.5">
+      <div className="px-5 py-3 border-b border-border bg-surface-muted rounded-t-[5px]">
         <h3 className="eyebrow text-ink">1. Клиент и проект</h3>
       </div>
       <div className="p-5 space-y-3">
