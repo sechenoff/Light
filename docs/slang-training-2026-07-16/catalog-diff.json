@@ -1,0 +1,183 @@
+{
+ "added": [
+  {
+   "category": "Насадки на приборы",
+   "name": "Софтбокс Aputure Light Dome AM150 для xt52/xt26",
+   "qty": 4,
+   "price": 1400.0
+  },
+  {
+   "category": "Насадки на приборы",
+   "name": "Чайнабол Aputure Lattern 120cm для xt52/xt26",
+   "qty": 5,
+   "price": 1300.0
+  },
+  {
+   "category": "Насадки на приборы",
+   "name": "Линза френеля Aputure CF10 (для 700х)",
+   "qty": 1,
+   "price": 1800.0
+  },
+  {
+   "category": "Штативы / Стойки",
+   "name": "Avenger D650 Junior BOOM",
+   "qty": 2,
+   "price": 600.0
+  },
+  {
+   "category": "Текстиль",
+   "name": "Текстиль 20' х 20'  MattBounce/Ultrabounce",
+   "qty": 1,
+   "price": 1900.0
+  },
+  {
+   "category": "Трубы",
+   "name": "Трубы 1,8м D48",
+   "qty": 0,
+   "price": 0.0
+  },
+  {
+   "category": "Грип",
+   "name": "ChineVise Grip (цепной)",
+   "qty": 5,
+   "price": 200.0
+  },
+  {
+   "category": "Грип",
+   "name": "Стропа 6-10м",
+   "qty": 3,
+   "price": 165.0
+  },
+  {
+   "category": "Электрика/Коммутация",
+   "name": "Кабель 125А красный (10м)",
+   "qty": 2,
+   "price": 1000.0
+  },
+  {
+   "category": "Электрика/Коммутация",
+   "name": "Кабель 63/380  (10-29м)",
+   "qty": 7,
+   "price": 600.0
+  },
+  {
+   "category": "Электрика/Коммутация",
+   "name": "Кабель 32/380 (12-30м)",
+   "qty": 16,
+   "price": 350.0
+  },
+  {
+   "category": "Электрика/Коммутация",
+   "name": "Диммер 220",
+   "qty": 4,
+   "price": 400.0
+  }
+ ],
+ "removed": [
+  {
+   "id": "cmn3j5fss000lvasty0lhprjk",
+   "name": "Litemat Spectrum 4 RGBWW",
+   "category": "Led Panel"
+  },
+  {
+   "id": "cmn3j5fst000mvast9xdo0t26",
+   "name": "Litemat Spectrum 2L RGBWW",
+   "category": "Led Panel"
+  },
+  {
+   "id": "cmn3j5fu6001cvastw43yyxw8",
+   "name": "Софтбокс Aputure Light Dome AM150 для xt56/xt26",
+   "category": "Насадки на приборы"
+  },
+  {
+   "id": "cmn3j5fud001gvast5udoudn8",
+   "name": "Чайнабол Aputure Lattern 120cm для xt56/xt26",
+   "category": "Насадки на приборы"
+  },
+  {
+   "id": "cmn3j5fuk001jvasti9dx1eh1",
+   "name": "Диафрагма 18 лепистковая для Spotlight Mount 19",
+   "category": "Насадки на приборы"
+  },
+  {
+   "id": "cmn3j5fv6001vvastl8qz22mv",
+   "name": "Соты FOTON для Litemat Spectrum 4/2L",
+   "category": "Насадки на приборы"
+  },
+  {
+   "id": "cmn3j5g010049vastks2ybu0i",
+   "name": "Веревка 8,5 мм  СС 48-прядная \"Альпекс\" \"КАНАТ\" Дзержинск",
+   "category": "Периферия"
+  },
+  {
+   "id": "cmn3j5g05004bvast4mgfq9ie",
+   "name": "T-bon 8",
+   "category": "Периферия"
+  },
+  {
+   "id": "cmn3j5g06004cvastwarsrk6i",
+   "name": "T-bon 12",
+   "category": "Периферия"
+  },
+  {
+   "id": "cmn3j5g1h0053vastnw58qmu0",
+   "name": "Зажим Chain Clamp",
+   "category": "Грип"
+  },
+  {
+   "id": "cmn3j5g21005cvasthk27hcgb",
+   "name": "Куплер/28палец",
+   "category": "Грип"
+  },
+  {
+   "id": "cmn3j5g2e005kvast8h71q4zp",
+   "name": "Стрепа 6-10м",
+   "category": "Грип"
+  },
+  {
+   "id": "cmn3j5g2h005lvast3sraotwe",
+   "name": "Фольга Black Aluminium Wrap #280",
+   "category": "Грип"
+  },
+  {
+   "id": "cmn3j5g41006ivast54kgy8ta",
+   "name": "Кабель 125А красный (15м)",
+   "category": "Электрика/Коммутация"
+  },
+  {
+   "id": "cmn3j5g43006jvastddqgpnl4",
+   "name": "Кабель 63/380",
+   "category": "Электрика/Коммутация"
+  },
+  {
+   "id": "cmn3j5g44006kvasticeh13jg",
+   "name": "Кабель 32/380 (15м)",
+   "category": "Электрика/Коммутация"
+  },
+  {
+   "id": "cmo17b1z3008exsew5yraieab",
+   "name": "Ulanzi Air-light  20W 3200-6500k",
+   "category": "Прочее"
+  },
+  {
+   "id": "cmo2pdoyl0001xs24r7ojfa6m",
+   "name": "Panel 100W (без управляющего софта)",
+   "category": "LED"
+  },
+  {
+   "id": "cmo2pdoz80002xs24mzz14xhq",
+   "name": "Panel 150W",
+   "category": "LED"
+  },
+  {
+   "id": "cmo2pdp0z0003xs24kermvts1",
+   "name": "Линза 85mm",
+   "category": "Оптика"
+  },
+  {
+   "id": "cmo2pdp1g0004xs24pcwxjkal",
+   "name": "Fresnel 650W",
+   "category": "Fresnel"
+  }
+ ]
+}
