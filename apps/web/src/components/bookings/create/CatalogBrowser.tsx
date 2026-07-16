@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CatalogRow } from "./CatalogRow";
 import { matchesCatalogRow } from "./searchNormalize";
 import { pluralize } from "../../../lib/format";
@@ -30,6 +30,14 @@ type Props = {
 };
 
 const SEARCH_MIN_CHARS = 2;
+
+// Высота списка каталога — управляемая (drag-хендл снизу). Значение переживает
+// перезагрузку. Мин — чтобы не схлопнуть в ничто; макс — чтобы каталог не съел
+// весь экран.
+const PANEL_DEFAULT_H = 480;
+const PANEL_MIN_H = 280;
+const PANEL_MAX_H = 900;
+const PANEL_STORAGE_KEY = "lr:catalog:panelHeight";
 
 export function CatalogBrowser({
   rows,
@@ -75,6 +83,91 @@ export function CatalogBrowser({
     />
   );
 
+  // ── Управляемая высота: тянешь нижнюю кромку каталога, чтобы видеть больше
+  //    позиций сразу. maxHeight (а не height) — короткие категории не оставляют
+  //    пустоту, а на длинных drag реально раздвигает область до скролла. ──
+  const [panelHeight, setPanelHeight] = useState<number>(PANEL_DEFAULT_H);
+  const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem(PANEL_STORAGE_KEY);
+    if (!raw) return;
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isNaN(n)) {
+      setPanelHeight(Math.min(PANEL_MAX_H, Math.max(PANEL_MIN_H, n)));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const t = setTimeout(
+      () => window.localStorage.setItem(PANEL_STORAGE_KEY, String(panelHeight)),
+      300,
+    );
+    return () => clearTimeout(t);
+  }, [panelHeight]);
+
+  const onHandlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      dragRef.current = { startY: e.clientY, startH: panelHeight };
+    },
+    [panelHeight],
+  );
+
+  const onHandlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    const delta = e.clientY - dragRef.current.startY;
+    const next = Math.min(
+      PANEL_MAX_H,
+      Math.max(PANEL_MIN_H, dragRef.current.startH + delta),
+    );
+    setPanelHeight(next);
+  }, []);
+
+  const onHandlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+  }, []);
+
+  const onHandleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const STEP = 40;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setPanelHeight((h) => Math.min(PANEL_MAX_H, h + STEP));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setPanelHeight((h) => Math.max(PANEL_MIN_H, h - STEP));
+    }
+  }, []);
+
+  const panelStyle = { maxHeight: `${panelHeight}px` } as const;
+
+  const resizeHandle = (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Изменить высоту каталога — потяните или стрелками ↑↓"
+      aria-valuenow={panelHeight}
+      aria-valuemin={PANEL_MIN_H}
+      aria-valuemax={PANEL_MAX_H}
+      tabIndex={0}
+      onPointerDown={onHandlePointerDown}
+      onPointerMove={onHandlePointerMove}
+      onPointerUp={onHandlePointerUp}
+      onKeyDown={onHandleKeyDown}
+      className="group flex h-4 cursor-ns-resize touch-none select-none items-center justify-center border-t border-border bg-surface-muted transition-colors hover:bg-surface-deep focus:outline-none focus-visible:bg-surface-deep focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-bright"
+    >
+      <span
+        aria-hidden="true"
+        className="h-1 w-10 rounded-full bg-border-strong transition-colors group-hover:bg-ink-3"
+      />
+    </div>
+  );
+
   // ── Плоские результаты поиска (общие для desktop и mobile) ──
   if (searching) {
     return (
@@ -86,9 +179,10 @@ export function CatalogBrowser({
             <div className="border-b border-border bg-surface-subtle px-5 py-2 font-cond text-[10px] font-semibold uppercase tracking-wider text-ink-3">
               Найдено: {searchResults.length}
             </div>
-            <div className="max-h-[480px] overflow-y-auto">
+            <div className="overflow-y-auto" style={panelStyle}>
               {searchResults.map((r) => renderRow(r, true))}
             </div>
+            {resizeHandle}
           </>
         )}
       </div>
@@ -107,7 +201,10 @@ export function CatalogBrowser({
     <div className="border-t border-border">
       {/* ── Desktop: проводник в две панели ── */}
       <div className="hidden lg:flex">
-        <div className="max-h-[480px] w-[230px] flex-none overflow-y-auto border-r border-border bg-surface-muted">
+        <div
+          className="w-[230px] flex-none overflow-y-auto border-r border-border bg-surface-muted"
+          style={panelStyle}
+        >
           <button
             type="button"
             onClick={() => onActiveTabChange("all")}
@@ -142,7 +239,7 @@ export function CatalogBrowser({
             );
           })}
         </div>
-        <div className="max-h-[480px] min-w-0 flex-1 overflow-y-auto">
+        <div className="min-w-0 flex-1 overflow-y-auto" style={panelStyle}>
           {activeTab === "all" ? (
             categories.map((cat) => {
               const { sel } = catMeta(cat);
@@ -166,6 +263,8 @@ export function CatalogBrowser({
           )}
         </div>
       </div>
+      {/* Тянулка высоты — только desktop (на мобиле список листается страницей). */}
+      <div className="hidden lg:block">{resizeHandle}</div>
 
       {/* ── Mobile: drill-down (М1) ── */}
       <div className="lg:hidden">
