@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { apiFetch } from "./api";
 
 export type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN";
@@ -49,10 +49,36 @@ export function useCurrentUser(): {
   logout: () => Promise<void>;
 } {
   const router = useRouter();
+  const pathname = usePathname();
   // C6: always start with null to avoid SSR/CSR hydration mismatch.
   // localStorage is read in the useEffect below (client-only).
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Re-read localStorage on every route change. AppShell живёт в персистентном
+  // layout и монтируется один раз — впервые на /login, где /api/auth/me ещё
+  // отдаёт 401. После входа login-страница пишет lr_user и делает мягкую
+  // навигацию (router.push), которая AppShell НЕ перемонтирует, поэтому эффект
+  // ниже (deps []) не перезапускается и сайдбар остаётся пустым до F5. Этот
+  // синхронный дешёвый re-read (без сети) подхватывает свежий lr_user при смене
+  // маршрута — меню появляется сразу после первого входа.
+  useEffect(() => {
+    const local = readLocal();
+    // Обновляем только если реально изменилось — иначе лишний ре-рендер и
+    // затирание userId, синхронизированного из /api/auth/me (login пишет lr_user
+    // без userId).
+    setUser((prev) => {
+      if (local === null) return prev;
+      if (
+        prev &&
+        prev.username === local.username &&
+        prev.role === local.role
+      ) {
+        return prev;
+      }
+      return local;
+    });
+  }, [pathname]);
 
   useEffect(() => {
     // Fast-path: read localStorage immediately so sidebar doesn't flash empty.

@@ -10,6 +10,7 @@ const searchParams = new Map<string, string>();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
   useSearchParams: () => ({ get: (k: string) => searchParams.get(k) ?? null }),
+  usePathname: () => "/bookings/new",
 }));
 
 // ─── Fetch mock (по URL) ──────────────────────────────────────────────────────
