@@ -215,6 +215,33 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
           actualPaymentDate,
         };
 
+  // Перф (аудит 2026-08-02): не пишем, если пересчёт ничего не изменил.
+  // paymentStatusSyncForAllBookings гоняет recompute по ВСЕМ броням, и в
+  // штатном режиме (дрейфа нет) это давало 288 безусловных UPDATE-транзакций —
+  // ~3 с на VPS. Со скипом no-op прогон становится read-only и укладывается
+  // в сотни миллисекунд; точечные вызовы (платёж/refund/void) по-прежнему
+  // пишут, потому что у них значения реально меняются.
+  const decChanged = (current: { toString(): string }, next: string): boolean =>
+    !new Decimal(current.toString()).toDecimalPlaces(2).equals(new Decimal(next));
+  const dateChanged = (current: Date | null, next: Date | null): boolean =>
+    (current?.getTime() ?? null) !== (next?.getTime() ?? null);
+
+  const nothingChanged =
+    !decChanged(booking.amountPaid, amountPaid.toDecimalPlaces(2).toString()) &&
+    !decChanged(booking.amountOutstanding, amountOutstanding.toDecimalPlaces(2).toString()) &&
+    booking.paymentStatus === status &&
+    booking.isFullyPaid === isFullyPaid &&
+    !dateChanged(booking.actualPaymentDate, actualPaymentDate) &&
+    // Поля, которые пишутся только в main/override-ветках — сравниваем только там.
+    (!main ||
+      (!decChanged(booking.totalEstimateAmount, totalEstimateAmount.toDecimalPlaces(2).toString()) &&
+        !decChanged(booking.discountAmount, discountAmount.toDecimalPlaces(2).toString()) &&
+        !decChanged(booking.addonAmount, addonAfterDiscount.toDecimalPlaces(2).toString()))) &&
+    (!(main || overrideActive) ||
+      !decChanged(booking.finalAmount, finalAmount.toDecimalPlaces(2).toString()));
+
+  if (nothingChanged) return booking;
+
   const updated = await tx.booking.update({ where: { id: bookingId }, data });
 
   if (previousStatus !== status) {

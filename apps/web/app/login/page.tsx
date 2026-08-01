@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { invalidateMeCache } from "../../src/lib/auth";
 import { apiFetch } from "../../src/lib/api";
 
 // Принимаем ?from= только как относительный путь своего домена:
@@ -51,6 +52,8 @@ function LoginForm() {
           JSON.stringify({ username: res.user.username, role: res.user.role }),
         );
       }
+      // Кэш /api/auth/me мог хранить «не залогинен» — сбрасываем до навигации.
+      invalidateMeCache();
       router.push(redirectTo);
       router.refresh();
     } catch (e) {
@@ -144,6 +147,7 @@ function LoginForm() {
                             JSON.stringify({ username: res.user.username, role: res.user.role }),
                           );
                         }
+                        invalidateMeCache();
                         router.push(redirectTo);
                         router.refresh();
                       } catch (e) {

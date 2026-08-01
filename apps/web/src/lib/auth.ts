@@ -17,6 +17,44 @@ export type CurrentUser = {
 
 const STORAGE_KEY = "lr_user";
 
+// ── Дедупликация /api/auth/me (перф-аудит 2026-08-02) ────────────────────────
+// useCurrentUser вызывается из AppShell + useRequireRole на каждой странице:
+// одна навигация давала 3-4 одинаковых GET /api/auth/me подряд. Модульный
+// промис-кэш с коротким TTL схлопывает их в один сетевой запрос; параллельные
+// вызыватели разделяют один in-flight промис.
+// Кэшируем и успех, и 401 (user=null) — оба валидные ответы сервера; сетевые
+// ошибки НЕ кэшируем (промис удаляется), чтобы обрыв сети не выглядел
+// как разлогин на TTL.
+const ME_CACHE_TTL_MS = 30_000;
+type MeResponse = { user: { userId: string; username: string; role: UserRole } };
+let meCache: { promise: Promise<CurrentUser | null>; at: number } | null = null;
+
+function fetchMe(): Promise<CurrentUser | null> {
+  const now = Date.now();
+  if (meCache && now - meCache.at < ME_CACHE_TTL_MS) return meCache.promise;
+  const promise = apiFetch<MeResponse>("/api/auth/me")
+    .then((res): CurrentUser | null => ({
+      userId: res.user.userId,
+      username: res.user.username,
+      role: res.user.role,
+    }))
+    .catch((err: unknown) => {
+      // 401 — авторитетный ответ «не залогинен», его кэшировать можно.
+      // Любая другая ошибка (сеть, 5xx) — не кэшируем, следующий вызов повторит.
+      const msg = err instanceof Error ? err.message : "";
+      if (!/401|Unauthorized|Требуется авторизация/i.test(msg)) meCache = null;
+      return null;
+    });
+  meCache = { promise, at: now };
+  return promise;
+}
+
+/** Сброс кэша /api/auth/me — вызывается на login/logout, чтобы смена
+ *  пользователя не жила на старом ответе до истечения TTL. */
+export function invalidateMeCache(): void {
+  meCache = null;
+}
+
 function readLocal(): CurrentUser | null {
   if (typeof window === "undefined") return null;
   try {
@@ -88,25 +126,23 @@ export function useCurrentUser(): {
 
     let cancelled = false;
     async function sync() {
-      try {
-        const res = await apiFetch<{ user: { userId: string; username: string; role: UserRole } }>("/api/auth/me");
-        if (cancelled) return;
-        const u: CurrentUser = { userId: res.user.userId, username: res.user.username, role: res.user.role };
+      // Через модульный кэш: параллельные маунты хука делят один сетевой запрос.
+      const u = await fetchMe();
+      if (cancelled) return;
+      if (u) {
         setUser(u);
         if (typeof window !== "undefined") {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
         }
-      } catch {
-        if (cancelled) return;
+      } else {
         setUser(null);
         if (typeof window !== "undefined") {
           window.localStorage.removeItem(STORAGE_KEY);
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+      setLoading(false);
     }
-    sync();
+    void sync();
     return () => {
       cancelled = true;
     };
@@ -118,6 +154,7 @@ export function useCurrentUser(): {
     } catch {
       // игнорируем — всё равно очищаем клиент
     }
+    invalidateMeCache();
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(STORAGE_KEY);
     }

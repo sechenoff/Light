@@ -114,15 +114,31 @@ if $DEPLOY_API; then
   npx prisma generate
 
   # ── Backup SQLite DB before schema changes ────────────────────────────────
-  DB_FILE="$ROOT/apps/api/prisma/rental.db"
+  # Путь БД — из DATABASE_URL (раньше был захардкожен несуществующий rental.db,
+  # и бэкап молча пропускался). Относительный путь Prisma резолвит от папки
+  # со схемой (prisma/).
+  DB_REL=$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1)
+  DB_REL=${DB_REL#DATABASE_URL=}
+  DB_REL=${DB_REL#\"}; DB_REL=${DB_REL%\"}
+  DB_REL=${DB_REL#file:}; DB_REL=${DB_REL#./}
+  if [ -z "$DB_REL" ]; then DB_REL=prisma/prod.db
+  elif [ "${DB_REL#/}" = "$DB_REL" ] && [ "${DB_REL#prisma/}" = "$DB_REL" ]; then DB_REL="prisma/$DB_REL"
+  fi
+  DB_FILE="$ROOT/apps/api/$DB_REL"
   BACKUP_DIR="$ROOT/backups"
   if [ -f "$DB_FILE" ]; then
     mkdir -p "$BACKUP_DIR"
-    BACKUP_NAME="rental_$(date +%Y-%m-%d_%H-%M-%S).db"
-    cp "$DB_FILE" "$BACKUP_DIR/$BACKUP_NAME"
+    BACKUP_NAME="db_$(date +%Y-%m-%d_%H-%M-%S).db"
+    # БД в WAL-режиме: sqlite3 .backup снимает консистентный снимок вместе
+    # с незачекпоинченным WAL-хвостом; голый cp главного файла терял бы его.
+    if command -v sqlite3 >/dev/null 2>&1; then
+      sqlite3 "$DB_FILE" ".backup '$BACKUP_DIR/$BACKUP_NAME'"
+    else
+      cp "$DB_FILE" "$BACKUP_DIR/$BACKUP_NAME"
+    fi
     echo "  ✓ БД сохранена: backups/$BACKUP_NAME"
     # Удаляем старые бэкапы, оставляем последние 10
-    ls -1t "$BACKUP_DIR"/rental_*.db 2>/dev/null | tail -n +11 | xargs -r rm --
+    ls -1t "$BACKUP_DIR"/db_*.db 2>/dev/null | tail -n +11 | xargs -r rm --
   fi
   # ─────────────────────────────────────────────────────────────────────────
 

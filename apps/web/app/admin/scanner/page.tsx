@@ -3,7 +3,6 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Html5QrcodeSupportedFormats } from "html5-qrcode";
 import type { BarcodeScannerProps } from "@/components/BarcodeScanner";
 import { StatusPill, type StatusPillVariant } from "../../../src/components/StatusPill";
 import { apiFetch } from "../../../src/lib/api";
@@ -615,11 +614,13 @@ function ScannerApp() {
       </div>
 
       {/* ── Camera region ─────────────────────────────────────────────────── */}
+      {/* formats у BarcodeScanner не передаём: дефолт — тот же CODE_128.
+          Value-импорт enum из html5-qrcode затягивал весь zxing (~300 КБ)
+          в eager-бандл страницы и обесценивал dynamic()-загрузку сканера. */}
       <div className="h-[60vh] shrink-0 relative bg-black">
         {activeScanHandler ? (
           <BarcodeScanner
             onScan={activeScanHandler}
-            formats={[Html5QrcodeSupportedFormats.CODE_128]}
             flashColor={flashColor}
             enableTorch
           />

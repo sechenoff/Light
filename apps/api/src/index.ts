@@ -2,6 +2,7 @@ import "dotenv/config";
 import net from "net";
 
 import { app } from "./app";
+import { paymentStatusSyncForAllBookings, PAYMENT_SYNC_THROTTLE_MS } from "./services/finance";
 import type { Worker } from "bullmq";
 
 const port = Number(process.env.PORT ?? 4000);
@@ -10,6 +11,23 @@ app.listen(port, () => {
   // eslint-disable-next-line no-console
   console.log(`[api] listening on http://localhost:${port}`);
 });
+
+// ── Фоновый финансовый синк (перф-аудит 2026-08-02) ──────────────────────────
+// Полный пересчёт финансов всех броней раньше запускался ИЗ user-запроса
+// (первый GET dashboard/debts после минуты простоя ловил ~3 с). Теперь прогон
+// делает фоновый интервал: к моменту любого пользовательского запроса
+// троттл-окно (60 с) почти всегда свежее, и await в роутах возвращается
+// мгновенно. Сами вызовы в роутах сохранены — это контракт для тестов
+// (детерминизм: тесты импортируют app без index и интервал не получают).
+// unref(): таймер не держит процесс при graceful shutdown.
+// Тик — вдвое чаще троттла: если тикать ровно раз в окно, тик может попадать
+// за мгновение ДО истечения троттла (скип), и прогон доставался бы следующему
+// пользовательскому запросу. При полуокне фоновый тик почти всегда первым
+// пересекает границу окна.
+void paymentStatusSyncForAllBookings().catch(() => {});
+setInterval(() => {
+  void paymentStatusSyncForAllBookings().catch(() => {});
+}, PAYMENT_SYNC_THROTTLE_MS / 2).unref();
 
 // Проверяем доступность Redis TCP-зондом перед созданием ioredis/BullMQ.
 // Это позволяет стартовать API без Redis — без ошибок в логах.

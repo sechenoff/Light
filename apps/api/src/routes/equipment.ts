@@ -31,6 +31,11 @@ const router = express.Router();
 
 router.get("/", async (req, res, next) => {
   try {
+    // Каталог меняется редко (правки цен/позиций — единичные события в день),
+    // а тянет его каждая страница с подбором оборудования. 30 с приватного
+    // кэша браузера убирают повторную загрузку ~100 КБ при навигации между
+    // страницами; stale-while-revalidate догружает свежесть в фоне.
+    res.setHeader("Cache-Control", "private, max-age=30, stale-while-revalidate=120");
     const q = querySchema.parse(req.query);
     const categoryOrder = await getMergedCategoryOrder();
 
