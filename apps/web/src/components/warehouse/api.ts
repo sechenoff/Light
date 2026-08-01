@@ -218,6 +218,120 @@ export function getState(sessionId: string): Promise<ChecklistState> {
   );
 }
 
+// ── Рабочий стол v2: Смена / Журнал / Поломки ────────────────────────────────
+
+export interface ShiftTimelineEntry {
+  kind: "ISSUE" | "RETURN";
+  bookingId: string;
+  displayNo: string;
+  projectName: string;
+  clientName: string;
+  clientPhone: string | null;
+  plannedAt: string;
+  itemsCount: number;
+  status: "DONE" | "PENDING" | "OVERDUE";
+  doneAt: string | null;
+  overdueDays: number;
+}
+
+export interface ShiftSummaryData {
+  date: string;
+  timeline: ShiftTimelineEntry[];
+  overdue: ShiftTimelineEntry[];
+  counters: {
+    issuesDone: number;
+    issuesPlanned: number;
+    returnsDone: number;
+    returnsPlanned: number;
+    overdue: number;
+    inWork: number;
+  };
+  myShift: {
+    workerName: string;
+    sessions: number;
+    items: number;
+    firstAt: string | null;
+    avgMinutes: number | null;
+  };
+}
+
+export interface JournalEntryData {
+  kind: "SESSION" | "REPAIR";
+  id: string;
+  at: string;
+  operation?: "ISSUE" | "RETURN";
+  workerName?: string;
+  bookingId?: string;
+  displayNo?: string;
+  projectName?: string;
+  clientName?: string;
+  itemsCount?: number;
+  completedAt?: string | null;
+  durationMinutes?: number | null;
+  equipmentName?: string;
+  reason?: string;
+  repairStatus?: string;
+  photosCount?: number;
+}
+
+export interface JournalData {
+  entries: JournalEntryData[];
+  stats: {
+    sessions: number;
+    items: number;
+    avgMinutes: number | null;
+    perDay: Array<{ date: string; issues: number; returns: number }>;
+    repairsMonth: number;
+    problemsMonth: number;
+    closedMonth: number;
+  };
+}
+
+export interface ProblemsData {
+  repairs: Array<{
+    id: string;
+    equipmentName: string;
+    quantity: number;
+    reason: string;
+    urgency: string;
+    status: string;
+    createdAt: string;
+    photosCount: number;
+    sourceProject: string | null;
+  }>;
+  problems: Array<{
+    id: string;
+    equipmentName: string;
+    quantity: number;
+    reason: string;
+    comment: string;
+    status: string;
+    expectedBackDate: string | null;
+    createdAt: string;
+    sourceProject: string | null;
+  }>;
+}
+
+/** GET /api/warehouse/shift */
+export function getShift(): Promise<ShiftSummaryData> {
+  return request<ShiftSummaryData>("/api/warehouse/shift");
+}
+
+/** GET /api/warehouse/journal?days=&scope= */
+export function getJournal(
+  days: number,
+  scope: "me" | "all",
+): Promise<JournalData> {
+  return request<JournalData>(
+    `/api/warehouse/journal?days=${days}&scope=${scope}`,
+  );
+}
+
+/** GET /api/warehouse/problems */
+export function getProblems(): Promise<ProblemsData> {
+  return request<ProblemsData>("/api/warehouse/problems");
+}
+
 // ── Vehicles + driver (заполняется на погрузке/разгрузке) ─────────────────────
 
 export interface SessionVehicle {
@@ -450,6 +564,9 @@ export const scanApi = {
   listBookings,
   createSession,
   getState,
+  getShift,
+  getJournal,
+  getProblems,
   listSessionVehicles,
   setSessionDriver,
   check,

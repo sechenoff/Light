@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · Рабочий стол кладовщика v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#09090b;--ink-2:#52525b;--ink-3:#a1a1aa;
+  --bg:#f7f7f8;--surface:#fff;--surface-m:#fafafa;--surface-s:#f4f4f5;
+  --border:#e4e4e7;--border-s:#d4d4d8;
+  --accent:#1e3a8a;--accent-b:#1d4ed8;--accent-soft:#eff6ff;--accent-br:#bfdbfe;
+  --teal:#0f766e;--teal-soft:#ccfbf1;--teal-br:#99f6e4;
+  --emerald:#047857;--emerald-soft:#d1fae5;--emerald-br:#a7f3d0;
+  --rose:#9f1239;--rose-soft:#ffe4e6;--rose-br:#fecdd3;
+  --amber:#a16207;--amber-soft:#fef3c7;--amber-br:#fde68a;
+  --indigo:#4338ca;--indigo-soft:#e0e7ff;
+  --r:4px;--r-lg:6px;
+  --shadow-xs:0 1px 0 rgba(9,9,11,.03);
+  --shadow:0 1px 3px rgba(9,9,11,.05),0 0 0 1px rgba(9,9,11,.02);
+}
+html{font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+body{font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:#ececee;padding:24px 12px;font-size:13.5px}
+.mono{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.eyebrow{font-family:'IBM Plex Sans Condensed',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+svg{display:block}
+
+/* ── Scene chrome ── */
+.scene-h{max-width:1240px;margin:0 auto 12px;display:flex;align-items:center;gap:12px;padding:0 4px}
+.scene-h .num{width:28px;height:28px;border-radius:50%;background:var(--indigo);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0}
+.scene-h h2{font-size:17px;font-weight:600}
+.scene-h p{font-size:12px;color:var(--ink-2);margin-top:2px}
+.scene{max-width:1240px;margin:0 auto 56px}
+.duo{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+
+/* ── Phone frame (390px) ── */
+.phone{width:390px;flex-shrink:0;background:var(--bg);border:1px solid var(--border-s);border-radius:18px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.10);position:relative}
+.phone .content{min-height:640px;padding-bottom:64px;display:flex;flex-direction:column}
+
+/* ── Desktop frame ── */
+.desk{flex:1;min-width:700px;background:var(--bg);border:1px solid var(--border-s);border-radius:10px;overflow:hidden;box-shadow:0 6px 32px rgba(0,0,0,.08)}
+
+/* ── Dark navy header band ── */
+.top{background:var(--accent);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px}
+.top .back{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:rgba(255,255,255,.85);flex-shrink:0}
+.top .tt{flex:1;min-width:0}
+.top .tt .ey{font-family:'IBM Plex Sans Condensed',sans-serif;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.65);font-weight:600}
+.top .tt h1{font-size:15px;font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .who{font-size:11px;color:rgba(255,255,255,.7);flex-shrink:0}
+
+/* ── Bottom tab bar (mobile) ── */
+.tabbar{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(5,1fr);z-index:30}
+.tabbar a{display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 2px 8px;text-decoration:none;color:var(--ink-3);font-size:10px;font-weight:500;position:relative}
+.tabbar a svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.tabbar a.on{color:var(--accent-b)}
+.tabbar a.on::before{content:"";position:absolute;top:0;left:22%;right:22%;height:2px;background:var(--accent-b);border-radius:0 0 2px 2px}
+.tabbar .bdg{position:absolute;top:3px;right:calc(50% - 18px);min-width:15px;height:15px;background:var(--rose);color:#fff;border-radius:99px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;font-family:'IBM Plex Mono',monospace}
+
+/* ── Desktop left rail ── */
+.dgrid{display:grid;grid-template-columns:200px 1fr;min-height:620px}
+.rail{background:var(--surface);border-right:1px solid var(--border);padding:10px 8px;display:flex;flex-direction:column;gap:2px}
+.rail a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;text-decoration:none;color:var(--ink-2);font-size:13px;font-weight:500;position:relative}
+.rail a svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.rail a.on{background:var(--accent-soft);color:var(--accent-b);font-weight:600}
+.rail a:hover:not(.on){background:var(--surface-s)}
+.rail .bdg{margin-left:auto;min-width:17px;height:17px;background:var(--rose);color:#fff;border-radius:99px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px;font-family:'IBM Plex Mono',monospace}
+.rail .bdg.amber{background:var(--amber)}
+.rail .sep{height:1px;background:var(--border);margin:8px 6px}
+.rail .foot{margin-top:auto;padding:8px 10px;font-size:11px;color:var(--ink-3)}
+
+/* ── Cards / shared ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-xs);overflow:hidden}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface-m)}
+.card-h h3{font-size:12.5px;font-weight:600}
+.card-h .lnk{font-size:11.5px;color:var(--accent-b);text-decoration:none}
+.pad{padding:12px 14px}
+
+/* ── KPI strip ── */
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:10px 12px;box-shadow:var(--shadow-xs)}
+.kpi .l{font-family:'IBM Plex Sans Condensed',sans-serif;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.kpi .v{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;line-height:1.2;margin-top:2px}
+.kpi .s{font-size:10.5px;color:var(--ink-3);margin-top:1px}
+.kpi.rose{border-color:var(--rose-br);background:var(--rose-soft)}
+.kpi.rose .v,.kpi.rose .l{color:var(--rose)}
+
+/* ── Alert ── */
+.alert{border-radius:var(--r-lg);padding:10px 12px;display:flex;gap:10px;align-items:flex-start;font-size:12.5px;border:1px solid}
+.alert svg{width:17px;height:17px;flex-shrink:0;margin-top:1px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.alert.rose{background:var(--rose-soft);border-color:var(--rose-br);color:var(--rose)}
+.alert strong{display:block;font-weight:600}
+.alert .act{margin-left:auto;flex-shrink:0;font-size:11.5px;font-weight:600;text-decoration:underline;color:inherit;align-self:center}
+
+/* ── Timeline (Смена) ── */
+.tl{display:flex;flex-direction:column}
+.tl-row{display:grid;grid-template-columns:44px 20px 1fr auto;gap:0 8px;padding:8px 14px;align-items:center;border-bottom:1px solid var(--surface-s);min-height:52px}
+.tl-row:last-child{border-bottom:0}
+.tl-row .t{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--ink-2)}
+.tl-ic{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.tl-ic svg{width:12px;height:12px;stroke:#fff;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.tl-ic.issue{background:var(--accent-b)}
+.tl-ic.ret{background:var(--teal)}
+.tl-row .m .n{font-size:13px;font-weight:500;line-height:1.3}
+.tl-row .m .s{font-size:11px;color:var(--ink-3)}
+.tl-row .st{font-size:10.5px;padding:2.5px 8px;border-radius:99px;font-weight:600;white-space:nowrap}
+.st.done{background:var(--emerald-soft);color:var(--emerald)}
+.st.wait{background:var(--surface-s);color:var(--ink-2)}
+.st.late{background:var(--rose-soft);color:var(--rose)}
+.st.now{background:var(--amber-soft);color:var(--amber)}
+.tl-row.dim .m .n,.tl-row.dim .t{color:var(--ink-3);text-decoration:line-through;text-decoration-color:rgba(0,0,0,.2)}
+
+/* ── Big action buttons ── */
+.actions2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bigbtn{display:flex;align-items:center;gap:10px;padding:14px;border-radius:var(--r-lg);border:1px solid;text-decoration:none;min-height:60px}
+.bigbtn svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.bigbtn .t1{font-family:'IBM Plex Sans Condensed',sans-serif;font-size:16px;font-weight:700;line-height:1.1}
+.bigbtn .t2{font-size:10.5px;opacity:.75;margin-top:1px}
+.bigbtn.issue{background:var(--accent-soft);border-color:var(--accent-br);color:var(--accent-b)}
+.bigbtn.ret{background:var(--teal-soft);border-color:var(--teal-br);color:var(--teal)}
+
+/* ── Deadline list (В работе) ── */
+.pills{display:flex;gap:6px;padding:10px 14px;flex-wrap:wrap}
+.pill{font-size:11.5px;font-weight:600;padding:5px 12px;border-radius:99px;border:1px solid var(--border);background:var(--surface);color:var(--ink-2);min-height:28px}
+.pill.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.pill.rose{border-color:var(--rose-br);color:var(--rose)}
+.pill.rose.on{background:var(--rose);border-color:var(--rose);color:#fff}
+.dl-row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:10px 14px;border-bottom:1px solid var(--surface-s);position:relative}
+.dl-row:last-child{border-bottom:0}
+.dl-row.late{background:linear-gradient(90deg,var(--rose-soft) 0,transparent 55%)}
+.dl-row.late::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--rose)}
+.dl-row .n{font-size:13.5px;font-weight:600}
+.dl-row .s{font-size:11.5px;color:var(--ink-2)}
+.dl-row .s a{color:var(--accent-b);text-decoration:none}
+.dl-when{text-align:right}
+.dl-when .d{font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600}
+.dl-when .d.rose{color:var(--rose)}
+.dl-when .d.amber{color:var(--amber)}
+.dl-when .r{font-size:10.5px;color:var(--ink-3)}
+.dl-when .r.rose{color:var(--rose);font-weight:600}
+.dl-acts{grid-column:1/-1;display:flex;gap:6px;margin-top:6px}
+.mini{font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:var(--r);border:1px solid var(--border-s);background:var(--surface);color:var(--ink);text-decoration:none;min-height:32px;display:inline-flex;align-items:center;gap:5px}
+.mini svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mini.teal{background:var(--teal);border-color:var(--teal);color:#fff}
+
+/* ── Journal ── */
+.j-day{padding:8px 14px 4px;font-family:'IBM Plex Sans Condensed',sans-serif;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;background:var(--surface-m);border-bottom:1px solid var(--surface-s)}
+.j-row{display:grid;grid-template-columns:24px 1fr auto;gap:0 10px;padding:9px 14px;border-bottom:1px solid var(--surface-s);align-items:center}
+.j-row:last-child{border-bottom:0}
+.j-ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center}
+.j-ic svg{width:13px;height:13px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.j-ic.issue{background:var(--accent-b)}
+.j-ic.ret{background:var(--teal)}
+.j-ic.rep{background:var(--amber)}
+.j-row .m .n{font-size:12.5px;font-weight:500}
+.j-row .m .s{font-size:11px;color:var(--ink-3)}
+.j-row .meta{text-align:right}
+.j-row .meta .d{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink-2)}
+.j-row .meta .x{font-size:10.5px;color:var(--ink-3)}
+
+/* ── Stats bars ── */
+.bars{display:flex;align-items:flex-end;gap:6px;height:90px;padding:12px 14px 6px}
+.bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.bar .stack{width:100%;max-width:34px;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;flex:1}
+.bar .b1{background:var(--accent-b);border-radius:3px 3px 0 0}
+.bar .b2{background:var(--teal);border-radius:0 0 2px 2px}
+.bar .lb{font-size:9.5px;color:var(--ink-3);font-family:'IBM Plex Mono',monospace}
+.bar.today .lb{color:var(--accent-b);font-weight:700}
+.legend{display:flex;gap:14px;padding:0 14px 12px;font-size:11px;color:var(--ink-2)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+
+/* ── Problems ── */
+.p-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;padding:10px 14px;border-bottom:1px solid var(--surface-s);align-items:center}
+.p-row:last-child{border-bottom:0}
+.p-ava{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.p-ava svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.p-ava.rep{background:var(--amber-soft);color:var(--amber)}
+.p-ava.lost{background:var(--rose-soft);color:var(--rose)}
+.p-row .m .n{font-size:12.5px;font-weight:600}
+.p-row .m .s{font-size:11px;color:var(--ink-3)}
+.p-st{font-size:10px;padding:2.5px 8px;border-radius:99px;font-weight:600;white-space:nowrap}
+.p-st.wait{background:var(--amber-soft);color:var(--amber)}
+.p-st.work{background:var(--accent-soft);color:var(--accent-b)}
+.p-st.search{background:var(--rose-soft);color:var(--rose)}
+.p-st.expect{background:var(--indigo-soft);color:var(--indigo)}
+
+/* ── Notes / commentary ── */
+.note{max-width:1240px;margin:0 auto 56px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px 26px}
+.note h3{font-size:15px;font-weight:600;margin-bottom:8px}
+.note ul{padding-left:18px;margin:6px 0}
+.note li{font-size:13px;padding:2.5px 0;line-height:1.55}
+.note .grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:8px}
+@media(max-width:800px){.note .grid2{grid-template-columns:1fr}.desk{min-width:0}}
+.tag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:99px;background:var(--emerald-soft);color:var(--emerald);border:1px solid var(--emerald-br);font-weight:600;margin-left:5px;vertical-align:1px}
+.tag.keep{background:var(--surface-s);color:var(--ink-2);border-color:var(--border)}
+code{font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--surface-s);padding:1px 5px;border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ INTRO ═══════════ -->
+<div class="note">
+  <h3>Рабочий стол кладовщика v2 — концепция</h3>
+  <p style="color:var(--ink-2);font-size:13px;line-height:1.6">
+    Сейчас киоск — это «выбери операцию из 3 кнопок → список → чек-лист». Чек-листы отточены и остаются как есть
+    <span class="tag keep">KEEP</span>, но вокруг них нет рабочего места: кладовщик не видит план дня, просрочку,
+    свою выработку и поломки. v2 меняет каркас: <strong>постоянная навигация из 5 разделов</strong>
+    (таб-бар на планшете/телефоне, левая колонка на десктопе) + новый домашний экран «Смена».
+  </p>
+  <div class="grid2">
+    <div>
+      <h3 style="font-size:13px;margin-top:10px">5 разделов</h3>
+      <ul>
+        <li><strong>Смена</strong> <span class="tag">NEW</span> — план дня лентой, алерт просрочки, счётчики, быстрые действия</li>
+        <li><strong>Выдача</strong> <span class="tag keep">KEEP</span> — список → текущий чек-лист (степперы, добор, водители)</li>
+        <li><strong>Приёмка</strong> <span class="tag keep">KEEP</span> — список → текущий чек-лист (3 исхода, фото, потеряшки)</li>
+        <li><strong>В работе</strong> <span class="tag">UPGRADE</span> — сроки: фильтры Просрочено/Сегодня/Все, звонок клиенту, «Принять»</li>
+        <li><strong>Журнал</strong> <span class="tag">NEW</span> — учёт работы (сессии с длительностью) + статистика недели + поломки</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="font-size:13px;margin-top:10px">Новый бекенд (3 эндпоинта)</h3>
+      <ul>
+        <li><code>GET /api/warehouse/shift</code> — лента дня (выдачи+возвраты с временем и статусом), счётчики, просрочка</li>
+        <li><code>GET /api/warehouse/journal?days=7</code> — завершённые ScanSession: оператор, операция, бронь, позиций, длительность</li>
+        <li><code>GET /api/warehouse/problems</code> — активные Repair + ProblemItem под warehouseAuth (сейчас только под JWT)</li>
+      </ul>
+      <p style="font-size:12px;color:var(--ink-2);margin-top:8px">
+        Все данные уже в БД (ScanSession.startedAt/completedAt, Booking.endDate, Repair, ProblemItem) — только чтение, ноль миграций.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ SCENE 1 — СМЕНА (home) ═══════════ -->
+<div class="scene-h">
+  <div class="num">1</div>
+  <div><h2>«Смена» — домашний экран</h2><p>Открывается после входа. План дня, просрочка, выработка. Слева телефон 390px, справа десктоп с левой навигацией.</p></div>
+</div>
+
+<div class="scene"><div class="duo">
+
+  <!-- Phone -->
+  <div class="phone"><div class="content">
+    <div class="top">
+      <div class="tt">
+        <p class="ey">Склад · суббота, 1 августа</p>
+        <h1>Добрый день, Иван 👋</h1>
+      </div>
+      <span class="who">Смена 09:12</span>
+    </div>
+
+    <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+
+      <!-- Overdue alert -->
+      <div class="alert rose">
+        <svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div><strong>2 просроченных возврата</strong>Ершов — 3 дня · Логинов — 1 день</div>
+        <a class="act" href="#">Открыть</a>
+      </div>
+
+      <!-- KPI -->
+      <div class="kpis">
+        <div class="kpi"><div class="l">Выдачи</div><div class="v">2<span style="font-size:13px;color:var(--ink-3)">/4</span></div><div class="s">сделано / план</div></div>
+        <div class="kpi"><div class="l">Возвраты</div><div class="v">1<span style="font-size:13px;color:var(--ink-3)">/3</span></div><div class="s">сделано / план</div></div>
+        <div class="kpi rose"><div class="l">Просрочка</div><div class="v">2</div><div class="s">возврата ждём</div></div>
+      </div>
+
+      <!-- Quick actions -->
+      <div class="actions2">
+        <a class="bigbtn issue" href="#">
+          <svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+          <span><span class="t1">Выдача</span><br><span class="t2">2 брони ждут</span></span>
+        </a>
+        <a class="bigbtn ret" href="#">
+          <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span><span class="t1">Приёмка</span><br><span class="t2">2 + 2 просрочено</span></span>
+        </a>
+      </div>
+
+      <!-- Day timeline -->
+      <div class="card">
+        <div class="card-h"><h3>План на сегодня</h3><a class="lnk" href="#">7 операций</a></div>
+        <div class="tl">
+          <div class="tl-row dim">
+            <span class="t">09:30</span>
+            <span class="tl-ic issue"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>
+            <div class="m"><div class="n">Родомский · клип Хакаги</div><div class="s">14 позиций · Sprinter</div></div>
+            <span class="st done">Выдано 09:41</span>
+          </div>
+          <div class="tl-row dim">
+            <span class="t">11:00</span>
+            <span class="tl-ic ret"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>
+            <div class="m"><div class="n">Гена Белых · Привет Ad</div><div class="s">12 позиций · 1 в ремонт</div></div>
+            <span class="st done">Принято 11:24</span>
+          </div>
+          <div class="tl-row">
+            <span class="t">14:00</span>
+            <span class="tl-ic issue"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg></span>
+            <div class="m"><div class="n">Швецова · реклама МТС</div><div class="s">26 позиций · Фотон + Ford</div></div>
+            <span class="st now">Через 40 мин</span>
+          </div>
+          <div class="tl-row">
+            <span class="t">16:30</span>
+            <span class="tl-ic ret"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+            <div class="m"><div class="n">Кинокартина «Север»</div><div class="s">41 позиция · большой возврат</div></div>
+            <span class="st wait">Ожидается</span>
+          </div>
+          <div class="tl-row">
+            <span class="t">18:00</span>
+            <span class="tl-ic issue"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg></span>
+            <div class="m"><div class="n">Мальцев · съёмка lookbook</div><div class="s">8 позиций · самовывоз</div></div>
+            <span class="st wait">Ожидается</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- My shift summary -->
+      <div class="card">
+        <div class="card-h"><h3>Моя смена</h3><span style="font-size:11px;color:var(--ink-3)">Иван Кладовщик</span></div>
+        <div class="pad" style="display:flex;gap:18px;font-size:12px;color:var(--ink-2)">
+          <span><span class="mono" style="font-weight:600;color:var(--ink)">3</span> сессии</span>
+          <span><span class="mono" style="font-weight:600;color:var(--ink)">27</span> позиций</span>
+          <span><span class="mono" style="font-weight:600;color:var(--ink)">1</span> поломка</span>
+          <span style="margin-left:auto"><span class="mono" style="font-weight:600;color:var(--ink)">6ч 48м</span> на смене</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab bar -->
+    <nav class="tabbar">
+      <a class="on" href="#"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка<span class="bdg">2</span></a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе</a>
+      <a href="#"><svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+    </nav>
+  </div></div>
+
+  <!-- Desktop -->
+  <div class="desk">
+    <div class="top" style="padding:10px 20px">
+      <div class="tt">
+        <p class="ey">Склад · суббота, 1 августа 2026</p>
+        <h1>Добрый день, Иван 👋</h1>
+      </div>
+      <span class="who">Иван Кладовщик · смена с 09:12</span>
+    </div>
+    <div class="dgrid">
+      <nav class="rail">
+        <a class="on" href="#"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача<span class="bdg" style="background:var(--accent-b)">2</span></a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка<span class="bdg">4</span></a>
+        <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе<span class="bdg amber">7</span></a>
+        <div class="sep"></div>
+        <a href="#"><svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Поломки<span class="bdg amber">3</span></a>
+        <div class="foot">Иван Кладовщик<br><a href="#" style="color:var(--ink-3)">Выйти</a></div>
+      </nav>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:12px;background:var(--bg)">
+        <div class="alert rose">
+          <svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div><strong>2 просроченных возврата</strong>Ершов «Ночь» — 3 дня, 46 200 ₽ · Логинов «Промо» — 1 день, 18 500 ₽</div>
+          <a class="act" href="#">К просрочке →</a>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+              <div class="kpi"><div class="l">Выдачи</div><div class="v">2<span style="font-size:13px;color:var(--ink-3)">/4</span></div><div class="s">план на день</div></div>
+              <div class="kpi"><div class="l">Возвраты</div><div class="v">1<span style="font-size:13px;color:var(--ink-3)">/3</span></div><div class="s">план на день</div></div>
+              <div class="kpi rose"><div class="l">Просрочка</div><div class="v">2</div><div class="s">ждём возврат</div></div>
+            </div>
+            <div class="actions2">
+              <a class="bigbtn issue" href="#"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg><span><span class="t1">Начать выдачу</span><br><span class="t2">ближайшая в 14:00 · Швецова</span></span></a>
+              <a class="bigbtn ret" href="#"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span><span class="t1">Принять возврат</span><br><span class="t2">2 плановых + 2 просроченных</span></span></a>
+            </div>
+            <div class="card">
+              <div class="card-h"><h3>Моя смена сегодня</h3><span style="font-size:11px;color:var(--ink-3)">с 09:12 · 6ч 48м</span></div>
+              <div class="pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center">
+                <div><div class="mono" style="font-size:20px;font-weight:600">3</div><div style="font-size:11px;color:var(--ink-3)">сессии завершено</div></div>
+                <div><div class="mono" style="font-size:20px;font-weight:600">27</div><div style="font-size:11px;color:var(--ink-3)">позиций обработано</div></div>
+                <div><div class="mono" style="font-size:20px;font-weight:600">14м</div><div style="font-size:11px;color:var(--ink-3)">средняя сессия</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h3>План на сегодня</h3><span style="font-size:11px;color:var(--ink-3)">7 операций · 2 выполнено</span></div>
+            <div class="tl">
+              <div class="tl-row dim"><span class="t">09:30</span><span class="tl-ic issue"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span><div class="m"><div class="n">Родомский · клип Хакаги</div><div class="s">14 позиций · Sprinter · Лёша за рулём</div></div><span class="st done">Выдано 09:41</span></div>
+              <div class="tl-row dim"><span class="t">11:00</span><span class="tl-ic ret"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span><div class="m"><div class="n">Гена Белых · Привет Ad</div><div class="s">12 позиций · 1 в ремонт (шторка F10)</div></div><span class="st done">Принято 11:24</span></div>
+              <div class="tl-row"><span class="t">14:00</span><span class="tl-ic issue"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg></span><div class="m"><div class="n">Швецова · реклама МТС</div><div class="s">26 позиций · Фотон + Ford</div></div><span class="st now">Через 40 мин</span></div>
+              <div class="tl-row"><span class="t">16:30</span><span class="tl-ic ret"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><div class="m"><div class="n">Кинокартина «Север»</div><div class="s">41 позиция</div></div><span class="st wait">Ожидается</span></div>
+              <div class="tl-row"><span class="t">18:00</span><span class="tl-ic issue"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg></span><div class="m"><div class="n">Мальцев · lookbook</div><div class="s">8 позиций · самовывоз</div></div><span class="st wait">Ожидается</span></div>
+              <div class="tl-row late" style="border-top:1px dashed var(--rose-br)"><span class="t" style="color:var(--rose)">−3 дн</span><span class="tl-ic ret" style="background:var(--rose)"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19" transform="rotate(45 12 12)"/><line x1="5" y1="12" x2="19" y2="12" transform="rotate(45 12 12)"/></svg></span><div class="m"><div class="n">Ершов · «Ночь»</div><div class="s">должны были вернуть 29.07</div></div><span class="st late">Просрочен</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div></div>
+
+<!-- ═══════════ SCENE 2 — В РАБОТЕ / СРОКИ ═══════════ -->
+<div class="scene-h">
+  <div class="num">2</div>
+  <div><h2>«В работе» — сроки и просрочка</h2><p>Список активных выдач, отсортированный по дедлайну. Фильтры-пилюли, звонок клиенту в один тап, «Принять» переводит в чек-лист приёмки.</p></div>
+</div>
+
+<div class="scene"><div class="duo">
+  <div class="phone"><div class="content">
+    <div class="top">
+      <div class="tt"><p class="ey">Склад · В работе</p><h1>У клиентов сейчас · 7</h1></div>
+    </div>
+    <div class="pills">
+      <span class="pill rose on">Просрочено 2</span>
+      <span class="pill">Сегодня 1</span>
+      <span class="pill">Завтра 2</span>
+      <span class="pill">Все 7</span>
+    </div>
+    <div class="card" style="margin:0 12px 12px">
+      <div class="dl-row late">
+        <div>
+          <div class="n">Ершов · «Ночь»</div>
+          <div class="s">18 позиций · 46 200 ₽ · <a href="tel:+79165550101">📞 +7 916 555-01-01</a></div>
+        </div>
+        <div class="dl-when"><div class="d rose">29.07, ср</div><div class="r rose">просрочен на 3 дня</div></div>
+        <div class="dl-acts">
+          <a class="mini teal" href="#"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Принять возврат</a>
+          <a class="mini" href="#"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>Позвонить</a>
+        </div>
+      </div>
+      <div class="dl-row late">
+        <div>
+          <div class="n">Логинов · «Промо»</div>
+          <div class="s">6 позиций · 18 500 ₽ · <a href="tel:+79262223344">📞 +7 926 222-33-44</a></div>
+        </div>
+        <div class="dl-when"><div class="d rose">31.07, чт</div><div class="r rose">просрочен на 1 день</div></div>
+        <div class="dl-acts">
+          <a class="mini teal" href="#"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Принять возврат</a>
+          <a class="mini" href="#"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>Позвонить</a>
+        </div>
+      </div>
+    </div>
+    <p style="padding:0 16px;font-size:11px;color:var(--ink-3)">Дальше — остальные 5 активных выдач по возрастанию срока (сегодня → завтра → позже), каждая с карточкой как выше.</p>
+    <nav class="tabbar">
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка<span class="bdg">2</span></a>
+      <a class="on" href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе</a>
+      <a href="#"><svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+    </nav>
+  </div></div>
+
+  <!-- Desktop: journal + stats combined view -->
+  <div class="desk">
+    <div class="top" style="padding:10px 20px"><div class="tt"><p class="ey">Склад · Журнал</p><h1>Журнал работы и статистика</h1></div><span class="who">Иван Кладовщик</span></div>
+    <div class="dgrid">
+      <nav class="rail">
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача<span class="bdg" style="background:var(--accent-b)">2</span></a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка<span class="bdg">4</span></a>
+        <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе<span class="bdg amber">7</span></a>
+        <div class="sep"></div>
+        <a class="on" href="#"><svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Поломки<span class="bdg amber">3</span></a>
+      </nav>
+      <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;background:var(--bg)">
+        <!-- Weekly stats -->
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="kpis">
+            <div class="kpi"><div class="l">За неделю</div><div class="v">23</div><div class="s">сессий завершено</div></div>
+            <div class="kpi"><div class="l">Позиций</div><div class="v">214</div><div class="s">выдано + принято</div></div>
+            <div class="kpi"><div class="l">Средняя</div><div class="v">16м</div><div class="s">длительность сессии</div></div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h3>Операции по дням</h3>
+              <span style="display:flex;gap:4px">
+                <span class="pill on" style="padding:3px 10px;font-size:10.5px">Неделя</span>
+                <span class="pill" style="padding:3px 10px;font-size:10.5px">Месяц</span>
+              </span>
+            </div>
+            <div class="bars">
+              <div class="bar"><div class="stack"><div class="b1" style="height:38%"></div><div class="b2" style="height:22%"></div></div><span class="lb">пн</span></div>
+              <div class="bar"><div class="stack"><div class="b1" style="height:55%"></div><div class="b2" style="height:30%"></div></div><span class="lb">вт</span></div>
+              <div class="bar"><div class="stack"><div class="b1" style="height:25%"></div><div class="b2" style="height:42%"></div></div><span class="lb">ср</span></div>
+              <div class="bar"><div class="stack"><div class="b1" style="height:60%"></div><div class="b2" style="height:18%"></div></div><span class="lb">чт</span></div>
+              <div class="bar"><div class="stack"><div class="b1" style="height:45%"></div><div class="b2" style="height:38%"></div></div><span class="lb">пт</span></div>
+              <div class="bar today"><div class="stack"><div class="b1" style="height:30%"></div><div class="b2" style="height:15%"></div></div><span class="lb">сб</span></div>
+              <div class="bar"><div class="stack"></div><span class="lb">вс</span></div>
+            </div>
+            <div class="legend">
+              <span><i style="background:var(--accent-b)"></i>Выдачи</span>
+              <span><i style="background:var(--teal)"></i>Возвраты</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h3>Поломки за месяц</h3><a class="lnk" href="#">Все →</a></div>
+            <div class="pad" style="display:flex;gap:18px;font-size:12px;color:var(--ink-2)">
+              <span><span class="mono" style="font-weight:600;color:var(--amber)">4</span> в ремонт</span>
+              <span><span class="mono" style="font-weight:600;color:var(--rose)">1</span> потеряшка</span>
+              <span><span class="mono" style="font-weight:600;color:var(--emerald)">3</span> починено</span>
+            </div>
+          </div>
+        </div>
+        <!-- Journal feed -->
+        <div class="card">
+          <div class="card-h"><h3>Журнал операций</h3>
+            <span style="display:flex;gap:4px">
+              <span class="pill on" style="padding:3px 10px;font-size:10.5px">Мои</span>
+              <span class="pill" style="padding:3px 10px;font-size:10.5px">Все</span>
+            </span>
+          </div>
+          <div class="j-day">Сегодня · 1 августа</div>
+          <div class="j-row"><span class="j-ic ret"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><div class="m"><div class="n">Приёмка · Гена Белых «Привет Ad»</div><div class="s">12 позиций · 1 в ремонт · Иван</div></div><div class="meta"><div class="d">11:00–11:24</div><div class="x">24 мин</div></div></div>
+          <div class="j-row"><span class="j-ic issue"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg></span><div class="m"><div class="n">Выдача · Родомский «клип Хакаги»</div><div class="s">14 позиций · +2 добора · Иван</div></div><div class="meta"><div class="d">09:30–09:41</div><div class="x">11 мин</div></div></div>
+          <div class="j-day">Вчера · 31 июля</div>
+          <div class="j-row"><span class="j-ic issue"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg></span><div class="m"><div class="n">Выдача · Кинокартина «Север»</div><div class="s">41 позиция · Фотон · Иван</div></div><div class="meta"><div class="d">15:02–15:47</div><div class="x">45 мин</div></div></div>
+          <div class="j-row"><span class="j-ic rep"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span><div class="m"><div class="n">Поломка · Aputure Storm 400x #003</div><div class="s">не включается драйвер · фото ×2 · Иван</div></div><div class="meta"><div class="d">12:15</div><div class="x">в ремонте</div></div></div>
+          <div class="j-row"><span class="j-ic ret"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><div class="m"><div class="n">Приёмка · Швецова «Тизер»</div><div class="s">22 позиции · всё ок · Пётр</div></div><div class="meta"><div class="d">10:11–10:39</div><div class="x">28 мин</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ═══════════ SCENE 3 — ЖУРНАЛ (mobile) + ПОЛОМКИ ═══════════ -->
+<div class="scene-h">
+  <div class="num">3</div>
+  <div><h2>«Журнал» на телефоне + экран «Поломки»</h2><p>Журнал: сначала статистика, ниже лента. Поломки: активные ремонты и потеряшки в одном месте, с регистрацией без возврата.</p></div>
+</div>
+
+<div class="scene"><div class="duo">
+
+  <!-- Phone: Journal -->
+  <div class="phone"><div class="content">
+    <div class="top"><div class="tt"><p class="ey">Склад · Журнал</p><h1>Учёт работы</h1></div></div>
+    <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+      <div class="kpis">
+        <div class="kpi"><div class="l">Неделя</div><div class="v">23</div><div class="s">сессии</div></div>
+        <div class="kpi"><div class="l">Позиций</div><div class="v">214</div><div class="s">обработано</div></div>
+        <div class="kpi"><div class="l">Поломок</div><div class="v" style="color:var(--amber)">5</div><div class="s">за месяц</div></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Лента</h3>
+          <span style="display:flex;gap:4px">
+            <span class="pill on" style="padding:3px 10px;font-size:10.5px">Мои</span>
+            <span class="pill" style="padding:3px 10px;font-size:10.5px">Все</span>
+          </span>
+        </div>
+        <div class="j-day">Сегодня</div>
+        <div class="j-row"><span class="j-ic ret"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><div class="m"><div class="n">Приёмка · Гена Белых</div><div class="s">12 поз · 1 в ремонт</div></div><div class="meta"><div class="d">11:24</div><div class="x">24 мин</div></div></div>
+        <div class="j-row"><span class="j-ic issue"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg></span><div class="m"><div class="n">Выдача · Родомский</div><div class="s">14 поз · +2 добора</div></div><div class="meta"><div class="d">09:41</div><div class="x">11 мин</div></div></div>
+        <div class="j-day">Вчера</div>
+        <div class="j-row"><span class="j-ic issue"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/></svg></span><div class="m"><div class="n">Выдача · «Север»</div><div class="s">41 поз · Фотон</div></div><div class="meta"><div class="d">15:47</div><div class="x">45 мин</div></div></div>
+        <div class="j-row"><span class="j-ic rep"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span><div class="m"><div class="n">Поломка · Storm 400x</div><div class="s">фото ×2</div></div><div class="meta"><div class="d">12:15</div><div class="x">ремонт</div></div></div>
+      </div>
+    </div>
+    <nav class="tabbar">
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка<span class="bdg">2</span></a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе</a>
+      <a class="on" href="#"><svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+    </nav>
+  </div></div>
+
+  <!-- Phone: Problems -->
+  <div class="phone"><div class="content">
+    <div class="top">
+      <div class="back">←</div>
+      <div class="tt"><p class="ey">Склад · Журнал</p><h1>Поломки и потеряшки</h1></div>
+    </div>
+    <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+      <a class="bigbtn issue" href="#" style="background:var(--amber-soft);border-color:var(--amber-br);color:var(--amber)">
+        <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span><span class="t1">Зарегистрировать поломку</span><br><span class="t2">без возврата — прямо со склада</span></span>
+      </a>
+      <div class="card">
+        <div class="card-h"><h3>В ремонте · 3</h3><a class="lnk" href="#">Мастерская →</a></div>
+        <div class="p-row">
+          <span class="p-ava rep"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+          <div class="m"><div class="n">Aputure Storm 400x · #003</div><div class="s">не включается драйвер · с приёмки «Привет Ad» · 2 фото</div></div>
+          <span class="p-st work">В ремонте</span>
+        </div>
+        <div class="p-row">
+          <span class="p-ava rep"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+          <div class="m"><div class="n">Nanlite PavoSlim 240C · #001</div><div class="s">трещина корпуса · вчера · ждёт запчасть</div></div>
+          <span class="p-st wait">Ждёт детали</span>
+        </div>
+        <div class="p-row">
+          <span class="p-ava rep"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+          <div class="m"><div class="n">Шторки Aputure F10 · #002</div><div class="s">погнута ламель · очередь</div></div>
+          <span class="p-st wait">Ждёт ремонта</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Потеряшки · 2</h3></div>
+        <div class="p-row">
+          <span class="p-ava lost"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+          <div class="m"><div class="n">Sandbag 7 кг · #014</div><div class="s">оставлен на площадке · Швецова · ждём 03.08</div></div>
+          <span class="p-st expect">Ожидается</span>
+        </div>
+        <div class="p-row">
+          <span class="p-ava lost"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+          <div class="m"><div class="n">Зонт серебряный 80 · #006</div><div class="s">утерян · «Север» · в розыске 4 дня</div></div>
+          <span class="p-st search">В розыске</span>
+        </div>
+      </div>
+    </div>
+    <nav class="tabbar">
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/><path d="M5 10v11h14V10"/></svg>Смена</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>Выдача</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Приёмка<span class="bdg">2</span></a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>В работе</a>
+      <a class="on" href="#"><svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Журнал</a>
+    </nav>
+  </div></div>
+
+</div></div>
+
+<!-- ═══════════ DECISIONS ═══════════ -->
+<div class="note">
+  <h3>Решения и что остаётся как есть</h3>
+  <div class="grid2">
+    <div>
+      <ul>
+        <li><strong>Чек-листы выдачи/приёмки не переделываются</strong> — степперы, «Все выдано», добор, водители, 3-исходная приёмка, фото поломок уже отработаны. Они просто получают таб-бар снизу вместо полного ухода назад.</li>
+        <li><strong>Таб-бар вместо «выбора операции»</strong> — переключение разделов одним тапом из любого места. Экран «Что вы делаете сейчас?» исчезает; после входа сразу «Смена».</li>
+        <li><strong>Бейджи на табах</strong> — Приёмка показывает счётчик просроченных (rose), «В работе» — общее число активных (amber).</li>
+        <li><strong>Иконки — SVG</strong> (Lucide-стиль), не эмодзи: единый штрих 1.9px, темизация цветом. Touch-таргеты ≥44px.</li>
+        <li><strong>Поломки живут внутри Журнала</strong> на телефоне (карточка-ссылка) и отдельным пунктом на десктопе — 5 табов держим, шестой не плодим.</li>
+      </ul>
+    </div>
+    <div>
+      <ul>
+        <li><strong>PIN-логин без изменений</strong> — токен-контракт, SA/WH bypass, deep-link <code>?booking=</code> сохраняются.</li>
+        <li><strong>«Смена» деградирует мягко</strong>: нет операций на сегодня → пустая лента с «Сегодня выдач нет», алерт только при просрочке.</li>
+        <li><strong>Журнал «Мои/Все»</strong> — по <code>workerName</code> сессии; кладовщик видит и свою выработку, и общую картину склада.</li>
+        <li><strong>Регистрация поломки без возврата</strong> — с экрана Поломок, юнит-пикер + причина + фото (использует готовый RepairPanel-механизм).</li>
+        <li><strong>Реализация по фазам</strong>: 1) каркас-навигация + Смена · 2) В работе со сроками · 3) Журнал + статистика · 4) Поломки. Каждая фаза деплоится отдельно.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

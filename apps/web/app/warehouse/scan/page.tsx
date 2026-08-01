@@ -1,75 +1,128 @@
 "use client";
 
 /**
- * Warehouse-scan kiosk page — THIN shell (Task 5.2).
+ * Рабочий стол кладовщика v2 — страница-оркестратор.
  *
- * Standalone client component, NO AppShell (mounted-tablet kiosk surface).
- * Composes `useScanSession` + `ScanShell` and renders one component per step:
- *   login     → LoginStep            (canon PIN login, token contract intact)
- *   operation → OperationStep        (ISSUE / RETURN picker)
- *   booking   → BookingList          (filter-less, date-grouped)
- *   checklist → IssueChecklist (ISSUE) / ReturnChecklist (RETURN, Task 7.2:
- *               3-outcome приёмка + inline completion result). Both checklists
- *               own their own completion finale; there is no outer summary step.
+ * Вместо прежней step-машины «login → операция → бронь → чек-лист» —
+ * постоянная навигация из 5 разделов (WorkstationShell):
+ *   Смена · Выдача · Приёмка · В работе · Журнал (+ Поломки).
  *
- * Preserved verbatim from the previous implementation:
- *  - token contract: sessionStorage "warehouse_token" (Bearer) via api.ts
- *  - step machine values: login|operation|booking|checklist
- *  - PIN-login flow + SA/WAREHOUSE "main session" bypass (skip login,
- *    expired token → redirect to /login)
- *  - session creation on booking tap → advance to checklist
+ * Сохранено из v1 (контракты не менялись):
+ *  - токен: sessionStorage "warehouse_token" (Bearer) через api.ts;
+ *  - PIN-логин + bypass для main-сессии SA/WAREHOUSE (истёкшая — на /login);
+ *  - deep-link `?booking=<id>` с карточки брони — сразу открывает чек-лист;
+ *  - чек-листы IssueChecklist/ReturnChecklist как есть (свой state-хук внутри).
  *
- * Desktop adaptive (mockup 03 block 4): from the booking step onward the
- * booking list stays in ScanShell's left pane, the active step in the right.
+ * Новое:
+ *  - `?tab=` в URL — раздел переживает перезагрузку планшета;
+ *  - страница держит одну activeSession: переключение таба НЕ теряет
+ *    открытый чек-лист (сессия ACTIVE, возврат на таб продолжает её);
+ *  - /api/warehouse/shift питает и экран «Смена», и бейджи таб-бара.
+ *
+ * Мокап: docs/mockups/warehouse-scan/05-workstation-v2.html.
  */
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCurrentUser } from "../../../src/lib/auth";
 import { toast } from "../../../src/components/ToastProvider";
-import { ScanShell } from "../../../src/components/warehouse/ScanShell";
+import {
+  WorkstationShell,
+  type WorkstationTab,
+} from "../../../src/components/warehouse/WorkstationShell";
 import { LoginStep } from "../../../src/components/warehouse/LoginStep";
-import { OperationStep } from "../../../src/components/warehouse/OperationStep";
-import type { ScanViewMode } from "../../../src/components/warehouse/OperationStep";
 import { BookingList } from "../../../src/components/warehouse/BookingList";
 import { IssueChecklist } from "../../../src/components/warehouse/IssueChecklist";
 import { ReturnChecklist } from "../../../src/components/warehouse/ReturnChecklist";
 import { InWorkList } from "../../../src/components/warehouse/InWorkList";
 import { InWorkDetails } from "../../../src/components/warehouse/InWorkDetails";
-import { useScanSession } from "../../../src/components/warehouse/useScanSession";
-import { scanApi } from "../../../src/components/warehouse/api";
+import {
+  ShiftHome,
+  shiftHeaderEyebrow,
+  shiftHeaderTitle,
+} from "../../../src/components/warehouse/ShiftHome";
+import { JournalScreen } from "../../../src/components/warehouse/JournalScreen";
+import { ProblemsScreen } from "../../../src/components/warehouse/ProblemsScreen";
 import { ResumedSessionBanner } from "../../../src/components/warehouse/ResumedSessionBanner";
+import { scanApi, type ShiftSummaryData } from "../../../src/components/warehouse/api";
 import type {
   BookingSummary,
   ScanOperation,
   ScanSessionInfo,
 } from "../../../src/components/warehouse/types";
 
+const VALID_TABS: WorkstationTab[] = [
+  "shift",
+  "issue",
+  "return",
+  "inwork",
+  "journal",
+  "problems",
+];
+
+interface ActiveSession {
+  sessionId: string;
+  operation: ScanOperation;
+  booking: BookingSummary | null;
+}
+
 function WarehouseScanInner({
   hasMainSession,
   workerName,
   initialBookingId,
+  initialTab,
 }: {
   hasMainSession: boolean;
   workerName: string;
-  /** Deep-link ?booking=<id> с карточки брони — предвыбор брони после авторизации. */
   initialBookingId?: string | null;
+  initialTab: WorkstationTab;
 }) {
   const router = useRouter();
-  const session = useScanSession(hasMainSession ? "operation" : "login");
-  const { step, operation, sessionId, goStep, setOperation, openSession } =
-    session;
 
-  // Booking selected for the active session (project/client for headers).
-  const [activeBooking, setActiveBooking] = useState<BookingSummary | null>(
-    null,
-  );
+  const [authed, setAuthed] = useState(hasMainSession);
+  const [tab, setTab] = useState<WorkstationTab>(initialTab);
+  // Имя PIN-кладовщика (после логина через киоск). Для main-сессии — username.
+  const [pinWorkerName, setPinWorkerName] = useState<string | null>(null);
+  const displayName = pinWorkerName ?? workerName;
 
-  // createSession вернул уже существующую ACTIVE-сессию → показываем
-  // amber-плашку «Продолжена незавершённая сессия» над чек-листом.
-  // null — сессия новая или плашка скрыта оператором.
+  // Открытый чек-лист. Переключение таба его НЕ сбрасывает — возврат на таб
+  // Выдача/Приёмка продолжает сессию (она ACTIVE и резюмируема на бэке).
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+
+  const [inWorkSelectedBookingId, setInWorkSelectedBookingId] = useState<string | null>(null);
+  const [inWorkOverdueFocus, setInWorkOverdueFocus] = useState(false);
+
   const [resumedStartedAt, setResumedStartedAt] = useState<string | null>(null);
   const [showResumedBanner, setShowResumedBanner] = useState(false);
+
+  // Монотонные счётчики — bump после успешного complete, чтобы списки
+  // (BookingList / InWorkList) перезагрузились и бронь ушла из очереди.
+  const [listVersion, setListVersion] = useState(0);
+  const [inWorkVersion, setInWorkVersion] = useState(0);
+
+  // ── /shift: питает экран «Смена» и бейджи навигации ────────────────────────
+  const [shift, setShift] = useState<ShiftSummaryData | null>(null);
+  const [shiftError, setShiftError] = useState<string | null>(null);
+  const [shiftVersion, setShiftVersion] = useState(0);
+
+  useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    setShiftError(null);
+    scanApi
+      .getShift()
+      .then((d) => {
+        if (!cancelled) setShift(d);
+      })
+      .catch(() => {
+        if (!cancelled) setShiftError("Не удалось загрузить смену");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authed, shiftVersion]);
+
+  const refreshShift = useCallback(() => setShiftVersion((v) => v + 1), []);
 
   const noteSessionResumed = useCallback(
     (info?: { resumed?: boolean; startedAt?: string }) => {
@@ -84,38 +137,35 @@ function WarehouseScanInner({
     [],
   );
 
-  // «В работе» view-mode state — only meaningful when viewMode === "IN_WORK".
-  // The page enters IN_WORK from OperationStep; from there it shows InWorkList,
-  // then optionally InWorkDetails. There is no scan session in IN_WORK mode.
-  const [viewMode, setViewMode] = useState<ScanViewMode>("ISSUE");
-  const [inWorkSelectedBookingId, setInWorkSelectedBookingId] = useState<
-    string | null
-  >(null);
-  // Monotonic counter — bumped after the operator returns to «В работе» from
-  // a successful RETURN session, so InWorkList re-fetches and the just-handled
-  // booking disappears. Mirrors `listVersion` for BookingList.
-  const [inWorkVersion, setInWorkVersion] = useState(0);
+  // ── Навигация ──────────────────────────────────────────────────────────────
 
-  // Monotonic counter — bumped after a successful complete so the BookingList
-  // re-fetches and the just-issued booking disappears from the ISSUE list
-  // (and re-appears in the RETURN list when the operator switches operation).
-  // Without this the list cache stays stale → operator sees the booking they
-  // just completed and might tap it again (backend will refuse, but the UX
-  // confusion is real).
-  const [listVersion, setListVersion] = useState(0);
+  const goTab = useCallback(
+    (next: WorkstationTab) => {
+      setTab(next);
+      if (next === "shift") refreshShift();
+      if (next !== "inwork") setInWorkOverdueFocus(false);
+      router.replace(`/warehouse/scan?tab=${next}`, { scroll: false });
+    },
+    [router, refreshShift],
+  );
 
-  // ── Deep-link ?booking=<id> ────────────────────────────────────────────────
-  // Кнопка «Начать сканирование» на карточке брони передаёт ?booking=. После
-  // авторизации сразу определяем операцию (бронь в списке выдач → ISSUE, в
-  // списке возвратов → RETURN), создаём сессию и открываем чек-лист — шаги
-  // «операция» и «выбор брони» пропускаются. Кнопка «←» (Назад) в шапке
-  // возвращает к списку броней как обычно. Параметр расходуется один раз.
+  const goToLogin = useCallback(() => {
+    scanApi.clearWarehouseToken();
+    if (hasMainSession) {
+      toast.error("Сессия истекла, войдите заново");
+      router.push(`/login?from=${encodeURIComponent("/warehouse/scan")}`);
+    } else {
+      setAuthed(false);
+    }
+  }, [hasMainSession, router]);
+
+  // ── Deep-link ?booking=<id> — сразу в чек-лист (контракт v1). ─────────────
   const [preselecting, setPreselecting] = useState(Boolean(initialBookingId));
   const preselectConsumed = useRef(false);
 
   useEffect(() => {
     if (!initialBookingId || preselectConsumed.current) return;
-    if (step === "login") return; // ждём авторизацию (PIN или main-session)
+    if (!authed) return;
     preselectConsumed.current = true;
     let cancelled = false;
 
@@ -126,31 +176,23 @@ function WarehouseScanInner({
           scanApi.listBookings("RETURN").catch(() => [] as BookingSummary[]),
         ]);
         if (cancelled) return;
-
         const inIssue = issueList.find((b) => b.id === initialBookingId);
-        const booking =
-          inIssue ?? returnList.find((b) => b.id === initialBookingId);
+        const booking = inIssue ?? returnList.find((b) => b.id === initialBookingId);
         if (!booking) {
           toast.error("Бронь недоступна для сканирования");
           return;
         }
-
         const op: ScanOperation = inIssue ? "ISSUE" : "RETURN";
-        setViewMode(op);
-        setOperation(op);
-        setActiveBooking(booking);
         const created = await scanApi.createSession(booking.id, op);
         if (cancelled) return;
         noteSessionResumed(created);
-        await openSession(created.id, op);
-        if (cancelled) return;
-        goStep("checklist");
+        setActiveSession({ sessionId: created.id, operation: op, booking });
+        setTab(op === "ISSUE" ? "issue" : "return");
       } catch {
         if (!cancelled) toast.error("Не удалось открыть бронь");
       } finally {
         if (!cancelled) {
           setPreselecting(false);
-          // Чистим query, чтобы обновление страницы не запускало предвыбор заново.
           router.replace("/warehouse/scan");
         }
       }
@@ -159,148 +201,94 @@ function WarehouseScanInner({
     return () => {
       cancelled = true;
     };
-  }, [
-    initialBookingId,
-    step,
-    setOperation,
-    openSession,
-    goStep,
-    router,
-    noteSessionResumed,
-  ]);
+  }, [initialBookingId, authed, router, noteSessionResumed]);
 
-  const goToLogin = useCallback(() => {
-    scanApi.clearWarehouseToken();
-    if (hasMainSession) {
-      toast.error("Сессия истекла, войдите заново");
-      router.push(`/login?from=${encodeURIComponent("/warehouse/scan")}`);
-    } else {
-      goStep("login");
-    }
-  }, [hasMainSession, router, goStep]);
+  // ── Обработчики потоков ────────────────────────────────────────────────────
 
-  const handleLoginSuccess = useCallback(() => {
-    goStep("operation");
-  }, [goStep]);
-
-  const handleOperationSelect = useCallback(
-    (mode: ScanViewMode) => {
-      setViewMode(mode);
-      if (mode === "IN_WORK") {
-        // IN_WORK: skip operation/RETURN session creation — page renders
-        // InWorkList instead of BookingList in the «booking» step.
-        setInWorkSelectedBookingId(null);
-        goStep("booking");
-        return;
-      }
-      setOperation(mode);
-      goStep("booking");
+  const handleBookingSelect = useCallback(
+    (sid: string, booking: BookingSummary, sessionInfo?: ScanSessionInfo) => {
+      noteSessionResumed(sessionInfo);
+      setActiveSession({
+        sessionId: sid,
+        operation: tab === "return" ? "RETURN" : "ISSUE",
+        booking,
+      });
     },
-    [setOperation, goStep],
+    [tab, noteSessionResumed],
   );
+
+  const closeChecklist = useCallback(() => {
+    setActiveSession(null);
+    noteSessionResumed(undefined);
+  }, [noteSessionResumed]);
+
+  const bumpListsAfterComplete = useCallback(() => {
+    setListVersion((v) => v + 1);
+    setInWorkVersion((v) => v + 1);
+    refreshShift();
+  }, [refreshShift]);
 
   const handleInWorkAcceptBack = useCallback(
     async (bookingId: string) => {
-      // Switch from view-only IN_WORK mode into a real RETURN session for
-      // this booking. Fetch in-work details FIRST so we carry projectName
-      // into the checklist header (otherwise the title would be blank).
-      setViewMode("RETURN");
-      setOperation("RETURN");
       setInWorkSelectedBookingId(null);
       try {
         const [details, session] = await Promise.all([
           scanApi.getInWorkDetails(bookingId).catch(() => null),
           scanApi.createSession(bookingId, "RETURN"),
         ]);
-        if (details) {
-          // Build a minimal BookingSummary for the checklist header.
-          setActiveBooking({
-            id: bookingId,
-            projectName: details.projectName,
-            client: { id: "", name: details.clientName },
-            startDate: details.issuedAt ?? "",
-            endDate: details.expectedReturnAt,
-            status: "ISSUED",
-            items: [],
-          });
-        }
-        if (session && session.id) {
-          noteSessionResumed(session);
-          await openSession(session.id, "RETURN");
-          goStep("checklist");
-          return;
-        }
+        const booking: BookingSummary | null = details
+          ? {
+              id: bookingId,
+              projectName: details.projectName,
+              client: { id: "", name: details.clientName },
+              startDate: details.issuedAt ?? "",
+              endDate: details.expectedReturnAt,
+              status: "ISSUED",
+              items: [],
+            }
+          : null;
+        noteSessionResumed(session);
+        setActiveSession({ sessionId: session.id, operation: "RETURN", booking });
+        goTab("return");
       } catch {
-        // ignore — fall through to booking list
+        toast.error("Не удалось открыть приёмку");
+        goTab("return");
       }
-      goStep("booking");
     },
-    [openSession, setOperation, goStep, noteSessionResumed],
+    [goTab, noteSessionResumed],
   );
 
-  const handleBookingSelect = useCallback(
-    async (
-      sid: string,
-      booking: BookingSummary,
-      sessionInfo?: ScanSessionInfo,
-    ) => {
-      setActiveBooking(booking);
-      noteSessionResumed(sessionInfo);
-      await openSession(sid, operation);
-      goStep("checklist");
-    },
-    [openSession, operation, goStep, noteSessionResumed],
-  );
+  // ── Логин ──────────────────────────────────────────────────────────────────
 
-  const backToBooking = useCallback(async () => {
-    await openSession(null);
-    setActiveBooking(null);
-    noteSessionResumed(undefined);
-    goStep("booking");
-  }, [openSession, goStep, noteSessionResumed]);
-
-  // Triggered the moment a successful /complete response comes back — bumps
-  // both list versions so the LEFT pane (desktop) refetches immediately,
-  // without waiting for the operator to press «Готово» on the result screen.
-  // Was the cause of «бронь не уходит из списка приёмки»: BookingList only
-  // refetched on listVersion change, which previously was bumped only on
-  // «Готово» click.
-  const bumpListsAfterComplete = useCallback(() => {
-    setListVersion((v) => v + 1);
-    setInWorkVersion((v) => v + 1);
-  }, []);
-
-  // Same as backToBooking, kept as the «Готово» handler. The list refetch is
-  // already done by bumpListsAfterComplete the moment the response arrived,
-  // so this is now pure navigation.
-  const backToBookingAfterComplete = useCallback(async () => {
-    await backToBooking();
-  }, [backToBooking]);
-
-  const backToOperation = useCallback(() => {
-    goStep("operation");
-  }, [goStep]);
-
-  // ── Render ─────────────────────────────────────────────────────────────────
-
-  if (step === "login") {
+  if (!authed) {
     return (
-      <ScanShell
+      <WorkstationShell
+        tab="shift"
+        onTab={() => {}}
+        navHidden
         eyebrow="Склад"
         title="Вход на склад"
-        detail={<LoginStep onSuccess={handleLoginSuccess} />}
+        detail={
+          <LoginStep
+            onSuccess={(name) => {
+              setPinWorkerName(name);
+              setAuthed(true);
+            }}
+          />
+        }
       />
     );
   }
 
-  // Пока идёт предвыбор брони из deep-link — не мигаем экраном «Выберите
-  // операцию»: показываем нейтральную загрузку до перехода в чек-лист.
-  if (preselecting && step !== "checklist") {
+  if (preselecting && !activeSession) {
     return (
-      <ScanShell
+      <WorkstationShell
+        tab={tab}
+        onTab={goTab}
+        navHidden
         eyebrow="Склад"
         title="Открываем бронь…"
-        workerName={workerName}
+        workerName={displayName}
         detail={
           <div className="flex flex-1 items-center justify-center px-4 py-12 text-sm text-ink-3">
             Загрузка брони…
@@ -310,42 +298,148 @@ function WarehouseScanInner({
     );
   }
 
-  if (step === "operation") {
+  // ── Бейджи навигации из /shift ─────────────────────────────────────────────
+  const badges = shift
+    ? {
+        issue: Math.max(0, shift.counters.issuesPlanned - shift.counters.issuesDone),
+        return:
+          Math.max(0, shift.counters.returnsPlanned - shift.counters.returnsDone) +
+          shift.counters.overdue,
+        inwork: shift.counters.inWork,
+      }
+    : {};
+
+  const shellCommon = {
+    tab,
+    onTab: goTab,
+    badges,
+    workerName: displayName,
+    onLogout: hasMainSession ? undefined : goToLogin,
+  };
+
+  // ── Смена ──────────────────────────────────────────────────────────────────
+  if (tab === "shift") {
     return (
-      <ScanShell
-        eyebrow="Склад"
-        title="Выберите операцию"
-        workerName={workerName}
-        onLogout={hasMainSession ? undefined : goToLogin}
-        detail={<OperationStep onSelect={handleOperationSelect} />}
+      <WorkstationShell
+        {...shellCommon}
+        eyebrow={shiftHeaderEyebrow()}
+        title={shiftHeaderTitle(displayName)}
+        detail={
+          <ShiftHome
+            data={shift}
+            error={shiftError}
+            onRetry={refreshShift}
+            onGoIssue={() => goTab("issue")}
+            onGoReturn={() => goTab("return")}
+            onGoOverdue={() => {
+              setInWorkOverdueFocus(true);
+              goTab("inwork");
+            }}
+            onOpenEntry={(entry) => {
+              if (entry.status === "OVERDUE") {
+                setInWorkOverdueFocus(true);
+                goTab("inwork");
+              } else {
+                goTab(entry.kind === "ISSUE" ? "issue" : "return");
+              }
+            }}
+          />
+        }
       />
     );
   }
 
-  const opLabel =
-    viewMode === "IN_WORK"
-      ? "В работе"
-      : operation === "ISSUE"
-        ? "Выдача"
-        : "Возврат";
-  // Accusative for the «чтобы начать N» phrase: «выдачу» (feminine) / «возврат»
-  // (masculine inanimate stays nominative). Без этого выводилось «начать выдача».
-  const opAccusative = operation === "ISSUE" ? "выдачу" : "возврат";
+  // ── Выдача / Приёмка ───────────────────────────────────────────────────────
+  if (tab === "issue" || tab === "return") {
+    const operation: ScanOperation = tab === "issue" ? "ISSUE" : "RETURN";
+    const opLabel = operation === "ISSUE" ? "Выдача" : "Приёмка";
+    const opAccusative = operation === "ISSUE" ? "выдачу" : "приёмку";
+    const checklistOpen =
+      activeSession != null && activeSession.operation === operation;
 
-  // ── IN_WORK branch — list of active bookings + details + «← Принять обратно». ──
-  if (viewMode === "IN_WORK" && step === "booking") {
+    const bookingListSlot = (
+      <BookingList
+        operation={operation}
+        version={listVersion}
+        activeBookingId={checklistOpen ? (activeSession?.booking?.id ?? null) : null}
+        onUnauth={goToLogin}
+        onSelect={handleBookingSelect}
+      />
+    );
+
+    if (checklistOpen && activeSession) {
+      const projectName = activeSession.booking?.projectName ?? "";
+      return (
+        <WorkstationShell
+          {...shellCommon}
+          eyebrow={`${opLabel} · ${activeSession.booking ? activeSession.booking.id.slice(-6).toUpperCase() : ""}`}
+          title={projectName || opLabel}
+          onBack={closeChecklist}
+          list={bookingListSlot}
+          mobileList="hidden"
+          detail={
+            <>
+              {showResumedBanner && (
+                <ResumedSessionBanner
+                  startedAt={resumedStartedAt}
+                  onDismiss={() => setShowResumedBanner(false)}
+                />
+              )}
+              {operation === "ISSUE" ? (
+                <IssueChecklist
+                  sessionId={activeSession.sessionId}
+                  projectName={projectName}
+                  onBack={closeChecklist}
+                  onComplete={closeChecklist}
+                  onCompleted={bumpListsAfterComplete}
+                />
+              ) : (
+                <ReturnChecklist
+                  sessionId={activeSession.sessionId}
+                  projectName={projectName}
+                  onBack={closeChecklist}
+                  onDone={closeChecklist}
+                  onCompleted={bumpListsAfterComplete}
+                />
+              )}
+            </>
+          }
+        />
+      );
+    }
+
+    return (
+      <WorkstationShell
+        {...shellCommon}
+        eyebrow={`Склад · ${opLabel}`}
+        title="Выберите бронь"
+        list={bookingListSlot}
+        detail={
+          <div className="hidden flex-1 items-center justify-center px-4 py-12 text-center text-sm text-ink-3 lg:flex">
+            Выберите бронь слева, чтобы начать {opAccusative}.
+          </div>
+        }
+      />
+    );
+  }
+
+  // ── В работе ───────────────────────────────────────────────────────────────
+  if (tab === "inwork") {
     const inWorkListSlot = (
       <InWorkList
         onSelect={(bid) => setInWorkSelectedBookingId(bid)}
+        onAcceptBack={(bid) => void handleInWorkAcceptBack(bid)}
         version={inWorkVersion}
+        initialFilter={inWorkOverdueFocus ? "overdue" : undefined}
+        key={inWorkOverdueFocus ? "overdue" : "default"}
       />
     );
     if (inWorkSelectedBookingId) {
       return (
-        <ScanShell
+        <WorkstationShell
+          {...shellCommon}
           eyebrow="Склад · В работе"
           title="Активная выдача"
-          workerName={workerName}
           onBack={() => setInWorkSelectedBookingId(null)}
           list={inWorkListSlot}
           mobileList="hidden"
@@ -360,11 +454,10 @@ function WarehouseScanInner({
       );
     }
     return (
-      <ScanShell
+      <WorkstationShell
+        {...shellCommon}
         eyebrow="Склад · В работе"
-        title="Что сейчас у клиентов"
-        workerName={workerName}
-        onBack={backToOperation}
+        title={`У клиентов сейчас${shift ? ` · ${shift.counters.inWork}` : ""}`}
         list={inWorkListSlot}
         detail={
           <div className="hidden flex-1 items-center justify-center px-4 py-12 text-center text-sm text-ink-3 lg:flex">
@@ -375,89 +468,26 @@ function WarehouseScanInner({
     );
   }
 
-  const bookingListSlot = (
-    <BookingList
-      operation={operation}
-      version={listVersion}
-      activeBookingId={step === "checklist" ? (activeBooking?.id ?? null) : null}
-      onUnauth={goToLogin}
-      onSelect={handleBookingSelect}
-    />
-  );
-
-  if (step === "booking") {
+  // ── Журнал ─────────────────────────────────────────────────────────────────
+  if (tab === "journal") {
     return (
-      <ScanShell
-        eyebrow={`Склад · ${opLabel}`}
-        title="Выберите бронь"
-        workerName={workerName}
-        onBack={backToOperation}
-        list={bookingListSlot}
-        detail={
-          <div className="hidden flex-1 items-center justify-center px-4 py-12 text-center text-sm text-ink-3 lg:flex">
-            Выберите бронь слева, чтобы начать {opAccusative}.
-          </div>
-        }
+      <WorkstationShell
+        {...shellCommon}
+        eyebrow="Склад · Журнал"
+        title="Учёт работы"
+        detail={<JournalScreen onOpenProblems={() => goTab("problems")} />}
       />
     );
   }
 
-  const projectName = activeBooking?.projectName ?? "";
-  const headerTitle = projectName || opLabel;
-
-  if (step === "checklist" && sessionId) {
-    return (
-      <ScanShell
-        eyebrow={`${opLabel} · ${activeBooking ? activeBooking.id.slice(-6).toUpperCase() : ""}`}
-        title={headerTitle}
-        workerName={workerName}
-        onBack={backToBooking}
-        list={bookingListSlot}
-        mobileList="hidden"
-        detail={
-          <>
-            {showResumedBanner && (
-              <ResumedSessionBanner
-                startedAt={resumedStartedAt}
-                onDismiss={() => setShowResumedBanner(false)}
-              />
-            )}
-            {operation === "ISSUE" ? (
-              <IssueChecklist
-                sessionId={sessionId}
-                projectName={projectName}
-                onBack={backToBooking}
-                onComplete={backToBookingAfterComplete}
-                onCompleted={bumpListsAfterComplete}
-              />
-            ) : (
-              <ReturnChecklist
-                sessionId={sessionId}
-                projectName={projectName}
-                onBack={backToBooking}
-                onDone={backToBookingAfterComplete}
-                onCompleted={bumpListsAfterComplete}
-              />
-            )}
-          </>
-        }
-      />
-    );
-  }
-
-  // Defensive fallback (e.g. checklist without a session).
+  // ── Поломки ────────────────────────────────────────────────────────────────
   return (
-    <ScanShell
-      eyebrow={`Склад · ${opLabel}`}
-      title="Выберите бронь"
-      workerName={workerName}
-      onBack={backToOperation}
-      list={bookingListSlot}
-      detail={
-        <div className="hidden flex-1 items-center justify-center px-4 py-12 text-center text-sm text-ink-3 lg:flex">
-          Выберите бронь слева, чтобы начать {opAccusative}.
-        </div>
-      }
+    <WorkstationShell
+      {...shellCommon}
+      eyebrow="Склад · Журнал"
+      title="Поломки и потеряшки"
+      onBack={() => goTab("journal")}
+      detail={<ProblemsScreen />}
     />
   );
 }
@@ -466,6 +496,10 @@ function WarehouseScanPageBody() {
   const { user, loading } = useCurrentUser();
   const searchParams = useSearchParams();
   const initialBookingId = searchParams.get("booking");
+  const tabParam = searchParams.get("tab");
+  const initialTab: WorkstationTab = VALID_TABS.includes(tabParam as WorkstationTab)
+    ? (tabParam as WorkstationTab)
+    : "shift";
 
   if (loading) {
     return (
@@ -475,8 +509,7 @@ function WarehouseScanPageBody() {
     );
   }
 
-  const hasMainSession =
-    user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE";
+  const hasMainSession = user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE";
   const workerName = user?.username ?? "Кладовщик";
 
   return (
@@ -484,6 +517,7 @@ function WarehouseScanPageBody() {
       hasMainSession={hasMainSession}
       workerName={workerName}
       initialBookingId={initialBookingId}
+      initialTab={initialTab}
     />
   );
 }

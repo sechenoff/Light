@@ -19,7 +19,12 @@ import { useEffect, useState } from "react";
 import { scanApi } from "./api";
 import { isScanApiError } from "./types";
 
-export function LoginStep({ onSuccess }: { onSuccess: () => void }) {
+export function LoginStep({
+  onSuccess,
+}: {
+  /** Вызывается после успешного PIN-входа с именем кладовщика (для шапки). */
+  onSuccess: (workerName: string) => void;
+}) {
   const [names, setNames] = useState<string[]>([]);
   const [selectedName, setSelectedName] = useState("");
   const [pin, setPin] = useState("");
@@ -58,8 +63,8 @@ export function LoginStep({ onSuccess }: { onSuccess: () => void }) {
     try {
       // authWorker() persists the token via the api.ts setter
       // (sessionStorage "warehouse_token") — identical token contract.
-      await scanApi.authWorker(selectedName, pin);
-      onSuccess();
+      const auth = await scanApi.authWorker(selectedName, pin);
+      onSuccess(auth.name || selectedName);
     } catch (err: unknown) {
       const msg = isScanApiError(err)
         ? err.message

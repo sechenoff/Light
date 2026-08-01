@@ -26,6 +26,11 @@ import {
   addExtraItem,
 } from "../services/checklistService";
 import { findAddonConflict } from "../services/addonAvailability";
+import {
+  computeShift,
+  computeJournal,
+  computeProblems,
+} from "../services/warehouseWorkstation";
 import { getAvailability } from "../services/availability";
 import {
   ALLOWED_MIME_TYPES,
@@ -871,6 +876,44 @@ warehouseScanRouter.post("/sessions/:id/cancel", warehouseAuth, async (req, res,
  * Поля isOverdue/overdueDays вычисляются на сервере на основе текущего времени.
  * displayNo — последние 6 символов id в верхнем регистре с префиксом «#».
  */
+// ── Рабочий стол кладовщика v2 (Смена / Журнал / Поломки) ────────────────────
+// Read-only агрегаты; логика в services/warehouseWorkstation.ts.
+
+/** GET /api/warehouse/shift — лента дня + счётчики + просрочка + моя выработка. */
+warehouseScanRouter.get("/shift", warehouseAuth, async (req, res, next) => {
+  try {
+    const workerName = req.warehouseWorker?.name ?? "";
+    res.json(await computeShift(workerName));
+  } catch (err) {
+    next(err);
+  }
+});
+
+const journalQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(90).default(7),
+  scope: z.enum(["me", "all"]).default("me"),
+});
+
+/** GET /api/warehouse/journal?days=7&scope=me|all — учёт работы + статистика. */
+warehouseScanRouter.get("/journal", warehouseAuth, async (req, res, next) => {
+  try {
+    const { days, scope } = journalQuerySchema.parse(req.query);
+    const workerName = req.warehouseWorker?.name ?? "";
+    res.json(await computeJournal({ days, scope, workerName }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/warehouse/problems — активные ремонты + открытые потеряшки. */
+warehouseScanRouter.get("/problems", warehouseAuth, async (_req, res, next) => {
+  try {
+    res.json(await computeProblems());
+  } catch (err) {
+    next(err);
+  }
+});
+
 warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
   try {
     const bookings = await prisma.booking.findMany({
