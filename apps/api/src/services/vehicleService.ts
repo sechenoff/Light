@@ -30,7 +30,11 @@ export interface VehicleSummary {
   lastServiceAt: string | null;
   lastServiceMileage: number | null;
   lastServiceKind: string | null;
-  /** Межсервисный интервал, км. null — не задан, прогноз ТО не строится. */
+  /** Единица счётчика: км (машины) или моточасы (генератор). */
+  usageUnit: "KM" | "HOURS";
+  /** Участвует ли в подборе транспорта для брони. */
+  bookable: boolean;
+  /** Межсервисный интервал в единицах usageUnit. null — не задан. */
   serviceIntervalKm: number | null;
   notes: string | null;
   active: boolean;
@@ -138,6 +142,8 @@ function toSummary(
     lastServiceAt: Date | null;
     lastServiceMileage: number | null;
     lastServiceKind: string | null;
+    usageUnit: string;
+    bookable: boolean;
     serviceIntervalKm: number | null;
     notes: string | null;
     active: boolean;
@@ -153,6 +159,8 @@ function toSummary(
     lastServiceAt: v.lastServiceAt ? v.lastServiceAt.toISOString() : null,
     lastServiceMileage: v.lastServiceMileage,
     lastServiceKind: v.lastServiceKind,
+    usageUnit: v.usageUnit as "KM" | "HOURS",
+    bookable: v.bookable,
     serviceIntervalKm: v.serviceIntervalKm,
     notes: v.notes,
     active: v.active,

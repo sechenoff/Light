@@ -9,6 +9,11 @@ import { SectionHeader } from "../../../src/components/SectionHeader";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { BOOKING_STATUS_LABELS } from "../../../src/components/finance/StatusCell";
+import {
+  USAGE_UNIT_META,
+  formatUsage,
+  type UsageUnit,
+} from "../../../src/components/vehicles/types";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +44,8 @@ interface VehicleHead {
   lastServiceAt: string | null;
   lastServiceMileage: number | null;
   lastServiceKind: ServiceKind | null;
+  usageUnit: UsageUnit;
+  bookable: boolean;
   serviceIntervalKm: number | null;
   notes: string | null;
   active: boolean;
@@ -91,9 +98,10 @@ const SERVICE_KIND_OPTIONS: { value: ServiceKind; label: string }[] = (
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatKm(n: number | null): string {
+/** Показание счётчика в единице конкретной техники (км или моточасы). */
+function formatCounter(n: number | null, unit: UsageUnit): string {
   if (n === null) return "—";
-  return n.toLocaleString("ru-RU") + " км";
+  return formatUsage(n, unit);
 }
 
 function formatDate(iso: string): string {
@@ -177,6 +185,9 @@ function VehicleDetailView() {
   if (!data) return <div className="p-8 text-ink-3">Загрузка...</div>;
 
   const { vehicle, mileageLogs, serviceLogs } = data;
+  // Фолбэк на км: поле usageUnit появилось в контракте позже этой страницы.
+  const unit: UsageUnit = vehicle.usageUnit ?? "KM";
+  const unitMeta = USAGE_UNIT_META[unit] ?? USAGE_UNIT_META.KM;
 
   return (
     <div className="p-4 max-w-5xl">
@@ -198,7 +209,11 @@ function VehicleDetailView() {
 
       {/* Шапка */}
       <section className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Card label="Текущий пробег" value={formatKm(vehicle.currentMileage)} valueClass="mono-num" />
+        <Card
+          label={unitMeta.counterLabel === "Пробег" ? "Текущий пробег" : "Наработка"}
+          value={formatCounter(vehicle.currentMileage, unit)}
+          valueClass="mono-num"
+        />
         <Card
           label="Ставка смены"
           value={formatRub(vehicle.shiftPriceRub)}
@@ -237,6 +252,7 @@ function VehicleDetailView() {
           initialLicensePlate={vehicle.licensePlate}
           initialNotes={vehicle.notes}
           initialServiceIntervalKm={vehicle.serviceIntervalKm}
+          unit={unit}
           onSaved={refetch}
         />
       )}
@@ -244,11 +260,14 @@ function VehicleDetailView() {
       {/* Журнал пробега */}
       <section className="mt-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-medium text-ink">Журнал пробега</h2>
+          <h2 className="text-base font-medium text-ink">
+            {unit === "KM" ? "Журнал пробега" : "Журнал наработки"}
+          </h2>
           {canEdit && (
             <AddMileageForm
               vehicleId={vehicle.id}
               currentMileage={vehicle.currentMileage}
+              unit={unit}
               onAdded={refetch}
               defaultOpen={requestedAction === "mileage"}
             />
@@ -257,14 +276,14 @@ function VehicleDetailView() {
         <div className="mt-2 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
           {mileageLogs.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-ink-3">
-              Записей пробега пока нет.
+              {unit === "KM" ? "Записей пробега пока нет." : "Показаний счётчика пока нет."}
             </p>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-slate--soft text-ink-2 border-b border-border">
                 <tr>
                   <th className="text-left px-3 py-2 font-medium">Дата</th>
-                  <th className="text-right px-3 py-2 font-medium">Пробег</th>
+                  <th className="text-right px-3 py-2 font-medium">{unitMeta.counterLabel}</th>
                   <th className="text-left px-3 py-2 font-medium">Источник</th>
                   <th className="text-left px-3 py-2 font-medium">Кто</th>
                   <th className="text-left px-3 py-2 font-medium">Заметка</th>
@@ -274,7 +293,7 @@ function VehicleDetailView() {
                 {mileageLogs.map((m) => (
                   <tr key={m.id} className="border-t border-border">
                     <td className="px-3 py-2 mono-num text-ink-2">{formatDate(m.recordedAt)}</td>
-                    <td className="px-3 py-2 mono-num text-right text-ink">{formatKm(m.mileage)}</td>
+                    <td className="px-3 py-2 mono-num text-right text-ink">{formatCounter(m.mileage, unit)}</td>
                     <td className="px-3 py-2 text-ink-2">
                       {m.source === "RETURN" ? (
                         <span>На возврате брони{m.bookingId ? <> · <Link className="text-accent-bright hover:text-accent" href={`/bookings/${m.bookingId}`}>открыть</Link></> : null}</span>
@@ -304,6 +323,7 @@ function VehicleDetailView() {
             <AddServiceForm
               vehicleId={vehicle.id}
               currentMileage={vehicle.currentMileage}
+              unit={unit}
               onAdded={refetch}
               defaultOpen={requestedAction === "service"}
             />
@@ -327,7 +347,7 @@ function VehicleDetailView() {
                         </span>
                         {s.mileage !== null && (
                           <span className="ml-2 text-xs text-ink-3 mono-num">
-                            · {formatKm(s.mileage)}
+                            · {formatCounter(s.mileage, unit)}
                           </span>
                         )}
                       </p>
@@ -417,14 +437,18 @@ function VehicleEditPanel({
   initialLicensePlate,
   initialNotes,
   initialServiceIntervalKm,
+  unit,
   onSaved,
 }: {
   vehicleId: string;
   initialLicensePlate: string | null;
   initialNotes: string | null;
   initialServiceIntervalKm: number | null;
+  /** Единица счётчика — подписывает поле интервала «км» или «ч». */
+  unit: UsageUnit;
   onSaved: () => Promise<void>;
 }) {
+  const unitMeta = USAGE_UNIT_META[unit] ?? USAGE_UNIT_META.KM;
   const [open, setOpen] = useState(false);
   const [plate, setPlate] = useState(initialLicensePlate ?? "");
   const [notes, setNotes] = useState(initialNotes ?? "");
@@ -486,7 +510,7 @@ function VehicleEditPanel({
         </div>
         <div>
           <label className="eyebrow mb-1 block" htmlFor="service-interval">
-            Межсервисный интервал, км
+            Межсервисный интервал, {unitMeta.short}
           </label>
           <input
             id="service-interval"
@@ -500,7 +524,7 @@ function VehicleEditPanel({
             placeholder="10000"
           />
           <p className="mt-1 text-[11px] text-ink-3">
-            Через сколько км напоминать о плановом ТО. Пусто — напоминания выключены.
+            Через сколько {unitMeta.short} напоминать о плановом ТО. Пусто — напоминания выключены.
           </p>
         </div>
         <div className="md:col-span-2">
@@ -539,16 +563,20 @@ function VehicleEditPanel({
 function AddMileageForm({
   vehicleId,
   currentMileage,
+  unit,
   onAdded,
   defaultOpen = false,
 }: {
   vehicleId: string;
   currentMileage: number;
+  /** Единица счётчика — подписи и текст ошибки. */
+  unit: UsageUnit;
   onAdded: () => Promise<void>;
   /** Форма раскрыта сразу — приход по ссылке «Записать пробег» из карточки парка. */
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const unitMeta = USAGE_UNIT_META[unit] ?? USAGE_UNIT_META.KM;
   // Режим корректировки: снимает запрет «только вперёд», требует причину.
   const [correction, setCorrection] = useState(false);
   const [mileage, setMileage] = useState<string>("");
@@ -577,7 +605,9 @@ function AddMileageForm({
         return;
       }
     } else if (n < currentMileage) {
-      setErr(`Пробег не может уменьшаться. Текущий — ${currentMileage} км. Для исправления включите «Корректировку».`);
+      setErr(
+        `${unitMeta.counterLabel} не может уменьшаться. Текущее показание — ${formatUsage(currentMileage, unit)}. Для исправления включите «Корректировку».`,
+      );
       return;
     }
     setBusy(true);
@@ -615,7 +645,9 @@ function AddMileageForm({
   return (
     <div className="rounded-lg border border-border bg-surface p-2 shadow-xs flex flex-wrap items-end gap-2">
       <div>
-        <label className="eyebrow mb-1 block">Пробег, км</label>
+        <label className="eyebrow mb-1 block">
+          {unitMeta.counterLabel}, {unitMeta.short}
+        </label>
         <input
           type="number"
           inputMode="numeric"
@@ -675,16 +707,20 @@ function AddMileageForm({
 function AddServiceForm({
   vehicleId,
   currentMileage,
+  unit,
   onAdded,
   defaultOpen = false,
 }: {
   vehicleId: string;
   currentMileage: number;
+  /** Единица счётчика — подпись поля «на момент». */
+  unit: UsageUnit;
   onAdded: () => Promise<void>;
   /** Форма раскрыта сразу — приход по ссылке «Записать ТО» из карточки парка. */
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const unitMeta = USAGE_UNIT_META[unit] ?? USAGE_UNIT_META.KM;
   const [kind, setKind] = useState<ServiceKind>("SCHEDULED_TO");
   const [performedAt, setPerformedAt] = useState<string>(todayIso());
   const [mileage, setMileage] = useState<string>(String(currentMileage));
@@ -780,7 +816,9 @@ function AddServiceForm({
           />
         </div>
         <div>
-          <label className="eyebrow mb-1 block">Пробег на момент, км</label>
+          <label className="eyebrow mb-1 block">
+            {unitMeta.counterLabel} на момент, {unitMeta.short}
+          </label>
           <input
             type="number"
             inputMode="numeric"
