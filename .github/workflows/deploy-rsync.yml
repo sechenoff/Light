@@ -177,13 +177,29 @@ jobs:
             cd apps/api
             npx prisma generate >/dev/null
 
-            # DB backup + push
-            DB_FILE=prisma/rental.db
+            # DB backup + push.
+            # Имя файла берём из DATABASE_URL, а не хардкодим: прод живёт на
+            # prisma/prod.db, и захардкоженный rental.db тихо пропускал бэкап
+            # (условие -f не выполнялось) — db push шёл без страховки.
+            DB_FILE=$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1 \
+              | sed -E 's/^DATABASE_URL=//; s/^["'"'"']//; s/["'"'"']$//; s#^file:##')
+            # Относительный путь SQLite Prisma резолвит от папки со схемой
+            # (apps/api/prisma), а не от cwd — поэтому подставляем префикс.
+            DB_FILE="${DB_FILE#./}"
+            case "$DB_FILE" in
+              /*) : ;;                       # абсолютный путь — как есть
+              "") DB_FILE=prisma/prod.db ;;  # .env не прочитался — разумный дефолт
+              prisma/*) : ;;                 # уже с префиксом
+              *) DB_FILE="prisma/$DB_FILE" ;;
+            esac
             if [ -f "$DB_FILE" ]; then
               mkdir -p ../../backups
-              cp "$DB_FILE" "../../backups/rental_$(date +%Y-%m-%d_%H-%M-%S).db"
-              ls -1t ../../backups/rental_*.db 2>/dev/null | tail -n +11 | xargs -r rm --
-              echo "  ✓ DB backed up"
+              cp "$DB_FILE" "../../backups/db_$(date +%Y-%m-%d_%H-%M-%S).db"
+              ls -1t ../../backups/db_*.db 2>/dev/null | tail -n +11 | xargs -r rm --
+              echo "  ✓ DB backed up ($DB_FILE)"
+            else
+              echo "  ✗ БЭКАП НЕ СДЕЛАН: файл БД не найден ($DB_FILE)" >&2
+              exit 1
             fi
             npx prisma db push --accept-data-loss
             npx tsx scripts/seed-admin-users.ts || true
