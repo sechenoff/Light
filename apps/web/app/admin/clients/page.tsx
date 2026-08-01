@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { SectionHeader } from "../../../src/components/SectionHeader";
 import { StatusPill } from "../../../src/components/StatusPill";
-import { AdminTabNav } from "../../../src/components/admin/AdminTabNav";
+import { AdminShell } from "../../../src/components/admin/AdminShell";
 import { ClientPortalAccessCard } from "../../../src/components/admin/ClientPortalAccessCard";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
@@ -471,10 +471,8 @@ export default function AdminClientsPage() {
   if (!authorized) return null;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="mb-6">
-        <AdminTabNav />
-      </div>
+    <AdminShell>
+      <div>
 
       <SectionHeader
         eyebrow="Администрирование"
@@ -656,6 +654,7 @@ export default function AdminClientsPage() {
           void fetchClients(search);
         }}
       />
-    </div>
+      </div>
+    </AdminShell>
   );
 }

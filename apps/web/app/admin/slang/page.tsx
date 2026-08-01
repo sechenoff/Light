@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AdminTabNav } from "@/components/admin/AdminTabNav";
+import { AdminShell } from "@/components/admin/AdminShell";
 import { useRequireRole } from "@/hooks/useRequireRole";
 import { apiFetch } from "@/lib/api";
 import { toast } from "@/components/ToastProvider";
@@ -118,8 +118,8 @@ export default function SlangPage() {
   const totalAliases = groups.reduce((sum, g) => sum + g.aliases.length, 0);
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl">
-      <AdminTabNav counts={{ slang: totalAliases }} />
+    <AdminShell counts={{ slang: totalAliases }}>
+      <div>
 
       {/* Page header */}
       <div className="mt-4 mb-5">
@@ -164,6 +164,7 @@ export default function SlangPage() {
 
       {/* How it works */}
       <HowItWorks />
-    </div>
+      </div>
+    </AdminShell>
   );
 }

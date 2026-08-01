@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { useRequireRole } from "@/hooks/useRequireRole";
-import { AdminTabNav } from "@/components/admin/AdminTabNav";
+import { AdminShell } from "@/components/admin/AdminShell";
 import { StatusPill } from "@/components/StatusPill";
 import { formatMoneyRub } from "@/lib/format";
 import { toast } from "@/components/ToastProvider";
@@ -246,18 +246,17 @@ export default function AdminVehiclesPage() {
 
   if (authLoading) {
     return (
-      <div className="p-6 space-y-6">
-        <AdminTabNav />
+      <AdminShell>
         <div className="h-40 animate-pulse rounded-lg bg-surface-muted" />
-      </div>
+      </AdminShell>
     );
   }
 
   if (!authorized) return null;
 
   return (
-    <div className="p-6 space-y-6">
-      <AdminTabNav />
+    <AdminShell>
+      <div className="space-y-6">
 
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -352,6 +351,7 @@ export default function AdminVehiclesPage() {
           onSaved={handleSaved}
         />
       )}
-    </div>
+      </div>
+    </AdminShell>
   );
 }

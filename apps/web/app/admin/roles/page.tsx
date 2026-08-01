@@ -3,7 +3,7 @@
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { SectionHeader } from "../../../src/components/SectionHeader";
-import { AdminTabNav } from "../../../src/components/admin/AdminTabNav";
+import { AdminShell } from "../../../src/components/admin/AdminShell";
 import {
   ROLE_DESCRIPTIONS,
   LEGEND_ITEMS,
@@ -74,8 +74,8 @@ export default function AdminRolesPage() {
   if (!authorized) return null;
 
   return (
-    <div className="p-6 max-w-[1280px] mx-auto space-y-6 pb-16">
-      <AdminTabNav />
+    <AdminShell>
+      <div className="space-y-6 pb-8">
 
       {/* Заголовок */}
       <SectionHeader eyebrow="Справочник" title="Матрица прав" className="mt-2" />
@@ -184,7 +184,8 @@ export default function AdminRolesPage() {
           ))}
         </ul>
       </div>
-    </div>
+      </div>
+    </AdminShell>
   );
 }
 

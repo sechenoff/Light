@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useRequireRole } from "@/hooks/useRequireRole";
 import { toast } from "@/components/ToastProvider";
-import { AdminTabNav } from "@/components/admin/AdminTabNav";
+import { AdminShell } from "@/components/admin/AdminShell";
 import { UploadStep } from "@/components/admin/imports/UploadStep";
 import { AnalysisProgress } from "@/components/admin/imports/AnalysisProgress";
 import { OwnCatalogReview } from "@/components/admin/imports/OwnCatalogReview";
@@ -404,8 +404,8 @@ function ImportsPageInner() {
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 space-y-6">
-      <AdminTabNav />
+    <AdminShell>
+      <div className="space-y-6">
 
       {/* Page header */}
       <div className="flex items-center justify-between gap-4">
@@ -520,6 +520,7 @@ function ImportsPageInner() {
           onClose={() => setRebindRowId(null)}
         />
       )}
-    </div>
+      </div>
+    </AdminShell>
   );
 }
