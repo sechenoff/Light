@@ -181,17 +181,24 @@ jobs:
             # Имя файла берём из DATABASE_URL, а не хардкодим: прод живёт на
             # prisma/prod.db, и захардкоженный rental.db тихо пропускал бэкап
             # (условие -f не выполнялось) — db push шёл без страховки.
-            DB_FILE=$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1 \
-              | sed -E 's/^DATABASE_URL=//; s/^["'"'"']//; s/["'"'"']$//; s#^file:##')
+            # Только parameter expansion — без вложенных кавычек: скрипт едет на
+            # прод через bash -c, и sed-акробатика с экранированием одиночных
+            # кавычек уже ломала деплой (runs 30696784503 / 30696878044).
+            DB_LINE=$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1)
+            DB_FILE=${DB_LINE#DATABASE_URL=}
+            DB_FILE=${DB_FILE%\"}
+            DB_FILE=${DB_FILE#\"}
+            DB_FILE=${DB_FILE#file:}
             # Относительный путь SQLite Prisma резолвит от папки со схемой
             # (apps/api/prisma), а не от cwd — поэтому подставляем префикс.
+            # Без `case`: этот скрипт уезжает на прод через bash -c, и пустые
+            # ветки case тут уже ломали деплой синтаксической ошибкой (см. выше).
             DB_FILE="${DB_FILE#./}"
-            case "$DB_FILE" in
-              /*) : ;;                       # абсолютный путь — как есть
-              "") DB_FILE=prisma/prod.db ;;  # .env не прочитался — разумный дефолт
-              prisma/*) : ;;                 # уже с префиксом
-              *) DB_FILE="prisma/$DB_FILE" ;;
-            esac
+            if [ -z "$DB_FILE" ]; then
+              DB_FILE=prisma/prod.db
+            elif [ "${DB_FILE#/}" = "$DB_FILE" ] && [ "${DB_FILE#prisma/}" = "$DB_FILE" ]; then
+              DB_FILE="prisma/$DB_FILE"
+            fi
             if [ -f "$DB_FILE" ]; then
               mkdir -p ../../backups
               cp "$DB_FILE" "../../backups/db_$(date +%Y-%m-%d_%H-%M-%S).db"
