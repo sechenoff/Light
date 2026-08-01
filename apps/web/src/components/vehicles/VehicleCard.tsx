@@ -9,14 +9,12 @@ import { OccupancyStrip } from "./OccupancyStrip";
 import {
   SERVICE_HEALTH_META,
   SERVICE_KIND_LABEL,
+  USAGE_UNIT_META,
+  formatUsage,
   type FleetPeriodValue,
   type FleetVehicle,
   FLEET_PERIOD_LABEL,
 } from "./types";
-
-function formatKm(n: number): string {
-  return `${n.toLocaleString("ru-RU")} км`;
-}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("ru-RU", {
@@ -98,7 +96,15 @@ function AlertIcon() {
  * Полоса выработки межсервисного ресурса. Пустая, если интервал не задан —
  * не рисуем шкалу, для которой нет масштаба.
  */
-function ServiceGauge({ used, total }: { used: number; total: number }) {
+function ServiceGauge({
+  used,
+  total,
+  unit,
+}: {
+  used: number;
+  total: number;
+  unit: "KM" | "HOURS";
+}) {
   const ratio = Math.max(0, Math.min(1, used / total));
   const tone = ratio >= 1 ? "bg-rose" : ratio >= 0.8 ? "bg-amber" : "bg-emerald";
   return (
@@ -107,7 +113,7 @@ function ServiceGauge({ used, total }: { used: number; total: number }) {
         <div className={`h-full ${tone}`} style={{ width: `${ratio * 100}%` }} />
       </div>
       <p className="mt-1 text-[11px] text-ink-3 mono-num">
-        {formatKm(used)} из {formatKm(total)}
+        {formatUsage(used, unit)} из {formatUsage(total, unit)}
       </p>
     </div>
   );
@@ -126,17 +132,25 @@ export function VehicleCard({
   canEdit: boolean;
 }) {
   const { stats } = vehicle;
+  // Фолбэк на км: поле добавлено в контракт позже карточки, и старый ответ API
+  // (или кэш) не должен ронять всю страницу рантайм-ошибкой.
+  const unit = vehicle.usageUnit ?? "KM";
+  const unitMeta = USAGE_UNIT_META[unit] ?? USAGE_UNIT_META.KM;
   const health = SERVICE_HEALTH_META[stats.serviceHealth];
   const current = vehicle.upcomingBookings.find((b) => b.isCurrent) ?? null;
   const next = vehicle.upcomingBookings.find((b) => !b.isCurrent) ?? null;
 
   const occupancyPill = !vehicle.active
     ? { variant: "none" as const, label: "Не активна" }
-    : current
-      ? { variant: "info" as const, label: "Выдана" }
-      : stats.occupancy[0]
-        ? { variant: "info" as const, label: "Занята сегодня" }
-        : { variant: "ok" as const, label: "Свободна" };
+    : vehicle.bookable === false
+      // Техника вне броней (генератор): «свободна/выдана» к ней неприменимо —
+      // её занятость живёт в позициях сметы, а не в BookingVehicle.
+      ? { variant: "view" as const, label: "В парке" }
+      : current
+        ? { variant: "info" as const, label: "Выдана" }
+        : stats.occupancy[0]
+          ? { variant: "info" as const, label: "Занята сегодня" }
+          : { variant: "ok" as const, label: "Свободна" };
 
   // Тревожная плашка — только когда есть что сказать. «Норма» молчит.
   const flag =
@@ -146,14 +160,14 @@ export function VehicleCard({
           title: "Пора на ТО",
           text:
             stats.kmToNextService != null && stats.kmToNextService <= 0
-              ? `Межсервисный интервал выбран, перепробег ${formatKm(Math.abs(stats.kmToNextService))}.`
+              ? `Межсервисный интервал выбран, ${unit === "KM" ? "перепробег" : "переработка"} ${formatUsage(Math.abs(stats.kmToNextService), unit)}.`
               : `С последнего обслуживания прошло ${stats.daysSinceService} ${pluralize(stats.daysSinceService ?? 0, "день", "дня", "дней")}.`,
         }
       : stats.serviceHealth === "DUE_SOON"
         ? {
             tone: "amber" as const,
             title: "Скоро ТО",
-            text: `Осталось ${formatKm(stats.kmToNextService ?? 0)} до планового обслуживания.`,
+            text: `Осталось ${formatUsage(stats.kmToNextService ?? 0, unit)} до планового обслуживания.`,
           }
         : stats.serviceHealth === "NO_SERVICE"
           ? {
@@ -192,7 +206,11 @@ export function VehicleCard({
             </div>
             <p className="mt-1 text-xs text-ink-2">
               <span className="mono-num font-medium text-ink">{formatRub(vehicle.shiftPriceRub)}</span>
-              <span className="text-ink-3"> / смена · {vehicle.shiftHours} ч · переработка +{Number(vehicle.overtimePercent)} %</span>
+              <span className="text-ink-3">
+                {" / смена"}
+                {vehicle.bookable &&
+                  ` · ${vehicle.shiftHours} ч · переработка +${Number(vehicle.overtimePercent)} %`}
+              </span>
               {vehicle.hasGeneratorOption && vehicle.generatorPriceRub && (
                 <span className="text-ink-3">
                   {" · генератор "}
@@ -228,7 +246,10 @@ export function VehicleCard({
         </div>
       )}
 
-      {/* Занятость */}
+      {/* Занятость — только для техники, которая бронируется как транспорт.
+          У генератора занятость живёт в позициях сметы, и пустая полоса на
+          14 дней читалась бы как «простаивает», хотя это неправда. */}
+      {vehicle.bookable && (
       <Zone label="Занятость" aside="ближайшие 14 дней" className="border-t border-border">
         <p className="text-sm text-ink">
           {current ? (
@@ -262,22 +283,26 @@ export function VehicleCard({
         )}
       </Zone>
 
-      {/* Пробег + обслуживание */}
+      )}
+
+      {/* Счётчик наработки + обслуживание */}
       <div className="grid grid-cols-1 sm:grid-cols-2 border-t border-border divide-y sm:divide-y-0 sm:divide-x divide-border">
-        <Zone label="Пробег">
+        <Zone label={unitMeta.counterLabel}>
           <p className="mono-num text-lg font-semibold text-ink leading-none">
-            {formatKm(vehicle.currentMileage)}
+            {formatUsage(vehicle.currentMileage, unit)}
           </p>
           {stats.mileageDelta != null ? (
             <p className="mt-1.5 text-xs text-ink-2">
-              <span className="mono-num">+{stats.mileageDelta.toLocaleString("ru-RU")} км</span>{" "}
+              <span className="mono-num">
+                +{formatUsage(stats.mileageDelta, unit)}
+              </span>{" "}
               <span className="text-ink-3">{FLEET_PERIOD_LABEL[period]}</span>
             </p>
           ) : (
             <p className="mt-1.5 text-xs text-ink-3">
               {stats.mileageSamples > 0
-                ? "Мало замеров, чтобы посчитать пробег за период"
-                : "Замеров пробега нет"}
+                ? `Мало ${unitMeta.sampleWord}, чтобы посчитать за период`
+                : `${unitMeta.counterLabel === "Пробег" ? "Замеров пробега" : "Показаний счётчика"} нет`}
             </p>
           )}
         </Zone>
@@ -303,12 +328,13 @@ export function VehicleCard({
                 }
               >
                 {stats.kmToNextService > 0
-                  ? `Ещё ${formatKm(stats.kmToNextService)}`
-                  : `Перепробег ${formatKm(Math.abs(stats.kmToNextService))}`}
+                  ? `Ещё ${formatUsage(stats.kmToNextService, unit)}`
+                  : `${unit === "KM" ? "Перепробег" : "Сверх ресурса"} ${formatUsage(Math.abs(stats.kmToNextService), unit)}`}
               </p>
               <ServiceGauge
                 used={stats.kmSinceService ?? 0}
                 total={vehicle.serviceIntervalKm}
+                unit={unit}
               />
             </>
           ) : (

@@ -19,6 +19,10 @@ export function FleetKpiRow({
 }) {
   const periodLabel = FLEET_PERIOD_LABEL[period];
   const inactive = totals.vehiclesTotal - totals.vehiclesActive;
+  // Знаменатель «свободны» — только техника, которая бронируется: генератор
+  // не бывает «свободен/выдан», и включать его в дробь было бы враньём.
+  const bookable = totals.vehiclesBookable ?? totals.vehiclesActive;
+  const nonBookable = totals.vehiclesActive - bookable;
 
   return (
     <div
@@ -33,15 +37,19 @@ export function FleetKpiRow({
         value={
           <span className="mono-num">
             {totals.freeNow}
-            <span className="text-base text-ink-3"> / {totals.vehiclesActive}</span>
+            <span className="text-base text-ink-3"> / {bookable}</span>
           </span>
         }
         sub={
-          totals.issuedNow > 0
-            ? `свободны · ${totals.issuedNow} на выдаче`
-            : inactive > 0
-              ? `свободны · ${inactive} не активн${inactive === 1 ? "а" : "ы"}`
-              : "свободны сейчас"
+          [
+            totals.issuedNow > 0 ? `${totals.issuedNow} на выдаче` : null,
+            nonBookable > 0
+              ? `${nonBookable} ${pluralize(nonBookable, "агрегат", "агрегата", "агрегатов")} вне броней`
+              : null,
+            inactive > 0 ? `${inactive} не активн${inactive === 1 ? "а" : "ы"}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "свободны сейчас"
         }
       />
 

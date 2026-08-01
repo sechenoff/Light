@@ -40,6 +40,8 @@ function makeVehicle(over: Partial<FleetVehicle> = {}): FleetVehicle {
     id: "v1",
     name: "Ford",
     slug: "ford",
+    usageUnit: "KM",
+    bookable: true,
     licensePlate: "У220ВН797",
     currentMileage: 90239,
     serviceIntervalKm: 10000,
@@ -231,5 +233,86 @@ describe("VehicleCard — состояния ТО и занятости", () => 
       "href",
       "/vehicles/v1?action=mileage",
     );
+  });
+});
+
+describe("VehicleCard — техника с моточасами (генератор)", () => {
+  function makeGenerator(over: Partial<FleetVehicle> = {}): FleetVehicle {
+    return makeVehicle({
+      id: "g1",
+      name: "Дизель генератор Вепрь SDMO 77 кВА",
+      slug: "generator",
+      usageUnit: "HOURS",
+      bookable: false,
+      licensePlate: null,
+      currentMileage: 1284,
+      serviceIntervalKm: 250,
+      lastServiceMileage: 1150,
+      lastServiceKind: "OIL_CHANGE",
+      shiftPriceRub: "44000.00",
+      stats: makeStats({
+        mileageDelta: 134,
+        kmSinceService: 134,
+        kmToNextService: 116,
+        serviceHealth: "OK",
+        bookingsCount: 0,
+        revenue: "0.00",
+      }),
+      ...over,
+    });
+  }
+
+  it("счётчик подписан часами, а не километрами", () => {
+    render(<VehicleCard vehicle={makeGenerator()} {...base} canSeeMoney />);
+    expect(screen.getByText("1 284 ч")).toBeInTheDocument();
+    expect(screen.getByText("Наработка")).toBeInTheDocument();
+    expect(screen.queryByText(/1 284 км/)).not.toBeInTheDocument();
+  });
+
+  it("остаток ресурса и шкала тоже в часах", () => {
+    render(<VehicleCard vehicle={makeGenerator()} {...base} canSeeMoney />);
+    expect(screen.getByText("Ещё 116 ч")).toBeInTheDocument();
+    expect(screen.getByText(/134 ч из 250 ч/)).toBeInTheDocument();
+  });
+
+  it("превышение ресурса названо переработкой, а не перепробегом", () => {
+    render(
+      <VehicleCard
+        vehicle={makeGenerator({
+          stats: makeStats({ serviceHealth: "OVERDUE", kmToNextService: -40 }),
+        })}
+        {...base}
+        canSeeMoney
+      />,
+    );
+    expect(screen.getAllByText(/переработка 40 ч|Сверх ресурса 40 ч/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/перепробег/i)).not.toBeInTheDocument();
+  });
+
+  it("не показывает занятость: генератор не бронируется как транспорт", () => {
+    render(<VehicleCard vehicle={makeGenerator()} {...base} canSeeMoney />);
+    expect(screen.queryByText("Занятость")).not.toBeInTheDocument();
+    expect(screen.getByText("В парке")).toBeInTheDocument();
+    expect(screen.queryByText("Свободна")).not.toBeInTheDocument();
+  });
+
+  it("в тарифе нет смены и переработки — они относятся к машинам", () => {
+    render(<VehicleCard vehicle={makeGenerator()} {...base} canSeeMoney />);
+    expect(screen.queryByText(/переработка \+10 %/)).not.toBeInTheDocument();
+  });
+
+  it("машина по-прежнему считает километры и показывает занятость", () => {
+    render(<VehicleCard vehicle={makeVehicle()} {...base} canSeeMoney />);
+    expect(screen.getByText("90 239 км")).toBeInTheDocument();
+    expect(screen.getByText("Пробег")).toBeInTheDocument();
+    expect(screen.getByText("Занятость")).toBeInTheDocument();
+  });
+
+  it("не падает, если старый ответ API пришёл без usageUnit", () => {
+    const legacy = makeVehicle();
+    // @ts-expect-error — намеренно воспроизводим ответ до добавления поля
+    delete legacy.usageUnit;
+    render(<VehicleCard vehicle={legacy} {...base} canSeeMoney />);
+    expect(screen.getByText("90 239 км")).toBeInTheDocument();
   });
 });

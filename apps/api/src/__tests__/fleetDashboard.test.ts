@@ -191,6 +191,19 @@ beforeAll(async () => {
   // (h) занятость вперёд: выдана сейчас (вчера→послезавтра).
   ids.busy = await mkVehicle("busy", "Занята", 12);
   await mkBooking(ids.busy, "ISSUED", -1, 2, "20000");
+
+  // Генератор: счётчик в моточасах, вне броней.
+  ids.generator = await mkVehicle("generator", "Генератор", 13, {
+    usageUnit: "HOURS",
+    bookable: false,
+    serviceIntervalKm: 250,
+    currentMileage: 1284,
+    lastServiceMileage: 1150,
+    lastServiceAt: new Date(NOW.getTime() - 40 * DAY),
+    lastServiceKind: "OIL_CHANGE",
+  });
+  await mkMileage(ids.generator, 1150, 60);
+  await mkMileage(ids.generator, 1284, 3);
 });
 
 afterAll(async () => {
@@ -302,7 +315,8 @@ describe("computeFleetDashboard — занятость и сводка", () => {
     const { d } = await load();
     expect(d.totals.vehiclesTotal).toBe(d.vehicles.length);
     expect(d.totals.issuedNow).toBe(1);
-    expect(d.totals.freeNow).toBe(d.totals.vehiclesActive - 1);
+    // Знаменатель — бронируемая техника: генератор в «свободна/выдана» не входит.
+    expect(d.totals.freeNow).toBe(d.totals.vehiclesBookable - 1);
     // Машины без интервала/без ТО обязаны попасть в «требуют внимания».
     expect(d.totals.needAttention).toBeGreaterThanOrEqual(2);
     expect(Number(d.totals.net)).toBe(
@@ -322,5 +336,35 @@ describe("computeFleetDashboard — занятость и сводка", () => {
     expect(overlap30.stats.utilizationPct).toBeGreaterThan(
       (await load()).by.get(ids.overlap)!.stats.utilizationPct,
     );
+  });
+});
+
+describe("computeFleetDashboard — техника с моточасами и вне броней", () => {
+  it("пробег парка складывает только километры, не смешивая с моточасами", async () => {
+    const { d, by } = await load();
+    const gen = by.get(ids.generator)!;
+    // У генератора своя дельта в часах...
+    expect(gen.stats.mileageDelta).toBe(134);
+    expect(gen.usageUnit).toBe("HOURS");
+    // ...но в сумму парка она не попадает: там только километровые счётчики.
+    const kmOnly = d.vehicles
+      .filter((v) => v.usageUnit === "KM" && v.stats.mileageDelta != null)
+      .reduce((acc, v) => acc + (v.stats.mileageDelta ?? 0), 0);
+    expect(d.totals.mileageDelta).toBe(kmOnly);
+    expect(d.totals.mileageDelta).not.toBe(kmOnly + 134);
+  });
+
+  it("небронируемая техника не попадает в счётчики свободных и в среднюю загрузку", async () => {
+    const { d } = await load();
+    expect(d.totals.vehiclesBookable).toBe(d.totals.vehiclesActive - 1);
+    expect(d.totals.freeNow + d.totals.issuedNow).toBe(d.totals.vehiclesBookable);
+  });
+
+  it("но в «требуют внимания» техника вне броней учитывается наравне", async () => {
+    const dash = await computeFleetDashboard({ period: 90, includeInactive: true, now: NOW });
+    const gen = dash.vehicles.find((v) => v.id === ids.generator)!;
+    // Интервал задан и ТО записано → генератор в норме и внимания не требует.
+    expect(gen.stats.serviceHealth).toBe("OK");
+    expect(gen.bookable).toBe(false);
   });
 });

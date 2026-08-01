@@ -18,10 +18,13 @@ import { computeFleetDashboard, parseFleetPeriod } from "../services/fleetDashbo
 const router = express.Router();
 
 // ── GET /api/vehicles — публичный список активных машин (все аутентифицированные роли) ──
+// Кормит подбор транспорта в форме брони, поэтому здесь только `bookable`:
+// генератор числится в парке и обслуживается, но машиной не является и в
+// списке транспорта появляться не должен.
 router.get("/", async (_req, res, next) => {
   try {
     const vehicles = await prisma.vehicle.findMany({
-      where: { active: true },
+      where: { active: true, bookable: true },
       orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
       select: {
         id: true,

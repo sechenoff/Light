@@ -23,6 +23,25 @@ export const FLEET_PERIOD_LABEL: Record<FleetPeriodValue, string> = {
   "365": "за год",
 };
 
+export type UsageUnit = "KM" | "HOURS";
+
+/**
+ * Подписи счётчика наработки. Вся арифметика одинакова для машин и генератора —
+ * различаются только слова, поэтому единица живёт в одном месте.
+ */
+export const USAGE_UNIT_META: Record<
+  UsageUnit,
+  { short: string; counterLabel: string; sampleWord: string }
+> = {
+  KM: { short: "км", counterLabel: "Пробег", sampleWord: "замеров" },
+  HOURS: { short: "ч", counterLabel: "Наработка", sampleWord: "показаний" },
+};
+
+/** «90 239 км» / «1 250 ч» — число со своей единицей. */
+export function formatUsage(n: number, unit: UsageUnit): string {
+  return `${n.toLocaleString("ru-RU")} ${USAGE_UNIT_META[unit].short}`;
+}
+
 export type ServiceHealth =
   | "OK"
   | "DUE_SOON"
@@ -63,6 +82,9 @@ export interface FleetVehicle {
   id: string;
   name: string;
   slug: string;
+  usageUnit: UsageUnit;
+  /** Участвует в бронировании как транспорт. false — генератор и подобное. */
+  bookable: boolean;
   licensePlate: string | null;
   currentMileage: number;
   serviceIntervalKm: number | null;
@@ -85,6 +107,7 @@ export interface FleetVehicle {
 export interface FleetTotals {
   vehiclesTotal: number;
   vehiclesActive: number;
+  vehiclesBookable: number;
   freeNow: number;
   issuedNow: number;
   needAttention: number;

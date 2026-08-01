@@ -101,6 +101,8 @@ export interface UpcomingBooking {
 export interface FleetTotals {
   vehiclesTotal: number;
   vehiclesActive: number;
+  /** Из них участвуют в бронировании (транспорт). Знаменатель для «свободны». */
+  vehiclesBookable: number;
   /** Свободны прямо сейчас (активные, без текущей выдачи). */
   freeNow: number;
   /** На выдаче прямо сейчас. */
@@ -161,6 +163,10 @@ export interface FleetDashboardRow {
   id: string;
   name: string;
   slug: string;
+  /** Единица счётчика: км (машины) или моточасы (генератор). */
+  usageUnit: "KM" | "HOURS";
+  /** Участвует в подборе транспорта для брони. false — техника вне броней. */
+  bookable: boolean;
   licensePlate: string | null;
   currentMileage: number;
   serviceIntervalKm: number | null;
@@ -220,6 +226,7 @@ export async function computeFleetDashboard(opts?: {
       totals: {
         vehiclesTotal: 0,
         vehiclesActive: 0,
+        vehiclesBookable: 0,
         freeNow: 0,
         issuedNow: 0,
         needAttention: 0,
@@ -321,6 +328,8 @@ export async function computeFleetDashboard(opts?: {
   let needAttentionCount = 0;
   let utilizationSum = 0;
   let activeCount = 0;
+  /** Активная техника, которая реально бронируется — база для средней загрузки. */
+  let bookableActiveCount = 0;
 
   const rows: FleetDashboardRow[] = vehicles.map((v) => {
     const logs = mileageByVehicle.get(v.id) ?? [];
@@ -410,14 +419,22 @@ export async function computeFleetDashboard(opts?: {
 
     if (v.active) {
       activeCount += 1;
-      utilizationSum += utilizationPct;
-      if (upcoming.some((u) => u.isCurrent)) issuedNow += 1;
-      else freeNow += 1;
       if (needsAttention(serviceHealth)) needAttentionCount += 1;
+      // «Свободна / на выдаче» и загрузка осмысленны только для транспорта:
+      // генератор не бронируется как машина, и в этих счётчиках он был бы
+      // вечным «свободна», занижая среднюю загрузку парка.
+      if (v.bookable) {
+        bookableActiveCount += 1;
+        utilizationSum += utilizationPct;
+        if (upcoming.some((u) => u.isCurrent)) issuedNow += 1;
+        else freeNow += 1;
+      }
     }
     totalRevenue = totalRevenue.plus(revenue);
     totalServiceCost = totalServiceCost.plus(svc.cost);
-    if (mileageDelta != null) {
+    // Суммарный «пробег парка» складывается только по километровым счётчикам:
+    // сложить километры с моточасами — получить бессмысленное число.
+    if (mileageDelta != null && v.usageUnit === "KM") {
       totalMileageDelta += mileageDelta;
       anyMileageDelta = true;
     }
@@ -428,6 +445,8 @@ export async function computeFleetDashboard(opts?: {
       id: v.id,
       name: v.name,
       slug: v.slug,
+      usageUnit: v.usageUnit as "KM" | "HOURS",
+      bookable: v.bookable,
       licensePlate: v.licensePlate,
       currentMileage: v.currentMileage,
       serviceIntervalKm: v.serviceIntervalKm,
@@ -471,13 +490,15 @@ export async function computeFleetDashboard(opts?: {
     totals: {
       vehiclesTotal: vehicles.length,
       vehiclesActive: activeCount,
+      vehiclesBookable: bookableActiveCount,
       freeNow,
       issuedNow,
       needAttention: needAttentionCount,
       revenue: totalRevenue.toFixed(2),
       serviceCost: totalServiceCost.toFixed(2),
       net: totalRevenue.minus(totalServiceCost).toFixed(2),
-      utilizationPct: activeCount > 0 ? Math.round(utilizationSum / activeCount) : 0,
+      utilizationPct:
+        bookableActiveCount > 0 ? Math.round(utilizationSum / bookableActiveCount) : 0,
       mileageDelta: anyMileageDelta ? totalMileageDelta : null,
     },
     vehicles: rows,
