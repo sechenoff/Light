@@ -5,7 +5,7 @@ import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
 import { toast } from "../../../src/components/ToastProvider";
 import { SectionHeader } from "../../../src/components/SectionHeader";
-import { AdminTabNav } from "../../../src/components/admin/AdminTabNav";
+import { AdminShell } from "../../../src/components/admin/AdminShell";
 import { CatalogTab } from "../../../src/components/settings/CatalogTab";
 import { EquipmentImportTab } from "../../../src/components/settings/EquipmentImportTab";
 import { PricelistTab } from "../../../src/components/settings/PricelistTab";
@@ -443,10 +443,8 @@ function PageGuard() {
 
   if (loading || !authorized) return null;
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-      <div className="mb-4">
-        <AdminTabNav />
-      </div>
+    <AdminShell>
+      <div>
       <SectionHeader eyebrow="Система" title="Настройки" className="mb-5" />
 
       {/* Inner tabs: организация + инструменты, вынесенные из «Ещё» */}
@@ -474,7 +472,8 @@ function PageGuard() {
       {tab === "catalog" && <CatalogTab />}
       {tab === "import" && <EquipmentImportTab />}
       {tab === "pricelist" && <PricelistTab />}
-    </div>
+      </div>
+    </AdminShell>
   );
 }
 

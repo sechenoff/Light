@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
 import { useRequireRole } from "@/hooks/useRequireRole";
-import { AdminTabNav } from "@/components/admin/AdminTabNav";
+import { AdminShell } from "@/components/admin/AdminShell";
 import { StatusPill } from "@/components/StatusPill";
 
 // ── Workers tab ───────────────────────────────────────────────────────────────
@@ -402,9 +402,9 @@ export default function AdminMorePage() {
   useRequireRole(["SUPER_ADMIN"]);
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl">
-      <AdminTabNav />
-      <div className="mt-4 mb-5">
+    <AdminShell>
+      <div>
+      <div className="mb-5">
         <h1 className="text-xl font-semibold tracking-tight text-ink">Кладовщики</h1>
         <p className="text-sm text-ink-2 mt-1">
           PIN-доступ к киоску выдачи и возврата на складе.
@@ -414,6 +414,7 @@ export default function AdminMorePage() {
       <div className="bg-surface rounded-lg border border-border p-6 shadow-xs">
         <WorkersTab />
       </div>
-    </div>
+      </div>
+    </AdminShell>
   );
 }

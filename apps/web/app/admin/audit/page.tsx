@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
 import { apiFetch } from "../../../src/lib/api";
-import { AdminTabNav } from "../../../src/components/admin/AdminTabNav";
+import { AdminShell } from "../../../src/components/admin/AdminShell";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -362,8 +362,8 @@ export default function AuditPage() {
   if (!authorized) return null;
 
   return (
-    <div className="p-6 space-y-4">
-      <AdminTabNav />
+    <AdminShell>
+      <div className="space-y-4">
 
       <div>
         <p className="eyebrow">Журнал</p>
@@ -509,6 +509,7 @@ export default function AuditPage() {
           {fetching ? "Загрузка…" : "Загрузить ещё"}
         </button>
       )}
-    </div>
+      </div>
+    </AdminShell>
   );
 }

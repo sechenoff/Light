@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
 import { useRequireRole } from "@/hooks/useRequireRole";
-import { AdminTabNav } from "@/components/admin/AdminTabNav";
+import { AdminShell } from "@/components/admin/AdminShell";
 import { RoleBadge } from "@/components/RoleBadge";
 import { SectionHeader } from "@/components/SectionHeader";
 import { toast } from "@/components/ToastProvider";
@@ -233,14 +233,13 @@ export default function AdminUsersPage() {
 
   if (authLoading) {
     return (
-      <div className="p-6">
-        <AdminTabNav />
-        <div className="mt-6 space-y-3">
+      <AdminShell>
+        <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-10 bg-surface-muted rounded animate-pulse" />
           ))}
         </div>
-      </div>
+      </AdminShell>
     );
   }
 
@@ -265,10 +264,9 @@ export default function AdminUsersPage() {
   const realUserCount = (users ?? []).filter((u) => u.id !== "_system_").length;
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Бейдж счётчика не показываем, пока список ещё не загружен (иначе мигает «0»). */}
-      <AdminTabNav counts={{ users: users === null ? undefined : realUserCount }} />
-
+    // Бейдж счётчика не показываем, пока список ещё не загружен (иначе мигает «0»).
+    <AdminShell counts={{ users: users === null ? undefined : realUserCount }}>
+      <div className="space-y-6">
       {/* Header */}
       <div>
         <SectionHeader eyebrow="Администрирование" title="Пользователи" />
@@ -596,7 +594,8 @@ export default function AdminUsersPage() {
           }}
         />
       )}
-    </div>
+      </div>
+    </AdminShell>
   );
 }
 
