@@ -100,6 +100,10 @@ light-rental-system/
 | `deploy.sh` | Build + deploy script (builds shared first; supports --api, --web, --rental-bot flags) |
 | `apps/api/src/routes/dashboard.ts` | GET /api/dashboard/today — daily ops; /pending-approvals (SUPER_ADMIN+WAREHOUSE, `finalAmount` included); /repair-stats (all 3 roles) |
 | `apps/web/app/day/page.tsx` | Role-aware «Мой день»: 3 компонента (DaySuperAdmin/DayWarehouse/DayTechnician) — greeting + алерт ожидающих согласования + KPI/ops/repairs + footer metrics |
+| `apps/api/src/services/fleetDashboard.ts` | Витрина автопарка: `computeFleetDashboard({period})` — пробег за период (baseline берётся из замера ДО окна), расход на ТО, выручка/загрузка (дни через Set — пересекающиеся брони не удваиваются), светофор `ServiceHealth`, полоса занятости на 14 дней. Все выборки батчами, без N+1 |
+| `apps/api/src/routes/vehicles.ts` | `GET /fleet/dashboard?period=30\|90\|365` объявлен ДО `/fleet/:id` (иначе `:id` перехватит «dashboard»); денежные поля → `null` для не-SUPER_ADMIN |
+| `apps/web/src/components/vehicles/` | Дашборд автопарка: `VehiclesDashboard` (композиция), `VehicleCard` («техпаспорт»), `FleetKpiRow`, `OccupancyStrip`, `FleetPeriodToggle`, `useFleetDashboard`, `types.ts` |
+| `docs/mockups/vehicles-dashboard/` | 3 концепта витрины автопарка (ops / econ / editorial) — выбран editorial судейской панелью 9/9/8 |
 | `apps/web/src/components/day/DayHeader.tsx` | Тёмная шапка `/day`: приветствие + русская дата + role-specific summary справа |
 | `apps/web/src/components/day/DayAlert.tsx` | Алерт с вариантами rose/amber, опциональным счётчиком и Link-кнопкой «Все →» |
 | `apps/web/src/components/day/DayKpiCard.tsx` | KPI-карточка: eyebrow / value (ReactNode) / sub с `subTone: "muted" \| "rose"` |
@@ -231,6 +235,10 @@ npm run seed                  # Seed database
 - **GET /api/payments?includeVoided=true** — отдаёт аннулированные (voidedAt/voidReason); GET /api/invoices отдаёт `counts` по статусам по всей выборке.
 - **BookingForm: автосейв черновика** — localStorage `lr:bookings:new:draft` (debounce 2с) + beforeunload + плашка восстановления; при URL-префилле из календаря (?start&end&equipmentId) чужой сохранённый черновик не восстанавливается и НЕ перезаписывается.
 - **Ручной перевод юнита в MAINTENANCE** — создаёт Repair-карточку post-tx best-effort (дубль гасится `REPAIR_ACTIVE_EXISTS`); ручной ISSUED запрещён (`MANUAL_ISSUE_FORBIDDEN`); ручные смены статуса аудируются (`UNIT_STATUS_MANUAL_CHANGE`).
+- **`Vehicle.serviceIntervalKm` — nullable, и это состояние UI** — null означает «интервал не задан», и тогда прогноз ТО НЕ строится: карточка честно пишет об этом вместо выдуманного остатка. Задаётся на `/vehicles/[id]` в панели «Редактировать гос. номер / интервал ТО / заметки».
+- **Выручка машины считается по тем же статусам, что и статистика техники** — `CONFIRMED / ISSUED / RETURNED` (константа `RENTAL_BOOKING_STATUSES` продублирована в `fleetDashboard.ts`). DRAFT и CANCELLED в деньги и загрузку не попадают — единая семантика выручки по системе.
+- **Быстрые действия автопарка через `?action=`** — `/vehicles/[id]?action=mileage|service` сразу раскрывает нужную форму (проп `defaultOpen`). Страница обёрнута в `Suspense` — обязательно для `useSearchParams` в Next 14.
+- **Бэкап БД в деплое берёт путь из `DATABASE_URL`** — раньше был захардкожен `prisma/rental.db`, которого на проде нет (реальная база — `prod.db`), из-за чего бэкапы молча создавались пустыми. Теперь путь выводится из `.env` с учётом того, что относительный SQLite-путь Prisma резолвит от папки со схемой; отсутствие файла валит деплой, а не проходит тихо.
 - **Task.dueDate — date-only semantics** — stored as Moscow-midnight UTC (`fromMoscowDateString()`), compared via `toMoscowDateString()`. Never compare raw Date objects — always compare the `YYYY-MM-DD` string in Moscow TZ.
 - **Optimistic mutation pattern (Tasks)** — snapshot → apply → reconcile from server; per-id `useRef<Set<string>>` in-flight guard. `completeTask`: fire-immediately undo-via-reopen; toast action "Отменить" has 6 s window.
 - **Task audit actions** — `TASK_CREATE / TASK_UPDATE / TASK_ASSIGN / TASK_COMPLETE / TASK_REOPEN / TASK_DELETE` written in same `$transaction` as mutation; `entityType: "Task"`. `TASK_ASSIGN` is a distinct action when `assignedTo` changes (for audit searchability).
