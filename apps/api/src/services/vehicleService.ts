@@ -30,6 +30,8 @@ export interface VehicleSummary {
   lastServiceAt: string | null;
   lastServiceMileage: number | null;
   lastServiceKind: string | null;
+  /** Межсервисный интервал, км. null — не задан, прогноз ТО не строится. */
+  serviceIntervalKm: number | null;
   notes: string | null;
   active: boolean;
   /** Активная/ближайшая бронь с этой машиной. null — машина свободна. */
@@ -136,6 +138,7 @@ function toSummary(
     lastServiceAt: Date | null;
     lastServiceMileage: number | null;
     lastServiceKind: string | null;
+    serviceIntervalKm: number | null;
     notes: string | null;
     active: boolean;
   },
@@ -150,6 +153,7 @@ function toSummary(
     lastServiceAt: v.lastServiceAt ? v.lastServiceAt.toISOString() : null,
     lastServiceMileage: v.lastServiceMileage,
     lastServiceKind: v.lastServiceKind,
+    serviceIntervalKm: v.serviceIntervalKm,
     notes: v.notes,
     active: v.active,
     activeBooking,
@@ -215,7 +219,11 @@ export async function getVehicleDetail(vehicleId: string): Promise<{
 /** Обновить метаданные машины (гос. номер, заметки). Аудит пишется. */
 export async function updateVehicleMeta(
   vehicleId: string,
-  patch: { licensePlate?: string | null; notes?: string | null },
+  patch: {
+    licensePlate?: string | null;
+    notes?: string | null;
+    serviceIntervalKm?: number | null;
+  },
   userId: string,
 ): Promise<VehicleSummary> {
   const existing = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
@@ -225,6 +233,7 @@ export async function updateVehicleMeta(
   const data: Prisma.VehicleUpdateInput = {};
   if (patch.licensePlate !== undefined) data.licensePlate = patch.licensePlate;
   if (patch.notes !== undefined) data.notes = patch.notes;
+  if (patch.serviceIntervalKm !== undefined) data.serviceIntervalKm = patch.serviceIntervalKm;
   if (Object.keys(data).length === 0) {
     return toSummary(existing);
   }
@@ -239,10 +248,12 @@ export async function updateVehicleMeta(
       before: {
         licensePlate: existing.licensePlate,
         notes: existing.notes,
+        serviceIntervalKm: existing.serviceIntervalKm,
       },
       after: {
         licensePlate: u.licensePlate,
         notes: u.notes,
+        serviceIntervalKm: u.serviceIntervalKm,
       },
     });
     return u;

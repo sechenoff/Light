@@ -13,6 +13,7 @@ import {
   logMileageManual,
   addServiceLog,
 } from "../services/vehicleService";
+import { computeFleetDashboard, parseFleetPeriod } from "../services/fleetDashboard";
 
 const router = express.Router();
 
@@ -160,6 +161,46 @@ router.get("/fleet", async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/vehicles/fleet/dashboard?period=30|90|365 — витрина автопарка:
+ * агрегаты пробега, обслуживания, выручки и загрузки + полоса занятости вперёд.
+ *
+ * Денежные поля (выручка, итог, суммарный расход по парку) отдаются только
+ * SUPER_ADMIN: WAREHOUSE и TECHNICIAN видят ту же страницу без экономики —
+ * консистентно с матрицей прав, где /api/finance/* закрыт для них.
+ *
+ * ВАЖНО: маршрут объявлен ДО "/fleet/:id", иначе ":id" перехватит "dashboard".
+ */
+router.get("/fleet/dashboard", async (req, res, next) => {
+  try {
+    const includeInactive =
+      req.query.includeInactive === "true" || req.query.includeInactive === "1";
+    const data = await computeFleetDashboard({
+      period: parseFleetPeriod(req.query.period),
+      includeInactive,
+    });
+
+    const canSeeMoney = req.adminUser?.role === "SUPER_ADMIN" || req.botAccess === true;
+    if (canSeeMoney) {
+      res.json(data);
+      return;
+    }
+
+    res.json({
+      ...data,
+      totals: { ...data.totals, revenue: null, serviceCost: null, net: null },
+      vehicles: data.vehicles.map((v) => ({
+        ...v,
+        lastServiceCost: null,
+        stats: { ...v.stats, revenue: null, net: null, serviceCost: null },
+        upcomingBookings: v.upcomingBookings.map((b) => ({ ...b, subtotalRub: null })),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** GET /api/vehicles/fleet/:id — детальная карточка машины + журналы. */
 router.get("/fleet/:id", async (req, res, next) => {
   try {
@@ -173,9 +214,12 @@ router.get("/fleet/:id", async (req, res, next) => {
 const metaPatchSchema = z.object({
   licensePlate: z.string().trim().max(32).nullable().optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
+  // Межсервисный интервал: 1 000–100 000 км. null — снять интервал (прогноз ТО
+  // перестанет строиться и карточка честно покажет «интервал не задан»).
+  serviceIntervalKm: z.number().int().min(1000).max(100000).nullable().optional(),
 });
 
-/** PATCH /api/vehicles/fleet/:id/meta — обновить гос. номер / заметки. */
+/** PATCH /api/vehicles/fleet/:id/meta — обновить гос. номер / заметки / интервал ТО. */
 router.patch(
   "/fleet/:id/meta",
   rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]),

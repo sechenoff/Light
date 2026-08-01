@@ -907,6 +907,10 @@ model Vehicle {
   lastServiceAt         DateTime?
   lastServiceMileage    Int?
   lastServiceKind       VehicleServiceKind?
+  /// Межсервисный интервал в км. null — интервал не задан; в этом случае
+  /// прогноз «осталось N км до ТО» честно не строится (карточка показывает
+  /// «интервал не задан» вместо выдуманного числа).
+  serviceIntervalKm     Int?
   /// Свободные заметки по машине (VIN, страховка, особенности — что хочется).
   notes                 String?
 

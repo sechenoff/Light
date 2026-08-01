@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Автопарк · концепт «Техпаспорт» · Light Rental</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!--
+  ============================================================================
+  КОНЦЕПТ: «Техпаспорт» — карточка машины с фиксированной анатомией из 4 зон.
+  Угол: структурная ясность + плотность. Таблица не упрощается до плитки —
+  она сворачивается в карточку с постоянными координатами: любой параметр
+  всегда лежит в одном и том же месте у всех машин, поэтому три карточки
+  сканируются вертикально так же быстро, как колонки таблицы.
+
+  Зоны (сверху вниз, порядок = порядок вопросов владельца):
+    1. Паспорт     — кто это, номер, тариф, общий статус
+    2. Занятость   — «свободна ли завтра» + полоса на 14 дней
+    3. Пробег/ТО   — «не пропустить ТО» + запас километров
+    4. Экономика   — «сколько зарабатывает и сколько жрёт»
+
+  ДАННЫЕ: три реальные машины прода на 01.08.2026.
+  Метки [BE] в комментариях = агрегат, которого сейчас нет в API.
+  ============================================================================
+-->
+
+<style>
+/* ---------------------------------------------------------------------------
+   ТОКЕНЫ. Зеркало tailwind.config.js проекта. Сырых hex вне этого блока нет.
+   --------------------------------------------------------------------------- */
+:root{
+  --ink:#09090b; --ink-2:#52525b; --ink-3:#a1a1aa;
+  --surface:#ffffff; --surface-muted:#fafafa; --surface-subtle:#f4f4f5;
+  --border:#e4e4e7; --border-strong:#d4d4d8;
+
+  --accent:#1e3a8a; --accent-bright:#1d4ed8; --accent-soft:#eff6ff; --accent-border:#bfdbfe;
+
+  --teal:#0f766e;    --teal-soft:#ccfbf1;    --teal-border:#99f6e4;
+  --amber:#a16207;   --amber-soft:#fef3c7;   --amber-border:#fde68a;
+  --rose:#9f1239;    --rose-soft:#ffe4e6;    --rose-border:#fecdd3;
+  --indigo:#4338ca;  --indigo-soft:#e0e7ff;  --indigo-border:#c7d2fe;
+  --slate:#334155;   --slate-soft:#f1f5f9;   --slate-border:#cbd5e1;
+  --emerald:#047857; --emerald-soft:#d1fae5; --emerald-border:#a7f3d0;
+  --ok:#15803d;      --ok-soft:#dcfce7;      --warn:#a16207; --warn-soft:#fef9c3;
+
+  --r:4px; --r-lg:6px;
+  --shadow-xs:0 1px 0 rgba(9,9,11,.03);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--surface-subtle); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  font-size:13.5px; line-height:1.6;
+}
+h1,h2,h3,p,ul{margin:0}
+a{color:inherit;text-decoration:none}
+
+/* Утилиты канона */
+.eyebrow{
+  font-family:"IBM Plex Sans Condensed",sans-serif;
+  font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); line-height:1.4;
+}
+.mono-num{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums}
+
+/* Разряды в моноширинном шрифте разделяются полноширинным пробелом и «рвут»
+   число. Поджимаем только межсловный интервал — выравнивание цифр не страдает. */
+.big,.stat .v,.money-cell .v,.econ-cell .v,.svc-left,.svc-of,.plate,
+.delta b,.svc-last .m,.econ-foot .m,.v-tariff .rub{word-spacing:-.16em}
+
+.icon{width:13px;height:13px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+
+/* Пилюли — реплика <StatusPill> */
+.pill{
+  display:inline-flex;align-items:center;gap:4px;
+  border:1px solid;border-radius:var(--r);
+  padding:1px 7px;font-size:11px;font-weight:600;white-space:nowrap;line-height:1.55;
+}
+.pill-ok{background:var(--ok-soft);color:var(--ok);border-color:var(--emerald-border)}
+.pill-warn{background:var(--warn-soft);color:var(--warn);border-color:var(--amber-border)}
+.pill-info{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-border)}
+.pill-alert{background:var(--rose-soft);color:var(--rose);border-color:var(--rose-border)}
+.pill-view{background:var(--slate-soft);color:var(--slate);border-color:var(--slate-border)}
+.pill-none{background:var(--surface);color:var(--ink-3);border-color:var(--border)}
+
+/* Текстовые микро-действия */
+.link{color:var(--accent-bright);font-weight:600;font-size:11.5px;white-space:nowrap}
+.link:hover{color:var(--accent);text-decoration:underline}
+.mini{
+  display:inline-flex;align-items:center;gap:3px;
+  border:1px solid var(--border);border-radius:var(--r);background:var(--surface);
+  color:var(--ink-2);font-size:11px;font-weight:600;padding:2px 7px;line-height:1.5;
+  font-family:inherit;cursor:pointer;
+  transition:border-color .12s,color .12s,background .12s;
+}
+.mini:hover{border-color:var(--accent-border);background:var(--accent-soft);color:var(--accent-bright)}
+
+/* ---------------------------------------------------------------------------
+   КАРКАС СТРАНИЦЫ
+   --------------------------------------------------------------------------- */
+.page{max-width:1240px;margin:0 auto;padding:20px 20px 56px}
+
+.page-head{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  padding-bottom:12px;border-bottom:1px solid var(--border);
+}
+.page-head h1{
+  font-family:"IBM Plex Sans Condensed",sans-serif;
+  font-size:24px;font-weight:700;line-height:1.15;letter-spacing:-.01em;margin-top:2px;
+}
+.page-head .acts{display:flex;align-items:center;gap:14px}
+
+/* ---------------------------------------------------------------------------
+   ЗОНА 0 — СВОДКА ПАРКА
+   --------------------------------------------------------------------------- */
+.fleet{
+  margin-top:16px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-xs);overflow:hidden;
+}
+.fleet-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);gap:0}
+.fleet-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.stat{padding:12px 16px;border-right:1px solid var(--border);min-width:0}
+.stat .v{
+  font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:19px;font-weight:600;line-height:1.25;margin-top:3px;letter-spacing:-.01em;
+}
+.stat .s{font-size:11.5px;color:var(--ink-3);line-height:1.4}
+.stat .v.is-rose{color:var(--rose)}
+.stat .v.is-emerald{color:var(--emerald)}
+.stat .v .of{color:var(--ink-3);font-size:13px}
+.stat .v .u{color:var(--ink-3);font-size:12px;font-weight:500}
+
+.fleet-money{
+  padding:12px 16px;background:var(--surface-muted);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;gap:8px;min-width:0;
+}
+.money-row{display:flex;align-items:baseline;gap:18px}
+.money-cell{min-width:0}
+.money-cell .v{
+  font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:16px;font-weight:600;line-height:1.3;white-space:nowrap;
+}
+.money-cell .v.earn{color:var(--ink)}
+.money-cell .v.spend{color:var(--ink-2)}
+.money-cell .v.net-neg{color:var(--rose)}
+.money-cell .v.net-pos{color:var(--emerald)}
+
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--surface);align-self:flex-start}
+.seg button{
+  font-family:inherit;font-size:11px;font-weight:600;color:var(--ink-2);
+  background:transparent;border:0;border-right:1px solid var(--border);
+  padding:3px 9px;cursor:pointer;line-height:1.6;
+}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+
+.fleet-alert{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:8px 16px;border-top:1px solid var(--border);
+  background:var(--rose-soft);color:var(--rose);font-size:12.5px;font-weight:500;
+}
+.fleet-alert .icon{stroke-width:1.5}
+.fleet-alert b{font-weight:700}
+.fleet-alert .link{color:var(--rose);text-decoration:underline;margin-left:auto}
+
+/* ---------------------------------------------------------------------------
+   СЕТКА КАРТОЧЕК
+   --------------------------------------------------------------------------- */
+.cards{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:14px}
+
+.card{
+  background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border-strong);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-xs);overflow:hidden;
+  display:flex;flex-direction:column;
+  transition:border-color .12s;
+}
+.card:hover{border-color:var(--border-strong)}
+.card.st-ok:hover,.card.st-ok{border-left-color:var(--emerald)}
+.card.st-alert,.card.st-alert:hover{border-left-color:var(--rose)}
+.card.st-none,.card.st-none:hover{border-left-color:var(--slate-border)}
+
+/* --- Зона 1: паспорт --- */
+.v-head{padding:12px 15px 11px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:flex-start}
+.v-id{min-width:0;flex:1}
+.v-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.v-name{
+  font-family:"IBM Plex Sans Condensed",sans-serif;
+  font-size:19px;font-weight:700;line-height:1.15;letter-spacing:-.005em;
+}
+.plate{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:500;letter-spacing:.06em;
+  color:var(--ink-2);background:var(--surface-subtle);border:1px solid var(--border);
+  border-radius:var(--r);padding:0 6px;line-height:1.7;white-space:nowrap;
+}
+.v-tariff{font-size:11.5px;color:var(--ink-2);margin-top:4px;line-height:1.5}
+.v-tariff .rub{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+.v-tariff .sep{color:var(--ink-3);padding:0 2px}
+.v-tariff .gen{color:var(--teal);font-weight:600;display:inline-flex;align-items:center;gap:3px;vertical-align:-2px}
+.v-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:0 0 auto}
+
+/* --- Общая обвязка зоны --- */
+.zone{padding:11px 15px;border-bottom:1px solid var(--border)}
+/* Последняя зона перед «Экономикой» забирает свободную высоту карточки:
+   в ряду сетки нижние границы зон совпадают, пустоты между линиями не остаётся. */
+.card > .zone:nth-last-child(2){flex:1}
+.zone-head{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.zone-head .eyebrow{display:flex;align-items:center;gap:5px}
+.zone-head .icon{color:var(--ink-3)}
+.zone-head .sp{margin-left:auto}
+/* Дубль подписи «Обслуживание» — включается, когда зона разворачивается в стек */
+.svc-inline{display:none}
+
+/* --- Зона 2: занятость --- */
+.occ-lead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.occ-lead .t{font-size:14px;font-weight:600;line-height:1.35}
+.occ-lead .t.busy{color:var(--amber)}
+.occ-lead .t.free{color:var(--emerald)}
+.occ-tomorrow{font-size:11.5px;color:var(--ink-3)}
+.occ-meta{font-size:11.5px;color:var(--ink-2);margin-top:2px;line-height:1.45}
+.occ-meta a{color:var(--accent-bright);font-weight:600}
+.occ-meta a:hover{text-decoration:underline}
+.occ-meta .pill{margin-left:2px;vertical-align:1px}
+
+.strip{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:2px;margin-top:8px}
+.strip i{
+  display:block;height:20px;border-radius:2px;
+  background:var(--surface-subtle);border:1px solid var(--border);
+}
+/* Заливка мягкая, обводка — полнотоновая: занятые дни читаются с одного взгляда
+   даже на 375px, но полоса не превращается в цветной шум. */
+.strip i.busy-now{background:var(--amber-soft);border-color:var(--amber)}
+.strip i.busy-next{background:var(--accent-soft);border-color:var(--accent-bright)}
+.strip i.today{position:relative}
+.strip i.today::after{
+  content:"";position:absolute;left:0;right:0;bottom:-4px;height:2px;background:var(--accent);border-radius:1px;
+}
+.strip-ticks{
+  display:flex;justify-content:space-between;margin-top:7px;
+  font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-3);letter-spacing:.02em;
+}
+
+/* --- Зона 3: пробег и ТО --- */
+.split{display:grid;grid-template-columns:minmax(0,0.82fr) minmax(0,1.18fr);gap:0}
+.split > div:first-child{padding-right:15px}
+.split > div:last-child{padding-left:15px;border-left:1px solid var(--border)}
+
+.big{
+  font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:21px;font-weight:600;line-height:1.2;letter-spacing:-.015em;
+}
+.big .u{font-size:12px;font-weight:500;color:var(--ink-3);margin-left:3px;letter-spacing:0}
+.delta{font-size:11.5px;color:var(--ink-2);margin-top:3px}
+.delta b{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+.hint{font-size:11px;color:var(--ink-3);margin-top:2px}
+.hint.trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.muted-t{color:var(--ink-3)}
+
+.bar{height:6px;border-radius:3px;background:var(--slate-soft);overflow:hidden;margin:7px 0 6px}
+.bar span{display:block;height:100%;border-radius:3px}
+.bar span.f-ok{background:var(--emerald)}
+.bar span.f-warn{background:var(--amber)}
+.bar span.f-alert{background:var(--rose)}
+.bar.empty{background:transparent;border:1px dashed var(--border-strong);height:8px;border-radius:4px}
+
+.svc-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.svc-left{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:15px;font-weight:600;line-height:1.3}
+.svc-left.is-alert{color:var(--rose)}
+.svc-left.is-warn{color:var(--amber)}
+.svc-of{font-size:11px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.svc-last{font-size:11.5px;color:var(--ink-2);line-height:1.5}
+.svc-last .k{color:var(--ink-3)}
+.svc-last .m{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.svc-act{margin-top:7px}
+
+/* Пустые состояния */
+.empty{
+  border:1px dashed var(--border-strong);border-radius:var(--r);
+  background:var(--surface-muted);padding:9px 11px;
+}
+.empty .t{font-size:12.5px;font-weight:600;color:var(--ink-2);line-height:1.4}
+.empty .d{font-size:11.5px;color:var(--ink-3);margin-top:2px;line-height:1.45}
+.empty .a{margin-top:7px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dash{color:var(--ink-3);font-family:"IBM Plex Mono",monospace}
+
+/* --- Зона 4: экономика ---
+   margin-top:auto прижимает зону к низу карточки. В ряду сетки карточки
+   растянуты по высоте, поэтому денежные строки всех машин встают на одну
+   горизонталь — их можно сравнивать взглядом слева направо. */
+.econ{padding:11px 15px;background:var(--surface-muted);margin-top:auto}
+.econ-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.econ-cell{min-width:0}
+.econ-cell .k{font-size:10.5px;color:var(--ink-3);letter-spacing:.02em;line-height:1.4}
+.econ-cell .v{
+  font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:15px;font-weight:600;line-height:1.3;white-space:nowrap;letter-spacing:-.01em;margin-top:1px;
+}
+.econ-cell .v.earn{color:var(--ink)}
+.econ-cell .v.spend{color:var(--ink-2)}
+.econ-cell .v.net-pos{color:var(--emerald)}
+.econ-cell .v.net-neg{color:var(--rose)}
+.econ-cell .v.muted{color:var(--ink-3)}
+.econ-foot{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);
+  font-size:11.5px;color:var(--ink-2);
+}
+.econ-foot .m{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+.econ-foot .thin{color:var(--ink-3)}
+.econ-foot .link{margin-left:auto}
+
+/* ---------------------------------------------------------------------------
+   ЗАМЕТКИ К МОКАПУ (не часть интерфейса)
+   --------------------------------------------------------------------------- */
+.annot{
+  margin-top:28px;border:1px dashed var(--border-strong);border-radius:var(--r-lg);
+  background:var(--surface);padding:14px 16px;
+}
+.annot h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700;margin-bottom:2px}
+.annot p{font-size:12.5px;color:var(--ink-2);margin-top:6px}
+.annot ul{margin:6px 0 0;padding-left:17px;font-size:12.5px;color:var(--ink-2);line-height:1.7}
+.annot code{
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:var(--surface-subtle);
+  border:1px solid var(--border);border-radius:3px;padding:0 4px;color:var(--ink);
+}
+.annot .tag{
+  display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;
+  background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-border);
+  border-radius:3px;padding:0 4px;margin-right:5px;
+}
+
+/* ---------------------------------------------------------------------------
+   АДАПТИВ
+   --------------------------------------------------------------------------- */
+@media (max-width:1080px){
+  .fleet-body{grid-template-columns:minmax(0,1fr)}
+  .fleet-money{border-left:0;border-top:1px solid var(--border)}
+  .stat:nth-child(4){border-right:0}
+}
+@media (max-width:900px){
+  .cards{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:560px){
+  body{font-size:13px}
+  .page{padding:14px 12px 44px}
+  .page-head h1{font-size:20px}
+  .fleet-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stat{padding:10px 12px;border-bottom:1px solid var(--border)}
+  .stat:nth-child(2),.stat:nth-child(4){border-right:0}
+  .stat:nth-child(3),.stat:nth-child(4){border-bottom:0}
+  .stat .v{font-size:17px}
+  .fleet-money{padding:11px 12px}
+  .money-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .money-cell .eyebrow{font-size:9px;letter-spacing:.05em}
+  .money-cell .v{font-size:14px}
+  .fleet-alert{padding:9px 12px;font-size:12px;align-items:flex-start}
+  .fleet-alert .icon{margin-top:3px}
+  .fleet-alert > span{flex:1;min-width:0}
+  .fleet-alert .link{margin-left:0;width:100%;margin-top:2px}
+
+  .v-head{padding:11px 12px;flex-direction:column;gap:8px}
+  .v-side{flex-direction:row;align-items:center;align-self:stretch;justify-content:space-between;gap:8px}
+  .zone,.econ{padding:10px 12px}
+  .v-name{font-size:18px}
+
+  /* Зона «пробег + ТО» разворачивается в стек — иначе колонки становятся уже 150px.
+     Правая подпись из шапки зоны переезжает к своему блоку: подпись обязана
+     стоять над данными, которые она называет, а не через полэкрана от них. */
+  .split{grid-template-columns:minmax(0,1fr);gap:10px}
+  .split > div:first-child{padding-right:0;padding-bottom:10px;border-bottom:1px solid var(--border)}
+  .split > div:last-child{padding-left:0;border-left:0}
+  .zone-head .sp-svc{display:none}
+  .svc-inline{display:flex;align-items:center;gap:5px;margin-bottom:6px}
+  .svc-inline .icon{color:var(--ink-3)}
+
+  .strip i{height:22px}
+  .econ-grid{gap:6px}
+  .econ-cell .v{font-size:13.5px}
+  .econ-cell .k{font-size:10px}
+  .econ-foot .link{margin-left:0;width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- Спрайт иконок: только инлайн-SVG, никаких emoji -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-cal" viewBox="0 0 16 16"><rect x="2" y="3.2" width="12" height="10.6" rx="1.4"/><path d="M2 6.4h12M5.4 1.8v2.6M10.6 1.8v2.6"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 16 16"><path d="M2.4 12a6 6 0 1 1 11.2 0"/><path d="M8 12l3.1-3.3"/><path d="M2.4 12h1.4M12.2 12h1.4"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 16 16"><path d="M10.5 2.4a3.6 3.6 0 0 0-4.3 4.6l-3.6 3.6a1.45 1.45 0 0 0 2.05 2.05l3.6-3.6a3.6 3.6 0 0 0 4.6-4.3l-2 2-1.85-.5-.5-1.85z"/></symbol>
+  <symbol id="i-rub" viewBox="0 0 16 16"><path d="M5.6 13.4V3.1h3.3a2.75 2.75 0 0 1 0 5.5H5.6"/><path d="M4 10.9h4.6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 2.4 1.6 13.2h12.8z"/><path d="M8 6.3v3.3M8 11.5h.01"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 16 16"><path d="M9.1 1.7 3.5 9.1h3.9l-.7 5.2 5.8-7.4H8.4z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.4v9.2M3.4 8h9.2"/></symbol>
+</svg>
+
+<div class="page">
+
+  <!-- ======================= ШАПКА СТРАНИЦЫ ======================= -->
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Автопарк</p>
+      <h1>Машины</h1>
+    </div>
+    <div class="acts">
+      <a class="link" href="#">Управление тарифами →</a>
+      <button class="mini"><svg class="icon"><use href="#i-plus"/></svg>Машина</button>
+    </div>
+  </header>
+
+  <!-- ======================= СВОДКА ПАРКА =======================
+       Тонкая полоса, а не крупные KPI-плитки: на 3 машины крупные плитки
+       занимают пол-экрана и вытесняют сами карточки — главный контент. -->
+  <section class="fleet" aria-label="Сводка по парку">
+    <div class="fleet-body">
+      <div class="fleet-stats">
+        <div class="stat">
+          <p class="eyebrow">Машин в парке</p>
+          <p class="v">3</p>
+          <p class="s">все активны</p>
+        </div>
+        <div class="stat">
+          <!-- [BE] «свободна сегодня» = машины без пересечения с CONFIRMED/ISSUED на сегодня -->
+          <p class="eyebrow">Свободны сегодня</p>
+          <p class="v is-emerald">2<span class="of"> / 3</span></p>
+          <p class="s">Фотон, Ивеко</p>
+        </div>
+        <div class="stat">
+          <p class="eyebrow">Пробег парка</p>
+          <p class="v">297 530<span class="u"> км</span></p>
+          <!-- [BE] сумма дельт VehicleMileageLog за 30 дней -->
+          <p class="s">+4 300 км за 30 дней</p>
+        </div>
+        <div class="stat">
+          <!-- [BE] требует поля serviceIntervalKm на Vehicle -->
+          <p class="eyebrow">Требуют ТО</p>
+          <p class="v is-rose">1</p>
+          <p class="s">Ивеко — 300 км</p>
+        </div>
+      </div>
+
+      <div class="fleet-money">
+        <div class="money-row">
+          <!-- [BE] выручка = сумма BookingVehicle.subtotalRub по броням за период -->
+          <div class="money-cell">
+            <p class="eyebrow">Заработали</p>
+            <p class="v earn">120 000 ₽</p>
+          </div>
+          <!-- [BE] расходы = сумма VehicleServiceLog.costRub за период -->
+          <div class="money-cell">
+            <p class="eyebrow">Обслуживание</p>
+            <p class="v spend">152 413 ₽</p>
+          </div>
+          <div class="money-cell">
+            <p class="eyebrow">Итого</p>
+            <p class="v net-neg">−32 413 ₽</p>
+          </div>
+        </div>
+        <div class="seg" role="group" aria-label="Период расчёта">
+          <button type="button">30 дней</button>
+          <button type="button" aria-pressed="true">90 дней</button>
+          <button type="button">Год</button>
+          <button type="button">Всё время</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Строка внимания. Одна, и только когда есть повод. -->
+    <div class="fleet-alert">
+      <svg class="icon"><use href="#i-alert"/></svg>
+      <span><b>Ивеко</b> — 300 км до планового ТО. Последнее обслуживание 25 мая, с тех пор 7 700 км.</span>
+      <a class="link" href="#">Записать ТО →</a>
+    </div>
+  </section>
+
+  <!-- ======================= КАРТОЧКИ МАШИН ======================= -->
+  <section class="cards" aria-label="Машины парка">
+
+    <!-- ##################### 1. FORD ##################### -->
+    <article class="card st-ok">
+
+      <!-- Зона 1 · паспорт -->
+      <div class="v-head">
+        <div class="v-id">
+          <div class="v-title">
+            <h2 class="v-name">Ford</h2>
+            <span class="plate">У220ВН797</span>
+          </div>
+          <p class="v-tariff">
+            <span class="rub">12 000 ₽</span>/смена
+            <span class="sep">·</span>смена 12 ч
+            <span class="sep">·</span>переработка +10 %/ч
+            <span class="sep">·</span><span class="muted-t">без генератора</span>
+          </p>
+        </div>
+        <div class="v-side">
+          <span class="pill pill-ok">В норме</span>
+          <a class="link" href="#">Открыть →</a>
+        </div>
+      </div>
+
+      <!-- Зона 2 · занятость -->
+      <div class="zone">
+        <div class="zone-head">
+          <span class="eyebrow"><svg class="icon"><use href="#i-cal"/></svg>Занятость</span>
+          <span class="eyebrow sp">ближайшие 14 дней</span>
+        </div>
+        <div class="occ-lead">
+          <span class="t busy">Занята до 3 августа</span>
+          <span class="occ-tomorrow">завтра — занята</span>
+        </div>
+        <p class="occ-meta">
+          Сейчас в работе: <a href="#">Сериал «Прощание»</a> · ООО «Кинопроба» · 30.07 – 03.08
+        </p>
+        <div class="strip" aria-label="Занятость по дням, 1–14 августа">
+          <i class="busy-now today" title="1 авг — Сериал «Прощание»"></i>
+          <i class="busy-now" title="2 авг — Сериал «Прощание»"></i>
+          <i class="busy-now" title="3 авг — Сериал «Прощание»"></i>
+          <i title="4 авг — свободна"></i><i title="5 авг — свободна"></i>
+          <i title="6 авг — свободна"></i><i title="7 авг — свободна"></i>
+          <i title="8 авг — свободна"></i><i title="9 авг — свободна"></i>
+          <i title="10 авг — свободна"></i><i title="11 авг — свободна"></i>
+          <i title="12 авг — свободна"></i><i title="13 авг — свободна"></i>
+          <i title="14 авг — свободна"></i>
+        </div>
+        <div class="strip-ticks"><span>1 авг</span><span>7 авг</span><span>14 авг</span></div>
+      </div>
+
+      <!-- Зона 3 · пробег и ТО -->
+      <div class="zone">
+        <div class="zone-head">
+          <span class="eyebrow"><svg class="icon"><use href="#i-gauge"/></svg>Пробег</span>
+          <span class="eyebrow sp sp-svc"><svg class="icon"><use href="#i-wrench"/></svg>Обслуживание</span>
+        </div>
+        <div class="split">
+          <div>
+            <p class="big">90 239<span class="u">км</span></p>
+            <!-- [BE] дельта по VehicleMileageLog за 30 дней -->
+            <p class="delta">+<b>1 830</b> км за 30 дней</p>
+            <p class="hint">по 2 замерам · <a class="link" href="#">записать пробег</a></p>
+          </div>
+          <div>
+            <p class="eyebrow svc-inline"><svg class="icon"><use href="#i-wrench"/></svg>Обслуживание</p>
+            <div class="svc-top">
+              <!-- [BE] currentMileage − lastServiceMileage при заданном serviceIntervalKm -->
+              <span class="svc-left">Ещё 3 261 км</span>
+              <span class="svc-of">6 739 / 10 000</span>
+            </div>
+            <div class="bar"><span class="f-ok" style="width:67%"></span></div>
+            <p class="svc-last">
+              <span class="k">Последнее:</span> <span class="m">12.06.2026</span> · Ремонт
+              <br><span class="k">на</span> <span class="m">83 500 км</span> <span class="k">·</span> <span class="m">76 393 ₽</span>
+              <span class="k"> · 50 дней назад</span>
+            </p>
+            <p class="hint trunc" title="Дверь сдвижная правая — диагностика. Конденсатор…">Дверь сдвижная правая — диагностика. Конденсатор…</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Зона 4 · экономика -->
+      <div class="econ">
+        <div class="zone-head">
+          <span class="eyebrow"><svg class="icon"><use href="#i-rub"/></svg>Экономика · 90 дней</span>
+          <span class="eyebrow sp">видит руководитель</span>
+        </div>
+        <div class="econ-grid">
+          <!-- [BE] все три значения — новые агрегаты -->
+          <div class="econ-cell"><p class="k">Заработала</p><p class="v earn">36 000 ₽</p></div>
+          <div class="econ-cell"><p class="k">Обслуживание</p><p class="v spend">76 393 ₽</p></div>
+          <div class="econ-cell"><p class="k">Итого</p><p class="v net-neg">−40 393 ₽</p></div>
+        </div>
+        <div class="econ-foot">
+          <span><span class="m">3</span> смены <span class="thin">·</span> загрузка <span class="m">3 %</span></span>
+          <span class="thin">по 1 брони — статистика набирается</span>
+          <a class="link" href="#">История →</a>
+        </div>
+      </div>
+    </article>
+
+    <!-- ##################### 2. ФОТОН — ПУСТЫЕ СОСТОЯНИЯ #####################
+         Ключевой стресс-тест концепта: у машины нет ни ТО, ни замеров пробега,
+         ни броней. Все три пустоты оформлены как осмысленные состояния с
+         действием, а не как прочерки в таблице.                            -->
+    <article class="card st-none">
+
+      <div class="v-head">
+        <div class="v-id">
+          <div class="v-title">
+            <h2 class="v-name">Фотон</h2>
+            <span class="plate">Х318НЕ977</span>
+          </div>
+          <p class="v-tariff">
+            <span class="rub">16 000 ₽</span>/смена
+            <span class="sep">·</span>смена 12 ч
+            <span class="sep">·</span>переработка +10 %/ч
+            <span class="sep">·</span><span class="muted-t">без генератора</span>
+          </p>
+        </div>
+        <div class="v-side">
+          <span class="pill pill-view">Данных нет</span>
+          <a class="link" href="#">Открыть →</a>
+        </div>
+      </div>
+
+      <div class="zone">
+        <div class="zone-head">
+          <span class="eyebrow"><svg class="icon"><use href="#i-cal"/></svg>Занятость</span>
+          <span class="eyebrow sp">ближайшие 14 дней</span>
+        </div>
+        <div class="occ-lead">
+          <span class="t free">Свободна</span>
+          <span class="occ-tomorrow">завтра — свободна</span>
+        </div>
+        <p class="occ-meta muted-t">Броней на ближайшие 14 дней нет</p>
+        <div class="strip" aria-label="Занятость по дням, 1–14 августа — броней нет">
+          <i class="today" title="1 авг — свободна"></i>
+          <i title="2 авг — свободна"></i><i title="3 авг — свободна"></i>
+          <i title="4 авг — свободна"></i><i title="5 авг — свободна"></i>
+          <i title="6 авг — свободна"></i><i title="7 авг — свободна"></i>
+          <i title="8 авг — свободна"></i><i title="9 авг — свободна"></i>
+          <i title="10 авг — свободна"></i><i title="11 авг — свободна"></i>
+          <i title="12 авг — свободна"></i><i title="13 авг — свободна"></i>
+          <i title="14 авг — свободна"></i>
+        </div>
+        <div class="strip-ticks"><span>1 авг</span><span>7 авг</span><span>14 авг</span></div>
+      </div>
+
+      <div class="zone">
+        <div class="zone-head">
+          <span class="eyebrow"><svg class="icon"><use href="#i-gauge"/></svg>Пробег</span>
+          <span class="eyebrow sp sp-svc"><svg class="icon"><use href="#i-wrench"/></svg>Обслуживание</span>
+        </div>
+        <div class="split">
+          <div>
+            <p class="big">3 643<span class="u">км</span></p>
+            <p class="delta muted-t">Замеров пробега нет</p>
+            <p class="hint"><a class="link" href="#">Записать пробег</a> — тогда посчитаем расход за месяц</p>
+          </div>
+          <div>
+            <p class="eyebrow svc-inline"><svg class="icon"><use href="#i-wrench"/></svg>Обслуживание</p>
+            <div class="empty">
+              <p class="t">Записей об обслуживании нет</p>
+              <p class="d">Не знаем, когда машину обслуживали, и не сможем предупредить о следующем ТО.</p>
+              <div class="bar empty" aria-hidden="true"></div>
+              <div class="a">
+                <button class="mini"><svg class="icon"><use href="#i-plus"/></svg>Записать ТО</button>
+                <a class="link" href="#">Задать интервал</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="econ">
+        <div class="zone-head">
+          <span class="eyebrow"><svg class="icon"><use href="#i-rub"/></svg>Экономика · 90 дней</span>
+          <span class="eyebrow sp">видит руководитель</span>
+        </div>
+        <div class="econ-grid">
+          <div class="econ-cell"><p class="k">Заработала</p><p class="v muted">—</p></div>
+          <div class="econ-cell"><p class="k">Обслуживание</p><p class="v muted">—</p></div>
+          <div class="econ-cell"><p class="k">Итого</p><p class="v muted">—</p></div>
+        </div>
+        <div class="econ-foot">
+          <span class="thin">За 90 дней машина ни разу не выезжала на бронь</span>
+          <a class="link" href="#">Подобрать бронь →</a>
+        </div>
+      </div>
+    </article>
+
+    <!-- ##################### 3. ИВЕКО — СОСТОЯНИЕ ТРЕВОГИ ##################### -->
+    <article class="card st-alert">
+
+      <div class="v-head">
+        <div class="v-id">
+          <div class="v-title">
+            <h2 class="v-name">Ивеко</h2>
+            <span class="plate">У343НР797</span>
+          </div>
+          <p class="v-tariff">
+            <span class="rub">14 000 ₽</span>/смена
+            <span class="sep">·</span>смена 12 ч
+            <span class="sep">·</span>переработка +10 %/ч
+            <span class="sep">·</span><span class="gen"><svg class="icon"><use href="#i-bolt"/></svg> генератор +6 000 ₽</span>
+          </p>
+        </div>
+        <div class="v-side">
+          <span class="pill pill-alert">Скоро ТО</span>
+          <a class="link" href="#">Открыть →</a>
+        </div>
+      </div>
+
+      <div class="zone">
+        <div class="zone-head">
+          <span class="eyebrow"><svg class="icon"><use href="#i-cal"/></svg>Занятость</span>
+          <span class="eyebrow sp">ближайшие 14 дней</span>
+        </div>
+        <div class="occ-lead">
+          <span class="t free">Свободна до 6 августа</span>
+          <span class="occ-tomorrow">завтра — свободна</span>
+        </div>
+        <p class="occ-meta">
+          Ближайшая бронь: <a href="#">Реклама «Орбита»</a> · Мосфильм · 06.08 – 09.08 ·
+          <span class="pill pill-info">Подтверждена</span>
+        </p>
+        <div class="strip" aria-label="Занятость по дням, 1–14 августа">
+          <i class="today" title="1 авг — свободна"></i>
+          <i title="2 авг — свободна"></i><i title="3 авг — свободна"></i>
+          <i title="4 авг — свободна"></i><i title="5 авг — свободна"></i>
+          <i class="busy-next" title="6 авг — Реклама «Орбита»"></i>
+          <i class="busy-next" title="7 авг — Реклама «Орбита»"></i>
+          <i class="busy-next" title="8 авг — Реклама «Орбита»"></i>
+          <i class="busy-next" title="9 авг — Реклама «Орбита»"></i>
+          <i title="10 авг — свободна"></i><i title="11 авг — свободна"></i>
+          <i title="12 авг — свободна"></i><i title="13 авг — свободна"></i>
+          <i title="14 авг — свободна"></i>
+        </div>
+        <div class="strip-ticks"><span>1 авг</span><span>7 авг</span><span>14 авг</span></div>
+      </div>
+
+      <div class="zone">
+        <div class="zone-head">
+          <span class="eyebrow"><svg class="icon"><use href="#i-gauge"/></svg>Пробег</span>
+          <span class="eyebrow sp sp-svc"><svg class="icon"><use href="#i-wrench"/></svg>Обслуживание</span>
+        </div>
+        <div class="split">
+          <div>
+            <p class="big">203 648<span class="u">км</span></p>
+            <p class="delta">+<b>2 470</b> км за 30 дней</p>
+            <p class="hint">по 2 замерам · <a class="link" href="#">записать пробег</a></p>
+          </div>
+          <div>
+            <p class="eyebrow svc-inline"><svg class="icon"><use href="#i-wrench"/></svg>Обслуживание</p>
+            <div class="svc-top">
+              <span class="svc-left is-alert">Осталось 300 км</span>
+              <span class="svc-of">7 700 / 8 000</span>
+            </div>
+            <div class="bar"><span class="f-alert" style="width:96%"></span></div>
+            <p class="svc-last">
+              <span class="k">Последнее:</span> <span class="m">25.05.2026</span> · Прочее
+              <br><span class="k">на</span> <span class="m">195 948 км</span> <span class="k">·</span> <span class="m">76 020 ₽</span>
+              <span class="k"> · 68 дней назад</span>
+            </p>
+            <p class="hint trunc" title="Диагностика тормозной системы. Колодки то…">Диагностика тормозной системы. Колодки то…</p>
+            <div class="svc-act"><button class="mini"><svg class="icon"><use href="#i-plus"/></svg>Записать ТО</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="econ">
+        <div class="zone-head">
+          <span class="eyebrow"><svg class="icon"><use href="#i-rub"/></svg>Экономика · 90 дней</span>
+          <span class="eyebrow sp">видит руководитель</span>
+        </div>
+        <div class="econ-grid">
+          <div class="econ-cell"><p class="k">Заработала</p><p class="v earn">84 000 ₽</p></div>
+          <div class="econ-cell"><p class="k">Обслуживание</p><p class="v spend">76 020 ₽</p></div>
+          <div class="econ-cell"><p class="k">Итого</p><p class="v net-pos">+7 980 ₽</p></div>
+        </div>
+        <div class="econ-foot">
+          <span><span class="m">6</span> смен <span class="thin">·</span> загрузка <span class="m">7 %</span></span>
+          <span class="thin">по 1 брони — статистика набирается</span>
+          <a class="link" href="#">История →</a>
+        </div>
+      </div>
+    </article>
+
+  </section>
+
+  <!-- ======================= ЗАМЕТКИ (не UI) ======================= -->
+  <aside class="annot">
+    <p class="eyebrow">Заметки к мокапу — не часть интерфейса</p>
+    <h2>Что нужно от бэкенда</h2>
+    <p>Всё, что помечено ниже, сейчас в <code>/api/vehicles/fleet</code> отсутствует. Остальное на экране — реальные поля прода.</p>
+    <ul>
+      <li><span class="tag">поле</span><code>Vehicle.serviceIntervalKm</code> — интервал ТО в км. Без него нельзя посчитать «осталось N км» и полосу запаса. Nullable: если не задан — карточка честно показывает «интервал не задан».</li>
+      <li><span class="tag">агрегат</span><code>mileage30d</code>, <code>mileageSampleCount</code> — дельта пробега за период по <code>VehicleMileageLog</code> + число замеров (нужно, чтобы подписывать «по 2 замерам» и не выдавать шум за статистику).</li>
+      <li><span class="tag">агрегат</span><code>serviceCost{30,90,365,all}d</code>, <code>serviceCount</code> — суммы <code>VehicleServiceLog.costRub</code> за период.</li>
+      <li><span class="tag">агрегат</span><code>revenue{...}d</code>, <code>shiftCount</code>, <code>utilizationPct</code> — из <code>BookingVehicle.subtotalRub</code> + дни броней / дни периода.</li>
+      <li><span class="tag">агрегат</span><code>net = revenue − serviceCost</code> — считать на сервере в Decimal, не на клиенте.</li>
+      <li><span class="tag">список</span><code>upcomingBookings[]</code> (не одна <code>activeBooking</code>) на горизонт 14 дней — питает полосу занятости и строку «ближайшая бронь».</li>
+      <li><span class="tag">вычисл.</span><code>kmSinceService</code>, <code>daysSinceService</code>, <code>freeFrom</code> / <code>busyUntil</code> — можно считать на клиенте, но лучше на сервере: тогда фильтр «требуют ТО» и сортировка живут в одном месте.</li>
+      <li><span class="tag">тарифы</span><code>shiftPriceRub</code>, <code>shiftHours</code>, <code>overtimePercent</code>, <code>hasGeneratorOption</code>, <code>generatorPriceRub</code> — уже есть в отдельном эндпоинте, нужно приджойнить к <code>fleet</code>.</li>
+    </ul>
+    <p><b>Существующее поле <code>notes</code>.</b> На макете не показано, потому что у всех трёх машин прода оно пустое. Место под него — отдельная строка под тарифом в зоне «Паспорт», рендерится только при непустом значении: пустая заметка не должна оставлять дырку в шапке карточки.</p>
+    <p><b>Роли.</b> Зона «Экономика» — только <code>SUPER_ADMIN</code>. У <code>WAREHOUSE</code> и <code>TECHNICIAN</code> карточка обрезается после зоны «Пробег / Обслуживание»; высота карточек в сетке при этом остаётся одинаковой, потому что зона последняя.</p>
+    <p><b>Период.</b> Переключатель 30 / 90 / год / всё время управляет разом всеми карточками — один параметр <code>?period=</code>, одна перезагрузка, никаких локальных состояний внутри карточек.</p>
+  </aside>
+
+</div>
+</body>
+</html>

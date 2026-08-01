@@ -1,0 +1,1055 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · Автопарк — экономика машины (концепт P&amp;L)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!--
+  КОНЦЕПТ: «Автопарк как P&L» — каждая машина = мини-отчёт о доходах и расходах.
+  Угол: экономика. Главный вопрос экрана — «сколько машина заработала и сколько сожрала».
+
+  ЛЕГЕНДА ДАННЫХ:
+  [РЕАЛЬНО] — данные прода (3 машины, 2 записи ТО, тарифы).
+  [BACKEND] — агрегаты, которых пока нет в API; помечены комментариями по месту.
+-->
+
+<style>
+  /* ============================================================
+     ТОКЕНЫ КАНОНА (единственное место, где встречается hex)
+     ============================================================ */
+  :root {
+    --ink: #09090b;
+    --ink-2: #52525b;
+    --ink-3: #a1a1aa;
+
+    --surface: #ffffff;
+    --surface-muted: #fafafa;
+    --surface-subtle: #f4f4f5;
+
+    --border: #e4e4e7;
+    --border-strong: #d4d4d8;
+
+    --accent: #1e3a8a;
+    --accent-bright: #1d4ed8;
+    --accent-soft: #eff6ff;
+    --accent-border: #bfdbfe;
+
+    --teal: #0f766e;      --teal-soft: #ccfbf1;      --teal-border: #99f6e4;
+    --amber: #a16207;     --amber-soft: #fef3c7;     --amber-border: #fde68a;
+    --rose: #9f1239;      --rose-soft: #ffe4e6;      --rose-border: #fecdd3;
+    --indigo: #4338ca;    --indigo-soft: #e0e7ff;    --indigo-border: #c7d2fe;
+    --slate: #334155;     --slate-soft: #f1f5f9;     --slate-border: #cbd5e1;
+    --emerald: #047857;   --emerald-soft: #d1fae5;   --emerald-border: #a7f3d0;
+
+    --ok: #15803d;        --ok-soft: #dcfce7;
+    --warn: #a16207;      --warn-soft: #fef9c3;
+
+    --shadow-xs: 0 1px 0 rgba(9,9,11,.03);
+    --shadow-sm: 0 1px 2px rgba(9,9,11,.05), 0 0 0 1px rgba(9,9,11,.02);
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink);
+    background: var(--surface-muted);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell { max-width: 1280px; margin: 0 auto; padding: 24px 24px 96px; }
+
+  /* ---------- Типографские утилиты канона ---------- */
+  .eyebrow {
+    font-family: 'IBM Plex Sans Condensed', 'IBM Plex Sans', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0;
+  }
+  .mono-num {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.01em;
+  }
+  .cond {
+    font-family: 'IBM Plex Sans Condensed', 'IBM Plex Sans', sans-serif;
+  }
+
+  /* ============================================================
+     ШАПКА СТРАНИЦЫ
+     ============================================================ */
+  .page-head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 20px; flex-wrap: wrap; margin-bottom: 18px;
+  }
+  .page-head h1 {
+    font-family: 'IBM Plex Sans Condensed', 'IBM Plex Sans', sans-serif;
+    font-size: 26px; font-weight: 600; letter-spacing: -.01em;
+    margin: 2px 0 0;
+  }
+  .page-head .lede { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-2); max-width: 52ch; }
+
+  .head-tools { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .seg {
+    display: inline-flex; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+  }
+  .seg button {
+    font-family: inherit; font-size: 12px; font-weight: 500;
+    padding: 6px 12px; border: 0; background: transparent;
+    color: var(--ink-2); cursor: pointer; white-space: nowrap;
+    border-right: 1px solid var(--border);
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { background: var(--surface-subtle); color: var(--ink); }
+  .seg button[aria-pressed="true"] {
+    background: var(--accent-soft); color: var(--accent); font-weight: 600;
+    box-shadow: inset 0 -2px 0 var(--accent-bright);
+  }
+  .link-action {
+    font-size: 12px; font-weight: 500; color: var(--accent-bright);
+    text-decoration: none; display: inline-flex; align-items: center; gap: 5px;
+  }
+  .link-action:hover { color: var(--accent); }
+
+  /* ============================================================
+     СВОДКА ПО ПАРКУ
+     ============================================================ */
+  .fleet-summary {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; box-shadow: var(--shadow-xs);
+    padding: 16px 18px; margin-bottom: 14px;
+  }
+  .kpi-row {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 0; border-bottom: 1px solid var(--border); padding-bottom: 14px;
+  }
+  .kpi { padding: 0 18px; border-right: 1px solid var(--border); }
+  .kpi:first-child { padding-left: 0; }
+  .kpi:last-child { border-right: 0; padding-right: 0; }
+  .kpi .val {
+    font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+    font-size: 21px; font-weight: 600; color: var(--ink);
+    margin: 3px 0 0; line-height: 1.25; letter-spacing: -.02em;
+  }
+  .kpi .val.pos { color: var(--emerald); }
+  .kpi .sub { font-size: 11.5px; color: var(--ink-3); margin: 2px 0 0; }
+  .kpi .sub b { font-weight: 600; color: var(--ink-2); }
+  .kpi .sub .up { color: var(--emerald); font-weight: 600; }
+
+  /* Вклад машин в выручку — монохромный стек-бар (синяя шкала канона) */
+  .contrib { padding-top: 14px; }
+  .contrib-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .contrib-bar {
+    display: flex; height: 10px; border-radius: 4px; overflow: hidden;
+    margin-top: 8px; background: var(--surface-subtle);
+  }
+  .contrib-bar span { display: block; height: 100%; }
+  .cb-1 { background: var(--accent); }
+  .cb-2 { background: var(--accent-bright); }
+  .cb-3 { background: var(--accent-border); }
+  .contrib-legend {
+    display: flex; flex-wrap: wrap; gap: 16px; margin-top: 9px;
+    font-size: 11.5px; color: var(--ink-2);
+  }
+  .contrib-legend i {
+    display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+    margin-right: 6px; vertical-align: -1px;
+  }
+  .contrib-legend b { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: var(--ink); }
+
+  /* ---------- Полоса внимания ---------- */
+  .attention {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--amber-soft); border: 1px solid var(--amber-border);
+    border-radius: 6px; padding: 9px 14px; margin-bottom: 14px;
+    font-size: 12.5px; color: var(--amber);
+  }
+  .attention b { font-weight: 600; }
+  .attention .spacer { flex: 1; }
+  .attention a { color: var(--amber); font-weight: 600; text-decoration: none; white-space: nowrap; }
+  .attention a:hover { text-decoration: underline; }
+
+  /* ---------- Заголовок секции карточек ---------- */
+  .grid-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin: 0 2px 10px;
+  }
+  .grid-head .sort { font-size: 11.5px; color: var(--ink-3); }
+  .grid-head .sort b { color: var(--ink-2); font-weight: 600; }
+
+  /* ============================================================
+     СЕТКА КАРТОЧЕК
+     ============================================================ */
+  .fleet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+    gap: 14px; align-items: start;
+  }
+
+  .veh-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; box-shadow: var(--shadow-xs);
+    overflow: hidden; transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .veh-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+
+  /* --- шапка карточки --- */
+  .vc-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 10px; padding: 13px 15px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .vc-ident { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+  .vc-icon {
+    width: 32px; height: 32px; flex: none; border-radius: 4px;
+    background: var(--accent-soft); border: 1px solid var(--accent-border);
+    color: var(--accent); display: flex; align-items: center; justify-content: center;
+  }
+  .vc-name {
+    font-family: 'IBM Plex Sans Condensed', 'IBM Plex Sans', sans-serif;
+    font-size: 17px; font-weight: 600; margin: 0; line-height: 1.25;
+  }
+  .vc-plate {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    color: var(--ink-3); letter-spacing: .02em;
+  }
+  .vc-pills { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+
+  /* --- пилюли статуса (аналог <StatusPill>) --- */
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: 'IBM Plex Sans Condensed', 'IBM Plex Sans', sans-serif;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 4px; border: 1px solid; white-space: nowrap;
+  }
+  .pill-ok    { background: var(--ok-soft);      color: var(--ok);      border-color: var(--emerald-border); }
+  .pill-warn  { background: var(--warn-soft);    color: var(--warn);    border-color: var(--amber-border); }
+  .pill-info  { background: var(--accent-soft);  color: var(--accent);  border-color: var(--accent-border); }
+  .pill-none  { background: var(--slate-soft);   color: var(--slate);   border-color: var(--slate-border); }
+  .pill-alert { background: var(--rose-soft);    color: var(--rose);    border-color: var(--rose-border); }
+  .pill-teal  { background: var(--teal-soft);    color: var(--teal);    border-color: var(--teal-border); }
+
+  /* --- общий «пояс» карточки --- */
+  .band { padding: 13px 15px; border-bottom: 1px solid var(--border); }
+  .band:last-child { border-bottom: 0; }
+  .band-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; margin-bottom: 9px;
+  }
+  .band-head .tag { font-size: 11px; color: var(--ink-2); font-weight: 500; }
+  .band-head .tag b { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: var(--ink); }
+
+  /* --- P&L --- */
+  .band-pl { background: var(--surface-subtle); }
+  .pl-row { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 10px; }
+  .pl-cell { min-width: 0; }
+  .pl-cell .num {
+    font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+    font-weight: 600; margin: 2px 0 0; line-height: 1.2; letter-spacing: -.02em;
+    white-space: nowrap;
+  }
+  .num-xl { font-size: 22px; color: var(--ink); }
+  .num-md { font-size: 15px; }
+  .num-md.neg { color: var(--rose); }
+  .num-md.pos { color: var(--emerald); }
+  .num-md.zero { color: var(--ink-3); }
+
+  .ratio {
+    display: flex; height: 8px; border-radius: 4px; overflow: hidden;
+    margin-top: 12px; background: var(--surface); border: 1px solid var(--border);
+  }
+  .ratio span { display: block; height: 100%; }
+  .ratio .r-net  { background: var(--emerald); }
+  .ratio .r-cost { background: var(--rose); }
+  .ratio-legend {
+    display: flex; justify-content: space-between; gap: 10px;
+    margin: 6px 0 0; font-size: 11px; color: var(--ink-2);
+  }
+  .ratio-legend .dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 2px;
+    margin-right: 5px; vertical-align: 0;
+  }
+  .dot-net  { background: var(--emerald); }
+  .dot-cost { background: var(--rose); }
+  .ratio-legend b { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: var(--ink); }
+
+  /* --- спарклайн --- */
+  .spark-row { display: flex; align-items: flex-end; gap: 14px; }
+  .spark-wrap { flex: 1; min-width: 0; }
+  .spark { display: block; width: 100%; height: 38px; }
+  .spark-axis {
+    display: flex; justify-content: space-between;
+    font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--ink-3);
+    margin-top: 3px;
+  }
+  .spark-side { flex: none; text-align: right; }
+  .spark-side .delta {
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;
+  }
+  .delta.up { color: var(--emerald); }
+  .delta.flat { color: var(--ink-3); }
+
+  /* Пояснительная строка — резервируем 2 строки, чтобы пояса
+     соседних карточек в сетке оставались на одной высоте.
+     В React это те же min-height на банде, не магия. */
+  .note-line {
+    font-size: 11.5px; color: var(--ink-2); margin: 9px 0 0;
+    min-height: 36px;
+  }
+  .note-line .mono-num { color: var(--ink); font-weight: 500; }
+
+  /* --- метрики (загрузка / тариф / пробег) --- */
+  .meter { margin-top: 2px; }
+  .meter-track {
+    height: 7px; border-radius: 4px; background: var(--surface-subtle);
+    border: 1px solid var(--border); overflow: hidden;
+  }
+  .meter-fill { display: block; height: 100%; background: var(--accent-bright); }
+  .meter-fill.teal { background: var(--teal); }
+  .meter-fill.amber { background: var(--amber); }
+  .meter-fill.rose { background: var(--rose); }
+  .meter-legend {
+    display: flex; justify-content: space-between; gap: 10px;
+    margin-top: 6px; font-size: 11.5px; color: var(--ink-2);
+  }
+  .meter-legend b { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: var(--ink); }
+
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .fact { min-width: 0; }
+  .fact .fv {
+    font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+    font-size: 13.5px; font-weight: 600; color: var(--ink);
+    margin: 2px 0 0; line-height: 1.3; white-space: nowrap;
+  }
+  .fact .fv.muted { color: var(--ink-3); font-weight: 500; }
+  .fact .fn { font-size: 10.5px; color: var(--ink-3); margin: 0; }
+
+  /* --- блок ТО --- */
+  .svc-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .svc-title { font-size: 12.5px; color: var(--ink); font-weight: 500; }
+  .svc-cost { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; font-weight: 600; color: var(--rose); white-space: nowrap; }
+  .svc-meta { font-size: 11.5px; color: var(--ink-3); margin: 2px 0 0; }
+  .svc-desc {
+    font-size: 11.5px; color: var(--ink-2); margin: 6px 0 0;
+    padding-left: 9px; border-left: 2px solid var(--border-strong);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* одинаковая высота блока ТО у карточки с записями и у пустой */
+  .svc-body { min-height: 116px; }
+
+  /* пустое состояние ТО */
+  .empty {
+    border: 1px dashed var(--border-strong); border-radius: 4px;
+    background: var(--surface-muted); padding: 12px 13px; text-align: left;
+  }
+  .empty p { margin: 0; font-size: 12px; color: var(--ink-2); }
+  .empty .hint { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+  .empty .cta {
+    display: inline-flex; align-items: center; gap: 5px; margin-top: 9px;
+    font-size: 11.5px; font-weight: 600; color: var(--accent-bright); text-decoration: none;
+  }
+  .empty .cta:hover { color: var(--accent); }
+
+  /* --- бронь --- */
+  .booking {
+    display: flex; align-items: flex-start; gap: 9px;
+    background: var(--accent-soft); border: 1px solid var(--accent-border);
+    border-radius: 4px; padding: 9px 11px;
+  }
+  .booking.free { background: var(--surface-muted); border-color: var(--border); }
+  .booking .b-ic { flex: none; color: var(--accent); margin-top: 1px; }
+  .booking.free .b-ic { color: var(--ink-3); }
+  .booking .b-body { min-width: 0; flex: 1; }
+  .booking .b-title {
+    font-size: 12.5px; font-weight: 500; color: var(--ink); margin: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .booking .b-meta { font-size: 11px; color: var(--ink-2); margin: 1px 0 0; }
+  .booking .b-meta .mono-num { color: var(--ink); font-weight: 500; }
+  .booking .b-sum {
+    flex: none; font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px; font-weight: 600; color: var(--emerald); white-space: nowrap;
+  }
+
+  /* --- футер карточки --- */
+  .vc-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 10px 15px; background: var(--surface-muted);
+    border-top: 1px solid var(--border);
+  }
+  .vc-foot .note { font-size: 11px; color: var(--ink-3); }
+  .vc-foot .note b { font-family: 'IBM Plex Mono', monospace; color: var(--ink-2); font-weight: 600; }
+
+  /* --- сноска --- */
+  .footnote {
+    margin-top: 22px; padding-top: 14px; border-top: 1px dashed var(--border-strong);
+    font-size: 11.5px; color: var(--ink-3); max-width: 90ch;
+  }
+  .footnote b { color: var(--ink-2); font-weight: 600; }
+  .footnote code {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    background: var(--surface-subtle); border: 1px solid var(--border);
+    border-radius: 3px; padding: 0 4px;
+  }
+
+  /* ============================================================
+     АДАПТИВ
+     ============================================================ */
+  @media (max-width: 900px) {
+    .kpi-row { grid-template-columns: repeat(2, 1fr); row-gap: 14px; }
+    .kpi:nth-child(2) { border-right: 0; padding-right: 0; }
+    .kpi:nth-child(3) { padding-left: 0; }
+    .kpi:nth-child(1), .kpi:nth-child(2) { padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+  }
+  @media (max-width: 560px) {
+    .shell { padding: 16px 14px 72px; }
+    .page-head { align-items: flex-start; }
+    .page-head h1 { font-size: 22px; }
+    .head-tools { width: 100%; justify-content: space-between; }
+    .seg { flex: 1; }
+    .seg button { flex: 1; padding: 7px 8px; }
+    .fleet-summary { padding: 14px; }
+    .kpi { padding: 0 10px; }
+    .kpi .val { font-size: 18px; }
+    .pl-row { grid-template-columns: 1fr 1fr; row-gap: 10px; }
+    .pl-cell:first-child { grid-column: 1 / -1; }
+    .num-xl { font-size: 24px; }
+    .facts { grid-template-columns: 1fr 1fr; row-gap: 10px; }
+    .contrib-legend { gap: 10px 16px; }
+    .attention { align-items: flex-start; flex-wrap: wrap; }
+    /* карточки идут в один столбец — выравнивать пояса не с чем,
+       поэтому резерв высоты снимаем и не гоним лишний воздух */
+    .note-line { min-height: 0; }
+    .svc-body { min-height: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ======================= ШАПКА ======================= -->
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Автопарк</p>
+      <h1>Экономика парка</h1>
+      <p class="lede">Каждая машина — отдельный отчёт: сколько заработала на бронях и сколько забрала на ремонт и обслуживание.</p>
+    </div>
+    <div class="head-tools">
+      <!-- [BACKEND] период влияет на все агрегаты: выручку, расходы, загрузку, дельту пробега -->
+      <div class="seg" role="group" aria-label="Период расчёта">
+        <button type="button" aria-pressed="false">30 дней</button>
+        <button type="button" aria-pressed="true">90 дней</button>
+        <button type="button" aria-pressed="false">Год</button>
+      </div>
+      <a class="link-action" href="#">
+        Управление тарифами
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- ======================= СВОДКА ПО ПАРКУ ======================= -->
+  <!-- [BACKEND] все 4 KPI — новые агрегаты (см. сноску внизу) -->
+  <section class="fleet-summary" aria-label="Сводка по парку за 90 дней">
+    <div class="kpi-row">
+      <div class="kpi">
+        <p class="eyebrow">Заработал парк</p>
+        <p class="val mono-num">558 000 ₽</p>
+        <p class="sub">39 смен · <span class="up">+18%</span> к прошлым 90 дням</p>
+      </div>
+      <div class="kpi">
+        <p class="eyebrow">Ушло на машины</p>
+        <p class="val mono-num">152 413 ₽</p>
+        <p class="sub"><b>2</b> ремонта · 27% выручки</p>
+      </div>
+      <div class="kpi">
+        <p class="eyebrow">Итог за период</p>
+        <p class="val mono-num pos">+405 587 ₽</p>
+        <p class="sub">маржа парка <b>73%</b></p>
+      </div>
+      <div class="kpi">
+        <p class="eyebrow">Загрузка парка</p>
+        <p class="val mono-num">14%</p>
+        <p class="sub">39 смен из 270 машино-дней</p>
+      </div>
+    </div>
+
+    <div class="contrib">
+      <div class="contrib-head">
+        <p class="eyebrow">Кто приносит выручку</p>
+        <span class="mono-num" style="font-size:11px;color:var(--ink-3)">558 000 ₽ · 100%</span>
+      </div>
+      <!-- монохромная синяя шкала: цвет здесь не семантический, поэтому только оттенки accent -->
+      <div class="contrib-bar" role="img" aria-label="Ивеко 53 процента, Ford 30 процентов, Фотон 17 процентов">
+        <span class="cb-1" style="width:52.7%"></span>
+        <span class="cb-2" style="width:30.1%"></span>
+        <span class="cb-3" style="width:17.2%"></span>
+      </div>
+      <div class="contrib-legend">
+        <span><i class="cb-1"></i>Ивеко — <b>294 000 ₽</b> · 53%</span>
+        <span><i class="cb-2"></i>Ford — <b>168 000 ₽</b> · 30%</span>
+        <span><i class="cb-3"></i>Фотон — <b>96 000 ₽</b> · 17%</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= ПОЛОСА ВНИМАНИЯ ======================= -->
+  <!-- [BACKEND] требует поля serviceIntervalKm + вычисления «км с последнего ТО» -->
+  <div class="attention" role="status">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>
+    </svg>
+    <span><b>Ивеко</b> — 2 300 км до планового ТО. Прошлый ремонт обошёлся в 76 020 ₽, стоит заложить бюджет.</span>
+    <span class="spacer"></span>
+    <a href="#">Открыть машину</a>
+  </div>
+
+  <!-- ======================= СЕТКА КАРТОЧЕК ======================= -->
+  <div class="grid-head">
+    <p class="eyebrow">Машины · 3</p>
+    <p class="sort">Сортировка: <b>по итогу за период</b></p>
+  </div>
+
+  <div class="fleet-grid">
+
+    <!-- ═══════════════════════ 1. ИВЕКО ═══════════════════════ -->
+    <article class="veh-card">
+      <header class="vc-head">
+        <div class="vc-ident">
+          <span class="vc-icon" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 17V7a1 1 0 0 1 1-1h11v11"/><path d="M14 9h3.6a1 1 0 0 1 .82.43L21 13v4"/>
+              <circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/><path d="M8.8 17.5h6.4"/>
+            </svg>
+          </span>
+          <div>
+            <h3 class="vc-name">Ивеко</h3>
+            <span class="vc-plate">У343НР797</span>
+          </div>
+        </div>
+        <div class="vc-pills">
+          <span class="pill pill-warn">На брони</span>
+          <span class="pill pill-teal">Генератор</span>
+        </div>
+      </header>
+
+      <!-- P&L -->
+      <div class="band band-pl">
+        <div class="band-head">
+          <p class="eyebrow">Экономика · 90 дней</p>
+          <span class="tag">маржа <b>74%</b></span>
+        </div>
+        <div class="pl-row">
+          <div class="pl-cell">
+            <p class="eyebrow">Заработала</p>
+            <!-- [BACKEND] сумма subtotalRub по BookingVehicle за период -->
+            <p class="num num-xl mono-num">294 000 ₽</p>
+          </div>
+          <div class="pl-cell">
+            <p class="eyebrow">Потратила</p>
+            <!-- [РЕАЛЬНО] ТО 25.05.2026 — 76 020 ₽ -->
+            <p class="num num-md neg mono-num">−76 020 ₽</p>
+          </div>
+          <div class="pl-cell">
+            <p class="eyebrow">Итог</p>
+            <p class="num num-md pos mono-num">+217 980 ₽</p>
+          </div>
+        </div>
+        <div class="ratio" role="img" aria-label="Доля расходов 26 процентов от выручки">
+          <span class="r-net" style="width:74.1%"></span>
+          <span class="r-cost" style="width:25.9%"></span>
+        </div>
+        <p class="ratio-legend">
+          <span><i class="dot dot-net"></i>чистыми <b>74%</b></span>
+          <span><i class="dot dot-cost"></i>обслуживание <b>26%</b></span>
+        </p>
+      </div>
+
+      <!-- Динамика выручки -->
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Выручка по месяцам</p>
+          <span class="tag">пик <b>112 000 ₽</b></span>
+        </div>
+        <div class="spark-row">
+          <div class="spark-wrap">
+            <!-- [BACKEND] помесячная выручка машины за 6 месяцев -->
+            <svg class="spark" viewBox="0 0 120 38" preserveAspectRatio="none" role="img" aria-label="Выручка растёт с 70 до 112 тысяч рублей за шесть месяцев">
+              <polygon points="4,15 26.4,12 48.8,9 71.2,9 93.6,12 116,6 116,34 4,34" fill="var(--accent-soft)"/>
+              <polyline points="4,15 26.4,12 48.8,9 71.2,9 93.6,12 116,6" fill="none" stroke="var(--accent-bright)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="116" cy="6" r="2.6" fill="var(--accent-bright)"/>
+            </svg>
+            <div class="spark-axis"><span>фев</span><span>июл</span></div>
+          </div>
+          <div class="spark-side">
+            <p class="eyebrow">Июль</p>
+            <p class="delta up mono-num">+33%</p>
+          </div>
+        </div>
+        <p class="note-line">Пять месяцев подряд выше <span class="mono-num">70 000 ₽</span> — самая ровная машина парка.</p>
+      </div>
+
+      <!-- Загрузка -->
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Загрузка</p>
+          <span class="tag">тариф <b>14 000 ₽</b>/смена</span>
+        </div>
+        <div class="meter">
+          <!-- [BACKEND] число смен / дней в аренде за период -->
+          <div class="meter-track"><span class="meter-fill" style="width:21%"></span></div>
+          <p class="meter-legend">
+            <span><b>19</b> смен за 90 дней</span>
+            <span><b>21%</b> календаря</span>
+          </p>
+        </div>
+        <div class="facts" style="margin-top:12px">
+          <div class="fact">
+            <p class="fn">Смена</p>
+            <p class="fv">12 ч</p>
+          </div>
+          <div class="fact">
+            <p class="fn">Переработка</p>
+            <p class="fv">+10% / ч</p>
+          </div>
+          <div class="fact">
+            <p class="fn">Генератор</p>
+            <p class="fv">+3 500 ₽</p>
+          </div>
+        </div>
+        <p class="note-line">Из выручки <span class="mono-num">28 000 ₽</span> дал генератор — 8 смен из 19.</p>
+      </div>
+
+      <!-- Пробег -->
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Пробег</p>
+          <span class="tag">4 записи в журнале</span>
+        </div>
+        <div class="facts">
+          <div class="fact">
+            <p class="fn">Сейчас</p>
+            <!-- [РЕАЛЬНО] -->
+            <p class="fv">203 648 км</p>
+          </div>
+          <div class="fact">
+            <p class="fn">За 30 дней</p>
+            <!-- [BACKEND] дельта из VehicleMileageLog -->
+            <p class="fv">+2 480 км</p>
+          </div>
+          <div class="fact">
+            <p class="fn">В среднем</p>
+            <p class="fv">131 км / смена</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ТО -->
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Обслуживание</p>
+          <span class="pill pill-warn">Скоро ТО</span>
+        </div>
+        <div class="svc-body">
+          <div class="svc-line">
+            <!-- [РЕАЛЬНО] 25.05.2026, вид OTHER → «Прочее», 195 948 км, 76 020 ₽ -->
+            <span class="svc-title">Прочее · 25.05.2026</span>
+            <span class="svc-cost">76 020 ₽</span>
+          </div>
+          <p class="svc-meta">на 195 948 км · 68 дней назад</p>
+          <p class="svc-desc" title="Диагностика тормозной системы. Колодки то…">Диагностика тормозной системы. Колодки то…</p>
+
+          <div class="meter" style="margin-top:12px">
+            <!-- [BACKEND] serviceIntervalKm + (currentMileage − lastServiceMileage) -->
+            <div class="meter-track"><span class="meter-fill amber" style="width:77%"></span></div>
+            <p class="meter-legend">
+              <span>Проехала <b>7 700 км</b> из 10 000</span>
+              <span style="color:var(--amber)">осталось <b style="color:var(--amber)">2 300 км</b></span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Бронь -->
+      <div class="band">
+        <div class="booking">
+          <span class="b-ic" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>
+            </svg>
+          </span>
+          <div class="b-body">
+            <p class="b-title">Сейчас в работе · Реклама «Волна»</p>
+            <p class="b-meta"><span class="mono-num">29.07 – 02.08</span> · 4 смены</p>
+          </div>
+          <span class="b-sum">56 000 ₽</span>
+        </div>
+      </div>
+
+      <footer class="vc-foot">
+        <span class="note">Окупаемость обслуживания: <b>3,9 ₽</b> на 1 ₽ затрат</span>
+        <a class="link-action" href="#">Открыть<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </footer>
+    </article>
+
+    <!-- ═══════════════════════ 2. ФОТОН (пустое состояние ТО) ═══════════════════════ -->
+    <article class="veh-card">
+      <header class="vc-head">
+        <div class="vc-ident">
+          <span class="vc-icon" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 17V7a1 1 0 0 1 1-1h11v11"/><path d="M14 9h3.6a1 1 0 0 1 .82.43L21 13v4"/>
+              <circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/><path d="M8.8 17.5h6.4"/>
+            </svg>
+          </span>
+          <div>
+            <h3 class="vc-name">Фотон</h3>
+            <span class="vc-plate">Х318НЕ977</span>
+          </div>
+        </div>
+        <div class="vc-pills">
+          <span class="pill pill-ok">Свободна</span>
+          <span class="pill pill-none">Новая</span>
+        </div>
+      </header>
+
+      <div class="band band-pl">
+        <div class="band-head">
+          <p class="eyebrow">Экономика · 90 дней</p>
+          <span class="tag">маржа <b>100%</b></span>
+        </div>
+        <div class="pl-row">
+          <div class="pl-cell">
+            <p class="eyebrow">Заработала</p>
+            <p class="num num-xl mono-num">96 000 ₽</p>
+          </div>
+          <div class="pl-cell">
+            <p class="eyebrow">Потратила</p>
+            <!-- пустое состояние: расходов нет вообще -->
+            <p class="num num-md zero mono-num">0 ₽</p>
+          </div>
+          <div class="pl-cell">
+            <p class="eyebrow">Итог</p>
+            <p class="num num-md pos mono-num">+96 000 ₽</p>
+          </div>
+        </div>
+        <div class="ratio" role="img" aria-label="Расходов за период не было">
+          <span class="r-net" style="width:100%"></span>
+        </div>
+        <p class="ratio-legend">
+          <span><i class="dot dot-net"></i>чистыми <b>100%</b></span>
+          <span style="color:var(--ink-3)">расходов не было</span>
+        </p>
+      </div>
+
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Выручка по месяцам</p>
+          <span class="tag">пик <b>48 000 ₽</b></span>
+        </div>
+        <div class="spark-row">
+          <div class="spark-wrap">
+            <!-- разреженные данные: три месяца нулей — линия по нижней границе -->
+            <svg class="spark" viewBox="0 0 120 38" preserveAspectRatio="none" role="img" aria-label="Машина начала зарабатывать три месяца назад, выручка растёт до 48 тысяч">
+              <polygon points="4,30 26.4,30 48.8,30 71.2,22 93.6,14 116,6 116,34 4,34" fill="var(--accent-soft)"/>
+              <polyline points="4,30 26.4,30 48.8,30 71.2,22 93.6,14 116,6" fill="none" stroke="var(--accent-bright)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="116" cy="6" r="2.6" fill="var(--accent-bright)"/>
+            </svg>
+            <div class="spark-axis"><span>фев</span><span>июл</span></div>
+          </div>
+          <div class="spark-side">
+            <p class="eyebrow">Июль</p>
+            <p class="delta up mono-num">+50%</p>
+          </div>
+        </div>
+        <p class="note-line">Первая бронь — в мае. Три месяца истории, тренд считается приблизительно.</p>
+      </div>
+
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Загрузка</p>
+          <span class="tag">тариф <b>16 000 ₽</b>/смена</span>
+        </div>
+        <div class="meter">
+          <div class="meter-track"><span class="meter-fill" style="width:7%"></span></div>
+          <p class="meter-legend">
+            <span><b>6</b> смен за 90 дней</span>
+            <span><b>7%</b> календаря</span>
+          </p>
+        </div>
+        <div class="facts" style="margin-top:12px">
+          <div class="fact">
+            <p class="fn">Смена</p>
+            <p class="fv">12 ч</p>
+          </div>
+          <div class="fact">
+            <p class="fn">Переработка</p>
+            <p class="fv">+10% / ч</p>
+          </div>
+          <div class="fact">
+            <p class="fn">Генератор</p>
+            <p class="fv muted">нет</p>
+          </div>
+        </div>
+        <p class="note-line">Самая дорогая смена в парке и самая свободная машина — есть запас по загрузке.</p>
+      </div>
+
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Пробег</p>
+          <span class="tag">1 запись в журнале</span>
+        </div>
+        <div class="facts">
+          <div class="fact">
+            <p class="fn">Сейчас</p>
+            <p class="fv">3 643 км</p>
+          </div>
+          <div class="fact">
+            <p class="fn">За 30 дней</p>
+            <p class="fv">+610 км</p>
+          </div>
+          <div class="fact">
+            <p class="fn">В среднем</p>
+            <p class="fv">105 км / смена</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ПУСТОЕ СОСТОЯНИЕ ТО — основной сценарий на старте -->
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Обслуживание</p>
+          <span class="pill pill-none">Нет данных</span>
+        </div>
+        <div class="svc-body">
+          <div class="empty">
+            <p>Записей об обслуживании ещё нет.</p>
+            <p class="hint">Пока нечего вычесть из выручки — но и напомнить о ТО система не сможет. Задайте интервал, чтобы считать прогноз.</p>
+            <a class="cta" href="#">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              Добавить запись и интервал
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="band">
+        <div class="booking free">
+          <span class="b-ic" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>
+            </svg>
+          </span>
+          <div class="b-body">
+            <p class="b-title">Свободна — броней впереди нет</p>
+            <p class="b-meta">Ближайшие 14 дней открыты</p>
+          </div>
+        </div>
+      </div>
+
+      <footer class="vc-foot">
+        <span class="note">Окупаемость обслуживания: <b>—</b> расходов не было</span>
+        <a class="link-action" href="#">Открыть<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </footer>
+    </article>
+
+    <!-- ═══════════════════════ 3. FORD ═══════════════════════ -->
+    <article class="veh-card">
+      <header class="vc-head">
+        <div class="vc-ident">
+          <span class="vc-icon" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 17V7a1 1 0 0 1 1-1h11v11"/><path d="M14 9h3.6a1 1 0 0 1 .82.43L21 13v4"/>
+              <circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/><path d="M8.8 17.5h6.4"/>
+            </svg>
+          </span>
+          <div>
+            <h3 class="vc-name">Ford</h3>
+            <span class="vc-plate">У220ВН797</span>
+          </div>
+        </div>
+        <div class="vc-pills">
+          <span class="pill pill-info">Бронь 04.08</span>
+          <span class="pill pill-ok">Активна</span>
+        </div>
+      </header>
+
+      <div class="band band-pl">
+        <div class="band-head">
+          <p class="eyebrow">Экономика · 90 дней</p>
+          <span class="tag">маржа <b>55%</b></span>
+        </div>
+        <div class="pl-row">
+          <div class="pl-cell">
+            <p class="eyebrow">Заработала</p>
+            <p class="num num-xl mono-num">168 000 ₽</p>
+          </div>
+          <div class="pl-cell">
+            <p class="eyebrow">Потратила</p>
+            <!-- [РЕАЛЬНО] ремонт 12.06.2026 — 76 392,74 ₽ -->
+            <p class="num num-md neg mono-num">−76 393 ₽</p>
+          </div>
+          <div class="pl-cell">
+            <p class="eyebrow">Итог</p>
+            <p class="num num-md pos mono-num">+91 607 ₽</p>
+          </div>
+        </div>
+        <div class="ratio" role="img" aria-label="Доля расходов 45 процентов от выручки">
+          <span class="r-net" style="width:54.5%"></span>
+          <span class="r-cost" style="width:45.5%"></span>
+        </div>
+        <p class="ratio-legend">
+          <span><i class="dot dot-net"></i>чистыми <b>55%</b></span>
+          <span><i class="dot dot-cost"></i>обслуживание <b>45%</b></span>
+        </p>
+      </div>
+
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Выручка по месяцам</p>
+          <span class="tag">пик <b>84 000 ₽</b></span>
+        </div>
+        <div class="spark-row">
+          <div class="spark-wrap">
+            <svg class="spark" viewBox="0 0 120 38" preserveAspectRatio="none" role="img" aria-label="Провал выручки в июне из-за ремонта, восстановление в июле">
+              <polygon points="4,16.3 26.4,12.9 48.8,6 71.2,9.4 93.6,23.1 116,9.4 116,34 4,34" fill="var(--accent-soft)"/>
+              <polyline points="4,16.3 26.4,12.9 48.8,6 71.2,9.4 93.6,23.1 116,9.4" fill="none" stroke="var(--accent-bright)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="93.6" cy="23.1" r="2.6" fill="var(--rose)"/>
+              <circle cx="116" cy="9.4" r="2.6" fill="var(--accent-bright)"/>
+            </svg>
+            <div class="spark-axis"><span>фев</span><span>июл</span></div>
+          </div>
+          <div class="spark-side">
+            <p class="eyebrow">Июль</p>
+            <p class="delta up mono-num">+200%</p>
+          </div>
+        </div>
+        <p class="note-line">Провал в июне — машина стояла в ремонте: <span class="mono-num">2</span> смены вместо 6.</p>
+      </div>
+
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Загрузка</p>
+          <span class="tag">тариф <b>12 000 ₽</b>/смена</span>
+        </div>
+        <div class="meter">
+          <div class="meter-track"><span class="meter-fill" style="width:16%"></span></div>
+          <p class="meter-legend">
+            <span><b>14</b> смен за 90 дней</span>
+            <span><b>16%</b> календаря</span>
+          </p>
+        </div>
+        <div class="facts" style="margin-top:12px">
+          <div class="fact">
+            <p class="fn">Смена</p>
+            <p class="fv">12 ч</p>
+          </div>
+          <div class="fact">
+            <p class="fn">Переработка</p>
+            <p class="fv">+10% / ч</p>
+          </div>
+          <div class="fact">
+            <p class="fn">Генератор</p>
+            <p class="fv muted">нет</p>
+          </div>
+        </div>
+        <p class="note-line">Самая дешёвая смена в парке: продаётся легче, но ремонт съел почти половину выручки.</p>
+      </div>
+
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Пробег</p>
+          <span class="tag">3 записи в журнале</span>
+        </div>
+        <div class="facts">
+          <div class="fact">
+            <p class="fn">Сейчас</p>
+            <p class="fv">90 239 км</p>
+          </div>
+          <div class="fact">
+            <p class="fn">За 30 дней</p>
+            <p class="fv">+1 240 км</p>
+          </div>
+          <div class="fact">
+            <p class="fn">В среднем</p>
+            <p class="fv">89 км / смена</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="band">
+        <div class="band-head">
+          <p class="eyebrow">Обслуживание</p>
+          <span class="pill pill-ok">В норме</span>
+        </div>
+        <div class="svc-body">
+          <div class="svc-line">
+            <!-- [РЕАЛЬНО] 12.06.2026, вид REPAIR → «Ремонт», 83 500 км, 76 392,74 ₽ -->
+            <span class="svc-title">Ремонт · 12.06.2026</span>
+            <span class="svc-cost">76 393 ₽</span>
+          </div>
+          <p class="svc-meta">на 83 500 км · 50 дней назад</p>
+          <p class="svc-desc" title="Дверь сдвижная правая - диагностика. Конденсатор…">Дверь сдвижная правая — диагностика. Конденсатор…</p>
+
+          <div class="meter" style="margin-top:12px">
+            <div class="meter-track"><span class="meter-fill teal" style="width:67%"></span></div>
+            <p class="meter-legend">
+              <span>Проехала <b>6 739 км</b> из 10 000</span>
+              <span>осталось <b>3 261 км</b></span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="band">
+        <div class="booking">
+          <span class="b-ic" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>
+            </svg>
+          </span>
+          <div class="b-body">
+            <p class="b-title">Ближайшая бронь · Продакшн «Север»</p>
+            <p class="b-meta"><span class="mono-num">04.08 – 06.08</span> · 3 смены</p>
+          </div>
+          <span class="b-sum">36 000 ₽</span>
+        </div>
+      </div>
+
+      <footer class="vc-foot">
+        <span class="note">Окупаемость обслуживания: <b>2,2 ₽</b> на 1 ₽ затрат</span>
+        <a class="link-action" href="#">Открыть<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </footer>
+    </article>
+
+  </div>
+
+  <!-- ======================= СНОСКА ДЛЯ РАЗРАБОТКИ ======================= -->
+  <p class="footnote">
+    <b>Что уже есть в API:</b> название, гос. номер, пробег, дата/вид/пробег/стоимость последнего ТО, признак активности,
+    активная бронь, тариф за смену, опция генератора, длительность смены и процент переработки.<br>
+    <b>Что нужно добавить на бэкенде:</b>
+    <code>revenueRub</code> за период (сумма <code>subtotalRub</code> по <code>BookingVehicle</code>),
+    <code>shiftsCount</code> и <code>utilizationPercent</code>,
+    <code>serviceCostRub</code> за период и за всё время (по <code>VehicleServiceLog</code>),
+    <code>netRub</code> и <code>marginPercent</code>,
+    <code>revenueByMonth[6]</code> для спарклайна,
+    <code>mileageDelta30d</code> и <code>avgKmPerShift</code> (по <code>VehicleMileageLog</code>),
+    новое поле <code>serviceIntervalKm</code> и вычисляемые <code>kmSinceService</code> / <code>kmToNextService</code>,
+    список ближайших броней <code>upcomingBookings[]</code> с суммой,
+    а также фасад парка <code>GET /api/vehicles/fleet/economics?period=90d</code> с теми же агрегатами по всему парку.
+  </p>
+
+</div>
+</body>
+</html>

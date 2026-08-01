@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 
 import { apiFetch } from "../../../src/lib/api";
 import { SectionHeader } from "../../../src/components/SectionHeader";
@@ -39,6 +39,7 @@ interface VehicleHead {
   lastServiceAt: string | null;
   lastServiceMileage: number | null;
   lastServiceKind: ServiceKind | null;
+  serviceIntervalKm: number | null;
   notes: string | null;
   active: boolean;
   shiftPriceRub: string;
@@ -117,8 +118,11 @@ function todayIso(): string {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function VehicleDetailPage() {
+function VehicleDetailView() {
   const params = useParams<{ id: string }>();
+  // ?action=mileage|service — «быстрое действие» с карточки автопарка сразу
+  // раскрывает нужную форму, чтобы не искать её глазами на длинной странице.
+  const requestedAction = useSearchParams().get("action");
   const vehicleId = params?.id ?? "";
   const { user, loading: roleLoading } = useRequireRole([
     "SUPER_ADMIN",
@@ -232,6 +236,7 @@ export default function VehicleDetailPage() {
           vehicleId={vehicle.id}
           initialLicensePlate={vehicle.licensePlate}
           initialNotes={vehicle.notes}
+          initialServiceIntervalKm={vehicle.serviceIntervalKm}
           onSaved={refetch}
         />
       )}
@@ -245,6 +250,7 @@ export default function VehicleDetailPage() {
               vehicleId={vehicle.id}
               currentMileage={vehicle.currentMileage}
               onAdded={refetch}
+              defaultOpen={requestedAction === "mileage"}
             />
           )}
         </div>
@@ -299,6 +305,7 @@ export default function VehicleDetailPage() {
               vehicleId={vehicle.id}
               currentMileage={vehicle.currentMileage}
               onAdded={refetch}
+              defaultOpen={requestedAction === "service"}
             />
           )}
         </div>
@@ -409,16 +416,21 @@ function VehicleEditPanel({
   vehicleId,
   initialLicensePlate,
   initialNotes,
+  initialServiceIntervalKm,
   onSaved,
 }: {
   vehicleId: string;
   initialLicensePlate: string | null;
   initialNotes: string | null;
+  initialServiceIntervalKm: number | null;
   onSaved: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [plate, setPlate] = useState(initialLicensePlate ?? "");
   const [notes, setNotes] = useState(initialNotes ?? "");
+  const [interval, setInterval] = useState(
+    initialServiceIntervalKm != null ? String(initialServiceIntervalKm) : "",
+  );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -431,6 +443,9 @@ function VehicleEditPanel({
         body: JSON.stringify({
           licensePlate: plate.trim() || null,
           notes: notes.trim() || null,
+          // Пустое поле = снять интервал: прогноз ТО перестанет строиться,
+          // и карточка честно скажет «интервал не задан».
+          serviceIntervalKm: interval.trim() ? Number(interval) : null,
         }),
       });
       await onSaved();
@@ -450,7 +465,7 @@ function VehicleEditPanel({
           onClick={() => setOpen(true)}
           className="text-xs text-accent-bright hover:text-accent font-medium"
         >
-          Редактировать гос. номер / заметки
+          Редактировать гос. номер / интервал ТО / заметки
         </button>
       </div>
     );
@@ -470,6 +485,25 @@ function VehicleEditPanel({
           />
         </div>
         <div>
+          <label className="eyebrow mb-1 block" htmlFor="service-interval">
+            Межсервисный интервал, км
+          </label>
+          <input
+            id="service-interval"
+            type="number"
+            min={1000}
+            max={100000}
+            step={500}
+            value={interval}
+            onChange={(e) => setInterval(e.target.value)}
+            className="mono-num w-full rounded border border-border px-2 py-1 text-sm bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+            placeholder="10000"
+          />
+          <p className="mt-1 text-[11px] text-ink-3">
+            Через сколько км напоминать о плановом ТО. Пусто — напоминания выключены.
+          </p>
+        </div>
+        <div className="md:col-span-2">
           <label className="eyebrow mb-1 block">Заметки</label>
           <textarea
             value={notes}
@@ -506,12 +540,15 @@ function AddMileageForm({
   vehicleId,
   currentMileage,
   onAdded,
+  defaultOpen = false,
 }: {
   vehicleId: string;
   currentMileage: number;
   onAdded: () => Promise<void>;
+  /** Форма раскрыта сразу — приход по ссылке «Записать пробег» из карточки парка. */
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   // Режим корректировки: снимает запрет «только вперёд», требует причину.
   const [correction, setCorrection] = useState(false);
   const [mileage, setMileage] = useState<string>("");
@@ -639,12 +676,15 @@ function AddServiceForm({
   vehicleId,
   currentMileage,
   onAdded,
+  defaultOpen = false,
 }: {
   vehicleId: string;
   currentMileage: number;
   onAdded: () => Promise<void>;
+  /** Форма раскрыта сразу — приход по ссылке «Записать ТО» из карточки парка. */
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [kind, setKind] = useState<ServiceKind>("SCHEDULED_TO");
   const [performedAt, setPerformedAt] = useState<string>(todayIso());
   const [mileage, setMileage] = useState<string>(String(currentMileage));
@@ -794,5 +834,13 @@ function AddServiceForm({
         </button>
       </div>
     </div>
+  );
+}
+
+export default function VehicleDetailPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-ink-3">Загрузка...</div>}>
+      <VehicleDetailView />
+    </Suspense>
   );
 }
