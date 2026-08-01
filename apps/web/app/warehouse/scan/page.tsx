@@ -487,7 +487,7 @@ function WarehouseScanInner({
       eyebrow="Склад · Журнал"
       title="Поломки и потеряшки"
       onBack={() => goTab("journal")}
-      detail={<ProblemsScreen />}
+      detail={<ProblemsScreen hasMainSession={hasMainSession} />}
     />
   );
 }

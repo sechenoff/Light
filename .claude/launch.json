@@ -18,6 +18,24 @@
         "cd apps/web && API_PROXY_TARGET=http://127.0.0.1:4100 npx next dev -p 3100"
       ],
       "port": 3100
+    },
+    {
+      "name": "api2",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "PORT=4200 npm run dev -w apps/api"
+      ],
+      "port": 4200
+    },
+    {
+      "name": "web2",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/web && API_PROXY_TARGET=http://127.0.0.1:4200 npx next dev -p 3200"
+      ],
+      "port": 3200
     }
   ]
 }

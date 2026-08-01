@@ -257,6 +257,7 @@ model Equipment {
   importSessionRows  ImportSessionRow[]
   competitorAliases  CompetitorAlias[]
   addonRecords AddonRecord[]
+  directRepairs Repair[] @relation("RepairEquipment")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -849,6 +850,10 @@ model Repair {
   reason          String
   sourceBookingId String?
   sourceBooking   Booking?       @relation("RepairSourceBooking", fields: [sourceBookingId], references: [id], onDelete: SetNull)
+  /// Прямая ссылка на позицию каталога для COUNT-ремонтов (unitId/bookingItemId
+  /// = null): без неё заявка из киоска теряла название оборудования в списках.
+  equipmentId     String?
+  equipment       Equipment?     @relation("RepairEquipment", fields: [equipmentId], references: [id], onDelete: SetNull)
   createdBy       String         // AdminUser.id (обычно WAREHOUSE)
   assignedTo      String?        // AdminUser.id (TECHNICIAN)
   partsCost       Decimal        @default(0)

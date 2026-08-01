@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import { scanApi, type ProblemsData } from "./api";
 import { isScanApiError } from "./types";
+import { RegisterBreakageScreen } from "./RegisterBreakageScreen";
 import { IconSearch, IconWrench } from "./workstationIcons";
 
 const REPAIR_STATUS: Record<string, { label: string; cls: string }> = {
@@ -41,12 +42,23 @@ function daysSince(iso: string): number {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
 }
 
-export function ProblemsScreen() {
+export function ProblemsScreen({
+  hasMainSession = false,
+}: {
+  /** Показывать ли ссылку «Мастерская →» (требует основной JWT-логин). */
+  hasMainSession?: boolean;
+}) {
   const [data, setData] = useState<ProblemsData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // «Зарегистрировать поломку» — inline-экран прямо в киоске (PIN-кладовщику
+  // /repair недоступен: мастерская за основным JWT-логином).
+  const [registering, setRegistering] = useState(false);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setData(null);
+    setError(null);
     scanApi
       .getProblems()
       .then((d) => {
@@ -59,7 +71,18 @@ export function ProblemsScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [version]);
+
+  if (registering) {
+    return (
+      <RegisterBreakageScreen
+        onDone={() => {
+          setRegistering(false);
+          setVersion((v) => v + 1);
+        }}
+      />
+    );
+  }
 
   if (error) {
     return (
@@ -71,9 +94,10 @@ export function ProblemsScreen() {
 
   return (
     <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-5 lg:py-4">
-      <a
-        href="/repair"
-        className="flex min-h-[60px] items-center gap-2.5 rounded-lg border border-amber-border bg-amber-soft p-3.5 text-amber transition-colors hover:bg-surface"
+      <button
+        type="button"
+        onClick={() => setRegistering(true)}
+        className="flex min-h-[60px] items-center gap-2.5 rounded-lg border border-amber-border bg-amber-soft p-3.5 text-left text-amber transition-colors hover:bg-surface"
       >
         <IconWrench className="h-6 w-6 shrink-0" strokeWidth={2} />
         <span>
@@ -81,10 +105,10 @@ export function ProblemsScreen() {
             Зарегистрировать поломку
           </span>
           <span className="block text-[10.5px] opacity-75">
-            без возврата — прямо со склада (мастерская)
+            без возврата — прямо со склада
           </span>
         </span>
-      </a>
+      </button>
 
       {/* В ремонте */}
       <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
@@ -92,9 +116,11 @@ export function ProblemsScreen() {
           <h3 className="text-[12.5px] font-semibold">
             В ремонте{data ? ` · ${data.repairs.length}` : ""}
           </h3>
-          <a href="/repair" className="text-[11.5px] text-accent-bright hover:underline">
-            Мастерская →
-          </a>
+          {hasMainSession && (
+            <a href="/repair" className="text-[11.5px] text-accent-bright hover:underline">
+              Мастерская →
+            </a>
+          )}
         </div>
         {!data ? (
           <div className="space-y-2 p-3.5">

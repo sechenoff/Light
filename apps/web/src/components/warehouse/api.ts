@@ -332,6 +332,63 @@ export function getProblems(): Promise<ProblemsData> {
   return request<ProblemsData>("/api/warehouse/problems");
 }
 
+// ── Регистрация поломки из киоска ────────────────────────────────────────────
+
+export interface RepairTargetUnit {
+  id: string;
+  /** Серийник → инвентарник → «Единица N». Никогда не barcode. */
+  label: string;
+  status: string;
+  inActiveRepair: boolean;
+}
+
+export interface RepairTarget {
+  equipmentId: string;
+  name: string;
+  category: string;
+  trackingMode: "COUNT" | "UNIT";
+  totalQuantity: number;
+  units: RepairTargetUnit[];
+}
+
+/** GET /api/warehouse/repair-targets?q= — поиск оборудования для поломки. */
+export async function searchRepairTargets(q: string): Promise<RepairTarget[]> {
+  const data = await request<{ results: RepairTarget[] }>(
+    `/api/warehouse/repair-targets?q=${encodeURIComponent(q)}`,
+  );
+  return data.results;
+}
+
+/**
+ * POST /api/warehouse/repairs — прямая регистрация поломки.
+ * UNIT: `{ equipmentUnitId }`; COUNT: `{ equipmentId, quantity }`.
+ */
+export function createKioskRepair(body: {
+  equipmentUnitId?: string;
+  equipmentId?: string;
+  quantity?: number;
+  reason: string;
+  urgency?: "NOT_URGENT" | "NORMAL" | "URGENT";
+}): Promise<{ repair: { id: string; status: string } }> {
+  return request<{ repair: { id: string; status: string } }>(
+    "/api/warehouse/repairs",
+    { method: "POST", body },
+  );
+}
+
+/** POST /api/warehouse/repairs/:id/photos — multipart поле `photo`. */
+export function uploadKioskRepairPhoto(
+  repairId: string,
+  file: File,
+): Promise<{ photosCount: number }> {
+  const fd = new FormData();
+  fd.append("photo", file);
+  return request<{ photosCount: number }>(
+    `/api/warehouse/repairs/${repairId}/photos`,
+    { method: "POST", formData: fd },
+  );
+}
+
 // ── Vehicles + driver (заполняется на погрузке/разгрузке) ─────────────────────
 
 export interface SessionVehicle {
@@ -567,6 +624,9 @@ export const scanApi = {
   getShift,
   getJournal,
   getProblems,
+  searchRepairTargets,
+  createKioskRepair,
+  uploadKioskRepairPhoto,
   listSessionVehicles,
   setSessionDriver,
   check,

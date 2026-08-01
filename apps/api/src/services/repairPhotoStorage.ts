@@ -104,6 +104,23 @@ export function listStaged(sessionId: string, unitId: string): string[] {
   return fs.readdirSync(abs).map((f) => path.join(stageDir(sessionId, unitId), f));
 }
 
+/**
+ * Прямая запись фото в uploads/repairs/{repairId}/ (без стейджа) — для
+ * регистрации поломки из киоска, где Repair уже создан. Возвращает rel-путь
+ * для RepairPhoto.filePath.
+ */
+export function writeRepairPhoto(repairId: string, buf: Buffer, original: string): string {
+  const rel = path.join(
+    "repairs",
+    repairId,
+    `${crypto.randomBytes(4).toString("hex")}_${sanitizeFilename(original)}`,
+  );
+  const abs = path.join(UPLOAD_ROOT, rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, buf);
+  return rel;
+}
+
 /** Перенести стейдж-фото юнита в uploads/repairs/{repairId}/ и вернуть rel-пути. */
 export function moveStagedToRepair(sessionId: string, unitId: string, repairId: string): string[] {
   const out: string[] = [];

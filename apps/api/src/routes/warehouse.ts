@@ -19,6 +19,7 @@ import {
   type RepairUnit,
   type ProblemUnit,
 } from "../services/warehouseScan";
+import { createRepair } from "../services/repairService";
 import {
   checkUnit,
   uncheckUnit,
@@ -38,6 +39,7 @@ import {
   UPLOAD_ROOT,
   validateMagicBytes,
   writeStagedPhoto,
+  writeRepairPhoto,
   listStaged,
   stageDir,
   resolveUploadPath,
@@ -913,6 +915,173 @@ warehouseScanRouter.get("/problems", warehouseAuth, async (_req, res, next) => {
     next(err);
   }
 });
+
+// ── Регистрация поломки из киоска (без возврата) ─────────────────────────────
+// Кладовщик находит оборудование, выбирает единицу (UNIT) или количество
+// (COUNT), описывает причину, прикладывает фото. Без barcode в ответах.
+
+/** GET /api/warehouse/repair-targets?q= — поиск оборудования для поломки. */
+warehouseScanRouter.get("/repair-targets", warehouseAuth, async (req, res, next) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    if (q.length < 2) {
+      res.json({ results: [] });
+      return;
+    }
+    // SQLite LIKE регистрозависим для кириллицы — фильтруем в приложении
+    // через toLocaleLowerCase("ru-RU") (паттерн availability.ts).
+    const needle = q.toLocaleLowerCase("ru-RU");
+    const all = await prisma.equipment.findMany({
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        stockTrackingMode: true,
+        totalQuantity: true,
+        units: {
+          where: { status: { not: "RETIRED" } },
+          select: {
+            id: true,
+            serialNumber: true,
+            internalInventoryNumber: true,
+            status: true,
+            repairs: {
+              where: { status: { in: ["WAITING_REPAIR", "IN_REPAIR", "WAITING_PARTS"] } },
+              select: { id: true },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+    const results = all
+      .filter((e) => e.name.toLocaleLowerCase("ru-RU").includes(needle))
+      .slice(0, 20)
+      .map((e) => ({
+        equipmentId: e.id,
+        name: e.name,
+        category: e.category,
+        trackingMode: e.stockTrackingMode,
+        totalQuantity: e.totalQuantity,
+        units: e.units.map((u, idx) => ({
+          id: u.id,
+          // Человекочитаемая метка БЕЗ barcode: серийник → инвентарник → порядковый.
+          label:
+            u.serialNumber ??
+            u.internalInventoryNumber ??
+            `Единица ${idx + 1}`,
+          status: u.status,
+          inActiveRepair: u.repairs.length > 0,
+        })),
+      }));
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const kioskRepairSchema = z
+  .object({
+    equipmentUnitId: z.string().min(1).optional(),
+    equipmentId: z.string().min(1).optional(),
+    quantity: z.number().int().min(1).max(999).optional(),
+    reason: z.string().trim().min(3, "Опишите поломку (минимум 3 символа)"),
+    urgency: z.enum(["NOT_URGENT", "NORMAL", "URGENT"]).default("NORMAL"),
+  })
+  .refine((b) => Boolean(b.equipmentUnitId) !== Boolean(b.equipmentId), {
+    message: "Укажите либо equipmentUnitId (UNIT), либо equipmentId (COUNT)",
+  });
+
+/**
+ * POST /api/warehouse/repairs — прямая регистрация поломки со склада.
+ *  - UNIT: `{ equipmentUnitId, reason, urgency? }` → createRepair
+ *    (дедуп активной карточки, unit → MAINTENANCE, аудит) — канонический путь.
+ *  - COUNT: `{ equipmentId, quantity?, reason, urgency? }` → Repair без unitId
+ *    (как COUNT-ремонты приёмки; статусы единиц не трогаются).
+ * createdBy = имя кладовщика (kiosk-namespace, см. dual-namespace конвенцию).
+ */
+warehouseScanRouter.post("/repairs", warehouseAuth, async (req, res, next) => {
+  try {
+    const body = kioskRepairSchema.parse(req.body);
+    const workerName = req.warehouseWorker?.name ?? "_unknown_";
+
+    if (body.equipmentUnitId) {
+      const repair = await createRepair({
+        unitId: body.equipmentUnitId,
+        reason: body.reason,
+        urgency: body.urgency,
+        createdBy: workerName,
+      });
+      res.status(201).json({ repair: { id: repair.id, status: repair.status } });
+      return;
+    }
+
+    // COUNT-путь: проверяем, что оборудование существует.
+    const equipment = await prisma.equipment.findUnique({
+      where: { id: body.equipmentId! },
+      select: { id: true },
+    });
+    if (!equipment) throw new HttpError(404, "Оборудование не найдено");
+    const repair = await prisma.repair.create({
+      data: {
+        unitId: null,
+        bookingItemId: null,
+        equipmentId: body.equipmentId!,
+        quantity: body.quantity ?? 1,
+        reason: body.reason,
+        urgency: body.urgency,
+        createdBy: workerName,
+      },
+    });
+    res.status(201).json({ repair: { id: repair.id, status: repair.status } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/warehouse/repairs/:id/photos — фото к только что созданной поломке.
+ * Guard: карточка активна и создана этим же кладовщиком (createdBy).
+ * multer-security зеркалит фото скан-сессий (magic-bytes, JPEG/PNG, 5 MB).
+ */
+warehouseScanRouter.post(
+  "/repairs/:id/photos",
+  warehouseAuth,
+  photoUpload.single("photo"),
+  async (req, res, next) => {
+    try {
+      const repairId = req.params.id;
+      const workerName = req.warehouseWorker?.name ?? "_unknown_";
+      const file = req.file;
+      if (!file) throw new HttpError(400, "Файл не передан (поле photo)");
+      if (!validateMagicBytes(file.buffer, file.mimetype)) {
+        throw new HttpError(400, "Файл не похож на JPEG/PNG", "INVALID_FILE_TYPE");
+      }
+
+      const repair = await prisma.repair.findUnique({
+        where: { id: repairId },
+        select: { id: true, status: true, createdBy: true },
+      });
+      if (!repair) throw new HttpError(404, "Карточка ремонта не найдена");
+      if (!["WAITING_REPAIR", "IN_REPAIR", "WAITING_PARTS"].includes(repair.status)) {
+        throw new HttpError(409, "Карточка ремонта уже закрыта", "REPAIR_NOT_ACTIVE");
+      }
+      if (repair.createdBy !== workerName) {
+        throw new HttpError(403, "Фото можно добавлять только к своей заявке", "REPAIR_NOT_OWN");
+      }
+
+      const rel = writeRepairPhoto(repairId, file.buffer, file.originalname);
+      await prisma.repairPhoto.create({
+        data: { repairId, filePath: rel, createdBy: workerName },
+      });
+      const count = await prisma.repairPhoto.count({ where: { repairId } });
+      res.status(201).json({ photosCount: count });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
   try {

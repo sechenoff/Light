@@ -333,6 +333,7 @@ export async function computeJournal(args: {
         include: {
           unit: { include: { equipment: { select: { name: true } } } },
           bookingItem: { include: { equipment: { select: { name: true } } } },
+          equipment: { select: { name: true } },
           _count: { select: { photos: true } },
         },
       }),
@@ -370,7 +371,10 @@ export async function computeJournal(args: {
     id: r.id,
     at: r.createdAt.toISOString(),
     equipmentName:
-      r.unit?.equipment.name ?? r.bookingItem?.equipment?.name ?? "Оборудование",
+      r.unit?.equipment.name ??
+      r.bookingItem?.equipment?.name ??
+      r.equipment?.name ??
+      "Оборудование",
     reason: r.reason,
     repairStatus: r.status,
     photosCount: r._count.photos,
@@ -426,6 +430,7 @@ export async function computeProblems(): Promise<ProblemsSummary> {
       include: {
         unit: { include: { equipment: { select: { name: true } } } },
         bookingItem: { include: { equipment: { select: { name: true } } } },
+        equipment: { select: { name: true } },
         sourceBooking: { select: { projectName: true } },
         _count: { select: { photos: true } },
       },
@@ -457,7 +462,10 @@ export async function computeProblems(): Promise<ProblemsSummary> {
     repairs: repairs.map((r) => ({
       id: r.id,
       equipmentName:
-        r.unit?.equipment.name ?? r.bookingItem?.equipment?.name ?? "Оборудование",
+        r.unit?.equipment.name ??
+        r.bookingItem?.equipment?.name ??
+        r.equipment?.name ??
+        "Оборудование",
       quantity: r.quantity,
       reason: r.reason,
       urgency: r.urgency,
