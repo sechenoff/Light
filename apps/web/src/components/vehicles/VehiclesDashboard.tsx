@@ -121,7 +121,7 @@ export function VehiclesDashboard() {
   const canEdit = user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE";
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 lg:p-6 space-y-4">
       <SectionHeader
         eyebrow="Автопарк"
         title="Машины"

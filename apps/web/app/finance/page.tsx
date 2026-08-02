@@ -162,7 +162,7 @@ function FinancePageInner() {
     return (
       <div className="pb-10 bg-surface-subtle min-h-screen">
         <FinanceTabNav />
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16">
+        <div className="p-4 lg:p-6">
           <div className="bg-surface border border-border rounded-lg px-6 py-14 text-center shadow-xs">
             <p className="eyebrow text-ink-3 mb-1">Финансы</p>
             <h1 className="text-[18px] font-semibold text-ink mb-2">Раздел доступен руководителю</h1>
@@ -197,7 +197,7 @@ function FinancePageInner() {
     <div className="pb-10 bg-surface-subtle min-h-screen">
       <FinanceTabNav debtCount={data.debtorClientsCount} />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
+      <div className="p-4 lg:p-6">
 
         {/* Header: eyebrow + title + period + actions */}
         <div className="mb-5">

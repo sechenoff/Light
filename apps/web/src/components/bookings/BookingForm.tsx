@@ -1268,7 +1268,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-[1280px] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] items-start gap-5 px-4 py-5 md:px-8 md:py-7">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] items-start gap-5 p-4 lg:p-6">
         {/* Left column: Client, Dates, Equipment, Comment */}
         <div className="flex flex-col gap-3.5">
           {draftBannerVisible && draft && (

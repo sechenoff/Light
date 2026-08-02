@@ -354,7 +354,7 @@ export default function UnitsPage() {
   }
 
   return (
-    <div className="p-4">
+    <div className="p-4 lg:p-6">
       {/* Back link */}
       <div className="mb-4">
         <Link href="/equipment" className="text-sm text-slate-500 hover:text-slate-900">

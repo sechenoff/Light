@@ -17,7 +17,7 @@ export function EquipmentStatsPage() {
   const { data, error, loading, retry } = useEquipmentStats();
 
   return (
-    <div className="space-y-2">
+    <div className="p-4 lg:p-6 space-y-2">
       <SectionHeader
         eyebrow="Аналитика"
         title="Статистика техники"

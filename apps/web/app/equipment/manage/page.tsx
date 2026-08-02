@@ -307,7 +307,7 @@ export default function EquipmentManagePage() {
   }
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 lg:p-6 space-y-4">
       {/* Шапка */}
       <div>
         <Link href="/equipment" className="text-sm text-ink-3 hover:text-ink">

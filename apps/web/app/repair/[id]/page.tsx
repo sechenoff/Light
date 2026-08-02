@@ -409,7 +409,7 @@ export default function RepairDetailPage() {
       </div>
 
       {/* Тело страницы */}
-      <div className="p-4 space-y-4 max-w-2xl">
+      <div className="p-4 lg:p-6 space-y-4">
 
         {/* Карточка: причина */}
         <div className="bg-surface border border-border rounded-lg p-4">

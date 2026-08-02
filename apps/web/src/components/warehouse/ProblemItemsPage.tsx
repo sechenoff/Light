@@ -558,7 +558,7 @@ export function ProblemItemsPage() {
   const isEmpty = !fetching && items.length === 0;
 
   return (
-    <div className="p-4 md:p-6 space-y-4 w-full">
+    <div className="p-4 lg:p-6 space-y-4 w-full">
       {/* Заголовок */}
       <div>
         <p className="eyebrow">Склад</p>

@@ -209,7 +209,7 @@ export default function EquipmentPage() {
       : "/bookings/new";
 
   return (
-    <div className="p-4">
+    <div className="p-4 lg:p-6">
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex flex-col">

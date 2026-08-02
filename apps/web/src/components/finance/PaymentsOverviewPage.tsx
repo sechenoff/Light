@@ -362,7 +362,7 @@ export function PaymentsOverviewPage() {
     <div className="pb-10 bg-surface-subtle min-h-screen">
       <FinanceTabNav />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
+      <div className="p-4 lg:p-6">
 
         {/* Page header */}
         <div className="mb-5">

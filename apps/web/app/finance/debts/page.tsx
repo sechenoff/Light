@@ -421,7 +421,7 @@ function DebtsPageInner() {
     <div className="pb-10 bg-surface-subtle min-h-screen">
       <FinanceTabNav debtCount={totalClients} />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5">
+      <div className="p-4 lg:p-6">
 
         {/* Header */}
         <div className="flex items-end justify-between gap-3 mb-5">

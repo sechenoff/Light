@@ -413,7 +413,7 @@ function ExpensesPageInner() {
     <div className="pb-10">
       <FinanceTabNav />
 
-      <div className="px-4 md:px-7 py-5">
+      <div className="p-4 lg:p-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-5 gap-3">
           <div>

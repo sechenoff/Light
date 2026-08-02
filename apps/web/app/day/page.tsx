@@ -621,7 +621,7 @@ export default function DayPage() {
   if (!user) return null; // hook already redirected
 
   return (
-    <div className="p-6">
+    <div className="p-4 lg:p-6">
       {user.role === "SUPER_ADMIN" && <DaySuperAdmin username={user.username} />}
       {user.role === "WAREHOUSE" && <DayWarehouse username={user.username} />}
       {user.role === "TECHNICIAN" && <DayTechnician userId={user.userId ?? ""} username={user.username} />}

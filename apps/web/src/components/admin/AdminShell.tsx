@@ -8,8 +8,8 @@
  * more — 5xl. При переключении вкладок страница «прыгала». Теперь:
  *
  *  - таб-бар (AdminTabNav) — полосой на всю ширину, как FinanceTabNav;
- *  - контент — канонический контейнер `max-w-7xl mx-auto px-4 sm:px-6 py-5`,
- *    тот же, что во всех разделах «Финансов».
+ *  - контент — на полную ширину контентной области, канонические отступы
+ *    `p-4 lg:p-6` (стандарт ширины страниц внутри AppShell, без max-w/mx-auto).
  *
  * Не меняй ширину в отдельной вкладке — только здесь.
  */
@@ -29,7 +29,7 @@ export function AdminShell({
       <div className="bg-surface px-4 sm:px-6">
         <AdminTabNav counts={counts} />
       </div>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5">{children}</div>
+      <div className="p-4 lg:p-6">{children}</div>
     </div>
   );
 }

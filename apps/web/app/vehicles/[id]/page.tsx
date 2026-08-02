@@ -190,7 +190,7 @@ function VehicleDetailView() {
   const unitMeta = USAGE_UNIT_META[unit] ?? USAGE_UNIT_META.KM;
 
   return (
-    <div className="p-4 max-w-5xl">
+    <div className="p-4 lg:p-6">
       <Link className="text-sm text-accent-bright hover:text-accent" href="/vehicles">
         ← Назад к автопарку
       </Link>

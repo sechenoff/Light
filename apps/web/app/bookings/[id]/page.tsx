@@ -470,7 +470,7 @@ export default function BookingDetailPage() {
     booking?.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN";
 
   return (
-    <div className="p-4 pb-24 md:pb-4">
+    <div className="p-4 lg:p-6 pb-24 md:pb-6">
       {/* Parent top-bar — hidden when ApprovalReviewView is rendered; that view brings its own header.
           Сам заголовок брони отрисован ниже в Hero-секции (по мокапу v2) — здесь только
           breadcrumb-style ссылки и action-кнопки, чтобы не было дубля заголовка. */}
@@ -931,7 +931,7 @@ export default function BookingDetailPage() {
           клик по «Сохранить»; pr на actions-группе уводит кнопки левее FAB. */}
       {retroEditMode && (
         <div className="fixed bottom-0 left-0 right-0 z-50 bg-surface border-t-2 border-amber shadow-lg no-print">
-          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+          <div className="px-4 lg:px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3 text-sm">
               <span className="text-amber" aria-hidden>⚠</span>
               <div>

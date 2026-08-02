@@ -79,7 +79,7 @@ function FeedbackPageInner() {
   );
 
   return (
-    <div className="px-4 sm:px-6 py-6 max-w-6xl mx-auto">
+    <div className="p-4 lg:p-6">
       <SectionHeader
         eyebrow="Команда · улучшения"
         title="Обратная связь"

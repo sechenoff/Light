@@ -514,7 +514,7 @@ function BookingHistoryPageInner() {
   const SKELETON_KEYS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 
   return (
-    <div className="p-4">
+    <div className="p-4 lg:p-6">
       <SectionHeader
         eyebrow="Аренда"
         title="Список броней"

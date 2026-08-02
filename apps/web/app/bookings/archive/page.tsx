@@ -173,7 +173,7 @@ export default function BookingsArchivePage() {
   if (roleLoading || !user) return <div className="p-8 text-ink-3">Загрузка...</div>;
 
   return (
-    <div className="p-4">
+    <div className="p-4 lg:p-6">
       <SectionHeader
         eyebrow="Архив броней"
         title="Удалённые брони"
