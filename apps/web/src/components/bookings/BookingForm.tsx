@@ -1127,11 +1127,23 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
           ? { expectedPaymentDate: new Date(`${expectedPaymentDateLocal}T00:00:00+03:00`).toISOString() }
           : {}),
       };
-      const res = await apiFetch<{ booking: { id: string } }>("/api/bookings/draft", { method: "POST", body: JSON.stringify(body) });
+      const res = await apiFetch<{
+        booking: { id: string; status?: string };
+        autoConfirm?: { ok: false; message: string };
+      }>("/api/bookings/draft", { method: "POST", body: JSON.stringify(body) });
       // Бронь на сервере — локальный черновик больше не нужен.
       draftPersistDisabledRef.current = true;
       clearDraftSnapshot();
-      toast.success("Черновик сохранён");
+      // APPROVAL_MODE=auto: сервер сразу подтверждает заявку. Если не смог
+      // (не хватает оборудования) — бронь осталась черновиком, показываем
+      // человекочитаемую причину; оператор правит количества на карточке.
+      if (res.booking.status === "CONFIRMED") {
+        toast.success("Бронь создана и подтверждена — оборудование зарезервировано");
+      } else if (res.autoConfirm && res.autoConfirm.ok === false) {
+        toast.error(res.autoConfirm.message);
+      } else {
+        toast.success("Черновик сохранён");
+      }
       return res.booking.id;
     } catch (err: unknown) {
       toast.error((err as { message?: string })?.message ?? "Ошибка сохранения");

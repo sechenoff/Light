@@ -13,6 +13,8 @@ export type CurrentUser = {
   userId?: string;
   username: string;
   role: UserRole;
+  /** Режим согласования броней: auto — заявка подтверждается сразу. */
+  approvalMode?: "auto" | "manual";
 };
 
 const STORAGE_KEY = "lr_user";
@@ -26,7 +28,10 @@ const STORAGE_KEY = "lr_user";
 // ошибки НЕ кэшируем (промис удаляется), чтобы обрыв сети не выглядел
 // как разлогин на TTL.
 const ME_CACHE_TTL_MS = 30_000;
-type MeResponse = { user: { userId: string; username: string; role: UserRole } };
+type MeResponse = {
+  user: { userId: string; username: string; role: UserRole };
+  approvalMode?: "auto" | "manual";
+};
 let meCache: { promise: Promise<CurrentUser | null>; at: number } | null = null;
 
 function fetchMe(): Promise<CurrentUser | null> {
@@ -37,6 +42,7 @@ function fetchMe(): Promise<CurrentUser | null> {
       userId: res.user.userId,
       username: res.user.username,
       role: res.user.role,
+      approvalMode: res.approvalMode ?? "manual",
     }))
     .catch((err: unknown) => {
       // 401 — авторитетный ответ «не залогинен», его кэшировать можно.

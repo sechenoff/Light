@@ -407,9 +407,15 @@ export default function BookingDetailPage() {
         method: "POST",
       });
       setBooking(data.booking);
-      toast.success("Бронь отправлена на согласование");
+      // APPROVAL_MODE=auto: тот же эндпоинт сразу подтверждает бронь.
+      if (data.booking.status === "CONFIRMED") {
+        toast.success("Бронь подтверждена — оборудование зарезервировано");
+      } else {
+        toast.success("Бронь отправлена на согласование");
+      }
     } catch (e: any) {
-      toast.error(e?.message ?? "Не удалось отправить на согласование");
+      // 409 доступности несёт человекочитаемое сообщение с перечнем нехваток.
+      toast.error(e?.message ?? "Не удалось подтвердить бронь");
     } finally {
       setActionBusy(null);
     }
@@ -439,6 +445,13 @@ export default function BookingDetailPage() {
         { method: "POST" },
       );
       setBooking(submitted.booking);
+      // APPROVAL_MODE=auto: submit уже подтвердил бронь — второй шаг (approve)
+      // не нужен и упал бы INVALID_BOOKING_STATE.
+      if (submitted.booking.status === "CONFIRMED") {
+        toast.success("Бронь подтверждена, оборудование зарезервировано");
+        setActionBusy(null);
+        return;
+      }
       try {
         const approved = await apiFetch<{ booking: BookingDetail }>(
           `/api/bookings/${booking.id}/approve`,
@@ -722,7 +735,13 @@ export default function BookingDetailPage() {
                 disabled={actionBusy !== null}
                 className="rounded bg-accent-bright px-4 py-2 text-sm text-white hover:bg-accent-bright/90 disabled:opacity-50"
               >
-                {actionBusy === "submit" ? "Отправляю…" : "Отправить на согласование"}
+                {actionBusy === "submit"
+                  ? user?.approvalMode === "auto"
+                    ? "Подтверждаю…"
+                    : "Отправляю…"
+                  : user?.approvalMode === "auto"
+                    ? "Подтвердить бронь"
+                    : "Отправить на согласование"}
               </button>
             )}
             {/* SA согласует сам с собой: один клик вместо двух экранов.

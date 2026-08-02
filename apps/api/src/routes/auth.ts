@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authenticate, signSession, SESSION_COOKIE_NAME, sessionCookieOptions } from "../services/auth";
 import { requireAdmin } from "../middleware/sessionAuth";
 import { prisma } from "../prisma";
+import { approvalMode } from "../services/bookingApproval";
 
 const router = express.Router();
 
@@ -54,7 +55,9 @@ router.post("/logout", (_req, res) => {
  * Возвращает текущего пользователя по cookie/bearer-токену.
  */
 router.get("/me", requireAdmin, (req, res) => {
-  res.json({ user: req.adminUser });
+  // approvalMode — чтобы UI знал, показывать ли «Отправить на согласование»
+  // (manual) или «Подтвердить бронь» (auto). Кэшируется вместе с me (30 c).
+  res.json({ user: req.adminUser, approvalMode: approvalMode() });
 });
 
 export { router as authRouter };

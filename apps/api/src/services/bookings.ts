@@ -577,17 +577,23 @@ export async function confirmBooking(bookingId: string) {
 
     const conflicts: Array<{
       equipmentId: string;
+      equipmentName: string;
       totalQuantity: number;
       occupiedQuantity: number;
       availableQuantity: number;
       requestedQuantity: number;
     }> = [];
+    // Имена для человекочитаемой ошибки конфликта (UI показывает их напрямую).
+    const nameByEquipmentId = new Map(
+      catalogBookingItems.map((it) => [it.equipmentId!, it.equipment?.name ?? it.equipmentId!]),
+    );
 
     for (const item of requestedItems) {
       const a = availabilityById.get(item.equipmentId);
       if (!a) {
         conflicts.push({
           equipmentId: item.equipmentId,
+          equipmentName: nameByEquipmentId.get(item.equipmentId) ?? item.equipmentId,
           totalQuantity: 0,
           occupiedQuantity: 0,
           availableQuantity: 0,
@@ -599,6 +605,7 @@ export async function confirmBooking(bookingId: string) {
       if (a.availableQuantity < requested) {
         conflicts.push({
           equipmentId: item.equipmentId,
+          equipmentName: nameByEquipmentId.get(item.equipmentId) ?? item.equipmentId,
           totalQuantity: a.equipment.totalQuantity,
           occupiedQuantity: a.occupiedQuantity,
           availableQuantity: a.availableQuantity,
@@ -608,7 +615,19 @@ export async function confirmBooking(bookingId: string) {
     }
 
     if (conflicts.length > 0) {
-      throw new HttpError(409, "Booking conflicts with already occupied inventory.", { conflicts });
+      // Человекочитаемое сообщение: раньше UI показывал сырую английскую
+      // строку без деталей — оператор не понимал, ЧЕГО не хватает.
+      const summary = conflicts
+        .map(
+          (c) =>
+            `${c.equipmentName}: нужно ${c.requestedQuantity}, свободно ${c.availableQuantity} из ${c.totalQuantity}`,
+        )
+        .join("; ");
+      throw new HttpError(
+        409,
+        `Не хватает оборудования на выбранные даты — ${summary}`,
+        { conflicts },
+      );
     }
 
     const shifts = billableShifts24h(booking.startDate, booking.endDate, booking.skipPartialDay ?? false);

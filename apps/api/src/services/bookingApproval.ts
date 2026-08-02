@@ -53,6 +53,66 @@ export async function submitForApproval(bookingId: string, userId: string) {
 }
 
 /**
+ * Режим согласования броней.
+ *  - "manual" (дефолт) — двухэтапный workflow: DRAFT → PENDING_APPROVAL → approve.
+ *  - "auto"  — согласование выключено (env APPROVAL_MODE=auto): заявка после
+ *    создания сразу подтверждается (проверка доступности + резервирование в
+ *    confirmBooking), руководитель не участвует. Временный режим по решению
+ *    владельца 2026-08-02; возврат — убрать env и перезапустить API.
+ */
+export function approvalMode(): "auto" | "manual" {
+  return process.env.APPROVAL_MODE === "auto" ? "auto" : "manual";
+}
+
+/**
+ * Автоподтверждение (режим APPROVAL_MODE=auto): DRAFT → CONFIRMED напрямую.
+ * Вся проверка доступности/резервирование/снапшот сметы — в confirmBooking.
+ * Пишет AuditEntry "BOOKING_AUTO_CONFIRMED" (вне транзакции confirmBooking —
+ * тот же trade-off, что у approve: аудит = observability).
+ */
+export async function autoConfirmBooking(bookingId: string, userId: string | null) {
+  const preCheck = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: { id: true, status: true },
+  });
+  if (!preCheck) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+  if (preCheck.status !== "DRAFT" && preCheck.status !== "PENDING_APPROVAL") {
+    throw new HttpError(
+      409,
+      "Подтвердить можно только черновик или заявку на согласовании",
+      "INVALID_BOOKING_STATE",
+    );
+  }
+
+  const confirmed = await confirmBooking(bookingId);
+
+  if (userId) {
+    try {
+      await writeAuditEntry({
+        userId,
+        action: "BOOKING_AUTO_CONFIRMED",
+        entityType: "Booking",
+        entityId: bookingId,
+        before: { status: preCheck.status },
+        after: { status: confirmed.status, confirmedAt: confirmed.confirmedAt, via: "auto" },
+      });
+    } catch {
+      // Аудит best-effort — подтверждение важнее записи в журнал.
+    }
+  }
+
+  const full = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    include: {
+      client: true,
+      items: { include: { equipment: true } },
+      estimates: { include: { lines: true } },
+    },
+  });
+  return full!;
+}
+
+/**
  * Одобрить бронь: PENDING_APPROVAL → CONFIRMED.
  * Делегирует confirmBooking() для проверки доступности, резервирования единиц и создания snapshot сметы.
  * Пишет AuditEntry "BOOKING_APPROVED".

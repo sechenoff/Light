@@ -6,7 +6,7 @@ import Decimal from "decimal.js";
 import { prisma } from "../prisma";
 import { createBookingDraft, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, CUSTOM_LINE_CATEGORY } from "../services/bookings";
 import type { BookingTransportSnapshot } from "../services/bookings";
-import { submitForApproval, approveBooking, rejectBooking } from "../services/bookingApproval";
+import { submitForApproval, approveBooking, rejectBooking, autoConfirmBooking, approvalMode } from "../services/bookingApproval";
 import { HttpError } from "../utils/errors";
 import {
   assertBookingRangeOrder,
@@ -1835,6 +1835,47 @@ router.post("/draft", async (req, res, next) => {
       transport: transportSnapshots,
     });
 
+    // APPROVAL_MODE=auto: согласование выключено — заявка сразу подтверждается
+    // (проверка доступности + резервирование в confirmBooking). При конфликте
+    // бронь ОСТАЁТСЯ черновиком, а ответ несёт autoConfirm-предупреждение —
+    // оператор правит количества на карточке и подтверждает вручную.
+    if (approvalMode() === "auto") {
+      try {
+        const confirmed = await autoConfirmBooking(booking.id, req.adminUser?.userId ?? null);
+        let financeWarning: string | null = null;
+        try {
+          await recomputeBookingFinance(booking.id);
+          await createFinanceEvent({
+            bookingId: booking.id,
+            eventType: "BOOKING_CONFIRMED",
+            payload: { status: confirmed.status, via: "auto" },
+          });
+        } catch (financeErr) {
+          financeWarning = financeWarningFromError(financeErr);
+          // eslint-disable-next-line no-console
+          console.error("Finance side-effects failed after auto-confirm:", financeErr);
+        }
+        res.json({
+          booking: serializeBookingForApi(confirmed as any),
+          ...(financeWarning ? { warning: financeWarning } : {}),
+        });
+        return;
+      } catch (autoErr) {
+        if (autoErr instanceof HttpError && autoErr.status === 409) {
+          res.json({
+            booking: serializeBookingForApi(booking as any),
+            autoConfirm: {
+              ok: false,
+              message: autoErr.message,
+              details: (autoErr as any).details ?? null,
+            },
+          });
+          return;
+        }
+        throw autoErr;
+      }
+    }
+
     res.json({ booking: serializeBookingForApi(booking as any) });
   } catch (err) {
     if (isSchemaOutOfSyncError(err)) {
@@ -2294,6 +2335,32 @@ router.post(
     try {
       if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
       await assertBookingNotArchived(req.params.id);
+
+      // APPROVAL_MODE=auto: этот же эндпоинт подтверждает бронь сразу —
+      // UI-кнопка «Отправить на согласование» становится «Подтвердить бронь»
+      // без смены контракта вызова.
+      if (approvalMode() === "auto") {
+        const confirmed = await autoConfirmBooking(req.params.id, req.adminUser.userId);
+        let warning: string | null = null;
+        try {
+          await recomputeBookingFinance(req.params.id);
+          await createFinanceEvent({
+            bookingId: req.params.id,
+            eventType: "BOOKING_CONFIRMED",
+            payload: { status: confirmed.status, via: "auto" },
+          });
+        } catch (financeErr) {
+          warning = financeWarningFromError(financeErr);
+          // eslint-disable-next-line no-console
+          console.error("Finance side-effects failed after auto-confirm:", financeErr);
+        }
+        res.json({
+          booking: serializeBookingForApi(confirmed as any),
+          ...(warning ? { warning } : {}),
+        });
+        return;
+      }
+
       const updated = await submitForApproval(req.params.id, req.adminUser.userId);
       res.json({ booking: serializeBookingForApi(updated as any) });
     } catch (err) {
