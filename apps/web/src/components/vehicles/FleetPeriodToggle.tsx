@@ -33,7 +33,7 @@ export function FleetPeriodToggle() {
             onClick={() => setPeriod(opt.value)}
             className={
               "rounded-full px-3 py-1 text-xs font-medium transition-colors " +
-              (isActive ? "bg-accent text-white" : "text-ink-3 hover:text-ink")
+              (isActive ? "bg-accent text-surface" : "text-ink-3 hover:text-ink")
             }
           >
             {opt.label}

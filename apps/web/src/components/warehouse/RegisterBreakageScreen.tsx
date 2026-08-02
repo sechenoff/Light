@@ -188,7 +188,7 @@ export function RegisterBreakageScreen({ onDone }: { onDone: () => void }) {
         <button
           type="button"
           onClick={onDone}
-          className="mt-2 min-h-[44px] rounded-lg bg-accent-bright px-6 py-2.5 text-sm font-semibold text-white hover:opacity-95"
+          className="mt-2 min-h-[44px] rounded-lg bg-accent-bright px-6 py-2.5 text-sm font-semibold text-surface hover:opacity-95"
         >
           Готово
         </button>
@@ -288,7 +288,7 @@ export function RegisterBreakageScreen({ onDone }: { onDone: () => void }) {
                           disabled
                             ? "cursor-not-allowed border-border bg-surface-muted text-ink-3 opacity-60"
                             : on
-                              ? "border-accent-bright bg-accent-bright text-white"
+                              ? "border-accent-bright bg-accent-bright text-surface"
                               : "border-border bg-surface text-ink hover:bg-surface-muted"
                         }`}
                         aria-pressed={on}
@@ -374,7 +374,7 @@ export function RegisterBreakageScreen({ onDone }: { onDone: () => void }) {
                         className={`min-h-[40px] flex-1 rounded-lg border px-2 py-2 text-[12.5px] font-semibold transition-colors ${
                           on
                             ? o.value === "URGENT"
-                              ? "border-rose bg-rose text-white"
+                              ? "border-rose bg-rose text-surface"
                               : "border-ink bg-ink text-white"
                             : "border-border bg-surface text-ink-2 hover:bg-surface-muted"
                         }`}
@@ -442,7 +442,7 @@ export function RegisterBreakageScreen({ onDone }: { onDone: () => void }) {
             type="button"
             onClick={() => void submit()}
             disabled={!canSubmit}
-            className="flex min-h-[52px] items-center justify-center gap-2 rounded-lg bg-amber px-4 py-3 text-[14px] font-semibold text-white transition-opacity hover:opacity-95 disabled:opacity-50"
+            className="flex min-h-[52px] items-center justify-center gap-2 rounded-lg bg-amber px-4 py-3 text-[14px] font-semibold text-surface transition-opacity hover:opacity-95 disabled:opacity-50"
           >
             <IconWrench className="h-[18px] w-[18px]" strokeWidth={2.1} />
             {submitting ? "Регистрируем…" : "Зарегистрировать поломку"}

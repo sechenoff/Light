@@ -191,7 +191,7 @@ export function WorkstationShell({
     // Высоту и глобальный сайдбар даёт AppShell; здесь только колонка раздела.
     <div className="flex min-h-full flex-1 flex-col bg-surface-muted">
       {/* Тёмная canon-шапка раздела (прецедент — DayHeader на /day). */}
-      <header className="bg-accent text-white">
+      <header className="bg-accent-chrome text-white">
         <div className="flex w-full items-center gap-3 px-4 py-3 lg:px-6">
           {onBack && (
             <button

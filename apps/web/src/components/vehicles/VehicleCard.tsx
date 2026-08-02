@@ -433,7 +433,7 @@ export function VehicleCard({
               className={
                 "inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded border px-3 text-xs font-medium transition-colors " +
                 (stats.serviceHealth === "OVERDUE"
-                  ? "border-transparent bg-accent-bright text-white hover:bg-accent"
+                  ? "border-transparent bg-accent-bright text-surface hover:bg-accent"
                   : "border-border bg-surface text-ink-2 hover:border-accent hover:text-accent")
               }
             >
