@@ -7,6 +7,8 @@ import { prisma } from "../prisma";
 import { createBookingDraft, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, CUSTOM_LINE_CATEGORY } from "../services/bookings";
 import type { BookingTransportSnapshot } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking, autoConfirmBooking, approvalMode } from "../services/bookingApproval";
+import { archiveBooking, cancelBooking } from "../services/bookingLifecycle";
+import { BULK_ACTIONS, BULK_MAX_IDS, runBulkBookingAction } from "../services/bookingBulk";
 import { HttpError } from "../utils/errors";
 import {
   assertBookingRangeOrder,
@@ -548,6 +550,43 @@ router.get("/summary/counts", async (_req, res, next) => {
       prisma.booking.count({ where: { ...live, status: "ISSUED" } }),
     ]);
     res.json({ pendingApproval, overdue, issued });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/bookings/bulk — групповое действие над выбранными бронями
+ * (мультивыбор на /bookings): approve / submit / cancel / archive.
+ *
+ * ОБЪЯВЛЕН ДО `/:id`-маршрутов: иначе express отдал бы «bulk» в параметр :id.
+ *
+ * Ответ всегда 200 с ПОБРОННЫМ результатом — пачка не «падает целиком»:
+ * { action, results: [{id, ok, status} | {id, ok:false, code, message}],
+ *   counts: {total, ok, failed} }. Ненулевой `failed` — штатный исход
+ * (бронь успели согласовать в другой вкладке, оборудование занято, есть
+ * оплата), UI показывает это отчётом, а не ошибкой запроса.
+ *
+ * Router-level guard пускает SA и WAREHOUSE; точное право на КОНКРЕТНОЕ
+ * действие проверяет assertBulkActionAllowed внутри сервиса (approve и
+ * archive — только SUPER_ADMIN).
+ */
+const bulkActionSchema = z.object({
+  action: z.enum(BULK_ACTIONS),
+  ids: z.array(z.string().min(1)).min(1, "Не выбрано ни одной брони").max(BULK_MAX_IDS),
+});
+
+router.post("/bulk", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
+  try {
+    if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+    const body = bulkActionSchema.parse(req.body);
+    const result = await runBulkBookingAction({
+      ids: body.ids,
+      action: body.action,
+      userId: req.adminUser.userId,
+      role: req.adminUser.role,
+    });
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -1255,32 +1294,11 @@ router.post("/:id/status", async (req, res, next) => {
 
     let updated;
     if (body.action === "cancel") {
-      // C2: при отмене освобождаем UNIT-резервы в той же транзакции, что и
-      // смена статуса + аудит. Без этого equipmentUnit.status застревал в
-      // ISSUED, а BookingItemUnit-резервы не снимались.
-      const auditUserId = req.adminUser?.userId ?? "system";
-      updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        const u = await tx.booking.update({
-          where: { id },
-          data: bookingUpdateData,
-          include: bookingInclude,
-        });
-        const released = await releaseBookingUnits(id, tx);
-        await writeAuditEntry({
-          tx,
-          userId: auditUserId,
-          action: "BOOKING_UNITS_RELEASED",
-          entityType: "Booking",
-          entityId: id,
-          before: diffFields({ status: booking.status }),
-          after: diffFields({
-            status: "CANCELLED",
-            via: "status:cancel",
-            releasedReservations: released.releasedReservations,
-            freedUnitIds: released.freedUnitIds.length,
-          }),
-        });
-        return u;
+      // C2: снятие UNIT-резервов идёт в той же транзакции, что смена статуса
+      // и аудит. Реализация — в services/bookingLifecycle (общая с bulk).
+      updated = await cancelBooking(id, req.adminUser?.userId ?? "system", {
+        expectedPaymentDate: bookingUpdateData.expectedPaymentDate,
+        paymentComment: bookingUpdateData.paymentComment,
       });
     } else {
       // Ручные «Выдать»/«Вернуть» (без киоска) обязаны реконсилировать
@@ -1385,48 +1403,15 @@ router.post("/:id/status", async (req, res, next) => {
  */
 router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const userId = req.adminUser!.userId;
-    const existing = await prisma.booking.findUnique({
-      where: { id },
-      select: { id: true, status: true, projectName: true, startDate: true, endDate: true, deletedAt: true },
+    // BD-2/RR-1: снятие резервов у не-терминальных броней и аудит — внутри
+    // archiveBooking (services/bookingLifecycle), общего с групповым /bulk.
+    const released = await archiveBooking(req.params.id, req.adminUser!.userId);
+    res.json({
+      ok: true,
+      archived: true,
+      releasedReservations: released.releasedReservations,
+      freedUnits: released.freedUnits,
     });
-    if (!existing) throw new HttpError(404, "Booking not found");
-    if (existing.deletedAt) {
-      throw new HttpError(409, "Бронь уже в архиве", "BOOKING_ALREADY_ARCHIVED");
-    }
-    const released = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.booking.update({
-        where: { id },
-        data: { deletedAt: new Date(), deletedBy: userId },
-      });
-      // BD-2: архивация не-терминальной брони (CONFIRMED/ISSUED/PENDING_APPROVAL)
-      // обязана освободить UNIT-резервы — иначе equipmentUnit застревает в ISSUED
-      // и выпадает из учёта доступности (бронь-то скрыта и больше не сканируется).
-      // RR-1: для терминальных (RETURNED/CANCELLED) release пропускаем — их резервы
-      // либо история приёмки (returnedAt), либо уже сняты cancel-веткой; сам
-      // releaseBookingUnits дополнительно фильтрует returnedAt: null.
-      const isTerminal = existing.status === "RETURNED" || existing.status === "CANCELLED";
-      const rel = isTerminal
-        ? { releasedReservations: 0, freedUnitIds: [] as string[] }
-        : await releaseBookingUnits(id, tx);
-      await writeAuditEntry({
-        tx,
-        userId,
-        action: "BOOKING_ARCHIVED",
-        entityType: "Booking",
-        entityId: id,
-        before: diffFields(existing as Record<string, unknown>),
-        after: {
-          deletedAt: new Date().toISOString(),
-          deletedBy: userId,
-          releasedReservations: rel.releasedReservations,
-          freedUnits: rel.freedUnitIds.length,
-        },
-      });
-      return rel;
-    });
-    res.json({ ok: true, archived: true, releasedReservations: released.releasedReservations, freedUnits: released.freedUnitIds.length });
   } catch (err) {
     next(err);
   }

@@ -122,6 +122,13 @@ light-rental-system/
 | `apps/api/src/services/bookingApproval.ts` | Booking approval workflow: `submitForApproval` (DRAFT → PENDING_APPROVAL, clears rejectionReason), `approveBooking` (delegates to `confirmBooking` + audit), `rejectBooking` (required reason, PENDING_APPROVAL → DRAFT + rejectionReason + audit) |
 | `apps/api/src/__tests__/approval.test.ts` | 22 интеграционных теста approval workflow: submit/approve/reject по всем ролям + full reject-resubmit-approve cycle + legacy confirm-bypass регрессия + ?status= Zod-валидация |
 | `apps/web/src/components/bookings/RejectBookingModal.tsx` | Модалка обязательной причины отклонения (min 3 trimmed chars, счётчик, Esc-close, backdrop dismissal, auto-focus textarea) |
+| `apps/api/src/services/bookingBulk.ts` | Групповые действия над бронями: побронная изоляция (одна негодная не роняет пачку), последовательная обработка под SQLite, `assertBulkActionAllowed`, `BULK_MAX_IDS` = 100 |
+| `apps/api/src/services/bookingLifecycle.ts` | `cancelBooking` / `archiveBooking` — вынесены из routes и общие для одиночных маршрутов и `/bulk` |
+| `apps/web/src/components/bookings/bulkActions.ts` | Чистые правила применимости групповых действий + подписи и тексты подтверждений (зеркало сервера) |
+| `apps/web/src/components/bookings/useBookingSelection.ts` | Выбор строк: `Set` с подрезкой под текущий состав (фильтр выбрасывает, дозагрузка сохраняет) |
+| `apps/web/src/components/bookings/useBulkBookingActions.ts` | Запрос `/api/bookings/bulk` + применение побронного результата к списку без сброса пагинации |
+| `apps/web/src/components/bookings/BulkActionBar.tsx` | Липкая панель действий: применимость на кнопках, лимит пачки, отступ под FAB |
+| `apps/web/src/components/bookings/BulkResultModal.tsx` | Отчёт о частичном успехе — только при `failed > 0`, с человеческими подписями броней |
 | `apps/api/src/utils/moscowDate.ts` | Moscow TZ helpers: `toMoscowDateString()`, `fromMoscowDateString()`, `moscowTodayStart()`, `addDays()` — single source of truth for date-only task semantics on server |
 | `apps/api/src/services/taskService.ts` | Task CRUD service: `createTask`, `updateTask`, `completeTask`, `reopenTask`, `deleteTask`, `listTasks` — all wrapped in `prisma.$transaction` + `writeAuditEntry` |
 | `apps/api/src/routes/tasks.ts` | Task routes at `/api/tasks`: GET list, POST create, PATCH update, POST complete/reopen, DELETE; Zod validation; `serializeTask` serializer |
@@ -252,6 +259,31 @@ npm run seed                  # Seed database
 - **Task.dueDate — date-only semantics** — stored as Moscow-midnight UTC (`fromMoscowDateString()`), compared via `toMoscowDateString()`. Never compare raw Date objects — always compare the `YYYY-MM-DD` string in Moscow TZ.
 - **Optimistic mutation pattern (Tasks)** — snapshot → apply → reconcile from server; per-id `useRef<Set<string>>` in-flight guard. `completeTask`: fire-immediately undo-via-reopen; toast action "Отменить" has 6 s window.
 - **Task audit actions** — `TASK_CREATE / TASK_UPDATE / TASK_ASSIGN / TASK_COMPLETE / TASK_REOPEN / TASK_DELETE` written in same `$transaction` as mutation; `entityType: "Task"`. `TASK_ASSIGN` is a distinct action when `assignedTo` changes (for audit searchability).
+
+## Групповые действия над бронями (мультивыбор на /bookings)
+
+Чекбоксы в списке броней + липкая панель действий: `approve` (согласовать), `submit` (на согласование / «Подтвердить» при `APPROVAL_MODE=auto`), `cancel` (отменить), `archive` (в архив).
+
+**`POST /api/bookings/bulk`** — объявлен **ДО** `/:id`-маршрутов (иначе express отдаст «bulk» в параметр `:id`, как и `/summary/counts`). Тело: `{ action, ids: string[] }` (1…`BULK_MAX_IDS` = 100). Ответ **всегда 200** с побронным результатом: `{ action, results: [{id, ok:true, status} | {id, ok:false, code, message}], counts: {total, ok, failed} }`. Ненулевой `failed` — штатный исход, а не ошибка запроса.
+
+- **Каждая бронь обрабатывается изолированно**, общей транзакции нет: атомарность живёт внутри `approveBooking` / `submitForApproval` / `cancelBooking` / `archiveBooking`. Пачка из 30, где две конфликтуют по доступности, не должна откатывать остальные 28.
+- **Обработка последовательная**, не `Promise.all`: SQLite пишет в один поток, параллельные транзакции дали бы `SQLITE_BUSY` вместо ускорения.
+- **Гард двухслойный**: router-level `rolesGuard(["SUPER_ADMIN","WAREHOUSE"])` + `assertBulkActionAllowed(action, role)` в сервисе (`approve` и `archive` — только SUPER_ADMIN). Один router-guard этого не выразит, потому что действие лежит в теле запроса.
+- **Оплаченную бронь пачкой не отменить** — 409 `BULK_CANCEL_PAID` даже для SUPER_ADMIN: депозит требует явного распоряжения (возврат / кредит-нота / удержание) через `CancelWithDepositModal` на карточке.
+- **Выдача и возврат пачкой не даются вообще** — это физические операции, завязанные на сканирование, гард `ISSUE_TOO_EARLY` и приёмку с ремонтами.
+- `submit` пачкой применим **только к DRAFT**: возврат `CONFIRMED → PENDING_APPROVAL` осмыслен поштучно, но пачкой это слишком лёгкий способ снять подтверждение с десятка активных броней.
+
+**`services/bookingLifecycle.ts`** — `cancelBooking` и `archiveBooking` вынесены из `routes/bookings.ts` и теперь общие для одиночных маршрутов (`POST /:id/status {action:"cancel"}`, `DELETE /:id`) и bulk. Дублировать их транзакции ради bulk означало бы гарантированный дрейф освобождения юнитов и аудита между копиями.
+
+**Фронтенд** (`src/components/bookings/`): `bulkActions.ts` — чистые правила применимости (зеркалят сервер; клиент не «решает» права, а лишь не предлагает заведомо невыполнимое); `useBookingSelection.ts` — `Set` выбора с подрезкой под текущий состав строк (смена фильтра выбрасывает пропавшие id, «Загрузить ещё» выбор сохраняет); `useBulkBookingActions.ts` — запрос и применение результата к отрисованному списку; `BulkActionBar.tsx`; `BulkResultModal.tsx` — отчёт показывается ТОЛЬКО при частичном успехе, полный успех — тост.
+
+- Кнопка действия показывает **применимость** («Согласовать · 3 из 7») — честнее, чем прятать кнопку или молча пропускать неподходящие.
+- После действия: успешные снимаются с выбора, **неуспешные остаются выбранными** — оператор видит, с чем разбираться. Строка убирается из списка, если `archive` ИЛИ активен фильтр по статусу и новый статус ему не соответствует.
+- Панель — **`z-30`, не `z-40`**: на `z-40` живёт затемнение мобильного меню (`AppShell`), и панель как более поздний элемент в DOM торчала бы поверх скрима с кликабельными деструктивными кнопками. От плавающей кнопки «Сообщить» она разведена правым отступом (~148 px), а не слоем. На мобильном кнопки идут горизонтальной лентой со скроллом — перенос в столбик съедал пол-экрана.
+- **Кнопка без подходящих броней остаётся кликабельной** и отвечает тостом с причиной: `title` на `disabled`-элементе браузеры не показывают, а на тач-устройствах его нет вовсе — молчаливая блокировка не объясняет ничего.
+- **«Выбрать все» продублирован над карточками** (`md:hidden`): в таблице он живёт в шапке, скрытой на мобильном, и без дубля кладовщику пришлось бы делать 50 отдельных тапов.
+- **Пустое состояние учитывает `nextCursor`** — групповое действие может вычистить всю загруженную страницу при живом курсоре; без этого список врал бы «Ничего не найдено», хотя под фильтр подпадают ещё десятки броней. Плюс `onRowsEmptied` догружает следующую страницу.
+- `BULK_MAX_IDS` продублирован в `src/components/bookings/bulkLimits.ts` — клиент предупреждает о превышении ДО нажатия. При изменении править обе константы.
 
 ## Ночной режим (тема оформления)
 

@@ -24,6 +24,16 @@ import {
   type PaidFilter,
 } from "../../src/components/bookings/bookingListHelpers";
 import { rememberBookingsListQuery } from "../../src/components/bookings/bookingsListNav";
+import { BulkActionBar } from "../../src/components/bookings/BulkActionBar";
+import { BULK_MAX_IDS } from "../../src/components/bookings/bulkLimits";
+import { BulkResultModal } from "../../src/components/bookings/BulkResultModal";
+import {
+  bulkActionMeta,
+  pluralBookings,
+  type BulkActionContext,
+} from "../../src/components/bookings/bulkActions";
+import { useBookingSelection } from "../../src/components/bookings/useBookingSelection";
+import { useBulkBookingActions } from "../../src/components/bookings/useBulkBookingActions";
 import { formatRub, formatWaitingTime, pluralize } from "../../src/lib/format";
 import { toast } from "../../src/components/ToastProvider";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
@@ -361,6 +371,30 @@ function BookingHistoryPageInner() {
   // фильтра по подгруженной странице (раньше это давало неполный результат).
   const filteredRows = rows;
 
+  // ── Мультивыбор и групповые действия ───────────────────────────────────────
+  const selection = useBookingSelection(rows);
+  const bulkCtx: BulkActionContext = {
+    isSuperAdmin,
+    approvalMode: user?.approvalMode === "auto" ? "auto" : "manual",
+  };
+  const bulk = useBulkBookingActions({
+    rows,
+    selected: selection.selected,
+    ctx: bulkCtx,
+    statusFilter,
+    rowTitle: bookingRowTitle,
+    removeRows: (ids) => {
+      setRows((prev) => prev.filter((row) => !ids.has(row.id)));
+      setTotalCount((c) => (c !== null ? Math.max(0, c - ids.size) : c));
+    },
+    applyStatus: (id, status) => mergeRowFromApi(id, { status: status as BookingRow["status"] }),
+    deselect: selection.deselect,
+    refreshCounts: () => void refreshCounts(),
+    // Групповое действие может убрать из выдачи все загруженные строки —
+    // догружаем следующую страницу, чтобы список не выглядел исчерпанным.
+    onRowsEmptied: () => void loadMore(),
+  });
+
   // Второстепенные/деструктивные действия строки — под меню «⋯».
   // Правила гейтинга зеркалят /bookings/[id] и сервер: редактировать можно
   // DRAFT/CONFIRMED (PENDING — только SA); отмена запрещена из ISSUED и
@@ -485,7 +519,11 @@ function BookingHistoryPageInner() {
   //  - пусто → «ничего не найдено по фильтрам» / «броней ещё нет».
   const showErrorBanner = loadError !== null && rows.length === 0;
   const showSkeleton = loading && rows.length === 0 && loadError === null;
-  const showEmpty = !loading && loadError === null && rows.length === 0;
+  // Пустое состояние показываем ТОЛЬКО когда выдача действительно исчерпана.
+  // Групповое действие может вычистить всю загруженную страницу при живом
+  // курсоре — тогда «Ничего не найдено» было бы прямой ложью: под фильтр
+  // подпадают ещё десятки броней, просто не подгруженных.
+  const showEmpty = !loading && !loadingMore && loadError === null && rows.length === 0 && !nextCursor;
 
   // Пустое состояние — контекстно-зависимое: под фильтром зовём их сбросить,
   // на чистой базе — создать первую бронь.
@@ -514,7 +552,9 @@ function BookingHistoryPageInner() {
   const SKELETON_KEYS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 
   return (
-    <div className="p-4 lg:p-6">
+    // Нижний отступ при активном выборе — чтобы липкая панель групповых
+    // действий не накрывала последнюю строку и «Загрузить ещё».
+    <div className={`p-4 lg:p-6 ${selection.selected.size > 0 ? "pb-44 lg:pb-24" : ""}`}>
       <SectionHeader
         eyebrow="Аренда"
         title="Список броней"
@@ -637,9 +677,25 @@ function BookingHistoryPageInner() {
         )}
 
         <div className={`hidden overflow-auto ${showErrorBanner ? "" : "md:block"}`}>
-          <table className="min-w-[1040px] w-full text-sm">
+          <table className="min-w-[1090px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
+                {/* Мультивыбор: заголовочный чекбох выделяет все загруженные строки. */}
+                <th className="w-9 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 cursor-pointer accent-accent-bright align-middle"
+                    checked={selection.allSelected}
+                    ref={(el) => {
+                      // Частичный выбор — «чёрточка» вместо галочки: состояние
+                      // indeterminate ставится только из JS, атрибута нет.
+                      if (el) el.indeterminate = selection.someSelected;
+                    }}
+                    onChange={selection.toggleAll}
+                    aria-label="Выбрать все брони на странице"
+                    disabled={filteredRows.length === 0}
+                  />
+                </th>
                 {/* Период «смена — возврат»: из списка видно, у кого сегодня возврат */}
                 <th
                   className="text-left px-3 py-2 font-medium"
@@ -660,7 +716,7 @@ function BookingHistoryPageInner() {
               {showSkeleton &&
                 SKELETON_KEYS.map((k) => (
                   <tr key={k} className="border-t border-border">
-                    {Array.from({ length: 8 }).map((_, i) => (
+                    {Array.from({ length: 9 }).map((_, i) => (
                       <td key={i} className="px-3 py-3">
                         <div className="h-3 rounded bg-surface-muted animate-pulse" />
                       </td>
@@ -670,10 +726,23 @@ function BookingHistoryPageInner() {
               {filteredRows.map((r) => (
                 <tr
                   key={r.id}
-                  className="border-t border-border hover:bg-surface-muted transition-colors cursor-pointer"
+                  className={`border-t border-border transition-colors cursor-pointer ${
+                    selection.selected.has(r.id) ? "bg-accent-soft" : "hover:bg-surface-muted"
+                  }`}
                   title={paymentTooltip(r)}
                   onClick={() => router.push(`/bookings/${r.id}`)}
                 >
+                  {/* Ячейка чекбокса гасит переход на карточку: клик по выбору
+                      не должен уводить со страницы. */}
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 cursor-pointer accent-accent-bright align-middle"
+                      checked={selection.selected.has(r.id)}
+                      onChange={() => selection.toggle(r.id)}
+                      aria-label={`Выбрать бронь: ${bookingRowTitle(r)}`}
+                    />
+                  </td>
                   <td className="px-3 py-2 text-ink-2 whitespace-nowrap mono-num" title="Смена — возврат">
                     {formatBookingPeriod(r.startDate, r.endDate)}
                   </td>
@@ -706,7 +775,7 @@ function BookingHistoryPageInner() {
               ))}
               {showEmpty ? (
                 <tr>
-                  <td className="px-3 py-10 text-center text-sm" colSpan={8}>
+                  <td className="px-3 py-10 text-center text-sm" colSpan={9}>
                     {renderEmptyState()}
                   </td>
                 </tr>
@@ -718,6 +787,30 @@ function BookingHistoryPageInner() {
         {/* Мобильное card-представление (паттерн — как на /finance/payments):
             те же данные и те же действия, без горизонтального скролла таблицы */}
         <div className={`p-3 space-y-2 ${showErrorBanner ? "hidden" : "md:hidden"}`}>
+          {/* «Выбрать все» для карточек: в таблице этот чекбокс живёт в шапке,
+              а она скрыта на мобильном — без этой строки кладовщику пришлось бы
+              делать 50 отдельных тапов, и групповые действия оказались бы
+              медленнее поштучных. */}
+          {filteredRows.length > 0 && (
+            <button
+              type="button"
+              onClick={selection.toggleAll}
+              className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-left text-xs text-ink-2 active:bg-surface-muted"
+            >
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-accent-bright"
+                checked={selection.allSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = selection.someSelected;
+                }}
+                onChange={selection.toggleAll}
+                aria-label="Выбрать все брони на странице"
+                tabIndex={-1}
+              />
+              {selection.allSelected ? "Снять выделение" : `Выбрать все на странице (${filteredRows.length})`}
+            </button>
+          )}
           {showSkeleton &&
             SKELETON_KEYS.map((k) => (
               <div key={k} className="border border-border rounded-lg p-3 bg-surface space-y-2">
@@ -729,12 +822,30 @@ function BookingHistoryPageInner() {
           {filteredRows.map((r) => (
             <div
               key={r.id}
-              className="border border-border rounded-lg p-3 bg-surface cursor-pointer active:bg-surface-muted transition-colors"
+              className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                selection.selected.has(r.id)
+                  ? "border-accent-border bg-accent-soft"
+                  : "border-border bg-surface active:bg-surface-muted"
+              }`}
               title={paymentTooltip(r)}
               onClick={() => router.push(`/bookings/${r.id}`)}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                {/* Чекбокс с увеличенной зоной нажатия: на телефоне попасть в
+                    16px квадрат пальцем мимо карточки почти невозможно. */}
+                <span
+                  className="-m-1 shrink-0 p-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 cursor-pointer accent-accent-bright align-middle"
+                    checked={selection.selected.has(r.id)}
+                    onChange={() => selection.toggle(r.id)}
+                    aria-label={`Выбрать бронь: ${bookingRowTitle(r)}`}
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setSearchInput(r.client.name); }}
@@ -858,6 +969,45 @@ function BookingHistoryPageInner() {
             runStatusAction(id, "issue", { force: true });
           }
         }}
+      />
+
+      {/* Групповые действия над выбранными бронями. */}
+      <BulkActionBar
+        selectedCount={selection.selected.size}
+        eligibleCounts={bulk.eligibleCounts}
+        ctx={bulkCtx}
+        busyAction={bulk.busy}
+        maxBatch={BULK_MAX_IDS}
+        onRun={bulk.request}
+        onClear={selection.clear}
+      />
+
+      <ConfirmActionModal
+        open={bulk.confirm !== null}
+        title={bulk.confirm ? bulkActionMeta(bulk.confirm.action, bulkCtx).confirmTitle : ""}
+        subtitle={
+          bulk.confirm
+            ? `${bulk.confirm.ids.length} ${pluralBookings(bulk.confirm.ids.length)} из ${selection.selected.size} выбранных`
+            : undefined
+        }
+        message={
+          bulk.confirm
+            ? bulkActionMeta(bulk.confirm.action, bulkCtx).confirmMessage(bulk.confirm.ids.length)
+            : ""
+        }
+        confirmLabel={bulk.confirm ? bulkActionMeta(bulk.confirm.action, bulkCtx).confirmLabel : ""}
+        tone={bulk.confirm && bulkActionMeta(bulk.confirm.action, bulkCtx).danger ? "danger" : "primary"}
+        loading={bulk.busy !== null}
+        onClose={bulk.closeConfirm}
+        onConfirm={bulk.run}
+      />
+
+      <BulkResultModal
+        open={bulk.report !== null}
+        actionLabel={bulk.report?.actionLabel ?? ""}
+        okCount={bulk.report?.okCount ?? 0}
+        failures={bulk.report?.failures ?? []}
+        onClose={bulk.closeReport}
       />
 
       {cancelDepositRow && (
