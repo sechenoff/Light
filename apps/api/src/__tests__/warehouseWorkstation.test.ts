@@ -16,6 +16,7 @@ import fs from "fs";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import type { Express } from "express";
+import { moscowTodayStart } from "../utils/moscowDate";
 
 const TEST_DB_PATH = path.resolve(__dirname, "../../prisma/test-workstation.db");
 process.env.DATABASE_URL = `file:${TEST_DB_PATH}`;
@@ -100,11 +101,13 @@ afterAll(async () => {
 const AUTH_PIN = () => ({ "X-API-Key": "test-key-1", Authorization: `Bearer ${pinToken}` });
 const AUTH_WH = () => ({ "X-API-Key": "test-key-1", Authorization: `Bearer ${warehouseToken}` });
 
-/** Московская полночь сегодня + смещение часов — стабильные даты внутри дня. */
-function todayAt(hoursUtc: number): Date {
-  const d = new Date();
-  d.setUTCHours(hoursUtc, 0, 0, 0);
-  return d;
+/**
+ * Московская полночь сегодня + смещение часов — стабильные даты внутри дня.
+ * Именно от московской полуночи (не от UTC-даты): сервис режет «план дня» по
+ * moscowTodayStart(), и в окне 00:00–03:00 МСК UTC-дата — ещё вчерашняя.
+ */
+function todayAt(hoursMsk: number): Date {
+  return new Date(moscowTodayStart().getTime() + hoursMsk * 3600000);
 }
 function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 86400000);

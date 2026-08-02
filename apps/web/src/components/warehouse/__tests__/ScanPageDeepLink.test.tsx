@@ -1,12 +1,13 @@
 /**
- * Deep-link tests for the warehouse-scan kiosk page:
+ * Deep-link tests for the warehouse-scan kiosk page (workstation v2):
  * `/warehouse/scan?booking=<id>` (кнопка «Начать сканирование» на карточке
  * брони) должен после авторизации сразу открыть чек-лист этой брони,
- * пропуская шаги «операция» и «выбор брони».
+ * минуя стартовый экран «Смена» и выбор брони.
  *
  * Mocks: next/navigation (router + searchParams), useCurrentUser
- * (main-session SUPER_ADMIN → login step is skipped), scanApi, toast и оба
- * checklist-компонента (placeholder'ы — их внутренности тестируются отдельно).
+ * (main-session SUPER_ADMIN → login step is skipped), scanApi, toast,
+ * ShiftHome и оба checklist-компонента (placeholder'ы — их внутренности
+ * тестируются отдельно).
  */
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -42,14 +43,45 @@ vi.mock("../../ToastProvider", () => ({
 const listBookings = vi.fn();
 const createSession = vi.fn();
 const getState = vi.fn();
+const getShift = vi.fn();
 vi.mock("../api", () => ({
   scanApi: {
     listBookings: (op: string) => listBookings(op),
     createSession: (id: string, op: string) => createSession(id, op),
     getState: (id: string) => getState(id),
+    getShift: () => getShift(),
     clearWarehouseToken: vi.fn(),
   },
 }));
+
+// Экран «Смена» тестируется отдельно — здесь только маркер, что мы на нём.
+vi.mock("../ShiftHome", () => ({
+  ShiftHome: () => <div>SHIFT-HOME</div>,
+  shiftHeaderTitle: (name: string) => `Смена — ${name}`,
+  shiftHeaderEyebrow: () => "Склад · Смена",
+}));
+
+/** Пустая смена — питает бейджи навигации, содержимое экрана замокано. */
+const EMPTY_SHIFT = {
+  date: "2026-07-03",
+  timeline: [],
+  overdue: [],
+  counters: {
+    issuesDone: 0,
+    issuesPlanned: 0,
+    returnsDone: 0,
+    returnsPlanned: 0,
+    overdue: 0,
+    inWork: 0,
+  },
+  myShift: {
+    workerName: "sechenoff",
+    sessions: 0,
+    items: 0,
+    firstAt: null,
+    avgMinutes: null,
+  },
+};
 
 vi.mock("../IssueChecklist", () => ({
   IssueChecklist: ({ projectName }: { projectName: string }) => (
@@ -85,6 +117,7 @@ beforeEach(() => {
     progress: { checkedItems: 0, totalItems: 0 },
   });
   createSession.mockResolvedValue({ id: "sess-1" });
+  getShift.mockResolvedValue(EMPTY_SHIFT);
 });
 
 describe("WarehouseScanPage ?booking= deep-link", () => {
@@ -99,11 +132,11 @@ describe("WarehouseScanPage ?booking= deep-link", () => {
     await waitFor(() =>
       expect(createSession).toHaveBeenCalledWith("bk-1", "ISSUE"),
     );
-    // чек-лист открыт, шаги «операция»/«выбор брони» пропущены
+    // чек-лист открыт, стартовый экран «Смена» пропущен
     expect(
       await screen.findByText("ISSUE-CHECKLIST Проект Тест"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Выберите операцию")).not.toBeInTheDocument();
+    expect(screen.queryByText("SHIFT-HOME")).not.toBeInTheDocument();
     // query-параметр расходуется один раз — URL чистится
     await waitFor(() =>
       expect(h.replace).toHaveBeenCalledWith("/warehouse/scan"),
@@ -132,7 +165,7 @@ describe("WarehouseScanPage ?booking= deep-link", () => {
     ).toBeInTheDocument();
   });
 
-  it("бронь не найдена ни в одном списке → toast и обычный шаг «Выберите операцию»", async () => {
+  it("бронь не найдена ни в одном списке → toast и стартовый экран «Смена»", async () => {
     listBookings.mockResolvedValue([]);
 
     render(<WarehouseScanPage />);
@@ -143,16 +176,16 @@ describe("WarehouseScanPage ?booking= deep-link", () => {
       ),
     );
     expect(createSession).not.toHaveBeenCalled();
-    expect(await screen.findByText("Выберите операцию")).toBeInTheDocument();
+    expect(await screen.findByText("SHIFT-HOME")).toBeInTheDocument();
   });
 
-  it("без ?booking= — предвыбор не запускается, сразу «Выберите операцию»", async () => {
+  it("без ?booking= — предвыбор не запускается, сразу экран «Смена»", async () => {
     h.search = "";
     listBookings.mockResolvedValue([]);
 
     render(<WarehouseScanPage />);
 
-    expect(await screen.findByText("Выберите операцию")).toBeInTheDocument();
+    expect(await screen.findByText("SHIFT-HOME")).toBeInTheDocument();
     expect(listBookings).not.toHaveBeenCalled();
     expect(h.replace).not.toHaveBeenCalled();
   });
