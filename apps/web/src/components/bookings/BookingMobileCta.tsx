@@ -38,7 +38,7 @@ export function BookingMobileCta({
           (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
       ) && (
         <button
-          className="flex-1 rounded bg-accent-bright text-white px-2 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
+          className="flex-1 rounded bg-accent-bright text-surface px-2 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
           onClick={() => dispatch({ type: "openPayment" })}
         >
           ₽ Платёж

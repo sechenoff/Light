@@ -125,7 +125,7 @@ export function ResolveProblemModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={() => !loading && onClose()}
     >
       <div

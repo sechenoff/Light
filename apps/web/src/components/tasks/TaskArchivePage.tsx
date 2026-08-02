@@ -519,7 +519,7 @@ function ArchiveTaskRow({
   return (
     <div className="grid grid-cols-[22px_1fr_auto_auto_auto] gap-3.5 items-center px-5 py-3 opacity-85 hover:bg-surface-muted hover:opacity-100 transition-all group">
       {/* Зелёная галочка */}
-      <span className="w-5 h-5 rounded-[6px] bg-emerald border-2 border-emerald text-white text-xs font-bold flex items-center justify-center shrink-0">
+      <span className="w-5 h-5 rounded-[6px] bg-emerald border-2 border-emerald text-surface text-xs font-bold flex items-center justify-center shrink-0">
         ✓
       </span>
 

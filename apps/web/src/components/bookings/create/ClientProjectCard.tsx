@@ -59,7 +59,7 @@ export function ClientProjectCard({
           </label>
           {clientReadOnly ? (
             <div className="inline-flex items-center gap-2.5 px-1.5 py-1.5 pr-2.5 bg-surface-muted border border-border rounded">
-              <span className="w-6 h-6 rounded-sm bg-ink text-white text-[11px] font-semibold font-mono flex items-center justify-center">
+              <span className="w-6 h-6 rounded-sm bg-inverse text-on-inverse text-[11px] font-semibold font-mono flex items-center justify-center">
                 {initials || "?"}
               </span>
               <span className="text-[13px] text-ink font-medium">{clientName.trim()}</span>

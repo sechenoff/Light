@@ -73,23 +73,23 @@ function GenerateModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
-        <h2 className="text-base font-semibold text-slate-900 mb-4">Сгенерировать единицы</h2>
-        <label className="block text-sm text-slate-700 mb-1">Количество единиц</label>
+      <div className="w-full max-w-sm bg-surface rounded-2xl border border-border shadow-lg p-6">
+        <h2 className="text-base font-semibold text-ink mb-4">Сгенерировать единицы</h2>
+        <label className="block text-sm text-ink-2 mb-1">Количество единиц</label>
         <input
           type="number"
           min={1}
           max={100}
           value={count}
           onChange={(e) => setCount(Math.max(1, parseInt(e.target.value) || 1))}
-          className="w-full rounded border border-slate-300 px-3 py-2 text-sm mb-4"
+          className="w-full rounded border border-border-strong px-3 py-2 text-sm mb-4"
         />
         {error && <p className="text-xs text-rose-600 mb-3">{error}</p>}
         <div className="flex gap-2 justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle"
           >
             Отмена
           </button>
@@ -97,7 +97,7 @@ function GenerateModal({
             type="button"
             onClick={handleGenerate}
             disabled={loading}
-            className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent disabled:opacity-50 transition-colors"
+            className="rounded bg-accent-bright text-surface px-4 py-2 text-sm hover:bg-accent disabled:opacity-50 transition-colors"
           >
             {loading ? "Генерация..." : `Создать ${count} шт.`}
           </button>
@@ -149,25 +149,25 @@ function EditModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
-        <h2 className="text-base font-semibold text-slate-900 mb-4">Редактировать единицу</h2>
+      <div className="w-full max-w-md bg-surface rounded-2xl border border-border shadow-lg p-6">
+        <h2 className="text-base font-semibold text-ink mb-4">Редактировать единицу</h2>
         {/* eu-5: показываем серийный номер вместо штрихкода */}
-        <p className="text-xs text-slate-500 mb-4">{unit.serialNumber ? `С/н ${unit.serialNumber}` : "Без серийного номера"}</p>
+        <p className="text-xs text-ink-2 mb-4">{unit.serialNumber ? `С/н ${unit.serialNumber}` : "Без серийного номера"}</p>
 
-        <label className="block text-sm text-slate-700 mb-1">Серийный номер</label>
+        <label className="block text-sm text-ink-2 mb-1">Серийный номер</label>
         <input
           type="text"
           value={serialNumber}
           onChange={(e) => setSerialNumber(e.target.value)}
           placeholder="не указан"
-          className="w-full rounded border border-slate-300 px-3 py-2 text-sm mb-3"
+          className="w-full rounded border border-border-strong px-3 py-2 text-sm mb-3"
         />
 
-        <label className="block text-sm text-slate-700 mb-1">Статус</label>
+        <label className="block text-sm text-ink-2 mb-1">Статус</label>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as UnitStatus)}
-          className="w-full rounded border border-slate-300 px-3 py-2 text-sm mb-1 bg-white"
+          className="w-full rounded border border-border-strong px-3 py-2 text-sm mb-1 bg-surface"
         >
           {/* eu-6: «Выдана» руками не ставится — только через выдачу по брони.
               Опция видна лишь когда единица уже выдана (чтобы не ломать правку с/н и комментария). */}
@@ -177,17 +177,17 @@ function EditModal({
               <option key={s} value={s}>{UNIT_STATUS_LABELS[s]}</option>
             ))}
         </select>
-        <p className="text-[11px] text-slate-400 mb-3">
+        <p className="text-[11px] text-ink-3 mb-3">
           Статус «Выдана» устанавливается автоматически при выдаче по брони
         </p>
 
-        <label className="block text-sm text-slate-700 mb-1">Комментарий</label>
+        <label className="block text-sm text-ink-2 mb-1">Комментарий</label>
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           placeholder="необязательно"
           rows={2}
-          className="w-full rounded border border-slate-300 px-3 py-2 text-sm mb-4 resize-none"
+          className="w-full rounded border border-border-strong px-3 py-2 text-sm mb-4 resize-none"
         />
 
         {error && <p className="text-xs text-rose-600 mb-3">{error}</p>}
@@ -195,7 +195,7 @@ function EditModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle"
           >
             Отмена
           </button>
@@ -203,7 +203,7 @@ function EditModal({
             type="button"
             onClick={handleSave}
             disabled={loading}
-            className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent disabled:opacity-50 transition-colors"
+            className="rounded bg-accent-bright text-surface px-4 py-2 text-sm hover:bg-accent disabled:opacity-50 transition-colors"
           >
             {loading ? "Сохранение..." : "Сохранить"}
           </button>
@@ -245,19 +245,19 @@ function DeleteConfirm({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
-        <h2 className="text-base font-semibold text-slate-900 mb-2">Удалить единицу?</h2>
+      <div className="w-full max-w-sm bg-surface rounded-2xl border border-border shadow-lg p-6">
+        <h2 className="text-base font-semibold text-ink mb-2">Удалить единицу?</h2>
         {/* eu-5: идентифицируем по серийному номеру, не по штрихкоду */}
-        <p className="text-sm text-slate-600 mb-1">
+        <p className="text-sm text-ink-2 mb-1">
           {unit.serialNumber ? `Серийный номер: ${unit.serialNumber}` : "Единица без серийного номера"}
         </p>
-        <p className="text-xs text-slate-400 mb-4">Это действие необратимо.</p>
+        <p className="text-xs text-ink-3 mb-4">Это действие необратимо.</p>
         {error && <p className="text-xs text-rose-600 mb-3">{error}</p>}
         <div className="flex gap-2 justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle"
           >
             Отмена
           </button>
@@ -357,7 +357,7 @@ export default function UnitsPage() {
     <div className="p-4 lg:p-6">
       {/* Back link */}
       <div className="mb-4">
-        <Link href="/equipment" className="text-sm text-slate-500 hover:text-slate-900">
+        <Link href="/equipment" className="text-sm text-ink-2 hover:text-ink">
           ← Назад к каталогу
         </Link>
       </div>
@@ -367,15 +367,15 @@ export default function UnitsPage() {
         <div>
           {equipment ? (
             <>
-              <h1 className="text-xl font-semibold text-slate-900">{equipment.name}</h1>
-              <p className="text-sm text-slate-500 mt-0.5">
+              <h1 className="text-xl font-semibold text-ink">{equipment.name}</h1>
+              <p className="text-sm text-ink-2 mt-0.5">
                 {equipment.category}
                 {equipment.brand && ` · ${equipment.brand}`}
                 {equipment.model && ` · ${equipment.model}`}
               </p>
             </>
           ) : (
-            <h1 className="text-xl font-semibold text-slate-400">Загрузка...</h1>
+            <h1 className="text-xl font-semibold text-ink-3">Загрузка...</h1>
           )}
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -383,14 +383,14 @@ export default function UnitsPage() {
             type="button"
             onClick={handlePrintAll}
             disabled={printingAll || units.length === 0}
-            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="rounded border border-border-strong bg-surface px-3 py-2 text-sm text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
           >
             {printingAll ? "Загрузка..." : "Печать всех этикеток (PDF)"}
           </button>
           <button
             type="button"
             onClick={() => setShowGenerate(true)}
-            className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent transition-colors"
+            className="rounded bg-accent-bright text-surface px-4 py-2 text-sm hover:bg-accent transition-colors"
           >
             Сгенерировать единицы
           </button>
@@ -406,14 +406,14 @@ export default function UnitsPage() {
 
       {/* Loading */}
       {loading && (
-        <div className="py-12 text-center text-slate-400">Загрузка...</div>
+        <div className="py-12 text-center text-ink-3">Загрузка...</div>
       )}
 
       {/* Empty */}
       {!loading && !error && units.length === 0 && (
-        <div className="py-12 text-center text-slate-500 border border-slate-200 rounded-xl bg-white">
+        <div className="py-12 text-center text-ink-2 border border-border rounded-xl bg-surface">
           <p className="mb-2">Единицы ещё не созданы</p>
-          <p className="text-sm text-slate-400">Нажмите «Сгенерировать единицы» чтобы добавить</p>
+          <p className="text-sm text-ink-3">Нажмите «Сгенерировать единицы» чтобы добавить</p>
         </div>
       )}
 
@@ -444,14 +444,14 @@ export default function UnitsPage() {
                         type="button"
                         onClick={() => handlePrintUnit(unit)}
                         disabled={printingUnit === unit.id}
-                        className="text-xs rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
                       >
                         {printingUnit === unit.id ? "..." : "Этикетка"}
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditUnit(unit)}
-                        className="text-xs rounded border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50"
+                        className="text-xs rounded border border-border px-2 py-1 text-ink-2 hover:bg-surface-subtle"
                       >
                         Изменить
                       </button>
@@ -477,7 +477,7 @@ export default function UnitsPage() {
       {!loading && units.length > 0 && (
         <div className="md:hidden space-y-3">
           {units.map((unit) => (
-            <div key={unit.id} className="rounded-xl border border-slate-200 bg-white p-4">
+            <div key={unit.id} className="rounded-xl border border-border bg-surface p-4">
               {/* eu-5: заголовок карточки — серийный номер, не штрихкод. */}
               <div className="flex items-start justify-between mb-2">
                 <span className="text-sm font-medium text-ink">
@@ -486,21 +486,21 @@ export default function UnitsPage() {
                 <UnitStatusBadge status={unit.status} />
               </div>
               {unit.comment && (
-                <p className="text-xs text-slate-400 mb-3">{unit.comment}</p>
+                <p className="text-xs text-ink-3 mb-3">{unit.comment}</p>
               )}
               <div className="flex gap-2 flex-wrap mt-3">
                 <button
                   type="button"
                   onClick={() => handlePrintUnit(unit)}
                   disabled={printingUnit === unit.id}
-                  className="text-xs rounded border border-slate-200 px-2 py-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  className="text-xs rounded border border-border px-2 py-1.5 text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
                 >
                   {printingUnit === unit.id ? "..." : "Печать этикетки"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setEditUnit(unit)}
-                  className="text-xs rounded border border-slate-200 px-2 py-1.5 text-slate-600 hover:bg-slate-50"
+                  className="text-xs rounded border border-border px-2 py-1.5 text-ink-2 hover:bg-surface-subtle"
                 >
                   Изменить
                 </button>
@@ -521,7 +521,7 @@ export default function UnitsPage() {
 
       {/* Footer count */}
       {!loading && units.length > 0 && (
-        <p className="mt-3 text-xs text-slate-400 text-right">Всего единиц: {units.length}</p>
+        <p className="mt-3 text-xs text-ink-3 text-right">Всего единиц: {units.length}</p>
       )}
 
       {/* Modals */}

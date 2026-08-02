@@ -69,7 +69,7 @@ export function PaymentsTable({ items, loading, onLoadMore, onRefresh, onRecordP
         {onRecordPayment && (
           <button
             onClick={onRecordPayment}
-            className="px-4 py-2 text-sm bg-accent-bright text-white rounded hover:bg-accent transition-colors"
+            className="px-4 py-2 text-sm bg-accent-bright text-surface rounded hover:bg-accent transition-colors"
           >
             Записать первый платёж →
           </button>

@@ -140,7 +140,7 @@ export function EquipmentImportTab() {
             }}
           />
           <button
-            className="rounded-lg bg-accent text-white px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-40 transition-colors"
+            className="rounded-lg bg-accent text-surface px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-40 transition-colors"
             disabled={!file || loadingPreview}
             onClick={handlePreview}
           >
@@ -164,7 +164,7 @@ export function EquipmentImportTab() {
                 <div key={k} className="flex items-center gap-3">
                   <div className="w-44 text-xs text-ink-2 shrink-0">{k}</div>
                   <select
-                    className="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm bg-white"
+                    className="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm bg-surface"
                     value={mapping[k] ?? ""}
                     onChange={(e) =>
                       setMapping((prev) => ({ ...prev, [k]: e.target.value || undefined }))
@@ -222,7 +222,7 @@ export function EquipmentImportTab() {
                   После нажатия новые позиции будут созданы, существующие — обновлены. Действие нельзя отменить.
                 </p>
                 <button
-                  className="w-full rounded-lg bg-emerald text-white px-4 py-3 text-sm font-medium hover:bg-emerald-soft0 disabled:opacity-50 transition-colors"
+                  className="w-full rounded-lg bg-emerald text-surface px-4 py-3 text-sm font-medium hover:bg-emerald-soft0 disabled:opacity-50 transition-colors"
                   onClick={handleCommit}
                   disabled={!preview}
                 >

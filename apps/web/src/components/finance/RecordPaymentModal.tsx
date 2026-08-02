@@ -429,7 +429,7 @@ export function RecordPaymentModal({
           <button
             onClick={handleSubmit}
             disabled={saving || !amountValid}
-            className="px-5 py-2 text-sm bg-accent-bright text-white rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2 text-sm bg-accent-bright text-surface rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? "Сохранение…" : "Записать платёж"}
           </button>

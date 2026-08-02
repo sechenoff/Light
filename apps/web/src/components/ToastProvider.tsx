@@ -75,7 +75,7 @@ function ToastItem({
 
   return (
     <div
-      className={`flex items-start gap-3 bg-white border border-border rounded-lg shadow-sm px-4 py-3 min-w-[260px] max-w-[360px] border-l-4 ${stripe}`}
+      className={`flex items-start gap-3 bg-surface border border-border rounded-lg shadow-sm px-4 py-3 min-w-[260px] max-w-[360px] border-l-4 ${stripe}`}
       role="alert"
     >
       <span className={`shrink-0 font-semibold text-sm ${iconColor}`}>

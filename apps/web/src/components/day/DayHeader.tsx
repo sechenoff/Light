@@ -27,7 +27,7 @@ export function DayHeader({
   date?: Date;
 }) {
   return (
-    <div className="bg-ink text-white rounded-t-lg px-4 py-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
+    <div className="bg-inverse text-on-inverse rounded-t-lg px-4 py-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
       <div className="text-sm">
         <span className="font-semibold">{formatLongRuDate(date)}</span>
         <span className="ml-1 text-white/80">· {greeting}</span>

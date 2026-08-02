@@ -105,7 +105,7 @@ export function BookingEstimateSection({
                 📊 Excel
               </button>
               <button
-                className="flex-1 min-w-[80px] rounded bg-accent-bright text-white px-3 py-2 text-sm hover:bg-accent transition-colors"
+                className="flex-1 min-w-[80px] rounded bg-accent-bright text-surface px-3 py-2 text-sm hover:bg-accent transition-colors"
                 onClick={() =>
                   onDownload(
                     `/api/bookings/${booking.id}/full-estimate/export/pdf`,

@@ -53,7 +53,7 @@ export function TaskChecklist({ items, canEdit, canToggle, onAdd, onToggle, onDe
               disabled={!canToggle}
               onClick={() => onToggle(i.id, !i.done)}
               className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center shrink-0 transition-colors ${
-                i.done ? "bg-teal border-teal text-white" : "bg-surface border-border-strong hover:border-teal"
+                i.done ? "bg-teal border-teal text-surface" : "bg-surface border-border-strong hover:border-teal"
               } ${canToggle ? "cursor-pointer" : "cursor-default opacity-70"}`}
             >
               {i.done && (

@@ -119,9 +119,9 @@ export default function BarcodeScanner({
 
   if (cameraError) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 bg-slate-50 rounded-lg border border-slate-200">
-        <p className="text-slate-600 text-center mb-2">📷 Нет доступа к камере</p>
-        <p className="text-slate-400 text-sm text-center">
+      <div className="flex flex-col items-center justify-center p-8 bg-surface-subtle rounded-lg border border-border">
+        <p className="text-ink-2 text-center mb-2">📷 Нет доступа к камере</p>
+        <p className="text-ink-3 text-sm text-center">
           Разрешите доступ к камере в настройках браузера или используйте ручной ввод
         </p>
       </div>
@@ -139,7 +139,7 @@ export default function BarcodeScanner({
         <button
           type="button"
           onClick={toggleTorch}
-          className="mt-2 w-full py-2 text-sm font-medium rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors"
+          className="mt-2 w-full py-2 text-sm font-medium rounded-lg border border-border-strong hover:bg-surface-subtle transition-colors"
         >
           {torchOn ? "🔦 Фонарик вкл." : "🔦 Фонарик"}
         </button>

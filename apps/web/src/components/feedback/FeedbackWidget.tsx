@@ -47,7 +47,7 @@ export function FeedbackWidget() {
           h-11 lg:h-12
           pl-3 pr-4 lg:pl-3.5 lg:pr-5
           rounded-full
-          bg-ink text-surface
+          bg-inverse text-on-inverse
           shadow-[0_4px_12px_rgba(9,9,11,0.18),0_2px_4px_rgba(9,9,11,0.12)]
           hover:shadow-[0_8px_20px_rgba(9,9,11,0.24),0_4px_8px_rgba(9,9,11,0.16)]
           hover:-translate-y-0.5 transition-all duration-150

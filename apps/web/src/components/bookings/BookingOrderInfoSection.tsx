@@ -35,7 +35,7 @@ export function BookingOrderInfoSection({
               type="button"
               aria-label="Сменить клиента"
               onClick={onChangeClient}
-              className="ml-1 rounded border border-border px-2 py-0.5 text-xs text-ink-3 hover:bg-surface-soft hover:text-ink transition-colors"
+              className="ml-1 rounded border border-border px-2 py-0.5 text-xs text-ink-3 hover:bg-surface-subtle hover:text-ink transition-colors"
             >
               Сменить
             </button>

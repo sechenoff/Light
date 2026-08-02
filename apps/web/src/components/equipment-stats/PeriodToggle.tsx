@@ -32,7 +32,7 @@ export function PeriodToggle() {
             className={
               "text-sm font-medium px-3.5 py-1.5 rounded-full transition-colors " +
               (isActive
-                ? "bg-accent text-white"
+                ? "bg-accent text-surface"
                 : "text-ink-3 hover:text-ink")
             }
           >

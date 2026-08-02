@@ -161,7 +161,7 @@ function ChipButton({
       className={
         "text-xs px-3 py-1.5 rounded-full border transition-colors " +
         (active
-          ? "bg-accent text-white border-accent"
+          ? "bg-accent text-surface border-accent"
           : "bg-surface text-ink-3 border-border hover:text-ink")
       }
     >

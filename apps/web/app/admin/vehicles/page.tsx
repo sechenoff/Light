@@ -99,7 +99,7 @@ function VehicleEditModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/30"
       onClick={handleBackdrop}
       aria-modal="true"
       role="dialog"
@@ -200,7 +200,7 @@ function VehicleEditModal({
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-bright disabled:opacity-50"
+            className="flex-1 rounded bg-accent px-4 py-2 text-sm font-medium text-surface hover:bg-accent-bright disabled:opacity-50"
           >
             {saving ? "Сохраняю..." : "Сохранить"}
           </button>

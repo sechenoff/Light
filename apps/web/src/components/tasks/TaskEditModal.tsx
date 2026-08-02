@@ -245,7 +245,7 @@ export function TaskEditModal({
           <button
             onClick={() => void handleSave()}
             disabled={!title.trim() || saving}
-            className="px-4 py-2 text-sm font-semibold bg-accent-bright text-white rounded-lg hover:bg-accent disabled:opacity-50 transition-colors"
+            className="px-4 py-2 text-sm font-semibold bg-accent-bright text-surface rounded-lg hover:bg-accent disabled:opacity-50 transition-colors"
           >
             {saving ? "Сохранение…" : "Сохранить"}
           </button>

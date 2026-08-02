@@ -54,7 +54,7 @@ export function RejectBookingModal({ open, bookingDisplayName, loading = false, 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={() => !loading && onClose()}
     >
       <div
@@ -91,7 +91,7 @@ export function RejectBookingModal({ open, bookingDisplayName, loading = false, 
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-soft disabled:opacity-50"
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
           >
             Отмена
           </button>
@@ -99,7 +99,7 @@ export function RejectBookingModal({ open, bookingDisplayName, loading = false, 
             type="button"
             onClick={handleSubmit}
             disabled={disabled}
-            className="rounded bg-rose px-4 py-2 text-sm text-white hover:bg-rose/90 disabled:opacity-50"
+            className="rounded bg-rose px-4 py-2 text-sm text-surface hover:bg-rose/90 disabled:opacity-50"
           >
             {loading ? "Отклоняю…" : "Отклонить"}
           </button>

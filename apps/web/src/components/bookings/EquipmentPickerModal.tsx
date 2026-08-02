@@ -128,7 +128,7 @@ export function EquipmentPickerModal({ open, onPick, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-ink/40 flex items-start justify-center pt-[10vh] px-4"
+      className="fixed inset-0 z-50 bg-scrim/40 flex items-start justify-center pt-[10vh] px-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

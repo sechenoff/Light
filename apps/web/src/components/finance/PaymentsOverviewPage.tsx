@@ -390,7 +390,7 @@ export function PaymentsOverviewPage() {
               {(user?.role === "SUPER_ADMIN" || user?.role === "WAREHOUSE") && (
                 <button
                   onClick={() => setRecordPaymentOpen(true)}
-                  className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-white rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+                  className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-surface rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
                 >
                   + Записать платёж
                 </button>
@@ -440,7 +440,7 @@ export function PaymentsOverviewPage() {
                 onClick={() => setMethodFilter(null)}
                 className={`flex flex-col items-start gap-0.5 px-3.5 py-2.5 rounded-lg border text-[12px] transition-colors ${
                   methodFilter === null
-                    ? "bg-accent text-white border-accent"
+                    ? "bg-accent text-surface border-accent"
                     : "bg-surface border-border text-ink-2 hover:bg-surface-subtle"
                 }`}
               >
@@ -461,7 +461,7 @@ export function PaymentsOverviewPage() {
                     onClick={() => setMethodFilter(active ? null : m)}
                     className={`flex flex-col items-start gap-0.5 px-3.5 py-2.5 rounded-lg border text-[12px] transition-colors ${
                       active
-                        ? "bg-accent text-white border-accent"
+                        ? "bg-accent text-surface border-accent"
                         : "bg-surface border-border text-ink-2 hover:bg-surface-subtle"
                     }`}
                   >

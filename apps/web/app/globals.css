@@ -4,6 +4,107 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Дизайн-токены: значения тем ─────────────────────────────────────────────
+   Все семантические токены (ink/surface/border/accent/...) заданы в
+   tailwind.config как rgb(var(--c-*) / <alpha>). Здесь — их значения в
+   channel-формате (без запятых). :root = светлая, [data-theme="dark"] = ночная.
+   Ночной режим переключается сменой data-theme на <html> (см. src/lib/theme.ts),
+   поэтому весь токенизированный UI меняет тему без правки компонентов.
+
+   Тёмная палитра — не инверсия, а десатурированные тональные варианты
+   (правило color-dark-mode): фон — глубокий сине-серый под business blue,
+   акценты осветлены для контраста, «soft»-тинты — тёмные подложки.
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+  --c-ink: 9 9 11;
+  --c-ink-2: 82 82 91;
+  --c-ink-3: 161 161 170;
+  --c-surface: 255 255 255;
+  --c-surface-muted: 250 250 250;
+  --c-surface-subtle: 244 244 245;
+  --c-border: 228 228 231;
+  --c-border-strong: 212 212 216;
+  --c-accent: 30 58 138;
+  --c-accent-bright: 29 78 216;
+  --c-accent-soft: 239 246 255;
+  --c-accent-border: 191 219 254;
+  --c-teal: 15 118 110;
+  --c-teal-soft: 204 251 241;
+  --c-teal-border: 153 246 228;
+  --c-amber: 161 98 7;
+  --c-amber-soft: 254 243 199;
+  --c-amber-border: 253 230 138;
+  --c-rose: 159 18 57;
+  --c-rose-soft: 255 228 230;
+  --c-rose-border: 254 205 211;
+  --c-indigo: 67 56 202;
+  --c-indigo-soft: 224 231 255;
+  --c-indigo-border: 199 210 254;
+  --c-slate: 51 65 85;
+  --c-slate-soft: 241 245 249;
+  --c-slate-border: 203 213 225;
+  --c-emerald: 4 120 87;
+  --c-emerald-soft: 209 250 229;
+  --c-emerald-border: 167 243 208;
+  --c-ok: 21 128 61;
+  --c-ok-soft: 220 252 231;
+  --c-warn: 161 98 7;
+  --c-warn-soft: 254 249 195;
+  /* inverse — «тёмная хромировка» (шапка дня, активные пилюли, тёмные панели).
+     Не инвертируется вместе с ink: в ночной теме остаётся тёмной, только
+     светлеет ровно настолько, чтобы отделяться от карточки. */
+  --c-inverse: 9 9 11;
+  --c-on-inverse: 255 255 255;
+  /* accent-chrome — синяя брендовая шапка (киоск склада). Тоже не светлеет
+     ночью: иначе яркий accent превращает шапку в световое пятно. */
+  --c-accent-chrome: 30 58 138;
+  /* scrim — подложка модалок. Всегда тёмная в обеих темах. */
+  --c-scrim: 9 9 11;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --c-ink: 230 232 236;
+  --c-ink-2: 155 161 172;
+  --c-ink-3: 122 128 138;
+  --c-surface: 24 29 39;         /* карточка/панель */
+  --c-surface-muted: 15 19 27;   /* фон body — самый тёмный */
+  --c-surface-subtle: 32 39 51;  /* zebra / hover / вложенные блоки */
+  --c-border: 44 52 64;
+  --c-border-strong: 62 71 85;
+  --c-accent: 96 148 255;        /* business blue, осветлён для контраста на тёмном */
+  --c-accent-bright: 111 160 255;
+  --c-accent-soft: 23 36 62;     /* тёмная синяя подложка чипа */
+  --c-accent-border: 47 75 125;
+  --c-teal: 45 212 191;
+  --c-teal-soft: 12 42 38;
+  --c-teal-border: 23 70 64;
+  --c-amber: 245 191 66;
+  --c-amber-soft: 44 34 10;
+  --c-amber-border: 74 58 18;
+  --c-rose: 251 138 155;
+  --c-rose-soft: 46 18 26;
+  --c-rose-border: 77 32 44;
+  --c-indigo: 165 180 252;
+  --c-indigo-soft: 30 33 60;
+  --c-indigo-border: 53 58 98;
+  --c-slate: 148 163 184;
+  --c-slate-soft: 30 37 49;
+  --c-slate-border: 60 72 92;
+  --c-emerald: 52 211 153;
+  --c-emerald-soft: 13 43 31;
+  --c-emerald-border: 30 74 56;
+  --c-ok: 74 222 128;
+  --c-ok-soft: 15 41 26;
+  --c-warn: 245 191 66;
+  --c-warn-soft: 44 38 10;
+  --c-inverse: 51 60 76;      /* светлее карточки, но всё ещё тёмная плашка */
+  --c-on-inverse: 237 239 243;
+  --c-accent-chrome: 26 42 84;
+  --c-scrim: 3 5 9;           /* глубже фона body — модалка не теряет контраст */
+}
+
 @layer base {
   body {
     font-family: "IBM Plex Sans", system-ui, sans-serif;
@@ -93,7 +194,11 @@
   --gaffer-fs-3xl:  34px;
 }
 
-[data-theme="dark"] .gaffer-root {
+/* Селектор намеренно требует dark НА САМОМ .gaffer-root, а не на предке:
+   Gaffer CRM — отдельный продукт со своей палитрой, его layout пиннит
+   data-theme="light". Ночной режим основного сайта (data-theme на <html>)
+   не должен перекрашивать gaffer через наследование. */
+.gaffer-root[data-theme="dark"] {
   --gaffer-bg:          #111113;
   --gaffer-bg-sub:      #16161a;
   --gaffer-bg-hover:    #1d1d22;

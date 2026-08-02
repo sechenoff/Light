@@ -44,14 +44,14 @@ export function DashboardOpsCard({ booking }: { booking: DashboardBooking }) {
   return (
     <Link
       href={`/bookings/${booking.id}`}
-      className="block bg-white border border-slate-200 rounded-lg p-3 hover:border-slate-300 hover:shadow-sm transition-all"
+      className="block bg-surface border border-border rounded-lg p-3 hover:border-border-strong hover:shadow-sm transition-all"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-semibold text-sm text-slate-900 truncate">
+          <p className="font-semibold text-sm text-ink truncate">
             {booking.projectName}
           </p>
-          <p className="text-xs text-slate-500 truncate">{booking.clientName}</p>
+          <p className="text-xs text-ink-2 truncate">{booking.clientName}</p>
         </div>
         <StatusPill
           variant={
@@ -71,12 +71,12 @@ export function DashboardOpsCard({ booking }: { booking: DashboardBooking }) {
         />
       </div>
 
-      <p className="mt-1.5 text-xs text-slate-600">
+      <p className="mt-1.5 text-xs text-ink-2">
         {formatTime(booking.startDate)} — {formatTime(booking.endDate)}
       </p>
 
       {booking.itemCount > 0 && (
-        <p className="mt-1 text-xs text-slate-500 truncate">
+        <p className="mt-1 text-xs text-ink-2 truncate">
           {formatItemsPreview(booking.items, booking.itemCount)}
         </p>
       )}

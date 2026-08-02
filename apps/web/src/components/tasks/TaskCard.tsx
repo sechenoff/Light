@@ -157,7 +157,7 @@ export function TaskCard({
           aria-label="Отметить выполненным"
           className={`w-[22px] h-[22px] rounded-[6px] border-2 flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
             isDone
-              ? "bg-teal border-teal text-white"
+              ? "bg-teal border-teal text-surface"
               : "bg-surface border-border-strong hover:border-teal"
           }`}
         >

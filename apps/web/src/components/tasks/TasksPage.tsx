@@ -245,7 +245,7 @@ export function TasksPage() {
         </div>
         <button
           onClick={() => setCreating(true)}
-          className="shrink-0 bg-accent-bright text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity inline-flex items-center gap-1.5"
+          className="shrink-0 bg-accent-bright text-surface px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity inline-flex items-center gap-1.5"
         >
           + Создать задачу
         </button>

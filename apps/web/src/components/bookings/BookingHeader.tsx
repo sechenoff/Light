@@ -72,7 +72,7 @@ export function BookingHeader({
         ← К списку броней
       </Link>
       <div className="flex items-center gap-2 flex-wrap">
-        <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors">
+        <Link href="/bookings/new" className="rounded bg-accent-bright text-surface px-3 py-1.5 text-sm hover:bg-accent transition-colors">
           + Новая бронь
         </Link>
         {/* BD-1: основные действия жизненного цикла — раньше были только в
@@ -128,7 +128,7 @@ export function BookingHeader({
                 type="button"
                 disabled={resubmitBusy}
                 onClick={onResubmit}
-                className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-white transition-colors disabled:opacity-40"
+                className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-surface transition-colors disabled:opacity-40"
                 title="Отправить изменённую бронь на повторное согласование"
               >
                 {resubmitBusy ? "Отправляю…" : "На согласование"}
@@ -159,7 +159,7 @@ export function BookingHeader({
           <button
             type="button"
             onClick={onEnterRetroEdit}
-            className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-white transition-colors"
+            className="rounded border border-amber-border bg-amber-soft text-amber px-3 py-1.5 text-sm hover:bg-amber hover:text-surface transition-colors"
             title="Изменить уже закрытую бронь — попадёт в аудит-лог"
           >
             ✎ Редактировать задним числом
@@ -189,14 +189,14 @@ export function BookingHeader({
                 type="datetime-local"
                 value={extendEndDate}
                 onChange={(e) => onChangeExtendDate(e.target.value)}
-                className="rounded border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+                className="rounded border border-border bg-surface px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </label>
             <button
               type="button"
               disabled={extendBusy}
               onClick={onSubmitExtend}
-              className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent transition-colors disabled:opacity-40"
+              className="rounded bg-accent-bright text-surface px-3 py-1.5 text-sm hover:bg-accent transition-colors disabled:opacity-40"
             >
               {extendBusy ? "Сохраняю…" : "Продлить"}
             </button>

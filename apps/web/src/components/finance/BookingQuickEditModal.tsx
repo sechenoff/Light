@@ -210,7 +210,7 @@ export function BookingQuickEditModal({ booking, onClose, onSaved }: Props) {
           <button
             onClick={handleSubmit}
             disabled={saving || !hasChanges}
-            className="px-4 py-2 text-sm bg-accent text-white rounded hover:bg-accent-bright disabled:opacity-50"
+            className="px-4 py-2 text-sm bg-accent text-surface rounded hover:bg-accent-bright disabled:opacity-50"
           >
             {saving ? "Сохранение…" : "Сохранить"}
           </button>

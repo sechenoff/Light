@@ -43,7 +43,7 @@ const ISSUE_SEGMENTS: readonly SegmentDef<Exclude<IssueValue, null>>[] = [
     value: "ISSUED",
     glyph: "✓",
     label: "выдано",
-    activeClass: "border-emerald bg-emerald text-white",
+    activeClass: "border-emerald bg-emerald text-surface",
     aria: "отметить выданным",
   },
   {
@@ -60,21 +60,21 @@ const RETURN_SEGMENTS: readonly SegmentDef<ReturnOutcome>[] = [
     value: "ACCEPTED",
     glyph: "✓",
     label: "Принято",
-    activeClass: "border-emerald bg-emerald text-white",
+    activeClass: "border-emerald bg-emerald text-surface",
     aria: "принять без замечаний",
   },
   {
     value: "REPAIR",
     glyph: "🔧",
     label: "Ремонт",
-    activeClass: "border-amber bg-amber text-white",
+    activeClass: "border-amber bg-amber text-surface",
     aria: "отправить в ремонт",
   },
   {
     value: "PROBLEM",
     glyph: "✗",
     label: "Проблема",
-    activeClass: "border-rose bg-rose text-white",
+    activeClass: "border-rose bg-rose text-surface",
     aria: "зарегистрировать проблему",
   },
 ];

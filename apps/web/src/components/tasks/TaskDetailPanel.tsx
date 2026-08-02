@@ -107,7 +107,7 @@ export function TaskDetailPanel({
       aria-modal="true"
       aria-labelledby="task-detail-title"
     >
-      <div className="absolute inset-0 bg-ink/40" onClick={onClose} aria-hidden />
+      <div className="absolute inset-0 bg-scrim/40" onClick={onClose} aria-hidden />
       <div
         ref={panelRef}
         tabIndex={-1}
@@ -148,7 +148,7 @@ export function TaskDetailPanel({
                   : onComplete && (
                       <button
                         onClick={() => onComplete(task.id)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-teal px-3.5 py-2 text-sm font-medium text-white hover:opacity-90 transition-opacity"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-teal px-3.5 py-2 text-sm font-medium text-surface hover:opacity-90 transition-opacity"
                       >
                         ✓ Выполнить
                       </button>

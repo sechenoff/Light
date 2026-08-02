@@ -179,11 +179,11 @@ export function UnitGridRow({
           let chipClass =
             "border-border-strong bg-surface text-ink-2 hover:bg-surface-muted";
           if (isAccepted)
-            chipClass = "border-emerald bg-emerald text-white hover:opacity-95";
+            chipClass = "border-emerald bg-emerald text-surface hover:opacity-95";
           else if (isRepair)
-            chipClass = "border-amber bg-amber text-white hover:opacity-95";
+            chipClass = "border-amber bg-amber text-surface hover:opacity-95";
           else if (isProblem)
-            chipClass = "border-rose bg-rose text-white hover:opacity-95";
+            chipClass = "border-rose bg-rose text-surface hover:opacity-95";
 
           return (
             <button

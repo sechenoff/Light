@@ -455,7 +455,7 @@ export function CancelWithDepositModal({
                 setStep2Error("");
                 setStep((s) => (s + 1) as 1 | 2 | 3);
               }}
-              className="px-5 py-2 text-sm bg-accent-bright text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
+              className="px-5 py-2 text-sm bg-accent-bright text-surface rounded-lg hover:opacity-90 transition-opacity font-medium"
             >
               Далее →
             </button>

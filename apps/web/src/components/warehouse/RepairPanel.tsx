@@ -250,7 +250,7 @@ export function RepairPanel({
               onClick={() => void deletePhoto(p.name)}
               disabled={disabled || busy}
               aria-label={`Удалить фото ${p.name}`}
-              className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-bl-md bg-rose text-[11px] leading-none text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-bl-md bg-rose text-[11px] leading-none text-surface transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               <span aria-hidden="true">✕</span>
             </button>
@@ -262,7 +262,7 @@ export function RepairPanel({
           onClick={openCamera}
           disabled={disabled || busy}
           aria-label="Сфотографировать поломку камерой"
-          className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-md bg-accent text-[11px] font-semibold leading-tight text-white transition-opacity hover:opacity-95 disabled:opacity-60"
+          className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-md bg-accent text-[11px] font-semibold leading-tight text-surface transition-opacity hover:opacity-95 disabled:opacity-60"
         >
           <span aria-hidden="true" className="text-base leading-none">
             📷

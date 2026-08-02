@@ -203,7 +203,7 @@ export function InWorkDetails({ bookingId, onAcceptBack, onBack }: Props) {
         type="button"
         onClick={() => onAcceptBack(data.bookingId)}
         aria-label={`Принять обратно — ${data.projectName || "Бронь"}`}
-        className="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:opacity-95"
+        className="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-surface transition-colors hover:opacity-95"
       >
         <span aria-hidden="true">←</span> Принять обратно
       </button>

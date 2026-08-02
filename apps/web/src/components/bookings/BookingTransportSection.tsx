@@ -84,7 +84,7 @@ export function BookingTransportSection({
                       onChange={(e) =>
                         onUpdateRetroVehicle(rv.bookingVehicleId, { driverName: e.target.value })
                       }
-                      className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
+                      className="w-full rounded border border-amber-border bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
                       placeholder="ФИО"
                     />
                   </label>
@@ -96,7 +96,7 @@ export function BookingTransportSection({
                       onChange={(e) =>
                         onUpdateRetroVehicle(rv.bookingVehicleId, { driverPhone: e.target.value })
                       }
-                      className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber mono-num"
+                      className="w-full rounded border border-amber-border bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber mono-num"
                       placeholder="+7 (XXX) XXX-XX-XX"
                     />
                   </label>
@@ -111,7 +111,7 @@ export function BookingTransportSection({
                         onUpdateRetroVehicle(rv.bookingVehicleId, { endMileage: e.target.value })
                       }
                       placeholder={`≥ ${rv.originalCurrentMileage}`}
-                      className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber mono-num"
+                      className="w-full rounded border border-amber-border bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber mono-num"
                     />
                     <span className="block mt-1 text-xs text-ink-3">
                       было {rv.originalCurrentMileage.toLocaleString("ru-RU")} км

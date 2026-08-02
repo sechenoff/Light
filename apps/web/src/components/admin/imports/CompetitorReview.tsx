@@ -123,7 +123,7 @@ export function CompetitorReview({ result, competitorName, fileName, onRebind, o
               onClick={() => setFilter(f)}
               className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                 filter === f
-                  ? "border-accent bg-accent text-white"
+                  ? "border-accent bg-accent text-surface"
                   : "border-border bg-surface text-ink-2 hover:border-accent hover:bg-accent-soft hover:text-accent"
               }`}
             >

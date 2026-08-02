@@ -19,7 +19,7 @@ export function RoleGuard({
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-sm text-slate-500">
+      <div className="p-8 text-center text-sm text-ink-2">
         Проверка доступа…
       </div>
     );
@@ -28,8 +28,8 @@ export function RoleGuard({
   if (!user) {
     return (
       <div className="p-8 max-w-md mx-auto text-center">
-        <h2 className="text-lg font-semibold text-slate-900 mb-2">Требуется вход</h2>
-        <p className="text-sm text-slate-600 mb-4">
+        <h2 className="text-lg font-semibold text-ink mb-2">Требуется вход</h2>
+        <p className="text-sm text-ink-2 mb-4">
           Для доступа к этой странице войдите в систему.
         </p>
         <Link
@@ -45,13 +45,13 @@ export function RoleGuard({
   if (!allow.includes(user.role)) {
     return (
       <div className="p-8 max-w-md mx-auto text-center">
-        <h2 className="text-lg font-semibold text-slate-900 mb-2">Нет доступа</h2>
-        <p className="text-sm text-slate-600 mb-4">
+        <h2 className="text-lg font-semibold text-ink mb-2">Нет доступа</h2>
+        <p className="text-sm text-ink-2 mb-4">
           У вашей учётной записи нет прав для просмотра этой страницы.
         </p>
         <Link
           href="/day"
-          className="inline-block bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+          className="inline-block bg-surface-subtle hover:bg-border text-ink-2 text-sm font-medium rounded-lg px-4 py-2 transition-colors"
         >
           На главную
         </Link>

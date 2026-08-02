@@ -113,7 +113,7 @@ export function VoidPaymentModal({ open, paymentId, onClose, onVoided }: Props) 
           <button
             onClick={handleSubmit}
             disabled={saving || !isValid}
-            className="px-4 py-2 text-sm bg-rose text-white rounded hover:opacity-90 disabled:opacity-50"
+            className="px-4 py-2 text-sm bg-rose text-surface rounded hover:opacity-90 disabled:opacity-50"
           >
             {saving ? "Аннулирование…" : "Аннулировать"}
           </button>

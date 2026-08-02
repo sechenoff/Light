@@ -215,7 +215,7 @@ function IssueRow({
   // Visual state for the row container — green left border + soft tint when
   // the operator has marked this row as physically issued (грузчик унёс).
   const rowClass = checked
-    ? "border-emerald-border bg-emerald-soft/30 shadow-[inset_3px_0_0_var(--color-emerald,#0d8a3f)]"
+    ? "border-emerald-border bg-emerald-soft/30 shadow-[inset_3px_0_0_rgb(var(--c-emerald))]"
     : "border-border bg-surface";
 
   return (
@@ -293,7 +293,7 @@ function IssueRow({
         }
         className={`flex h-10 min-w-[96px] shrink-0 items-center justify-center gap-1 rounded border px-3 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
           checked
-            ? "border-emerald-border bg-emerald text-white hover:opacity-90"
+            ? "border-emerald-border bg-emerald text-surface hover:opacity-90"
             : "border-border bg-surface text-ink-2 hover:bg-surface-muted"
         }`}
       >
@@ -972,7 +972,7 @@ export function IssueChecklist({
           role="dialog"
           aria-modal="true"
           aria-label="Подтверждение выдачи — не все позиции отмечены"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 lg:items-center lg:p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-scrim/40 lg:items-center lg:p-4"
           onClick={() => setConfirmOpen(false)}
         >
           <div
@@ -1001,7 +1001,7 @@ export function IssueChecklist({
                   setConfirmOpen(false);
                   void submitToComplete();
                 }}
-                className="flex-1 rounded-lg bg-amber px-4 py-3 text-center text-[14px] font-semibold text-white transition-colors hover:opacity-95"
+                className="flex-1 rounded-lg bg-amber px-4 py-3 text-center text-[14px] font-semibold text-surface transition-colors hover:opacity-95"
               >
                 Всё равно выдать
               </button>

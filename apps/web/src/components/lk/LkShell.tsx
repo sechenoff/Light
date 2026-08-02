@@ -25,7 +25,7 @@ export function LkShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-surface text-ink">
-      <header className="bg-ink text-surface">
+      <header className="bg-inverse text-on-inverse">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <Link href="/lk" className="font-medium tracking-tight">
             Светобаза · Личный кабинет

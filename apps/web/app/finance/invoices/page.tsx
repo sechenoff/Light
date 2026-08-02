@@ -386,7 +386,7 @@ function InvoicesPage() {
                   onClick={() => changePeriod(opt.key)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors whitespace-nowrap ${
                     period === opt.key
-                      ? "bg-accent-bright text-white shadow-xs"
+                      ? "bg-accent-bright text-surface shadow-xs"
                       : "text-ink-2 hover:text-ink"
                   }`}
                 >
@@ -401,7 +401,7 @@ function InvoicesPage() {
             {isSA && (
               <button
                 onClick={() => setCreateOpen(true)}
-                className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-white rounded-lg hover:opacity-90 transition-opacity"
+                className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-surface rounded-lg hover:opacity-90 transition-opacity"
               >
                 + Создать счёт
               </button>
@@ -418,7 +418,7 @@ function InvoicesPage() {
               <button
                 onClick={bulkIssue}
                 disabled={bulkIssuing}
-                className="px-3 py-1.5 bg-accent-bright text-white rounded text-[12px] hover:opacity-90 disabled:opacity-50"
+                className="px-3 py-1.5 bg-accent-bright text-surface rounded text-[12px] hover:opacity-90 disabled:opacity-50"
               >
                 {bulkIssuing ? "Выставляем…" : "Выставить выбранные"}
               </button>
@@ -613,7 +613,7 @@ function InvoicesPage() {
                         {["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (
                           <button
                             onClick={() => setRecordPaymentTarget({ bookingId: inv.booking.id, invoiceId: inv.id })}
-                            className="flex-1 py-2 text-[12px] bg-accent-bright text-white rounded-lg font-medium hover:opacity-90"
+                            className="flex-1 py-2 text-[12px] bg-accent-bright text-surface rounded-lg font-medium hover:opacity-90"
                           >
                             ₽ Платёж
                           </button>

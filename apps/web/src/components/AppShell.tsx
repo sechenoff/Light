@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { useCurrentUser, type UserRole } from "../lib/auth";
 import { menuByRole, type MenuSection } from "../lib/roleMatrix";
 import { RoleBadge } from "./RoleBadge";
+import { ThemeToggle } from "./ThemeToggle";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -382,6 +383,9 @@ function SidebarContent({
           <div className="px-3 py-1.5 space-y-1.5">
             <div className="truncate font-medium text-sm text-white">{user.username}</div>
             <RoleBadge role={user.role} />
+          </div>
+          <div className="px-3 pt-2 pb-1">
+            <ThemeToggle />
           </div>
           <button
             onClick={() => {

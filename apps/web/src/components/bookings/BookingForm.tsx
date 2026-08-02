@@ -1293,7 +1293,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
                 <button
                   type="button"
                   onClick={() => setDraftBannerVisible(false)}
-                  className="rounded bg-accent-bright px-3 py-1 text-[12px] font-medium text-white hover:opacity-90"
+                  className="rounded bg-accent-bright px-3 py-1 text-[12px] font-medium text-surface hover:opacity-90"
                 >
                   Продолжить
                 </button>

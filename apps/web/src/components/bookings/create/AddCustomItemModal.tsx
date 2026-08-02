@@ -81,7 +81,7 @@ export function AddCustomItemModal({ isOpen, onClose, onAdd, initialName, initia
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -173,7 +173,7 @@ export function AddCustomItemModal({ isOpen, onClose, onAdd, initialName, initia
             type="button"
             onClick={handleSubmit}
             disabled={!isValid}
-            className="rounded bg-accent-bright px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded bg-accent-bright px-4 py-2 text-sm font-medium text-surface hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Добавить в смету
           </button>

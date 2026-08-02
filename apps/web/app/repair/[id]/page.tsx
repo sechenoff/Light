@@ -169,7 +169,7 @@ function CloseWithExpenseModal({
           </button>
           <button
             onClick={() => onConfirm(true, parseFloat(workVal) || 0)}
-            className="px-4 py-2 text-sm font-medium text-white bg-accent rounded-lg hover:bg-accent-hover transition-colors"
+            className="px-4 py-2 text-sm font-medium text-surface bg-accent rounded-lg hover:bg-accent-hover transition-colors"
           >
             Создать расход и закрыть
           </button>
@@ -349,7 +349,7 @@ export default function RepairDetailPage() {
   if (loading) {
     return (
       <div className="space-y-0">
-        <div className="h-24 bg-ink animate-pulse" />
+        <div className="h-24 bg-inverse animate-pulse" />
         <div className="p-4 space-y-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-20 bg-surface-muted rounded-lg animate-pulse" />
@@ -380,7 +380,7 @@ export default function RepairDetailPage() {
   return (
     <div className="min-h-screen bg-surface-muted">
       {/* Тёмная шапка */}
-      <div className="bg-ink text-white px-4 py-4">
+      <div className="bg-inverse text-on-inverse px-4 py-4">
         <button
           onClick={() => router.push("/repair")}
           className="text-xs text-white/60 hover:text-white/90 transition-colors mb-3 block"
@@ -548,7 +548,7 @@ export default function RepairDetailPage() {
               <button
                 onClick={handleTakeToWork}
                 disabled={actionLoading}
-                className="flex-1 min-w-[140px] h-11 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent-hover disabled:opacity-50 transition-colors"
+                className="flex-1 min-w-[140px] h-11 bg-accent text-surface text-sm font-medium rounded-lg hover:bg-accent-hover disabled:opacity-50 transition-colors"
               >
                 Взять в работу
               </button>
@@ -559,7 +559,7 @@ export default function RepairDetailPage() {
               <button
                 onClick={() => hasWork ? setShowCloseModal(true) : closeRepair(false, 0)}
                 disabled={actionLoading}
-                className="flex-1 min-w-[160px] h-11 bg-emerald text-white text-sm font-medium rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+                className="flex-1 min-w-[160px] h-11 bg-emerald text-surface text-sm font-medium rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
                 ✓ Починил — вернуть в парк
               </button>
@@ -636,7 +636,7 @@ export default function RepairDetailPage() {
               <button
                 onClick={handleWriteOff}
                 disabled={actionLoading}
-                className="flex-1 h-11 bg-rose text-white text-sm font-medium rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors"
+                className="flex-1 h-11 bg-rose text-surface text-sm font-medium rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors"
               >
                 Списать
               </button>
@@ -647,7 +647,7 @@ export default function RepairDetailPage() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-ink text-surface text-sm font-medium shadow-lg max-w-xs w-full text-center">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-inverse text-on-inverse text-sm font-medium shadow-lg max-w-xs w-full text-center">
           {toast}
         </div>
       )}

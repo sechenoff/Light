@@ -232,7 +232,7 @@ export function ExpenseDocumentUpload({
           <button
             type="button"
             onClick={() => onUploaded(currentDocUrl)}
-            className="text-xs px-2.5 py-1 bg-accent text-white rounded hover:bg-accent-bright ml-auto"
+            className="text-xs px-2.5 py-1 bg-accent text-surface rounded hover:bg-accent-bright ml-auto"
           >
             Готово
           </button>

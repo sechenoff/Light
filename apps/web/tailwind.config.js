@@ -1,6 +1,14 @@
 /** @type {import('tailwindcss').Config} */
+// Токены заданы как rgb(var(--c-*) / <alpha-value>): значения переменных живут
+// в globals.css (:root = светлая тема, [data-theme="dark"] = ночная). Channel-
+// формат (без запятых) сохраняет работу opacity-модификаторов Tailwind
+// (bg-emerald-soft/30 и т.п.). Ночной режим = смена значений переменных, а не
+// перекраска компонентов. См. src/lib/theme.ts + ThemeToggle.
+const t = (name) => `rgb(var(${name}) / <alpha-value>)`;
+
 module.exports = {
   content: ["./app/**/*.{js,ts,tsx}", "./src/**/*.{js,ts,tsx}"],
+  darkMode: ['class', '[data-theme="dark"]'],
   theme: {
     extend: {
       fontFamily: {
@@ -14,63 +22,68 @@ module.exports = {
       },
       colors: {
         ink: {
-          DEFAULT: "#09090b",
-          2: "#52525b",
-          3: "#a1a1aa",
+          DEFAULT: t("--c-ink"),
+          2: t("--c-ink-2"),
+          3: t("--c-ink-3"),
         },
         surface: {
-          DEFAULT: "#ffffff",
-          muted: "#fafafa",
-          subtle: "#f4f4f5",
+          DEFAULT: t("--c-surface"),
+          muted: t("--c-surface-muted"),
+          subtle: t("--c-surface-subtle"),
         },
         border: {
-          DEFAULT: "#e4e4e7",
-          strong: "#d4d4d8",
+          DEFAULT: t("--c-border"),
+          strong: t("--c-border-strong"),
         },
         accent: {
-          DEFAULT: "#1e3a8a",
-          bright: "#1d4ed8",
-          soft: "#eff6ff",
-          border: "#bfdbfe",
+          DEFAULT: t("--c-accent"),
+          bright: t("--c-accent-bright"),
+          soft: t("--c-accent-soft"),
+          border: t("--c-accent-border"),
         },
         teal: {
-          DEFAULT: "#0f766e",
-          soft: "#ccfbf1",
-          border: "#99f6e4",
+          DEFAULT: t("--c-teal"),
+          soft: t("--c-teal-soft"),
+          border: t("--c-teal-border"),
         },
         amber: {
-          DEFAULT: "#a16207",
-          soft: "#fef3c7",
-          border: "#fde68a",
+          DEFAULT: t("--c-amber"),
+          soft: t("--c-amber-soft"),
+          border: t("--c-amber-border"),
         },
         rose: {
-          DEFAULT: "#9f1239",
-          soft: "#ffe4e6",
-          border: "#fecdd3",
+          DEFAULT: t("--c-rose"),
+          soft: t("--c-rose-soft"),
+          border: t("--c-rose-border"),
         },
         indigo: {
-          DEFAULT: "#4338ca",
-          soft: "#e0e7ff",
-          border: "#c7d2fe",
+          DEFAULT: t("--c-indigo"),
+          soft: t("--c-indigo-soft"),
+          border: t("--c-indigo-border"),
         },
         slate: {
-          DEFAULT: "#334155",
-          soft: "#f1f5f9",
-          border: "#cbd5e1",
+          DEFAULT: t("--c-slate"),
+          soft: t("--c-slate-soft"),
+          border: t("--c-slate-border"),
         },
         emerald: {
-          DEFAULT: "#047857",
-          soft: "#d1fae5",
-          border: "#a7f3d0",
+          DEFAULT: t("--c-emerald"),
+          soft: t("--c-emerald-soft"),
+          border: t("--c-emerald-border"),
         },
         ok: {
-          DEFAULT: "#15803d",
-          soft: "#dcfce7",
+          DEFAULT: t("--c-ok"),
+          soft: t("--c-ok-soft"),
         },
         warn: {
-          DEFAULT: "#a16207",
-          soft: "#fef9c3",
+          DEFAULT: t("--c-warn"),
+          soft: t("--c-warn-soft"),
         },
+        // Тёмная хромировка и подложка модалок — НЕ инвертируются вместе с ink.
+        inverse: t("--c-inverse"),
+        "accent-chrome": t("--c-accent-chrome"),
+        "on-inverse": t("--c-on-inverse"),
+        scrim: t("--c-scrim"),
         // Gaffer design-system tokens — scoped to .gaffer-root
         gaffer: {
           bg:            "var(--gaffer-bg)",

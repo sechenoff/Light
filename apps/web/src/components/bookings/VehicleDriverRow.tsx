@@ -134,7 +134,7 @@ export function VehicleDriverRow({ bookingId, vehicle, canEdit, onUpdated }: Pro
               type="button"
               onClick={save}
               disabled={saving}
-              className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm disabled:opacity-50 hover:bg-accent transition-colors"
+              className="rounded bg-accent-bright text-surface px-3 py-1.5 text-sm disabled:opacity-50 hover:bg-accent transition-colors"
             >
               {saving ? "Сохраняю…" : "Сохранить"}
             </button>

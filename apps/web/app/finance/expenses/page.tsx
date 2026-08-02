@@ -34,11 +34,11 @@ const CATEGORY_GROUP: Record<string, GroupKey> = {
 };
 
 const GROUP_META: Record<GroupKey, { label: string; icon: string; color: string }> = {
-  repair:   { label: "Запчасти",            icon: "🔧", color: "#a16207" },
-  rent:     { label: "Аренда и склад",      icon: "🏢", color: "#334155" },
-  purchase: { label: "Закупка",             icon: "🛒", color: "#1e3a8a" },
-  payroll:  { label: "Зарплата",            icon: "💼", color: "#a16207" },
-  other:    { label: "Транспорт и прочее",  icon: "🚗", color: "#0f766e" },
+  repair:   { label: "Запчасти",            icon: "🔧", color: "rgb(var(--c-amber))" },
+  rent:     { label: "Аренда и склад",      icon: "🏢", color: "rgb(var(--c-slate))" },
+  purchase: { label: "Закупка",             icon: "🛒", color: "rgb(var(--c-accent))" },
+  payroll:  { label: "Зарплата",            icon: "💼", color: "rgb(var(--c-amber))" },
+  other:    { label: "Транспорт и прочее",  icon: "🚗", color: "rgb(var(--c-teal))" },
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -137,7 +137,7 @@ function DonutSVG({ grouped }: { grouped: GroupedData[] }) {
   if (grouped.length === 0) {
     return (
       <svg viewBox="0 0 36 36" className="w-[110px] h-[110px]">
-        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="var(--color-surface-subtle)" strokeWidth="3.5"/>
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="rgb(var(--c-surface-subtle))" strokeWidth="3.5"/>
       </svg>
     );
   }
@@ -145,7 +145,7 @@ function DonutSVG({ grouped }: { grouped: GroupedData[] }) {
   return (
     <svg viewBox="0 0 36 36" className="w-[110px] h-[110px]">
       {/* background track */}
-      <circle cx="18" cy="18" r="15.9155" fill="none" stroke="var(--color-surface-subtle)" strokeWidth="3.5"/>
+      <circle cx="18" cy="18" r="15.9155" fill="none" stroke="rgb(var(--c-surface-subtle))" strokeWidth="3.5"/>
       {segments.map((seg) => (
         <circle
           key={seg.key}
@@ -290,7 +290,7 @@ function AddExpenseModal({ onClose, onCreated }: { onClose: () => void; onCreate
                 Отмена
               </button>
               <button onClick={handleSubmit} disabled={saving}
-                className="px-4 py-2 text-sm bg-accent text-white rounded hover:bg-accent-bright disabled:opacity-50">
+                className="px-4 py-2 text-sm bg-accent text-surface rounded hover:bg-accent-bright disabled:opacity-50">
                 {saving ? "Сохранение…" : "Добавить"}
               </button>
             </div>
@@ -424,7 +424,7 @@ function ExpensesPageInner() {
             <PeriodSelector value={period} onChange={handlePeriodChange} />
             <button
               onClick={() => setShowModal(true)}
-              className="px-3.5 py-1.5 text-xs font-medium bg-accent-bright text-white rounded hover:bg-accent transition-colors"
+              className="px-3.5 py-1.5 text-xs font-medium bg-accent-bright text-surface rounded hover:bg-accent transition-colors"
             >
               + Записать расход
             </button>
@@ -663,7 +663,7 @@ function ExpensesPageInner() {
                         <p className="text-[15px] font-medium text-ink">Расходов за период нет</p>
                         <button
                           onClick={() => setShowModal(true)}
-                          className="mt-1 px-4 py-2 text-sm bg-accent-bright text-white rounded hover:bg-accent transition-colors"
+                          className="mt-1 px-4 py-2 text-sm bg-accent-bright text-surface rounded hover:bg-accent transition-colors"
                         >
                           Записать расход →
                         </button>
@@ -767,7 +767,7 @@ function ExpensesPageInner() {
 
           <button
             onClick={() => setShowModal(true)}
-            className="mt-4 w-full py-2.5 text-sm font-medium bg-accent-bright text-white rounded-lg hover:bg-accent transition-colors"
+            className="mt-4 w-full py-2.5 text-sm font-medium bg-accent-bright text-surface rounded-lg hover:bg-accent transition-colors"
           >
             + Записать расход
           </button>

@@ -130,7 +130,7 @@ export function FeedbackComposer({ open, onClose, onCreated, defaultCategory }: 
         type="button"
         aria-label="Закрыть форму обратной связи"
         onClick={onClose}
-        className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-scrim/40 backdrop-blur-sm"
       />
 
       {/* Panel */}
@@ -322,7 +322,7 @@ function FilePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
         type="button"
         onClick={onRemove}
         aria-label={`Удалить ${file.name}`}
-        className="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-ink/70 text-surface text-xs leading-none flex items-center justify-center hover:bg-ink"
+        className="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-scrim/70 text-white text-xs leading-none flex items-center justify-center hover:bg-scrim"
       >
         ×
       </button>

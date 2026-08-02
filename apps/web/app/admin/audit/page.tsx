@@ -447,7 +447,7 @@ export default function AuditPage() {
         <button
           type="submit"
           disabled={fetching || rangeInvalid}
-          className="mt-3 px-4 py-1.5 bg-accent-bright text-white text-sm rounded hover:bg-accent transition-colors disabled:opacity-60"
+          className="mt-3 px-4 py-1.5 bg-accent-bright text-surface text-sm rounded hover:bg-accent transition-colors disabled:opacity-60"
         >
           {fetching ? "Загрузка…" : "Применить"}
         </button>

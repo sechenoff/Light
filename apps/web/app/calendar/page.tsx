@@ -362,7 +362,7 @@ function CalendarPageInner() {
                 }}
                 className={`px-3 py-1.5 transition-colors ${
                   period === p
-                    ? "bg-accent text-white"
+                    ? "bg-accent text-surface"
                     : "bg-surface text-ink-2 hover:bg-surface-muted"
                 }`}
               >

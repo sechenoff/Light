@@ -138,7 +138,7 @@ export function ProblemPanel({
               aria-label={`Причина: ${chip.label}`}
               className={`flex h-10 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 active
-                  ? "border border-rose bg-rose text-white"
+                  ? "border border-rose bg-rose text-surface"
                   : "border border-rose bg-surface text-rose hover:bg-rose-soft"
               }`}
             >

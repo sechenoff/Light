@@ -81,8 +81,8 @@ function ForecastBar({ entry, maxValue, barHeight }: BarProps) {
         <div className="w-full flex flex-col gap-px justify-end" style={{ height: `${barHeight}px` }}>
           {pipelineH > 0 && (
             <div
-              className="w-full rounded-t-sm bg-slate-400"
-              style={{ height: `${pipelineH}px`, backgroundColor: "var(--color-slate, #64748b)" }}
+              className="w-full rounded-t-sm bg-ink-3"
+              style={{ height: `${pipelineH}px`, backgroundColor: "rgb(var(--c-ink-3))" }}
             />
           )}
           {potentialH > 0 && (
@@ -90,7 +90,7 @@ function ForecastBar({ entry, maxValue, barHeight }: BarProps) {
               className="w-full"
               style={{
                 height: `${potentialH}px`,
-                backgroundColor: "var(--color-amber, #d97706)",
+                backgroundColor: "rgb(var(--c-amber))",
                 borderRadius: pipelineH > 0 ? "0" : "2px 2px 0 0",
               }}
             />
@@ -100,7 +100,7 @@ function ForecastBar({ entry, maxValue, barHeight }: BarProps) {
               className="w-full"
               style={{
                 height: `${confirmedH}px`,
-                backgroundColor: "var(--color-emerald, #059669)",
+                backgroundColor: "rgb(var(--c-emerald))",
                 borderRadius:
                   pipelineH === 0 && potentialH === 0 ? "2px 2px 0 0" : "0",
               }}
@@ -109,7 +109,7 @@ function ForecastBar({ entry, maxValue, barHeight }: BarProps) {
           {total === 0 && (
             <div
               className="w-full rounded-sm"
-              style={{ height: "3px", backgroundColor: "var(--color-border, #e2e8f0)" }}
+              style={{ height: "3px", backgroundColor: "rgb(var(--c-border))" }}
             />
           )}
         </div>
@@ -133,8 +133,8 @@ function ForecastSkeleton() {
       <div className="flex items-end gap-3 h-[120px] px-2">
         {[...Array(6)].map((_, i) => (
           <div key={i} className="flex flex-col items-center gap-1 flex-1">
-            <div className="w-9 bg-slate-100 rounded-t" style={{ height: `${60 + i * 10}px` }} />
-            <div className="h-3 w-8 bg-slate-100 rounded" />
+            <div className="w-9 bg-surface-subtle rounded-t" style={{ height: `${60 + i * 10}px` }} />
+            <div className="h-3 w-8 bg-surface-subtle rounded" />
           </div>
         ))}
       </div>
@@ -218,21 +218,21 @@ export function ForecastWidget({ months = 6 }: { months?: number }) {
             <span className="flex items-center gap-1.5">
               <span
                 className="inline-block w-2.5 h-2.5 rounded-sm"
-                style={{ backgroundColor: "var(--color-emerald, #059669)" }}
+                style={{ backgroundColor: "rgb(var(--c-emerald))" }}
               />
               Подтверждённый
             </span>
             <span className="flex items-center gap-1.5">
               <span
                 className="inline-block w-2.5 h-2.5 rounded-sm"
-                style={{ backgroundColor: "var(--color-amber, #d97706)" }}
+                style={{ backgroundColor: "rgb(var(--c-amber))" }}
               />
               Возможный
             </span>
             <span className="flex items-center gap-1.5">
               <span
                 className="inline-block w-2.5 h-2.5 rounded-sm"
-                style={{ backgroundColor: "var(--color-slate, #64748b)" }}
+                style={{ backgroundColor: "rgb(var(--c-ink-3))" }}
               />
               По броням
             </span>

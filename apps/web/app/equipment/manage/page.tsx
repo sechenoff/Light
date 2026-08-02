@@ -342,7 +342,7 @@ export default function EquipmentManagePage() {
             </span>
             <button
               type="button"
-              className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent whitespace-nowrap"
+              className="rounded bg-accent-bright text-surface px-3 py-1.5 text-sm hover:bg-accent whitespace-nowrap"
               onClick={openAddModal}
             >
               + Добавить позицию
@@ -611,7 +611,7 @@ export default function EquipmentManagePage() {
       {/* Модал: добавление позиции */}
       {addModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 p-4"
           role="presentation"
           onClick={() => setAddModalOpen(false)}
         >
@@ -798,7 +798,7 @@ export default function EquipmentManagePage() {
               </button>
               <button
                 type="button"
-                className="rounded bg-accent-bright px-4 py-2 text-sm text-white hover:bg-accent disabled:opacity-50"
+                className="rounded bg-accent-bright px-4 py-2 text-sm text-surface hover:bg-accent disabled:opacity-50"
                 disabled={!canAdd || addSaving}
                 onClick={() => void submitAdd()}
               >
@@ -812,7 +812,7 @@ export default function EquipmentManagePage() {
       {/* Модал: порядок категорий */}
       {categoryModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 p-4"
           role="presentation"
           onClick={() => setCategoryModalOpen(false)}
         >
@@ -893,7 +893,7 @@ export default function EquipmentManagePage() {
               </button>
               <button
                 type="button"
-                className="rounded bg-accent-bright px-4 py-2 text-sm text-white hover:bg-accent disabled:opacity-50"
+                className="rounded bg-accent-bright px-4 py-2 text-sm text-surface hover:bg-accent disabled:opacity-50"
                 disabled={loadingCategoryOrder || savingCategoryOrder}
                 onClick={() => void saveCategoryOrderModal()}
               >
@@ -907,7 +907,7 @@ export default function EquipmentManagePage() {
       {/* Модал: подтверждение удаления позиции */}
       {deleteTarget ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 p-4"
           role="presentation"
           onClick={() => !deleteSaving && setDeleteTarget(null)}
         >
@@ -944,7 +944,7 @@ export default function EquipmentManagePage() {
               </button>
               <button
                 type="button"
-                className="rounded bg-rose px-4 py-2 text-sm text-white hover:bg-rose/90 disabled:opacity-50"
+                className="rounded bg-rose px-4 py-2 text-sm text-surface hover:bg-rose/90 disabled:opacity-50"
                 disabled={deleteSaving}
                 onClick={() => void confirmRemove()}
               >

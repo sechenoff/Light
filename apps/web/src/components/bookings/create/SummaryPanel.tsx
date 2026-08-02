@@ -225,7 +225,7 @@ export function SummaryPanel({
             type="button"
             disabled={!canSubmit || submitting}
             onClick={onSaveEdit}
-            className="w-full rounded bg-accent-bright px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="w-full rounded bg-accent-bright px-4 py-2.5 text-sm font-medium text-surface hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting ? "Сохранение…" : "Сохранить изменения"}
           </button>
@@ -246,7 +246,7 @@ export function SummaryPanel({
             type="button"
             disabled={!canSubmit || submitting}
             onClick={onCreateAndConfirm}
-            className="w-full rounded bg-accent-bright px-4 py-2.5 text-sm font-medium text-white hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+            className="w-full rounded bg-accent-bright px-4 py-2.5 text-sm font-medium text-surface hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting ? "Создание…" : "Создать и подтвердить →"}
           </button>
@@ -273,7 +273,7 @@ export function SummaryPanel({
             type="button"
             disabled={!canSubmit || submitting}
             onClick={onSubmitForApproval}
-            className="w-full rounded bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-ink disabled:cursor-not-allowed disabled:opacity-40"
+            className="w-full rounded bg-inverse px-4 py-2.5 text-sm font-medium text-on-inverse hover:bg-inverse disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting ? "Отправка…" : "Отправить на согласование →"}
           </button>

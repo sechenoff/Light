@@ -73,25 +73,25 @@ const STATUS_FILTERS: { key: StatusFilter; label: string; colorClass: string; ac
     key: "ALL",
     label: "Все",
     colorClass: "border-border text-ink-2",
-    activeClass: "bg-ink text-white border-ink",
+    activeClass: "bg-inverse text-on-inverse border-inverse",
   },
   {
     key: "WAITING_REPAIR",
     label: "🆕 Ждёт ремонта",
     colorClass: "border-rose text-rose",
-    activeClass: "bg-rose text-white border-rose",
+    activeClass: "bg-rose text-surface border-rose",
   },
   {
     key: "IN_REPAIR",
     label: "🔧 В ремонте",
     colorClass: "border-amber text-amber",
-    activeClass: "bg-amber text-white border-amber",
+    activeClass: "bg-amber text-surface border-amber",
   },
   {
     key: "WAITING_PARTS",
     label: "⏸ Ждут запчасти",
     colorClass: "border-indigo text-indigo",
-    activeClass: "bg-indigo text-white border-indigo",
+    activeClass: "bg-indigo text-surface border-indigo",
   },
 ];
 
@@ -223,7 +223,7 @@ function RepairRow({
         </div>
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
           {repair.status === "WAITING_REPAIR" && canTake ? (
-            <button onClick={handleTake} disabled={taking} className="px-3 py-1.5 rounded text-xs font-semibold bg-rose text-white hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap">
+            <button onClick={handleTake} disabled={taking} className="px-3 py-1.5 rounded text-xs font-semibold bg-rose text-surface hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap">
               {taking ? "…" : "Взять в работу"}
             </button>
           ) : (
@@ -257,7 +257,7 @@ function RepairRow({
         </div>
         <div className="pl-11" onClick={(e) => e.stopPropagation()}>
           {repair.status === "WAITING_REPAIR" && canTake ? (
-            <button onClick={handleTake} disabled={taking} className="w-full h-9 rounded text-xs font-semibold bg-rose text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+            <button onClick={handleTake} disabled={taking} className="w-full h-9 rounded text-xs font-semibold bg-rose text-surface hover:opacity-90 disabled:opacity-50 transition-opacity">
               {taking ? "…" : "Взять в работу"}
             </button>
           ) : (
@@ -457,7 +457,7 @@ export default function RepairQueuePage() {
             onClick={() => setQueueFilter("all")}
             className={`px-3 py-1.5 transition-colors ${
               queueFilter === "all"
-                ? "bg-ink text-white"
+                ? "bg-inverse text-on-inverse"
                 : "bg-surface text-ink-2 hover:bg-surface-muted"
             }`}
           >
@@ -467,7 +467,7 @@ export default function RepairQueuePage() {
             onClick={() => setQueueFilter("mine")}
             className={`px-3 py-1.5 transition-colors border-l border-border ${
               queueFilter === "mine"
-                ? "bg-ink text-white"
+                ? "bg-inverse text-on-inverse"
                 : "bg-surface text-ink-2 hover:bg-surface-muted"
             }`}
           >

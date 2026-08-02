@@ -544,7 +544,7 @@ function VehicleEditPanel({
           type="button"
           onClick={save}
           disabled={busy}
-          className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+          className="rounded bg-accent-bright text-surface px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
         >
           {busy ? "Сохраняем..." : "Сохранить"}
         </button>
@@ -675,7 +675,7 @@ function AddMileageForm({
         type="button"
         onClick={submit}
         disabled={busy}
-        className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+        className="rounded bg-accent-bright text-surface px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
       >
         {busy ? "..." : correction ? "Скорректировать" : "Сохранить"}
       </button>
@@ -859,7 +859,7 @@ function AddServiceForm({
           type="button"
           onClick={submit}
           disabled={busy}
-          className="rounded bg-accent-bright text-white px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+          className="rounded bg-accent-bright text-surface px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
         >
           {busy ? "Сохраняем..." : "Сохранить"}
         </button>

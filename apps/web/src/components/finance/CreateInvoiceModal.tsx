@@ -348,7 +348,7 @@ export function CreateInvoiceModal({
           <button
             onClick={handleSubmit}
             disabled={saving || !isValid}
-            className="px-4 py-2 text-sm bg-accent-bright text-white rounded hover:opacity-90 disabled:opacity-50"
+            className="px-4 py-2 text-sm bg-accent-bright text-surface rounded hover:opacity-90 disabled:opacity-50"
           >
             {saving ? "Создание…" : "Создать"}
           </button>

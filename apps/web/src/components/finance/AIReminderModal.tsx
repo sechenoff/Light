@@ -135,7 +135,7 @@ export function AIReminderModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       onKeyDown={handleKeyDown}
       role="dialog"
@@ -185,7 +185,7 @@ export function AIReminderModal({
                       onClick={() => handleToneChange(t)}
                       className={`flex-1 px-3 py-2 text-[12px] font-medium transition-colors ${
                         tone === t
-                          ? "bg-accent-bright text-white"
+                          ? "bg-accent-bright text-surface"
                           : "bg-surface-subtle text-ink-2 hover:bg-surface border-l border-border first:border-l-0"
                       }`}
                     >
@@ -278,7 +278,7 @@ export function AIReminderModal({
               type="button"
               onClick={handleMarkReminded}
               disabled={marking}
-              className="px-4 py-2 text-[12px] font-medium bg-accent-bright text-white rounded-lg hover:opacity-90 disabled:opacity-60"
+              className="px-4 py-2 text-[12px] font-medium bg-accent-bright text-surface rounded-lg hover:opacity-90 disabled:opacity-60"
             >
               {marking ? "…" : "✅ Отметить как отправлено"}
             </button>

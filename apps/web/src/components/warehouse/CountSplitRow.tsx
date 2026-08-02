@@ -128,7 +128,7 @@ export function CountSplitRow({
           onClick={handleAcceptClick}
           disabled={disabled || noPending}
           aria-label={`Принять 1 шт — ${name}`}
-          className="h-10 rounded border border-emerald-border bg-emerald px-3 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+          className="h-10 rounded border border-emerald-border bg-emerald px-3 text-[12px] font-semibold text-surface hover:opacity-90 disabled:opacity-40"
         >
           <span aria-hidden="true">✓ </span>
           Принять 1

@@ -162,7 +162,7 @@ export function RefundModal({ open, onClose, invoiceId, paymentId, bookingId, on
           <button
             onClick={handleSubmit}
             disabled={saving || !isValid}
-            className="px-4 py-2 text-sm bg-amber text-white rounded hover:opacity-90 disabled:opacity-50"
+            className="px-4 py-2 text-sm bg-amber text-surface rounded hover:opacity-90 disabled:opacity-50"
           >
             {saving ? "Оформление…" : "Оформить возврат"}
           </button>

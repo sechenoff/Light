@@ -230,18 +230,18 @@ export default function EquipmentPage() {
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex flex-col">
-                <label className="text-xs text-slate-600">Старт</label>
+                <label className="text-xs text-ink-2">Старт</label>
                 <input
-                  className="rounded border border-slate-300 px-2 py-1 bg-white"
+                  className="rounded border border-border-strong px-2 py-1 bg-surface"
                   type="datetime-local"
                   value={start}
                   onChange={(e) => setStart(e.target.value)}
                 />
               </div>
               <div className="flex flex-col">
-                <label className="text-xs text-slate-600">Конец</label>
+                <label className="text-xs text-ink-2">Конец</label>
                 <input
-                  className="rounded border border-slate-300 px-2 py-1 bg-white"
+                  className="rounded border border-border-strong px-2 py-1 bg-surface"
                   type="datetime-local"
                   value={end}
                   onChange={(e) => setEnd(e.target.value)}
@@ -251,9 +251,9 @@ export default function EquipmentPage() {
           </div>
 
           <div className="flex flex-col">
-            <label className="text-xs text-slate-600">Поиск</label>
+            <label className="text-xs text-ink-2">Поиск</label>
             <input
-              className="rounded border border-slate-300 px-2 py-1 bg-white"
+              className="rounded border border-border-strong px-2 py-1 bg-surface"
               value={search}
               placeholder="наименование, бренд, модель..."
               onChange={(e) => setSearch(e.target.value)}
@@ -261,9 +261,9 @@ export default function EquipmentPage() {
           </div>
 
           <div className="flex flex-col">
-            <label className="text-xs text-slate-600">Категория</label>
+            <label className="text-xs text-ink-2">Категория</label>
             <select
-              className="rounded border border-slate-300 px-2 py-1 bg-white"
+              className="rounded border border-border-strong px-2 py-1 bg-surface"
               value={category ?? ""}
               onChange={(e) => setCategory(e.target.value || undefined)}
             >
@@ -287,7 +287,7 @@ export default function EquipmentPage() {
             </Link>
           )}
           <Link
-            className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent transition-colors"
+            className="rounded bg-accent-bright text-surface px-4 py-2 text-sm hover:bg-accent transition-colors"
             href={bookingHref}
           >
             Создать бронь
@@ -322,10 +322,10 @@ export default function EquipmentPage() {
                   d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div className="text-sm font-medium text-rose-600">Ошибка загрузки каталога</div>
-              <div className="text-xs text-slate-500">{catalogError}</div>
+              <div className="text-xs text-ink-2">{catalogError}</div>
               <button
                 onClick={() => setReloadNonce((n) => n + 1)}
-                className="mt-2 text-xs text-slate-600 underline hover:text-slate-900"
+                className="mt-2 text-xs text-ink-2 underline hover:text-ink"
               >
                 Попробовать снова
               </button>

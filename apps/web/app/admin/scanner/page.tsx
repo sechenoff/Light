@@ -235,7 +235,7 @@ function DeleteUnitConfirmModal({ open, barcode, loading, error, onConfirm, onCl
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={() => !loading && onClose()}
       aria-modal="true"
       role="dialog"
@@ -272,7 +272,7 @@ function DeleteUnitConfirmModal({ open, barcode, loading, error, onConfirm, onCl
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className="rounded bg-rose px-4 py-2 text-sm text-white hover:bg-rose/90 disabled:opacity-50"
+            className="rounded bg-rose px-4 py-2 text-sm text-surface hover:bg-rose/90 disabled:opacity-50"
           >
             {loading ? "Удаляю…" : "Удалить"}
           </button>
@@ -653,7 +653,7 @@ function ScannerApp() {
               onClick={() => switchMode(id)}
               className={`flex-1 py-2 text-sm font-medium rounded-xl transition-colors ${
                 mode === id
-                  ? "bg-accent-bright text-white"
+                  ? "bg-accent-bright text-surface"
                   : "bg-surface text-ink-2 border border-border hover:bg-surface-muted"
               }`}
             >
@@ -679,7 +679,7 @@ function ScannerApp() {
               />
               <button
                 type="submit"
-                className="h-11 px-4 bg-accent-bright text-white text-sm font-medium rounded-xl"
+                className="h-11 px-4 bg-accent-bright text-surface text-sm font-medium rounded-xl"
               >
                 Ввести
               </button>
@@ -740,7 +740,7 @@ function ScannerApp() {
                   <button
                     type="submit"
                     disabled={assignLoading}
-                    className="h-11 px-4 bg-accent-bright text-white text-sm font-medium rounded-xl disabled:opacity-50"
+                    className="h-11 px-4 bg-accent-bright text-surface text-sm font-medium rounded-xl disabled:opacity-50"
                   >
                     Ввести
                   </button>
@@ -799,7 +799,7 @@ function ScannerApp() {
                       setBatchItems([]);
                       setBatchError(null);
                     }}
-                    className="ml-2 px-3 py-2 text-xs font-medium bg-accent text-white rounded-lg"
+                    className="ml-2 px-3 py-2 text-xs font-medium bg-accent text-surface rounded-lg"
                   >
                     Готово
                   </button>
@@ -824,7 +824,7 @@ function ScannerApp() {
                   <button
                     type="submit"
                     disabled={batchLoading}
-                    className="h-11 px-4 bg-accent-bright text-white text-sm font-medium rounded-xl disabled:opacity-50"
+                    className="h-11 px-4 bg-accent-bright text-surface text-sm font-medium rounded-xl disabled:opacity-50"
                   >
                     Ввести
                   </button>

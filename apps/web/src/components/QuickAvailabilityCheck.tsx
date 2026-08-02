@@ -54,7 +54,7 @@ export function QuickAvailabilityCheck() {
       <button
         onClick={handleCheck}
         disabled={loading}
-        className="w-full bg-accent-bright hover:bg-accent text-white text-sm py-1.5 rounded disabled:opacity-50 transition-colors"
+        className="w-full bg-accent-bright hover:bg-accent text-surface text-sm py-1.5 rounded disabled:opacity-50 transition-colors"
       >
         {loading ? "Проверяю..." : "Проверить"}
       </button>

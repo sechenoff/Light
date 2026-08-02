@@ -412,7 +412,7 @@ function DayWarehouse({ username }: { username: string }) {
         <div className="flex flex-wrap gap-2 pt-1">
           <Link
             href="/bookings/new"
-            className="inline-flex items-center bg-accent-bright text-white text-sm font-medium px-4 py-2 rounded hover:bg-accent transition-colors"
+            className="inline-flex items-center bg-accent-bright text-surface text-sm font-medium px-4 py-2 rounded hover:bg-accent transition-colors"
           >
             + Новая бронь
           </Link>
@@ -528,7 +528,7 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
           <div className="bg-surface border border-rose-border rounded-lg p-4">
             <div className="flex justify-between items-baseline mb-2">
               <p className="text-sm font-semibold text-rose">🆕 Новые поломки — требуют твоей оценки</p>
-              <span className="inline-flex items-center justify-center min-w-[20px] px-1.5 py-0.5 rounded-full text-[11px] bg-rose text-white">
+              <span className="inline-flex items-center justify-center min-w-[20px] px-1.5 py-0.5 rounded-full text-[11px] bg-rose text-surface">
                 {newRepairs.length}
               </span>
             </div>
@@ -540,7 +540,7 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
                   <div className="flex gap-2 mt-2">
                     <button
                       onClick={() => router.push(`/repair/${r.id}?action=take`)}
-                      className="inline-flex items-center bg-rose text-white text-xs px-3 py-1.5 rounded hover:bg-rose/90 transition-colors"
+                      className="inline-flex items-center bg-rose text-surface text-xs px-3 py-1.5 rounded hover:bg-rose/90 transition-colors"
                     >
                       Взять в работу
                     </button>

@@ -253,6 +253,22 @@ npm run seed                  # Seed database
 - **Optimistic mutation pattern (Tasks)** — snapshot → apply → reconcile from server; per-id `useRef<Set<string>>` in-flight guard. `completeTask`: fire-immediately undo-via-reopen; toast action "Отменить" has 6 s window.
 - **Task audit actions** — `TASK_CREATE / TASK_UPDATE / TASK_ASSIGN / TASK_COMPLETE / TASK_REOPEN / TASK_DELETE` written in same `$transaction` as mutation; `entityType: "Task"`. `TASK_ASSIGN` is a distinct action when `assignedTo` changes (for audit searchability).
 
+## Ночной режим (тема оформления)
+
+Тема — это значения CSS-переменных, а не отдельный набор классов. Токены в `tailwind.config.js` объявлены как `rgb(var(--c-*) / <alpha-value>)`; значения живут в `apps/web/app/globals.css`: `:root` — светлая, `:root[data-theme="dark"]` — ночная. Переключение = смена `data-theme` на `<html>`, поэтому весь токенизированный UI меняет тему без правки компонентов.
+
+- **Channel-формат обязателен** — `--c-ink: 9 9 11` (пробелы, без запятых). Только так работают opacity-модификаторы Tailwind (`bg-emerald-soft/30`). Запись через hex или `rgb(...)` их ломает.
+- **Управление темой** — `apps/web/src/lib/theme.ts` (`useTheme`, состояния `light | dark | system`, ключ localStorage `lr:theme`, дефолт `light`) + `src/components/ThemeToggle.tsx` в сайдбаре `AppShell`. Анти-FOUC: инлайн-скрипт в `<head>` (`app/layout.tsx`) ставит `data-theme` до первого кадра; на `<html>` нужен `suppressHydrationWarning`.
+- **Тёмная палитра — не инверсия**, а десатурированные тональные варианты: фон `--c-surface-muted: 15 19 27`, карточка `24 29 39`, `soft`-тинты становятся тёмными подложками, акценты осветляются.
+- **Три токена НЕ инвертируются вместе с ink** — иначе намеренно тёмные элементы становятся белыми:
+  - `inverse` / `on-inverse` — тёмная хромировка (шапка `/day`, активные пилюли, тёмные панели калькулятора, header `/repair/[id]`, `LkShell`);
+  - `scrim` — подложка модалок (`bg-scrim/40…/85`), всегда тёмная;
+  - `accent-chrome` — синяя брендовая шапка киоска склада (`ScanShell`), ночью уходит в глубокий синий, а не в яркий.
+- **Белый текст на цветной заливке пишется как `text-surface`, не `text-white`** — в светлой теме `--c-surface` = белый (поведение прежнее), в ночной = почти чёрный, и надпись остаётся читаемой на осветлённой заливке (`bg-rose`, `bg-emerald`, `bg-accent-bright`…). `text-white` оставлен только там, где фон тёмный в обеих темах (сайдбар `bg-slate-900`, `bg-inverse`, `bg-accent-chrome`).
+- **Числовые оттенки Tailwind (`bg-slate-900`, `text-slate-400`) темы не знают** — они остались только в намеренно тёмных сайдбаре/киоске. В остальном UI хардкод вычищен в токены; новые страницы обязаны использовать токены, иначе ночью останутся светлым пятном.
+- **`color-scheme`** задан в обеих темах — от него зависит отрисовка нативных контролов (`<input type="date">`, скроллбары, `<select>`).
+- **Gaffer CRM не наследует тему** — селектор его тёмных токенов `.gaffer-root[data-theme="dark"]` требует dark на самом корне gaffer, а его layout пиннит `light`. Это отдельный продукт со своей палитрой.
+
 ## UserRole и rolesGuard (Sprint 1)
 
 ### Система ролей

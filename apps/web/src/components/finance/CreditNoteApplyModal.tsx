@@ -121,7 +121,7 @@ export function CreditNoteApplyModal({ open, onClose, bookingId, clientId, onApp
                   <button
                     onClick={() => applyNote(note.id)}
                     disabled={applyingId === note.id}
-                    className="px-3 py-1.5 text-[12px] bg-accent-bright text-white rounded hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+                    className="px-3 py-1.5 text-[12px] bg-accent-bright text-surface rounded hover:opacity-90 disabled:opacity-50 flex-shrink-0"
                   >
                     {applyingId === note.id ? "…" : "Применить"}
                   </button>

@@ -71,7 +71,7 @@ function ApplyConfirmModal({ open, acceptedCount, loading, onConfirm, onClose }:
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={() => !loading && onClose()}
       aria-modal="true"
       role="dialog"
@@ -101,7 +101,7 @@ function ApplyConfirmModal({ open, acceptedCount, loading, onConfirm, onClose }:
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className="rounded bg-accent-bright px-4 py-2 text-sm text-white hover:bg-accent disabled:opacity-50"
+            className="rounded bg-accent-bright px-4 py-2 text-sm text-surface hover:bg-accent disabled:opacity-50"
           >
             {loading ? "Применяем…" : "Применить"}
           </button>

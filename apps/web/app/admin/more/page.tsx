@@ -175,7 +175,7 @@ function WorkersTab() {
           <button
             type="submit"
             disabled={addLoading}
-            className="rounded bg-accent text-white px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-50"
+            className="rounded bg-accent text-surface px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-50"
           >
             {addLoading ? "..." : "Добавить"}
           </button>
@@ -345,7 +345,7 @@ function WorkersTab() {
                 type="button"
                 onClick={() => handleResetPin(resetPinId)}
                 disabled={resetPinLoading}
-                className="rounded bg-accent text-white px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-50"
+                className="rounded bg-accent text-surface px-4 py-2 text-sm hover:bg-accent-bright disabled:opacity-50"
               >
                 {resetPinLoading ? "..." : "Сохранить"}
               </button>
@@ -381,7 +381,7 @@ function WorkersTab() {
                 type="button"
                 onClick={() => handleDelete(deleteId)}
                 disabled={deleteLoading}
-                className="rounded bg-rose text-white px-4 py-2 text-sm hover:bg-rose/90 disabled:opacity-50"
+                className="rounded bg-rose text-surface px-4 py-2 text-sm hover:bg-rose/90 disabled:opacity-50"
               >
                 {deleteLoading ? "..." : "Удалить"}
               </button>

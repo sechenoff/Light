@@ -598,7 +598,7 @@ export default function BookingDetailPage() {
                       type="text"
                       value={retroEdits.projectName ?? ""}
                       onChange={(e) => setRetroEdits((s) => ({ ...s, projectName: e.target.value }))}
-                      className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
+                      className="w-full rounded border border-amber-border bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
                     />
                   </label>
                   <label className="block md:col-span-2">
@@ -607,7 +607,7 @@ export default function BookingDetailPage() {
                       rows={2}
                       value={retroEdits.comment ?? ""}
                       onChange={(e) => setRetroEdits((s) => ({ ...s, comment: e.target.value }))}
-                      className="w-full rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber resize-y"
+                      className="w-full rounded border border-amber-border bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber resize-y"
                     />
                   </label>
                   <label className="block">
@@ -624,7 +624,7 @@ export default function BookingDetailPage() {
                           discountPercent: e.target.value === "" ? null : Number(e.target.value),
                         }))
                       }
-                      className="w-32 mono-num rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
+                      className="w-32 mono-num rounded border border-amber-border bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
                     />
                     {booking.discountPercent != null && (
                       <span className="block mt-1 text-xs text-ink-3">
@@ -650,7 +650,7 @@ export default function BookingDetailPage() {
                           setRetroEdits((s) => ({ ...s, manualFinalAmount: e.target.value }))
                         }
                         placeholder={`автомат: ${formatMoneyRub(booking.finalAmount ?? "0")}`}
-                        className="w-56 mono-num rounded border border-amber-border bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
+                        className="w-56 mono-num rounded border border-amber-border bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-amber"
                       />
                       {(retroEdits.manualFinalAmount ?? "").trim() !== "" && (
                         <button
@@ -733,7 +733,7 @@ export default function BookingDetailPage() {
                 type="button"
                 onClick={handleSubmitForApproval}
                 disabled={actionBusy !== null}
-                className="rounded bg-accent-bright px-4 py-2 text-sm text-white hover:bg-accent-bright/90 disabled:opacity-50"
+                className="rounded bg-accent-bright px-4 py-2 text-sm text-surface hover:bg-accent-bright/90 disabled:opacity-50"
               >
                 {actionBusy === "submit"
                   ? user?.approvalMode === "auto"
@@ -751,7 +751,7 @@ export default function BookingDetailPage() {
                 type="button"
                 onClick={handleApproveNow}
                 disabled={actionBusy !== null}
-                className="rounded bg-emerald px-4 py-2 text-sm text-white hover:bg-emerald/90 disabled:opacity-50"
+                className="rounded bg-emerald px-4 py-2 text-sm text-surface hover:bg-emerald/90 disabled:opacity-50"
               >
                 {actionBusy === "instant" ? "Согласовываю…" : "✓ Согласовать сразу"}
               </button>
@@ -973,7 +973,7 @@ export default function BookingDetailPage() {
                 type="button"
                 onClick={saveRetroEdit}
                 disabled={retroBusy}
-                className="rounded bg-amber text-white px-4 py-2 text-sm font-semibold hover:bg-amber/90 disabled:opacity-50"
+                className="rounded bg-amber text-surface px-4 py-2 text-sm font-semibold hover:bg-amber/90 disabled:opacity-50"
               >
                 {retroBusy ? "Сохраняем..." : "Сохранить изменения"}
               </button>

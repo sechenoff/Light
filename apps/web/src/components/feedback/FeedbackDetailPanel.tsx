@@ -127,7 +127,7 @@ export function FeedbackDetailPanel({ feedbackId, onClose, onChanged }: Feedback
         type="button"
         aria-label="Закрыть"
         onClick={onClose}
-        className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-scrim/40 backdrop-blur-sm"
       />
 
       <section className="relative h-full w-full sm:max-w-xl bg-surface shadow-xl flex flex-col animate-slidein">
@@ -198,7 +198,7 @@ export function FeedbackDetailPanel({ feedbackId, onClose, onChanged }: Feedback
                         key={p.id}
                         type="button"
                         onClick={() => setPreviewPhoto(p.url)}
-                        className="aspect-square rounded-md overflow-hidden border border-border bg-surface-subtle hover:border-ink-2"
+                        className="aspect-square rounded-md overflow-hidden border border-border bg-surface-subtle hover:border-inverse-2"
                         aria-label="Открыть фото"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -225,8 +225,8 @@ export function FeedbackDetailPanel({ feedbackId, onClose, onChanged }: Feedback
                           disabled={changingStatus || active}
                           className={`h-8 px-3 rounded-md text-xs font-semibold border transition-colors ${
                             active
-                              ? "bg-ink text-surface border-ink cursor-default"
-                              : "bg-surface text-ink-2 border-border hover:border-ink hover:bg-surface-subtle disabled:opacity-50"
+                              ? "bg-inverse text-on-inverse border-inverse cursor-default"
+                              : "bg-surface text-ink-2 border-border hover:border-inverse hover:bg-surface-subtle disabled:opacity-50"
                           }`}
                         >
                           {m.label}
@@ -302,7 +302,7 @@ export function FeedbackDetailPanel({ feedbackId, onClose, onChanged }: Feedback
         <button
           type="button"
           onClick={() => setPreviewPhoto(null)}
-          className="fixed inset-0 z-[110] bg-ink/85 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[110] bg-scrim/85 flex items-center justify-center p-4"
           aria-label="Закрыть просмотр"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}

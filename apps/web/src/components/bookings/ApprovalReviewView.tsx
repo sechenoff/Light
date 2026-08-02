@@ -381,7 +381,7 @@ export function ApprovalReviewView({ booking, onReload }: Props) {
               type="button"
               disabled={actionsBusy}
               onClick={handleApprove}
-              className="rounded bg-emerald px-4 py-2 text-sm text-white hover:bg-emerald/90 disabled:opacity-50"
+              className="rounded bg-emerald px-4 py-2 text-sm text-surface hover:bg-emerald/90 disabled:opacity-50"
             >
               {approving ? "Подтверждаю…" : "✓ Подтвердить и зарезервировать"}
             </button>
@@ -690,7 +690,7 @@ export function ApprovalReviewView({ booking, onReload }: Props) {
                   type="button"
                   disabled={actionsBusy}
                   onClick={handleApprove}
-                  className="w-full rounded bg-emerald py-2 text-sm text-white hover:bg-emerald/90 disabled:opacity-50"
+                  className="w-full rounded bg-emerald py-2 text-sm text-surface hover:bg-emerald/90 disabled:opacity-50"
                 >
                   {approving ? "Подтверждаю…" : "✓ Подтвердить"}
                 </button>

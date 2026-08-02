@@ -85,7 +85,7 @@ export function BookingItemsTable({
           <button
             type="button"
             onClick={onOpenPicker}
-            className="rounded border border-amber-border bg-amber-soft text-amber px-2.5 py-1 text-xs font-medium hover:bg-amber hover:text-white transition-colors no-print"
+            className="rounded border border-amber-border bg-amber-soft text-amber px-2.5 py-1 text-xs font-medium hover:bg-amber hover:text-surface transition-colors no-print"
           >
             + Добавить позицию
           </button>
@@ -150,7 +150,7 @@ export function BookingItemsTable({
                         onChange={(e) =>
                           onUpdateQty(it.id, Number(e.target.value) || 0)
                         }
-                        className="w-16 text-right rounded border border-amber-border bg-white px-1 py-0.5 mono-num text-sm focus:outline-none focus:ring-1 focus:ring-amber disabled:bg-rose-soft disabled:text-ink-3"
+                        className="w-16 text-right rounded border border-amber-border bg-surface px-1 py-0.5 mono-num text-sm focus:outline-none focus:ring-1 focus:ring-amber disabled:bg-rose-soft disabled:text-ink-3"
                       />
                     ) : (
                       <span className="font-medium">{it.quantity}</span>

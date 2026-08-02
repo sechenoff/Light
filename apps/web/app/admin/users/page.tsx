@@ -308,7 +308,7 @@ export default function AdminUsersPage() {
         {/* Add button */}
         <button
           onClick={() => setShowCreate((v) => !v)}
-          className="ml-auto bg-accent-bright hover:bg-accent text-white font-medium rounded-lg px-4 py-2 text-sm transition-colors"
+          className="ml-auto bg-accent-bright hover:bg-accent text-surface font-medium rounded-lg px-4 py-2 text-sm transition-colors"
         >
           + Добавить пользователя
         </button>
@@ -382,7 +382,7 @@ export default function AdminUsersPage() {
               <button
                 type="submit"
                 disabled={creating || !newUsername || !newPassword}
-                className="bg-accent-bright hover:bg-accent text-white font-medium rounded-lg px-4 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-accent-bright hover:bg-accent text-surface font-medium rounded-lg px-4 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {creating ? "Создаём…" : "Создать"}
               </button>
@@ -634,7 +634,7 @@ function ConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={() => !loading && onClose()}
       role="dialog"
       aria-modal="true"
@@ -654,7 +654,7 @@ function ConfirmModal({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-soft disabled:opacity-50"
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
           >
             Отмена
           </button>
@@ -662,7 +662,7 @@ function ConfirmModal({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className="rounded bg-rose px-4 py-2 text-sm text-white hover:bg-rose/90 disabled:opacity-50"
+            className="rounded bg-rose px-4 py-2 text-sm text-surface hover:bg-rose/90 disabled:opacity-50"
           >
             {loading ? "Выполняю…" : confirmLabel}
           </button>
@@ -725,7 +725,7 @@ function ChangePasswordModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={() => !saving && onClose()}
       role="dialog"
       aria-modal="true"
@@ -789,7 +789,7 @@ function ChangePasswordModal({
                 type="button"
                 onClick={handleSave}
                 disabled={disabled}
-                className="bg-accent-bright hover:bg-accent text-white font-medium rounded-lg px-4 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-accent-bright hover:bg-accent text-surface font-medium rounded-lg px-4 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? "Сохраняем…" : "Изменить пароль"}
               </button>

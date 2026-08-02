@@ -289,7 +289,7 @@ export function IssueResultView({
           type="button"
           onClick={onDone}
           aria-label="Готово — вернуться к списку броней"
-          className="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:opacity-95"
+          className="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-surface transition-colors hover:opacity-95"
         >
           Готово
         </button>

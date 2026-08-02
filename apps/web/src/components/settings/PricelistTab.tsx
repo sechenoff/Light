@@ -155,7 +155,7 @@ export function PricelistTab() {
         className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-colors ${
           uploading
             ? "bg-surface-muted text-ink-3 cursor-not-allowed"
-            : "bg-accent-bright hover:bg-accent text-white"
+            : "bg-accent-bright hover:bg-accent text-surface"
         }`}
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

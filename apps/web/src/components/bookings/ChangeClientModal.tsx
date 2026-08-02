@@ -195,7 +195,7 @@ export function ChangeClientModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={() => !submitting && !creating && onClose()}
     >
       <div
@@ -286,7 +286,7 @@ export function ChangeClientModal({
             type="button"
             onClick={onClose}
             disabled={submitting || creating}
-            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-soft disabled:opacity-50"
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
           >
             Отмена
           </button>
@@ -294,7 +294,7 @@ export function ChangeClientModal({
             type="button"
             onClick={handleConfirm}
             disabled={confirmDisabled}
-            className="rounded bg-accent px-4 py-2 text-sm text-white hover:bg-accent/90 disabled:opacity-50"
+            className="rounded bg-accent px-4 py-2 text-sm text-surface hover:bg-accent/90 disabled:opacity-50"
           >
             {submitting ? "Сохраняю…" : "Сменить клиента"}
           </button>

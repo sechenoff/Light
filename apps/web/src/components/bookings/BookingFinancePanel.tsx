@@ -223,7 +223,7 @@ export function BookingFinancePanel({
               (booking.amountOutstanding == null || Number(booking.amountOutstanding) > 0))
           ) && (
             <button
-              className="rounded bg-accent-bright text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+              className="rounded bg-accent-bright text-surface px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
               onClick={() => dispatch({ type: "openPayment" })}
             >
               + Записать платёж
@@ -281,7 +281,7 @@ export function BookingFinancePanel({
               <p className="eyebrow">Счета</p>
               <button
                 onClick={() => dispatch({ type: "openCreateInvoice" })}
-                className="text-[11px] px-2 py-1 bg-accent-bright text-white rounded hover:opacity-90"
+                className="text-[11px] px-2 py-1 bg-accent-bright text-surface rounded hover:opacity-90"
               >
                 + Создать счёт
               </button>

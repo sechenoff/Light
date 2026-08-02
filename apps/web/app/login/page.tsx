@@ -117,7 +117,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading || !username || !password}
-            className="w-full bg-accent-bright hover:bg-accent text-white font-medium rounded px-4 py-2.5 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-accent-bright hover:bg-accent text-surface font-medium rounded px-4 py-2.5 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Вход..." : "Войти"}
           </button>

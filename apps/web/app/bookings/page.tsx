@@ -519,7 +519,7 @@ function BookingHistoryPageInner() {
         eyebrow="Аренда"
         title="Список броней"
         actions={
-          <Link href="/bookings/new" className="rounded bg-accent-bright text-white px-4 py-2 text-sm hover:bg-accent transition-colors">
+          <Link href="/bookings/new" className="rounded bg-accent-bright text-surface px-4 py-2 text-sm hover:bg-accent transition-colors">
             Создать бронь
           </Link>
         }

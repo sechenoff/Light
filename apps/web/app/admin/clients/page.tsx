@@ -107,7 +107,7 @@ function ClientModal({ open, mode, initial = {}, onClose, onSaved }: ClientModal
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={() => !loading && onClose()}
       aria-modal="true"
       role="dialog"
@@ -193,7 +193,7 @@ function ClientModal({ open, mode, initial = {}, onClose, onSaved }: ClientModal
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-soft disabled:opacity-50"
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
           >
             Отмена
           </button>
@@ -201,7 +201,7 @@ function ClientModal({ open, mode, initial = {}, onClose, onSaved }: ClientModal
             type="button"
             onClick={handleSave}
             disabled={loading || !name.trim()}
-            className="rounded bg-accent-bright px-4 py-2 text-sm text-white hover:bg-accent disabled:opacity-50"
+            className="rounded bg-accent-bright px-4 py-2 text-sm text-surface hover:bg-accent disabled:opacity-50"
           >
             {loading ? "Сохраняю…" : "Сохранить"}
           </button>
@@ -240,7 +240,7 @@ function DeleteConfirmModal({ open, clientName, loading, onConfirm, onClose }: D
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={() => !loading && onClose()}
       aria-modal="true"
       role="dialog"
@@ -263,7 +263,7 @@ function DeleteConfirmModal({ open, clientName, loading, onConfirm, onClose }: D
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-soft disabled:opacity-50"
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
           >
             Отмена
           </button>
@@ -271,7 +271,7 @@ function DeleteConfirmModal({ open, clientName, loading, onConfirm, onClose }: D
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className="rounded bg-rose px-4 py-2 text-sm text-white hover:bg-rose/90 disabled:opacity-50"
+            className="rounded bg-rose px-4 py-2 text-sm text-surface hover:bg-rose/90 disabled:opacity-50"
           >
             {loading ? "Удаляю…" : "Удалить"}
           </button>
@@ -305,7 +305,7 @@ function PortalAccessModal({ client, onClose }: PortalModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={onClose}
       aria-modal="true"
       role="dialog"
@@ -482,7 +482,7 @@ export default function AdminClientsPage() {
           <button
             type="button"
             onClick={openCreate}
-            className="rounded bg-accent-bright px-4 py-2 text-sm text-white hover:bg-accent"
+            className="rounded bg-accent-bright px-4 py-2 text-sm text-surface hover:bg-accent"
           >
             + Добавить клиента
           </button>
@@ -602,7 +602,7 @@ export default function AdminClientsPage() {
                       <button
                         type="button"
                         onClick={() => openEdit(client)}
-                        className="p-1.5 rounded hover:bg-surface-soft text-ink-3 hover:text-ink transition-colors"
+                        className="p-1.5 rounded hover:bg-surface-subtle text-ink-3 hover:text-ink transition-colors"
                         aria-label={`Редактировать клиента ${client.name}`}
                       >
                         ✎

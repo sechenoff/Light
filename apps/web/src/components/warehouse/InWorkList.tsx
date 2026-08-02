@@ -164,8 +164,8 @@ export function InWorkList({
               className={`min-h-[30px] rounded-full border px-3 py-1 text-[11.5px] font-semibold transition-colors ${
                 on
                   ? p.rose
-                    ? "border-rose bg-rose text-white"
-                    : "border-ink bg-ink text-white"
+                    ? "border-rose bg-rose text-surface"
+                    : "border-inverse bg-inverse text-on-inverse"
                   : p.rose && p.count > 0
                     ? "border-rose-border bg-surface text-rose hover:bg-rose-soft"
                     : "border-border bg-surface text-ink-2 hover:bg-surface-muted"
@@ -238,7 +238,7 @@ export function InWorkList({
                   <button
                     type="button"
                     onClick={() => onAcceptBack(b.bookingId)}
-                    className="inline-flex min-h-[32px] items-center gap-1.5 rounded bg-teal px-3 py-1.5 text-[11.5px] font-semibold text-white transition-colors hover:opacity-90"
+                    className="inline-flex min-h-[32px] items-center gap-1.5 rounded bg-teal px-3 py-1.5 text-[11.5px] font-semibold text-surface transition-colors hover:opacity-90"
                   >
                     <IconReturn className="h-[13px] w-[13px]" strokeWidth={2.2} />
                     Принять возврат

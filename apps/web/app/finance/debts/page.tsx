@@ -504,7 +504,7 @@ function DebtsPageInner() {
                 onClick={() => handleClientFilter("")}
                 className={`flex-shrink-0 min-w-[130px] flex flex-col gap-0.5 px-3 py-2 border rounded-md text-left transition-colors ${
                   clientFilter === ""
-                    ? "bg-accent text-white border-accent"
+                    ? "bg-accent text-surface border-accent"
                     : "bg-surface border-border hover:bg-surface-subtle"
                 }`}
               >
@@ -525,7 +525,7 @@ function DebtsPageInner() {
                   onClick={() => handleClientFilter(c.clientId)}
                   className={`flex-shrink-0 min-w-[130px] flex flex-col gap-0.5 px-3 py-2 border rounded-md text-left transition-colors ${
                     clientFilter === c.clientId
-                      ? "bg-accent text-white border-accent"
+                      ? "bg-accent text-surface border-accent"
                       : "bg-surface border-border hover:bg-surface-subtle"
                   }`}
                 >
@@ -581,7 +581,7 @@ function DebtsPageInner() {
               onClick={() => setStatusFilter(f.key)}
               className={`h-[30px] px-3 text-[12px] font-medium border rounded transition-colors ${
                 statusFilter === f.key
-                  ? "bg-accent text-white border-accent"
+                  ? "bg-accent text-surface border-accent"
                   : "bg-surface border-border text-ink-2 hover:bg-surface-subtle"
               }`}
             >
@@ -740,7 +740,7 @@ function DebtsPageInner() {
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => openPayment(row)}
-                              className="h-[30px] px-2.5 flex items-center gap-1 bg-accent text-white border border-accent rounded text-[12px] font-medium hover:bg-accent-bright"
+                              className="h-[30px] px-2.5 flex items-center gap-1 bg-accent text-surface border border-accent rounded text-[12px] font-medium hover:bg-accent-bright"
                             >
                               ₽ Оплатить
                             </button>
@@ -806,7 +806,7 @@ function DebtsPageInner() {
                     <div className="grid grid-cols-2 gap-1.5 mb-1.5">
                       <button
                         onClick={() => openPayment(row)}
-                        className="h-11 flex items-center justify-center gap-1 bg-accent text-white border border-accent rounded text-[13px] font-medium hover:bg-accent-bright col-span-2"
+                        className="h-11 flex items-center justify-center gap-1 bg-accent text-surface border border-accent rounded text-[13px] font-medium hover:bg-accent-bright col-span-2"
                       >
                         ₽ Оплатить
                       </button>

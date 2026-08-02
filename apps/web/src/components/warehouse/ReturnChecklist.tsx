@@ -828,7 +828,7 @@ export function ReturnChecklist({
           onClick={acceptAll}
           disabled={interactionsDisabled}
           aria-label="Принять всё разом — отметить все позиции принятыми"
-          className="mb-3 block w-full rounded-lg bg-accent-bright px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
+          className="mb-3 block w-full rounded-lg bg-accent-bright px-4 py-3 text-center text-sm font-semibold text-surface transition-colors hover:opacity-95 disabled:opacity-60"
         >
           ✓ Принять всё разом
         </button>
@@ -1012,7 +1012,7 @@ export function ReturnChecklist({
           onClick={handleComplete}
           disabled={interactionsDisabled}
           aria-label={`Завершить приёмку — ${projectName || "бронь"}`}
-          className="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
+          className="block w-full rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-surface transition-colors hover:opacity-95 disabled:opacity-60"
         >
           {submitting ? "Завершаем…" : "Завершить приёмку →"}
         </button>

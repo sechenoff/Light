@@ -45,17 +45,17 @@ export function ConfirmActionModal({
   const typedOk = !requireTyped || typed.trim() === requireTyped;
 
   useEffect(() => {
-    if (open) {
-      setTyped("");
-      // Фокус: при typed-confirmation — на поле ввода, иначе на кнопке.
-      setTimeout(() => {
-        if (requireTyped) {
-          (document.getElementById("confirm-typed-input") as HTMLInputElement | null)?.focus();
-        } else {
-          confirmRef.current?.focus();
-        }
-      }, 50);
-    }
+    if (!open) return;
+    setTyped("");
+    // Фокус: при typed-confirmation — на поле ввода, иначе на кнопке.
+    const timer = setTimeout(() => {
+      if (requireTyped) {
+        (document.getElementById("confirm-typed-input") as HTMLInputElement | null)?.focus();
+      } else {
+        confirmRef.current?.focus();
+      }
+    }, 50);
+    return () => clearTimeout(timer);
   }, [open, requireTyped]);
 
   useEffect(() => {
@@ -71,12 +71,12 @@ export function ConfirmActionModal({
 
   const confirmClass =
     tone === "danger"
-      ? "rounded bg-rose px-4 py-2 text-sm text-white hover:bg-rose/90 disabled:opacity-50"
-      : "rounded bg-accent-bright px-4 py-2 text-sm text-white hover:bg-accent disabled:opacity-50";
+      ? "rounded bg-rose px-4 py-2 text-sm text-surface hover:bg-rose/90 disabled:opacity-50"
+      : "rounded bg-accent-bright px-4 py-2 text-sm text-surface hover:bg-accent disabled:opacity-50";
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 px-4"
       onClick={() => !loading && onClose()}
       role="dialog"
       aria-modal="true"
@@ -112,7 +112,7 @@ export function ConfirmActionModal({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-soft disabled:opacity-50"
+            className="rounded border border-border px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle disabled:opacity-50"
           >
             Отмена
           </button>

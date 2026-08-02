@@ -592,7 +592,7 @@ function CrewCalculatorPageInner() {
                     onClick={() => setCardId(id)}
                     className={`h-8 px-3 text-xs font-semibold uppercase tracking-wide font-cond transition-colors ${
                       active
-                        ? "bg-ink text-surface"
+                        ? "bg-inverse text-on-inverse"
                         : "bg-surface text-ink-2 hover:bg-surface-subtle"
                     }`}
                     title={`${TOGGLE_LABELS[id].long} · с ${formatEffectiveFrom(RATE_CARDS[id].effectiveFrom)}`}
@@ -622,7 +622,7 @@ function CrewCalculatorPageInner() {
       <section className="print:hidden mb-8">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-border rounded-lg overflow-hidden border border-border">
           {/* Total */}
-          <div className="bg-ink text-surface p-5">
+          <div className="bg-inverse text-on-inverse p-5">
             <div className="text-[10px] font-cond uppercase tracking-widest text-ink-3">Итого за день</div>
             <div className="font-cond font-bold mono-num leading-none mt-2 text-4xl sm:text-5xl">
               {formatMoneyRub(result.grandTotal)}
@@ -709,8 +709,8 @@ function CrewCalculatorPageInner() {
                       onClick={() => setHoursRaw(String(h))}
                       className={`h-9 px-3 rounded-md text-sm font-semibold mono-num border transition-colors ${
                         active
-                          ? "bg-ink text-surface border-ink"
-                          : "bg-surface text-ink border-border hover:border-ink hover:bg-surface-subtle"
+                          ? "bg-inverse text-on-inverse border-inverse"
+                          : "bg-surface text-ink border-border hover:border-inverse hover:bg-surface-subtle"
                       }`}
                     >
                       {h}ч
@@ -789,7 +789,7 @@ function CrewCalculatorPageInner() {
                       className={`group h-auto py-1.5 px-2.5 rounded-md text-left border transition-colors ${
                         active
                           ? "bg-accent-soft text-accent border-accent-border"
-                          : "bg-surface text-ink-2 border-border hover:border-ink hover:bg-surface-subtle"
+                          : "bg-surface text-ink-2 border-border hover:border-inverse hover:bg-surface-subtle"
                       }`}
                     >
                       <div className="text-xs font-semibold leading-tight">{p.label}</div>
@@ -1039,7 +1039,7 @@ function CrewCalculatorPageInner() {
         <div className="hidden print:block mt-4">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="border-b-2 border-ink text-left">
+              <tr className="border-b-2 border-inverse text-left">
                 <th className="py-2 pr-3 font-semibold">Роль</th>
                 <th className="py-2 px-3 text-center font-semibold">Чел.</th>
                 <th className="py-2 px-3 text-right font-semibold">Смена</th>
@@ -1056,7 +1056,7 @@ function CrewCalculatorPageInner() {
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-ink">
+              <tr className="border-t-2 border-inverse">
                 <td colSpan={7} className="py-3 font-bold text-right pr-3">ИТОГО ПО КОМАНДЕ</td>
                 <td className="py-3 pl-3 text-right font-bold text-lg mono-num">{formatMoneyRub(result.grandTotal)} ₽</td>
               </tr>

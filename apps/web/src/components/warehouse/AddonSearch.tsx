@@ -120,7 +120,7 @@ function ConflictWarning({
           onClick={onForce}
           disabled={busy}
           aria-label={`Выдать ${qty > 1 ? `${qty} шт ` : ""}${name} под ответственность, несмотря на конфликт`}
-          className="h-10 flex-[1.4] rounded bg-rose text-[12px] font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
+          className="h-10 flex-[1.4] rounded bg-rose text-[12px] font-semibold text-surface transition-colors hover:opacity-95 disabled:opacity-60"
         >
           {busy
             ? "…"
@@ -467,7 +467,7 @@ export function AddonSearch({
         type="button"
         aria-label="Закрыть поиск добора"
         onClick={onClose}
-        className="fixed inset-0 z-40 bg-ink/40 lg:hidden"
+        className="fixed inset-0 z-40 bg-scrim/40 lg:hidden"
       />
 
       <section
@@ -691,7 +691,7 @@ export function AddonSearch({
                           }
                           disabled={!!adding}
                           aria-label={`Добавить ${picking.qty} шт ${r.name} в выдачу`}
-                          className="h-10 shrink-0 rounded bg-accent-bright px-3 text-[12px] font-semibold text-white transition-colors hover:opacity-95 disabled:opacity-60"
+                          className="h-10 shrink-0 rounded bg-accent-bright px-3 text-[12px] font-semibold text-surface transition-colors hover:opacity-95 disabled:opacity-60"
                         >
                           {isAdding ? "…" : `Добавить ${picking.qty}`}
                         </button>

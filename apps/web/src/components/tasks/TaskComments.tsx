@@ -92,7 +92,7 @@ export function TaskComments({ comments, currentUserId, isSuperAdmin, onAdd, onD
           <button
             onClick={submit}
             disabled={!draft.trim()}
-            className="text-[13px] font-medium px-3 py-1 rounded-md bg-accent-bright text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
+            className="text-[13px] font-medium px-3 py-1 rounded-md bg-accent-bright text-surface disabled:opacity-40 hover:opacity-90 transition-opacity"
           >
             Отправить
           </button>

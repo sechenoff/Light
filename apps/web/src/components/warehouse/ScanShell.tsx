@@ -60,7 +60,7 @@ export function ScanShell({
   return (
     <div className="min-h-screen flex flex-col bg-surface-muted">
       {/* Dark canon header band (mockup .top / .dt — deep navy = accent). */}
-      <header className="bg-accent text-white">
+      <header className="bg-accent-chrome text-white">
         <div className="mx-auto flex w-full max-w-[1180px] items-center gap-3 px-4 py-3 lg:px-6">
           {onBack && (
             <button

@@ -104,7 +104,7 @@ export function BookingHero({ booking, showHero }: { booking: HeroBooking; showH
                 <p className="eyebrow">
                   Итого
                   {booking.manualFinalAmount != null && (
-                    <span className="ml-1.5 align-middle inline-block bg-amber text-white text-[9px] px-1 py-0.5 rounded font-semibold tracking-wide">
+                    <span className="ml-1.5 align-middle inline-block bg-amber text-surface text-[9px] px-1 py-0.5 rounded font-semibold tracking-wide">
                       РУЧНОЙ
                     </span>
                   )}

@@ -204,7 +204,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
         <button
           onClick={invite}
           disabled={busy || !email.trim()}
-          className="px-4 py-2 text-sm bg-accent-bright text-white rounded-md disabled:opacity-50 hover:opacity-90 transition-opacity"
+          className="px-4 py-2 text-sm bg-accent-bright text-surface rounded-md disabled:opacity-50 hover:opacity-90 transition-opacity"
         >
           {busy ? "Отправка…" : "Дать доступ в кабинет"}
         </button>
@@ -301,7 +301,7 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
             <button
               onClick={() => resend(newEmail.trim().toLowerCase())}
               disabled={busy || !newEmail.trim()}
-              className="px-3 py-1.5 text-sm bg-accent-bright text-white rounded-md disabled:opacity-50 hover:opacity-90 transition-opacity"
+              className="px-3 py-1.5 text-sm bg-accent-bright text-surface rounded-md disabled:opacity-50 hover:opacity-90 transition-opacity"
             >
               {busy ? "Отправка…" : "Отправить"}
             </button>

@@ -133,7 +133,7 @@ export function RebindModal({ sourceName, currentEquipmentId, onRebind, onClose 
                 <span
                   className={`w-4 h-4 rounded-full border-2 flex items-center justify-center text-[10px] shrink-0 ${
                     isSelected
-                      ? "border-emerald bg-emerald text-white"
+                      ? "border-emerald bg-emerald text-surface"
                       : "border-border"
                   }`}
                 >
@@ -157,7 +157,7 @@ export function RebindModal({ sourceName, currentEquipmentId, onRebind, onClose 
             <button
               onClick={handleSave}
               disabled={saving}
-              className="w-full px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-bright transition-colors disabled:opacity-50"
+              className="w-full px-4 py-2 text-sm font-medium rounded-lg bg-accent text-surface hover:bg-accent-bright transition-colors disabled:opacity-50"
             >
               {saving ? "Сохраняем…" : "Привязать и запомнить"}
             </button>

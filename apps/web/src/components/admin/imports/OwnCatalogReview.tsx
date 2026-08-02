@@ -99,14 +99,14 @@ export function OwnCatalogReview({
           <button
             type="button"
             onClick={() => onBulkAccept()}
-            className="rounded border border-ok-border bg-ok-soft px-3 py-1.5 text-xs font-medium text-ok hover:bg-ok hover:text-white"
+            className="rounded border border-ok-border bg-ok-soft px-3 py-1.5 text-xs font-medium text-ok hover:bg-ok hover:text-surface"
           >
             Принять все
           </button>
           <button
             type="button"
             onClick={() => onBulkReject()}
-            className="rounded border border-rose-border bg-rose-soft px-3 py-1.5 text-xs font-medium text-rose hover:bg-rose hover:text-white"
+            className="rounded border border-rose-border bg-rose-soft px-3 py-1.5 text-xs font-medium text-rose hover:bg-rose hover:text-surface"
           >
             Отклонить все
           </button>
@@ -187,7 +187,7 @@ export function OwnCatalogReview({
           type="button"
           onClick={onApply}
           disabled={applying || acceptedCount === 0}
-          className="rounded bg-accent px-5 py-2.5 text-sm font-medium text-white hover:bg-accent-bright disabled:opacity-50"
+          className="rounded bg-accent px-5 py-2.5 text-sm font-medium text-surface hover:bg-accent-bright disabled:opacity-50"
         >
           {applying ? "Применяем..." : `Применить ${acceptedCount} изменений →`}
         </button>

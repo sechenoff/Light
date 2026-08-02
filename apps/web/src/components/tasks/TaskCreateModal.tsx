@@ -159,7 +159,7 @@ export function TaskCreateModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 backdrop-blur-sm px-4"
       onClick={() => !submitting && onClose()}
     >
       <div
@@ -385,7 +385,7 @@ export function TaskCreateModal({
                 type="button"
                 onClick={() => void handleSubmit()}
                 disabled={!canSubmit}
-                className="rounded-lg bg-accent-bright text-white px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                className="rounded-lg bg-accent-bright text-surface px-5 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
                 {submitting ? "Создаю…" : "Создать задачу"}
               </button>

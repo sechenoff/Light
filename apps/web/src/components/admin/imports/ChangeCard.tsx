@@ -116,7 +116,7 @@ export function ChangeCard({ row, onAccept, onReject, onRebind }: Props) {
             aria-label="Принять"
             className={`rounded px-2 py-1 text-sm transition-colors ${
               accepted
-                ? "bg-ok text-white"
+                ? "bg-ok text-surface"
                 : "border border-border text-ink-2 hover:border-ok hover:bg-ok-soft hover:text-ok"
             }`}
           >
@@ -128,7 +128,7 @@ export function ChangeCard({ row, onAccept, onReject, onRebind }: Props) {
             aria-label="Отклонить"
             className={`rounded px-2 py-1 text-sm transition-colors ${
               rejected
-                ? "bg-rose text-white"
+                ? "bg-rose text-surface"
                 : "border border-border text-ink-2 hover:border-rose hover:bg-rose-soft hover:text-rose"
             }`}
           >

@@ -394,7 +394,7 @@ export function LegacyBookingImportModal({ open, onClose, onImported }: Props) {
                 type="button"
                 onClick={() => void handleSubmit()}
                 disabled={step === "submitting" || validRows.length === 0}
-                className="px-4 py-1.5 text-sm bg-accent text-white rounded border border-accent hover:bg-accent-bright disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-4 py-1.5 text-sm bg-accent text-surface rounded border border-accent hover:bg-accent-bright disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {step === "submitting"
                   ? "Импортируется…"
@@ -405,7 +405,7 @@ export function LegacyBookingImportModal({ open, onClose, onImported }: Props) {
               <button
                 type="button"
                 onClick={handleDone}
-                className="px-4 py-1.5 text-sm bg-accent text-white rounded border border-accent hover:bg-accent-bright"
+                className="px-4 py-1.5 text-sm bg-accent text-surface rounded border border-accent hover:bg-accent-bright"
               >
                 Готово
               </button>

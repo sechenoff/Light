@@ -304,7 +304,7 @@ export default function BookingsArchivePage() {
                         type="button"
                         onClick={() => setRestoreRow(r)}
                         disabled={busyId === r.id}
-                        className="text-xs rounded border border-emerald-border bg-emerald-soft text-emerald px-2 py-1 hover:bg-emerald hover:text-white transition-colors disabled:opacity-50"
+                        className="text-xs rounded border border-emerald-border bg-emerald-soft text-emerald px-2 py-1 hover:bg-emerald hover:text-surface transition-colors disabled:opacity-50"
                         title="Вернуть бронь в основной список"
                       >
                         ↺ Восстановить
@@ -313,7 +313,7 @@ export default function BookingsArchivePage() {
                         type="button"
                         onClick={() => setPurgeRow(r)}
                         disabled={busyId === r.id}
-                        className="text-xs rounded border border-rose-border bg-rose-soft text-rose px-2 py-1 hover:bg-rose hover:text-white transition-colors disabled:opacity-50"
+                        className="text-xs rounded border border-rose-border bg-rose-soft text-rose px-2 py-1 hover:bg-rose hover:text-surface transition-colors disabled:opacity-50"
                         title="Удалить из БД навсегда"
                       >
                         🗑 Удалить навсегда

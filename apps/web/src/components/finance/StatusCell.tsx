@@ -46,8 +46,8 @@ export function StatusCell({ item, onPay }: Props) {
   const ctaAmount = isPaid ? null : item.amountOutstanding;
 
   const ctaButtonClass = isPartial
-    ? "bg-amber text-white hover:opacity-90"
-    : "bg-accent-bright text-white hover:bg-accent";
+    ? "bg-amber text-surface hover:opacity-90"
+    : "bg-accent-bright text-surface hover:bg-accent";
 
   return (
     <div
@@ -58,7 +58,7 @@ export function StatusCell({ item, onPay }: Props) {
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-sm font-semibold ${labelClass}`}>{labelText}</span>
           {isOverdue && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-rose text-white">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-rose text-surface">
               просрочено {item.overdueDays}{" "}
               {pluralize(item.overdueDays, "день", "дня", "дней")}
             </span>

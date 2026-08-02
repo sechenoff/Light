@@ -171,7 +171,7 @@ function FinancePageInner() {
             </p>
             <Link
               href="/day"
-              className="inline-block mt-5 px-4 py-2 text-[13px] font-medium bg-accent-bright text-white rounded-lg hover:opacity-90 transition-opacity"
+              className="inline-block mt-5 px-4 py-2 text-[13px] font-medium bg-accent-bright text-surface rounded-lg hover:opacity-90 transition-opacity"
             >
               ← На главную
             </Link>
@@ -208,7 +208,7 @@ function FinancePageInner() {
               <PeriodSelector value={period} onChange={handlePeriodChange} />
               <button
                 onClick={() => setRecordPaymentOpen(true)}
-                className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-white rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+                className="px-3.5 py-2 text-[12px] font-semibold bg-accent-bright text-surface rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
               >
                 + Записать платёж
               </button>

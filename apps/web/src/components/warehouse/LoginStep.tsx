@@ -135,7 +135,7 @@ export function LoginStep({
         <button
           type="submit"
           disabled={loading}
-          className="h-14 w-full rounded bg-accent-bright text-base font-semibold text-white transition-colors hover:bg-accent disabled:opacity-50"
+          className="h-14 w-full rounded bg-accent-bright text-base font-semibold text-surface transition-colors hover:bg-accent disabled:opacity-50"
         >
           {loading ? "Вход…" : "Войти"}
         </button>
