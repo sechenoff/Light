@@ -64,13 +64,13 @@ function LoginForm() {
   }
 
   return (
-    <main className="min-h-screen bg-accent flex items-center justify-center p-6">
+    <main className="min-h-screen bg-accent-chrome flex items-center justify-center p-6">
       <div className="w-full max-w-[360px]">
         <div className="text-center mb-8">
           <h1 className="text-xl font-semibold text-white tracking-tight">
             Svetobaza Rental
           </h1>
-          <p className="text-accent-border text-xs mt-1.5 eyebrow">Вход в систему</p>
+          <p className="text-white/70 text-xs mt-1.5 eyebrow">Вход в систему</p>
         </div>
 
         <form
@@ -88,7 +88,7 @@ function LoginForm() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={loading}
-              className="w-full px-3 py-2.5 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright focus:border-accent-bright disabled:bg-surface-subtle"
+              className="w-full px-3 py-2.5 border border-border rounded text-sm bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-bright focus:border-accent-bright disabled:bg-surface-subtle"
               required
             />
           </div>
@@ -103,7 +103,7 @@ function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
-              className="w-full px-3 py-2.5 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright focus:border-accent-bright disabled:bg-surface-subtle"
+              className="w-full px-3 py-2.5 border border-border rounded text-sm bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent-bright focus:border-accent-bright disabled:bg-surface-subtle"
               required
             />
           </div>
