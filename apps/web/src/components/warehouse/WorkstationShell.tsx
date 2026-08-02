@@ -3,13 +3,19 @@
 /**
  * WorkstationShell — каркас «Рабочего стола кладовщика v2».
  *
- * Заменяет ScanShell на уровне страницы: та же тёмная canon-шапка, но вместо
- * потока «выбор операции → назад» — постоянная навигация из 5 разделов:
- *   Смена · Выдача · Приёмка · В работе · Журнал (+ Поломки внутри Журнала).
+ * С 2026-08-02 раздел живёт ВНУТРИ общего AppShell (глобальный сайдбар сайта),
+ * а не отдельным полноэкранным киоском — решение владельца: единая навигация
+ * по всему сайту. Внутренняя навигация раздела:
  *
- * Mobile  : контент + фиксированный нижний таб-бар (5 табов, бейджи).
- * Desktop : левая rail-колонка (200px) + контент; контент сам может быть
- *           двухпанельным (list | detail) — как прежний ScanShell.
+ * Desktop : горизонтальные табы под шапкой (паттерн AdminTabNav из админки):
+ *   Смена · Выдача · Приёмка · В работе · Журнал · Поломки. Контент может
+ *   быть двухпанельным (list | detail).
+ * Mobile  : фиксированный нижний таб-бар (5 табов, бейджи) — сохранён:
+ *   для планшета склада это лучшие touch-таргеты.
+ *
+ * Тёмная canon-шапка раздела сохранена (прецедент — DayHeader на /day):
+ * несёт заголовок текущего экрана, имя работника киоск-сессии и её логаут
+ * (PIN-сессия отдельна от основной сессии сайта).
  *
  * Мокап: docs/mockups/warehouse-scan/05-workstation-v2.html.
  * Touch-таргеты ≥44px; иконки SVG (workstationIcons), не эмодзи.
@@ -109,60 +115,38 @@ export function WorkstationShell({
   // «Журнал» подсвечен и когда открыт под-экран «Поломки».
   const activeNavKey: WorkstationTab = tab === "problems" ? "journal" : tab;
 
-  const railNav = (
+  // Горизонтальные табы раздела — тот же визуальный контракт, что AdminTabNav
+  // в админке (подчёркивание активной, скролл самого бара на узких экранах).
+  // Кнопки, не Link: разделы — это состояние страницы (?tab=), не маршруты.
+  const topTabs = (
     <nav
       aria-label="Разделы склада"
-      className="hidden lg:flex lg:w-[200px] lg:shrink-0 lg:flex-col lg:gap-0.5 lg:border-r lg:border-border lg:bg-surface lg:p-2"
+      className="hidden gap-0.5 overflow-x-auto border-b border-border bg-surface px-4 lg:flex lg:px-6"
     >
-      {TABS.map(({ key, label, icon: Icon, badgeKey, badgeTone }) => {
-        const isOn = activeNavKey === key;
-        return (
-          <button
-            key={key}
-            type="button"
-            onClick={() => onTab(key)}
-            aria-current={isOn ? "page" : undefined}
-            className={`flex min-h-[42px] items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] font-medium transition-colors ${
-              isOn
-                ? "bg-accent-soft font-semibold text-accent-bright"
-                : "text-ink-2 hover:bg-surface-muted"
-            }`}
-          >
-            <Icon className="h-[18px] w-[18px] shrink-0" />
-            <span className="flex-1">{label}</span>
-            {badgeKey && (
-              <TabBadge count={badges[badgeKey] ?? 0} tone={badgeTone ?? "rose"} />
-            )}
-          </button>
-        );
-      })}
-      <div className="mx-2 my-2 h-px bg-border" />
-      <button
-        type="button"
-        onClick={() => onTab("problems")}
-        aria-current={tab === "problems" ? "page" : undefined}
-        className={`flex min-h-[42px] items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] font-medium transition-colors ${
-          tab === "problems"
-            ? "bg-accent-soft font-semibold text-accent-bright"
-            : "text-ink-2 hover:bg-surface-muted"
-        }`}
-      >
-        <IconWrench className="h-[18px] w-[18px] shrink-0" />
-        <span className="flex-1">Поломки</span>
-        <TabBadge count={badges.problems ?? 0} tone="amber" />
-      </button>
-      <div className="mt-auto px-3 py-2 text-[11px] text-ink-3">
-        {workerName}
-        {onLogout && (
-          <button
-            type="button"
-            onClick={onLogout}
-            className="mt-0.5 block text-left text-[11px] text-ink-3 underline hover:text-ink"
-          >
-            Выйти
-          </button>
-        )}
-      </div>
+      {[...TABS, { key: "problems" as WorkstationTab, label: "Поломки", icon: IconWrench, badgeKey: "problems" as const, badgeTone: "amber" as const }].map(
+        ({ key, label, icon: Icon, badgeKey, badgeTone }) => {
+          const isOn = key === "problems" ? tab === "problems" : activeNavKey === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onTab(key)}
+              aria-current={isOn ? "page" : undefined}
+              className={`-mb-px flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm transition-colors ${
+                isOn
+                  ? "border-ink bg-surface font-medium text-ink"
+                  : "border-transparent text-ink-2 hover:bg-surface-muted hover:text-ink"
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {label}
+              {badgeKey && (
+                <TabBadge count={badges[badgeKey] ?? 0} tone={badgeTone ?? "rose"} />
+              )}
+            </button>
+          );
+        },
+      )}
     </nav>
   );
 
@@ -204,10 +188,11 @@ export function WorkstationShell({
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-surface-muted">
-      {/* Тёмная canon-шапка (как ScanShell). */}
+    // Высоту и глобальный сайдбар даёт AppShell; здесь только колонка раздела.
+    <div className="flex min-h-full flex-1 flex-col bg-surface-muted">
+      {/* Тёмная canon-шапка раздела (прецедент — DayHeader на /day). */}
       <header className="bg-accent text-white">
-        <div className="mx-auto flex w-full max-w-[1380px] items-center gap-3 px-4 py-3 lg:px-6">
+        <div className="flex w-full items-center gap-3 px-4 py-3 lg:px-6">
           {onBack && (
             <button
               type="button"
@@ -233,7 +218,7 @@ export function WorkstationShell({
                 <button
                   type="button"
                   onClick={onLogout}
-                  className="rounded border border-white/25 px-2.5 py-1 text-xs font-medium text-white/90 transition-colors hover:bg-white/10 lg:hidden"
+                  className="rounded border border-white/25 px-2.5 py-1 text-xs font-medium text-white/90 transition-colors hover:bg-white/10"
                 >
                   Выйти
                 </button>
@@ -249,8 +234,8 @@ export function WorkstationShell({
         </main>
       ) : (
         <>
-          <div className="mx-auto flex w-full max-w-[1380px] flex-1 pb-[68px] lg:pb-0">
-            {railNav}
+          {topTabs}
+          <div className="flex w-full flex-1 pb-[68px] lg:pb-0">
             {twoPane ? (
               <div className="flex-1 lg:grid lg:grid-cols-[minmax(280px,340px)_1fr]">
                 <aside
