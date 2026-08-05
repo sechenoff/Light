@@ -3,7 +3,8 @@ import express from "express";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { serializeEquipmentForJson, serializeEstimateForJson } from "../utils/serializeDecimal";
-import { buildSmetaFromPersistedEstimate, writeSmetaPdf, writeSmetaXlsx } from "../services/smetaExport";
+import { buildSmetaFromPersistedEstimate, writeSmetaPdf, writeSmetaXlsx, smetaOrgFromSettings } from "../services/smetaExport";
+import { getSettings } from "../services/organizationService";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
 
 const router = express.Router();
@@ -50,6 +51,7 @@ router.get("/:estimateId/export/xlsx", async (req, res, next) => {
     const doc = buildSmetaFromPersistedEstimate({
       booking: estimate.booking,
       estimate,
+      org: smetaOrgFromSettings(await getSettings()),
     });
     const human = buildBookingHumanName({
       startDate: estimate.booking.startDate,
@@ -76,6 +78,7 @@ router.get("/:estimateId/export/pdf", async (req, res, next) => {
     const doc = buildSmetaFromPersistedEstimate({
       booking: estimate.booking,
       estimate,
+      org: smetaOrgFromSettings(await getSettings()),
     });
     const human = buildBookingHumanName({
       startDate: estimate.booking.startDate,

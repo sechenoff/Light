@@ -424,6 +424,65 @@ export default function BookingDetailPage() {
     }
   }
 
+  /**
+   * Печать сметы: полная смета (A4-PDF с реквизитами, доборами и транспортом)
+   * грузится блобом и печатается из скрытого iframe — печатается сам документ,
+   * а не админская страница. Safari не умеет печатать PDF из iframe — там
+   * открываем PDF в новой вкладке и подсказываем ⌘P.
+   */
+  async function printEstimatePdf() {
+    if (!booking) return;
+    try {
+      const res = await apiFetchRaw(`/api/bookings/${booking.id}/full-estimate/export/pdf`, {
+        method: "GET",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        toast.error("Смета ещё не сформирована — сохраните бронь");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      if (isSafari) {
+        const win = window.open(url, "_blank");
+        if (win) {
+          toast.info("PDF открыт в новой вкладке — нажмите ⌘P для печати");
+        } else {
+          toast.error("Браузер заблокировал вкладку — скачайте PDF кнопкой рядом");
+        }
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        return;
+      }
+
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.src = url;
+      iframe.onload = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch {
+          window.open(url, "_blank");
+        }
+      };
+      document.body.appendChild(iframe);
+      // Убираем iframe и blob после диалога печати; 60 с хватает и медленному принтеру.
+      window.setTimeout(() => {
+        iframe.remove();
+        URL.revokeObjectURL(url);
+      }, 60_000);
+    } catch {
+      toast.error("Не удалось подготовить смету к печати");
+    }
+  }
+
   async function handleSubmitForApproval() {
     if (!booking) return;
     setActionBusy("submit");
@@ -915,6 +974,7 @@ export default function BookingDetailPage() {
             <BookingEstimateSection
               booking={booking}
               onDownload={download}
+              onPrint={printEstimatePdf}
               onDownloadEstimateFallback={downloadEstimatePdfWithFallback}
             />
             <AddonEstimateSection bookingId={booking.id} />

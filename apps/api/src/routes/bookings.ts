@@ -24,7 +24,9 @@ import {
   buildFullSmeta,
   writeFullSmetaPdf,
   writeFullSmetaXlsx,
+  smetaOrgFromSettings,
 } from "../services/smetaExport";
+import { getSettings } from "../services/organizationService";
 import { formatExportHourCalculationLine } from "../utils/dates";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
 import { calcBookingPaymentStatus, computeBookingTimeline, computeRelatedExpenses, createFinanceEvent, recomputeBookingFinance } from "../services/finance";
@@ -1675,7 +1677,9 @@ router.post("/quote/export", async (req, res, next) => {
 
     const hourText =
       body.hourCalculationOverride?.trim() || formatExportHourCalculationLine(start, end, body.skipPartialDay ?? false);
+    const org = smetaOrgFromSettings(await getSettings());
     const smetaDoc = buildSmetaExportDocument({
+      org,
       startDate: start,
       endDate: end,
       clientName: body.client.name.trim(),
@@ -2810,6 +2814,7 @@ router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
       include: {
         client: true,
         estimates: { include: { lines: true } },
+        vehicles: { include: { vehicle: true } },
       },
     });
     if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
@@ -2818,7 +2823,8 @@ router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
     if (!main) throw new HttpError(404, "Основная смета не создана", "MAIN_ESTIMATE_NOT_FOUND");
     const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
 
-    const doc = buildFullSmeta({ booking, main, addon });
+    const org = smetaOrgFromSettings(await getSettings());
+    const doc = buildFullSmeta({ booking, main, addon, org });
     const human = buildBookingHumanName({
       startDate: booking.startDate,
       clientName: booking.client.name,
@@ -2837,6 +2843,7 @@ router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
       include: {
         client: true,
         estimates: { include: { lines: true } },
+        vehicles: { include: { vehicle: true } },
       },
     });
     if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
@@ -2845,7 +2852,8 @@ router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
     if (!main) throw new HttpError(404, "Основная смета не создана", "MAIN_ESTIMATE_NOT_FOUND");
     const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
 
-    const doc = buildFullSmeta({ booking, main, addon });
+    const org = smetaOrgFromSettings(await getSettings());
+    const doc = buildFullSmeta({ booking, main, addon, org });
     const human = buildBookingHumanName({
       startDate: booking.startDate,
       clientName: booking.client.name,

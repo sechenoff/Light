@@ -2,6 +2,7 @@ import path from "path";
 import { execSync } from "child_process";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
+import ExcelJS from "exceljs";
 
 const TEST_DB_PATH = path.resolve(__dirname, "../../prisma/test-full-estimate-routes.db");
 process.env.DATABASE_URL = `file:${TEST_DB_PATH}`;
@@ -22,6 +23,13 @@ let bookingWithoutAddonId: string;
 
 function AUTH() {
   return { Authorization: `Bearer ${superAdminToken}` };
+}
+
+/** Собирает бинарное тело ответа в Buffer (supertest по умолчанию отдаёт строку). */
+function binaryParser(res: NodeJS.ReadableStream, cb: (err: Error | null, body: Buffer) => void) {
+  const chunks: Buffer[] = [];
+  res.on("data", (c: Buffer) => chunks.push(c));
+  res.on("end", () => cb(null, Buffer.concat(chunks)));
 }
 
 beforeAll(async () => {
@@ -51,6 +59,18 @@ beforeAll(async () => {
 
   const client = await prisma.client.create({
     data: { name: "Full estimate test", phone: "+70000000666" },
+  });
+
+  // Реквизиты организации — попадают в шапку PDF/XLSX.
+  await prisma.organizationSettings.upsert({
+    where: { id: "singleton" },
+    update: { legalName: "ООО «Тест Рент»", phone: "+7 (900) 000-00-00", inn: "7700000001" },
+    create: {
+      id: "singleton",
+      legalName: "ООО «Тест Рент»",
+      phone: "+7 (900) 000-00-00",
+      inn: "7700000001",
+    },
   });
 
   // Booking with both MAIN and ADDON estimates
@@ -111,6 +131,23 @@ beforeAll(async () => {
     },
   });
 
+  // Транспорт на b1: должен попасть в полную смету и в общий итог.
+  const vehicle = await prisma.vehicle.create({
+    data: { name: "Ивеко Тест", slug: "iveco-test", shiftPriceRub: "10000" },
+  });
+  await prisma.bookingVehicle.create({
+    data: {
+      bookingId: b1.id,
+      vehicleId: vehicle.id,
+      withGenerator: true,
+      subtotalRub: "15000",
+    },
+  });
+  await prisma.booking.update({
+    where: { id: b1.id },
+    data: { transportSubtotalRub: "15000" },
+  });
+
   // Booking without ADDON
   const b2 = await prisma.booking.create({
     data: {
@@ -165,12 +202,18 @@ afterAll(async () => {
 });
 
 describe("GET /api/bookings/:id/full-estimate/export/pdf", () => {
-  it("returns PDF for booking WITH addon (combined main + addon)", async () => {
+  it("returns A4 PDF for booking WITH addon and transport", async () => {
     const res = await request(app)
       .get(`/api/bookings/${bookingWithAddonId}/full-estimate/export/pdf`)
-      .set(AUTH());
+      .set(AUTH())
+      .buffer(true)
+      .parse(binaryParser);
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toContain("application/pdf");
+    const body = res.body as Buffer;
+    expect(body.subarray(0, 5).toString()).toBe("%PDF-");
+    // A4 MediaBox: pdfkit пишет размеры страницы в объект Pages без сжатия.
+    expect(body.toString("latin1")).toContain("595.28 841.89");
   });
 
   it("returns PDF for booking WITHOUT addon (main only)", async () => {
@@ -183,19 +226,57 @@ describe("GET /api/bookings/:id/full-estimate/export/pdf", () => {
 });
 
 describe("GET /api/bookings/:id/full-estimate/export/xlsx", () => {
-  it("returns XLSX for booking WITH addon", async () => {
+  it("returns XLSX with A4 print setup, transport and grand total", async () => {
     const res = await request(app)
       .get(`/api/bookings/${bookingWithAddonId}/full-estimate/export/xlsx`)
-      .set(AUTH());
+      .set(AUTH())
+      .buffer(true)
+      .parse(binaryParser);
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toContain("spreadsheetml");
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(res.body as Buffer);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(["Смета", "Доб-смета"]);
+
+    for (const ws of wb.worksheets) {
+      // Печать A4: портрет, вписывание по ширине, повтор шапки таблицы.
+      expect(ws.pageSetup.paperSize).toBe(9);
+      expect(ws.pageSetup.orientation).toBe("portrait");
+      expect(ws.pageSetup.fitToWidth).toBe(1);
+      expect((ws.pageSetup as { printTitlesRow?: string }).printTitlesRow).toBeTruthy();
+      expect(ws.headerFooter?.oddFooter).toContain("Стр. &P из &N");
+    }
+
+    // Транспорт + общий итог — на последнем листе.
+    const last = wb.worksheets[wb.worksheets.length - 1];
+    const cellTexts: string[] = [];
+    const numbers: number[] = [];
+    last.eachRow((r) =>
+      r.eachCell((c) => {
+        if (typeof c.value === "string") cellTexts.push(c.value);
+        if (typeof c.value === "number") numbers.push(c.value);
+      }),
+    );
+    expect(cellTexts.some((t) => t.includes("ТРАНСПОРТ"))).toBe(true);
+    expect(cellTexts.some((t) => t.includes("Ивеко Тест"))).toBe(true);
+    expect(cellTexts.some((t) => t.includes("ИТОГО К ОПЛАТЕ"))).toBe(true);
+    // grand = main 5000 + addon 1000 + транспорт 15000
+    expect(numbers).toContain(21000);
   });
 
   it("returns XLSX for booking WITHOUT addon (main only)", async () => {
     const res = await request(app)
       .get(`/api/bookings/${bookingWithoutAddonId}/full-estimate/export/xlsx`)
-      .set(AUTH());
+      .set(AUTH())
+      .buffer(true)
+      .parse(binaryParser);
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toContain("spreadsheetml");
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(res.body as Buffer);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(["Смета"]);
+    expect(wb.worksheets[0].pageSetup.paperSize).toBe(9);
   });
 });

@@ -2,7 +2,7 @@ import Decimal from "decimal.js";
 import type { Decimal as PrismaDecimal } from "@prisma/client/runtime/library";
 
 import type { QuoteLine } from "../bookings";
-import type { SmetaExportDocument, SmetaExportLine } from "./types";
+import type { SmetaExportDocument, SmetaExportLine, SmetaOrgInfo } from "./types";
 
 function fmtRuDate(d: Date): string {
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
@@ -10,6 +10,34 @@ function fmtRuDate(d: Date): string {
 
 function fmtRuTime(d: Date): string {
   return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+function cleanField(v: string | null | undefined): string | null {
+  const t = v?.trim();
+  return t ? t : null;
+}
+
+/**
+ * Реквизиты организации для шапки сметы из OrganizationSettings.
+ * ENV-фолбэки только для name/phone/address (первичное развёртывание);
+ * фейковых хардкодов (как в счёте) здесь нет — пустое поле просто не печатается.
+ */
+export function smetaOrgFromSettings(
+  s: {
+    legalName?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+    inn?: string | null;
+  } | null,
+): SmetaOrgInfo {
+  return {
+    name: cleanField(s?.legalName) ?? cleanField(process.env.ORG_NAME),
+    phone: cleanField(s?.phone) ?? cleanField(process.env.ORG_PHONE),
+    email: cleanField(s?.email),
+    address: cleanField(s?.address) ?? cleanField(process.env.ORG_ADDRESS),
+    inn: cleanField(s?.inn),
+  };
 }
 
 export function buildSmetaExportDocument(args: {
@@ -27,6 +55,7 @@ export function buildSmetaExportDocument(args: {
   discountAmount: string;
   totalAfterDiscount: string;
   lines: QuoteLine[];
+  org?: SmetaOrgInfo | null;
 }): SmetaExportDocument {
   const shiftDec = new Decimal(Math.max(1, args.shifts));
   const rows: SmetaExportLine[] = args.lines.map((l, i) => {
@@ -55,6 +84,8 @@ export function buildSmetaExportDocument(args: {
     comment: args.comment,
     optionalNote: args.optionalNote,
     includeOptionalInExport: args.includeOptionalInExport,
+    shiftsCount: args.shifts,
+    org: args.org ?? null,
     lines: rows,
     subtotal: args.subtotal,
     discountPercent: args.discountPercent,
@@ -96,6 +127,7 @@ export function buildSmetaFromPersistedEstimate(args: {
     hoursSummaryText: string | null;
     lines: PersistedLine[];
   };
+  org?: SmetaOrgInfo | null;
 }): SmetaExportDocument {
   const quoteLikeLines: QuoteLine[] = args.estimate.lines.map((l) => ({
     equipmentId: null,
@@ -127,10 +159,11 @@ export function buildSmetaFromPersistedEstimate(args: {
     discountAmount: new Decimal(args.estimate.discountAmount.toString()).toDecimalPlaces(2).toString(),
     totalAfterDiscount: new Decimal(args.estimate.totalAfterDiscount.toString()).toDecimalPlaces(2).toString(),
     lines: quoteLikeLines,
+    org: args.org ?? null,
   });
 
   if (args.estimate.kind === "ADDON") {
-    return { ...baseDoc, documentTitleRu: "Смета-добор" };
+    return { ...baseDoc, documentTitleRu: "Смета-добор", documentTitleEn: "Additional Estimate" };
   }
   return baseDoc;
 }
