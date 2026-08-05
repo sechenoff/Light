@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import type { Request, Response } from "express";
 
 /**
@@ -17,7 +17,9 @@ function limiterKey(req: Request): string {
   if (session) return `s:${session.slice(0, 32)}`;
   const apiKey = req.get("x-api-key");
   if (apiKey) return `k:${apiKey.slice(0, 32)}`;
-  return `ip:${req.ip ?? "unknown"}`;
+  // ipKeyGenerator схлопывает IPv6 до /56-подсети: голый req.ip дал бы клиенту
+  // свежий бакет на каждый адрес подсети (и ERR_ERL_KEY_GEN_IPV6 в v8).
+  return req.ip ? `ip:${ipKeyGenerator(req.ip)}` : "ip:unknown";
 }
 
 export const rateLimiter = rateLimit({
