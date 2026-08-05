@@ -783,8 +783,11 @@ router.patch("/:id", async (req, res, next) => {
     // F-EXTEND: продление выданной брони — только SUPER_ADMIN, только для ISSUED,
     // только при переданном extendEndDate (иначе ISSUED не редактируется).
     const isExtendIssued = isSuperAdmin && body.extendEndDate != null && existing.status === "ISSUED";
+    // ISSUED в retro: только «бумажные» правки (проект/комментарий/скидка/
+    // ручной итог/водители) — состав позиций у клиента на руках, его правка
+    // до приёмки сломала бы сверку выдачи. Гард ниже.
     const allowedStatusesForEdit = retroactiveEdit
-      ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL", "RETURNED"]
+      ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL", "RETURNED", "ISSUED"]
       : isExtendIssued
         ? ["ISSUED"]
         : isSuperAdmin
@@ -800,6 +803,14 @@ router.patch("/:id", async (req, res, next) => {
               ? "Бронь выдана. Доступно только продление срока возврата (только руководитель)."
               : "Редактирование доступно для черновиков и подтверждённых броней.";
       throw new HttpError(409, reason, "BOOKING_EDIT_FORBIDDEN");
+    }
+
+    if (retroactiveEdit && existing.status === "ISSUED" && (body.items || body.transport)) {
+      throw new HttpError(
+        409,
+        "Состав позиций и транспорт выданной брони правятся после приёмки — сначала примите возврат.",
+        "ITEMS_LOCKED_UNTIL_RETURN",
+      );
     }
 
     // Захватываем исходные данные для аудит-записи (если бронь в статусе PENDING_APPROVAL)
@@ -2170,6 +2181,111 @@ router.patch(
           driverPhone: updated.driverPhone,
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+const forgiveOutstandingSchema = z.object({
+  /** Причина прощения — обязательна: попадает в аудит и финансовое событие. */
+  reason: z.string().trim().min(3, "Укажите причину (минимум 3 символа)"),
+});
+
+/**
+ * POST /api/bookings/:id/forgive-outstanding — «простить остаток» (SUPER_ADMIN).
+ *
+ * Сценарий владельца: клиент недоплатил, долг прощён, но в системе должны
+ * остаться реально полученные средства. Ставим manualFinalAmount = amountPaid →
+ * recomputeBookingFinance делает amountOutstanding = 0, paymentStatus = PAID
+ * (или NOT_PAID при нуле оплат — тогда бронь просто закрыта в ноль).
+ *
+ * Разрешено для ISSUED и RETURNED с amountOutstanding > 0. Пишет:
+ *  - AuditEntry BOOKING_DEBT_FORGIVEN (before/after: суммы + причина);
+ *  - FinanceEvent DEBT_FORGIVEN (payload: amount, reason).
+ */
+router.post(
+  "/:id/forgive-outstanding",
+  rolesGuard(["SUPER_ADMIN"]),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      const { reason } = forgiveOutstandingSchema.parse(req.body);
+      if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      await assertBookingNotArchived(id);
+
+      const existing = await prisma.booking.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          status: true,
+          finalAmount: true,
+          manualFinalAmount: true,
+          amountPaid: true,
+          amountOutstanding: true,
+        },
+      });
+      if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+      if (!["ISSUED", "RETURNED"].includes(existing.status)) {
+        throw new HttpError(
+          409,
+          "Простить остаток можно по выданной или возвращённой броне",
+          "INVALID_BOOKING_STATE",
+        );
+      }
+      const outstanding = new Decimal(existing.amountOutstanding.toString());
+      if (outstanding.lte(0)) {
+        throw new HttpError(409, "По этой броне нет долга", "NO_OUTSTANDING");
+      }
+
+      const paid = new Decimal(existing.amountPaid.toString());
+      await prisma.$transaction(async (tx) => {
+        await tx.booking.update({
+          where: { id },
+          data: { manualFinalAmount: paid },
+        });
+        await writeAuditEntry({
+          tx,
+          userId: req.adminUser!.userId,
+          action: "BOOKING_DEBT_FORGIVEN",
+          entityType: "Booking",
+          entityId: id,
+          before: diffFields({
+            finalAmount: existing.finalAmount.toString(),
+            manualFinalAmount: existing.manualFinalAmount?.toString() ?? null,
+            amountOutstanding: existing.amountOutstanding.toString(),
+          }),
+          after: diffFields({
+            manualFinalAmount: paid.toString(),
+            forgivenAmount: outstanding.toString(),
+            reason,
+          }),
+        });
+      });
+
+      // Пересчёт вне транзакции — тот же паттерн, что у finance-corrections.
+      await recomputeBookingFinance(id);
+      try {
+        await createFinanceEvent({
+          bookingId: id,
+          eventType: "DEBT_FORGIVEN",
+          payload: { amount: outstanding.toString(), reason },
+        });
+      } catch (finErr) {
+        // eslint-disable-next-line no-console
+        console.error("FinanceEvent DEBT_FORGIVEN failed:", finErr);
+      }
+
+      const fresh = await prisma.booking.findUnique({
+        where: { id },
+        include: {
+          client: true,
+          items: { include: { equipment: true } },
+          estimates: { include: { lines: true } },
+          vehicles: { include: { vehicle: true }, orderBy: { createdAt: "asc" } },
+        },
+      });
+      res.json({ booking: serializeBookingForApi(fresh as any) });
     } catch (err) {
       next(err);
     }
