@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
 import { toast } from "../ToastProvider";
@@ -49,6 +49,13 @@ export function useBulkBookingActions<T extends BulkBookingRow>(args: {
 }) {
   const { rows, selected, ctx, statusFilter, rowTitle, removeRows, applyStatus, deselect, refreshCounts, onRowsEmptied } =
     args;
+
+  // Групповой запрос идёт секунды (сервер обрабатывает брони по одной), и за
+  // это время список может подрасти автоподгрузкой. Решение «мы вычистили всю
+  // страницу» надо принимать по актуальному составу строк, а не по снятому в
+  // момент клика — иначе оно сработает при живых свежедогруженных строках.
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
 
   // Держим сам список id, а не только действие: между подтверждением и
   // запуском набор строк может измениться (дозагрузка, фоновое обновление),
@@ -107,7 +114,7 @@ export function useBulkBookingActions<T extends BulkBookingRow>(args: {
         removeRows(removedIds);
         // Вычистили всю загруженную страницу — просим страницу догрузить
         // следующую, иначе список выглядит пустым при живом курсоре.
-        if (removedIds.size >= rows.length) onRowsEmptied();
+        if (removedIds.size >= rowsRef.current.length) onRowsEmptied();
       }
       for (const r of succeeded) {
         if (!removedIds.has(r.id) && r.status) applyStatus(r.id, r.status);

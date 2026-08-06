@@ -9,10 +9,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
  * Выбор хранится как Set id и «подрезается» при смене набора строк: если
  * бронь ушла из выдачи (сменили фильтр, отправили в архив), она обязана
  * пропасть и из выбора — иначе групповое действие уедет по невидимым
- * пользователю броням. При этом дозагрузка «Загрузить ещё» выбор сохраняет:
- * прежние строки остаются в списке, значит остаются и в выборе.
+ * пользователю броням. При этом дозагрузка выбор сохраняет: прежние строки
+ * остаются в списке, значит остаются и в выборе.
+ *
+ * `maxSelectable` ограничивает «выбрать все». Список подгружается сам по мере
+ * скролла, так что загруженных строк легко набирается несколько сотен — больше
+ * серверного потолка пачки. Без ограничения один клик выбрал бы всё и увёл бы
+ * панель действий в полностью недоступное состояние.
  */
-export function useBookingSelection<T extends { id: string }>(rows: T[]) {
+export function useBookingSelection<T extends { id: string }>(rows: T[], maxSelectable?: number) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
 
   // Подрезка выбора под актуальный набор строк. Сравниваем по составу id,
@@ -44,10 +49,17 @@ export function useBookingSelection<T extends { id: string }>(rows: T[]) {
 
   const clear = useCallback(() => setSelected(new Set()), []);
 
-  /** «Выбрать все» — по всем загруженным строкам; повторный клик снимает. */
+  /** Сколько строк реально возьмёт «выбрать все». */
+  const selectableCount = maxSelectable ? Math.min(rows.length, maxSelectable) : rows.length;
+
+  /** «Выбрать все» — по загруженным строкам сверху вниз; повторный клик снимает. */
   const toggleAll = useCallback(() => {
-    setSelected((prev) => (prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.id))));
-  }, [rows]);
+    setSelected((prev) =>
+      prev.size >= selectableCount && selectableCount > 0
+        ? new Set()
+        : new Set(rows.slice(0, selectableCount).map((r) => r.id)),
+    );
+  }, [rows, selectableCount]);
 
   /** Снять с выбора конкретные id (после успешного группового действия). */
   const deselect = useCallback((ids: string[]) => {
@@ -59,10 +71,22 @@ export function useBookingSelection<T extends { id: string }>(rows: T[]) {
     });
   }, []);
 
-  const allSelected = rows.length > 0 && selected.size === rows.length;
+  const allSelected = selectableCount > 0 && selected.size >= selectableCount;
   const someSelected = selected.size > 0 && !allSelected;
 
   const selectedRows = useMemo(() => rows.filter((r) => selected.has(r.id)), [rows, selected]);
 
-  return { selected, selectedRows, toggle, toggleAll, clear, deselect, allSelected, someSelected };
+  return {
+    selected,
+    selectedRows,
+    toggle,
+    toggleAll,
+    clear,
+    deselect,
+    allSelected,
+    someSelected,
+    selectableCount,
+    /** Загруженных строк больше, чем можно выбрать разом. */
+    selectionCapped: selectableCount < rows.length,
+  };
 }
