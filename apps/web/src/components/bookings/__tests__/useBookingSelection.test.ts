@@ -77,4 +77,30 @@ describe("useBookingSelection", () => {
     const { result } = renderHook(() => useBookingSelection(rows()));
     expect(result.current.allSelected).toBe(false);
   });
+
+  it("«выбрать все» ограничено потолком: список подгружается сам, и строк набирается больше, чем сервер примет пачкой", () => {
+    const many = Array.from({ length: 120 }, (_, i) => ({ id: `r${i}` }));
+    const { result } = renderHook(() => useBookingSelection(many, 100));
+
+    expect(result.current.selectionCapped).toBe(true);
+    expect(result.current.selectableCount).toBe(100);
+
+    act(() => result.current.toggleAll());
+    expect(result.current.selected.size).toBe(100);
+    // Берём строки сверху вниз — те, что пользователь видел первыми.
+    expect(result.current.selected.has("r0")).toBe(true);
+    expect(result.current.selected.has("r119")).toBe(false);
+    // При выборе «до потолка» чекбокс шапки показывает полное выделение.
+    expect(result.current.allSelected).toBe(true);
+
+    act(() => result.current.toggleAll());
+    expect(result.current.selected.size).toBe(0);
+  });
+
+  it("без потолка «выбрать все» берёт весь загруженный список", () => {
+    const { result } = renderHook(() => useBookingSelection(rows("a", "b", "c")));
+    expect(result.current.selectionCapped).toBe(false);
+    act(() => result.current.toggleAll());
+    expect(result.current.selected.size).toBe(3);
+  });
 });

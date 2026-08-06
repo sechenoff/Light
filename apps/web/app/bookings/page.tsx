@@ -27,6 +27,7 @@ import { rememberBookingsListQuery } from "../../src/components/bookings/booking
 import { BulkActionBar } from "../../src/components/bookings/BulkActionBar";
 import { BULK_MAX_IDS } from "../../src/components/bookings/bulkLimits";
 import { BulkResultModal } from "../../src/components/bookings/BulkResultModal";
+import { useAutoLoadMore } from "../../src/components/bookings/useAutoLoadMore";
 import {
   bulkActionMeta,
   pluralBookings,
@@ -103,10 +104,30 @@ function BookingHistoryPageInner() {
   const [earlyIssue, setEarlyIssue] = useState<null | { row: BookingRow; message: string }>(null);
 
   const PAGE_SIZE = 50;
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [nextCursor, setNextCursorState] = useState<string | null>(null);
+  // Курсор дублируется в ref, потому что догрузку теперь дёргают и отложенные
+  // колбэки: onRowsEmptied вызывается из продолжения групповой операции и
+  // держит замыкание того рендера, в котором нажали кнопку. Со state оттуда
+  // виден уже израсходованный курсор — и та же страница приезжает вторым
+  // экземпляром, с дублями строк и ключей. Через ref курсор всегда актуален.
+  const nextCursorRef = useRef<string | null>(null);
+  function setNextCursor(value: string | null) {
+    nextCursorRef.current = value;
+    setNextCursorState(value);
+  }
   // BL-4: общее число броней под текущим фильтром (с сервера) — для «Показано N из M».
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Догрузка теперь запускается сама (сентинел внизу списка), поэтому гард
+  // повторного входа обязан быть синхронным: два события наблюдателя в одном
+  // тике оба прочитали бы ещё не применённый loadingMore и утащили одну и ту
+  // же страницу дважды. State остаётся только для рендера.
+  const loadingMoreRef = useRef(false);
+  const loadMoreAbortRef = useRef<AbortController | null>(null);
+  // Провал автодогрузки не должен уходить в тост и молча ретраиться по кругу:
+  // показываем ошибку на месте сентинела и ставим автоподгрузку на паузу до
+  // явного «Повторить».
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   // Ошибка загрузки списка — вместо молчаливого console.error показываем баннер
   // с «Повторить» (реген reloadKey перезапускает эффект загрузки).
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -186,6 +207,13 @@ function BookingHistoryPageInner() {
   useEffect(() => {
     const controller = new AbortController();
     let isActive = true;
+    // Курсор гасим синхронно, ДО запроса: он принадлежит прошлому фильтру, а
+    // сентинел внизу списка может дёрнуть догрузку в любой момент — со старым
+    // курсором и новыми фильтрами получилась бы склейка двух разных выдач.
+    // Строки при этом остаются на экране, чтобы список не мигал.
+    setNextCursor(null);
+    loadMoreAbortRef.current?.abort();
+    setLoadMoreError(null);
     async function load() {
       setLoading(true);
       setLoadError(null);
@@ -246,26 +274,49 @@ function BookingHistoryPageInner() {
   }, [statusFilter, paymentFilter, dateFrom, dateTo, searchQuery]);
 
   async function loadMore() {
-    if (!nextCursor || loadingMore) return;
+    // Курсор и гард — из ref, а не из state: догрузку дёргают в том числе
+    // отложенные колбэки, для которых значения рендера уже устарели, а
+    // автотриггер вдобавок может выстрелить дважды за один тик.
+    const cursor = nextCursorRef.current;
+    if (!cursor || loadingMoreRef.current) return;
     // Снимок подписи фильтров: если пользователь сменит фильтр, пока летит
     // дозагрузка, её ответ нельзя дописывать к уже перезагруженному списку.
     const sigAtStart = filterSigRef.current;
+    const controller = new AbortController();
+    loadMoreAbortRef.current = controller;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
+    setLoadMoreError(null);
     try {
       const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(
-        `/api/bookings?${buildListParams(nextCursor)}`
+        `/api/bookings?${buildListParams(cursor)}`,
+        { signal: controller.signal }
       );
       if (filterSigRef.current !== sigAtStart) return; // фильтр сменился — отбрасываем
       setRows((prev) => [...prev, ...data.bookings]);
       setNextCursor(data.nextCursor ?? null);
     } catch (e: any) {
-      if (filterSigRef.current === sigAtStart) {
-        toast.error(e?.message ?? "Не удалось загрузить ещё");
+      const isAbort = e?.name === "AbortError" || e?.message === "signal is aborted without reason";
+      if (!isAbort && filterSigRef.current === sigAtStart) {
+        // Сообщение живёт внизу списка рядом с «Повторить» — там, куда
+        // пользователь и смотрит, доскроллив до конца. Тост бы уехал наверх.
+        setLoadMoreError(e?.message ?? "Не удалось загрузить ещё");
       }
     } finally {
+      if (loadMoreAbortRef.current === controller) loadMoreAbortRef.current = null;
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
   }
+
+  // Автоподгрузка при доскролле до низа. Кнопка остаётся запасным путём:
+  // после ошибки сети и при исчерпании бюджета автостраниц.
+  const autoLoad = useAutoLoadMore({
+    hasMore: Boolean(nextCursor),
+    loading: loadingMore || loading,
+    disabled: loadMoreError !== null,
+    onLoadMore: () => void loadMore(),
+  });
 
   async function removeBooking(id: string) {
     setBusyId(id);
@@ -372,7 +423,7 @@ function BookingHistoryPageInner() {
   const filteredRows = rows;
 
   // ── Мультивыбор и групповые действия ───────────────────────────────────────
-  const selection = useBookingSelection(rows);
+  const selection = useBookingSelection(rows, BULK_MAX_IDS);
   const bulkCtx: BulkActionContext = {
     isSuperAdmin,
     approvalMode: user?.approvalMode === "auto" ? "auto" : "manual",
@@ -680,7 +731,8 @@ function BookingHistoryPageInner() {
           <table className="min-w-[1090px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
-                {/* Мультивыбор: заголовочный чекбох выделяет все загруженные строки. */}
+                {/* Мультивыбор: заголовочный чекбокс выделяет загруженные строки
+                    — но не больше, чем сервер примет одной пачкой. */}
                 <th className="w-9 px-3 py-2">
                   <input
                     type="checkbox"
@@ -692,7 +744,16 @@ function BookingHistoryPageInner() {
                       if (el) el.indeterminate = selection.someSelected;
                     }}
                     onChange={selection.toggleAll}
-                    aria-label="Выбрать все брони на странице"
+                    aria-label={
+                      selection.selectionCapped
+                        ? `Выбрать первые ${selection.selectableCount} броней`
+                        : "Выбрать все загруженные брони"
+                    }
+                    title={
+                      selection.selectionCapped
+                        ? `За один раз можно обработать ${BULK_MAX_IDS} броней`
+                        : undefined
+                    }
                     disabled={filteredRows.length === 0}
                   />
                 </th>
@@ -805,10 +866,14 @@ function BookingHistoryPageInner() {
                   if (el) el.indeterminate = selection.someSelected;
                 }}
                 onChange={selection.toggleAll}
-                aria-label="Выбрать все брони на странице"
+                aria-hidden
                 tabIndex={-1}
               />
-              {selection.allSelected ? "Снять выделение" : `Выбрать все на странице (${filteredRows.length})`}
+              {selection.allSelected
+                ? "Снять выделение"
+                : selection.selectionCapped
+                  ? `Выбрать первые ${selection.selectableCount} из ${filteredRows.length}`
+                  : `Выбрать все загруженные (${selection.selectableCount})`}
             </button>
           )}
           {showSkeleton &&
@@ -884,19 +949,53 @@ function BookingHistoryPageInner() {
           )}
         </div>
 
+        {/* Появление новых строк само по себе беззвучно — для скринридера
+            объявляем прирост словами. */}
+        <span className="sr-only" role="status" aria-live="polite">
+          {loadingMore
+            ? "Загружаю следующие брони"
+            : totalCount !== null
+              ? `Показано ${rows.length} из ${totalCount}`
+              : ""}
+        </span>
+
         {nextCursor && (
-          <div className="mt-4 flex items-center justify-center">
-            <button
-              type="button"
-              onClick={loadMore}
-              disabled={loadingMore}
-              className="rounded-md border border-border bg-surface px-4 py-2 text-sm text-ink-1 hover:bg-accent-soft disabled:opacity-50"
-            >
-              {loadingMore ? "Загружаю..." : "Загрузить ещё"}
-            </button>
+          <div className="mt-4 flex flex-col items-center justify-center gap-2">
+            {/* Сентинел автоподгрузки. Стоит в обычном потоке в конце карточки:
+                внутри обёртки таблицы его обрезал бы её собственный скролл. */}
+            <div ref={autoLoad.sentinelRef} aria-hidden className="h-px w-full" />
+            {loadMoreError ? (
+              <>
+                <p className="text-xs text-rose text-center">{loadMoreError}</p>
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="rounded-md border border-border bg-surface px-4 py-2 text-sm text-ink-1 hover:bg-accent-soft disabled:opacity-50"
+                >
+                  Повторить
+                </button>
+              </>
+            ) : loadingMore ? (
+              <p className="text-xs text-ink-3">Загружаю ещё...</p>
+            ) : (
+              // Обычно страницы приезжают сами, и кнопка не нужна. Но из DOM
+              // она не исчезает: при навигации с клавиатуры это явный способ
+              // догрузить список, поэтому по фокусу она проявляется. И она же
+              // становится видимой, когда исчерпан бюджет автостраниц.
+              <button
+                type="button"
+                onClick={loadMore}
+                className={`rounded-md border border-border bg-surface px-4 py-2 text-sm text-ink-1 hover:bg-accent-soft ${
+                  autoLoad.budgetExhausted ? "" : "sr-only focus:not-sr-only"
+                }`}
+              >
+                Загрузить ещё
+              </button>
+            )}
           </div>
         )}
-        {!nextCursor && rows.length > 0 && (
+        {!nextCursor && !loading && rows.length > 0 && (
           <div className="mt-4 text-center text-xs text-ink-3">
             Показаны все брони ({rows.length} {pluralize(rows.length, "запись", "записи", "записей")})
           </div>
