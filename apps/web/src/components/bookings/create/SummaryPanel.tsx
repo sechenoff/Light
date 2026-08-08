@@ -2,7 +2,7 @@
 
 import { EditablePrice } from "./EditablePrice";
 import { formatMoneyRubWhole, pluralize } from "../../../lib/format";
-import type { CatalogSelectedItem, CustomItem, OffCatalogItem, QuoteResponse, TransportBreakdown, ValidationCheck } from "./types";
+import type { QuoteResponse, TransportBreakdown, ValidationCheck } from "./types";
 
 type SummaryPanelProps = {
   quote: QuoteResponse | null;
@@ -30,14 +30,8 @@ type SummaryPanelProps = {
   // Edit-mode button
   onSaveEdit?: () => void;
   canSubmit: boolean;
-  selectedItems?: Map<string, CatalogSelectedItem>;
-  offCatalogItems?: OffCatalogItem[];
-  customItems?: CustomItem[];
   /** Per-vehicle breakdowns (multi-vehicle). Empty when no transport. */
   transportBreakdowns?: TransportBreakdown[];
-  onRemoveItem?: (equipmentId: string) => void;
-  onRemoveOffCatalog?: (tempId: string) => void;
-  onRemoveCustom?: (tempId: string) => void;
   /** Controls which action buttons to render. Defaults to "create". */
   mode?: "create" | "edit";
   /** Whether a save/submit action is in progress. */
@@ -72,13 +66,7 @@ export function SummaryPanel({
   onSaveDraft,
   onSaveEdit,
   canSubmit,
-  selectedItems,
-  offCatalogItems,
-  customItems,
   transportBreakdowns,
-  onRemoveItem,
-  onRemoveOffCatalog,
-  onRemoveCustom,
   mode = "create",
   submitting = false,
   cancelHref,
@@ -113,27 +101,6 @@ export function SummaryPanel({
   const negotiatedLines = quote?.negotiatedSubtotal != null ? Number(quote.negotiatedSubtotal) : 0;
 
   const bigTotalFormatted = Math.round(total).toLocaleString("ru-RU");
-
-  type MiniItem =
-    | { kind: "catalog"; key: string; equipmentId: string; name: string; qty: number }
-    | { kind: "off"; key: string; tempId: string; name: string; qty: number }
-    | { kind: "custom"; key: string; tempId: string; name: string; qty: number; unitPrice: number };
-  const miniList: MiniItem[] = [];
-  if (selectedItems) {
-    for (const s of selectedItems.values()) {
-      miniList.push({ kind: "catalog", key: s.equipmentId, equipmentId: s.equipmentId, name: s.name, qty: s.quantity });
-    }
-  }
-  if (offCatalogItems) {
-    for (const o of offCatalogItems) {
-      miniList.push({ kind: "off", key: o.tempId, tempId: o.tempId, name: o.name, qty: o.quantity });
-    }
-  }
-  if (customItems) {
-    for (const c of customItems) {
-      miniList.push({ kind: "custom", key: c.tempId, tempId: c.tempId, name: c.name, qty: c.quantity, unitPrice: c.unitPrice });
-    }
-  }
 
   return (
     <aside className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 shadow-xs">
@@ -241,41 +208,6 @@ export function SummaryPanel({
           </p>
         )}
       </div>
-
-      {/* Mini-list of selected items */}
-      {miniList.length > 0 && (
-        <div className="flex flex-col gap-0.5 border-t border-border pt-3">
-          {miniList.map((it) => (
-            <div key={it.key} className="group flex items-center gap-2 rounded px-1 py-0.5 text-[11.5px] hover:bg-surface-muted">
-              <span className="min-w-0 flex-1 truncate text-ink">{it.name}</span>
-              {it.kind === "custom" ? (
-                <span className="font-mono text-[11px] text-ink-3">{formatMoneyRubWhole(it.unitPrice)} × {it.qty} = {formatMoneyRubWhole(it.unitPrice * it.qty)} ₽</span>
-              ) : (
-                <span className="font-mono text-[11px] text-ink-3">×{it.qty}</span>
-              )}
-              {(it.kind === "catalog" ? onRemoveItem : it.kind === "off" ? onRemoveOffCatalog : onRemoveCustom) && (
-                <button
-                  type="button"
-                  aria-label={`Удалить ${it.name}`}
-                  title="Удалить из корзины"
-                  onClick={() => {
-                    if (it.kind === "catalog") {
-                      onRemoveItem?.(it.equipmentId);
-                    } else if (it.kind === "off") {
-                      onRemoveOffCatalog?.(it.tempId);
-                    } else {
-                      onRemoveCustom?.(it.tempId);
-                    }
-                  }}
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-3 opacity-0 transition-all hover:bg-rose-soft hover:text-rose group-hover:opacity-100 focus:opacity-100"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Action buttons */}
       {mode === "edit" ? (

@@ -4,10 +4,10 @@ import { formatMoneyRubWhole } from "../../../lib/format";
 import { EditablePrice, ListPriceBadge, RevertPriceButton } from "./EditablePrice";
 import type { CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem } from "./types";
 
-// Зона «Состав» (редизайн блока «Оборудование», мокап booking-equipment-v2):
-// выбранное живёт собственным списком наверху блока — менеджеру на телефоне
-// не нужно выискивать зелёные строки по каталогу. Строки каталога и «Состав»
-// синхронны: степпер в любом месте меняет одно и то же количество.
+// Зона «Состав заявки»: выбранное живёт собственным списком под каталогом —
+// менеджеру на телефоне не нужно выискивать зелёные строки по каталогу.
+// Строки каталога и состава синхронны: степпер в любом месте меняет одно и
+// то же количество.
 
 type Props = {
   selected: Map<string, CatalogSelectedItem>;
@@ -105,7 +105,7 @@ export function EquipmentCartZone({
     <div>
       <div className="flex items-center justify-between px-5 pb-1 pt-2.5">
         <span className="font-cond text-[10.5px] font-semibold uppercase tracking-wider text-ink-3">
-          Состав{count > 0 && <span className="ml-1 font-mono text-emerald">· {count}</span>}
+          Состав заявки{count > 0 && <span className="ml-1 font-mono text-emerald">· {count}</span>}
         </span>
         <button
           type="button"
@@ -118,7 +118,7 @@ export function EquipmentCartZone({
 
       {count === 0 ? (
         <div className="mx-5 mb-3 rounded-md border border-dashed border-border-strong px-4 py-3 text-center text-[12px] leading-relaxed text-ink-3">
-          Пока пусто. Найдите оборудование в каталоге ниже
+          Пока пусто. Выберите оборудование в каталоге выше
           <br className="hidden sm:block" /> или вставьте список от гафера — AI разберёт по позициям.
         </div>
       ) : (

@@ -1507,11 +1507,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             onSaveDraft={isEdit ? undefined : handleSaveDraftClick}
             onSaveEdit={isEdit ? handleSaveEdit : undefined}
             canSubmit={canSubmit}
-            selectedItems={selected}
-            customItems={customItems}
             transportBreakdowns={localTransport?.breakdowns ?? []}
-            onRemoveItem={handleRemove}
-            onRemoveCustom={handleRemoveCustom}
             mode={mode}
             submitting={submitting}
             cancelHref={isEdit ? `/bookings/${bookingId}` : undefined}

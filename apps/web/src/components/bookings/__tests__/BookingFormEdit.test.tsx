@@ -90,11 +90,23 @@ describe("BookingForm in edit mode", () => {
     expect(screen.getByText("Студия Свет")).toBeInTheDocument();
   });
 
-  it("shows both booking items in «Состав» AND the SummaryPanel mini-list", () => {
+  it("позиции брони видны в «Составе заявки»", () => {
     render(<BookingForm mode="edit" initialBooking={BOOKING} bookingId="booking-123" />);
-    // Редизайн блока «Оборудование»: позиция видна в зоне «Состав» + в мини-списке «Расчёта»
-    expect(screen.getAllByText("Arri SkyPanel S60").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText("Godox SL200").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Arri SkyPanel S60").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Godox SL200").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("правая колонка не дублирует список позиций — только расчёт и кнопки", () => {
+    // Список стоял и в составе, и в «Расчёте»: одна и та же информация в двух
+    // местах на одном экране, причём в правой колонке — без цен и арифметики.
+    render(<BookingForm mode="edit" initialBooking={BOOKING} bookingId="booking-123" />);
+    const panel = screen.getByText("Расчёт").closest("aside")!;
+    expect(panel).not.toBeNull();
+    expect(panel.textContent).not.toContain("Arri SkyPanel S60");
+    expect(panel.textContent).not.toContain("Godox SL200");
+    // Расчёт и действия на месте.
+    expect(panel.textContent).toContain("Итого");
+    expect(panel.querySelector("button")).not.toBeNull();
   });
 
   it("renders 'Сохранить изменения' button", () => {

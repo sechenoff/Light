@@ -9,11 +9,14 @@ import { ReviewPanel } from "./ReviewPanel";
 import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem, PendingReviewItem } from "./types";
 import { formatMoneyRub, pluralize } from "../../../lib/format";
 
-// Блок «3. Оборудование» v2 (утверждённые мокапы booking-equipment-v2 /
-// -variants «C» / -mobile «М1»). Две зоны вместо стены чипов и вложенного
-// скролла: «Состав» (выбранное — сверху, собственным списком) и «Добавить»
-// (поиск + кнопка AI-заявки + каталог-проводник: desktop — категории слева,
-// mobile — drill-down). Контракт props сохранён — state живёт в BookingForm.
+// Блок «3. Оборудование». Две зоны: сначала набор из каталога (поиск +
+// AI-заявка + каталог-проводник: desktop — категории слева, mobile —
+// drill-down), под ним «Состав заявки» — что набралось.
+//
+// Порядок именно такой: человек сначала выбирает, потом смотрит результат.
+// Когда состав стоял сверху, после каждого добавления приходилось листать
+// через весь каталог обратно наверх, чтобы увидеть, что позиция добавилась.
+// Контракт props сохранён — state живёт в BookingForm.
 
 type EquipmentSelection = {
   equipmentId: string;
@@ -170,23 +173,6 @@ export function EquipmentCard({
         </span>
       </div>
 
-      {/* ── Зона 1: Состав ── */}
-      <EquipmentCartZone
-        selected={selected}
-        customItems={customItems}
-        shifts={shifts}
-        offCatalogItems={offCatalogItems}
-        adjustments={adjustments}
-        onChangeQty={onChangeQty}
-        onChangeNegotiatedRate={onChangeNegotiatedRate}
-        onRemove={onRemove}
-        onChangeCustomQty={onChangeCustomQty}
-        onRemoveCustom={onRemoveCustom}
-        onChangeOffCatalogQty={onChangeOffCatalogQty}
-        onRemoveOffCatalog={onRemoveOffCatalog}
-        onOpenCustomModal={onOpenCustomModal}
-      />
-
       {/* AI banner — no-op when pendingReview is active (parseResolved/parseTotal are zeroed) */}
       {pendingReview.length === 0 && (
         <AiResultBanner
@@ -215,8 +201,8 @@ export function EquipmentCard({
         </div>
       )}
 
-      {/* ── Зона 2: Добавить (поиск + AI + каталог-проводник) ── */}
-      <div className="sticky top-12 z-10 border-t border-border bg-surface-muted px-5 py-2.5">
+      {/* ── Зона 1: Набор из каталога (поиск + AI + каталог-проводник) ── */}
+      <div className="sticky top-12 z-10 bg-surface-muted px-5 py-2.5">
         <div className="flex gap-2">
           <div className="relative min-w-0 flex-1">
             <svg
@@ -280,6 +266,28 @@ export function EquipmentCard({
           onRemove={onRemove}
         />
       )}
+
+      {/* ── Зона 2: Состав заявки ──
+          Ниже каталога: сначала человек набирает позиции, потом смотрит,
+          что набралось. Обратный порядок заставлял после каждого добавления
+          листать через весь каталог обратно к корзине. */}
+      <div className="border-t border-border pt-1">
+        <EquipmentCartZone
+          selected={selected}
+          customItems={customItems}
+          shifts={shifts}
+          offCatalogItems={offCatalogItems}
+          adjustments={adjustments}
+          onChangeQty={onChangeQty}
+          onChangeNegotiatedRate={onChangeNegotiatedRate}
+          onRemove={onRemove}
+          onChangeCustomQty={onChangeCustomQty}
+          onRemoveCustom={onRemoveCustom}
+          onChangeOffCatalogQty={onChangeOffCatalogQty}
+          onRemoveOffCatalog={onRemoveOffCatalog}
+          onOpenCustomModal={onOpenCustomModal}
+        />
+      </div>
     </div>
   );
 }
