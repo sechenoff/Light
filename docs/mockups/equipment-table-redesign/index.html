@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Блок «Оборудование» — 6 вариантов таблицы</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#09090b; --ink-2:#52525b; --ink-3:#a1a1aa;
+  --surface:#ffffff; --surface-muted:#fafafa; --surface-deep:#f4f4f5;
+  --border:#e4e4e7; --border-strong:#d4d4d8;
+  --accent:#1e3a8a; --accent-bright:#1d4ed8; --accent-soft:#eff6ff; --accent-border:#bfdbfe;
+  --emerald:#047857; --emerald-soft:#d1fae5; --emerald-border:#a7f3d0;
+  --indigo:#4338ca; --indigo-soft:#e0e7ff; --indigo-border:#c7d2fe;
+  --amber:#a16207; --amber-soft:#fef3c7; --amber-border:#fde68a;
+  --rose:#9f1239; --rose-soft:#ffe4e6; --rose-border:#fecdd3;
+  --slate:#334155; --slate-soft:#f1f5f9;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#f4f4f5;color:var(--ink);font:13.5px/1.6 "IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.page{max-width:1180px;margin:0 auto;padding:0 20px 80px}
+
+/* ── страница-обёртка ─────────────────────────────────────────── */
+.masthead{padding:36px 0 20px}
+.masthead h1{margin:0 0 6px;font-size:24px;font-weight:700;letter-spacing:-.02em}
+.masthead p{margin:0;max-width:70ch;color:var(--ink-2)}
+.navbar{position:sticky;top:0;z-index:50;display:flex;gap:6px;flex-wrap:wrap;padding:10px 0;margin-bottom:24px;background:#f4f4f5;border-bottom:1px solid var(--border)}
+.navbar a{padding:5px 11px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--ink-2);font-size:12px;font-weight:500;text-decoration:none;white-space:nowrap}
+.navbar a:hover{border-color:var(--accent-border);background:var(--accent-soft);color:var(--accent-bright)}
+
+.variant{margin-bottom:56px;scroll-margin-top:64px}
+.vhead{margin-bottom:14px}
+.vhead .tag{display:inline-block;padding:2px 8px;border-radius:4px;background:var(--accent);color:#fff;font:600 11px/1.6 "IBM Plex Sans Condensed";letter-spacing:.08em;text-transform:uppercase}
+.vhead h2{margin:8px 0 4px;font-size:18px;font-weight:600;letter-spacing:-.01em}
+.vhead .sub{color:var(--ink-2);max-width:78ch}
+.verdict{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0 16px}
+@media(max-width:700px){.verdict{grid-template-columns:1fr}}
+.verdict div{padding:9px 12px;border-radius:6px;font-size:12.5px;line-height:1.55}
+.pro{background:var(--emerald-soft);border:1px solid var(--emerald-border);color:#065f46}
+.con{background:var(--amber-soft);border:1px solid var(--amber-border);color:#854d0e}
+.verdict b{font-weight:600}
+
+/* ── карточка блока ───────────────────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 1px 0 rgba(9,9,11,.03);overflow:hidden}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 18px;border-bottom:1px solid var(--border);background:var(--surface-muted)}
+.eyebrow{font:600 11px/1.6 "IBM Plex Sans Condensed";letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.card-head .eyebrow{color:var(--ink)}
+.card-head .meta{font:400 12px/1.6 "IBM Plex Mono";color:var(--ink-2)}
+.card-head .meta b{font-weight:600;color:var(--ink)}
+
+.toolbar{display:flex;gap:8px;padding:10px 18px;background:var(--surface-muted);border-bottom:1px solid var(--border)}
+.search{position:relative;flex:1;min-width:0}
+.search input{width:100%;height:36px;padding:0 12px 0 30px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font:400 13px/1 "IBM Plex Sans";color:var(--ink)}
+.search input::placeholder{color:var(--ink-3)}
+.search svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--ink-3)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font:500 12.5px/1 "IBM Plex Sans";color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent-border);background:var(--accent-soft);color:var(--accent-bright)}
+.btn .ai{padding:2px 5px;border-radius:3px;background:var(--surface-deep);font:400 10px/1.3 "IBM Plex Mono";color:var(--ink-3)}
+.btn-sm{height:26px;padding:0 9px;font-size:12px;border-radius:4px}
+.btn-primary{background:var(--accent-bright);border-color:var(--accent-bright);color:#fff}
+.btn-primary:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ── таблица ──────────────────────────────────────────────────── */
+table{width:100%;border-collapse:collapse}
+thead th{padding:7px 10px;background:var(--surface-deep);border-bottom:1px solid var(--border-strong);font:600 10.5px/1.6 "IBM Plex Sans Condensed";letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);text-align:left;white-space:nowrap}
+thead th.num{text-align:right}
+tbody td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr:hover{background:var(--surface-muted)}
+.num{text-align:right;font-family:"IBM Plex Mono";font-variant-numeric:tabular-nums}
+.name{font-weight:500;color:var(--ink)}
+.dim{color:var(--ink-3)}
+.sum{font-weight:600;font-family:"IBM Plex Mono";font-variant-numeric:tabular-nums}
+.catrow td{padding:6px 10px;background:var(--surface-muted);border-bottom:1px solid var(--border)}
+.catrow .eyebrow{color:var(--ink-2)}
+.catrow .num{font:600 12px/1.6 "IBM Plex Mono";color:var(--ink-2)}
+tfoot td{padding:10px;border-top:2px solid var(--ink);font-weight:600}
+tfoot .grand{font:700 16px/1.2 "IBM Plex Mono";font-variant-numeric:tabular-nums}
+
+/* степпер */
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--emerald-border);border-radius:4px;overflow:hidden;background:var(--surface)}
+.stepper button{width:24px;height:26px;border:0;background:none;color:var(--ink-2);cursor:pointer;font-size:14px;line-height:1}
+.stepper button:hover{background:var(--emerald-soft)}
+.stepper span{min-width:28px;height:26px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--emerald-border);border-right:1px solid var(--emerald-border);font:600 12px/1 "IBM Plex Mono";color:var(--emerald)}
+
+/* цена */
+.price{display:inline-block;min-width:52px;padding:2px 6px;border:1px solid transparent;border-radius:4px;font:600 12.5px/1.5 "IBM Plex Mono";font-variant-numeric:tabular-nums;text-align:right;cursor:text}
+.price:hover{border-color:var(--border);background:var(--surface-muted)}
+.price.neg{background:var(--indigo-soft);border-color:var(--indigo-border);color:var(--indigo)}
+.badge{display:inline-block;padding:1px 6px;border:1px solid var(--indigo-border);border-radius:4px;background:var(--indigo-soft);font:500 10.5px/1.5 "IBM Plex Sans";color:var(--indigo);white-space:nowrap}
+.badge.own{border-color:var(--indigo-border);background:var(--indigo-soft);color:var(--indigo)}
+.badge.warn{border-color:var(--amber-border);background:var(--amber-soft);color:var(--amber)}
+.iconbtn{width:26px;height:26px;border:0;border-radius:4px;background:none;color:var(--ink-3);cursor:pointer;font-size:15px;line-height:1}
+.iconbtn:hover{background:var(--rose-soft);color:var(--rose)}
+.revert{width:22px;height:22px;border:0;border-radius:4px;background:none;color:var(--ink-3);cursor:pointer;font-size:13px}
+.revert:hover{background:var(--rose-soft);color:var(--rose)}
+
+/* каталог-проводник */
+.browser{display:grid;grid-template-columns:190px 1fr;min-height:230px}
+.cats{border-right:1px solid var(--border);background:var(--surface-muted);padding:6px 0}
+.cats button{display:flex;width:100%;align-items:center;justify-content:space-between;gap:8px;padding:6px 14px;border:0;border-left:2px solid transparent;background:none;font:400 12.5px/1.4 "IBM Plex Sans";color:var(--ink-2);cursor:pointer;text-align:left}
+.cats button:hover{background:var(--surface-deep)}
+.cats button.on{border-left-color:var(--accent-bright);background:var(--surface);color:var(--ink);font-weight:600}
+.cats .c{font:400 11px/1 "IBM Plex Mono";color:var(--ink-3)}
+.cats button.on .c{color:var(--emerald);font-weight:600}
+.rows{overflow:auto}
+.crow{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:7px 14px;border-bottom:1px solid var(--border)}
+.crow:hover{background:var(--surface-muted)}
+.crow.on{background:var(--emerald-soft)}
+.crow .t{font-size:13px;font-weight:500}
+.crow .s{font:400 11.5px/1.5 "IBM Plex Mono";color:var(--ink-3)}
+.crow .s em{font-style:normal;color:var(--emerald)}
+.grouphdr{padding:5px 14px;background:var(--surface-deep);border-bottom:1px solid var(--border)}
+
+/* пустое состояние */
+.empty{margin:12px 18px;padding:14px;border:1px dashed var(--border-strong);border-radius:6px;text-align:center;font-size:12.5px;color:var(--ink-3)}
+
+/* excel-сетка */
+.grid td,.grid th{border:1px solid var(--border)}
+.grid thead th{background:var(--surface-deep)}
+.grid td{padding:0}
+.grid .cell{width:100%;height:32px;padding:0 8px;border:0;background:none;font:400 13px/1 "IBM Plex Sans";color:var(--ink)}
+.grid .cell:focus{outline:2px solid var(--accent-bright);outline-offset:-2px;background:var(--accent-soft)}
+.grid .cell.n{text-align:right;font-family:"IBM Plex Mono";font-variant-numeric:tabular-nums;font-weight:600}
+.grid .ro{display:flex;align-items:center;justify-content:flex-end;height:32px;padding:0 8px;font:600 13px/1 "IBM Plex Mono";font-variant-numeric:tabular-nums;background:var(--surface-muted);color:var(--ink)}
+.grid .newrow td{background:var(--accent-soft)}
+.grid .rownum{width:30px;background:var(--surface-deep);text-align:center;font:400 11px/1 "IBM Plex Mono";color:var(--ink-3)}
+.hint{padding:7px 12px;background:var(--surface-muted);border-top:1px solid var(--border);font-size:11.5px;color:var(--ink-3)}
+kbd{display:inline-block;padding:1px 5px;border:1px solid var(--border-strong);border-bottom-width:2px;border-radius:3px;background:var(--surface);font:500 10.5px/1.5 "IBM Plex Mono";color:var(--ink-2)}
+
+/* сплит */
+.split{display:grid;grid-template-columns:1fr 400px}
+@media(max-width:900px){.split{grid-template-columns:1fr}.split .right{border-left:0;border-top:1px solid var(--border)}}
+.split .left{border-right:1px solid var(--border)}
+.split .right{background:var(--surface-muted)}
+.split .right .inner{position:sticky;top:64px}
+
+/* компактный список */
+.dense .r{display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:10px;padding:5px 14px;border-bottom:1px solid var(--border)}
+.dense .r:nth-child(even){background:var(--surface-muted)}
+.dense .r:hover{background:var(--accent-soft)}
+
+/* мобильная колонка */
+.phones{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+.phone{width:375px;max-width:100%;border:1px solid var(--border-strong);border-radius:10px;overflow:hidden;background:var(--surface)}
+.phone .cap{padding:6px 12px;background:var(--slate-soft);border-bottom:1px solid var(--border);font:600 11px/1.6 "IBM Plex Sans Condensed";letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2)}
+.mrow{display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:8px 12px;border-bottom:1px solid var(--border)}
+.mrow .n{font-size:13px;font-weight:500}
+.mrow .s{grid-column:1/-1;display:flex;align-items:center;gap:8px;font:400 12px/1.5 "IBM Plex Mono";color:var(--ink-2)}
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="masthead">
+  <h1>Блок «Оборудование» — 6 вариантов</h1>
+  <p>Один и тот же набор данных в шести раскладках. Смета на 2 смены, 6 позиций, одна цена договорная, одна позиция своя. Смотрите не на красоту, а на то, каким вы реально будете набирать смету при заказчике на трубке.</p>
+</div>
+
+<nav class="navbar">
+  <a href="#v1">1 · Смета-таблица</a>
+  <a href="#v2">2 · Excel-сетка</a>
+  <a href="#v3">3 · Каталог = смета</a>
+  <a href="#v4">4 · Группы с подытогами</a>
+  <a href="#v5">5 · Плотный список</a>
+  <a href="#v6">6 · Две панели</a>
+  <a href="#mobile">Телефон</a>
+</nav>
+
+<!-- ═══════════════ 1 ═══════════════ -->
+<section class="variant" id="v1">
+  <div class="vhead">
+    <span class="tag">Вариант 1</span>
+    <h2>Смета-таблица</h2>
+    <div class="sub">Классическая таблица с шапкой: колонки подписаны, числа выровнены по правому краю, внизу итог. Каталог остаётся отдельным блоком сверху. Ближе всего к тому, что вы отправляете заказчику.</div>
+  </div>
+  <div class="verdict">
+    <div class="pro"><b>Сильно:</b> читается как готовая смета, колонки подписаны — не надо помнить, что за число. Легко сверять с PDF.</div>
+    <div class="con"><b>Слабо:</b> на телефоне 5 колонок не помещаются — придётся схлопывать в две строки (см. раздел «Телефон»).</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="eyebrow">3. Оборудование</span>
+      <span class="meta"><b>6 позиций</b> · 2 смены · <b>112 200 ₽</b></span>
+    </div>
+    <div class="toolbar">
+      <div class="search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input placeholder="Найти: название, бренд, модель…">
+      </div>
+      <button class="btn">Заявка от гафера <span class="ai">AI</span></button>
+    </div>
+
+    <div class="browser">
+      <div class="cats">
+        <button class="on">COB Light <span class="c">1</span></button>
+        <button>Led Panel <span class="c">1</span></button>
+        <button>Battery <span class="c">1</span></button>
+        <button>Pipe <span class="c">1</span></button>
+        <button>Штативы <span class="c">1</span></button>
+      </div>
+      <div class="rows">
+        <div class="crow on">
+          <div><div class="t">Aputure LS 1200x PRO (Blair)</div><div class="s">7 000 ₽/см · <em>3 свободно</em></div></div>
+          <span class="stepper"><button>−</button><span>2</span><button>+</button></span>
+        </div>
+        <div class="crow">
+          <div><div class="t">Aputure Electric storm 26XT 3200-6500k</div><div class="s">16 000 ₽/см · 1 свободно</div></div>
+          <button class="btn btn-sm">+ Добавить</button>
+        </div>
+        <div class="crow">
+          <div><div class="t">Aputure STORM 400x</div><div class="s">4 000 ₽/см · 4 свободно</div></div>
+          <button class="btn btn-sm">+ Добавить</button>
+        </div>
+        <div class="crow">
+          <div><div class="t">Aputure LS 60х 3200-6500k</div><div class="s">1 200 ₽/см · 6 свободно</div></div>
+          <button class="btn btn-sm">+ Добавить</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-head" style="border-top:1px solid var(--border)">
+      <span class="eyebrow">Состав заявки · 6</span>
+      <button class="btn btn-sm">+ Своя позиция</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="width:42%">Позиция</th><th class="num">Кол-во</th><th class="num">Цена/смена</th><th class="num">Смен</th><th class="num">Сумма</th><th style="width:34px"></th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="name">Aputure LS 1200x PRO</td>
+          <td class="num"><span class="stepper"><button>−</button><span>2</span><button>+</button></span></td>
+          <td class="num"><span class="price">7 000</span></td>
+          <td class="num dim">2</td>
+          <td class="num sum">28 000</td>
+          <td><button class="iconbtn">×</button></td>
+        </tr>
+        <tr>
+          <td class="name">LIGHTMAN LUXED-12 2160W</td>
+          <td class="num"><span class="stepper"><button>−</button><span>1</span><button>+</button></span></td>
+          <td class="num"><span class="price">9 900</span></td>
+          <td class="num dim">2</td>
+          <td class="num sum">19 800</td>
+          <td><button class="iconbtn">×</button></td>
+        </tr>
+        <tr>
+          <td class="name">Astera Titan Tube Kit (8 шт) <span class="badge">по прайсу 16 000</span></td>
+          <td class="num"><span class="stepper"><button>−</button><span>1</span><button>+</button></span></td>
+          <td class="num"><button class="revert" title="Вернуть прайс">↺</button> <span class="price neg">12 000</span></td>
+          <td class="num dim">2</td>
+          <td class="num sum">24 000</td>
+          <td><button class="iconbtn">×</button></td>
+        </tr>
+        <tr>
+          <td class="name">Aputure INFINIMAT 4x4</td>
+          <td class="num"><span class="stepper"><button>−</button><span>1</span><button>+</button></span></td>
+          <td class="num"><span class="price">14 500</span></td>
+          <td class="num dim">2</td>
+          <td class="num sum">29 000</td>
+          <td><button class="iconbtn">×</button></td>
+        </tr>
+        <tr>
+          <td class="name">Штатив Avenger A100</td>
+          <td class="num"><span class="stepper"><button>−</button><span>4</span><button>+</button></span></td>
+          <td class="num"><span class="price">800</span></td>
+          <td class="num dim">2</td>
+          <td class="num sum">6 400</td>
+          <td><button class="iconbtn">×</button></td>
+        </tr>
+        <tr>
+          <td class="name">Дым-машина + расходники <span class="badge own">своя</span></td>
+          <td class="num"><span class="stepper"><button>−</button><span>1</span><button>+</button></span></td>
+          <td class="num"><span class="price">5 000</span></td>
+          <td class="num dim">—</td>
+          <td class="num sum">5 000</td>
+          <td><button class="iconbtn">×</button></td>
+        </tr>
+      </tbody>
+      <tfoot><tr>
+        <td colspan="4">Оборудование</td>
+        <td class="num grand">112 200</td><td></td>
+      </tr></tfoot>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════ 2 ═══════════════ -->
+<section class="variant" id="v2">
+  <div class="vhead">
+    <span class="tag">Вариант 2</span>
+    <h2>Excel-сетка с вводом с клавиатуры</h2>
+    <div class="sub">Каждая ячейка — поле ввода, границы видны как в Excel. <kbd>Tab</kbd> — вправо, <kbd>Enter</kbd> — вниз, в последней пустой строке начинаешь печатать название и получаешь подсказку из каталога. Мышь не нужна вообще.</div>
+  </div>
+  <div class="verdict">
+    <div class="pro"><b>Сильно:</b> самый быстрый набор для того, кто знает каталог наизусть. 20 позиций вбиваются за минуту, не отрывая рук от клавиатуры.</div>
+    <div class="con"><b>Слабо:</b> нужен навык, на телефоне бесполезно, и легко вбить прибор, которого нет в наличии, — доступность видна только после ввода.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="eyebrow">3. Оборудование</span>
+      <span class="meta"><b>6 позиций</b> · 2 смены · <b>112 200 ₽</b></span>
+    </div>
+    <table class="grid">
+      <thead><tr>
+        <th class="rownum"></th><th style="width:40%">Позиция</th><th class="num">Кол-во</th><th class="num">Цена/смена</th><th class="num">Смен</th><th class="num">Сумма</th><th style="width:34px"></th>
+      </tr></thead>
+      <tbody>
+        <tr><td class="rownum">1</td>
+          <td><input class="cell" value="Aputure LS 1200x PRO"></td>
+          <td><input class="cell n" value="2"></td>
+          <td><input class="cell n" value="7 000"></td>
+          <td><input class="cell n" value="2"></td>
+          <td><div class="ro">28 000</div></td>
+          <td><button class="iconbtn">×</button></td></tr>
+        <tr><td class="rownum">2</td>
+          <td><input class="cell" value="LIGHTMAN LUXED-12 2160W"></td>
+          <td><input class="cell n" value="1"></td>
+          <td><input class="cell n" value="9 900"></td>
+          <td><input class="cell n" value="2"></td>
+          <td><div class="ro">19 800</div></td>
+          <td><button class="iconbtn">×</button></td></tr>
+        <tr><td class="rownum">3</td>
+          <td><input class="cell" value="Astera Titan Tube Kit (8 шт)"></td>
+          <td><input class="cell n" value="1"></td>
+          <td><input class="cell n" style="background:var(--indigo-soft);color:var(--indigo)" value="12 000"></td>
+          <td><input class="cell n" value="2"></td>
+          <td><div class="ro">24 000</div></td>
+          <td><button class="iconbtn">×</button></td></tr>
+        <tr><td class="rownum">4</td>
+          <td><input class="cell" value="Aputure INFINIMAT 4x4"></td>
+          <td><input class="cell n" value="1"></td>
+          <td><input class="cell n" value="14 500"></td>
+          <td><input class="cell n" value="2"></td>
+          <td><div class="ro">29 000</div></td>
+          <td><button class="iconbtn">×</button></td></tr>
+        <tr><td class="rownum">5</td>
+          <td><input class="cell" value="Штатив Avenger A100"></td>
+          <td><input class="cell n" value="4"></td>
+          <td><input class="cell n" value="800"></td>
+          <td><input class="cell n" value="2"></td>
+          <td><div class="ro">6 400</div></td>
+          <td><button class="iconbtn">×</button></td></tr>
+        <tr><td class="rownum">6</td>
+          <td><input class="cell" value="Дым-машина + расходники"></td>
+          <td><input class="cell n" value="1"></td>
+          <td><input class="cell n" value="5 000"></td>
+          <td><input class="cell n" value="—"></td>
+          <td><div class="ro">5 000</div></td>
+          <td><button class="iconbtn">×</button></td></tr>
+        <tr class="newrow"><td class="rownum">7</td>
+          <td><input class="cell" placeholder="Начните вводить название…" style="color:var(--accent-bright)"></td>
+          <td><input class="cell n" placeholder="1"></td><td><input class="cell n"></td>
+          <td><input class="cell n"></td><td><div class="ro dim">—</div></td><td></td></tr>
+      </tbody>
+      <tfoot><tr><td class="rownum"></td><td colspan="4">Оборудование</td><td class="num grand">112 200</td><td></td></tr></tfoot>
+    </table>
+    <div class="hint"><kbd>Tab</kbd> следующая ячейка · <kbd>Enter</kbd> строка ниже · <kbd>↑</kbd><kbd>↓</kbd> по строкам · <kbd>Esc</kbd> отменить правку ячейки · подсказки каталога всплывают при вводе названия</div>
+  </div>
+</section>
+
+<!-- ═══════════════ 3 ═══════════════ -->
+<section class="variant" id="v3">
+  <div class="vhead">
+    <span class="tag">Вариант 3</span>
+    <h2>Каталог = смета (без отдельной корзины)</h2>
+    <div class="sub">Отдельного «Состава» нет вообще. Каталог сам и есть таблица: поставил количество — позиция в смете. Выбранные подсвечены и всплывают наверх своей категории, переключатель «только выбранное» показывает чистую смету.</div>
+  </div>
+  <div class="verdict">
+    <div class="pro"><b>Сильно:</b> один список вместо двух — ничего не дублируется, не надо листать туда-сюда и сверять, что попало в смету.</div>
+    <div class="con"><b>Слабо:</b> при 400 позициях каталога смета «растворяется» — без переключателя её не увидеть целиком.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="eyebrow">3. Оборудование</span>
+      <span class="meta"><b>6 позиций</b> · <b>112 200 ₽</b></span>
+    </div>
+    <div class="toolbar">
+      <div class="search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input placeholder="Найти по всему каталогу…">
+      </div>
+      <button class="btn btn-primary">Только выбранное · 6</button>
+      <button class="btn">Заявка <span class="ai">AI</span></button>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="width:44%">Позиция</th><th class="num">Свободно</th><th class="num">Кол-во</th><th class="num">Цена/смена</th><th class="num">Сумма ×2</th>
+      </tr></thead>
+      <tbody>
+        <tr class="catrow"><td colspan="4"><span class="eyebrow">COB Light</span></td><td class="num">28 000</td></tr>
+        <tr style="background:var(--emerald-soft)">
+          <td class="name">Aputure LS 1200x PRO</td><td class="num dim">3</td>
+          <td class="num"><span class="stepper"><button>−</button><span>2</span><button>+</button></span></td>
+          <td class="num"><span class="price">7 000</span></td><td class="num sum">28 000</td>
+        </tr>
+        <tr><td class="name">Aputure Electric storm 26XT</td><td class="num dim">1</td>
+          <td class="num"><button class="btn btn-sm">+</button></td><td class="num dim">16 000</td><td class="num dim">—</td></tr>
+        <tr><td class="name">Aputure STORM 400x</td><td class="num dim">4</td>
+          <td class="num"><button class="btn btn-sm">+</button></td><td class="num dim">4 000</td><td class="num dim">—</td></tr>
+
+        <tr class="catrow"><td colspan="4"><span class="eyebrow">Led Panel</span></td><td class="num">19 800</td></tr>
+        <tr style="background:var(--emerald-soft)">
+          <td class="name">LIGHTMAN LUXED-12 2160W</td><td class="num dim">2</td>
+          <td class="num"><span class="stepper"><button>−</button><span>1</span><button>+</button></span></td>
+          <td class="num"><span class="price">9 900</span></td><td class="num sum">19 800</td>
+        </tr>
+        <tr><td class="name">Aputure NOVA P300C RGBWW</td><td class="num dim">2</td>
+          <td class="num"><button class="btn btn-sm">+</button></td><td class="num dim">4 000</td><td class="num dim">—</td></tr>
+
+        <tr class="catrow"><td colspan="4"><span class="eyebrow">Аккумуляторный свет</span></td><td class="num">24 000</td></tr>
+        <tr style="background:var(--emerald-soft)">
+          <td class="name">Astera Titan Tube Kit (8 шт) <span class="badge">по прайсу 16 000</span></td><td class="num dim">1</td>
+          <td class="num"><span class="stepper"><button>−</button><span>1</span><button>+</button></span></td>
+          <td class="num"><button class="revert">↺</button> <span class="price neg">12 000</span></td><td class="num sum">24 000</td>
+        </tr>
+      </tbody>
+      <tfoot><tr><td colspan="4">Оборудование · выбрано 6 из 412</td><td class="num grand">112 200</td></tr></tfoot>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════ 4 ═══════════════ -->
+<section class="variant" id="v4">
+  <div class="vhead">
+    <span class="tag">Вариант 4</span>
+    <h2>Группы по категориям с подытогами</h2>
+    <div class="sub">Та же таблица, но состав разложен по категориям, у каждой — своя сумма, категорию можно свернуть. Ровно так смету читает заказчик: «свет — столько, штативы — столько».</div>
+  </div>
+  <div class="verdict">
+    <div class="pro"><b>Сильно:</b> на смете из 30 позиций сразу видно, куда ушли деньги. Свернул «Штативы» — и не мешают.</div>
+    <div class="con"><b>Слабо:</b> на смете из трёх позиций заголовки категорий занимают больше места, чем сами позиции.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="eyebrow">Состав заявки · 6 позиций в 5 категориях</span>
+      <span class="meta"><b>112 200 ₽</b></span>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="width:44%">Позиция</th><th class="num">Кол-во</th><th class="num">Цена/смена</th><th class="num">Сумма</th><th style="width:34px"></th>
+      </tr></thead>
+      <tbody>
+        <tr class="catrow"><td colspan="3"><span class="eyebrow">▾ COB Light · 1 позиция</span></td><td class="num">28 000</td><td></td></tr>
+        <tr><td class="name">Aputure LS 1200x PRO</td>
+          <td class="num"><span class="stepper"><button>−</button><span>2</span><button>+</button></span></td>
+          <td class="num"><span class="price">7 000</span></td><td class="num sum">28 000</td><td><button class="iconbtn">×</button></td></tr>
+
+        <tr class="catrow"><td colspan="3"><span class="eyebrow">▾ Led Panel · 1 позиция</span></td><td class="num">19 800</td><td></td></tr>
+        <tr><td class="name">LIGHTMAN LUXED-12 2160W</td>
+          <td class="num"><span class="stepper"><button>−</button><span>1</span><button>+</button></span></td>
+          <td class="num"><span class="price">9 900</span></td><td class="num sum">19 800</td><td><button class="iconbtn">×</button></td></tr>
+
+        <tr class="catrow"><td colspan="3"><span class="eyebrow">▾ Аккумуляторный свет · 1 позиция</span></td><td class="num">24 000</td><td></td></tr>
+        <tr><td class="name">Astera Titan Tube Kit (8 шт) <span class="badge">по прайсу 16 000</span></td>
+          <td class="num"><span class="stepper"><button>−</button><span>1</span><button>+</button></span></td>
+          <td class="num"><button class="revert">↺</button> <span class="price neg">12 000</span></td><td class="num sum">24 000</td><td><button class="iconbtn">×</button></td></tr>
+
+        <tr class="catrow"><td colspan="3"><span class="eyebrow">▾ Надувные приборы · 1 позиция</span></td><td class="num">29 000</td><td></td></tr>
+        <tr><td class="name">Aputure INFINIMAT 4x4</td>
+          <td class="num"><span class="stepper"><button>−</button><span>1</span><button>+</button></span></td>
+          <td class="num"><span class="price">14 500</span></td><td class="num sum">29 000</td><td><button class="iconbtn">×</button></td></tr>
+
+        <tr class="catrow"><td colspan="3"><span class="eyebrow">▸ Штативы · 1 позиция</span></td><td class="num">6 400</td><td></td></tr>
+        <tr class="catrow"><td colspan="3"><span class="eyebrow">▾ Свои позиции · 1</span></td><td class="num">5 000</td><td></td></tr>
+        <tr><td class="name">Дым-машина + расходники <span class="badge own">своя</span></td>
+          <td class="num"><span class="stepper"><button>−</button><span>1</span><button>+</button></span></td>
+          <td class="num"><span class="price">5 000</span></td><td class="num sum">5 000</td><td><button class="iconbtn">×</button></td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="3">Оборудование · 2 смены</td><td class="num grand">112 200</td><td></td></tr></tfoot>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════ 5 ═══════════════ -->
+<section class="variant" id="v5">
+  <div class="vhead">
+    <span class="tag">Вариант 5</span>
+    <h2>Плотный список без шапки</h2>
+    <div class="sub">Шапки нет, строки в один ряд, зебра. Название — количество — цена — сумма, всё выровнено по невидимой сетке. Максимум позиций на экран, минимум хрома.</div>
+  </div>
+  <div class="verdict">
+    <div class="pro"><b>Сильно:</b> 20 позиций видно без прокрутки. Ближе всего к нынешнему составу, привыкать не надо.</div>
+    <div class="con"><b>Слабо:</b> без подписей колонок «2» и «7 000» надо расшифровывать глазами; это уже не совсем таблица.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="eyebrow">Состав заявки · 6</span>
+      <span class="meta">2 смены · <b>112 200 ₽</b></span>
+    </div>
+    <div class="dense">
+      <div class="r"><span class="name">Aputure LS 1200x PRO</span>
+        <span class="stepper"><button>−</button><span>2</span><button>+</button></span>
+        <span class="num"><span class="price">7 000</span> <span class="dim">×2×2</span></span>
+        <span class="sum" style="min-width:66px;text-align:right">28 000</span></div>
+      <div class="r"><span class="name">LIGHTMAN LUXED-12 2160W</span>
+        <span class="stepper"><button>−</button><span>1</span><button>+</button></span>
+        <span class="num"><span class="price">9 900</span> <span class="dim">×1×2</span></span>
+        <span class="sum" style="min-width:66px;text-align:right">19 800</span></div>
+      <div class="r"><span class="name">Astera Titan Tube Kit (8 шт) <span class="badge">по прайсу 16 000</span></span>
+        <span class="stepper"><button>−</button><span>1</span><button>+</button></span>
+        <span class="num"><span class="price neg">12 000</span> <span class="dim">×1×2</span></span>
+        <span class="sum" style="min-width:66px;text-align:right">24 000</span></div>
+      <div class="r"><span class="name">Aputure INFINIMAT 4x4</span>
+        <span class="stepper"><button>−</button><span>1</span><button>+</button></span>
+        <span class="num"><span class="price">14 500</span> <span class="dim">×1×2</span></span>
+        <span class="sum" style="min-width:66px;text-align:right">29 000</span></div>
+      <div class="r"><span class="name">Штатив Avenger A100</span>
+        <span class="stepper"><button>−</button><span>4</span><button>+</button></span>
+        <span class="num"><span class="price">800</span> <span class="dim">×4×2</span></span>
+        <span class="sum" style="min-width:66px;text-align:right">6 400</span></div>
+      <div class="r"><span class="name">Дым-машина + расходники <span class="badge own">своя</span></span>
+        <span class="stepper"><button>−</button><span>1</span><button>+</button></span>
+        <span class="num"><span class="price">5 000</span> <span class="dim">×1</span></span>
+        <span class="sum" style="min-width:66px;text-align:right">5 000</span></div>
+      <div class="r" style="background:var(--surface-deep);border-top:2px solid var(--ink)">
+        <span style="font-weight:600">Оборудование</span><span></span><span></span>
+        <span class="sum" style="min-width:66px;text-align:right;font-size:15px">112 200</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 6 ═══════════════ -->
+<section class="variant" id="v6">
+  <div class="vhead">
+    <span class="tag">Вариант 6</span>
+    <h2>Две панели: каталог слева, смета справа</h2>
+    <div class="sub">Каталог и смета стоят рядом и не перекрывают друг друга. Добавляешь слева — строка тут же появляется справа, смета не уезжает из виду никогда. На телефоне схлопывается в вариант 1.</div>
+  </div>
+  <div class="verdict">
+    <div class="pro"><b>Сильно:</b> ни одной прокрутки между «выбрать» и «увидеть». Самый быстрый набор мышью на большом экране.</div>
+    <div class="con"><b>Слабо:</b> обе половины узкие — длинные названия режутся; на ноутбуке 13″ тесно, на телефоне раскладки нет вовсе.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="eyebrow">3. Оборудование</span>
+      <span class="meta"><b>6 позиций</b> · 2 смены · <b>112 200 ₽</b></span>
+    </div>
+    <div class="split">
+      <div class="left">
+        <div class="toolbar">
+          <div class="search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <input placeholder="Найти в каталоге…">
+          </div>
+          <button class="btn">AI</button>
+        </div>
+        <div class="grouphdr"><span class="eyebrow">COB Light</span></div>
+        <div class="crow on"><div><div class="t">Aputure LS 1200x PRO</div><div class="s">7 000 ₽/см · <em>3 свободно</em></div></div>
+          <span class="stepper"><button>−</button><span>2</span><button>+</button></span></div>
+        <div class="crow"><div><div class="t">Aputure Electric storm 26XT</div><div class="s">16 000 ₽/см · 1 свободно</div></div>
+          <button class="btn btn-sm">+</button></div>
+        <div class="crow"><div><div class="t">Aputure STORM 400x</div><div class="s">4 000 ₽/см · 4 свободно</div></div>
+          <button class="btn btn-sm">+</button></div>
+        <div class="grouphdr"><span class="eyebrow">Led Panel</span></div>
+        <div class="crow on"><div><div class="t">LIGHTMAN LUXED-12 2160W</div><div class="s">9 900 ₽/см · <em>2 свободно</em></div></div>
+          <span class="stepper"><button>−</button><span>1</span><button>+</button></span></div>
+        <div class="crow"><div><div class="t">Aputure NOVA P300C RGBWW</div><div class="s">4 000 ₽/см · 2 свободно</div></div>
+          <button class="btn btn-sm">+</button></div>
+        <div class="crow"><div><div class="t">Litemat Spectrum 2L RGBWW</div><div class="s">5 900 ₽/см · 1 свободно</div></div>
+          <button class="btn btn-sm">+</button></div>
+      </div>
+      <div class="right">
+        <div class="inner">
+          <div class="card-head" style="background:var(--surface-deep)">
+            <span class="eyebrow">Смета · 6</span><button class="btn btn-sm">+ Своя</button>
+          </div>
+          <table>
+            <thead><tr><th>Позиция</th><th class="num">Кол</th><th class="num">Сумма</th><th style="width:30px"></th></tr></thead>
+            <tbody>
+              <tr><td class="name">Aputure LS 1200x PRO<div class="s dim" style="font:400 11.5px/1.5 'IBM Plex Mono'">7 000 ₽/см × 2 см</div></td>
+                <td class="num">2</td><td class="num sum">28 000</td><td><button class="iconbtn">×</button></td></tr>
+              <tr><td class="name">LIGHTMAN LUXED-12<div class="s dim" style="font:400 11.5px/1.5 'IBM Plex Mono'">9 900 ₽/см × 2 см</div></td>
+                <td class="num">1</td><td class="num sum">19 800</td><td><button class="iconbtn">×</button></td></tr>
+              <tr><td class="name">Astera Titan Tube Kit<div class="s" style="font:400 11.5px/1.5 'IBM Plex Mono';color:var(--indigo)">12 000 ₽/см · прайс 16 000</div></td>
+                <td class="num">1</td><td class="num sum">24 000</td><td><button class="iconbtn">×</button></td></tr>
+              <tr><td class="name">Aputure INFINIMAT 4x4<div class="s dim" style="font:400 11.5px/1.5 'IBM Plex Mono'">14 500 ₽/см × 2 см</div></td>
+                <td class="num">1</td><td class="num sum">29 000</td><td><button class="iconbtn">×</button></td></tr>
+              <tr><td class="name">Штатив Avenger A100<div class="s dim" style="font:400 11.5px/1.5 'IBM Plex Mono'">800 ₽/см × 2 см</div></td>
+                <td class="num">4</td><td class="num sum">6 400</td><td><button class="iconbtn">×</button></td></tr>
+              <tr><td class="name">Дым-машина <span class="badge own">своя</span></td>
+                <td class="num">1</td><td class="num sum">5 000</td><td><button class="iconbtn">×</button></td></tr>
+            </tbody>
+            <tfoot><tr><td colspan="2">Оборудование</td><td class="num grand" style="font-size:14px">112 200</td><td></td></tr></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ MOBILE ═══════════════ -->
+<section class="variant" id="mobile">
+  <div class="vhead">
+    <span class="tag">Телефон · 375 px</span>
+    <h2>Как таблица живёт на телефоне</h2>
+    <div class="sub">Пять колонок в 375 px не помещаются — это физика, а не вкусовщина. Два честных выхода: строка в два ряда (название сверху, арифметика снизу) или горизонтальная прокрутка таблицы. Первое читается, второе — точная копия десктопа.</div>
+  </div>
+
+  <div class="phones">
+    <div class="phone">
+      <div class="cap">A · строка в два ряда (рекомендую)</div>
+      <div class="card-head"><span class="eyebrow">Состав · 6</span><span class="meta"><b>112 200 ₽</b></span></div>
+      <div class="mrow"><span class="n">Aputure LS 1200x PRO</span><span class="stepper"><button>−</button><span>2</span><button>+</button></span>
+        <span class="s"><span class="price">7 000</span> /см × 2 × 2 см = <b class="sum">28 000 ₽</b></span></div>
+      <div class="mrow"><span class="n">LIGHTMAN LUXED-12 2160W</span><span class="stepper"><button>−</button><span>1</span><button>+</button></span>
+        <span class="s"><span class="price">9 900</span> /см × 1 × 2 см = <b class="sum">19 800 ₽</b></span></div>
+      <div class="mrow"><span class="n">Astera Titan Tube Kit (8 шт)</span><span class="stepper"><button>−</button><span>1</span><button>+</button></span>
+        <span class="s"><span class="price neg">12 000</span> /см × 1 × 2 = <b class="sum">24 000 ₽</b> <span class="badge">прайс 16 000</span></span></div>
+      <div class="mrow" style="background:var(--surface-deep);border-top:2px solid var(--ink)">
+        <span class="n">Оборудование</span><span class="sum" style="font-size:15px">112 200 ₽</span></div>
+    </div>
+
+    <div class="phone">
+      <div class="cap">B · таблица с прокруткой вбок</div>
+      <div class="card-head"><span class="eyebrow">Состав · 6</span><span class="meta"><b>112 200 ₽</b></span></div>
+      <div style="overflow-x:auto">
+        <table style="min-width:520px">
+          <thead><tr><th style="width:190px">Позиция</th><th class="num">Кол</th><th class="num">Цена</th><th class="num">См</th><th class="num">Сумма</th></tr></thead>
+          <tbody>
+            <tr><td class="name">Aputure LS 1200x PRO</td><td class="num">2</td><td class="num">7 000</td><td class="num dim">2</td><td class="num sum">28 000</td></tr>
+            <tr><td class="name">LIGHTMAN LUXED-12</td><td class="num">1</td><td class="num">9 900</td><td class="num dim">2</td><td class="num sum">19 800</td></tr>
+            <tr><td class="name">Astera Titan Tube Kit</td><td class="num">1</td><td class="num" style="color:var(--indigo)">12 000</td><td class="num dim">2</td><td class="num sum">24 000</td></tr>
+            <tr><td class="name">Aputure INFINIMAT 4x4</td><td class="num">1</td><td class="num">14 500</td><td class="num dim">2</td><td class="num sum">29 000</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="hint">Шапка и первая колонка приклеены, остальное едет вбок.</div>
+    </div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>
