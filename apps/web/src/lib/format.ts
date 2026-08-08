@@ -31,6 +31,27 @@ export function formatRub(value: string | number | null | undefined): string {
 }
 
 /**
+ * Сумма без копеек и без знака валюты: «3 774 575».
+ *
+ * Для расчёта брони копейки — шум: прайс и договорные цены всегда в целых
+ * рублях, дробная часть приезжает только из процентов транспорта. При этом
+ * «,00» съедает четыре знака и крупный итог перестаёт помещаться в строку.
+ * Разряды сохраняем — без них семизначное число нечитаемо.
+ *
+ * Для документов и финансовых страниц по-прежнему нужен formatMoneyRub:
+ * там копейка — часть суммы к оплате.
+ */
+export function formatMoneyRubWhole(value: number | string | null | undefined): string {
+  if (value == null) return "0";
+  const n =
+    typeof value === "number"
+      ? value
+      : Number(String(value).trim().replace(/\s/g, "").replace(",", "."));
+  if (!Number.isFinite(n)) return "0";
+  return Math.round(n).toLocaleString("ru-RU");
+}
+
+/**
  * Форматирует сумму расхода/оттока с ведущим минусом.
  * Минус показывается ТОЛЬКО когда сумма строго больше нуля —
  * чтобы не было бессмысленного «−0 ₽» на нулевом периоде.

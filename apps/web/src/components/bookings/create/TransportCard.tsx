@@ -1,6 +1,6 @@
 "use client";
 
-import { formatMoneyRub } from "../../../lib/format";
+import { formatMoneyRubWhole } from "../../../lib/format";
 import { EditablePrice, ListPriceBadge, RevertPriceButton } from "./EditablePrice";
 import type { VehicleRow, TransportBreakdown, SelectedVehicle } from "./types";
 
@@ -66,7 +66,7 @@ export function TransportCard({
                 />
                 <span className="flex-1 text-sm text-ink">{vehicle.name}</span>
                 <span className="mono-num text-sm text-ink-3">
-                  {formatMoneyRub(Number(vehicle.shiftPriceRub))} ₽/смена
+                  {formatMoneyRubWhole(Number(vehicle.shiftPriceRub))} ₽/смена
                 </span>
               </label>
 
@@ -88,7 +88,7 @@ export function TransportCard({
                         + Генератор{" "}
                         {vehicle.generatorPriceRub && (
                           <span className="text-ink-2">
-                            (+{formatMoneyRub(Number(vehicle.generatorPriceRub))} ₽)
+                            (+{formatMoneyRubWhole(Number(vehicle.generatorPriceRub))} ₽)
                           </span>
                         )}
                       </span>
@@ -185,14 +185,14 @@ export function TransportCard({
                         <div className="flex justify-between">
                           <span>Смена</span>
                           <span className="mono-num">
-                            {formatMoneyRub(Number(breakdown.shiftRate))} ₽
+                            {formatMoneyRubWhole(Number(breakdown.shiftRate))} ₽
                           </span>
                         </div>
                         {Number(breakdown.overtime) > 0 && (
                           <div className="flex justify-between">
                             <span>Переработка ({breakdown.overtimeHours} ч.)</span>
                             <span className="mono-num">
-                              {formatMoneyRub(Number(breakdown.overtime))} ₽
+                              {formatMoneyRubWhole(Number(breakdown.overtime))} ₽
                             </span>
                           </div>
                         )}
@@ -200,7 +200,7 @@ export function TransportCard({
                           <div className="flex justify-between">
                             <span>За МКАД ({sel.kmOutsideMkad} км)</span>
                             <span className="mono-num">
-                              {formatMoneyRub(Number(breakdown.km))} ₽
+                              {formatMoneyRubWhole(Number(breakdown.km))} ₽
                             </span>
                           </div>
                         )}
@@ -208,7 +208,7 @@ export function TransportCard({
                           <div className="flex justify-between">
                             <span>ТТК</span>
                             <span className="mono-num">
-                              {formatMoneyRub(Number(breakdown.ttk))} ₽
+                              {formatMoneyRubWhole(Number(breakdown.ttk))} ₽
                             </span>
                           </div>
                         )}
@@ -235,7 +235,7 @@ export function TransportCard({
                               <span className="text-ink-3">₽</span>
                             </span>
                           ) : (
-                            <span className="mono-num">{formatMoneyRub(Number(breakdown.total))} ₽</span>
+                            <span className="mono-num">{formatMoneyRubWhole(Number(breakdown.total))} ₽</span>
                           )}
                         </div>
                       </div>
@@ -252,7 +252,7 @@ export function TransportCard({
       {selected.length > 0 && (
         <div className="mt-4 flex justify-between border-t border-border pt-3 text-sm font-semibold text-ink">
           <span>Итого транспорт ({selected.length})</span>
-          <span className="mono-num">{formatMoneyRub(totalAll)} ₽</span>
+          <span className="mono-num">{formatMoneyRubWhole(totalAll)} ₽</span>
         </div>
       )}
     </section>

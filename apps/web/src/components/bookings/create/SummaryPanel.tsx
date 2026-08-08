@@ -1,7 +1,7 @@
 "use client";
 
 import { EditablePrice } from "./EditablePrice";
-import { formatMoneyRub, pluralize } from "../../../lib/format";
+import { formatMoneyRubWhole, pluralize } from "../../../lib/format";
 import type { CatalogSelectedItem, CustomItem, OffCatalogItem, QuoteResponse, TransportBreakdown, ValidationCheck } from "./types";
 
 type SummaryPanelProps = {
@@ -175,7 +175,7 @@ export function SummaryPanel({
         </div>
         <p className="mt-1 text-xs text-ink-3">
           {negotiatedTotal != null ? (
-            <>Итог зафиксирован вручную · по расчёту {formatMoneyRub(grandTotal)} ₽</>
+            <>Итог зафиксирован вручную · по расчёту {formatMoneyRubWhole(grandTotal)} ₽</>
           ) : (
             <>
               {effectiveShifts} {pluralize(effectiveShifts, "день", "дня", "дней")} · {itemCount}{" "}
@@ -192,31 +192,31 @@ export function SummaryPanel({
             {negotiatedLines > 0 ? "Оборудование по прайсу" : "Оборудование"}
           </span>
           <span className="mono-num text-ink">
-            {formatMoneyRub(negotiatedLines > 0 ? listedSubtotal : equipSubtotal)} ₽
+            {formatMoneyRubWhole(negotiatedLines > 0 ? listedSubtotal : equipSubtotal)} ₽
           </span>
         </div>
         {discPct > 0 && discount > 0 && (
           <div className="flex justify-between">
             <span className="text-ink-2">Скидка {discPct}%</span>
-            <span className="mono-num text-rose">−{formatMoneyRub(discount)} ₽</span>
+            <span className="mono-num text-rose">−{formatMoneyRubWhole(discount)} ₽</span>
           </div>
         )}
         {negotiatedLines > 0 && (
           <div className="flex justify-between">
             <span className="text-ink-2">Позиции по договорённости</span>
-            <span className="mono-num text-indigo">{formatMoneyRub(negotiatedLines)} ₽</span>
+            <span className="mono-num text-indigo">{formatMoneyRubWhole(negotiatedLines)} ₽</span>
           </div>
         )}
         {discPct > 0 && discount > 0 && negotiatedLines === 0 && (
           <div className="flex justify-between">
             <span className="text-ink-2">Оборудование итого</span>
-            <span className="mono-num text-ink">{formatMoneyRub(equipTotal)} ₽</span>
+            <span className="mono-num text-ink">{formatMoneyRubWhole(equipTotal)} ₽</span>
           </div>
         )}
         {transportRows.map((t) => (
           <div key={t.vehicleId} className="flex justify-between">
             <span className="text-ink-2">Транспорт ({t.vehicleName})</span>
-            <span className="mono-num text-ink">{formatMoneyRub(Number(t.total))} ₽</span>
+            <span className="mono-num text-ink">{formatMoneyRubWhole(Number(t.total))} ₽</span>
           </div>
         ))}
         {negotiatedTotal != null && Math.abs(negotiatedDelta) >= 1 && (
@@ -226,13 +226,13 @@ export function SummaryPanel({
             </span>
             <span className={`mono-num ${negotiatedDelta > 0 ? "text-rose" : "text-amber"}`}>
               {negotiatedDelta > 0 ? "−" : "+"}
-              {formatMoneyRub(Math.abs(negotiatedDelta))} ₽
+              {formatMoneyRubWhole(Math.abs(negotiatedDelta))} ₽
             </span>
           </div>
         )}
         <div className="flex justify-between border-t border-border pt-1 font-semibold">
           <span className="text-ink">Итого</span>
-          <span className="mono-num text-ink">{formatMoneyRub(total)} ₽</span>
+          <span className="mono-num text-ink">{formatMoneyRubWhole(total)} ₽</span>
         </div>
         {negotiatedLines > 0 && discPct > 0 && (
           <p className="mt-1 rounded border border-amber-border bg-amber-soft px-2 py-1.5 text-[11.5px] leading-snug text-ink-2">
@@ -249,7 +249,7 @@ export function SummaryPanel({
             <div key={it.key} className="group flex items-center gap-2 rounded px-1 py-0.5 text-[11.5px] hover:bg-surface-muted">
               <span className="min-w-0 flex-1 truncate text-ink">{it.name}</span>
               {it.kind === "custom" ? (
-                <span className="font-mono text-[11px] text-ink-3">{formatMoneyRub(it.unitPrice)} × {it.qty} = {formatMoneyRub(it.unitPrice * it.qty)} ₽</span>
+                <span className="font-mono text-[11px] text-ink-3">{formatMoneyRubWhole(it.unitPrice)} × {it.qty} = {formatMoneyRubWhole(it.unitPrice * it.qty)} ₽</span>
               ) : (
                 <span className="font-mono text-[11px] text-ink-3">×{it.qty}</span>
               )}

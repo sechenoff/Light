@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 
-import { formatMoneyRubWhole } from "../../../lib/format";
+import { formatMoneyRub } from "../../../lib/format";
 
 /**
  * Цифра, которую можно переписать на месте.
@@ -66,15 +66,10 @@ export function EditablePrice({
     onChange(Math.round(parsed) === Math.round(listValue) ? null : parsed);
   }
 
-  // Ширина по содержимому, а не фиксированные 9 символов: семизначный итог
-  // («3 774 575») в них не помещался и обрезался на последней цифре.
-  // Цифры моноширинные (mono-num), поэтому ch-расчёт точен.
-  const shown = editing ? (draft as string) : formatMoneyRubWhole(value);
-  const widthCh = Math.max(size === "lg" ? 6 : 5, shown.length + 1);
   const base =
     size === "lg"
-      ? "mono-num text-[30px] font-semibold leading-none tracking-tight px-2 py-0.5"
-      : "mono-num text-xs font-semibold px-1.5 py-0.5 text-right";
+      ? "mono-num text-[30px] font-semibold leading-none tracking-tight w-[9ch] px-2 py-0.5"
+      : "mono-num text-xs font-semibold w-[9ch] px-1.5 py-0.5 text-right";
   const tone = isNegotiated
     ? "text-indigo bg-indigo-soft border-indigo-border"
     : "text-ink bg-transparent border-transparent hover:bg-surface-muted hover:border-border";
@@ -86,8 +81,7 @@ export function EditablePrice({
       inputMode="numeric"
       disabled={disabled}
       aria-label={ariaLabel}
-      value={shown}
-      style={{ width: `${widthCh}ch` }}
+      value={editing ? (draft as string) : formatMoneyRub(value)}
       onFocus={(e) => {
         const opened = String(Math.round(value));
         openedWithRef.current = opened;
@@ -132,7 +126,7 @@ export function RevertPriceButton({ onClick, label }: { onClick: () => void; lab
 export function ListPriceBadge({ value }: { value: number }) {
   return (
     <span className="whitespace-nowrap rounded border border-indigo-border bg-indigo-soft px-1.5 py-px text-[10.5px] font-medium text-indigo">
-      по прайсу {formatMoneyRubWhole(value)}
+      по прайсу {formatMoneyRub(value)}
     </span>
   );
 }

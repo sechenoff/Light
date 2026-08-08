@@ -1,6 +1,6 @@
 "use client";
 
-import { formatMoneyRub } from "../../../lib/format";
+import { formatMoneyRubWhole } from "../../../lib/format";
 import { EditablePrice, ListPriceBadge, RevertPriceButton } from "./EditablePrice";
 import type { CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem } from "./types";
 
@@ -170,14 +170,14 @@ export function EquipmentCartZone({
                       ariaLabel={`Цена за смену: ${it.name}`}
                     />
                   ) : (
-                    <span className="font-semibold text-ink">{formatMoneyRub(rateOf(it))}</span>
+                    <span className="font-semibold text-ink">{formatMoneyRubWhole(rateOf(it))}</span>
                   )}
                   <span className="text-ink-3">
                     /см × {it.quantity}
                     {shifts > 1 && <> × {shifts} см</>} =
                   </span>
                   <span className="font-semibold text-ink">
-                    {formatMoneyRub(rateOf(it) * it.quantity * shifts)} ₽
+                    {formatMoneyRubWhole(rateOf(it) * it.quantity * shifts)} ₽
                   </span>
                   {it.negotiatedRatePerShift != null && <ListPriceBadge value={Number(it.dailyPrice)} />}
                 </span>
@@ -202,7 +202,7 @@ export function EquipmentCartZone({
                 <span className="ml-1.5 rounded bg-indigo-soft px-1.5 py-0.5 text-[10.5px] text-indigo">своя</span>
               </div>
               <span className="hidden whitespace-nowrap font-mono text-[12px] text-ink-2 sm:inline">
-                {formatMoneyRub(it.unitPrice)} × {it.quantity} = {formatMoneyRub(it.unitPrice * it.quantity)} ₽
+                {formatMoneyRubWhole(it.unitPrice)} × {it.quantity} = {formatMoneyRubWhole(it.unitPrice * it.quantity)} ₽
               </span>
               <Stepper
                 qty={it.quantity}
