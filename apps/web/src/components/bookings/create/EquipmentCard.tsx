@@ -50,6 +50,7 @@ type Props = {
   // Catalog callbacks
   onAdd: (row: AvailabilityRow) => void;
   onChangeQty: (equipmentId: string, newQty: number) => void;
+  onChangeNegotiatedRate?: (equipmentId: string, rate: number | null) => void;
   onRemove: (equipmentId: string) => void;
   onChangeOffCatalogQty?: (tempId: string, newQty: number) => void;
   onRemoveOffCatalog?: (tempId: string) => void;
@@ -97,6 +98,7 @@ export function EquipmentCard({
   onAddOffCatalog,
   onAdd,
   onChangeQty,
+  onChangeNegotiatedRate,
   onRemove,
   onChangeOffCatalogQty,
   onRemoveOffCatalog,
@@ -176,6 +178,7 @@ export function EquipmentCard({
         offCatalogItems={offCatalogItems}
         adjustments={adjustments}
         onChangeQty={onChangeQty}
+        onChangeNegotiatedRate={onChangeNegotiatedRate}
         onRemove={onRemove}
         onChangeCustomQty={onChangeCustomQty}
         onRemoveCustom={onRemoveCustom}

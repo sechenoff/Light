@@ -61,6 +61,11 @@ export function buildSmetaExportDocument(args: {
   const rows: SmetaExportLine[] = args.lines.map((l, i) => {
     const unit = new Decimal(l.unitPrice.toString());
     const perShift = shiftDec.gt(0) ? unit.div(shiftDec) : unit;
+    // Прайсовую цену тоже приводим к «за смену» — обе цифры в одной единице,
+    // иначе в документе рядом окажутся цена за смену и цена за период.
+    const listPerShift = l.listUnitPrice
+      ? new Decimal(l.listUnitPrice.toString()).div(shiftDec)
+      : null;
     return {
       index: i + 1,
       name: l.nameSnapshot,
@@ -68,6 +73,7 @@ export function buildSmetaExportDocument(args: {
       quantity: l.quantity,
       pricePerShift: perShift.toDecimalPlaces(2).toFixed(2),
       lineSum: new Decimal(l.lineSum.toString()).toDecimalPlaces(2).toFixed(2),
+      listPricePerShift: listPerShift ? listPerShift.toDecimalPlaces(2).toFixed(2) : null,
     };
   });
 
@@ -88,6 +94,18 @@ export function buildSmetaExportDocument(args: {
     org: args.org ?? null,
     lines: rows,
     subtotal: args.subtotal,
+    ...(() => {
+      const negotiated = args.lines.filter((l) => l.listUnitPrice != null);
+      if (negotiated.length === 0) return {};
+      const sum = (xs: typeof args.lines) =>
+        xs.reduce((a, l) => a.add(new Decimal(l.lineSum.toString())), new Decimal(0));
+      return {
+        listedSubtotal: sum(args.lines.filter((l) => l.listUnitPrice == null))
+          .toDecimalPlaces(2)
+          .toFixed(2),
+        negotiatedSubtotal: sum(negotiated).toDecimalPlaces(2).toFixed(2),
+      };
+    })(),
     discountPercent: args.discountPercent,
     discountAmount: args.discountAmount,
     totalAfterDiscount: args.totalAfterDiscount,
@@ -103,6 +121,7 @@ type PersistedLine = {
   quantity: number;
   unitPrice: MoneyField;
   lineSum: MoneyField;
+  listUnitPrice?: MoneyField | null;
 };
 
 /** Смета из БД (Estimate + Booking) для экспорта после подтверждения. */
@@ -140,6 +159,8 @@ export function buildSmetaFromPersistedEstimate(args: {
     lineSum: new Decimal(l.lineSum.toString()),
     pricingMode: "SHIFT",
     isCustom: false,
+    listUnitPrice: l.listUnitPrice != null ? new Decimal(l.listUnitPrice.toString()) : null,
+    isNegotiated: l.listUnitPrice != null,
   }));
 
   const baseDoc = buildSmetaExportDocument({

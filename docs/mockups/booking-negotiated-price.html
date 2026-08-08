@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Договорная цена — форма брони</title>
+<style>
+  :root{
+    --ink:#09090b; --ink-2:#52525b; --ink-3:#a1a1aa;
+    --surface:#ffffff; --surface-muted:#fafafa; --surface-subtle:#f4f4f5;
+    --border:#e4e4e7; --border-strong:#d4d4d8;
+    --accent:#1e3a8a; --accent-bright:#1d4ed8; --accent-soft:#eff6ff; --accent-border:#bfdbfe;
+    --emerald:#047857; --emerald-soft:#d1fae5; --emerald-border:#a7f3d0;
+    --rose:#9f1239; --rose-soft:#ffe4e6; --rose-border:#fecdd3;
+    --amber:#a16207; --amber-soft:#fef3c7; --amber-border:#fde68a;
+    --indigo:#4338ca; --indigo-soft:#e0e7ff; --indigo-border:#c7d2fe;
+    --page:#f4f4f5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ink:#f4f4f5; --ink-2:#a1a1aa; --ink-3:#71717a;
+      --surface:#181d27; --surface-muted:#0f1319; --surface-subtle:#1f2530;
+      --border:#2a3040; --border-strong:#3a4152;
+      --accent:#93b4fd; --accent-bright:#7ba3fc; --accent-soft:#16233d; --accent-border:#274069;
+      --emerald:#5eddaa; --emerald-soft:#123028; --emerald-border:#1d4a3c;
+      --rose:#fb9db0; --rose-soft:#3a1622; --rose-border:#5c2436;
+      --amber:#f2c561; --amber-soft:#332510; --amber-border:#54401a;
+      --indigo:#a5b4fc; --indigo-soft:#1e2140; --indigo-border:#2f3566;
+      --page:#0b0e13;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#f4f4f5; --ink-2:#a1a1aa; --ink-3:#71717a;
+    --surface:#181d27; --surface-muted:#0f1319; --surface-subtle:#1f2530;
+    --border:#2a3040; --border-strong:#3a4152;
+    --accent:#93b4fd; --accent-bright:#7ba3fc; --accent-soft:#16233d; --accent-border:#274069;
+    --emerald:#5eddaa; --emerald-soft:#123028; --emerald-border:#1d4a3c;
+    --rose:#fb9db0; --rose-soft:#3a1622; --rose-border:#5c2436;
+    --amber:#f2c561; --amber-soft:#332510; --amber-border:#54401a;
+    --indigo:#a5b4fc; --indigo-soft:#1e2140; --indigo-border:#2f3566;
+    --page:#0b0e13;
+  }
+  :root[data-theme="light"]{
+    --ink:#09090b; --ink-2:#52525b; --ink-3:#a1a1aa;
+    --surface:#ffffff; --surface-muted:#fafafa; --surface-subtle:#f4f4f5;
+    --border:#e4e4e7; --border-strong:#d4d4d8;
+    --accent:#1e3a8a; --accent-bright:#1d4ed8; --accent-soft:#eff6ff; --accent-border:#bfdbfe;
+    --emerald:#047857; --emerald-soft:#d1fae5; --emerald-border:#a7f3d0;
+    --rose:#9f1239; --rose-soft:#ffe4e6; --rose-border:#fecdd3;
+    --amber:#a16207; --amber-soft:#fef3c7; --amber-border:#fde68a;
+    --indigo:#4338ca; --indigo-soft:#e0e7ff; --indigo-border:#c7d2fe;
+    --page:#f4f4f5;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"IBM Plex Sans","Segoe UI",system-ui,-apple-system,sans-serif;
+    background:var(--page);color:var(--ink);
+    padding:28px 16px 96px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+  .wrap{max-width:940px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+
+  h1{font-size:20px;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+  .lede{font-size:13.5px;color:var(--ink-2);max-width:66ch}
+  .eyebrow{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 1px 2px rgb(0 0 0 / .04);overflow:hidden}
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 18px;border-bottom:1px solid var(--border);background:var(--surface-muted)}
+  .card-head .eyebrow{color:var(--ink)}
+  .card-body{padding:12px 10px}
+
+  /* ── строка состава ──
+     Название и арифметика — две строки: цена стала полем ввода, и в одну
+     строку они начинают драться за место уже на планшете. */
+  .row{
+    display:grid;grid-template-columns:6px 1fr auto auto;
+    align-items:center;column-gap:10px;row-gap:5px;
+    padding:9px 8px;border-radius:6px;
+  }
+  .row:hover{background:var(--surface-muted)}
+  .row + .row{margin-top:1px}
+  .dot{width:6px;height:6px;border-radius:99px;background:var(--emerald);flex:none}
+  .name{min-width:0;font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .calc{
+    grid-column:2 / -1;
+    font-size:12px;color:var(--ink-2);
+    display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  }
+  .calc .dim{color:var(--ink-3)}
+  .calc .sum{color:var(--ink);font-weight:600}
+
+  /* ── редактируемая цена: главный жест ── */
+  .price{
+    font:inherit;font-size:12px;font-weight:600;
+    font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;
+    color:var(--ink);background:transparent;
+    border:1px solid transparent;border-bottom-color:var(--border-strong);
+    border-radius:4px;padding:2px 6px;cursor:text;
+    text-align:right;width:9ch;
+  }
+  .price:hover{background:var(--surface-subtle);border-color:var(--border-strong)}
+  .price:focus{outline:none;background:var(--surface);border-color:var(--accent-bright);box-shadow:0 0 0 3px var(--accent-soft)}
+  .price.custom{color:var(--indigo);border-bottom-color:var(--indigo-border);background:var(--indigo-soft)}
+  .badge{
+    font-size:10.5px;font-weight:500;color:var(--indigo);background:var(--indigo-soft);
+    border:1px solid var(--indigo-border);border-radius:4px;padding:1px 5px;white-space:nowrap;
+  }
+  .revert{
+    border:0;background:transparent;color:var(--ink-3);cursor:pointer;
+    font-size:13px;line-height:1;padding:3px 4px;border-radius:4px;
+  }
+  .revert:hover{background:var(--rose-soft);color:var(--rose)}
+  .revert:focus-visible{outline:2px solid var(--accent-bright);outline-offset:1px}
+  .qty{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:30px;height:24px;padding:0 6px;flex:none;
+    border:1px solid var(--emerald-border);border-radius:5px;
+    font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;color:var(--emerald);
+  }
+
+  /* ── панель расчёта ── */
+  .sum-grid{display:flex;flex-direction:column;gap:5px;font-size:13px;padding:2px 8px 0}
+  .sum-line{display:flex;justify-content:space-between;gap:16px;align-items:baseline}
+  .sum-line .k{color:var(--ink-2)}
+  .sum-line .v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .sum-line.neg .v{color:var(--rose)}
+  .sum-total{border-top:1px solid var(--border);margin-top:5px;padding-top:8px;font-weight:600}
+  .sum-total .k{color:var(--ink)}
+
+  .big{display:flex;align-items:baseline;gap:6px;padding:4px 8px 10px}
+  .big-input{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;
+    font-size:30px;font-weight:600;line-height:1.05;letter-spacing:-.02em;
+    color:var(--ink);background:transparent;border:1px solid transparent;border-radius:6px;
+    padding:2px 8px;width:9ch;text-align:left;cursor:text;
+  }
+  .big-input:hover{background:var(--surface-subtle);border-color:var(--border)}
+  .big-input:focus{outline:none;background:var(--surface);border-color:var(--accent-bright);box-shadow:0 0 0 3px var(--accent-soft)}
+  .big-input.custom{color:var(--indigo);background:var(--indigo-soft);border-color:var(--indigo-border)}
+  .cur{font-size:17px;color:var(--ink-3)}
+  .meta{font-size:11.5px;color:var(--ink-3);padding:0 8px 2px}
+
+  .hint{
+    display:flex;gap:8px;align-items:flex-start;
+    background:var(--accent-soft);border:1px solid var(--accent-border);
+    border-radius:7px;padding:9px 12px;font-size:12.5px;color:var(--ink-2);
+  }
+  .hint b{color:var(--accent-bright);font-weight:600}
+  .hint.warn{background:var(--amber-soft);border-color:var(--amber-border)}
+  .hint.warn b{color:var(--amber)}
+
+  /* ── смета клиенту ── */
+  table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:460px}
+  th{
+    text-align:left;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--ink-3);padding:7px 8px;border-bottom:1px solid var(--border);white-space:nowrap;
+  }
+  td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
+  td.num{text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  .sub{display:block;font-size:11px;color:var(--indigo);margin-top:2px}
+  .scroll{overflow-x:auto}
+
+  .steps{display:flex;flex-direction:column;gap:9px;font-size:13px;color:var(--ink-2)}
+  .step{display:flex;gap:10px;align-items:baseline}
+  .step .n{
+    flex:none;width:19px;height:19px;border-radius:99px;
+    border:1px solid var(--border-strong);color:var(--ink-3);
+    font-size:10.5px;font-weight:600;display:flex;align-items:center;justify-content:center;
+    font-family:"IBM Plex Mono",monospace;
+  }
+  .step b{color:var(--ink);font-weight:600}
+
+  .toggle{
+    align-self:flex-start;
+    border:1px solid var(--border);background:var(--surface);color:var(--ink-2);
+    border-radius:6px;padding:5px 11px;font:inherit;font-size:12px;cursor:pointer;
+  }
+  .toggle:hover{background:var(--surface-muted);color:var(--ink)}
+  .toggle:focus-visible{outline:2px solid var(--accent-bright);outline-offset:2px}
+  @media (max-width:520px){
+    .calc{font-size:11.5px;gap:5px}
+    .name{font-size:12.5px}
+    .big-input{font-size:26px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;align-items:flex-start;gap:8px">
+    <button class="toggle" id="themeBtn" type="button">Ночная тема</button>
+    <p class="eyebrow">Форма брони · предложение</p>
+    <h1 style="margin-top:4px">Договорная цена</h1>
+    <p class="lede" style="margin-top:6px">
+      Один жест на всех трёх уровнях: кликнуть по цифре и вписать свою. Цена прибора, сумма машины,
+      итог сметы. Ниже — рабочий макет: цифры действительно редактируются, расчёт пересчитывается.
+    </p>
+  </header>
+
+  <div class="hint">
+    <span>→</span>
+    <span>Кликните по любой синей цифре и введите свою. <b>Enter</b> — зафиксировать,
+    <b>Esc</b> — отменить, <b>↺</b> — вернуть прайсовую.</span>
+  </div>
+
+  <!-- ── Состав ── -->
+  <section class="card">
+    <div class="card-head">
+      <span class="eyebrow">Состав</span>
+      <span class="mono" style="font-size:12px;color:var(--ink-2)">3 смены · <b id="posCount">3</b> позиции</span>
+    </div>
+    <div class="card-body" id="items"></div>
+  </section>
+
+  <!-- ── Транспорт ── -->
+  <section class="card">
+    <div class="card-head">
+      <span class="eyebrow">Транспорт</span>
+    </div>
+    <div class="card-body" id="vehicles"></div>
+  </section>
+
+  <!-- ── Расчёт ── -->
+  <section class="card">
+    <div class="card-head">
+      <span class="eyebrow">Расчёт</span>
+      <span style="font-size:11.5px;color:var(--ink-3)">обновлено сейчас</span>
+    </div>
+    <div style="padding:10px 8px 14px">
+      <div class="big">
+        <input class="big-input" id="grand" inputmode="numeric" aria-label="Итоговая сумма брони">
+        <span class="cur">₽</span>
+      </div>
+      <p class="meta" id="grandMeta">3 дня · 3 позиции</p>
+      <div class="sum-grid" id="breakdown"></div>
+    </div>
+  </section>
+
+  <div class="hint warn" id="ruleHint">
+    <span>!</span>
+    <span><b>Скидка 50% применяется только к позициям по прайсу.</b>
+    Вписанная вручную цена — уже договорная, процент к ней не добавляется.</span>
+  </div>
+
+  <!-- ── Смета клиенту ── -->
+  <section class="card">
+    <div class="card-head">
+      <span class="eyebrow">Смета заказчику</span>
+      <span style="font-size:11.5px;color:var(--ink-3)">как это печатается в PDF</span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Наименование</th>
+            <th style="text-align:right;width:58px">Кол-во</th>
+            <th style="text-align:right;width:96px">Цена / см</th>
+            <th style="text-align:right;width:104px">Сумма</th>
+          </tr>
+        </thead>
+        <tbody id="estimate"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Как это работает ── -->
+  <section class="card">
+    <div class="card-head"><span class="eyebrow">Что происходит под капотом</span></div>
+    <div style="padding:14px 18px 16px">
+      <div class="steps">
+        <div class="step"><span class="n">1</span><span>
+          Ручная цена живёт <b>на позиции брони</b>, а не в снапшоте сметы. Снапшот пересобирается
+          при каждой правке брони и при завершении приёмки на складе — цена, записанная туда,
+          была бы молча затёрта.
+        </span></div>
+        <div class="step"><span class="n">2</span><span>
+          Позиция остаётся <b>каталожной</b>: проверка доступности, резерв юнитов, доборы на складе
+          и аналитика продолжают работать. Сегодня своя цена возможна только через «позицию вне
+          каталога», которая всё это теряет.
+        </span></div>
+        <div class="step"><span class="n">3</span><span>
+          Итог <b>пришпилен</b>: вписали 150 000 — держится, даже если потом добавить лампу.
+          Разница показывается строкой «Договорная скидка», а не прячется.
+        </span></div>
+        <div class="step"><span class="n">4</span><span>
+          В смете — <b>«персональная скидка»</b>: видна цена до скидки и цена по договорённости.
+          Уступка остаётся продающим аргументом, как сейчас работают 50%.
+        </span></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const SHIFTS = 3;
+const DISCOUNT = 50;
+
+const items = [
+  { id:"a", name:"ARRI SkyPanel S60-C",        qty:2, list:25000, price:null },
+  { id:"b", name:"Aputure LS 600d Pro",        qty:3, list:12000, price:null },
+  { id:"c", name:"Стойка Manfrotto 1004BAC",   qty:6, list:1500,  price:null },
+];
+const vehicles = [
+  { id:"v1", name:"Газель (тент)", list:18000, price:null },
+];
+let grandOverride = null;
+
+const fmt = (n) => Math.round(n).toLocaleString("ru-RU").replace(/ /g, " ");
+const parse = (s) => {
+  const n = Number(String(s).replace(/[^\d]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+/** Цена по прайсу или договорная — одна точка правды для всех расчётов. */
+const rateOf = (it) => it.price ?? it.list;
+const lineSum = (it) => rateOf(it) * it.qty * SHIFTS;
+const vehSum  = (v) => v.price ?? v.list;
+
+function compute(){
+  // Скидка ложится только на прайсовые позиции: договорная цена уже финальная.
+  const listed  = items.filter((i) => i.price == null);
+  const agreed  = items.filter((i) => i.price != null);
+  const listedSum = listed.reduce((s,i) => s + lineSum(i), 0);
+  const agreedSum = agreed.reduce((s,i) => s + lineSum(i), 0);
+  const discount  = listedSum * DISCOUNT / 100;
+  const equipment = listedSum - discount + agreedSum;
+  const transport = vehicles.reduce((s,v) => s + vehSum(v), 0);
+  const computed  = equipment + transport;
+  const total     = grandOverride ?? computed;
+  return { listedSum, agreedSum, discount, equipment, transport, computed, total,
+           negotiated: computed - total };
+}
+
+function priceInput(value, isCustom, onCommit, label){
+  const el = document.createElement("input");
+  el.className = "price" + (isCustom ? " custom" : "");
+  el.value = fmt(value);
+  el.inputMode = "numeric";
+  el.setAttribute("aria-label", label);
+  el.addEventListener("focus", () => el.select());
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); el.blur(); }
+    if (e.key === "Escape") { e.preventDefault(); el.value = fmt(value); el.blur(); }
+  });
+  el.addEventListener("blur", () => onCommit(parse(el.value)));
+  return el;
+}
+
+function renderItems(){
+  const box = document.getElementById("items");
+  box.innerHTML = "";
+  for (const it of items){
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const dot = document.createElement("span"); dot.className = "dot";
+    const name = document.createElement("span"); name.className = "name"; name.textContent = it.name;
+
+    // Порядок в разметке = порядок в сетке: первая строка — название,
+    // возврат к прайсу и количество; вторая — арифметика.
+    const back = document.createElement("span");
+    if (it.price != null){
+      const b = document.createElement("button");
+      b.className = "revert"; b.type = "button"; b.textContent = "↺";
+      b.title = "Вернуть цену по прайсу";
+      b.setAttribute("aria-label", `Вернуть прайсовую цену: ${it.name}`);
+      b.onclick = () => { it.price = null; render(); };
+      back.appendChild(b);
+    }
+    const qty = document.createElement("span"); qty.className = "qty"; qty.textContent = "×" + it.qty;
+    row.append(dot, name, back, qty);
+
+    const calc = document.createElement("span"); calc.className = "calc";
+    const input = priceInput(rateOf(it), it.price != null,
+      (v) => { it.price = (v === null || v === it.list) ? null : v; render(); },
+      `Цена за смену: ${it.name}`);
+    calc.appendChild(input);
+    const tail = document.createElement("span");
+    tail.className = "dim";
+    tail.textContent = `/см × ${it.qty} × ${SHIFTS} см =`;
+    calc.appendChild(tail);
+    const sum = document.createElement("span"); sum.className = "sum";
+    sum.textContent = fmt(lineSum(it)) + " ₽";
+    calc.appendChild(sum);
+    if (it.price != null){
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = "по прайсу " + fmt(it.list);
+      calc.appendChild(badge);
+    }
+    row.append(calc);
+    box.appendChild(row);
+  }
+  document.getElementById("posCount").textContent = String(items.length);
+}
+
+function renderVehicles(){
+  const box = document.getElementById("vehicles");
+  box.innerHTML = "";
+  for (const v of vehicles){
+    const row = document.createElement("div");
+    row.className = "row";
+    const dot = document.createElement("span");
+    dot.className = "dot"; dot.style.background = "var(--accent-bright)";
+    const name = document.createElement("span");
+    name.className = "name"; name.textContent = v.name;
+
+    const back = document.createElement("span");
+    if (v.price != null){
+      const b = document.createElement("button");
+      b.className = "revert"; b.type = "button"; b.textContent = "↺";
+      b.title = "Вернуть цену по прайсу";
+      b.setAttribute("aria-label", `Вернуть прайсовую цену: ${v.name}`);
+      b.onclick = () => { v.price = null; render(); };
+      back.appendChild(b);
+    }
+    row.append(dot, name, back, document.createElement("span"));
+
+    const calc = document.createElement("span"); calc.className = "calc";
+    const input = priceInput(vehSum(v), v.price != null,
+      (val) => { v.price = (val === null || val === v.list) ? null : val; render(); },
+      `Сумма за машину: ${v.name}`);
+    calc.appendChild(input);
+    const cur = document.createElement("span"); cur.className = "dim"; cur.textContent = "₽ за смену";
+    calc.appendChild(cur);
+    if (v.price != null){
+      const badge = document.createElement("span");
+      badge.className = "badge"; badge.textContent = "по прайсу " + fmt(v.list);
+      calc.appendChild(badge);
+    }
+    row.append(calc);
+    box.appendChild(row);
+  }
+}
+
+function renderSummary(){
+  const c = compute();
+  const grand = document.getElementById("grand");
+  if (document.activeElement !== grand){
+    grand.value = fmt(c.total);
+  }
+  grand.classList.toggle("custom", grandOverride != null);
+
+  const box = document.getElementById("breakdown");
+  box.innerHTML = "";
+  const line = (k, v, cls) => {
+    const d = document.createElement("div");
+    d.className = "sum-line" + (cls ? " " + cls : "");
+    d.innerHTML = `<span class="k">${k}</span><span class="v">${v}</span>`;
+    box.appendChild(d);
+    return d;
+  };
+
+  line("Оборудование по прайсу", fmt(c.listedSum) + " ₽");
+  line(`Скидка ${DISCOUNT}%`, "−" + fmt(c.discount) + " ₽", "neg");
+  if (c.agreedSum > 0){
+    const d = line("Позиции по договорённости", fmt(c.agreedSum) + " ₽");
+    d.querySelector(".v").style.color = "var(--indigo)";
+  }
+  line("Транспорт", fmt(c.transport) + " ₽");
+  if (grandOverride != null && Math.abs(c.negotiated) > 0.5){
+    const isDiscount = c.negotiated > 0;
+    const d = line(
+      isDiscount ? "Договорная скидка" : "Договорная надбавка",
+      (isDiscount ? "−" : "+") + fmt(Math.abs(c.negotiated)) + " ₽",
+    );
+    d.querySelector(".v").style.color = isDiscount ? "var(--rose)" : "var(--amber)";
+  }
+  line("Итого", fmt(c.total) + " ₽", "sum-total");
+
+  const meta = document.getElementById("grandMeta");
+  meta.textContent = grandOverride != null
+    ? `Итог зафиксирован вручную · по расчёту ${fmt(c.computed)} ₽`
+    : `${SHIFTS} дня · ${items.length} позиции`;
+
+  const hint = document.getElementById("ruleHint");
+  hint.style.display = c.agreedSum > 0 ? "flex" : "none";
+}
+
+function renderEstimate(){
+  const body = document.getElementById("estimate");
+  body.innerHTML = "";
+  for (const it of items){
+    const tr = document.createElement("tr");
+    const isCustom = it.price != null;
+    // Скидка 50% на прайсовые позиции показана в строке итога, а не в цене:
+    // персональная цена печатается как есть, рядом — цена до скидки.
+    const shown = isCustom ? it.price : it.list;
+    tr.innerHTML = `
+      <td>${it.name}${isCustom ? `<span class="sub">персональная скидка · цена до скидки ${fmt(it.list)} ₽</span>` : ""}</td>
+      <td class="num">${it.qty}</td>
+      <td class="num">${fmt(shown)}</td>
+      <td class="num">${fmt(shown * it.qty * SHIFTS)}</td>`;
+    body.appendChild(tr);
+  }
+  for (const v of vehicles){
+    const isCustom = v.price != null;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${v.name}${isCustom ? `<span class="sub">персональная скидка · цена до скидки ${fmt(v.list)} ₽</span>` : ""}</td>
+      <td class="num">1</td>
+      <td class="num">${fmt(vehSum(v))}</td>
+      <td class="num">${fmt(vehSum(v))}</td>`;
+    body.appendChild(tr);
+  }
+}
+
+function render(){ renderItems(); renderVehicles(); renderSummary(); renderEstimate(); }
+
+const grandEl = document.getElementById("grand");
+grandEl.addEventListener("focus", () => grandEl.select());
+grandEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter"){ e.preventDefault(); grandEl.blur(); }
+  if (e.key === "Escape"){ e.preventDefault(); grandOverride = null; render(); grandEl.blur(); }
+});
+grandEl.addEventListener("blur", () => {
+  const v = parse(grandEl.value);
+  const c = compute();
+  grandOverride = (v === null || v === Math.round(c.computed)) ? null : v;
+  render();
+});
+
+const btn = document.getElementById("themeBtn");
+btn.addEventListener("click", () => {
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+  btn.textContent = dark ? "Ночная тема" : "Светлая тема";
+});
+
+render();
+</script>
+</body>
+</html>

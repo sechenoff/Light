@@ -200,7 +200,11 @@ export function addSmetaSheetToWorkbook(
       r.getCell(1).font = { size: 9, color: { argb: XC.faint } };
       r.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
 
-      r.getCell(2).value = line.name;
+      // Персональная цена подписывается второй строкой в той же ячейке —
+      // отдельная колонка ради редкого случая раздула бы таблицу на печати.
+      r.getCell(2).value = line.listPricePerShift
+        ? `${line.name}\nперсональная скидка · цена до скидки ${line.listPricePerShift} ₽`
+        : line.name;
       r.getCell(2).font = { size: 10, color: { argb: XC.ink } };
       r.getCell(2).alignment = { vertical: "middle", wrapText: true };
 
@@ -244,9 +248,19 @@ export function addSmetaSheetToWorkbook(
     row++;
   };
 
-  addTotal("Оборудование итого", parseMoney(data.subtotal), { muted: true });
-  if (Number(data.discountPercent) > 0) {
-    addTotal(`Скидка ${data.discountPercent}%`, -parseMoney(data.discountAmount), { muted: true });
+  // База скидки печатается отдельно, когда в смете есть договорные позиции:
+  // процент считается только от прайсовой части (см. renderPdf).
+  if (data.listedSubtotal != null && data.negotiatedSubtotal != null) {
+    addTotal("Оборудование по прайсу", parseMoney(data.listedSubtotal), { muted: true });
+    if (Number(data.discountPercent) > 0) {
+      addTotal(`Скидка ${data.discountPercent}%`, -parseMoney(data.discountAmount), { muted: true });
+    }
+    addTotal("Позиции по договорённости", parseMoney(data.negotiatedSubtotal), { muted: true });
+  } else {
+    addTotal("Оборудование итого", parseMoney(data.subtotal), { muted: true });
+    if (Number(data.discountPercent) > 0) {
+      addTotal(`Скидка ${data.discountPercent}%`, -parseMoney(data.discountAmount), { muted: true });
+    }
   }
   const finalLabel = data.documentTitleRu === "Смета-добор" ? "Итого по доб-смете" : "Итого по смете";
   addTotal(finalLabel, parseMoney(data.totalAfterDiscount), { bold: true });

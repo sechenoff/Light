@@ -7,6 +7,12 @@ export type SmetaExportLine = {
   /** Цена за одну смену (24 ч) за единицу */
   pricePerShift: string;
   lineSum: string;
+  /**
+   * Прайсовая цена за смену — заполнена только там, где о цене договорились
+   * отдельно. Печатается под названием как «персональная скидка · цена до
+   * скидки N ₽»: уступка остаётся видимой, как и общая процентная скидка.
+   */
+  listPricePerShift?: string | null;
 };
 
 /**
@@ -40,6 +46,14 @@ export type SmetaExportDocument = {
   org: SmetaOrgInfo | null;
   lines: SmetaExportLine[];
   subtotal: string;
+  /**
+   * Сумма прайсовых строк — база, от которой считается процентная скидка.
+   * Заполняется только когда в смете есть договорные позиции: иначе база
+   * совпадает с subtotal и лишняя строка в документе не нужна.
+   */
+  listedSubtotal?: string | null;
+  /** Сумма договорных строк — процент к ним не применяется. */
+  negotiatedSubtotal?: string | null;
   discountPercent: string;
   discountAmount: string;
   totalAfterDiscount: string;

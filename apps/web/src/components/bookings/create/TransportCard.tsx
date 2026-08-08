@@ -1,6 +1,7 @@
 "use client";
 
 import { formatMoneyRub } from "../../../lib/format";
+import { EditablePrice, ListPriceBadge, RevertPriceButton } from "./EditablePrice";
 import type { VehicleRow, TransportBreakdown, SelectedVehicle } from "./types";
 
 type TransportCardProps = {
@@ -12,6 +13,11 @@ type TransportCardProps = {
   onPatchVehicle: (vehicleId: string, patch: Partial<SelectedVehicle>) => void;
   /** Per-vehicle breakdowns keyed by vehicleId (from quote or local calc). */
   breakdownByVehicleId: Record<string, TransportBreakdown>;
+  /**
+   * Договорная сумма за машину; null — вернуть расчёт по прайсу и параметрам.
+   * Не передан — суммы только для чтения.
+   */
+  onChangeNegotiatedTotal?: (vehicleId: string, total: number | null) => void;
 };
 
 export function TransportCard({
@@ -20,6 +26,7 @@ export function TransportCard({
   onToggleVehicle,
   onPatchVehicle,
   breakdownByVehicleId,
+  onChangeNegotiatedTotal,
 }: TransportCardProps) {
   const selectedById = new Map(selected.map((s) => [s.vehicleId, s]));
   const totalAll = selected.reduce(
@@ -205,11 +212,31 @@ export function TransportCard({
                             </span>
                           </div>
                         )}
-                        <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold text-ink">
+                        <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-border pt-1 font-semibold text-ink">
                           <span>Итого {vehicle.name}</span>
-                          <span className="mono-num">
-                            {formatMoneyRub(Number(breakdown.total))} ₽
-                          </span>
+                          {onChangeNegotiatedTotal ? (
+                            <span className="flex items-center gap-1.5">
+                              {sel.negotiatedTotalRub != null && (
+                                <>
+                                  <ListPriceBadge value={Number(breakdown.listTotal ?? breakdown.total)} />
+                                  <RevertPriceButton
+                                    onClick={() => onChangeNegotiatedTotal(sel.vehicleId, null)}
+                                    label={`Вернуть прайсовую цену: ${vehicle.name}`}
+                                  />
+                                </>
+                              )}
+                              <EditablePrice
+                                value={Number(breakdown.total)}
+                                listValue={Number(breakdown.listTotal ?? breakdown.total)}
+                                isNegotiated={sel.negotiatedTotalRub != null}
+                                onChange={(v) => onChangeNegotiatedTotal(sel.vehicleId, v)}
+                                ariaLabel={`Сумма за машину: ${vehicle.name}`}
+                              />
+                              <span className="text-ink-3">₽</span>
+                            </span>
+                          ) : (
+                            <span className="mono-num">{formatMoneyRub(Number(breakdown.total))} ₽</span>
+                          )}
                         </div>
                       </div>
                     </div>

@@ -47,13 +47,24 @@ const bookingItemSchema = z
     customName: z.string().min(1).max(200).optional(),
     customUnitPrice: z.number().positive().max(100_000_000).optional(),
     quantity: z.number().int().positive(),
+    /**
+     * Договорная ставка за смену по каталожной позиции. Раньше своя цена была
+     * возможна только у позиции ВНЕ каталога — и такая позиция теряла
+     * equipmentId, а вместе с ним проверку доступности, резерв юнитов, доборы
+     * и аналитику. Теперь каталожная позиция может иметь свою цену, оставаясь
+     * каталожной. null — вернуться к прайсу.
+     */
+    negotiatedRatePerShift: z.number().positive().max(100_000_000).nullish(),
   })
   .refine(
     (v) =>
       (v.equipmentId && !v.customName && v.customUnitPrice === undefined) ||
       (!v.equipmentId && v.customName && v.customUnitPrice !== undefined),
     { message: "Укажите либо equipmentId, либо customName + customUnitPrice" },
-  );
+  )
+  .refine((v) => v.negotiatedRatePerShift == null || Boolean(v.equipmentId), {
+    message: "Договорная цена задаётся только для позиции из каталога",
+  });
 
 const transportVehicleSchema = z.object({
   vehicleId: z.string().min(1),
@@ -62,6 +73,8 @@ const transportVehicleSchema = z.object({
   skipOvertime: z.boolean().default(false),
   kmOutsideMkad: z.number().int().min(0).default(0),
   ttkEntry: z.boolean().default(false),
+  /** Договорная сумма за машину; заменяет расчёт по прайсу и параметрам. */
+  negotiatedTotalRub: z.number().nonnegative().max(100_000_000).nullish(),
 });
 
 /**
@@ -105,6 +118,11 @@ const clientNameSchema = z
   }, "Укажите имя клиента (нельзя «—» или пустое)");
 
 const bookingCreateSchema = z.object({
+  /**
+   * Договорной итог брони: сумма, о которой сговорились, вместо посчитанной по
+   * смете. Применяется только SUPER_ADMIN — то же правило, что и в PATCH.
+   */
+  manualFinalAmount: z.number().finite().min(0).max(1_000_000_000).optional().nullable(),
   client: z.object({
     name: clientNameSchema,
     phone: z.string().optional().nullable(),
@@ -314,6 +332,10 @@ async function computeTransportSnapshots(
       kmOutsideMkad: entry.kmOutsideMkad,
       ttkEntry: entry.ttkEntry,
     });
+    // Договорная сумма заменяет расчётную: в subtotalRub кладём ту, что реально
+    // войдёт в деньги брони, а прайсовую сохраняем отдельным полем — она нужна
+    // смете для строки «цена до скидки» и разговора «почему было столько».
+    const negotiated = entry.negotiatedTotalRub;
     snapshots.push({
       vehicleId: entry.vehicleId,
       withGenerator: entry.withGenerator,
@@ -321,7 +343,8 @@ async function computeTransportSnapshots(
       skipOvertime: entry.skipOvertime,
       kmOutsideMkad: entry.kmOutsideMkad,
       ttkEntry: entry.ttkEntry,
-      subtotalRub: breakdown.total,
+      subtotalRub: negotiated != null ? new Decimal(negotiated).toDecimalPlaces(2).toString() : breakdown.total,
+      negotiatedTotalRub: negotiated != null ? new Decimal(negotiated).toDecimalPlaces(2).toString() : null,
     });
   }
   return snapshots;
@@ -713,7 +736,13 @@ router.patch("/:id", async (req, res, next) => {
       assertBookingRangeOrder(start, end);
 
       const itemsAfter = body.items
-        ? body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity }))
+        ? body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      }))
         : existing.items.map((i) => ({ equipmentId: i.equipmentId ?? undefined, customName: (i as any).customName ?? undefined, customUnitPrice: (i as any).customUnitPrice != null ? Number((i as any).customUnitPrice.toString()) : undefined, quantity: i.quantity }));
 
       const estimate = await quoteEstimate({
@@ -886,6 +915,8 @@ router.patch("/:id", async (req, res, next) => {
             quantity: it.quantity,
             customName: it.customName ?? null,
             customUnitPrice: it.customUnitPrice != null ? new Decimal(it.customUnitPrice) : null,
+            negotiatedRatePerShift:
+              it.negotiatedRatePerShift != null ? new Decimal(it.negotiatedRatePerShift) : null,
             customCategory: !it.equipmentId && it.customName ? CUSTOM_LINE_CATEGORY : null,
           })),
         });
@@ -975,6 +1006,8 @@ router.patch("/:id", async (req, res, next) => {
               kmOutsideMkad: t.kmOutsideMkad,
               ttkEntry: t.ttkEntry,
               subtotalRub: new Decimal(t.subtotalRub),
+              negotiatedTotalRub:
+                t.negotiatedTotalRub != null ? new Decimal(t.negotiatedTotalRub) : null,
               driverName: driverByVehicleId.get(t.vehicleId)?.driverName ?? null,
               driverPhone: driverByVehicleId.get(t.vehicleId)?.driverPhone ?? null,
             })),
@@ -1002,11 +1035,14 @@ router.patch("/:id", async (req, res, next) => {
                 vehicleId: null,
               }
             : {}),
-          // manualFinalAmount — override итоговой суммы. Доступно только
-          // в retroactive-режиме (вне его поле в body игнорируется через
-          // условие ниже). null очищает override, число — устанавливает.
+          // manualFinalAmount — договорной итог брони: сумма, о которой
+          // сговорились, вместо посчитанной по смете. Раньше поле работало
+          // только в retro-режиме, то есть было недоступно ровно тогда, когда
+          // о цене и договариваются — при создании и правке брони. Право
+          // фиксировать итог остаётся за SUPER_ADMIN.
+          // null очищает override, число — устанавливает.
           manualFinalAmount:
-            retroactiveEdit && body.manualFinalAmount !== undefined
+            isSuperAdmin && body.manualFinalAmount !== undefined
               ? body.manualFinalAmount === null
                 ? null
                 : new Decimal(body.manualFinalAmount)
@@ -1102,7 +1138,13 @@ router.patch("/:id", async (req, res, next) => {
     if (wasInReview) {
       try {
         const itemsAfter = body.items
-          ? body.items.map((it: any) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity }))
+          ? body.items.map((it: any) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      }))
           : existing.items.map((i: any) => ({ equipmentId: i.equipmentId ?? undefined, customName: i.customName ?? undefined, customUnitPrice: i.customUnitPrice != null ? Number(i.customUnitPrice.toString()) : undefined, quantity: i.quantity }));
         const quote = await quoteEstimate({
           startDate: start,
@@ -1570,7 +1612,13 @@ router.post("/quote", async (req, res, next) => {
       endDate: end,
       clientId: clientIdForQuote,
       discountPercent: body.discountPercent ?? null,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+      items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
       transport: body.transport ?? null,
       skipPartialDay: body.skipPartialDay ?? false,
     });
@@ -1590,6 +1638,10 @@ router.post("/quote", async (req, res, next) => {
       discountPercent: estimate.discountPercent.toString(),
       discountAmount: estimate.discountAmount.toFixed(2),
       totalAfterDiscount: estimate.totalAfterDiscount.toFixed(2),
+      // Раскладка на прайсовую и договорную части: панель расчёта показывает
+      // их отдельно, потому что процент ложится только на прайсовую.
+      listedSubtotal: estimate.listedSubtotal.toFixed(2),
+      negotiatedSubtotal: estimate.negotiatedSubtotal.toFixed(2),
       // Transport — array of per-vehicle breakdowns (empty when none) + summed subtotal
       transport: estimate.transport,
       transportSubtotal: estimate.transportSubtotal.toFixed(2),
@@ -1605,6 +1657,8 @@ router.post("/quote", async (req, res, next) => {
         pricingMode: l.pricingMode,
         unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
         lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+        listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
+        isNegotiated: l.isNegotiated,
       })),
     });
   } catch (err) {
@@ -1648,7 +1702,13 @@ router.post("/quote/export", async (req, res, next) => {
       endDate: end,
       clientId: client.id,
       discountPercent: body.discountPercent ?? null,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+      items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
       skipPartialDay: body.skipPartialDay ?? false,
     });
 
@@ -1742,7 +1802,13 @@ router.post("/draft", async (req, res, next) => {
         endDate: end,
         clientId: clientIdForQuote,
         discountPercent: body.discountPercent ?? null,
-        items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+        items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
         transport: body.transport ?? null,
         skipPartialDay: body.skipPartialDay ?? false,
       });
@@ -1831,7 +1897,15 @@ router.post("/draft", async (req, res, next) => {
       estimateOptionalNote: body.estimateOptionalNote ?? null,
       estimateIncludeOptionalInExport: body.estimateIncludeOptionalInExport ?? false,
       skipPartialDay: body.skipPartialDay ?? false,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+      manualFinalAmount:
+        req.adminUser?.role === "SUPER_ADMIN" ? body.manualFinalAmount ?? null : null,
+      items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
       transport: transportSnapshots,
     });
 

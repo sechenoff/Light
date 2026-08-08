@@ -59,7 +59,11 @@ export type TransportBreakdown = {
   overtimeHours: number;
   km: string;
   ttk: string;
+  /** Итог по машине: договорной, если задан, иначе расчётный. */
   total: string;
+  /** Сумма по прайсу и параметрам — до договорной замены. */
+  listTotal?: string;
+  isNegotiated?: boolean;
 };
 
 /** Per-vehicle config on the booking form (multi-vehicle) */
@@ -70,6 +74,8 @@ export type SelectedVehicle = {
   skipOvertime: boolean;
   kmOutsideMkad: number;
   ttkEntry: boolean;
+  /** Договорная сумма за машину; null — считаем по прайсу. */
+  negotiatedTotalRub?: number | null;
 };
 
 /** Response from POST /api/bookings/quote */
@@ -86,6 +92,10 @@ export type QuoteResponse = {
   discountPercent: string;
   discountAmount: string;
   totalAfterDiscount: string;
+  /** Сумма прайсовых строк — база, на которую начисляется процент. */
+  listedSubtotal?: string;
+  /** Сумма договорных строк — процент к ним не применяется. */
+  negotiatedSubtotal?: string;
   // Transport — array of per-vehicle breakdowns (empty when none) + summed subtotal
   transport?: TransportBreakdown[] | null;
   transportSubtotal?: string;
@@ -138,6 +148,12 @@ export type CatalogSelectedItem = {
   quantity: number;
   dailyPrice: string;       // Decimal string from API
   availableQuantity: number; // latest availability from catalog fetch
+  /**
+   * Договорная ставка за смену: цена, о которой сговорились с заказчиком.
+   * null — считаем по прайсу (`dailyPrice`). Процентная скидка брони к ней
+   * не применяется — она уже финальная.
+   */
+  negotiatedRatePerShift?: number | null;
 };
 
 /** Off-catalog item (AI-unmatched that user kept, or free-text add) */

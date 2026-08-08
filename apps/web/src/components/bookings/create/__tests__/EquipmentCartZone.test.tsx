@@ -44,12 +44,136 @@ describe("EquipmentCartZone", () => {
   });
 
   it("рендерит выбранное с ценой строки и произвольные с меткой «своя»", () => {
-    render(<EquipmentCartZone selected={mkSelected()} customItems={CUSTOM} {...handlers} />);
+    const { container } = render(
+      <EquipmentCartZone selected={mkSelected()} customItems={CUSTOM} {...handlers} />,
+    );
     expect(screen.getByText("ARRI SkyPanel S60")).toBeInTheDocument();
-    expect(screen.getByText(/4[\s ]000,00 × 2 = 8[\s ]000,00 ₽/)).toBeInTheDocument();
+    // Цена за смену × количество = сумма позиции.
+    expect(container.textContent).toMatch(/4.?000/);
+    expect(container.textContent).toMatch(/8.?000/);
     expect(screen.getByText("Скотч армированный")).toBeInTheDocument();
     expect(screen.getByText("своя")).toBeInTheDocument();
     expect(screen.queryByText(/пока пусто/i)).toBeNull();
+  });
+
+  it("цена позиции редактируется на месте: своя цена, пилюля «по прайсу» и возврат", () => {
+    const onChangeNegotiatedRate = vi.fn();
+    const { rerender } = render(
+      <EquipmentCartZone
+        selected={mkSelected()}
+        customItems={[]}
+        {...handlers}
+        shifts={3}
+        onChangeNegotiatedRate={onChangeNegotiatedRate}
+      />,
+    );
+    const price = screen.getByLabelText("Цена за смену: ARRI SkyPanel S60");
+    fireEvent.focus(price);
+    fireEvent.change(price, { target: { value: "3000" } });
+    fireEvent.blur(price);
+    expect(onChangeNegotiatedRate).toHaveBeenCalledWith("a", 3000);
+
+    // С договорной ценой рядом появляется прайсовая и кнопка возврата.
+    const negotiated = mkSelected();
+    negotiated.set("a", { ...negotiated.get("a")!, negotiatedRatePerShift: 3000 });
+    rerender(
+      <EquipmentCartZone
+        selected={negotiated}
+        customItems={[]}
+        {...handlers}
+        shifts={3}
+        onChangeNegotiatedRate={onChangeNegotiatedRate}
+      />,
+    );
+    expect(screen.getByText(/по прайсу/)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Вернуть прайсовую цену: ARRI SkyPanel S60"));
+    expect(onChangeNegotiatedRate).toHaveBeenLastCalledWith("a", null);
+  });
+
+  it("ввод прайсовой цены поверх договорной — это возврат к прайсу, а не новая уступка", () => {
+    const onChangeNegotiatedRate = vi.fn();
+    const negotiated = mkSelected();
+    negotiated.set("a", { ...negotiated.get("a")!, negotiatedRatePerShift: 3000 });
+    render(
+      <EquipmentCartZone
+        selected={negotiated}
+        customItems={[]}
+        {...handlers}
+        shifts={1}
+        onChangeNegotiatedRate={onChangeNegotiatedRate}
+      />,
+    );
+    const price = screen.getByLabelText("Цена за смену: ARRI SkyPanel S60");
+    fireEvent.focus(price);
+    fireEvent.change(price, { target: { value: "4000" } });
+    fireEvent.blur(price);
+    expect(onChangeNegotiatedRate).toHaveBeenCalledWith("a", null);
+  });
+
+  it("клик по цене и уход без правки ничего не меняют", () => {
+    // Иначе простой промах пальцем превращал прайсовую цену в «договорную»
+    // и выводил позицию из-под процентной скидки.
+    const onChangeNegotiatedRate = vi.fn();
+    render(
+      <EquipmentCartZone
+        selected={mkSelected()}
+        customItems={[]}
+        {...handlers}
+        shifts={3}
+        onChangeNegotiatedRate={onChangeNegotiatedRate}
+      />,
+    );
+    const price = screen.getByLabelText("Цена за смену: ARRI SkyPanel S60");
+    fireEvent.focus(price);
+    fireEvent.blur(price);
+    expect(onChangeNegotiatedRate).not.toHaveBeenCalled();
+  });
+
+  it("Escape отменяет правку, а не фиксирует её", () => {
+    const onChangeNegotiatedRate = vi.fn();
+    render(
+      <EquipmentCartZone
+        selected={mkSelected()}
+        customItems={[]}
+        {...handlers}
+        shifts={3}
+        onChangeNegotiatedRate={onChangeNegotiatedRate}
+      />,
+    );
+    const price = screen.getByLabelText("Цена за смену: ARRI SkyPanel S60");
+    fireEvent.focus(price);
+    fireEvent.change(price, { target: { value: "1" } });
+    fireEvent.keyDown(price, { key: "Escape" });
+    fireEvent.blur(price);
+    expect(onChangeNegotiatedRate).not.toHaveBeenCalled();
+  });
+
+  it("возврат к прайсу и счётчик стоят в первой строке, арифметика — во второй", () => {
+    // Сетка была на четыре колонки, и кнопка «убрать» сваливалась в третий
+    // ряд, в 6-пиксельную колонку под точкой.
+    const negotiated = mkSelected();
+    negotiated.set("a", { ...negotiated.get("a")!, negotiatedRatePerShift: 3000 });
+    render(
+      <EquipmentCartZone
+        selected={negotiated}
+        customItems={[]}
+        {...handlers}
+        shifts={3}
+        onChangeNegotiatedRate={vi.fn()}
+      />,
+    );
+    const row = screen.getByLabelText("Убрать ARRI SkyPanel S60").parentElement!;
+    expect(row.className).toContain("grid-cols-[6px_1fr_auto_auto_auto]");
+    const remove = screen.getByLabelText("Убрать ARRI SkyPanel S60");
+    expect(remove.className).toContain("col-start-5");
+    expect(remove.className).toContain("row-start-1");
+    const calc = Array.from(row.children).find((c) =>
+      c.className.includes("col-start-2"),
+    ) as HTMLElement;
+    expect(calc.className).toContain("row-start-2");
+    // Цена живёт в value инпута, сумма позиции — текстом рядом: 3 000 × 2 × 3.
+    expect((screen.getByLabelText("Цена за смену: ARRI SkyPanel S60") as HTMLInputElement).value).toMatch(/3.?000/);
+    expect(calc.textContent).toMatch(/18.?000/);
   });
 
   it("степперы: − на qty=1 удаляет, + зовёт onChangeQty, + заблокирован на максимуме", () => {
