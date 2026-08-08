@@ -138,6 +138,8 @@ type FormDraftSnapshot = {
   selected: CatalogSelectedItem[];
   customItems: CustomItem[];
   selectedVehicles: SelectedVehicle[];
+  /** Договорной итог брони — без него перезагрузка стирала итог переговоров. */
+  negotiatedTotal?: number | null;
   expectedPaymentDateLocal: string;
 };
 
@@ -261,11 +263,14 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
    * Держится, даже если состав потом поменяется — разница показывается строкой
    * «Договорная скидка». null — считаем по смете.
    */
-  const [negotiatedTotal, setNegotiatedTotal] = useState<number | null>(
-    isEdit && initialBooking?.manualFinalAmount != null
-      ? Number(initialBooking.manualFinalAmount)
-      : null,
-  );
+  const [negotiatedTotal, setNegotiatedTotal] = useState<number | null>(() => {
+    if (isEdit) {
+      return initialBooking?.manualFinalAmount != null
+        ? Number(initialBooking.manualFinalAmount)
+        : null;
+    }
+    return draft?.negotiatedTotal ?? null;
+  });
 
   // ── Dates ──
   const [pickupLocal, setPickupLocal] = useState(() => {
@@ -497,6 +502,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
           selected: Array.from(selected.values()),
           customItems,
           selectedVehicles,
+          negotiatedTotal,
           expectedPaymentDateLocal,
         };
         window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(snapshot));
@@ -519,6 +525,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
     selected,
     customItems,
     selectedVehicles,
+    negotiatedTotal,
     expectedPaymentDateLocal,
   ]);
 
