@@ -1,6 +1,7 @@
 "use client";
 
 import { formatMoneyRub } from "../../../lib/format";
+import { EditablePrice, ListPriceBadge, RevertPriceButton } from "./EditablePrice";
 import type { CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem } from "./types";
 
 // Зона «Состав» (редизайн блока «Оборудование», мокап booking-equipment-v2):
@@ -28,8 +29,18 @@ type Props = {
   onRemoveCustom?: (tempId: string) => void;
   onChangeOffCatalogQty?: (tempId: string, newQty: number) => void;
   onRemoveOffCatalog?: (tempId: string) => void;
+  /**
+   * Договорная цена по каталожной позиции. Не передан — цены только для
+   * чтения (форма редактирования подтверждённой брони).
+   */
+  onChangeNegotiatedRate?: (equipmentId: string, rate: number | null) => void;
   onOpenCustomModal: () => void;
 };
+
+/** Действующая ставка за смену: договорная, если есть, иначе прайсовая. */
+function rateOf(it: CatalogSelectedItem): number {
+  return it.negotiatedRatePerShift ?? Number(it.dailyPrice);
+}
 
 function Stepper({
   qty,
@@ -85,6 +96,7 @@ export function EquipmentCartZone({
   onRemoveCustom,
   onChangeOffCatalogQty,
   onRemoveOffCatalog,
+  onChangeNegotiatedRate,
   onOpenCustomModal,
 }: Props) {
   const count = selected.size + customItems.length + offCatalogItems.length;
@@ -118,10 +130,10 @@ export function EquipmentCartZone({
             return (
               <div
                 key={it.equipmentId}
-                className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 ${isHardUnavail ? "bg-rose-soft" : "hover:bg-surface-muted"}`}
+                className={`grid grid-cols-[6px_1fr_auto_auto] items-center gap-x-2.5 gap-y-1 rounded-md px-2 py-1.5 ${isHardUnavail ? "bg-rose-soft" : "hover:bg-surface-muted"}`}
               >
                 <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${isHardUnavail ? "bg-rose" : "bg-emerald"}`} />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0">
                   <div className="truncate text-[13px] font-medium text-ink">{it.name}</div>
                   {isHardUnavail ? (
                     <div className="text-[11px] text-rose">недоступно на новые даты</div>
@@ -131,12 +143,14 @@ export function EquipmentCartZone({
                     </div>
                   ) : null}
                 </div>
-                <span className="hidden whitespace-nowrap font-mono text-[12px] text-ink-2 sm:inline">
-                  {formatMoneyRub(Number(it.dailyPrice))}
-                  <span className="text-ink-3">/см</span> × {it.quantity}
-                  {shifts > 1 && <> × {shifts} см</>} ={" "}
-                  {formatMoneyRub(Number(it.dailyPrice) * it.quantity * shifts)} ₽
-                </span>
+                {onChangeNegotiatedRate && it.negotiatedRatePerShift != null ? (
+                  <RevertPriceButton
+                    onClick={() => onChangeNegotiatedRate(it.equipmentId, null)}
+                    label={`Вернуть прайсовую цену: ${it.name}`}
+                  />
+                ) : (
+                  <span />
+                )}
                 {!isHardUnavail && (
                   <Stepper
                     qty={it.quantity}
@@ -146,6 +160,27 @@ export function EquipmentCartZone({
                     onInc={() => onChangeQty(it.equipmentId, it.quantity + 1)}
                   />
                 )}
+                <span className="col-start-2 col-end-[-1] flex flex-wrap items-center gap-1.5 whitespace-nowrap font-mono text-[12px] text-ink-2">
+                  {onChangeNegotiatedRate ? (
+                    <EditablePrice
+                      value={rateOf(it)}
+                      listValue={Number(it.dailyPrice)}
+                      isNegotiated={it.negotiatedRatePerShift != null}
+                      onChange={(v) => onChangeNegotiatedRate(it.equipmentId, v)}
+                      ariaLabel={`Цена за смену: ${it.name}`}
+                    />
+                  ) : (
+                    <span className="font-semibold text-ink">{formatMoneyRub(rateOf(it))}</span>
+                  )}
+                  <span className="text-ink-3">
+                    /см × {it.quantity}
+                    {shifts > 1 && <> × {shifts} см</>} =
+                  </span>
+                  <span className="font-semibold text-ink">
+                    {formatMoneyRub(rateOf(it) * it.quantity * shifts)} ₽
+                  </span>
+                  {it.negotiatedRatePerShift != null && <ListPriceBadge value={Number(it.dailyPrice)} />}
+                </span>
                 <button
                   type="button"
                   aria-label={`Убрать ${it.name}`}

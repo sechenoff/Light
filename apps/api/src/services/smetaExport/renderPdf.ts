@@ -335,7 +335,14 @@ class SmetaPdfWriter {
     d.font(this.fonts.body).fontSize(8.5);
     const nameW = COL_NAME - CELL_PAD * 2;
     const nameH = d.heightOfString(line.name, { width: nameW, lineGap: 1 });
-    const rowH = Math.max(19, nameH + 9);
+    // Подпись о персональной цене живёт под названием: так уступка видна
+    // заказчику, а колонка цены остаётся одной цифрой.
+    const noteText = line.listPricePerShift
+      ? `персональная скидка · цена до скидки ${rub(line.listPricePerShift)}`
+      : null;
+    const noteH = noteText ? d.fontSize(7).heightOfString(noteText, { width: nameW }) + 1.5 : 0;
+    d.fontSize(8.5);
+    const rowH = Math.max(19, nameH + noteH + 9);
 
     if (this.y + rowH > BOTTOM_LIMIT) this.newPage();
 
@@ -351,6 +358,11 @@ class SmetaPdfWriter {
 
     d.font(this.fonts.body).fontSize(8.5).fillColor(C.ink);
     d.text(line.name, MARGIN + COL_IDX + CELL_PAD, ty, { width: nameW, lineGap: 1 });
+    if (noteText) {
+      d.fontSize(7).fillColor(C.faint);
+      d.text(noteText, MARGIN + COL_IDX + CELL_PAD, ty + nameH + 1, { width: nameW, lineBreak: true });
+      d.fontSize(8.5).fillColor(C.ink);
+    }
 
     d.text(String(line.quantity), MARGIN + COL_IDX + COL_NAME + CELL_PAD, ty, {
       width: COL_QTY - CELL_PAD * 2,

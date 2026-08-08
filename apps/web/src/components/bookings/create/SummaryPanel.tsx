@@ -1,10 +1,15 @@
 "use client";
 
+import { EditablePrice } from "./EditablePrice";
 import { formatMoneyRub, pluralize } from "../../../lib/format";
 import type { CatalogSelectedItem, CustomItem, OffCatalogItem, QuoteResponse, TransportBreakdown, ValidationCheck } from "./types";
 
 type SummaryPanelProps = {
   quote: QuoteResponse | null;
+  /** Зафиксированный вручную итог брони; null — считаем по смете. */
+  negotiatedTotal?: number | null;
+  /** Задать/сбросить договорной итог. Не передан — итог только для чтения. */
+  onChangeNegotiatedTotal?: (v: number | null) => void;
   localSubtotal: number;
   localDiscount: number;
   localTotal: number;
@@ -51,6 +56,8 @@ const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass:
 
 export function SummaryPanel({
   quote,
+  negotiatedTotal = null,
+  onChangeNegotiatedTotal,
   localSubtotal,
   localDiscount,
   localTotal,
@@ -96,7 +103,14 @@ export function SummaryPanel({
     : round2(equipTotal + transportTotal);
   // Legacy: subtotal for backward compat in display
   const subtotal = equipSubtotal;
-  const total = grandTotal;
+  // Договорной итог перебивает расчётный: о сумме сговорились, и она держится,
+  // даже если состав потом поменяется. Разница показывается отдельной строкой,
+  // а не прячется внутрь цифры.
+  const total = negotiatedTotal ?? grandTotal;
+  const negotiatedDelta = negotiatedTotal != null ? round2(grandTotal - negotiatedTotal) : 0;
+
+  const listedSubtotal = quote?.listedSubtotal != null ? Number(quote.listedSubtotal) : equipSubtotal;
+  const negotiatedLines = quote?.negotiatedSubtotal != null ? Number(quote.negotiatedSubtotal) : 0;
 
   const bigTotalFormatted = Math.round(total).toLocaleString("ru-RU");
 
@@ -143,33 +157,61 @@ export function SummaryPanel({
       {/* Big total */}
       <div>
         <div className="flex items-baseline gap-1">
-          <span className="font-mono text-[32px] font-semibold leading-none text-ink">
-            {bigTotalFormatted}
-          </span>
+          {onChangeNegotiatedTotal ? (
+            <EditablePrice
+              value={total}
+              listValue={grandTotal}
+              isNegotiated={negotiatedTotal != null}
+              onChange={onChangeNegotiatedTotal}
+              ariaLabel="Итоговая сумма брони"
+              size="lg"
+            />
+          ) : (
+            <span className="font-mono text-[32px] font-semibold leading-none text-ink">
+              {bigTotalFormatted}
+            </span>
+          )}
           <span className="text-[18px] text-ink-3">₽</span>
         </div>
         <p className="mt-1 text-xs text-ink-3">
-          {effectiveShifts} {pluralize(effectiveShifts, "день", "дня", "дней")} · {itemCount} {pluralize(itemCount, "позиция", "позиции", "позиций")}
+          {negotiatedTotal != null ? (
+            <>Итог зафиксирован вручную · по расчёту {formatMoneyRub(grandTotal)} ₽</>
+          ) : (
+            <>
+              {effectiveShifts} {pluralize(effectiveShifts, "день", "дня", "дней")} · {itemCount}{" "}
+              {pluralize(itemCount, "позиция", "позиции", "позиций")}
+            </>
+          )}
         </p>
       </div>
 
       {/* Breakdown */}
       <div className="flex flex-col gap-1 text-sm">
         <div className="flex justify-between">
-          <span className="text-ink-2">Оборудование</span>
-          <span className="mono-num text-ink">{formatMoneyRub(equipSubtotal)} ₽</span>
+          <span className="text-ink-2">
+            {negotiatedLines > 0 ? "Оборудование по прайсу" : "Оборудование"}
+          </span>
+          <span className="mono-num text-ink">
+            {formatMoneyRub(negotiatedLines > 0 ? listedSubtotal : equipSubtotal)} ₽
+          </span>
         </div>
         {discPct > 0 && discount > 0 && (
-          <>
-            <div className="flex justify-between">
-              <span className="text-ink-2">Скидка {discPct}%</span>
-              <span className="mono-num text-rose">−{formatMoneyRub(discount)} ₽</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-ink-2">Оборудование итого</span>
-              <span className="mono-num text-ink">{formatMoneyRub(equipTotal)} ₽</span>
-            </div>
-          </>
+          <div className="flex justify-between">
+            <span className="text-ink-2">Скидка {discPct}%</span>
+            <span className="mono-num text-rose">−{formatMoneyRub(discount)} ₽</span>
+          </div>
+        )}
+        {negotiatedLines > 0 && (
+          <div className="flex justify-between">
+            <span className="text-ink-2">Позиции по договорённости</span>
+            <span className="mono-num text-indigo">{formatMoneyRub(negotiatedLines)} ₽</span>
+          </div>
+        )}
+        {discPct > 0 && discount > 0 && negotiatedLines === 0 && (
+          <div className="flex justify-between">
+            <span className="text-ink-2">Оборудование итого</span>
+            <span className="mono-num text-ink">{formatMoneyRub(equipTotal)} ₽</span>
+          </div>
         )}
         {transportRows.map((t) => (
           <div key={t.vehicleId} className="flex justify-between">
@@ -177,10 +219,27 @@ export function SummaryPanel({
             <span className="mono-num text-ink">{formatMoneyRub(Number(t.total))} ₽</span>
           </div>
         ))}
+        {negotiatedTotal != null && Math.abs(negotiatedDelta) >= 1 && (
+          <div className="flex justify-between">
+            <span className="text-ink-2">
+              {negotiatedDelta > 0 ? "Договорная скидка" : "Договорная надбавка"}
+            </span>
+            <span className={`mono-num ${negotiatedDelta > 0 ? "text-rose" : "text-amber"}`}>
+              {negotiatedDelta > 0 ? "−" : "+"}
+              {formatMoneyRub(Math.abs(negotiatedDelta))} ₽
+            </span>
+          </div>
+        )}
         <div className="flex justify-between border-t border-border pt-1 font-semibold">
           <span className="text-ink">Итого</span>
-          <span className="mono-num text-ink">{formatMoneyRub(grandTotal)} ₽</span>
+          <span className="mono-num text-ink">{formatMoneyRub(total)} ₽</span>
         </div>
+        {negotiatedLines > 0 && discPct > 0 && (
+          <p className="mt-1 rounded border border-amber-border bg-amber-soft px-2 py-1.5 text-[11.5px] leading-snug text-ink-2">
+            Скидка {discPct}% применяется только к позициям по прайсу. Вписанная вручную цена — уже
+            договорная, процент к ней не добавляется.
+          </p>
+        )}
       </div>
 
       {/* Mini-list of selected items */}

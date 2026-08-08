@@ -200,7 +200,11 @@ export function addSmetaSheetToWorkbook(
       r.getCell(1).font = { size: 9, color: { argb: XC.faint } };
       r.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
 
-      r.getCell(2).value = line.name;
+      // Персональная цена подписывается второй строкой в той же ячейке —
+      // отдельная колонка ради редкого случая раздула бы таблицу на печати.
+      r.getCell(2).value = line.listPricePerShift
+        ? `${line.name}\nперсональная скидка · цена до скидки ${line.listPricePerShift} ₽`
+        : line.name;
       r.getCell(2).font = { size: 10, color: { argb: XC.ink } };
       r.getCell(2).alignment = { vertical: "middle", wrapText: true };
 

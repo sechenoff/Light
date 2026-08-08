@@ -47,13 +47,24 @@ const bookingItemSchema = z
     customName: z.string().min(1).max(200).optional(),
     customUnitPrice: z.number().positive().max(100_000_000).optional(),
     quantity: z.number().int().positive(),
+    /**
+     * Договорная ставка за смену по каталожной позиции. Раньше своя цена была
+     * возможна только у позиции ВНЕ каталога — и такая позиция теряла
+     * equipmentId, а вместе с ним проверку доступности, резерв юнитов, доборы
+     * и аналитику. Теперь каталожная позиция может иметь свою цену, оставаясь
+     * каталожной. null — вернуться к прайсу.
+     */
+    negotiatedRatePerShift: z.number().positive().max(100_000_000).nullish(),
   })
   .refine(
     (v) =>
       (v.equipmentId && !v.customName && v.customUnitPrice === undefined) ||
       (!v.equipmentId && v.customName && v.customUnitPrice !== undefined),
     { message: "Укажите либо equipmentId, либо customName + customUnitPrice" },
-  );
+  )
+  .refine((v) => v.negotiatedRatePerShift == null || Boolean(v.equipmentId), {
+    message: "Договорная цена задаётся только для позиции из каталога",
+  });
 
 const transportVehicleSchema = z.object({
   vehicleId: z.string().min(1),
@@ -62,6 +73,8 @@ const transportVehicleSchema = z.object({
   skipOvertime: z.boolean().default(false),
   kmOutsideMkad: z.number().int().min(0).default(0),
   ttkEntry: z.boolean().default(false),
+  /** Договорная сумма за машину; заменяет расчёт по прайсу и параметрам. */
+  negotiatedTotalRub: z.number().nonnegative().max(100_000_000).nullish(),
 });
 
 /**
@@ -314,6 +327,10 @@ async function computeTransportSnapshots(
       kmOutsideMkad: entry.kmOutsideMkad,
       ttkEntry: entry.ttkEntry,
     });
+    // Договорная сумма заменяет расчётную: в subtotalRub кладём ту, что реально
+    // войдёт в деньги брони, а прайсовую сохраняем отдельным полем — она нужна
+    // смете для строки «цена до скидки» и разговора «почему было столько».
+    const negotiated = entry.negotiatedTotalRub;
     snapshots.push({
       vehicleId: entry.vehicleId,
       withGenerator: entry.withGenerator,
@@ -321,7 +338,8 @@ async function computeTransportSnapshots(
       skipOvertime: entry.skipOvertime,
       kmOutsideMkad: entry.kmOutsideMkad,
       ttkEntry: entry.ttkEntry,
-      subtotalRub: breakdown.total,
+      subtotalRub: negotiated != null ? new Decimal(negotiated).toDecimalPlaces(2).toString() : breakdown.total,
+      negotiatedTotalRub: negotiated != null ? new Decimal(negotiated).toDecimalPlaces(2).toString() : null,
     });
   }
   return snapshots;
@@ -1002,11 +1020,14 @@ router.patch("/:id", async (req, res, next) => {
                 vehicleId: null,
               }
             : {}),
-          // manualFinalAmount — override итоговой суммы. Доступно только
-          // в retroactive-режиме (вне его поле в body игнорируется через
-          // условие ниже). null очищает override, число — устанавливает.
+          // manualFinalAmount — договорной итог брони: сумма, о которой
+          // сговорились, вместо посчитанной по смете. Раньше поле работало
+          // только в retro-режиме, то есть было недоступно ровно тогда, когда
+          // о цене и договариваются — при создании и правке брони. Право
+          // фиксировать итог остаётся за SUPER_ADMIN.
+          // null очищает override, число — устанавливает.
           manualFinalAmount:
-            retroactiveEdit && body.manualFinalAmount !== undefined
+            isSuperAdmin && body.manualFinalAmount !== undefined
               ? body.manualFinalAmount === null
                 ? null
                 : new Decimal(body.manualFinalAmount)

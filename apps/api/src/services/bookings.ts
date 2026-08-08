@@ -4,7 +4,7 @@ import type { Booking, Equipment, BookingItem, Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { billableShifts24h, formatExportHourCalculationLine } from "../utils/dates";
 import { HttpError } from "../utils/errors";
-import { computeUnitPriceForBookingPeriod } from "./pricing";
+import { computeUnitPriceForBookingPeriod, resolveCatalogLinePrice, splitEquipmentDiscount } from "./pricing";
 import { getAvailability } from "./availability";
 import { computeTransportPrice } from "./transportCalculator";
 import type { TransportBreakdown } from "./transportCalculator";
@@ -42,6 +42,10 @@ export type QuoteLine = {
   lineSum: Decimal;
   pricingMode: "SHIFT" | "TWO_SHIFTS" | "PROJECT" | "CUSTOM";
   isCustom: boolean;
+  /** Прайсовая цена за период — заполнена только у договорных строк. */
+  listUnitPrice: Decimal | null;
+  /** По этой позиции договорились о своей цене: процент к ней не применяется. */
+  isNegotiated: boolean;
 };
 
 export type QuoteTransportInput = {
@@ -51,11 +55,16 @@ export type QuoteTransportInput = {
   skipOvertime: boolean;
   kmOutsideMkad: number;
   ttkEntry: boolean;
+  /** Договорная сумма за машину; заменяет расчёт целиком. */
+  negotiatedTotalRub?: number | string | null;
 };
 
 export type QuoteTransportResult = TransportBreakdown & {
   vehicleId: string;
   vehicleName: string;
+  /** Сумма по прайсу и параметрам — до договорной замены. */
+  listTotal: string;
+  isNegotiated: boolean;
 };
 
 /**
@@ -83,7 +92,21 @@ async function computeOneVehicle(
     kmOutsideMkad: input.kmOutsideMkad,
     ttkEntry: input.ttkEntry,
   });
-  return { vehicleId: vehicle.id, vehicleName: vehicle.name, ...breakdown };
+  // Договорная сумма заменяет итог по машине целиком. Разбивку (смена,
+  // переработка, км, ТТК) оставляем как есть: она объясняет, из чего сложилась
+  // прайсовая цена, и нужна при разговоре «почему было столько».
+  const negotiated =
+    input.negotiatedTotalRub !== undefined && input.negotiatedTotalRub !== null
+      ? new Decimal(input.negotiatedTotalRub.toString())
+      : null;
+  return {
+    vehicleId: vehicle.id,
+    vehicleName: vehicle.name,
+    ...breakdown,
+    listTotal: breakdown.total,
+    total: negotiated ? negotiated.toDecimalPlaces(2).toString() : breakdown.total,
+    isNegotiated: negotiated !== null,
+  };
 }
 
 export async function quoteEstimate(args: {
@@ -91,7 +114,14 @@ export async function quoteEstimate(args: {
   endDate: Date;
   clientId: string;
   discountPercent?: number | null;
-  items: Array<{ equipmentId?: string; customName?: string; customUnitPrice?: number; quantity: number }>;
+  items: Array<{
+    equipmentId?: string;
+    customName?: string;
+    customUnitPrice?: number;
+    quantity: number;
+    /** Договорная ставка за смену по каталожной позиции; null — считаем по прайсу. */
+    negotiatedRatePerShift?: number | string | null;
+  }>;
   transport?: QuoteTransportInput[] | null;
   skipPartialDay?: boolean;
 }) {
@@ -108,7 +138,12 @@ export async function quoteEstimate(args: {
   const catalogLines: QuoteLine[] = catalogItems.map((item) => {
     const eq = equipmentById.get(item.equipmentId!);
     if (!eq) throw new HttpError(400, `Equipment not found: ${item.equipmentId}`);
-    const { unitPrice, mode } = computeUnitPriceForBookingPeriod({ equipment: eq, shifts });
+    const { mode } = computeUnitPriceForBookingPeriod({ equipment: eq, shifts });
+    const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+      ratePerShift: eq.rentalRatePerShift.toString(),
+      shifts,
+      negotiatedRatePerShift: item.negotiatedRatePerShift ?? null,
+    });
     const quantity = item.quantity;
     const lineSum = unitPrice.mul(quantity);
     return {
@@ -122,6 +157,8 @@ export async function quoteEstimate(args: {
       lineSum,
       pricingMode: mode,
       isCustom: false,
+      listUnitPrice,
+      isNegotiated,
     };
   });
 
@@ -139,18 +176,20 @@ export async function quoteEstimate(args: {
       lineSum,
       pricingMode: "CUSTOM",
       isCustom: true,
+      listUnitPrice: null,
+      isNegotiated: false,
     };
   });
 
   const lines: QuoteLine[] = [...catalogLines, ...customLines];
 
-  const equipmentSubtotal = sumDec(lines.map((l) => l.lineSum));
+  const discountPercent = args.discountPercent ? new Decimal(args.discountPercent) : new Decimal(0);
+  const split = splitEquipmentDiscount(lines, discountPercent);
+  const equipmentSubtotal = split.subtotal;
+  const { listedSubtotal, negotiatedSubtotal, discountAmount } = split;
+  const equipmentTotal = split.totalAfterDiscount;
   // Legacy aliases for backward compat (existing callers use .subtotal / .totalAfterDiscount)
   const subtotal = equipmentSubtotal;
-  const discountPercent = args.discountPercent ? new Decimal(args.discountPercent) : new Decimal(0);
-  const discountAmount = equipmentSubtotal.mul(discountPercent).div(100);
-  const equipmentTotal = equipmentSubtotal.sub(discountAmount);
-  // Legacy alias
   const totalAfterDiscount = equipmentTotal;
 
   // Transport — isolated from discount. Per-vehicle: each entry computed
@@ -170,6 +209,10 @@ export async function quoteEstimate(args: {
     lines,
     subtotal,              // legacy alias = equipmentSubtotal
     equipmentSubtotal,
+    /** Сумма прайсовых строк — база, на которую начисляется процент. */
+    listedSubtotal,
+    /** Сумма договорных строк — процент к ним не применяется. */
+    negotiatedSubtotal,
     discountPercent,
     discountAmount,
     equipmentDiscount: discountAmount,
@@ -188,8 +231,14 @@ export type BookingTransportSnapshot = {
   skipOvertime: boolean;
   kmOutsideMkad: number;
   ttkEntry: boolean;
-  /** Сумма по этой конкретной машине (per-row subtotal). */
+  /**
+   * Сумма по этой конкретной машине (per-row subtotal). Если задана
+   * `negotiatedTotalRub`, здесь уже лежит она: маршрут кладёт в снапшот ту
+   * сумму, которая реально войдёт в деньги брони.
+   */
   subtotalRub: string;
+  /** Договорная сумма за машину; null — считаем по прайсу. */
+  negotiatedTotalRub?: string | null;
 };
 
 export async function createBookingDraft(args: {
@@ -203,7 +252,14 @@ export async function createBookingDraft(args: {
   estimateOptionalNote?: string | null;
   estimateIncludeOptionalInExport?: boolean;
   skipPartialDay?: boolean;
-  items: Array<{ equipmentId?: string; customName?: string; customUnitPrice?: number; quantity: number }>;
+  items: Array<{
+    equipmentId?: string;
+    customName?: string;
+    customUnitPrice?: number;
+    quantity: number;
+    /** Договорная ставка за смену по каталожной позиции; null — считаем по прайсу. */
+    negotiatedRatePerShift?: number | string | null;
+  }>;
   transport?: BookingTransportSnapshot[] | null;
 }) {
   if (args.items.length === 0) throw new HttpError(400, "At least one equipment item is required.");
@@ -252,13 +308,22 @@ export async function createBookingDraft(args: {
               kmOutsideMkad: t.kmOutsideMkad,
               ttkEntry: t.ttkEntry,
               subtotalRub: new Decimal(t.subtotalRub),
+              negotiatedTotalRub:
+                t.negotiatedTotalRub != null ? new Decimal(t.negotiatedTotalRub.toString()) : null,
             })),
           }
         : undefined,
       items: {
         create: args.items.map((it) => {
           if (it.equipmentId) {
-            return { equipmentId: it.equipmentId, quantity: it.quantity };
+            return {
+              equipmentId: it.equipmentId,
+              quantity: it.quantity,
+              negotiatedRatePerShift:
+                it.negotiatedRatePerShift != null
+                  ? new Decimal(it.negotiatedRatePerShift.toString())
+                  : null,
+            };
           }
           return {
             quantity: it.quantity,
@@ -334,6 +399,7 @@ export async function createBookingDraft(args: {
               quantity: l.quantity,
               unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
               lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+              listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
             })),
           },
         },
@@ -452,9 +518,15 @@ export async function rebuildBookingEstimate(bookingId: string) {
       quantity: number;
       unitPrice: Decimal;
       lineSum: Decimal;
+      listUnitPrice: Decimal | null;
+      isNegotiated: boolean;
     }> = booking.items.map((it) => {
       if (it.equipmentId != null && it.equipment != null) {
-        const { unitPrice } = computeUnitPriceForBookingPeriod({ equipment: it.equipment, shifts });
+        const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+          ratePerShift: it.equipment.rentalRatePerShift.toString(),
+          shifts,
+          negotiatedRatePerShift: it.negotiatedRatePerShift?.toString() ?? null,
+        });
         return {
           equipmentId: it.equipmentId,
           categorySnapshot: it.equipment.category,
@@ -464,6 +536,8 @@ export async function rebuildBookingEstimate(bookingId: string) {
           quantity: it.quantity,
           unitPrice,
           lineSum: unitPrice.mul(it.quantity),
+          listUnitPrice,
+          isNegotiated,
         };
       }
       // Произвольная позиция — фиксированная цена без умножения на shifts
@@ -477,13 +551,13 @@ export async function rebuildBookingEstimate(bookingId: string) {
         quantity: it.quantity,
         unitPrice,
         lineSum: unitPrice.mul(it.quantity),
+        listUnitPrice: null,
+        isNegotiated: false,
       };
     });
 
-    const subtotal = sumDec(lines.map((l) => l.lineSum));
     const discountPercent = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
-    const discountAmount = subtotal.mul(discountPercent).div(100);
-    const totalAfterDiscount = subtotal.sub(discountAmount);
+    const { subtotal, discountAmount, totalAfterDiscount } = splitEquipmentDiscount(lines, discountPercent);
 
     const estimateData = {
       currency: "RUB",
@@ -507,6 +581,7 @@ export async function rebuildBookingEstimate(bookingId: string) {
       quantity: l.quantity,
       unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
       lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+      listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
     }));
 
     // Удаляем существующий MAIN Estimate (если есть) — ADDON оставляем нетронутым.
