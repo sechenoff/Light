@@ -716,12 +716,18 @@ export async function confirmBooking(bookingId: string) {
       quantity: number;
       unitPrice: Decimal;
       lineSum: Decimal;
+      listUnitPrice: Decimal | null;
+      isNegotiated: boolean;
       estimateLineCreate: any;
     }> = [];
 
     for (const it of booking.items) {
       if (it.equipmentId != null && it.equipment != null) {
-        const { unitPrice } = computeUnitPriceForBookingPeriod({ equipment: it.equipment, shifts });
+        const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+          ratePerShift: it.equipment.rentalRatePerShift.toString(),
+          shifts,
+          negotiatedRatePerShift: it.negotiatedRatePerShift?.toString() ?? null,
+        });
         const lineSum = unitPrice.mul(it.quantity);
         lines.push({
           equipmentId: it.equipmentId,
@@ -732,6 +738,8 @@ export async function confirmBooking(bookingId: string) {
           quantity: it.quantity,
           unitPrice,
           lineSum,
+          listUnitPrice,
+          isNegotiated,
           estimateLineCreate: null,
         });
       } else {
@@ -746,15 +754,15 @@ export async function confirmBooking(bookingId: string) {
           quantity: it.quantity,
           unitPrice,
           lineSum: unitPrice.mul(it.quantity),
+          listUnitPrice: null,
+          isNegotiated: false,
           estimateLineCreate: null,
         });
       }
     }
 
-    const subtotal = sumDec(lines.map((l) => l.lineSum));
     const discountPercent = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
-    const discountAmount = subtotal.mul(discountPercent).div(100);
-    const totalAfterDiscount = subtotal.sub(discountAmount);
+    const { subtotal, discountAmount, totalAfterDiscount } = splitEquipmentDiscount(lines, discountPercent);
 
     // Reserve units for UNIT-tracked equipment (count-only needs no per-unit rows).
     const overlappingBlockingBookings = await tx.booking.findMany({
@@ -817,6 +825,7 @@ export async function confirmBooking(bookingId: string) {
           quantity: l.quantity,
           unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
           lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+          listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
         })),
       },
     };

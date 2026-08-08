@@ -192,6 +192,34 @@ describe("договорная цена переживает пересборк�
     expect(Number(est.totalAfterDiscount)).toBe(162000);
   });
 
+  it("подтверждение брони не теряет договорную цену", async () => {
+    // confirmBooking — четвёртый построитель сметы. Он пересобирает снапшот
+    // ровно в момент, когда бронь становится настоящей, и раньше делал это
+    // по прайсу: уступка исчезала именно тогда, когда начинала стоить денег.
+    const { confirmBooking } = await import("../services/bookings");
+    const draft = await createBookingDraft({
+      clientId,
+      projectName: "Подтверждение с уступкой",
+      startDate: START, endDate: END,
+      discountPercent: 50,
+      items: [
+        { equipmentId: skyId, quantity: 2, negotiatedRatePerShift: 18000 },
+        { equipmentId: apuId, quantity: 3 },
+      ],
+    });
+    await confirmBooking(draft.id);
+
+    const est = await prisma.estimate.findFirst({
+      where: { bookingId: draft.id, kind: "MAIN" }, include: { lines: true },
+    });
+    const line = est.lines.find((l: any) => l.equipmentId === skyId);
+    expect(Number(line.unitPrice)).toBe(18000 * SHIFTS);
+    expect(Number(line.listUnitPrice)).toBe(RATE * SHIFTS);
+    // Процент лёг только на прайсовую позицию.
+    expect(Number(est.discountAmount)).toBe(54000);
+    expect(Number(est.totalAfterDiscount)).toBe(162000);
+  });
+
   it("пересборка после приёмки на складе тоже не теряет договорную цену", async () => {
     await recreateMainEstimate(bookingId);
     const est = await prisma.estimate.findFirst({
