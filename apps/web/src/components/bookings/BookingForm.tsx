@@ -1492,7 +1492,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
           <SummaryPanel
             quote={quote}
             negotiatedTotal={negotiatedTotal}
-            onChangeNegotiatedTotal={setNegotiatedTotal}
+            onChangeNegotiatedTotal={isSuperAdmin ? setNegotiatedTotal : undefined}
             localSubtotal={localSubtotal}
             localDiscount={localDiscount}
             localTotal={localTotal}

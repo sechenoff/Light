@@ -248,9 +248,19 @@ export function addSmetaSheetToWorkbook(
     row++;
   };
 
-  addTotal("Оборудование итого", parseMoney(data.subtotal), { muted: true });
-  if (Number(data.discountPercent) > 0) {
-    addTotal(`Скидка ${data.discountPercent}%`, -parseMoney(data.discountAmount), { muted: true });
+  // База скидки печатается отдельно, когда в смете есть договорные позиции:
+  // процент считается только от прайсовой части (см. renderPdf).
+  if (data.listedSubtotal != null && data.negotiatedSubtotal != null) {
+    addTotal("Оборудование по прайсу", parseMoney(data.listedSubtotal), { muted: true });
+    if (Number(data.discountPercent) > 0) {
+      addTotal(`Скидка ${data.discountPercent}%`, -parseMoney(data.discountAmount), { muted: true });
+    }
+    addTotal("Позиции по договорённости", parseMoney(data.negotiatedSubtotal), { muted: true });
+  } else {
+    addTotal("Оборудование итого", parseMoney(data.subtotal), { muted: true });
+    if (Number(data.discountPercent) > 0) {
+      addTotal(`Скидка ${data.discountPercent}%`, -parseMoney(data.discountAmount), { muted: true });
+    }
   }
   const finalLabel = data.documentTitleRu === "Смета-добор" ? "Итого по доб-смете" : "Итого по смете";
   addTotal(finalLabel, parseMoney(data.totalAfterDiscount), { bold: true });

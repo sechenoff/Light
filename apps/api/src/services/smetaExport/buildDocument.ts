@@ -94,6 +94,18 @@ export function buildSmetaExportDocument(args: {
     org: args.org ?? null,
     lines: rows,
     subtotal: args.subtotal,
+    ...(() => {
+      const negotiated = args.lines.filter((l) => l.listUnitPrice != null);
+      if (negotiated.length === 0) return {};
+      const sum = (xs: typeof args.lines) =>
+        xs.reduce((a, l) => a.add(new Decimal(l.lineSum.toString())), new Decimal(0));
+      return {
+        listedSubtotal: sum(args.lines.filter((l) => l.listUnitPrice == null))
+          .toDecimalPlaces(2)
+          .toFixed(2),
+        negotiatedSubtotal: sum(negotiated).toDecimalPlaces(2).toFixed(2),
+      };
+    })(),
     discountPercent: args.discountPercent,
     discountAmount: args.discountAmount,
     totalAfterDiscount: args.totalAfterDiscount,

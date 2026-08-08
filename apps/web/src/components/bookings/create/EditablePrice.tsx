@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { formatMoneyRub } from "../../../lib/format";
 
@@ -42,23 +42,28 @@ export function EditablePrice({
 }: EditablePriceProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Значение, положенное в поле при фокусе. Если на blur оно не изменилось —
+  // человек просто ткнул мимо, и превращать это в договорную цену нельзя.
+  const openedWithRef = useRef<string | null>(null);
+  // Escape приходит раньше blur; без флага отмена превращалась в фиксацию.
+  const cancelledRef = useRef(false);
   const editing = draft !== null;
 
-  // Пока идёт правка, внешнее значение не перетирает набранное: пересчёт сметы
-  // прилетает асинхронно и иначе выбивал бы цифру из-под пальцев.
-  useEffect(() => {
-    if (!editing) setDraft(null);
-  }, [value, editing]);
-
   function commit(raw: string) {
+    setDraft(null);
+    if (cancelledRef.current) {
+      cancelledRef.current = false;
+      return;
+    }
+    if (raw === openedWithRef.current) return; // поле не трогали
     const digits = raw.replace(/[^\d]/g, "");
     const parsed = digits ? Number(digits) : NaN;
-    setDraft(null);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       onChange(null); // пусто или мусор — возвращаем прайс
       return;
     }
-    onChange(parsed === listValue ? null : parsed);
+    // Ввод прайсовой цены — это не уступка, а возврат к прайсу.
+    onChange(Math.round(parsed) === Math.round(listValue) ? null : parsed);
   }
 
   const base =
@@ -78,7 +83,10 @@ export function EditablePrice({
       aria-label={ariaLabel}
       value={editing ? (draft as string) : formatMoneyRub(value)}
       onFocus={(e) => {
-        setDraft(String(Math.round(value)));
+        const opened = String(Math.round(value));
+        openedWithRef.current = opened;
+        cancelledRef.current = false;
+        setDraft(opened);
         requestAnimationFrame(() => e.target.select());
       }}
       onChange={(e) => setDraft(e.target.value)}
@@ -90,7 +98,7 @@ export function EditablePrice({
         }
         if (e.key === "Escape") {
           e.preventDefault();
-          setDraft(null);
+          cancelledRef.current = true;
           (e.target as HTMLInputElement).blur();
         }
       }}

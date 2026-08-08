@@ -130,7 +130,7 @@ export function EquipmentCartZone({
             return (
               <div
                 key={it.equipmentId}
-                className={`grid grid-cols-[6px_1fr_auto_auto] items-center gap-x-2.5 gap-y-1 rounded-md px-2 py-1.5 ${isHardUnavail ? "bg-rose-soft" : "hover:bg-surface-muted"}`}
+                className={`grid grid-cols-[6px_1fr_auto_auto_auto] items-center gap-x-2.5 gap-y-1 rounded-md px-2 py-1.5 ${isHardUnavail ? "bg-rose-soft" : "hover:bg-surface-muted"}`}
               >
                 <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${isHardUnavail ? "bg-rose" : "bg-emerald"}`} />
                 <div className="min-w-0">
@@ -160,7 +160,7 @@ export function EquipmentCartZone({
                     onInc={() => onChangeQty(it.equipmentId, it.quantity + 1)}
                   />
                 )}
-                <span className="col-start-2 col-end-[-1] flex flex-wrap items-center gap-1.5 whitespace-nowrap font-mono text-[12px] text-ink-2">
+                <span className="col-start-2 col-end-[-1] row-start-2 flex flex-wrap items-center gap-1.5 whitespace-nowrap font-mono text-[12px] text-ink-2">
                   {onChangeNegotiatedRate ? (
                     <EditablePrice
                       value={rateOf(it)}
@@ -186,7 +186,7 @@ export function EquipmentCartZone({
                   aria-label={`Убрать ${it.name}`}
                   title="Убрать из состава"
                   onClick={() => onRemove(it.equipmentId)}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-rose-soft hover:text-rose"
+                  className="col-start-5 row-start-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-rose-soft hover:text-rose"
                 >
                   ×
                 </button>

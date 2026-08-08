@@ -252,6 +252,12 @@ export async function createBookingDraft(args: {
   estimateOptionalNote?: string | null;
   estimateIncludeOptionalInExport?: boolean;
   skipPartialDay?: boolean;
+  /**
+   * Договорной итог брони: сумма, о которой сговорились, вместо посчитанной
+   * по смете. Держится при изменении состава — разница показывается строкой
+   * «Договорная скидка». Право фиксировать итог проверяет маршрут.
+   */
+  manualFinalAmount?: number | null;
   items: Array<{
     equipmentId?: string;
     customName?: string;
@@ -293,6 +299,8 @@ export async function createBookingDraft(args: {
       estimateOptionalNote: args.estimateOptionalNote?.trim() || null,
       estimateIncludeOptionalInExport: args.estimateIncludeOptionalInExport ?? false,
       skipPartialDay: args.skipPartialDay ?? false,
+      manualFinalAmount:
+        args.manualFinalAmount != null ? new Decimal(args.manualFinalAmount) : null,
       // Transport snapshot — multi-vehicle via `vehicles[]`. Legacy single
       // columns left at defaults (null/false) for new bookings; only
       // `transportSubtotalRub` (the total) is populated for back-compat with
@@ -353,13 +361,19 @@ export async function createBookingDraft(args: {
         skipPartialDay: args.skipPartialDay ?? false,
       });
       const equipmentAfterDiscount = new Decimal(quote.totalAfterDiscount);
-      const finalAmount = equipmentAfterDiscount.add(transportSubtotal);
+      const computedFinal = equipmentAfterDiscount.add(transportSubtotal);
+      // Договорной итог перебивает расчётный — ровно так же его трактует
+      // recomputeBookingFinance. Без этого бронь создавалась бы с суммой по
+      // смете, и долг сразу расходился бы с договорённостью.
+      const finalAmount =
+        args.manualFinalAmount != null ? new Decimal(args.manualFinalAmount) : computedFinal;
       await prisma.booking.update({
         where: { id: booking.id },
         data: {
           totalEstimateAmount: quote.subtotal,
           discountAmount: quote.discountAmount,
           finalAmount: finalAmount.toDecimalPlaces(2).toString(),
+          amountOutstanding: finalAmount.toDecimalPlaces(2).toString(),
         },
       });
 
@@ -436,6 +450,7 @@ async function computeBookingTransportSubtotal(booking: {
     skipOvertime: boolean;
     kmOutsideMkad: number | null;
     ttkEntry: boolean;
+    negotiatedTotalRub?: Prisma.Decimal | null;
   }>;
   vehicleId: string | null;
   vehicleWithGenerator: boolean;
@@ -454,6 +469,7 @@ async function computeBookingTransportSubtotal(booking: {
         skipOvertime: v.skipOvertime,
         kmOutsideMkad: v.kmOutsideMkad ?? 0,
         ttkEntry: v.ttkEntry,
+        negotiatedTotalRub: v.negotiatedTotalRub?.toString() ?? null,
       });
       sum = sum.add(new Decimal(result.total));
     }

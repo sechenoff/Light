@@ -118,6 +118,11 @@ const clientNameSchema = z
   }, "Укажите имя клиента (нельзя «—» или пустое)");
 
 const bookingCreateSchema = z.object({
+  /**
+   * Договорной итог брони: сумма, о которой сговорились, вместо посчитанной по
+   * смете. Применяется только SUPER_ADMIN — то же правило, что и в PATCH.
+   */
+  manualFinalAmount: z.number().finite().min(0).max(1_000_000_000).optional().nullable(),
   client: z.object({
     name: clientNameSchema,
     phone: z.string().optional().nullable(),
@@ -731,7 +736,13 @@ router.patch("/:id", async (req, res, next) => {
       assertBookingRangeOrder(start, end);
 
       const itemsAfter = body.items
-        ? body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity }))
+        ? body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      }))
         : existing.items.map((i) => ({ equipmentId: i.equipmentId ?? undefined, customName: (i as any).customName ?? undefined, customUnitPrice: (i as any).customUnitPrice != null ? Number((i as any).customUnitPrice.toString()) : undefined, quantity: i.quantity }));
 
       const estimate = await quoteEstimate({
@@ -904,6 +915,8 @@ router.patch("/:id", async (req, res, next) => {
             quantity: it.quantity,
             customName: it.customName ?? null,
             customUnitPrice: it.customUnitPrice != null ? new Decimal(it.customUnitPrice) : null,
+            negotiatedRatePerShift:
+              it.negotiatedRatePerShift != null ? new Decimal(it.negotiatedRatePerShift) : null,
             customCategory: !it.equipmentId && it.customName ? CUSTOM_LINE_CATEGORY : null,
           })),
         });
@@ -993,6 +1006,8 @@ router.patch("/:id", async (req, res, next) => {
               kmOutsideMkad: t.kmOutsideMkad,
               ttkEntry: t.ttkEntry,
               subtotalRub: new Decimal(t.subtotalRub),
+              negotiatedTotalRub:
+                t.negotiatedTotalRub != null ? new Decimal(t.negotiatedTotalRub) : null,
               driverName: driverByVehicleId.get(t.vehicleId)?.driverName ?? null,
               driverPhone: driverByVehicleId.get(t.vehicleId)?.driverPhone ?? null,
             })),
@@ -1123,7 +1138,13 @@ router.patch("/:id", async (req, res, next) => {
     if (wasInReview) {
       try {
         const itemsAfter = body.items
-          ? body.items.map((it: any) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity }))
+          ? body.items.map((it: any) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      }))
           : existing.items.map((i: any) => ({ equipmentId: i.equipmentId ?? undefined, customName: i.customName ?? undefined, customUnitPrice: i.customUnitPrice != null ? Number(i.customUnitPrice.toString()) : undefined, quantity: i.quantity }));
         const quote = await quoteEstimate({
           startDate: start,
@@ -1591,7 +1612,13 @@ router.post("/quote", async (req, res, next) => {
       endDate: end,
       clientId: clientIdForQuote,
       discountPercent: body.discountPercent ?? null,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+      items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
       transport: body.transport ?? null,
       skipPartialDay: body.skipPartialDay ?? false,
     });
@@ -1611,6 +1638,10 @@ router.post("/quote", async (req, res, next) => {
       discountPercent: estimate.discountPercent.toString(),
       discountAmount: estimate.discountAmount.toFixed(2),
       totalAfterDiscount: estimate.totalAfterDiscount.toFixed(2),
+      // Раскладка на прайсовую и договорную части: панель расчёта показывает
+      // их отдельно, потому что процент ложится только на прайсовую.
+      listedSubtotal: estimate.listedSubtotal.toFixed(2),
+      negotiatedSubtotal: estimate.negotiatedSubtotal.toFixed(2),
       // Transport — array of per-vehicle breakdowns (empty when none) + summed subtotal
       transport: estimate.transport,
       transportSubtotal: estimate.transportSubtotal.toFixed(2),
@@ -1626,6 +1657,8 @@ router.post("/quote", async (req, res, next) => {
         pricingMode: l.pricingMode,
         unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
         lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+        listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
+        isNegotiated: l.isNegotiated,
       })),
     });
   } catch (err) {
@@ -1669,7 +1702,13 @@ router.post("/quote/export", async (req, res, next) => {
       endDate: end,
       clientId: client.id,
       discountPercent: body.discountPercent ?? null,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+      items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
       skipPartialDay: body.skipPartialDay ?? false,
     });
 
@@ -1763,7 +1802,13 @@ router.post("/draft", async (req, res, next) => {
         endDate: end,
         clientId: clientIdForQuote,
         discountPercent: body.discountPercent ?? null,
-        items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+        items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
         transport: body.transport ?? null,
         skipPartialDay: body.skipPartialDay ?? false,
       });
@@ -1852,7 +1897,15 @@ router.post("/draft", async (req, res, next) => {
       estimateOptionalNote: body.estimateOptionalNote ?? null,
       estimateIncludeOptionalInExport: body.estimateIncludeOptionalInExport ?? false,
       skipPartialDay: body.skipPartialDay ?? false,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+      manualFinalAmount:
+        req.adminUser?.role === "SUPER_ADMIN" ? body.manualFinalAmount ?? null : null,
+      items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
       transport: transportSnapshots,
     });
 

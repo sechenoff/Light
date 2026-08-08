@@ -419,9 +419,20 @@ class SmetaPdfWriter {
       this.y += 16;
     };
 
-    row("Оборудование итого", rub(data.subtotal), { muted: true });
-    if (Number(data.discountPercent) > 0) {
-      row(`Скидка ${data.discountPercent}%`, `− ${rub(data.discountAmount)}`, { muted: true });
+    // Когда в смете есть договорные позиции, процент считается не от всей
+    // суммы: без базы строка «Скидка N%» перестаёт сходиться с арифметикой
+    // и первым делом вызывает у заказчика вопрос.
+    if (data.listedSubtotal != null && data.negotiatedSubtotal != null) {
+      row("Оборудование по прайсу", rub(data.listedSubtotal), { muted: true });
+      if (Number(data.discountPercent) > 0) {
+        row(`Скидка ${data.discountPercent}%`, `− ${rub(data.discountAmount)}`, { muted: true });
+      }
+      row("Позиции по договорённости", rub(data.negotiatedSubtotal), { muted: true });
+    } else {
+      row("Оборудование итого", rub(data.subtotal), { muted: true });
+      if (Number(data.discountPercent) > 0) {
+        row(`Скидка ${data.discountPercent}%`, `− ${rub(data.discountAmount)}`, { muted: true });
+      }
     }
 
     const finalLabel = data.documentTitleRu === "Смета-добор" ? "Итого по доб-смете" : "Итого по смете";
