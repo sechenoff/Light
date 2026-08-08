@@ -172,6 +172,7 @@ export function EquipmentCard({
       <EquipmentCartZone
         selected={selected}
         customItems={customItems}
+        shifts={shifts}
         offCatalogItems={offCatalogItems}
         adjustments={adjustments}
         onChangeQty={onChangeQty}

@@ -31,6 +31,14 @@ async function computeTotalFromBooking(bookingId: string): Promise<Decimal> {
   });
   if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
 
+  // Зафиксированный вручную итог авторитетнее автомата — ровно так же его
+  // трактует recomputeBookingFinance при расчёте долга. Без этой ветки счёт
+  // выписывался по смете, а долг считался по договорной сумме, и документ
+  // расходился с витриной долгов ровно на величину уступки.
+  if (booking.manualFinalAmount != null) {
+    return new Decimal(booking.manualFinalAmount.toString());
+  }
+
   const mainEstimate = booking.estimates.find((e) => e.kind === "MAIN");
   const addonEstimate = booking.estimates.find((e) => e.kind === "ADDON");
 

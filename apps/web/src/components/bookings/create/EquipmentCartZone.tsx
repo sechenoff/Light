@@ -11,6 +11,13 @@ import type { CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogI
 type Props = {
   selected: Map<string, CatalogSelectedItem>;
   customItems: CustomItem[];
+  /**
+   * Число смен в периоде. Цена каталога — ставка ЗА СМЕНУ, поэтому без
+   * множителя строка состава врала: на трёхдневной брони показывала треть
+   * настоящей суммы. Своя позиция задаётся суммой за всю бронь и на смены
+   * не умножается — как и в расчёте на сервере.
+   */
+  shifts: number;
   /** Legacy-позиции «вне каталога» без цены (новый флоу их не создаёт). */
   offCatalogItems?: OffCatalogItem[];
   /** Корректировки доступности после смены дат (clamp/unavailable). */
@@ -69,6 +76,7 @@ function Stepper({
 export function EquipmentCartZone({
   selected,
   customItems,
+  shifts,
   offCatalogItems = [],
   adjustments,
   onChangeQty,
@@ -124,7 +132,10 @@ export function EquipmentCartZone({
                   ) : null}
                 </div>
                 <span className="hidden whitespace-nowrap font-mono text-[12px] text-ink-2 sm:inline">
-                  {formatMoneyRub(Number(it.dailyPrice))} × {it.quantity} = {formatMoneyRub(Number(it.dailyPrice) * it.quantity)} ₽
+                  {formatMoneyRub(Number(it.dailyPrice))}
+                  <span className="text-ink-3">/см</span> × {it.quantity}
+                  {shifts > 1 && <> × {shifts} см</>} ={" "}
+                  {formatMoneyRub(Number(it.dailyPrice) * it.quantity * shifts)} ₽
                 </span>
                 {!isHardUnavail && (
                   <Stepper

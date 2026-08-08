@@ -19,6 +19,7 @@ function mkSelected(): Map<string, CatalogSelectedItem> {
 const CUSTOM: CustomItem[] = [{ tempId: "c1", name: "Скотч армированный", unitPrice: 500, quantity: 2 }];
 
 const handlers = {
+  shifts: 1,
   onChangeQty: vi.fn(),
   onRemove: vi.fn(),
   onChangeCustomQty: vi.fn(),
@@ -86,5 +87,24 @@ describe("EquipmentCartZone", () => {
     );
     expect(screen.getByText(/недоступно на новые даты/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /увеличить количество/i })).toBeNull();
+  });
+
+  it("строка состава считает сумму по числу смен, а не по одной", () => {
+    // Цена каталога — ставка за смену. Без множителя строка врала: на
+    // трёхдневной брони показывала треть настоящей суммы позиции.
+    const { container } = render(
+      <EquipmentCartZone selected={mkSelected()} customItems={[]} {...handlers} shifts={3} />,
+    );
+    // 4 000 ₽/см × 2 шт × 3 см = 24 000 ₽
+    expect(container.textContent).toMatch(/24\s?000/);
+    expect(container.textContent).toMatch(/× 3 см/);
+  });
+
+  it("на односменной брони множитель смен не показывается", () => {
+    const { container } = render(
+      <EquipmentCartZone selected={mkSelected()} customItems={[]} {...handlers} shifts={1} />,
+    );
+    expect(container.textContent).toMatch(/8\s?000/);
+    expect(container.textContent).not.toMatch(/× 1 см/);
   });
 });
