@@ -63,8 +63,13 @@ export async function recreateMainEstimate(bookingId: string): Promise<void> {
   const lines: LineInput[] = items
     .map((bi: any): LineInput | null => {
       if (bi.equipmentId != null && bi.equipment != null) {
-        const unitPrice = new Decimal(bi.equipment.rentalRatePerShift.toString());
-        const lineSum = unitPrice.mul(bi.quantity).mul(shifts);
+        // unitPrice — цена ЗА ВЕСЬ ПЕРИОД, как в quoteEstimate: ставка × смены.
+        // Раньше здесь лежала ставка за смену, а lineSum добирал множитель
+        // отдельно. Итог сходился, но экспорт сметы всегда делит unitPrice на
+        // число смен (buildDocument), и после приёмки на складе колонка
+        // «цена/смена» в PDF многосменной брони уменьшалась во столько же раз.
+        const unitPrice = new Decimal(bi.equipment.rentalRatePerShift.toString()).mul(shifts);
+        const lineSum = unitPrice.mul(bi.quantity);
         return {
           equipmentId: bi.equipmentId,
           categorySnapshot: bi.equipment.category,
