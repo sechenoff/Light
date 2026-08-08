@@ -66,50 +66,62 @@ export function EditablePrice({
     onChange(Math.round(parsed) === Math.round(listValue) ? null : parsed);
   }
 
-  // Ширина по содержимому, а не фиксированные 9 символов: семизначный итог
-  // («3 774 575») в них не помещался и обрезался на последней цифре.
-  // Цифры моноширинные (mono-num), поэтому ch-расчёт точен.
   const shown = editing ? (draft as string) : formatMoneyRubWhole(value);
-  const widthCh = Math.max(size === "lg" ? 6 : 5, shown.length + 1);
-  const base =
+  // Метрики шрифта и отступы: одинаковы у поля и у невидимого двойника,
+  // поэтому размер совпадает всегда.
+  const box =
     size === "lg"
-      ? "mono-num text-[30px] font-semibold leading-none tracking-tight px-2 py-0.5"
-      : "mono-num text-xs font-semibold px-1.5 py-0.5 text-right";
+      ? "mono-num text-[30px] font-semibold leading-none tracking-tight px-2 py-0.5 border"
+      : "mono-num text-xs font-semibold px-1.5 py-0.5 text-right border";
   const tone = isNegotiated
     ? "text-indigo bg-indigo-soft border-indigo-border"
     : "text-ink bg-transparent border-transparent hover:bg-surface-muted hover:border-border";
 
   return (
-    <input
-      ref={inputRef}
-      type="text"
-      inputMode="numeric"
-      disabled={disabled}
-      aria-label={ariaLabel}
-      value={shown}
-      style={{ width: `${widthCh}ch` }}
-      onFocus={(e) => {
-        const opened = String(Math.round(value));
-        openedWithRef.current = opened;
-        cancelledRef.current = false;
-        setDraft(opened);
-        requestAnimationFrame(() => e.target.select());
-      }}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={(e) => commit(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          (e.target as HTMLInputElement).blur();
-        }
-        if (e.key === "Escape") {
-          e.preventDefault();
-          cancelledRef.current = true;
-          (e.target as HTMLInputElement).blur();
-        }
-      }}
-      className={`cursor-text rounded border ${tone} ${base} focus:border-accent-bright focus:bg-surface focus:outline-none focus:ring-2 focus:ring-accent-soft disabled:cursor-not-allowed disabled:opacity-50`}
-    />
+    /*
+     * Ширина поля меряется невидимым двойником с тем же текстом и теми же
+     * стилями, а не считается в ch. Расчёт в ch врал дважды: ширина в
+     * border-box включает горизонтальные отступы, так что цифрам оставалось
+     * на два знака меньше — «1 800» показывалось как «1 80».
+     */
+    <span className="inline-grid items-center">
+      <span aria-hidden className={`invisible col-start-1 row-start-1 whitespace-pre ${box}`}>
+        {shown || "0"}
+      </span>
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="numeric"
+        // Без size у input своя внутренняя ширина в 20 символов, и в сетке
+        // побеждала она, а не двойник: поле раздувалось до 164 px независимо
+        // от суммы. С size=1 ширину диктует двойник.
+        size={1}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        value={shown}
+        onFocus={(e) => {
+          const opened = String(Math.round(value));
+          openedWithRef.current = opened;
+          cancelledRef.current = false;
+          setDraft(opened);
+          requestAnimationFrame(() => e.target.select());
+        }}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            (e.target as HTMLInputElement).blur();
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            cancelledRef.current = true;
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className={`col-start-1 row-start-1 w-full cursor-text rounded ${tone} ${box} focus:border-accent-bright focus:bg-surface focus:outline-none focus:ring-2 focus:ring-accent-soft disabled:cursor-not-allowed disabled:opacity-50`}
+      />
+    </span>
   );
 }
 

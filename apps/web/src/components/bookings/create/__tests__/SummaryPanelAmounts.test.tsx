@@ -58,25 +58,29 @@ describe("SummaryPanel — суммы", () => {
     expect(total.value).not.toContain(",");
   });
 
-  it("поле итога шире самого числа — семизначная сумма помещается целиком", () => {
+  it("ширину задаёт невидимый двойник с тем же текстом и теми же стилями", () => {
+    // Ширина не считается в ch — расчёт врал на величину отступов. Вместо
+    // этого поле растянуто по двойнику, который содержит ровно ту же строку.
     renderPanel(quoteWith("3774575.49"));
     const total = screen.getByLabelText("Итоговая сумма брони") as HTMLInputElement;
-    const widthCh = Number(total.style.width.replace("ch", ""));
-    expect(widthCh).toBeGreaterThanOrEqual(total.value.length);
+    const sizer = total.parentElement!.querySelector("[aria-hidden]") as HTMLElement;
+    expect(sizer).not.toBeNull();
+    expect(sizer.textContent).toBe(total.value);
+    // Двойник невидим, но занимает место; поле растянуто по нему.
+    expect(sizer.className).toContain("invisible");
+    expect(total.className).toContain("w-full");
+    // Одинаковые метрики: шрифт, размер, отступы, рамка.
+    for (const cls of ["mono-num", "text-[30px]", "px-2", "border"]) {
+      expect(sizer.className).toContain(cls);
+      expect(total.className).toContain(cls);
+    }
   });
 
-  it("поле растёт вместе с суммой, а не остаётся фиксированным", () => {
-    const { unmount } = renderPanel(quoteWith("9000"));
-    const small = Number(
-      (screen.getByLabelText("Итоговая сумма брони") as HTMLInputElement).style.width.replace("ch", ""),
-    );
-    unmount();
-
+  it("двойник повторяет сумму целиком — длинное число не обрезается", () => {
     renderPanel(quoteWith("12345678"));
-    const big = Number(
-      (screen.getByLabelText("Итоговая сумма брони") as HTMLInputElement).style.width.replace("ch", ""),
-    );
-    expect(big).toBeGreaterThan(small);
+    const total = screen.getByLabelText("Итоговая сумма брони") as HTMLInputElement;
+    const sizer = total.parentElement!.querySelector("[aria-hidden]") as HTMLElement;
+    expect(digitsOf(sizer.textContent ?? "")).toBe("12345678");
   });
 
   it("строки разбивки тоже без копеек", () => {
