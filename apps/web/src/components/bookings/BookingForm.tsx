@@ -69,6 +69,8 @@ export type BookingDetail = {
     kmOutsideMkad: number | null;
     ttkEntry: boolean;
     subtotalRub: string | null;
+    /** Договорная сумма за машину; null — считаем по прайсу. */
+    negotiatedTotalRub?: string | null;
   }>;
   vehicleId?: string | null;
   vehicleWithGenerator?: boolean;
@@ -84,6 +86,8 @@ export type BookingDetail = {
     customName: string | null;
     customUnitPrice: string | null;
     customCategory: string | null;
+    /** Договорная ставка за смену; null — цена по прайсу. */
+    negotiatedRatePerShift?: string | null;
     equipment: {
       id: string;
       name: string;
@@ -334,6 +338,10 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         quantity: it.quantity,
         dailyPrice: it.equipment.rentalRatePerShift,
         availableQuantity: 9999, // Will be updated when catalog loads
+        // Без восстановления договорной цены открытая на правку бронь
+        // показала бы прайс и первым же сохранением стёрла уступку.
+        negotiatedRatePerShift:
+          it.negotiatedRatePerShift != null ? Number(it.negotiatedRatePerShift) : null,
       });
     }
     return m;
@@ -404,6 +412,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         skipOvertime: v.skipOvertime,
         kmOutsideMkad: v.kmOutsideMkad ?? 0,
         ttkEntry: v.ttkEntry,
+        negotiatedTotalRub:
+          v.negotiatedTotalRub != null ? Number(v.negotiatedTotalRub) : null,
       }));
     }
     if (initialBooking.vehicleId) {

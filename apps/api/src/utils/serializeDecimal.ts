@@ -55,6 +55,8 @@ function serializeBookingVehicle(v: BookingVehicleRow) {
     ...v,
     shiftHours: v.shiftHours != null ? v.shiftHours.toString() : null,
     subtotalRub: v.subtotalRub != null ? v.subtotalRub.toString() : null,
+    negotiatedTotalRub:
+      (v as any).negotiatedTotalRub != null ? (v as any).negotiatedTotalRub.toString() : null,
     vehicle: v.vehicle
       ? {
           ...v.vehicle,
@@ -78,6 +80,12 @@ export function serializeBookingForApi(b: BookingWithItemsEquipment) {
     items: b.items.map((it) => ({
       ...it,
       customUnitPrice: (it as any).customUnitPrice != null ? (it as any).customUnitPrice.toString() : null,
+      // Договорная ставка нужна форме редактирования: без неё открытая на правку
+      // бронь показала бы прайс и первым же сохранением стёрла уступку.
+      negotiatedRatePerShift:
+        (it as any).negotiatedRatePerShift != null
+          ? (it as any).negotiatedRatePerShift.toString()
+          : null,
       equipment: it.equipment ? serializeEquipmentForJson(it.equipment) : null,
     })),
     // Преобразуем массив estimates в backward-compatible JSON: top-level `estimate`
