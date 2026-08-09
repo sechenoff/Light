@@ -1,6 +1,7 @@
 "use client";
 
 import { EditablePrice } from "./EditablePrice";
+import { EstimateExportBlock } from "./EstimateExportBlock";
 import { formatMoneyRubWhole, pluralize } from "../../../lib/format";
 import type { QuoteResponse, TransportBreakdown, ValidationCheck } from "./types";
 
@@ -42,6 +43,11 @@ type SummaryPanelProps = {
   submitting?: boolean;
   /** Cancel link href (edit mode). */
   cancelHref?: string;
+  /** Правка сохранённой брони — тогда смету можно напечатать и выгрузить.
+   *  На форме создания печатать нечего: снапшота ещё нет. */
+  bookingId?: string;
+  /** В форме есть правки, которых нет в сохранённой смете. */
+  hasUnsavedChanges?: boolean;
 };
 
 const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass: string }> = {
@@ -76,6 +82,8 @@ export function SummaryPanel({
   mode = "create",
   submitting = false,
   cancelHref,
+  bookingId,
+  hasUnsavedChanges = false,
 }: SummaryPanelProps) {
   const equipSubtotal = quote ? Number(quote.equipmentSubtotal ?? quote.subtotal) : localSubtotal;
   const discount = quote ? Number(quote.discountAmount) : localDiscount;
@@ -288,6 +296,10 @@ export function SummaryPanel({
             {submitting ? "Сохранение…" : "Сохранить черновик"}
           </button>
         </div>
+      )}
+
+      {bookingId && (
+        <EstimateExportBlock bookingId={bookingId} hasUnsavedChanges={hasUnsavedChanges} />
       )}
 
       {/* Validation checks */}

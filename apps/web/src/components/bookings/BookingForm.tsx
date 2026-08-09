@@ -544,9 +544,15 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         returnLocal,
         skipPartialDay,
         expectedPaymentDateLocal,
-        // Только id+кол-во: цены/доступность обновляет загрузка каталога,
-        // это не пользовательский ввод.
-        items: Array.from(selected.values()).map((s) => [s.equipmentId, s.quantity]),
+        // Прайсовую цену и доступность обновляет загрузка каталога — это не
+        // пользовательский ввод, и в подпись они не идут. А вот договорная
+        // ставка идёт: её вписывает человек, и без неё подпись не замечала
+        // ровно ту правку, которую важнее всего не потерять.
+        items: Array.from(selected.values()).map((s) => [
+          s.equipmentId,
+          s.quantity,
+          s.negotiatedRatePerShift ?? null,
+        ]),
         customItems: customItems.map((c) => [c.name, c.unitPrice, c.quantity]),
         vehicles: selectedVehicles,
       }),
@@ -555,6 +561,9 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
       projectName,
       bookingComment,
       discountPercent,
+      // negotiatedTotal участвует в подписи и обязан быть в зависимостях:
+      // без него смена договорного итога подпись не пересчитывала.
+      negotiatedTotal,
       pickupLocal,
       returnLocal,
       skipPartialDay,
@@ -1522,6 +1531,10 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             mode={mode}
             submitting={submitting}
             cancelHref={isEdit ? `/bookings/${bookingId}` : undefined}
+            // Печатается серверный снапшот сметы, поэтому кнопки есть только
+            // там, где он существует, — на правке сохранённой брони.
+            bookingId={isEdit ? bookingId : undefined}
+            hasUnsavedChanges={isEdit && shouldGuardUnload}
           />
           <TransportCard
             vehicles={vehicles}

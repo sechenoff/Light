@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 
 import { apiFetch, apiFetchRaw } from "../../../src/lib/api";
-import { getFileNameFromContentDisposition } from "../../../src/lib/download";
+import { downloadEstimate, fullEstimatePath, printEstimate } from "../../../src/lib/estimateExport";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { SectionHeader } from "../../../src/components/SectionHeader";
 import { formatMoneyRub, formatRub } from "../../../src/lib/format";
@@ -247,19 +247,7 @@ export default function BookingDetailPage() {
   }, [id]);
 
   async function download(path: string, filename: string) {
-    const res = await apiFetchRaw(path, { method: "GET", credentials: "include" });
-    if (!res.ok) {
-      alert("Не удалось скачать файл");
-      return;
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const disposition = res.headers.get("content-disposition") ?? "";
-    a.download = getFileNameFromContentDisposition(disposition, filename);
-    a.click();
-    URL.revokeObjectURL(url);
+    await downloadEstimate(path, filename);
   }
 
   async function reloadBooking() {
@@ -402,27 +390,9 @@ export default function BookingDetailPage() {
    */
   async function downloadEstimatePdfWithFallback() {
     if (!booking) return;
-    try {
-      const res = await apiFetchRaw(`/api/bookings/${booking.id}/full-estimate/export/pdf`, {
-        method: "GET",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        toast.error("Смета ещё не сформирована — сохраните бронь");
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const disposition = res.headers.get("content-disposition") ?? "";
-      a.download = getFileNameFromContentDisposition(disposition, `booking-${booking.id}-full.pdf`);
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error("Смета ещё не сформирована — сохраните бронь");
-    }
+    await downloadEstimate(fullEstimatePath(booking.id, "pdf"), `booking-${booking.id}-full.pdf`);
   }
+
 
   /**
    * Печать сметы: полная смета (A4-PDF с реквизитами, доборами и транспортом)
@@ -432,56 +402,9 @@ export default function BookingDetailPage() {
    */
   async function printEstimatePdf() {
     if (!booking) return;
-    try {
-      const res = await apiFetchRaw(`/api/bookings/${booking.id}/full-estimate/export/pdf`, {
-        method: "GET",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        toast.error("Смета ещё не сформирована — сохраните бронь");
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-
-      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-      if (isSafari) {
-        const win = window.open(url, "_blank");
-        if (win) {
-          toast.info("PDF открыт в новой вкладке — нажмите ⌘P для печати");
-        } else {
-          toast.error("Браузер заблокировал вкладку — скачайте PDF кнопкой рядом");
-        }
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        return;
-      }
-
-      const iframe = document.createElement("iframe");
-      iframe.style.position = "fixed";
-      iframe.style.right = "0";
-      iframe.style.bottom = "0";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
-      iframe.src = url;
-      iframe.onload = () => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch {
-          window.open(url, "_blank");
-        }
-      };
-      document.body.appendChild(iframe);
-      // Убираем iframe и blob после диалога печати; 60 с хватает и медленному принтеру.
-      window.setTimeout(() => {
-        iframe.remove();
-        URL.revokeObjectURL(url);
-      }, 60_000);
-    } catch {
-      toast.error("Не удалось подготовить смету к печати");
-    }
+    await printEstimate(fullEstimatePath(booking.id, "pdf"));
   }
+
 
   async function handleSubmitForApproval() {
     if (!booking) return;
