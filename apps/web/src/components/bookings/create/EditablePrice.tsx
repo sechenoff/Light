@@ -49,12 +49,18 @@ export function EditablePrice({
   const cancelledRef = useRef(false);
   const editing = draft !== null;
 
-  function commit(raw: string) {
+  function commit(raw: string, el: HTMLInputElement) {
     setDraft(null);
     if (cancelledRef.current) {
       cancelledRef.current = false;
       return;
     }
+    // Состав рисуется двумя раскладками (таблица и мобильные строки), и переход
+    // через брейкпоинт прячет ту, в которой сейчас правят цену. Браузер на
+    // display:none шлёт blur — но человек ничего не завершал, и записывать
+    // недонабранное число как договорную цену нельзя. В jsdom метода нет —
+    // тогда считаем поле видимым и ведём себя как раньше.
+    if (typeof el.checkVisibility === "function" && !el.checkVisibility()) return;
     if (raw === openedWithRef.current) return; // поле не трогали
     const digits = raw.replace(/[^\d]/g, "");
     const parsed = digits ? Number(digits) : NaN;
@@ -107,7 +113,7 @@ export function EditablePrice({
           requestAnimationFrame(() => e.target.select());
         }}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={(e) => commit(e.target.value)}
+        onBlur={(e) => commit(e.target.value, e.target)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();

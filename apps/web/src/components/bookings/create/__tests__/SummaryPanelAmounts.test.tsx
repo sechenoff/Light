@@ -36,6 +36,8 @@ function renderPanel(quote: QuoteResponse, negotiatedTotal: number | null = null
     <SummaryPanel
       quote={quote}
       localSubtotal={0}
+      localListedSubtotal={0}
+      localNegotiatedSubtotal={0}
       localDiscount={0}
       localTotal={0}
       discountPercent={0}

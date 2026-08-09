@@ -11,6 +11,10 @@ type SummaryPanelProps = {
   /** Задать/сбросить договорной итог. Не передан — итог только для чтения. */
   onChangeNegotiatedTotal?: (v: number | null) => void;
   localSubtotal: number;
+  /** Прайсовая часть предварительного расчёта — база процентной скидки. */
+  localListedSubtotal: number;
+  /** Договорная часть предварительного расчёта — процент к ней не применяется. */
+  localNegotiatedSubtotal: number;
   localDiscount: number;
   localTotal: number;
   discountPercent: number;
@@ -53,6 +57,8 @@ export function SummaryPanel({
   negotiatedTotal = null,
   onChangeNegotiatedTotal,
   localSubtotal,
+  localListedSubtotal,
+  localNegotiatedSubtotal,
   localDiscount,
   localTotal,
   discountPercent,
@@ -97,8 +103,13 @@ export function SummaryPanel({
   const total = negotiatedTotal ?? grandTotal;
   const negotiatedDelta = negotiatedTotal != null ? round2(grandTotal - negotiatedTotal) : 0;
 
-  const listedSubtotal = quote?.listedSubtotal != null ? Number(quote.listedSubtotal) : equipSubtotal;
-  const negotiatedLines = quote?.negotiatedSubtotal != null ? Number(quote.negotiatedSubtotal) : 0;
+  // Пока сметы нет, разбивку берём из предварительного расчёта, а не считаем
+  // всё прайсовым: иначе договорные строки попадали в базу скидки и панель
+  // показывала итог вдвое меньше того, что вернёт сервер.
+  const listedSubtotal =
+    quote?.listedSubtotal != null ? Number(quote.listedSubtotal) : localListedSubtotal;
+  const negotiatedLines =
+    quote?.negotiatedSubtotal != null ? Number(quote.negotiatedSubtotal) : localNegotiatedSubtotal;
 
   const bigTotalFormatted = Math.round(total).toLocaleString("ru-RU");
 

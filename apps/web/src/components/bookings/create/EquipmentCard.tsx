@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { AiRequestModal } from "./AiRequestModal";
 import { AiResultBanner } from "./AiResultBanner";
 import { CatalogBrowser } from "./CatalogBrowser";
-import { EquipmentCartZone } from "./EquipmentCartZone";
+import { EquipmentCartZone, computeCartTotal } from "./EquipmentCartZone";
 import { ReviewPanel } from "./ReviewPanel";
 import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem, PendingReviewItem } from "./types";
-import { formatMoneyRub, pluralize } from "../../../lib/format";
+import { formatMoneyRubWhole, pluralize } from "../../../lib/format";
 
 // Блок «3. Оборудование». Две зоны: сначала набор из каталога (поиск +
 // AI-заявка + каталог-проводник: desktop — категории слева, mobile —
@@ -134,14 +134,13 @@ export function EquipmentCard({
   }, [pendingReview.length]);
 
   const totalPositions = selected.size + offCatalogItems.length + customItems.length;
-  const totalPrice = useMemo(() => {
-    let sum = 0;
-    for (const item of selected.values()) {
-      sum += Number(item.dailyPrice) * item.quantity * shifts;
-    }
-    for (const c of customItems) sum += c.unitPrice * c.quantity;
-    return sum;
-  }, [selected, shifts, customItems]);
+  // Тот же расчёт, что под таблицей состава. Своя копия формулы здесь уже
+  // разошлась с составом, когда появились договорные цены: шапка брала прайс
+  // и показывала сумму больше той, что стояла в строках.
+  const totalPrice = useMemo(
+    () => computeCartTotal(selected, customItems, shifts),
+    [selected, shifts, customItems],
+  );
 
   function handleSearchPaste(e: React.ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData("text");
@@ -165,7 +164,7 @@ export function EquipmentCard({
               <span className="font-semibold text-ink">
                 {totalPositions} {pluralize(totalPositions, "позиция", "позиции", "позиций")}
               </span>{" "}
-              · {formatMoneyRub(totalPrice)} ₽
+              · {formatMoneyRubWhole(totalPrice)} ₽
             </>
           ) : (
             "нет позиций"

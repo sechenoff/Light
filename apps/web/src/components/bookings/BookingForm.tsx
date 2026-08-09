@@ -685,16 +685,25 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
     [selected],
   );
 
-  const localSubtotal = useMemo(() => {
-    let sum = 0;
-    for (const s of selected.values())
-      sum += (s.negotiatedRatePerShift ?? Number(s.dailyPrice)) * s.quantity * shifts;
-    for (const c of customItems) sum += c.unitPrice * c.quantity;
-    return sum;
+  // Предварительный расчёт, пока не пришла серверная смета. Делит строки так
+  // же, как сервер в splitEquipmentDiscount: процент начисляется ТОЛЬКО на
+  // прайсовые строки — договорная цена уже финальная, скидка к ней означала бы
+  // уступить дважды. Своя позиция скидке подлежит (на сервере isNegotiated:false).
+  const { localListedSubtotal, localNegotiatedSubtotal } = useMemo(() => {
+    let listed = 0;
+    let negotiated = 0;
+    for (const s of selected.values()) {
+      const line = (s.negotiatedRatePerShift ?? Number(s.dailyPrice)) * s.quantity * shifts;
+      if (s.negotiatedRatePerShift != null) negotiated += line;
+      else listed += line;
+    }
+    for (const c of customItems) listed += c.unitPrice * c.quantity;
+    return { localListedSubtotal: listed, localNegotiatedSubtotal: negotiated };
   }, [selected, shifts, customItems]);
 
+  const localSubtotal = localListedSubtotal + localNegotiatedSubtotal;
   const clampedDiscount = Math.max(0, Math.min(100, discountPercent || 0));
-  const localDiscount = (localSubtotal * clampedDiscount) / 100;
+  const localDiscount = (localListedSubtotal * clampedDiscount) / 100;
   const localTotal = localSubtotal - localDiscount;
 
   // ── Требования к сохранению (для чеклиста, шагов и валидации по клику) ──
@@ -1494,6 +1503,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             negotiatedTotal={negotiatedTotal}
             onChangeNegotiatedTotal={isSuperAdmin ? setNegotiatedTotal : undefined}
             localSubtotal={localSubtotal}
+            localListedSubtotal={localListedSubtotal}
+            localNegotiatedSubtotal={localNegotiatedSubtotal}
             localDiscount={localDiscount}
             localTotal={localTotal}
             discountPercent={discountPercent}
