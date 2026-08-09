@@ -1,7 +1,12 @@
 "use client";
 
+import { useState } from "react";
+
 import { formatMoneyRubWhole } from "../../../lib/format";
+import { toast } from "../../ToastProvider";
 import { EditablePrice, ListPriceBadge, RevertPriceButton } from "./EditablePrice";
+import { maxReasonFor } from "./maxReason";
+import { RemoveItemConfirm } from "./RemoveItemConfirm";
 import type { CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem } from "./types";
 
 // Зона «Состав заявки» — смета-таблица под каталогом.
@@ -76,6 +81,8 @@ type CartRow = {
   badge: { label: string; tone: "indigo" | "emerald" } | null;
   quantity: number;
   atMax: boolean;
+  /** Почему нельзя прибавить. null — упор в максимум невозможен. */
+  maxReason: string | null;
   stepperTone: "emerald" | "indigo";
   /** Действующая цена единицы. null — legacy-позиция без цены. */
   rate: number | null;
@@ -91,6 +98,8 @@ type CartRow = {
   sum: number | null;
   /** Корректировка доступности после смены дат. */
   adjustment: CatalogRowAdjustment | undefined;
+  /** Уменьшает количество на 1. Вызывается только при quantity > 1 —
+   *  «−» на единице спрашивает подтверждение, а не убирает молча. */
   onDec: () => void;
   onInc: () => void;
   onRemove: () => void;
@@ -98,9 +107,11 @@ type CartRow = {
   onPriceChange: ((next: number | null) => void) | undefined;
 };
 
+
 function Stepper({
   qty,
   atMax,
+  maxReason,
   tone,
   name,
   onDec,
@@ -108,6 +119,8 @@ function Stepper({
 }: {
   qty: number;
   atMax: boolean;
+  /** Причина упора для подсказки и тоста. */
+  maxReason: string | null;
   tone: "emerald" | "indigo";
   /** Имя позиции в подписи кнопок: на экране без колонок «Увеличить
    *  количество» ×N неразличимы, и скринридер не понимает, чьё количество. */
@@ -118,6 +131,7 @@ function Stepper({
   const border = tone === "emerald" ? "border-emerald-border" : "border-indigo-border";
   const text = tone === "emerald" ? "text-emerald" : "text-indigo";
   const hover = tone === "emerald" ? "hover:bg-emerald-soft" : "hover:bg-indigo-soft";
+  const blocked = atMax && maxReason !== null;
   return (
     <span className={`inline-flex shrink-0 items-center overflow-hidden rounded border ${border} bg-surface`}>
       <button
@@ -131,12 +145,19 @@ function Stepper({
       <span className={`flex h-7 w-8 items-center justify-center border-x ${border} font-mono text-[12px] font-semibold ${text}`}>
         {qty}
       </span>
+      {/* Упёршийся «+» НЕ disabled. Браузеры не показывают title на
+          заблокированной кнопке и не шлют с неё событий, а на тач-экране
+          подсказки нет вовсе — блокировка молчала бы о причине. Кнопка
+          остаётся нажимаемой и отвечает текстом (тот же приём, что в
+          BulkActionBar на /bookings). */}
       <button
         type="button"
         aria-label={`Увеличить количество: ${name}`}
-        disabled={atMax}
-        onClick={onInc}
-        className={`flex h-7 w-7 items-center justify-center text-ink-2 ${hover} disabled:cursor-not-allowed disabled:opacity-40`}
+        aria-disabled={blocked || undefined}
+        disabled={atMax && !blocked}
+        title={blocked ? (maxReason as string) : undefined}
+        onClick={() => (blocked ? toast.info(maxReason as string) : onInc())}
+        className={`flex h-7 w-7 items-center justify-center text-ink-2 ${hover} disabled:cursor-not-allowed disabled:opacity-40 ${blocked ? "cursor-help opacity-40" : ""}`}
       >
         +
       </button>
@@ -202,6 +223,7 @@ export function EquipmentCartZone({
       badge: null,
       quantity: it.quantity,
       atMax: it.quantity >= it.availableQuantity,
+      maxReason: maxReasonFor(it.availableQuantity, it.quantity),
       stepperTone: "emerald",
       rate: rateOf(it),
       listRate: it.negotiatedRatePerShift != null ? Number(it.dailyPrice) : null,
@@ -209,8 +231,7 @@ export function EquipmentCartZone({
       shiftFactor: shifts,
       sum: rateOf(it) * it.quantity * shifts,
       adjustment: adjustments?.get(it.equipmentId),
-      onDec: () =>
-        it.quantity - 1 <= 0 ? onRemove(it.equipmentId) : onChangeQty(it.equipmentId, it.quantity - 1),
+      onDec: () => onChangeQty(it.equipmentId, it.quantity - 1),
       onInc: () => onChangeQty(it.equipmentId, it.quantity + 1),
       onRemove: () => onRemove(it.equipmentId),
       onPriceChange: onChangeNegotiatedRate
@@ -223,6 +244,7 @@ export function EquipmentCartZone({
       badge: { label: "своя", tone: "indigo" },
       quantity: it.quantity,
       atMax: false,
+      maxReason: null,
       stepperTone: "indigo",
       rate: it.unitPrice,
       listRate: null,
@@ -231,10 +253,7 @@ export function EquipmentCartZone({
       shiftFactor: 1,
       sum: it.unitPrice * it.quantity,
       adjustment: undefined,
-      onDec: () =>
-        it.quantity - 1 <= 0
-          ? onRemoveCustom?.(it.tempId)
-          : onChangeCustomQty?.(it.tempId, it.quantity - 1),
+      onDec: () => onChangeCustomQty?.(it.tempId, it.quantity - 1),
       onInc: () => onChangeCustomQty?.(it.tempId, it.quantity + 1),
       onRemove: () => onRemoveCustom?.(it.tempId),
       onPriceChange: undefined,
@@ -245,6 +264,7 @@ export function EquipmentCartZone({
       badge: { label: "вне каталога", tone: "emerald" },
       quantity: it.quantity,
       atMax: false,
+      maxReason: null,
       stepperTone: "emerald",
       rate: null,
       listRate: null,
@@ -252,10 +272,7 @@ export function EquipmentCartZone({
       shiftFactor: 1,
       sum: null,
       adjustment: undefined,
-      onDec: () =>
-        it.quantity - 1 <= 0
-          ? onRemoveOffCatalog?.(it.tempId)
-          : onChangeOffCatalogQty?.(it.tempId, it.quantity - 1),
+      onDec: () => onChangeOffCatalogQty?.(it.tempId, it.quantity - 1),
       onInc: () => onChangeOffCatalogQty?.(it.tempId, it.quantity + 1),
       onRemove: () => onRemoveOffCatalog?.(it.tempId),
       onPriceChange: undefined,
@@ -263,6 +280,13 @@ export function EquipmentCartZone({
   ];
 
   const total = computeCartTotal(selected, customItems, shifts);
+
+  // «−» на количестве 1 убирал позицию молча, и промах пальцем стоил дорого:
+  // в смете на сорок строк потом не вспомнить, что именно пропало. Теперь
+  // спрашиваем. Крестик справа остаётся быстрым путём — его жмут намеренно.
+  const [pendingRemoval, setPendingRemoval] = useState<CartRow | null>(null);
+  const decOrConfirm = (row: CartRow) => () =>
+    row.quantity <= 1 ? setPendingRemoval(row) : row.onDec();
 
   const header = (
     <div className="flex items-center justify-between px-5 pb-1 pt-2.5">
@@ -343,9 +367,10 @@ export function EquipmentCartZone({
                       <Stepper
                         qty={row.quantity}
                         atMax={row.atMax}
+                        maxReason={row.maxReason}
                         tone={row.stepperTone}
                         name={row.name}
-                        onDec={row.onDec}
+                        onDec={decOrConfirm(row)}
                         onInc={row.onInc}
                       />
                     )}
@@ -442,9 +467,10 @@ export function EquipmentCartZone({
                 <Stepper
                   qty={row.quantity}
                   atMax={row.atMax}
+                  maxReason={row.maxReason}
                   tone={row.stepperTone}
                   name={row.name}
-                  onDec={row.onDec}
+                  onDec={decOrConfirm(row)}
                   onInc={row.onInc}
                 />
               )}
@@ -480,6 +506,17 @@ export function EquipmentCartZone({
           <span className="mono-num text-[15px] font-bold text-ink">{formatMoneyRubWhole(total)} ₽</span>
         </div>
       </div>
+
+      {/* Одно окно на обе раскладки — иначе на переходе через брейкпоинт
+          подтверждение открывалось бы дважды. */}
+      <RemoveItemConfirm
+        itemName={pendingRemoval?.name ?? null}
+        onConfirm={() => {
+          pendingRemoval?.onRemove();
+          setPendingRemoval(null);
+        }}
+        onCancel={() => setPendingRemoval(null)}
+      />
     </div>
   );
 }

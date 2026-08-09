@@ -3,6 +3,11 @@ import { describe, it, expect, vi } from "vitest";
 import { EquipmentCartZone } from "../EquipmentCartZone";
 import type { CatalogSelectedItem, CustomItem } from "../types";
 
+const toastInfo = vi.fn();
+vi.mock("../../../ToastProvider", () => ({
+  toast: { info: (m: string) => toastInfo(m), success: vi.fn(), error: vi.fn() },
+}));
+
 // В jsdom CSS не применяется, поэтому в DOM всегда лежат ОБЕ раскладки —
 // десктопная таблица и мобильные строки. Отсюда getAllBy* и [0] на кликах:
 // та же конвенция, что на /bookings и /finance/payments.
@@ -295,25 +300,84 @@ describe("EquipmentCartZone", () => {
     expect(screen.getAllByText(/4.?000/).length).toBeGreaterThan(0);
   });
 
-  it("степперы: − на qty=1 удаляет, + зовёт onChangeQty, + заблокирован на максимуме", () => {
+  it("«−» на количестве 1 спрашивает подтверждение, а не убирает молча", () => {
+    // Промах пальцем стоил позиции: в смете на сорок строк потом не вспомнить,
+    // что именно пропало. Быстрый путь остаётся у крестика справа.
     const selected = mkSelected();
-    const one = selected.get("a")!;
-    selected.set("a", { ...one, quantity: 1 });
-    const onChangeQty = vi.fn();
+    selected.set("a", { ...selected.get("a")!, quantity: 1 });
     const onRemove = vi.fn();
     render(
-      <EquipmentCartZone
-        selected={selected}
-        customItems={[]}
-        {...handlers}
-        onChangeQty={onChangeQty}
-        onRemove={onRemove}
-      />,
+      <EquipmentCartZone selected={selected} customItems={[]} {...handlers} onRemove={onRemove} />,
     );
     fireEvent.click(screen.getAllByRole("button", { name: /уменьшить количество/i })[0]);
+    expect(onRemove).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Убрать позицию" }));
     expect(onRemove).toHaveBeenCalledWith("a");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("отмена в окне оставляет позицию на месте", () => {
+    const selected = mkSelected();
+    selected.set("a", { ...selected.get("a")!, quantity: 1 });
+    const onRemove = vi.fn();
+    render(
+      <EquipmentCartZone selected={selected} customItems={[]} {...handlers} onRemove={onRemove} />,
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: /уменьшить количество/i })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Отмена" }));
+    expect(onRemove).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getAllByText("ARRI SkyPanel S60").length).toBeGreaterThan(0);
+  });
+
+  it("«−» на количестве больше единицы уменьшает без вопросов", () => {
+    const onChangeQty = vi.fn();
+    render(
+      <EquipmentCartZone selected={mkSelected()} customItems={[]} {...handlers} onChangeQty={onChangeQty} />,
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: /уменьшить количество/i })[0]);
+    expect(onChangeQty).toHaveBeenCalledWith("a", 1);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("«+» зовёт onChangeQty, пока есть свободные", () => {
+    const onChangeQty = vi.fn();
+    render(
+      <EquipmentCartZone selected={mkSelected()} customItems={[]} {...handlers} onChangeQty={onChangeQty} />,
+    );
     fireEvent.click(screen.getAllByRole("button", { name: /увеличить количество/i })[0]);
-    expect(onChangeQty).toHaveBeenCalledWith("a", 2);
+    expect(onChangeQty).toHaveBeenCalledWith("a", 3);
+  });
+
+  it("упёршийся «+» не молчит: объясняет причину подсказкой и по нажатию", () => {
+    // Кнопку нельзя делать disabled: браузер не покажет с неё title и не
+    // пришлёт событий, а на тач-экране подсказки нет вовсе — блокировка
+    // молчала бы о причине.
+    toastInfo.mockClear();
+    const onChangeQty = vi.fn();
+    const selected = mkSelected();
+    selected.set("a", { ...selected.get("a")!, quantity: 3, availableQuantity: 3 });
+    render(
+      <EquipmentCartZone selected={selected} customItems={[]} {...handlers} onChangeQty={onChangeQty} />,
+    );
+    const plus = screen.getAllByRole("button", { name: /увеличить количество/i })[0];
+    expect(plus).not.toBeDisabled();
+    expect(plus).toHaveAttribute("aria-disabled", "true");
+    expect(plus.getAttribute("title")).toMatch(/свободно 3 штуки/i);
+
+    fireEvent.click(plus);
+    expect(onChangeQty).not.toHaveBeenCalled();
+    expect(toastInfo).toHaveBeenCalledWith(expect.stringMatching(/свободно 3 штуки/i));
+  });
+
+  it("причина различает «занято другими» и «все уже в смете»", () => {
+    const selected = mkSelected();
+    selected.set("a", { ...selected.get("a")!, quantity: 2, availableQuantity: 0 });
+    render(<EquipmentCartZone selected={selected} customItems={[]} {...handlers} />);
+    const plus = screen.getAllByRole("button", { name: /увеличить количество/i })[0];
+    expect(plus.getAttribute("title")).toMatch(/занято другими бронями/i);
   });
 
   it("крестик убирает позицию из состава", () => {

@@ -233,7 +233,7 @@ export function EquipmentCard({
           >
             <span className="hidden sm:inline">Заявка от гафера</span>
             <span className="sm:hidden">Заявка</span>
-            <span className="rounded bg-surface-deep px-1.5 py-0.5 font-mono text-[10px] text-ink-3">AI</span>
+            <span className="rounded bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] text-ink-3">AI</span>
           </button>
         </div>
       </div>

@@ -169,7 +169,7 @@ function CloseWithExpenseModal({
           </button>
           <button
             onClick={() => onConfirm(true, parseFloat(workVal) || 0)}
-            className="px-4 py-2 text-sm font-medium text-surface bg-accent rounded-lg hover:bg-accent-hover transition-colors"
+            className="px-4 py-2 text-sm font-medium text-surface bg-accent rounded-lg hover:bg-accent-bright transition-colors"
           >
             Создать расход и закрыть
           </button>
@@ -548,7 +548,7 @@ export default function RepairDetailPage() {
               <button
                 onClick={handleTakeToWork}
                 disabled={actionLoading}
-                className="flex-1 min-w-[140px] h-11 bg-accent text-surface text-sm font-medium rounded-lg hover:bg-accent-hover disabled:opacity-50 transition-colors"
+                className="flex-1 min-w-[140px] h-11 bg-accent text-surface text-sm font-medium rounded-lg hover:bg-accent-bright disabled:opacity-50 transition-colors"
               >
                 Взять в работу
               </button>

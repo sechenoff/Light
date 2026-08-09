@@ -971,7 +971,7 @@ function BookingHistoryPageInner() {
                   type="button"
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="rounded-md border border-border bg-surface px-4 py-2 text-sm text-ink-1 hover:bg-accent-soft disabled:opacity-50"
+                  className="rounded-md border border-border bg-surface px-4 py-2 text-sm text-ink hover:bg-accent-soft disabled:opacity-50"
                 >
                   Повторить
                 </button>
@@ -986,7 +986,7 @@ function BookingHistoryPageInner() {
               <button
                 type="button"
                 onClick={loadMore}
-                className={`rounded-md border border-border bg-surface px-4 py-2 text-sm text-ink-1 hover:bg-accent-soft ${
+                className={`rounded-md border border-border bg-surface px-4 py-2 text-sm text-ink hover:bg-accent-soft ${
                   autoLoad.budgetExhausted ? "" : "sr-only focus:not-sr-only"
                 }`}
               >

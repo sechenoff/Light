@@ -159,7 +159,7 @@ export function CatalogBrowser({
       onPointerMove={onHandlePointerMove}
       onPointerUp={onHandlePointerUp}
       onKeyDown={onHandleKeyDown}
-      className="group flex h-4 cursor-ns-resize touch-none select-none items-center justify-center border-t border-border bg-surface-muted transition-colors hover:bg-surface-deep focus:outline-none focus-visible:bg-surface-deep focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-bright"
+      className="group flex h-4 cursor-ns-resize touch-none select-none items-center justify-center border-t border-border bg-surface-muted transition-colors hover:bg-surface-subtle focus:outline-none focus-visible:bg-surface-subtle focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-bright"
     >
       <span
         aria-hidden="true"
@@ -211,7 +211,7 @@ export function CatalogBrowser({
             className={`flex min-h-[38px] w-full items-center gap-2 px-3.5 py-2 text-left text-[12.5px] ${
               activeTab === "all"
                 ? "bg-surface font-semibold text-ink shadow-[inset_3px_0_0_theme(colors.accent.bright)]"
-                : "text-ink-2 hover:bg-surface-deep"
+                : "text-ink-2 hover:bg-surface-subtle"
             }`}
           >
             <span className="min-w-0 flex-1">Весь каталог</span>
@@ -227,7 +227,7 @@ export function CatalogBrowser({
                 className={`flex min-h-[38px] w-full items-center gap-2 px-3.5 py-2 text-left text-[12.5px] ${
                   activeTab === cat
                     ? "bg-surface font-semibold text-ink shadow-[inset_3px_0_0_theme(colors.accent.bright)]"
-                    : "text-ink-2 hover:bg-surface-deep"
+                    : "text-ink-2 hover:bg-surface-subtle"
                 }`}
               >
                 <span className="min-w-0 flex-1 truncate">{cat}</span>
@@ -277,7 +277,7 @@ export function CatalogBrowser({
                   key={cat}
                   type="button"
                   onClick={() => onActiveTabChange(cat)}
-                  className="flex min-h-[46px] w-full items-center gap-2.5 border-b border-surface-deep px-5 py-2 text-left last:border-b-0 hover:bg-surface-muted"
+                  className="flex min-h-[46px] w-full items-center gap-2.5 border-b border-surface-subtle px-5 py-2 text-left last:border-b-0 hover:bg-surface-muted"
                 >
                   <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{cat}</span>
                   <span className="whitespace-nowrap font-mono text-[11px] text-ink-3">

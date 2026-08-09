@@ -74,6 +74,7 @@ module.exports = {
         ok: {
           DEFAULT: t("--c-ok"),
           soft: t("--c-ok-soft"),
+          border: t("--c-ok-border"),
         },
         warn: {
           DEFAULT: t("--c-warn"),
