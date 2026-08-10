@@ -6,7 +6,7 @@ import Link from "next/link";
 import { apiFetch } from "../../src/lib/api";
 import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
-import { formatRub } from "../../src/lib/format";
+import { formatRub, pluralize } from "../../src/lib/format";
 import { toMoscowDateString } from "../../src/lib/moscowDate";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 import { unitStatusLabel } from "../../src/lib/unitStatus";
@@ -203,6 +203,18 @@ export default function EquipmentPage() {
   // или при недопечатанном вводе — тогда ссылка без префилла.
   const startIso = start ? datetimeLocalToISO(start) : null;
   const endIso = end ? datetimeLocalToISO(end) : null;
+
+  // «1 смена» / «2 смены» / «5 ч» — длительность выбранного периода в шапке
+  // кластера дат. Смена = 24 ч (как billableShifts на бэке, без грейса).
+  const periodLabel = (() => {
+    if (!start || !end) return null;
+    const ms = new Date(end).getTime() - new Date(start).getTime();
+    if (!Number.isFinite(ms) || ms <= 0) return null;
+    const hours = ms / 3_600_000;
+    if (hours < 24) return `${Math.round(hours)} ч`;
+    const shifts = Math.ceil(hours / 24);
+    return `${shifts} ${pluralize(shifts, "смена", "смены", "смен")}`;
+  })();
   const bookingHref =
     startIso && endIso
       ? `/bookings/new?start=${startIso}&end=${endIso}`
@@ -210,64 +222,104 @@ export default function EquipmentPage() {
 
   return (
     <div className="p-4 lg:p-6">
-      <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex flex-col">
-            <div className="flex gap-1.5 mb-2">
-              {(["today", "tomorrow", "week"] as const).map((type) => (
-                <button
-                  key={type}
-                  onClick={() => {
-                    const p = getQuickPeriod(type);
-                    setStart(p.start);
-                    setEnd(p.end);
-                  }}
-                  className="text-xs px-2.5 py-1 rounded border border-border text-ink-2 hover:bg-surface-subtle transition-colors"
-                >
-                  {type === "today" ? "Сегодня 10-10" : type === "tomorrow" ? "Завтра 10-10" : "Эта неделя"}
-                </button>
-              ))}
+      {/* Тулбар каталога: одна карточка, три кластера — период доступности
+          (accent-выделение: он определяет колонки «Занято/Доступно»), фильтр
+          списка (поиск + категория), действия. Единая высота контролов h-9,
+          активный пресет подсвечен, «10-10» расшифрован в title. */}
+      <div className="rounded-lg border border-border bg-surface shadow-xs p-3">
+        <div className="flex flex-wrap items-stretch gap-3">
+          {/* Кластер: период доступности */}
+          <fieldset className="rounded-lg border border-accent-border bg-accent-soft/50 px-3 pb-2.5 pt-2">
+            <legend className="sr-only">Период проверки доступности</legend>
+            <div className="mb-1.5 flex items-center justify-between gap-4">
+              <span className="eyebrow !text-accent-bright">Период доступности</span>
+              {periodLabel && (
+                <span className="mono-num text-[11px] text-ink-2">{periodLabel}</span>
+              )}
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex flex-col">
-                <label className="text-xs text-ink-2">Старт</label>
-                <input
-                  className="rounded border border-border-strong px-2 py-1 bg-surface"
-                  type="datetime-local"
-                  value={start}
-                  onChange={(e) => setStart(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-col">
-                <label className="text-xs text-ink-2">Конец</label>
-                <input
-                  className="rounded border border-border-strong px-2 py-1 bg-surface"
-                  type="datetime-local"
-                  value={end}
-                  onChange={(e) => setEnd(e.target.value)}
-                />
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                className="h-9 rounded border border-border-strong bg-surface px-2 text-sm"
+                type="datetime-local"
+                aria-label="Начало периода"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+              <span aria-hidden className="hidden text-ink-3 sm:inline">→</span>
+              <input
+                className="h-9 rounded border border-border-strong bg-surface px-2 text-sm"
+                type="datetime-local"
+                aria-label="Конец периода"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+              />
+              <div
+                role="group"
+                aria-label="Быстрый выбор периода"
+                className="flex h-9 overflow-hidden rounded border border-border-strong bg-surface"
+              >
+                {(["today", "tomorrow", "week"] as const).map((type, i) => {
+                  const p = getQuickPeriod(type);
+                  const isActive = start === p.start && end === p.end;
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        setStart(p.start);
+                        setEnd(p.end);
+                      }}
+                      aria-pressed={isActive}
+                      title={
+                        type === "week"
+                          ? "Понедельник 10:00 — воскресенье 22:00"
+                          : `С 10:00 до 10:00 следующего дня`
+                      }
+                      className={`px-3 text-xs font-medium transition-colors ${
+                        i > 0 ? "border-l border-border" : ""
+                      } ${
+                        isActive
+                          ? "bg-accent-bright font-semibold text-surface"
+                          : "text-ink-2 hover:bg-surface-subtle"
+                      }`}
+                    >
+                      {type === "today" ? "Сегодня" : type === "tomorrow" ? "Завтра" : "Неделя"}
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          </div>
+          </fieldset>
 
-          <div className="flex flex-col">
-            <label className="text-xs text-ink-2">Поиск</label>
-            <input
-              className="rounded border border-border-strong px-2 py-1 bg-surface"
-              value={search}
-              placeholder="наименование, бренд, модель..."
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="flex flex-col">
-            <label className="text-xs text-ink-2">Категория</label>
+          {/* Кластер: фильтр списка */}
+          <div className="flex min-w-[240px] flex-1 items-end gap-2">
+            <div className="relative min-w-[170px] flex-1">
+              <svg
+                aria-hidden
+                viewBox="0 0 24 24"
+                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                className="h-9 w-full rounded border border-border-strong bg-surface pl-8 pr-2 text-sm"
+                value={search}
+                aria-label="Поиск по каталогу"
+                placeholder="Название, бренд, модель…"
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
             <select
-              className="rounded border border-border-strong px-2 py-1 bg-surface"
+              className="h-9 max-w-[180px] rounded border border-border-strong bg-surface px-2 text-sm"
               value={category ?? ""}
+              aria-label="Категория"
               onChange={(e) => setCategory(e.target.value || undefined)}
             >
-              <option value="">Все</option>
+              <option value="">Все категории</option>
               {categories.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -275,23 +327,24 @@ export default function EquipmentPage() {
               ))}
             </select>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          {isSuperAdmin && (
+          {/* Действия — при переносе строки прижимаются вправо. */}
+          <div className="ml-auto flex items-end gap-2">
+            {isSuperAdmin && (
+              <Link
+                className="flex h-9 items-center rounded border border-border bg-surface px-3.5 text-sm text-ink-2 transition-colors hover:bg-surface-subtle"
+                href="/equipment/manage"
+              >
+                Управление каталогом
+              </Link>
+            )}
             <Link
-              className="rounded border border-border bg-surface px-4 py-2 text-sm text-ink-2 hover:bg-surface-subtle transition-colors"
-              href="/equipment/manage"
+              className="flex h-9 items-center rounded bg-accent-bright px-4 text-sm font-medium text-surface transition-colors hover:bg-accent"
+              href={bookingHref}
             >
-              Управление каталогом
+              + Создать бронь
             </Link>
-          )}
-          <Link
-            className="rounded bg-accent-bright text-surface px-4 py-2 text-sm hover:bg-accent transition-colors"
-            href={bookingHref}
-          >
-            Создать бронь
-          </Link>
+          </div>
         </div>
       </div>
 
