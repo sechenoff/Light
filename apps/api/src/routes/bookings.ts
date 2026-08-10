@@ -7,7 +7,7 @@ import { prisma } from "../prisma";
 import { createBookingDraft, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, CUSTOM_LINE_CATEGORY } from "../services/bookings";
 import type { BookingTransportSnapshot } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking, autoConfirmBooking, approvalMode } from "../services/bookingApproval";
-import { archiveBooking, cancelBooking } from "../services/bookingLifecycle";
+import { archiveBooking, cancelBooking, purgeBooking, restoreBooking } from "../services/bookingLifecycle";
 import { BULK_ACTIONS, BULK_MAX_IDS, runBulkBookingAction } from "../services/bookingBulk";
 import { HttpError } from "../utils/errors";
 import {
@@ -582,7 +582,8 @@ router.get("/summary/counts", async (_req, res, next) => {
 
 /**
  * POST /api/bookings/bulk — групповое действие над выбранными бронями
- * (мультивыбор на /bookings): approve / submit / cancel / archive.
+ * (мультивыбор на /bookings и /bookings/archive):
+ * approve / submit / cancel / archive / restore / purge.
  *
  * ОБЪЯВЛЕН ДО `/:id`-маршрутов: иначе express отдал бы «bulk» в параметр :id.
  *
@@ -590,11 +591,12 @@ router.get("/summary/counts", async (_req, res, next) => {
  * { action, results: [{id, ok, status} | {id, ok:false, code, message}],
  *   counts: {total, ok, failed} }. Ненулевой `failed` — штатный исход
  * (бронь успели согласовать в другой вкладке, оборудование занято, есть
- * оплата), UI показывает это отчётом, а не ошибкой запроса.
+ * оплата, бронь уже не в архиве), UI показывает это отчётом, а не ошибкой
+ * запроса.
  *
  * Router-level guard пускает SA и WAREHOUSE; точное право на КОНКРЕТНОЕ
- * действие проверяет assertBulkActionAllowed внутри сервиса (approve и
- * archive — только SUPER_ADMIN).
+ * действие проверяет assertBulkActionAllowed внутри сервиса (approve,
+ * archive, restore и purge — только SUPER_ADMIN).
  */
 const bulkActionSchema = z.object({
   action: z.enum(BULK_ACTIONS),
@@ -1475,34 +1477,11 @@ router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
 /**
  * POST /api/bookings/:id/restore — восстановить архивированную бронь.
  * Только SUPER_ADMIN. 409 если бронь не была архивирована.
+ * Логика — в services/bookingLifecycle (общая с групповым /bulk).
  */
 router.post("/:id/restore", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const userId = req.adminUser!.userId;
-    const existing = await prisma.booking.findUnique({
-      where: { id },
-      select: { id: true, deletedAt: true, deletedBy: true, projectName: true, status: true },
-    });
-    if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
-    if (!existing.deletedAt) {
-      throw new HttpError(409, "Бронь не в архиве — восстанавливать нечего", "BOOKING_NOT_ARCHIVED");
-    }
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.booking.update({
-        where: { id },
-        data: { deletedAt: null, deletedBy: null },
-      });
-      await writeAuditEntry({
-        tx,
-        userId,
-        action: "BOOKING_RESTORED",
-        entityType: "Booking",
-        entityId: id,
-        before: { deletedAt: existing.deletedAt!.toISOString(), deletedBy: existing.deletedBy },
-        after: null,
-      });
-    });
+    await restoreBooking(req.params.id, req.adminUser!.userId);
     res.json({ ok: true, restored: true });
   } catch (err) {
     next(err);
@@ -1519,65 +1498,9 @@ router.post("/:id/restore", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) 
  */
 router.delete("/:id/purge", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const userId = req.adminUser!.userId;
-    const existing = await prisma.booking.findUnique({
-      where: { id },
-      select: { id: true, status: true, projectName: true, startDate: true, endDate: true, deletedAt: true },
-    });
-    if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
-    if (!existing.deletedAt) {
-      throw new HttpError(
-        409,
-        "Можно удалить навсегда только архивированную бронь. Сначала отправьте в архив.",
-        "BOOKING_NOT_ARCHIVED",
-      );
-    }
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // Финансовый гард: purge каскадно уничтожил бы счета (Invoice onDelete:
-      // Cascade — номерной документ, дыра/повтор в нумерации) и отвязал бы
-      // платежи (Payment onDelete: SetNull — деньги-«сироты» без клиента в
-      // /finance/payments). Блокируем при любых счетах и любых не аннулированных
-      // платежах. Проверка внутри транзакции — платёж, созданный между
-      // проверкой и delete, не проскочит (SQLite write-lock).
-      const [invoiceCount, paymentCount] = await Promise.all([
-        tx.invoice.count({ where: { bookingId: id } }),
-        tx.payment.count({ where: { bookingId: id, voidedAt: null } }),
-      ]);
-      if (invoiceCount > 0 || paymentCount > 0) {
-        throw new HttpError(
-          409,
-          "Нельзя удалить бронь навсегда: с ней связаны счета или платежи. Сначала аннулируйте счета и платежи.",
-          "PURGE_HAS_FINANCE",
-          { invoices: invoiceCount, payments: paymentCount },
-        );
-      }
-      // Audit ПЕРЕД delete — иначе FK Restrict от AuditEntry на AdminUser
-      // блокирует. Сам entityId записываем, ссылок на удалённую запись нет.
-      await writeAuditEntry({
-        tx,
-        userId,
-        action: "BOOKING_PURGED",
-        entityType: "Booking",
-        entityId: id,
-        before: diffFields(existing as Record<string, unknown>),
-        after: null,
-      });
-      try {
-        await tx.booking.delete({ where: { id } });
-      } catch (e: any) {
-        // P2003 FK violation — например, остались AuditEntry-записи через
-        // другие связанные сущности. Возвращаем 409 с подсказкой.
-        if (e?.code === "P2003") {
-          throw new HttpError(
-            409,
-            "Бронь связана с историей аудита/финансов. Полное удаление невозможно.",
-            "BOOKING_HAS_RELATIONS",
-          );
-        }
-        throw e;
-      }
-    });
+    // Финансовый гард (PURGE_HAS_FINANCE) и аудит — внутри purgeBooking
+    // (services/bookingLifecycle, общая реализация с групповым /bulk).
+    await purgeBooking(req.params.id, req.adminUser!.userId);
     res.json({ ok: true, purged: true });
   } catch (err) {
     next(err);

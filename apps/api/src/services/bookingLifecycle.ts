@@ -6,11 +6,13 @@ import { writeAuditEntry, diffFields } from "./audit";
 import { releaseBookingUnits } from "./bookings";
 
 /**
- * Отмена и архивация брони — единая реализация для одиночных маршрутов
- * (`POST /:id/status {action:"cancel"}`, `DELETE /:id`) и группового
- * `POST /bulk`. До вынесения обе операции жили инлайн в routes/bookings.ts;
+ * Отмена, архивация, восстановление и окончательное удаление брони — единая
+ * реализация для одиночных маршрутов (`POST /:id/status {action:"cancel"}`,
+ * `DELETE /:id`, `POST /:id/restore`, `DELETE /:id/purge`) и группового
+ * `POST /bulk`. До вынесения операции жили инлайн в routes/bookings.ts;
  * дублировать их транзакции ради bulk означало гарантированный дрейф
- * (освобождение юнитов и аудит легко разъезжаются между копиями).
+ * (освобождение юнитов, финансовые гарды и аудит легко разъезжаются между
+ * копиями).
  */
 
 /** Из каких статусов бронь можно отменить. Зеркалит allowedActionsByStatus. */
@@ -145,4 +147,120 @@ export async function archiveBooking(
     releasedReservations: released.releasedReservations,
     freedUnits: released.freedUnitIds.length,
   };
+}
+
+/**
+ * Восстановить архивированную бронь: deletedAt/deletedBy → null + аудит.
+ * Резервы при восстановлении НЕ пересоздаются: активная бронь возвращается с
+ * прежним статусом, и доступность оборудования на её даты проверяет оператор
+ * (о чём предупреждает подтверждение в UI).
+ *
+ * @returns статус восстановленной брони (для побронного отчёта bulk).
+ */
+export async function restoreBooking(bookingId: string, userId: string): Promise<{ status: string }> {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const existing = await tx.booking.findUnique({
+      where: { id: bookingId },
+      select: { id: true, deletedAt: true, deletedBy: true, status: true },
+    });
+    if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+    if (!existing.deletedAt) {
+      throw new HttpError(409, "Бронь не в архиве — восстанавливать нечего", "BOOKING_NOT_ARCHIVED");
+    }
+    // Условный updateMany вместо update: гард «бронь в архиве» перепроверяется
+    // атомарно на уровне SQL — конкурентный restore/purge между чтением выше и
+    // этой строкой даёт штатный 409, а не восстановление/падение вслепую.
+    const updated = await tx.booking.updateMany({
+      where: { id: bookingId, deletedAt: { not: null } },
+      data: { deletedAt: null, deletedBy: null },
+    });
+    if (updated.count === 0) {
+      throw new HttpError(409, "Бронь не в архиве — восстанавливать нечего", "BOOKING_NOT_ARCHIVED");
+    }
+    await writeAuditEntry({
+      tx,
+      userId,
+      action: "BOOKING_RESTORED",
+      entityType: "Booking",
+      entityId: bookingId,
+      before: { deletedAt: existing.deletedAt.toISOString(), deletedBy: existing.deletedBy },
+      after: null,
+    });
+    return { status: existing.status };
+  });
+}
+
+/**
+ * Окончательное удаление из БД. Только для УЖЕ архивированной брони (защита
+ * от случайного hard-delete живой). Финансовый гард: purge каскадно уничтожил
+ * бы счета (Invoice onDelete: Cascade — номерной документ, дыра/повтор в
+ * нумерации) и отвязал бы платежи (Payment onDelete: SetNull — деньги-«сироты»
+ * без клиента в /finance/payments). Блокируем при любых счетах и любых не
+ * аннулированных платежах; проверка внутри транзакции — платёж, созданный
+ * между проверкой и delete, не проскочит (SQLite write-lock).
+ */
+export async function purgeBooking(bookingId: string, userId: string): Promise<void> {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const existing = await tx.booking.findUnique({
+      where: { id: bookingId },
+      select: { id: true, status: true, projectName: true, startDate: true, endDate: true, deletedAt: true },
+    });
+    if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+    if (!existing.deletedAt) {
+      throw new HttpError(
+        409,
+        "Можно удалить навсегда только архивированную бронь. Сначала отправьте в архив.",
+        "BOOKING_NOT_ARCHIVED",
+      );
+    }
+    const [invoiceCount, paymentCount] = await Promise.all([
+      tx.invoice.count({ where: { bookingId } }),
+      tx.payment.count({ where: { bookingId, voidedAt: null } }),
+    ]);
+    if (invoiceCount > 0 || paymentCount > 0) {
+      throw new HttpError(
+        409,
+        "Нельзя удалить бронь навсегда: с ней связаны счета или платежи. Сначала аннулируйте счета и платежи.",
+        "PURGE_HAS_FINANCE",
+        { invoices: invoiceCount, payments: paymentCount },
+      );
+    }
+    // Audit ПЕРЕД delete — иначе FK Restrict от AuditEntry на AdminUser
+    // блокирует. Сам entityId записываем, ссылок на удалённую запись нет.
+    await writeAuditEntry({
+      tx,
+      userId,
+      action: "BOOKING_PURGED",
+      entityType: "Booking",
+      entityId: bookingId,
+      before: diffFields(existing as Record<string, unknown>),
+      after: null,
+    });
+    try {
+      // Условный deleteMany: «только архивную» перепроверяется атомарно на
+      // уровне SQL. Конкурентный restore между чтением выше и этой строкой →
+      // count 0 → 409, и транзакция откатывает уже записанный аудит.
+      const deleted = await tx.booking.deleteMany({
+        where: { id: bookingId, deletedAt: { not: null } },
+      });
+      if (deleted.count === 0) {
+        throw new HttpError(
+          409,
+          "Можно удалить навсегда только архивированную бронь. Сначала отправьте в архив.",
+          "BOOKING_NOT_ARCHIVED",
+        );
+      }
+    } catch (e: unknown) {
+      // P2003 FK violation — например, остались записи через другие связанные
+      // сущности без каскада. Возвращаем 409 с подсказкой.
+      if ((e as { code?: string })?.code === "P2003") {
+        throw new HttpError(
+          409,
+          "Бронь связана с историей аудита/финансов. Полное удаление невозможно.",
+          "BOOKING_HAS_RELATIONS",
+        );
+      }
+      throw e;
+    }
+  });
 }

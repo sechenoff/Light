@@ -290,3 +290,116 @@ describe("POST /api/bookings/bulk — валидация запроса", () => 
     expect(res.body.results[0].code).toBe("BOOKING_ARCHIVED");
   });
 });
+
+describe("POST /api/bookings/bulk — восстановление из архива пачкой", () => {
+  async function createArchived(status = "DRAFT") {
+    const b = await createBooking(status);
+    await prisma.booking.update({
+      where: { id: b.id },
+      data: { deletedAt: new Date(), deletedBy: "test" },
+    });
+    return b;
+  }
+
+  it("SUPER_ADMIN восстанавливает несколько архивных броней разом", async () => {
+    const a = await createArchived("DRAFT");
+    const b = await createArchived("CONFIRMED");
+    const res = await post([a.id, b.id], "restore", AUTH_SA());
+    expect(res.status).toBe(200);
+    expect(res.body.counts).toEqual({ total: 2, ok: 2, failed: 0 });
+    // Восстановленная бронь возвращается со СВОИМ прежним статусом.
+    const statuses = res.body.results.map((r: any) => r.status).sort();
+    expect(statuses).toEqual(["CONFIRMED", "DRAFT"]);
+    const rowA = await prisma.booking.findUnique({ where: { id: a.id } });
+    expect(rowA.deletedAt).toBeNull();
+    expect(rowA.deletedBy).toBeNull();
+  });
+
+  it("не-архивная бронь в пачке — побронный отказ BOOKING_NOT_ARCHIVED, остальные восстановлены", async () => {
+    const archived = await createArchived();
+    const live = await createBooking("DRAFT");
+    const res = await post([archived.id, live.id], "restore", AUTH_SA());
+    expect(res.status).toBe(200);
+    expect(res.body.counts).toEqual({ total: 2, ok: 1, failed: 1 });
+    const failed = res.body.results.find((r: any) => !r.ok);
+    expect(failed.id).toBe(live.id);
+    expect(failed.code).toBe("BOOKING_NOT_ARCHIVED");
+  });
+
+  it("WAREHOUSE не может восстанавливать (restore — только SUPER_ADMIN)", async () => {
+    const a = await createArchived();
+    const res = await post([a.id], "restore", AUTH_WH());
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("FORBIDDEN_BY_ROLE");
+  });
+
+  it("восстановление пишет аудит BOOKING_RESTORED", async () => {
+    const a = await createArchived();
+    await post([a.id], "restore", AUTH_SA());
+    const audit = await prisma.auditEntry.findFirst({
+      where: { entityId: a.id, action: "BOOKING_RESTORED" },
+    });
+    expect(audit).not.toBeNull();
+  });
+});
+
+describe("POST /api/bookings/bulk — окончательное удаление пачкой", () => {
+  async function createArchived() {
+    const b = await createBooking("CANCELLED");
+    await prisma.booking.update({
+      where: { id: b.id },
+      data: { deletedAt: new Date(), deletedBy: "test" },
+    });
+    return b;
+  }
+
+  it("SUPER_ADMIN удаляет навсегда несколько архивных броней", async () => {
+    const a = await createArchived();
+    const b = await createArchived();
+    const res = await post([a.id, b.id], "purge", AUTH_SA());
+    expect(res.status).toBe(200);
+    expect(res.body.counts).toEqual({ total: 2, ok: 2, failed: 0 });
+    expect(res.body.results.every((r: any) => r.status === "PURGED")).toBe(true);
+    expect(await prisma.booking.findUnique({ where: { id: a.id } })).toBeNull();
+    expect(await prisma.booking.findUnique({ where: { id: b.id } })).toBeNull();
+  });
+
+  it("бронь с платежом не удаляется — PURGE_HAS_FINANCE, остальные удалены", async () => {
+    const withPayment = await createArchived();
+    await prisma.payment.create({
+      data: { bookingId: withPayment.id, amount: 1000 },
+    });
+    const clean = await createArchived();
+    const res = await post([withPayment.id, clean.id], "purge", AUTH_SA());
+    expect(res.status).toBe(200);
+    expect(res.body.counts).toEqual({ total: 2, ok: 1, failed: 1 });
+    const failed = res.body.results.find((r: any) => !r.ok);
+    expect(failed.id).toBe(withPayment.id);
+    expect(failed.code).toBe("PURGE_HAS_FINANCE");
+    // Финансово-связанная бронь ОСТАЛАСЬ в БД, чистая — удалена.
+    expect(await prisma.booking.findUnique({ where: { id: withPayment.id } })).not.toBeNull();
+    expect(await prisma.booking.findUnique({ where: { id: clean.id } })).toBeNull();
+  });
+
+  it("не-архивную бронь пачкой навсегда не удалить — BOOKING_NOT_ARCHIVED", async () => {
+    const live = await createBooking("DRAFT");
+    const res = await post([live.id], "purge", AUTH_SA());
+    expect(res.body.results[0].code).toBe("BOOKING_NOT_ARCHIVED");
+    expect(await prisma.booking.findUnique({ where: { id: live.id } })).not.toBeNull();
+  });
+
+  it("WAREHOUSE не может удалять навсегда", async () => {
+    const a = await createArchived();
+    const res = await post([a.id], "purge", AUTH_WH());
+    expect(res.status).toBe(403);
+  });
+
+  it("удаление пишет аудит BOOKING_PURGED (запись переживает delete)", async () => {
+    const a = await createArchived();
+    await post([a.id], "purge", AUTH_SA());
+    const audit = await prisma.auditEntry.findFirst({
+      where: { entityId: a.id, action: "BOOKING_PURGED" },
+    });
+    expect(audit).not.toBeNull();
+  });
+});

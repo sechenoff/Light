@@ -262,9 +262,9 @@ npm run seed                  # Seed database
 - **Optimistic mutation pattern (Tasks)** — snapshot → apply → reconcile from server; per-id `useRef<Set<string>>` in-flight guard. `completeTask`: fire-immediately undo-via-reopen; toast action "Отменить" has 6 s window.
 - **Task audit actions** — `TASK_CREATE / TASK_UPDATE / TASK_ASSIGN / TASK_COMPLETE / TASK_REOPEN / TASK_DELETE` written in same `$transaction` as mutation; `entityType: "Task"`. `TASK_ASSIGN` is a distinct action when `assignedTo` changes (for audit searchability).
 
-## Групповые действия над бронями (мультивыбор на /bookings)
+## Групповые действия над бронями (мультивыбор на /bookings и /bookings/archive)
 
-Чекбоксы в списке броней + липкая панель действий: `approve` (согласовать), `submit` (на согласование / «Подтвердить» при `APPROVAL_MODE=auto`), `cancel` (отменить), `archive` (в архив).
+Чекбоксы в списке броней + липкая панель действий: `approve` (согласовать), `submit` (на согласование / «Подтвердить» при `APPROVAL_MODE=auto`), `cancel` (отменить), `archive` (в архив). В архиве (/bookings/archive) — свой мультивыбор с действиями `restore` (восстановить) и `purge` (удалить навсегда), оба только SUPER_ADMIN; для них «бронь не в архиве» — штатный побронный отказ 409 `BOOKING_NOT_ARCHIVED`, а не предусловие пачки. `purge` наследует финансовый гард (`PURGE_HAS_FINANCE`) побронно. Логика restore/purge вынесена в `services/bookingLifecycle.ts` (общая для одиночных `/:id/restore`, `/:id/purge` и bulk). Панель архива — отдельный `ArchiveBulkActionBar.tsx` (2 действия без правил применимости; вкручивать их в общий `BulkActionBar` значило бы тащить чужие действия в основной список). Групповой purge — typed-confirm «УДАЛИТЬ», как одиночный.
 
 **`POST /api/bookings/bulk`** — объявлен **ДО** `/:id`-маршрутов (иначе express отдаст «bulk» в параметр `:id`, как и `/summary/counts`). Тело: `{ action, ids: string[] }` (1…`BULK_MAX_IDS` = 100). Ответ **всегда 200** с побронным результатом: `{ action, results: [{id, ok:true, status} | {id, ok:false, code, message}], counts: {total, ok, failed} }`. Ненулевой `failed` — штатный исход, а не ошибка запроса.
 

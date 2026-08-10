@@ -3,24 +3,24 @@ import type { UserRole } from "@prisma/client";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
 import { approveBooking, autoConfirmBooking, approvalMode, submitForApproval } from "./bookingApproval";
-import { archiveBooking, cancelBooking } from "./bookingLifecycle";
+import { archiveBooking, cancelBooking, purgeBooking, restoreBooking } from "./bookingLifecycle";
 import { createFinanceEvent, recomputeBookingFinance } from "./finance";
 
 /**
- * Групповые действия над бронями (страница /bookings, мультивыбор).
+ * Групповые действия над бронями (мультивыбор на /bookings и /bookings/archive).
  *
  * Ключевое свойство: КАЖДАЯ бронь обрабатывается изолированно. Пачка из 30
  * броней, где две конфликтуют по доступности оборудования, не должна
  * откатывать остальные 28 — оператор получает отчёт «выполнено 28, не удалось
  * 2» с причиной по каждой. Поэтому здесь нет общей транзакции: атомарность
  * живёт внутри каждой отдельной операции (approveBooking / cancelBooking /
- * archiveBooking сами обёрнуты в $transaction).
+ * archiveBooking / restoreBooking / purgeBooking сами обёрнуты в $transaction).
  *
  * Обработка последовательная, а не Promise.all: SQLite пишет в один поток, и
  * параллельные транзакции дали бы SQLITE_BUSY вместо ускорения.
  */
 
-export const BULK_ACTIONS = ["approve", "submit", "cancel", "archive"] as const;
+export const BULK_ACTIONS = ["approve", "submit", "cancel", "archive", "restore", "purge"] as const;
 export type BulkBookingAction = (typeof BULK_ACTIONS)[number];
 
 /** Потолок пачки: защита от случайного «выбрать всё» на тысячах броней. */
@@ -42,6 +42,10 @@ const ROLES_BY_ACTION: Record<BulkBookingAction, UserRole[]> = {
   submit: ["SUPER_ADMIN", "WAREHOUSE"],
   cancel: ["SUPER_ADMIN", "WAREHOUSE"],
   archive: ["SUPER_ADMIN"],
+  // Архивные операции (страница /bookings/archive) — как одиночные
+  // /:id/restore и /:id/purge: только руководитель.
+  restore: ["SUPER_ADMIN"],
+  purge: ["SUPER_ADMIN"],
 };
 
 export function assertBulkActionAllowed(action: BulkBookingAction, role: UserRole): void {
@@ -98,6 +102,19 @@ async function runOne(
   if (action === "archive") {
     await archiveBooking(id, userId);
     return { id, ok: true, status: "ARCHIVED" };
+  }
+
+  // restore/purge оперируют именно архивными бронями — «не в архиве» для них
+  // штатный побронный отказ (409 BOOKING_NOT_ARCHIVED из lifecycle-сервиса),
+  // а не предусловие всей пачки.
+  if (action === "restore") {
+    const restored = await restoreBooking(id, userId);
+    return { id, ok: true, status: restored.status };
+  }
+
+  if (action === "purge") {
+    await purgeBooking(id, userId);
+    return { id, ok: true, status: "PURGED" };
   }
 
   await assertNotArchived(id);
