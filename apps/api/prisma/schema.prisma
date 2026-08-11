@@ -324,6 +324,12 @@ model Booking {
   deletedBy String?
   paymentStatus BookingPaymentStatus @default(NOT_PAID)
   expectedPaymentDate DateTime?
+
+  /// Номер сметы как документа: «СМ-2026-0001». Живёт на БРОНИ, а не на Estimate,
+  /// потому что смета пересобирается при каждой правке (rebuildBookingEstimate),
+  /// а номер платёжного документа обязан быть стабильным всю жизнь брони.
+  /// null — бронь заведена до появления нумерации (бэкфилл: scripts/backfill-doc-numbers.ts).
+  docNumber String? @unique
   actualPaymentDate DateTime?
   paymentComment String?
 

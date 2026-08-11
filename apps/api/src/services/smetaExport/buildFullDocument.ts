@@ -60,6 +60,8 @@ export function buildFullSmeta(args: {
   main: Parameters<typeof buildSmetaFromPersistedEstimate>[0]["estimate"];
   addon: Parameters<typeof buildSmetaFromPersistedEstimate>[0]["estimate"] | null;
   org?: SmetaOrgInfo | null;
+  /** Booking.manualFinalAmount — сумма, о которой договорились вручную. */
+  agreedTotal?: MoneyLike | null;
 }): SmetaFullExportDocument {
   const mainDoc = buildSmetaFromPersistedEstimate({
     booking: args.booking,
@@ -80,5 +82,13 @@ export function buildFullSmeta(args: {
   const transportTotal = transport ? new Decimal(transport.subtotal) : new Decimal(0);
   const grandTotal = mainTotal.add(addonTotal).add(transportTotal).toDecimalPlaces(2).toString();
 
-  return { main: mainDoc, addon: addonDoc, transport, grandTotal };
+  // Договорной итог не заменяет расчёт молча: обе цифры уходят в документ, и
+  // рендерер показывает разницу отдельной строкой. Иначе платёжный документ
+  // расходился бы со счётом — тот договорную сумму уже чтит.
+  const agreed =
+    args.agreedTotal != null
+      ? new Decimal(args.agreedTotal.toString()).toDecimalPlaces(2).toString()
+      : null;
+
+  return { main: mainDoc, addon: addonDoc, transport, grandTotal, agreedTotal: agreed };
 }

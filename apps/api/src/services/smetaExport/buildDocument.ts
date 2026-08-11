@@ -29,6 +29,11 @@ export function smetaOrgFromSettings(
     email?: string | null;
     address?: string | null;
     inn?: string | null;
+    kpp?: string | null;
+    bankName?: string | null;
+    bankBik?: string | null;
+    rschet?: string | null;
+    kschet?: string | null;
   } | null,
 ): SmetaOrgInfo {
   return {
@@ -37,7 +42,29 @@ export function smetaOrgFromSettings(
     email: cleanField(s?.email),
     address: cleanField(s?.address) ?? cleanField(process.env.ORG_ADDRESS),
     inn: cleanField(s?.inn),
+    kpp: cleanField(s?.kpp),
+    bankName: cleanField(s?.bankName),
+    bankBik: cleanField(s?.bankBik),
+    rschet: cleanField(s?.rschet),
+    kschet: cleanField(s?.kschet),
   };
+}
+
+/**
+ * Комментарий, годный для клиентского документа.
+ *
+ * Поле `Booking.comment` у исторических броней содержит след разового импорта
+ * («[hard-reset-2026-05-25] from xlsx files/28.02 куб 43150.xlsx»). Печатать
+ * это заказчику нельзя, а чистить базу задним числом — отдельная работа: на
+ * листе такой комментарий просто не показываем.
+ */
+export function clientSafeComment(raw: string | null | undefined): string | null {
+  const text = raw?.trim();
+  if (!text) return null;
+  if (/^\[[a-z0-9-]+\]/i.test(text)) return null;
+  if (/from xlsx files\//i.test(text)) return null;
+  if (/^imported from/i.test(text)) return null;
+  return text;
 }
 
 export function buildSmetaExportDocument(args: {
@@ -56,6 +83,10 @@ export function buildSmetaExportDocument(args: {
   totalAfterDiscount: string;
   lines: QuoteLine[];
   org?: SmetaOrgInfo | null;
+  docNumber?: string | null;
+  /** Дата составления документа; по умолчанию — сегодня (превью из формы). */
+  issuedAt?: Date | null;
+  paymentDueDate?: Date | null;
 }): SmetaExportDocument {
   const shiftDec = new Decimal(Math.max(1, args.shifts));
   const rows: SmetaExportLine[] = args.lines.map((l, i) => {
@@ -80,6 +111,9 @@ export function buildSmetaExportDocument(args: {
   return {
     documentTitleRu: "Смета аренды оборудования",
     documentTitleEn: "Rental Estimate",
+    docNumber: args.docNumber ?? null,
+    issuedAtLabel: fmtRuDate(args.issuedAt ?? new Date()),
+    paymentDueLabel: args.paymentDueDate ? fmtRuDate(args.paymentDueDate) : null,
     issueDateLabel: fmtRuDate(args.startDate),
     returnDateLabel: fmtRuDate(args.endDate),
     loadOutTimeLabel: fmtRuTime(args.startDate),
@@ -132,9 +166,12 @@ export function buildSmetaFromPersistedEstimate(args: {
     projectName: string;
     comment: string | null;
     client: { name: string };
+    docNumber?: string | null;
+    expectedPaymentDate?: Date | null;
   };
   estimate: {
     kind?: "MAIN" | "ADDON";
+    createdAt?: Date;
     shifts: number;
     subtotal: PrismaDecimal;
     discountPercent: PrismaDecimal | null;
@@ -168,12 +205,13 @@ export function buildSmetaFromPersistedEstimate(args: {
     endDate: args.booking.endDate,
     clientName: args.booking.client.name,
     projectName: args.booking.projectName,
-    comment: args.booking.comment ?? args.estimate.commentSnapshot,
+    comment: clientSafeComment(args.booking.comment ?? args.estimate.commentSnapshot),
     optionalNote: args.estimate.optionalNote,
     includeOptionalInExport: args.estimate.includeOptionalInExport,
-    hourCalculationText:
-      args.estimate.hoursSummaryText?.trim() ||
-      `1 смена = 24 ч. · смен в периоде: ${args.estimate.shifts}`,
+    // Фолбэка «1 смена = 24 ч · смен в периоде: N» больше нет: число смен
+    // теперь стоит отдельной ячейкой в реквизитах, и плашка повторяла её же,
+    // занимая треть первого экрана шаблонной фразой.
+    hourCalculationText: args.estimate.hoursSummaryText?.trim() || "",
     shifts: args.estimate.shifts,
     discountPercent: args.estimate.discountPercent?.toString() ?? "0",
     subtotal: new Decimal(args.estimate.subtotal.toString()).toDecimalPlaces(2).toString(),
@@ -181,6 +219,9 @@ export function buildSmetaFromPersistedEstimate(args: {
     totalAfterDiscount: new Decimal(args.estimate.totalAfterDiscount.toString()).toDecimalPlaces(2).toString(),
     lines: quoteLikeLines,
     org: args.org ?? null,
+    docNumber: args.booking.docNumber ?? null,
+    issuedAt: args.estimate.createdAt ?? null,
+    paymentDueDate: args.booking.expectedPaymentDate ?? null,
   });
 
   if (args.estimate.kind === "ADDON") {

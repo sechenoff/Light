@@ -1,7 +1,7 @@
 import type { Response } from "express";
 import ExcelJS from "exceljs";
 
-import type { SmetaExportDocument, SmetaFullExportDocument } from "./types";
+import type { SmetaExportDocument, SmetaFullExportDocument, SmetaOrgInfo } from "./types";
 import { buildAttachmentContentDisposition } from "../../utils/contentDisposition";
 
 export const RUB_FMT = '#,##0.00" ₽"';
@@ -81,16 +81,23 @@ export function addSmetaSheetToWorkbook(
 
   // ── Реквизиты организации ───────────────────────────────────────────────────
   const org = data.org;
-  if (org && (org.name || org.phone || org.address || org.email)) {
-    if (org.name) {
-      sheet.mergeCells(row, 1, row, 4);
-      const c = sheet.getCell(row, 1);
-      c.value = org.name;
-      c.font = { bold: true, size: 13, color: { argb: XC.accent } };
-      c.alignment = { vertical: "middle" };
-      if (org.inn) {
+  if (org && (org.name || org.phone || org.address || org.email || org.inn)) {
+    // Идентификаторы пишем независимо от юр. имени: раньше они лежали внутри
+    // ветки `if (org.name)` и без имени пропадали из Excel совсем.
+    const idBits = [org.inn ? `ИНН ${org.inn}` : null, org.kpp ? `КПП ${org.kpp}` : null]
+      .filter(Boolean)
+      .join("  ·  ");
+    if (org.name || idBits) {
+      if (org.name) {
+        sheet.mergeCells(row, 1, row, 4);
+        const c = sheet.getCell(row, 1);
+        c.value = org.name;
+        c.font = { bold: true, size: 13, color: { argb: XC.accent } };
+        c.alignment = { vertical: "middle" };
+      }
+      if (idBits) {
         const innCell = sheet.getCell(row, LAST_COL);
-        innCell.value = `ИНН ${org.inn}`;
+        innCell.value = idBits;
         innCell.font = { size: 8, color: { argb: XC.faint } };
         innCell.alignment = { vertical: "middle", horizontal: "right" };
       }
@@ -148,10 +155,14 @@ export function addSmetaSheetToWorkbook(
     row++;
   };
 
+  if (data.docNumber) metaLine("НОМЕР", data.docNumber, { boldValue: true });
+  metaLine("ДАТА СОСТАВЛЕНИЯ", data.issuedAtLabel);
   metaLine("КЛИЕНТ", data.clientName, { boldValue: true });
   metaLine("ПРОЕКТ", data.projectName, { boldValue: true });
   metaLine("ВЫДАЧА", `${data.issueDateLabel}, ${data.loadOutTimeLabel}`);
   metaLine("ВОЗВРАТ", `${data.returnDateLabel}, ${data.returnLoadTimeLabel}`);
+  metaLine("СМЕН В ПЕРИОДЕ", `${data.shiftsCount} (по 24 ч)`);
+  metaLine("СРОК ОПЛАТЫ", data.paymentDueLabel ? `до ${data.paymentDueLabel}` : "по договорённости");
   if (data.hourCalculationText?.trim()) {
     metaLine("ПРОСЧЁТ ЧАСОВ", data.hourCalculationText.trim(), { wrap: true });
   }
@@ -329,6 +340,24 @@ export function appendTransportAndGrandTotal(
     row += 2;
   }
 
+  // Договорной итог: расчёт остаётся на листе отдельной строкой, платить — по
+  // согласованной сумме. Молчаливая подмена цифры спорила бы со счётом.
+  const hasAgreed = full.agreedTotal != null && full.agreedTotal !== full.grandTotal;
+  if (hasAgreed) {
+    sheet.mergeCells(row, 1, row, 4);
+    const cl = sheet.getCell(row, 1);
+    cl.value = "Итого по расчёту";
+    cl.font = { size: 10, color: { argb: XC.muted } };
+    cl.alignment = { horizontal: "right", vertical: "middle" };
+    const cv = sheet.getCell(row, LAST_COL);
+    cv.value = parseMoney(full.grandTotal);
+    cv.numFmt = RUB_FMT;
+    cv.font = { size: 10, color: { argb: XC.ink2 } };
+    cv.alignment = { horizontal: "right", vertical: "middle" };
+    row++;
+  }
+  const payable = hasAgreed ? (full.agreedTotal as string) : full.grandTotal;
+
   // Общий итог — акцентная плашка.
   sheet.mergeCells(row, 1, row, 4);
   const gl = sheet.getCell(row, 1);
@@ -337,7 +366,7 @@ export function appendTransportAndGrandTotal(
   gl.fill = fill(XC.accentSoft);
   gl.alignment = { horizontal: "right", vertical: "middle" };
   const gv = sheet.getCell(row, LAST_COL);
-  gv.value = parseMoney(full.grandTotal);
+  gv.value = parseMoney(payable);
   gv.numFmt = RUB_FMT;
   gv.font = { bold: true, size: 12, color: { argb: XC.accent } };
   gv.fill = fill(XC.accentSoft);
@@ -347,6 +376,49 @@ export function appendTransportAndGrandTotal(
   }
   sheet.getRow(row).height = 22;
   return row + 1;
+}
+
+/**
+ * Реквизиты для оплаты в конце листа — зеркало PDF-блока.
+ *
+ * Отдельной функцией, а не внутри общего итога: итог печатается не всегда
+ * (у сметы без добора, транспорта и договорной суммы его нет), а сказать,
+ * куда платить, платёжный документ обязан в любом случае.
+ */
+export function appendPaymentDetails(
+  sheet: ExcelJS.Worksheet,
+  startRow: number,
+  org: SmetaOrgInfo | null | undefined,
+): number {
+  if (!org) return startRow;
+  const details: Array<[string, string]> = [];
+  if (org.name) details.push(["Получатель", org.name]);
+  const idBits = [org.inn ? `ИНН ${org.inn}` : null, org.kpp ? `КПП ${org.kpp}` : null]
+    .filter(Boolean)
+    .join("  ·  ");
+  if (idBits) details.push(["", idBits]);
+  if (org.rschet) details.push(["Расчётный счёт", org.rschet]);
+  if (org.bankName) details.push(["Банк", org.bankName]);
+  if (org.bankBik) details.push(["БИК", org.bankBik]);
+  if (org.kschet) details.push(["Корр. счёт", org.kschet]);
+  if (details.length === 0) return startRow;
+
+  let row = startRow + 1;
+  bandRow(sheet, row, "Реквизиты для оплаты");
+  row++;
+  for (const [label, value] of details) {
+    const lc = sheet.getCell(row, 1);
+    lc.value = label;
+    lc.font = { size: 9, color: { argb: XC.muted } };
+    lc.alignment = { vertical: "middle", indent: 1 };
+    sheet.mergeCells(row, 2, row, LAST_COL);
+    const vc = sheet.getCell(row, 2);
+    vc.value = value;
+    vc.font = { size: 10, color: { argb: XC.ink2 } };
+    vc.alignment = { vertical: "middle" };
+    row++;
+  }
+  return row;
 }
 
 export async function writeSmetaXlsx(res: Response, data: SmetaExportDocument, downloadName: string): Promise<void> {

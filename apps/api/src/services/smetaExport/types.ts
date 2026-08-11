@@ -26,11 +26,25 @@ export type SmetaOrgInfo = {
   email: string | null;
   address: string | null;
   inn: string | null;
+  kpp: string | null;
+  /** Реквизиты для оплаты. Смета — платёжный документ: сумма к оплате без
+   *  указания счёта заставляла заказчика идти за ними отдельным письмом. */
+  bankName: string | null;
+  bankBik: string | null;
+  rschet: string | null;
+  kschet: string | null;
 };
 
 export type SmetaExportDocument = {
   documentTitleRu: string;
   documentTitleEn: string;
+  /** Номер документа «СМ-2026-0001». null — бронь до введения нумерации. */
+  docNumber: string | null;
+  /** Дата составления документа. Не «сегодня»: иначе один и тот же документ,
+   *  скачанный дважды, выглядит по-разному и теряет силу как платёжный. */
+  issuedAtLabel: string;
+  /** «до 15 августа 2026» — срок оплаты. null — не задан. */
+  paymentDueLabel: string | null;
   issueDateLabel: string;
   returnDateLabel: string;
   loadOutTimeLabel: string;
@@ -80,4 +94,10 @@ export type SmetaFullExportDocument = {
   transport: SmetaTransportSection | null;
   /** Финальная сумма к оплате = main + addon + transport (для итоговой строки). */
   grandTotal: string;
+  /**
+   * Согласованная вручную сумма брони. Когда задана — платить по ней, а не по
+   * расчёту: о ней договорились. Расчётная сумма при этом остаётся на листе
+   * отдельной строкой, чтобы разница была видна, а не спрятана в цифре.
+   */
+  agreedTotal?: string | null;
 };

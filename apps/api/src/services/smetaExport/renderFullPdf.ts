@@ -12,10 +12,13 @@ export function writeFullSmetaPdf(
   doc: SmetaFullExportDocument,
   downloadName: string,
 ): void {
-  if (!doc.addon && !doc.transport) {
+  // Договорной итог обязан попасть в документ даже когда нет ни добора, ни
+  // транспорта: иначе одиночная смета напечатает расчётную сумму вместо той,
+  // о которой договорились.
+  if (!doc.addon && !doc.transport && doc.agreedTotal == null) {
     writeSmetaPdf(res, doc.main, downloadName);
     return;
   }
   const sections = doc.addon ? [doc.main, doc.addon] : [doc.main];
-  writeSmetaPdfMulti(res, sections, downloadName, doc.grandTotal, doc.transport);
+  writeSmetaPdfMulti(res, sections, downloadName, doc.grandTotal, doc.transport, doc.agreedTotal ?? null);
 }

@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { billableShifts24h, formatExportHourCalculationLine } from "../utils/dates";
 import { HttpError } from "../utils/errors";
 import { computeUnitPriceForBookingPeriod, resolveCatalogLinePrice, splitEquipmentDiscount } from "./pricing";
+import { generateEstimateDocNumber } from "./numberingService";
 import { getAvailability } from "./availability";
 import { computeTransportPrice } from "./transportCalculator";
 import type { TransportBreakdown } from "./transportCalculator";
@@ -281,9 +282,14 @@ export async function createBookingDraft(args: {
       ? args.expectedPaymentDate
       : await computeDefaultPaymentDate(args.endDate);
 
+  // Номер документа выдаём ДО транзакции создания: генератор открывает свою и
+  // ретраит гонку по уникальности — так же, как нумерация счетов.
+  const docNumber = await generateEstimateDocNumber(new Date().getFullYear());
+
   const booking = await prisma.booking.create({
     data: {
       clientId: args.clientId,
+      docNumber,
       projectName: args.projectName.trim(),
       startDate: args.startDate,
       endDate: args.endDate,

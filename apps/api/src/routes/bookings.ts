@@ -2821,7 +2821,9 @@ router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
     const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
 
     const org = smetaOrgFromSettings(await getSettings());
-    const doc = buildFullSmeta({ booking, main, addon, org });
+    // Договорной итог обязан дойти до документа: счёт его уже чтит, и без него
+    // смета спорила бы со счётом на одной и той же брони.
+    const doc = buildFullSmeta({ booking, main, addon, org, agreedTotal: booking.manualFinalAmount });
     const human = buildBookingHumanName({
       startDate: booking.startDate,
       clientName: booking.client.name,
@@ -2850,7 +2852,9 @@ router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
     const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
 
     const org = smetaOrgFromSettings(await getSettings());
-    const doc = buildFullSmeta({ booking, main, addon, org });
+    // Договорной итог обязан дойти до документа: счёт его уже чтит, и без него
+    // смета спорила бы со счётом на одной и той же брони.
+    const doc = buildFullSmeta({ booking, main, addon, org, agreedTotal: booking.manualFinalAmount });
     const human = buildBookingHumanName({
       startDate: booking.startDate,
       clientName: booking.client.name,

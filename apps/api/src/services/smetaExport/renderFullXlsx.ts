@@ -2,7 +2,7 @@ import type { Response } from "express";
 import ExcelJS from "exceljs";
 
 import type { SmetaFullExportDocument } from "./types";
-import { addSmetaSheetToWorkbook, appendTransportAndGrandTotal } from "./renderXlsx";
+import { addSmetaSheetToWorkbook, appendPaymentDetails, appendTransportAndGrandTotal } from "./renderXlsx";
 import { buildAttachmentContentDisposition } from "../../utils/contentDisposition";
 
 /**
@@ -23,9 +23,15 @@ export async function writeFullSmetaXlsx(
     ? addSmetaSheetToWorkbook(wb, doc.addon, "Доб-смета")
     : mainSheet;
 
-  if (doc.addon || doc.transport) {
-    appendTransportAndGrandTotal(last.sheet, last.nextRow, doc);
+  // Договорной итог требует общего блока так же, как добор и транспорт: без
+  // него лист заканчивался расчётной суммой и спорил со счётом.
+  let nextRow = last.nextRow;
+  if (doc.addon || doc.transport || doc.agreedTotal != null) {
+    nextRow = appendTransportAndGrandTotal(last.sheet, nextRow, doc);
   }
+  // Реквизиты для оплаты — всегда, как и в PDF: платёжный документ обязан
+  // сказать, куда платить, независимо от состава сметы.
+  appendPaymentDetails(last.sheet, nextRow, doc.main.org);
 
   const buf = await wb.xlsx.writeBuffer();
   const nodeBuf = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);

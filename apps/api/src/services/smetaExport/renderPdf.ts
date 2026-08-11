@@ -87,6 +87,15 @@ function resolveFonts(doc: Pdf): FontSet {
   return { body: "Helvetica", bold: "Helvetica-Bold" };
 }
 
+/** Русская форма слова «смена» для реквизитов документа. */
+function pluralShifts(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "смена";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "смены";
+  return "смен";
+}
+
 function rub(value: string): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return `${value} ₽`;
@@ -117,6 +126,8 @@ function groupByCategory(lines: SmetaExportLine[]): CategoryGroup[] {
 type RenderOptions = {
   transport?: SmetaTransportSection | null;
   grandTotal?: string | null;
+  /** Согласованная вручную сумма брони; перебивает расчётный итог. */
+  agreedTotal?: string | null;
 };
 
 /**
@@ -167,7 +178,7 @@ class SmetaPdfWriter {
 
   private drawOrgBar(org: SmetaOrgInfo | null): void {
     const d = this.doc;
-    if (!org || (!org.name && !org.phone && !org.address && !org.email)) {
+    if (!org || (!org.name && !org.phone && !org.address && !org.email && !org.inn)) {
       // Реквизиты не настроены — оставляем только фирменную линию.
       this.fillRect(MARGIN, this.y, CONTENT_W, 2.5, C.accent);
       this.y += 16;
@@ -176,13 +187,18 @@ class SmetaPdfWriter {
 
     if (org.name) {
       d.font(this.fonts.bold).fontSize(11.5).fillColor(C.accent);
-      d.text(org.name, MARGIN, this.y, { width: CONTENT_W - 150, lineBreak: false, ellipsis: true });
+      d.text(org.name, MARGIN, this.y, { width: CONTENT_W - 190, lineBreak: false, ellipsis: true });
     }
-    if (org.inn) {
+    const idBits = [org.inn ? `ИНН ${org.inn}` : null, org.kpp ? `КПП ${org.kpp}` : null]
+      .filter(Boolean)
+      .join("  ·  ");
+    if (idBits) {
       d.font(this.fonts.body).fontSize(8).fillColor(C.faint);
-      d.text(`ИНН ${org.inn}`, MARGIN + CONTENT_W - 150, this.y + 2, { width: 150, align: "right", lineBreak: false });
+      d.text(idBits, MARGIN + CONTENT_W - 190, this.y + 2, { width: 190, align: "right", lineBreak: false });
     }
-    this.y += org.name ? 15 : 0;
+    // Сдвигаем курсор, даже когда юр. имени нет: иначе строка контактов
+    // рисовалась поверх ИНН.
+    this.y += org.name || idBits ? 15 : 0;
 
     const contactBits = [org.phone, org.email, org.address].filter(Boolean) as string[];
     if (contactBits.length > 0) {
@@ -198,16 +214,37 @@ class SmetaPdfWriter {
 
   private drawTitle(data: SmetaExportDocument): void {
     const d = this.doc;
-    d.font(this.fonts.bold).fontSize(19).fillColor(C.ink);
-    d.text(data.documentTitleRu, MARGIN, this.y, { width: CONTENT_W - 140, lineBreak: false, ellipsis: true });
+    // Правый блок шире прежнего: «Дата составления 10 августа 2026 г.» в 140 pt
+    // не помещалась и роняла «г.» на отдельную строку.
+    const rightW = 186;
+    const titleW = CONTENT_W - rightW - 12;
 
+    d.font(this.fonts.bold).fontSize(19).fillColor(C.ink);
+    // Заголовок переносится, а не обрезается: в одну строку он не влезал и
+    // наезжал на английский подзаголовок под собой.
+    const titleH = d.heightOfString(data.documentTitleRu, { width: titleW, lineGap: 1 });
+    d.text(data.documentTitleRu, MARGIN, this.y, { width: titleW, lineGap: 1 });
+
+    // Номер и дата — правым столбиком, а не внутри заголовка: приклеенный к
+    // названию номер разгонял заголовок на три строки.
+    const titleTop = this.y;
+    let ry = titleTop + 3;
+    if (data.docNumber) {
+      d.font(this.fonts.bold).fontSize(10.5).fillColor(C.accent);
+      d.text(`№ ${data.docNumber}`, MARGIN + CONTENT_W - rightW, ry, {
+        width: rightW,
+        align: "right",
+        lineBreak: false,
+      });
+      ry += 14;
+    }
     d.font(this.fonts.body).fontSize(8).fillColor(C.faint);
-    d.text(`Сформирована ${todayRuLabel()}`, MARGIN + CONTENT_W - 140, this.y + 8, {
-      width: 140,
+    d.text(`от ${data.issuedAtLabel}`, MARGIN + CONTENT_W - rightW, ry, {
+      width: rightW,
       align: "right",
       lineBreak: false,
     });
-    this.y += 24;
+    this.y = titleTop + Math.max(titleH, ry + 10 - titleTop, 24) + 2;
 
     d.font(this.fonts.body).fontSize(9).fillColor(C.muted);
     d.text(data.documentTitleEn, MARGIN, this.y, { width: CONTENT_W, lineBreak: false });
@@ -237,6 +274,18 @@ class SmetaPdfWriter {
       [
         { label: "Выдача", value: `${data.issueDateLabel}, ${data.loadOutTimeLabel}` },
         { label: "Возврат", value: `${data.returnDateLabel}, ${data.returnLoadTimeLabel}` },
+      ],
+      // Смены — множитель, на который умножена каждая строка таблицы. Без него
+      // «5 000 ₽ × 2 = 30 000 ₽» выглядит арифметической ошибкой.
+      [
+        {
+          label: "Смен в периоде",
+          value: `${data.shiftsCount} ${pluralShifts(data.shiftsCount)} (по 24 ч)`,
+        },
+        {
+          label: "Срок оплаты",
+          value: data.paymentDueLabel ? `до ${data.paymentDueLabel}` : "по договорённости",
+        },
       ],
     ];
 
@@ -390,11 +439,18 @@ class SmetaPdfWriter {
     const groups = groupByCategory(data.lines);
     this.ensure(60);
     this.drawTableHeader();
+    // Нумеруем в порядке ПЕЧАТИ, а не исходном: строки перегруппированы по
+    // категориям, и исходный индекс давал на листе «6, 7, 12, 8» — выглядит
+    // как потерянные позиции.
+    let printedIndex = 0;
     for (const group of groups) {
       this.ensure(16 + 19); // банд категории + минимум одна строка вместе
       this.drawCategoryBand(group.category);
       this.tableContext = { category: group.category };
-      group.items.forEach((line, i) => this.drawItemRow(line, i % 2 === 1));
+      group.items.forEach((line, i) => {
+        printedIndex += 1;
+        this.drawItemRow({ ...line, index: printedIndex }, i % 2 === 1);
+      });
     }
     this.tableContext = null;
     this.y += 12;
@@ -405,17 +461,27 @@ class SmetaPdfWriter {
    * плашкой (для одиночной сметы, где это и есть сумма к оплате).
    */
   private drawSectionTotals(data: SmetaExportDocument, emphasizeFinal: boolean): void {
-    const blockW = 252;
+    // Шире прежних 252: подпись «Позиции по договорённости» не помещалась в
+    // свою колонку, переносилась и перечёркивалась линией итога.
+    const blockW = 310;
     const x = RIGHT_X - blockW;
     const d = this.doc;
+
+    // Блок итогов переносим целиком: построчный ensure отрывал финальную
+    // строку от её же разбивки, и «Итого по смете» оставалось одно на
+    // следующей странице — документ читался как обрубленный.
+    const detailRows =
+      (data.listedSubtotal != null && data.negotiatedSubtotal != null ? 2 : 1) +
+      (Number(data.discountPercent) > 0 ? 1 : 0);
+    this.ensure(detailRows * 16 + (emphasizeFinal ? 31 : 22));
 
     const row = (label: string, value: string, opts?: { bold?: boolean; muted?: boolean }) => {
       this.ensure(18);
       d.font(opts?.bold ? this.fonts.bold : this.fonts.body)
         .fontSize(9.5)
         .fillColor(opts?.muted ? C.muted : C.ink);
-      d.text(label, x, this.y, { width: blockW - 110, lineBreak: false, ellipsis: true });
-      d.text(value, x + blockW - 108, this.y, { width: 108, align: "right", lineBreak: false });
+      d.text(label, x, this.y, { width: blockW - 122, lineBreak: false, ellipsis: true });
+      d.text(value, x + blockW - 118, this.y, { width: 118, align: "right", lineBreak: false });
       this.y += 16;
     };
 
@@ -456,7 +522,12 @@ class SmetaPdfWriter {
 
   private drawTransport(section: SmetaTransportSection): void {
     const d = this.doc;
-    this.ensure(70);
+    // Блок переносим целиком: раньше «ensure(70)» пускал на страницу шапку и
+    // одну машину, а остальное с итогом уезжало на следующую — клиент получал
+    // двухстраничный документ с почти пустым вторым листом.
+    const blockH =
+      6 + 16 + section.lines.reduce((h, l) => h + 19 + (l.details ? 11 : 0), 0) + 24;
+    this.ensure(blockH);
     this.y += 6;
     this.drawTableHeaderlessBand("ТРАНСПОРТ");
 
@@ -508,6 +579,7 @@ class SmetaPdfWriter {
     sections: SmetaExportDocument[],
     transport: SmetaTransportSection | null,
     grandTotal: string,
+    agreedTotal?: string | null,
   ): void {
     const blockW = 276;
     const x = RIGHT_X - blockW;
@@ -519,6 +591,23 @@ class SmetaPdfWriter {
     const addon = sections[1];
     if (addon) composition.push({ label: "Доб-смета (после скидки)", value: rub(addon.totalAfterDiscount) });
     if (transport) composition.push({ label: "Транспорт", value: rub(transport.subtotal) });
+    // Договорную сумму не подменяем молча: показываем расчёт, потом уступку,
+    // потом то, что платить. Иначе документ спорит со счётом без объяснения.
+    const hasAgreed = agreedTotal != null && agreedTotal !== grandTotal;
+    if (hasAgreed) {
+      // Когда блок один (только оборудование), его строка и «Итого по расчёту»
+      // — одна и та же цифра дважды подряд.
+      if (composition.length === 1) composition.length = 0;
+      composition.push({ label: "Итого по расчёту", value: rub(grandTotal) });
+      const delta = Number(grandTotal) - Number(agreedTotal);
+      if (Number.isFinite(delta) && Math.abs(delta) >= 0.01) {
+        composition.push({
+          label: delta > 0 ? "Согласованная скидка" : "Согласованная надбавка",
+          value: `${delta > 0 ? "− " : "+ "}${rub(Math.abs(delta).toFixed(2))}`,
+        });
+      }
+    }
+    const payable = hasAgreed ? (agreedTotal as string) : grandTotal;
 
     const bandH = 30;
     const compH = composition.length * 15;
@@ -541,7 +630,7 @@ class SmetaPdfWriter {
     d.font(this.fonts.bold).fontSize(9.5).fillColor(C.accent);
     d.text("ИТОГО К ОПЛАТЕ", x + 10, this.y + 10.5, { lineBreak: false, characterSpacing: 0.5 });
     d.font(this.fonts.bold).fontSize(13).fillColor(C.accent);
-    d.text(rub(grandTotal), x, this.y + 8.5, { width: blockW - 10, align: "right", lineBreak: false });
+    d.text(rub(payable), x, this.y + 8.5, { width: blockW - 10, align: "right", lineBreak: false });
     this.y += bandH;
   }
 
@@ -552,6 +641,49 @@ class SmetaPdfWriter {
     this.drawNotes(data);
     this.drawTable(data);
     this.drawSectionTotals(data, emphasizeFinal);
+  }
+
+  /**
+   * Реквизиты для оплаты. Смета — платёжный документ: сумма к оплате без
+   * счёта заставляла заказчика писать отдельное письмо за реквизитами.
+   * Блок переносится целиком — половина банковского счёта на разрыве
+   * страницы хуже, чем его отсутствие.
+   */
+  private drawPaymentDetails(org: SmetaOrgInfo | null): void {
+    if (!org) return;
+    const rows: Array<[string, string]> = [];
+    if (org.name) rows.push(["Получатель", org.name]);
+    const idBits = [org.inn ? `ИНН ${org.inn}` : null, org.kpp ? `КПП ${org.kpp}` : null]
+      .filter(Boolean)
+      .join("  ·  ");
+    if (idBits) rows.push(["", idBits]);
+    if (org.rschet) rows.push(["Расчётный счёт", org.rschet]);
+    if (org.bankName) rows.push(["Банк", org.bankName]);
+    if (org.bankBik) rows.push(["БИК", org.bankBik]);
+    if (org.kschet) rows.push(["Корр. счёт", org.kschet]);
+    if (rows.length === 0) return;
+
+    const d = this.doc;
+    const lineH = 13;
+    const blockH = 16 + rows.length * lineH + 10;
+    this.ensure(blockH + 10);
+    this.y += 10;
+
+    this.drawTableHeaderlessBand("РЕКВИЗИТЫ ДЛЯ ОПЛАТЫ");
+    this.y += 6;
+    const labelW = 110;
+    for (const [label, value] of rows) {
+      d.font(this.fonts.body).fontSize(8).fillColor(C.muted);
+      if (label) d.text(label, MARGIN + CELL_PAD, this.y, { width: labelW, lineBreak: false });
+      d.font(this.fonts.body).fontSize(8.5).fillColor(C.ink2);
+      d.text(value, MARGIN + CELL_PAD + labelW, this.y, {
+        width: CONTENT_W - labelW - CELL_PAD * 2,
+        lineBreak: false,
+        ellipsis: true,
+      });
+      this.y += lineH;
+    }
+    this.y += 4;
   }
 
   /** Футер на всех страницах — вызывать строго перед doc.end(). */
@@ -578,7 +710,11 @@ class SmetaPdfWriter {
   /** Полный проход: секции → транспорт → общий итог → футеры. */
   render(sections: SmetaExportDocument[], opts: RenderOptions): void {
     const transport = opts.transport ?? null;
-    const showGrand = sections.length > 1 || Boolean(transport);
+    // Договорной итог тоже требует общего блока: без него единственное место,
+    // где расчётная сумма подменяется согласованной, просто не вызывается, и
+    // на брони без добора и транспорта лист печатал расчёт, споря со счётом.
+    const showGrand =
+      sections.length > 1 || Boolean(transport) || opts.agreedTotal != null;
 
     sections.forEach((section, idx) => {
       if (idx > 0) {
@@ -590,9 +726,10 @@ class SmetaPdfWriter {
 
     if (transport) this.drawTransport(transport);
     if (showGrand && opts.grandTotal) {
-      this.drawGrandTotal(sections, transport, opts.grandTotal);
+      this.drawGrandTotal(sections, transport, opts.grandTotal, opts.agreedTotal ?? null);
     }
 
+    this.drawPaymentDetails(sections[0]?.org ?? null);
     this.finalizeFooters(sections[0]?.org ?? null);
   }
 }
@@ -635,13 +772,14 @@ export function writeSmetaPdfMulti(
   downloadName: string,
   grandTotal: string,
   transport: SmetaTransportSection | null = null,
+  agreedTotal: string | null = null,
 ): void {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", buildAttachmentContentDisposition(downloadName, "estimate.pdf"));
 
   const doc = createSmetaDoc(sections[0]);
   doc.pipe(res);
-  new SmetaPdfWriter(doc).render(sections, { transport, grandTotal });
+  new SmetaPdfWriter(doc).render(sections, { transport, grandTotal, agreedTotal });
   doc.end();
 }
 

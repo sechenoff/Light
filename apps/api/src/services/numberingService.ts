@@ -48,3 +48,38 @@ export async function generateInvoiceNumber(prefix: string, year: number): Promi
 
   throw new Error(`generateInvoiceNumber: не удалось получить уникальный номер после ${MAX_RETRIES} попыток`);
 }
+
+/**
+ * Номер сметы как документа: «СМ-2026-0001».
+ *
+ * Отдельная от счёта последовательность и отдельная буквенная часть: смета и
+ * счёт — разные документы, и одинаковые номера у них в переписке путали бы
+ * обе стороны. Номер живёт на БРОНИ (Booking.docNumber), потому что смета
+ * пересобирается при каждой правке, а номер платёжного документа обязан
+ * пережить все правки.
+ */
+export async function generateEstimateDocNumber(year: number): Promise<string> {
+  const yearPrefix = `СМ-${year}-`;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const last = await tx.booking.findFirst({
+          where: { docNumber: { startsWith: yearPrefix } },
+          orderBy: { docNumber: "desc" },
+          select: { docNumber: true },
+        });
+        let nextSeq = 1;
+        if (last?.docNumber) {
+          const parsed = parseInt(last.docNumber.slice(yearPrefix.length), 10);
+          if (!Number.isNaN(parsed)) nextSeq = parsed + 1;
+        }
+        return `${yearPrefix}${String(nextSeq).padStart(4, "0")}`;
+      });
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      if (code === "P2002" && attempt < MAX_RETRIES - 1) continue;
+      throw err;
+    }
+  }
+  throw new Error(`generateEstimateDocNumber: не удалось получить уникальный номер после ${MAX_RETRIES} попыток`);
+}
