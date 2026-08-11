@@ -788,6 +788,7 @@ export function renderSmetaPdfToBuffer(
   sections: SmetaExportDocument[],
   grandTotal: string | null = null,
   transport: SmetaTransportSection | null = null,
+  agreedTotal: string | null = null,
 ): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const doc = createSmetaDoc(sections[0]);
@@ -795,7 +796,7 @@ export function renderSmetaPdfToBuffer(
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
-    new SmetaPdfWriter(doc).render(sections, { transport, grandTotal });
+    new SmetaPdfWriter(doc).render(sections, { transport, grandTotal, agreedTotal });
     doc.end();
   });
 }

@@ -254,9 +254,23 @@ router.get("/:id/estimate.pdf", lkAuth, async (req, res, next) => {
     if (main) {
       const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
       const org = smetaOrgFromSettings(await getSettings());
-      const full = buildFullSmeta({ booking, main, addon, org });
+      // Договорной итог обязателен и здесь — этот PDF клиент качает сам.
+      // Без него портал показывал расчётную сумму, а счёт на ту же бронь —
+      // согласованную: заказчик видел два разных числа за один заказ.
+      const full = buildFullSmeta({
+        booking,
+        main,
+        addon,
+        org,
+        agreedTotal: booking.manualFinalAmount,
+      });
       const sections = full.addon ? [full.main, full.addon] : [full.main];
-      pdfBuf = await renderSmetaPdfToBuffer(sections, full.grandTotal, full.transport);
+      pdfBuf = await renderSmetaPdfToBuffer(
+        sections,
+        full.grandTotal,
+        full.transport,
+        full.agreedTotal ?? null,
+      );
     } else {
       pdfBuf = await buildBookingEstimatePdf(req.params.id);
     }

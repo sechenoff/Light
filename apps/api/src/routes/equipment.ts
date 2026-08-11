@@ -104,10 +104,30 @@ router.get("/", async (req, res, next) => {
   }
 });
 
+// Счётчик позиций рядом с названием превращает список категорий из фильтра в
+// карту склада: видно, где 44 позиции, а где одна. groupBy идёт по индексу
+// @@index([category]) и стоит один запрос — дешевле, чем считать на клиенте
+// (при активном ?category= сервер уже отдаёт урезанную выборку).
 router.get("/categories", async (_req, res, next) => {
   try {
-    const categories = await getMergedCategoryOrder();
-    res.json({ categories });
+    const [categories, grouped] = await Promise.all([
+      getMergedCategoryOrder(),
+      prisma.equipment.groupBy({ by: ["category"], _count: { _all: true } }),
+    ]);
+
+    // Счётчик обязан считаться ТЕМ ЖЕ ключом, что и фильтр: `?category=` идёт
+    // в SQL точным равенством. Сложить «Грип» и « грип » в одно число значило
+    // бы обещать 4 позиции там, где по клику придёт 3 — список категорий и так
+    // показывает оба написания отдельными строками (getMergedCategoryOrder
+    // собирает их из raw-distinct).
+    const byRaw = new Map(grouped.map((g) => [g.category, g._count._all]));
+
+    const counts: Record<string, number> = {};
+    for (const name of categories) {
+      counts[name] = byRaw.get(name) ?? 0;
+    }
+
+    res.json({ categories, counts });
   } catch (err) {
     next(err);
   }

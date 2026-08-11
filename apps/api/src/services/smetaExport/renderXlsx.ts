@@ -129,7 +129,12 @@ export function addSmetaSheetToWorkbook(
   titleCell.font = { bold: true, size: 16, color: { argb: XC.ink } };
   titleCell.alignment = { vertical: "middle" };
   const genCell = sheet.getCell(row, LAST_COL);
-  genCell.value = `Сформирована ${todayRuLabel()}`;
+  // Дата документа, а не «сегодня»: тот же лист, скачанный в другой день,
+  // обязан выглядеть так же — иначе он не платёжный документ. В PDF это уже
+  // исправлено, Excel оставался со штампом текущей даты.
+  genCell.value = data.docNumber
+    ? `№ ${data.docNumber} от ${data.issuedAtLabel}`
+    : `от ${data.issuedAtLabel}`;
   genCell.font = { size: 8, color: { argb: XC.faint } };
   genCell.alignment = { vertical: "middle", horizontal: "right", wrapText: true };
   sheet.getRow(row).height = 24;

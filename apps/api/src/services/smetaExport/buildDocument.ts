@@ -225,7 +225,15 @@ export function buildSmetaFromPersistedEstimate(args: {
   });
 
   if (args.estimate.kind === "ADDON") {
-    return { ...baseDoc, documentTitleRu: "Смета-добор", documentTitleEn: "Additional Estimate" };
+    return {
+      ...baseDoc,
+      documentTitleRu: "Смета-добор",
+      documentTitleEn: "Additional Estimate",
+      // Добор — отдельный документ, и номер у него обязан отличаться: два
+      // платёжных документа под одним номером не различить ни в переписке,
+      // ни в бухгалтерии.
+      docNumber: baseDoc.docNumber ? `${baseDoc.docNumber}/д` : null,
+    };
   }
   return baseDoc;
 }

@@ -150,6 +150,15 @@ describe("смета как платёжный документ", () => {
     expect(full.grandTotal).toBe("30400");
   });
 
+  it("у доб-сметы свой номер — два документа под одним не различить", () => {
+    const addon = buildSmetaFromPersistedEstimate({
+      booking: BOOKING,
+      estimate: mkEstimate({ kind: "ADDON" }),
+    });
+    expect(addon.docNumber).toBe("СМ-2026-0042/д");
+    expect(addon.documentTitleRu).toBe("Смета-добор");
+  });
+
   it("договорная сумма печатается и без добора, и без транспорта", async () => {
     // Самый частый случай: обычная бронь, где итог зафиксировали вручную.
     // Общий блок итога включался только при доборе или транспорте, поэтому
