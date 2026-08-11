@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Тулбар каталога · 6 концепций</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#09090b;--ink-2:#52525b;--ink-3:#a1a1aa;
+  --surface:#fff;--surface-muted:#fafafa;--surface-subtle:#f4f4f5;
+  --border:#e4e4e7;--border-strong:#d4d4d8;
+  --accent:#1e3a8a;--accent-bright:#1d4ed8;--accent-soft:#eff6ff;--accent-border:#bfdbfe;
+  --emerald:#047857;--emerald-soft:#d1fae5;--rose:#9f1239;--rose-soft:#ffe4e6;
+  --amber:#a16207;--amber-soft:#fef3c7;--indigo:#4338ca;--indigo-soft:#e0e7ff;
+}
+html{font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+body{font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:#ececee;padding:32px 20px 80px}
+.mono{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.eyebrow{font-family:'IBM Plex Sans Condensed',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.wrap{max-width:1120px;margin:0 auto}
+
+h1{font-size:24px;font-weight:600;letter-spacing:-.01em}
+.lede{font-size:14.5px;color:var(--ink-2);max-width:760px;margin-top:8px;line-height:1.6}
+
+.block{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px 28px;margin-bottom:20px}
+
+/* ── Карточки вариантов ── */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;margin-top:16px}
+.card{display:flex;flex-direction:column;text-decoration:none;color:inherit;background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;overflow:hidden;transition:border-color .14s,box-shadow .14s,transform .14s}
+.card-top{flex:1}
+.card:hover{border-color:var(--accent-bright);box-shadow:0 6px 22px rgba(29,78,216,.10);transform:translateY(-1px)}
+.card:focus-visible{outline:2px solid var(--accent-bright);outline-offset:2px}
+.card-top{padding:14px 16px 12px;border-bottom:1px solid var(--border)}
+.card-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;
+  background:var(--surface-subtle);color:var(--ink-2);font-size:11.5px;font-weight:700;margin-bottom:8px}
+.card.win .card-num{background:var(--accent-bright);color:#fff}
+.card h3{font-size:15px;font-weight:600;line-height:1.3}
+.card .sub{font-size:12.5px;color:var(--ink-2);margin-top:5px;line-height:1.5}
+.card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 16px;background:var(--surface-muted)}
+.score{display:flex;align-items:center;gap:6px}
+.score .val{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600}
+.score .of{font-size:11px;color:var(--ink-3)}
+.bars{display:flex;gap:2px;align-items:flex-end;height:16px}
+.bars i{display:block;width:5px;border-radius:1px;background:var(--border-strong)}
+.bars i.f{background:var(--accent-bright)}
+.open{font-size:12px;color:var(--accent-bright);font-weight:500}
+.tag{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  padding:2px 7px;border-radius:3px;margin-left:6px;vertical-align:2px}
+.tag.best{background:var(--emerald-soft);color:var(--emerald)}
+.tag.new{background:var(--indigo-soft);color:var(--indigo)}
+
+/* ── Таблица оценок ── */
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:14px}
+th{text-align:left;padding:8px 10px;font-family:'IBM Plex Sans Condensed',sans-serif;font-size:10.5px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--border-strong)}
+th.c,td.c{text-align:center}
+td{padding:9px 10px;border-bottom:1px solid var(--surface-subtle)}
+td.name{font-weight:500}
+td.num{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;text-align:center}
+td.num.hi{color:var(--emerald);font-weight:600}
+td.num.lo{color:var(--rose)}
+tr.top td{background:var(--accent-soft)}
+.dash{color:var(--ink-3)}
+
+/* ── Списки выводов ── */
+.finding{border-left:3px solid var(--accent-bright);padding:2px 0 2px 14px;margin:14px 0}
+.finding h4{font-size:13.5px;font-weight:600;margin-bottom:4px}
+.finding p{font-size:13px;color:var(--ink-2);line-height:1.6}
+ul.clean{padding-left:18px;margin-top:8px}
+ul.clean li{font-size:13.5px;padding:3px 0;line-height:1.55}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:6px}
+@media(max-width:800px){.two{grid-template-columns:1fr}}
+h2{font-size:17px;font-weight:600;margin-bottom:4px}
+h2 + .sub2{font-size:13px;color:var(--ink-2);margin-bottom:10px}
+code{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface-subtle);padding:1px 5px;border-radius:3px}
+.warn{background:var(--amber-soft);border:1px solid #fde68a;border-radius:6px;padding:12px 16px;margin-top:14px}
+.warn strong{color:var(--amber);display:block;font-size:13px;margin-bottom:4px}
+.warn p{font-size:13px;color:var(--ink-2);line-height:1.55}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="block">
+    <p class="eyebrow">Каталог оборудования · /equipment</p>
+    <h1 style="margin-top:6px">Шесть концепций тулбара</h1>
+    <p class="lede">
+      Шесть независимых подходов к одной задаче: разместить период доступности, поиск, категорию и два действия так,
+      чтобы это ощущалось инструментом, а не набором контролов. Каждую концепцию рисовал отдельный дизайнер,
+      не видя работ остальных. Затем три судьи с разными приоритетами — скорость оператора, дизайн-канон,
+      адаптивность и доступность — оценили результаты вслепую.
+    </p>
+    <p class="lede" style="margin-top:10px">
+      Судьи разошлись радикально: <strong>каждый выбрал своего победителя, и лучший по одной линзе оказывался худшим по другой</strong>.
+      Это не сбой оценки, а честный ответ: одного «правильного» варианта нет — есть выбор приоритета.
+    </p>
+  </div>
+
+  <div class="block">
+    <h2>Варианты</h2>
+    <p class="sub2">Откройте любой — внутри desktop и mobile, состояния, таблица под тулбаром и разбор «что решает / чем рискует».</p>
+
+    <div class="cards">
+      <a class="card win" href="compact-single-row.html">
+        <div class="card-top">
+          <span class="card-num">1</span>
+          <h3>Ультра-компактная строка<span class="tag best">лидер</span></h3>
+          <p class="sub">Тулбар — одна линия 40 px без карточки. Контролы «призрачные», период сжат в чип-якорь, счётчики ушли в служебный подвал. Экран отдан таблице.</p>
+        </div>
+        <div class="card-foot">
+          <span class="score"><span class="bars"><i class="f" style="height:16px"></i><i class="f" style="height:16px"></i><i class="f" style="height:13px"></i></span><span class="val">7.5</span><span class="of">/ 10</span></span>
+          <span class="open">Открыть →</span>
+        </div>
+      </a>
+
+      <a class="card win" href="sidebar-filters.html">
+        <div class="card-top">
+          <span class="card-num">2</span>
+          <h3>Боковая панель фильтров<span class="tag best">лидер</span></h3>
+          <p class="sub">Фильтры уезжают в левую колонку 240 px. Все 15 категорий видны списком со счётчиками — фильтр превращается в карту склада.</p>
+        </div>
+        <div class="card-foot">
+          <span class="score"><span class="bars"><i class="f" style="height:14px"></i><i class="f" style="height:16px"></i><i class="f" style="height:11px"></i></span><span class="val">7.2</span><span class="of">/ 10</span></span>
+          <span class="open">Открыть →</span>
+        </div>
+      </a>
+
+      <a class="card" href="search-first.html">
+        <div class="card-top">
+          <span class="card-num">3</span>
+          <h3>Поиск-первый</h3>
+          <p class="sub">Крупное поле поиска как командная строка: подсказки при вводе сразу показывают «Aputure LS 1200d · 1 из 2». Период и категория — компактные пилюли рядом.</p>
+        </div>
+        <div class="card-foot">
+          <span class="score"><span class="bars"><i style="height:6px"></i><i class="f" style="height:14px"></i><i style="height:6px"></i></span><span class="val">7.0</span><span class="of">/ 10</span></span>
+          <span class="open">Открыть →</span>
+        </div>
+      </a>
+
+      <a class="card" href="filter-chips.html">
+        <div class="card-top">
+          <span class="card-num">4</span>
+          <h3>Чипы активных фильтров<span class="tag new">новый</span></h3>
+          <p class="sub">Строка показывает не контролы, а результат: применённое висит лентой удаляемых чипов. Новые фильтры добавляются в панель — строка не растёт никогда.</p>
+        </div>
+        <div class="card-foot">
+          <span class="score"><span class="bars"><i style="height:6px"></i><i style="height:6px"></i><i style="height:6px"></i></span><span class="val dash" style="color:var(--ink-3)">—</span><span class="of">вне оценки</span></span>
+          <span class="open">Открыть →</span>
+        </div>
+      </a>
+
+      <a class="card" href="popover-daterange.html">
+        <div class="card-top">
+          <span class="card-num">5</span>
+          <h3>Период в поповере с календарём</h3>
+          <p class="sub">Период сворачивается в одну кнопку. Поповер: пресеты слева, двухмесячный календарь справа, полоска загрузки склада под числами.</p>
+        </div>
+        <div class="card-foot">
+          <span class="score"><span class="bars"><i style="height:6px"></i><i class="f" style="height:12px"></i><i style="height:6px"></i></span><span class="val">6.0</span><span class="of">/ 10</span></span>
+          <span class="open">Открыть →</span>
+        </div>
+      </a>
+
+      <a class="card" href="context-header.html">
+        <div class="card-top">
+          <span class="card-num">6</span>
+          <h3>Период как контекст страницы</h3>
+          <p class="sub">Период — не фильтр, а режим просмотра: тёмная шапка «Доступность на 11–12 августа · 1 смена». Зависящие колонки подсвечены синим.</p>
+        </div>
+        <div class="card-foot">
+          <span class="score"><span class="bars"><i class="f" style="height:12px"></i><i style="height:8px"></i><i class="f" style="height:14px"></i></span><span class="val">5.7</span><span class="of">/ 10</span></span>
+          <span class="open">Открыть →</span>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>Как оценили судьи</h2>
+    <p class="sub2">Три линзы, независимая слепая оценка. Прочерк — судья не успел разобрать вариант.</p>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:34%">Концепция</th>
+          <th class="c">Скорость<br>оператора</th>
+          <th class="c">Дизайн-<br>канон</th>
+          <th class="c">Адаптив<br>и доступность</th>
+          <th class="c">Средняя</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="top"><td class="name">1 · Ультра-компактная строка</td><td class="num hi">8</td><td class="num hi">8</td><td class="num">6.5</td><td class="num hi">7.5</td></tr>
+        <tr class="top"><td class="name">2 · Боковая панель фильтров</td><td class="num hi">9</td><td class="num">7</td><td class="num lo">5.5</td><td class="num hi">7.2</td></tr>
+        <tr><td class="name">3 · Поиск-первый</td><td class="num">7</td><td class="num dash">—</td><td class="num dash">—</td><td class="num">7.0</td></tr>
+        <tr><td class="name">5 · Поповер с календарём</td><td class="num">6</td><td class="num dash">—</td><td class="num dash">—</td><td class="num">6.0</td></tr>
+        <tr><td class="name">6 · Период как контекст</td><td class="num lo">4</td><td class="num">6</td><td class="num hi">7</td><td class="num">5.7</td></tr>
+      </tbody>
+    </table>
+
+    <div class="two" style="margin-top:20px">
+      <div>
+        <p class="eyebrow">Разброс мнений</p>
+        <ul class="clean">
+          <li><strong>Оператор</strong> выбрал боковую панель (9): «все три сценария — один клик, ничего не спрятано».</li>
+          <li><strong>Арт-директор</strong> выбрал компактную строку (8): «иерархия построена весом и заливкой, а не цветом».</li>
+          <li><strong>Инженер по доступности</strong> выбрал контекст-шапку (7) — единственную с 44 px везде — и забраковал боковую панель (5.5).</li>
+        </ul>
+      </div>
+      <div>
+        <p class="eyebrow">В чём сошлись все трое</p>
+        <ul class="clean">
+          <li>Три колонки, зависящие от периода, надо <strong>подсветить и подписать</strong> — это чинит корневую проблему «относительно чего эти цифры».</li>
+          <li>Пресеты «Сегодня / Завтра / Неделя» <strong>нельзя прятать</strong> в поповер — только снаружи, рядом с триггером.</li>
+          <li>Категории <strong>со счётчиками</strong> («COB Light 42») ценнее плоского списка — это навигация, а не фильтр.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>Что я рекомендую</h2>
+    <p class="sub2">Не выбирать один вариант целиком, а собрать гибрид из уже проверенных частей.</p>
+
+    <div class="finding">
+      <h4>База — концепция 1 «Ультра-компактная строка»</h4>
+      <p>Побеждает по сумме и единственная не нарушает канон. 40 px вместо 100+ возвращают полторы строки каталога на первый экран, а трёхступенчатая иерархия «призрачный контрол → обведённый якорь → синяя заливка» даёт вес без лишнего цвета.</p>
+    </div>
+
+    <div class="finding">
+      <h4>Забрать из концепции 6 — подсветку зависящих колонок</h4>
+      <p>Бледная заливка колонок «Занято / Доступно / Статус» плюс подпись над ними «на 11.08 10:00 → 12.08 10:00». Это то, чего не хватает всем остальным: связь периода с цифрами перестаёт держаться на памяти оператора. Саму тёмную шапку не берём — приём уже занят на «Моём дне» и в киоске склада.</p>
+    </div>
+
+    <div class="finding">
+      <h4>Забрать из концепции 2 — категории со счётчиками</h4>
+      <p>Но положить их не в постоянную колонку 240 px, а в поповер кнопки «Категория»: ценность карты склада («где что есть» до клика) сохраняется, а горизонталь не платится.</p>
+    </div>
+
+    <div class="finding">
+      <h4>Забрать из концепции 3 — клавиатуру</h4>
+      <p><code>/</code> — фокус в поиск, ↑↓ — по подсказкам, Enter — позиция, Esc — сброс. При полусотне проверок в день это экономит больше, чем любая перестановка блоков. Плюс подсказка сразу со свободным количеством на выбранный период.</p>
+    </div>
+
+    <div class="finding">
+      <h4>Забрать из концепции 4 — расширяемость</h4>
+      <p>Если фильтров станет больше двух (бренд, склад, «в наличии ≥ N»), лента чипов — единственный паттерн, который не заставит тулбар расти. Пока фильтра два, это избыточно; закладываем как путь роста.</p>
+    </div>
+
+    <div class="warn">
+      <strong>Отдельно: доступность — чинить в любом варианте</strong>
+      <p>
+        Судья по доступности нашёл три общих дефекта, которые есть и в текущей реализации:
+        мелкие подписи цветом <code>ink-3</code> дают контраст ≈2.3:1 при норме 4.5:1 — перевести на <code>ink-2</code>;
+        крестики снятия фильтров 16–18 px при норме 24 px; фокус-кольцо должно быть сплошным
+        <code>outline: 2px solid</code>, а не полупрозрачной тенью.
+      </p>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

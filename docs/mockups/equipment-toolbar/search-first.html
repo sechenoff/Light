@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Тулбар /equipment — концепция «Поиск-первый»</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ink:#09090b; --ink-2:#52525b; --ink-3:#a1a1aa;
+    --surface:#ffffff; --surface-muted:#fafafa; --surface-subtle:#f4f4f5;
+    --border:#e4e4e7; --border-strong:#d4d4d8;
+    --accent:#1e3a8a; --accent-bright:#1d4ed8; --accent-soft:#eff6ff; --accent-border:#bfdbfe;
+    --emerald:#047857; --emerald-soft:#d1fae5;
+    --rose:#9f1239; --rose-soft:#ffe4e6;
+    --amber:#a16207; --amber-soft:#fef3c7;
+    --teal:#0f766e; --teal-soft:#ccfbf1;
+    --indigo:#4338ca; --indigo-soft:#e0e7ff;
+    --shadow-xs:0 1px 2px rgba(9,9,11,.05);
+    --shadow-pop:0 1px 2px rgba(9,9,11,.05), 0 8px 24px rgba(9,9,11,.10);
+    --r:6px; --r-sm:4px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--surface-subtle);
+    color:var(--ink);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;
+    font-size:14px; line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:1400px;margin:0 auto;padding:28px 20px 80px;}
+
+  /* ───────── служебный блок описания ───────── */
+  .note{
+    background:var(--surface); border:1px solid var(--border);
+    border-left:3px solid var(--accent); border-radius:var(--r);
+    padding:20px 22px; margin-bottom:32px; box-shadow:var(--shadow-xs);
+  }
+  .note h1{
+    font-size:19px; font-weight:600; letter-spacing:-.01em; margin:6px 0 10px;
+  }
+  .note p{margin:0 0 14px; color:var(--ink-2); max-width:78ch;}
+  .note-cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  .note-cols h2{
+    font-family:'IBM Plex Sans Condensed',sans-serif; font-size:10.5px; font-weight:600;
+    text-transform:uppercase; letter-spacing:.12em; color:var(--ink-3); margin:0 0 8px;
+  }
+  .note ul{margin:0;padding-left:16px;}
+  .note li{margin-bottom:5px;color:var(--ink-2);}
+  .note li strong{color:var(--ink);font-weight:600;}
+  @media(max-width:720px){.note-cols{grid-template-columns:1fr;}}
+
+  .eyebrow{
+    font-family:'IBM Plex Sans Condensed',sans-serif;
+    font-size:10.5px; font-weight:600; text-transform:uppercase;
+    letter-spacing:.12em; color:var(--ink-3);
+  }
+  .mono{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums;}
+
+  /* ───────── рамка-устройство ───────── */
+  .frames{display:flex;flex-direction:column;gap:34px;}
+  .frame-head{display:flex;align-items:baseline;gap:10px;margin-bottom:9px;}
+  .frame-head .t{font-size:13px;font-weight:600;}
+  .frame-head .w{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-3);}
+  .scroller{overflow-x:auto;padding-bottom:4px;}
+  .device{
+    background:var(--surface); border:1px solid var(--border-strong);
+    border-radius:10px; box-shadow:var(--shadow-xs); overflow:hidden;
+  }
+  .device.desktop{width:1280px;}
+  .device.mobile{width:390px;}
+  .chrome-bar{
+    height:28px;background:var(--surface-subtle);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:6px;padding:0 10px;
+  }
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--border-strong);}
+  .chrome-bar .url{
+    margin-left:8px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-3);
+  }
+
+  .ic{width:18px;height:18px;flex:none;}
+  .ic-sm{width:15px;height:15px;flex:none;}
+  .ic-xs{width:13px;height:13px;flex:none;}
+
+  /* ───────── шапка страницы ───────── */
+  .page-head{
+    display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+    padding:18px 22px 0;
+  }
+  .page-head h2{font-size:20px;font-weight:600;letter-spacing:-.015em;margin:2px 0 0;}
+  .head-actions{display:flex;gap:8px;}
+
+  /* ───────── кнопки ───────── */
+  .btn{
+    display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 13px;
+    border-radius:var(--r); font-size:13px; font-weight:500; font-family:inherit;
+    border:1px solid var(--border-strong); background:var(--surface); color:var(--ink);
+    cursor:pointer; transition:background .12s ease, border-color .12s ease, color .12s ease;
+  }
+  .btn:hover{background:var(--surface-muted);border-color:var(--ink-3);}
+  .btn:focus-visible{outline:none;border-color:var(--accent-bright);box-shadow:0 0 0 3px var(--accent-soft);}
+  .btn-primary{
+    background:var(--accent-bright); border-color:var(--accent-bright); color:#fff;
+    box-shadow:var(--shadow-xs);
+  }
+  .btn-primary:hover{background:var(--accent);border-color:var(--accent);}
+  .btn-ghost{border-color:transparent;background:transparent;color:var(--ink-2);}
+  .btn-ghost:hover{background:var(--surface-subtle);color:var(--ink);border-color:transparent;}
+
+  /* ───────── командная строка ───────── */
+  .toolbar{padding:14px 22px 0;}
+  .cmdrow{display:flex;gap:8px;align-items:stretch;}
+  .cmdwrap{position:relative;flex:1 1 auto;min-width:0;}
+  .cmd{
+    display:flex;align-items:center;gap:10px;height:44px;width:100%;
+    padding:0 12px 0 13px; background:var(--surface);
+    border:1px solid var(--border-strong); border-radius:var(--r);
+    transition:border-color .12s ease, box-shadow .12s ease, background .12s ease;
+  }
+  .cmd:hover{border-color:var(--ink-3);}
+  .cmd .lens{color:var(--ink-3);flex:none;}
+  .cmd input{
+    flex:1;min-width:0;height:100%;border:0;outline:none;background:transparent;
+    font-family:inherit;font-size:15px;color:var(--ink);
+  }
+  .cmd input::placeholder{color:var(--ink-3);}
+  .cmd:focus-within,.cmd.is-focus{
+    border-color:var(--accent-bright);
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  .kbd{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-3);
+    border:1px solid var(--border); border-bottom-width:2px; border-radius:var(--r-sm);
+    padding:2px 5px;background:var(--surface-muted);
+  }
+  .cmd .clear{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:22px;height:22px;border-radius:var(--r-sm);border:0;background:transparent;
+    color:var(--ink-3);cursor:pointer;
+  }
+  .cmd .clear:hover{background:var(--surface-subtle);color:var(--ink);}
+
+  /* ───────── пилюли-триггеры ───────── */
+  .trg{
+    display:flex;align-items:center;gap:9px;height:44px;padding:0 12px;
+    background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r);
+    cursor:pointer;font-family:inherit;color:var(--ink);text-align:left;flex:none;
+    transition:border-color .12s ease, background .12s ease, box-shadow .12s ease;
+  }
+  .trg:hover{border-color:var(--ink-3);background:var(--surface-muted);}
+  .trg:focus-visible{outline:none;border-color:var(--accent-bright);box-shadow:0 0 0 3px var(--accent-soft);}
+  .trg .stack{display:flex;flex-direction:column;line-height:1.15;gap:1px;}
+  .trg .stack .lbl{
+    font-family:'IBM Plex Sans Condensed',sans-serif;font-size:9.5px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.11em;color:var(--ink-3);
+  }
+  .trg .stack .val{font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--ink);}
+  .trg .chev{color:var(--ink-3);}
+  /* период — визуально связан с колонками таблицы (тот же тинт) */
+  .trg.period{background:var(--accent-soft);border-color:var(--accent-border);}
+  .trg.period:hover{background:#e7f0ff;border-color:#9dc4fb;}
+  .trg.period .icn{color:var(--accent);}
+  .trg.period .stack .lbl{color:var(--accent);}
+  .trg.period .stack .val{color:var(--accent);font-weight:500;}
+  .trg.period.is-open{border-color:var(--accent-bright);box-shadow:0 0 0 3px var(--accent-soft);}
+  /* категория — активный фильтр */
+  .trg.is-active{background:var(--indigo-soft);border-color:#c3c9f5;color:var(--indigo);}
+  .trg.is-active .icn{color:var(--indigo);}
+  .trg .txt{font-size:13px;font-weight:500;}
+  .trg .x{
+    display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;
+    margin-right:-4px;border-radius:var(--r-sm);color:currentColor;opacity:.65;
+  }
+  .trg .x:hover{opacity:1;background:rgba(9,9,11,.06);}
+
+  /* ───────── строка контекста ───────── */
+  .ctx{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:9px 22px 0;font-size:12.5px;color:var(--ink-2);
+  }
+  .ctx .sep{color:var(--border-strong);}
+  .ctx b{font-weight:600;color:var(--ink);}
+  .ctx .mono{font-size:12px;color:var(--ink-2);}
+  .ctx .spacer{flex:1;}
+  .ctx .link{
+    background:none;border:0;padding:0;font:inherit;color:var(--accent-bright);
+    cursor:pointer;text-decoration:underline;text-underline-offset:2px;text-decoration-color:var(--accent-border);
+  }
+  .ctx .link:hover{text-decoration-color:var(--accent-bright);}
+  .badge-shift{
+    display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:var(--r-sm);
+    background:var(--accent-soft);border:1px solid var(--accent-border);color:var(--accent);
+    font-family:'IBM Plex Mono',monospace;font-size:11px;
+  }
+
+  /* ───────── выпадашка подсказок ───────── */
+  .pop{
+    position:absolute;z-index:30;background:var(--surface);
+    border:1px solid var(--border-strong);border-radius:var(--r);box-shadow:var(--shadow-pop);
+  }
+  .sugg{top:calc(100% + 6px);left:0;right:0;padding:5px 0 0;}
+  .sugg-group{padding:6px 0;}
+  .sugg-group + .sugg-group{border-top:1px solid var(--border);}
+  .sugg-title{padding:4px 13px 6px;display:flex;align-items:center;justify-content:space-between;}
+  .sugg-item{
+    display:flex;align-items:center;gap:10px;padding:7px 13px;cursor:pointer;
+    border-left:2px solid transparent;
+  }
+  .sugg-item:hover{background:var(--surface-muted);}
+  .sugg-item.is-sel{background:var(--accent-soft);border-left-color:var(--accent-bright);}
+  .sugg-item .icn{color:var(--ink-3);}
+  .sugg-item.is-sel .icn{color:var(--accent-bright);}
+  .sugg-item .main{flex:1;min-width:0;}
+  .sugg-item .nm{display:block;font-size:13.5px;font-weight:500;color:var(--ink);line-height:1.3;}
+  .sugg-item .nm mark{background:none;color:var(--accent-bright);font-weight:600;}
+  .sugg-item .sub{display:block;font-size:11.5px;color:var(--ink-3);line-height:1.3;}
+  .sugg-item .meta{
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-variant-numeric:tabular-nums;
+    color:var(--ink-2);white-space:nowrap;
+  }
+  .sugg-item .meta.free{color:var(--emerald);}
+  .sugg-item .meta.busy{color:var(--rose);}
+  .sugg-foot{
+    display:flex;align-items:center;gap:14px;padding:8px 13px;
+    border-top:1px solid var(--border);background:var(--surface-muted);
+    border-radius:0 0 var(--r) var(--r);
+  }
+  .hintkey{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-3);}
+  .hintkey .kbd{padding:1px 4px;border-bottom-width:1px;}
+  .chipmini{
+    display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:99px;
+    border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--ink-2);cursor:pointer;
+  }
+  .chipmini:hover{border-color:var(--ink-3);color:var(--ink);}
+
+  /* ───────── поповер периода ───────── */
+  .period-pop{top:calc(100% + 6px);right:0;width:404px;padding:14px;}
+  .seg{display:flex;gap:3px;background:var(--surface-subtle);border-radius:var(--r);padding:3px;}
+  .seg button{
+    flex:1;height:32px;border:1px solid transparent;background:transparent;border-radius:var(--r-sm);
+    font-family:inherit;font-size:12.5px;font-weight:500;color:var(--ink-2);cursor:pointer;
+    transition:background .12s ease,color .12s ease;
+  }
+  .seg button:hover{background:rgba(255,255,255,.7);color:var(--ink);}
+  .seg button.is-on{
+    background:var(--surface);border-color:var(--accent-border);color:var(--accent);
+    box-shadow:var(--shadow-xs);font-weight:600;
+  }
+  .fields{display:flex;align-items:flex-end;gap:8px;margin-top:12px;}
+  .field{flex:1;min-width:0;}
+  .field label{display:block;margin-bottom:5px;}
+  .field input{
+    width:100%;height:36px;padding:0 9px;border:1px solid var(--border-strong);border-radius:var(--r);
+    font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink);background:var(--surface);
+    font-variant-numeric:tabular-nums;
+  }
+  .field input:hover{border-color:var(--ink-3);}
+  .field input:focus{outline:none;border-color:var(--accent-bright);box-shadow:0 0 0 3px var(--accent-soft);}
+  .arrow-mid{padding-bottom:9px;color:var(--ink-3);}
+  .pop-note{
+    margin-top:12px;padding:9px 10px;background:var(--accent-soft);border:1px solid var(--accent-border);
+    border-radius:var(--r-sm);font-size:11.5px;color:var(--accent);line-height:1.35;
+  }
+  .pop-foot{display:flex;align-items:center;gap:8px;margin-top:12px;}
+  .pop-foot .spacer{flex:1;}
+
+  /* ───────── таблица ───────── */
+  .tablewrap{position:relative;margin-top:14px;border-top:1px solid var(--border);}
+  table{width:100%;border-collapse:collapse;}
+  thead .scope th{padding:8px 14px 2px;text-align:left;border:0;}
+  .scope-tag{display:flex;align-items:center;gap:8px;}
+  .scope-tag .mono{font-size:11px;color:var(--accent);}
+  thead .cols th{
+    padding:6px 14px 8px;text-align:left;border-bottom:1px solid var(--border-strong);
+    font-family:'IBM Plex Sans Condensed',sans-serif;font-size:10.5px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.12em;color:var(--ink-3);white-space:nowrap;
+  }
+  th.num,td.num{text-align:right;}
+  tbody td{padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle;}
+  tbody tr:hover td{background:var(--surface-muted);}
+  tbody tr:hover td.periodcol{background:#e7f0ff;}
+  .periodcol{background:var(--accent-soft);}
+  td.name{font-weight:500;}
+  td.name .brand{display:block;font-size:11.5px;color:var(--ink-3);font-weight:400;}
+  td .mono{font-size:12.5px;}
+  .cat{
+    display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:var(--r-sm);
+    background:var(--surface-subtle);border:1px solid var(--border);font-size:11.5px;color:var(--ink-2);
+    white-space:nowrap;
+  }
+  .pill{
+    display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:var(--r-sm);
+    font-size:11.5px;font-weight:500;white-space:nowrap;border:1px solid transparent;
+  }
+  .pill.ok{background:var(--emerald-soft);color:var(--emerald);border-color:#a7e8cd;}
+  .pill.warn{background:var(--amber-soft);color:var(--amber);border-color:#f3dc9a;}
+  .pill.busy{background:var(--rose-soft);color:var(--rose);border-color:#f6c3cd;}
+  .free-n{color:var(--emerald);font-weight:500;}
+  .busy-n{color:var(--rose);font-weight:500;}
+  .zero{color:var(--ink-3);}
+  .tablefoot{
+    padding:11px 16px;font-size:12px;color:var(--ink-3);
+    display:flex;align-items:center;justify-content:space-between;background:var(--surface-muted);
+  }
+  .scrim{position:absolute;inset:0;background:rgba(9,9,11,.05);z-index:10;}
+
+  /* ───────── мобильное ───────── */
+  .m-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 14px 0;}
+  .m-head h2{font-size:18px;font-weight:600;letter-spacing:-.015em;margin:2px 0 0;}
+  .iconbtn{
+    width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;
+    border:1px solid var(--border-strong);border-radius:var(--r);background:var(--surface);
+    color:var(--ink-2);cursor:pointer;flex:none;
+  }
+  .iconbtn:hover{background:var(--surface-muted);color:var(--ink);}
+  .m-tools{padding:12px 14px 0;}
+  .m-cmd{height:48px;}
+  .m-cmd input{font-size:16px;}
+  /* тач-таргеты: у крестика 40×40, у текстовой ссылки — расширенная зона без сдвига вёрстки */
+  .m-cmd .clear{width:44px;height:44px;margin-right:-8px;}
+  .m-sheet-foot .chipmini{height:44px;padding:0 14px;font-size:13px;}
+  .m-ctx .link{padding:14px 6px;margin:-14px -6px;}
+  .m-pills{
+    display:flex;gap:8px;margin-top:8px;overflow-x:auto;padding-bottom:2px;
+    scrollbar-width:none;
+  }
+  .m-pills::-webkit-scrollbar{display:none;}
+  .m-pills .trg{height:44px;}
+  .m-ctx{
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    padding:10px 14px 12px;font-size:12px;color:var(--ink-2);border-bottom:1px solid var(--border);
+  }
+  .cards{padding:10px 14px 14px;display:flex;flex-direction:column;gap:8px;}
+  .card{border:1px solid var(--border);border-radius:var(--r);background:var(--surface);overflow:hidden;}
+  .card-top{padding:10px 12px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+  .card-top .nm{font-size:14px;font-weight:500;line-height:1.25;}
+  .card-top .brand{font-size:11.5px;color:var(--ink-3);}
+  .card-top .price{font-family:'IBM Plex Mono',monospace;font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums;}
+  .card-top .price small{display:block;font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:var(--ink-3);text-align:right;}
+  .card-avail{
+    display:flex;align-items:center;gap:0;background:var(--accent-soft);border-top:1px solid var(--accent-border);
+  }
+  .card-avail .cell{flex:1;padding:7px 12px;}
+  .card-avail .cell + .cell{border-left:1px solid var(--accent-border);}
+  .card-avail .k{
+    font-family:'IBM Plex Sans Condensed',sans-serif;font-size:9.5px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.11em;color:var(--accent);display:block;margin-bottom:2px;
+  }
+  .card-avail .v{font-family:'IBM Plex Mono',monospace;font-size:13px;font-variant-numeric:tabular-nums;}
+  .m-bottom{
+    position:sticky;bottom:0;display:flex;gap:8px;padding:10px 14px;
+    border-top:1px solid var(--border);background:var(--surface);
+  }
+  .m-bottom .btn{flex:1;height:48px;justify-content:center;font-size:14px;}
+  .m-sheet-head{
+    display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);
+  }
+  .m-sheet-list .sugg-item{padding:11px 14px;min-height:52px;}
+  .m-sheet-foot{padding:12px 14px;border-top:1px solid var(--border);background:var(--surface-muted);}
+
+  /* ───────── легенда состояний ───────── */
+  .legend{
+    margin-top:34px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+    padding:18px 20px;box-shadow:var(--shadow-xs);
+  }
+  .legend h3{font-size:14px;font-weight:600;margin:6px 0 14px;}
+  .legend-grid{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start;}
+  .legend-cell{display:flex;flex-direction:column;gap:7px;}
+  .legend-cell .cap{font-size:11.5px;color:var(--ink-3);}
+  .demo-cmd{width:236px;}
+  .state-hover .cmd{border-color:var(--ink-3);background:var(--surface-muted);}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="note">
+    <div class="eyebrow">Концепция тулбара /equipment · вариант 3 из N</div>
+    <h1>«Поиск-первый» — командная строка каталога</h1>
+    <p>
+      Тулбар перестаёт быть панелью контролов и становится одной строкой ввода. В центре — крупное поле поиска
+      во всю ширину, которое ведёт себя как командная строка: при вводе оно само предлагает приборы с числом
+      свободных штук на выбранный период, категории, быстрые фильтры и последние запросы. Период и категория
+      уходят вправо в компактные пилюли-триггеры, которые показывают текущее значение и раскрываются в маленький
+      поповер. Чтобы период не «потерялся», он покрашен в accent-soft и тем же тинтом залиты колонки
+      «Занято / Доступно / Статус» — глазом видно, что эти три числа принадлежат именно этой пилюле.
+      Под строкой — одна фраза контекста и счётчик результатов вместо россыпи подписей.
+    </p>
+    <div class="note-cols">
+      <div>
+        <h2>Что решает</h2>
+        <ul>
+          <li><strong>Один вход вместо трёх.</strong> Оператор в 80% случаев ищет конкретный прибор — теперь курсор уже стоит там, куда он и целился, а не блуждает между полями.</li>
+          <li><strong>Ответ до перехода к таблице.</strong> Подсказка сразу показывает «свободно 4 из 6» на выбранный период — на типовой вопрос «есть 600-ка на завтра?» отвечаем за один ввод, не читая таблицу.</li>
+          <li><strong>Период сжат, но не потерян.</strong> Он занимает одну пилюлю вместо трети тулбара, а связь с колонками держит цветовой тинт и подпись-скоуп над ними.</li>
+          <li><strong>Не ломается на средних ширинах.</strong> Одна гибкая строка: поле сжимается, пилюли фиксированной ширины — переносить нечего, «кластеры» не разъезжаются.</li>
+        </ul>
+      </div>
+      <div>
+        <h2>Чем рискует</h2>
+        <ul>
+          <li><strong>Период под кликом.</strong> Смена дат — теперь два действия вместо нуля; для того, кто целыми днями сверяет разные смены, это шаг назад. Пресеты вынесены в поповер и работают в один клик, но клик всё равно нужен.</li>
+          <li><strong>Устаревший период молча врёт.</strong> Если оператор пришёл утром с вчерашним «Сегодня», цифры будут не про сейчас. Требует явного сигнала «период в прошлом» (rose-тинт пилюли) — на мокапе не показан.</li>
+          <li><strong>Подсказки нужно заслужить.</strong> Концепция держится на качестве выдачи: если в дропдауне будет мусор, поле превратится в обычный инпут и вся идея схлопнется.</li>
+          <li><strong>Фильтр становится невидимым.</strong> Категория, спрятанная в пилюлю, легко забывается — спасает только счётчик «34 из 285» и крестик прямо на пилюле.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="frames">
+
+    <!-- ══════════════ DESKTOP 1 — состояние покоя ══════════════ -->
+    <section>
+      <div class="frame-head">
+        <span class="eyebrow">Кадр 1</span>
+        <span class="t">Desktop · состояние покоя, активен фильтр категории</span>
+        <span class="w">1280 × auto</span>
+      </div>
+      <div class="scroller">
+      <div class="device desktop">
+        <div class="chrome-bar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="url">svetobazarent.ru/equipment</span>
+        </div>
+
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Каталог</div>
+            <h2>Оборудование</h2>
+          </div>
+          <div class="head-actions">
+            <button class="btn">
+              <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M18 7h2M4 17h4M12 17h8"/><circle cx="15.5" cy="7" r="2.2"/><circle cx="8.5" cy="17" r="2.2"/></svg>
+              Управление каталогом
+            </button>
+            <button class="btn btn-primary">
+              <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+              Создать бронь
+            </button>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="cmdrow">
+            <div class="cmdwrap">
+              <div class="cmd">
+                <svg class="ic lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+                <input type="text" placeholder="Найти прибор — название, бренд, модель…  или введите «свободно», «дым», «стойка»" />
+                <span class="kbd">/</span>
+              </div>
+            </div>
+
+            <button class="trg period">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+              <span class="stack">
+                <span class="lbl">Период · сегодня</span>
+                <span class="val">11 авг 10:00 → 12 авг 10:00</span>
+              </span>
+              <svg class="ic-sm chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+
+            <button class="trg is-active">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+              <span class="txt">COB Light</span>
+              <span class="x" role="button" aria-label="Сбросить категорию">
+                <svg class="ic-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </span>
+            </button>
+          </div>
+
+          <div class="ctx">
+            <span>Показано <b>34</b> из 285 позиций</span>
+            <span class="sep">·</span>
+            <span>доступно <b style="color:var(--emerald)">31</b></span>
+            <span class="sep">·</span>
+            <span class="badge-shift">
+              <svg class="ic-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 1.8"/></svg>
+              1 смена · 24 ч
+            </span>
+            <span class="spacer"></span>
+            <button class="link">Сбросить фильтры</button>
+          </div>
+        </div>
+
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr class="scope">
+                <th colspan="4"></th>
+                <th colspan="3">
+                  <span class="scope-tag">
+                    <span class="eyebrow" style="color:var(--accent)">Доступность на период</span>
+                    <span class="mono">11 авг 10:00 → 12 авг 10:00</span>
+                  </span>
+                </th>
+              </tr>
+              <tr class="cols">
+                <th>Оборудование</th>
+                <th class="num">Всего</th>
+                <th class="num">Стоимость</th>
+                <th>Категория</th>
+                <th class="num periodcol">Занято</th>
+                <th class="num periodcol">Доступно</th>
+                <th class="periodcol">Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="name">Aputure LS 600d Pro <span class="brand">Aputure · LS 600d Pro</span></td>
+                <td class="num mono">6</td>
+                <td class="num mono">4 500 ₽</td>
+                <td><span class="cat">COB Light</span></td>
+                <td class="num mono periodcol busy-n">2</td>
+                <td class="num mono periodcol free-n">4</td>
+                <td class="periodcol"><span class="pill ok">Доступно</span></td>
+              </tr>
+              <tr>
+                <td class="name">Aputure LS 1200d Pro <span class="brand">Aputure · LS 1200d Pro</span></td>
+                <td class="num mono">2</td>
+                <td class="num mono">7 500 ₽</td>
+                <td><span class="cat">COB Light</span></td>
+                <td class="num mono periodcol busy-n">1</td>
+                <td class="num mono periodcol free-n">1</td>
+                <td class="periodcol"><span class="pill warn">Осталась 1</span></td>
+              </tr>
+              <tr>
+                <td class="name">Nanlux Evoke 1200 <span class="brand">Nanlux · Evoke 1200</span></td>
+                <td class="num mono">3</td>
+                <td class="num mono">9 000 ₽</td>
+                <td><span class="cat">COB Light</span></td>
+                <td class="num mono periodcol busy-n">3</td>
+                <td class="num mono periodcol zero">0</td>
+                <td class="periodcol"><span class="pill busy">Занято</span></td>
+              </tr>
+              <tr>
+                <td class="name">Amaran 300c <span class="brand">Aputure · Amaran 300c</span></td>
+                <td class="num mono">4</td>
+                <td class="num mono">2 800 ₽</td>
+                <td><span class="cat">COB Light</span></td>
+                <td class="num mono periodcol zero">0</td>
+                <td class="num mono periodcol free-n">4</td>
+                <td class="periodcol"><span class="pill ok">Доступно</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tablefoot">
+            <span>Показаны 4 из 34 строк категории «COB Light»</span>
+            <span class="mono">285 позиций в каталоге</span>
+          </div>
+        </div>
+      </div>
+      </div>
+    </section>
+
+    <!-- ══════════════ DESKTOP 2 — ввод «apu», открытые подсказки ══════════════ -->
+    <section>
+      <div class="frame-head">
+        <span class="eyebrow">Кадр 2</span>
+        <span class="t">Desktop · ввод «apu» — командная строка раскрыта</span>
+        <span class="w">1280 × auto</span>
+      </div>
+      <div class="scroller">
+      <div class="device desktop">
+        <div class="chrome-bar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="url">svetobazarent.ru/equipment</span>
+        </div>
+
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Каталог</div>
+            <h2>Оборудование</h2>
+          </div>
+          <div class="head-actions">
+            <button class="btn">
+              <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M18 7h2M4 17h4M12 17h8"/><circle cx="15.5" cy="7" r="2.2"/><circle cx="8.5" cy="17" r="2.2"/></svg>
+              Управление каталогом
+            </button>
+            <button class="btn btn-primary">
+              <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+              Создать бронь
+            </button>
+          </div>
+        </div>
+
+        <div class="toolbar" style="position:relative;z-index:20;">
+          <div class="cmdrow">
+            <div class="cmdwrap">
+              <div class="cmd is-focus">
+                <svg class="ic lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-bright)"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+                <input type="text" value="apu" />
+                <button class="clear" aria-label="Очистить поиск">
+                  <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+
+              <!-- выпадающие подсказки -->
+              <div class="pop sugg">
+                <div class="sugg-group">
+                  <div class="sugg-title">
+                    <span class="eyebrow">Приборы · 7 совпадений</span>
+                    <span class="eyebrow" style="color:var(--accent)">свободно на 11–12 авг</span>
+                  </div>
+
+                  <div class="sugg-item is-sel">
+                    <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 9-5 9 5v8l-9 5-9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+                    <span class="main">
+                      <span class="nm"><mark>Apu</mark>ture LS 600d Pro</span>
+                      <span class="sub">COB Light · 4 500 ₽ / смена</span>
+                    </span>
+                    <span class="meta free">4 из 6</span>
+                  </div>
+
+                  <div class="sugg-item">
+                    <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 9-5 9 5v8l-9 5-9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+                    <span class="main">
+                      <span class="nm"><mark>Apu</mark>ture LS 1200d Pro</span>
+                      <span class="sub">COB Light · 7 500 ₽ / смена</span>
+                    </span>
+                    <span class="meta free">1 из 2</span>
+                  </div>
+
+                  <div class="sugg-item">
+                    <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 9-5 9 5v8l-9 5-9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+                    <span class="main">
+                      <span class="nm"><mark>Apu</mark>ture Nova P600c</span>
+                      <span class="sub">Led Panel · 6 000 ₽ / смена</span>
+                    </span>
+                    <span class="meta busy">0 из 3 · занято</span>
+                  </div>
+
+                  <div class="sugg-item">
+                    <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 9-5 9 5v8l-9 5-9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+                    <span class="main">
+                      <span class="nm"><mark>Apu</mark>ture MC Pro (набор 4 шт)</span>
+                      <span class="sub">Battery / Аккумуляторный свет · 1 200 ₽ / смена</span>
+                    </span>
+                    <span class="meta free">5 из 5</span>
+                  </div>
+                </div>
+
+                <div class="sugg-group">
+                  <div class="sugg-title"><span class="eyebrow">Открыть как фильтр</span></div>
+                  <div class="sugg-item">
+                    <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+                    <span class="main"><span class="nm">Категория «COB Light»</span></span>
+                    <span class="meta">12 позиций Aputure</span>
+                  </div>
+                  <div class="sugg-item">
+                    <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+                    <span class="main"><span class="nm">Только свободные на период</span><span class="sub">скрыть занятые и в ремонте</span></span>
+                    <span class="meta">5 из 7</span>
+                  </div>
+                </div>
+
+                <div class="sugg-group">
+                  <div class="sugg-title"><span class="eyebrow">Недавние запросы</span></div>
+                  <div class="sugg-item">
+                    <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.7-6.2L3 8"/><path d="M3 3.5V8h4.5"/><path d="M12 8v4.3l2.8 1.7"/></svg>
+                    <span class="main"><span class="nm">aputure 600 + софтбокс</span></span>
+                    <span class="meta">вчера</span>
+                  </div>
+                  <div class="sugg-item">
+                    <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.7-6.2L3 8"/><path d="M3 3.5V8h4.5"/><path d="M12 8v4.3l2.8 1.7"/></svg>
+                    <span class="main"><span class="nm">хейзер</span></span>
+                    <span class="meta">8 авг</span>
+                  </div>
+                </div>
+
+                <div class="sugg-foot">
+                  <span class="hintkey"><span class="kbd">↑</span><span class="kbd">↓</span> выбрать</span>
+                  <span class="hintkey"><span class="kbd">Enter</span> открыть карточку</span>
+                  <span class="hintkey"><span class="kbd">⇧</span><span class="kbd">Enter</span> добавить в новую бронь</span>
+                  <span class="hintkey"><span class="kbd">Esc</span> закрыть</span>
+                </div>
+              </div>
+            </div>
+
+            <button class="trg period">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+              <span class="stack">
+                <span class="lbl">Период · сегодня</span>
+                <span class="val">11 авг 10:00 → 12 авг 10:00</span>
+              </span>
+              <svg class="ic-sm chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+
+            <button class="trg">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+              <span class="txt">Все категории</span>
+              <svg class="ic-sm chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+          </div>
+
+          <div class="ctx">
+            <span>Найдено <b>7</b> по запросу «apu»</span>
+            <span class="sep">·</span>
+            <span>доступно <b style="color:var(--emerald)">5</b></span>
+            <span class="sep">·</span>
+            <span class="badge-shift">
+              <svg class="ic-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 1.8"/></svg>
+              1 смена · 24 ч
+            </span>
+          </div>
+        </div>
+
+        <div class="tablewrap">
+          <div class="scrim"></div>
+          <table>
+            <thead>
+              <tr class="scope">
+                <th colspan="4"></th>
+                <th colspan="3">
+                  <span class="scope-tag">
+                    <span class="eyebrow" style="color:var(--accent)">Доступность на период</span>
+                    <span class="mono">11 авг 10:00 → 12 авг 10:00</span>
+                  </span>
+                </th>
+              </tr>
+              <tr class="cols">
+                <th>Оборудование</th>
+                <th class="num">Всего</th>
+                <th class="num">Стоимость</th>
+                <th>Категория</th>
+                <th class="num periodcol">Занято</th>
+                <th class="num periodcol">Доступно</th>
+                <th class="periodcol">Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="name">Aputure LS 600d Pro <span class="brand">Aputure · LS 600d Pro</span></td>
+                <td class="num mono">6</td>
+                <td class="num mono">4 500 ₽</td>
+                <td><span class="cat">COB Light</span></td>
+                <td class="num mono periodcol busy-n">2</td>
+                <td class="num mono periodcol free-n">4</td>
+                <td class="periodcol"><span class="pill ok">Доступно</span></td>
+              </tr>
+              <tr>
+                <td class="name">Aputure Nova P600c <span class="brand">Aputure · Nova P600c</span></td>
+                <td class="num mono">3</td>
+                <td class="num mono">6 000 ₽</td>
+                <td><span class="cat">Led Panel</span></td>
+                <td class="num mono periodcol busy-n">3</td>
+                <td class="num mono periodcol zero">0</td>
+                <td class="periodcol"><span class="pill busy">Занято</span></td>
+              </tr>
+              <tr>
+                <td class="name">Aputure MC Pro (набор 4 шт) <span class="brand">Aputure · MC Pro Kit</span></td>
+                <td class="num mono">5</td>
+                <td class="num mono">1 200 ₽</td>
+                <td><span class="cat">Battery / Аккумуляторный свет</span></td>
+                <td class="num mono periodcol zero">0</td>
+                <td class="num mono periodcol free-n">5</td>
+                <td class="periodcol"><span class="pill ok">Доступно</span></td>
+              </tr>
+              <tr>
+                <td class="name">Aputure LS 1200d Pro <span class="brand">Aputure · LS 1200d Pro</span></td>
+                <td class="num mono">2</td>
+                <td class="num mono">7 500 ₽</td>
+                <td><span class="cat">COB Light</span></td>
+                <td class="num mono periodcol busy-n">1</td>
+                <td class="num mono periodcol free-n">1</td>
+                <td class="periodcol"><span class="pill warn">Осталась 1</span></td>
+              </tr>
+              <tr>
+                <td class="name">Aputure amaran F22c <span class="brand">Aputure · amaran F22c</span></td>
+                <td class="num mono">2</td>
+                <td class="num mono">2 200 ₽</td>
+                <td><span class="cat">Led Panel</span></td>
+                <td class="num mono periodcol zero">0</td>
+                <td class="num mono periodcol free-n">2</td>
+                <td class="periodcol"><span class="pill ok">Доступно</span></td>
+              </tr>
+              <tr>
+                <td class="name">Aputure amaran 300c <span class="brand">Aputure · amaran 300c</span></td>
+                <td class="num mono">4</td>
+                <td class="num mono">2 800 ₽</td>
+                <td><span class="cat">COB Light</span></td>
+                <td class="num mono periodcol busy-n">1</td>
+                <td class="num mono periodcol free-n">3</td>
+                <td class="periodcol"><span class="pill ok">Доступно</span></td>
+              </tr>
+              <tr>
+                <td class="name">Aputure Nova P300c <span class="brand">Aputure · Nova P300c</span></td>
+                <td class="num mono">2</td>
+                <td class="num mono">4 000 ₽</td>
+                <td><span class="cat">Led Panel</span></td>
+                <td class="num mono periodcol zero">0</td>
+                <td class="num mono periodcol free-n">2</td>
+                <td class="periodcol"><span class="pill ok">Доступно</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tablefoot">
+            <span>Таблица фильтруется по мере ввода — подсказки только ускоряют переход к нужной строке</span>
+            <span class="mono">7 из 285</span>
+          </div>
+        </div>
+      </div>
+      </div>
+    </section>
+
+    <!-- ══════════════ DESKTOP 3 — поповер периода ══════════════ -->
+    <section>
+      <div class="frame-head">
+        <span class="eyebrow">Кадр 3</span>
+        <span class="t">Desktop · раскрыт поповер периода (пресеты + точность до часа)</span>
+        <span class="w">1280 × auto</span>
+      </div>
+      <div class="scroller">
+      <div class="device desktop">
+        <div class="chrome-bar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="url">svetobazarent.ru/equipment</span>
+        </div>
+
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Каталог</div>
+            <h2>Оборудование</h2>
+          </div>
+          <div class="head-actions">
+            <button class="btn">
+              <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M18 7h2M4 17h4M12 17h8"/><circle cx="15.5" cy="7" r="2.2"/><circle cx="8.5" cy="17" r="2.2"/></svg>
+              Управление каталогом
+            </button>
+            <button class="btn btn-primary">
+              <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+              Создать бронь
+            </button>
+          </div>
+        </div>
+
+        <div class="toolbar" style="position:relative;z-index:20;">
+          <div class="cmdrow">
+            <div class="cmdwrap">
+              <div class="cmd">
+                <svg class="ic lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+                <input type="text" placeholder="Найти прибор — название, бренд, модель…" />
+                <span class="kbd">/</span>
+              </div>
+            </div>
+
+            <div style="position:relative;">
+              <button class="trg period is-open">
+                <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+                <span class="stack">
+                  <span class="lbl">Период · неделя</span>
+                  <span class="val">11 авг 10:00 → 17 авг 22:00</span>
+                </span>
+                <svg class="ic-sm chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(180deg)"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+
+              <div class="pop period-pop">
+                <div class="eyebrow" style="margin-bottom:7px;">Быстрый выбор</div>
+                <div class="seg">
+                  <button type="button">Сегодня</button>
+                  <button type="button">Завтра</button>
+                  <button type="button" class="is-on">Неделя</button>
+                </div>
+
+                <div class="fields">
+                  <div class="field">
+                    <label class="eyebrow" for="p-start">Начало</label>
+                    <input id="p-start" type="datetime-local" value="2026-08-11T10:00" />
+                  </div>
+                  <span class="arrow-mid">
+                    <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15"/><path d="m14 7 5 5-5 5"/></svg>
+                  </span>
+                  <div class="field">
+                    <label class="eyebrow" for="p-end">Конец</label>
+                    <input id="p-end" type="datetime-local" value="2026-08-17T22:00" />
+                  </div>
+                </div>
+
+                <div class="pop-note">
+                  Период задаёт колонки «Занято», «Доступно» и «Статус» в таблице — они подсвечены тем же цветом.
+                </div>
+
+                <div class="pop-foot">
+                  <span class="badge-shift">
+                    <svg class="ic-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 1.8"/></svg>
+                    6 смен · 156 ч
+                  </span>
+                  <span class="spacer"></span>
+                  <button class="btn btn-ghost">Отмена</button>
+                  <button class="btn btn-primary">Применить</button>
+                </div>
+              </div>
+            </div>
+
+            <button class="trg">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+              <span class="txt">Все категории</span>
+              <svg class="ic-sm chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+          </div>
+
+          <div class="ctx">
+            <span>Позиций: <b>285</b></span>
+            <span class="sep">·</span>
+            <span>доступно <b style="color:var(--emerald)">241</b> на выбранную неделю</span>
+            <span class="sep">·</span>
+            <span class="badge-shift">
+              <svg class="ic-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 1.8"/></svg>
+              6 смен
+            </span>
+          </div>
+        </div>
+
+        <div class="tablewrap">
+          <div class="scrim"></div>
+          <table>
+            <thead>
+              <tr class="scope">
+                <th colspan="4"></th>
+                <th colspan="3">
+                  <span class="scope-tag">
+                    <span class="eyebrow" style="color:var(--accent)">Доступность на период</span>
+                    <span class="mono">11 авг 10:00 → 17 авг 22:00</span>
+                  </span>
+                </th>
+              </tr>
+              <tr class="cols">
+                <th>Оборудование</th>
+                <th class="num">Всего</th>
+                <th class="num">Стоимость</th>
+                <th>Категория</th>
+                <th class="num periodcol">Занято</th>
+                <th class="num periodcol">Доступно</th>
+                <th class="periodcol">Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="name">Хейзер Antari HZ-500 <span class="brand">Antari · HZ-500</span></td>
+                <td class="num mono">2</td>
+                <td class="num mono">3 200 ₽</td>
+                <td><span class="cat">Дымы / Хейзеры</span></td>
+                <td class="num mono periodcol busy-n">2</td>
+                <td class="num mono periodcol zero">0</td>
+                <td class="periodcol"><span class="pill busy">Занято</span></td>
+              </tr>
+              <tr>
+                <td class="name">Стойка Manfrotto 1004BAC <span class="brand">Manfrotto · 1004BAC</span></td>
+                <td class="num mono">20</td>
+                <td class="num mono">700 ₽</td>
+                <td><span class="cat">Стойки</span></td>
+                <td class="num mono periodcol busy-n">6</td>
+                <td class="num mono periodcol free-n">14</td>
+                <td class="periodcol"><span class="pill ok">Доступно</span></td>
+              </tr>
+              <tr>
+                <td class="name">Флаг 60×90 (чёрный) <span class="brand">Matthews · 60×90</span></td>
+                <td class="num mono">12</td>
+                <td class="num mono">400 ₽</td>
+                <td><span class="cat">Флаги / Отражатели</span></td>
+                <td class="num mono periodcol busy-n">10</td>
+                <td class="num mono periodcol free-n">2</td>
+                <td class="periodcol"><span class="pill warn">Осталось 2</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="tablefoot">
+            <span>Смена периода мгновенно пересчитывает три подсвеченные колонки</span>
+            <span class="mono">285 позиций</span>
+          </div>
+        </div>
+      </div>
+      </div>
+    </section>
+
+    <!-- ══════════════ MOBILE 1 ══════════════ -->
+    <section>
+      <div class="frame-head">
+        <span class="eyebrow">Кадр 4</span>
+        <span class="t">Mobile · состояние покоя, активен фильтр категории</span>
+        <span class="w">390 × auto</span>
+      </div>
+      <div class="device mobile">
+        <div class="chrome-bar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="url">svetobazarent.ru/equipment</span>
+        </div>
+
+        <div class="m-head">
+          <div>
+            <div class="eyebrow">Каталог</div>
+            <h2>Оборудование</h2>
+          </div>
+          <button class="iconbtn" aria-label="Управление каталогом">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M18 7h2M4 17h4M12 17h8"/><circle cx="15.5" cy="7" r="2.2"/><circle cx="8.5" cy="17" r="2.2"/></svg>
+          </button>
+        </div>
+
+        <div class="m-tools">
+          <div class="cmd m-cmd">
+            <svg class="ic lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+            <input type="text" placeholder="Найти прибор…" />
+          </div>
+
+          <div class="m-pills">
+            <button class="trg period" style="flex:1 0 auto;">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+              <span class="stack">
+                <span class="lbl">Период · сегодня</span>
+                <span class="val">11–12 авг · 1 смена</span>
+              </span>
+              <svg class="ic-sm chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+
+            <button class="trg is-active">
+              <span class="txt">COB Light</span>
+              <span class="x" role="button" aria-label="Сбросить категорию">
+                <svg class="ic-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div class="m-ctx">
+          <span>Показано <b>34</b> из 285</span>
+          <span class="sep">·</span>
+          <span>доступно <b style="color:var(--emerald)">31</b></span>
+          <span class="sep">·</span>
+          <button class="link" style="background:none;border:0;font:inherit;color:var(--accent-bright);text-decoration:underline;text-underline-offset:2px;">Сбросить</button>
+        </div>
+
+        <div class="cards">
+          <div class="card">
+            <div class="card-top">
+              <div>
+                <div class="nm">Aputure LS 600d Pro</div>
+                <div class="brand">COB Light · всего 6 шт</div>
+              </div>
+              <div class="price">4 500 ₽<small>смена</small></div>
+            </div>
+            <div class="card-avail">
+              <div class="cell"><span class="k">Занято</span><span class="v busy-n">2</span></div>
+              <div class="cell"><span class="k">Доступно</span><span class="v free-n">4</span></div>
+              <div class="cell"><span class="k">Статус</span><span class="pill ok" style="margin-top:1px;">Доступно</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-top">
+              <div>
+                <div class="nm">Aputure LS 1200d Pro</div>
+                <div class="brand">COB Light · всего 2 шт</div>
+              </div>
+              <div class="price">7 500 ₽<small>смена</small></div>
+            </div>
+            <div class="card-avail">
+              <div class="cell"><span class="k">Занято</span><span class="v busy-n">1</span></div>
+              <div class="cell"><span class="k">Доступно</span><span class="v free-n">1</span></div>
+              <div class="cell"><span class="k">Статус</span><span class="pill warn" style="margin-top:1px;">Осталась 1</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-top">
+              <div>
+                <div class="nm">Nanlux Evoke 1200</div>
+                <div class="brand">COB Light · всего 3 шт</div>
+              </div>
+              <div class="price">9 000 ₽<small>смена</small></div>
+            </div>
+            <div class="card-avail">
+              <div class="cell"><span class="k">Занято</span><span class="v busy-n">3</span></div>
+              <div class="cell"><span class="k">Доступно</span><span class="v zero">0</span></div>
+              <div class="cell"><span class="k">Статус</span><span class="pill busy" style="margin-top:1px;">Занято</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="m-bottom">
+          <button class="btn btn-primary">
+            <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            Создать бронь
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════ MOBILE 2 — sheet подсказок ══════════════ -->
+    <section>
+      <div class="frame-head">
+        <span class="eyebrow">Кадр 5</span>
+        <span class="t">Mobile · поиск в фокусе — подсказки на весь экран, ввод «apu»</span>
+        <span class="w">390 × auto</span>
+      </div>
+      <div class="device mobile">
+        <div class="chrome-bar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="url">svetobazarent.ru/equipment</span>
+        </div>
+
+        <div class="m-sheet-head">
+          <div class="cmd m-cmd is-focus" style="flex:1;">
+            <svg class="ic lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-bright)"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+            <input type="text" value="apu" />
+            <button class="clear" aria-label="Очистить поиск">
+              <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <button class="btn btn-ghost" style="height:44px;">Отмена</button>
+        </div>
+
+        <div style="padding:9px 14px;background:var(--accent-soft);border-bottom:1px solid var(--accent-border);display:flex;align-items:center;gap:7px;">
+          <svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+          <span class="mono" style="font-size:11.5px;color:var(--accent);">свободно считаем на 11–12 авг · 1 смена</span>
+        </div>
+
+        <div class="m-sheet-list">
+          <div class="sugg-group">
+            <div class="sugg-title"><span class="eyebrow">Приборы · 7 совпадений</span></div>
+
+            <div class="sugg-item is-sel">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 9-5 9 5v8l-9 5-9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+              <span class="main">
+                <span class="nm"><mark>Apu</mark>ture LS 600d Pro</span>
+                <span class="sub">COB Light · 4 500 ₽</span>
+              </span>
+              <span class="meta free">4 из 6</span>
+            </div>
+
+            <div class="sugg-item">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 9-5 9 5v8l-9 5-9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+              <span class="main">
+                <span class="nm"><mark>Apu</mark>ture LS 1200d Pro</span>
+                <span class="sub">COB Light · 7 500 ₽</span>
+              </span>
+              <span class="meta free">1 из 2</span>
+            </div>
+
+            <div class="sugg-item">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 9-5 9 5v8l-9 5-9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+              <span class="main">
+                <span class="nm"><mark>Apu</mark>ture Nova P600c</span>
+                <span class="sub">Led Panel · 6 000 ₽</span>
+              </span>
+              <span class="meta busy">0 из 3</span>
+            </div>
+          </div>
+
+          <div class="sugg-group">
+            <div class="sugg-title"><span class="eyebrow">Открыть как фильтр</span></div>
+            <div class="sugg-item">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+              <span class="main"><span class="nm">Категория «COB Light»</span></span>
+              <span class="meta">12 позиций</span>
+            </div>
+            <div class="sugg-item">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+              <span class="main"><span class="nm">Только свободные на период</span></span>
+              <span class="meta">5 из 7</span>
+            </div>
+          </div>
+
+          <div class="sugg-group">
+            <div class="sugg-title"><span class="eyebrow">Недавние запросы</span></div>
+            <div class="sugg-item">
+              <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.7-6.2L3 8"/><path d="M3 3.5V8h4.5"/><path d="M12 8v4.3l2.8 1.7"/></svg>
+              <span class="main"><span class="nm">aputure 600 + софтбокс</span></span>
+              <span class="meta">вчера</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="m-sheet-foot">
+          <div style="display:flex;gap:7px;flex-wrap:wrap;">
+            <span class="chipmini">
+              <svg class="ic-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+              свободно сейчас
+            </span>
+            <span class="chipmini">дым</span>
+            <span class="chipmini">стойка 4 м</span>
+            <span class="chipmini">кабель 25 м</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ══════════════ Легенда состояний ══════════════ -->
+  <div class="legend">
+    <div class="eyebrow">Состояния контролов</div>
+    <h3>Как элементы реагируют (в CSS все состояния живые — наведите и потабайте)</h3>
+    <div class="legend-grid">
+
+      <div class="legend-cell">
+        <span class="cap">Поле — покой</span>
+        <div class="demo-cmd">
+          <div class="cmd">
+            <svg class="ic lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+            <input type="text" placeholder="Найти прибор…" />
+          </div>
+        </div>
+      </div>
+
+      <div class="legend-cell state-hover">
+        <span class="cap">Поле — hover (border → ink-3)</span>
+        <div class="demo-cmd">
+          <div class="cmd">
+            <svg class="ic lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+            <input type="text" placeholder="Найти прибор…" />
+          </div>
+        </div>
+      </div>
+
+      <div class="legend-cell">
+        <span class="cap">Поле — фокус-кольцо (3px accent-soft)</span>
+        <div class="demo-cmd">
+          <div class="cmd is-focus">
+            <svg class="ic lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-bright)"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+            <input type="text" value="apu" />
+          </div>
+        </div>
+      </div>
+
+      <div class="legend-cell">
+        <span class="cap">Пресет — активный / обычный</span>
+        <div class="seg" style="width:236px;">
+          <button type="button" class="is-on">Сегодня</button>
+          <button type="button">Завтра</button>
+          <button type="button">Неделя</button>
+        </div>
+      </div>
+
+      <div class="legend-cell">
+        <span class="cap">Категория — без фильтра / активный фильтр</span>
+        <div style="display:flex;gap:8px;">
+          <button class="trg">
+            <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+            <span class="txt">Все категории</span>
+            <svg class="ic-sm chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <button class="trg is-active">
+            <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+            <span class="txt">Грип</span>
+            <span class="x"><svg class="ic-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="legend-cell">
+        <span class="cap">Строка подсказки — обычная / выбранная клавиатурой</span>
+        <div style="width:290px;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;">
+          <div class="sugg-item">
+            <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 9-5 9 5v8l-9 5-9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+            <span class="main"><span class="nm">Nanlux Evoke 1200</span></span>
+            <span class="meta free">2 из 3</span>
+          </div>
+          <div class="sugg-item is-sel">
+            <svg class="ic-sm icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 9-5 9 5v8l-9 5-9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+            <span class="main"><span class="nm"><mark>Apu</mark>ture LS 600d Pro</span></span>
+            <span class="meta free">4 из 6</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
