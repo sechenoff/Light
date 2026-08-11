@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "../prisma";
-import { getMergedCategoryOrder } from "../services/categoryOrder";
+import { getCategoryCounts, getMergedCategoryOrder } from "../services/categoryOrder";
 import { compareEquipmentTransportLast } from "../utils/equipmentSort";
 import { rolesGuard } from "../middleware/rolesGuard";
 
@@ -105,28 +105,12 @@ router.get("/", async (req, res, next) => {
 });
 
 // Счётчик позиций рядом с названием превращает список категорий из фильтра в
-// карту склада: видно, где 44 позиции, а где одна. groupBy идёт по индексу
-// @@index([category]) и стоит один запрос — дешевле, чем считать на клиенте
-// (при активном ?category= сервер уже отдаёт урезанную выборку).
+// карту склада: видно, где 44 позиции, а где одна. Считать на клиенте нельзя —
+// при активном ?category= сервер уже отдаёт урезанную выборку.
 router.get("/categories", async (_req, res, next) => {
   try {
-    const [categories, grouped] = await Promise.all([
-      getMergedCategoryOrder(),
-      prisma.equipment.groupBy({ by: ["category"], _count: { _all: true } }),
-    ]);
-
-    // Счётчик обязан считаться ТЕМ ЖЕ ключом, что и фильтр: `?category=` идёт
-    // в SQL точным равенством. Сложить «Грип» и « грип » в одно число значило
-    // бы обещать 4 позиции там, где по клику придёт 3 — список категорий и так
-    // показывает оба написания отдельными строками (getMergedCategoryOrder
-    // собирает их из raw-distinct).
-    const byRaw = new Map(grouped.map((g) => [g.category, g._count._all]));
-
-    const counts: Record<string, number> = {};
-    for (const name of categories) {
-      counts[name] = byRaw.get(name) ?? 0;
-    }
-
+    const categories = await getMergedCategoryOrder();
+    const counts = await getCategoryCounts(categories);
     res.json({ categories, counts });
   } catch (err) {
     next(err);

@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useState, useDeferredValue, useMemo } from "react";
+import { useEffect, useState, useDeferredValue, useMemo, useCallback } from "react";
 import Link from "next/link";
 
 import { apiFetch } from "../../src/lib/api";
 import { StatusPill } from "../../src/components/StatusPill";
-import { SectionHeader } from "../../src/components/SectionHeader";
-import { formatRub, pluralize } from "../../src/lib/format";
+import { formatRub } from "../../src/lib/format";
 import { toMoscowDateString } from "../../src/lib/moscowDate";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
 import { unitStatusLabel } from "../../src/lib/unitStatus";
 import { useAvailability, type AvailabilityItem } from "../../src/hooks/useAvailability";
 import { addHoursToDatetimeLocal, datetimeLocalToISO } from "../../src/lib/rentalTime";
 import { DEFAULT_PICKUP_HOUR } from "../../src/lib/availabilityConstants";
+import { CatalogToolbar } from "../../src/components/equipment/CatalogToolbar";
 
 type CatalogRow = {
   id: string;
@@ -30,59 +30,16 @@ type CatalogRow = {
   unitStatusCounts: Record<string, number> | null;
 };
 
+/** Подложка колонок, которые считаются по выбранному периоду. */
+const PERIOD_COL_HEAD = "bg-accent-soft/70";
+const PERIOD_COL_CELL = "bg-accent-soft/30";
+
 // Called only from a post-mount effect (never during render) so the
 // new Date() here is the client clock — no SSR/CSR hydration mismatch.
 // Каталожный дефолт — московская дата + DEFAULT_PICKUP_HOUR (в отличие от
 // формы брони, где rentalTime.defaultPickupDatetimeLocal() берёт текущий час).
 function defaultPickupDatetimeLocal(): string {
   return `${toMoscowDateString(new Date())}T${String(DEFAULT_PICKUP_HOUR).padStart(2, "0")}:00`;
-}
-
-function formatDatetimeLocal(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${y}-${m}-${day}T${h}:${min}`;
-}
-
-function displayDatetime(dtLocal: string): string {
-  if (!dtLocal) return "—";
-  const d = new Date(dtLocal);
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function getQuickPeriod(type: "today" | "tomorrow" | "week"): { start: string; end: string } {
-  const now = new Date();
-  if (type === "today") {
-    const s = new Date(now.getFullYear(), now.getMonth(), now.getDate(), DEFAULT_PICKUP_HOUR, 0);
-    return {
-      start: formatDatetimeLocal(s),
-      end: formatDatetimeLocal(new Date(s.getTime() + 24 * 60 * 60 * 1000)),
-    };
-  }
-  if (type === "tomorrow") {
-    const s = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, DEFAULT_PICKUP_HOUR, 0);
-    return {
-      start: formatDatetimeLocal(s),
-      end: formatDatetimeLocal(new Date(s.getTime() + 24 * 60 * 60 * 1000)),
-    };
-  }
-  // "week" — Monday DEFAULT_PICKUP_HOUR:00 to Sunday 22:00
-  const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ...
-  const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon, DEFAULT_PICKUP_HOUR, 0);
-  const sunday = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000);
-  sunday.setHours(22, 0, 0, 0);
-  return { start: formatDatetimeLocal(monday), end: formatDatetimeLocal(sunday) };
 }
 
 export default function EquipmentPage() {
@@ -96,6 +53,7 @@ export default function EquipmentPage() {
   const deferredSearch = useDeferredValue(search);
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [categories, setCategories] = useState<string[]>([]);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   // eq-retry: инкремент перезапускает эффект загрузки каталога (кнопка «Попробовать снова»).
   const [reloadNonce, setReloadNonce] = useState(0);
 
@@ -126,10 +84,15 @@ export default function EquipmentPage() {
     setEnd(addHoursToDatetimeLocal(s, 24));
   }, []);
 
-  // Load category list for filter
+  // Список категорий + счётчики позиций (счётчики делают фильтр картой склада).
   useEffect(() => {
-    apiFetch<{ categories: string[] }>("/api/equipment/categories")
-      .then((r) => setCategories(r.categories))
+    apiFetch<{ categories: string[]; counts?: Record<string, number> }>(
+      "/api/equipment/categories"
+    )
+      .then((r) => {
+        setCategories(r.categories);
+        setCategoryCounts(r.counts ?? {});
+      })
       .catch(() => {});
   }, []);
 
@@ -165,6 +128,11 @@ export default function EquipmentPage() {
     void checkAvailability({ start, end });
   }, [start, end, checkAvailability]);
 
+  const applyPeriod = useCallback((range: { start: string; end: string }) => {
+    setStart(range.start);
+    setEnd(range.end);
+  }, []);
+
   // Вторичная строка ставок: «2 смены … · проект …» — если поля заполнены.
   function secondaryRates(r: CatalogRow): string | null {
     const parts: string[] = [];
@@ -187,7 +155,7 @@ export default function EquipmentPage() {
   }
 
   function statusBadge(avail: AvailabilityItem | undefined, total: number) {
-    if (!avail) return <span className="text-xs text-ink-3">—</span>;
+    if (!avail) return <span className="text-xs text-ink-2">—</span>;
     if (avail.availability === "AVAILABLE")
       return <StatusPill variant="full" label="Доступно" />;
     if (avail.availability === "PARTIAL")
@@ -195,186 +163,55 @@ export default function EquipmentPage() {
     return <StatusPill variant="none" label="Занято" />;
   }
 
-  const availableCount = availMap.size > 0
-    ? catalog.filter((r) => (availMap.get(r.id)?.availableQuantity ?? 1) > 0).length
-    : catalog.length;
+  const availableCount =
+    availMap.size > 0
+      ? catalog.filter((r) => (availMap.get(r.id)?.availableQuantity ?? 0) > 0).length
+      : null;
+
+  const totalCatalogCount = useMemo(
+    () => Object.values(categoryCounts).reduce((sum, n) => sum + n, 0),
+    [categoryCounts]
+  );
 
   // rentalTime.datetimeLocalToISO NaN-safe: null до сидинга дефолтных дат
   // или при недопечатанном вводе — тогда ссылка без префилла.
   const startIso = start ? datetimeLocalToISO(start) : null;
   const endIso = end ? datetimeLocalToISO(end) : null;
-
-  // «1 смена» / «2 смены» / «5 ч» — длительность выбранного периода в шапке
-  // кластера дат. Смена = 24 ч (как billableShifts на бэке, без грейса).
-  const periodLabel = (() => {
-    if (!start || !end) return null;
-    const ms = new Date(end).getTime() - new Date(start).getTime();
-    if (!Number.isFinite(ms) || ms <= 0) return null;
-    const hours = ms / 3_600_000;
-    if (hours < 24) return `${Math.round(hours)} ч`;
-    const shifts = Math.ceil(hours / 24);
-    return `${shifts} ${pluralize(shifts, "смена", "смены", "смен")}`;
-  })();
   const bookingHref =
     startIso && endIso
       ? `/bookings/new?start=${startIso}&end=${endIso}`
       : "/bookings/new";
 
   return (
-    <div className="p-4 lg:p-6">
-      {/* Тулбар каталога: одна карточка, три кластера — период доступности
-          (accent-выделение: он определяет колонки «Занято/Доступно»), фильтр
-          списка (поиск + категория), действия. Единая высота контролов h-9,
-          активный пресет подсвечен, «10-10» расшифрован в title. */}
-      <div className="rounded-lg border border-border bg-surface shadow-xs p-3">
-        <div className="flex flex-wrap items-stretch gap-3">
-          {/* Кластер: период доступности */}
-          <fieldset className="rounded-lg border border-accent-border bg-accent-soft/50 px-3 pb-2.5 pt-2">
-            <legend className="sr-only">Период проверки доступности</legend>
-            <div className="mb-1.5 flex items-center justify-between gap-4">
-              <span className="eyebrow !text-accent-bright">Период доступности</span>
-              {periodLabel && (
-                <span className="mono-num text-[11px] text-ink-2">{periodLabel}</span>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                className="h-9 rounded border border-border-strong bg-surface px-2 text-sm"
-                type="datetime-local"
-                aria-label="Начало периода"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-              />
-              <span aria-hidden className="hidden text-ink-3 sm:inline">→</span>
-              <input
-                className="h-9 rounded border border-border-strong bg-surface px-2 text-sm"
-                type="datetime-local"
-                aria-label="Конец периода"
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
-              />
-              <div
-                role="group"
-                aria-label="Быстрый выбор периода"
-                className="flex h-9 overflow-hidden rounded border border-border-strong bg-surface"
-              >
-                {(["today", "tomorrow", "week"] as const).map((type, i) => {
-                  const p = getQuickPeriod(type);
-                  const isActive = start === p.start && end === p.end;
-                  return (
-                    <button
-                      key={type}
-                      onClick={() => {
-                        setStart(p.start);
-                        setEnd(p.end);
-                      }}
-                      aria-pressed={isActive}
-                      title={
-                        type === "week"
-                          ? "Понедельник 10:00 — воскресенье 22:00"
-                          : `С 10:00 до 10:00 следующего дня`
-                      }
-                      className={`px-3 text-xs font-medium transition-colors ${
-                        i > 0 ? "border-l border-border" : ""
-                      } ${
-                        isActive
-                          ? "bg-accent-bright font-semibold text-surface"
-                          : "text-ink-2 hover:bg-surface-subtle"
-                      }`}
-                    >
-                      {type === "today" ? "Сегодня" : type === "tomorrow" ? "Завтра" : "Неделя"}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </fieldset>
+    <div className="pb-6">
+      <CatalogToolbar
+        start={start}
+        end={end}
+        onPeriodChange={applyPeriod}
+        search={search}
+        onSearchChange={setSearch}
+        category={category}
+        categories={categories}
+        categoryCounts={categoryCounts}
+        onCategoryChange={setCategory}
+        isSuperAdmin={isSuperAdmin}
+        bookingHref={bookingHref}
+        shownCount={catalog.length}
+        totalCount={totalCatalogCount}
+        availableCount={availableCount}
+        loadingCatalog={loadingCatalog}
+        loadingAvail={loadingAvail}
+      />
 
-          {/* Кластер: фильтр списка */}
-          <div className="flex min-w-[240px] flex-1 items-end gap-2">
-            <div className="relative min-w-[170px] flex-1">
-              <svg
-                aria-hidden
-                viewBox="0 0 24 24"
-                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                className="h-9 w-full rounded border border-border-strong bg-surface pl-8 pr-2 text-sm"
-                value={search}
-                aria-label="Поиск по каталогу"
-                placeholder="Название, бренд, модель…"
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <select
-              className="h-9 max-w-[180px] rounded border border-border-strong bg-surface px-2 text-sm"
-              value={category ?? ""}
-              aria-label="Категория"
-              onChange={(e) => setCategory(e.target.value || undefined)}
-            >
-              <option value="">Все категории</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Действия — при переносе строки прижимаются вправо. */}
-          <div className="ml-auto flex items-end gap-2">
-            {isSuperAdmin && (
-              <Link
-                className="flex h-9 items-center rounded border border-border bg-surface px-3.5 text-sm text-ink-2 transition-colors hover:bg-surface-subtle"
-                href="/equipment/manage"
-              >
-                Управление каталогом
-              </Link>
-            )}
-            <Link
-              className="flex h-9 items-center rounded bg-accent-bright px-4 text-sm font-medium text-surface transition-colors hover:bg-accent"
-              href={bookingHref}
-            >
-              + Создать бронь
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-lg border border-border bg-surface shadow-xs overflow-hidden">
-        <div className="p-3 border-b border-border flex items-center justify-between">
-          <p className="eyebrow">
-            Каталог{" "}
-            <span className="font-normal normal-case tracking-normal text-ink-2">
-              {displayDatetime(start)} — {displayDatetime(end)}
-            </span>
-          </p>
-          <div className="text-xs text-ink-3">
-            {loadingCatalog
-              ? "Загрузка каталога..."
-              : loadingAvail
-              ? `${catalog.length} позиций — проверяем доступность...`
-              : availMap.size > 0
-              ? `Позиций: ${catalog.length}, доступно: ${availableCount}`
-              : `Позиций в каталоге: ${catalog.length}`}
-          </div>
-        </div>
-
+      <div className="bg-surface">
         {catalogError ? (
           <div className="p-8 text-center">
             <div className="inline-flex flex-col items-center gap-2">
-              <svg className="w-8 h-8 text-rose-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-8 h-8 text-rose" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                   d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <div className="text-sm font-medium text-rose-600">Ошибка загрузки каталога</div>
+              <div className="text-sm font-medium text-rose">Ошибка загрузки каталога</div>
               <div className="text-xs text-ink-2">{catalogError}</div>
               <button
                 onClick={() => setReloadNonce((n) => n + 1)}
@@ -387,29 +224,37 @@ export default function EquipmentPage() {
         ) : (
           <>
           {/* Desktop table */}
-          <div className="hidden md:block overflow-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="min-w-[980px] w-full text-sm">
-              <thead className="bg-surface-subtle text-ink-2 border-b border-border">
+              <thead className="bg-surface text-ink-2">
+                {/* Три правые колонки зависят от периода в тулбаре — они
+                    подписаны и затонированы, иначе цифра выглядит свойством
+                    позиции, а не среза на выбранные даты. */}
                 <tr>
-                  <th className="text-left px-3 py-2 font-medium">Оборудование</th>
-                  <th className="text-left px-3 py-2 font-medium w-[100px]">Всего</th>
-                  <th className="text-right px-3 py-2 font-medium w-[130px]">Стоимость</th>
-                  <th className="text-left px-3 py-2 font-medium">Категория</th>
-                  <th className="text-right px-3 py-2 font-medium w-[90px]">Занято</th>
-                  <th className="text-right px-3 py-2 font-medium w-[100px]">Доступно</th>
-                  <th className="px-3 py-2 font-medium">Статус</th>
+                  <th rowSpan={2} className="border-b border-border-strong px-3 py-2 text-left align-bottom font-medium">Оборудование</th>
+                  <th rowSpan={2} className="border-b border-border-strong px-3 py-2 text-left align-bottom font-medium w-[100px]">Всего</th>
+                  <th rowSpan={2} className="border-b border-border-strong px-3 py-2 text-right align-bottom font-medium w-[130px]">Стоимость</th>
+                  <th rowSpan={2} className="border-b border-border-strong px-3 py-2 text-left align-bottom font-medium">Категория</th>
+                  <th colSpan={3} className={`${PERIOD_COL_HEAD} border-b border-accent-border px-3 pt-1.5 pb-0.5 text-center`}>
+                    <span className="eyebrow !text-accent">За выбранный период</span>
+                  </th>
+                </tr>
+                <tr>
+                  <th className={`${PERIOD_COL_HEAD} border-b border-border-strong px-3 pb-2 text-right font-medium w-[90px]`}>Занято</th>
+                  <th className={`${PERIOD_COL_HEAD} border-b border-border-strong px-3 pb-2 text-right font-medium w-[100px]`}>Доступно</th>
+                  <th className={`${PERIOD_COL_HEAD} border-b border-border-strong px-3 pb-2 font-medium`}>Статус</th>
                 </tr>
               </thead>
               <tbody>
                 {loadingCatalog ? (
                   <tr>
-                    <td className="px-3 py-8 text-center text-ink-3" colSpan={7}>
+                    <td className="px-3 py-8 text-center text-ink-2" colSpan={7}>
                       Загрузка...
                     </td>
                   </tr>
                 ) : catalog.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-8 text-center text-ink-3" colSpan={7}>
+                    <td className="px-3 py-8 text-center text-ink-2" colSpan={7}>
                       {search || category ? (
                         "Ничего не найдено по фильтрам"
                       ) : (
@@ -430,19 +275,20 @@ export default function EquipmentPage() {
                     return (
                       <tr
                         key={r.id}
-                        className={`border-t border-border hover:bg-surface-muted transition-colors ${isFullyUnavailable ? "opacity-50" : ""}`}
+                        className={`border-t border-border hover:bg-surface-muted transition-colors ${isFullyUnavailable ? "opacity-60" : ""}`}
                       >
                         <td className="px-3 py-2">
                           <div className="font-medium text-ink flex items-center gap-1.5">
                             {r.name}
                             {r.model ? (
-                              <span className="text-ink-3 font-normal"> · {r.model}</span>
+                              <span className="text-ink-2 font-normal"> · {r.model}</span>
                             ) : null}
                             {r.stockTrackingMode === "UNIT" ? (
                               <Link
                                 href={`/equipment/${r.id}/units`}
                                 title="Управление единицами"
-                                className="text-ink-3 hover:text-ink flex-shrink-0"
+                                aria-label={`Управление единицами: ${r.name}`}
+                                className="text-ink-2 hover:text-ink flex-shrink-0"
                               >
                                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -452,7 +298,7 @@ export default function EquipmentPage() {
                             ) : null}
                           </div>
                           {r.brand ? (
-                            <div className="text-xs text-ink-3 font-mono">{r.brand}</div>
+                            <div className="text-xs text-ink-2 font-mono">{r.brand}</div>
                           ) : (
                             <div className="text-xs">&nbsp;</div>
                           )}
@@ -461,7 +307,7 @@ export default function EquipmentPage() {
                           {r.stockTrackingMode === "UNIT" && r.unitStatusCounts ? (
                             <div>
                               <div>{r.totalQuantity}</div>
-                              <div className="text-xs font-normal text-ink-3 whitespace-nowrap">
+                              <div className="text-xs font-normal text-ink-2 whitespace-nowrap">
                                 {unitStatusSummary(r.unitStatusCounts, r.totalQuantity)}
                               </div>
                             </div>
@@ -472,17 +318,17 @@ export default function EquipmentPage() {
                         <td className="px-3 py-2 font-medium text-right mono-num">
                           {formatRub(r.rentalRatePerShift)}
                           {secondaryRates(r) && (
-                            <div className="text-[11px] font-normal text-ink-3 whitespace-nowrap">{secondaryRates(r)}</div>
+                            <div className="text-[11px] font-normal text-ink-2 whitespace-nowrap">{secondaryRates(r)}</div>
                           )}
                         </td>
                         <td className="px-3 py-2 text-ink-2">{r.category}</td>
-                        <td className="px-3 py-2 text-right mono-num text-ink-2">
-                          {avail ? avail.occupiedQuantity : <span className="text-ink-3">—</span>}
+                        <td className={`${PERIOD_COL_CELL} px-3 py-2 text-right mono-num text-ink-2`}>
+                          {avail ? avail.occupiedQuantity : <span className="text-ink-2">—</span>}
                         </td>
-                        <td className="px-3 py-2 text-right mono-num font-medium">
-                          {avail ? avail.availableQuantity : <span className="text-ink-3">—</span>}
+                        <td className={`${PERIOD_COL_CELL} px-3 py-2 text-right mono-num font-medium`}>
+                          {avail ? avail.availableQuantity : <span className="text-ink-2">—</span>}
                         </td>
-                        <td className="px-3 py-2">{statusBadge(avail, r.totalQuantity)}</td>
+                        <td className={`${PERIOD_COL_CELL} px-3 py-2`}>{statusBadge(avail, r.totalQuantity)}</td>
                       </tr>
                     );
                   })
@@ -494,9 +340,9 @@ export default function EquipmentPage() {
           {/* Mobile card list (паттерн PaymentsOverviewPage) */}
           <div className="md:hidden">
             {loadingCatalog ? (
-              <div className="px-3 py-8 text-center text-ink-3 text-sm">Загрузка...</div>
+              <div className="px-3 py-8 text-center text-ink-2 text-sm">Загрузка...</div>
             ) : catalog.length === 0 ? (
-              <div className="px-3 py-8 text-center text-ink-3 text-sm">
+              <div className="px-3 py-8 text-center text-ink-2 text-sm">
                 {search || category ? (
                   "Ничего не найдено по фильтрам"
                 ) : (
@@ -509,22 +355,22 @@ export default function EquipmentPage() {
                 )}
               </div>
             ) : (
-              <div className="p-3 space-y-2">
+              <div className="divide-y divide-border">
                 {catalog.map((r) => {
                   const avail = availMap.get(r.id);
                   const isFullyUnavailable = avail && avail.availableQuantity <= 0;
                   return (
                     <div
                       key={r.id}
-                      className={`border border-border rounded-lg bg-surface p-3 ${isFullyUnavailable ? "opacity-50" : ""}`}
+                      className={`px-4 py-2.5 ${isFullyUnavailable ? "opacity-60" : ""}`}
                     >
                       <div className="flex justify-between items-start gap-2">
                         <div className="min-w-0">
                           <div className="font-medium text-ink text-[13px]">
                             {r.name}
-                            {r.model ? <span className="text-ink-3 font-normal"> · {r.model}</span> : null}
+                            {r.model ? <span className="text-ink-2 font-normal"> · {r.model}</span> : null}
                           </div>
-                          <div className="text-[11px] text-ink-3 mt-0.5">
+                          <div className="text-[11px] text-ink-2 mt-0.5">
                             {r.category}
                             {r.brand ? ` · ${r.brand}` : ""}
                           </div>
@@ -532,11 +378,11 @@ export default function EquipmentPage() {
                         <div className="text-right flex-shrink-0">
                           <div className="mono-num font-semibold text-[14px] text-ink">{formatRub(r.rentalRatePerShift)}</div>
                           {secondaryRates(r) && (
-                            <div className="text-[10px] text-ink-3 whitespace-nowrap">{secondaryRates(r)}</div>
+                            <div className="text-[10px] text-ink-2 whitespace-nowrap">{secondaryRates(r)}</div>
                           )}
                         </div>
                       </div>
-                      <div className="flex justify-between items-center mt-2">
+                      <div className="flex justify-between items-center mt-1.5">
                         <div className="text-[11px] text-ink-2">
                           {avail
                             ? `Доступно ${avail.availableQuantity} из ${r.totalQuantity}`
@@ -545,7 +391,7 @@ export default function EquipmentPage() {
                         {statusBadge(avail, r.totalQuantity)}
                       </div>
                       {r.stockTrackingMode === "UNIT" && unitStatusSummary(r.unitStatusCounts, r.totalQuantity) && (
-                        <div className="text-[11px] text-ink-3 mt-1">
+                        <div className="text-[11px] text-ink-2 mt-1">
                           {unitStatusSummary(r.unitStatusCounts, r.totalQuantity)}
                         </div>
                       )}
