@@ -412,12 +412,16 @@ export function appendPaymentDetails(
   bandRow(sheet, row, "Реквизиты для оплаты");
   row++;
   for (const [label, value] of details) {
+    // Раскладка та же, что у реквизитов документа выше: подпись занимает A:B,
+    // значение C:LAST_COL. В одной колонке A подписи не помещались — она
+    // шириной 5 символов, и «Расчётный счёт» обрезался соседней ячейкой.
+    sheet.mergeCells(row, 1, row, 2);
     const lc = sheet.getCell(row, 1);
     lc.value = label;
     lc.font = { size: 9, color: { argb: XC.muted } };
     lc.alignment = { vertical: "middle", indent: 1 };
-    sheet.mergeCells(row, 2, row, LAST_COL);
-    const vc = sheet.getCell(row, 2);
+    sheet.mergeCells(row, 3, row, LAST_COL);
+    const vc = sheet.getCell(row, 3);
     vc.value = value;
     vc.font = { size: 10, color: { argb: XC.ink2 } };
     vc.alignment = { vertical: "middle" };

@@ -168,6 +168,7 @@ export function buildSmetaFromPersistedEstimate(args: {
     client: { name: string };
     docNumber?: string | null;
     expectedPaymentDate?: Date | null;
+    createdAt?: Date;
   };
   estimate: {
     kind?: "MAIN" | "ADDON";
@@ -220,7 +221,11 @@ export function buildSmetaFromPersistedEstimate(args: {
     lines: quoteLikeLines,
     org: args.org ?? null,
     docNumber: args.booking.docNumber ?? null,
-    issuedAt: args.estimate.createdAt ?? null,
+    // Дата документа — с БРОНИ, не со сметы. Смета пересобирается при каждой
+    // правке через delete+create, и её createdAt уезжает на дату последнего
+    // редактирования: документ, выписанный в мае, в августе датировался бы
+    // августом. Бронь создаётся один раз — там же живёт и номер.
+    issuedAt: args.booking.createdAt ?? args.estimate.createdAt ?? null,
     paymentDueDate: args.booking.expectedPaymentDate ?? null,
   });
 

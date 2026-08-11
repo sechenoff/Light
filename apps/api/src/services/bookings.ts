@@ -242,6 +242,36 @@ export type BookingTransportSnapshot = {
   negotiatedTotalRub?: string | null;
 };
 
+/**
+ * Создаёт бронь, переживая гонку за номером документа.
+ *
+ * Номер выдаётся чтением «последнего занятого», без резервирования, поэтому
+ * два одновременных создания получают одинаковый номер и вторая запись падает
+ * на уникальном индексе (P2002 по docNumber). Для пользователя это выглядело
+ * как «бронь не создалась» на ровном месте — при двойном клике или когда бот
+ * и веб создают бронь одновременно.
+ *
+ * Ретраим именно запись: только в ней коллизия и может возникнуть.
+ */
+const DOC_NUMBER_RETRIES = 5;
+
+async function createWithRetriedDocNumber<T>(
+  build: (docNumber: string) => Prisma.BookingCreateArgs,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    const docNumber = await generateEstimateDocNumber(new Date().getFullYear());
+    try {
+      return (await prisma.booking.create(build(docNumber))) as T;
+    } catch (err: unknown) {
+      const e = err as { code?: string; meta?: { target?: unknown } };
+      const target = Array.isArray(e.meta?.target) ? e.meta?.target.join(",") : String(e.meta?.target ?? "");
+      const isDocNumberCollision = e.code === "P2002" && target.includes("docNumber");
+      if (isDocNumberCollision && attempt < DOC_NUMBER_RETRIES - 1) continue;
+      throw err;
+    }
+  }
+}
+
 export async function createBookingDraft(args: {
   clientId: string;
   projectName: string;
@@ -282,11 +312,12 @@ export async function createBookingDraft(args: {
       ? args.expectedPaymentDate
       : await computeDefaultPaymentDate(args.endDate);
 
-  // Номер документа выдаём ДО транзакции создания: генератор открывает свою и
-  // ретраит гонку по уникальности — так же, как нумерация счетов.
-  const docNumber = await generateEstimateDocNumber(new Date().getFullYear());
-
-  const booking = await prisma.booking.create({
+  // Номер документа нельзя зарезервировать чтением: генератор лишь смотрит
+  // последний занятый, поэтому два одновременных создания (двойной клик, бот
+  // и веб разом) получают один и тот же номер, и вторая запись падает на
+  // уникальном индексе — бронь не создаётся. Ретраим ЗАПИСЬ: это
+  // единственный момент, где коллизия вообще проявляется.
+  const buildBooking = (docNumber: string): Prisma.BookingCreateArgs => ({
     data: {
       clientId: args.clientId,
       docNumber,
@@ -350,6 +381,10 @@ export async function createBookingDraft(args: {
     },
     include: { items: true },
   });
+
+  const booking = await createWithRetriedDocNumber<Awaited<ReturnType<typeof prisma.booking.create>>>(
+    buildBooking,
+  );
 
   // Вычисляем смету и сохраняем суммы на брони сразу при создании,
   // чтобы SUPER_ADMIN видел реальную стоимость на странице согласования.

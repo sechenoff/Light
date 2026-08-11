@@ -58,6 +58,7 @@ const BOOKING = {
   client: { name: "Студия «Пикчер»" },
   docNumber: "СМ-2026-0042",
   expectedPaymentDate: new Date("2026-06-10T00:00:00Z"),
+  createdAt: new Date("2026-04-02T09:00:00Z"),
 };
 
 describe("смета как платёжный документ", () => {
@@ -75,8 +76,20 @@ describe("смета как платёжный документ", () => {
     // Скачали в мае, переслали в августе — документ обязан выглядеть так же.
     const doc = buildSmetaFromPersistedEstimate({ booking: BOOKING, estimate: mkEstimate() });
     expect(doc.docNumber).toBe("СМ-2026-0042");
-    expect(doc.issuedAtLabel).toMatch(/мая 2026/);
+    // Дата брони, а не сметы: смета пересобирается при каждой правке, и её
+    // createdAt уехал бы на дату последнего редактирования (здесь — май).
+    expect(doc.issuedAtLabel).toMatch(/апреля 2026/);
     expect(doc.paymentDueLabel).toMatch(/июня 2026/);
+  });
+
+  it("правка брони не сдвигает дату документа", () => {
+    // rebuildBookingEstimate делает delete+create, поэтому Estimate.createdAt
+    // = дата последней правки. Документ обязан датироваться днём выписки.
+    const afterEdit = buildSmetaFromPersistedEstimate({
+      booking: BOOKING,
+      estimate: mkEstimate({ createdAt: new Date("2026-08-30T09:00:00Z") }),
+    });
+    expect(afterEdit.issuedAtLabel).toMatch(/апреля 2026/);
   });
 
   it("число смен доезжает до реквизитов документа", () => {
