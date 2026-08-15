@@ -7,7 +7,9 @@ import {
   buildSmetaFromPersistedEstimate,
   writeSmetaPdf,
   writeSmetaXlsx,
+  smetaOrgFromSettings,
 } from "../services/smetaExport";
+import { getSettings } from "../services/organizationService";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
 
 const router = express.Router();
@@ -43,7 +45,11 @@ router.get("/:bookingId/export/pdf", async (req, res, next) => {
     if (!addon) {
       throw new HttpError(404, "Доб-сметы нет — доборы не делали", "ADDON_ESTIMATE_NOT_FOUND");
     }
-    const doc = buildSmetaFromPersistedEstimate({ booking: addon.booking, estimate: addon });
+    const doc = buildSmetaFromPersistedEstimate({
+      booking: addon.booking,
+      estimate: addon,
+      org: smetaOrgFromSettings(await getSettings()),
+    });
     const human = buildBookingHumanName({
       startDate: addon.booking.startDate,
       clientName: addon.booking.client.name,
@@ -67,7 +73,11 @@ router.get("/:bookingId/export/xlsx", async (req, res, next) => {
     if (!addon) {
       throw new HttpError(404, "Доб-сметы нет — доборы не делали", "ADDON_ESTIMATE_NOT_FOUND");
     }
-    const doc = buildSmetaFromPersistedEstimate({ booking: addon.booking, estimate: addon });
+    const doc = buildSmetaFromPersistedEstimate({
+      booking: addon.booking,
+      estimate: addon,
+      org: smetaOrgFromSettings(await getSettings()),
+    });
     const human = buildBookingHumanName({
       startDate: addon.booking.startDate,
       clientName: addon.booking.client.name,

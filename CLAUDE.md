@@ -65,8 +65,9 @@ light-rental-system/
 | `apps/api/src/services/gemini.ts` | Gemini 2.5 Flash: photo analysis + diagram generation |
 | `apps/api/src/services/equipmentMatcher.ts` | AI output to catalog matching (~530 lines, DB-driven aliases via SlangAlias) |
 | `apps/api/scripts/migrate-aliases-to-db.ts` | One-time migration: TYPE_SYNONYMS → SlangAlias DB records |
-| `apps/api/src/services/smetaExport/renderPdf.ts` | PDF estimate export via pdfkit |
-| `apps/api/src/services/smetaExport/renderXlsx.ts` | XLSX estimate export via exceljs |
+| `apps/api/src/services/smetaExport/renderPdf.ts` | A4-PDF сметы (pdfkit): ручная пагинация (нулевые поля + bufferPages), реквизиты организации, группировка по категориям, повтор шапки/категории на переносе, футер «Стр. N из M», `renderSmetaPdfToBuffer` для ЛК |
+| `apps/api/src/services/smetaExport/renderXlsx.ts` | XLSX сметы (exceljs) с печатью A4: `pageSetup` (paperSize 9, portrait, fitToWidth 1, printTitlesRow), колонтитул «Стр. N из M», freeze у шапки; `appendTransportAndGrandTotal` для полной сметы |
+| `apps/api/src/services/smetaExport/buildFullDocument.ts` | Полная смета: main + addon + транспорт (`buildTransportSection` из BookingVehicle, блок скрыт при сумме 0), `grandTotal` = сумма всех блоков |
 | `apps/api/src/routes/bookingRequestParser.ts` | Gemini AI gaffer text -> equipment list parsing (used by web); match-equipment endpoint (used by bot, no LLM) |
 | `apps/bot/src/scenes/booking.ts` | Hub-and-spoke booking scene (~1000 LOC): hub step is central cart screen, spokes: catalog, inline needsReview confirmations |
 | `apps/bot/src/services/api.ts` | Bot API client: gaffer review types (GafferReviewItem, GafferMatchCandidate), parseGafferReview() |
@@ -83,6 +84,7 @@ light-rental-system/
 | `apps/api/scripts/backfill-barcodes.ts` | Idempotent barcode generation for existing units without barcodes |
 | `apps/web/app/warehouse/scan/page.tsx` | Рабочий стол кладовщика v2 — страница-оркестратор: `WorkstationShell` + постоянная навигация из 5 разделов (смена/выдача/приёмка/в работе/журнал + поломки), `?tab=` в URL. Без AppShell. |
 | `apps/web/app/equipment/[id]/units/page.tsx` | Unit management: status badges, generate/edit/delete, label printing |
+| `apps/web/src/components/equipment/` | Тулбар каталога `/equipment`: `CatalogToolbar` (липкая строка 40 px), `PeriodPopover` (черновик + «Применить»), `CategoryPopover` (категории со счётчиками), `catalogPeriod.ts` (чистая арифметика смен) |
 | `packages/shared/src/crewCalculator.ts` | Shared crew cost calculator (imported by web + bot) |
 | `apps/bot/src/scenes/booking-helpers.ts` | Extracted pure functions from booking scene |
 | `apps/web/app/page.tsx` | Operations dashboard home page (was redirect) |
@@ -127,6 +129,13 @@ light-rental-system/
 | `apps/api/src/__tests__/approval.test.ts` | 22 интеграционных теста approval workflow: submit/approve/reject по всем ролям + full reject-resubmit-approve cycle + legacy confirm-bypass регрессия + ?status= Zod-валидация |
 | `apps/web/src/components/bookings/RejectBookingModal.tsx` | Модалка обязательной причины отклонения (min 3 trimmed chars, счётчик, Esc-close, backdrop dismissal, auto-focus textarea) |
 | `apps/web/src/components/bookings/QuickBookingModal.tsx` | Быстрая бронь: клиент (`ClientAutocomplete`) + произвольная сумма, без оборудования. Даты свёрнуты (сегодня→завтра), проект опционален. Сумма парсится с пробелами и запятой («40 000,50»). Кнопка «⚡ Быстрая бронь» на `/bookings` |
+| `apps/api/src/services/bookingBulk.ts` | Групповые действия над бронями: побронная изоляция (одна негодная не роняет пачку), последовательная обработка под SQLite, `assertBulkActionAllowed`, `BULK_MAX_IDS` = 100 |
+| `apps/api/src/services/bookingLifecycle.ts` | `cancelBooking` / `archiveBooking` — вынесены из routes и общие для одиночных маршрутов и `/bulk` |
+| `apps/web/src/components/bookings/bulkActions.ts` | Чистые правила применимости групповых действий + подписи и тексты подтверждений (зеркало сервера) |
+| `apps/web/src/components/bookings/useBookingSelection.ts` | Выбор строк: `Set` с подрезкой под текущий состав (фильтр выбрасывает, дозагрузка сохраняет) |
+| `apps/web/src/components/bookings/useBulkBookingActions.ts` | Запрос `/api/bookings/bulk` + применение побронного результата к списку без сброса пагинации |
+| `apps/web/src/components/bookings/BulkActionBar.tsx` | Липкая панель действий: применимость на кнопках, лимит пачки, отступ под FAB |
+| `apps/web/src/components/bookings/BulkResultModal.tsx` | Отчёт о частичном успехе — только при `failed > 0`, с человеческими подписями броней |
 | `apps/api/src/utils/moscowDate.ts` | Moscow TZ helpers: `toMoscowDateString()`, `fromMoscowDateString()`, `moscowTodayStart()`, `addDays()` — single source of truth for date-only task semantics on server |
 | `apps/api/src/services/taskService.ts` | Task CRUD service: `createTask`, `updateTask`, `completeTask`, `reopenTask`, `deleteTask`, `listTasks` — all wrapped in `prisma.$transaction` + `writeAuditEntry` |
 | `apps/api/src/routes/tasks.ts` | Task routes at `/api/tasks`: GET list, POST create, PATCH update, POST complete/reopen, DELETE; Zod validation; `serializeTask` serializer |
@@ -232,8 +241,11 @@ npm run seed                  # Seed database
 - **`/api/lk/debt` считает долг по `Booking.amountOutstanding`** — единый источник с админским `/finance/debts` (computeDebts); `isOverdue` — общий хелпер `isBookingOverdue` (expectedPaymentDate/paymentStatus), НЕ endDate. Невоидный счёт — только детализация строки.
 - **portal-invite/resend возвращают `emailSent` + `inviteUrl`** — провал SMTP не маскируется 200-успехом; карточка показывает предупреждение и кнопку «Скопировать ссылку».
 - **Поиск каталога — регистронезависимый для кириллицы** — фильтр в приложении через `toLocaleLowerCase("ru-RU")` (SQLite LIKE регистронезависим только для ASCII). Паттерн как в `availability.ts`.
+- **`GET /api/equipment/categories` отдаёт `counts`** — счётчики позиций по категориям для тулбара каталога (`getCategoryCounts` в `services/categoryOrder.ts`, один `groupBy` по `@@index([category])`). Ключ **сырой**, без `normalizeCategoryName`: счётчик обязан считаться тем же ключом, что и фильтр (`?category=` идёт в SQL точным равенством), иначе «Грип» и « грип » обещали бы 4 позиции там, где по клику придёт 3. Считать на клиенте нельзя — при активном `?category=` сервер уже отдаёт урезанную выборку.
+- **Тулбар `/equipment` — липкая строка, а не карточка** — `sticky top-12 z-10 lg:top-0`: `top-12` — смещение под мобильную шапку `AppShell` (она сама `sticky top-0 z-20`, ≈46 px), то же значение, что у `CatalogBrowser`. `z-10`, чтобы не спорить с шапкой и не перекрывать скрим мобильного меню (`z-40`). Период — единственный постоянно обведённый контрол: он якорь колонок «Занято / Доступно / Статус», которые затонированы `accent-soft` и подписаны «За выбранный период». В `PeriodPopover` правки копятся в черновике и уходят по «Применить» — `datetime-local` шлёт `onChange` на каждое нажатие, и промежуточные кадры дёргали бы `/api/availability`; пресеты в самой строке применяются сразу.
 - **Главный список задач** — грузит только OPEN + отдельный запрос DONE за 24ч (`completedAfter`, sort `completedAt desc`); для не-дефолтной сортировки cursor запрещён (400 `CURSOR_SORT_UNSUPPORTED`), кроме keyset для архива. `TaskEditModal` шлёт dueDate как `YYYY-MM-DD`.
 - **MAIN Estimate создаётся при создании черновика** — `createBookingDraft` (не-dryRun) сразу пишет Estimate-снапшот; `confirmBooking` пересоздаёт его тем же upsert-путём. Экран согласования и экспорт PDF работают для свежих черновиков.
+- **Экспорт сметы — A4 в обоих форматах, полная смета включает транспорт.** Все экспортные роуты (`/api/estimates/:id/export/*`, `/api/addon-estimates/:id/export/*`, `/api/bookings/:id/full-estimate/export/*`, `POST /quote/export`) кладут в шапку реквизиты организации через `smetaOrgFromSettings(getSettings())` — без фейковых плейсхолдеров: пустое поле не печатается. `full-estimate` дополнительно грузит `vehicles → vehicle` и отдаёт транспортный блок + `grandTotal` = main + addon + транспорт (раньше кнопка «с транспортом» врала — транспорт в файл не попадал). Кнопка «Печать» в `BookingEstimateSection` печатает сам A4-PDF через скрытый iframe (`printEstimatePdf` в bookings/[id]/page.tsx; Safari — новая вкладка + подсказка ⌘P), а НЕ `window.print()` страницы. `/api/lk/bookings/:id/estimate.pdf` отдаёт тот же смета-рендерер (`renderSmetaPdfToBuffer`), fallback на invoice-путь только для легаси-броней без MAIN-снапшота.
 - **Ручные issue/return: аудит + гард дат** — `POST /:id/status` пишет `BOOKING_ISSUED`/`BOOKING_RETURNED` в транзакции; выдача раньше `startDate` > 24ч → 409 `ISSUE_TOO_EARLY`, повтор с `force: true` (UI ловит code, показывает подтверждение; задокументировано в docs/bot-api.md + bot-api-tools.json).
 - **AdminUser.isActive** — деактивация вместо удаления: login отклоняет `isActive=false`; PATCH-гарды: нельзя менять свою роль, понижать/отключать последнего SUPER_ADMIN (409).
 - **Сортировка списка броней** — актуальные (endDate ≥ МСК-сегодня) по startDate asc, затем прошедшие по startDate desc. Фильтры/страница /bookings в URL.
@@ -261,6 +273,31 @@ npm run seed                  # Seed database
 - **Task.dueDate — date-only semantics** — stored as Moscow-midnight UTC (`fromMoscowDateString()`), compared via `toMoscowDateString()`. Never compare raw Date objects — always compare the `YYYY-MM-DD` string in Moscow TZ.
 - **Optimistic mutation pattern (Tasks)** — snapshot → apply → reconcile from server; per-id `useRef<Set<string>>` in-flight guard. `completeTask`: fire-immediately undo-via-reopen; toast action "Отменить" has 6 s window.
 - **Task audit actions** — `TASK_CREATE / TASK_UPDATE / TASK_ASSIGN / TASK_COMPLETE / TASK_REOPEN / TASK_DELETE` written in same `$transaction` as mutation; `entityType: "Task"`. `TASK_ASSIGN` is a distinct action when `assignedTo` changes (for audit searchability).
+
+## Групповые действия над бронями (мультивыбор на /bookings и /bookings/archive)
+
+Чекбоксы в списке броней + липкая панель действий: `approve` (согласовать), `submit` (на согласование / «Подтвердить» при `APPROVAL_MODE=auto`), `cancel` (отменить), `archive` (в архив). В архиве (/bookings/archive) — свой мультивыбор с действиями `restore` (восстановить) и `purge` (удалить навсегда), оба только SUPER_ADMIN; для них «бронь не в архиве» — штатный побронный отказ 409 `BOOKING_NOT_ARCHIVED`, а не предусловие пачки. `purge` наследует финансовый гард (`PURGE_HAS_FINANCE`) побронно. Логика restore/purge вынесена в `services/bookingLifecycle.ts` (общая для одиночных `/:id/restore`, `/:id/purge` и bulk). Панель архива — отдельный `ArchiveBulkActionBar.tsx` (2 действия без правил применимости; вкручивать их в общий `BulkActionBar` значило бы тащить чужие действия в основной список). Групповой purge — typed-confirm «УДАЛИТЬ», как одиночный.
+
+**`POST /api/bookings/bulk`** — объявлен **ДО** `/:id`-маршрутов (иначе express отдаст «bulk» в параметр `:id`, как и `/summary/counts`). Тело: `{ action, ids: string[] }` (1…`BULK_MAX_IDS` = 100). Ответ **всегда 200** с побронным результатом: `{ action, results: [{id, ok:true, status} | {id, ok:false, code, message}], counts: {total, ok, failed} }`. Ненулевой `failed` — штатный исход, а не ошибка запроса.
+
+- **Каждая бронь обрабатывается изолированно**, общей транзакции нет: атомарность живёт внутри `approveBooking` / `submitForApproval` / `cancelBooking` / `archiveBooking`. Пачка из 30, где две конфликтуют по доступности, не должна откатывать остальные 28.
+- **Обработка последовательная**, не `Promise.all`: SQLite пишет в один поток, параллельные транзакции дали бы `SQLITE_BUSY` вместо ускорения.
+- **Гард двухслойный**: router-level `rolesGuard(["SUPER_ADMIN","WAREHOUSE"])` + `assertBulkActionAllowed(action, role)` в сервисе (`approve` и `archive` — только SUPER_ADMIN). Один router-guard этого не выразит, потому что действие лежит в теле запроса.
+- **Оплаченную бронь пачкой не отменить** — 409 `BULK_CANCEL_PAID` даже для SUPER_ADMIN: депозит требует явного распоряжения (возврат / кредит-нота / удержание) через `CancelWithDepositModal` на карточке.
+- **Выдача и возврат пачкой не даются вообще** — это физические операции, завязанные на сканирование, гард `ISSUE_TOO_EARLY` и приёмку с ремонтами.
+- `submit` пачкой применим **только к DRAFT**: возврат `CONFIRMED → PENDING_APPROVAL` осмыслен поштучно, но пачкой это слишком лёгкий способ снять подтверждение с десятка активных броней.
+
+**`services/bookingLifecycle.ts`** — `cancelBooking` и `archiveBooking` вынесены из `routes/bookings.ts` и теперь общие для одиночных маршрутов (`POST /:id/status {action:"cancel"}`, `DELETE /:id`) и bulk. Дублировать их транзакции ради bulk означало бы гарантированный дрейф освобождения юнитов и аудита между копиями.
+
+**Фронтенд** (`src/components/bookings/`): `bulkActions.ts` — чистые правила применимости (зеркалят сервер; клиент не «решает» права, а лишь не предлагает заведомо невыполнимое); `useBookingSelection.ts` — `Set` выбора с подрезкой под текущий состав строк (смена фильтра выбрасывает пропавшие id, «Загрузить ещё» выбор сохраняет); `useBulkBookingActions.ts` — запрос и применение результата к отрисованному списку; `BulkActionBar.tsx`; `BulkResultModal.tsx` — отчёт показывается ТОЛЬКО при частичном успехе, полный успех — тост.
+
+- Кнопка действия показывает **применимость** («Согласовать · 3 из 7») — честнее, чем прятать кнопку или молча пропускать неподходящие.
+- После действия: успешные снимаются с выбора, **неуспешные остаются выбранными** — оператор видит, с чем разбираться. Строка убирается из списка, если `archive` ИЛИ активен фильтр по статусу и новый статус ему не соответствует.
+- Панель — **`z-30`, не `z-40`**: на `z-40` живёт затемнение мобильного меню (`AppShell`), и панель как более поздний элемент в DOM торчала бы поверх скрима с кликабельными деструктивными кнопками. От плавающей кнопки «Сообщить» она разведена правым отступом (~148 px), а не слоем. На мобильном кнопки идут горизонтальной лентой со скроллом — перенос в столбик съедал пол-экрана.
+- **Кнопка без подходящих броней остаётся кликабельной** и отвечает тостом с причиной: `title` на `disabled`-элементе браузеры не показывают, а на тач-устройствах его нет вовсе — молчаливая блокировка не объясняет ничего.
+- **«Выбрать все» продублирован над карточками** (`md:hidden`): в таблице он живёт в шапке, скрытой на мобильном, и без дубля кладовщику пришлось бы делать 50 отдельных тапов.
+- **Пустое состояние учитывает `nextCursor`** — групповое действие может вычистить всю загруженную страницу при живом курсоре; без этого список врал бы «Ничего не найдено», хотя под фильтр подпадают ещё десятки броней. Плюс `onRowsEmptied` догружает следующую страницу.
+- `BULK_MAX_IDS` продублирован в `src/components/bookings/bulkLimits.ts` — клиент предупреждает о превышении ДО нажатия. При изменении править обе константы.
 
 ## Ночной режим (тема оформления)
 

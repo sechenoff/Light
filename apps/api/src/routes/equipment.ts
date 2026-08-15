@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "../prisma";
-import { getMergedCategoryOrder } from "../services/categoryOrder";
+import { getCategoryCounts, getMergedCategoryOrder } from "../services/categoryOrder";
 import { compareEquipmentTransportLast } from "../utils/equipmentSort";
 import { rolesGuard } from "../middleware/rolesGuard";
 
@@ -104,10 +104,14 @@ router.get("/", async (req, res, next) => {
   }
 });
 
+// Счётчик позиций рядом с названием превращает список категорий из фильтра в
+// карту склада: видно, где 44 позиции, а где одна. Считать на клиенте нельзя —
+// при активном ?category= сервер уже отдаёт урезанную выборку.
 router.get("/categories", async (_req, res, next) => {
   try {
     const categories = await getMergedCategoryOrder();
-    res.json({ categories });
+    const counts = await getCategoryCounts(categories);
+    res.json({ categories, counts });
   } catch (err) {
     next(err);
   }

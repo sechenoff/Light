@@ -324,6 +324,12 @@ model Booking {
   deletedBy String?
   paymentStatus BookingPaymentStatus @default(NOT_PAID)
   expectedPaymentDate DateTime?
+
+  /// Номер сметы как документа: «СМ-2026-0001». Живёт на БРОНИ, а не на Estimate,
+  /// потому что смета пересобирается при каждой правке (rebuildBookingEstimate),
+  /// а номер платёжного документа обязан быть стабильным всю жизнь брони.
+  /// null — бронь заведена до появления нумерации (бэкфилл: scripts/backfill-doc-numbers.ts).
+  docNumber String? @unique
   actualPaymentDate DateTime?
   paymentComment String?
 
@@ -436,6 +442,10 @@ model BookingVehicle {
   kmOutsideMkad Int?
   ttkEntry      Boolean  @default(false)
   subtotalRub   Decimal?
+  /// Договорная сумма за эту машину. null — считаем по прайсу и параметрам
+  /// (часы, км, ТТК). Задана — заменяет расчёт целиком, разбивка при этом
+  /// сохраняется для истории и печатается справочно.
+  negotiatedTotalRub Decimal?
   /// Водитель: ФИО и телефон. Заполняется при погрузке (выдаче). Опционально.
   /// Цель — учёт «кто ездил за рулём» по каждой машине брони.
   driverName    String?
@@ -546,6 +556,14 @@ model BookingItem {
   customCategory  String?
   customUnitPrice Decimal?
 
+  /// Договорная цена: ставка ЗА СМЕНУ, о которой сговорились с заказчиком.
+  /// null — считаем по прайсу. Живёт на позиции, а не в снапшоте сметы:
+  /// снапшот пересобирается при каждой правке брони и при завершении приёмки
+  /// на складе, и записанная туда цена была бы молча затёрта.
+  /// Процентная скидка брони к договорной цене НЕ применяется — она уже
+  /// финальная (см. quoteEstimate).
+  negotiatedRatePerShift Decimal?
+
   booking Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   equipment Equipment? @relation(fields: [equipmentId], references: [id])
 
@@ -614,6 +632,12 @@ model EstimateLine {
   quantity Int
   unitPrice Decimal
   lineSum   Decimal
+
+  /// Прайсовая цена за период на момент снапшота — заполняется только когда
+  /// по позиции договорились о своей цене. Нужна экспорту: в смете под
+  /// названием печатается «персональная скидка · цена до скидки N ₽».
+  /// null — цена и есть прайсовая, печатать нечего.
+  listUnitPrice Decimal?
 
   estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
 

@@ -223,7 +223,7 @@ export function ShiftHome({
         {[64, 76, 60, 200].map((h, i) => (
           <div
             key={i}
-            className="animate-pulse rounded-lg bg-surface-s bg-surface-muted"
+            className="animate-pulse rounded-lg bg-surface-muted"
             style={{ height: h }}
           />
         ))}

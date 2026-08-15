@@ -27,7 +27,7 @@ interface TaskAssigneePillProps {
 export function TaskAssigneePill({ user }: TaskAssigneePillProps) {
   if (!user) {
     return (
-      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-deep text-xs font-medium text-ink-3">
+      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-subtle text-xs font-medium text-ink-3">
         <span className="w-5 h-5 rounded-full bg-slate text-white text-[10px] font-semibold flex items-center justify-center">
           ?
         </span>
@@ -41,7 +41,7 @@ export function TaskAssigneePill({ user }: TaskAssigneePillProps) {
   return (
     <span
       title={user.username}
-      className="inline-flex items-center gap-2 pr-3 pl-1 py-1 rounded-full bg-surface-deep text-xs font-medium text-ink-2"
+      className="inline-flex items-center gap-2 pr-3 pl-1 py-1 rounded-full bg-surface-subtle text-xs font-medium text-ink-2"
     >
       <span
         className={`w-5 h-5 rounded-full text-white text-[10px] font-semibold flex items-center justify-center ${colorClass}`}

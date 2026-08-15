@@ -63,7 +63,7 @@ export function AiRequestModal({ open, text, onTextChange, onParse, onClose, par
             aria-label="Закрыть"
             onClick={onClose}
             disabled={parsing}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-deep text-[13px] text-ink-2 hover:bg-surface-muted hover:text-ink disabled:opacity-40"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-subtle text-[13px] text-ink-2 hover:bg-surface-muted hover:text-ink disabled:opacity-40"
           >
             ✕
           </button>

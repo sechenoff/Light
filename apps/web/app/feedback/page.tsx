@@ -138,7 +138,7 @@ function FeedbackPageInner() {
                 className={`h-7 px-2.5 rounded-md text-[11px] font-semibold border transition-colors ${
                   active
                     ? "bg-accent-soft text-accent border-accent-border"
-                    : "bg-surface text-ink-3 border-border hover:border-inverse-2 hover:text-ink-2"
+                    : "bg-surface text-ink-3 border-border hover:border-strong hover:text-ink-2"
                 }`}
               >
                 {f.label}
@@ -247,7 +247,7 @@ function FeedbackListRow({ item, onOpen }: { item: FeedbackListItem; onOpen: () 
       <button
         type="button"
         onClick={onOpen}
-        className={`w-full text-left rounded-lg border border-border bg-surface px-4 py-3 hover:border-inverse-2 hover:shadow-xs transition-all ${dimmed ? "opacity-70" : ""}`}
+        className={`w-full text-left rounded-lg border border-border bg-surface px-4 py-3 hover:border-strong hover:shadow-xs transition-all ${dimmed ? "opacity-70" : ""}`}
       >
         <div className="flex items-start gap-3">
           <div className="text-ink-3 pt-0.5" aria-hidden>

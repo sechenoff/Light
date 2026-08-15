@@ -54,6 +54,8 @@ export type BookingDetail = {
   endDate: string;
   comment: string | null;
   discountPercent: string | null;
+  /** Договорной итог брони; null — считаем по смете. */
+  manualFinalAmount?: string | null;
   skipPartialDay?: boolean;
   expectedPaymentDate?: string | null;
   // Transport — multi-vehicle. New bookings use `vehicles[]`; legacy single
@@ -67,6 +69,8 @@ export type BookingDetail = {
     kmOutsideMkad: number | null;
     ttkEntry: boolean;
     subtotalRub: string | null;
+    /** Договорная сумма за машину; null — считаем по прайсу. */
+    negotiatedTotalRub?: string | null;
   }>;
   vehicleId?: string | null;
   vehicleWithGenerator?: boolean;
@@ -82,6 +86,8 @@ export type BookingDetail = {
     customName: string | null;
     customUnitPrice: string | null;
     customCategory: string | null;
+    /** Договорная ставка за смену; null — цена по прайсу. */
+    negotiatedRatePerShift?: string | null;
     equipment: {
       id: string;
       name: string;
@@ -132,6 +138,8 @@ type FormDraftSnapshot = {
   selected: CatalogSelectedItem[];
   customItems: CustomItem[];
   selectedVehicles: SelectedVehicle[];
+  /** Договорной итог брони — без него перезагрузка стирала итог переговоров. */
+  negotiatedTotal?: number | null;
   expectedPaymentDateLocal: string;
 };
 
@@ -250,6 +258,19 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
   const [discountPercent, setDiscountPercent] = useState(
     isEdit ? Number(initialBooking?.discountPercent ?? "0") : (draft?.discountPercent ?? 50),
   );
+  /**
+   * Договорной итог: сумма, о которой сговорились, вместо посчитанной по смете.
+   * Держится, даже если состав потом поменяется — разница показывается строкой
+   * «Договорная скидка». null — считаем по смете.
+   */
+  const [negotiatedTotal, setNegotiatedTotal] = useState<number | null>(() => {
+    if (isEdit) {
+      return initialBooking?.manualFinalAmount != null
+        ? Number(initialBooking.manualFinalAmount)
+        : null;
+    }
+    return draft?.negotiatedTotal ?? null;
+  });
 
   // ── Dates ──
   const [pickupLocal, setPickupLocal] = useState(() => {
@@ -322,6 +343,10 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         quantity: it.quantity,
         dailyPrice: it.equipment.rentalRatePerShift,
         availableQuantity: 9999, // Will be updated when catalog loads
+        // Без восстановления договорной цены открытая на правку бронь
+        // показала бы прайс и первым же сохранением стёрла уступку.
+        negotiatedRatePerShift:
+          it.negotiatedRatePerShift != null ? Number(it.negotiatedRatePerShift) : null,
       });
     }
     return m;
@@ -392,6 +417,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         skipOvertime: v.skipOvertime,
         kmOutsideMkad: v.kmOutsideMkad ?? 0,
         ttkEntry: v.ttkEntry,
+        negotiatedTotalRub:
+          v.negotiatedTotalRub != null ? Number(v.negotiatedTotalRub) : null,
       }));
     }
     if (initialBooking.vehicleId) {
@@ -475,6 +502,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
           selected: Array.from(selected.values()),
           customItems,
           selectedVehicles,
+          negotiatedTotal,
           expectedPaymentDateLocal,
         };
         window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(snapshot));
@@ -497,6 +525,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
     selected,
     customItems,
     selectedVehicles,
+    negotiatedTotal,
     expectedPaymentDateLocal,
   ]);
 
@@ -510,13 +539,20 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         projectName,
         bookingComment,
         discountPercent,
+        negotiatedTotal,
         pickupLocal,
         returnLocal,
         skipPartialDay,
         expectedPaymentDateLocal,
-        // Только id+кол-во: цены/доступность обновляет загрузка каталога,
-        // это не пользовательский ввод.
-        items: Array.from(selected.values()).map((s) => [s.equipmentId, s.quantity]),
+        // Прайсовую цену и доступность обновляет загрузка каталога — это не
+        // пользовательский ввод, и в подпись они не идут. А вот договорная
+        // ставка идёт: её вписывает человек, и без неё подпись не замечала
+        // ровно ту правку, которую важнее всего не потерять.
+        items: Array.from(selected.values()).map((s) => [
+          s.equipmentId,
+          s.quantity,
+          s.negotiatedRatePerShift ?? null,
+        ]),
         customItems: customItems.map((c) => [c.name, c.unitPrice, c.quantity]),
         vehicles: selectedVehicles,
       }),
@@ -525,6 +561,9 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
       projectName,
       bookingComment,
       discountPercent,
+      // negotiatedTotal участвует в подписи и обязан быть в зависимостях:
+      // без него смена договорного итога подпись не пересчитывала.
+      negotiatedTotal,
       pickupLocal,
       returnLocal,
       skipPartialDay,
@@ -641,19 +680,39 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
 
   // ── Derived ──
   const apiItems = useMemo(
-    () => Array.from(selected.values()).map((s) => ({ equipmentId: s.equipmentId, quantity: s.quantity })),
+    () =>
+      Array.from(selected.values()).map((s) => ({
+        equipmentId: s.equipmentId,
+        quantity: s.quantity,
+        // null не шлём: сервер трактует отсутствие поля как «по прайсу»,
+        // а null — как явный сброс договорной цены. На создании разницы нет,
+        // при правке брони она принципиальна.
+        ...(s.negotiatedRatePerShift != null
+          ? { negotiatedRatePerShift: s.negotiatedRatePerShift }
+          : { negotiatedRatePerShift: null }),
+      })),
     [selected],
   );
 
-  const localSubtotal = useMemo(() => {
-    let sum = 0;
-    for (const s of selected.values()) sum += Number(s.dailyPrice) * s.quantity * shifts;
-    for (const c of customItems) sum += c.unitPrice * c.quantity;
-    return sum;
+  // Предварительный расчёт, пока не пришла серверная смета. Делит строки так
+  // же, как сервер в splitEquipmentDiscount: процент начисляется ТОЛЬКО на
+  // прайсовые строки — договорная цена уже финальная, скидка к ней означала бы
+  // уступить дважды. Своя позиция скидке подлежит (на сервере isNegotiated:false).
+  const { localListedSubtotal, localNegotiatedSubtotal } = useMemo(() => {
+    let listed = 0;
+    let negotiated = 0;
+    for (const s of selected.values()) {
+      const line = (s.negotiatedRatePerShift ?? Number(s.dailyPrice)) * s.quantity * shifts;
+      if (s.negotiatedRatePerShift != null) negotiated += line;
+      else listed += line;
+    }
+    for (const c of customItems) listed += c.unitPrice * c.quantity;
+    return { localListedSubtotal: listed, localNegotiatedSubtotal: negotiated };
   }, [selected, shifts, customItems]);
 
+  const localSubtotal = localListedSubtotal + localNegotiatedSubtotal;
   const clampedDiscount = Math.max(0, Math.min(100, discountPercent || 0));
-  const localDiscount = (localSubtotal * clampedDiscount) / 100;
+  const localDiscount = (localListedSubtotal * clampedDiscount) / 100;
   const localTotal = localSubtotal - localDiscount;
 
   // ── Требования к сохранению (для чеклиста, шагов и валидации по клику) ──
@@ -922,6 +981,18 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
     });
   }
 
+  /** Договорная ставка за смену по позиции; null — вернуть прайсовую. */
+  function handleChangeNegotiatedRate(equipmentId: string, rate: number | null) {
+    setSelected((prev) => {
+      const existing = prev.get(equipmentId);
+      if (!existing) return prev;
+      if ((existing.negotiatedRatePerShift ?? null) === rate) return prev;
+      const next = new Map(prev);
+      next.set(equipmentId, { ...existing, negotiatedRatePerShift: rate });
+      return next;
+    });
+  }
+
   function handleRemove(equipmentId: string) {
     clearAdjustment(equipmentId);
     setSelected((prev) => {
@@ -1122,6 +1193,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         comment: finalComment,
         items,
         transport: transportPayload,
+        ...(negotiatedTotal != null ? { manualFinalAmount: negotiatedTotal } : {}),
         // Если пользователь оставил поле пустым — не передаём (backend вычислит default)
         ...(expectedPaymentDateLocal
           ? { expectedPaymentDate: new Date(`${expectedPaymentDateLocal}T00:00:00+03:00`).toISOString() }
@@ -1218,6 +1290,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         comment: finalComment,
         items,
         transport: transportPayload,
+        manualFinalAmount: negotiatedTotal,
         // null = сбросить до auto-default; строка = пользовательский выбор
         expectedPaymentDate: expectedPaymentDateLocal
           ? new Date(`${expectedPaymentDateLocal}T00:00:00+03:00`).toISOString()
@@ -1369,6 +1442,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             onAddOffCatalog={handleAddOffCatalog}
             onAdd={handleAdd}
             onChangeQty={handleChangeQty}
+            onChangeNegotiatedRate={handleChangeNegotiatedRate}
             onRemove={handleRemove}
             onChangeCustomQty={handleChangeCustomQty}
             onRemoveCustom={handleRemoveCustom}
@@ -1435,7 +1509,11 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
           <DiscountCard value={discountPercent} onChange={setDiscountPercent} />
           <SummaryPanel
             quote={quote}
+            negotiatedTotal={negotiatedTotal}
+            onChangeNegotiatedTotal={isSuperAdmin ? setNegotiatedTotal : undefined}
             localSubtotal={localSubtotal}
+            localListedSubtotal={localListedSubtotal}
+            localNegotiatedSubtotal={localNegotiatedSubtotal}
             localDiscount={localDiscount}
             localTotal={localTotal}
             discountPercent={discountPercent}
@@ -1449,14 +1527,14 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             onSaveDraft={isEdit ? undefined : handleSaveDraftClick}
             onSaveEdit={isEdit ? handleSaveEdit : undefined}
             canSubmit={canSubmit}
-            selectedItems={selected}
-            customItems={customItems}
             transportBreakdowns={localTransport?.breakdowns ?? []}
-            onRemoveItem={handleRemove}
-            onRemoveCustom={handleRemoveCustom}
             mode={mode}
             submitting={submitting}
             cancelHref={isEdit ? `/bookings/${bookingId}` : undefined}
+            // Печатается серверный снапшот сметы, поэтому кнопки есть только
+            // там, где он существует, — на правке сохранённой брони.
+            bookingId={isEdit ? bookingId : undefined}
+            hasUnsavedChanges={isEdit && shouldGuardUnload}
           />
           <TransportCard
             vehicles={vehicles}
@@ -1464,6 +1542,9 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             onToggleVehicle={handleToggleVehicle}
             onPatchVehicle={handlePatchVehicle}
             breakdownByVehicleId={breakdownByVehicleId}
+            onChangeNegotiatedTotal={(vehicleId, total) =>
+              handlePatchVehicle(vehicleId, { negotiatedTotalRub: total })
+            }
           />
         </div>
       </div>

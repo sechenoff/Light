@@ -8,6 +8,8 @@ import { createBookingDraft, createQuickBooking, confirmBooking, quoteEstimate, 
 import type { BookingTransportSnapshot } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking, autoConfirmBooking, approvalMode } from "../services/bookingApproval";
 import { writeOffBookingDebt, cancelBookingDebtWriteOff } from "../services/debtWriteOff";
+import { archiveBooking, cancelBooking, purgeBooking, restoreBooking } from "../services/bookingLifecycle";
+import { BULK_ACTIONS, BULK_MAX_IDS, runBulkBookingAction } from "../services/bookingBulk";
 import { HttpError } from "../utils/errors";
 import {
   assertBookingRangeOrder,
@@ -23,7 +25,9 @@ import {
   buildFullSmeta,
   writeFullSmetaPdf,
   writeFullSmetaXlsx,
+  smetaOrgFromSettings,
 } from "../services/smetaExport";
+import { getSettings } from "../services/organizationService";
 import { formatExportHourCalculationLine } from "../utils/dates";
 import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
 import { calcBookingPaymentStatus, computeBookingTimeline, computeRelatedExpenses, createFinanceEvent, recomputeBookingFinance } from "../services/finance";
@@ -44,13 +48,24 @@ const bookingItemSchema = z
     customName: z.string().min(1).max(200).optional(),
     customUnitPrice: z.number().positive().max(100_000_000).optional(),
     quantity: z.number().int().positive(),
+    /**
+     * Договорная ставка за смену по каталожной позиции. Раньше своя цена была
+     * возможна только у позиции ВНЕ каталога — и такая позиция теряла
+     * equipmentId, а вместе с ним проверку доступности, резерв юнитов, доборы
+     * и аналитику. Теперь каталожная позиция может иметь свою цену, оставаясь
+     * каталожной. null — вернуться к прайсу.
+     */
+    negotiatedRatePerShift: z.number().positive().max(100_000_000).nullish(),
   })
   .refine(
     (v) =>
       (v.equipmentId && !v.customName && v.customUnitPrice === undefined) ||
       (!v.equipmentId && v.customName && v.customUnitPrice !== undefined),
     { message: "Укажите либо equipmentId, либо customName + customUnitPrice" },
-  );
+  )
+  .refine((v) => v.negotiatedRatePerShift == null || Boolean(v.equipmentId), {
+    message: "Договорная цена задаётся только для позиции из каталога",
+  });
 
 const transportVehicleSchema = z.object({
   vehicleId: z.string().min(1),
@@ -59,6 +74,8 @@ const transportVehicleSchema = z.object({
   skipOvertime: z.boolean().default(false),
   kmOutsideMkad: z.number().int().min(0).default(0),
   ttkEntry: z.boolean().default(false),
+  /** Договорная сумма за машину; заменяет расчёт по прайсу и параметрам. */
+  negotiatedTotalRub: z.number().nonnegative().max(100_000_000).nullish(),
 });
 
 /**
@@ -102,6 +119,11 @@ const clientNameSchema = z
   }, "Укажите имя клиента (нельзя «—» или пустое)");
 
 const bookingCreateSchema = z.object({
+  /**
+   * Договорной итог брони: сумма, о которой сговорились, вместо посчитанной по
+   * смете. Применяется только SUPER_ADMIN — то же правило, что и в PATCH.
+   */
+  manualFinalAmount: z.number().finite().min(0).max(1_000_000_000).optional().nullable(),
   client: z.object({
     name: clientNameSchema,
     phone: z.string().optional().nullable(),
@@ -311,6 +333,10 @@ async function computeTransportSnapshots(
       kmOutsideMkad: entry.kmOutsideMkad,
       ttkEntry: entry.ttkEntry,
     });
+    // Договорная сумма заменяет расчётную: в subtotalRub кладём ту, что реально
+    // войдёт в деньги брони, а прайсовую сохраняем отдельным полем — она нужна
+    // смете для строки «цена до скидки» и разговора «почему было столько».
+    const negotiated = entry.negotiatedTotalRub;
     snapshots.push({
       vehicleId: entry.vehicleId,
       withGenerator: entry.withGenerator,
@@ -318,7 +344,8 @@ async function computeTransportSnapshots(
       skipOvertime: entry.skipOvertime,
       kmOutsideMkad: entry.kmOutsideMkad,
       ttkEntry: entry.ttkEntry,
-      subtotalRub: breakdown.total,
+      subtotalRub: negotiated != null ? new Decimal(negotiated).toDecimalPlaces(2).toString() : breakdown.total,
+      negotiatedTotalRub: negotiated != null ? new Decimal(negotiated).toDecimalPlaces(2).toString() : null,
     });
   }
   return snapshots;
@@ -554,6 +581,45 @@ router.get("/summary/counts", async (_req, res, next) => {
   }
 });
 
+/**
+ * POST /api/bookings/bulk — групповое действие над выбранными бронями
+ * (мультивыбор на /bookings и /bookings/archive):
+ * approve / submit / cancel / archive / restore / purge.
+ *
+ * ОБЪЯВЛЕН ДО `/:id`-маршрутов: иначе express отдал бы «bulk» в параметр :id.
+ *
+ * Ответ всегда 200 с ПОБРОННЫМ результатом — пачка не «падает целиком»:
+ * { action, results: [{id, ok, status} | {id, ok:false, code, message}],
+ *   counts: {total, ok, failed} }. Ненулевой `failed` — штатный исход
+ * (бронь успели согласовать в другой вкладке, оборудование занято, есть
+ * оплата, бронь уже не в архиве), UI показывает это отчётом, а не ошибкой
+ * запроса.
+ *
+ * Router-level guard пускает SA и WAREHOUSE; точное право на КОНКРЕТНОЕ
+ * действие проверяет assertBulkActionAllowed внутри сервиса (approve,
+ * archive, restore и purge — только SUPER_ADMIN).
+ */
+const bulkActionSchema = z.object({
+  action: z.enum(BULK_ACTIONS),
+  ids: z.array(z.string().min(1)).min(1, "Не выбрано ни одной брони").max(BULK_MAX_IDS),
+});
+
+router.post("/bulk", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next) => {
+  try {
+    if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+    const body = bulkActionSchema.parse(req.body);
+    const result = await runBulkBookingAction({
+      ids: body.ids,
+      action: body.action,
+      userId: req.adminUser.userId,
+      role: req.adminUser.role,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/:id", async (req, res, next) => {
   try {
     const id = req.params.id;
@@ -673,7 +739,13 @@ router.patch("/:id", async (req, res, next) => {
       assertBookingRangeOrder(start, end);
 
       const itemsAfter = body.items
-        ? body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity }))
+        ? body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      }))
         : existing.items.map((i) => ({ equipmentId: i.equipmentId ?? undefined, customName: (i as any).customName ?? undefined, customUnitPrice: (i as any).customUnitPrice != null ? Number((i as any).customUnitPrice.toString()) : undefined, quantity: i.quantity }));
 
       const estimate = await quoteEstimate({
@@ -745,8 +817,11 @@ router.patch("/:id", async (req, res, next) => {
     // F-EXTEND: продление выданной брони — только SUPER_ADMIN, только для ISSUED,
     // только при переданном extendEndDate (иначе ISSUED не редактируется).
     const isExtendIssued = isSuperAdmin && body.extendEndDate != null && existing.status === "ISSUED";
+    // ISSUED в retro: только «бумажные» правки (проект/комментарий/скидка/
+    // ручной итог/водители) — состав позиций у клиента на руках, его правка
+    // до приёмки сломала бы сверку выдачи. Гард ниже.
     const allowedStatusesForEdit = retroactiveEdit
-      ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL", "RETURNED"]
+      ? ["DRAFT", "CONFIRMED", "PENDING_APPROVAL", "RETURNED", "ISSUED"]
       : isExtendIssued
         ? ["ISSUED"]
         : isSuperAdmin
@@ -762,6 +837,14 @@ router.patch("/:id", async (req, res, next) => {
               ? "Бронь выдана. Доступно только продление срока возврата (только руководитель)."
               : "Редактирование доступно для черновиков и подтверждённых броней.";
       throw new HttpError(409, reason, "BOOKING_EDIT_FORBIDDEN");
+    }
+
+    if (retroactiveEdit && existing.status === "ISSUED" && (body.items || body.transport)) {
+      throw new HttpError(
+        409,
+        "Состав позиций и транспорт выданной брони правятся после приёмки — сначала примите возврат.",
+        "ITEMS_LOCKED_UNTIL_RETURN",
+      );
     }
 
     // Захватываем исходные данные для аудит-записи (если бронь в статусе PENDING_APPROVAL)
@@ -835,6 +918,8 @@ router.patch("/:id", async (req, res, next) => {
             quantity: it.quantity,
             customName: it.customName ?? null,
             customUnitPrice: it.customUnitPrice != null ? new Decimal(it.customUnitPrice) : null,
+            negotiatedRatePerShift:
+              it.negotiatedRatePerShift != null ? new Decimal(it.negotiatedRatePerShift) : null,
             customCategory: !it.equipmentId && it.customName ? CUSTOM_LINE_CATEGORY : null,
           })),
         });
@@ -924,6 +1009,8 @@ router.patch("/:id", async (req, res, next) => {
               kmOutsideMkad: t.kmOutsideMkad,
               ttkEntry: t.ttkEntry,
               subtotalRub: new Decimal(t.subtotalRub),
+              negotiatedTotalRub:
+                t.negotiatedTotalRub != null ? new Decimal(t.negotiatedTotalRub) : null,
               driverName: driverByVehicleId.get(t.vehicleId)?.driverName ?? null,
               driverPhone: driverByVehicleId.get(t.vehicleId)?.driverPhone ?? null,
             })),
@@ -951,11 +1038,14 @@ router.patch("/:id", async (req, res, next) => {
                 vehicleId: null,
               }
             : {}),
-          // manualFinalAmount — override итоговой суммы. Доступно только
-          // в retroactive-режиме (вне его поле в body игнорируется через
-          // условие ниже). null очищает override, число — устанавливает.
+          // manualFinalAmount — договорной итог брони: сумма, о которой
+          // сговорились, вместо посчитанной по смете. Раньше поле работало
+          // только в retro-режиме, то есть было недоступно ровно тогда, когда
+          // о цене и договариваются — при создании и правке брони. Право
+          // фиксировать итог остаётся за SUPER_ADMIN.
+          // null очищает override, число — устанавливает.
           manualFinalAmount:
-            retroactiveEdit && body.manualFinalAmount !== undefined
+            isSuperAdmin && body.manualFinalAmount !== undefined
               ? body.manualFinalAmount === null
                 ? null
                 : new Decimal(body.manualFinalAmount)
@@ -1051,7 +1141,13 @@ router.patch("/:id", async (req, res, next) => {
     if (wasInReview) {
       try {
         const itemsAfter = body.items
-          ? body.items.map((it: any) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity }))
+          ? body.items.map((it: any) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      }))
           : existing.items.map((i: any) => ({ equipmentId: i.equipmentId ?? undefined, customName: i.customName ?? undefined, customUnitPrice: i.customUnitPrice != null ? Number(i.customUnitPrice.toString()) : undefined, quantity: i.quantity }));
         const quote = await quoteEstimate({
           startDate: start,
@@ -1256,32 +1352,11 @@ router.post("/:id/status", async (req, res, next) => {
 
     let updated;
     if (body.action === "cancel") {
-      // C2: при отмене освобождаем UNIT-резервы в той же транзакции, что и
-      // смена статуса + аудит. Без этого equipmentUnit.status застревал в
-      // ISSUED, а BookingItemUnit-резервы не снимались.
-      const auditUserId = req.adminUser?.userId ?? "system";
-      updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        const u = await tx.booking.update({
-          where: { id },
-          data: bookingUpdateData,
-          include: bookingInclude,
-        });
-        const released = await releaseBookingUnits(id, tx);
-        await writeAuditEntry({
-          tx,
-          userId: auditUserId,
-          action: "BOOKING_UNITS_RELEASED",
-          entityType: "Booking",
-          entityId: id,
-          before: diffFields({ status: booking.status }),
-          after: diffFields({
-            status: "CANCELLED",
-            via: "status:cancel",
-            releasedReservations: released.releasedReservations,
-            freedUnitIds: released.freedUnitIds.length,
-          }),
-        });
-        return u;
+      // C2: снятие UNIT-резервов идёт в той же транзакции, что смена статуса
+      // и аудит. Реализация — в services/bookingLifecycle (общая с bulk).
+      updated = await cancelBooking(id, req.adminUser?.userId ?? "system", {
+        expectedPaymentDate: bookingUpdateData.expectedPaymentDate,
+        paymentComment: bookingUpdateData.paymentComment,
       });
     } else {
       // Ручные «Выдать»/«Вернуть» (без киоска) обязаны реконсилировать
@@ -1386,48 +1461,15 @@ router.post("/:id/status", async (req, res, next) => {
  */
 router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const userId = req.adminUser!.userId;
-    const existing = await prisma.booking.findUnique({
-      where: { id },
-      select: { id: true, status: true, projectName: true, startDate: true, endDate: true, deletedAt: true },
+    // BD-2/RR-1: снятие резервов у не-терминальных броней и аудит — внутри
+    // archiveBooking (services/bookingLifecycle), общего с групповым /bulk.
+    const released = await archiveBooking(req.params.id, req.adminUser!.userId);
+    res.json({
+      ok: true,
+      archived: true,
+      releasedReservations: released.releasedReservations,
+      freedUnits: released.freedUnits,
     });
-    if (!existing) throw new HttpError(404, "Booking not found");
-    if (existing.deletedAt) {
-      throw new HttpError(409, "Бронь уже в архиве", "BOOKING_ALREADY_ARCHIVED");
-    }
-    const released = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.booking.update({
-        where: { id },
-        data: { deletedAt: new Date(), deletedBy: userId },
-      });
-      // BD-2: архивация не-терминальной брони (CONFIRMED/ISSUED/PENDING_APPROVAL)
-      // обязана освободить UNIT-резервы — иначе equipmentUnit застревает в ISSUED
-      // и выпадает из учёта доступности (бронь-то скрыта и больше не сканируется).
-      // RR-1: для терминальных (RETURNED/CANCELLED) release пропускаем — их резервы
-      // либо история приёмки (returnedAt), либо уже сняты cancel-веткой; сам
-      // releaseBookingUnits дополнительно фильтрует returnedAt: null.
-      const isTerminal = existing.status === "RETURNED" || existing.status === "CANCELLED";
-      const rel = isTerminal
-        ? { releasedReservations: 0, freedUnitIds: [] as string[] }
-        : await releaseBookingUnits(id, tx);
-      await writeAuditEntry({
-        tx,
-        userId,
-        action: "BOOKING_ARCHIVED",
-        entityType: "Booking",
-        entityId: id,
-        before: diffFields(existing as Record<string, unknown>),
-        after: {
-          deletedAt: new Date().toISOString(),
-          deletedBy: userId,
-          releasedReservations: rel.releasedReservations,
-          freedUnits: rel.freedUnitIds.length,
-        },
-      });
-      return rel;
-    });
-    res.json({ ok: true, archived: true, releasedReservations: released.releasedReservations, freedUnits: released.freedUnitIds.length });
   } catch (err) {
     next(err);
   }
@@ -1436,34 +1478,11 @@ router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
 /**
  * POST /api/bookings/:id/restore — восстановить архивированную бронь.
  * Только SUPER_ADMIN. 409 если бронь не была архивирована.
+ * Логика — в services/bookingLifecycle (общая с групповым /bulk).
  */
 router.post("/:id/restore", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const userId = req.adminUser!.userId;
-    const existing = await prisma.booking.findUnique({
-      where: { id },
-      select: { id: true, deletedAt: true, deletedBy: true, projectName: true, status: true },
-    });
-    if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
-    if (!existing.deletedAt) {
-      throw new HttpError(409, "Бронь не в архиве — восстанавливать нечего", "BOOKING_NOT_ARCHIVED");
-    }
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.booking.update({
-        where: { id },
-        data: { deletedAt: null, deletedBy: null },
-      });
-      await writeAuditEntry({
-        tx,
-        userId,
-        action: "BOOKING_RESTORED",
-        entityType: "Booking",
-        entityId: id,
-        before: { deletedAt: existing.deletedAt!.toISOString(), deletedBy: existing.deletedBy },
-        after: null,
-      });
-    });
+    await restoreBooking(req.params.id, req.adminUser!.userId);
     res.json({ ok: true, restored: true });
   } catch (err) {
     next(err);
@@ -1480,65 +1499,9 @@ router.post("/:id/restore", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) 
  */
 router.delete("/:id/purge", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const userId = req.adminUser!.userId;
-    const existing = await prisma.booking.findUnique({
-      where: { id },
-      select: { id: true, status: true, projectName: true, startDate: true, endDate: true, deletedAt: true },
-    });
-    if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
-    if (!existing.deletedAt) {
-      throw new HttpError(
-        409,
-        "Можно удалить навсегда только архивированную бронь. Сначала отправьте в архив.",
-        "BOOKING_NOT_ARCHIVED",
-      );
-    }
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // Финансовый гард: purge каскадно уничтожил бы счета (Invoice onDelete:
-      // Cascade — номерной документ, дыра/повтор в нумерации) и отвязал бы
-      // платежи (Payment onDelete: SetNull — деньги-«сироты» без клиента в
-      // /finance/payments). Блокируем при любых счетах и любых не аннулированных
-      // платежах. Проверка внутри транзакции — платёж, созданный между
-      // проверкой и delete, не проскочит (SQLite write-lock).
-      const [invoiceCount, paymentCount] = await Promise.all([
-        tx.invoice.count({ where: { bookingId: id } }),
-        tx.payment.count({ where: { bookingId: id, voidedAt: null } }),
-      ]);
-      if (invoiceCount > 0 || paymentCount > 0) {
-        throw new HttpError(
-          409,
-          "Нельзя удалить бронь навсегда: с ней связаны счета или платежи. Сначала аннулируйте счета и платежи.",
-          "PURGE_HAS_FINANCE",
-          { invoices: invoiceCount, payments: paymentCount },
-        );
-      }
-      // Audit ПЕРЕД delete — иначе FK Restrict от AuditEntry на AdminUser
-      // блокирует. Сам entityId записываем, ссылок на удалённую запись нет.
-      await writeAuditEntry({
-        tx,
-        userId,
-        action: "BOOKING_PURGED",
-        entityType: "Booking",
-        entityId: id,
-        before: diffFields(existing as Record<string, unknown>),
-        after: null,
-      });
-      try {
-        await tx.booking.delete({ where: { id } });
-      } catch (e: any) {
-        // P2003 FK violation — например, остались AuditEntry-записи через
-        // другие связанные сущности. Возвращаем 409 с подсказкой.
-        if (e?.code === "P2003") {
-          throw new HttpError(
-            409,
-            "Бронь связана с историей аудита/финансов. Полное удаление невозможно.",
-            "BOOKING_HAS_RELATIONS",
-          );
-        }
-        throw e;
-      }
-    });
+    // Финансовый гард (PURGE_HAS_FINANCE) и аудит — внутри purgeBooking
+    // (services/bookingLifecycle, общая реализация с групповым /bulk).
+    await purgeBooking(req.params.id, req.adminUser!.userId);
     res.json({ ok: true, purged: true });
   } catch (err) {
     next(err);
@@ -1573,7 +1536,13 @@ router.post("/quote", async (req, res, next) => {
       endDate: end,
       clientId: clientIdForQuote,
       discountPercent: body.discountPercent ?? null,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+      items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
       transport: body.transport ?? null,
       skipPartialDay: body.skipPartialDay ?? false,
     });
@@ -1593,6 +1562,10 @@ router.post("/quote", async (req, res, next) => {
       discountPercent: estimate.discountPercent.toString(),
       discountAmount: estimate.discountAmount.toFixed(2),
       totalAfterDiscount: estimate.totalAfterDiscount.toFixed(2),
+      // Раскладка на прайсовую и договорную части: панель расчёта показывает
+      // их отдельно, потому что процент ложится только на прайсовую.
+      listedSubtotal: estimate.listedSubtotal.toFixed(2),
+      negotiatedSubtotal: estimate.negotiatedSubtotal.toFixed(2),
       // Transport — array of per-vehicle breakdowns (empty when none) + summed subtotal
       transport: estimate.transport,
       transportSubtotal: estimate.transportSubtotal.toFixed(2),
@@ -1608,6 +1581,8 @@ router.post("/quote", async (req, res, next) => {
         pricingMode: l.pricingMode,
         unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
         lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+        listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
+        isNegotiated: l.isNegotiated,
       })),
     });
   } catch (err) {
@@ -1651,7 +1626,13 @@ router.post("/quote/export", async (req, res, next) => {
       endDate: end,
       clientId: client.id,
       discountPercent: body.discountPercent ?? null,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+      items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
       skipPartialDay: body.skipPartialDay ?? false,
     });
 
@@ -1680,7 +1661,9 @@ router.post("/quote/export", async (req, res, next) => {
 
     const hourText =
       body.hourCalculationOverride?.trim() || formatExportHourCalculationLine(start, end, body.skipPartialDay ?? false);
+    const org = smetaOrgFromSettings(await getSettings());
     const smetaDoc = buildSmetaExportDocument({
+      org,
       startDate: start,
       endDate: end,
       clientName: body.client.name.trim(),
@@ -1743,7 +1726,13 @@ router.post("/draft", async (req, res, next) => {
         endDate: end,
         clientId: clientIdForQuote,
         discountPercent: body.discountPercent ?? null,
-        items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+        items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
         transport: body.transport ?? null,
         skipPartialDay: body.skipPartialDay ?? false,
       });
@@ -1832,7 +1821,15 @@ router.post("/draft", async (req, res, next) => {
       estimateOptionalNote: body.estimateOptionalNote ?? null,
       estimateIncludeOptionalInExport: body.estimateIncludeOptionalInExport ?? false,
       skipPartialDay: body.skipPartialDay ?? false,
-      items: body.items.map((it) => ({ equipmentId: it.equipmentId, customName: it.customName, customUnitPrice: it.customUnitPrice, quantity: it.quantity })),
+      manualFinalAmount:
+        req.adminUser?.role === "SUPER_ADMIN" ? body.manualFinalAmount ?? null : null,
+      items: body.items.map((it) => ({
+        equipmentId: it.equipmentId,
+        customName: it.customName,
+        customUnitPrice: it.customUnitPrice,
+        quantity: it.quantity,
+        negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
+      })),
       transport: transportSnapshots,
     });
 
@@ -2334,6 +2331,111 @@ router.patch(
           driverPhone: updated.driverPhone,
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+const forgiveOutstandingSchema = z.object({
+  /** Причина прощения — обязательна: попадает в аудит и финансовое событие. */
+  reason: z.string().trim().min(3, "Укажите причину (минимум 3 символа)"),
+});
+
+/**
+ * POST /api/bookings/:id/forgive-outstanding — «простить остаток» (SUPER_ADMIN).
+ *
+ * Сценарий владельца: клиент недоплатил, долг прощён, но в системе должны
+ * остаться реально полученные средства. Ставим manualFinalAmount = amountPaid →
+ * recomputeBookingFinance делает amountOutstanding = 0, paymentStatus = PAID
+ * (или NOT_PAID при нуле оплат — тогда бронь просто закрыта в ноль).
+ *
+ * Разрешено для ISSUED и RETURNED с amountOutstanding > 0. Пишет:
+ *  - AuditEntry BOOKING_DEBT_FORGIVEN (before/after: суммы + причина);
+ *  - FinanceEvent DEBT_FORGIVEN (payload: amount, reason).
+ */
+router.post(
+  "/:id/forgive-outstanding",
+  rolesGuard(["SUPER_ADMIN"]),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      const { reason } = forgiveOutstandingSchema.parse(req.body);
+      if (!req.adminUser) throw new HttpError(401, "Требуется авторизация", "UNAUTHENTICATED");
+      await assertBookingNotArchived(id);
+
+      const existing = await prisma.booking.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          status: true,
+          finalAmount: true,
+          manualFinalAmount: true,
+          amountPaid: true,
+          amountOutstanding: true,
+        },
+      });
+      if (!existing) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+      if (!["ISSUED", "RETURNED"].includes(existing.status)) {
+        throw new HttpError(
+          409,
+          "Простить остаток можно по выданной или возвращённой броне",
+          "INVALID_BOOKING_STATE",
+        );
+      }
+      const outstanding = new Decimal(existing.amountOutstanding.toString());
+      if (outstanding.lte(0)) {
+        throw new HttpError(409, "По этой броне нет долга", "NO_OUTSTANDING");
+      }
+
+      const paid = new Decimal(existing.amountPaid.toString());
+      await prisma.$transaction(async (tx) => {
+        await tx.booking.update({
+          where: { id },
+          data: { manualFinalAmount: paid },
+        });
+        await writeAuditEntry({
+          tx,
+          userId: req.adminUser!.userId,
+          action: "BOOKING_DEBT_FORGIVEN",
+          entityType: "Booking",
+          entityId: id,
+          before: diffFields({
+            finalAmount: existing.finalAmount.toString(),
+            manualFinalAmount: existing.manualFinalAmount?.toString() ?? null,
+            amountOutstanding: existing.amountOutstanding.toString(),
+          }),
+          after: diffFields({
+            manualFinalAmount: paid.toString(),
+            forgivenAmount: outstanding.toString(),
+            reason,
+          }),
+        });
+      });
+
+      // Пересчёт вне транзакции — тот же паттерн, что у finance-corrections.
+      await recomputeBookingFinance(id);
+      try {
+        await createFinanceEvent({
+          bookingId: id,
+          eventType: "DEBT_FORGIVEN",
+          payload: { amount: outstanding.toString(), reason },
+        });
+      } catch (finErr) {
+        // eslint-disable-next-line no-console
+        console.error("FinanceEvent DEBT_FORGIVEN failed:", finErr);
+      }
+
+      const fresh = await prisma.booking.findUnique({
+        where: { id },
+        include: {
+          client: true,
+          items: { include: { equipment: true } },
+          estimates: { include: { lines: true } },
+          vehicles: { include: { vehicle: true }, orderBy: { createdAt: "asc" } },
+        },
+      });
+      res.json({ booking: serializeBookingForApi(fresh as any) });
     } catch (err) {
       next(err);
     }
@@ -2858,6 +2960,7 @@ router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
       include: {
         client: true,
         estimates: { include: { lines: true } },
+        vehicles: { include: { vehicle: true } },
       },
     });
     if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
@@ -2866,7 +2969,10 @@ router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
     if (!main) throw new HttpError(404, "Основная смета не создана", "MAIN_ESTIMATE_NOT_FOUND");
     const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
 
-    const doc = buildFullSmeta({ booking, main, addon });
+    const org = smetaOrgFromSettings(await getSettings());
+    // Договорной итог обязан дойти до документа: счёт его уже чтит, и без него
+    // смета спорила бы со счётом на одной и той же брони.
+    const doc = buildFullSmeta({ booking, main, addon, org, agreedTotal: booking.manualFinalAmount });
     const human = buildBookingHumanName({
       startDate: booking.startDate,
       clientName: booking.client.name,
@@ -2885,6 +2991,7 @@ router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
       include: {
         client: true,
         estimates: { include: { lines: true } },
+        vehicles: { include: { vehicle: true } },
       },
     });
     if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
@@ -2893,7 +3000,10 @@ router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
     if (!main) throw new HttpError(404, "Основная смета не создана", "MAIN_ESTIMATE_NOT_FOUND");
     const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
 
-    const doc = buildFullSmeta({ booking, main, addon });
+    const org = smetaOrgFromSettings(await getSettings());
+    // Договорной итог обязан дойти до документа: счёт его уже чтит, и без него
+    // смета спорила бы со счётом на одной и той же брони.
+    const doc = buildFullSmeta({ booking, main, addon, org, agreedTotal: booking.manualFinalAmount });
     const human = buildBookingHumanName({
       startDate: booking.startDate,
       clientName: booking.client.name,

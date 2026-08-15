@@ -46,7 +46,10 @@ export function AddCustomItemModal({ isOpen, onClose, onAdd, initialName, initia
   if (!isOpen) return null;
 
   const trimmedName = name.trim();
-  const unitPrice = parseFloat(unitPriceStr);
+  // Смета ведётся в целых рублях: в прайсе и во всех суммах прода копеек нет,
+  // а в таблице состава цена, сумма строки и итог округляются по отдельности —
+  // с копейками строка «цена × количество = сумма» переставала бы сходиться.
+  const unitPrice = Math.round(parseFloat(unitPriceStr));
   const quantity = parseInt(quantityStr, 10);
 
   const isValid =
@@ -128,7 +131,7 @@ export function AddCustomItemModal({ isOpen, onClose, onAdd, initialName, initia
               onChange={(e) => setUnitPriceStr(e.target.value)}
               onKeyDown={handleKeyDown}
               min={1}
-              step="any"
+              step={1}
               placeholder="70 000"
               className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none"
             />

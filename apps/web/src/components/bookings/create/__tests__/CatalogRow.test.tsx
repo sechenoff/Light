@@ -42,9 +42,17 @@ describe("CatalogRow", () => {
     expect(screen.getByRole("button", { name: /увеличить/i })).toBeInTheDocument();
   });
 
-  it("plus button disabled when selectedQty === availableQuantity", () => {
-    render(<CatalogRow row={row} selectedQty={3} onAdd={vi.fn()} onChangeQty={vi.fn()} onRemove={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /увеличить/i })).toBeDisabled();
+  it("упёршийся плюс не блокируется, а объясняет причину", () => {
+    // disabled-кнопка не показывает title и не шлёт событий, а на тач-экране
+    // подсказки нет вовсе — блокировка молчала бы о причине.
+    const onChangeQty = vi.fn();
+    render(<CatalogRow row={row} selectedQty={3} onAdd={vi.fn()} onChangeQty={onChangeQty} onRemove={vi.fn()} />);
+    const plus = screen.getByRole("button", { name: /увеличить/i });
+    expect(plus).not.toBeDisabled();
+    expect(plus).toHaveAttribute("aria-disabled", "true");
+    expect(plus.getAttribute("title")).toMatch(/свободно 3 штуки/i);
+    fireEvent.click(plus);
+    expect(onChangeQty).not.toHaveBeenCalled();
   });
 
   it("minus button calls onChangeQty with qty-1; onRemove when qty goes to 0", () => {

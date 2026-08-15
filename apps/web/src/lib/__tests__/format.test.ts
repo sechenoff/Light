@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatRub, formatExpenseRub, formatMarginPercent } from "../format";
+import { formatRub, formatExpenseRub, formatMarginPercent, formatMoneyRubWhole } from "../format";
 
 // Non-breaking space used by Intl ru-RU currency grouping/symbol separator.
 const NB = " ";
@@ -72,5 +72,30 @@ describe("formatMarginPercent (percent of zero base is meaningless)", () => {
 
   it("formats a negative margin with a leading -", () => {
     expect(formatMarginPercent(-1000, 100000)).toBe("-1%");
+  });
+});
+
+describe("formatMoneyRubWhole", () => {
+  it("печатает целые рубли без «,00» и с разрядами", () => {
+    // Смета работает в целых рублях: «,00» в каждой ячейке съедает четыре
+    // знака, и крупный итог перестаёт помещаться в строку.
+    expect(formatMoneyRubWhole(7000)).toBe(`7${NB}000`);
+    expect(formatMoneyRubWhole(3774575)).toBe(`3${NB}774${NB}575`);
+    expect(formatMoneyRubWhole(0)).toBe("0");
+  });
+
+  it("округляет дробную сумму — копейки приезжают только из процентов транспорта", () => {
+    // Цены в систему пускают только целыми (договорная ставка фильтруется до
+    // цифр, цена своей позиции округляется на вводе), поэтому округление здесь
+    // не может расстроить строку «цена × количество = сумма» в составе.
+    expect(formatMoneyRubWhole(3774575.49)).toBe(`3${NB}774${NB}575`);
+    expect(formatMoneyRubWhole(1500.5)).toBe(`1${NB}501`);
+  });
+
+  it("переваривает строки из API и мусор", () => {
+    expect(formatMoneyRubWhole("12000")).toBe(`12${NB}000`);
+    expect(formatMoneyRubWhole("12 000,50")).toBe(`12${NB}001`);
+    expect(formatMoneyRubWhole(null)).toBe("0");
+    expect(formatMoneyRubWhole("не число")).toBe("0");
   });
 });

@@ -4,16 +4,19 @@ import { useEffect, useMemo, useState } from "react";
 import { AiRequestModal } from "./AiRequestModal";
 import { AiResultBanner } from "./AiResultBanner";
 import { CatalogBrowser } from "./CatalogBrowser";
-import { EquipmentCartZone } from "./EquipmentCartZone";
+import { EquipmentCartZone, computeCartTotal } from "./EquipmentCartZone";
 import { ReviewPanel } from "./ReviewPanel";
 import type { AvailabilityRow, CatalogRowAdjustment, CatalogSelectedItem, CustomItem, OffCatalogItem, PendingReviewItem } from "./types";
-import { formatMoneyRub, pluralize } from "../../../lib/format";
+import { formatMoneyRubWhole, pluralize } from "../../../lib/format";
 
-// Блок «3. Оборудование» v2 (утверждённые мокапы booking-equipment-v2 /
-// -variants «C» / -mobile «М1»). Две зоны вместо стены чипов и вложенного
-// скролла: «Состав» (выбранное — сверху, собственным списком) и «Добавить»
-// (поиск + кнопка AI-заявки + каталог-проводник: desktop — категории слева,
-// mobile — drill-down). Контракт props сохранён — state живёт в BookingForm.
+// Блок «3. Оборудование». Две зоны: сначала набор из каталога (поиск +
+// AI-заявка + каталог-проводник: desktop — категории слева, mobile —
+// drill-down), под ним «Состав заявки» — что набралось.
+//
+// Порядок именно такой: человек сначала выбирает, потом смотрит результат.
+// Когда состав стоял сверху, после каждого добавления приходилось листать
+// через весь каталог обратно наверх, чтобы увидеть, что позиция добавилась.
+// Контракт props сохранён — state живёт в BookingForm.
 
 type EquipmentSelection = {
   equipmentId: string;
@@ -50,6 +53,7 @@ type Props = {
   // Catalog callbacks
   onAdd: (row: AvailabilityRow) => void;
   onChangeQty: (equipmentId: string, newQty: number) => void;
+  onChangeNegotiatedRate?: (equipmentId: string, rate: number | null) => void;
   onRemove: (equipmentId: string) => void;
   onChangeOffCatalogQty?: (tempId: string, newQty: number) => void;
   onRemoveOffCatalog?: (tempId: string) => void;
@@ -97,6 +101,7 @@ export function EquipmentCard({
   onAddOffCatalog,
   onAdd,
   onChangeQty,
+  onChangeNegotiatedRate,
   onRemove,
   onChangeOffCatalogQty,
   onRemoveOffCatalog,
@@ -129,14 +134,13 @@ export function EquipmentCard({
   }, [pendingReview.length]);
 
   const totalPositions = selected.size + offCatalogItems.length + customItems.length;
-  const totalPrice = useMemo(() => {
-    let sum = 0;
-    for (const item of selected.values()) {
-      sum += Number(item.dailyPrice) * item.quantity * shifts;
-    }
-    for (const c of customItems) sum += c.unitPrice * c.quantity;
-    return sum;
-  }, [selected, shifts, customItems]);
+  // Тот же расчёт, что под таблицей состава. Своя копия формулы здесь уже
+  // разошлась с составом, когда появились договорные цены: шапка брала прайс
+  // и показывала сумму больше той, что стояла в строках.
+  const totalPrice = useMemo(
+    () => computeCartTotal(selected, customItems, shifts),
+    [selected, shifts, customItems],
+  );
 
   function handleSearchPaste(e: React.ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData("text");
@@ -160,28 +164,13 @@ export function EquipmentCard({
               <span className="font-semibold text-ink">
                 {totalPositions} {pluralize(totalPositions, "позиция", "позиции", "позиций")}
               </span>{" "}
-              · {formatMoneyRub(totalPrice)} ₽
+              · {formatMoneyRubWhole(totalPrice)} ₽
             </>
           ) : (
             "нет позиций"
           )}
         </span>
       </div>
-
-      {/* ── Зона 1: Состав ── */}
-      <EquipmentCartZone
-        selected={selected}
-        customItems={customItems}
-        offCatalogItems={offCatalogItems}
-        adjustments={adjustments}
-        onChangeQty={onChangeQty}
-        onRemove={onRemove}
-        onChangeCustomQty={onChangeCustomQty}
-        onRemoveCustom={onRemoveCustom}
-        onChangeOffCatalogQty={onChangeOffCatalogQty}
-        onRemoveOffCatalog={onRemoveOffCatalog}
-        onOpenCustomModal={onOpenCustomModal}
-      />
 
       {/* AI banner — no-op when pendingReview is active (parseResolved/parseTotal are zeroed) */}
       {pendingReview.length === 0 && (
@@ -211,8 +200,8 @@ export function EquipmentCard({
         </div>
       )}
 
-      {/* ── Зона 2: Добавить (поиск + AI + каталог-проводник) ── */}
-      <div className="sticky top-12 z-10 border-t border-border bg-surface-muted px-5 py-2.5">
+      {/* ── Зона 1: Набор из каталога (поиск + AI + каталог-проводник) ── */}
+      <div className="sticky top-12 z-10 bg-surface-muted px-5 py-2.5">
         <div className="flex gap-2">
           <div className="relative min-w-0 flex-1">
             <svg
@@ -244,7 +233,7 @@ export function EquipmentCard({
           >
             <span className="hidden sm:inline">Заявка от гафера</span>
             <span className="sm:hidden">Заявка</span>
-            <span className="rounded bg-surface-deep px-1.5 py-0.5 font-mono text-[10px] text-ink-3">AI</span>
+            <span className="rounded bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] text-ink-3">AI</span>
           </button>
         </div>
       </div>
@@ -276,6 +265,28 @@ export function EquipmentCard({
           onRemove={onRemove}
         />
       )}
+
+      {/* ── Зона 2: Состав заявки ──
+          Ниже каталога: сначала человек набирает позиции, потом смотрит,
+          что набралось. Обратный порядок заставлял после каждого добавления
+          листать через весь каталог обратно к корзине. */}
+      <div className="border-t border-border pt-1">
+        <EquipmentCartZone
+          selected={selected}
+          customItems={customItems}
+          shifts={shifts}
+          offCatalogItems={offCatalogItems}
+          adjustments={adjustments}
+          onChangeQty={onChangeQty}
+          onChangeNegotiatedRate={onChangeNegotiatedRate}
+          onRemove={onRemove}
+          onChangeCustomQty={onChangeCustomQty}
+          onRemoveCustom={onRemoveCustom}
+          onChangeOffCatalogQty={onChangeOffCatalogQty}
+          onRemoveOffCatalog={onRemoveOffCatalog}
+          onOpenCustomModal={onOpenCustomModal}
+        />
+      </div>
     </div>
   );
 }

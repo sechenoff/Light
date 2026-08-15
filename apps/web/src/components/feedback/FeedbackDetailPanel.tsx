@@ -198,7 +198,7 @@ export function FeedbackDetailPanel({ feedbackId, onClose, onChanged }: Feedback
                         key={p.id}
                         type="button"
                         onClick={() => setPreviewPhoto(p.url)}
-                        className="aspect-square rounded-md overflow-hidden border border-border bg-surface-subtle hover:border-inverse-2"
+                        className="aspect-square rounded-md overflow-hidden border border-border bg-surface-subtle hover:border-strong"
                         aria-label="Открыть фото"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}

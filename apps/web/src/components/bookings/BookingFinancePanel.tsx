@@ -78,6 +78,8 @@ export interface BookingFinancePanelProps {
   onDownload: (path: string, filename: string) => void | Promise<void>;
   onReloadInvoices: () => void | Promise<void>;
   onDownloadInvoicePdf: (inv: InvoiceItem) => void | Promise<void>;
+  /** «Простить остаток» (SA, ISSUED|RETURNED, долг > 0) — открывает модалку. */
+  onForgiveOutstanding?: () => void;
 }
 
 export function BookingFinancePanel({
@@ -90,6 +92,7 @@ export function BookingFinancePanel({
   onDownload,
   onReloadInvoices,
   onDownloadInvoicePdf,
+  onForgiveOutstanding,
 }: BookingFinancePanelProps) {
   if (userRole !== "SUPER_ADMIN" && userRole !== "WAREHOUSE") return null;
 
@@ -229,6 +232,22 @@ export function BookingFinancePanel({
               + Записать платёж
             </button>
           )}
+
+          {/* Простить остаток: SA на ISSUED|RETURNED с долгом. Итог брони
+              фиксируется по фактически полученному, долг обнуляется. */}
+          {!isArchived &&
+            userRole === "SUPER_ADMIN" &&
+            onForgiveOutstanding &&
+            (booking.status === "ISSUED" || booking.status === "RETURNED") &&
+            Number(booking.amountOutstanding ?? "0") > 0 && (
+              <button
+                className="rounded border border-rose-border px-3 py-2 text-sm text-rose hover:bg-rose-soft transition-colors"
+                onClick={onForgiveOutstanding}
+                title="Зафиксировать итог по фактически полученной сумме и обнулить долг"
+              >
+                Простить остаток
+              </button>
+            )}
 
           {/* Отменить с депозитом (SA only) */}
           {userRole === "SUPER_ADMIN" &&

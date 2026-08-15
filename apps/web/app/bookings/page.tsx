@@ -25,6 +25,17 @@ import {
   type PaidFilter,
 } from "../../src/components/bookings/bookingListHelpers";
 import { rememberBookingsListQuery } from "../../src/components/bookings/bookingsListNav";
+import { BulkActionBar } from "../../src/components/bookings/BulkActionBar";
+import { BULK_MAX_IDS } from "../../src/components/bookings/bulkLimits";
+import { BulkResultModal } from "../../src/components/bookings/BulkResultModal";
+import { useAutoLoadMore } from "../../src/components/bookings/useAutoLoadMore";
+import {
+  bulkActionMeta,
+  pluralBookings,
+  type BulkActionContext,
+} from "../../src/components/bookings/bulkActions";
+import { useBookingSelection } from "../../src/components/bookings/useBookingSelection";
+import { useBulkBookingActions } from "../../src/components/bookings/useBulkBookingActions";
 import { formatRub, formatWaitingTime, pluralize } from "../../src/lib/format";
 import { toast } from "../../src/components/ToastProvider";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
@@ -94,10 +105,30 @@ function BookingHistoryPageInner() {
   const [earlyIssue, setEarlyIssue] = useState<null | { row: BookingRow; message: string }>(null);
 
   const PAGE_SIZE = 50;
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [nextCursor, setNextCursorState] = useState<string | null>(null);
+  // Курсор дублируется в ref, потому что догрузку теперь дёргают и отложенные
+  // колбэки: onRowsEmptied вызывается из продолжения групповой операции и
+  // держит замыкание того рендера, в котором нажали кнопку. Со state оттуда
+  // виден уже израсходованный курсор — и та же страница приезжает вторым
+  // экземпляром, с дублями строк и ключей. Через ref курсор всегда актуален.
+  const nextCursorRef = useRef<string | null>(null);
+  function setNextCursor(value: string | null) {
+    nextCursorRef.current = value;
+    setNextCursorState(value);
+  }
   // BL-4: общее число броней под текущим фильтром (с сервера) — для «Показано N из M».
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Догрузка теперь запускается сама (сентинел внизу списка), поэтому гард
+  // повторного входа обязан быть синхронным: два события наблюдателя в одном
+  // тике оба прочитали бы ещё не применённый loadingMore и утащили одну и ту
+  // же страницу дважды. State остаётся только для рендера.
+  const loadingMoreRef = useRef(false);
+  const loadMoreAbortRef = useRef<AbortController | null>(null);
+  // Провал автодогрузки не должен уходить в тост и молча ретраиться по кругу:
+  // показываем ошибку на месте сентинела и ставим автоподгрузку на паузу до
+  // явного «Повторить».
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   // Ошибка загрузки списка — вместо молчаливого console.error показываем баннер
   // с «Повторить» (реген reloadKey перезапускает эффект загрузки).
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -178,6 +209,13 @@ function BookingHistoryPageInner() {
   useEffect(() => {
     const controller = new AbortController();
     let isActive = true;
+    // Курсор гасим синхронно, ДО запроса: он принадлежит прошлому фильтру, а
+    // сентинел внизу списка может дёрнуть догрузку в любой момент — со старым
+    // курсором и новыми фильтрами получилась бы склейка двух разных выдач.
+    // Строки при этом остаются на экране, чтобы список не мигал.
+    setNextCursor(null);
+    loadMoreAbortRef.current?.abort();
+    setLoadMoreError(null);
     async function load() {
       setLoading(true);
       setLoadError(null);
@@ -238,26 +276,49 @@ function BookingHistoryPageInner() {
   }, [statusFilter, paymentFilter, dateFrom, dateTo, searchQuery]);
 
   async function loadMore() {
-    if (!nextCursor || loadingMore) return;
+    // Курсор и гард — из ref, а не из state: догрузку дёргают в том числе
+    // отложенные колбэки, для которых значения рендера уже устарели, а
+    // автотриггер вдобавок может выстрелить дважды за один тик.
+    const cursor = nextCursorRef.current;
+    if (!cursor || loadingMoreRef.current) return;
     // Снимок подписи фильтров: если пользователь сменит фильтр, пока летит
     // дозагрузка, её ответ нельзя дописывать к уже перезагруженному списку.
     const sigAtStart = filterSigRef.current;
+    const controller = new AbortController();
+    loadMoreAbortRef.current = controller;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
+    setLoadMoreError(null);
     try {
       const data = await apiFetch<{ bookings: BookingRow[]; nextCursor: string | null }>(
-        `/api/bookings?${buildListParams(nextCursor)}`
+        `/api/bookings?${buildListParams(cursor)}`,
+        { signal: controller.signal }
       );
       if (filterSigRef.current !== sigAtStart) return; // фильтр сменился — отбрасываем
       setRows((prev) => [...prev, ...data.bookings]);
       setNextCursor(data.nextCursor ?? null);
     } catch (e: any) {
-      if (filterSigRef.current === sigAtStart) {
-        toast.error(e?.message ?? "Не удалось загрузить ещё");
+      const isAbort = e?.name === "AbortError" || e?.message === "signal is aborted without reason";
+      if (!isAbort && filterSigRef.current === sigAtStart) {
+        // Сообщение живёт внизу списка рядом с «Повторить» — там, куда
+        // пользователь и смотрит, доскроллив до конца. Тост бы уехал наверх.
+        setLoadMoreError(e?.message ?? "Не удалось загрузить ещё");
       }
     } finally {
+      if (loadMoreAbortRef.current === controller) loadMoreAbortRef.current = null;
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
   }
+
+  // Автоподгрузка при доскролле до низа. Кнопка остаётся запасным путём:
+  // после ошибки сети и при исчерпании бюджета автостраниц.
+  const autoLoad = useAutoLoadMore({
+    hasMore: Boolean(nextCursor),
+    loading: loadingMore || loading,
+    disabled: loadMoreError !== null,
+    onLoadMore: () => void loadMore(),
+  });
 
   async function removeBooking(id: string) {
     setBusyId(id);
@@ -362,6 +423,30 @@ function BookingHistoryPageInner() {
   // Все фильтры теперь серверные — рендерим строки как есть, без клиентского
   // фильтра по подгруженной странице (раньше это давало неполный результат).
   const filteredRows = rows;
+
+  // ── Мультивыбор и групповые действия ───────────────────────────────────────
+  const selection = useBookingSelection(rows, BULK_MAX_IDS);
+  const bulkCtx: BulkActionContext = {
+    isSuperAdmin,
+    approvalMode: user?.approvalMode === "auto" ? "auto" : "manual",
+  };
+  const bulk = useBulkBookingActions({
+    rows,
+    selected: selection.selected,
+    ctx: bulkCtx,
+    statusFilter,
+    rowTitle: bookingRowTitle,
+    removeRows: (ids) => {
+      setRows((prev) => prev.filter((row) => !ids.has(row.id)));
+      setTotalCount((c) => (c !== null ? Math.max(0, c - ids.size) : c));
+    },
+    applyStatus: (id, status) => mergeRowFromApi(id, { status: status as BookingRow["status"] }),
+    deselect: selection.deselect,
+    refreshCounts: () => void refreshCounts(),
+    // Групповое действие может убрать из выдачи все загруженные строки —
+    // догружаем следующую страницу, чтобы список не выглядел исчерпанным.
+    onRowsEmptied: () => void loadMore(),
+  });
 
   // Второстепенные/деструктивные действия строки — под меню «⋯».
   // Правила гейтинга зеркалят /bookings/[id] и сервер: редактировать можно
@@ -487,7 +572,11 @@ function BookingHistoryPageInner() {
   //  - пусто → «ничего не найдено по фильтрам» / «броней ещё нет».
   const showErrorBanner = loadError !== null && rows.length === 0;
   const showSkeleton = loading && rows.length === 0 && loadError === null;
-  const showEmpty = !loading && loadError === null && rows.length === 0;
+  // Пустое состояние показываем ТОЛЬКО когда выдача действительно исчерпана.
+  // Групповое действие может вычистить всю загруженную страницу при живом
+  // курсоре — тогда «Ничего не найдено» было бы прямой ложью: под фильтр
+  // подпадают ещё десятки броней, просто не подгруженных.
+  const showEmpty = !loading && !loadingMore && loadError === null && rows.length === 0 && !nextCursor;
 
   // Пустое состояние — контекстно-зависимое: под фильтром зовём их сбросить,
   // на чистой базе — создать первую бронь.
@@ -516,7 +605,9 @@ function BookingHistoryPageInner() {
   const SKELETON_KEYS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 
   return (
-    <div className="p-4 lg:p-6">
+    // Нижний отступ при активном выборе — чтобы липкая панель групповых
+    // действий не накрывала последнюю строку и «Загрузить ещё».
+    <div className={`p-4 lg:p-6 ${selection.selected.size > 0 ? "pb-44 lg:pb-24" : ""}`}>
       <SectionHeader
         eyebrow="Аренда"
         title="Список броней"
@@ -662,9 +753,35 @@ function BookingHistoryPageInner() {
         )}
 
         <div className={`hidden overflow-auto ${showErrorBanner ? "" : "md:block"}`}>
-          <table className="min-w-[1040px] w-full text-sm">
+          <table className="min-w-[1090px] w-full text-sm">
             <thead className="bg-slate--soft text-ink-2 border-b border-border">
               <tr>
+                {/* Мультивыбор: заголовочный чекбокс выделяет загруженные строки
+                    — но не больше, чем сервер примет одной пачкой. */}
+                <th className="w-9 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 cursor-pointer accent-accent-bright align-middle"
+                    checked={selection.allSelected}
+                    ref={(el) => {
+                      // Частичный выбор — «чёрточка» вместо галочки: состояние
+                      // indeterminate ставится только из JS, атрибута нет.
+                      if (el) el.indeterminate = selection.someSelected;
+                    }}
+                    onChange={selection.toggleAll}
+                    aria-label={
+                      selection.selectionCapped
+                        ? `Выбрать первые ${selection.selectableCount} броней`
+                        : "Выбрать все загруженные брони"
+                    }
+                    title={
+                      selection.selectionCapped
+                        ? `За один раз можно обработать ${BULK_MAX_IDS} броней`
+                        : undefined
+                    }
+                    disabled={filteredRows.length === 0}
+                  />
+                </th>
                 {/* Период «смена — возврат»: из списка видно, у кого сегодня возврат */}
                 <th
                   className="text-left px-3 py-2 font-medium"
@@ -685,7 +802,7 @@ function BookingHistoryPageInner() {
               {showSkeleton &&
                 SKELETON_KEYS.map((k) => (
                   <tr key={k} className="border-t border-border">
-                    {Array.from({ length: 8 }).map((_, i) => (
+                    {Array.from({ length: 9 }).map((_, i) => (
                       <td key={i} className="px-3 py-3">
                         <div className="h-3 rounded bg-surface-muted animate-pulse" />
                       </td>
@@ -695,10 +812,23 @@ function BookingHistoryPageInner() {
               {filteredRows.map((r) => (
                 <tr
                   key={r.id}
-                  className="border-t border-border hover:bg-surface-muted transition-colors cursor-pointer"
+                  className={`border-t border-border transition-colors cursor-pointer ${
+                    selection.selected.has(r.id) ? "bg-accent-soft" : "hover:bg-surface-muted"
+                  }`}
                   title={paymentTooltip(r)}
                   onClick={() => router.push(`/bookings/${r.id}`)}
                 >
+                  {/* Ячейка чекбокса гасит переход на карточку: клик по выбору
+                      не должен уводить со страницы. */}
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 cursor-pointer accent-accent-bright align-middle"
+                      checked={selection.selected.has(r.id)}
+                      onChange={() => selection.toggle(r.id)}
+                      aria-label={`Выбрать бронь: ${bookingRowTitle(r)}`}
+                    />
+                  </td>
                   <td className="px-3 py-2 text-ink-2 whitespace-nowrap mono-num" title="Смена — возврат">
                     {formatBookingPeriod(r.startDate, r.endDate)}
                   </td>
@@ -731,7 +861,7 @@ function BookingHistoryPageInner() {
               ))}
               {showEmpty ? (
                 <tr>
-                  <td className="px-3 py-10 text-center text-sm" colSpan={8}>
+                  <td className="px-3 py-10 text-center text-sm" colSpan={9}>
                     {renderEmptyState()}
                   </td>
                 </tr>
@@ -743,6 +873,34 @@ function BookingHistoryPageInner() {
         {/* Мобильное card-представление (паттерн — как на /finance/payments):
             те же данные и те же действия, без горизонтального скролла таблицы */}
         <div className={`p-3 space-y-2 ${showErrorBanner ? "hidden" : "md:hidden"}`}>
+          {/* «Выбрать все» для карточек: в таблице этот чекбокс живёт в шапке,
+              а она скрыта на мобильном — без этой строки кладовщику пришлось бы
+              делать 50 отдельных тапов, и групповые действия оказались бы
+              медленнее поштучных. */}
+          {filteredRows.length > 0 && (
+            <button
+              type="button"
+              onClick={selection.toggleAll}
+              className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-left text-xs text-ink-2 active:bg-surface-muted"
+            >
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-accent-bright"
+                checked={selection.allSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = selection.someSelected;
+                }}
+                onChange={selection.toggleAll}
+                aria-hidden
+                tabIndex={-1}
+              />
+              {selection.allSelected
+                ? "Снять выделение"
+                : selection.selectionCapped
+                  ? `Выбрать первые ${selection.selectableCount} из ${filteredRows.length}`
+                  : `Выбрать все загруженные (${selection.selectableCount})`}
+            </button>
+          )}
           {showSkeleton &&
             SKELETON_KEYS.map((k) => (
               <div key={k} className="border border-border rounded-lg p-3 bg-surface space-y-2">
@@ -754,12 +912,30 @@ function BookingHistoryPageInner() {
           {filteredRows.map((r) => (
             <div
               key={r.id}
-              className="border border-border rounded-lg p-3 bg-surface cursor-pointer active:bg-surface-muted transition-colors"
+              className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                selection.selected.has(r.id)
+                  ? "border-accent-border bg-accent-soft"
+                  : "border-border bg-surface active:bg-surface-muted"
+              }`}
               title={paymentTooltip(r)}
               onClick={() => router.push(`/bookings/${r.id}`)}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                {/* Чекбокс с увеличенной зоной нажатия: на телефоне попасть в
+                    16px квадрат пальцем мимо карточки почти невозможно. */}
+                <span
+                  className="-m-1 shrink-0 p-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 cursor-pointer accent-accent-bright align-middle"
+                    checked={selection.selected.has(r.id)}
+                    onChange={() => selection.toggle(r.id)}
+                    aria-label={`Выбрать бронь: ${bookingRowTitle(r)}`}
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setSearchInput(r.client.name); }}
@@ -798,19 +974,53 @@ function BookingHistoryPageInner() {
           )}
         </div>
 
+        {/* Появление новых строк само по себе беззвучно — для скринридера
+            объявляем прирост словами. */}
+        <span className="sr-only" role="status" aria-live="polite">
+          {loadingMore
+            ? "Загружаю следующие брони"
+            : totalCount !== null
+              ? `Показано ${rows.length} из ${totalCount}`
+              : ""}
+        </span>
+
         {nextCursor && (
-          <div className="mt-4 flex items-center justify-center">
-            <button
-              type="button"
-              onClick={loadMore}
-              disabled={loadingMore}
-              className="rounded-md border border-border bg-surface px-4 py-2 text-sm text-ink-1 hover:bg-accent-soft disabled:opacity-50"
-            >
-              {loadingMore ? "Загружаю..." : "Загрузить ещё"}
-            </button>
+          <div className="mt-4 flex flex-col items-center justify-center gap-2">
+            {/* Сентинел автоподгрузки. Стоит в обычном потоке в конце карточки:
+                внутри обёртки таблицы его обрезал бы её собственный скролл. */}
+            <div ref={autoLoad.sentinelRef} aria-hidden className="h-px w-full" />
+            {loadMoreError ? (
+              <>
+                <p className="text-xs text-rose text-center">{loadMoreError}</p>
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="rounded-md border border-border bg-surface px-4 py-2 text-sm text-ink hover:bg-accent-soft disabled:opacity-50"
+                >
+                  Повторить
+                </button>
+              </>
+            ) : loadingMore ? (
+              <p className="text-xs text-ink-3">Загружаю ещё...</p>
+            ) : (
+              // Обычно страницы приезжают сами, и кнопка не нужна. Но из DOM
+              // она не исчезает: при навигации с клавиатуры это явный способ
+              // догрузить список, поэтому по фокусу она проявляется. И она же
+              // становится видимой, когда исчерпан бюджет автостраниц.
+              <button
+                type="button"
+                onClick={loadMore}
+                className={`rounded-md border border-border bg-surface px-4 py-2 text-sm text-ink hover:bg-accent-soft ${
+                  autoLoad.budgetExhausted ? "" : "sr-only focus:not-sr-only"
+                }`}
+              >
+                Загрузить ещё
+              </button>
+            )}
           </div>
         )}
-        {!nextCursor && rows.length > 0 && (
+        {!nextCursor && !loading && rows.length > 0 && (
           <div className="mt-4 text-center text-xs text-ink-3">
             Показаны все брони ({rows.length} {pluralize(rows.length, "запись", "записи", "записей")})
           </div>
@@ -883,6 +1093,45 @@ function BookingHistoryPageInner() {
             runStatusAction(id, "issue", { force: true });
           }
         }}
+      />
+
+      {/* Групповые действия над выбранными бронями. */}
+      <BulkActionBar
+        selectedCount={selection.selected.size}
+        eligibleCounts={bulk.eligibleCounts}
+        ctx={bulkCtx}
+        busyAction={bulk.busy}
+        maxBatch={BULK_MAX_IDS}
+        onRun={bulk.request}
+        onClear={selection.clear}
+      />
+
+      <ConfirmActionModal
+        open={bulk.confirm !== null}
+        title={bulk.confirm ? bulkActionMeta(bulk.confirm.action, bulkCtx).confirmTitle : ""}
+        subtitle={
+          bulk.confirm
+            ? `${bulk.confirm.ids.length} ${pluralBookings(bulk.confirm.ids.length)} из ${selection.selected.size} выбранных`
+            : undefined
+        }
+        message={
+          bulk.confirm
+            ? bulkActionMeta(bulk.confirm.action, bulkCtx).confirmMessage(bulk.confirm.ids.length)
+            : ""
+        }
+        confirmLabel={bulk.confirm ? bulkActionMeta(bulk.confirm.action, bulkCtx).confirmLabel : ""}
+        tone={bulk.confirm && bulkActionMeta(bulk.confirm.action, bulkCtx).danger ? "danger" : "primary"}
+        loading={bulk.busy !== null}
+        onClose={bulk.closeConfirm}
+        onConfirm={bulk.run}
+      />
+
+      <BulkResultModal
+        open={bulk.report !== null}
+        actionLabel={bulk.report?.actionLabel ?? ""}
+        okCount={bulk.report?.okCount ?? 0}
+        failures={bulk.report?.failures ?? []}
+        onClose={bulk.closeReport}
       />
 
       {cancelDepositRow && (

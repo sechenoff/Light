@@ -2,6 +2,8 @@
 
 import type { AvailabilityRow, CatalogRowAdjustment } from "./types";
 import { formatMoneyRub } from "../../../lib/format";
+import { toast } from "../../ToastProvider";
+import { maxReasonFor } from "./maxReason";
 
 type Props = {
   row: AvailabilityRow;
@@ -18,6 +20,7 @@ export function CatalogRow({ row, selectedQty, adjustment, showCategoryLabel = f
   const isSelected = selectedQty > 0;
   const isUnavailable = row.availableQuantity === 0;
   const isAtMax = selectedQty >= row.availableQuantity;
+  const maxReason = maxReasonFor(row.availableQuantity, selectedQty) ?? "";
   const isClampedDown = adjustment?.kind === "clampedDown";
   const isHardUnavail = adjustment?.kind === "unavailable";
 
@@ -38,7 +41,7 @@ export function CatalogRow({ row, selectedQty, adjustment, showCategoryLabel = f
         <div className={`text-[13px] font-medium ${isSelected ? "text-emerald" : "text-ink"}`}>
           {row.name}
           {showCategoryLabel && (
-            <span className="ml-2 whitespace-nowrap rounded bg-surface-deep px-1.5 py-0.5 text-[10.5px] font-normal text-ink-3">
+            <span className="ml-2 whitespace-nowrap rounded bg-surface-subtle px-1.5 py-0.5 text-[10.5px] font-normal text-ink-3">
               {row.category}
             </span>
           )}
@@ -76,7 +79,7 @@ export function CatalogRow({ row, selectedQty, adjustment, showCategoryLabel = f
             <div className="inline-flex items-center overflow-hidden rounded border border-emerald-border bg-surface">
               <button
                 type="button"
-                aria-label="Уменьшить количество"
+                aria-label={`Уменьшить количество: ${row.name}`}
                 onClick={() =>
                   selectedQty - 1 <= 0 ? onRemove(row.equipmentId) : onChangeQty(row.equipmentId, selectedQty - 1)
                 }
@@ -87,12 +90,18 @@ export function CatalogRow({ row, selectedQty, adjustment, showCategoryLabel = f
               <div className="flex h-7 w-8 items-center justify-center border-x border-emerald-border bg-emerald-soft/30 font-mono text-[12px] font-semibold text-emerald">
                 {selectedQty}
               </div>
+              {/* Упёршийся «+» не блокируем: с disabled-кнопки браузер не
+                  показывает title и не шлёт событий, а на тач-экране подсказки
+                  нет вовсе — молчаливая блокировка не объясняет ничего. */}
               <button
                 type="button"
-                aria-label="Увеличить количество"
-                disabled={isAtMax}
-                onClick={() => onChangeQty(row.equipmentId, selectedQty + 1)}
-                className="flex h-7 w-7 items-center justify-center text-ink-2 hover:bg-emerald-soft disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label={`Увеличить количество: ${row.name}`}
+                aria-disabled={isAtMax || undefined}
+                title={isAtMax ? maxReason : undefined}
+                onClick={() =>
+                  isAtMax ? toast.info(maxReason) : onChangeQty(row.equipmentId, selectedQty + 1)
+                }
+                className={`flex h-7 w-7 items-center justify-center text-ink-2 hover:bg-emerald-soft ${isAtMax ? "cursor-help opacity-40" : ""}`}
               >
                 +
               </button>

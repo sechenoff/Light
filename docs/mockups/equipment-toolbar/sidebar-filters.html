@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мокап · /equipment · Боковая панель фильтров</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#09090b; --ink-2:#52525b; --ink-3:#a1a1aa;
+  --surface:#ffffff; --surface-muted:#fafafa; --surface-subtle:#f4f4f5;
+  --border:#e4e4e7; --border-strong:#d4d4d8;
+  --accent:#1e3a8a; --accent-bright:#1d4ed8; --accent-soft:#eff6ff; --accent-border:#bfdbfe;
+  --emerald:#047857; --emerald-soft:#d1fae5;
+  --rose:#9f1239;    --rose-soft:#ffe4e6;
+  --amber:#a16207;   --amber-soft:#fef3c7;
+  --teal:#0f766e;    --teal-soft:#ccfbf1;
+  --indigo:#4338ca;  --indigo-soft:#e0e7ff;
+  --shadow:0 1px 2px rgba(9,9,11,.05);
+  --shadow-lift:0 2px 6px rgba(9,9,11,.07), 0 1px 2px rgba(9,9,11,.05);
+  --r:5px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  background:var(--surface-subtle);
+  color:var(--ink);
+  font-size:14px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.eyebrow{
+  font-family:'IBM Plex Sans Condensed','IBM Plex Sans',sans-serif;
+  font-size:10.5px; font-weight:600; text-transform:uppercase;
+  letter-spacing:.12em; color:var(--ink-3); line-height:1.2;
+}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums; font-feature-settings:"tnum";}
+svg{display:block;}
+.ico{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+.ico-sm{width:14px;height:14px;}
+.ico-lg{width:18px;height:18px;}
+
+/* ============ страница ============ */
+.page{max-width:1420px;margin:0 auto;padding:32px 28px 96px;}
+.note{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+  padding:22px 24px; box-shadow:var(--shadow); margin-bottom:36px;
+}
+.note h1{font-size:21px;font-weight:600;letter-spacing:-.01em;margin:6px 0 10px;}
+.note p{margin:0 0 18px;color:var(--ink-2);max-width:76ch;font-size:14px;}
+.note .cols{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
+@media(max-width:760px){.note .cols{grid-template-columns:1fr;}}
+.note ul{margin:8px 0 0;padding-left:0;list-style:none;}
+.note li{position:relative;padding-left:18px;margin-bottom:7px;font-size:13.5px;color:var(--ink-2);}
+.note li::before{content:"";position:absolute;left:2px;top:8px;width:5px;height:5px;border-radius:1px;}
+.note .good li::before{background:var(--emerald);}
+.note .risk li::before{background:var(--amber);}
+.note li b{color:var(--ink);font-weight:600;}
+
+.frame-cap{display:flex;align-items:baseline;gap:10px;margin:0 0 10px;}
+.frame-cap .w{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-3);}
+.device{background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;box-shadow:var(--shadow-lift);overflow:hidden;}
+.scroll-x{overflow-x:auto;padding-bottom:6px;}
+.block{margin-bottom:40px;}
+
+/* ============ приложение ============ */
+.app{display:flex;width:1280px;height:760px;background:var(--surface);}
+
+/* глобальная навигация — icon-only на этой странице */
+.nav{
+  width:56px;flex:0 0 56px;background:#09090b;
+  display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 0;
+}
+.nav .logo{width:30px;height:30px;border-radius:var(--r);background:var(--accent-bright);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-bottom:10px;}
+.nav a{width:36px;height:36px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;color:#a1a1aa;}
+.nav a.on{background:rgba(255,255,255,.10);color:#fff;}
+.nav a:hover{background:rgba(255,255,255,.07);color:#fff;}
+
+/* ---- левый рейл фильтров ---- */
+.rail{
+  width:240px;flex:0 0 240px;background:var(--surface-muted);
+  border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;
+}
+.rail-head{
+  height:44px;flex:0 0 44px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 14px;border-bottom:1px solid var(--border);
+}
+.rail-head .cnt{font-size:11px;color:var(--ink-3);}
+.rail-body{overflow-y:auto;flex:1;min-height:0;}
+.rail-body::-webkit-scrollbar{width:8px;}
+.rail-body::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:4px;border:2px solid var(--surface-muted);}
+.sec{padding:12px 14px;border-bottom:1px solid var(--border);}
+.sec:last-child{border-bottom:none;}
+.sec-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.sec-h .reset{font-size:11px;color:var(--accent-bright);background:none;border:0;padding:2px 0;cursor:pointer;font-family:inherit;}
+.sec-h .reset:hover{text-decoration:underline;}
+
+/* поля периода */
+.field{margin-bottom:6px;}
+.field label{display:block;font-size:11px;color:var(--ink-2);margin-bottom:2px;}
+.inp{
+  width:100%;height:33px;border:1px solid var(--border-strong);border-radius:var(--r);
+  background:var(--surface);padding:0 9px;font-family:'IBM Plex Mono',monospace;
+  font-size:12px;color:var(--ink);font-variant-numeric:tabular-nums;
+}
+.inp:hover{border-color:var(--ink-3);}
+.inp:focus,.is-focus{outline:none;border-color:var(--accent-bright);box-shadow:0 0 0 3px rgba(29,78,216,.20);}
+
+/* пресеты списком */
+.presets{margin-top:8px;display:flex;flex-direction:column;gap:1px;}
+.preset{
+  display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  border:0;background:none;padding:5px 8px 5px 7px;border-radius:var(--r);
+  border-left:2px solid transparent;cursor:pointer;font-family:inherit;color:var(--ink-2);
+}
+.preset:hover{background:var(--surface-subtle);color:var(--ink);}
+.preset .tick{width:14px;height:14px;flex:0 0 14px;color:var(--accent-bright);opacity:0;}
+.preset .pn{font-size:12.5px;font-weight:500;}
+.preset .pd{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;}
+.preset.on{background:var(--accent-soft);border-left-color:var(--accent-bright);color:var(--accent);}
+.preset.on .tick{opacity:1;}
+.preset.on .pd{color:var(--accent);}
+.preset:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(29,78,216,.20);}
+
+/* поиск */
+.search{position:relative;}
+.search .ico{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--ink-3);}
+.search input{
+  width:100%;height:34px;border:1px solid var(--border-strong);border-radius:var(--r);
+  background:var(--surface);padding:0 9px 0 30px;font-family:inherit;font-size:13px;color:var(--ink);
+}
+.search input::placeholder{color:var(--ink-3);}
+.search input:hover{border-color:var(--ink-3);}
+
+/* категории */
+.cats{display:flex;flex-direction:column;gap:1px;}
+.cat{
+  display:flex;align-items:center;gap:8px;width:100%;text-align:left;cursor:pointer;
+  border:0;background:none;border-left:2px solid transparent;border-radius:var(--r);
+  padding:5px 8px 5px 7px;font-family:inherit;font-size:12.5px;color:var(--ink-2);line-height:1.3;
+}
+.cat .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cat .n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums;}
+.cat:hover,.cat.demo-hover{background:var(--surface-subtle);color:var(--ink);}
+.cat:hover .n,.cat.demo-hover .n{color:var(--ink-2);}
+.cat.on{background:var(--accent-soft);border-left-color:var(--accent-bright);color:var(--accent);font-weight:600;}
+.cat.on .n{color:var(--accent);font-weight:500;}
+.cat.zero{color:var(--ink-3);}
+.cat:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(29,78,216,.20);}
+
+/* переключатель */
+.switch-row{display:flex;align-items:center;gap:10px;cursor:pointer;min-height:32px;}
+.switch{
+  width:34px;height:19px;flex:0 0 34px;border-radius:10px;background:var(--border-strong);
+  position:relative;transition:background .15s ease;
+}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;
+  background:#fff;box-shadow:var(--shadow);transition:transform .15s ease;}
+.switch-row.on .switch{background:var(--accent-bright);}
+.switch-row.on .switch::after{transform:translateX(15px);}
+.switch-row span{font-size:12.5px;color:var(--ink-2);}
+.switch-row:hover span{color:var(--ink);}
+
+/* ---- контент ---- */
+.content{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface);}
+.page-head{
+  height:56px;flex:0 0 56px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;border-bottom:1px solid var(--border);
+}
+.page-head h2{font-size:17px;font-weight:600;margin:2px 0 0;letter-spacing:-.01em;}
+.acts{display:flex;align-items:center;gap:8px;}
+.btn{
+  height:34px;display:inline-flex;align-items:center;gap:6px;padding:0 12px;border-radius:var(--r);
+  font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;
+  border:1px solid var(--border-strong);background:var(--surface);color:var(--ink-2);
+}
+.btn:hover,.btn.demo-hover{background:var(--surface-subtle);color:var(--ink);border-color:var(--ink-3);}
+.btn:focus-visible,.btn.is-focus{outline:none;border-color:var(--accent-bright);box-shadow:0 0 0 3px rgba(29,78,216,.20);}
+.btn-primary{background:var(--accent-bright);border-color:var(--accent-bright);color:#fff;box-shadow:var(--shadow);}
+.btn-primary:hover,.btn-primary.demo-hover{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn-primary:focus-visible,.btn-primary.is-focus{box-shadow:0 0 0 3px rgba(29,78,216,.20);}
+
+/* тонкая строка контекста */
+.ctx{
+  height:46px;flex:0 0 46px;display:flex;align-items:center;gap:12px;
+  padding:0 20px;border-bottom:1px solid var(--border);background:var(--surface-muted);
+}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 6px 0 9px;border-radius:var(--r);
+  background:var(--accent-soft);border:1px solid var(--accent-border);color:var(--accent);
+  font-size:12px;font-weight:600;
+}
+.chip button{
+  border:0;background:none;padding:1px;margin:0;color:var(--accent);cursor:pointer;
+  display:flex;border-radius:3px;
+}
+.chip button:hover{background:var(--accent-border);}
+.ctx .tally{font-size:12.5px;color:var(--ink-2);white-space:nowrap;}
+.ctx .tally b{font-weight:600;color:var(--ink);}
+.ctx .sep{width:1px;height:18px;background:var(--border);flex:0 0 1px;}
+.period-echo{
+  margin-left:auto;display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 5px 0 9px;
+  border:1px solid var(--border);border-radius:var(--r);background:var(--surface);cursor:pointer;
+  font-family:inherit;color:var(--ink-2);
+}
+.period-echo:hover{border-color:var(--ink-3);color:var(--ink);}
+.period-echo .dt{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
+.period-echo .dur{
+  font-size:11px;font-weight:600;padding:2px 6px;border-radius:3px;
+  background:var(--teal-soft);color:var(--teal);
+}
+
+/* таблица */
+.tbl-wrap{flex:1;min-height:0;overflow-y:auto;}
+table{width:100%;border-collapse:collapse;}
+thead th{
+  position:sticky;top:0;background:var(--surface);z-index:2;
+  font-family:'IBM Plex Sans Condensed','IBM Plex Sans',sans-serif;
+  font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-3);
+  text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;
+}
+thead th:first-child{padding-left:20px;}
+thead th:last-child{padding-right:20px;}
+th.num,td.num{text-align:right;}
+tbody td{padding:11px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle;}
+tbody td:first-child{padding-left:20px;}
+tbody td:last-child{padding-right:20px;}
+tbody tr:hover,tbody tr.demo-hover{background:var(--surface-muted);}
+.eq-name{font-weight:500;color:var(--ink);}
+.eq-sub{font-size:11.5px;color:var(--ink-3);margin-top:1px;}
+td.num,td .num{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:12.5px;}
+.col-dim{color:var(--ink-3);font-size:12px;}
+.pill{
+  display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:11px;
+  font-size:11.5px;font-weight:600;white-space:nowrap;
+}
+.pill .dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
+.p-ok{background:var(--emerald-soft);color:var(--emerald);}
+.p-warn{background:var(--amber-soft);color:var(--amber);}
+.p-bad{background:var(--rose-soft);color:var(--rose);}
+.tbl-more{padding:12px 20px;font-size:12px;color:var(--ink-3);border-bottom:1px solid var(--border);background:var(--surface-muted);}
+.busy{color:var(--ink-2);} .busy.hot{color:var(--rose);font-weight:600;}
+.free.zero{color:var(--rose);font-weight:600;} .free{color:var(--ink);font-weight:600;}
+
+/* ============ состояния ============ */
+.states{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;box-shadow:var(--shadow);}
+.states .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:22px;margin-top:14px;}
+.st-h{font-size:11px;color:var(--ink-3);margin-bottom:8px;}
+.st-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.st-lbl{font-size:10.5px;color:var(--ink-3);font-family:'IBM Plex Mono',monospace;margin-top:5px;}
+.st-box{border:1px dashed var(--border-strong);border-radius:var(--r);padding:6px;background:var(--surface-muted);}
+
+/* ============ мобильные ============ */
+.mobiles{display:flex;gap:28px;flex-wrap:wrap;}
+.m{width:390px;height:734px;position:relative;display:flex;flex-direction:column;background:var(--surface);overflow:hidden;}
+.m-head{padding:12px 16px 10px;border-bottom:1px solid var(--border);background:var(--surface);}
+.m-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;}
+.m-title h2{font-size:19px;font-weight:600;margin:2px 0 0;letter-spacing:-.01em;}
+.btn-m{height:44px;padding:0 14px;font-size:14px;}
+.m-controls{display:flex;gap:8px;}
+.m-controls .search{flex:1;}
+.m-controls .search input{height:44px;font-size:15px;padding-left:34px;}
+.m-controls .search .ico{left:11px;}
+.btn-filters{
+  height:44px;min-width:44px;padding:0 12px;display:inline-flex;align-items:center;gap:7px;
+  border:1px solid var(--border-strong);border-radius:var(--r);background:var(--surface);
+  font-family:inherit;font-size:14px;font-weight:500;color:var(--ink);position:relative;
+}
+.btn-filters .badge{
+  min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent-bright);color:#fff;
+  font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;
+  font-family:'IBM Plex Mono',monospace;
+}
+.m-ctx{
+  display:flex;align-items:center;gap:8px;padding:9px 16px;border-bottom:1px solid var(--border);
+  background:var(--surface-muted);overflow-x:auto;
+}
+.m-ctx::-webkit-scrollbar{display:none;}
+.m-list{flex:1;overflow-y:auto;}
+.m-card{padding:13px 16px;border-bottom:1px solid var(--border);}
+.m-card .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+.m-card .nm{font-size:14.5px;font-weight:600;line-height:1.3;}
+.m-card .cat-l{font-size:11.5px;color:var(--ink-3);margin-top:2px;}
+.m-stats{display:flex;align-items:center;gap:14px;margin-top:9px;}
+.m-stat{display:flex;align-items:baseline;gap:5px;}
+.m-stat .k{font-size:10.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.08em;
+  font-family:'IBM Plex Sans Condensed',sans-serif;font-weight:600;}
+.m-stat .v{font-family:'IBM Plex Mono',monospace;font-size:13px;font-variant-numeric:tabular-nums;font-weight:500;}
+.m-price{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;}
+
+/* bottom-sheet */
+.scrim{position:absolute;inset:0;background:rgba(9,9,11,.42);}
+.sheet{
+  position:absolute;left:0;right:0;bottom:0;top:78px;background:var(--surface);
+  border-radius:12px 12px 0 0;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 -4px 16px rgba(9,9,11,.12);
+}
+.sheet-grab{width:36px;height:4px;border-radius:2px;background:var(--border-strong);margin:8px auto 0;}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 12px;border-bottom:1px solid var(--border);}
+.sheet-head h3{font-size:16px;font-weight:600;margin:0;}
+.sheet-head .reset{font-size:13px;color:var(--accent-bright);background:none;border:0;font-family:inherit;padding:8px 0;}
+.sheet-body{flex:1;overflow-y:auto;}
+.sheet-body .sec{padding:16px;}
+.sheet-body .inp{height:44px;font-size:14px;}
+.sheet-body .preset{padding:11px 10px;min-height:44px;}
+.sheet-body .preset .pn{font-size:14px;}
+.sheet-body .preset .pd{font-size:11.5px;}
+.sheet-body .cat{padding:11px 10px;min-height:44px;font-size:14px;}
+.sheet-body .cat .n{font-size:12px;}
+.sheet-body .switch-row{min-height:44px;}
+.sheet-body .switch-row span{font-size:14px;}
+.sheet-foot{padding:12px 16px;border-top:1px solid var(--border);background:var(--surface);}
+.sheet-foot .btn{width:100%;height:48px;justify-content:center;font-size:15px;}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.2-3.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+  <symbol id="i-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.6 1.6 0 008 19.4a1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H2a2 2 0 110-4h.1A1.6 1.6 0 003.6 8a1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H8a1.6 1.6 0 001-1.5V2a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V8a1.6 1.6 0 001.5 1H22a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10l9-7 9 7v10a1 1 0 01-1 1h-5v-7H9v7H4a1 1 0 01-1-1z"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 105.3 5.3L21 21l-3 .5-9.7-9.7A4 4 0 013 6l3 3 3-3-3-3a4 4 0 015.7 3.3z"/></symbol>
+</svg>
+
+<div class="page">
+
+  <!-- ================= NOTE ================= -->
+  <div class="note">
+    <div class="eyebrow">Концепция тулбара · /equipment</div>
+    <h1>Боковая панель фильтров</h1>
+    <p>
+      Тулбар перестаёт быть горизонтальной полосой и становится левой колонкой 240&nbsp;px — как фасетная
+      панель в интернет-магазине или в Jira. Внутри вертикально: период доступности (два поля один под другим —
+      им наконец хватает места) с пресетами списком, поиск, <b>все 15 категорий видимым списком со счётчиками</b>
+      и переключатель «только доступные». Справа — таблица на всю оставшуюся ширину, а над ней тонкая строка
+      контекста, которая держит рядом с числами ответ на вопрос «за какой период эти цифры?»: активный фильтр,
+      счётчик позиций, эхо периода с длительностью и кнопки действий. Главный выигрыш — категории перестают быть
+      «спрятанными в селекте» и превращаются в навигацию: оператор с одного взгляда видит, что COB&nbsp;Light — 42
+      позиции, а Тележек всего 6, и кликает, а не вспоминает.
+    </p>
+    <div class="cols">
+      <div>
+        <div class="eyebrow">Что решает</div>
+        <ul class="good">
+          <li><b>15 категорий становятся видимой картой склада.</b> Счётчики рядом с названием отвечают «где что есть» до клика — в <code>&lt;select&gt;</code> это знание недоступно в принципе.</li>
+          <li><b>Период перестаёт воевать за горизонталь.</b> Два <code>datetime-local</code> стоят друг под другом в полную ширину рейла, пресеты — списком с показанными датами, а не тесным сегмент-контролом.</li>
+          <li><b>Исчезает «некрасивый перенос на средних ширинах».</b> Рейл фиксированный, таблица тянется — ломаться нечему, поведение на 1024 и 1600 одинаковое.</li>
+          <li><b>Фильтры видны постоянно.</b> Состояние выборки не надо вспоминать и не надо открывать — оно всё время на экране слева, а его следствие (чип + счётчик) продублировано над таблицей.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="eyebrow">Чем рискует</div>
+        <ul class="risk">
+          <li><b>Вторая левая колонка рядом с навигацией AppShell.</b> Концепция обязывает схлопнуть глобальное меню на этой странице в icon-only 56&nbsp;px — иначе на 1280 два рейла съедают треть экрана. Это решение за пределами самого тулбара.</li>
+          <li><b>Период уходит с главной оси внимания.</b> Он определяет колонки «Занято/Доступно», но живёт сбоку — приходится компенсировать эхом периода над таблицей, иначе оператор рискует читать цифры не за тот день.</li>
+          <li><b>240&nbsp;px постоянно заняты.</b> Таблице из 7 колонок остаётся ~940&nbsp;px; «Категория» становится почти дубликатом активного фильтра (здесь она приглушена) и первой пойдёт под нож.</li>
+          <li><b>Счётчики требуют честности.</b> Если считать «сколько в категории свободно за период», нужен агрегат с бэкенда; статичный счёт по каталогу проще, но не отвечает на вопрос доступности.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= DESKTOP ================= -->
+  <div class="block">
+    <div class="frame-cap">
+      <div class="eyebrow">Десктоп</div>
+      <div class="w">1280 × 760 · выбрана категория «COB Light», активен пресет «Сегодня», поле поиска в фокусе, список категорий прокручивается</div>
+    </div>
+    <div class="scroll-x">
+    <div class="device" style="width:1280px">
+      <div class="app">
+
+        <!-- глобальная навигация (icon-only) -->
+        <nav class="nav" aria-label="Основная навигация">
+          <div class="logo">СБ</div>
+          <a href="#" title="Мой день"><svg class="ico ico-lg"><use href="#i-home"/></svg></a>
+          <a href="#" title="Брони"><svg class="ico ico-lg"><use href="#i-list"/></svg></a>
+          <a href="#" class="on" title="Оборудование"><svg class="ico ico-lg"><use href="#i-box"/></svg></a>
+          <a href="#" title="Календарь"><svg class="ico ico-lg"><use href="#i-calendar"/></svg></a>
+          <a href="#" title="Мастерская"><svg class="ico ico-lg"><use href="#i-wrench"/></svg></a>
+        </nav>
+
+        <!-- ЛЕВЫЙ РЕЙЛ ФИЛЬТРОВ -->
+        <aside class="rail" aria-label="Фильтры каталога">
+          <div class="rail-head">
+            <div class="eyebrow">Фильтры</div>
+            <div class="cnt mono">2 активны</div>
+          </div>
+
+          <div class="rail-body">
+
+            <!-- период -->
+            <section class="sec">
+              <div class="sec-h">
+                <div class="eyebrow">Период доступности</div>
+              </div>
+              <div class="field">
+                <label for="d1">Выдача</label>
+                <input class="inp" id="d1" type="datetime-local" value="2026-08-11T10:00">
+              </div>
+              <div class="field">
+                <label for="d2">Возврат</label>
+                <input class="inp" id="d2" type="datetime-local" value="2026-08-12T10:00">
+              </div>
+              <div class="presets" role="group" aria-label="Быстрый выбор периода">
+                <button class="preset on" aria-pressed="true">
+                  <svg class="ico ico-sm tick"><use href="#i-check"/></svg>
+                  <span class="pn">Сегодня</span>
+                  <span class="pd">11.08 → 12.08</span>
+                </button>
+                <button class="preset" aria-pressed="false">
+                  <svg class="ico ico-sm tick"><use href="#i-check"/></svg>
+                  <span class="pn">Завтра</span>
+                  <span class="pd">12.08 → 13.08</span>
+                </button>
+                <button class="preset" aria-pressed="false">
+                  <svg class="ico ico-sm tick"><use href="#i-check"/></svg>
+                  <span class="pn">Неделя</span>
+                  <span class="pd">10.08 → 16.08</span>
+                </button>
+              </div>
+            </section>
+
+            <!-- поиск -->
+            <section class="sec">
+              <div class="sec-h"><div class="eyebrow">Поиск</div></div>
+              <div class="search">
+                <svg class="ico"><use href="#i-search"/></svg>
+                <input class="is-focus" type="search" placeholder="Название, бренд, модель" aria-label="Поиск по каталогу">
+              </div>
+            </section>
+
+            <!-- только доступные: глобальный модификатор — держим выше длинного списка -->
+            <section class="sec">
+              <label class="switch-row">
+                <span class="switch" role="switch" aria-checked="false"></span>
+                <span>Только доступные</span>
+              </label>
+            </section>
+
+            <!-- категории -->
+            <section class="sec">
+              <div class="sec-h">
+                <div class="eyebrow">Категории</div>
+                <button class="reset">Сбросить</button>
+              </div>
+              <div class="cats" role="listbox" aria-label="Категории">
+                <button class="cat"><span class="nm">Все категории</span><span class="n">285</span></button>
+                <button class="cat on" aria-selected="true"><span class="nm">COB Light</span><span class="n">42</span></button>
+                <button class="cat demo-hover"><span class="nm">Led Panel</span><span class="n">31</span></button>
+                <button class="cat"><span class="nm">Pipe / Надувные приборы</span><span class="n">12</span></button>
+                <button class="cat"><span class="nm">Battery / Аккумуляторный свет</span><span class="n">9</span></button>
+                <button class="cat"><span class="nm">Насадки на приборы</span><span class="n">24</span></button>
+                <button class="cat"><span class="nm">Грип</span><span class="n">18</span></button>
+                <button class="cat"><span class="nm">Дымы / Хейзеры</span><span class="n">7</span></button>
+                <button class="cat"><span class="nm">Стойки</span><span class="n">30</span></button>
+                <button class="cat"><span class="nm">Кабели</span><span class="n">38</span></button>
+                <button class="cat"><span class="nm">Электрика</span><span class="n">15</span></button>
+                <button class="cat"><span class="nm">Радио / Связь</span><span class="n">11</span></button>
+                <button class="cat"><span class="nm">Тележки</span><span class="n">6</span></button>
+                <button class="cat"><span class="nm">Текстиль</span><span class="n">14</span></button>
+                <button class="cat"><span class="nm">Флаги / Отражатели</span><span class="n">13</span></button>
+                <button class="cat"><span class="nm">Прочее</span><span class="n">15</span></button>
+              </div>
+            </section>
+
+          </div>
+        </aside>
+
+        <!-- КОНТЕНТ -->
+        <main class="content">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">Склад</div>
+              <h2>Оборудование</h2>
+            </div>
+            <div class="acts">
+              <button class="btn"><svg class="ico ico-sm"><use href="#i-cog"/></svg>Управление каталогом</button>
+              <button class="btn btn-primary"><svg class="ico ico-sm"><use href="#i-plus"/></svg>Создать бронь</button>
+            </div>
+          </div>
+
+          <!-- тонкая строка активного контекста -->
+          <div class="ctx">
+            <span class="chip">COB&nbsp;Light <button aria-label="Снять фильтр «COB Light»"><svg class="ico ico-sm"><use href="#i-x"/></svg></button></span>
+            <span class="sep"></span>
+            <span class="tally">Позиций: <b class="mono">42</b>, доступно: <b class="mono">39</b></span>
+            <button class="period-echo" title="Период задаётся слева — нажмите, чтобы перейти к полям">
+              <svg class="ico ico-sm" style="color:var(--ink-3)"><use href="#i-calendar"/></svg>
+              <span class="dt">11.08 10:00 → 12.08 10:00</span>
+              <span class="dur">1 смена</span>
+            </button>
+          </div>
+
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Оборудование</th>
+                  <th class="num">Всего</th>
+                  <th class="num">Стоимость</th>
+                  <th>Категория</th>
+                  <th class="num">Занято</th>
+                  <th class="num">Доступно</th>
+                  <th>Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><div class="eq-name">Aputure LS 600d Pro</div><div class="eq-sub">Aputure · LS 600d Pro</div></td>
+                  <td class="num">8</td>
+                  <td class="num">4 500 ₽</td>
+                  <td class="col-dim">COB Light</td>
+                  <td class="num busy">2</td>
+                  <td class="num free">6</td>
+                  <td><span class="pill p-ok"><span class="dot"></span>Доступно</span></td>
+                </tr>
+                <tr class="demo-hover">
+                  <td><div class="eq-name">Nanlux Evoke 1200</div><div class="eq-sub">Nanlux · Evoke 1200 · наведение</div></td>
+                  <td class="num">4</td>
+                  <td class="num">9 000 ₽</td>
+                  <td class="col-dim">COB Light</td>
+                  <td class="num busy">3</td>
+                  <td class="num free">1</td>
+                  <td><span class="pill p-warn"><span class="dot"></span>Частично</span></td>
+                </tr>
+                <tr>
+                  <td><div class="eq-name">Aputure LS 1200d Pro</div><div class="eq-sub">Aputure · LS 1200d Pro</div></td>
+                  <td class="num">6</td>
+                  <td class="num">7 500 ₽</td>
+                  <td class="col-dim">COB Light</td>
+                  <td class="num busy hot">6</td>
+                  <td class="num free zero">0</td>
+                  <td><span class="pill p-bad"><span class="dot"></span>Занято</span></td>
+                </tr>
+                <tr>
+                  <td><div class="eq-name">Amaran 300c</div><div class="eq-sub">Amaran · 300c RGBWW</div></td>
+                  <td class="num">10</td>
+                  <td class="num">3 000 ₽</td>
+                  <td class="col-dim">COB Light</td>
+                  <td class="num busy">1</td>
+                  <td class="num free">9</td>
+                  <td><span class="pill p-ok"><span class="dot"></span>Доступно</span></td>
+                </tr>
+                <tr>
+                  <td><div class="eq-name">Aputure STORM 1000c</div><div class="eq-sub">Aputure · STORM 1000c</div></td>
+                  <td class="num">3</td>
+                  <td class="num">8 000 ₽</td>
+                  <td class="col-dim">COB Light</td>
+                  <td class="num busy">1</td>
+                  <td class="num free">2</td>
+                  <td><span class="pill p-ok"><span class="dot"></span>Доступно</span></td>
+                </tr>
+                <tr>
+                  <td><div class="eq-name">Godox KNOWLED M600Bi</div><div class="eq-sub">Godox · KNOWLED M600Bi</div></td>
+                  <td class="num">5</td>
+                  <td class="num">5 000 ₽</td>
+                  <td class="col-dim">COB Light</td>
+                  <td class="num busy">4</td>
+                  <td class="num free">1</td>
+                  <td><span class="pill p-warn"><span class="dot"></span>Частично</span></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="tbl-more">Показано 6 из 42 — прокрутите список</div>
+          </div>
+        </main>
+
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <!-- ================= СОСТОЯНИЯ ================= -->
+  <div class="block states">
+    <div class="eyebrow">Состояния элементов</div>
+    <div class="grid">
+
+      <div>
+        <div class="st-h">Кнопки</div>
+        <div class="st-row">
+          <button class="btn">Обычная</button>
+          <button class="btn demo-hover">Наведение</button>
+        </div>
+        <div class="st-row" style="margin-top:8px">
+          <button class="btn is-focus">Фокус</button>
+        </div>
+        <div class="st-row" style="margin-top:8px">
+          <button class="btn btn-primary"><svg class="ico ico-sm"><use href="#i-plus"/></svg>Обычная</button>
+          <button class="btn btn-primary demo-hover"><svg class="ico ico-sm"><use href="#i-plus"/></svg>Наведение</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="st-h">Строка категории</div>
+        <div class="st-box" style="background:var(--surface-muted)">
+          <div class="cats">
+            <button class="cat"><span class="nm">Грип</span><span class="n">18</span></button>
+            <button class="cat demo-hover"><span class="nm">Стойки</span><span class="n">30</span></button>
+            <button class="cat on"><span class="nm">COB Light</span><span class="n">42</span></button>
+          </div>
+        </div>
+        <div class="st-lbl">обычная / наведение / выбрана</div>
+      </div>
+
+      <div>
+        <div class="st-h">Пресет периода</div>
+        <div class="st-box" style="background:var(--surface-muted)">
+          <div class="presets" style="margin-top:0">
+            <button class="preset"><svg class="ico ico-sm tick"><use href="#i-check"/></svg><span class="pn">Завтра</span><span class="pd">12.08 → 13.08</span></button>
+            <button class="preset on"><svg class="ico ico-sm tick"><use href="#i-check"/></svg><span class="pn">Сегодня</span><span class="pd">11.08 → 12.08</span></button>
+          </div>
+        </div>
+        <div class="st-lbl">обычный / активный</div>
+      </div>
+
+      <div>
+        <div class="st-h">Поля и переключатель</div>
+        <div class="st-box" style="background:var(--surface-muted)">
+          <input class="inp" type="datetime-local" value="2026-08-11T10:00" style="margin-bottom:8px">
+          <input class="inp is-focus" type="datetime-local" value="2026-08-12T10:00" style="margin-bottom:10px">
+          <label class="switch-row" style="margin-bottom:2px"><span class="switch"></span><span>Выключен</span></label>
+          <label class="switch-row on"><span class="switch"></span><span>Включён</span></label>
+        </div>
+        <div class="st-lbl">обычное / фокус-кольцо</div>
+      </div>
+
+      <div>
+        <div class="st-h">Чип активного фильтра · статусы</div>
+        <div class="st-row">
+          <span class="chip">COB&nbsp;Light <button aria-label="Снять"><svg class="ico ico-sm"><use href="#i-x"/></svg></button></span>
+          <span class="chip">Поиск: «600d» <button aria-label="Снять"><svg class="ico ico-sm"><use href="#i-x"/></svg></button></span>
+        </div>
+        <div class="st-row" style="margin-top:10px">
+          <span class="pill p-ok"><span class="dot"></span>Доступно</span>
+          <span class="pill p-warn"><span class="dot"></span>Частично</span>
+          <span class="pill p-bad"><span class="dot"></span>Занято</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= MOBILE ================= -->
+  <div class="block" style="margin-top:40px">
+    <div class="frame-cap">
+      <div class="eyebrow">Мобильный</div>
+      <div class="w">390 × 734 · рейл превращается в bottom-sheet; поиск и «Создать бронь» остаются снаружи (тач-цели ≥ 44 px)</div>
+    </div>
+    <div class="scroll-x">
+    <div class="mobiles">
+
+      <!-- ---- 1. список ---- -->
+      <div class="device">
+        <div class="m">
+          <div class="m-head">
+            <div class="m-title">
+              <div>
+                <div class="eyebrow">Склад</div>
+                <h2>Оборудование</h2>
+              </div>
+              <button class="btn btn-primary btn-m"><svg class="ico ico-sm"><use href="#i-plus"/></svg>Бронь</button>
+            </div>
+            <div class="m-controls">
+              <div class="search">
+                <svg class="ico"><use href="#i-search"/></svg>
+                <input type="search" placeholder="Поиск по каталогу" aria-label="Поиск">
+              </div>
+              <button class="btn-filters">
+                <svg class="ico"><use href="#i-sliders"/></svg>
+                Фильтры
+                <span class="badge">2</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="m-ctx">
+            <span class="chip">COB&nbsp;Light <button aria-label="Снять фильтр"><svg class="ico ico-sm"><use href="#i-x"/></svg></button></span>
+            <button class="period-echo" style="margin-left:0">
+              <span class="dt">11.08 → 12.08</span>
+              <span class="dur">1 смена</span>
+            </button>
+          </div>
+
+          <div style="padding:9px 16px 0;font-size:12px;color:var(--ink-2)">
+            Позиций: <b class="mono">42</b>, доступно: <b class="mono">39</b>
+          </div>
+
+          <div class="m-list">
+            <div class="m-card">
+              <div class="top">
+                <div>
+                  <div class="nm">Aputure LS 600d Pro</div>
+                  <div class="cat-l">COB Light · Aputure</div>
+                </div>
+                <span class="pill p-ok"><span class="dot"></span>Доступно</span>
+              </div>
+              <div class="m-stats">
+                <div class="m-stat"><span class="k">Всего</span><span class="v">8</span></div>
+                <div class="m-stat"><span class="k">Занято</span><span class="v">2</span></div>
+                <div class="m-stat"><span class="k">Своб.</span><span class="v" style="color:var(--emerald)">6</span></div>
+                <div class="m-price">4 500 ₽</div>
+              </div>
+            </div>
+
+            <div class="m-card">
+              <div class="top">
+                <div>
+                  <div class="nm">Nanlux Evoke 1200</div>
+                  <div class="cat-l">COB Light · Nanlux</div>
+                </div>
+                <span class="pill p-warn"><span class="dot"></span>Частично</span>
+              </div>
+              <div class="m-stats">
+                <div class="m-stat"><span class="k">Всего</span><span class="v">4</span></div>
+                <div class="m-stat"><span class="k">Занято</span><span class="v">3</span></div>
+                <div class="m-stat"><span class="k">Своб.</span><span class="v" style="color:var(--amber)">1</span></div>
+                <div class="m-price">9 000 ₽</div>
+              </div>
+            </div>
+
+            <div class="m-card">
+              <div class="top">
+                <div>
+                  <div class="nm">Aputure LS 1200d Pro</div>
+                  <div class="cat-l">COB Light · Aputure</div>
+                </div>
+                <span class="pill p-bad"><span class="dot"></span>Занято</span>
+              </div>
+              <div class="m-stats">
+                <div class="m-stat"><span class="k">Всего</span><span class="v">6</span></div>
+                <div class="m-stat"><span class="k">Занято</span><span class="v" style="color:var(--rose)">6</span></div>
+                <div class="m-stat"><span class="k">Своб.</span><span class="v" style="color:var(--rose)">0</span></div>
+                <div class="m-price">7 500 ₽</div>
+              </div>
+            </div>
+
+            <div class="m-card">
+              <div class="top">
+                <div>
+                  <div class="nm">Amaran 300c</div>
+                  <div class="cat-l">COB Light · Amaran</div>
+                </div>
+                <span class="pill p-ok"><span class="dot"></span>Доступно</span>
+              </div>
+              <div class="m-stats">
+                <div class="m-stat"><span class="k">Всего</span><span class="v">10</span></div>
+                <div class="m-stat"><span class="k">Занято</span><span class="v">1</span></div>
+                <div class="m-stat"><span class="k">Своб.</span><span class="v" style="color:var(--emerald)">9</span></div>
+                <div class="m-price">3 000 ₽</div>
+              </div>
+            </div>
+
+            <div class="m-card">
+              <div class="top">
+                <div>
+                  <div class="nm">Aputure STORM 1000c</div>
+                  <div class="cat-l">COB Light · Aputure</div>
+                </div>
+                <span class="pill p-ok"><span class="dot"></span>Доступно</span>
+              </div>
+              <div class="m-stats">
+                <div class="m-stat"><span class="k">Всего</span><span class="v">3</span></div>
+                <div class="m-stat"><span class="k">Занято</span><span class="v">1</span></div>
+                <div class="m-stat"><span class="k">Своб.</span><span class="v" style="color:var(--emerald)">2</span></div>
+                <div class="m-price">8 000 ₽</div>
+              </div>
+            </div>
+            <div class="tbl-more">Показано 5 из 42 — прокрутите список</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- 2. открытый bottom-sheet ---- -->
+      <div class="device">
+        <div class="m">
+          <div class="m-head">
+            <div class="m-title">
+              <div>
+                <div class="eyebrow">Склад</div>
+                <h2>Оборудование</h2>
+              </div>
+              <button class="btn btn-primary btn-m"><svg class="ico ico-sm"><use href="#i-plus"/></svg>Бронь</button>
+            </div>
+          </div>
+
+          <div class="scrim"></div>
+
+          <div class="sheet">
+            <div class="sheet-grab"></div>
+            <div class="sheet-head">
+              <h3>Фильтры</h3>
+              <button class="reset">Сбросить всё</button>
+            </div>
+            <div class="sheet-body">
+
+              <section class="sec">
+                <div class="sec-h"><div class="eyebrow">Период доступности</div></div>
+                <div class="field">
+                  <label>Выдача</label>
+                  <input class="inp" type="datetime-local" value="2026-08-11T10:00">
+                </div>
+                <div class="field">
+                  <label>Возврат</label>
+                  <input class="inp" type="datetime-local" value="2026-08-12T10:00">
+                </div>
+                <div class="presets">
+                  <button class="preset on"><svg class="ico ico-sm tick"><use href="#i-check"/></svg><span class="pn">Сегодня</span><span class="pd">11.08 → 12.08</span></button>
+                  <button class="preset"><svg class="ico ico-sm tick"><use href="#i-check"/></svg><span class="pn">Завтра</span><span class="pd">12.08 → 13.08</span></button>
+                  <button class="preset"><svg class="ico ico-sm tick"><use href="#i-check"/></svg><span class="pn">Неделя</span><span class="pd">10.08 → 16.08</span></button>
+                </div>
+              </section>
+
+              <section class="sec">
+                <label class="switch-row">
+                  <span class="switch" role="switch" aria-checked="false"></span>
+                  <span>Только доступные</span>
+                </label>
+              </section>
+
+              <section class="sec">
+                <div class="sec-h">
+                  <div class="eyebrow">Категории</div>
+                  <button class="reset">Сбросить</button>
+                </div>
+                <div class="cats">
+                  <button class="cat"><span class="nm">Все категории</span><span class="n">285</span></button>
+                  <button class="cat on"><span class="nm">COB Light</span><span class="n">42</span></button>
+                  <button class="cat"><span class="nm">Led Panel</span><span class="n">31</span></button>
+                  <button class="cat"><span class="nm">Pipe / Надувные приборы</span><span class="n">12</span></button>
+                  <button class="cat"><span class="nm">Battery / Аккумуляторный свет</span><span class="n">9</span></button>
+                  <button class="cat"><span class="nm">Насадки на приборы</span><span class="n">24</span></button>
+                  <button class="cat"><span class="nm">Грип</span><span class="n">18</span></button>
+                  <button class="cat"><span class="nm">Дымы / Хейзеры</span><span class="n">7</span></button>
+                  <button class="cat"><span class="nm">Стойки</span><span class="n">30</span></button>
+                  <button class="cat"><span class="nm">Кабели</span><span class="n">38</span></button>
+                </div>
+              </section>
+
+            </div>
+            <div class="sheet-foot">
+              <button class="btn btn-primary">Показать 42 позиции</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

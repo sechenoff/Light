@@ -1,11 +1,21 @@
 "use client";
 
-import { formatMoneyRub, pluralize } from "../../../lib/format";
-import type { CatalogSelectedItem, CustomItem, OffCatalogItem, QuoteResponse, TransportBreakdown, ValidationCheck } from "./types";
+import { EditablePrice } from "./EditablePrice";
+import { EstimateExportBlock } from "./EstimateExportBlock";
+import { formatMoneyRubWhole, pluralize } from "../../../lib/format";
+import type { QuoteResponse, TransportBreakdown, ValidationCheck } from "./types";
 
 type SummaryPanelProps = {
   quote: QuoteResponse | null;
+  /** Зафиксированный вручную итог брони; null — считаем по смете. */
+  negotiatedTotal?: number | null;
+  /** Задать/сбросить договорной итог. Не передан — итог только для чтения. */
+  onChangeNegotiatedTotal?: (v: number | null) => void;
   localSubtotal: number;
+  /** Прайсовая часть предварительного расчёта — база процентной скидки. */
+  localListedSubtotal: number;
+  /** Договорная часть предварительного расчёта — процент к ней не применяется. */
+  localNegotiatedSubtotal: number;
   localDiscount: number;
   localTotal: number;
   discountPercent: number;
@@ -25,20 +35,19 @@ type SummaryPanelProps = {
   // Edit-mode button
   onSaveEdit?: () => void;
   canSubmit: boolean;
-  selectedItems?: Map<string, CatalogSelectedItem>;
-  offCatalogItems?: OffCatalogItem[];
-  customItems?: CustomItem[];
   /** Per-vehicle breakdowns (multi-vehicle). Empty when no transport. */
   transportBreakdowns?: TransportBreakdown[];
-  onRemoveItem?: (equipmentId: string) => void;
-  onRemoveOffCatalog?: (tempId: string) => void;
-  onRemoveCustom?: (tempId: string) => void;
   /** Controls which action buttons to render. Defaults to "create". */
   mode?: "create" | "edit";
   /** Whether a save/submit action is in progress. */
   submitting?: boolean;
   /** Cancel link href (edit mode). */
   cancelHref?: string;
+  /** Правка сохранённой брони — тогда смету можно напечатать и выгрузить.
+   *  На форме создания печатать нечего: снапшота ещё нет. */
+  bookingId?: string;
+  /** В форме есть правки, которых нет в сохранённой смете. */
+  hasUnsavedChanges?: boolean;
 };
 
 const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass: string }> = {
@@ -51,7 +60,11 @@ const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass:
 
 export function SummaryPanel({
   quote,
+  negotiatedTotal = null,
+  onChangeNegotiatedTotal,
   localSubtotal,
+  localListedSubtotal,
+  localNegotiatedSubtotal,
   localDiscount,
   localTotal,
   discountPercent,
@@ -65,16 +78,12 @@ export function SummaryPanel({
   onSaveDraft,
   onSaveEdit,
   canSubmit,
-  selectedItems,
-  offCatalogItems,
-  customItems,
   transportBreakdowns,
-  onRemoveItem,
-  onRemoveOffCatalog,
-  onRemoveCustom,
   mode = "create",
   submitting = false,
   cancelHref,
+  bookingId,
+  hasUnsavedChanges = false,
 }: SummaryPanelProps) {
   const equipSubtotal = quote ? Number(quote.equipmentSubtotal ?? quote.subtotal) : localSubtotal;
   const discount = quote ? Number(quote.discountAmount) : localDiscount;
@@ -96,30 +105,21 @@ export function SummaryPanel({
     : round2(equipTotal + transportTotal);
   // Legacy: subtotal for backward compat in display
   const subtotal = equipSubtotal;
-  const total = grandTotal;
+  // Договорной итог перебивает расчётный: о сумме сговорились, и она держится,
+  // даже если состав потом поменяется. Разница показывается отдельной строкой,
+  // а не прячется внутрь цифры.
+  const total = negotiatedTotal ?? grandTotal;
+  const negotiatedDelta = negotiatedTotal != null ? round2(grandTotal - negotiatedTotal) : 0;
+
+  // Пока сметы нет, разбивку берём из предварительного расчёта, а не считаем
+  // всё прайсовым: иначе договорные строки попадали в базу скидки и панель
+  // показывала итог вдвое меньше того, что вернёт сервер.
+  const listedSubtotal =
+    quote?.listedSubtotal != null ? Number(quote.listedSubtotal) : localListedSubtotal;
+  const negotiatedLines =
+    quote?.negotiatedSubtotal != null ? Number(quote.negotiatedSubtotal) : localNegotiatedSubtotal;
 
   const bigTotalFormatted = Math.round(total).toLocaleString("ru-RU");
-
-  type MiniItem =
-    | { kind: "catalog"; key: string; equipmentId: string; name: string; qty: number }
-    | { kind: "off"; key: string; tempId: string; name: string; qty: number }
-    | { kind: "custom"; key: string; tempId: string; name: string; qty: number; unitPrice: number };
-  const miniList: MiniItem[] = [];
-  if (selectedItems) {
-    for (const s of selectedItems.values()) {
-      miniList.push({ kind: "catalog", key: s.equipmentId, equipmentId: s.equipmentId, name: s.name, qty: s.quantity });
-    }
-  }
-  if (offCatalogItems) {
-    for (const o of offCatalogItems) {
-      miniList.push({ kind: "off", key: o.tempId, tempId: o.tempId, name: o.name, qty: o.quantity });
-    }
-  }
-  if (customItems) {
-    for (const c of customItems) {
-      miniList.push({ kind: "custom", key: c.tempId, tempId: c.tempId, name: c.name, qty: c.quantity, unitPrice: c.unitPrice });
-    }
-  }
 
   return (
     <aside className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 shadow-xs">
@@ -143,80 +143,90 @@ export function SummaryPanel({
       {/* Big total */}
       <div>
         <div className="flex items-baseline gap-1">
-          <span className="font-mono text-[32px] font-semibold leading-none text-ink">
-            {bigTotalFormatted}
-          </span>
+          {onChangeNegotiatedTotal ? (
+            <EditablePrice
+              value={total}
+              listValue={grandTotal}
+              isNegotiated={negotiatedTotal != null}
+              onChange={onChangeNegotiatedTotal}
+              ariaLabel="Итоговая сумма брони"
+              size="lg"
+            />
+          ) : (
+            <span className="font-mono text-[32px] font-semibold leading-none text-ink">
+              {bigTotalFormatted}
+            </span>
+          )}
           <span className="text-[18px] text-ink-3">₽</span>
         </div>
         <p className="mt-1 text-xs text-ink-3">
-          {effectiveShifts} {pluralize(effectiveShifts, "день", "дня", "дней")} · {itemCount} {pluralize(itemCount, "позиция", "позиции", "позиций")}
+          {negotiatedTotal != null ? (
+            <>Итог зафиксирован вручную · по расчёту {formatMoneyRubWhole(grandTotal)} ₽</>
+          ) : (
+            <>
+              {effectiveShifts} {pluralize(effectiveShifts, "день", "дня", "дней")} · {itemCount}{" "}
+              {pluralize(itemCount, "позиция", "позиции", "позиций")}
+            </>
+          )}
         </p>
       </div>
 
       {/* Breakdown */}
       <div className="flex flex-col gap-1 text-sm">
         <div className="flex justify-between">
-          <span className="text-ink-2">Оборудование</span>
-          <span className="mono-num text-ink">{formatMoneyRub(equipSubtotal)} ₽</span>
+          <span className="text-ink-2">
+            {negotiatedLines > 0 ? "Оборудование по прайсу" : "Оборудование"}
+          </span>
+          <span className="mono-num text-ink">
+            {formatMoneyRubWhole(negotiatedLines > 0 ? listedSubtotal : equipSubtotal)} ₽
+          </span>
         </div>
         {discPct > 0 && discount > 0 && (
-          <>
-            <div className="flex justify-between">
-              <span className="text-ink-2">Скидка {discPct}%</span>
-              <span className="mono-num text-rose">−{formatMoneyRub(discount)} ₽</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-ink-2">Оборудование итого</span>
-              <span className="mono-num text-ink">{formatMoneyRub(equipTotal)} ₽</span>
-            </div>
-          </>
+          <div className="flex justify-between">
+            <span className="text-ink-2">Скидка {discPct}%</span>
+            <span className="mono-num text-rose">−{formatMoneyRubWhole(discount)} ₽</span>
+          </div>
+        )}
+        {negotiatedLines > 0 && (
+          <div className="flex justify-between">
+            <span className="text-ink-2">Позиции по договорённости</span>
+            <span className="mono-num text-indigo">{formatMoneyRubWhole(negotiatedLines)} ₽</span>
+          </div>
+        )}
+        {discPct > 0 && discount > 0 && negotiatedLines === 0 && (
+          <div className="flex justify-between">
+            <span className="text-ink-2">Оборудование итого</span>
+            <span className="mono-num text-ink">{formatMoneyRubWhole(equipTotal)} ₽</span>
+          </div>
         )}
         {transportRows.map((t) => (
           <div key={t.vehicleId} className="flex justify-between">
             <span className="text-ink-2">Транспорт ({t.vehicleName})</span>
-            <span className="mono-num text-ink">{formatMoneyRub(Number(t.total))} ₽</span>
+            <span className="mono-num text-ink">{formatMoneyRubWhole(Number(t.total))} ₽</span>
           </div>
         ))}
+        {negotiatedTotal != null && Math.abs(negotiatedDelta) >= 1 && (
+          <div className="flex justify-between">
+            <span className="text-ink-2">
+              {negotiatedDelta > 0 ? "Договорная скидка" : "Договорная надбавка"}
+            </span>
+            <span className={`mono-num ${negotiatedDelta > 0 ? "text-rose" : "text-amber"}`}>
+              {negotiatedDelta > 0 ? "−" : "+"}
+              {formatMoneyRubWhole(Math.abs(negotiatedDelta))} ₽
+            </span>
+          </div>
+        )}
         <div className="flex justify-between border-t border-border pt-1 font-semibold">
           <span className="text-ink">Итого</span>
-          <span className="mono-num text-ink">{formatMoneyRub(grandTotal)} ₽</span>
+          <span className="mono-num text-ink">{formatMoneyRubWhole(total)} ₽</span>
         </div>
+        {negotiatedLines > 0 && discPct > 0 && (
+          <p className="mt-1 rounded border border-amber-border bg-amber-soft px-2 py-1.5 text-[11.5px] leading-snug text-ink-2">
+            Скидка {discPct}% применяется только к позициям по прайсу. Вписанная вручную цена — уже
+            договорная, процент к ней не добавляется.
+          </p>
+        )}
       </div>
-
-      {/* Mini-list of selected items */}
-      {miniList.length > 0 && (
-        <div className="flex flex-col gap-0.5 border-t border-border pt-3">
-          {miniList.map((it) => (
-            <div key={it.key} className="group flex items-center gap-2 rounded px-1 py-0.5 text-[11.5px] hover:bg-surface-muted">
-              <span className="min-w-0 flex-1 truncate text-ink">{it.name}</span>
-              {it.kind === "custom" ? (
-                <span className="font-mono text-[11px] text-ink-3">{formatMoneyRub(it.unitPrice)} × {it.qty} = {formatMoneyRub(it.unitPrice * it.qty)} ₽</span>
-              ) : (
-                <span className="font-mono text-[11px] text-ink-3">×{it.qty}</span>
-              )}
-              {(it.kind === "catalog" ? onRemoveItem : it.kind === "off" ? onRemoveOffCatalog : onRemoveCustom) && (
-                <button
-                  type="button"
-                  aria-label={`Удалить ${it.name}`}
-                  title="Удалить из корзины"
-                  onClick={() => {
-                    if (it.kind === "catalog") {
-                      onRemoveItem?.(it.equipmentId);
-                    } else if (it.kind === "off") {
-                      onRemoveOffCatalog?.(it.tempId);
-                    } else {
-                      onRemoveCustom?.(it.tempId);
-                    }
-                  }}
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-3 opacity-0 transition-all hover:bg-rose-soft hover:text-rose group-hover:opacity-100 focus:opacity-100"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Action buttons */}
       {mode === "edit" ? (
@@ -286,6 +296,10 @@ export function SummaryPanel({
             {submitting ? "Сохранение…" : "Сохранить черновик"}
           </button>
         </div>
+      )}
+
+      {bookingId && (
+        <EstimateExportBlock bookingId={bookingId} hasUnsavedChanges={hasUnsavedChanges} />
       )}
 
       {/* Validation checks */}

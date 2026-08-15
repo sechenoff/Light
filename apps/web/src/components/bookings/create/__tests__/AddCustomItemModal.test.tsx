@@ -3,6 +3,23 @@ import { describe, it, expect, vi } from "vitest";
 import { AddCustomItemModal } from "../AddCustomItemModal";
 
 describe("AddCustomItemModal", () => {
+  it("цена своей позиции округляется до целых рублей", () => {
+    // Смета ведётся в целых: в прайсе и во всех суммах прода копеек нет, а в
+    // таблице состава цена, количество и сумма стоят рядом — с копейками
+    // строка «цена × количество = сумма» переставала бы сходиться.
+    const onAdd = vi.fn();
+    render(<AddCustomItemModal isOpen onClose={vi.fn()} onAdd={onAdd} initialName="дым" />);
+    fireEvent.change(screen.getByLabelText(/Цена/), { target: { value: "1500,49" } });
+    fireEvent.change(screen.getByLabelText(/Цена/), { target: { value: "1500.49" } });
+    fireEvent.click(screen.getByRole("button", { name: "Добавить в смету" }));
+    expect(onAdd).toHaveBeenCalledWith({ name: "дым", unitPrice: 1500, quantity: 1 });
+  });
+
+  it("поле цены не предлагает копейки шагом ввода", () => {
+    render(<AddCustomItemModal isOpen onClose={vi.fn()} onAdd={vi.fn()} />);
+    expect(screen.getByLabelText(/Цена/)).toHaveAttribute("step", "1");
+  });
+
   it("без префилла: пустое имя, количество 1, кнопка выключена", () => {
     render(<AddCustomItemModal isOpen onClose={vi.fn()} onAdd={vi.fn()} />);
     expect((screen.getByLabelText(/Название/) as HTMLInputElement).value).toBe("");

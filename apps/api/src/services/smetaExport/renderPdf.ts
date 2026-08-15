@@ -3,18 +3,53 @@ import path from "path";
 import type { Response } from "express";
 import PDFDocument from "pdfkit";
 
-import type { SmetaExportDocument } from "./types";
+import type {
+  SmetaExportDocument,
+  SmetaExportLine,
+  SmetaOrgInfo,
+  SmetaTransportSection,
+} from "./types";
 import { buildAttachmentContentDisposition } from "../../utils/contentDisposition";
 
-const COLORS = {
+// ── A4-геометрия ──────────────────────────────────────────────────────────────
+// Пагинация полностью ручная: документ создаётся с нулевыми полями pdfkit,
+// иначе его авто-разбивка на страницы конфликтует с нашей (footer у нижнего
+// края «уезжал» бы на новую страницу).
+
+const A4_WIDTH = 595.28;
+const A4_HEIGHT = 841.89;
+const MARGIN = 44;
+const FOOTER_ZONE = 30;
+const CONTENT_W = A4_WIDTH - MARGIN * 2;
+const BOTTOM_LIMIT = A4_HEIGHT - MARGIN - FOOTER_ZONE;
+const RIGHT_X = MARGIN + CONTENT_W;
+
+// Канон design-system.md: business blue + спокойная slate-шкала.
+const C = {
   ink: "#0f172a",
+  ink2: "#334155",
   muted: "#64748b",
+  faint: "#94a3b8",
   border: "#cbd5e1",
-  headerBg: "#f1f5f9",
-  tableHeadBg: "#e2e8f0",
+  hairline: "#e2e8f0",
+  zebra: "#f8fafc",
+  headBg: "#f1f5f9",
+  accent: "#1e3a8a",
+  accentBright: "#1d4ed8",
+  accentSoft: "#eff6ff",
+  accentBorder: "#bfdbfe",
 };
 
+// Колонки таблицы позиций (сумма = CONTENT_W).
+const COL_IDX = 26;
+const COL_QTY = 54;
+const COL_PRICE = 84;
+const COL_SUM = 94;
+const COL_NAME = CONTENT_W - COL_IDX - COL_QTY - COL_PRICE - COL_SUM;
+const CELL_PAD = 6;
+
 type FontSet = { body: string; bold: string };
+type Pdf = InstanceType<typeof PDFDocument>;
 
 /** Корень пакета apps/api (и для `src/…`, и для `dist/…` после сборки). */
 function apiPackageRoot(): string {
@@ -34,7 +69,7 @@ function bundledDejaVuPaths(): { regular: string; bold: string } | null {
   return null;
 }
 
-function resolveFonts(doc: InstanceType<typeof PDFDocument>): FontSet {
+function resolveFonts(doc: Pdf): FontSet {
   const ttf = process.env.SMETA_PDF_FONT_TTF?.trim();
   const boldTtf = process.env.SMETA_PDF_FONT_BOLD_TTF?.trim();
   if (ttf && fs.existsSync(ttf)) {
@@ -52,227 +87,716 @@ function resolveFonts(doc: InstanceType<typeof PDFDocument>): FontSet {
   return { body: "Helvetica", bold: "Helvetica-Bold" };
 }
 
+/** Русская форма слова «смена» для реквизитов документа. */
+function pluralShifts(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "смена";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "смены";
+  return "смен";
+}
+
 function rub(value: string): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return `${value} ₽`;
   return `${n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`;
 }
 
+function todayRuLabel(): string {
+  return new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+}
+
+type CategoryGroup = { category: string; items: SmetaExportLine[] };
+
+/** Группировка строк по категории с сохранением порядка появления. */
+function groupByCategory(lines: SmetaExportLine[]): CategoryGroup[] {
+  const order: string[] = [];
+  const map = new Map<string, SmetaExportLine[]>();
+  for (const line of lines) {
+    const key = line.category?.trim() || "Прочее";
+    if (!map.has(key)) {
+      map.set(key, []);
+      order.push(key);
+    }
+    map.get(key)!.push(line);
+  }
+  return order.map((category) => ({ category, items: map.get(category)! }));
+}
+
+type RenderOptions = {
+  transport?: SmetaTransportSection | null;
+  grandTotal?: string | null;
+  /** Согласованная вручную сумма брони; перебивает расчётный итог. */
+  agreedTotal?: string | null;
+};
+
 /**
- * Рисует одну секцию сметы в уже открытый PDFKit-документ.
- * Использует текущую страницу — у вызывающего ответственность вызвать `doc.addPage()`
- * между секциями при multi-section экспорте.
+ * Пишущий движок сметы: держит текущий y, разбивает на страницы, повторяет
+ * шапку таблицы и категорию на переносе, в конце проставляет футер «Стр. N из M»
+ * на все страницы (через bufferPages).
  */
-export function drawSmetaDocumentIntoPdf(
-  doc: InstanceType<typeof PDFDocument>,
-  data: SmetaExportDocument,
-): void {
-  const margin = 48;
-  const pageWidth = 595.28;
-  const contentW = pageWidth - margin * 2;
-  const fonts = resolveFonts(doc);
+class SmetaPdfWriter {
+  private readonly doc: Pdf;
+  private readonly fonts: FontSet;
+  private y = MARGIN;
+  /** Активная категория таблицы — для повтора банда после переноса страницы. */
+  private tableContext: { category: string } | null = null;
 
-  let y = margin;
-
-  // —— Header band
-  const headerH = 78;
-  doc.save();
-  doc.rect(margin, y, contentW, headerH).fill(COLORS.headerBg);
-  doc.restore();
-
-  doc.fillColor(COLORS.ink).font(fonts.bold).fontSize(17).text(data.documentTitleRu, margin + 14, y + 14, {
-    width: contentW - 28,
-  });
-  doc.font(fonts.body).fontSize(9).fillColor(COLORS.muted).text(data.documentTitleEn, margin + 14, y + 36, {
-    width: contentW - 28,
-  });
-
-  const metaColW = 168;
-  const metaX = margin + contentW - metaColW - 14;
-  let metaY = y + 14;
-  doc.font(fonts.body).fontSize(8.5).fillColor(COLORS.muted);
-  doc.text("Дата выдачи", metaX, metaY, { width: metaColW, align: "right" });
-  metaY += 11;
-  doc.fillColor(COLORS.ink).font(fonts.bold).fontSize(9).text(data.issueDateLabel, metaX, metaY, {
-    width: metaColW,
-    align: "right",
-  });
-  metaY += 18;
-  doc.fillColor(COLORS.muted).font(fonts.body).fontSize(8.5).text("Дата возврата", metaX, metaY, {
-    width: metaColW,
-    align: "right",
-  });
-  metaY += 11;
-  doc.fillColor(COLORS.ink).font(fonts.bold).fontSize(9).text(data.returnDateLabel, metaX, metaY, {
-    width: metaColW,
-    align: "right",
-  });
-  metaY += 18;
-  doc.fillColor(COLORS.muted).font(fonts.body).fontSize(8.5).text("Погрузка / выдача", metaX, metaY, {
-    width: metaColW,
-    align: "right",
-  });
-  metaY += 11;
-  doc.fillColor(COLORS.ink).font(fonts.bold).fontSize(9).text(data.loadOutTimeLabel, metaX, metaY, {
-    width: metaColW,
-    align: "right",
-  });
-  metaY += 16;
-  doc.fillColor(COLORS.muted).font(fonts.body).fontSize(8.5).text("Погрузка / возврат", metaX, metaY, {
-    width: metaColW,
-    align: "right",
-  });
-  metaY += 11;
-  doc.fillColor(COLORS.ink).font(fonts.bold).fontSize(9).text(data.returnLoadTimeLabel, metaX, metaY, {
-    width: metaColW,
-    align: "right",
-  });
-
-  y += headerH + 18;
-
-  function sectionTitle(title: string) {
-    doc.fillColor(COLORS.ink).font(fonts.bold).fontSize(10.5).text(title, margin, y, { width: contentW });
-    y += 16;
+  constructor(doc: Pdf) {
+    this.doc = doc;
+    this.fonts = resolveFonts(doc);
   }
 
-  function kv(label: string, value: string) {
-    doc.font(fonts.body).fontSize(9).fillColor(COLORS.muted).text(`${label}:`, margin, y, { width: 110 });
-    doc.fillColor(COLORS.ink).text(value, margin + 112, y, { width: contentW - 112 });
-    y += 14;
+  // ── низкоуровневые помощники ────────────────────────────────────────────────
+
+  private hline(y: number, color = C.hairline, weight = 0.7, x1 = MARGIN, x2 = RIGHT_X): void {
+    this.doc.save();
+    this.doc.moveTo(x1, y).lineTo(x2, y).lineWidth(weight).strokeColor(color).stroke();
+    this.doc.restore();
   }
 
-  // —— Info
-  sectionTitle("Реквизиты");
-  kv("Клиент", data.clientName);
-  kv("Проект", data.projectName);
-  if (data.comment) kv("Комментарий", data.comment);
-  if (data.includeOptionalInExport && data.optionalNote?.trim()) {
-    kv("Дополнительно", data.optionalNote.trim());
+  private fillRect(x: number, y: number, w: number, h: number, color: string): void {
+    this.doc.save();
+    this.doc.rect(x, y, w, h).fill(color);
+    this.doc.restore();
   }
-  y += 6;
 
-  sectionTitle("Просчёт часов сметы");
-  doc.font(fonts.body).fontSize(9).fillColor(COLORS.ink).text(data.hourCalculationText, margin, y, {
-    width: contentW,
-    lineGap: 2,
-  });
-  y = doc.y + 14;
-
-  // —— Table
-  sectionTitle("Список аренды");
-  const colWidths = [28, 158, 92, 44, 78, 78];
-  const headers = ["№", "Наименование", "Категория", "Кол-во", "Цена за смену", "Сумма"];
-  const rowH = 22;
-  const tableX = margin;
-
-  function ensureSpace(extra: number) {
-    const bottom = doc.page.height - margin;
-    if (y + extra > bottom) {
-      doc.addPage();
-      y = margin;
+  private newPage(): void {
+    this.doc.addPage();
+    this.y = MARGIN;
+    if (this.tableContext) {
+      this.drawTableHeader();
+      this.drawCategoryBand(this.tableContext.category, true);
     }
   }
 
-  // header row
-  ensureSpace(rowH + 4);
-  doc.save();
-  doc.rect(tableX, y, contentW, rowH).fill(COLORS.tableHeadBg).stroke(COLORS.border);
-  doc.restore();
-  let cx = tableX;
-  doc.font(fonts.bold).fontSize(8).fillColor(COLORS.ink);
-  headers.forEach((h, i) => {
-    doc.text(h, cx + 4, y + 7, {
-      width: colWidths[i] - 8,
-      height: rowH - 8,
+  private ensure(height: number): void {
+    if (this.y + height > BOTTOM_LIMIT) this.newPage();
+  }
+
+  // ── блоки документа ────────────────────────────────────────────────────────
+
+  private drawOrgBar(org: SmetaOrgInfo | null): void {
+    const d = this.doc;
+    if (!org || (!org.name && !org.phone && !org.address && !org.email && !org.inn)) {
+      // Реквизиты не настроены — оставляем только фирменную линию.
+      this.fillRect(MARGIN, this.y, CONTENT_W, 2.5, C.accent);
+      this.y += 16;
+      return;
+    }
+
+    if (org.name) {
+      d.font(this.fonts.bold).fontSize(11.5).fillColor(C.accent);
+      d.text(org.name, MARGIN, this.y, { width: CONTENT_W - 190, lineBreak: false, ellipsis: true });
+    }
+    const idBits = [org.inn ? `ИНН ${org.inn}` : null, org.kpp ? `КПП ${org.kpp}` : null]
+      .filter(Boolean)
+      .join("  ·  ");
+    if (idBits) {
+      d.font(this.fonts.body).fontSize(8).fillColor(C.faint);
+      d.text(idBits, MARGIN + CONTENT_W - 190, this.y + 2, { width: 190, align: "right", lineBreak: false });
+    }
+    // Сдвигаем курсор, даже когда юр. имени нет: иначе строка контактов
+    // рисовалась поверх ИНН.
+    this.y += org.name || idBits ? 15 : 0;
+
+    const contactBits = [org.phone, org.email, org.address].filter(Boolean) as string[];
+    if (contactBits.length > 0) {
+      d.font(this.fonts.body).fontSize(8).fillColor(C.muted);
+      d.text(contactBits.join("  ·  "), MARGIN, this.y, { width: CONTENT_W, lineBreak: false, ellipsis: true });
+      this.y += 12;
+    }
+
+    this.y += 4;
+    this.fillRect(MARGIN, this.y, CONTENT_W, 2.5, C.accent);
+    this.y += 16;
+  }
+
+  private drawTitle(data: SmetaExportDocument): void {
+    const d = this.doc;
+    // Правый блок шире прежнего: «Дата составления 10 августа 2026 г.» в 140 pt
+    // не помещалась и роняла «г.» на отдельную строку.
+    const rightW = 186;
+    const titleW = CONTENT_W - rightW - 12;
+
+    d.font(this.fonts.bold).fontSize(19).fillColor(C.ink);
+    // Заголовок переносится, а не обрезается: в одну строку он не влезал и
+    // наезжал на английский подзаголовок под собой.
+    const titleH = d.heightOfString(data.documentTitleRu, { width: titleW, lineGap: 1 });
+    d.text(data.documentTitleRu, MARGIN, this.y, { width: titleW, lineGap: 1 });
+
+    // Номер и дата — правым столбиком, а не внутри заголовка: приклеенный к
+    // названию номер разгонял заголовок на три строки.
+    const titleTop = this.y;
+    let ry = titleTop + 3;
+    if (data.docNumber) {
+      d.font(this.fonts.bold).fontSize(10.5).fillColor(C.accent);
+      d.text(`№ ${data.docNumber}`, MARGIN + CONTENT_W - rightW, ry, {
+        width: rightW,
+        align: "right",
+        lineBreak: false,
+      });
+      ry += 14;
+    }
+    d.font(this.fonts.body).fontSize(8).fillColor(C.faint);
+    d.text(`от ${data.issuedAtLabel}`, MARGIN + CONTENT_W - rightW, ry, {
+      width: rightW,
+      align: "right",
+      lineBreak: false,
+    });
+    this.y = titleTop + Math.max(titleH, ry + 10 - titleTop, 24) + 2;
+
+    d.font(this.fonts.body).fontSize(9).fillColor(C.muted);
+    d.text(data.documentTitleEn, MARGIN, this.y, { width: CONTENT_W, lineBreak: false });
+    this.y += 20;
+  }
+
+  /** Ячейка «подпись сверху, значение снизу». Возвращает высоту. */
+  private metaCell(x: number, y: number, w: number, label: string, value: string, boldValue: boolean): number {
+    const d = this.doc;
+    d.font(this.fonts.bold).fontSize(6.8).fillColor(C.faint);
+    d.text(label.toUpperCase(), x, y, { width: w, lineBreak: false, characterSpacing: 0.6 });
+
+    d.font(boldValue ? this.fonts.bold : this.fonts.body).fontSize(9.5).fillColor(C.ink);
+    const vh = d.heightOfString(value, { width: w, lineGap: 1 });
+    d.text(value, x, y + 10, { width: w, lineGap: 1 });
+    return 10 + vh;
+  }
+
+  private drawMetaGrid(data: SmetaExportDocument): void {
+    const gap = 18;
+    const colW = (CONTENT_W - gap) / 2;
+    const rows: Array<Array<{ label: string; value: string; bold?: boolean }>> = [
+      [
+        { label: "Клиент", value: data.clientName, bold: true },
+        { label: "Проект", value: data.projectName, bold: true },
+      ],
+      [
+        { label: "Выдача", value: `${data.issueDateLabel}, ${data.loadOutTimeLabel}` },
+        { label: "Возврат", value: `${data.returnDateLabel}, ${data.returnLoadTimeLabel}` },
+      ],
+      // Смены — множитель, на который умножена каждая строка таблицы. Без него
+      // «5 000 ₽ × 2 = 30 000 ₽» выглядит арифметической ошибкой.
+      [
+        {
+          label: "Смен в периоде",
+          value: `${data.shiftsCount} ${pluralShifts(data.shiftsCount)} (по 24 ч)`,
+        },
+        {
+          label: "Срок оплаты",
+          value: data.paymentDueLabel ? `до ${data.paymentDueLabel}` : "по договорённости",
+        },
+      ],
+    ];
+
+    for (const row of rows) {
+      this.ensure(30);
+      const heights = row.map((cell, i) =>
+        this.metaCell(MARGIN + i * (colW + gap), this.y, colW, cell.label, cell.value, cell.bold ?? false),
+      );
+      this.y += Math.max(...heights) + 9;
+    }
+  }
+
+  private drawNotes(data: SmetaExportDocument): void {
+    const d = this.doc;
+
+    // Просчёт часов — приглушённая плашка с акцентной кромкой.
+    const boxText = data.hourCalculationText?.trim();
+    if (boxText) {
+      d.font(this.fonts.body).fontSize(8.5);
+      const textW = CONTENT_W - 20;
+      const th = d.heightOfString(boxText, { width: textW, lineGap: 1.5 });
+      const boxH = th + 22;
+      this.ensure(boxH + 8);
+      this.fillRect(MARGIN, this.y, CONTENT_W, boxH, C.zebra);
+      this.fillRect(MARGIN, this.y, 2.5, boxH, C.accentBorder);
+      d.font(this.fonts.bold).fontSize(6.8).fillColor(C.faint);
+      d.text("ПРОСЧЁТ ЧАСОВ", MARGIN + 12, this.y + 6, { characterSpacing: 0.6, lineBreak: false });
+      d.font(this.fonts.body).fontSize(8.5).fillColor(C.ink2);
+      d.text(boxText, MARGIN + 12, this.y + 16, { width: textW, lineGap: 1.5 });
+      this.y += boxH + 10;
+    }
+
+    const noteLine = (label: string, text: string) => {
+      const d2 = this.doc;
+      d2.font(this.fonts.body).fontSize(8.5);
+      const th = d2.heightOfString(`${label}: ${text}`, { width: CONTENT_W, lineGap: 1.5 });
+      this.ensure(th + 6);
+      d2.font(this.fonts.bold).fontSize(8.5).fillColor(C.ink2);
+      d2.text(`${label}: `, MARGIN, this.y, { continued: true, lineGap: 1.5 });
+      d2.font(this.fonts.body).fillColor(C.ink2);
+      d2.text(text, { width: CONTENT_W, lineGap: 1.5 });
+      this.y += th + 6;
+    };
+
+    if (data.comment?.trim()) noteLine("Комментарий", data.comment.trim());
+    if (data.includeOptionalInExport && data.optionalNote?.trim()) {
+      noteLine("Дополнительно", data.optionalNote.trim());
+    }
+    this.y += 4;
+  }
+
+  private drawTableHeader(): void {
+    const d = this.doc;
+    const h = 20;
+    this.fillRect(MARGIN, this.y, CONTENT_W, h, C.headBg);
+    this.hline(this.y, C.border, 0.8);
+    this.hline(this.y + h, C.border, 0.8);
+
+    d.font(this.fonts.bold).fontSize(7).fillColor(C.ink2);
+    const ty = this.y + 6.5;
+    let x = MARGIN;
+    const head = (text: string, w: number, align: "left" | "center" | "right") => {
+      d.text(text, x + CELL_PAD, ty, {
+        width: w - CELL_PAD * 2,
+        align,
+        lineBreak: false,
+        characterSpacing: 0.5,
+      });
+      x += w;
+    };
+    head("№", COL_IDX, "center");
+    head("НАИМЕНОВАНИЕ", COL_NAME, "left");
+    head("КОЛ-ВО", COL_QTY, "center");
+    head("ЦЕНА / СМЕНА", COL_PRICE, "right");
+    head("СУММА", COL_SUM, "right");
+    this.y += h;
+  }
+
+  private drawCategoryBand(category: string, isContinuation = false): void {
+    const d = this.doc;
+    const h = 16;
+    this.fillRect(MARGIN, this.y, CONTENT_W, h, C.accentSoft);
+    d.font(this.fonts.bold).fontSize(7.5).fillColor(C.accent);
+    const label = isContinuation ? `${category} — продолжение` : category;
+    d.text(label.toUpperCase(), MARGIN + CELL_PAD, this.y + 4.5, {
+      width: CONTENT_W - CELL_PAD * 2,
       lineBreak: false,
       ellipsis: true,
+      characterSpacing: 0.6,
     });
-    cx += colWidths[i];
-  });
-  y += rowH;
+    this.y += h;
+  }
 
-  doc.font(fonts.body).fontSize(8.5);
-  for (const line of data.lines) {
-    ensureSpace(rowH);
-    doc.rect(tableX, y, contentW, rowH).stroke(COLORS.border);
-    cx = tableX;
-    const cells = [
-      String(line.index),
-      line.name,
-      line.category,
-      String(line.quantity),
-      rub(line.pricePerShift),
-      rub(line.lineSum),
-    ];
-    cells.forEach((cell, i) => {
-      doc.fillColor(COLORS.ink).text(cell, cx + 4, y + 6, {
-        width: colWidths[i] - 8,
-        height: rowH - 8,
+  private drawItemRow(line: SmetaExportLine, zebra: boolean): void {
+    const d = this.doc;
+    d.font(this.fonts.body).fontSize(8.5);
+    const nameW = COL_NAME - CELL_PAD * 2;
+    const nameH = d.heightOfString(line.name, { width: nameW, lineGap: 1 });
+    // Подпись о персональной цене живёт под названием: так уступка видна
+    // заказчику, а колонка цены остаётся одной цифрой.
+    const noteText = line.listPricePerShift
+      ? `персональная скидка · цена до скидки ${rub(line.listPricePerShift)}`
+      : null;
+    const noteH = noteText ? d.fontSize(7).heightOfString(noteText, { width: nameW }) + 1.5 : 0;
+    d.fontSize(8.5);
+    const rowH = Math.max(19, nameH + noteH + 9);
+
+    if (this.y + rowH > BOTTOM_LIMIT) this.newPage();
+
+    if (zebra) this.fillRect(MARGIN, this.y, CONTENT_W, rowH, C.zebra);
+    const ty = this.y + 4.5;
+
+    d.font(this.fonts.body).fontSize(8).fillColor(C.faint);
+    d.text(String(line.index), MARGIN + CELL_PAD, ty + 0.5, {
+      width: COL_IDX - CELL_PAD * 2,
+      align: "center",
+      lineBreak: false,
+    });
+
+    d.font(this.fonts.body).fontSize(8.5).fillColor(C.ink);
+    d.text(line.name, MARGIN + COL_IDX + CELL_PAD, ty, { width: nameW, lineGap: 1 });
+    if (noteText) {
+      d.fontSize(7).fillColor(C.faint);
+      d.text(noteText, MARGIN + COL_IDX + CELL_PAD, ty + nameH + 1, { width: nameW, lineBreak: true });
+      d.fontSize(8.5).fillColor(C.ink);
+    }
+
+    d.text(String(line.quantity), MARGIN + COL_IDX + COL_NAME + CELL_PAD, ty, {
+      width: COL_QTY - CELL_PAD * 2,
+      align: "center",
+      lineBreak: false,
+    });
+    d.fillColor(C.ink2);
+    d.text(rub(line.pricePerShift), MARGIN + COL_IDX + COL_NAME + COL_QTY + CELL_PAD, ty, {
+      width: COL_PRICE - CELL_PAD * 2,
+      align: "right",
+      lineBreak: false,
+    });
+    d.fillColor(C.ink);
+    d.text(rub(line.lineSum), MARGIN + COL_IDX + COL_NAME + COL_QTY + COL_PRICE + CELL_PAD, ty, {
+      width: COL_SUM - CELL_PAD * 2,
+      align: "right",
+      lineBreak: false,
+    });
+
+    this.hline(this.y + rowH);
+    this.y += rowH;
+  }
+
+  private drawTable(data: SmetaExportDocument): void {
+    const groups = groupByCategory(data.lines);
+    this.ensure(60);
+    this.drawTableHeader();
+    // Нумеруем в порядке ПЕЧАТИ, а не исходном: строки перегруппированы по
+    // категориям, и исходный индекс давал на листе «6, 7, 12, 8» — выглядит
+    // как потерянные позиции.
+    let printedIndex = 0;
+    for (const group of groups) {
+      this.ensure(16 + 19); // банд категории + минимум одна строка вместе
+      this.drawCategoryBand(group.category);
+      this.tableContext = { category: group.category };
+      group.items.forEach((line, i) => {
+        printedIndex += 1;
+        this.drawItemRow({ ...line, index: printedIndex }, i % 2 === 1);
+      });
+    }
+    this.tableContext = null;
+    this.y += 12;
+  }
+
+  /**
+   * Итоги секции. `emphasizeFinal` — финальная строка оформляется акцентной
+   * плашкой (для одиночной сметы, где это и есть сумма к оплате).
+   */
+  private drawSectionTotals(data: SmetaExportDocument, emphasizeFinal: boolean): void {
+    // Шире прежних 252: подпись «Позиции по договорённости» не помещалась в
+    // свою колонку, переносилась и перечёркивалась линией итога.
+    const blockW = 310;
+    const x = RIGHT_X - blockW;
+    const d = this.doc;
+
+    // Блок итогов переносим целиком: построчный ensure отрывал финальную
+    // строку от её же разбивки, и «Итого по смете» оставалось одно на
+    // следующей странице — документ читался как обрубленный.
+    const detailRows =
+      (data.listedSubtotal != null && data.negotiatedSubtotal != null ? 2 : 1) +
+      (Number(data.discountPercent) > 0 ? 1 : 0);
+    this.ensure(detailRows * 16 + (emphasizeFinal ? 31 : 22));
+
+    const row = (label: string, value: string, opts?: { bold?: boolean; muted?: boolean }) => {
+      this.ensure(18);
+      d.font(opts?.bold ? this.fonts.bold : this.fonts.body)
+        .fontSize(9.5)
+        .fillColor(opts?.muted ? C.muted : C.ink);
+      d.text(label, x, this.y, { width: blockW - 122, lineBreak: false, ellipsis: true });
+      d.text(value, x + blockW - 118, this.y, { width: 118, align: "right", lineBreak: false });
+      this.y += 16;
+    };
+
+    // Когда в смете есть договорные позиции, процент считается не от всей
+    // суммы: без базы строка «Скидка N%» перестаёт сходиться с арифметикой
+    // и первым делом вызывает у заказчика вопрос.
+    if (data.listedSubtotal != null && data.negotiatedSubtotal != null) {
+      row("Оборудование по прайсу", rub(data.listedSubtotal), { muted: true });
+      if (Number(data.discountPercent) > 0) {
+        row(`Скидка ${data.discountPercent}%`, `− ${rub(data.discountAmount)}`, { muted: true });
+      }
+      row("Позиции по договорённости", rub(data.negotiatedSubtotal), { muted: true });
+    } else {
+      row("Оборудование итого", rub(data.subtotal), { muted: true });
+      if (Number(data.discountPercent) > 0) {
+        row(`Скидка ${data.discountPercent}%`, `− ${rub(data.discountAmount)}`, { muted: true });
+      }
+    }
+
+    const finalLabel = data.documentTitleRu === "Смета-добор" ? "Итого по доб-смете" : "Итого по смете";
+    if (emphasizeFinal) {
+      const h = 27;
+      this.ensure(h + 4);
+      this.fillRect(x, this.y, blockW, h, C.accentSoft);
+      this.hline(this.y, C.accentBorder, 0.9, x, x + blockW);
+      this.hline(this.y + h, C.accentBorder, 0.9, x, x + blockW);
+      d.font(this.fonts.bold).fontSize(9).fillColor(C.accent);
+      d.text("ИТОГО К ОПЛАТЕ", x + 10, this.y + 9, { lineBreak: false, characterSpacing: 0.5 });
+      d.font(this.fonts.bold).fontSize(11.5).fillColor(C.accent);
+      d.text(rub(data.totalAfterDiscount), x, this.y + 7.5, { width: blockW - 10, align: "right", lineBreak: false });
+      this.y += h + 4;
+    } else {
+      this.hline(this.y + 1, C.border, 0.8, x, x + blockW);
+      this.y += 6;
+      row(finalLabel, rub(data.totalAfterDiscount), { bold: true });
+    }
+  }
+
+  private drawTransport(section: SmetaTransportSection): void {
+    const d = this.doc;
+    // Блок переносим целиком: раньше «ensure(70)» пускал на страницу шапку и
+    // одну машину, а остальное с итогом уезжало на следующую — клиент получал
+    // двухстраничный документ с почти пустым вторым листом.
+    const blockH =
+      6 + 16 + section.lines.reduce((h, l) => h + 19 + (l.details ? 11 : 0), 0) + 24;
+    this.ensure(blockH);
+    this.y += 6;
+    this.drawTableHeaderlessBand("ТРАНСПОРТ");
+
+    for (const line of section.lines) {
+      d.font(this.fonts.body).fontSize(8.5);
+      const nameW = CONTENT_W - COL_SUM - CELL_PAD * 2;
+      const detailsH = line.details ? 11 : 0;
+      const rowH = 19 + detailsH;
+      this.ensure(rowH);
+
+      const ty = this.y + 4.5;
+      d.font(this.fonts.body).fontSize(8.5).fillColor(C.ink);
+      d.text(line.name, MARGIN + CELL_PAD, ty, { width: nameW, lineBreak: false, ellipsis: true });
+      if (line.details) {
+        d.font(this.fonts.body).fontSize(7.5).fillColor(C.muted);
+        d.text(line.details, MARGIN + CELL_PAD, ty + 11.5, { width: nameW, lineBreak: false, ellipsis: true });
+      }
+      d.font(this.fonts.body).fontSize(8.5).fillColor(C.ink);
+      d.text(rub(line.sum), RIGHT_X - COL_SUM + CELL_PAD, ty, {
+        width: COL_SUM - CELL_PAD * 2,
+        align: "right",
+        lineBreak: false,
+      });
+      this.hline(this.y + rowH);
+      this.y += rowH;
+    }
+
+    this.ensure(20);
+    this.y += 4;
+    d.font(this.fonts.bold).fontSize(9.5).fillColor(C.ink);
+    d.text("Транспорт итого", RIGHT_X - 252, this.y, { width: 140, lineBreak: false });
+    d.text(rub(section.subtotal), RIGHT_X - 108, this.y, { width: 108, align: "right", lineBreak: false });
+    this.y += 20;
+  }
+
+  private drawTableHeaderlessBand(label: string): void {
+    const h = 16;
+    this.fillRect(MARGIN, this.y, CONTENT_W, h, C.accentSoft);
+    this.doc.font(this.fonts.bold).fontSize(7.5).fillColor(C.accent);
+    this.doc.text(label, MARGIN + CELL_PAD, this.y + 4.5, {
+      width: CONTENT_W - CELL_PAD * 2,
+      lineBreak: false,
+      characterSpacing: 0.6,
+    });
+    this.y += h;
+  }
+
+  private drawGrandTotal(
+    sections: SmetaExportDocument[],
+    transport: SmetaTransportSection | null,
+    grandTotal: string,
+    agreedTotal?: string | null,
+  ): void {
+    const blockW = 276;
+    const x = RIGHT_X - blockW;
+    const d = this.doc;
+
+    const composition: Array<{ label: string; value: string }> = [];
+    const main = sections[0];
+    if (main) composition.push({ label: "Оборудование (после скидки)", value: rub(main.totalAfterDiscount) });
+    const addon = sections[1];
+    if (addon) composition.push({ label: "Доб-смета (после скидки)", value: rub(addon.totalAfterDiscount) });
+    if (transport) composition.push({ label: "Транспорт", value: rub(transport.subtotal) });
+    // Договорную сумму не подменяем молча: показываем расчёт, потом уступку,
+    // потом то, что платить. Иначе документ спорит со счётом без объяснения.
+    const hasAgreed = agreedTotal != null && agreedTotal !== grandTotal;
+    if (hasAgreed) {
+      // Когда блок один (только оборудование), его строка и «Итого по расчёту»
+      // — одна и та же цифра дважды подряд.
+      if (composition.length === 1) composition.length = 0;
+      composition.push({ label: "Итого по расчёту", value: rub(grandTotal) });
+      const delta = Number(grandTotal) - Number(agreedTotal);
+      if (Number.isFinite(delta) && Math.abs(delta) >= 0.01) {
+        composition.push({
+          label: delta > 0 ? "Согласованная скидка" : "Согласованная надбавка",
+          value: `${delta > 0 ? "− " : "+ "}${rub(Math.abs(delta).toFixed(2))}`,
+        });
+      }
+    }
+    const payable = hasAgreed ? (agreedTotal as string) : grandTotal;
+
+    const bandH = 30;
+    const compH = composition.length * 15;
+    this.ensure(compH + bandH + 18);
+    this.y += 6;
+
+    d.font(this.fonts.body).fontSize(8.5);
+    for (const c of composition) {
+      d.fillColor(C.muted);
+      d.text(c.label, x, this.y, { width: blockW - 112, lineBreak: false, ellipsis: true });
+      d.fillColor(C.ink2);
+      d.text(c.value, x + blockW - 110, this.y, { width: 110, align: "right", lineBreak: false });
+      this.y += 15;
+    }
+
+    this.y += 3;
+    this.fillRect(x, this.y, blockW, bandH, C.accentSoft);
+    this.hline(this.y, C.accentBorder, 1, x, x + blockW);
+    this.hline(this.y + bandH, C.accentBorder, 1, x, x + blockW);
+    d.font(this.fonts.bold).fontSize(9.5).fillColor(C.accent);
+    d.text("ИТОГО К ОПЛАТЕ", x + 10, this.y + 10.5, { lineBreak: false, characterSpacing: 0.5 });
+    d.font(this.fonts.bold).fontSize(13).fillColor(C.accent);
+    d.text(rub(payable), x, this.y + 8.5, { width: blockW - 10, align: "right", lineBreak: false });
+    this.y += bandH;
+  }
+
+  private drawSection(data: SmetaExportDocument, emphasizeFinal: boolean): void {
+    this.drawOrgBar(data.org);
+    this.drawTitle(data);
+    this.drawMetaGrid(data);
+    this.drawNotes(data);
+    this.drawTable(data);
+    this.drawSectionTotals(data, emphasizeFinal);
+  }
+
+  /**
+   * Реквизиты для оплаты. Смета — платёжный документ: сумма к оплате без
+   * счёта заставляла заказчика писать отдельное письмо за реквизитами.
+   * Блок переносится целиком — половина банковского счёта на разрыве
+   * страницы хуже, чем его отсутствие.
+   */
+  private drawPaymentDetails(org: SmetaOrgInfo | null): void {
+    if (!org) return;
+    const rows: Array<[string, string]> = [];
+    if (org.name) rows.push(["Получатель", org.name]);
+    const idBits = [org.inn ? `ИНН ${org.inn}` : null, org.kpp ? `КПП ${org.kpp}` : null]
+      .filter(Boolean)
+      .join("  ·  ");
+    if (idBits) rows.push(["", idBits]);
+    if (org.rschet) rows.push(["Расчётный счёт", org.rschet]);
+    if (org.bankName) rows.push(["Банк", org.bankName]);
+    if (org.bankBik) rows.push(["БИК", org.bankBik]);
+    if (org.kschet) rows.push(["Корр. счёт", org.kschet]);
+    if (rows.length === 0) return;
+
+    const d = this.doc;
+    const lineH = 13;
+    const blockH = 16 + rows.length * lineH + 10;
+    this.ensure(blockH + 10);
+    this.y += 10;
+
+    this.drawTableHeaderlessBand("РЕКВИЗИТЫ ДЛЯ ОПЛАТЫ");
+    this.y += 6;
+    const labelW = 110;
+    for (const [label, value] of rows) {
+      d.font(this.fonts.body).fontSize(8).fillColor(C.muted);
+      if (label) d.text(label, MARGIN + CELL_PAD, this.y, { width: labelW, lineBreak: false });
+      d.font(this.fonts.body).fontSize(8.5).fillColor(C.ink2);
+      d.text(value, MARGIN + CELL_PAD + labelW, this.y, {
+        width: CONTENT_W - labelW - CELL_PAD * 2,
         lineBreak: false,
         ellipsis: true,
       });
-      cx += colWidths[i];
+      this.y += lineH;
+    }
+    this.y += 4;
+  }
+
+  /** Футер на всех страницах — вызывать строго перед doc.end(). */
+  private finalizeFooters(org: SmetaOrgInfo | null): void {
+    const d = this.doc;
+    const range = d.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i++) {
+      d.switchToPage(i);
+      const fy = A4_HEIGHT - MARGIN - 10;
+      this.hline(fy - 7, C.hairline, 0.7);
+      d.font(this.fonts.body).fontSize(7.5).fillColor(C.faint);
+      const left = [org?.name, org?.phone].filter(Boolean).join("  ·  ");
+      if (left) {
+        d.text(left, MARGIN, fy, { width: CONTENT_W - 100, lineBreak: false, ellipsis: true });
+      }
+      d.text(`Стр. ${i - range.start + 1} из ${range.count}`, RIGHT_X - 100, fy, {
+        width: 100,
+        align: "right",
+        lineBreak: false,
+      });
+    }
+  }
+
+  /** Полный проход: секции → транспорт → общий итог → футеры. */
+  render(sections: SmetaExportDocument[], opts: RenderOptions): void {
+    const transport = opts.transport ?? null;
+    // Договорной итог тоже требует общего блока: без него единственное место,
+    // где расчётная сумма подменяется согласованной, просто не вызывается, и
+    // на брони без добора и транспорта лист печатал расчёт, споря со счётом.
+    const showGrand =
+      sections.length > 1 || Boolean(transport) || opts.agreedTotal != null;
+
+    sections.forEach((section, idx) => {
+      if (idx > 0) {
+        this.doc.addPage();
+        this.y = MARGIN;
+      }
+      this.drawSection(section, !showGrand);
     });
-    y += rowH;
+
+    if (transport) this.drawTransport(transport);
+    if (showGrand && opts.grandTotal) {
+      this.drawGrandTotal(sections, transport, opts.grandTotal, opts.agreedTotal ?? null);
+    }
+
+    this.drawPaymentDetails(sections[0]?.org ?? null);
+    this.finalizeFooters(sections[0]?.org ?? null);
   }
-
-  y += 12;
-
-  // —— Totals
-  const totalsW = 220;
-  const totalsX = margin + contentW - totalsW;
-  function totalRow(label: string, value: string, bold = false) {
-    ensureSpace(20);
-    doc.font(bold ? fonts.bold : fonts.body).fontSize(10).fillColor(COLORS.ink);
-    doc.text(label, totalsX, y, { width: totalsW - 100 });
-    doc.text(value, totalsX + totalsW - 96, y, { width: 96, align: "right" });
-    y += 16;
-  }
-
-  totalRow("Смета итого", rub(data.subtotal));
-  totalRow(`Скидка (${data.discountPercent}%)`, `− ${rub(data.discountAmount)}`);
-  totalRow("Итого после скидки", rub(data.totalAfterDiscount), true);
 }
 
+function createSmetaDoc(data: SmetaExportDocument): Pdf {
+  const doc = new PDFDocument({
+    size: "A4",
+    margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    bufferPages: true,
+    autoFirstPage: true,
+    info: {
+      Title: `${data.documentTitleRu} — ${data.clientName}`,
+      Author: data.org?.name ?? "Light Rental",
+      Subject: data.projectName,
+    },
+  });
+  return doc;
+}
+
+// ── Публичное API (сигнатуры совместимы с роутами) ────────────────────────────
+
+/** Одиночная смета (equipment-only / доб-смета / превью quote). */
 export function writeSmetaPdf(res: Response, data: SmetaExportDocument, downloadName: string): void {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", buildAttachmentContentDisposition(downloadName, "estimate.pdf"));
 
-  const doc = new PDFDocument({ size: "A4", margin: 48, autoFirstPage: true });
+  const doc = createSmetaDoc(data);
   doc.pipe(res);
-  drawSmetaDocumentIntoPdf(doc, data);
+  new SmetaPdfWriter(doc).render([data], {});
   doc.end();
 }
 
 /**
- * Multi-section PDF: каждая секция рисуется со своей страницы, затем общий grand-total
- * футер. Если передан один документ — поведение эквивалентно `writeSmetaPdf` (без футера).
+ * Multi-section PDF: main (+ addon с новой страницы) + транспорт + общий итог.
+ * С одной секцией и без транспорта поведение эквивалентно `writeSmetaPdf`.
  */
 export function writeSmetaPdfMulti(
   res: Response,
   sections: SmetaExportDocument[],
   downloadName: string,
   grandTotal: string,
+  transport: SmetaTransportSection | null = null,
+  agreedTotal: string | null = null,
 ): void {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", buildAttachmentContentDisposition(downloadName, "estimate.pdf"));
 
-  const doc = new PDFDocument({ size: "A4", margin: 48, autoFirstPage: true });
+  const doc = createSmetaDoc(sections[0]);
   doc.pipe(res);
-
-  sections.forEach((section, idx) => {
-    if (idx > 0) doc.addPage();
-    drawSmetaDocumentIntoPdf(doc, section);
-  });
-
-  // Grand total footer на последней странице (только при multi-section)
-  if (sections.length > 1) {
-    doc.moveDown(2);
-    const n = Number(grandTotal);
-    const formatted = Number.isFinite(n)
-      ? `${n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`
-      : `${grandTotal} ₽`;
-    doc.fontSize(11).text(`ИТОГО к оплате: ${formatted}`, { align: "right" });
-  }
+  new SmetaPdfWriter(doc).render(sections, { transport, grandTotal, agreedTotal });
   doc.end();
+}
+
+/** Буферный вариант для не-Express потребителей (ЛК клиента). */
+export function renderSmetaPdfToBuffer(
+  sections: SmetaExportDocument[],
+  grandTotal: string | null = null,
+  transport: SmetaTransportSection | null = null,
+  agreedTotal: string | null = null,
+): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const doc = createSmetaDoc(sections[0]);
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+    new SmetaPdfWriter(doc).render(sections, { transport, grandTotal, agreedTotal });
+    doc.end();
+  });
 }

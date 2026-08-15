@@ -4,17 +4,21 @@ import { writeSmetaPdf, writeSmetaPdfMulti } from "./renderPdf";
 import type { SmetaFullExportDocument } from "./types";
 
 /**
- * PDF: main page(s) + опционально addon page(s). Если addon = null,
- * результат идентичен одиночному main PDF (просто вызывает writeSmetaPdf).
+ * PDF полной сметы: main (+ addon с новой страницы) + транспорт + «ИТОГО К
+ * ОПЛАТЕ». Без addon и транспорта результат идентичен одиночному main PDF.
  */
 export function writeFullSmetaPdf(
   res: Response,
   doc: SmetaFullExportDocument,
   downloadName: string,
 ): void {
-  if (!doc.addon) {
+  // Договорной итог обязан попасть в документ даже когда нет ни добора, ни
+  // транспорта: иначе одиночная смета напечатает расчётную сумму вместо той,
+  // о которой договорились.
+  if (!doc.addon && !doc.transport && doc.agreedTotal == null) {
     writeSmetaPdf(res, doc.main, downloadName);
     return;
   }
-  writeSmetaPdfMulti(res, [doc.main, doc.addon], downloadName, doc.grandTotal);
+  const sections = doc.addon ? [doc.main, doc.addon] : [doc.main];
+  writeSmetaPdfMulti(res, sections, downloadName, doc.grandTotal, doc.transport, doc.agreedTotal ?? null);
 }

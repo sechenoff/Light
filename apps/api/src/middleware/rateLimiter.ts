@@ -17,9 +17,8 @@ function limiterKey(req: Request): string {
   if (session) return `s:${session.slice(0, 32)}`;
   const apiKey = req.get("x-api-key");
   if (apiKey) return `k:${apiKey.slice(0, 32)}`;
-  // ipKeyGenerator нормализует IPv6 до /56-подсети — иначе один клиент с
-  // IPv6-префиксом получает практически бесконечный запас свежих адресов и
-  // обходит лимит (startup-ValidationError ERR_ERL_KEY_GEN_IPV6; fix 2026-08-05).
+  // ipKeyGenerator схлопывает IPv6 до /56-подсети: голый req.ip дал бы клиенту
+  // свежий бакет на каждый адрес подсети (и ERR_ERL_KEY_GEN_IPV6 в v8).
   return req.ip ? `ip:${ipKeyGenerator(req.ip)}` : "ip:unknown";
 }
 

@@ -8,6 +8,11 @@ import { lkClientId } from "../../services/clientPortal/tenant";
 import { HttpError } from "../../utils/errors";
 import { buildBookingEstimatePdf, buildBookingActPdf } from "../../services/documentExport/bookingPdf";
 import {
+  buildFullSmeta,
+  renderSmetaPdfToBuffer,
+  smetaOrgFromSettings,
+} from "../../services/smetaExport";
+import {
   renderInvoicePdf,
   coalesceWithEnv,
   type InvoiceLine,
@@ -231,13 +236,44 @@ router.get("/:id/estimate.pdf", lkAuth, async (req, res, next) => {
     const clientId = lkClientId(req);
     const booking = await prisma.booking.findUnique({
       where: { id: req.params.id },
-      select: { clientId: true, status: true, deletedAt: true },
+      include: {
+        client: true,
+        estimates: { include: { lines: true } },
+        vehicles: { include: { vehicle: true } },
+      },
     });
     // LKG-4: архивную бронь клиент не открывает и её PDF не качает.
     if (!booking || booking.clientId !== clientId || booking.deletedAt) throw new HttpError(404, "Не найдено", "NOT_FOUND");
     if (!VISIBLE_STATUSES.includes(booking.status as any)) throw new HttpError(404, "Не найдено", "NOT_FOUND");
 
-    const pdfBuf = await buildBookingEstimatePdf(req.params.id);
+    // Клиент получает тот же документ, что менеджер отправляет вручную:
+    // полная смета (main + доб + транспорт) в смета-рендерере. Легаси-брони
+    // без MAIN-снапшота остаются на старом invoice-путe (buildBookingEstimatePdf).
+    const main = booking.estimates.find((e) => e.kind === "MAIN");
+    let pdfBuf: Buffer;
+    if (main) {
+      const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
+      const org = smetaOrgFromSettings(await getSettings());
+      // Договорной итог обязателен и здесь — этот PDF клиент качает сам.
+      // Без него портал показывал расчётную сумму, а счёт на ту же бронь —
+      // согласованную: заказчик видел два разных числа за один заказ.
+      const full = buildFullSmeta({
+        booking,
+        main,
+        addon,
+        org,
+        agreedTotal: booking.manualFinalAmount,
+      });
+      const sections = full.addon ? [full.main, full.addon] : [full.main];
+      pdfBuf = await renderSmetaPdfToBuffer(
+        sections,
+        full.grandTotal,
+        full.transport,
+        full.agreedTotal ?? null,
+      );
+    } else {
+      pdfBuf = await buildBookingEstimatePdf(req.params.id);
+    }
     res.setHeader("Content-Type", "application/pdf");
     res.end(pdfBuf);
   } catch (err) {

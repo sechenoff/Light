@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 
 import { apiFetch, apiFetchRaw } from "../../../src/lib/api";
-import { getFileNameFromContentDisposition } from "../../../src/lib/download";
+import { downloadEstimate, fullEstimatePath, printEstimate } from "../../../src/lib/estimateExport";
 import { StatusPill } from "../../../src/components/StatusPill";
 import { SectionHeader } from "../../../src/components/SectionHeader";
 import { formatMoneyRub, formatRub } from "../../../src/lib/format";
@@ -51,6 +51,7 @@ import { CancelWithDepositModal } from "../../../src/components/finance/CancelWi
 import { CreditNoteApplyModal } from "../../../src/components/finance/CreditNoteApplyModal";
 import { ClientPortalAccessCard } from "../../../src/components/admin/ClientPortalAccessCard";
 import { AddonEstimateSection } from "../../../src/components/bookings/AddonEstimateSection";
+import { ForgiveOutstandingModal } from "../../../src/components/bookings/ForgiveOutstandingModal";
 import { VehicleDriverRow } from "../../../src/components/bookings/VehicleDriverRow";
 
 type ScanSession = {
@@ -250,19 +251,7 @@ export default function BookingDetailPage() {
   }, [id]);
 
   async function download(path: string, filename: string) {
-    const res = await apiFetchRaw(path, { method: "GET", credentials: "include" });
-    if (!res.ok) {
-      alert("Не удалось скачать файл");
-      return;
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const disposition = res.headers.get("content-disposition") ?? "";
-    a.download = getFileNameFromContentDisposition(disposition, filename);
-    a.click();
-    URL.revokeObjectURL(url);
+    await downloadEstimate(path, filename);
   }
 
   async function reloadBooking() {
@@ -365,9 +354,33 @@ export default function BookingDetailPage() {
   // на фронте показываем read-only баннер и прячем кнопки действий.
   const isArchived = Boolean(booking?.deletedAt);
 
-  // Только SUPER_ADMIN видит retro-edit-кнопку на закрытой (и не архивной) броне.
+  // SUPER_ADMIN: ретро-редактирование закрытой (RETURNED) и выданной (ISSUED)
+  // брони. Для ISSUED состав позиций read-only (правится после приёмки) —
+  // доступны проект/комментарий/скидка/ручной итог/водители.
   const canRetroEdit =
-    user?.role === "SUPER_ADMIN" && booking?.status === "RETURNED" && !isArchived;
+    user?.role === "SUPER_ADMIN" &&
+    (booking?.status === "RETURNED" || booking?.status === "ISSUED") &&
+    !isArchived;
+  const retroItemsEditable = retroEditMode && booking?.status === "RETURNED";
+
+  // «Простить остаток» — модалка + POST /forgive-outstanding.
+  const [forgiveOpen, setForgiveOpen] = useState(false);
+  const [forgiveBusy, setForgiveBusy] = useState(false);
+  async function handleForgiveOutstanding(reason: string) {
+    if (!booking) return;
+    setForgiveBusy(true);
+    try {
+      const data = await apiFetch<{ booking: BookingDetail }>(
+        `/api/bookings/${booking.id}/forgive-outstanding`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+      );
+      setBooking((prev) => (prev ? { ...prev, ...data.booking } : data.booking));
+      setForgiveOpen(false);
+      toast.success("Остаток прощён — итог брони зафиксирован по полученной сумме");
+    } finally {
+      setForgiveBusy(false);
+    }
+  }
 
   async function loadInvoices() {
     if (!id) return;
@@ -402,27 +415,21 @@ export default function BookingDetailPage() {
    */
   async function downloadEstimatePdfWithFallback() {
     if (!booking) return;
-    try {
-      const res = await apiFetchRaw(`/api/bookings/${booking.id}/full-estimate/export/pdf`, {
-        method: "GET",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        toast.error("Смета ещё не сформирована — сохраните бронь");
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const disposition = res.headers.get("content-disposition") ?? "";
-      a.download = getFileNameFromContentDisposition(disposition, `booking-${booking.id}-full.pdf`);
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error("Смета ещё не сформирована — сохраните бронь");
-    }
+    await downloadEstimate(fullEstimatePath(booking.id, "pdf"), `booking-${booking.id}-full.pdf`);
   }
+
+
+  /**
+   * Печать сметы: полная смета (A4-PDF с реквизитами, доборами и транспортом)
+   * грузится блобом и печатается из скрытого iframe — печатается сам документ,
+   * а не админская страница. Safari не умеет печатать PDF из iframe — там
+   * открываем PDF в новой вкладке и подсказываем ⌘P.
+   */
+  async function printEstimatePdf() {
+    if (!booking) return;
+    await printEstimate(fullEstimatePath(booking.id, "pdf"));
+  }
+
 
   async function handleSubmitForApproval() {
     if (!booking) return;
@@ -610,11 +617,17 @@ export default function BookingDetailPage() {
             <div className="mb-4 rounded-lg border border-amber-border bg-amber-soft px-4 py-3 flex items-start gap-3 no-print">
               <span className="text-lg" aria-hidden>⚠</span>
               <div className="flex-1">
-                <p className="text-sm font-semibold text-amber">Режим редактирования закрытой брони</p>
+                <p className="text-sm font-semibold text-amber">
+                  {booking.status === "ISSUED"
+                    ? "Режим редактирования выданной брони"
+                    : "Режим редактирования закрытой брони"}
+                </p>
                 <p className="mt-1 text-xs text-ink-2">
                   Изменения попадут в аудит-лог как{" "}
                   <span className="font-mono">BOOKING_RETROACTIVE_EDIT</span>. Сметы и счёт-факты
                   не перевыпускаются автоматически — после сохранения проверьте финансы.
+                  {booking.status === "ISSUED" &&
+                    " Состав позиций у выданной брони правится после приёмки — сейчас доступны проект, комментарий, скидка, ручной итог и водители."}
                 </p>
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 max-w-3xl">
                   <label className="block">
@@ -864,7 +877,7 @@ export default function BookingDetailPage() {
           {/* Таблица позиций — вынесена в BookingItemsTable (фаза 4.10). */}
           <BookingItemsTable
             booking={booking}
-            retroEditMode={retroEditMode}
+            retroEditMode={retroItemsEditable}
             retroItems={retroEdits.items}
             onOpenPicker={() => setRetroPickerOpen(true)}
             onUpdateQty={updateRetroItemQty}
@@ -916,6 +929,7 @@ export default function BookingDetailPage() {
               onDownload={download}
               onReloadInvoices={loadInvoices}
               onDownloadInvoicePdf={downloadInvoicePdf}
+              onForgiveOutstanding={() => setForgiveOpen(true)}
             />
 
             {/* Данные заказа — вынесено в BookingOrderInfoSection (фаза 4.10). */}
@@ -939,6 +953,7 @@ export default function BookingDetailPage() {
             <BookingEstimateSection
               booking={booking}
               onDownload={download}
+              onPrint={printEstimatePdf}
               onDownloadEstimateFallback={downloadEstimatePdfWithFallback}
             />
             <AddonEstimateSection bookingId={booking.id} />
@@ -974,6 +989,18 @@ export default function BookingDetailPage() {
         dispatch={dispatchFinanceModal}
         onDownload={download}
       />
+
+      {booking && (
+        <ForgiveOutstandingModal
+          open={forgiveOpen}
+          bookingLabel={bookingTitle(booking)}
+          outstanding={booking.amountOutstanding ?? "0"}
+          amountPaid={booking.amountPaid ?? "0"}
+          loading={forgiveBusy}
+          onClose={() => setForgiveOpen(false)}
+          onSubmit={handleForgiveOutstanding}
+        />
+      )}
 
       {/* RecordPaymentModal — T2 */}
       {booking && (

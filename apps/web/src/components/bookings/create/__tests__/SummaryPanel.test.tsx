@@ -9,6 +9,8 @@ const noopDraft = vi.fn();
 const defaultProps = {
   quote: null,
   localSubtotal: 10000,
+  localListedSubtotal: 10000,
+  localNegotiatedSubtotal: 0,
   localDiscount: 1000,
   localTotal: 9000,
   discountPercent: 10,
@@ -25,6 +27,32 @@ describe("SummaryPanel", () => {
   it("renders 'Расчёт' eyebrow", () => {
     render(<SummaryPanel {...defaultProps} />);
     expect(screen.getByText("Расчёт")).toBeInTheDocument();
+  });
+
+  it("до серверной сметы процент считается только с прайсовых строк", () => {
+    // Панель показывает предварительный расчёт, пока не пришёл ответ /quote —
+    // например, пока не введено имя клиента. Если начислить процент и на
+    // договорные строки, итог на экране вдвое меньше того, что вернёт сервер,
+    // а потом молча удваивается. Сервер (splitEquipmentDiscount) берёт базой
+    // только прайсовые строки.
+    render(
+      <SummaryPanel
+        {...defaultProps}
+        quote={null}
+        localSubtotal={3000}
+        localListedSubtotal={0}
+        localNegotiatedSubtotal={3000}
+        localDiscount={0}
+        localTotal={3000}
+        discountPercent={50}
+      />,
+    );
+    expect(screen.getByText("Позиции по договорённости")).toBeInTheDocument();
+    // Вместо вычета — объяснение, почему процента не будет.
+    expect(screen.getByText(/процент к ней не добавляется/i)).toBeInTheDocument();
+    // Итог равен договорной сумме, а не половине от неё (1 500 нигде нет).
+    expect(screen.getAllByText("3 000 ₽").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/1\s?500/)).toBeNull();
   });
 
   it("shows 'считаю...' when loading", () => {

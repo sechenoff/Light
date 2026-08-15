@@ -1,6 +1,7 @@
 "use client";
 
-import { formatMoneyRub } from "../../../lib/format";
+import { formatMoneyRubWhole } from "../../../lib/format";
+import { EditablePrice, ListPriceBadge, RevertPriceButton } from "./EditablePrice";
 import type { VehicleRow, TransportBreakdown, SelectedVehicle } from "./types";
 
 type TransportCardProps = {
@@ -12,6 +13,11 @@ type TransportCardProps = {
   onPatchVehicle: (vehicleId: string, patch: Partial<SelectedVehicle>) => void;
   /** Per-vehicle breakdowns keyed by vehicleId (from quote or local calc). */
   breakdownByVehicleId: Record<string, TransportBreakdown>;
+  /**
+   * Договорная сумма за машину; null — вернуть расчёт по прайсу и параметрам.
+   * Не передан — суммы только для чтения.
+   */
+  onChangeNegotiatedTotal?: (vehicleId: string, total: number | null) => void;
 };
 
 export function TransportCard({
@@ -20,6 +26,7 @@ export function TransportCard({
   onToggleVehicle,
   onPatchVehicle,
   breakdownByVehicleId,
+  onChangeNegotiatedTotal,
 }: TransportCardProps) {
   const selectedById = new Map(selected.map((s) => [s.vehicleId, s]));
   const totalAll = selected.reduce(
@@ -59,7 +66,7 @@ export function TransportCard({
                 />
                 <span className="flex-1 text-sm text-ink">{vehicle.name}</span>
                 <span className="mono-num text-sm text-ink-3">
-                  {formatMoneyRub(Number(vehicle.shiftPriceRub))} ₽/смена
+                  {formatMoneyRubWhole(Number(vehicle.shiftPriceRub))} ₽/смена
                 </span>
               </label>
 
@@ -81,7 +88,7 @@ export function TransportCard({
                         + Генератор{" "}
                         {vehicle.generatorPriceRub && (
                           <span className="text-ink-2">
-                            (+{formatMoneyRub(Number(vehicle.generatorPriceRub))} ₽)
+                            (+{formatMoneyRubWhole(Number(vehicle.generatorPriceRub))} ₽)
                           </span>
                         )}
                       </span>
@@ -178,14 +185,14 @@ export function TransportCard({
                         <div className="flex justify-between">
                           <span>Смена</span>
                           <span className="mono-num">
-                            {formatMoneyRub(Number(breakdown.shiftRate))} ₽
+                            {formatMoneyRubWhole(Number(breakdown.shiftRate))} ₽
                           </span>
                         </div>
                         {Number(breakdown.overtime) > 0 && (
                           <div className="flex justify-between">
                             <span>Переработка ({breakdown.overtimeHours} ч.)</span>
                             <span className="mono-num">
-                              {formatMoneyRub(Number(breakdown.overtime))} ₽
+                              {formatMoneyRubWhole(Number(breakdown.overtime))} ₽
                             </span>
                           </div>
                         )}
@@ -193,7 +200,7 @@ export function TransportCard({
                           <div className="flex justify-between">
                             <span>За МКАД ({sel.kmOutsideMkad} км)</span>
                             <span className="mono-num">
-                              {formatMoneyRub(Number(breakdown.km))} ₽
+                              {formatMoneyRubWhole(Number(breakdown.km))} ₽
                             </span>
                           </div>
                         )}
@@ -201,15 +208,35 @@ export function TransportCard({
                           <div className="flex justify-between">
                             <span>ТТК</span>
                             <span className="mono-num">
-                              {formatMoneyRub(Number(breakdown.ttk))} ₽
+                              {formatMoneyRubWhole(Number(breakdown.ttk))} ₽
                             </span>
                           </div>
                         )}
-                        <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold text-ink">
+                        <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-border pt-1 font-semibold text-ink">
                           <span>Итого {vehicle.name}</span>
-                          <span className="mono-num">
-                            {formatMoneyRub(Number(breakdown.total))} ₽
-                          </span>
+                          {onChangeNegotiatedTotal ? (
+                            <span className="flex items-center gap-1.5">
+                              {sel.negotiatedTotalRub != null && (
+                                <>
+                                  <ListPriceBadge value={Number(breakdown.listTotal ?? breakdown.total)} />
+                                  <RevertPriceButton
+                                    onClick={() => onChangeNegotiatedTotal(sel.vehicleId, null)}
+                                    label={`Вернуть прайсовую цену: ${vehicle.name}`}
+                                  />
+                                </>
+                              )}
+                              <EditablePrice
+                                value={Number(breakdown.total)}
+                                listValue={Number(breakdown.listTotal ?? breakdown.total)}
+                                isNegotiated={sel.negotiatedTotalRub != null}
+                                onChange={(v) => onChangeNegotiatedTotal(sel.vehicleId, v)}
+                                ariaLabel={`Сумма за машину: ${vehicle.name}`}
+                              />
+                              <span className="text-ink-3">₽</span>
+                            </span>
+                          ) : (
+                            <span className="mono-num">{formatMoneyRubWhole(Number(breakdown.total))} ₽</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -225,7 +252,7 @@ export function TransportCard({
       {selected.length > 0 && (
         <div className="mt-4 flex justify-between border-t border-border pt-3 text-sm font-semibold text-ink">
           <span>Итого транспорт ({selected.length})</span>
-          <span className="mono-num">{formatMoneyRub(totalAll)} ₽</span>
+          <span className="mono-num">{formatMoneyRubWhole(totalAll)} ₽</span>
         </div>
       )}
     </section>

@@ -8,6 +8,8 @@ export type TransportInput = {
   skipOvertime: boolean;
   kmOutsideMkad: number;
   ttkEntry: boolean;
+  /** Договорная сумма за машину; null — считаем по прайсу и параметрам. */
+  negotiatedTotalRub?: number | null;
 };
 
 /**
@@ -48,7 +50,11 @@ export function computeTransportPriceClient(input: TransportInput): TransportBre
     overtimeHours,
     km: km.toFixed(2),
     ttk: ttk.toFixed(2),
-    total: total.toFixed(2),
+    // Договорная сумма заменяет расчёт целиком — как и на сервере. Разбивка
+    // остаётся: она объясняет, из чего сложилась прайсовая цена.
+    total: (input.negotiatedTotalRub ?? total).toFixed(2),
+    listTotal: total.toFixed(2),
+    isNegotiated: input.negotiatedTotalRub != null,
   };
 }
 
@@ -74,6 +80,7 @@ export function computeTransportListClient(
         skipOvertime: sel.skipOvertime,
         kmOutsideMkad: sel.kmOutsideMkad,
         ttkEntry: sel.ttkEntry,
+        negotiatedTotalRub: sel.negotiatedTotalRub ?? null,
       }),
     );
   }

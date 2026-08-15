@@ -16,6 +16,7 @@
 import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
+import { resolveCatalogLinePrice, splitEquipmentDiscount } from "./pricing";
 
 const CUSTOM_LINE_CATEGORY = "Прочее";
 
@@ -58,13 +59,23 @@ export async function recreateMainEstimate(bookingId: string): Promise<void> {
     quantity: number;
     unitPrice: Decimal;
     lineSum: Decimal;
+    listUnitPrice: Decimal | null;
+    isNegotiated: boolean;
   };
 
   const lines: LineInput[] = items
     .map((bi: any): LineInput | null => {
       if (bi.equipmentId != null && bi.equipment != null) {
-        const unitPrice = new Decimal(bi.equipment.rentalRatePerShift.toString());
-        const lineSum = unitPrice.mul(bi.quantity).mul(shifts);
+        // Цена считается тем же хелпером, что и в quoteEstimate: unitPrice — за
+        // ВЕСЬ ПЕРИОД. Единица здесь уже расходилась с остальными построителями
+        // (лежала ставка за смену), и колонка «цена/смена» в PDF после приёмки
+        // печаталась заниженной — экспорт всегда делит unitPrice на смены.
+        const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+          ratePerShift: bi.equipment.rentalRatePerShift.toString(),
+          shifts,
+          negotiatedRatePerShift: bi.negotiatedRatePerShift?.toString() ?? null,
+        });
+        const lineSum = unitPrice.mul(bi.quantity);
         return {
           equipmentId: bi.equipmentId,
           categorySnapshot: bi.equipment.category,
@@ -74,6 +85,8 @@ export async function recreateMainEstimate(bookingId: string): Promise<void> {
           quantity: bi.quantity,
           unitPrice,
           lineSum,
+          listUnitPrice,
+          isNegotiated,
         };
       }
       // Произвольная позиция — цена фиксированная, без умножения на shifts.
@@ -88,13 +101,13 @@ export async function recreateMainEstimate(bookingId: string): Promise<void> {
         quantity: bi.quantity,
         unitPrice,
         lineSum: unitPrice.mul(bi.quantity),
+        listUnitPrice: null,
+        isNegotiated: false,
       };
     })
     .filter((l): l is LineInput => l !== null);
 
-  const subtotal = lines.reduce((acc, l) => acc.add(l.lineSum), new Decimal(0));
-  const discountAmount = subtotal.mul(discountPercent).div(100);
-  const totalAfterDiscount = subtotal.sub(discountAmount);
+  const { subtotal, discountAmount, totalAfterDiscount } = splitEquipmentDiscount(lines, discountPercent);
 
   await prisma.$transaction(async (tx) => {
     await tx.estimate.deleteMany({ where: { bookingId, kind: "MAIN" } });
@@ -125,6 +138,7 @@ export async function recreateMainEstimate(bookingId: string): Promise<void> {
             quantity: l.quantity,
             unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
             lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+            listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
           })),
         },
       },

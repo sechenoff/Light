@@ -60,6 +60,30 @@ export async function getMergedCategoryOrder(): Promise<string[]> {
   return mergeCategoryOrder(saved, names);
 }
 
+/**
+ * Число позиций каталога в каждой категории — для счётчиков в тулбаре /equipment.
+ * Один groupBy по индексу @@index([category]) вместо запроса на категорию.
+ *
+ * Ключ — СЫРОЕ имя из БД, без normalizeCategoryName. Счётчик обязан считаться тем
+ * же ключом, что и фильтр: `?category=` идёт в SQL точным равенством. Сложить
+ * «Грип» и « грип » в одно число значило бы обещать 4 позиции там, где по клику
+ * придёт 3 — а список категорий и так показывает оба написания отдельными
+ * строками (getMergedCategoryOrder собирает их из raw-distinct).
+ */
+export async function getCategoryCounts(categories: string[]): Promise<Record<string, number>> {
+  const grouped = await prisma.equipment.groupBy({
+    by: ["category"],
+    _count: { _all: true },
+  });
+  const byRaw = new Map(grouped.map((g) => [g.category, g._count._all]));
+
+  const counts: Record<string, number> = {};
+  for (const name of categories) {
+    counts[name] = byRaw.get(name) ?? 0;
+  }
+  return counts;
+}
+
 export async function setCategoryOrder(orderedCategories: string[]): Promise<string[]> {
   const distinct = await prisma.equipment.findMany({
     distinct: ["category"],

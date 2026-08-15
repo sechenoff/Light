@@ -4,7 +4,8 @@ import type { Booking, Equipment, BookingItem, Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { billableShifts24h, formatExportHourCalculationLine } from "../utils/dates";
 import { HttpError } from "../utils/errors";
-import { computeUnitPriceForBookingPeriod } from "./pricing";
+import { computeUnitPriceForBookingPeriod, resolveCatalogLinePrice, splitEquipmentDiscount } from "./pricing";
+import { generateEstimateDocNumber } from "./numberingService";
 import { getAvailability } from "./availability";
 import { computeTransportPrice } from "./transportCalculator";
 import type { TransportBreakdown } from "./transportCalculator";
@@ -42,6 +43,10 @@ export type QuoteLine = {
   lineSum: Decimal;
   pricingMode: "SHIFT" | "TWO_SHIFTS" | "PROJECT" | "CUSTOM";
   isCustom: boolean;
+  /** Прайсовая цена за период — заполнена только у договорных строк. */
+  listUnitPrice: Decimal | null;
+  /** По этой позиции договорились о своей цене: процент к ней не применяется. */
+  isNegotiated: boolean;
 };
 
 export type QuoteTransportInput = {
@@ -51,11 +56,16 @@ export type QuoteTransportInput = {
   skipOvertime: boolean;
   kmOutsideMkad: number;
   ttkEntry: boolean;
+  /** Договорная сумма за машину; заменяет расчёт целиком. */
+  negotiatedTotalRub?: number | string | null;
 };
 
 export type QuoteTransportResult = TransportBreakdown & {
   vehicleId: string;
   vehicleName: string;
+  /** Сумма по прайсу и параметрам — до договорной замены. */
+  listTotal: string;
+  isNegotiated: boolean;
 };
 
 /**
@@ -83,7 +93,21 @@ async function computeOneVehicle(
     kmOutsideMkad: input.kmOutsideMkad,
     ttkEntry: input.ttkEntry,
   });
-  return { vehicleId: vehicle.id, vehicleName: vehicle.name, ...breakdown };
+  // Договорная сумма заменяет итог по машине целиком. Разбивку (смена,
+  // переработка, км, ТТК) оставляем как есть: она объясняет, из чего сложилась
+  // прайсовая цена, и нужна при разговоре «почему было столько».
+  const negotiated =
+    input.negotiatedTotalRub !== undefined && input.negotiatedTotalRub !== null
+      ? new Decimal(input.negotiatedTotalRub.toString())
+      : null;
+  return {
+    vehicleId: vehicle.id,
+    vehicleName: vehicle.name,
+    ...breakdown,
+    listTotal: breakdown.total,
+    total: negotiated ? negotiated.toDecimalPlaces(2).toString() : breakdown.total,
+    isNegotiated: negotiated !== null,
+  };
 }
 
 export async function quoteEstimate(args: {
@@ -91,7 +115,14 @@ export async function quoteEstimate(args: {
   endDate: Date;
   clientId: string;
   discountPercent?: number | null;
-  items: Array<{ equipmentId?: string; customName?: string; customUnitPrice?: number; quantity: number }>;
+  items: Array<{
+    equipmentId?: string;
+    customName?: string;
+    customUnitPrice?: number;
+    quantity: number;
+    /** Договорная ставка за смену по каталожной позиции; null — считаем по прайсу. */
+    negotiatedRatePerShift?: number | string | null;
+  }>;
   transport?: QuoteTransportInput[] | null;
   skipPartialDay?: boolean;
 }) {
@@ -108,7 +139,12 @@ export async function quoteEstimate(args: {
   const catalogLines: QuoteLine[] = catalogItems.map((item) => {
     const eq = equipmentById.get(item.equipmentId!);
     if (!eq) throw new HttpError(400, `Equipment not found: ${item.equipmentId}`);
-    const { unitPrice, mode } = computeUnitPriceForBookingPeriod({ equipment: eq, shifts });
+    const { mode } = computeUnitPriceForBookingPeriod({ equipment: eq, shifts });
+    const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+      ratePerShift: eq.rentalRatePerShift.toString(),
+      shifts,
+      negotiatedRatePerShift: item.negotiatedRatePerShift ?? null,
+    });
     const quantity = item.quantity;
     const lineSum = unitPrice.mul(quantity);
     return {
@@ -122,6 +158,8 @@ export async function quoteEstimate(args: {
       lineSum,
       pricingMode: mode,
       isCustom: false,
+      listUnitPrice,
+      isNegotiated,
     };
   });
 
@@ -139,18 +177,20 @@ export async function quoteEstimate(args: {
       lineSum,
       pricingMode: "CUSTOM",
       isCustom: true,
+      listUnitPrice: null,
+      isNegotiated: false,
     };
   });
 
   const lines: QuoteLine[] = [...catalogLines, ...customLines];
 
-  const equipmentSubtotal = sumDec(lines.map((l) => l.lineSum));
+  const discountPercent = args.discountPercent ? new Decimal(args.discountPercent) : new Decimal(0);
+  const split = splitEquipmentDiscount(lines, discountPercent);
+  const equipmentSubtotal = split.subtotal;
+  const { listedSubtotal, negotiatedSubtotal, discountAmount } = split;
+  const equipmentTotal = split.totalAfterDiscount;
   // Legacy aliases for backward compat (existing callers use .subtotal / .totalAfterDiscount)
   const subtotal = equipmentSubtotal;
-  const discountPercent = args.discountPercent ? new Decimal(args.discountPercent) : new Decimal(0);
-  const discountAmount = equipmentSubtotal.mul(discountPercent).div(100);
-  const equipmentTotal = equipmentSubtotal.sub(discountAmount);
-  // Legacy alias
   const totalAfterDiscount = equipmentTotal;
 
   // Transport — isolated from discount. Per-vehicle: each entry computed
@@ -170,6 +210,10 @@ export async function quoteEstimate(args: {
     lines,
     subtotal,              // legacy alias = equipmentSubtotal
     equipmentSubtotal,
+    /** Сумма прайсовых строк — база, на которую начисляется процент. */
+    listedSubtotal,
+    /** Сумма договорных строк — процент к ним не применяется. */
+    negotiatedSubtotal,
     discountPercent,
     discountAmount,
     equipmentDiscount: discountAmount,
@@ -188,9 +232,45 @@ export type BookingTransportSnapshot = {
   skipOvertime: boolean;
   kmOutsideMkad: number;
   ttkEntry: boolean;
-  /** Сумма по этой конкретной машине (per-row subtotal). */
+  /**
+   * Сумма по этой конкретной машине (per-row subtotal). Если задана
+   * `negotiatedTotalRub`, здесь уже лежит она: маршрут кладёт в снапшот ту
+   * сумму, которая реально войдёт в деньги брони.
+   */
   subtotalRub: string;
+  /** Договорная сумма за машину; null — считаем по прайсу. */
+  negotiatedTotalRub?: string | null;
 };
+
+/**
+ * Создаёт бронь, переживая гонку за номером документа.
+ *
+ * Номер выдаётся чтением «последнего занятого», без резервирования, поэтому
+ * два одновременных создания получают одинаковый номер и вторая запись падает
+ * на уникальном индексе (P2002 по docNumber). Для пользователя это выглядело
+ * как «бронь не создалась» на ровном месте — при двойном клике или когда бот
+ * и веб создают бронь одновременно.
+ *
+ * Ретраим именно запись: только в ней коллизия и может возникнуть.
+ */
+const DOC_NUMBER_RETRIES = 5;
+
+async function createWithRetriedDocNumber<T>(
+  build: (docNumber: string) => Prisma.BookingCreateArgs,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    const docNumber = await generateEstimateDocNumber(new Date().getFullYear());
+    try {
+      return (await prisma.booking.create(build(docNumber))) as T;
+    } catch (err: unknown) {
+      const e = err as { code?: string; meta?: { target?: unknown } };
+      const target = Array.isArray(e.meta?.target) ? e.meta?.target.join(",") : String(e.meta?.target ?? "");
+      const isDocNumberCollision = e.code === "P2002" && target.includes("docNumber");
+      if (isDocNumberCollision && attempt < DOC_NUMBER_RETRIES - 1) continue;
+      throw err;
+    }
+  }
+}
 
 /** Проект по умолчанию для быстрой брони — поле необязательно в форме. */
 export const QUICK_BOOKING_DEFAULT_PROJECT = "Без описания";
@@ -212,6 +292,12 @@ export const QUICK_BOOKING_DEFAULT_PROJECT = "Без описания";
  *
  * `totalEstimateAmount` дублирует сумму, а `discountAmount` = 0, чтобы карточка
  * брони и экспорт показывали связную арифметику «аренда = итого», а не ноль.
+ *
+ * Номер документа (`docNumber`) намеренно НЕ выдаётся, в отличие от
+ * `createBookingDraft`: нумеруется смета, а у быстрой брони её нет. Жечь номера
+ * из сквозной последовательности на документы, которых не существует, хуже, чем
+ * оставить поле пустым — оно nullable, и все потребители (`buildDocument`,
+ * `renderPdf`, `numberingService`) это уже учитывают.
  */
 export async function createQuickBooking(args: {
   clientId: string;
@@ -261,7 +347,20 @@ export async function createBookingDraft(args: {
   estimateOptionalNote?: string | null;
   estimateIncludeOptionalInExport?: boolean;
   skipPartialDay?: boolean;
-  items: Array<{ equipmentId?: string; customName?: string; customUnitPrice?: number; quantity: number }>;
+  /**
+   * Договорной итог брони: сумма, о которой сговорились, вместо посчитанной
+   * по смете. Держится при изменении состава — разница показывается строкой
+   * «Договорная скидка». Право фиксировать итог проверяет маршрут.
+   */
+  manualFinalAmount?: number | null;
+  items: Array<{
+    equipmentId?: string;
+    customName?: string;
+    customUnitPrice?: number;
+    quantity: number;
+    /** Договорная ставка за смену по каталожной позиции; null — считаем по прайсу. */
+    negotiatedRatePerShift?: number | string | null;
+  }>;
   transport?: BookingTransportSnapshot[] | null;
 }) {
   if (args.items.length === 0) throw new HttpError(400, "At least one equipment item is required.");
@@ -277,9 +376,15 @@ export async function createBookingDraft(args: {
       ? args.expectedPaymentDate
       : await computeDefaultPaymentDate(args.endDate);
 
-  const booking = await prisma.booking.create({
+  // Номер документа нельзя зарезервировать чтением: генератор лишь смотрит
+  // последний занятый, поэтому два одновременных создания (двойной клик, бот
+  // и веб разом) получают один и тот же номер, и вторая запись падает на
+  // уникальном индексе — бронь не создаётся. Ретраим ЗАПИСЬ: это
+  // единственный момент, где коллизия вообще проявляется.
+  const buildBooking = (docNumber: string): Prisma.BookingCreateArgs => ({
     data: {
       clientId: args.clientId,
+      docNumber,
       projectName: args.projectName.trim(),
       startDate: args.startDate,
       endDate: args.endDate,
@@ -295,6 +400,8 @@ export async function createBookingDraft(args: {
       estimateOptionalNote: args.estimateOptionalNote?.trim() || null,
       estimateIncludeOptionalInExport: args.estimateIncludeOptionalInExport ?? false,
       skipPartialDay: args.skipPartialDay ?? false,
+      manualFinalAmount:
+        args.manualFinalAmount != null ? new Decimal(args.manualFinalAmount) : null,
       // Transport snapshot — multi-vehicle via `vehicles[]`. Legacy single
       // columns left at defaults (null/false) for new bookings; only
       // `transportSubtotalRub` (the total) is populated for back-compat with
@@ -310,13 +417,22 @@ export async function createBookingDraft(args: {
               kmOutsideMkad: t.kmOutsideMkad,
               ttkEntry: t.ttkEntry,
               subtotalRub: new Decimal(t.subtotalRub),
+              negotiatedTotalRub:
+                t.negotiatedTotalRub != null ? new Decimal(t.negotiatedTotalRub.toString()) : null,
             })),
           }
         : undefined,
       items: {
         create: args.items.map((it) => {
           if (it.equipmentId) {
-            return { equipmentId: it.equipmentId, quantity: it.quantity };
+            return {
+              equipmentId: it.equipmentId,
+              quantity: it.quantity,
+              negotiatedRatePerShift:
+                it.negotiatedRatePerShift != null
+                  ? new Decimal(it.negotiatedRatePerShift.toString())
+                  : null,
+            };
           }
           return {
             quantity: it.quantity,
@@ -329,6 +445,10 @@ export async function createBookingDraft(args: {
     },
     include: { items: true },
   });
+
+  const booking = await createWithRetriedDocNumber<Awaited<ReturnType<typeof prisma.booking.create>>>(
+    buildBooking,
+  );
 
   // Вычисляем смету и сохраняем суммы на брони сразу при создании,
   // чтобы SUPER_ADMIN видел реальную стоимость на странице согласования.
@@ -346,13 +466,19 @@ export async function createBookingDraft(args: {
         skipPartialDay: args.skipPartialDay ?? false,
       });
       const equipmentAfterDiscount = new Decimal(quote.totalAfterDiscount);
-      const finalAmount = equipmentAfterDiscount.add(transportSubtotal);
+      const computedFinal = equipmentAfterDiscount.add(transportSubtotal);
+      // Договорной итог перебивает расчётный — ровно так же его трактует
+      // recomputeBookingFinance. Без этого бронь создавалась бы с суммой по
+      // смете, и долг сразу расходился бы с договорённостью.
+      const finalAmount =
+        args.manualFinalAmount != null ? new Decimal(args.manualFinalAmount) : computedFinal;
       await prisma.booking.update({
         where: { id: booking.id },
         data: {
           totalEstimateAmount: quote.subtotal,
           discountAmount: quote.discountAmount,
           finalAmount: finalAmount.toDecimalPlaces(2).toString(),
+          amountOutstanding: finalAmount.toDecimalPlaces(2).toString(),
         },
       });
 
@@ -392,6 +518,7 @@ export async function createBookingDraft(args: {
               quantity: l.quantity,
               unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
               lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+              listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
             })),
           },
         },
@@ -428,6 +555,7 @@ async function computeBookingTransportSubtotal(booking: {
     skipOvertime: boolean;
     kmOutsideMkad: number | null;
     ttkEntry: boolean;
+    negotiatedTotalRub?: Prisma.Decimal | null;
   }>;
   vehicleId: string | null;
   vehicleWithGenerator: boolean;
@@ -446,6 +574,7 @@ async function computeBookingTransportSubtotal(booking: {
         skipOvertime: v.skipOvertime,
         kmOutsideMkad: v.kmOutsideMkad ?? 0,
         ttkEntry: v.ttkEntry,
+        negotiatedTotalRub: v.negotiatedTotalRub?.toString() ?? null,
       });
       sum = sum.add(new Decimal(result.total));
     }
@@ -510,9 +639,15 @@ export async function rebuildBookingEstimate(bookingId: string) {
       quantity: number;
       unitPrice: Decimal;
       lineSum: Decimal;
+      listUnitPrice: Decimal | null;
+      isNegotiated: boolean;
     }> = booking.items.map((it) => {
       if (it.equipmentId != null && it.equipment != null) {
-        const { unitPrice } = computeUnitPriceForBookingPeriod({ equipment: it.equipment, shifts });
+        const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+          ratePerShift: it.equipment.rentalRatePerShift.toString(),
+          shifts,
+          negotiatedRatePerShift: it.negotiatedRatePerShift?.toString() ?? null,
+        });
         return {
           equipmentId: it.equipmentId,
           categorySnapshot: it.equipment.category,
@@ -522,6 +657,8 @@ export async function rebuildBookingEstimate(bookingId: string) {
           quantity: it.quantity,
           unitPrice,
           lineSum: unitPrice.mul(it.quantity),
+          listUnitPrice,
+          isNegotiated,
         };
       }
       // Произвольная позиция — фиксированная цена без умножения на shifts
@@ -535,13 +672,13 @@ export async function rebuildBookingEstimate(bookingId: string) {
         quantity: it.quantity,
         unitPrice,
         lineSum: unitPrice.mul(it.quantity),
+        listUnitPrice: null,
+        isNegotiated: false,
       };
     });
 
-    const subtotal = sumDec(lines.map((l) => l.lineSum));
     const discountPercent = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
-    const discountAmount = subtotal.mul(discountPercent).div(100);
-    const totalAfterDiscount = subtotal.sub(discountAmount);
+    const { subtotal, discountAmount, totalAfterDiscount } = splitEquipmentDiscount(lines, discountPercent);
 
     const estimateData = {
       currency: "RUB",
@@ -565,6 +702,7 @@ export async function rebuildBookingEstimate(bookingId: string) {
       quantity: l.quantity,
       unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
       lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+      listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
     }));
 
     // Удаляем существующий MAIN Estimate (если есть) — ADDON оставляем нетронутым.
@@ -699,12 +837,18 @@ export async function confirmBooking(bookingId: string) {
       quantity: number;
       unitPrice: Decimal;
       lineSum: Decimal;
+      listUnitPrice: Decimal | null;
+      isNegotiated: boolean;
       estimateLineCreate: any;
     }> = [];
 
     for (const it of booking.items) {
       if (it.equipmentId != null && it.equipment != null) {
-        const { unitPrice } = computeUnitPriceForBookingPeriod({ equipment: it.equipment, shifts });
+        const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+          ratePerShift: it.equipment.rentalRatePerShift.toString(),
+          shifts,
+          negotiatedRatePerShift: it.negotiatedRatePerShift?.toString() ?? null,
+        });
         const lineSum = unitPrice.mul(it.quantity);
         lines.push({
           equipmentId: it.equipmentId,
@@ -715,6 +859,8 @@ export async function confirmBooking(bookingId: string) {
           quantity: it.quantity,
           unitPrice,
           lineSum,
+          listUnitPrice,
+          isNegotiated,
           estimateLineCreate: null,
         });
       } else {
@@ -729,15 +875,15 @@ export async function confirmBooking(bookingId: string) {
           quantity: it.quantity,
           unitPrice,
           lineSum: unitPrice.mul(it.quantity),
+          listUnitPrice: null,
+          isNegotiated: false,
           estimateLineCreate: null,
         });
       }
     }
 
-    const subtotal = sumDec(lines.map((l) => l.lineSum));
     const discountPercent = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
-    const discountAmount = subtotal.mul(discountPercent).div(100);
-    const totalAfterDiscount = subtotal.sub(discountAmount);
+    const { subtotal, discountAmount, totalAfterDiscount } = splitEquipmentDiscount(lines, discountPercent);
 
     // Reserve units for UNIT-tracked equipment (count-only needs no per-unit rows).
     const overlappingBlockingBookings = await tx.booking.findMany({
@@ -800,6 +946,7 @@ export async function confirmBooking(bookingId: string) {
           quantity: l.quantity,
           unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
           lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+          listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
         })),
       },
     };
