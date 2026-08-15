@@ -234,10 +234,24 @@ export interface ShiftTimelineEntry {
   overdueDays: number;
 }
 
+/** Строка «Вернулось из ремонта»: починено, но физически ещё на верстаке. */
+export interface ReadyForPickupData {
+  repairId: string;
+  title: string;
+  /** Когда ремонт закрыли, ISO. */
+  closedAt: string;
+}
+
 export interface ShiftSummaryData {
   date: string;
   timeline: ShiftTimelineEntry[];
   overdue: ShiftTimelineEntry[];
+  /**
+   * Закрытые за неделю ремонты. По учёту прибор уже «в наличии», а на полке его
+   * нет, пока кладовщик не заберёт его с верстака, — из-за этого за ним бежали
+   * в момент выдачи.
+   */
+  readyForPickup: ReadyForPickupData[];
   counters: {
     issuesDone: number;
     issuesPlanned: number;

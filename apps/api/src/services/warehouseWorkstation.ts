@@ -36,12 +36,26 @@ export interface ShiftTimelineEntry {
   overdueDays: number;
 }
 
+/** Строка блока «Вернулось из ремонта» — починенное, что надо разложить по местам. */
+export interface ReadyForPickupEntry {
+  repairId: string;
+  title: string;
+  /** Когда ремонт закрыли, ISO. */
+  closedAt: string;
+}
+
 export interface ShiftSummary {
   /** Московская дата смены, YYYY-MM-DD. */
   date: string;
   timeline: ShiftTimelineEntry[];
   /** Просроченные возвраты (status ISSUED, endDate < сегодня). */
   overdue: ShiftTimelineEntry[];
+  /**
+   * Починенное за последние дни. Живёт именно здесь, а не в разделе мастерской:
+   * технику ремонт закрыт и забыт, а кладовщику прибор ещё надо физически найти
+   * на верстаке и вернуть на полку — иначе он «есть» по учёту и его нет в стеллаже.
+   */
+  readyForPickup: ReadyForPickupEntry[];
   counters: {
     issuesDone: number;
     issuesPlanned: number;
@@ -136,18 +150,81 @@ function avg(nums: number[]): number | null {
   return Math.round(nums.reduce((s, n) => s + n, 0) / nums.length);
 }
 
+/**
+ * Название позиции в ремонте — три ступени.
+ *
+ * Поломка приезжает без единицы, когда сломалось то, что штучно не считают
+ * (кабель, стойка, зарядка): юнита нет, есть строка сметы либо прямая ссылка на
+ * каталог. Возвращаем null, а не подстановку, чтобы вызывающий сам решил, как
+ * назвать позицию, которой в каталоге уже нет.
+ */
+function equipmentNameOrNull(r: {
+  unit?: { equipment: { name: string } } | null;
+  bookingItem?: { equipment?: { name: string } | null } | null;
+  equipment?: { name: string } | null;
+}): string | null {
+  return r.unit?.equipment.name ?? r.bookingItem?.equipment?.name ?? r.equipment?.name ?? null;
+}
+
+/**
+ * Окно блока «Вернулось из ремонта»: неделя. Меньше — и починенное в пятницу
+ * пропадёт с экрана к понедельнику, так и не доехав до полки.
+ */
+export const READY_FOR_PICKUP_WINDOW_DAYS = 7;
+
+/**
+ * Починенное за последние READY_FOR_PICKUP_WINDOW_DAYS суток.
+ *
+ * Общий источник для экрана «Смена» киоска и для сводки мастерской
+ * (/api/dashboard/repair-stats): два независимых определения «вернулось из
+ * ремонта» рано или поздно разошлись бы, и кладовщик с руководителем видели бы
+ * разные списки одного и того же.
+ *
+ * Только CLOSED: списанное (WROTE_OFF) на полку не возвращается.
+ */
+export async function listReadyForPickup(limit = 50): Promise<ReadyForPickupEntry[]> {
+  const from = new Date(Date.now() - READY_FOR_PICKUP_WINDOW_DAYS * 86400000);
+  const repairs = await prisma.repair.findMany({
+    where: { status: "CLOSED", closedAt: { gte: from } },
+    orderBy: { closedAt: "desc" },
+    take: limit,
+    include: {
+      unit: { include: { equipment: { select: { name: true } } } },
+      bookingItem: { select: { equipment: { select: { name: true } } } },
+      equipment: { select: { name: true } },
+    },
+  });
+
+  return repairs.map((r) => ({
+    repairId: r.id,
+    title: equipmentNameOrNull(r) ?? "Позиция удалена из каталога",
+    // closedAt непустой по условию выборки, но типом он nullable.
+    closedAt: (r.closedAt ?? r.updatedAt).toISOString(),
+  }));
+}
+
 // ── Смена ────────────────────────────────────────────────────────────────────
+
+/**
+ * Рабочий стол склада показывает только брони с оборудованием.
+ *
+ * Быстрая бронь (клиент + произвольная сумма, без позиций) кладовщику не
+ * адресована: выдавать и принимать нечего. В списке броней, календаре и
+ * финансах она видна как обычно — скрыта ровно на складских экранах.
+ */
+export const HAS_EQUIPMENT_FILTER = { items: { some: {} } } as const;
 
 export async function computeShift(workerName: string): Promise<ShiftSummary> {
   const todayStart = moscowTodayStart();
   const tomorrowStart = addDays(todayStart, 1);
 
-  const [issueBookings, returnBookings, overdueBookings, inWorkCount] =
+  const [issueBookings, returnBookings, overdueBookings, inWorkCount, readyForPickup] =
     await Promise.all([
       // Выдачи с плановым стартом сегодня. CONFIRMED → ждёт, ISSUED/RETURNED → сделано.
       prisma.booking.findMany({
         where: {
           deletedAt: null,
+          ...HAS_EQUIPMENT_FILTER,
           startDate: { gte: todayStart, lt: tomorrowStart },
           status: { in: ["CONFIRMED", "ISSUED", "RETURNED"] },
         },
@@ -161,6 +238,7 @@ export async function computeShift(workerName: string): Promise<ShiftSummary> {
       prisma.booking.findMany({
         where: {
           deletedAt: null,
+          ...HAS_EQUIPMENT_FILTER,
           endDate: { gte: todayStart, lt: tomorrowStart },
           status: { in: ["ISSUED", "RETURNED"] },
         },
@@ -174,6 +252,7 @@ export async function computeShift(workerName: string): Promise<ShiftSummary> {
       prisma.booking.findMany({
         where: {
           deletedAt: null,
+          ...HAS_EQUIPMENT_FILTER,
           status: "ISSUED",
           endDate: { lt: todayStart },
         },
@@ -183,7 +262,10 @@ export async function computeShift(workerName: string): Promise<ShiftSummary> {
         },
         orderBy: { endDate: "asc" },
       }),
-      prisma.booking.count({ where: { deletedAt: null, status: "ISSUED" } }),
+      prisma.booking.count({
+        where: { deletedAt: null, ...HAS_EQUIPMENT_FILTER, status: "ISSUED" },
+      }),
+      listReadyForPickup(),
     ]);
 
   // Фактическое время приёмки для RETURNED-броней — completedAt их RETURN-сессии.
@@ -270,6 +352,7 @@ export async function computeShift(workerName: string): Promise<ShiftSummary> {
     date: toMoscowDateString(todayStart),
     timeline,
     overdue,
+    readyForPickup,
     counters: {
       issuesDone: issueBookings.filter((b) => b.status !== "CONFIRMED").length,
       issuesPlanned: issueBookings.length,

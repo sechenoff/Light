@@ -40,6 +40,8 @@ export type WorkstationTab =
   | "problems";
 
 export interface WorkstationBadges {
+  /** Починенное, что ещё лежит на верстаке (блок «Вернулось из ремонта»). */
+  shift?: number;
   issue?: number;
   return?: number;
   inwork?: number;
@@ -70,9 +72,11 @@ const TABS: Array<{
   label: string;
   icon: typeof IconHome;
   badgeKey?: keyof WorkstationBadges;
-  badgeTone?: "accent" | "rose" | "amber";
+  badgeTone?: "accent" | "rose" | "amber" | "emerald";
 }> = [
-  { key: "shift", label: "Смена", icon: IconHome },
+  // Бейдж «Смены» — не задача, а напоминание: столько починенного ещё не
+  // вернули на полку. Потому зелёный, а не тревожный.
+  { key: "shift", label: "Смена", icon: IconHome, badgeKey: "shift", badgeTone: "emerald" },
   { key: "issue", label: "Выдача", icon: IconIssue, badgeKey: "issue", badgeTone: "accent" },
   { key: "return", label: "Приёмка", icon: IconReturn, badgeKey: "return", badgeTone: "rose" },
   { key: "inwork", label: "В работе", icon: IconClock, badgeKey: "inwork", badgeTone: "amber" },
@@ -83,13 +87,16 @@ const BADGE_TONE: Record<string, string> = {
   accent: "bg-accent-bright",
   rose: "bg-rose",
   amber: "bg-amber",
+  emerald: "bg-emerald",
 };
 
 function TabBadge({ count, tone }: { count: number; tone: string }) {
   if (count <= 0) return null;
   return (
     <span
-      className={`${BADGE_TONE[tone] ?? "bg-rose"} mono-num flex h-[16px] min-w-[16px] items-center justify-center rounded-full px-1 text-[9.5px] font-bold text-white`}
+      // text-surface, не text-white: бейдж лежит на светлом фоне таб-бара, а
+      // ночью его заливка осветляется — белая цифра на ней теряется.
+      className={`${BADGE_TONE[tone] ?? "bg-rose"} mono-num flex h-[16px] min-w-[16px] items-center justify-center rounded-full px-1 text-[9.5px] font-bold text-surface`}
       aria-hidden
     >
       {count > 99 ? "99+" : count}

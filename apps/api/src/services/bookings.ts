@@ -192,6 +192,64 @@ export type BookingTransportSnapshot = {
   subtotalRub: string;
 };
 
+/** Проект по умолчанию для быстрой брони — поле необязательно в форме. */
+export const QUICK_BOOKING_DEFAULT_PROJECT = "Без описания";
+
+/**
+ * Быстрая бронь: клиент + произвольная сумма, без списка оборудования.
+ *
+ * Зачем отдельный путь от `createBookingDraft`: тот требует минимум одну
+ * позицию и считает смету по каталогу, а здесь суммы вообще нет в позициях —
+ * оператор называет её сам («договорились на 40 000»). Поэтому:
+ *  - позиций нет вовсе;
+ *  - `manualFinalAmount` = сумма оператора. Это единственный источник правды
+ *    для финансов: `recomputeBookingFinance` уже трактует его как
+ *    авторитетный и не пересчитывает finalAmount из сметы;
+ *  - MAIN-смета не создаётся — снапшотить нечего;
+ *  - статус сразу CONFIRMED в обход `confirmBooking` (тот падает на пустых
+ *    позициях, а резервировать здесь нечего) — согласование пропускается
+ *    осознанно, это и есть смысл «быстро».
+ *
+ * `totalEstimateAmount` дублирует сумму, а `discountAmount` = 0, чтобы карточка
+ * брони и экспорт показывали связную арифметику «аренда = итого», а не ноль.
+ */
+export async function createQuickBooking(args: {
+  clientId: string;
+  amount: number;
+  startDate: Date;
+  endDate: Date;
+  projectName?: string | null;
+  comment?: string | null;
+  expectedPaymentDate?: Date | null;
+}) {
+  const amount = new Decimal(args.amount).toDecimalPlaces(2);
+  if (amount.isNegative()) {
+    throw new HttpError(400, "Сумма не может быть отрицательной", "INVALID_AMOUNT");
+  }
+
+  const resolvedPaymentDate =
+    args.expectedPaymentDate ?? (await computeDefaultPaymentDate(args.endDate));
+
+  return prisma.booking.create({
+    data: {
+      clientId: args.clientId,
+      projectName: args.projectName?.trim() || QUICK_BOOKING_DEFAULT_PROJECT,
+      startDate: args.startDate,
+      endDate: args.endDate,
+      status: "CONFIRMED",
+      confirmedAt: new Date(),
+      legacyFinance: false,
+      comment: args.comment?.trim() || null,
+      expectedPaymentDate: resolvedPaymentDate,
+      totalEstimateAmount: amount.toString(),
+      discountAmount: "0",
+      finalAmount: amount.toString(),
+      manualFinalAmount: amount.toString(),
+    },
+    include: { client: true, items: true },
+  });
+}
+
 export async function createBookingDraft(args: {
   clientId: string;
   projectName: string;

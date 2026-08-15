@@ -116,6 +116,27 @@ describe("GET /api/audit", () => {
     expect(res.body.items[0].entityType).toBe("Payment");
   });
 
+  it("SUPER_ADMIN → filter by entityId → только записи этой сущности", async () => {
+    // Регрессия 2026-08-05: entityId не был объявлен в схеме и молча
+    // игнорировался — ApprovalTimeline на карточке брони показывал историю
+    // согласования ВСЕХ броней (в т.ч. чужие «Одобрено»/«Отправлено»).
+    const res = await request(app)
+      .get("/api/audit?entityType=Booking&entityId=b1")
+      .set(authHeaders(superAdminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].entityId).toBe("b1");
+    expect(res.body.items[0].action).toBe("BOOKING_CREATE");
+  });
+
+  it("SUPER_ADMIN → entityId несуществующей сущности → пусто", async () => {
+    const res = await request(app)
+      .get("/api/audit?entityType=Booking&entityId=does-not-exist")
+      .set(authHeaders(superAdminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(0);
+  });
+
   it("returns 401 UNAUTHENTICATED when called with API key but no session", async () => {
     const res = await request(app)
       .get("/api/audit")

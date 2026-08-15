@@ -138,7 +138,9 @@ describe("createRepair", () => {
         urgency: "NORMAL",
         createdBy: warehouseId,
       }),
-    ).rejects.toMatchObject({ status: 409, details: "REPAIR_ACTIVE_EXISTS" });
+    // Код переехал в `.code`: `details` теперь несёт структурную нагрузку
+    // (`repairId` уже открытой карточки — по ней UI даёт ссылку «показать»).
+    ).rejects.toMatchObject({ status: 409, code: "REPAIR_ACTIVE_EXISTS" });
 
     // Cleanup
     await prisma.repair.update({ where: { id: repair1.id }, data: { status: "CLOSED", closedAt: new Date() } });

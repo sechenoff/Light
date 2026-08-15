@@ -219,7 +219,11 @@ warehouseScanRouter.get("/bookings", warehouseAuth, async (req, res, next) => {
 
     const bookings = await prisma.booking.findMany({
       // RR-4: архивные брони не должны появляться в киоске (их нельзя выдавать).
-      where: { status, deletedAt: null },
+      // `items: { some: {} }` — брони без оборудования (быстрая бронь: клиент +
+      // сумма) кладовщику не нужны: выдавать и принимать нечего, а пустые
+      // карточки только засоряют рабочий стол. В списке броней, календаре и
+      // финансах они видны как обычно.
+      where: { status, deletedAt: null, items: { some: {} } },
       select: {
         id: true,
         client: true,
@@ -854,6 +858,9 @@ warehouseScanRouter.post("/sessions/:id/items", warehouseAuth, async (req, res, 
       quantity,
       createdBy,
       acknowledgedConflict ?? false,
+      // req.adminUser есть, когда киоск открыт главной сессией SA/WAREHOUSE —
+      // тогда аудит проходит FK. При PIN-входе undefined (аудит пропускается).
+      req.adminUser?.userId,
     );
     res.status(201).json(result);
   } catch (err) {
@@ -1087,7 +1094,9 @@ warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
   try {
     const bookings = await prisma.booking.findMany({
       // RR-4: архивные брони скрываем и из списка «в работе».
-      where: { status: "ISSUED", deletedAt: null },
+      // items: { some: {} } — быстрые брони (без оборудования) на складе не
+      // показываем; см. комментарий в GET /bookings выше.
+      where: { status: "ISSUED", deletedAt: null, items: { some: {} } },
       orderBy: { endDate: "asc" },
       include: {
         client: { select: { name: true, phone: true } },

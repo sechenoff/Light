@@ -22,7 +22,7 @@ import { importSessionsRouter } from "./importSessions";
 import { dashboardRouter } from "./dashboard";
 import { equipmentStatsRouter } from "./equipmentStats";
 import { calendarRouter } from "./calendar";
-import { adminUsersRouter } from "./adminUsers";
+import { adminUsersRouter, assignableUsersRouter } from "./adminUsers";
 import auditRouter from "./audit";
 import { paymentsRouter } from "./payments";
 import { expensesRouter } from "./expenses";
@@ -123,6 +123,9 @@ router.use("/api/equipment-stats", rolesGuard(["SUPER_ADMIN"]), equipmentStatsRo
 // /api/calendar — SUPER_ADMIN, WAREHOUSE
 router.use("/api/calendar", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), calendarRouter);
 
+// /api/admin-users/assignable — все 3 роли (назначение задач/ремонтов),
+// поэтому монтируется ДО SUPER_ADMIN-гарда на остальном CRUD.
+router.use("/api/admin-users", assignableUsersRouter);
 // /api/admin-users — SUPER_ADMIN only
 router.use("/api/admin-users", rolesGuard(["SUPER_ADMIN"]), adminUsersRouter);
 

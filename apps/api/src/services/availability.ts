@@ -29,7 +29,10 @@ export type AvailabilityRow = {
 // продаваться второй раз, пока руководитель её рассматривает. DRAFT по-прежнему
 // не блокирует (осознанное решение). ВАЖНО: confirmBooking передаёт
 // excludeBookingId, чтобы PENDING_APPROVAL-бронь не блокировала собственный approve.
-const BLOCKING_STATUSES: BookingStatus[] = ["PENDING_APPROVAL", "CONFIRMED", "ISSUED"];
+// Экспортируется, чтобы мастерская считала риск по тем же статусам, что и
+// витрина: разъехавшиеся копии этого списка означали бы, что «занято» на
+// календаре и «блокирует бронь» в ремонте — про разные брони.
+export const BLOCKING_STATUSES: BookingStatus[] = ["PENDING_APPROVAL", "CONFIRMED", "ISSUED"];
 
 function clampNonNegative(n: number) {
   return n < 0 ? 0 : n;
@@ -90,6 +93,48 @@ export async function getLostCountByEquipmentMap(
   return lostByEquipment;
 }
 
+/**
+ * F-REPAIR-1: сколько единиц позиции сейчас физически лежит в мастерской.
+ *
+ * Считаем ТОЛЬКО ремонты без `unitId`. Штучный ремонт переводит единицу в
+ * MAINTENANCE, и она уже выпала из `getUsableUnitBaseMap` — учесть её здесь
+ * значило бы вычесть один и тот же прибор дважды. Без юнита живут COUNT-поломки
+ * (кабели, стойки, зарядки): одна строка Repair на `quantity` штук, статусы
+ * единиц при этом не трогаются, и больше вычесть их неоткуда.
+ *
+ * Позицию каталога берём с `Repair.equipmentId` (заявка, заведённая из киоска
+ * или из раздела мастерской), а если он пуст — через `bookingItem.equipmentId`
+ * (поломка, оформленная на приёмке брони).
+ *
+ * Активный ремонт — любой статус, кроме CLOSED и WROTE_OFF: пока карточка
+ * открыта, прибор не выдаётся. WROTE_OFF исключён потому, что списание — это
+ * уже вопрос `totalQuantity`, а не временного изъятия.
+ */
+export async function getRepairCountByEquipmentMap(
+  equipmentIds: string[],
+  tx: TxClient = prisma
+): Promise<Map<string, number>> {
+  const inRepairByEquipment = new Map<string, number>();
+  if (equipmentIds.length === 0) return inRepairByEquipment;
+  const repairRows = await tx.repair.findMany({
+    where: {
+      unitId: null,
+      status: { notIn: ["CLOSED", "WROTE_OFF"] },
+      OR: [
+        { equipmentId: { in: equipmentIds } },
+        { bookingItem: { equipmentId: { in: equipmentIds } } },
+      ],
+    },
+    select: { quantity: true, equipmentId: true, bookingItem: { select: { equipmentId: true } } },
+  });
+  for (const row of repairRows) {
+    const equipmentId = row.equipmentId ?? row.bookingItem?.equipmentId;
+    if (!equipmentId) continue;
+    inRepairByEquipment.set(equipmentId, (inRepairByEquipment.get(equipmentId) ?? 0) + row.quantity);
+  }
+  return inRepairByEquipment;
+}
+
 export async function getAvailability(args: {
   startDate: Date;
   endDate: Date;
@@ -141,15 +186,19 @@ export async function getAvailability(args: {
 
   // eu-2: см. getUsableUnitBaseMap. F-LOST-1: COUNT-база = totalQuantity минус
   // открытые COUNT-потеряшки (getLostCountByEquipmentMap) — утерянное безъюнитное
-  // количество не должно оставаться в наличии.
+  // количество не должно оставаться в наличии. F-REPAIR-1: и там, и там дополнительно
+  // вычитаем безъюнитные ремонты — сломанное не продаётся ни в одном режиме учёта.
   const unitEquipmentIds = equipments.filter((e) => e.stockTrackingMode === "UNIT").map((e) => e.id);
   const countEquipmentIds = equipments.filter((e) => e.stockTrackingMode !== "UNIT").map((e) => e.id);
   const usableUnitBase = await getUsableUnitBaseMap(unitEquipmentIds, tx);
   const lostCountBase = await getLostCountByEquipmentMap(countEquipmentIds, tx);
-  const baseQtyOf = (e: { id: string; stockTrackingMode: string; totalQuantity: number }): number =>
-    e.stockTrackingMode === "UNIT"
-      ? (usableUnitBase.get(e.id) ?? 0)
-      : clampNonNegative(e.totalQuantity - (lostCountBase.get(e.id) ?? 0));
+  const inRepairBase = await getRepairCountByEquipmentMap(equipmentIds, tx);
+  const baseQtyOf = (e: { id: string; stockTrackingMode: string; totalQuantity: number }): number => {
+    const inRepair = inRepairBase.get(e.id) ?? 0;
+    return e.stockTrackingMode === "UNIT"
+      ? clampNonNegative((usableUnitBase.get(e.id) ?? 0) - inRepair)
+      : clampNonNegative(e.totalQuantity - (lostCountBase.get(e.id) ?? 0) - inRepair);
+  };
 
   // Find all blocking bookings overlapping the requested range.
   const overlappingBookings = await tx.booking.findMany({

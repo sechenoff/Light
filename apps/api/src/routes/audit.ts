@@ -7,6 +7,13 @@ const router = Router();
 
 const querySchema = z.object({
   entityType: z.string().optional(),
+  /**
+   * Фильтр по конкретной сущности. ApprovalTimeline на карточке брони шлёт
+   * `?entityType=Booking&entityId=<id>` — без этого фильтра ответ содержал
+   * записи ВСЕХ броней, и в «Историю согласования» одной брони попадали
+   * чужие «Отправлено/Одобрено/Отклонено» (fix 2026-08-05).
+   */
+  entityId: z.string().optional(),
   userId: z.string().optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to:   z.string().datetime({ offset: true }).optional(),
@@ -19,6 +26,7 @@ const listAudit: RequestHandler = async (req, res, next) => {
     const q = querySchema.parse(req.query);
     const where: Record<string, unknown> = {};
     if (q.entityType) where.entityType = q.entityType;
+    if (q.entityId)   where.entityId   = q.entityId;
     if (q.userId)     where.userId     = q.userId;
     if (q.from || q.to) {
       const createdAt: Record<string, Date> = {};

@@ -4,9 +4,10 @@ import { Prisma } from "@prisma/client";
 import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
-import { createBookingDraft, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, CUSTOM_LINE_CATEGORY } from "../services/bookings";
+import { createBookingDraft, createQuickBooking, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, CUSTOM_LINE_CATEGORY } from "../services/bookings";
 import type { BookingTransportSnapshot } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking, autoConfirmBooking, approvalMode } from "../services/bookingApproval";
+import { writeOffBookingDebt, cancelBookingDebtWriteOff } from "../services/debtWriteOff";
 import { HttpError } from "../utils/errors";
 import {
   assertBookingRangeOrder,
@@ -1888,6 +1889,154 @@ router.post("/draft", async (req, res, next) => {
       );
       return;
     }
+    next(err);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/bookings/quick — быстрая бронь: клиент + сумма, без оборудования
+// ─────────────────────────────────────────────────────────────────────────────
+
+const quickBookingSchema = z.object({
+  client: z.object({
+    name: clientNameSchema,
+    phone: z.string().trim().max(40).optional().nullable(),
+  }),
+  /** Итоговая сумма брони. Ноль допустим (бартер / «сумма позже»). */
+  amount: z.number().finite().min(0).max(1_000_000_000),
+  /** Период. Не передан — сегодня 10:00 → завтра 10:00 по МСК. */
+  startDate: bookingRangeStringSchema.optional(),
+  endDate: bookingRangeStringSchema.optional(),
+  /** Необязательно: без него подставляется «Без описания». */
+  projectName: z.string().trim().max(200).optional().nullable(),
+  comment: z.string().trim().max(2000).optional().nullable(),
+});
+
+/** Сегодня 10:00 МСК, +1 день — дефолтное окно быстрой брони. */
+function defaultQuickRange(): { start: Date; end: Date } {
+  const todayMsk = toMoscowDateString(new Date());
+  // fromMoscowDateString даёт полночь МСК; смещаем на 10 часов — типовое
+  // время выдачи, совпадает с дефолтом обычной формы брони.
+  const start = new Date(fromMoscowDateString(todayMsk).getTime() + 10 * 60 * 60 * 1000);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { start, end };
+}
+
+router.post("/quick", async (req, res, next) => {
+  try {
+    const body = quickBookingSchema.parse(req.body);
+
+    const fallback = defaultQuickRange();
+    let start = fallback.start;
+    let end = fallback.end;
+    try {
+      if (body.startDate) start = parseBookingRangeBound(body.startDate, "start");
+      if (body.endDate) end = parseBookingRangeBound(body.endDate, "end");
+      assertBookingRangeOrder(start, end);
+    } catch (e) {
+      throw new HttpError(400, e instanceof Error ? e.message : "Некорректный период аренды");
+    }
+
+    const clientName = body.client.name.trim();
+    const providedPhone = body.client.phone?.trim() || null;
+    // Телефон существующему клиенту только дозаполняем — не перетираем
+    // (та же семантика, что у POST /draft).
+    const existing = await prisma.client.findUnique({
+      where: { name: clientName },
+      select: { phone: true },
+    });
+    const client = await prisma.client.upsert({
+      where: { name: clientName },
+      update: providedPhone && !existing?.phone ? { phone: providedPhone } : {},
+      create: { name: clientName, phone: providedPhone },
+    });
+
+    const booking = await createQuickBooking({
+      clientId: client.id,
+      amount: body.amount,
+      startDate: start,
+      endDate: end,
+      projectName: body.projectName ?? null,
+      comment: body.comment ?? null,
+    });
+
+    // Приводим платёжные поля (amountOutstanding / paymentStatus) в согласие
+    // с суммой. manualFinalAmount авторитетен — пересчёт его не перетрёт.
+    let financeWarning: string | null = null;
+    try {
+      await recomputeBookingFinance(booking.id);
+    } catch (financeErr) {
+      financeWarning = financeWarningFromError(financeErr);
+      // eslint-disable-next-line no-console
+      console.error("Finance recompute failed after quick booking:", financeErr);
+    }
+
+    if (req.adminUser?.userId) {
+      await writeAuditEntry({
+        userId: req.adminUser.userId,
+        action: "BOOKING_QUICK_CREATE",
+        entityType: "Booking",
+        entityId: booking.id,
+        before: null,
+        after: {
+          clientName,
+          amount: body.amount,
+          projectName: booking.projectName,
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          status: booking.status,
+        },
+      }).catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.warn("[quick booking] audit failed:", err);
+      });
+    }
+
+    const fresh = await prisma.booking.findUnique({
+      where: { id: booking.id },
+      include: { client: true, items: true },
+    });
+
+    res.status(201).json({
+      booking: serializeBookingForApi((fresh ?? booking) as any),
+      ...(financeWarning ? { warning: financeWarning } : {}),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Списание («прощение») остатка долга — SUPER_ADMIN.
+// Сценарий: смета округлена, клиент заплатил ровно, повис хвост в 600 ₽.
+// Взыскивать его не будут, а бронь висит в дебиторке и мешает закрыть проект.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const writeOffSchema = z.object({
+  /** Не передана — прощаем весь текущий остаток. */
+  amount: z.number().finite().positive().max(1_000_000_000).optional().nullable(),
+  reason: z.string().trim().max(500).optional().nullable(),
+});
+
+router.post("/:id/write-off", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    const body = writeOffSchema.parse(req.body ?? {});
+    const result = await writeOffBookingDebt(
+      req.params.id,
+      { amount: body.amount ?? null, reason: body.reason ?? null },
+      req.adminUser!.userId,
+    );
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/:id/write-off", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
+  try {
+    const result = await cancelBookingDebtWriteOff(req.params.id, req.adminUser!.userId);
+    res.json(result);
+  } catch (err) {
     next(err);
   }
 });

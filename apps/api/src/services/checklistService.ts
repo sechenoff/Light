@@ -16,6 +16,7 @@ import { writeAuditEntry } from "./audit";
 import { recomputeBookingFinance } from "./finance";
 import { recomputeAddonEstimate } from "./addonEstimate";
 import { findAddonConflict } from "./addonAvailability";
+import { getLostCountByEquipmentMap, getRepairCountByEquipmentMap } from "./availability";
 import { HttpError } from "../utils/errors";
 import Decimal from "decimal.js";
 
@@ -194,6 +195,24 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
     }
   }
 
+  // «Сломанное не продаётся»: потолок добора считаем от ФИЗИЧЕСКИ доступного
+  // количества — из totalQuantity вычитаем открытые потеряшки и активные
+  // безъюнитные ремонты, как это делает витрина (getAvailability). Иначе
+  // чек-лист выдачи предлагает добрать то, что лежит в мастерской.
+  const [lostByEquipment, inRepairByEquipment] = await Promise.all([
+    getLostCountByEquipmentMap(equipmentIds),
+    getRepairCountByEquipmentMap(equipmentIds),
+  ]);
+  const physicalStockOf = (equipmentId: string | null, totalQuantity: number): number => {
+    if (!equipmentId) return 0;
+    return Math.max(
+      0,
+      totalQuantity
+        - (lostByEquipment.get(equipmentId) ?? 0)
+        - (inRepairByEquipment.get(equipmentId) ?? 0),
+    );
+  };
+
   const scannedUnitIds = new Set(session.scans.map((s) => s.equipmentUnitId));
 
   // Для операции RETURN: дополнительно находим все UNIT юниты, связанные с бронью
@@ -268,7 +287,7 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
 
       // ── Доп-поля для UNIT-позиции ─────────────────────────────────────────
       const eqId = bi.equipmentId;
-      const totalQty = bi.equipment?.totalQuantity ?? 0;
+      const totalQty = physicalStockOf(eqId, bi.equipment?.totalQuantity ?? 0);
       const occ = eqId ? occupiedByOthers.get(eqId) ?? 0 : 0;
       const computedAddCap = eqId ? Math.max(0, totalQty - occ - bi.quantity) : 0;
 
@@ -314,7 +333,7 @@ export async function getChecklistState(sessionId: string): Promise<ChecklistSta
       // COUNT-позиция из каталога
       totalItems += 1;
       const eqId = bi.equipmentId;
-      const totalQty = bi.equipment?.totalQuantity ?? 0;
+      const totalQty = physicalStockOf(eqId, bi.equipment?.totalQuantity ?? 0);
       const occ = eqId ? occupiedByOthers.get(eqId) ?? 0 : 0;
       const computedAddCap = eqId ? Math.max(0, totalQty - occ - bi.quantity) : 0;
 
@@ -463,6 +482,15 @@ export async function addExtraItem(
   quantity: number,
   createdBy: string,
   acknowledgedConflict = false,
+  /**
+   * AdminUser.id для аудит-записи. `createdBy` — это имя кладовщика (PIN-namespace),
+   * оно не проходит FK на AdminUser, и writeAuditEntry молча падал в .catch() —
+   * обещание UI «Конфликт зафиксируется в аудите» не выполнялось. Роут передаёт
+   * сюда req.adminUser?.id, когда киоск открыт главной сессией SA/WAREHOUSE.
+   * Для чистого PIN-входа AdminUser отсутствует — поведение прежнее (аудит
+   * пропускается, физическая операция не откатывается).
+   */
+  auditUserId?: string,
 ): Promise<{ bookingItemId: string }> {
   const session = await prisma.scanSession.findUnique({
     where: { id: sessionId },
@@ -534,6 +562,18 @@ export async function addExtraItem(
       throw new HttpError(404, "Оборудование не найдено", "EQUIPMENT_NOT_FOUND");
     }
 
+    // Физический потолок — не сырой totalQuantity: потерянное и лежащее
+    // в мастерской выдать нельзя даже «под ответственность». Читаем внутри
+    // транзакции, чтобы параллельная поломка не проскочила мимо капа.
+    const txLost = await getLostCountByEquipmentMap([equipmentId], tx);
+    const txInRepair = await getRepairCountByEquipmentMap([equipmentId], tx);
+    const physicalStock = Math.max(
+      0,
+      txEquipment.totalQuantity
+        - (txLost.get(equipmentId) ?? 0)
+        - (txInRepair.get(equipmentId) ?? 0),
+    );
+
     const overlappingItems = await tx.bookingItem.findMany({
       where: {
         equipmentId,
@@ -553,7 +593,18 @@ export async function addExtraItem(
       select: { quantity: true },
     });
     const alreadyMine = existingItem?.quantity ?? 0;
-    const addCap = txEquipment.totalQuantity - occupiedByOthers - alreadyMine;
+    // «Выдать под ответственность»: при подтверждённом конфликте оператор
+    // осознанно забирает единицы, числящиеся за пересекающейся бронью, поэтому
+    // occupiedByOthers из капа исключается — иначе ack-путь был недостижим
+    // (конфликт возможен только при availableQuantity ≤ 0 ⇒ addCap ≤ 0, и
+    // повторный POST всегда падал ADDON_OVER_STOCK; fix 2026-08-05). Потолок
+    // остаётся физический склад (physicalStock): чужую бронь подвинуть можно,
+    // сломанное и потерянное — нет, его физически нет на полке.
+    // Без конфликта ack игнорируется — клиент не может им обойти сток.
+    const addCap =
+      conflict && acknowledgedConflict
+        ? physicalStock - alreadyMine
+        : physicalStock - occupiedByOthers - alreadyMine;
 
     if (quantity > addCap) {
       throw new HttpError(409, "Не хватает на складе", "ADDON_OVER_STOCK", {
@@ -590,7 +641,7 @@ export async function addExtraItem(
 
   // Аудит вне транзакции (observability, не бизнес-инвариант)
   await writeAuditEntry({
-    userId: createdBy,
+    userId: auditUserId ?? createdBy,
     action: conflict ? "BOOKING_ITEM_ADDED_WITH_CONFLICT" : "BOOKING_ITEM_ADDED_ON_SITE",
     entityType: "Booking",
     entityId: bookingId,

@@ -13,6 +13,7 @@ import { StatusPill } from "../../src/components/StatusPill";
 import { SectionHeader } from "../../src/components/SectionHeader";
 import { BookingRowMenu, type BookingRowMenuItem } from "../../src/components/bookings/BookingRowMenu";
 import { ConfirmActionModal } from "../../src/components/bookings/ConfirmActionModal";
+import { QuickBookingModal } from "../../src/components/bookings/QuickBookingModal";
 import { CancelWithDepositModal } from "../../src/components/finance/CancelWithDepositModal";
 import {
   filtersToQueryString,
@@ -101,6 +102,7 @@ function BookingHistoryPageInner() {
   // с «Повторить» (реген reloadKey перезапускает эффект загрузки).
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [quickOpen, setQuickOpen] = useState(false);
   // Подпись активных фильтров (без курсора) — гард от гонки «Загрузить ещё»:
   // если фильтр сменился, пока летит дозагрузка, её ответ отбрасывается.
   const filterSigRef = useRef("");
@@ -519,10 +521,33 @@ function BookingHistoryPageInner() {
         eyebrow="Аренда"
         title="Список броней"
         actions={
-          <Link href="/bookings/new" className="rounded bg-accent-bright text-surface px-4 py-2 text-sm hover:bg-accent transition-colors">
-            Создать бронь
-          </Link>
+          <div className="flex items-center gap-2">
+            {/* Быстрая бронь — без оборудования, только клиент и сумма. */}
+            <button
+              type="button"
+              onClick={() => setQuickOpen(true)}
+              className="rounded border border-accent-border bg-accent-soft px-4 py-2 text-sm text-accent-bright transition-colors hover:bg-surface"
+            >
+              ⚡ Быстрая бронь
+            </button>
+            <Link href="/bookings/new" className="rounded bg-accent-bright text-surface px-4 py-2 text-sm hover:bg-accent transition-colors">
+              Создать бронь
+            </Link>
+          </div>
         }
+      />
+
+      <QuickBookingModal
+        open={quickOpen}
+        onClose={() => setQuickOpen(false)}
+        onCreated={(booking) => {
+          setQuickOpen(false);
+          toast.success(`Бронь «${booking.projectName}» создана`, {
+            action: { label: "Открыть", onClick: () => router.push(`/bookings/${booking.id}`) },
+          });
+          setReloadKey((k) => k + 1);
+          void refreshCounts();
+        }}
       />
 
       {/* Пресет-чипы: быстрый переход к денежно-важным выборкам одним кликом. */}

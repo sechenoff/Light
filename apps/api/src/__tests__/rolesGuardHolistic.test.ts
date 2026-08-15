@@ -331,6 +331,48 @@ describe("H4: аудит DELETE /api/bookings/:id", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────
+// H3b: GET /api/admin-users/assignable — все 3 роли (fix 2026-08-05:
+// раньше внешний rolesGuard(["SUPER_ADMIN"]) на mount перехватывал запрос
+// до внутреннего маршрута, WAREHOUSE/TECHNICIAN получали 403 и блок «Кому»
+// в задачах молча исчезал)
+// ──────────────────────────────────────────────────────────────────
+
+describe("H3b: /api/admin-users/assignable для всех ролей", () => {
+  it("SUPER_ADMIN → 200, безопасный subset без passwordHash", async () => {
+    const res = await request(app).get("/api/admin-users/assignable").set(SA());
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.users)).toBe(true);
+    expect(res.body.users.length).toBeGreaterThan(0);
+    const keys = Object.keys(res.body.users[0]).sort();
+    expect(keys).toEqual(["id", "role", "username"]);
+  });
+
+  it("WAREHOUSE → 200 (регрессия внешнего SUPER_ADMIN-гарда)", async () => {
+    const res = await request(app).get("/api/admin-users/assignable").set(WH());
+    expect(res.status).toBe(200);
+    expect(res.body.users.length).toBeGreaterThan(0);
+  });
+
+  it("TECHNICIAN → 200", async () => {
+    const res = await request(app).get("/api/admin-users/assignable").set(TECH());
+    expect(res.status).toBe(200);
+    expect(res.body.users.length).toBeGreaterThan(0);
+  });
+
+  it("без сессии → 401 UNAUTHENTICATED", async () => {
+    const res = await request(app).get("/api/admin-users/assignable").set(NOAUTH());
+    expect(res.status).toBe(401);
+    expect(res.body.details).toBe("UNAUTHENTICATED");
+  });
+
+  it("гард на остальном CRUD не ослаб: GET /api/admin-users — WAREHOUSE → 403", async () => {
+    const res = await request(app).get("/api/admin-users").set(WH());
+    expect(res.status).toBe(403);
+    expect(res.body.details).toBe("FORBIDDEN_BY_ROLE");
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
 // H4: Аудит при CRUD /api/admin-users
 // ──────────────────────────────────────────────────────────────────
 

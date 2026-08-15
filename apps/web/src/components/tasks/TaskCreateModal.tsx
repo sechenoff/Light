@@ -113,6 +113,10 @@ export function TaskCreateModal({
         // «позвонить клиенту по брони» линкует и бронь, и клиента.
         relatedClientId: relatedBooking?.clientId ?? null,
       });
+    } catch {
+      // Ошибку уже показал onSubmit-провайдер (toast). Глотаем reject, чтобы
+      // `void handleSubmit()` не давал unhandled rejection; модалка остаётся
+      // открытой — набранный текст сохранён (fix 2026-08-05).
     } finally {
       setSubmitting(false);
     }

@@ -15,6 +15,7 @@ import { RecordPaymentModal } from "../../../src/components/finance/RecordPaymen
 import { AIReminderModal } from "../../../src/components/finance/AIReminderModal";
 import { BookingPaymentsModal } from "../../../src/components/finance/BookingPaymentsModal";
 import { ContactChips } from "../../../src/components/finance/ContactChips";
+import { WriteOffDebtModal } from "../../../src/components/finance/WriteOffDebtModal";
 import type { UserRole } from "../../../src/lib/auth";
 
 const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
@@ -179,12 +180,16 @@ interface ActionMenuProps {
   row: FlatRow;
   onRemind: () => void;
   onPaymentsList: () => void;
+  onWriteOff: () => void;
 }
 
 // Удаление брони из реестра долгов убрано (аудит 2026-07): деструктивное
 // действие уничтожало финансовую историю прямо со страницы взыскания.
 // Удалить бронь можно со страницы самой брони.
-function ActionMenu({ row, onRemind, onPaymentsList }: ActionMenuProps) {
+//
+// «Простить долг» (2026-08-06) — неразрушающая альтернатива: закрывает хвост от
+// округлённой сметы, но сохраняет смету и платежи. См. WriteOffDebtModal.
+function ActionMenu({ row, onRemind, onPaymentsList, onWriteOff }: ActionMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -238,6 +243,13 @@ function ActionMenu({ row, onRemind, onPaymentsList }: ActionMenuProps) {
           >
             🤖 Напомнить клиенту
           </button>
+          <div className="my-1 border-t border-border" />
+          <button
+            onClick={() => { setOpen(false); onWriteOff(); }}
+            className="w-full text-left px-3.5 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+          >
+            ✅ Простить долг
+          </button>
         </div>
       )}
     </div>
@@ -285,6 +297,11 @@ function DebtsPageInner() {
   // AI reminder modal state
   const [reminderClientDebt, setReminderClientDebt] = useState<ClientDebt | null>(null);
   const [reminderRowClientId, setReminderRowClientId] = useState<string | null>(null);
+
+  // Списание остатка: хвосты от округлённых смет, которые не взыскивают.
+  const [writeOffRow, setWriteOffRow] = useState<
+    { bookingId: string; projectName: string; clientName: string; outstanding: string } | null
+  >(null);
 
   // D7: track in-flight request to abort previous on new call
   const loadAbortRef = useRef<AbortController | null>(null);
@@ -755,6 +772,7 @@ function DebtsPageInner() {
                               row={row}
                               onRemind={() => openReminder(row)}
                               onPaymentsList={() => openPaymentsList(row)}
+                              onWriteOff={() => setWriteOffRow({ bookingId: row.bookingId, projectName: row.projectName, clientName: row.clientName, outstanding: row.amountOutstanding })}
                             />
                           </div>
                         </td>
@@ -822,6 +840,7 @@ function DebtsPageInner() {
                         row={row}
                         onRemind={() => openReminder(row)}
                         onPaymentsList={() => openPaymentsList(row)}
+                              onWriteOff={() => setWriteOffRow({ bookingId: row.bookingId, projectName: row.projectName, clientName: row.clientName, outstanding: row.amountOutstanding })}
                       />
                     </div>
                   </div>
@@ -872,6 +891,22 @@ function DebtsPageInner() {
           bookingId={paymentsListBookingId}
           bookingContext={paymentsListContext}
           onChange={() => loadDebts()}
+        />
+      )}
+
+      {writeOffRow && (
+        <WriteOffDebtModal
+          open
+          bookingId={writeOffRow.bookingId}
+          projectName={writeOffRow.projectName}
+          clientName={writeOffRow.clientName}
+          outstanding={writeOffRow.outstanding}
+          onClose={() => setWriteOffRow(null)}
+          onDone={() => {
+            toast.success(`Долг по «${writeOffRow.projectName}» списан`);
+            setWriteOffRow(null);
+            loadDebts();
+          }}
         />
       )}
 

@@ -42,7 +42,7 @@ light-rental-system/
       app/            Pages: dashboard (/), bookings, equipment, calendar, finance, admin, crew-calculator, settings, warehouse (scan UI)
       app/api/        Catch-all proxy to Express backend
       src/lib/        Shared logic: api client, formatting
-      src/components/ AppShell, StatusPill, BarcodeScanner, MiniCalendar, DashboardOpsCard, QuickAvailabilityCheck, CalendarTooltip
+      src/components/ AppShell, StatusPill, BarcodeScanner, DashboardOpsCard, QuickAvailabilityCheck, CalendarTooltip
     bot/          Telegraf 4 + AI booking (API-backed matching)
       src/scenes/     booking (hub-and-spoke), crewCalc, photoAnalysis wizard scenes
       src/services/   llm (equipment matching via API), api client, logger
@@ -81,12 +81,11 @@ light-rental-system/
 | `apps/api/src/middleware/warehouseAuth.ts` | Warehouse PIN auth middleware: HMAC-signed token, per-route (not global) |
 | `apps/api/src/middleware/rateLimiter.ts` | Rate limiter: 100 req/min per IP (express-rate-limit) |
 | `apps/api/scripts/backfill-barcodes.ts` | Idempotent barcode generation for existing units without barcodes |
-| `apps/web/app/warehouse/scan/page.tsx` | Thin adaptive kiosk shell (Warehouse Scan Redesign): composes `useScanSession` + `ScanShell`, one component per step (login/operation/booking/checklist/summary). No AppShell. |
+| `apps/web/app/warehouse/scan/page.tsx` | Рабочий стол кладовщика v2 — страница-оркестратор: `WorkstationShell` + постоянная навигация из 5 разделов (смена/выдача/приёмка/в работе/журнал + поломки), `?tab=` в URL. Без AppShell. |
 | `apps/web/app/equipment/[id]/units/page.tsx` | Unit management: status badges, generate/edit/delete, label printing |
 | `packages/shared/src/crewCalculator.ts` | Shared crew cost calculator (imported by web + bot) |
 | `apps/bot/src/scenes/booking-helpers.ts` | Extracted pure functions from booking scene |
 | `apps/web/app/page.tsx` | Operations dashboard home page (was redirect) |
-| `apps/web/src/components/MiniCalendar.tsx` | Month heatmap using react-day-picker v9, click→calendar |
 | `apps/web/src/components/DashboardOpsCard.tsx` | Booking operation card for dashboard sections |
 | `apps/web/src/components/QuickAvailabilityCheck.tsx` | Equipment availability search widget (date range + category filter) |
 | `apps/web/app/api/[...path]/route.ts` | Catch-all API proxy with connection error handling |
@@ -111,7 +110,7 @@ light-rental-system/
 | `apps/web/src/components/day/DayOperationsList.tsx` | Список операций: HH:MM · выдача/возврат · клиент · (сумма)? · N позиций. Использует shared `pluralize()` |
 | `apps/web/src/components/day/DayFooterMetrics.tsx` | Обёртка для нижней строки-сводки с dashed-top-border |
 | `apps/web/src/lib/format.ts` | formatRub + formatMoneyRub + `pluralize(n, one, few, many)` + `MONTHS_LOCATIVE` (в январе, в феврале, …) |
-| `apps/api/src/routes/calendar.ts` | GET /api/calendar (resources + events), GET /api/calendar/occupancy (per-day heatmap) |
+| `apps/api/src/routes/calendar.ts` | GET /api/calendar (resources + events) — единственный маршрут; occupancy-эндпоинта нет (его единственный потребитель MiniCalendar удалён 2026-08-05 как мёртвый код) |
 | `apps/web/app/calendar/page.tsx` | Full calendar page: desktop availability grid (equipment rows × day columns, collapsible categories) + mobile day-by-day card view; URL params: date, period, category |
 | `apps/web/src/components/CalendarTooltip.tsx` | Floating tooltip for calendar cells (via @floating-ui/react): shows booking details on hover |
 | `apps/web/src/lib/calendarUtils.ts` | Pure utility: `buildOccupancyMap()` builds Map<`resourceId-date`, OccupancyEntry>; DRAFT bookings excluded from occupied counts |
@@ -120,8 +119,14 @@ light-rental-system/
 | `docs/bot-api.md` | Bot API documentation (Russian): auth, scope, all endpoints, curl examples, error codes, 3 typical scenarios |
 | `docs/bot-api-tools.json` | OpenAI function-calling schemas (12 tools): ready to paste into `client.chat.completions.create({ tools: [...] })` |
 | `apps/api/src/services/bookingApproval.ts` | Booking approval workflow: `submitForApproval` (DRAFT → PENDING_APPROVAL, clears rejectionReason), `approveBooking` (delegates to `confirmBooking` + audit), `rejectBooking` (required reason, PENDING_APPROVAL → DRAFT + rejectionReason + audit) |
+| `apps/api/src/__tests__/setup.ts` | Глобальный setup vitest: env-переменные ДО импорта приложения + патч `supertest.Test.prototype.serverAddress` (ходить на `[::1]`, см. конвенцию про флейк) |
+| `apps/api/src/__tests__/supertestLoopback.test.ts` | Сторож этого патча: 3 детерминированных сценария с «чужим демоном» на занятом порту (посторонний 403 / ECONNRESET / посторонний 400). Скипается на ОС, где ядро само запрещает wildcard-бинд поверх занятого адреса |
+| `apps/api/src/services/debtWriteOff.ts` | Списание хвоста долга: `writeOffBookingDebt` (накопительный `writeOffAmount`, остаток читается внутри tx, cap по остатку) + `cancelBookingDebtWriteOff` (возврат долга в дебиторку). Обе в `$transaction` вместе с `recomputeBookingFinance` + `writeAuditEntry` |
+| `apps/api/src/__tests__/debtWriteOff.test.ts` | 11 интеграционных тестов списания: полное/частичное прощение, накопление, cap `WRITE_OFF_EXCEEDS_DEBT`, уход брони из `computeDebts`, выживание при пересчёте, аудит, отмена, роль-гарды (WAREHOUSE → 403) |
+| `apps/web/src/components/finance/WriteOffDebtModal.tsx` | Модалка «Простить долг»: сумма предзаполнена полным остатком, парсит «1 200,50», подсказки для частичного/полного списания, опциональная причина |
 | `apps/api/src/__tests__/approval.test.ts` | 22 интеграционных теста approval workflow: submit/approve/reject по всем ролям + full reject-resubmit-approve cycle + legacy confirm-bypass регрессия + ?status= Zod-валидация |
 | `apps/web/src/components/bookings/RejectBookingModal.tsx` | Модалка обязательной причины отклонения (min 3 trimmed chars, счётчик, Esc-close, backdrop dismissal, auto-focus textarea) |
+| `apps/web/src/components/bookings/QuickBookingModal.tsx` | Быстрая бронь: клиент (`ClientAutocomplete`) + произвольная сумма, без оборудования. Даты свёрнуты (сегодня→завтра), проект опционален. Сумма парсится с пробелами и запятой («40 000,50»). Кнопка «⚡ Быстрая бронь» на `/bookings` |
 | `apps/api/src/utils/moscowDate.ts` | Moscow TZ helpers: `toMoscowDateString()`, `fromMoscowDateString()`, `moscowTodayStart()`, `addDays()` — single source of truth for date-only task semantics on server |
 | `apps/api/src/services/taskService.ts` | Task CRUD service: `createTask`, `updateTask`, `completeTask`, `reopenTask`, `deleteTask`, `listTasks` — all wrapped in `prisma.$transaction` + `writeAuditEntry` |
 | `apps/api/src/routes/tasks.ts` | Task routes at `/api/tasks`: GET list, POST create, PATCH update, POST complete/reopen, DELETE; Zod validation; `serializeTask` serializer |
@@ -141,9 +146,9 @@ light-rental-system/
 | `apps/api/src/services/problemItemService.ts` | Реестр «Потеряшки»: `createProblemItem` (reason→status: LEFT_ON_SITE→EXPECTED, LOST/STOLEN→SEARCHING, DESTROYED→WROTE_OFF; unit→MISSING/RETIRED), `resolveProblemItem` (FOUND/NOT_FOUND), `autoResolveOnReturn` (поздний возврат). Все в `$transaction` + `writeAuditEntry`. FUTURE-хук: NOT_FOUND → «долг гафера» |
 | `apps/api/src/services/repairPhotoStorage.ts` | Фото поломки: magic-byte валидация (JPEG/PNG, 5 MB, без PDF), `sanitizeFilename`, `resolveUploadPath` (traversal-guard), staging API (`writeStagedPhoto`/`listStaged`/`moveStagedToRepair`). Зеркалит `expenses.ts` security. `UPLOAD_ROOT` = `apps/api/uploads`; пути в БД относительные |
 | `apps/api/src/routes/problemItems.ts` | `/api/problem-items`: GET список (keyset-пагинация по createdAt, фильтр `?status=`, без barcode в выдаче) + POST `/:id/resolve` (Zod: outcome FOUND/NOT_FOUND + note min 3). Router-level `rolesGuard(["SUPER_ADMIN","WAREHOUSE"])` в `routes/index.ts` |
-| `apps/web/src/components/warehouse/` | Все компоненты редизайна kiosk: `ScanShell` (тёмная шапка/desktop two-pane), `LoginStep`, `BookingList` (без фильтров, группировка по дате), `OperationStep`, `UnitRow` (2-кн ВЫДАЧА / 3-кн ВОЗВРАТ), `IssueChecklist`, `AddonSearch` (bottom-sheet/inline + focus-trap/scroll-lock/slide-up), `RepairPanel` (нативная камера), `ProblemPanel` (4 причины), `ReturnChecklist`, `ReturnResultView`, `ProblemItemsPage`, `ResolveProblemModal`, `useScanSession`, `api.ts`, `types.ts` (вкл. shared `isScanApiError`) |
+| `apps/web/src/components/warehouse/` | Все компоненты редизайна kiosk: `WorkstationShell` (тёмная шапка + таб-бар рабочего стола v2), `LoginStep`, `BookingList` (без фильтров, группировка по дате), `UnitRow` (2-кн ВЫДАЧА / 3-кн ВОЗВРАТ), `IssueChecklist`, `AddonSearch` (bottom-sheet/inline + focus-trap/scroll-lock/slide-up), `RepairPanel` (нативная камера), `ProblemPanel` (4 причины), `ReturnChecklist`, `ReturnResultView`, `ProblemItemsPage`, `ResolveProblemModal`, `useScanSession`, `api.ts`, `types.ts` (вкл. shared `isScanApiError`) |
 | `apps/web/app/warehouse/problems/page.tsx` | Manager-реестр «Потеряшки»: обычный AppShell + JWT (НЕ kiosk). `Suspense` → `<ProblemItemsPage />` |
-| `apps/web/app/warehouse/layout.tsx` | Прозрачный passthrough (`<>{children}</>`). Kiosk-фрейм живёт в `ScanShell`, не в layout — иначе двойная шапка над редизайн-страницей |
+| `apps/web/app/warehouse/layout.tsx` | Прозрачный passthrough (`<>{children}</>`). Kiosk-фрейм живёт в `WorkstationShell`, не в layout — иначе двойная шапка над редизайн-страницей |
 | `docs/superpowers/specs/2026-05-19-warehouse-scan-redesign-design.md` | Утверждённая спецификация редизайна (adaptive UX, потеряшки, фото) |
 | `docs/superpowers/plans/2026-05-19-warehouse-scan-redesign.md` | План реализации редизайна (по задачам) |
 | `docs/mockups/warehouse-scan/` | Утверждённые мокапы (00–03 HTML) + `FIDELITY-CHECK.md` (375/1440 скриншоты `_fidelity/`) |
@@ -211,10 +216,10 @@ npm run seed                  # Seed database
 - **Price comparison uses Decimal.equals()**: never use `===` to compare monetary values — `Decimal` instances are objects. Use `.equals()` from Decimal.js.
 - **Import file formats**: `.xlsx`, `.csv`, `.xls` accepted (max 5 MB). Parsed via `xlsx` + `exceljs` libraries.
 - **Import apply uses optimistic locking**: `version` field on `ImportSession` prevents double-apply. `applyChanges()` increments version atomically and rejects stale requests.
-- **Dashboard is home page** — `/` shows operations dashboard (pickups/returns/active + MiniCalendar + availability check), not equipment list.
+- **`/` redirects to `/day`** — операционный дашборд «Мой день» и есть домашняя страница; `/dashboard` — тоже редирект (осиротевший дубль). MiniCalendar удалён (мёртвый код: звал несуществующий `/api/calendar/occupancy` и нигде не монтировался).
 - **Calendar BLOCKING_STATUSES** — `["PENDING_APPROVAL", "CONFIRMED", "ISSUED"]` used by `calendar.ts`, `availability.ts` and `addonAvailability.ts` (аудит 2026-07: бронь на согласовании резервирует оборудование; в календаре — amber «На согласовании»). DRAFT bookings excluded. Confirm/approve исключают саму бронь из проверки конфликтов (excludeBookingId).
 - **Hourly precision** — Equipment page and QuickAvailabilityCheck use `datetime-local` inputs. Bookings resolved to exact hour, not just date.
-- **New web dependencies**: `react-day-picker` v9, `@floating-ui/react`, `date-fns` (web only).
+- **New web dependencies**: `@floating-ui/react`, `date-fns` (web only). `react-day-picker` удалён вместе с MiniCalendar (2026-08-05).
 - **Bot scope guard** — `botScopeGuard` middleware (mounted in `app.ts` after `apiKeyAuth`) enforces whitelist for API keys with prefix `openclaw-`. DELETE is globally blocked. Non-whitelisted routes return 403 `{ code: "BOT_SCOPE_FORBIDDEN" }`. Keys without this prefix pass through without restriction.
 - **Finance debts endpoint** — `GET /api/finance/debts` aggregates `amountOutstanding > 0` bookings (excluding CANCELLED) by client. Supports `?overdueOnly=true` and `?minAmount=N` filters. Service function: `computeDebts()` in `apps/api/src/services/finance.ts`.
 - **dryRun option** — `POST /api/bookings/draft` and `PATCH /api/bookings/:id` accept `dryRun: true` in the request body. When true, validates input, computes estimate via `quoteEstimate()`, and returns a preview without writing to DB. POST returns `{ id: null, status: "DRAFT_PREVIEW", ... }`. PATCH returns the existing booking's projected state.
@@ -233,6 +238,9 @@ npm run seed                  # Seed database
 - **AdminUser.isActive** — деактивация вместо удаления: login отклоняет `isActive=false`; PATCH-гарды: нельзя менять свою роль, понижать/отключать последнего SUPER_ADMIN (409).
 - **Сортировка списка броней** — актуальные (endDate ≥ МСК-сегодня) по startDate asc, затем прошедшие по startDate desc. Фильтры/страница /bookings в URL.
 - **POST /draft принимает clientPhone** — новому клиенту записывается, существующему без телефона дозаполняется, существующий НЕ перезаписывается.
+- **Быстрая бронь — `POST /api/bookings/quick`** (SA + WAREHOUSE): клиент + произвольная сумма, без позиций. Сумма живёт в `manualFinalAmount` (авторитетна для `recomputeBookingFinance`), бронь создаётся сразу `CONFIRMED` в обход `confirmBooking` (тот падает на пустых позициях) и без MAIN-сметы — снапшотить нечего. Даты по умолчанию сегодня 10:00 → +1 день, проект по умолчанию «Без описания». Аудит `BOOKING_QUICK_CREATE`. UI — `QuickBookingModal` на `/bookings`.
+- **Списание («прощение») хвоста долга — `POST/DELETE /api/bookings/:id/write-off`** (SUPER_ADMIN). Смета округляется до удобной суммы, клиент платит ровно её, на броне повисает хвост в несколько сотен рублей — взыскивать его никто не будет, но бронь не уходит из дебиторки. `Booking.writeOffAmount/Reason/At/By` уменьшает сумму К ВЗЫСКАНИЮ и НЕ трогает ни `finalAmount`, ни `amountPaid`: видно три разных числа — выставили, получили, простили. Реализовано списанием, а не удалением счёта/платежа, по той же причине, по которой со страницы долгов убрали удаление брони (аудит 2026-07) — деструктив уничтожает финансовую историю. `recomputeBookingFinance` вычитает списание перед расчётом `amountOutstanding`/`paymentStatus`, поэтому эффект переживает любой пересчёт. `writeOffAmount` накопительный; простить больше текущего остатка нельзя (400 `WRITE_OFF_EXCEEDS_DEBT`), остаток читается ВНУТРИ транзакции. Разрешено только в `CONFIRMED/ISSUED/RETURNED`. Аудит `BOOKING_DEBT_WRITE_OFF` / `BOOKING_DEBT_WRITE_OFF_CANCELLED`. UI: пункт «✅ Простить долг» в меню строки `/finance/debts` (`WriteOffDebtModal`), на карточке брони — amber-баннер «Долг списан» с кнопкой «Вернуть долг» и подпись «прощено N ₽» в карточке «Остаток» (карточка «Оплачено» при списании пишет «закрыто с учётом списания», а не «100% оплачено»).
+- **Брони без оборудования скрыты на складе** — `items: { some: {} }` в `GET /api/warehouse/bookings`, `/in-work` и в трёх выборках `computeShift` (константа `HAS_EQUIPMENT_FILTER` в `warehouseWorkstation.ts`). Выдавать и принимать в такой броне нечего; в списке броней, долгах и финансах она видна как обычно. В календаре не появляется закономерно — это сетка занятости оборудования.
 - **GET /api/payments?includeVoided=true** — отдаёт аннулированные (voidedAt/voidReason); GET /api/invoices отдаёт `counts` по статусам по всей выборке.
 - **BookingForm: автосейв черновика** — localStorage `lr:bookings:new:draft` (debounce 2с) + beforeunload + плашка восстановления; при URL-префилле из календаря (?start&end&equipmentId) чужой сохранённый черновик не восстанавливается и НЕ перезаписывается.
 - **Ручной перевод юнита в MAINTENANCE** — создаёт Repair-карточку post-tx best-effort (дубль гасится `REPAIR_ACTIVE_EXISTS`); ручной ISSUED запрещён (`MANUAL_ISSUE_FORBIDDEN`); ручные смены статуса аудируются (`UNIT_STATUS_MANUAL_CHANGE`).
@@ -242,6 +250,7 @@ npm run seed                  # Seed database
 - **`Vehicle.serviceIntervalKm` — nullable, и это состояние UI** — null означает «интервал не задан», и тогда прогноз ТО НЕ строится: карточка честно пишет об этом вместо выдуманного остатка. Задаётся на `/vehicles/[id]` в панели «Редактировать гос. номер / интервал ТО / заметки».
 - **Выручка машины считается по тем же статусам, что и статистика техники** — `CONFIRMED / ISSUED / RETURNED` (константа `RENTAL_BOOKING_STATUSES` продублирована в `fleetDashboard.ts`). DRAFT и CANCELLED в деньги и загрузку не попадают — единая семантика выручки по системе.
 - **Быстрые действия автопарка через `?action=`** — `/vehicles/[id]?action=mileage|service` сразу раскрывает нужную форму (проп `defaultOpen`). Страница обёрнута в `Suspense` — обязательно для `useSearchParams` в Next 14.
+- **supertest в API-тестах ходит на `[::1]`, а не на `127.0.0.1`** (фикс флейка 2026-08-06, патч в `apps/api/src/__tests__/setup.ts`). Причина: supertest на КАЖДЫЙ `request()` делает `app.listen(0)` без хоста — это бинд на IPv6-wildcard `::`, — а URL строит с жёстко зашитым `127.0.0.1` (`lib/test.js:63` и `:69`). На macOS/BSD wildcard-бинд не конфликтует с чужим слушателем на конкретном `127.0.0.1:PORT`, поэтому ядро выдаёт уже занятый порт, а соединение достаётся более специфичному — ЧУЖОМУ — сокету (Electron/VS Code, language server и всё, что слушает в диапазоне 49152–65535). Запрос уходит в посторонний процесс, тест видит его ответ (401/403/404) или RST, а приложение запроса не видит вовсе. Так терялся примерно каждый третий-пятый полный прогон, всегда в случайном файле; `--pool=forks` и `--maxWorkers` не помогают — конфликт с процессами ВНЕ vitest. **Нельзя** «просто» заменить на `listen(0, "127.0.0.1")`: с явным хостом бинд асинхронный, `app.address()` сразу возвращает null и supertest падает на `lib/test.js:67`. Патч уважает отсутствие IPv6 (если `listen(0)` сел на `0.0.0.0`, URL не переписывается) и громко бросает, если `Test.prototype.serverAddress` пропал после апгрейда supertest. Сторож — `apps/api/src/__tests__/supertestLoopback.test.ts`: детерминированно поднимает «чужой демон» на занятом порту и падает, если патч убрали.
 - **SQLite работает в WAL** (перф-аудит 2026-08-02) — `journal_mode=WAL` включается в `prisma.ts` при старте (кроме `NODE_ENV=test`). Следствия: (1) свежие транзакции живут в `prod.db-wal` до чекпойнта — бэкап ТОЛЬКО через `sqlite3 .backup` (CI и deploy.sh уже так делают), голый `cp prod.db` теряет хвост; (2) файлы `-wal`/`-shm` рядом с БД — не мусор, удалять нельзя.
 - **Финсинк не в hot path** — `paymentStatusSyncForAllBookings` прогоняется фоновым интервалом в `index.ts` (полокна троттла = 30 c); вызовы в finance-роутах сохранены как контракт для тестов, но на проде всегда попадают в тёплое троттл-окно. `recomputeBookingFinance` пропускает UPDATE, если пересчёт ничего не изменил.
 - **Rate limiter — на пользователя, не на IP** — ключ `lr_session` → `X-API-Key` → IP, лимит 300/мин; все браузеры ходят через Next-прокси с одного адреса, и по-IP лимит был общим на весь офис.
@@ -263,7 +272,7 @@ npm run seed                  # Seed database
 - **Три токена НЕ инвертируются вместе с ink** — иначе намеренно тёмные элементы становятся белыми:
   - `inverse` / `on-inverse` — тёмная хромировка (шапка `/day`, активные пилюли, тёмные панели калькулятора, header `/repair/[id]`, `LkShell`);
   - `scrim` — подложка модалок (`bg-scrim/40…/85`), всегда тёмная;
-  - `accent-chrome` — синяя брендовая шапка киоска склада (`ScanShell`), ночью уходит в глубокий синий, а не в яркий.
+  - `accent-chrome` — синяя брендовая шапка киоска склада (`WorkstationShell`), ночью уходит в глубокий синий, а не в яркий.
 - **Белый текст на цветной заливке пишется как `text-surface`, не `text-white`** — в светлой теме `--c-surface` = белый (поведение прежнее), в ночной = почти чёрный, и надпись остаётся читаемой на осветлённой заливке (`bg-rose`, `bg-emerald`, `bg-accent-bright`…). `text-white` оставлен только там, где фон тёмный в обеих темах (сайдбар `bg-slate-900`, `bg-inverse`, `bg-accent-chrome`).
 - **Числовые оттенки Tailwind (`bg-slate-900`, `text-slate-400`) темы не знают** — они остались только в намеренно тёмных сайдбаре/киоске. В остальном UI хардкод вычищен в токены; новые страницы обязаны использовать токены, иначе ночью останутся светлым пятном.
 - **`color-scheme`** задан в обеих темах — от него зависит отрисовка нативных контролов (`<input type="date">`, скроллбары, `<select>`).
@@ -400,7 +409,23 @@ CSS-утилиты: `.eyebrow` (надстрочники), `.mono-num` (числ
 
 ### API /api/audit (Sprint 2)
 
-`GET /api/audit` — SUPER_ADMIN only. Query: `entityType`, `userId`, `from` (ISO), `to` (ISO), `limit` (1–200, default 50), `cursor` (keyset). Response: `{ items: AuditEntry[], nextCursor: string | null }`. Файл: `apps/api/src/routes/audit.ts`.
+`GET /api/audit` — SUPER_ADMIN only. Query: `entityType`, `entityId`, `userId`, `from` (ISO), `to` (ISO), `limit` (1–200, default 50), `cursor` (keyset). Response: `{ items: AuditEntry[], nextCursor: string | null }`. Файл: `apps/api/src/routes/audit.ts`. `entityId` добавлен 2026-08-05: раньше параметр молча игнорировался, и `ApprovalTimeline` на карточке брони показывал историю согласования ВСЕХ броней.
+
+## Мастерская v2 (раздел «Ремонты», 2026-08)
+
+Раздел перестроен с плоского списка на экран, отвечающий на один вопрос: **что горит**.
+Мокапы — `docs/mockups/repair-v2/` (`final-desktop`, `final-card`, `final-add-repair`, `final-mobile`),
+они источник правды по вёрстке и формулировкам.
+
+- **Сломанное больше не продаётся.** До этого в `availability.ts` слова `Repair` не было вообще: из наличия вычитались только «потеряшки», и календарь, проверка доступности, добор на складе и чек-лист выдачи продолжали предлагать то, что лежит в мастерской. Теперь `getRepairCountByEquipmentMap()` (там же, зеркалит `getLostCountByEquipmentMap`) вычитается во всех трёх расчётах. Считает **только ремонты без `unitId`**: штучные уже выпали через `EquipmentUnit.status = MAINTENANCE`, и учесть их здесь значило бы вычесть прибор дважды. Позиция берётся с `Repair.equipmentId`, а если пусто — через `bookingItem.equipmentId`. Активный ремонт — любой статус, кроме `CLOSED`/`WROTE_OFF`.
+- **Риск — три состояния, а не флажок.** `BLOCKS` (подмены нет и к сроку брони не успеваем) / `TIGHT` (подмены нет, но успеваем — пишем запас в днях) / `COVERED` (остальных единиц хватает) / `NONE`. Экран, который кричит одинаково про то, что горит, и про то, что успевает, перестают читать через неделю. Блокирующие статусы броней — из общей `BLOCKING_STATUSES`, не хардкод; считается и для позиций без штучного учёта (раньше гард `r.unit` их пропускал).
+- **Название в три ступени:** `unit.equipment.name` → `bookingItem.equipment.name` → `equipment.name` → «Позиция удалена из каталога», плюс `titleSource` для метки «название из каталога». До этого поломки на позициях без штучного учёта (кабели, зарядки) приезжали как «Без позиции», а на `/day` техника роняли весь первый экран: тип `unit` был объявлен non-nullable и разыменовывался напрямую.
+- **`Repair.expectedReadyAt` / `partsNote`** — срок возврата и чего ждём. `null` — **валидное** состояние «срок не назначен», а не забытое поле: выдуманный прогноз хуже честного пробела, по нему начнут планировать съёмку (та же логика, что у `Vehicle.serviceIntervalKm`). В UI «Ждём» подставляет интерфейс — в `partsNote` пишется только предмет («разъём Neutrik NL4»).
+- **Новые ручки:** `POST /api/repairs` (SA + WAREHOUSE + TECHNICIAN) — завести поломку прямо из раздела, когда сломанное нашли вне приёмки; занятая единица → 409 `REPAIR_ACTIVE_EXISTS`. Конфликт с бронью **не блокирует** создание — прибор сломан по факту, а не по учёту; сервер возвращает `risk`, UI предупреждает. `PATCH /api/repairs/:id/eta` — назначить/сдвинуть срок.
+- **Первая запись работ в статусе «Ждёт ремонта» сама берёт ремонт в работу** — раньше фронт форму показывал, а сервер отвечал 400, и человек получал отказ на заполненную форму.
+- **`GET /api/dashboard/repair-stats`** расширен: `atRiskCount`, `quietCount`, `noEtaCount`, `spentPrevMonth` (база сравнения — голое «потрачено 46 800 ₽» ни о чём не говорит), `pendingExpenses` (расход техника остаётся неутверждённым, а KPI считал только утверждённые — владелец видел заниженную сумму), `readyForPickup`. Денежные поля — только `SUPER_ADMIN`, остальным `null`.
+- **«Вернулось из ремонта»** живёт на экране «Смена» рабочего стола кладовщика, а не в разделе «Ремонты»: закрытые за 7 дней ремонты физически лежат в мастерской, и раньше за прибором бежали в последний момент на выдаче.
+- **`text-white` в `RepairPhotoStrip`** — задокументированное исключение: полноэкранный просмотр фото на `bg-scrim`, тёмном в обеих темах.
 
 ## Sprint 4: Repair Workflow
 
@@ -466,7 +491,7 @@ CSS-утилиты: `.eyebrow` (надстрочники), `.mono-num` (числ
 - `/login` — max-w-[360px], bg-accent, accent-bright primary button.
 - `/admin` — eyebrow tabs, border-border, shadow-xs.
 - `/warehouse/scan` — токенизация цветов, accent-bright для primary action.
-- `DashboardOpsCard`, `QuickAvailabilityCheck`, `CalendarTooltip`, `MiniCalendar` — токенизация.
+- `DashboardOpsCard`, `QuickAvailabilityCheck`, `CalendarTooltip` — токенизация.
 
 ### Аудит (после Sprint 5)
 
@@ -923,10 +948,10 @@ Admin (под обычным `apiKeyAuth + rolesGuard(["SUPER_ADMIN"])`):
 
 ### Frontend
 
-- `apps/web/app/warehouse/scan/page.tsx` — тонкая adaptive-оболочка: `useScanSession` + `ScanShell`, один компонент на шаг (login/operation/booking/checklist/summary). Сохранён token-контракт (`warehouse_token` Bearer), step-машина, PIN-login + SA/WAREHOUSE main-session bypass. Desktop: список броней слева, активный шаг справа.
-- Новые компоненты в `apps/web/src/components/warehouse/`: `ScanShell`, `LoginStep`, `BookingList` (без фильтров, группировка по дате), `OperationStep`, `UnitRow` (2-кн ISSUE / 3-кн RETURN), `IssueChecklist`, `AddonSearch` (bottom-sheet/inline + focus-trap + scroll-lock + slide-up; soft-warn на конфликт + ack-proceed), `RepairPanel` (нативная камера через `<input capture>`), `ProblemPanel` (4 причины), `ReturnChecklist`, `ReturnResultView`, `ProblemItemsPage`, `ResolveProblemModal`, `useScanSession`, `api.ts`, `types.ts` (shared `isScanApiError` рядом с типом).
+- `apps/web/app/warehouse/scan/page.tsx` — step-машина этого редизайна (login/operation/booking/checklist/summary) с тех пор заменена «Рабочим столом кладовщика v2» на `WorkstationShell` (см. строку в Key Files). Из неё сохранены token-контракт (`warehouse_token` Bearer), PIN-login + SA/WAREHOUSE main-session bypass и сами чек-листы.
+- Новые компоненты в `apps/web/src/components/warehouse/`: `LoginStep`, `BookingList` (без фильтров, группировка по дате), `UnitRow` (2-кн ISSUE / 3-кн RETURN), `IssueChecklist`, `AddonSearch` (bottom-sheet/inline + focus-trap + scroll-lock + slide-up; soft-warn на конфликт + ack-proceed), `RepairPanel` (нативная камера через `<input capture>`), `ProblemPanel` (4 причины), `ReturnChecklist`, `ReturnResultView`, `ProblemItemsPage`, `ResolveProblemModal`, `useScanSession`, `api.ts`, `types.ts` (shared `isScanApiError` рядом с типом).
 - `apps/web/app/warehouse/problems/page.tsx` — manager-реестр «Потеряшки»: обычный AppShell + JWT (НЕ kiosk-сценарий).
-- `apps/web/app/warehouse/layout.tsx` — сведён к прозрачному passthrough (`<>{children}</>`): kiosk-фрейм теперь в `ScanShell`, layout-обёртка давала двойную шапку. Не возвращать chrome.
+- `apps/web/app/warehouse/layout.tsx` — сведён к прозрачному passthrough (`<>{children}</>`): kiosk-фрейм теперь в `WorkstationShell`, layout-обёртка давала двойную шапку. Не возвращать chrome.
 - Навигация: пункт «Потеряшки» (`/warehouse/problems`, icon `alert`) добавлен в `roleMatrix.ts` для `SUPER_ADMIN` + `WAREHOUSE`.
 - **`expectedBackDate` wire-format**: `ProblemPanel` отдаёт голый `YYYY-MM-DD` (raw `<input type="date">`). Backend Zod для `problemUnits[].expectedBackDate` — `z.string().datetime()` (требует ISO-8601). `ReturnChecklist` конвертирует `YYYY-MM-DD` → `new Date(`${d}T00:00:00.000Z`).toISOString()` ПЕРЕД POST (`toIsoDatetime` в `types.ts`).
 

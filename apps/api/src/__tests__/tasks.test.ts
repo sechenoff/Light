@@ -141,6 +141,26 @@ describe("POST /api/tasks — создание", () => {
     expect(res.status).toBe(201);
   });
 
+  it("description: null (payload TaskCreateModal без раскрытого описания) → 201", async () => {
+    // Регрессия 2026-08-05: схема без .nullable() отклоняла литеральный null,
+    // который модалка шлёт всегда, когда блок описания не раскрыт, — задача
+    // без описания не создавалась вовсе (400 на каждую).
+    const res = await request(app)
+      .post("/api/tasks")
+      .set(AUTH_SA())
+      .send({
+        title: "Задача без описания",
+        urgent: false,
+        dueDate: null,
+        assignedTo: null,
+        description: null,
+        relatedBookingId: null,
+        relatedClientId: null,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.task.description).toBeNull();
+  });
+
   it("пустой заголовок → 400 VALIDATION_FAILED", async () => {
     const res = await request(app)
       .post("/api/tasks")

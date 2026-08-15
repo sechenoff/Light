@@ -12,12 +12,18 @@ import { writeAuditEntry, diffFields } from "../services/audit";
 const router = express.Router();
 
 // ──────────────────────────────────────────────
-// GET /assignable — минимальный список пользователей для назначения задач/ремонтов.
-// Доступно всем 3 ролям: WAREHOUSE/TECHNICIAN тоже должны уметь назначать задачи.
-// Безопасный subset: только id+username+role, без passwordHash/timestamps.
-// Размещено ДО router.use(requireRole("SUPER_ADMIN")), чтобы не падать на 403.
+// GET /api/admin-users/assignable — минимальный список пользователей для
+// назначения задач/ремонтов. Доступно всем 3 ролям: WAREHOUSE/TECHNICIAN тоже
+// должны уметь назначать задачи. Безопасный subset: только id+username+role.
+//
+// ОТДЕЛЬНЫЙ router: в index.ts он монтируется ДО rolesGuard(["SUPER_ADMIN"]) —
+// раньше маршрут жил внутри adminUsersRouter, и внешний гард на общем mount
+// перехватывал запрос до внутреннего (WAREHOUSE/TECHNICIAN получали 403, блок
+// «Кому» в задачах молча исчезал; fix 2026-08-05).
 // ──────────────────────────────────────────────
-router.get(
+export const assignableUsersRouter = express.Router();
+
+assignableUsersRouter.get(
   "/assignable",
   rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]),
   async (_req, res, next) => {

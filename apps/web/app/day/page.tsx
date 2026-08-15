@@ -16,7 +16,12 @@ import type { DayOperation } from "../../src/components/day/DayOperationsList";
 import { DayFooterMetrics } from "../../src/components/day/DayFooterMetrics";
 import { DayTasksWidget } from "../../src/components/day/DayTasksWidget";
 import { DayProblemAlert } from "../../src/components/day/DayProblemAlert";
+import { DayRepairSummary } from "../../src/components/day/DayRepairSummary";
 import { QuickAvailabilityCheck } from "../../src/components/QuickAvailabilityCheck";
+// Форма ремонта — общая с разделом «Мастерская». Локальная копия типа здесь
+// однажды уже стоила техникам белого экрана: она объявляла `unit` обязательным,
+// а поломки без единицы (кабели, зарядки) приходят с `unit: null`.
+import type { RepairListItem, RepairStats } from "../../src/components/repair/types";
 
 // ── SUPER_ADMIN ──────────────────────────────────────────────────────────────
 
@@ -78,14 +83,6 @@ interface PendingApprovalsResponse {
     endDate: string;
   }>;
   total: number;
-}
-
-interface RepairStats {
-  openCount: number;
-  newCount: number;
-  closedThisMonth: number;
-  writtenOffThisMonth: number;
-  spentThisMonth: string;
 }
 
 function sumFinal(bookings: Array<{ finalAmount: string }>): number {
@@ -237,6 +234,8 @@ function DaySuperAdmin({ username }: { username: string }) {
             subTone={overdue && Number(overdue) > 0 ? "rose" : "muted"}
             href="/finance/debts"
           />
+          {/* Срыв брони важнее суммы: деньги за месяц можно посмотреть и завтра,
+              а бронь, под которую нет замены, — только до выдачи. */}
           <DayKpiCard
             eyebrow="Ремонт"
             value={
@@ -249,9 +248,12 @@ function DaySuperAdmin({ username }: { username: string }) {
             }
             sub={
               repairStats
-                ? <>≈ {formatRub(repairStats.spentThisMonth)} в {monthLocative}</>
+                ? repairStats.atRiskCount > 0
+                  ? <>{repairStats.atRiskCount} {pluralize(repairStats.atRiskCount, "срывает", "срывают", "срывают")} ближайшие брони</>
+                  : <>≈ {formatRub(repairStats.spentThisMonth)} в {monthLocative}</>
                 : "—"
             }
+            subTone={repairStats && repairStats.atRiskCount > 0 ? "rose" : "muted"}
             href="/repair"
           />
         </div>
@@ -328,6 +330,7 @@ function DaySuperAdmin({ username }: { username: string }) {
 function DayWarehouse({ username }: { username: string }) {
   const [dashboard, setDashboard] = useState<DashboardToday | null>(null);
   const [pending, setPending] = useState<PendingApprovalsResponse | null>(null);
+  const [repairStats, setRepairStats] = useState<RepairStats | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -342,6 +345,9 @@ function DayWarehouse({ username }: { username: string }) {
       .catch(notifyError);
     apiFetch<PendingApprovalsResponse>("/api/dashboard/pending-approvals")
       .then((d) => { if (!cancelled) setPending(d); })
+      .catch(notifyError);
+    apiFetch<RepairStats>("/api/dashboard/repair-stats")
+      .then((d) => { if (!cancelled) setRepairStats(d); })
       .catch(notifyError);
     return () => { cancelled = true; };
   }, []);
@@ -369,6 +375,10 @@ function DayWarehouse({ username }: { username: string }) {
         <DayProblemAlert />
 
         <DayTasksWidget dashboard={dashboard} />
+
+        {/* Мастерская: кладовщик до этого не видел её вовсе, хотя именно он
+            обнаруживает нехватку на выдаче и забирает починенное с верстака. */}
+        <DayRepairSummary stats={repairStats} variant="warehouse" />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-surface border border-border rounded-lg p-3">
@@ -440,15 +450,6 @@ function DayWarehouse({ username }: { username: string }) {
 }
 
 // ── TECHNICIAN ───────────────────────────────────────────────────────────────
-
-interface RepairListItem {
-  id: string;
-  reason: string;
-  status: "WAITING_REPAIR" | "IN_REPAIR" | "WAITING_PARTS" | "CLOSED" | "WROTE_OFF";
-  urgency: "NOT_URGENT" | "NORMAL" | "URGENT";
-  createdAt: string;
-  unit: { equipment: { name: string } };
-}
 
 function daysSince(iso: string): number {
   const ms = Date.now() - new Date(iso).getTime();
@@ -535,7 +536,9 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
             <div className="space-y-3">
               {newRepairs.map((r) => (
                 <div key={r.id} className="pt-2 border-t border-border first:border-t-0 first:pt-0">
-                  <p className="text-sm font-semibold text-ink">{r.unit.equipment.name}</p>
+                  {/* title приходит с сервера и никогда не пуст: единица → строка
+                      сметы → каталог → «Позиция удалена из каталога». */}
+                  <p className="text-sm font-semibold text-ink">{r.title}</p>
                   <p className="text-xs text-ink-2 mt-0.5">{r.reason}</p>
                   <div className="flex gap-2 mt-2">
                     <button
@@ -559,6 +562,10 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
 
         <DayTasksWidget />
 
+        {/* Сводка мастерской целиком: своя очередь показывает только «мои»
+            карточки, а срыв брони может висеть на чужой или ничьей. */}
+        <DayRepairSummary stats={stats} variant="technician" />
+
         <div className="bg-surface border border-border rounded-lg p-4">
           <div className="flex justify-between items-baseline mb-2">
             <p className="text-sm font-semibold text-ink">🛠 В работе</p>
@@ -578,7 +585,7 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
                       onClick={() => router.push(`/repair/${r.id}`)}
                       className="w-full text-left flex justify-between items-baseline gap-2 hover:text-accent transition-colors"
                     >
-                      <span className="text-sm text-ink truncate">{r.unit.equipment.name}</span>
+                      <span className="text-sm text-ink truncate">{r.title}</span>
                       <span className={`text-xs ${toneClass[sl.tone]} shrink-0`}>{sl.text}</span>
                     </button>
                   </li>
@@ -594,8 +601,15 @@ function DayTechnician({ userId, username }: { userId: string; username: string 
               За этот месяц: починено <b className="text-ink-2">{stats.closedThisMonth}</b>,
               списано <b className="text-ink-2">{stats.writtenOffThisMonth}</b>,
               в работе <b className="text-ink-2">{stats.openCount}</b>
-              {" · потрачено ≈ "}
-              <b className="text-ink-2">{formatRub(stats.spentThisMonth)}</b>
+              {/* Расходы мастерской сервер отдаёт только руководителю (null для
+                  техника) — раньше здесь печаталось «потрачено ≈ 0 ₽», что не
+                  «нисколько», а «тебе не показывают». */}
+              {stats.spentThisMonth != null && (
+                <>
+                  {" · потрачено ≈ "}
+                  <b className="text-ink-2">{formatRub(stats.spentThisMonth)}</b>
+                </>
+              )}
             </>
           ) : "Загрузка статистики…"}
         </DayFooterMetrics>

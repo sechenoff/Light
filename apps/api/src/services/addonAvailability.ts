@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { getLostCountByEquipmentMap, getRepairCountByEquipmentMap } from "./availability";
 
 // PENDING_APPROVAL резервирует оборудование (единая политика с availability.ts
 // и calendar.ts) — quick-add на выдаче предупреждает и о бронях на согласовании.
@@ -56,7 +57,22 @@ export async function findAddonConflict(
   const reservedQty = overlapping.reduce(
     (s, b) => s + b.items.reduce((q, i) => q + i.quantity, 0), 0,
   );
-  const capacity = eq.totalQuantity || 1;
+  // Ёмкость склада — физически доступное количество, а не сырой totalQuantity:
+  // из него вычитаем открытые потеряшки и активные безъюнитные ремонты, ровно как
+  // это делает витрина (getAvailability). Иначе добор на складе предлагает то,
+  // что лежит в мастерской или потеряно, и три экрана считают по-разному.
+  const [lostByEquipment, inRepairByEquipment] = await Promise.all([
+    getLostCountByEquipmentMap([equipmentId]),
+    getRepairCountByEquipmentMap([equipmentId]),
+  ]);
+  // totalQuantity=0 исторически трактуется как «склад не заполнен» → считаем 1
+  // экземпляр. Вычеты применяем уже к этой базе.
+  const capacity = Math.max(
+    0,
+    (eq.totalQuantity || 1)
+      - (lostByEquipment.get(equipmentId) ?? 0)
+      - (inRepairByEquipment.get(equipmentId) ?? 0),
+  );
   if (reservedQty + 1 <= capacity) return null; // ещё есть свободный экземпляр
 
   const nearest = overlapping[0];

@@ -10,10 +10,15 @@
  * - addWorkLog — запись работ по ремонту
  */
 
-import type { RepairUrgency, RepairStatus } from "@prisma/client";
+import type { RepairUrgency, RepairStatus, BookingStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { writeAuditEntry } from "./audit";
+import {
+  BLOCKING_STATUSES,
+  getLostCountByEquipmentMap,
+  getRepairCountByEquipmentMap,
+} from "./availability";
 import { HttpError } from "../utils/errors";
 
 function notFoundToHttpError(err: unknown, entity = "Ремонт"): never {
@@ -37,12 +42,23 @@ const CLOSED_STATUSES: RepairStatus[] = ["CLOSED", "WROTE_OFF"];
 // ─── createRepair ────────────────────────────────────────────────────────────
 
 export async function createRepair(args: {
-  unitId: string;
+  /** Штучный ремонт: единица уходит в MAINTENANCE. */
+  unitId?: string | null;
+  /** Ремонт позиции без штучного учёта (кабели, стойки, зарядки). */
+  equipmentId?: string | null;
+  bookingItemId?: string | null;
+  quantity?: number;
   reason: string;
   urgency: RepairUrgency;
   sourceBookingId?: string;
+  expectedReadyAt?: Date | null;
+  partsNote?: string | null;
   createdBy: string;
 }) {
+  if (!args.unitId && !args.equipmentId && !args.bookingItemId) {
+    throw new HttpError(400, "Не указано, что ремонтируем", "REPAIR_TARGET_REQUIRED");
+  }
+
   // Данные — в одной транзакции (Repair + EquipmentUnit). Audit пишется
   // ПОСЛЕ commit как best-effort: `AuditEntry.userId` — FK на `AdminUser.id`,
   // а `createdBy` в warehouse-flow приходит как имя кладовщика/username (не
@@ -51,30 +67,57 @@ export async function createRepair(args: {
   // появлялась в /repair. Документированный паттерн: audit = observability,
   // не бизнес-инвариант (см. completeSession.BOOKING_STATUS_CHANGED).
   const repair = await prisma.$transaction(async (tx: TxClient) => {
-    // 1. Проверить: нет активной Repair на эту единицу
-    const existing = await tx.repair.findFirst({
-      where: {
-        unitId: args.unitId,
-        status: { in: ACTIVE_STATUSES },
-      },
-    });
-    if (existing) {
-      throw new HttpError(409, "Активная карточка ремонта уже существует", "REPAIR_ACTIVE_EXISTS");
-    }
+    let equipmentId = args.equipmentId ?? null;
 
-    // 2. Проверить: unit существует и не RETIRED
-    const unit = await tx.equipmentUnit.findUniqueOrThrow({ where: { id: args.unitId } }).catch((e) => notFoundToHttpError(e, "Единица оборудования"));
-    if (unit.status === "RETIRED") {
-      throw new HttpError(400, "Нельзя ремонтировать списанную единицу", "UNIT_RETIRED");
+    if (args.unitId) {
+      // 1. Проверить: нет активной Repair на эту единицу
+      const existing = await tx.repair.findFirst({
+        where: {
+          unitId: args.unitId,
+          status: { in: ACTIVE_STATUSES },
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new HttpError(
+          409,
+          "Активная карточка ремонта уже существует",
+          "REPAIR_ACTIVE_EXISTS",
+          { repairId: existing.id },
+        );
+      }
+
+      // 2. Проверить: unit существует и не RETIRED
+      const unit = await tx.equipmentUnit.findUniqueOrThrow({ where: { id: args.unitId } }).catch((e) => notFoundToHttpError(e, "Единица оборудования"));
+      if (unit.status === "RETIRED") {
+        throw new HttpError(400, "Нельзя ремонтировать списанную единицу", "UNIT_RETIRED");
+      }
+      // Позицию каталога подставляем с самой единицы: если единицу потом
+      // удалят, `unitId` обнулится связью, и карточка осталась бы без имени.
+      equipmentId = unit.equipmentId;
+    } else if (equipmentId) {
+      const equipment = await tx.equipment.findUnique({
+        where: { id: equipmentId },
+        select: { id: true },
+      });
+      if (!equipment) {
+        throw new HttpError(404, "Позиция каталога не найдена", "EQUIPMENT_NOT_FOUND");
+      }
     }
 
     // 3. Создать Repair
     const created = await tx.repair.create({
       data: {
-        unitId: args.unitId,
+        unitId: args.unitId ?? null,
+        equipmentId,
+        bookingItemId: args.bookingItemId ?? null,
+        // Штучная поломка — всегда одна единица, сколько бы ни прислали.
+        quantity: args.unitId ? 1 : Math.max(1, args.quantity ?? 1),
         reason: args.reason,
         urgency: args.urgency,
         sourceBookingId: args.sourceBookingId ?? null,
+        expectedReadyAt: args.expectedReadyAt ?? null,
+        partsNote: args.partsNote ?? null,
         createdBy: args.createdBy,
         status: "WAITING_REPAIR",
         partsCost: 0,
@@ -83,10 +126,12 @@ export async function createRepair(args: {
     });
 
     // 4. Перевести unit в MAINTENANCE
-    await tx.equipmentUnit.update({
-      where: { id: args.unitId },
-      data: { status: "MAINTENANCE" },
-    });
+    if (args.unitId) {
+      await tx.equipmentUnit.update({
+        where: { id: args.unitId },
+        data: { status: "MAINTENANCE" },
+      });
+    }
 
     return created;
   });
@@ -98,7 +143,14 @@ export async function createRepair(args: {
     entityType: "Repair",
     entityId: repair.id,
     before: null,
-    after: { status: repair.status, unitId: repair.unitId, reason: repair.reason },
+    after: {
+      status: repair.status,
+      unitId: repair.unitId,
+      equipmentId: repair.equipmentId,
+      quantity: repair.quantity,
+      reason: repair.reason,
+      expectedReadyAt: repair.expectedReadyAt?.toISOString() ?? null,
+    },
   }).catch((err) => {
     console.warn(
       "[createRepair] audit failed:",
@@ -107,6 +159,58 @@ export async function createRepair(args: {
   });
 
   return repair;
+}
+
+// ─── setRepairEta ────────────────────────────────────────────────────────────
+
+/**
+ * Назначает/сдвигает срок готовности и заметку о запчастях.
+ *
+ * `expectedReadyAt: null` — не «забыли заполнить», а осознанное «срок не
+ * назначен»: выдуманный прогноз хуже честного пробела, по нему начнут
+ * планировать съёмку. Поэтому null принимается и сохраняется.
+ */
+export async function setRepairEta(
+  id: string,
+  args: { expectedReadyAt?: Date | null; partsNote?: string | null },
+  userId: string,
+) {
+  return prisma.$transaction(async (tx: TxClient) => {
+    const repair = await tx.repair.findUniqueOrThrow({ where: { id } }).catch((e) => notFoundToHttpError(e));
+
+    if (CLOSED_STATUSES.includes(repair.status as RepairStatus)) {
+      throw new HttpError(400, "Ремонт уже закрыт", "REPAIR_ALREADY_CLOSED");
+    }
+
+    const before = {
+      expectedReadyAt: repair.expectedReadyAt?.toISOString() ?? null,
+      partsNote: repair.partsNote,
+    };
+
+    const updated = await tx.repair.update({
+      where: { id },
+      data: {
+        // undefined = поле не прислали, трогать не нужно; null = «срок снят».
+        ...(args.expectedReadyAt !== undefined ? { expectedReadyAt: args.expectedReadyAt } : {}),
+        ...(args.partsNote !== undefined ? { partsNote: args.partsNote } : {}),
+      },
+    });
+
+    await writeAuditEntry({
+      tx,
+      userId,
+      action: "REPAIR_ETA_SET",
+      entityType: "Repair",
+      entityId: id,
+      before,
+      after: {
+        expectedReadyAt: updated.expectedReadyAt?.toISOString() ?? null,
+        partsNote: updated.partsNote,
+      },
+    });
+
+    return updated;
+  });
 }
 
 // ─── assignRepair ────────────────────────────────────────────────────────────
@@ -310,8 +414,16 @@ export async function writeOffRepair(id: string, userId: string) {
 
 /**
  * Добавляет запись работ по ремонту.
+ *
  * Guard: только assignedTo === loggedBy ИЛИ loggedByRole === SUPER_ADMIN.
- * Статус ремонта должен быть IN_REPAIR или WAITING_PARTS.
+ *
+ * Первая запись в статусе «Ждёт ремонта» САМА переводит карточку в работу и,
+ * если её никто не взял, назначает автора записи на себя. Раньше сервер отвечал
+ * на неё 400-м: фронт форму показывал, человек заполнял описание и потраченные
+ * часы — и получал отказ с требованием сначала нажать «Взять в работу».
+ * Запись работ по определению означает, что работа началась; заставлять
+ * подтверждать это отдельной кнопкой — бюрократия, которую система придумала
+ * сама себе.
  */
 export async function addWorkLog(
   repairId: string,
@@ -326,19 +438,22 @@ export async function addWorkLog(
   return prisma.$transaction(async (tx: TxClient) => {
     const repair = await tx.repair.findUniqueOrThrow({ where: { id: repairId } }).catch((e) => notFoundToHttpError(e));
 
+    // Никем не взятая карточка в очереди — открыта для любого, кто до неё дошёл:
+    // именно этим «взять в работу» и является.
+    const unclaimed = repair.status === "WAITING_REPAIR" && !repair.assignedTo;
+
     // Только assignedTo или SUPER_ADMIN
-    if (loggedByRole !== "SUPER_ADMIN" && repair.assignedTo !== args.loggedBy) {
+    if (loggedByRole !== "SUPER_ADMIN" && repair.assignedTo !== args.loggedBy && !unclaimed) {
       throw new HttpError(403, "Только назначенный техник может добавлять записи работ", "WORK_LOG_FORBIDDEN");
     }
 
-    // Статус должен быть IN_REPAIR или WAITING_PARTS
-    if (repair.status !== "IN_REPAIR" && repair.status !== "WAITING_PARTS") {
-      throw new HttpError(
-        400,
-        "Записи работ можно добавлять только в статусах IN_REPAIR или WAITING_PARTS",
-        "REPAIR_STATUS_INVALID_FOR_LOG",
-      );
+    if (CLOSED_STATUSES.includes(repair.status as RepairStatus)) {
+      throw new HttpError(400, "Ремонт уже закрыт", "REPAIR_ALREADY_CLOSED");
     }
+
+    // Первая запись работ = старт ремонта (см. док-комментарий функции).
+    const autoStart = repair.status === "WAITING_REPAIR";
+    const autoAssignee = unclaimed ? args.loggedBy : repair.assignedTo;
 
     const log = await tx.repairWorkLog.create({
       data: {
@@ -356,8 +471,23 @@ export async function addWorkLog(
       data: {
         totalTimeHours: { increment: new Prisma.Decimal(args.timeSpentHours) },
         partsCost: { increment: new Prisma.Decimal(args.partCost) },
+        ...(autoStart ? { status: "IN_REPAIR" as RepairStatus, assignedTo: autoAssignee } : {}),
       },
     });
+
+    if (autoStart) {
+      await writeAuditEntry({
+        tx,
+        userId: args.loggedBy,
+        action: "REPAIR_STATUS_CHANGE",
+        entityType: "Repair",
+        entityId: repairId,
+        before: { status: repair.status, assignedTo: repair.assignedTo },
+        // `auto: true` — чтобы в журнале было видно, что статус сменила запись
+        // работ, а не отдельное нажатие «Взять в работу».
+        after: { status: "IN_REPAIR", assignedTo: autoAssignee, auto: true },
+      });
+    }
 
     await writeAuditEntry({
       tx,

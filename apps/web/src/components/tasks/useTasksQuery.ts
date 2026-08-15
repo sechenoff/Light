@@ -158,6 +158,9 @@ export function useTasksQuery(filter: TaskFilter) {
       } catch (err: any) {
         setTasks((t) => t.filter((x) => x.id !== tempId));
         toast.error(err?.message ?? "Не удалось создать задачу");
+        // Re-throw: вызывающая сторона (TasksPage) не должна закрывать модалку
+        // при провале — иначе набранный текст теряется (fix 2026-08-05).
+        throw err;
       } finally {
         pollBlocked.current = false;
       }

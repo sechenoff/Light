@@ -237,10 +237,17 @@ export function DayTasksWidget({
       {creating && (
         <TaskCreateModal
           onSubmit={async (input) => {
-            await apiFetch("/api/tasks", {
-              method: "POST",
-              body: JSON.stringify(input),
-            });
+            try {
+              await apiFetch("/api/tasks", {
+                method: "POST",
+                body: JSON.stringify(input),
+              });
+            } catch (e: unknown) {
+              // Без catch здесь reject уходил в void handleSubmit() модалки —
+              // unhandled rejection и ни одного тоста (fix 2026-08-05).
+              toast.error(e instanceof Error ? e.message : "Не удалось создать задачу");
+              throw e; // модалка глотает и остаётся открытой — текст сохранён
+            }
             setCreating(false);
             // Перезагружаем список задач. Виджет показывает только задачи на сегодня
             // (мои, срок ≤ сегодня или срочные без даты) — задача с дефолтами сюда

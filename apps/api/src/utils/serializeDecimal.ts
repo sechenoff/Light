@@ -75,6 +75,9 @@ export function serializeBookingForApi(b: BookingWithItemsEquipment) {
     transportSubtotalRub: (b as any).transportSubtotalRub != null ? (b as any).transportSubtotalRub.toString() : null,
     amountPaid: (b as any).amountPaid?.toString?.() ?? (b as any).amountPaid ?? null,
     amountOutstanding: (b as any).amountOutstanding?.toString?.() ?? (b as any).amountOutstanding ?? null,
+    // Списанный («прощённый») остаток — карточка брони показывает его отдельной
+    // строкой, чтобы разница между «выставили» и «получили» была объяснена.
+    writeOffAmount: (b as any).writeOffAmount != null ? (b as any).writeOffAmount.toString() : null,
     items: b.items.map((it) => ({
       ...it,
       customUnitPrice: (it as any).customUnitPrice != null ? (it as any).customUnitPrice.toString() : null,

@@ -21,6 +21,7 @@ import {
   IconCheck,
   IconIssue,
   IconReturn,
+  IconWrench,
 } from "./workstationIcons";
 
 function hm(iso: string | null): string {
@@ -38,6 +39,18 @@ function sinceLabel(iso: string | null): string | null {
   const h = Math.floor(ms / 3600000);
   const m = Math.floor((ms % 3600000) / 60000);
   return h > 0 ? `${h}ч ${m}м` : `${m}м`;
+}
+
+const SHORT_DATE_FMT = new Intl.DateTimeFormat("ru-RU", {
+  day: "numeric",
+  month: "short",
+});
+
+/** «9 авг» — когда ремонт закрыли. */
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return SHORT_DATE_FMT.format(d).replace(".", "");
 }
 
 function greeting(): string {
@@ -220,6 +233,9 @@ export function ShiftHome({
 
   const { counters, myShift, timeline, overdue } = data;
   const shiftDuration = sinceLabel(myShift.firstAt);
+  // Поле добавлено позже самого экрана — старый ответ сервера не должен ронять
+  // смену пустым массивом по умолчанию.
+  const readyForPickup = data.readyForPickup ?? [];
 
   return (
     <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-5 lg:py-4">
@@ -335,6 +351,41 @@ export function ShiftHome({
           </span>
         </button>
       </div>
+
+      {/* Вернулось из ремонта.
+          Ремонт закрыт — по учёту прибор снова «в наличии», но физически он на
+          верстаке у техника. Пока кладовщик не заберёт его и не поставит на
+          место, за ним бегут в момент выдачи, при клиенте. Список закрывается
+          сам: сервер отдаёт только последние 7 дней. */}
+      {readyForPickup.length > 0 && (
+        <section className="overflow-hidden rounded-lg border border-emerald-border bg-surface shadow-xs">
+          <div className="flex items-center justify-between gap-2 border-b border-emerald-border bg-emerald-soft px-3.5 py-2.5">
+            <h3 className="flex items-center gap-2 text-[12.5px] font-semibold text-emerald">
+              <IconWrench className="h-4 w-4 shrink-0" strokeWidth={2} />
+              Вернулось из ремонта
+            </h3>
+            <span className="mono-num text-[11px] font-semibold text-emerald">
+              {readyForPickup.length}
+            </span>
+          </div>
+          <ul>
+            {readyForPickup.map((r) => (
+              <li
+                key={r.repairId}
+                className="flex min-h-[40px] items-center gap-2 border-b border-surface-subtle px-3.5 py-2 last:border-b-0"
+              >
+                <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{r.title}</span>
+                <span className="shrink-0 text-[11px] text-ink-3">
+                  починено {shortDate(r.closedAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="border-t border-surface-subtle px-3.5 py-2 text-[11px] text-ink-3">
+            Забрать с верстака и вернуть на место — по учёту это уже свободно.
+          </p>
+        </section>
+      )}
 
       {/* Лента дня */}
       <section className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">

@@ -52,7 +52,10 @@ const moscowDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const createTaskSchema = z.object({
   title: z.string().trim().min(1, "Заголовок обязателен").max(500),
-  description: z.string().trim().max(5000).optional(),
+  // .nullable() обязателен: TaskCreateModal шлёт description: null, когда блок
+  // описания не раскрыт (fix 2026-08-05 — без него POST падал 400 на каждой
+  // задаче без описания). Остальные опциональные поля уже были .nullable().
+  description: z.string().trim().max(5000).nullable().optional(),
   urgent: z.boolean().optional().default(false),
   dueDate: moscowDateSchema.nullable().optional(),
   assignedTo: z.string().min(1).nullable().optional(),
