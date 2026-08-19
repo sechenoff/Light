@@ -422,14 +422,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   // Публичные маршруты без оболочки: логин, калькулятор осветителей,
-  // /gaffer/* (изолированный модуль со своим layout).
   // /warehouse/scan раньше тоже был standalone-киоском — по решению владельца
   // (2026-08-02) раздел встроен в общий шелл: глобальный сайдбар + внутренние
   // табы раздела в WorkstationShell (паттерн AdminTabNav).
   const isStandalone =
     pathname === "/login" ||
-    pathname === "/crew-calculator" ||
-    pathname.startsWith("/gaffer");
+    pathname === "/crew-calculator";
   if (isStandalone) {
     return <>{children}</>;
   }

@@ -313,7 +313,6 @@ npm run seed                  # Seed database
 - **Белый текст на цветной заливке пишется как `text-surface`, не `text-white`** — в светлой теме `--c-surface` = белый (поведение прежнее), в ночной = почти чёрный, и надпись остаётся читаемой на осветлённой заливке (`bg-rose`, `bg-emerald`, `bg-accent-bright`…). `text-white` оставлен только там, где фон тёмный в обеих темах (сайдбар `bg-slate-900`, `bg-inverse`, `bg-accent-chrome`).
 - **Числовые оттенки Tailwind (`bg-slate-900`, `text-slate-400`) темы не знают** — они остались только в намеренно тёмных сайдбаре/киоске. В остальном UI хардкод вычищен в токены; новые страницы обязаны использовать токены, иначе ночью останутся светлым пятном.
 - **`color-scheme`** задан в обеих темах — от него зависит отрисовка нативных контролов (`<input type="date">`, скроллбары, `<select>`).
-- **Gaffer CRM не наследует тему** — селектор его тёмных токенов `.gaffer-root[data-theme="dark"]` требует dark на самом корне gaffer, а его layout пиннит `light`. Это отдельный продукт со своей палитрой.
 
 ## UserRole и rolesGuard (Sprint 1)
 
@@ -410,6 +409,24 @@ SUPER_ADMIN обходит все лимиты.
 - Реальная запись: `tsx scripts/migrate-adminrole-to-userrole.ts --execute`.
 - Заменяет `RENTAL_ADMIN` → `WAREHOUSE`. `SUPER_ADMIN` остаётся.
 - На prod перед deploy: `cp prod.db prod.db.$(date +%F).bak` затем запустить скрипт.
+
+## Gaffer CRM вынесен из проекта (2026-08-19)
+
+В репозитории жила вторая, заброшенная реализация Gaffer CRM: маршруты `/api/gaffer`,
+страницы `/gaffer`, 6 моделей `Gaffer*` в общей схеме и свои токены оформления
+`.gaffer-root`. Настоящий продукт всё это время работал отдельно — домен `gaffercrm.ru`,
+приложение `/var/www/gaffer-crm`, своя база. Встроенная копия последний раз обновлялась
+19.04.2026 и держала 6 таблиц в боевой базе проката.
+
+Удалено полностью: код, модели, enum, стили, тесты, `GAFFER_SESSION_SECRET`, таблицы в
+`prod.db`. Данные (2 пользователя, 7 проектов, 23 контакта, 25 участников, 11 платежей)
+выгружены в `/root/gaffer-export-2026-08-19.json` на сервере — переносить их в живой
+продукт владелец решил не нужным.
+
+**Что НЕ является Gaffer CRM и трогать нельзя:** `parseGafferReview` в
+`bookingRequestParser.ts`, слэнг гаффера в `equipmentMatcher.ts`, типы `GafferReview*`
+в боте, роли `GAFFER`/`KEY_GRIP` в калькуляторе бригады. Здесь «гаффер» — профессия
+(человек, который заказывает свет), а не удалённый суб-продукт.
 
 ## Known Issues
 
@@ -735,51 +752,10 @@ Prisma model `Task` (новый):
 - **HttpError → `res.body.code`.** Централизованный error-handler в `app.ts` теперь дублирует строковый 3-й аргумент `HttpError` в поле `code` (сохраняя `details`) — обратносовместимо; новые task-collab тесты ассертят `res.body.code`.
 - **Slide-over панель задач.** `?task=<id>` deep-link открывает `TaskDetailPanel` (router.replace, не push — закрытие через Esc/кнопку/backdrop, не засоряет историю); чипы `💬`/`☑` на карточке открывают панель кликом по телу (не по чекбоксу/inline-edit/⋯).
 
-## Gaffer CRM — Sprint 2A (Contacts + PaymentMethods API)
-
-### Tenant helper
-
-`apps/api/src/services/gaffer/tenant.ts`:
-- `gafferWhere(req)` → `{ gafferUserId: string }` — строит where-фрагмент. Бросает 401 если `req.gafferUser` отсутствует.
-- `assertGafferTenant<T>(entity, req)` → `T` — бросает 404 если entity null или принадлежит другому tenant'у.
-
-### Contacts API (`/api/gaffer/contacts`)
-
-Сервис: `apps/api/src/services/gaffer/contactService.ts`. Роутер: `apps/api/src/routes/gaffer/contacts.ts`.
-
-| Маршрут | Метод | Действие |
-|---------|-------|----------|
-| `/api/gaffer/contacts` | GET | Список; query: `type`, `isArchived`, `search` |
-| `/api/gaffer/contacts/:id` | GET | Один контакт |
-| `/api/gaffer/contacts` | POST | Создать (`type`, `name`, `phone?`, `telegram?`, `note?`) |
-| `/api/gaffer/contacts/:id` | PATCH | Обновить (partial) |
-| `/api/gaffer/contacts/:id/archive` | POST | Архивировать |
-| `/api/gaffer/contacts/:id/unarchive` | POST | Разархивировать |
-| `/api/gaffer/contacts/:id` | DELETE | Удалить; P2003 → 409 `CONTACT_HAS_RELATIONS` |
-
-Telegram нормализация: если не начинается с `@` — prepend `@`.
-
-### PaymentMethods API (`/api/gaffer/payment-methods`)
-
-Сервис: `apps/api/src/services/gaffer/paymentMethodService.ts`. Роутер: `apps/api/src/routes/gaffer/paymentMethods.ts`.
-
-| Маршрут | Метод | Действие |
-|---------|-------|----------|
-| `/api/gaffer/payment-methods` | GET | Список (isDefault desc → sortOrder asc → name asc) |
-| `/api/gaffer/payment-methods` | POST | Создать (`name`, `isDefault?`); P2002 → 409 `PAYMENT_METHOD_NAME_TAKEN` |
-| `/api/gaffer/payment-methods/:id` | PATCH | Обновить; isDefault=true сбрасывает других в транзакции |
-| `/api/gaffer/payment-methods/:id` | DELETE | Удалить (безопасно — SetNull на GafferPayment.paymentMethodId) |
-| `/api/gaffer/payment-methods/reorder` | POST | Переупорядочить по массиву `ids` (sortOrder = позиция) |
-
-### Конвенции Gaffer CRM
-
-- Все Gaffer-маршруты монтируются на `/api/gaffer` через `router.use("/...", gafferAuth, ...)` в `routes/gaffer/index.ts`. Auth-маршруты (`/auth/*`) без `gafferAuth`.
-- Tenant-изоляция через `gafferWhere(req)` / `assertGafferTenant()` — никакого прямого `req.gafferUser.id` в сервисах без этих хелперов.
-- Ошибки через `HttpError` из `utils/errors.ts`; error-код передаётся как строка в третий параметр (`details`), что соответствует паттерну `res.body.details` в тестах.
 
 ## Customer Portal `/lk` (Подпроект 1+2)
 
-Отдельный клиентский портал для гафферов — rental clients (НЕ Gaffer CRM `/gaffer`). Magic-link auth по приглашению админа, 1:1 с `Client`.
+Отдельный клиентский портал для гафферов — rental clients. Magic-link auth по приглашению админа, 1:1 с `Client`.
 
 ### Auth и модели
 
@@ -787,7 +763,7 @@ Telegram нормализация: если не начинается с `@` —
 - JWT cookie `lk_session`, secret `CLIENT_PORTAL_SESSION_SECRET`, отдельная цепочка `lkAuth` (НЕ `apiKeyAuth`).
 - Token HMAC secret `CLIENT_PORTAL_TOKEN_SECRET`.
 - Email через `nodemailer`; в dev — console-fallback при отсутствии `SMTP_HOST`.
-- `req.clientPortal` объявлен в `apps/api/src/types/express.d.ts` (единая точка с adminUser/gafferUser/warehouseWorker).
+- `req.clientPortal` объявлен в `apps/api/src/types/express.d.ts` (единая точка с adminUser/warehouseWorker).
 
 ### Маршруты (frontend)
 
