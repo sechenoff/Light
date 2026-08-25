@@ -2973,10 +2973,15 @@ router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
     // Договорной итог обязан дойти до документа: счёт его уже чтит, и без него
     // смета спорила бы со счётом на одной и той же брони.
     const doc = buildFullSmeta({ booking, main, addon, org, agreedTotal: booking.manualFinalAmount });
+    // Сумма в имени файла обязана совпадать с тем, что документ печатает как
+    // «К оплате» (renderPdf: agreedTotal ?? grandTotal). Раньше сюда шёл
+    // main.totalAfterDiscount — только оборудование, — и у любой брони
+    // с транспортом или добором файл назывался одной суммой, а внутри стояла
+    // другая. Оператор сверял смету с файлом и видел расхождение на ровном месте.
     const human = buildBookingHumanName({
       startDate: booking.startDate,
       clientName: booking.client.name,
-      totalAfterDiscount: main.totalAfterDiscount.toString(),
+      totalAfterDiscount: doc.agreedTotal ?? doc.grandTotal,
     });
     writeFullSmetaPdf(res, doc, `${safeFileName(human)}-смета.pdf`);
   } catch (err) {
@@ -3004,10 +3009,15 @@ router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
     // Договорной итог обязан дойти до документа: счёт его уже чтит, и без него
     // смета спорила бы со счётом на одной и той же брони.
     const doc = buildFullSmeta({ booking, main, addon, org, agreedTotal: booking.manualFinalAmount });
+    // Сумма в имени файла обязана совпадать с тем, что документ печатает как
+    // «К оплате» (renderPdf: agreedTotal ?? grandTotal). Раньше сюда шёл
+    // main.totalAfterDiscount — только оборудование, — и у любой брони
+    // с транспортом или добором файл назывался одной суммой, а внутри стояла
+    // другая. Оператор сверял смету с файлом и видел расхождение на ровном месте.
     const human = buildBookingHumanName({
       startDate: booking.startDate,
       clientName: booking.client.name,
-      totalAfterDiscount: main.totalAfterDiscount.toString(),
+      totalAfterDiscount: doc.agreedTotal ?? doc.grandTotal,
     });
     await writeFullSmetaXlsx(res, doc, `${safeFileName(human)}-смета.xlsx`);
   } catch (err) {
