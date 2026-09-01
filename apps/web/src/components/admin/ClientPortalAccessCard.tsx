@@ -16,6 +16,13 @@ interface ClientPortalAccessCardProps {
   defaultEmail: string | null;
 }
 
+/**
+ * Служебный домен, которым `seed-portal-accounts-with-passwords.ts` подставлял
+ * «почту» клиентам, чей настоящий адрес неизвестен. Домена не существует —
+ * это логин, а не почтовый ящик.
+ */
+const PLACEHOLDER_PORTAL_DOMAIN = "svetobazarent.lk";
+
 export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalAccessCardProps) {
   const [account, setAccount] = useState<PortalAccount | null>(null);
   const [loading, setLoading] = useState(true);
@@ -232,6 +239,20 @@ export function ClientPortalAccessCard({ clientId, defaultEmail }: ClientPortalA
 
       <div className="text-sm space-y-1">
         <p className="font-medium text-ink">{account.email}</p>
+
+        {/* Скрипт заведения кабинетов подставлял «почту» на служебном домене,
+            когда настоящего адреса не знал. Домена не существует: письма туда
+            не уходят, и «получить ссылку на почту» для клиента становится
+            тупиком — он видит «письмо отправлено» и не получает ничего
+            (в lk/auth.ts ответ всегда 200, чтобы не выдавать чужие адреса).
+            Вход по паролю при этом работает, так что клиент не заперт. */}
+        {account.email.endsWith(`@${PLACEHOLDER_PORTAL_DOMAIN}`) && (
+          <p className="rounded border border-amber-border bg-amber-soft px-2.5 py-1.5 text-xs text-amber">
+            Это служебный логин, а не почта — письма на него не доходят.
+            Клиент заходит по паролю, но «получить ссылку» у него не сработает.
+            Настоящий адрес можно вписать кнопкой «На другой адрес…».
+          </p>
+        )}
         <p className={statusClass[account.status]}>
           {statusLabel[account.status]}
           {account.status === "ACTIVE" && account.lastLoginAt
