@@ -449,8 +449,10 @@ describe("MH: PATCH /api/admin-users гарды и isActive", () => {
     const sa = await prisma.adminUser.findUnique({ where: { username: "holistic_super_admin" } });
     saId = sa.id;
 
-    // Деактивированный SUPER_ADMIN с ещё живым JWT — единственный способ
-    // атаковать «последнего активного SA» не попадая под self-guard.
+    // Деактивированный SUPER_ADMIN с ещё живым JWT. Раньше это был рабочий
+    // способ атаковать «последнего активного SA» в обход self-guard: токен жил
+    // 7 дней и не перепроверялся. Теперь sessionParser сверяет isActive с базой,
+    // и такой токен не значит ничего — что мы ниже и проверяем.
     const { hashPassword, signSession } = await import("../services/auth");
     const hash = await hashPassword("test-pass-123");
     const inactive = await prisma.adminUser.create({
@@ -485,30 +487,42 @@ describe("MH: PATCH /api/admin-users гарды и isActive", () => {
     expect(res.body.message).toBe("Нельзя отключить собственную учётную запись");
   });
 
-  it("PATCH понижение последнего активного SUPER_ADMIN → 409", async () => {
+  // Ниже — про отключённого администратора с ещё живым токеном. Проверяем
+  // ЗАЩИТУ, а не конкретный код ответа: раньше такой токен доходил до гарда
+  // «последний супер-администратор» и получал 409, теперь отсекается раньше,
+  // на уровне сессии. Итог для владельца тот же и даже строже: последнего SA
+  // не отнять, а отключённый сотрудник не может вообще ничего.
+  it("отключённый SUPER_ADMIN не может понизить роль последнего активного", async () => {
     const res = await request(app)
       .patch(`/api/admin-users/${saId}`)
       .set(INACTIVE_SA())
       .send({ role: "TECHNICIAN" });
-    expect(res.status).toBe(409);
-    expect(res.body.message).toBe("Нельзя понизить роль последнего супер-администратора");
+    expect(res.status).toBe(401);
+
+    const still = await prisma.adminUser.findUnique({ where: { id: saId } });
+    expect(still.role).toBe("SUPER_ADMIN");
+    expect(still.isActive).toBe(true);
   });
 
-  it("PATCH отключение последнего активного SUPER_ADMIN → 409", async () => {
+  it("отключённый SUPER_ADMIN не может деактивировать последнего активного", async () => {
     const res = await request(app)
       .patch(`/api/admin-users/${saId}`)
       .set(INACTIVE_SA())
       .send({ isActive: false });
-    expect(res.status).toBe(409);
-    expect(res.body.message).toBe("Нельзя отключить последнего супер-администратора");
+    expect(res.status).toBe(401);
+
+    const still = await prisma.adminUser.findUnique({ where: { id: saId } });
+    expect(still.isActive).toBe(true);
   });
 
-  it("DELETE последнего активного SUPER_ADMIN → 409", async () => {
+  it("отключённый SUPER_ADMIN не может удалить последнего активного", async () => {
     const res = await request(app)
       .delete(`/api/admin-users/${saId}`)
       .set(INACTIVE_SA());
-    expect(res.status).toBe(409);
-    expect(res.body.message).toBe("Нельзя удалить последнего супер-администратора");
+    expect(res.status).toBe(401);
+
+    const still = await prisma.adminUser.findUnique({ where: { id: saId } });
+    expect(still).not.toBeNull();
   });
 
   it("PATCH понижение SA при наличии второго активного SA → 200", async () => {

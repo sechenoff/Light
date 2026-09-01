@@ -379,6 +379,8 @@ describe("(c) GET /:id — аннулированные платежи видн�
 
 // ── (d)+(e) Ручные issue/return реконсилируют юниты ──────────────────────────
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 async function makeUnitBooking(opts: {
   status: "CONFIRMED" | "ISSUED";
   unitStatuses: Array<"AVAILABLE" | "ISSUED" | "MAINTENANCE">;
@@ -387,10 +389,14 @@ async function makeUnitBooking(opts: {
     data: {
       clientId,
       projectName: `UNIT-бронь ${Date.now()}-${Math.random()}`,
-      startDate: new Date("2026-09-01T09:00:00.000Z"),
-      endDate: new Date("2026-09-02T09:00:00.000Z"),
+      // Даты ОТНОСИТЕЛЬНЫЕ. Раньше здесь стояло жёсткое 2026-09-01, и тест
+      // «выдача раньше startDate более чем на сутки → 409» тихо протух: когда
+      // эта дата наступила, бронь стала начинаться меньше чем через сутки,
+      // гард законно перестал срабатывать, и тест начал падать навсегда.
+      startDate: new Date(Date.now() + 10 * DAY_MS),
+      endDate: new Date(Date.now() + 11 * DAY_MS),
       status: opts.status,
-      ...(opts.status === "ISSUED" ? { issuedAt: new Date("2026-09-01T09:30:00.000Z") } : {}),
+      ...(opts.status === "ISSUED" ? { issuedAt: new Date(Date.now() + 10 * DAY_MS + 30 * 60 * 1000) } : {}),
     },
   });
   const item = await prisma.bookingItem.create({

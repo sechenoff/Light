@@ -64,12 +64,17 @@ app.use(rateLimiter);
 app.get("/health", (_req, res) => res.json({ ok: true }));
 // Auth routes — публичные (до apiKeyAuth), но login/logout не требует авторизации; /me использует cookie.
 app.use("/api/auth", sessionParser, authRouter);
-app.use("/api/warehouse", warehousePublicRouter);
 // sessionParser здесь нужен для fallback warehouseAuth → main session (SA/WH без PIN)
 app.use("/api/warehouse", sessionParser, warehouseScanRouter);
 // LK (клиентский портал) — публичный (до apiKeyAuth), собственная auth система (lkAuth cookie/Bearer).
 app.use("/api/lk", lkRouter);
 app.use(apiKeyAuth);
+// Экран входа киоска (список имён + проверка PIN) — БЕЗ Bearer-токена склада,
+// но за API-ключом. Раньше он висел до apiKeyAuth, и /workers/names отдавал
+// имена всех кладовщиков любому в интернете, а POST /auth позволял перебирать
+// четырёхзначный PIN анонимно. Киоск ходит через Next-прокси, который
+// подставляет X-API-Key, поэтому вход с планшета продолжает работать.
+app.use("/api/warehouse", warehousePublicRouter);
 app.use(sessionParser);
 app.use(botScopeGuard);
 app.use(router);
