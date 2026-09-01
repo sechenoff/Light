@@ -280,3 +280,71 @@ describe("GET /api/bookings/:id/full-estimate/export/xlsx", () => {
     expect(wb.worksheets[0].pageSetup.paperSize).toBe(9);
   });
 });
+
+/**
+ * Сумма в имени файла полной сметы.
+ *
+ * Раньше в имя шёл main.totalAfterDiscount — только оборудование. У любой брони
+ * с транспортом или добором файл назывался одной суммой, а внутри стояла другая,
+ * и оператор видел расхождение при сверке. Имя обязано нести ровно то число,
+ * которое документ печатает как «К оплате»: agreedTotal, а если его нет — grandTotal.
+ *
+ * Фикстура bookingWithAddonId: оборудование 5000 + добор 1000 + транспорт 15000.
+ */
+describe("сумма в имени файла полной сметы", () => {
+  const EQUIPMENT_ONLY = "5000";
+  const GRAND_TOTAL = "21000";
+
+  function fileNameOf(res: { headers: Record<string, string> }): string {
+    return decodeURIComponent(res.headers["content-disposition"] ?? "");
+  }
+
+  it("PDF: в имени файла полный итог с транспортом и добором, а не одно оборудование", async () => {
+    const res = await request(app)
+      .get(`/api/bookings/${bookingWithAddonId}/full-estimate/export/pdf`)
+      .set(AUTH())
+      .buffer(true)
+      .parse(binaryParser);
+    expect(res.status).toBe(200);
+    const name = fileNameOf(res);
+    expect(name).toContain(GRAND_TOTAL);
+    expect(name).not.toContain(EQUIPMENT_ONLY);
+  });
+
+  it("XLSX: то же самое — имя и содержимое не должны спорить", async () => {
+    const res = await request(app)
+      .get(`/api/bookings/${bookingWithAddonId}/full-estimate/export/xlsx`)
+      .set(AUTH())
+      .buffer(true)
+      .parse(binaryParser);
+    expect(res.status).toBe(200);
+    const name = fileNameOf(res);
+    expect(name).toContain(GRAND_TOTAL);
+    expect(name).not.toContain(EQUIPMENT_ONLY);
+  });
+
+  it("договорной итог перебивает расчётный: в имени стоит согласованная сумма", async () => {
+    // manualFinalAmount — то, о чём договорились по факту. Документ печатает
+    // «К оплате» именно его, значит и файл должен называться так же.
+    await prisma.booking.update({
+      where: { id: bookingWithAddonId },
+      data: { manualFinalAmount: "18500" },
+    });
+    try {
+      const res = await request(app)
+        .get(`/api/bookings/${bookingWithAddonId}/full-estimate/export/pdf`)
+        .set(AUTH())
+        .buffer(true)
+        .parse(binaryParser);
+      expect(res.status).toBe(200);
+      const name = fileNameOf(res);
+      expect(name).toContain("18500");
+      expect(name).not.toContain(GRAND_TOTAL);
+    } finally {
+      await prisma.booking.update({
+        where: { id: bookingWithAddonId },
+        data: { manualFinalAmount: null },
+      });
+    }
+  });
+});

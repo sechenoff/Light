@@ -166,13 +166,15 @@ export function RecordPaymentModal({
         const openInvoices = (d.items ?? []).filter((inv) => inv.status !== "VOID");
         setInvoices(openInvoices);
         // Приоритет — явно предвыбранный счёт (клик «₽» на строке счёта),
-        // иначе первый неоплаченный.
+        // иначе первый ПРИНИМАЮЩИЙ оплату. DRAFT не предвыбираем: сервер
+        // отклоняет платёж по невыставленному счёту (409 INVOICE_NOT_ISSUED),
+        // и предзаполненный черновик заводил оператора в тупик (fix 2026-08-05).
+        const payable = (inv: InvoiceOption) =>
+          inv.status !== "PAID" && inv.status !== "DRAFT";
         const preselected = defaultInvoiceId
-          ? openInvoices.find((inv) => inv.id === defaultInvoiceId)
+          ? openInvoices.find((inv) => inv.id === defaultInvoiceId && payable(inv))
           : undefined;
-        const defaultInv = openInvoices.find(
-          (inv) => inv.status !== "PAID"
-        );
+        const defaultInv = openInvoices.find(payable);
         setInvoiceId(preselected?.id ?? defaultInv?.id ?? "");
       })
       .catch(() => { if (!cancelled) setInvoices([]); })
@@ -349,9 +351,13 @@ export function RecordPaymentModal({
                     const remaining = Number(inv.total) - Number(inv.paidAmount);
                     const kindLabel = KIND_LABELS[inv.kind] ?? inv.kind;
                     const numLabel = inv.number ?? "Черновик";
+                    // Черновик оплатить нельзя (сервер вернёт INVOICE_NOT_ISSUED) —
+                    // показываем, но блокируем выбор с подсказкой.
+                    const isDraft = inv.status === "DRAFT";
                     return (
-                      <option key={inv.id} value={inv.id}>
+                      <option key={inv.id} value={inv.id} disabled={isDraft}>
                         {numLabel} · {kindLabel} · {formatRub(remaining.toFixed(2))} остаток
+                        {isDraft ? " · не выставлен — сначала выставите счёт" : ""}
                       </option>
                     );
                   })}

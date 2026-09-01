@@ -1,0 +1,1520 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мастерская · концепт «Поток работы» · Light Rental</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!--
+  ============================================================================
+  КОНЦЕПТ «ПОТОК РАБОТЫ»
+  Экран отвечает на один вопрос: что делать дальше.
+
+  Форма — не канбан и не плоская таблица, а ПОТОК: одна вертикальная лента,
+  разрезанная на стадии («ждёт ремонта» → «в ремонте» → «ждём запчасти» →
+  «готово»). Стадия задаётся полосой с цветным рельсом слева и липкой
+  подписью, а не колонкой: колонки на 17 карточек съедают ширину, в которой
+  как раз и живут название прибора, конфликт с бронью и срок возврата.
+
+  Порядок полос = порядок работы техника, поэтому «незанятая работа» стоит
+  первой физически, а не по признаку сортировки. Внутри полосы наверх
+  всплывают ремонты, которые срывают брони, и те, что молчат 5+ дней.
+
+  Строка ремонта раскрывается ПРЯМО В ПОТОКЕ (см. «В ремонте», SkyPanel):
+  фотолента, история прошлых ремонтов и журнал работ — это содержимое
+  /repair/[id], но техник не выпадает из очереди, чтобы записать полчаса.
+
+  ДАННЫЕ ВЫМЫШЛЕННЫЕ. Дата сцены — 11 августа 2026, вид руководителя.
+  ============================================================================
+-->
+
+<style>
+/* ---------------------------------------------------------------------------
+   ТОКЕНЫ — зеркало tailwind.config.js / globals.css (:root, светлая тема).
+   Сырых hex вне этого блока нет.
+   --------------------------------------------------------------------------- */
+:root{
+  --ink:#09090b; --ink-2:#52525b; --ink-3:#a1a1aa;
+  --surface:#ffffff; --surface-muted:#fafafa; --surface-subtle:#f4f4f5;
+  --border:#e4e4e7; --border-strong:#d4d4d8;
+
+  --accent:#1e3a8a; --accent-bright:#1d4ed8; --accent-soft:#eff6ff; --accent-border:#bfdbfe;
+
+  --teal:#0f766e;    --teal-soft:#ccfbf1;    --teal-border:#99f6e4;
+  --amber:#a16207;   --amber-soft:#fef3c7;   --amber-border:#fde68a;
+  --rose:#9f1239;    --rose-soft:#ffe4e6;    --rose-border:#fecdd3;
+  --indigo:#4338ca;  --indigo-soft:#e0e7ff;  --indigo-border:#c7d2fe;
+  --slate:#334155;   --slate-soft:#f1f5f9;   --slate-border:#cbd5e1;
+  --emerald:#047857; --emerald-soft:#d1fae5; --emerald-border:#a7f3d0;
+  --ok:#15803d;      --ok-soft:#dcfce7;      --warn:#a16207; --warn-soft:#fef9c3;
+
+  --inverse:#09090b; --on-inverse:#ffffff; --scrim:#09090b;
+
+  --r:4px; --r-lg:6px;
+  --shadow-xs:0 1px 0 rgba(9,9,11,.03);
+  --shadow-sm:0 1px 2px rgba(9,9,11,.05),0 0 0 1px rgba(9,9,11,.02);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--surface-subtle); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  font-size:13.5px; line-height:1.6;
+}
+h1,h2,h3,h4,p,ul,ol,figure{margin:0}
+ul{padding:0;list-style:none}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
+
+/* Утилиты канона */
+.eyebrow{
+  font-family:"IBM Plex Sans Condensed",sans-serif;
+  font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);line-height:1.4;
+}
+.mono-num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;word-spacing:-.16em}
+.icon{width:13px;height:13px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.icon-l{width:15px;height:15px}
+
+/* Пилюли — реплика <StatusPill> */
+.pill{
+  display:inline-flex;align-items:center;gap:4px;
+  border:1px solid;border-radius:var(--r);
+  padding:1px 7px;font-size:11px;font-weight:600;white-space:nowrap;line-height:1.55;
+}
+.pill-ok{background:var(--ok-soft);color:var(--ok);border-color:var(--emerald-border)}
+.pill-warn{background:var(--warn-soft);color:var(--warn);border-color:var(--amber-border)}
+.pill-info{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-border)}
+.pill-alert{background:var(--rose-soft);color:var(--rose);border-color:var(--rose-border)}
+.pill-view{background:var(--slate-soft);color:var(--slate);border-color:var(--slate-border)}
+.pill-none{background:var(--surface);color:var(--ink-3);border-color:var(--border)}
+
+/* Микро-действия */
+.link{color:var(--accent-bright);font-weight:600;font-size:11.5px;white-space:nowrap;cursor:pointer}
+.link:hover{color:var(--accent);text-decoration:underline}
+.mini{
+  display:inline-flex;align-items:center;gap:4px;
+  border:1px solid var(--border);border-radius:var(--r);background:var(--surface);
+  color:var(--ink-2);font-size:11px;font-weight:600;padding:3px 8px;line-height:1.5;
+  cursor:pointer;white-space:nowrap;
+  transition:border-color .12s,color .12s,background .12s;
+}
+.mini:hover{border-color:var(--accent-border);background:var(--accent-soft);color:var(--accent-bright)}
+.mini-primary{background:var(--accent-bright);border-color:var(--accent-bright);color:var(--surface)}
+.mini-primary:hover{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.mini-danger{background:var(--rose);border-color:var(--rose);color:var(--surface)}
+.mini-danger:hover{background:var(--rose);border-color:var(--rose);color:var(--surface);filter:saturate(1.2)}
+
+/* Метка «деньги — только руководителю» */
+.only-sa{
+  display:inline-flex;align-items:center;gap:3px;
+  font-family:"IBM Plex Sans Condensed",sans-serif;font-size:9.5px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;
+  color:var(--indigo);background:var(--indigo-soft);border:1px solid var(--indigo-border);
+  border-radius:3px;padding:0 4px;line-height:1.6;vertical-align:1px;white-space:nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   КАРКАС
+   --------------------------------------------------------------------------- */
+.page{max-width:1280px;margin:0 auto;padding:20px 20px 56px}
+
+.page-head{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  padding-bottom:11px;border-bottom:1px solid var(--border);
+}
+.page-head h1{
+  font-family:"IBM Plex Sans Condensed",sans-serif;
+  font-size:24px;font-weight:700;line-height:1.15;letter-spacing:-.01em;margin-top:2px;
+}
+.page-head .acts{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* Переключатель роли — служебный для мокапа, в проде роль приходит из сессии */
+.roles{display:inline-flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.roles button{
+  font-size:11px;font-weight:600;color:var(--ink-2);background:transparent;
+  border:0;border-right:1px solid var(--border);padding:3px 9px;cursor:pointer;line-height:1.6;
+}
+.roles button:last-child{border-right:0}
+.roles button[aria-pressed="true"]{background:var(--indigo);color:var(--surface)}
+
+/* ---------------------------------------------------------------------------
+   СИГНАЛЫ — две полосы над всем остальным
+   --------------------------------------------------------------------------- */
+.signals{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+
+.signal{
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+  border:1px solid var(--rose-border);background:var(--rose-soft);color:var(--rose);
+  border-radius:var(--r-lg);padding:9px 13px;
+}
+.signal .icon{stroke-width:1.6}
+.signal .t{font-size:14px;font-weight:700;line-height:1.35}
+.signal .d{font-size:12px;color:var(--rose);opacity:.85;font-weight:500}
+.signal .link{color:var(--rose);text-decoration:underline;margin-left:auto}
+
+/* Расходы на утверждении — раскрывающаяся amber-полоса */
+.approve{border:1px solid var(--amber-border);background:var(--amber-soft);border-radius:var(--r-lg);overflow:hidden}
+.approve > summary{
+  list-style:none;cursor:pointer;
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:8px 13px;color:var(--amber);
+}
+.approve > summary::-webkit-details-marker{display:none}
+.approve .t{font-size:13px;font-weight:700}
+.approve .sum{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;word-spacing:-.16em}
+.approve .chev{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600}
+.approve[open] .chev .icon{transform:rotate(180deg)}
+.approve-body{background:var(--surface);border-top:1px solid var(--amber-border);padding:4px 0 0}
+.exp-row{
+  display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;
+  padding:7px 13px;border-bottom:1px solid var(--border);
+}
+.exp-row:last-child{border-bottom:0}
+.exp-row .what{font-size:12.5px;font-weight:600;line-height:1.4;min-width:0}
+.exp-row .who{font-size:11px;color:var(--ink-3);line-height:1.4}
+.exp-row .rub{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:600;white-space:nowrap;word-spacing:-.16em}
+.exp-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 13px;background:var(--surface-muted);border-top:1px solid var(--border)}
+.exp-foot .hint{font-size:11.5px;color:var(--ink-3);margin-left:auto}
+
+/* ---------------------------------------------------------------------------
+   KPI МАСТЕРСКОЙ
+   --------------------------------------------------------------------------- */
+.kpi{
+  margin-top:12px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-xs);overflow:hidden;
+}
+.kpi-row{display:grid;grid-template-columns:repeat(6,minmax(0,1fr))}
+.kpi-cell{padding:10px 14px;border-right:1px solid var(--border);min-width:0}
+.kpi-cell:last-child{border-right:0}
+.kpi-cell .k{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.kpi-cell .v{
+  font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;word-spacing:-.16em;
+  font-size:20px;font-weight:600;line-height:1.25;margin-top:2px;letter-spacing:-.015em;
+}
+.kpi-cell .v.is-rose{color:var(--rose)}
+.kpi-cell .v.is-amber{color:var(--amber)}
+.kpi-cell .v .u{font-size:12px;font-weight:500;color:var(--ink-3);letter-spacing:0}
+.kpi-cell .s{font-size:11px;color:var(--ink-3);line-height:1.4}
+.kpi-roles{
+  padding:7px 14px;border-top:1px dashed var(--border);background:var(--surface-muted);
+  font-size:11.5px;color:var(--ink-2);line-height:1.6;
+}
+.kpi-roles b{font-weight:600;color:var(--ink)}
+.kpi-roles .sep{color:var(--ink-3);padding:0 5px}
+
+/* ---------------------------------------------------------------------------
+   ПОТОК: полосы стадий
+   --------------------------------------------------------------------------- */
+.flow{margin-top:18px;display:flex;flex-direction:column;gap:16px}
+
+.band{border-left:2px solid var(--border-strong);padding-left:11px}
+.band.s-wait{border-left-color:var(--amber)}
+.band.s-work{border-left-color:var(--accent-bright)}
+.band.s-parts{border-left-color:var(--indigo)}
+.band.s-done{border-left-color:var(--emerald)}
+
+.band-head{
+  position:sticky;top:0;z-index:5;
+  display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;
+  padding:5px 0 7px;background:var(--surface-subtle);
+}
+.band-head h2{
+  font-family:"IBM Plex Sans Condensed",sans-serif;
+  font-size:15px;font-weight:700;line-height:1.2;letter-spacing:.005em;
+}
+.band-head .n{
+  font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:12px;font-weight:600;color:var(--ink-3);
+}
+.band-head .note{font-size:11.5px;color:var(--ink-2)}
+.band-head .note b{font-weight:600}
+.band-head .note.is-rose b{color:var(--rose)}
+.band-head .note.is-amber b{color:var(--amber)}
+.band-head .sp{margin-left:auto;display:flex;align-items:center;gap:10px}
+
+.rows{display:flex;flex-direction:column;gap:6px}
+
+/* --- Строка ремонта --------------------------------------------------------
+   Три уровня внутри строки: имя (что это) → мета (как давно и кто) →
+   подстрока конфликта (что сломается в брони). Больше ничего.
+   --------------------------------------------------------------------------- */
+.row{
+  position:relative;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-xs);
+  padding:9px 13px 9px 15px;transition:border-color .12s,box-shadow .12s;
+}
+.row:hover{border-color:var(--border-strong);box-shadow:var(--shadow-sm)}
+/* Засечка риска. Появляется только у рисковых строк — иначе левый край
+   превращается в цветной шум и перестаёт что-либо значить. */
+.row::before{
+  content:"";position:absolute;left:0;top:-1px;bottom:-1px;width:3px;
+  border-radius:var(--r-lg) 0 0 var(--r-lg);background:transparent;
+}
+.row.risk-block::before{background:var(--rose)}
+.row.risk-silent::before{background:var(--amber)}
+
+.row-top{display:flex;align-items:flex-start;gap:12px}
+.row-id{min-width:0;flex:1}
+.row-title{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.row-name{
+  font-family:"IBM Plex Sans Condensed",sans-serif;
+  font-size:16px;font-weight:700;line-height:1.2;letter-spacing:-.004em;
+}
+.row-unit{
+  font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:10.5px;font-weight:500;color:var(--ink-2);
+  background:var(--surface-subtle);border:1px solid var(--border);border-radius:3px;
+  padding:0 5px;line-height:1.7;white-space:nowrap;
+}
+.row-unit.is-count{color:var(--teal);background:var(--teal-soft);border-color:var(--teal-border)}
+.row-src{font-size:10.5px;color:var(--ink-3);font-style:normal}
+.row-why{font-size:12.5px;color:var(--ink-2);line-height:1.45;margin-top:2px}
+.row-why .prj{color:var(--ink);font-weight:600}
+
+.row-side{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+
+/* Срок «когда вернётся» */
+.due{
+  display:inline-flex;align-items:center;gap:4px;white-space:nowrap;
+  border:1px solid var(--border);border-radius:var(--r);background:var(--surface-muted);
+  color:var(--ink-2);font-size:11px;font-weight:600;padding:2px 7px;line-height:1.5;
+}
+.due .d{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.due-ok{background:var(--surface-muted);color:var(--ink-2);border-color:var(--border)}
+.due-late{background:var(--rose-soft);color:var(--rose);border-color:var(--rose-border)}
+.due-none{background:transparent;color:var(--ink-3);border-style:dashed;border-color:var(--border-strong);font-weight:500}
+
+/* Мета-строка */
+.row-meta{
+  display:flex;align-items:center;gap:0 7px;flex-wrap:wrap;
+  margin-top:5px;font-size:11.5px;color:var(--ink-2);line-height:1.55;
+}
+.row-meta .sep{color:var(--border-strong)}
+.row-meta .num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+.row-meta .silent{color:var(--amber);font-weight:600}
+.row-meta .silent .num{color:var(--amber)}
+.row-meta .who{display:inline-flex;align-items:center;gap:4px;color:var(--ink)}
+.row-meta .who .icon{color:var(--ink-3)}
+.row-meta .free{display:inline-flex;align-items:center;gap:4px;color:var(--accent-bright);font-weight:600}
+.row-meta .photos{
+  display:inline-flex;align-items:center;gap:3px;color:var(--ink-2);
+  border:1px solid var(--border);border-radius:3px;padding:0 5px;background:var(--surface-muted);
+  font-size:10.5px;font-weight:600;line-height:1.6;
+}
+.row-meta .photos .icon{width:11px;height:11px;color:var(--ink-3)}
+
+/* Подстрока конфликта с бронью */
+.conflict{
+  display:flex;align-items:flex-start;gap:6px;
+  margin-top:7px;border-radius:var(--r);padding:4px 8px;
+  font-size:11.5px;line-height:1.5;
+}
+.conflict .icon{margin-top:2px;stroke-width:1.7}
+.conflict b{font-weight:700}
+.conflict .num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-weight:600}
+.c-block{background:var(--rose-soft);color:var(--rose);border:1px solid var(--rose-border)}
+.c-spare{background:var(--surface-muted);color:var(--ink-2);border:1px solid var(--border)}
+.c-spare .icon{color:var(--emerald)}
+.c-spare b{color:var(--emerald)}
+
+/* --- Врезка «взять следующее» --------------------------------------------- */
+.next{
+  border:1px solid var(--accent-border);background:var(--accent-soft);
+  border-radius:var(--r-lg);padding:3px;margin-bottom:2px;
+}
+.next-tag{
+  display:flex;align-items:center;gap:6px;padding:3px 9px 4px;color:var(--accent);
+}
+.next-tag .eyebrow{color:var(--accent)}
+.next-tag .hint{font-size:11px;color:var(--accent);opacity:.8;margin-left:auto}
+.next .row{box-shadow:none}
+
+/* --- Раскрытая строка: содержимое карточки ремонта ------------------------- */
+.row.is-open{border-color:var(--accent-border);box-shadow:var(--shadow-sm)}
+.detail{margin-top:10px;border-top:1px solid var(--border);padding-top:11px}
+.detail-tag{
+  display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  margin:-2px 0 10px;font-size:11px;color:var(--ink-3);
+}
+.detail-tag .b{
+  font-family:"IBM Plex Sans Condensed",sans-serif;font-size:10px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--accent);
+  background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:3px;padding:0 5px;
+}
+.detail-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:0}
+.detail-col{min-width:0}
+.detail-col + .detail-col{padding-left:16px;border-left:1px solid var(--border);margin-left:16px}
+.dsec + .dsec{margin-top:13px;padding-top:12px;border-top:1px dashed var(--border)}
+.dsec-head{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.dsec-head .eyebrow{display:flex;align-items:center;gap:5px}
+.dsec-head .icon{color:var(--ink-3)}
+.dsec-head .sp{margin-left:auto}
+
+/* Фотолента */
+.shots{display:flex;gap:7px;flex-wrap:wrap}
+.shot{
+  width:92px;height:69px;border-radius:var(--r);border:1px solid var(--border);
+  background:
+    repeating-linear-gradient(135deg,var(--surface-subtle) 0 7px,var(--surface-muted) 7px 14px);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  color:var(--ink-3);cursor:pointer;position:relative;
+  transition:border-color .12s;
+}
+.shot:hover{border-color:var(--accent-border)}
+.shot .icon{width:17px;height:17px}
+.shot .cap{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.02em}
+.shots-note{font-size:11px;color:var(--ink-3);margin-top:6px;line-height:1.45}
+
+/* История ремонтов */
+.hist{border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.hist li{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:baseline;
+  padding:5px 9px;border-bottom:1px solid var(--border);font-size:11.5px;
+}
+.hist li:last-child{border-bottom:0}
+.hist .dt{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;color:var(--ink-3);white-space:nowrap;font-size:11px}
+.hist .w{color:var(--ink-2);min-width:0}
+.hist .w i{font-style:normal;color:var(--ink-3)}
+.hist .rub{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;word-spacing:-.16em}
+.hist li.is-now{background:var(--accent-soft)}
+.hist li.is-now .w{color:var(--accent)}
+.verdict{
+  margin-top:8px;border:1px solid var(--amber-border);background:var(--amber-soft);color:var(--amber);
+  border-radius:var(--r);padding:6px 9px;font-size:12px;line-height:1.5;
+}
+.verdict b{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-weight:700;word-spacing:-.16em}
+
+/* Журнал работ */
+.log{display:flex;flex-direction:column;gap:0}
+.log li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:baseline;padding:5px 0;border-bottom:1px dashed var(--border);font-size:12px}
+.log li:last-child{border-bottom:0}
+.log .dt{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:11px;color:var(--ink-3);white-space:nowrap}
+.log .txt{min-width:0;line-height:1.45}
+.log .by{color:var(--ink-3);font-size:11px}
+.log .hrs{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:11.5px;font-weight:600;color:var(--ink-2);white-space:nowrap}
+.log-warn{
+  margin-top:8px;display:flex;align-items:center;gap:6px;
+  border:1px solid var(--amber-border);background:var(--amber-soft);color:var(--amber);
+  border-radius:var(--r);padding:5px 9px;font-size:11.5px;font-weight:600;
+}
+
+/* Быстрый ввод работ */
+.quick{margin-top:9px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface-muted);padding:9px}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{
+  border:1px solid var(--border);background:var(--surface);border-radius:99px;
+  font-size:11.5px;font-weight:500;color:var(--ink-2);padding:3px 10px;cursor:pointer;line-height:1.45;
+  transition:border-color .12s,color .12s,background .12s;
+}
+.chip:hover{border-color:var(--accent-border);background:var(--accent-soft);color:var(--accent-bright)}
+.chip.on{background:var(--accent-soft);border-color:var(--accent-bright);color:var(--accent);font-weight:600}
+.quick-line{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:9px}
+.quick-line .lbl{font-size:11px;color:var(--ink-3);font-family:"IBM Plex Sans Condensed",sans-serif;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+.hrs-set{display:inline-flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.hrs-set button{
+  font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:12px;font-weight:600;color:var(--ink-2);background:transparent;
+  border:0;border-right:1px solid var(--border);padding:3px 11px;cursor:pointer;
+}
+.hrs-set button:last-child{border-right:0}
+.hrs-set button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+.fld{
+  border:1px solid var(--border-strong);border-radius:var(--r);background:var(--surface);
+  font-size:12px;color:var(--ink);padding:3px 8px;line-height:1.6;min-width:0;
+}
+.fld::placeholder{color:var(--ink-3)}
+.fld-w{width:88px;font-family:"IBM Plex Mono",monospace}
+.fld-grow{flex:1;min-width:150px}
+
+/* ---------------------------------------------------------------------------
+   СОСТОЯНИЕ ЭКРАНА: модалка «Завести поломку»
+   --------------------------------------------------------------------------- */
+.state-head{
+  display:flex;align-items:center;gap:10px;margin:34px 0 12px;padding-top:20px;
+  border-top:1px solid var(--border-strong);
+}
+.state-head .num{
+  width:24px;height:24px;border-radius:50%;background:var(--indigo);color:var(--surface);
+  display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex:0 0 auto;
+}
+.state-head h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:16px;font-weight:700;line-height:1.25}
+.state-head p{font-size:11.5px;color:var(--ink-2);margin-top:1px}
+
+.stage{
+  background:var(--surface-muted);border:1px solid var(--border-strong);border-radius:var(--r-lg);
+  padding:22px;display:flex;justify-content:center;
+  background-image:radial-gradient(circle at 1px 1px,var(--border) 1px,transparent 0);
+  background-size:14px 14px;
+}
+.modal{
+  width:100%;max-width:520px;background:var(--surface);border:1px solid var(--border-strong);
+  border-radius:var(--r-lg);box-shadow:0 12px 40px rgba(9,9,11,.16);overflow:hidden;
+}
+.modal-head{padding:12px 15px 11px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px}
+.modal-head h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:17px;font-weight:700;line-height:1.2}
+.modal-head p{font-size:11.5px;color:var(--ink-2);margin-top:2px;line-height:1.45}
+.modal-head .x{margin-left:auto;color:var(--ink-3);border:0;background:transparent;cursor:pointer;padding:2px}
+.modal-body{padding:12px 15px;display:flex;flex-direction:column;gap:13px;max-height:none}
+.f-block > .eyebrow{display:block;margin-bottom:5px}
+
+/* поиск + выпадающий список */
+.search-wrap{position:relative}
+.search{
+  display:flex;align-items:center;gap:7px;border:1px solid var(--accent-bright);border-radius:var(--r);
+  background:var(--surface);padding:5px 9px;
+}
+.search .icon{color:var(--ink-3)}
+.search input{border:0;outline:0;font-family:inherit;font-size:13px;flex:1;min-width:0;color:var(--ink);background:transparent}
+.sugg{margin-top:4px;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-sm);overflow:hidden;background:var(--surface)}
+.sugg li{display:flex;align-items:baseline;gap:9px;padding:6px 9px;border-bottom:1px solid var(--border);font-size:12.5px;cursor:pointer}
+.sugg li:last-child{border-bottom:0}
+.sugg li:hover{background:var(--surface-muted)}
+.sugg li.on{background:var(--accent-soft)}
+.sugg .nm{font-weight:600;min-width:0}
+.sugg .av{margin-left:auto;font-size:11px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* выбор единицы */
+.units{display:flex;gap:6px;flex-wrap:wrap}
+.unit-tile{
+  border:1px solid var(--border);border-radius:var(--r);background:var(--surface);
+  padding:5px 9px;cursor:pointer;min-width:96px;text-align:left;line-height:1.35;
+  transition:border-color .12s,background .12s;
+}
+.unit-tile:hover{border-color:var(--accent-border);background:var(--accent-soft)}
+.unit-tile .u{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:12px;font-weight:600;display:block}
+.unit-tile .st{font-size:10.5px;color:var(--ink-3)}
+.unit-tile.on{border-color:var(--accent-bright);background:var(--accent-soft)}
+.unit-tile.on .st{color:var(--accent)}
+.unit-tile.busy .st{color:var(--amber)}
+.unit-tile.off{opacity:.5;cursor:not-allowed;background:var(--surface-subtle)}
+
+.alt{
+  margin-top:8px;border:1px dashed var(--border-strong);border-radius:var(--r);
+  background:var(--surface-muted);padding:7px 9px;font-size:11.5px;color:var(--ink-2);line-height:1.5;
+}
+.alt .h{font-weight:600;color:var(--ink);display:block;margin-bottom:3px}
+.alt-qty{display:flex;align-items:center;gap:7px;margin-top:5px}
+.alt-qty .fld{width:62px;text-align:center}
+
+.ta{
+  width:100%;border:1px solid var(--border-strong);border-radius:var(--r);background:var(--surface);
+  font-family:inherit;font-size:12.5px;color:var(--ink);padding:6px 9px;line-height:1.5;resize:vertical;
+}
+.attach{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.shot-sm{width:56px;height:42px;border-radius:3px;border:1px solid var(--border);
+  background:repeating-linear-gradient(135deg,var(--surface-subtle) 0 6px,var(--surface-muted) 6px 12px);
+  display:flex;align-items:center;justify-content:center;color:var(--ink-3)}
+.opt{font-size:11px;color:var(--ink-3)}
+
+.warn-box{
+  border:1px solid var(--rose-border);background:var(--rose-soft);color:var(--rose);
+  border-radius:var(--r);padding:8px 10px;display:flex;gap:7px;align-items:flex-start;font-size:12px;line-height:1.5;
+}
+.warn-box .icon{margin-top:2px;stroke-width:1.7}
+.warn-box b{font-weight:700}
+.warn-box .sub{display:block;margin-top:3px;font-weight:500;opacity:.9}
+.calm-box{
+  border:1px solid var(--border);background:var(--surface-muted);color:var(--ink-2);
+  border-radius:var(--r);padding:7px 10px;display:flex;gap:7px;align-items:flex-start;font-size:11.5px;line-height:1.5;
+}
+.calm-box .icon{margin-top:2px;color:var(--emerald)}
+.calm-box b{color:var(--emerald);font-weight:700}
+
+.modal-foot{
+  padding:10px 15px;border-top:1px solid var(--border);background:var(--surface-muted);
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+}
+.modal-foot .hint{font-size:11px;color:var(--ink-3);margin-right:auto;line-height:1.45;max-width:270px}
+.btn{
+  border:1px solid var(--border-strong);background:var(--surface);color:var(--ink-2);
+  border-radius:var(--r);font-size:12.5px;font-weight:600;padding:6px 13px;cursor:pointer;line-height:1.5;
+}
+.btn:hover{border-color:var(--ink-3);color:var(--ink)}
+.btn-danger{background:var(--rose);border-color:var(--rose);color:var(--surface)}
+
+/* ---------------------------------------------------------------------------
+   ЖИВЁТ НЕ ЗДЕСЬ + ЗАМЕТКИ
+   --------------------------------------------------------------------------- */
+.elsewhere{
+  margin-top:26px;border:1px solid var(--border);border-radius:var(--r-lg);
+  background:var(--surface);overflow:hidden;
+}
+.elsewhere .eh{padding:9px 14px 8px;border-bottom:1px solid var(--border);background:var(--surface-muted)}
+.elsewhere li{
+  display:flex;gap:9px;align-items:flex-start;padding:8px 14px;border-bottom:1px solid var(--border);font-size:12.5px;line-height:1.5;
+}
+.elsewhere li:last-child{border-bottom:0}
+.elsewhere .icon{margin-top:3px;color:var(--ink-3)}
+.elsewhere b{font-weight:600}
+.elsewhere code{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;background:var(--surface-subtle);
+  border:1px solid var(--border);border-radius:3px;padding:0 4px;color:var(--ink-2);
+}
+
+.annot{
+  margin-top:16px;border:1px dashed var(--border-strong);border-radius:var(--r-lg);
+  background:var(--surface);padding:14px 16px;
+}
+.annot h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700;margin-bottom:2px}
+.annot ol{margin:8px 0 0;padding-left:19px;font-size:12.5px;color:var(--ink-2);line-height:1.75}
+.annot ol li{margin-bottom:3px}
+.annot b{color:var(--ink);font-weight:600}
+
+/* ---------------------------------------------------------------------------
+   АДАПТИВ
+   --------------------------------------------------------------------------- */
+@media (max-width:1100px){
+  .kpi-row{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .kpi-cell{border-bottom:1px solid var(--border)}
+  .kpi-cell:nth-child(3),.kpi-cell:nth-child(6){border-right:0}
+  .kpi-cell:nth-child(4),.kpi-cell:nth-child(5),.kpi-cell:nth-child(6){border-bottom:0}
+  .detail-grid{grid-template-columns:minmax(0,1fr)}
+  .detail-col + .detail-col{padding-left:0;border-left:0;margin-left:0;margin-top:13px;padding-top:12px;border-top:1px dashed var(--border)}
+}
+@media (max-width:720px){
+  body{font-size:13px}
+  .page{padding:14px 12px 44px}
+  .page-head h1{font-size:20px}
+  .kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpi-cell:nth-child(2),.kpi-cell:nth-child(4),.kpi-cell:nth-child(6){border-right:0}
+  .kpi-cell:nth-child(5),.kpi-cell:nth-child(6){border-bottom:0}
+  .kpi-cell:nth-child(3),.kpi-cell:nth-child(4){border-bottom:1px solid var(--border)}
+  .row-top{flex-direction:column;gap:7px}
+  .row-side{align-self:stretch;justify-content:space-between}
+  .exp-row{grid-template-columns:minmax(0,1fr) auto;gap:6px}
+  .exp-row .mini{grid-column:2}
+  .signal .link{margin-left:0;width:100%}
+  .shot{width:calc(50% - 4px);height:76px}
+  .stage{padding:12px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- Спрайт иконок: только инлайн-SVG, никаких emoji (канон мокапов проекта) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-wrench" viewBox="0 0 16 16"><path d="M10.5 2.4a3.6 3.6 0 0 0-4.3 4.6l-3.6 3.6a1.45 1.45 0 0 0 2.05 2.05l3.6-3.6a3.6 3.6 0 0 0 4.6-4.3l-2 2-1.85-.5-.5-1.85z"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 2.4 1.6 13.2h12.8z"/><path d="M8 6.3v3.3M8 11.5h.01"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.9"/><path d="M3.9 3.9l8.2 8.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.4l3.3 3.2L13 4.8"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><path d="M6 3.4v9.2M10 3.4v9.2"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.9"/><path d="M8 4.6V8l2.4 1.5"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 16 16"><path d="M2 5.4h2.4l1-1.6h5.2l1 1.6H14v7.2H2z"/><circle cx="8" cy="9" r="2.2"/></symbol>
+  <symbol id="i-user" viewBox="0 0 16 16"><circle cx="8" cy="5.6" r="2.5"/><path d="M2.9 13.4a5.1 5.1 0 0 1 10.2 0"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.4v9.2M3.4 8h9.2"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="M3.8 6l4.2 4.2L12.2 6"/></symbol>
+  <symbol id="i-rub" viewBox="0 0 16 16"><path d="M5.6 13.4V3.1h3.3a2.75 2.75 0 0 1 0 5.5H5.6"/><path d="M4 10.9h4.6"/></symbol>
+  <symbol id="i-box" viewBox="0 0 16 16"><path d="M8 1.9 14 5v6l-6 3.1L2 11V5z"/><path d="M2 5l6 3.1L14 5M8 8.1v6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7.1" cy="7.1" r="4.6"/><path d="M10.5 10.5l3 3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+  <symbol id="i-list" viewBox="0 0 16 16"><path d="M5.4 4.2h8.2M5.4 8h8.2M5.4 11.8h8.2M2.6 4.2h.01M2.6 8h.01M2.6 11.8h.01"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 16 16"><rect x="2" y="3.2" width="12" height="10.6" rx="1.4"/><path d="M2 6.4h12M5.4 1.8v2.6M10.6 1.8v2.6"/></symbol>
+  <symbol id="i-hist" viewBox="0 0 16 16"><path d="M2.6 8a5.4 5.4 0 1 0 1.7-3.9"/><path d="M2.2 2.4v2.8h2.8"/><path d="M8 5.2V8l2 1.3"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h10M9.2 4.2 13 8l-3.8 3.8"/></symbol>
+</svg>
+
+<div class="page">
+
+  <!-- ============================ ШАПКА ============================ -->
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Мастерская</p>
+      <h1>Очередь ремонтов</h1>
+    </div>
+    <div class="acts">
+      <span class="only-sa"><svg class="icon" style="width:10px;height:10px"><use href="#i-rub"/></svg> — видит только руководитель</span>
+      <div class="roles" role="group" aria-label="Вид роли (служебный переключатель мокапа)">
+        <button type="button" aria-pressed="true">Руководитель</button>
+        <button type="button" aria-pressed="false">Кладовщик</button>
+        <button type="button" aria-pressed="false">Техник</button>
+      </div>
+      <a class="link" href="#">Списанное →</a>
+      <button class="mini mini-primary" type="button"><svg class="icon"><use href="#i-plus"/></svg>Завести поломку</button>
+    </div>
+  </header>
+
+  <!-- ==================== СИГНАЛЫ (функции 7 и 8) ====================
+       Две полосы, а не плитки: это не метрики, а два требования к действию.
+       Первая — красная, единственная в своём весе на экране. -->
+  <section class="signals" aria-label="Сигналы мастерской">
+
+    <div class="signal" role="status">
+      <svg class="icon icon-l"><use href="#i-alert"/></svg>
+      <span class="t">5 ремонтов срывают брони</span>
+      <span class="d">— подмены в парке нет, ближайший срыв <b>12 августа</b>, «Реклама Магнит»</span>
+      <a class="link" href="#">Показать только их →</a>
+    </div>
+
+    <!-- Расходы на утверждении — только руководителю -->
+    <details class="approve" open>
+      <summary>
+        <svg class="icon icon-l"><use href="#i-rub"/></svg>
+        <span class="t">3 расхода на <span class="sum">12 400 ₽</span> ждут подтверждения</span>
+        <span class="only-sa">только руководитель</span>
+        <span class="chev">Свернуть <svg class="icon"><use href="#i-chev"/></svg></span>
+      </summary>
+      <div class="approve-body">
+        <div class="exp-row">
+          <div>
+            <p class="what">Драйвер COB для Aputure LS 1200d Pro</p>
+            <p class="who">Артём Гулин · 8 августа · к ремонту «не выходит на мощность»</p>
+          </div>
+          <span class="rub">7 900 ₽</span>
+          <button class="mini mini-primary" type="button">Утвердить</button>
+        </div>
+        <div class="exp-row">
+          <div>
+            <p class="what">Рассеиватель ARRI SkyPanel S60 — комплект</p>
+            <p class="who">Пётр Романов · 9 августа · к ремонту «не включается после дождя»</p>
+          </div>
+          <span class="rub">3 250 ₽</span>
+          <button class="mini mini-primary" type="button">Утвердить</button>
+        </div>
+        <div class="exp-row">
+          <div>
+            <p class="what">Разъём Neutrik powerCON + кабель 3×1,5</p>
+            <p class="who">Пётр Романов · 9 августа · к ремонту ARRI M18</p>
+          </div>
+          <span class="rub">1 250 ₽</span>
+          <button class="mini mini-primary" type="button">Утвердить</button>
+        </div>
+        <div class="exp-foot">
+          <button class="mini mini-primary" type="button"><svg class="icon"><use href="#i-check"/></svg>Утвердить все три</button>
+          <a class="link" href="#">Открыть расходы мастерской</a>
+          <span class="hint">Техник и кладовщик этой полосы не видят вообще.</span>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <!-- ==================== KPI МАСТЕРСКОЙ (функция 9) ==================== -->
+  <section class="kpi" aria-label="Показатели мастерской">
+    <div class="kpi-row">
+      <div class="kpi-cell">
+        <p class="k"><span class="eyebrow">Срывают брони</span></p>
+        <p class="v is-rose">5</p>
+        <p class="s">подмены в парке нет</p>
+      </div>
+      <div class="kpi-cell">
+        <p class="k"><span class="eyebrow">Никто не взял</span></p>
+        <p class="v is-amber">4</p>
+        <p class="s">свободная работа</p>
+      </div>
+      <div class="kpi-cell">
+        <p class="k"><span class="eyebrow">Молчат 5+ дней</span></p>
+        <p class="v is-amber">4</p>
+        <p class="s">нет записей в журнале</p>
+      </div>
+      <div class="kpi-cell">
+        <p class="k"><span class="eyebrow">Без срока возврата</span></p>
+        <p class="v">6</p>
+        <p class="s">не назначен ни один</p>
+      </div>
+      <div class="kpi-cell">
+        <p class="k"><span class="eyebrow">Потрачено в августе</span> <span class="only-sa">₽</span></p>
+        <p class="v">47 200 <span class="u">₽</span></p>
+        <p class="s">запчасти, утверждённые</p>
+      </div>
+      <div class="kpi-cell">
+        <p class="k"><span class="eyebrow">На утверждении</span> <span class="only-sa">₽</span></p>
+        <p class="v is-amber">12 400 <span class="u">₽</span></p>
+        <p class="s">3 расхода</p>
+      </div>
+    </div>
+    <p class="kpi-roles">
+      Тот же ряд у других ролей — <b>у техника</b>: свободно взять 4 · моя очередь 3 · молчат 5+ дней 4 · ждут запчастей 3
+      <span class="sep">|</span>
+      <b>у кладовщика</b>: готово — забрать 2 · срывают брони 5 · вернётся на этой неделе 5 · без срока 6.
+      Денежные две плитки заменяются, а не пустеют.
+    </p>
+  </section>
+
+  <!-- ============================ ПОТОК ============================ -->
+  <div class="flow">
+
+    <!-- ─────────── ПОЛОСА 1: ждёт ремонта ─────────── -->
+    <section class="band s-wait" aria-labelledby="b1">
+      <div class="band-head">
+        <h2 id="b1">Ждёт ремонта</h2>
+        <span class="n">6</span>
+        <span class="note is-amber">никто не взял — <b>4</b></span>
+        <span class="sp"><a class="link" href="#">Сначала те, что срывают брони ✓</a></span>
+      </div>
+
+      <div class="rows">
+
+        <!-- Врезка «взять следующее»: единственный элемент экрана,
+             который прямо говорит технику, с чего начать. -->
+        <div class="next">
+          <div class="next-tag">
+            <svg class="icon" style="color:var(--accent)"><use href="#i-arrow"/></svg>
+            <span class="eyebrow">Взять следующее</span>
+            <span class="hint">срывает ближайшую бронь и никем не занято</span>
+          </div>
+
+          <article class="row risk-block">
+            <div class="row-top">
+              <div class="row-id">
+                <div class="row-title">
+                  <h3 class="row-name">Aputure LS 600d Pro</h3>
+                  <span class="row-unit">ед. 4 из 7</span>
+                </div>
+                <p class="row-why">Не держит диммирование ниже 20%, мигает. Приехал с <span class="prj">«Реклама Сбер»</span>, гаффер Иванов.</p>
+              </div>
+              <div class="row-side">
+                <span class="due due-none"><svg class="icon"><use href="#i-clock"/></svg>срок не назначен</span>
+                <button class="mini mini-primary" type="button"><svg class="icon"><use href="#i-wrench"/></svg>Взять в работу</button>
+              </div>
+            </div>
+            <p class="row-meta">
+              <span>заведён <span class="num">2</span> дня назад</span><span class="sep">·</span>
+              <span>записей нет</span><span class="sep">·</span>
+              <span class="free"><svg class="icon"><use href="#i-user"/></svg>никто не взял</span><span class="sep">·</span>
+              <span class="photos"><svg class="icon"><use href="#i-cam"/></svg>2</span>
+            </p>
+            <p class="conflict c-block">
+              <svg class="icon"><use href="#i-ban"/></svg>
+              <span><b>Подмены нет</b> — <span class="num">14 авг</span>, Мальцев, «Клип Валя Карнавал», не хватает <span class="num">1 шт</span></span>
+            </p>
+          </article>
+        </div>
+
+        <article class="row risk-silent">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">ARRI SkyPanel S60-C</h3>
+                <span class="row-unit">ед. 2 из 4</span>
+              </div>
+              <p class="row-why">Треснул корпус рассеивателя, разбит фиксатор скобы. С <span class="prj">«Wildberries лукбук»</span>, гаффер Ясенев.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-none"><svg class="icon"><use href="#i-clock"/></svg>срок не назначен</span>
+              <button class="mini" type="button">Взять в работу</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">5</span> дней назад</span><span class="sep">·</span>
+            <span class="silent">лежит без движения <span class="num">5</span> дней</span><span class="sep">·</span>
+            <span class="free"><svg class="icon"><use href="#i-user"/></svg>никто не взял</span><span class="sep">·</span>
+            <span class="photos"><svg class="icon"><use href="#i-cam"/></svg>3</span>
+          </p>
+          <p class="conflict c-spare">
+            <svg class="icon"><use href="#i-check"/></svg>
+            <span><b>Подмена есть</b> — в парке ещё <span class="num">3</span> свободных, ближайшая бронь закрыта</span>
+          </p>
+        </article>
+
+        <article class="row">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Astera Titan Tube</h3>
+                <span class="row-unit">2 трубки из набора 8</span>
+              </div>
+              <p class="row-why">Не берут заряд в кейсе — подозрение на контактную группу. С <span class="prj">«Клип Джарахова»</span>, гаффер Кожин.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-none"><svg class="icon"><use href="#i-clock"/></svg>срок не назначен</span>
+              <button class="mini" type="button">Взять в работу</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">1</span> день назад</span><span class="sep">·</span>
+            <span>записей нет</span><span class="sep">·</span>
+            <span class="free"><svg class="icon"><use href="#i-user"/></svg>никто не взял</span><span class="sep">·</span>
+            <span class="photos"><svg class="icon"><use href="#i-cam"/></svg>1</span>
+          </p>
+          <p class="conflict c-spare">
+            <svg class="icon"><use href="#i-check"/></svg>
+            <span><b>Подмена есть</b> — в наборе остаётся <span class="num">6</span> рабочих трубок</span>
+          </p>
+        </article>
+
+        <!-- ФУНКЦИЯ 1: позиция без штучного учёта. Имя взято со строки сметы —
+             вторая ступень фолбэка. Раньше такая строка приезжала «Без позиции». -->
+        <article class="row">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Кабель питания 16A, 20 м</h3>
+                <span class="row-unit is-count"><svg class="icon" style="width:10px;height:10px;vertical-align:-1px"><use href="#i-box"/></svg> 2 шт · учёт количеством</span>
+                <i class="row-src">название из строки сметы</i>
+              </div>
+              <p class="row-why">Оплавлен разъём, срезана земля на одном конце. С <span class="prj">«Сериал Тайга, блок 4»</span>, гаффер Гуреев.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-none"><svg class="icon"><use href="#i-clock"/></svg>срок не назначен</span>
+              <button class="mini" type="button">Взять в работу</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">3</span> дня назад</span><span class="sep">·</span>
+            <span>записей нет</span><span class="sep">·</span>
+            <span class="free"><svg class="icon"><use href="#i-user"/></svg>никто не взял</span>
+          </p>
+          <p class="conflict c-spare">
+            <svg class="icon"><use href="#i-check"/></svg>
+            <span><b>Подмена есть</b> — на складе ещё <span class="num">14</span> таких же кабелей</span>
+          </p>
+        </article>
+
+        <article class="row risk-block">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Nanlux Evoke 1200</h3>
+                <span class="row-unit">ед. 1 из 2</span>
+              </div>
+              <p class="row-why">Не выходит на полную мощность, уходит в защиту через 10 минут.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-ok"><svg class="icon"><use href="#i-clock"/></svg>вернётся <span class="d">15 авг</span></span>
+              <button class="mini" type="button">Открыть</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">4</span> дня назад</span><span class="sep">·</span>
+            <span>последняя запись <span class="num">3</span> дня назад</span><span class="sep">·</span>
+            <span><span class="num">1</span> запись</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>чинит Артём Гулин</span>
+          </p>
+          <p class="conflict c-block">
+            <svg class="icon"><use href="#i-ban"/></svg>
+            <span><b>Подмены нет</b> — <span class="num">13 авг</span>, Гуреев, «Сериал Тайга, блок 4», не хватает <span class="num">1 шт</span></span>
+          </p>
+        </article>
+
+        <article class="row">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Стойка Manfrotto 1004BAC</h3>
+                <span class="row-unit">ед. 6 из 12</span>
+              </div>
+              <p class="row-why">Клинит вторая секция, сорван барашек фиксатора.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-ok"><svg class="icon"><use href="#i-clock"/></svg>вернётся <span class="d">12 авг</span></span>
+              <button class="mini" type="button">Открыть</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">2</span> дня назад</span><span class="sep">·</span>
+            <span>последняя запись вчера</span><span class="sep">·</span>
+            <span><span class="num">2</span> записи</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>чинит Пётр Романов</span>
+          </p>
+          <p class="conflict c-spare">
+            <svg class="icon"><use href="#i-check"/></svg>
+            <span><b>Подмена есть</b> — в парке ещё <span class="num">9</span> стоек</span>
+          </p>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ─────────── ПОЛОСА 2: в ремонте ─────────── -->
+    <section class="band s-work" aria-labelledby="b2">
+      <div class="band-head">
+        <h2 id="b2">В ремонте</h2>
+        <span class="n">5</span>
+        <span class="note is-amber">молчат 5+ дней — <b>2</b></span>
+        <span class="sp"><a class="link" href="#">Только моя очередь</a></span>
+      </div>
+
+      <div class="rows">
+
+        <!-- ФУНКЦИИ 10–13: раскрытая прямо в потоке карточка ремонта -->
+        <article class="row risk-block is-open">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">ARRI SkyPanel S60-C</h3>
+                <span class="row-unit">ед. 1 из 4</span>
+              </div>
+              <p class="row-why">Не включается после дождя на площадке. С <span class="prj">«Реклама Магнит»</span>, гаффер Тарасюк.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-ok"><svg class="icon"><use href="#i-clock"/></svg>вернётся <span class="d">12 авг</span></span>
+              <button class="mini" type="button"><svg class="icon"><use href="#i-chev"/></svg>Свернуть</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">9</span> дней назад</span><span class="sep">·</span>
+            <span class="silent">последняя запись <span class="num">6</span> дней назад</span><span class="sep">·</span>
+            <span><span class="num">3</span> записи</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>чинит Пётр Романов</span><span class="sep">·</span>
+            <span class="photos"><svg class="icon"><use href="#i-cam"/></svg>4</span>
+          </p>
+          <p class="conflict c-block">
+            <svg class="icon"><use href="#i-ban"/></svg>
+            <span><b>Подмены нет</b> — <span class="num">12 авг</span>, Тарасюк, «Реклама Магнит», не хватает <span class="num">2 шт</span></span>
+          </p>
+
+          <!-- ── содержимое карточки ремонта, открытое в потоке ── -->
+          <div class="detail">
+            <p class="detail-tag">
+              <span class="b">карточка ремонта</span>
+              то же, что на отдельной странице ремонта — но техник не выходит из очереди, чтобы записать полчаса работы
+            </p>
+
+            <div class="detail-grid">
+
+              <!-- левая колонка: фото + журнал -->
+              <div class="detail-col">
+
+                <!-- ФУНКЦИЯ 10: фотографии поломки -->
+                <div class="dsec">
+                  <div class="dsec-head">
+                    <span class="eyebrow"><svg class="icon"><use href="#i-cam"/></svg>Фото поломки</span>
+                    <span class="sp"><a class="link" href="#">Все 4 →</a></span>
+                  </div>
+                  <div class="shots">
+                    <figure class="shot"><svg class="icon"><use href="#i-cam"/></svg><figcaption class="cap">02.08</figcaption></figure>
+                    <figure class="shot"><svg class="icon"><use href="#i-cam"/></svg><figcaption class="cap">02.08</figcaption></figure>
+                    <figure class="shot"><svg class="icon"><use href="#i-cam"/></svg><figcaption class="cap">02.08</figcaption></figure>
+                    <figure class="shot"><svg class="icon"><use href="#i-cam"/></svg><figcaption class="cap">05.08</figcaption></figure>
+                  </div>
+                  <p class="shots-note">Первые три снял Иван Соломин на приёмке 2 августа, четвёртое — Пётр Романов после вскрытия. Лежат в базе с самого начала и до сих пор нигде не показывались.</p>
+                </div>
+
+                <!-- ФУНКЦИИ 12 и 13: журнал работ с именами + быстрый ввод -->
+                <div class="dsec">
+                  <div class="dsec-head">
+                    <span class="eyebrow"><svg class="icon"><use href="#i-list"/></svg>Журнал работ</span>
+                    <span class="sp"><span class="pill pill-view">итого 4 ч</span></span>
+                  </div>
+                  <ul class="log">
+                    <li>
+                      <span class="dt">03.08</span>
+                      <span class="txt">Разобрал, диагностика — влага в отсеке драйвера <span class="by">· Пётр Романов</span></span>
+                      <span class="hrs">1,5 ч</span>
+                    </li>
+                    <li>
+                      <span class="dt">04.08</span>
+                      <span class="txt">Продул, просушил, прозвонил драйвер — драйвер живой, битый шлейф <span class="by">· Пётр Романов</span></span>
+                      <span class="hrs">2 ч</span>
+                    </li>
+                    <li>
+                      <span class="dt">05.08</span>
+                      <span class="txt">Заказал рассеиватель и шлейф <span class="by">· Артём Гулин</span></span>
+                      <span class="hrs">0,5 ч</span>
+                    </li>
+                  </ul>
+                  <p class="log-warn">
+                    <svg class="icon"><use href="#i-alert"/></svg>
+                    Молчит 6 дней. Бронь срывается 12 августа — напиши, что происходит.
+                  </p>
+
+                  <div class="quick">
+                    <p class="eyebrow" style="margin-bottom:6px">Записать работу — выбери заготовку</p>
+                    <div class="chips">
+                      <button class="chip" type="button">Разобрал, диагностика</button>
+                      <button class="chip on" type="button">Заменил разъём</button>
+                      <button class="chip" type="button">Собрал, проверил</button>
+                      <button class="chip" type="button">Заказал запчасть</button>
+                      <button class="chip" type="button">Прозвонил питание</button>
+                      <button class="chip" type="button">Почистил, продул</button>
+                    </div>
+                    <div class="quick-line">
+                      <span class="lbl">Часы</span>
+                      <div class="hrs-set" role="group" aria-label="Сколько часов">
+                        <button type="button" aria-pressed="false">0,5</button>
+                        <button type="button" aria-pressed="true">1</button>
+                        <button type="button" aria-pressed="false">2</button>
+                      </div>
+                      <input class="fld fld-w" value="1" aria-label="Свои часы">
+                      <input class="fld fld-grow" placeholder="Дописать словами — необязательно" aria-label="Комментарий">
+                    </div>
+                    <div class="quick-line">
+                      <span class="lbl">Запчасти <span class="only-sa">₽</span></span>
+                      <input class="fld fld-w" placeholder="0 ₽" aria-label="Стоимость запчастей">
+                      <span class="opt">У техника поле скрыто — он жмёт «нужна запчасть», сумму ставит руководитель при утверждении.</span>
+                      <button class="mini mini-primary" type="button" style="margin-left:auto">Записать</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- правая колонка: ФУНКЦИЯ 11 — история этой позиции -->
+              <div class="detail-col">
+                <div class="dsec" style="margin-top:0">
+                  <div class="dsec-head">
+                    <span class="eyebrow"><svg class="icon"><use href="#i-hist"/></svg>Раньше чинили: 3 раза</span>
+                    <span class="sp"><a class="link" href="#">Вся история позиции →</a></span>
+                  </div>
+                  <ul class="hist">
+                    <li class="is-now">
+                      <span class="dt">сейчас</span>
+                      <span class="w">не включается после дождя <i>· Пётр Романов</i></span>
+                      <span class="rub">13 000 ₽</span>
+                    </li>
+                    <li>
+                      <span class="dt">12.03.26</span>
+                      <span class="w">замена LED-панели и драйвера <i>· Пётр Романов</i></span>
+                      <span class="rub">22 400 ₽</span>
+                    </li>
+                    <li>
+                      <span class="dt">27.11.25</span>
+                      <span class="w">замена блока питания <i>· Артём Гулин</i></span>
+                      <span class="rub">18 700 ₽</span>
+                    </li>
+                    <li>
+                      <span class="dt">03.09.25</span>
+                      <span class="w">ремонт разъёма и шлейфа <i>· Пётр Романов</i></span>
+                      <span class="rub">9 300 ₽</span>
+                    </li>
+                  </ul>
+                  <p class="verdict">
+                    За 12 месяцев <b>4 ремонта, 63 400 ₽</b> — это <b>5,3 смены</b> аренды этой позиции.
+                    <span class="only-sa" style="margin-left:4px">суммы — только руководителю</span>
+                  </p>
+                  <p class="shots-note">Техник и кладовщик видят ту же историю без денег: «4 ремонта за 12 месяцев, последний — 12 марта».</p>
+                </div>
+
+                <div class="dsec">
+                  <div class="dsec-head"><span class="eyebrow"><svg class="icon"><use href="#i-wrench"/></svg>Решение</span></div>
+                  <div class="chips">
+                    <button class="mini mini-primary" type="button"><svg class="icon"><use href="#i-check"/></svg>Починено — вернуть в парк</button>
+                    <button class="mini" type="button"><svg class="icon"><use href="#i-pause"/></svg>Ждём запчасть</button>
+                    <button class="mini" type="button">Передать другому</button>
+                    <button class="mini mini-danger" type="button">Списать</button>
+                  </div>
+                  <p class="shots-note">У кладовщика активна только «Починено — вернуть в парк» и «Завести поломку»: сейчас он в мастерской не может нажать вообще ничего.</p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </article>
+
+        <article class="row risk-silent">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Aputure Nova P300c</h3>
+                <span class="row-unit">ед. 2 из 3</span>
+              </div>
+              <p class="row-why">Битый модуль пикселей в левом верхнем углу, полоса при заливке.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-none"><svg class="icon"><use href="#i-clock"/></svg>срок не назначен</span>
+              <button class="mini" type="button">Открыть</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">12</span> дней назад</span><span class="sep">·</span>
+            <span class="silent">последняя запись <span class="num">7</span> дней назад</span><span class="sep">·</span>
+            <span><span class="num">2</span> записи</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>чинит Артём Гулин</span><span class="sep">·</span>
+            <span class="photos"><svg class="icon"><use href="#i-cam"/></svg>1</span>
+          </p>
+          <p class="conflict c-spare">
+            <svg class="icon"><use href="#i-check"/></svg>
+            <span><b>Подмена есть</b> — в парке ещё <span class="num">2</span> свободных</span>
+          </p>
+        </article>
+
+        <article class="row risk-block">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Зарядный кейс Astera ChargeCase</h3>
+                <span class="row-unit">ед. 2 из 3</span>
+              </div>
+              <p class="row-why">Не берёт заряд в 4 слотах из 8 — меняем плату питания.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-ok"><svg class="icon"><use href="#i-clock"/></svg>вернётся <span class="d">14 авг</span></span>
+              <button class="mini" type="button">Открыть</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">4</span> дня назад</span><span class="sep">·</span>
+            <span>последняя запись <span class="num">3</span> дня назад</span><span class="sep">·</span>
+            <span><span class="num">2</span> записи</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>чинит Пётр Романов</span><span class="sep">·</span>
+            <span class="photos"><svg class="icon"><use href="#i-cam"/></svg>2</span>
+          </p>
+          <p class="conflict c-block">
+            <svg class="icon"><use href="#i-ban"/></svg>
+            <span><b>Подмены нет</b> — <span class="num">15 авг</span>, Кожин, «Клип Джарахова», не хватает <span class="num">1 шт</span></span>
+          </p>
+        </article>
+
+        <article class="row">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Dedolight DLED4</h3>
+                <span class="row-unit">ед. 5 из 6</span>
+              </div>
+              <p class="row-why">Замена блока питания и фокусировочного узла.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-ok"><svg class="icon"><use href="#i-clock"/></svg>вернётся <span class="d">13 авг</span></span>
+              <button class="mini" type="button">Открыть</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">3</span> дня назад</span><span class="sep">·</span>
+            <span>последняя запись вчера</span><span class="sep">·</span>
+            <span><span class="num">4</span> записи</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>чинит Пётр Романов</span><span class="sep">·</span>
+            <span class="photos"><svg class="icon"><use href="#i-cam"/></svg>2</span>
+          </p>
+          <p class="conflict c-spare">
+            <svg class="icon"><use href="#i-check"/></svg>
+            <span><b>Подмена есть</b> — в парке ещё <span class="num">5</span> свободных</span>
+          </p>
+        </article>
+
+        <article class="row">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Kino Flo Diva-Lite 401</h3>
+                <span class="row-unit">ед. 1 из 2</span>
+              </div>
+              <p class="row-why">Мигает балласт на половине яркости, греется дроссель.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-ok"><svg class="icon"><use href="#i-clock"/></svg>вернётся <span class="d">16 авг</span></span>
+              <button class="mini" type="button">Открыть</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">6</span> дней назад</span><span class="sep">·</span>
+            <span>последняя запись <span class="num">2</span> дня назад</span><span class="sep">·</span>
+            <span><span class="num">5</span> записей</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>чинит Артём Гулин</span>
+          </p>
+          <p class="conflict c-spare">
+            <svg class="icon"><use href="#i-check"/></svg>
+            <span><b>Подмена есть</b> — в парке ещё <span class="num">1</span> свободная</span>
+          </p>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ─────────── ПОЛОСА 3: ждём запчасти ─────────── -->
+    <section class="band s-parts" aria-labelledby="b3">
+      <div class="band-head">
+        <h2 id="b3">Ждём запчасти</h2>
+        <span class="n">3</span>
+        <span class="note is-rose">срок вышел — <b>1</b></span>
+        <span class="sp"><a class="link" href="#">Заказы поставщикам →</a></span>
+      </div>
+
+      <div class="rows">
+
+        <article class="row risk-block">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Aputure LS 1200d Pro</h3>
+                <span class="row-unit">ед. 1 из 3</span>
+              </div>
+              <p class="row-why">Ждём драйвер COB, поставщик перенёс отгрузку второй раз.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-late"><svg class="icon"><use href="#i-pause"/></svg>ждём драйвер COB · до <span class="d">8 авг</span> — просрочен</span>
+              <button class="mini" type="button">Открыть</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">21</span> день назад</span><span class="sep">·</span>
+            <span class="silent">последняя запись <span class="num">9</span> дней назад</span><span class="sep">·</span>
+            <span><span class="num">3</span> записи</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>чинит Артём Гулин</span>
+          </p>
+          <p class="conflict c-block">
+            <svg class="icon"><use href="#i-ban"/></svg>
+            <span><b>Подмены нет</b> — <span class="num">12 авг</span>, Ясенев, «Wildberries лукбук», не хватает <span class="num">1 шт</span></span>
+          </p>
+        </article>
+
+        <article class="row">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">ARRI M18</h3>
+                <span class="row-unit">ед. 1 из 2</span>
+              </div>
+              <p class="row-why">Оплавлено гнездо питания на балласте.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-ok"><svg class="icon"><use href="#i-pause"/></svg>ждём разъём Neutrik · до <span class="d">18 авг</span></span>
+              <button class="mini" type="button">Открыть</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">11</span> дней назад</span><span class="sep">·</span>
+            <span>последняя запись <span class="num">4</span> дня назад</span><span class="sep">·</span>
+            <span><span class="num">4</span> записи</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>чинит Пётр Романов</span><span class="sep">·</span>
+            <span class="photos"><svg class="icon"><use href="#i-cam"/></svg>1</span>
+          </p>
+          <p class="conflict c-spare">
+            <svg class="icon"><use href="#i-check"/></svg>
+            <span><b>Подмена есть</b> — в парке ещё <span class="num">1</span> свободный</span>
+          </p>
+        </article>
+
+        <article class="row">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Godox VL300</h3>
+                <span class="row-unit">ед. 3 из 4</span>
+              </div>
+              <p class="row-why">Ждём вентилятор охлаждения, аналог заказан на маркетплейсе.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-none"><svg class="icon"><use href="#i-pause"/></svg>ждём вентилятор · срок не назначен</span>
+              <button class="mini" type="button">Открыть</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>заведён <span class="num">7</span> дней назад</span><span class="sep">·</span>
+            <span>последняя запись <span class="num">2</span> дня назад</span><span class="sep">·</span>
+            <span><span class="num">2</span> записи</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>чинит Артём Гулин</span>
+          </p>
+          <p class="conflict c-spare">
+            <svg class="icon"><use href="#i-check"/></svg>
+            <span><b>Подмена есть</b> — в парке ещё <span class="num">3</span> свободных</span>
+          </p>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ─────────── ПОЛОСА 4: готово, свёрнута ─────────── -->
+    <section class="band s-done" aria-labelledby="b4">
+      <div class="band-head">
+        <h2 id="b4">Готово за неделю</h2>
+        <span class="n">3</span>
+        <span class="note">починено <b>2</b>, списано <b>1</b> · <b>2</b> ждут, чтобы кладовщик забрал на полку</span>
+        <span class="sp"><a class="link" href="#">Весь архив мастерской →</a></span>
+      </div>
+
+      <div class="rows">
+
+        <article class="row">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Anton Bauer V-mount 190</h3>
+                <span class="row-unit">ед. 4 из 10</span>
+                <span class="pill pill-ok"><svg class="icon"><use href="#i-check"/></svg>Починено</span>
+              </div>
+              <p class="row-why">Заменена банка и плата контроллера, ёмкость в норме.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-ok"><svg class="icon"><use href="#i-clock"/></svg>закрыт <span class="d">6 авг</span></span>
+              <button class="mini" type="button">Забрать на полку</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>в ремонте был <span class="num">5</span> дней</span><span class="sep">·</span>
+            <span><span class="num">2,5</span> ч работ</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>Пётр Романов</span><span class="sep">·</span>
+            <span>запчасти <span class="num">3 200 ₽</span> <span class="only-sa">₽</span></span>
+          </p>
+        </article>
+
+        <article class="row">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Рама Rosco 4×4 с шёлком</h3>
+                <span class="row-unit">ед. 2 из 6</span>
+                <span class="pill pill-ok"><svg class="icon"><use href="#i-check"/></svg>Починено</span>
+              </div>
+              <p class="row-why">Перетянут шёлк, выправлена рама.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-ok"><svg class="icon"><use href="#i-clock"/></svg>закрыт <span class="d">4 авг</span></span>
+              <button class="mini" type="button">Забрать на полку</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>в ремонте была <span class="num">2</span> дня</span><span class="sep">·</span>
+            <span><span class="num">0,5</span> ч работ</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>Артём Гулин</span><span class="sep">·</span>
+            <span>запчасти <span class="num">0 ₽</span> <span class="only-sa">₽</span></span>
+          </p>
+        </article>
+
+        <article class="row">
+          <div class="row-top">
+            <div class="row-id">
+              <div class="row-title">
+                <h3 class="row-name">Дым-машина Antari Z-1020</h3>
+                <span class="row-unit">ед. 1 из 1</span>
+                <span class="pill pill-view">Списано</span>
+              </div>
+              <p class="row-why">Прогорел нагревательный блок — ремонт дороже замены.</p>
+            </div>
+            <div class="row-side">
+              <span class="due due-ok"><svg class="icon"><use href="#i-clock"/></svg>списана <span class="d">5 авг</span></span>
+              <button class="mini" type="button">Открыть</button>
+            </div>
+          </div>
+          <p class="row-meta">
+            <span>в ремонте была <span class="num">14</span> дней</span><span class="sep">·</span>
+            <span><span class="num">3</span> ч работ</span><span class="sep">·</span>
+            <span class="who"><svg class="icon"><use href="#i-user"/></svg>Артём Гулин</span><span class="sep">·</span>
+            <span>решение руководителя <span class="only-sa">₽</span></span>
+          </p>
+        </article>
+
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ============ СОСТОЯНИЕ ЭКРАНА: «Завести поломку» (функция 14) ============ -->
+  <div class="state-head">
+    <span class="num">2</span>
+    <div>
+      <h2>Состояние экрана: «Завести поломку»</h2>
+      <p>Прибор нашли сломанным на складе, вне приёмки. Кнопка живёт в шапке раздела; модалка доступна руководителю и кладовщику.</p>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="modal" role="dialog" aria-label="Завести поломку">
+      <div class="modal-head">
+        <div>
+          <h3>Завести поломку</h3>
+          <p>Прибор перестанет числиться свободным сразу после сохранения.</p>
+        </div>
+        <button class="x" type="button" aria-label="Закрыть"><svg class="icon icon-l"><use href="#i-x"/></svg></button>
+      </div>
+
+      <div class="modal-body">
+
+        <div class="f-block">
+          <span class="eyebrow">1 · Какой прибор</span>
+          <div class="search-wrap">
+            <div class="search">
+              <svg class="icon"><use href="#i-search"/></svg>
+              <input value="aputure 600" aria-label="Поиск прибора по названию">
+            </div>
+            <ul class="sugg">
+              <li class="on"><span class="nm">Aputure LS 600d Pro</span><span class="av">7 ед. · свободно 5</span></li>
+              <li><span class="nm">Aputure LS 1200d Pro</span><span class="av">3 ед. · свободно 1</span></li>
+              <li><span class="nm">Aputure Nova P300c</span><span class="av">3 ед. · свободно 2</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="f-block">
+          <span class="eyebrow">2 · Какая единица</span>
+          <div class="units">
+            <button class="unit-tile" type="button"><span class="u">ед. 1</span><span class="st">свободна</span></button>
+            <button class="unit-tile busy" type="button"><span class="u">ед. 2</span><span class="st">в брони 14 авг</span></button>
+            <button class="unit-tile on" type="button"><span class="u">ед. 5</span><span class="st">выбрана · свободна</span></button>
+            <button class="unit-tile off" type="button" disabled><span class="u">ед. 7</span><span class="st">выдана на площадку</span></button>
+          </div>
+          <div class="alt">
+            <span class="h">Если у позиции нет штучного учёта</span>
+            вместо плиток — поле количества: «Кабель питания 16A, 20 м» → сколько штук выводим.
+            <span class="alt-qty"><input class="fld" value="2" aria-label="Количество"><span>из 16 на складе</span></span>
+          </div>
+        </div>
+
+        <div class="f-block">
+          <span class="eyebrow">3 · Что случилось</span>
+          <div class="chips" style="margin-bottom:6px">
+            <button class="chip on" type="button">Не включается</button>
+            <button class="chip" type="button">Механическое повреждение</button>
+            <button class="chip" type="button">Не держит диммирование</button>
+            <button class="chip" type="button">Залито</button>
+            <button class="chip" type="button">Шум / перегрев</button>
+          </div>
+          <textarea class="ta" rows="2" aria-label="Причина">Не включается — при подаче питания щёлкает реле и гаснет. Нашли на полке, к приёмке не относится.</textarea>
+        </div>
+
+        <div class="f-block">
+          <span class="eyebrow">4 · Фото — необязательно</span>
+          <div class="attach">
+            <button class="mini" type="button"><svg class="icon"><use href="#i-cam"/></svg>Снять или приложить</button>
+            <span class="shot-sm"><svg class="icon"><use href="#i-cam"/></svg></span>
+            <span class="opt">1 файл</span>
+          </div>
+        </div>
+
+        <div class="f-block">
+          <span class="eyebrow">5 · Когда вернётся</span>
+          <div class="chips">
+            <button class="chip" type="button">+3 дня</button>
+            <button class="chip on" type="button">+7 дней — 18 авг</button>
+            <button class="chip" type="button">Выбрать дату</button>
+            <button class="chip" type="button">Срок не назначен</button>
+          </div>
+        </div>
+
+        <!-- Что будет с бронями: активный вариант — конфликт -->
+        <div class="warn-box">
+          <svg class="icon"><use href="#i-alert"/></svg>
+          <span>
+            <b>На 14 августа эта единица уже в брони</b> — Мальцев, «Клип Валя Карнавал», 1 шт.
+            <span class="sub">После вывода из работы свободных останется 4, а бронь требует 5. Замены в парке не будет — бронь придётся править.</span>
+          </span>
+        </div>
+        <div class="calm-box">
+          <svg class="icon"><use href="#i-check"/></svg>
+          <span>Если бы конфликта не было, здесь стояла бы спокойная строка: <b>«Подмена есть — в парке останется 4 свободных, брони не пострадают»</b>.</span>
+        </div>
+
+      </div>
+
+      <div class="modal-foot">
+        <span class="hint">Запись попадёт в «Ждёт ремонта» и в очередь на этом же экране.</span>
+        <button class="btn" type="button">Отмена</button>
+        <button class="btn btn-danger" type="button">Вывести из работы</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ЖИВЁТ НЕ ЗДЕСЬ ============ -->
+  <section class="elsewhere" aria-label="Что живёт на других экранах">
+    <div class="eh"><p class="eyebrow">Связано с мастерской, но живёт на других экранах</p></div>
+    <ul>
+      <li>
+        <svg class="icon"><use href="#i-box"/></svg>
+        <span><b>«Вернулось из ремонта»</b> — блок на экране <b>«Смена»</b> рабочего стола кладовщика (<code>/warehouse/scan?tab=shift</code>): «Починено — забрать на полку: 2», кнопка возвращает единицу в свободные.</span>
+      </li>
+      <li>
+        <svg class="icon"><use href="#i-alert"/></svg>
+        <span><b>Предупреждение «в мастерской»</b> — плашка в карточке брони (<code>/bookings/[id]</code>) и строкой на экране согласования: «1 позиция в мастерской — SkyPanel S60-C, обещали 12 августа».</span>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ============ ЗАМЕТКИ К КОНЦЕПТУ ============ -->
+  <aside class="annot">
+    <p class="eyebrow">Заметки к концепту — не часть интерфейса</p>
+    <h2>Что во главе и почему</h2>
+    <ol>
+      <li><b>Во главе — незанятая работа.</b> Полоса «Ждёт ремонта» стоит первой физически, а внутри неё есть врезка «Взять следующее» с одной строкой и одной кнопкой. Техник открывает раздел и не выбирает из тридцати — ему уже выбрали.</li>
+      <li><b>Стадия задана полосой, а не колонкой.</b> Канбан на 17 карточек делит ширину на четыре и убивает ровно то, ради чего экран существует: название прибора, конфликт с бронью, срок. Полоса даёт ту же стадию, но оставляет строке всю ширину.</li>
+      <li><b>Цветной левый край значит риск, а не стадию.</b> Красная засечка — срывает бронь, янтарная — молчит 5+ дней, у остальных края нет. Если подсвечивать всё, подсветка перестаёт быть сигналом.</li>
+      <li><b>Конфликт с бронью — это две разные новости, а не флажок.</b> «Подмены нет» — красная плашка с датой, гаффером и нехваткой; «подмена есть» — тихая серая строка. Вторую можно не читать, и в этом весь смысл.</li>
+      <li><b>Карточка ремонта раскрывается в потоке.</b> Фото с приёмки, история «раньше чинили 3 раза» и журнал с чипами-заготовками — это /repair/[id], но техник с грязными руками записывает полчаса, не выпадая из очереди и не теряя место.</li>
+    </ol>
+  </aside>
+
+</div>
+</body>
+</html>

@@ -31,12 +31,20 @@ const TAILWIND_PALETTES = new Set([
   "indigo", "violet", "purple", "fuchsia", "pink", "rose",
 ]);
 
+/**
+ * Конфликт-копии iCloud вида «page 2.tsx» / «AliasRow 3.tsx» лежат рядом с
+ * оригиналами, но в git их нет и в сборку они не попадают. Сторож на них
+ * спотыкался и падал у всех, у кого включена синхронизация, — то есть врал
+ * про код, которого в проекте не существует. Пропускаем их явно.
+ */
+const ICLOUD_CONFLICT_COPY = / \d+\.(tsx|ts)$/;
+
 function collectSourceFiles(dir: string, acc: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       if (!/node_modules|\.next|\.turbo/.test(full)) collectSourceFiles(full, acc);
-    } else if (/\.(tsx|ts)$/.test(entry.name)) {
+    } else if (/\.(tsx|ts)$/.test(entry.name) && !ICLOUD_CONFLICT_COPY.test(entry.name)) {
       acc.push(full);
     }
   }

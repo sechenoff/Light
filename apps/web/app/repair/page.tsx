@@ -1,592 +1,494 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { useRouter } from "next/navigation";
+/**
+ * Мастерская · очередь ремонтов.
+ *
+ * Экран отвечает на один вопрос — что горит. Очередь отсортирована не по дате
+ * заведения, а по тому, сорвёт ли ремонт бронь: сверху сирена с конкретными
+ * бронями и именами гафферов, ниже светофор, потом три группы (срывают брони →
+ * требуют внимания → свёрнутый спокойный хвост).
+ *
+ * Закрытые карточки в очередь не попадают вообще: разделение серверное
+ * (`?active=true|false`), архив листается отдельным курсором.
+ */
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+
 import { useRequireRole } from "../../src/hooks/useRequireRole";
-import { useCurrentUser } from "../../src/hooks/useCurrentUser";
-import { apiFetch } from "../../src/lib/api";
 import { formatRub, pluralize } from "../../src/lib/format";
-
-// ── Типы ─────────────────────────────────────────────────────────────────────
-
-type RepairStatus = "WAITING_REPAIR" | "IN_REPAIR" | "WAITING_PARTS" | "CLOSED" | "WROTE_OFF";
-type RepairUrgency = "NOT_URGENT" | "NORMAL" | "URGENT";
-
-interface RepairCard {
-  id: string;
-  reason: string;
-  urgency: RepairUrgency;
-  status: RepairStatus;
-  createdAt: string;
-  closedAt: string | null;
-  assignedTo: string | null;
-  createdBy: string;
-  partsCost: string;
-  totalTimeHours: string;
-  // UNIT-mode (per-juenit repair, has equipmentUnit) → unit is the full object.
-  // COUNT-mode (per-position, no specific unit) → unit is null and bookingItem
-  // carries the equipment + quantity. At least one of these is always set.
-  unit: {
-    id: string;
-    barcode: string | null;
-    equipmentId: string;
-    equipment: { name: string; category: string };
-  } | null;
-  bookingItem: {
-    id: string;
-    quantity: number;
-    equipment: { id: string; name: string; category: string };
-  } | null;
-  quantity: number;   // 1 for UNIT-mode; N for COUNT-mode
-  sourceBooking: {
-    id: string;
-    projectName: string;
-    client: { name: string };
-  } | null;
-  nextConflict: {
-    date: string;
-    clientName: string;
-  } | null;
-  _count: { workLog: number };
-}
-
-interface RepairStats {
-  openCount: number;
-  newCount: number;
-  closedThisMonth: number;
-  writtenOffThisMonth: number;
-  spentThisMonth: string;
-}
-
-interface RepairsResponse {
-  repairs: RepairCard[];
-}
-
-// ── Константы ────────────────────────────────────────────────────────────────
+import { toast } from "../../src/components/ToastProvider";
+import { apiFetch } from "../../src/lib/api";
+import { AddRepairModal } from "../../src/components/repair/AddRepairModal";
+import { RepairIcon, RepairStatusPill } from "../../src/components/repair/RepairRiskBadge";
+import { RepairQueueRow, RepairTailRow } from "../../src/components/repair/RepairQueueRow";
+import {
+  RepairNextUp,
+  RepairPickupLine,
+  RepairSiren,
+  RepairSummaryStrip,
+} from "../../src/components/repair/RepairSignals";
+import { useRepairQueue } from "../../src/components/repair/useRepairQueue";
+import {
+  compareByRisk,
+  daysAgo,
+  formatDayMonth,
+  isQuiet,
+  lastActivityAt,
+  moscowDaysBetween,
+  type QueueFilter,
+  type RepairListItem,
+  type RepairSort,
+} from "../../src/components/repair/types";
 
 const ALL_ROLES = ["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"] as const;
 
-type StatusFilter = "ALL" | "WAITING_REPAIR" | "IN_REPAIR" | "WAITING_PARTS";
-
-const STATUS_FILTERS: { key: StatusFilter; label: string; colorClass: string; activeClass: string }[] = [
-  {
-    key: "ALL",
-    label: "Все",
-    colorClass: "border-border text-ink-2",
-    activeClass: "bg-inverse text-on-inverse border-inverse",
-  },
-  {
-    key: "WAITING_REPAIR",
-    label: "🆕 Ждёт ремонта",
-    colorClass: "border-rose text-rose",
-    activeClass: "bg-rose text-surface border-rose",
-  },
-  {
-    key: "IN_REPAIR",
-    label: "🔧 В ремонте",
-    colorClass: "border-amber text-amber",
-    activeClass: "bg-amber text-surface border-amber",
-  },
-  {
-    key: "WAITING_PARTS",
-    label: "⏸ Ждут запчасти",
-    colorClass: "border-indigo text-indigo",
-    activeClass: "bg-indigo text-surface border-indigo",
-  },
+const SORTS: { key: RepairSort; label: string }[] = [
+  { key: "risk", label: "По риску" },
+  { key: "date", label: "По дате" },
+  { key: "eta", label: "По сроку возврата" },
 ];
 
-// ── Хелперы ───────────────────────────────────────────────────────────────────
+const GROUP_BTN =
+  "border-r border-border px-2.5 py-1 text-[11px] font-semibold leading-[1.6] text-ink-2 transition-colors last:border-r-0 hover:bg-surface-muted";
+const GROUP_BTN_ON = "bg-accent text-surface hover:bg-accent";
 
-function daysSince(isoDate: string): number {
-  return Math.floor((Date.now() - new Date(isoDate).getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function daysBetween(from: string, to: string): number {
-  return Math.floor((new Date(to).getTime() - new Date(from).getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function formatDate(isoDate: string): string {
-  return new Date(isoDate).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-
-function statusBadgeClasses(status: RepairStatus): string {
-  switch (status) {
-    case "WAITING_REPAIR": return "bg-rose-soft text-rose border border-rose-border";
-    case "IN_REPAIR":      return "bg-amber-soft text-amber border border-amber-border";
-    case "WAITING_PARTS":  return "bg-indigo-soft text-indigo border border-indigo-border";
-    case "CLOSED":         return "bg-emerald-soft text-emerald border border-emerald-border";
-    case "WROTE_OFF":      return "bg-surface-muted text-ink-3 border border-border";
-  }
-}
-
-function statusBadgeLabel(status: RepairStatus): string {
-  switch (status) {
-    case "WAITING_REPAIR": return "🆕";
-    case "IN_REPAIR":      return "🔧";
-    case "WAITING_PARTS":  return "⏸";
-    case "CLOSED":         return "✓";
-    case "WROTE_OFF":      return "—";
-  }
-}
-
-/**
- * Repair title — works for both UNIT-mode (has `unit.equipment`) and
- * COUNT-mode (no unit, has `bookingItem.equipment` + quantity).
- */
-function repairTitle(r: RepairCard): string {
-  if (r.unit) return r.unit.equipment.name;
-  if (r.bookingItem) {
-    const n = r.quantity > 1 ? ` ×${r.quantity}` : "";
-    return `${r.bookingItem.equipment.name}${n}`;
-  }
-  return "Без позиции";
-}
-
-// ── Компонент строки списка ───────────────────────────────────────────────────
-
-function RepairRow({
-  repair,
-  onTake,
-  canTake,
+function GroupHeader({
+  tone,
+  title,
+  count,
+  note,
 }: {
-  repair: RepairCard;
-  onTake: (id: string) => void;
-  /** repair-warehouse-deadend: «Взять в работу» доступно только SA/TECHNICIAN.
-      WAREHOUSE заводит ремонты, но не берёт их — для него показываем «Открыть»,
-      чтобы кнопка не вела в 403. */
-  canTake: boolean;
+  tone: "hot" | "warm";
+  title: string;
+  count: number;
+  note: string;
 }) {
-  const router = useRouter();
-  const [taking, setTaking] = useState(false);
-
-  const days = daysSince(repair.createdAt);
-
-  async function handleTake(e: React.MouseEvent) {
-    e.stopPropagation();
-    setTaking(true);
-    try {
-      await onTake(repair.id);
-    } finally {
-      setTaking(false);
-    }
-  }
-
-  function handleOpen(e: React.MouseEvent) {
-    e.stopPropagation();
-    router.push(`/repair/${repair.id}`);
-  }
-
   return (
-    <div
-      onClick={() => router.push(`/repair/${repair.id}`)}
-      className="px-4 py-3 bg-surface border-b border-border hover:bg-surface-muted cursor-pointer transition-colors"
-    >
-      {/* Desktop: 5-column grid */}
-      <div
-        className="hidden md:grid items-center gap-3"
-        style={{ gridTemplateColumns: "50px 1fr 160px 130px 120px" }}
-      >
-        <div className="flex justify-center">
-          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold ${statusBadgeClasses(repair.status)}`}>
-            {statusBadgeLabel(repair.status)}
-          </span>
-        </div>
-        <div className="min-w-0">
-          <div className="font-semibold text-ink text-sm leading-snug truncate">{repairTitle(repair)}</div>
-          {repair.unit?.barcode && <div className="mono-num text-xs text-ink-3 truncate">{repair.unit.barcode}</div>}
-          <div className="text-xs text-ink-2 truncate mt-0.5">{repair.reason.slice(0, 70)}{repair.reason.length > 70 ? "…" : ""}</div>
-        </div>
-        <div className="text-xs text-ink-2 leading-snug">
-          {repair.sourceBooking ? (
-            <>
-              <div className="text-ink-3 mb-0.5">с возврата</div>
-              <div className="truncate font-medium">«{repair.sourceBooking.projectName}»</div>
-              <div className="text-ink-3 mono-num">{formatDate(repair.createdAt)}</div>
-            </>
-          ) : (
-            <>
-              <div>в работе <span className="mono-num">{days} {pluralize(days, "день", "дня", "дней")}</span></div>
-              <div className="text-ink-3 mono-num">{formatDate(repair.createdAt)}</div>
-            </>
-          )}
-        </div>
-        <div className="text-xs leading-snug">
-          {repair.nextConflict ? (
-            <>
-              <div className="font-semibold text-rose">⚠ есть бронь</div>
-              <div className="mono-num text-rose">{formatDate(repair.nextConflict.date)}</div>
-              <div className="text-ink-2 truncate">{repair.nextConflict.clientName}</div>
-            </>
-          ) : (
-            <span className="text-ink-3">—</span>
-          )}
-        </div>
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-          {repair.status === "WAITING_REPAIR" && canTake ? (
-            <button onClick={handleTake} disabled={taking} className="px-3 py-1.5 rounded text-xs font-semibold bg-rose text-surface hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap">
-              {taking ? "…" : "Взять в работу"}
-            </button>
-          ) : (
-            <button onClick={handleOpen} className="px-3 py-1.5 rounded text-xs font-medium border border-border text-ink-2 hover:bg-surface-muted transition-colors whitespace-nowrap">
-              Открыть
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile: card layout */}
-      <div className="md:hidden space-y-2">
-        <div className="flex items-start gap-3">
-          <span className={`shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold ${statusBadgeClasses(repair.status)}`}>
-            {statusBadgeLabel(repair.status)}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="font-semibold text-ink text-sm leading-snug">{repairTitle(repair)}</div>
-            <div className="text-xs text-ink-2 mt-0.5">{repair.reason.slice(0, 70)}{repair.reason.length > 70 ? "…" : ""}</div>
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-2 pl-11">
-          <div className="text-xs text-ink-3">
-            {repair.sourceBooking
-              ? `с возврата «${repair.sourceBooking.projectName}» · ${formatDate(repair.createdAt)}`
-              : `в работе ${days} ${pluralize(days, "день", "дня", "дней")}`}
-          </div>
-          {repair.nextConflict && (
-            <span className="text-xs font-semibold text-rose whitespace-nowrap">⚠ бронь {formatDate(repair.nextConflict.date)}</span>
-          )}
-        </div>
-        <div className="pl-11" onClick={(e) => e.stopPropagation()}>
-          {repair.status === "WAITING_REPAIR" && canTake ? (
-            <button onClick={handleTake} disabled={taking} className="w-full h-9 rounded text-xs font-semibold bg-rose text-surface hover:opacity-90 disabled:opacity-50 transition-opacity">
-              {taking ? "…" : "Взять в работу"}
-            </button>
-          ) : (
-            <button onClick={handleOpen} className="w-full h-9 rounded text-xs font-medium border border-border text-ink-2 hover:bg-surface-muted transition-colors">
-              Открыть
-            </button>
-          )}
-        </div>
-      </div>
+    <div className="mt-4 mb-1.5 flex items-center gap-2.5">
+      <RepairIcon
+        name={tone === "hot" ? "alert" : "clock"}
+        large
+        className={tone === "hot" ? "text-rose" : "text-amber"}
+      />
+      <h2 className={`font-cond text-sm font-bold leading-tight ${tone === "hot" ? "text-rose" : "text-amber"}`}>
+        {title}
+      </h2>
+      <span className="mono-num text-[11.5px] font-semibold text-ink-3">{count}</span>
+      <span className="h-px flex-1 bg-border" />
+      <span className="hidden text-[11.5px] text-ink-3 md:inline">{note}</span>
     </div>
   );
 }
-
-// ── KPI-карточка (SUPER_ADMIN) ────────────────────────────────────────────────
-
-function KpiCard({ eyebrow, value }: { eyebrow: string; value: string }) {
-  return (
-    <div className="bg-surface border border-border rounded-lg p-4 shadow-xs">
-      <p className="eyebrow mb-1">{eyebrow}</p>
-      <p className="text-xl font-semibold text-ink mono-num">{value}</p>
-    </div>
-  );
-}
-
-// ── Скелетон ─────────────────────────────────────────────────────────────────
 
 function SkeletonRows() {
   return (
-    <div className="divide-y divide-border">
-      {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="px-4 py-3">
-          {/* Desktop skeleton */}
-          <div className="hidden md:grid items-center gap-3" style={{ gridTemplateColumns: "50px 1fr 160px 130px 120px" }}>
-            <div className="w-8 h-8 rounded-full bg-surface-muted animate-pulse" />
-            <div className="space-y-1.5">
-              <div className="h-3.5 w-40 bg-surface-muted rounded animate-pulse" />
-              <div className="h-3 w-24 bg-surface-muted rounded animate-pulse" />
-            </div>
-            <div className="h-3 w-28 bg-surface-muted rounded animate-pulse" />
-            <div className="h-3 w-20 bg-surface-muted rounded animate-pulse" />
-            <div className="h-7 w-24 bg-surface-muted rounded animate-pulse ml-auto" />
-          </div>
-          {/* Mobile skeleton */}
-          <div className="md:hidden flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-surface-muted animate-pulse shrink-0" />
-            <div className="flex-1 space-y-2">
-              <div className="h-3.5 w-3/4 bg-surface-muted rounded animate-pulse" />
-              <div className="h-3 w-1/2 bg-surface-muted rounded animate-pulse" />
-              <div className="h-8 w-full bg-surface-muted rounded animate-pulse" />
-            </div>
-          </div>
+    <div className="mt-4 flex flex-col gap-2">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="rounded-lg border border-border bg-surface px-3.5 py-3 shadow-xs">
+          <div className="h-4 w-48 animate-pulse rounded bg-surface-muted" />
+          <div className="mt-2 h-3 w-3/4 animate-pulse rounded bg-surface-muted" />
+          <div className="mt-2 h-6 w-full animate-pulse rounded bg-surface-muted" />
         </div>
       ))}
     </div>
   );
 }
 
-// ── Страница ──────────────────────────────────────────────────────────────────
-
 export default function RepairQueuePage() {
-  const router = useRouter();
   const { user, loading: authLoading } = useRequireRole(
     ALL_ROLES as unknown as ("SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN")[],
   );
-  const currentUser = useCurrentUser();
 
-  const [repairs, setRepairs] = useState<RepairCard[]>([]);
-  const [stats, setStats] = useState<RepairStats | null>(null);
-  const [fetchLoading, setFetchLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [queueFilter, setQueueFilter] = useState<"all" | "mine">("all");
+  const queue = useRepairQueue({ enabled: Boolean(user), currentUserId: user?.userId });
+  const [addOpen, setAddOpen] = useState(false);
+  const [tailOpen, setTailOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
-  // repair-warehouse-deadend: брать ремонт в работу могут только SA и TECHNICIAN.
-  const canTakeRepairs = user?.role === "SUPER_ADMIN" || user?.role === "TECHNICIAN";
+  // Брать ремонт в работу и назначать срок могут те, кто чинит: SA и техник.
+  const canTake = user?.role === "SUPER_ADMIN" || user?.role === "TECHNICIAN";
+  const canSetEta = canTake;
 
-  const loadRepairs = useCallback(() => {
-    if (!user) return;
+  const blocking = useMemo(
+    () =>
+      queue.active
+        .filter((r) => r.risk.level === "BLOCKS")
+        .sort((a, b) =>
+          (a.risk.booking?.startDate ?? "").localeCompare(b.risk.booking?.startDate ?? ""),
+        ),
+    [queue.active],
+  );
 
-    let cancelled = false;
-    setFetchLoading(true);
-    setError(null);
+  // Молчащие — дольше молчащая первой: её имя уходит в подпись плитки.
+  const quiet = useMemo(
+    () =>
+      queue.active
+        .filter(isQuiet)
+        .sort((a, b) => daysAgo(lastActivityAt(b)) - daysAgo(lastActivityAt(a))),
+    [queue.active],
+  );
 
-    const promises: Promise<void>[] = [
-      apiFetch<RepairsResponse>("/api/repairs?limit=200")
-        .then((data) => { if (!cancelled) setRepairs(data.repairs); })
-        .catch(() => { if (!cancelled) setError("Не удалось загрузить ремонты"); }),
-    ];
+  const noEtaCount = useMemo(
+    () => queue.active.filter((r) => r.expectedReadyAt === null).length,
+    [queue.active],
+  );
 
-    if (isSuperAdmin) {
-      promises.push(
-        apiFetch<RepairStats>("/api/dashboard/repair-stats")
-          .then((data) => { if (!cancelled) setStats(data); })
-          .catch(() => {}),
-      );
-    }
+  const unassigned = useMemo(
+    () => queue.active.filter((r) => r.assignedTo === null).sort(compareByRisk),
+    [queue.active],
+  );
 
-    Promise.all(promises).finally(() => {
-      if (!cancelled) setFetchLoading(false);
-    });
+  const counts = useMemo(
+    () => ({
+      all: queue.active.length,
+      mine: user?.userId ? queue.active.filter((r) => r.assignedTo === user.userId).length : 0,
+      urgent: queue.active.filter((r) => r.urgency === "URGENT").length,
+      quiet: quiet.length,
+      unassigned: unassigned.length,
+    }),
+    [queue.active, user?.userId, unassigned.length, quiet.length],
+  );
 
-    return () => { cancelled = true; };
-  }, [user, isSuperAdmin]);
+  const filters: { key: QueueFilter; label: string; count: number; always: boolean }[] = [
+    { key: "all", label: "Все", count: counts.all, always: true },
+    { key: "mine", label: "Моя очередь", count: counts.mine, always: true },
+    { key: "urgent", label: "Срочные", count: counts.urgent, always: true },
+    { key: "quiet", label: "Молчат", count: counts.quiet, always: true },
+    // «Ничейные» — состояние, в которое уводит врезка «Взять следующее»;
+    // отдельной постоянной пилюли у него в макете нет.
+    { key: "unassigned", label: "Ничейные", count: counts.unassigned, always: false },
+  ];
 
-  useEffect(() => {
-    const cleanup = loadRepairs();
-    return cleanup;
-  }, [loadRepairs]);
-
-  async function handleTake(id: string) {
+  async function handleWriteOff(id: string) {
+    if (!window.confirm("Списать единицу? Она уйдёт из парка навсегда.")) return;
     try {
-      await apiFetch(`/api/repairs/${id}/take`, { method: "POST" });
-      loadRepairs();
-    } catch (err: any) {
-      setError(err?.message ?? "Не удалось взять ремонт");
+      await apiFetch(`/api/repairs/${id}/write-off`, { method: "POST" });
+      toast.success("Единица списана");
+      queue.reload();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Не удалось списать единицу");
     }
   }
 
-  // Подсчёт по статусам для пилюль
-  const countByStatus = useMemo(() => {
-    const map: Partial<Record<StatusFilter, number>> = { ALL: repairs.length };
-    for (const r of repairs) {
-      if (r.status === "WAITING_REPAIR") map.WAITING_REPAIR = (map.WAITING_REPAIR ?? 0) + 1;
-      if (r.status === "IN_REPAIR") map.IN_REPAIR = (map.IN_REPAIR ?? 0) + 1;
-      if (r.status === "WAITING_PARTS") map.WAITING_PARTS = (map.WAITING_PARTS ?? 0) + 1;
+  async function handleTake(id: string) {
+    try {
+      await queue.takeRepair(id);
+      toast.success("Ремонт взят в работу");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Не удалось взять ремонт");
     }
-    return map;
-  }, [repairs]);
+  }
 
-  const filteredRepairs = useMemo(() => {
-    let r = repairs;
-
-    if (statusFilter !== "ALL") {
-      r = r.filter((rep) => rep.status === statusFilter);
-    }
-
-    if (queueFilter === "mine" && currentUser?.user?.userId) {
-      r = r.filter((rep) => rep.assignedTo === currentUser.user!.userId);
-    }
-
-    return r;
-  }, [repairs, statusFilter, queueFilter, currentUser]);
+  const rowActions = {
+    canTake,
+    canSetEta,
+    canWriteOff: Boolean(isSuperAdmin),
+    onTake: handleTake,
+    onSetEta: queue.setEta,
+    onWriteOff: handleWriteOff,
+  };
 
   if (authLoading || !user) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[200px]">
+      <div className="flex min-h-[200px] items-center justify-center p-6">
         <span className="text-sm text-ink-3">Загрузка…</span>
       </div>
     );
   }
 
   return (
-    <div className="p-4 lg:p-6 space-y-5">
-      {/* Заголовок */}
-      <div>
-        <p className="eyebrow">Мастерская</p>
-        <h1 className="text-lg font-semibold text-ink mt-0.5">Очередь ремонтов</h1>
-      </div>
+    <div className="p-4 lg:p-6">
+      {/* ── Шапка ── */}
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-3">
+        <div>
+          <p className="eyebrow">Мастерская</p>
+          <h1 className="mt-0.5 font-cond text-2xl font-bold leading-tight tracking-[-0.01em]">
+            Ремонты
+          </h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !archiveOpen;
+              setArchiveOpen(next);
+              // Первую страницу тянем только при первом раскрытии: повторное
+              // открытие не должно молча дозагружать следующую.
+              if (next && queue.archive.items.length === 0) queue.archive.loadMore();
+            }}
+            className="whitespace-nowrap text-[11.5px] font-semibold text-accent-bright hover:text-accent hover:underline"
+          >
+            Починенные и списанные →
+          </button>
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded border border-accent-bright bg-accent-bright px-3 py-1 text-xs font-semibold text-surface transition-colors hover:border-accent hover:bg-accent"
+          >
+            <RepairIcon name="plus" />
+            Завести поломку
+          </button>
+        </div>
+      </header>
 
-      {/* KPI-карточки для SUPER_ADMIN */}
-      {isSuperAdmin && stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <KpiCard eyebrow="Починено за месяц" value={String(stats.closedThisMonth)} />
-          <KpiCard eyebrow="Списано" value={String(stats.writtenOffThisMonth)} />
-          <KpiCard eyebrow="В ремонте сейчас" value={String(stats.openCount)} />
-          <KpiCard eyebrow="Одобренные расходы" value={formatRub(stats.spentThisMonth)} />
+      {queue.error && (
+        <div className="mt-3 rounded-lg border border-rose-border bg-rose-soft px-4 py-3 text-sm text-rose">
+          {queue.error}
         </div>
       )}
 
-      {/* Фильтры */}
-      <div className="flex flex-wrap gap-2 items-center">
-        {/* Статусные пилюли */}
-        {STATUS_FILTERS.map((f) => {
-          const count = countByStatus[f.key] ?? 0;
-          const isActive = statusFilter === f.key;
-          return (
-            <button
-              key={f.key}
-              onClick={() => setStatusFilter(f.key)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                isActive ? f.activeClass : f.colorClass + " bg-surface hover:bg-surface-muted"
-              }`}
-            >
-              {f.label} · <span className="mono-num">{count}</span>
-            </button>
-          );
-        })}
+      {/* ── 1 · Сирена ── */}
+      {!queue.loading && <RepairSiren blocking={blocking} />}
 
-        {/* Разделитель */}
-        <span className="text-border mx-1">|</span>
-
-        {/* Моя очередь / Все */}
-        <div className="flex rounded-lg border border-border overflow-hidden text-xs">
-          <button
-            onClick={() => setQueueFilter("all")}
-            className={`px-3 py-1.5 transition-colors ${
-              queueFilter === "all"
-                ? "bg-inverse text-on-inverse"
-                : "bg-surface text-ink-2 hover:bg-surface-muted"
-            }`}
-          >
-            Все
-          </button>
-          <button
-            onClick={() => setQueueFilter("mine")}
-            className={`px-3 py-1.5 transition-colors border-l border-border ${
-              queueFilter === "mine"
-                ? "bg-inverse text-on-inverse"
-                : "bg-surface text-ink-2 hover:bg-surface-muted"
-            }`}
-          >
-            Моя очередь
-          </button>
-        </div>
-      </div>
-
-      {/* Ошибка */}
-      {error && (
-        <div className="bg-rose-soft border border-rose-border rounded-lg px-4 py-3 text-sm text-rose">
-          {error}
-        </div>
+      {/* ── 2 · Светофор и деньги ── */}
+      {queue.stats && (
+        <RepairSummaryStrip
+          stats={queue.stats}
+          blocking={blocking}
+          quiet={quiet}
+          noEtaCount={noEtaCount}
+          onApproveExpense={queue.approveExpense}
+        />
       )}
 
-      {/* Список / скелетон */}
-      <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
-        {/* Шапка таблицы */}
+      {/* ── 3 · Очередь ── */}
+      {/* Сортировка и счётчик — работа за столом: с телефона остаются только
+          фильтры, и они листаются вбок, чтобы страница не ехала горизонтально. */}
+      <div className="mt-4 flex items-center gap-2 overflow-x-auto border-b border-border pb-2 md:flex-wrap md:overflow-x-visible">
+        <span className="eyebrow hidden shrink-0 md:inline">Сортировка</span>
         <div
-          className="hidden md:grid gap-3 px-4 py-2 bg-surface-muted border-b border-border"
-          style={{ gridTemplateColumns: "50px 1fr 160px 130px 120px" }}
+          className="hidden shrink-0 overflow-hidden rounded border border-border bg-surface md:inline-flex"
+          role="group"
+          aria-label="Сортировка очереди"
         >
-          <div />
-          <p className="eyebrow">Единица</p>
-          <p className="eyebrow">Источник / срок</p>
-          <p className="eyebrow">Конфликт</p>
-          <div />
+          {SORTS.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              aria-pressed={queue.sort === s.key}
+              onClick={() => queue.setSort(s.key)}
+              className={`${GROUP_BTN} ${queue.sort === s.key ? GROUP_BTN_ON : ""}`}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
-
-        {fetchLoading ? (
-          <SkeletonRows />
-        ) : filteredRepairs.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-ink-3">
-            {statusFilter === "ALL" && queueFilter === "all"
-              ? "Нет активных ремонтов"
-              : "Нет ремонтов по выбранному фильтру"}
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {filteredRepairs.map((r) => (
-              <RepairRow key={r.id} repair={r} onTake={handleTake} canTake={canTakeRepairs} />
+        <div
+          className="inline-flex shrink-0 overflow-hidden rounded border border-border bg-surface"
+          role="group"
+          aria-label="Фильтр очереди"
+        >
+          {filters
+            .filter((f) => f.always || queue.filter === f.key)
+            .map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                aria-pressed={queue.filter === f.key}
+                onClick={() => queue.setFilter(f.key)}
+                className={`${GROUP_BTN} whitespace-nowrap ${queue.filter === f.key ? GROUP_BTN_ON : ""}`}
+              >
+                {f.label} <span className="mono-num">{f.count}</span>
+              </button>
             ))}
-          </div>
-        )}
+        </div>
+        <span className="eyebrow ml-auto hidden shrink-0 whitespace-nowrap md:inline">
+          {counts.all}{" "}
+          {pluralize(counts.all, "открытый ремонт", "открытых ремонта", "открытых ремонтов")}
+        </span>
       </div>
 
-      {/* Архивная таблица для SUPER_ADMIN */}
-      {isSuperAdmin && !fetchLoading && (
-        <ArchiveTable repairs={repairs} />
+      {/* Точка входа техника: самое рискованное из ничейного. */}
+      {!queue.loading && canTake && unassigned.length > 0 && (
+        <RepairNextUp
+          repair={unassigned[0]}
+          unassignedCount={unassigned.length}
+          onTake={handleTake}
+          onShowUnassigned={() => queue.setFilter("unassigned")}
+        />
       )}
+
+      {queue.loading ? (
+        <SkeletonRows />
+      ) : queue.visible.length === 0 ? (
+        <div className="mt-4 rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-ink-3">
+          {queue.filter === "all"
+            ? "Нет активных ремонтов"
+            : "Нет ремонтов по выбранному фильтру"}
+        </div>
+      ) : (
+        <>
+          {queue.groups.hot.length > 0 && (
+            <>
+              <GroupHeader
+                tone="hot"
+                title="Срывают брони"
+                count={queue.groups.hot.length}
+                note="подмены нет и к сроку брони не успеваем"
+              />
+              <div className="flex flex-col gap-2">
+                {queue.groups.hot.map((r) => (
+                  <RepairQueueRow key={r.id} repair={r} tone="hot" actions={rowActions} />
+                ))}
+              </div>
+            </>
+          )}
+
+          {queue.groups.warm.length > 0 && (
+            <>
+              <GroupHeader
+                tone="warm"
+                title="Требуют внимания"
+                count={queue.groups.warm.length}
+                note="молчат, просрочены или без срока — но бронь пока не под ударом"
+              />
+              <div className="flex flex-col gap-2">
+                {queue.groups.warm.map((r) => (
+                  <RepairQueueRow key={r.id} repair={r} tone="warm" actions={rowActions} />
+                ))}
+              </div>
+            </>
+          )}
+
+          {queue.groups.calm.length > 0 && (
+            <section className="mt-3.5 overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+              <button
+                type="button"
+                onClick={() => setTailOpen((v) => !v)}
+                aria-expanded={tailOpen}
+                className={`flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[12.5px] text-ink-2 ${
+                  tailOpen ? "border-b border-border bg-surface-muted" : ""
+                }`}
+              >
+                <RepairIcon name="chev" className={tailOpen ? "rotate-90" : ""} />
+                <b className="font-semibold text-ink">
+                  Ещё {queue.groups.calm.length}{" "}
+                  {pluralize(queue.groups.calm.length, "ремонт", "ремонта", "ремонтов")} без риска
+                </b>
+                <span className="hidden text-ink-3 md:inline">
+                  — подмена есть, срок назначен, работы идут
+                </span>
+                <span className="ml-auto text-[11.5px] font-semibold text-accent-bright">
+                  {tailOpen ? "Свернуть" : "Показать"}
+                </span>
+              </button>
+              {tailOpen && (
+                <div>
+                  {queue.groups.calm.map((r) => (
+                    <RepairTailRow key={r.id} repair={r} />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+        </>
+      )}
+
+      {/* Починенное лежит на верстаке, а в системе уже «в наличии» — за ним
+          бегут в последний момент на выдаче. */}
+      {queue.stats && <RepairPickupLine items={queue.stats.readyForPickup} />}
+
+      {/* ── 4 · Архив ── */}
+      {archiveOpen && (
+        <ArchiveSection
+          items={queue.archive.items}
+          loading={queue.archive.loading}
+          hasMore={queue.archive.hasMore}
+          onLoadMore={queue.archive.loadMore}
+          showCost={Boolean(isSuperAdmin)}
+        />
+      )}
+
+      <AddRepairModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreated={queue.reload}
+      />
     </div>
   );
 }
 
-// ── Архивная таблица (SUPER_ADMIN) ────────────────────────────────────────────
+// ── Архив: починенные и списанные ────────────────────────────────────────────
 
-function resultPill(status: RepairStatus) {
-  switch (status) {
-    case "CLOSED":    return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-soft text-emerald border border-emerald-border">Починено</span>;
-    case "WROTE_OFF": return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-surface-muted text-ink-3 border border-border">Списано</span>;
-    default:          return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-soft text-amber border border-amber-border">В ремонте</span>;
-  }
-}
-
-function ArchiveTable({ repairs }: { repairs: RepairCard[] }) {
-  const router = useRouter();
-  const closed = repairs.filter((r) => r.status === "CLOSED" || r.status === "WROTE_OFF");
-
-  if (closed.length === 0) return null;
+function ArchiveSection({
+  items,
+  loading,
+  hasMore,
+  onLoadMore,
+  showCost,
+}: {
+  items: RepairListItem[];
+  loading: boolean;
+  hasMore: boolean;
+  onLoadMore: () => void;
+  /** Суммы запчастей — только руководителю: у техника денег на экране нет. */
+  showCost: boolean;
+}) {
+  const cols = showCost
+    ? "grid-cols-[minmax(0,1fr)_90px] md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_90px_100px_80px]"
+    : "grid-cols-[minmax(0,1fr)_90px] md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_90px_100px]";
 
   return (
-    <div className="space-y-2">
-      <p className="eyebrow">Архив</p>
-      <div className="bg-surface border border-border rounded-lg overflow-hidden shadow-xs">
-        <div className="grid gap-3 px-4 py-2 bg-surface-muted border-b border-border text-xs"
-          style={{ gridTemplateColumns: "1fr 1fr 90px 100px 80px" }}>
-          <p className="eyebrow">Единица</p>
-          <p className="eyebrow">Поломка</p>
-          <p className="eyebrow">В работе</p>
+    <section className="mt-5">
+      <p className="eyebrow mb-1.5">Починенные и списанные</p>
+      <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-xs">
+        <div className={`grid ${cols} gap-2.5 border-b border-border bg-surface-muted px-3.5 py-1.5`}>
+          <p className="eyebrow">Позиция</p>
+          <p className="eyebrow hidden md:block">Поломка</p>
+          <p className="eyebrow hidden md:block">В работе</p>
           <p className="eyebrow">Результат</p>
-          <p className="eyebrow">Запчасти</p>
+          {showCost && <p className="eyebrow hidden md:block">Запчасти</p>}
         </div>
-        <div className="divide-y divide-border">
-          {closed.map((r) => {
-            const daysWorked = r.closedAt
-              ? daysBetween(r.createdAt, r.closedAt)
-              : daysSince(r.createdAt);
-            const cost = Number(r.partsCost);
 
-            return (
-              <div
-                key={r.id}
-                className="grid gap-3 px-4 py-3 items-center hover:bg-surface-muted cursor-pointer transition-colors"
-                style={{ gridTemplateColumns: "1fr 1fr 90px 100px 80px" }}
-                onClick={() => {
-                  router.push(`/repair/${r.id}`);
-                }}
-              >
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-ink truncate">
-                    {repairTitle(r)}
-                  </div>
-                  {r.unit?.barcode && (
-                    <div className="mono-num text-xs text-ink-3 truncate">{r.unit.barcode}</div>
-                  )}
-                </div>
-                <div className="text-xs text-ink-2 truncate">{r.reason.slice(0, 60)}{r.reason.length > 60 ? "…" : ""}</div>
-                <div className="mono-num text-xs text-ink-2">
-                  {daysWorked} {pluralize(daysWorked, "день", "дня", "дней")}
-                </div>
-                <div>{resultPill(r.status)}</div>
-                <div className="mono-num text-xs text-ink-2">
+        {items.length === 0 && !loading && (
+          <p className="px-3.5 py-6 text-center text-sm text-ink-3">Архив пуст</p>
+        )}
+
+        {items.map((r) => {
+          const daysWorked = moscowDaysBetween(r.createdAt, r.closedAt ?? new Date().toISOString());
+          const cost = Number(r.partsCost);
+          return (
+            <Link
+              key={r.id}
+              href={`/repair/${r.id}`}
+              className={`grid ${cols} items-center gap-2.5 border-b border-border px-3.5 py-2 last:border-b-0 hover:bg-surface-muted`}
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-ink">{r.title}</span>
+                <span className="block text-[11px] text-ink-3">
+                  {r.closedAt ? formatDayMonth(r.closedAt) : "—"}
+                </span>
+              </span>
+              <span className="hidden min-w-0 truncate text-xs text-ink-2 md:block">{r.reason}</span>
+              <span className="mono-num hidden text-xs text-ink-2 md:block">
+                {daysWorked} {pluralize(daysWorked, "день", "дня", "дней")}
+              </span>
+              <span>
+                <RepairStatusPill status={r.status} />
+              </span>
+              {showCost && (
+                <span className="mono-num hidden text-xs text-ink-2 md:block">
                   {cost > 0 ? formatRub(cost) : "—"}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                </span>
+              )}
+            </Link>
+          );
+        })}
+
+        {hasMore && (
+          <div className="px-3.5 py-2 text-center">
+            <button
+              type="button"
+              onClick={onLoadMore}
+              disabled={loading}
+              className="inline-flex items-center gap-1 rounded border border-border bg-surface px-3 py-1 text-[11px] font-semibold text-ink-2 transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent-bright disabled:opacity-50"
+            >
+              {loading ? "Загружаем…" : "Показать ещё"}
+            </button>
+          </div>
+        )}
       </div>
-    </div>
+    </section>
   );
 }

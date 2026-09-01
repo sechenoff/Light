@@ -29,6 +29,8 @@ export type HeroBooking = {
   discountPercent?: string | null;
   discountAmount?: string | null;
   manualFinalAmount?: string | null;
+  /** Прощённый остаток долга — объясняет, почему «к оплате» ноль. */
+  writeOffAmount?: string | null;
 };
 
 export function BookingHero({ booking, showHero }: { booking: HeroBooking; showHero: boolean }) {
@@ -71,6 +73,8 @@ export function BookingHero({ booking, showHero }: { booking: HeroBooking; showH
         const outstanding = booking.amountOutstanding ?? "0";
         const discountPct = booking.discountPercent ? Number(booking.discountPercent) : 0;
         const discountAmount = booking.discountAmount ?? "0";
+        const hasWriteOff =
+          booking.writeOffAmount != null && Number(booking.writeOffAmount) > 0;
 
         // Финансовые карточки — стили под мокап. Цветовая семантика:
         //  • Оплачено → emerald, если PAID; иначе нейтральный
@@ -124,7 +128,13 @@ export function BookingHero({ booking, showHero }: { booking: HeroBooking; showH
                   {formatMoneyRub(paid)}
                 </p>
                 <p className="mt-0.5 text-[11px] text-ink-3">
-                  {payStatus === "PAID" ? "100% оплачено" : "по платежам"}
+                  {/* «100% оплачено» при списанном хвосте — неправда: часть суммы
+                      не пришла деньгами, её простили. */}
+                  {payStatus === "PAID"
+                    ? hasWriteOff
+                      ? "закрыто с учётом списания"
+                      : "100% оплачено"
+                    : "по платежам"}
                 </p>
               </div>
               <div className={`rounded-lg border shadow-xs p-3 ${outstandingTone ? "border-rose-border bg-gradient-to-b from-rose-soft to-surface" : "border-border bg-surface"}`}>
@@ -133,7 +143,19 @@ export function BookingHero({ booking, showHero }: { booking: HeroBooking; showH
                   {formatMoneyRub(outstanding)}
                 </p>
                 <p className="mt-0.5 text-[11px] text-ink-3">
-                  {payStatus === "OVERDUE" ? "просрочен" : Number(outstanding) === 0 ? "ничего не должны" : "к оплате"}
+                  {hasWriteOff ? (
+                    // Долг закрыт списанием, а не деньгами — говорим об этом прямо,
+                    // иначе «ничего не должны» выглядит как полученная оплата.
+                    <span className="text-amber">
+                      прощено {formatMoneyRub(booking.writeOffAmount)}
+                    </span>
+                  ) : payStatus === "OVERDUE" ? (
+                    "просрочен"
+                  ) : Number(outstanding) === 0 ? (
+                    "ничего не должны"
+                  ) : (
+                    "к оплате"
+                  )}
                 </p>
               </div>
               <div className="rounded-lg border border-border bg-surface shadow-xs p-3">

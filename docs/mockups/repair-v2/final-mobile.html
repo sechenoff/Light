@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мастерская с телефона · Light Rental</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!--
+  ============================================================================
+  ФИНАЛ · ОЧЕРЕДЬ РЕМОНТОВ С ТЕЛЕФОНА (375 px).
+  Не «то же самое, но узкое»: решено, что схлопывается, что уходит
+  под раскрытие, а что остаётся на первом экране.
+  Стиль и иконки — общие с final-desktop.html (собрано скриптом из одного
+  источника, поэтому токены и типографика не разъезжаются между файлами).
+  Данные вымышленные. Сегодня — вторник, 11 августа 2026.
+  ============================================================================
+-->
+
+<style>
+/* ─── ТОКЕНЫ. Зеркало tailwind.config.js. Сырых hex вне этого блока нет. ─── */
+:root{
+  --ink:#09090b; --ink-2:#52525b; --ink-3:#a1a1aa;
+  --surface:#ffffff; --surface-muted:#fafafa; --surface-subtle:#f4f4f5;
+  --border:#e4e4e7; --border-strong:#d4d4d8;
+  --accent:#1e3a8a; --accent-bright:#1d4ed8; --accent-soft:#eff6ff; --accent-border:#bfdbfe;
+  --teal:#0f766e;    --teal-soft:#ccfbf1;    --teal-border:#99f6e4;
+  --amber:#a16207;   --amber-soft:#fef3c7;   --amber-border:#fde68a;
+  --rose:#9f1239;    --rose-soft:#ffe4e6;    --rose-border:#fecdd3;
+  --indigo:#4338ca;  --indigo-soft:#e0e7ff;  --indigo-border:#c7d2fe;
+  --slate:#334155;   --slate-soft:#f1f5f9;   --slate-border:#cbd5e1;
+  --emerald:#047857; --emerald-soft:#d1fae5; --emerald-border:#a7f3d0;
+  --ok:#15803d;      --ok-soft:#dcfce7;      --warn:#a16207; --warn-soft:#fef9c3;
+  --scrim:#09090b;
+  --r:4px; --r-lg:6px; --shadow-xs:0 1px 0 rgba(9,9,11,.03);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--surface-subtle);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;font-size:13.5px;line-height:1.6}
+h1,h2,h3,h4,p,ul,ol{margin:0}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
+
+/* Утилиты канона */
+.eyebrow{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:10px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);line-height:1.4}
+.mono-num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.m{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;word-spacing:-.16em}
+.icon{width:13px;height:13px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.5;
+  stroke-linecap:round;stroke-linejoin:round}
+.icon-lg{width:17px;height:17px}
+.muted{color:var(--ink-3)}
+.dim{color:var(--ink-2)}
+
+.pill{display:inline-flex;align-items:center;gap:4px;border:1px solid;border-radius:var(--r);
+  padding:1px 7px;font-size:11px;font-weight:600;white-space:nowrap;line-height:1.55}
+.pill-ok{background:var(--ok-soft);color:var(--ok);border-color:var(--emerald-border)}
+.pill-warn{background:var(--warn-soft);color:var(--warn);border-color:var(--amber-border)}
+.pill-info{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-border)}
+.pill-alert{background:var(--rose-soft);color:var(--rose);border-color:var(--rose-border)}
+.pill-view{background:var(--slate-soft);color:var(--slate);border-color:var(--slate-border)}
+.pill-none{background:var(--surface);color:var(--ink-3);border-color:var(--border)}
+.pill-teal{background:var(--teal-soft);color:var(--teal);border-color:var(--teal-border)}
+
+.link{color:var(--accent-bright);font-weight:600;font-size:11.5px;white-space:nowrap}
+.link:hover{color:var(--accent);text-decoration:underline}
+.mini{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);
+  border-radius:var(--r);background:var(--surface);color:var(--ink-2);font-size:11px;
+  font-weight:600;padding:2px 8px;line-height:1.55;cursor:pointer;
+  transition:border-color .12s,color .12s,background .12s}
+.mini:hover{border-color:var(--accent-border);background:var(--accent-soft);color:var(--accent-bright)}
+.mini-rose:hover{border-color:var(--rose-border);background:var(--rose-soft);color:var(--rose)}
+.btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--accent-bright);
+  border-radius:var(--r);background:var(--accent-bright);color:var(--surface);font-size:12px;
+  font-weight:600;padding:4px 11px;line-height:1.6;cursor:pointer}
+.btn:hover{background:var(--accent);border-color:var(--accent)}
+.role-tag{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:9.5px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);
+  border:1px solid var(--indigo-border);border-radius:3px;padding:0 4px;line-height:1.6;white-space:nowrap}
+
+/* ─── КАРКАС ─── */
+.page{max-width:1240px;margin:0 auto;padding:20px 20px 56px}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  padding-bottom:11px;border-bottom:1px solid var(--border)}
+.page-head h1{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:24px;font-weight:700;
+  line-height:1.15;letter-spacing:-.01em;margin-top:2px}
+.page-head .acts{display:flex;align-items:center;gap:12px}
+
+/* ─── 1. ГЛАВНЫЙ СИГНАЛ ─── */
+.siren{margin-top:14px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:0;
+  background:var(--rose-soft);border:1px solid var(--rose-border);border-left:3px solid var(--rose);
+  border-radius:var(--r-lg);overflow:hidden}
+.siren-n{padding:13px 16px 13px 15px;display:flex;align-items:center;gap:11px;
+  border-right:1px solid var(--rose-border)}
+.siren-n .big{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:38px;font-weight:600;line-height:1;color:var(--rose);letter-spacing:-.03em}
+.siren-n .cap{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:14.5px;font-weight:700;
+  color:var(--rose);line-height:1.18;max-width:132px}
+.siren-list{padding:9px 16px;display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:0}
+.siren-row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--ink)}
+.siren-row .d{font-family:"IBM Plex Mono",monospace;font-weight:600;color:var(--rose);white-space:nowrap}
+.siren-row .p{font-weight:600}
+.siren-row .need{color:var(--rose);font-weight:600}
+.siren-row .who{color:var(--ink-2)}
+.siren-act{padding:11px 16px;display:flex;flex-direction:column;justify-content:center;gap:6px;
+  border-left:1px solid var(--rose-border);background:rgba(255,255,255,.45)}
+.siren-act .link{color:var(--rose);text-decoration:underline}
+
+/* ─── 2. СВЕТОФОР + ДЕНЬГИ ─── */
+.strip{margin-top:12px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-xs);overflow:hidden}
+.strip-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto)}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.tile{padding:11px 15px;border-right:1px solid var(--border);min-width:0}
+.tile .v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:20px;
+  font-weight:600;line-height:1.2;margin-top:3px;letter-spacing:-.015em}
+.tile .v.is-rose{color:var(--rose)} .tile .v.is-amber{color:var(--amber)}
+.tile .s{font-size:11.5px;color:var(--ink-3);line-height:1.45;margin-top:1px}
+.money{padding:10px 15px;background:var(--surface-muted);border-left:1px solid var(--border);
+  min-width:280px;display:flex;flex-direction:column;gap:7px}
+.money-head{display:flex;align-items:center;gap:7px}
+.money-row{display:flex;align-items:baseline;gap:20px;flex-wrap:wrap}
+.money-cell .v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:16px;font-weight:600;line-height:1.3;white-space:nowrap;word-spacing:-.16em;margin-top:1px}
+.money-cell .v.pend{color:var(--amber)}
+.roles{display:flex;align-items:center;gap:5px;padding:0 15px 0 0}
+.rp{font-size:11px;font-weight:600;color:var(--ink-3);border:1px solid var(--border);
+  background:var(--surface);border-radius:var(--r);padding:1px 8px;line-height:1.6}
+.rp[aria-pressed="true"]{background:var(--indigo-soft);color:var(--indigo);border-color:var(--indigo-border)}
+
+/* Расходы на утверждении */
+details.exp{border-top:1px solid var(--border);background:var(--amber-soft)}
+details.exp>summary{list-style:none;cursor:pointer;padding:7px 15px;display:flex;align-items:center;
+  gap:8px;font-size:12.5px;color:var(--amber);font-weight:600}
+details.exp>summary::-webkit-details-marker{display:none}
+details.exp>summary .sp{margin-left:auto;font-weight:600;font-size:11.5px;text-decoration:underline}
+.exp-body{background:var(--surface);border-top:1px solid var(--amber-border)}
+.exp-row{display:grid;grid-template-columns:minmax(0,1fr) 92px 150px auto;gap:10px;align-items:center;
+  padding:7px 15px;border-bottom:1px solid var(--border);font-size:12.5px}
+.exp-row:last-child{border-bottom:0}
+.exp-row .t{font-weight:600;min-width:0}
+.exp-row .t small{display:block;font-weight:400;font-size:11px;color:var(--ink-3)}
+.exp-row .sum{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-weight:600;text-align:right;word-spacing:-.16em}
+.exp-row .who{font-size:11.5px;color:var(--ink-2);min-width:0}
+.exp-foot{padding:7px 15px;display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--ink-3)}
+.exp-foot .tot{margin-left:auto;color:var(--ink);font-weight:600}
+
+/* Роль-заметка */
+.roleline{border-top:1px dashed var(--border-strong);background:var(--surface-muted);
+  padding:7px 15px;font-size:11.5px;color:var(--ink-2);display:flex;gap:14px;flex-wrap:wrap}
+.roleline b{color:var(--ink);font-weight:600}
+
+/* ─── 3. ПАНЕЛЬ ОЧЕРЕДИ ─── */
+.toolbar{margin-top:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding-bottom:9px;border-bottom:1px solid var(--border)}
+.toolbar .grp{display:inline-flex;border:1px solid var(--border);border-radius:var(--r);
+  overflow:hidden;background:var(--surface)}
+.toolbar .grp button{font-size:11px;font-weight:600;color:var(--ink-2);background:transparent;
+  border:0;border-right:1px solid var(--border);padding:3px 10px;cursor:pointer;line-height:1.6}
+.toolbar .grp button:last-child{border-right:0}
+.toolbar .grp button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+.toolbar .sp{margin-left:auto}
+
+.gh{display:flex;align-items:center;gap:9px;margin:16px 0 7px}
+.gh h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:14px;font-weight:700;line-height:1.2}
+.gh .n{font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:600;color:var(--ink-3)}
+.gh .rule{flex:1;height:1px;background:var(--border)}
+.gh.hot h2{color:var(--rose)} .gh.warm h2{color:var(--amber)}
+
+.list{display:flex;flex-direction:column;gap:7px}
+.r{display:grid;grid-template-columns:minmax(0,1fr) 214px 128px;background:var(--surface);
+  border:1px solid var(--border);border-left:3px solid var(--border-strong);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-xs);transition:border-color .12s}
+.r:hover{border-color:var(--border-strong)}
+.r.hot,.r.hot:hover{border-left-color:var(--rose)}
+.r.warm,.r.warm:hover{border-left-color:var(--amber)}
+.r.calm,.r.calm:hover{border-left-color:var(--slate-border)}
+
+.r-main{padding:10px 14px;min-width:0}
+.r-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.r-name{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:16px;font-weight:700;
+  line-height:1.2;letter-spacing:-.005em}
+.r-qty{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;color:var(--ink-2);
+  background:var(--surface-subtle);border:1px solid var(--border);border-radius:var(--r);
+  padding:0 6px;line-height:1.7}
+.r-reason{font-size:12.5px;color:var(--ink-2);margin-top:2px;line-height:1.45}
+.src{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:9.5px;font-weight:600;
+  letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);border:1px dashed var(--border-strong);
+  border-radius:3px;padding:0 4px;line-height:1.7}
+
+.conf{display:flex;align-items:flex-start;gap:6px;margin-top:7px;padding:4px 8px;
+  border:1px solid;border-radius:var(--r);font-size:12px;line-height:1.45}
+.conf .icon{margin-top:2px}
+.conf b{font-weight:700}
+.conf-bad{background:var(--rose-soft);border-color:var(--rose-border);color:var(--rose)}
+.conf-ok{background:var(--emerald-soft);border-color:var(--emerald-border);color:var(--emerald)}
+.conf-bad .safe{color:var(--emerald);font-weight:600}
+.conf .thin{color:var(--ink-2);font-weight:400}
+.conf-ok .thin{color:var(--emerald)}
+
+.r-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:7px;font-size:11.5px;
+  color:var(--ink-2)}
+.r-meta .sep{color:var(--border-strong)}
+.r-meta .quiet{color:var(--amber);font-weight:600}
+.r-meta .who{display:inline-flex;align-items:center;gap:4px;color:var(--ink);font-weight:600}
+.r-meta .who.none{color:var(--ink-3);font-weight:500}
+.r-meta .cam{display:inline-flex;align-items:center;gap:3px;color:var(--ink-2);
+  border:1px solid var(--border);border-radius:var(--r);padding:0 5px;line-height:1.6;font-weight:600}
+
+.r-eta{padding:10px 14px;border-left:1px solid var(--border);display:flex;flex-direction:column;
+  justify-content:center;gap:3px;min-width:0}
+.r-eta .lead{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;line-height:1.4}
+.r-eta .lead .icon{margin-top:2px}
+.r-eta .date{font-family:"IBM Plex Mono",monospace;font-weight:600;white-space:nowrap}
+.r-eta .sub{font-size:11px;color:var(--ink-3);line-height:1.4}
+.eta-late{color:var(--rose)} .eta-ok{color:var(--ink)} .eta-none{color:var(--ink-3)}
+.eta-none .lead{font-style:normal}
+.r-act{padding:10px 12px;border-left:1px solid var(--border);display:flex;flex-direction:column;
+  align-items:stretch;justify-content:center;gap:5px}
+.r-act .mini{justify-content:center}
+.r-act .link{text-align:right}
+
+/* Спокойный хвост */
+details.tail{margin-top:14px;border:1px solid var(--border);border-radius:var(--r-lg);
+  background:var(--surface);box-shadow:var(--shadow-xs);overflow:hidden}
+details.tail>summary{list-style:none;cursor:pointer;padding:9px 14px;display:flex;align-items:center;
+  gap:9px;font-size:12.5px;color:var(--ink-2)}
+details.tail>summary::-webkit-details-marker{display:none}
+details.tail>summary b{color:var(--ink);font-weight:600}
+details.tail>summary .sp{margin-left:auto;color:var(--accent-bright);font-weight:600;font-size:11.5px}
+details.tail[open]>summary{border-bottom:1px solid var(--border);background:var(--surface-muted)}
+.tail-row{display:grid;grid-template-columns:minmax(0,1fr) 128px 168px 118px 74px;gap:10px;
+  align-items:center;padding:6px 14px;border-bottom:1px solid var(--border);font-size:12.5px}
+.tail-row:last-child{border-bottom:0}
+.tail-row:hover{background:var(--surface-muted)}
+.tail-row .n{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tail-row .n small{font-weight:400;color:var(--ink-3)}
+.tail-row .e{font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.tail-row .e.none{color:var(--ink-3)}
+.tail-row .w{font-size:11.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tail-row .ok{font-size:11.5px;color:var(--emerald);white-space:nowrap}
+
+.deadend{margin-top:12px;border:1px dashed var(--border-strong);border-radius:var(--r-lg);
+  background:var(--surface);padding:9px 14px;font-size:12px;color:var(--ink-2);display:flex;gap:9px}
+.deadend b{color:var(--ink);font-weight:600}
+.deadend .icon{color:var(--teal);margin-top:3px}
+
+/* ─── 4. ВРЕЗКИ: карточка ремонта + модалка ─── */
+.peeks{margin-top:26px;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+.peek{border:1px dashed var(--border-strong);border-radius:var(--r-lg);padding:11px;background:var(--surface-muted)}
+.peek-cap{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.peek-cap .path{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);
+  background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:0 5px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-xs);overflow:hidden}
+.c-head{padding:11px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;
+  align-items:flex-start;flex-wrap:wrap}
+.c-head h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:17px;font-weight:700;line-height:1.2}
+.c-head .sub{font-size:11.5px;color:var(--ink-2);margin-top:2px}
+.c-zone{padding:10px 14px;border-bottom:1px solid var(--border)}
+.c-zone:last-child{border-bottom:0}
+.zh{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.zh .sp{margin-left:auto}
+
+/* Лента фото */
+.photos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.ph{aspect-ratio:4/3;border:1px solid var(--border);border-radius:var(--r);background:var(--surface-subtle);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--ink-3)}
+.ph span{font-size:10px}
+.ph.more{background:var(--surface);border-style:dashed;color:var(--accent-bright);font-weight:600}
+.ph-cap{font-size:11px;color:var(--ink-3);margin-top:6px}
+
+/* История ремонтов */
+.hist{display:flex;flex-direction:column;gap:0}
+.hist-row{display:grid;grid-template-columns:74px minmax(0,1fr) 84px;gap:8px;padding:4px 0;
+  border-bottom:1px dashed var(--border);font-size:12px;align-items:baseline}
+.hist-row:last-child{border-bottom:0}
+.hist-row .d{font-family:"IBM Plex Mono",monospace;color:var(--ink-2);font-size:11.5px}
+.hist-row .s{font-family:"IBM Plex Mono",monospace;text-align:right;font-weight:600;word-spacing:-.16em}
+.verdict{margin-top:8px;padding:7px 10px;border:1px solid var(--amber-border);background:var(--amber-soft);
+  border-radius:var(--r);font-size:12px;color:var(--amber);line-height:1.45}
+.verdict b{font-weight:700}
+.verdict .m{color:var(--amber)}
+
+/* Журнал работ */
+.log-row{display:grid;grid-template-columns:minmax(0,1fr) 64px 78px;gap:8px;padding:6px 0;
+  border-bottom:1px dashed var(--border);font-size:12.5px;align-items:baseline}
+.log-row:last-of-type{border-bottom:0}
+.log-row .t{min-width:0}
+.log-row .au{display:block;font-size:11px;color:var(--ink-3);margin-top:1px}
+.log-row .h,.log-row .c{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  text-align:right;font-size:12px;word-spacing:-.16em}
+.log-row .c{font-weight:600}
+.composer{margin-top:9px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface-muted);padding:8px}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{font-size:11px;font-weight:600;color:var(--ink-2);background:var(--surface);
+  border:1px solid var(--border);border-radius:12px;padding:1px 9px;cursor:pointer;line-height:1.6}
+.chip:hover{border-color:var(--accent-border);background:var(--accent-soft);color:var(--accent-bright)}
+.fld{width:100%;margin-top:7px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);
+  padding:6px 8px;font-size:12.5px;color:var(--ink-3);font-family:inherit}
+.hrow{display:flex;align-items:center;gap:6px;margin-top:7px;flex-wrap:wrap}
+.hrow .lbl{font-size:11.5px;color:var(--ink-2)}
+.chip.sel{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+.hrow .sp{margin-left:auto}
+
+/* Модалка «Завести поломку» */
+.modal-frame{background:rgba(9,9,11,.06);border-radius:var(--r-lg);padding:12px}
+.modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-lg);
+  box-shadow:0 8px 24px rgba(9,9,11,.10);overflow:hidden}
+.m-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.m-head h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700}
+.m-head .x{margin-left:auto;color:var(--ink-3);cursor:pointer}
+.m-body{padding:11px 14px;display:flex;flex-direction:column;gap:11px}
+.f-lbl{font-size:11.5px;font-weight:600;color:var(--ink-2);margin-bottom:4px;display:block}
+.search{position:relative}
+.search .fld{margin-top:0;color:var(--ink);padding-left:26px}
+.search .icon{position:absolute;left:8px;top:9px;color:var(--ink-3)}
+.results{border:1px solid var(--border);border-top:0;border-radius:0 0 var(--r) var(--r);background:var(--surface)}
+.res{display:flex;align-items:center;gap:8px;padding:6px 9px;border-bottom:1px solid var(--border);font-size:12.5px}
+.res:last-child{border-bottom:0}
+.res.on{background:var(--accent-soft)}
+.res .n{font-weight:600;min-width:0}
+.res .k{margin-left:auto;font-size:11px;color:var(--ink-3);white-space:nowrap}
+.units{display:flex;gap:5px;flex-wrap:wrap}
+.unit{font-size:11.5px;font-weight:600;border:1px solid var(--border);border-radius:var(--r);
+  background:var(--surface);padding:2px 9px;cursor:pointer;color:var(--ink-2);line-height:1.6}
+.unit.sel{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+.unit.busy{color:var(--amber);background:var(--amber-soft);border-color:var(--amber-border)}
+.unit[disabled]{opacity:.55;cursor:not-allowed}
+.altnote{margin-top:6px;border:1px dashed var(--border-strong);border-radius:var(--r);
+  background:var(--surface-muted);padding:6px 9px;font-size:11.5px;color:var(--ink-2);line-height:1.45}
+.altnote b{color:var(--ink);font-weight:600}
+.warnbox{display:flex;gap:7px;align-items:flex-start;border:1px solid var(--rose-border);
+  background:var(--rose-soft);color:var(--rose);border-radius:var(--r);padding:7px 10px;font-size:12px;line-height:1.45}
+.warnbox .icon{margin-top:2px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.m-foot{padding:10px 14px;border-top:1px solid var(--border);background:var(--surface-muted);
+  display:flex;align-items:center;gap:9px}
+.m-foot .sp{margin-left:auto}
+.dropzone{border:1px dashed var(--border-strong);border-radius:var(--r);background:var(--surface-muted);
+  padding:8px 10px;font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:7px}
+
+/* ─── 5. СОСЕДНИЕ ЭКРАНЫ ─── */
+.neigh{margin-top:22px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);
+  box-shadow:var(--shadow-xs);overflow:hidden}
+.neigh .n-row{display:flex;align-items:flex-start;gap:9px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12.5px}
+.neigh .n-row:last-child{border-bottom:0}
+.neigh .n-row .icon{margin-top:3px;color:var(--teal)}
+.neigh b{font-weight:600}
+.neigh code{font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:var(--surface-subtle);
+  border:1px solid var(--border);border-radius:3px;padding:0 4px}
+
+/* ─── ЗАМЕТКИ ─── */
+.annot{margin-top:26px;border:1px dashed var(--border-strong);border-radius:var(--r-lg);
+  background:var(--surface);padding:13px 16px}
+.annot h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700;margin-bottom:2px}
+.annot ol{margin:8px 0 0;padding-left:19px;font-size:12.5px;color:var(--ink-2);line-height:1.7}
+.annot li{margin-bottom:3px}
+.annot b{color:var(--ink)}
+
+/* ─── АДАПТИВ ─── */
+@media (max-width:1120px){
+  .strip-top{grid-template-columns:minmax(0,1fr)}
+  .money{border-left:0;border-top:1px solid var(--border);min-width:0}
+  .peeks{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:980px){
+  .siren{grid-template-columns:auto minmax(0,1fr)}
+  .siren-act{grid-column:1/-1;border-left:0;border-top:1px solid var(--rose-border);flex-direction:row;align-items:center}
+  .r{grid-template-columns:minmax(0,1fr)}
+  .r-eta,.r-act{border-left:0;border-top:1px dashed var(--border)}
+  .r-act{flex-direction:row;justify-content:flex-end;align-items:center}
+  .tail-row{grid-template-columns:minmax(0,1fr) 118px;row-gap:2px}
+  .tail-row .w,.tail-row .ok,.tail-row>.pill{display:none}
+}
+@media (max-width:620px){
+  body{font-size:13px}
+  .page{padding:14px 12px 44px}
+  .page-head h1{font-size:20px}
+  .siren{grid-template-columns:minmax(0,1fr)}
+  .siren-n{border-right:0;border-bottom:1px solid var(--rose-border)}
+  .siren-n .cap{max-width:none}
+  .tiles{grid-template-columns:minmax(0,1fr)}
+  .tile{border-right:0;border-bottom:1px solid var(--border)}
+  .exp-row{grid-template-columns:minmax(0,1fr) auto;row-gap:3px}
+  .exp-row .who{grid-column:1/-1}
+  .photos{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .two{grid-template-columns:minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+/* ─── МОБИЛЬНЫЙ ЭКРАН, 375 px ─── */
+body{background:var(--surface-subtle)}
+.phone-note{max-width:760px;margin:20px auto 12px;padding:0 16px;font-size:12.5px;color:var(--ink-2);line-height:1.6}
+.phone-note h1{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:19px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.phone-note b{color:var(--ink)}
+.phone{width:375px;margin:0 auto 40px;background:var(--surface-subtle);border:1px solid var(--border-strong);
+  border-radius:14px;overflow:hidden;box-shadow:0 6px 26px rgba(9,9,11,.10)}
+.mpage{padding:12px 12px 26px}
+
+.mhead{display:flex;align-items:center;gap:8px;padding-bottom:9px;border-bottom:1px solid var(--border)}
+.mhead h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:19px;font-weight:700;line-height:1.15}
+.mhead .sp{margin-left:auto}
+.fab{display:inline-flex;align-items:center;gap:5px;background:var(--accent-bright);color:var(--surface);
+  border:0;border-radius:var(--r);font-size:12px;font-weight:600;padding:5px 10px;cursor:pointer}
+
+/* Сирена: остаётся целиком — ради неё экран и открывают */
+.msiren{margin-top:11px;background:var(--rose-soft);border:1px solid var(--rose-border);
+  border-left:3px solid var(--rose);border-radius:var(--r-lg);padding:9px 11px}
+.msiren-top{display:flex;align-items:center;gap:9px}
+.msiren-top .big{font-family:"IBM Plex Mono",monospace;font-size:27px;font-weight:600;line-height:1;color:var(--rose)}
+.msiren-top .cap{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:13px;font-weight:700;
+  color:var(--rose);line-height:1.2}
+.msiren-row{font-size:12px;color:var(--ink);margin-top:6px;padding-top:6px;border-top:1px solid var(--rose-border);line-height:1.45}
+.msiren-row .d{font-family:"IBM Plex Mono",monospace;font-weight:600;color:var(--rose)}
+.msiren-row .need{color:var(--rose);font-weight:600}
+.msiren .act{display:block;margin-top:7px;font-size:12px;font-weight:600;color:var(--rose);text-decoration:underline}
+
+/* Светофор — одной строкой из трёх чисел, а не тремя блоками во весь экран */
+.mtiles{margin-top:9px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.mtile{padding:7px 9px;border-right:1px solid var(--border);min-width:0}
+.mtile:last-child{border-right:0}
+.mtile .v{font-family:"IBM Plex Mono",monospace;font-size:17px;font-weight:600;line-height:1.15}
+.mtile .v.is-rose{color:var(--rose)} .mtile .v.is-amber{color:var(--amber)}
+.mtile .k{font-size:10px;color:var(--ink-3);line-height:1.3;margin-top:1px}
+
+/* Деньги — одной строкой, число не рвётся */
+.mmoney{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;
+  background:var(--amber-soft);border:1px solid var(--amber-border);border-radius:var(--r-lg);
+  padding:7px 11px;font-size:12px;color:var(--amber);font-weight:600}
+.mmoney .sum{font-family:"IBM Plex Mono",monospace;white-space:nowrap;word-spacing:-.16em}
+.mmoney .sp{margin-left:auto}
+.mmoney .chev{color:var(--amber)}
+
+.mnext{margin-top:9px;background:var(--accent-soft);border:1px solid var(--accent-border);
+  border-left:3px solid var(--accent-bright);border-radius:var(--r-lg);padding:8px 11px}
+.mnext .tag{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:9.5px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--accent-bright)}
+.mnext .n{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700;margin-top:2px}
+.mnext .w{font-size:11.5px;color:var(--ink-2);margin-top:1px}
+.mnext .w b{color:var(--rose)}
+.mnext .btn{margin-top:7px;width:100%;justify-content:center;padding:7px 11px;font-size:13px}
+
+.mseg{margin-top:12px;display:flex;gap:5px;overflow-x:auto;padding-bottom:2px}
+.mseg button{flex:0 0 auto;font-size:11.5px;font-weight:600;color:var(--ink-2);background:var(--surface);
+  border:1px solid var(--border);border-radius:14px;padding:3px 11px;cursor:pointer;white-space:nowrap}
+.mseg button[aria-pressed="true"]{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+
+.mgh{display:flex;align-items:center;gap:7px;margin:13px 0 6px}
+.mgh h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:13px;font-weight:700}
+.mgh.hot h3{color:var(--rose)} .mgh.warm h3{color:var(--amber)}
+.mgh .n{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3)}
+.mgh .rule{flex:1;height:1px;background:var(--border)}
+
+.mrow{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--border-strong);
+  border-radius:var(--r-lg);padding:9px 11px;margin-bottom:7px}
+.mrow.hot{border-left-color:var(--rose)} .mrow.warm{border-left-color:var(--amber)}
+.mrow-t{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.mrow-n{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15.5px;font-weight:700;line-height:1.2}
+.mrow-r{font-size:12px;color:var(--ink-2);margin-top:2px;line-height:1.4}
+.mrow .conf{margin-top:6px;font-size:11.5px}
+.mrow-m{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;font-size:11px;color:var(--ink-2)}
+.mrow-m .quiet{color:var(--amber);font-weight:600}
+.mrow-m .sep{color:var(--border-strong)}
+.mrow-eta{display:flex;align-items:center;gap:6px;margin-top:6px;padding-top:6px;
+  border-top:1px dashed var(--border);font-size:11.5px}
+.mrow-eta .date{font-family:"IBM Plex Mono",monospace;font-weight:600}
+.mrow-eta.late{color:var(--rose)} .mrow-eta.none{color:var(--ink-3)}
+.mrow-act{display:flex;gap:6px;margin-top:8px}
+.mrow-act .btn,.mrow-act .mini{flex:1;justify-content:center;padding:7px 8px;font-size:12.5px}
+
+.mtail{margin-top:10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:9px 11px;font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:8px}
+.mtail b{color:var(--ink)}
+.mtail .sp{margin-left:auto;color:var(--accent-bright);font-weight:600;font-size:11.5px}
+.mpickup{margin-top:8px;background:var(--emerald-soft);border:1px solid var(--emerald-border);
+  border-radius:var(--r-lg);padding:8px 11px;font-size:12px;color:var(--emerald);line-height:1.45}
+.mpickup b{font-weight:700}
+.mcut{margin-top:14px;border-top:1px dashed var(--border-strong);padding-top:9px;font-size:11.5px;
+  color:var(--ink-3);line-height:1.6}
+.mcut b{color:var(--ink-2)}
+
+</style>
+
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 2.4 1.6 13.2h12.8z"/><path d="M8 6.3v3.3M8 11.5h.01"/></symbol>
+  <symbol id="i-block" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.9"/><path d="M3.9 3.9l8.2 8.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M2.8 8.4l3.3 3.3 7.1-7.4"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><rect x="3.2" y="2.8" width="3.4" height="10.4" rx="1"/><rect x="9.4" y="2.8" width="3.4" height="10.4" rx="1"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.9"/><path d="M8 4.6V8l2.4 1.7"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 16 16"><path d="M1.9 5.2h2.6l1-1.6h5l1 1.6h2.6v7.2H1.9z"/><circle cx="8" cy="8.6" r="2.2"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 16 16"><path d="M10.5 2.4a3.6 3.6 0 0 0-4.3 4.6l-3.6 3.6a1.45 1.45 0 0 0 2.05 2.05l3.6-3.6a3.6 3.6 0 0 0 4.6-4.3l-2 2-1.85-.5-.5-1.85z"/></symbol>
+  <symbol id="i-user" viewBox="0 0 16 16"><circle cx="8" cy="5.4" r="2.6"/><path d="M2.9 13.6c.7-2.6 2.7-3.9 5.1-3.9s4.4 1.3 5.1 3.9"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.4v9.2M3.4 8h9.2"/></symbol>
+  <symbol id="i-rub" viewBox="0 0 16 16"><path d="M5.6 13.4V3.1h3.3a2.75 2.75 0 0 1 0 5.5H5.6"/><path d="M4 10.9h4.6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7.1" cy="7.1" r="4.5"/><path d="M10.4 10.4l3 3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.6L10.4 8 6 12.4"/></symbol>
+  <symbol id="i-box" viewBox="0 0 16 16"><path d="M2.4 4.9 8 2.2l5.6 2.7v6.2L8 13.8l-5.6-2.7z"/><path d="M2.4 4.9 8 7.6l5.6-2.7M8 7.6v6.2"/></symbol>
+  <symbol id="i-hist" viewBox="0 0 16 16"><path d="M2.6 8a5.4 5.4 0 1 0 1.6-3.8"/><path d="M2.3 2.6v3.1h3.1"/><path d="M8 5.2V8l2 1.4"/></symbol>
+</svg>
+
+
+<div class="phone-note">
+  <h1>Мастерская с телефона · 375 px</h1>
+  <p>Не «то же самое, но узкое». Кладовщик и техник работают стоя, часто одной рукой, поэтому
+    решения приняты явно: <b>сирена остаётся целиком</b> — ради неё экран и открывают;
+    <b>светофор схлопывается в строку из трёх чисел</b> вместо трёх блоков во весь экран;
+    <b>деньги — одна строка</b>, сумма не рвётся посередине; <b>кнопки строки во всю ширину</b>,
+    а не мелкие цели у края.</p>
+</div>
+
+<div class="phone">
+  <div class="mpage">
+
+    <div class="mhead">
+      <div><p class="eyebrow">Мастерская</p><h2>Ремонты</h2></div>
+      <span class="sp"></span>
+      <button class="fab" type="button"><svg class="icon"><use href="#i-plus"/></svg> Поломка</button>
+    </div>
+
+    <!-- Сирена — целиком. Первый экран телефона занимает она, и это правильно. -->
+    <section class="msiren">
+      <div class="msiren-top">
+        <span class="big">2</span>
+        <span class="cap">ремонта срывают брони</span>
+      </div>
+      <p class="msiren-row"><span class="d">13 авг</span> Клип «Валя Карнавал» · Марина Дробыш<br>
+        <span class="need">не хватает 2 × SkyPanel S60-C</span> — подмены в парке нет</p>
+      <p class="msiren-row"><span class="d">14 авг</span> Реклама «Сбер» · Илья Ветров<br>
+        <span class="need">не хватает 1 × Aputure 600d Pro</span> — чинят до 18 авг, не успеваем</p>
+      <a class="act" href="#">Позвонить гафферам →</a>
+    </section>
+
+    <div class="mtiles">
+      <div class="mtile"><p class="v is-rose">2</p><p class="k">срывают брони</p></div>
+      <div class="mtile"><p class="v is-amber">3</p><p class="k">молчат 5+ дней</p></div>
+      <div class="mtile"><p class="v">4</p><p class="k">без срока</p></div>
+    </div>
+
+    <!-- Деньги: одна строка, сумма не рвётся. Техник и кладовщик её не видят. -->
+    <div class="mmoney">
+      <svg class="icon"><use href="#i-rub"/></svg>
+      <span>Ждут подтверждения</span>
+      <span class="sum">12 400 ₽</span>
+      <span class="sp"></span>
+      <svg class="icon chev"><use href="#i-chev"/></svg>
+    </div>
+
+    <!-- Точка входа техника -->
+    <section class="mnext">
+      <p class="tag">Взять следующее</p>
+      <p class="n">SkyPanel S60-C <span class="r-qty">2 шт</span></p>
+      <p class="w">срывает бронь <b>13 авг</b> и никем не занято</p>
+      <button class="btn" type="button">Взять в работу</button>
+    </section>
+
+    <div class="mseg" role="group" aria-label="Фильтр очереди">
+      <button type="button" aria-pressed="true">Все 16</button>
+      <button type="button">Моя очередь 5</button>
+      <button type="button">Срочные 4</button>
+      <button type="button">Молчат 3</button>
+    </div>
+
+    <div class="mgh hot">
+      <svg class="icon" style="color:var(--rose)"><use href="#i-alert"/></svg>
+      <h3>Срывают брони</h3><span class="n">2</span><span class="rule"></span>
+    </div>
+
+    <article class="mrow hot">
+      <div class="mrow-t">
+        <span class="mrow-n">SkyPanel S60-C</span>
+        <span class="r-qty">2 шт</span>
+        <span class="pill pill-alert">Срочно</span>
+      </div>
+      <p class="mrow-r">Разбит рассеиватель, не держит крепление ярма</p>
+      <div class="conf conf-bad">
+        <svg class="icon"><use href="#i-block"/></svg>
+        <span><b>Подмены нет</b> — 13 авг, «Валя Карнавал», не хватает 2 шт</span>
+      </div>
+      <div class="mrow-m">
+        <span>взят 2 дня назад</span><span class="sep">·</span>
+        <span class="quiet">записей ещё нет</span><span class="sep">·</span>
+        <span class="cam"><svg class="icon"><use href="#i-cam"/></svg> 2</span>
+      </div>
+      <div class="mrow-eta none">
+        <svg class="icon"><use href="#i-clock"/></svg>
+        <span>Срок не назначен — никто не сказал, когда вернётся</span>
+      </div>
+      <div class="mrow-act">
+        <button class="btn" type="button">Взять в работу</button>
+        <button class="mini" type="button">Назначить срок</button>
+      </div>
+    </article>
+
+    <article class="mrow hot">
+      <div class="mrow-t">
+        <span class="mrow-n">Aputure 600d Pro</span>
+        <span class="pill pill-info">В ремонте</span>
+      </div>
+      <p class="mrow-r">Не включается, щёлкает балласт при подаче питания</p>
+      <div class="conf conf-bad">
+        <svg class="icon"><use href="#i-block"/></svg>
+        <span><b>Подмены нет</b> — 14 авг, «Сбер». Обещан к 18 авг, <b>на 4 дня позже</b></span>
+      </div>
+      <div class="mrow-m">
+        <span>взят 6 дней назад</span><span class="sep">·</span>
+        <span class="quiet">запись 4 дня назад</span><span class="sep">·</span>
+        <span class="who"><svg class="icon"><use href="#i-user"/></svg> Пётр Кузнецов</span>
+      </div>
+      <div class="mrow-eta late">
+        <svg class="icon"><use href="#i-pause"/></svg>
+        <span>Ждём разъём Neutrik NL4 · <span class="date">до 18 авг</span></span>
+      </div>
+      <div class="mrow-act">
+        <button class="btn" type="button">Записать работы</button>
+        <button class="mini" type="button">Сдвинуть срок</button>
+      </div>
+    </article>
+
+    <div class="mgh warm">
+      <svg class="icon" style="color:var(--amber)"><use href="#i-clock"/></svg>
+      <h3>Требуют внимания</h3><span class="n">6</span><span class="rule"></span>
+    </div>
+
+    <article class="mrow warm">
+      <div class="mrow-t">
+        <span class="mrow-n">Kino Flo Diva-Lite 401</span>
+        <span class="pill pill-warn">Ждём запчасти</span>
+      </div>
+      <p class="mrow-r">Не работает балласт, канал B — гудит и гаснет</p>
+      <div class="conf conf-ok">
+        <svg class="icon"><use href="#i-check"/></svg>
+        <span><b>Подмена есть</b> — в парке ещё 3 свободных</span>
+      </div>
+      <div class="mrow-m">
+        <span>взят 21 день назад</span><span class="sep">·</span>
+        <span class="quiet">запись 11 дней назад</span>
+      </div>
+      <div class="mrow-eta late">
+        <svg class="icon"><use href="#i-pause"/></svg>
+        <span>Ждём балласт 4Bank · <span class="date">до 09 авг</span> — срок прошёл</span>
+      </div>
+      <div class="mrow-act">
+        <button class="btn" type="button">Записать работы</button>
+        <button class="mini" type="button">Сдвинуть срок</button>
+      </div>
+    </article>
+
+    <article class="mrow warm">
+      <div class="mrow-t">
+        <span class="mrow-n">Зарядка Astera</span>
+        <span class="r-qty">3 шт</span>
+        <span class="src">название из каталога</span>
+      </div>
+      <p class="mrow-r">Не заряжают кейс, греется корпус</p>
+      <div class="conf conf-ok">
+        <svg class="icon"><use href="#i-check"/></svg>
+        <span><b>Подмена есть</b> — в парке ещё 8 свободных</span>
+      </div>
+      <div class="mrow-m"><span>взят 3 дня назад</span><span class="sep">·</span><span>1 запись</span></div>
+      <div class="mrow-act">
+        <button class="btn" type="button">Записать работы</button>
+      </div>
+    </article>
+
+    <div class="mtail">
+      <svg class="icon"><use href="#i-chev"/></svg>
+      <span><b>Ещё 8 без риска</b> — подмена есть, срок назначен</span>
+      <span class="sp">Показать</span>
+    </div>
+
+    <div class="mpickup">
+      <b>Готово — забрать на полку: 2</b><br>
+      Aputure 300d II · Kino Flo Celeb 200 — починены вчера, лежат в мастерской
+    </div>
+
+    <p class="mcut"><b>Что не поехало на телефон:</b> таблица архива и разбор расходов по строкам —
+      это работа за столом, на телефоне они открываются по тапу отдельным экраном.
+      Переключатель ролей убран: с телефона человек и так видит свой вид.</p>
+  </div>
+</div>
+
+</body>
+</html>

@@ -391,6 +391,23 @@ model Booking {
   /// null означает что штраф не применялся.
   forfeitedAt DateTime?
 
+  /// Прощённый остаток долга («простить хвост»). Типовой сценарий: смета
+  /// округлена до удобной суммы, клиент заплатил ровно, остаётся 600 ₽,
+  /// взыскивать которые никто не будет — проект надо закрыть.
+  ///
+  /// Семантика: уменьшает сумму К ВЗЫСКАНИЮ, но НЕ трогает ни смету
+  /// (`finalAmount`), ни фактически полученные деньги (`amountPaid`).
+  /// Поэтому в отчётности видно и «сколько выставили», и «сколько получили»,
+  /// и «сколько простили» — три разных числа, а не переписанная история.
+  /// Учитывается в `recomputeBookingFinance`, поэтому переживает пересчёт.
+  /// null — списания не было.
+  writeOffAmount Decimal?
+  /// Комментарий: почему простили. Показывается в карточке брони и в аудите.
+  writeOffReason String?
+  writeOffAt     DateTime?
+  /// AdminUser.id того, кто списал. Без FK — как у остальных «кто сделал»-полей.
+  writeOffBy     String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   confirmedAt DateTime?
@@ -886,6 +903,15 @@ model Repair {
   updatedAt       DateTime       @updatedAt
   closedAt        DateTime?
 
+  /// Когда единица вернётся в строй. null — «срок не назначен», и это ВАЛИДНОЕ
+  /// состояние, а не забытое поле: выдуманный прогноз хуже честного пробела,
+  /// по нему начнут планировать съёмку. Ровно так же ведёт себя автопарк с
+  /// незаданным интервалом ТО (Vehicle.serviceIntervalKm).
+  expectedReadyAt DateTime?
+  /// Чего ждём: «разъём Neutrik NL4», «баллас 4Bank у поставщика».
+  /// Живёт рядом со сроком — иначе статус «Ждём запчасти» не говорит ничего.
+  partsNote       String?
+
   workLog  RepairWorkLog[]
   expenses Expense[]
   photos   RepairPhoto[]
@@ -1187,143 +1213,7 @@ model OrganizationSettings {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Gaffer CRM — полностью изолированный суб-продукт (не зависит от AdminUser)
 // ─────────────────────────────────────────────────────────────────────────────
-
-enum GafferContactType {
-  CLIENT
-  TEAM_MEMBER
-  VENDOR
-}
-
-enum GafferProjectStatus {
-  OPEN
-  ARCHIVED
-}
-
-enum GafferPaymentDirection {
-  IN  // от клиента к гафферу
-  OUT // от гаффера к члену команды
-}
-
-model GafferUser {
-  id                    String    @id @default(cuid())
-  email                 String    @unique
-  name                  String?
-  passwordHash          String?
-  authProvider          String    @default("PASSWORD") // PASSWORD | GOOGLE | TELEGRAM
-  providerSubject       String? // Google `sub` или Telegram user_id (для будущих OAuth-провайдеров)
-  onboardingCompletedAt DateTime?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-
-  contacts       GafferContact[]
-  projects       GafferProject[]
-  paymentMethods GafferPaymentMethod[]
-}
-
-model GafferContact {
-  id           String            @id @default(cuid())
-  gafferUserId String
-  type         GafferContactType
-  name         String
-  phone        String?
-  telegram     String? // username без @
-  note         String? // свободный текст (роль, напр. "осветитель")
-  isArchived   Boolean           @default(false)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-
-  shiftHours          Int?    @default(10)   // продолжительность смены в часах (по умолчанию 10)
-  rateCardId          String?               // ссылка на внешний рейт-кард (опционально)
-  rateCardPosition    String?               // должность в рейт-карде
-  shiftRate           Decimal @default(0)    // базовая ставка за смену (10 ч)
-  overtimeTier1Rate   Decimal @default(0)    // тариф за час переработки, 1–8 ч сверх смены
-  overtimeTier2Rate   Decimal @default(0)    // тариф за час, 9–14 ч сверх смены
-  overtimeTier3Rate   Decimal @default(0)    // тариф за час, 15+ ч сверх смены
-  roleLabel           String?                // "Best Boy", "Key Grip", "Gaffer", "Осветитель / Grip", "Пультовик", "DIT"
-
-  gafferUser       GafferUser            @relation(fields: [gafferUserId], references: [id], onDelete: Cascade)
-  clientProjects   GafferProject[]       @relation("ProjectClient")
-  memberships      GafferProjectMember[]
-  paymentsAsMember GafferPayment[]       @relation("PaymentMember")
-
-  @@index([gafferUserId, type, isArchived])
-}
-
-model GafferPaymentMethod {
-  id           String   @id @default(cuid())
-  gafferUserId String
-  name         String // "Тинькофф карта", "Сбер карта", "Счёт ИП", "Наличные"
-  isDefault    Boolean  @default(false)
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-
-  gafferUser GafferUser      @relation(fields: [gafferUserId], references: [id], onDelete: Cascade)
-  payments   GafferPayment[]
-
-  @@unique([gafferUserId, name])
-  @@index([gafferUserId])
-}
-
-model GafferProject {
-  id               String              @id @default(cuid())
-  gafferUserId     String
-  title            String // "Клип «Синяя волна»"
-  clientId         String
-  shootDate        DateTime // единственная дата съёмки для MVP
-  clientPlanAmount  Decimal             @default(0) // договорная сумма с заказчиком — полный доход гаффера за проект
-  clientDueAt       DateTime?
-  lightBudgetAmount Decimal             @default(0) // бюджет на свет (rental gear) — вычитается из дохода
-  status            GafferProjectStatus @default(OPEN)
-  note             String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-
-  gafferUser GafferUser            @relation(fields: [gafferUserId], references: [id], onDelete: Cascade)
-  client     GafferContact         @relation("ProjectClient", fields: [clientId], references: [id], onDelete: Restrict)
-  members    GafferProjectMember[]
-  payments   GafferPayment[]
-
-  @@index([gafferUserId, status])
-  @@index([clientId])
-}
-
-model GafferProjectMember {
-  id            String   @id @default(cuid())
-  projectId     String
-  contactId     String
-  plannedAmount Decimal  @default(0)
-  dueAt         DateTime?
-  roleLabel     String? // "осветитель, водит грузовик"
-  createdAt     DateTime @default(now())
-
-  project GafferProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  contact GafferContact @relation(fields: [contactId], references: [id], onDelete: Restrict)
-
-  @@unique([projectId, contactId])
-  @@index([contactId])
-}
-
-model GafferPayment {
-  id              String                 @id @default(cuid())
-  projectId       String
-  direction       GafferPaymentDirection
-  amount          Decimal
-  paidAt          DateTime // date-only семантика, хранится как UTC-полночь
-  paymentMethodId String?
-  memberId        String? // обязателен при direction=OUT, null для IN
-  comment         String?
-  createdAt       DateTime               @default(now())
-
-  project GafferProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  method  GafferPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
-  member  GafferContact?       @relation("PaymentMember", fields: [memberId], references: [id], onDelete: SetNull)
-
-  @@index([projectId, direction])
-  @@index([memberId])
-  @@index([paidAt])
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 

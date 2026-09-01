@@ -155,10 +155,12 @@ describe("GET /api/warehouse/bookings", () => {
     expect(res.body.bookings[0].items[0]).toEqual({ id: "item-1" });
     expect(res.body.bookings[0].status).toBe("CONFIRMED");
 
-    // Verify filter: ISSUE → CONFIRMED (RR-4: + архивные исключены)
+    // Verify filter: ISSUE → CONFIRMED (RR-4: + архивные исключены;
+    // 2026-08-05: + только брони с оборудованием — быстрые брони без позиций
+    // на складе не показываем, выдавать в них нечего)
     expect(mockPrisma.booking.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { status: "CONFIRMED", deletedAt: null },
+        where: { status: "CONFIRMED", deletedAt: null, items: { some: {} } },
       }),
     );
   });
@@ -173,7 +175,7 @@ describe("GET /api/warehouse/bookings", () => {
     expect(res.status).toBe(200);
     expect(mockPrisma.booking.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { status: "ISSUED", deletedAt: null },
+        where: { status: "ISSUED", deletedAt: null, items: { some: {} } },
       }),
     );
   });

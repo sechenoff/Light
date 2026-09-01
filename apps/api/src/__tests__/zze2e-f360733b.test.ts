@@ -1,5 +1,6 @@
 /* Temp e2e repro (devil's advocate session f360733b). Delete after use. */
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { execSync } from "child_process";
 import { describe, it, expect, beforeAll } from "vitest";
@@ -104,7 +105,10 @@ describe("e2e: full-estimate PDF с договорным итогом", () => {
       .parse(binaryParser as any);
 
     expect(res.status).toBe(200);
-    const out = "/private/tmp/claude-501/-Users-sechenov-Documents-light-rental-system/f360733b-8f1f-4ad2-94bf-6abf5fcc92c6/scratchpad/f360733b/e2e.pdf";
+    // Путь был прибит к scratchpad сессии, в которой этот репро писался, —
+    // на любой другой машине тест падал с ENOENT ещё до проверки. Пишем во
+    // временный каталог ОС.
+    const out = path.join(os.tmpdir(), "zze2e-f360733b-estimate.pdf");
     fs.writeFileSync(out, res.body);
     const txt = execSync(`pdftotext -layout ${out} -`).toString();
     // eslint-disable-next-line no-console

@@ -164,9 +164,21 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
 
   const paymentsSum = sumDec(booking.payments.map((p) => p.amount.toString()));
   const amountPaid = Decimal.max(paymentsSum.sub(refundsSum), new Decimal(0));
-  const amountOutstanding = Decimal.max(finalAmount.sub(amountPaid), new Decimal(0));
+
+  // Прощённый остаток («простить хвост»): уменьшает сумму К ВЗЫСКАНИЮ, но не
+  // трогает ни смету, ни фактически полученные деньги. Поэтому вычитаем его из
+  // взыскиваемой базы, а не добавляем к amountPaid — иначе «получено» показало
+  // бы деньги, которых не было, и исказило бы выручку и календарь платежей.
+  const writeOff = booking.writeOffAmount
+    ? new Decimal(booking.writeOffAmount.toString())
+    : new Decimal(0);
+  const collectible = Decimal.max(finalAmount.sub(writeOff), new Decimal(0));
+
+  const amountOutstanding = Decimal.max(collectible.sub(amountPaid), new Decimal(0));
   const status = calcBookingPaymentStatus({
-    finalAmount,
+    // Статус считаем от взыскиваемой суммы: если остаток прощён полностью,
+    // бронь должна стать PAID и уйти из дебиторки, а не висеть PARTIALLY_PAID.
+    finalAmount: collectible,
     amountPaid,
     expectedPaymentDate: booking.expectedPaymentDate,
   });

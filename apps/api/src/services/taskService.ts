@@ -187,7 +187,7 @@ export async function enrichTasksWithUsers<
 
 export interface CreateTaskInput {
   title: string;
-  description?: string;
+  description?: string | null;
   urgent?: boolean;
   dueDate?: string | null; // "YYYY-MM-DD" or null
   assignedTo?: string | null;

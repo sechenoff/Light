@@ -22,6 +22,9 @@ process.env.JWT_SECRET = "test-jwt-addon-items-min16chars";
 let prisma: any;
 let clientId: string;
 let eqBusyId: string;
+let eqFreeId: string;
+let eqAuditId: string;
+let targetBookingId: string;
 let sessionId: string;
 let createdById: string;
 
@@ -83,6 +86,34 @@ beforeAll(async () => {
     data: { bookingId: busyBooking.id, equipmentId: eqBusyId, quantity: 1 },
   });
 
+  // Свободное COUNT-оборудование (2 шт., без броней) — для проверки, что
+  // acknowledgedConflict без реального конфликта НЕ расширяет сток
+  const eqFree = await prisma.equipment.create({
+    data: {
+      importKey: "addon-eq-free-001",
+      name: "Свободный прибор",
+      category: "Осветительные приборы",
+      rentalRatePerShift: 300,
+      stockTrackingMode: "COUNT",
+      totalQuantity: 2,
+    },
+  });
+  eqFreeId = eqFree.id;
+
+  // Отдельный свободный артикул для теста аудита — чтобы добавление позиции
+  // не влияло на addCap-ожидания в тесте про eqFree
+  const eqAudit = await prisma.equipment.create({
+    data: {
+      importKey: "addon-eq-audit-001",
+      name: "Прибор для аудита",
+      category: "Осветительные приборы",
+      rentalRatePerShift: 100,
+      stockTrackingMode: "COUNT",
+      totalQuantity: 5,
+    },
+  });
+  eqAuditId = eqAudit.id;
+
   // Целевая CONFIRMED бронь на пересекающиеся даты 2026-06-11..2026-06-13
   const tgt = await prisma.booking.create({
     data: {
@@ -95,6 +126,8 @@ beforeAll(async () => {
       amountOutstanding: 0,
     },
   });
+
+  targetBookingId = tgt.id;
 
   const session = await prisma.scanSession.create({
     data: {
@@ -125,24 +158,72 @@ describe("addExtraItem conflict handling", () => {
     ).rejects.toMatchObject({ status: 409, code: "ADDON_CONFLICT" });
   });
 
-  it("acknowledged conflict still hits hard cap when physical stock exhausted", async () => {
-    // С новым hard-cap (Task 5) acknowledgedConflict=true НЕ обходит проверку
-    // физического склада. totalQuantity=1, busy-бронь занимает 1, target пытается
-    // добавить ещё 1 → addCap = 1 − 1 − 0 = 0 → 409 ADDON_OVER_STOCK.
-    //
-    // Замечание: soft-warn ADDON_CONFLICT и hard cap ADDON_OVER_STOCK в этом
-    // конкретном сценарии срабатывают по одному и тому же триггеру
-    // (reservedQty+target > capacity). Когда acknowledgedConflict=false →
-    // soft-warn летит первым; когда true → soft-warn пропускается и hard cap
-    // блокирует операцию. Отдельный позитивный тест acknowledgedConflict-пути
-    // невозможен после внедрения cap — см. design spec, Task 5.
+  it("«Выдать под ответственность»: ack при конфликте добавляет позицию + аудит WITH_CONFLICT", async () => {
+    // Fix 2026-08-05. Раньше hard-cap вычитал occupiedByOthers и при ack —
+    // а конфликт-карточка показывается ТОЛЬКО когда availableQuantity ≤ 0,
+    // поэтому ack-путь всегда падал ADDON_OVER_STOCK и задизайненная спекой
+    // кнопка «Выдать под ответственность» была недостижима. Теперь при
+    // подтверждённом конфликте потолок — физический склад:
+    // cap = totalQuantity(1) − alreadyMine(0) = 1 ≥ 1 → добавлено.
+    const { addExtraItem } = await import("../services/checklistService");
+    const { bookingItemId } = await addExtraItem(sessionId, eqBusyId, 1, createdById, true);
+    expect(bookingItemId).toBeTruthy();
+
+    const item = await prisma.bookingItem.findUnique({
+      where: { bookingId_equipmentId: { bookingId: targetBookingId, equipmentId: eqBusyId } },
+    });
+    expect(item?.quantity).toBe(1);
+
+    const audit = await prisma.auditEntry.findMany({
+      where: { entityType: "Booking", entityId: targetBookingId, action: "BOOKING_ITEM_ADDED_WITH_CONFLICT" },
+    });
+    expect(audit).toHaveLength(1);
+    // UI обещает «Конфликт зафиксируется в аудите» — снапшот должен нести детали
+    const after = typeof audit[0].after === "string" ? JSON.parse(audit[0].after) : audit[0].after;
+    expect(after.conflict).toBeTruthy();
+    expect(after.conflict.projectName).toBe("Занятый проект");
+  });
+
+  it("аудит проходит FK, когда киоск открыт главной сессией (auditUserId)", async () => {
+    // Регрессия 2026-08-05: createdBy — имя кладовщика из PIN-namespace, оно не
+    // проходит FK на AdminUser, и writeAuditEntry молча падал в .catch().
+    // Роут теперь передаёт req.adminUser?.id отдельным аргументом.
+    const { addExtraItem } = await import("../services/checklistService");
+    const before = await prisma.auditEntry.count({
+      where: { entityType: "Booking", action: "BOOKING_ITEM_ADDED_ON_SITE" },
+    });
+    await addExtraItem(sessionId, eqAuditId, 1, "Иван Кладовщик", false, createdById);
+    const rows = await prisma.auditEntry.findMany({
+      where: { entityType: "Booking", action: "BOOKING_ITEM_ADDED_ON_SITE" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(rows.length).toBe(before + 1);
+    expect(rows[0].userId).toBe(createdById);
+  });
+
+  it("ack НЕ обходит физический склад: сверх totalQuantity → ADDON_OVER_STOCK", async () => {
+    // После предыдущего теста в целевой брони уже 1 шт. — весь физический
+    // сток (totalQuantity=1) выбран. Ещё 1 с ack → cap = 1 − 1 = 0 → 409.
     const { addExtraItem } = await import("../services/checklistService");
     await expect(
       addExtraItem(sessionId, eqBusyId, 1, createdById, true),
     ).rejects.toMatchObject({
       status: 409,
       code: "ADDON_OVER_STOCK",
-      details: { addCap: 0, requested: 1, alreadyInBooking: 0 },
+      details: { addCap: 0, requested: 1, alreadyInBooking: 1 },
+    });
+  });
+
+  it("ack без конфликта игнорируется: свободный артикул сверх стока → ADDON_OVER_STOCK", async () => {
+    // eqFree свободен (конфликта нет) → ack не расширяет cap: клиент не может
+    // выдать больше склада, просто прислав acknowledgedConflict: true.
+    const { addExtraItem } = await import("../services/checklistService");
+    await expect(
+      addExtraItem(sessionId, eqFreeId, 3, createdById, true),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "ADDON_OVER_STOCK",
+      details: { addCap: 2, requested: 3, alreadyInBooking: 0 },
     });
   });
 });

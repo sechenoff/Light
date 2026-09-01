@@ -8,7 +8,6 @@ import { ZodError } from "zod";
 
 import { router } from "./routes";
 import { authRouter } from "./routes/auth";
-import { gafferRouter } from "./routes/gaffer";
 import { HttpError } from "./utils/errors";
 import { rateLimiter } from "./middleware/rateLimiter";
 import { apiKeyAuth } from "./middleware/apiKeyAuth";
@@ -65,8 +64,6 @@ app.use(rateLimiter);
 app.get("/health", (_req, res) => res.json({ ok: true }));
 // Auth routes — публичные (до apiKeyAuth), но login/logout не требует авторизации; /me использует cookie.
 app.use("/api/auth", sessionParser, authRouter);
-// Gaffer CRM routes — публичные (до apiKeyAuth), собственная auth система (gaffer_session JWT).
-app.use("/api/gaffer", gafferRouter);
 app.use("/api/warehouse", warehousePublicRouter);
 // sessionParser здесь нужен для fallback warehouseAuth → main session (SA/WH без PIN)
 app.use("/api/warehouse", sessionParser, warehouseScanRouter);

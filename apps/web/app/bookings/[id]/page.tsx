@@ -86,6 +86,9 @@ type BookingDetail = {
   manualFinalAmount?: string | null;
   amountPaid?: string | null;
   amountOutstanding?: string | null;
+  /** Прощённый остаток долга («простить хвост» со страницы долгов). */
+  writeOffAmount?: string | null;
+  writeOffReason?: string | null;
   expectedPaymentDate?: string | null;
   paymentComment?: string | null;
   payments?: Array<{
@@ -201,6 +204,7 @@ export default function BookingDetailPage() {
   // F-EXTEND: продление выданной (ISSUED) брони — инлайн-поле новой даты возврата.
   // F-EXTEND: повторная отправка на согласование правленной CONFIRMED-брони (WAREHOUSE).
   const [resubmitBusy, setResubmitBusy] = useState(false);
+  const [cancelWriteOffBusy, setCancelWriteOffBusy] = useState(false);
 
   // Ретро-редактирование закрытой брони (SUPER_ADMIN + RETURNED) вынесено в
   // useRetroEdit (фаза 4.6). JSX ретро-режима остаётся ниже (вплетён в
@@ -322,6 +326,27 @@ export default function BookingDetailPage() {
       toast.error(e?.message ?? "Не удалось отправить на согласование");
     } finally {
       setResubmitBusy(false);
+    }
+  }
+
+  /**
+   * Отмена списания долга: прощённая сумма возвращается в дебиторку целиком.
+   * Списание — денежная операция, ошибиться в сумме легко, поэтому оно
+   * обратимо, а сама кнопка живёт здесь, а не на странице долгов: после
+   * списания бронь оттуда уходит.
+   */
+  async function cancelWriteOff() {
+    if (!booking || cancelWriteOffBusy) return;
+    if (!confirm("Вернуть прощённый долг обратно в дебиторку?")) return;
+    setCancelWriteOffBusy(true);
+    try {
+      await apiFetch(`/api/bookings/${booking.id}/write-off`, { method: "DELETE" });
+      await reloadBooking();
+      toast.success("Списание отменено — долг вернулся");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Не удалось отменить списание");
+    } finally {
+      setCancelWriteOffBusy(false);
     }
   }
 
@@ -728,6 +753,37 @@ export default function BookingDetailPage() {
           {booking.status === "PENDING_APPROVAL" && (
             <div className="mb-4 rounded border border-amber bg-amber-soft px-4 py-2 text-sm text-ink">
               Бронь на согласовании у руководителя — редактирование временно заблокировано.
+            </div>
+          )}
+
+          {/* Списанный («прощённый») долг. Показываем всем, кто видит карточку:
+              иначе нулевой остаток читается как полученная оплата. Отменить
+              может только SUPER_ADMIN — тот же гард, что и на списании. */}
+          {booking.writeOffAmount != null && Number(booking.writeOffAmount) > 0 && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded border-l-4 border-amber bg-amber-soft px-4 py-3 text-sm text-ink">
+              <div>
+                <div className="eyebrow mb-0.5 text-amber">Долг списан</div>
+                <div>
+                  Прощено{" "}
+                  <span className="mono-num font-semibold">
+                    {formatMoneyRub(booking.writeOffAmount)}
+                  </span>
+                  {booking.writeOffReason ? ` · ${booking.writeOffReason}` : ""}
+                </div>
+                <div className="mt-1 text-xs text-ink-3">
+                  Смета и платежи не менялись — сумма исключена только из взыскания.
+                </div>
+              </div>
+              {user?.role === "SUPER_ADMIN" && !isArchived && (
+                <button
+                  type="button"
+                  onClick={cancelWriteOff}
+                  disabled={cancelWriteOffBusy}
+                  className="shrink-0 rounded border border-amber px-3 py-1.5 text-xs font-medium text-ink hover:bg-amber/10 disabled:opacity-50"
+                >
+                  {cancelWriteOffBusy ? "Отменяю…" : "Вернуть долг"}
+                </button>
+              )}
             </div>
           )}
 
