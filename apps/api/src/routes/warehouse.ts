@@ -60,15 +60,35 @@ const photoUpload = multer({
   },
 });
 
-// ── Public router (mounted BEFORE apiKeyAuth) ─────────────────────────────────
+// ── Роутер экрана входа киоска (без Bearer склада, но за apiKeyAuth) ──────────
 
 export const warehousePublicRouter = express.Router();
 
-const pinSchema = z.string().min(4, "PIN должен быть не менее 4 символов").regex(/^\d+$/, "PIN должен содержать только цифры");
+/**
+ * PIN при ВХОДЕ: длину не ужесточаем, иначе сотрудник со старым четырёхзначным
+ * кодом окажется заперт снаружи. Правильность проверяет сравнение с хешем.
+ */
+const pinLoginSchema = z
+  .string()
+  .min(4, "PIN должен быть не менее 4 символов")
+  .regex(/^\d+$/, "PIN должен содержать только цифры");
+
+/**
+ * PIN при ЗАВЕДЕНИИ и СМЕНЕ: минимум шесть цифр.
+ *
+ * Имя сотрудника не секрет — оно по смыслу показано на экране входа, как в любой
+ * корпоративной системе. Единственный секрет здесь — PIN, и четыре цифры это
+ * 10 000 вариантов: при блокировке 5 попыток на 15 минут перебор занимал недели.
+ * Шесть цифр — миллион вариантов, то есть тысячи лет, а набирать не сложнее.
+ */
+const pinCreateSchema = z
+  .string()
+  .min(6, "PIN должен быть не менее 6 цифр")
+  .regex(/^\d+$/, "PIN должен содержать только цифры");
 
 const authBodySchema = z.object({
   name: z.string().min(1),
-  pin: pinSchema,
+  pin: pinLoginSchema,
 });
 
 /** POST /api/warehouse/auth — аутентификация сотрудника склада по PIN */
@@ -105,12 +125,12 @@ export const warehouseRouter = express.Router();
 
 const createWorkerSchema = z.object({
   name: z.string().min(1),
-  pin: pinSchema,
+  pin: pinCreateSchema,
 });
 
 const updateWorkerSchema = z.object({
   name: z.string().min(1).optional(),
-  pin: pinSchema.optional(),
+  pin: pinCreateSchema.optional(),
   isActive: z.boolean().optional(),
 });
 

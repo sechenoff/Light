@@ -122,7 +122,7 @@ describe("H1: /api/warehouse/workers rolesGuard", () => {
     const res = await request(app)
       .post("/api/warehouse/workers")
       .set(NOAUTH())
-      .send({ name: "Иван", pin: "1234" });
+      .send({ name: "Иван", pin: "123400" });
     expect(res.status).toBe(401);
   });
 
@@ -130,7 +130,7 @@ describe("H1: /api/warehouse/workers rolesGuard", () => {
     const res = await request(app)
       .post("/api/warehouse/workers")
       .set(TECH())
-      .send({ name: "Иван", pin: "1234" });
+      .send({ name: "Иван", pin: "123400" });
     expect(res.status).toBe(403);
   });
 
@@ -138,7 +138,7 @@ describe("H1: /api/warehouse/workers rolesGuard", () => {
     const res = await request(app)
       .post("/api/warehouse/workers")
       .set(WH())
-      .send({ name: "Тест Холистик", pin: "9876" });
+      .send({ name: "Тест Холистик", pin: "987600" });
     expect(res.status).toBe(201);
     expect(res.body.worker).toBeDefined();
   });
@@ -148,7 +148,7 @@ describe("H1: /api/warehouse/workers rolesGuard", () => {
     const createRes = await request(app)
       .post("/api/warehouse/workers")
       .set(SA())
-      .send({ name: "Обновить Холистик", pin: "1111" });
+      .send({ name: "Обновить Холистик", pin: "111100" });
     const workerId = createRes.body.worker?.id;
     expect(workerId).toBeDefined();
 
@@ -163,7 +163,7 @@ describe("H1: /api/warehouse/workers rolesGuard", () => {
     const createRes = await request(app)
       .post("/api/warehouse/workers")
       .set(SA())
-      .send({ name: "Удалить Холистик", pin: "2222" });
+      .send({ name: "Удалить Холистик", pin: "222200" });
     const workerId = createRes.body.worker?.id;
     expect(workerId).toBeDefined();
 

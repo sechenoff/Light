@@ -145,3 +145,38 @@ describe("сид первого админа не заводит тривиал�
     expect(active).toEqual([]);
   });
 });
+
+describe("PIN склада: длина", () => {
+  it("новый PIN короче шести цифр не принимается", async () => {
+    const res = await request(app)
+      .post("/api/warehouse/workers")
+      .set(KEY())
+      .set("Authorization", `Bearer ${saToken}`)
+      .send({ name: "Слабый PIN", pin: "1234" });
+    expect(res.status).toBe(400);
+  });
+
+  it("шестизначный принимается", async () => {
+    const res = await request(app)
+      .post("/api/warehouse/workers")
+      .set(KEY())
+      .set("Authorization", `Bearer ${saToken}`)
+      .send({ name: "Сильный PIN", pin: "418302" });
+    expect(res.status).toBe(201);
+  });
+
+  it("сотрудник со СТАРЫМ четырёхзначным PIN не заперт снаружи", async () => {
+    // Ужесточили только заведение: если бы длину проверял и вход, все, кому
+    // PIN выдали раньше, разом потеряли бы доступ к складу.
+    const { hashPassword } = await import("../services/auth");
+    await prisma.warehousePin.create({
+      data: { name: "Старый сотрудник", pinHash: await hashPassword("4321"), isActive: true },
+    });
+    const res = await request(app)
+      .post("/api/warehouse/auth")
+      .set(KEY())
+      .send({ name: "Старый сотрудник", pin: "4321" });
+    expect(res.status).toBe(200);
+    expect(res.body.token).toBeTruthy();
+  });
+});
