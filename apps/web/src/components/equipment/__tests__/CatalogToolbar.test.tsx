@@ -5,6 +5,15 @@ import { CatalogToolbar, type CatalogToolbarProps } from "../CatalogToolbar";
 import { getQuickPeriod } from "../catalogPeriod";
 
 const today = getQuickPeriod("today");
+// Конец периода считаем ОТ начала, а не жёсткой датой: зашитое значение
+// однажды оказывается в прошлом, попап признаёт период некорректным
+// и «Применить» перестаёт работать — тест падает не по своей вине.
+const laterEnd = (() => {
+  const d = new Date(today.start);
+  d.setDate(d.getDate() + 5);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+})();
 
 function setup(overrides: Partial<CatalogToolbarProps> = {}) {
   const props: CatalogToolbarProps = {
@@ -124,7 +133,7 @@ describe("PeriodPopover внутри тулбара", () => {
     fireEvent.click(screen.getAllByLabelText("Период проверки доступности — изменить")[0]);
 
     const end = screen.getByLabelText("Конец") as HTMLInputElement;
-    fireEvent.change(end, { target: { value: "2026-08-20T10:00" } });
+    fireEvent.change(end, { target: { value: laterEnd } });
 
     // Ключевое: до «Применить» наверх не ушло ничего — иначе каждый
     // промежуточный кадр datetime-local дёргал бы /api/availability.
@@ -134,7 +143,7 @@ describe("PeriodPopover внутри тулбара", () => {
     expect(props.onPeriodChange).toHaveBeenCalledTimes(1);
     expect(props.onPeriodChange).toHaveBeenCalledWith({
       start: today.start,
-      end: "2026-08-20T10:00",
+      end: laterEnd,
     });
   });
 

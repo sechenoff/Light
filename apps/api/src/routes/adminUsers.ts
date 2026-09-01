@@ -1,4 +1,5 @@
 import express from "express";
+import { invalidateAdminUserState } from "../middleware/sessionAuth";
 import { z } from "zod";
 import type { Prisma as PrismaNamespace } from "@prisma/client";
 
@@ -176,6 +177,9 @@ router.patch("/:id", async (req, res, next) => {
       });
       return updated;
     });
+    // Роль или активность могли поменяться — сбрасываем кэш, иначе изменение
+    // доехало бы только через TTL, а до тех пор человек ходил бы со старыми правами.
+    invalidateAdminUserState(id);
     res.json({ user });
   } catch (err) {
     next(err);
@@ -225,6 +229,7 @@ router.delete("/:id", async (req, res, next) => {
       }
       throw err;
     }
+    invalidateAdminUserState(id);
     res.json({ ok: true });
   } catch (err) {
     next(err);

@@ -143,7 +143,9 @@ if $DEPLOY_API; then
   # ─────────────────────────────────────────────────────────────────────────
 
   npx prisma db push --accept-data-loss   # SQLite: синхронизируем схему
-  npx tsx scripts/seed-admin-users.ts || true   # идемпотентный seed админ-пользователей
+  # seed-admin-users.ts здесь НЕ вызывается: он заводил учётки с паролями «тест»,
+  # и удалённая дыра отрастала при следующем деплое. Первого админа заводят
+  # вручную через ADMIN_USERNAME/ADMIN_PASSWORD, дальше — через интерфейс.
   npx tsx scripts/seed-system-user.ts || true   # идемпотентный seed _system_ user (нужен для cron аудита)
   npm run build
 
