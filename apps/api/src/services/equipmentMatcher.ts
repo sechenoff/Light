@@ -388,9 +388,12 @@ function scoreRow(query: string, row: CatalogRow): number {
 
   if (q === n) return 1.0;
 
-  const qInN = n.includes(q);
-  const nInQ = q.includes(n);
-  if (qInN || nInQ) return 0.9;
+  // Вхождение целыми словами — сильный сигнал («52xt» в «aputure electric storm 52xt blair»).
+  const padQ = ` ${q} `;
+  const padN = ` ${n} `;
+  if (padN.includes(padQ) || padQ.includes(padN)) return 0.9;
+  // Вхождение внутрь слова («расклад» в «раскладные») — только на проверку.
+  if (n.includes(q) || q.includes(n)) return 0.45;
 
   // token score
   const qTokens = q.split(" ").filter((t) => t.length >= 3);
@@ -407,12 +410,45 @@ function scoreRow(query: string, row: CatalogRow): number {
   return 0;
 }
 
+/** Псевдоним, подтверждённый столько раз, считаем домашней конвенцией и не переспрашиваем. */
+const TRUSTED_ALIAS_USAGE = 8;
+
+const wordTokens = (s: string): string[] => norm(s).split(" ").filter((t) => t && !/\d/.test(t));
+const digitTokens = (s: string): string[] => norm(s).split(" ").filter((t) => /\d/.test(t));
+
+/**
+ * «Семья» позиции — соседи, отличающиеся только числом/размером (Автополе
+ * 100/150/235, Трубный бум D42/D48, MattBounce 8×8/12×12), а для фразы из
+ * одного слова, совпадающего с первым словом названия («хейзер», «страховка»),
+ * — все позиции категории с тем же первым словом. Числа из фразы (pins)
+ * оставляют только тех соседей, которым они подходят: «трубы 3 метра» держит
+ * трёхметровые D42 и D48, «хейзер 1800» не оставляет никого.
+ */
+function familySiblings(target: CatalogRow, phraseNorm: string, pins: string[], catalog: CatalogRow[]): CatalogRow[] {
+  const words = wordTokens(target.name);
+  if (words.length === 0) return [];
+  const key = [...words].sort().join(" ");
+  const phraseTokens = phraseNorm.split(" ").filter(Boolean);
+  const singleHead = phraseTokens.length === 1 && phraseTokens[0] === words[0];
+  const out: CatalogRow[] = [];
+  for (const row of catalog) {
+    if (row.id === target.id || row.category !== target.category) continue;
+    const w = wordTokens(row.name);
+    const sameWords = w.length > 0 && [...w].sort().join(" ") === key;
+    const sameHead = singleHead && w[0] === words[0];
+    if (!sameWords && !sameHead) continue;
+    const tokens = norm(row.name).split(" ");
+    if (pins.every((p) => tokens.some((t) => t.includes(p) || p.includes(t)))) out.push(row);
+  }
+  return out;
+}
+
 /**
  * Находит top-N кандидатов из каталога для свободной фразы.
- * Предварительно проверяет DB-псевдонимы (SlangAlias) — они имеют приоритет.
- *
- * Конфликт: если для одной фразы зарегистрировано 2+ разных equipmentId в SlangAlias,
- * оба показываются как кандидаты для проверки менеджером (needsReview).
+ * Сначала словарь сленга (SlangAlias), потом скоринг по AI-имени и исходной фразе.
+ * Уверенный ответ даётся только там, где сомневаться не в чем: точное имя,
+ * домашняя конвенция или единственный вариант в семье. Всё остальное —
+ * needsReview, и дальше решает AI-подбор с каталогом или человек.
  */
 function findTopCandidates(
   phrase: string,
@@ -423,60 +459,74 @@ function findTopCandidates(
   gafferPhrase?: string,
 ): { resolved?: GafferResolved; needsReview?: GafferNeedsReview; unmatched?: GafferUnmatched } {
   const q = norm(phrase);
-
-  // 1. Check DB SlangAlias first — try original gaffer phrase, then AI-interpreted name
   const gafferQ = gafferPhrase ? norm(gafferPhrase) : null;
   const gafferCore = gafferPhrase ? norm(stripQuantityTokens(gafferPhrase)) : null;
-  // Порядок важен: полная фраза гаффера («12 мбю» — размер) раньше усечённой.
+  // Числа фразы и AI-имени — размер, диаметр, мощность: то, что различает соседей.
+  const pins = Array.from(new Set(digitTokens(`${gafferCore ?? ""} ${q}`)));
+
+  const toCandidate = (row: CatalogRow, confidence: number): GafferCandidate => ({
+    equipmentId: row.id,
+    catalogName: row.name,
+    category: row.category,
+    availableQuantity: row.totalQuantity,
+    rentalRatePerShift: row.rentalRatePerShift.toString(),
+    confidence,
+  });
+  const toResolved = (row: CatalogRow, confidence: number): GafferResolved => ({
+    equipmentId: row.id,
+    catalogName: row.name,
+    suggestedName: phrase,
+    category: row.category,
+    quantity: Math.min(quantity, row.totalQuantity),
+    availableQuantity: row.totalQuantity,
+    rentalRatePerShift: row.rentalRatePerShift.toString(),
+    confidence,
+  });
+  /**
+   * Уверенный выбор, если фраза не оставила семью без ответа («хейзер» —
+   * 1800W или Antari? «трубный бум» — D42 или D48?). Иначе needsReview:
+   * выбранный вариант первым, соседи следом.
+   */
+  const settle = (row: CatalogRow, confidence: number) => {
+    const siblings = familySiblings(row, gafferCore ?? q, pins, catalog);
+    if (siblings.length === 0) return { resolved: toResolved(row, confidence) };
+    return {
+      needsReview: {
+        rawPhrase: phrase,
+        quantity,
+        candidates: [toCandidate(row, confidence), ...siblings.slice(0, 4).map((s) => toCandidate(s, 0.8))],
+      },
+    };
+  };
+
+  // 1. Словарь сленга: полная фраза гаффера → без количества → AI-имя.
+  // Порядок важен: полная фраза («12 мбю» — размер) раньше усечённой.
   const aliasEntries = lookupAliases(dbAliases, [gafferQ, gafferCore, q, norm(stripQuantityTokens(phrase))]);
   if (aliasEntries && aliasEntries.length > 0) {
     if (aliasEntries.length === 1) {
-      // Один однозначный псевдоним → resolved
-      const row = catalog.find((c) => c.id === aliasEntries[0].equipmentId);
+      const entry = aliasEntries[0];
+      const row = catalog.find((c) => c.id === entry.equipmentId);
       if (row) {
-        return {
-          resolved: {
-            equipmentId: row.id,
-            catalogName: row.name,
-            suggestedName: phrase,
-            category: row.category,
-            quantity: Math.min(quantity, row.totalQuantity),
-            availableQuantity: row.totalQuantity,
-            rentalRatePerShift: row.rentalRatePerShift.toString(),
-            confidence: 1.0,
-          },
-        };
+        // Домашняя конвенция («систенды» = 40") — не переспрашиваем, пока хватает наличия.
+        if (entry.usageCount >= TRUSTED_ALIAS_USAGE && quantity <= row.totalQuantity) {
+          return { resolved: toResolved(row, 1.0) };
+        }
+        return settle(row, 1.0);
       }
     } else {
       // Конфликт: несколько псевдонимов для одной фразы → needsReview
-      const candidates: GafferCandidate[] = [];
-      for (const entry of aliasEntries) {
-        const row = catalog.find((c) => c.id === entry.equipmentId);
-        if (row) {
-          candidates.push({
-            equipmentId: row.id,
-            catalogName: row.name,
-            category: row.category,
-            availableQuantity: row.totalQuantity,
-            rentalRatePerShift: row.rentalRatePerShift.toString(),
-            confidence: 1.0,
-          });
-        }
-      }
-      if (candidates.length > 0) {
-        return { needsReview: { rawPhrase: phrase, quantity, candidates } };
-      }
+      const candidates = aliasEntries
+        .map((e) => catalog.find((c) => c.id === e.equipmentId))
+        .filter((r): r is CatalogRow => Boolean(r))
+        .map((r) => toCandidate(r, 1.0));
+      if (candidates.length > 0) return { needsReview: { rawPhrase: phrase, quantity, candidates } };
     }
   }
 
-  // 2. Score all catalog rows — по AI-имени И по исходной фразе гаффера.
-  // Заявки из программ гафферов часто содержат наши же названия дословно
-  // («ChineVise Grip (цепной)»), а модель при нормализации может исказить
-  // («chinavise grip») или перевести на английский («metal clamp 160mm» для
-  // «Прищепка металлическая большая, 160 мм…»). Скорим обе строки и берём
-  // лучший счёт: так позиция из каталога не теряется из-за орфографии модели.
-  // Скорим и полную фразу, и без количества: «K5600 Joker-800» после усечения
-  // теряет «-800» и уравнялся бы с «Joker-400», а полная фраза даёт точное 1.0.
+  // 2. Скоринг по AI-имени и по исходной фразе гаффера — полной и без количества.
+  // Заявки из программ гафферов содержат наши названия дословно, а модель при
+  // нормализации может исказить («chinavise») или перевести («metal clamp»);
+  // полная фраза при этом держит точное совпадение («K5600 Joker-800»).
   const rawVariants = Array.from(
     new Set([gafferPhrase, gafferPhrase ? stripQuantityTokens(gafferPhrase) : null].filter((v): v is string => typeof v === "string" && v.length > 0 && norm(v) !== q)),
   );
@@ -493,38 +543,19 @@ function findTopCandidates(
     return { unmatched: { rawPhrase: phrase, quantity } };
   }
 
-  const best = scored[0];
+  const [best, second] = scored;
 
   if (best.score >= 0.7) {
-    return {
-      resolved: {
-        equipmentId: best.row.id,
-        catalogName: best.row.name,
-        suggestedName: phrase,
-        category: best.row.category,
-        quantity: Math.min(quantity, best.row.totalQuantity),
-        availableQuantity: best.row.totalQuantity,
-        rentalRatePerShift: best.row.rentalRatePerShift.toString(),
-        confidence: best.score,
-      },
-    };
+    if (best.score === 1) return { resolved: toResolved(best.row, 1) };
+    // Два почти равных счёта («Дестрибьютор 32/380 …» против «63/380 …») — не угадываем.
+    if (second && best.score - second.score < 0.1) {
+      return { needsReview: { rawPhrase: phrase, quantity, candidates: scored.map(({ row, score }) => toCandidate(row, score)) } };
+    }
+    return settle(best.row, best.score);
   }
 
   if (best.score >= 0.3) {
-    return {
-      needsReview: {
-        rawPhrase: phrase,
-        quantity,
-        candidates: scored.map(({ row, score }) => ({
-          equipmentId: row.id,
-          catalogName: row.name,
-          category: row.category,
-          availableQuantity: row.totalQuantity,
-          rentalRatePerShift: row.rentalRatePerShift.toString(),
-          confidence: score,
-        })),
-      },
-    };
+    return { needsReview: { rawPhrase: phrase, quantity, candidates: scored.map(({ row, score }) => toCandidate(row, score)) } };
   }
 
   return { unmatched: { rawPhrase: phrase, quantity } };

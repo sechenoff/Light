@@ -64,6 +64,8 @@ For EACH item output a JSON object with:
 - gafferPhrase: copy the phrase EXACTLY as it appears in the request (include quantity words if they are on the same line, e.g. "2x 52xt"). If impossible, use the shortest faithful quote from the request.
 - interpretedName: a short normalized equipment name for inventory matching (Latin/brand/model style when obvious, e.g. "52xt", "nova p300"). Do NOT put quantity here.
 - quantity: integer, default 1 if not specified in the request.
+- If one line names a device AND an accessory for it ("400x + френель", "1200 + линза", "нова р300 с софтом"), output SEPARATE items: the device, then the accessory with a gafferPhrase that names the device it is for (e.g. "френель для 400x").
+- "все" / "всё" after a name means "all units in stock": keep that word inside gafferPhrase and leave quantity 1.
 
 CRITICAL: Respond with ONLY a valid JSON array. No markdown, no extra text.
 

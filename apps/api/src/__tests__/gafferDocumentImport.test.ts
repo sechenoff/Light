@@ -218,6 +218,19 @@ describe("POST /api/bookings/parse-gaffer-document", () => {
   });
 });
 
+describe("POST /api/bookings/parse-gaffer-document — «все» = всё наличие", () => {
+  it("«Aputure STORM 700x все» с количеством 1 получает количество по наличию", async () => {
+    llm.extractGafferDocument.mockResolvedValue({
+      lines: [{ gafferPhrase: "Aputure STORM 700x все", interpretedName: "aputure storm 700x", quantity: 1 }],
+      meta: META,
+    });
+    const res = await post().attach("file", PDF, { filename: "z.pdf", contentType: "application/pdf" });
+    expect(res.status).toBe(200);
+    expect(res.body.items[0].match.kind).toBe("resolved");
+    expect(res.body.items[0].quantity).toBe(2);
+  });
+});
+
 describe("gafferDocumentImport — сервисные функции", () => {
   it("phoneKey: разные написания одного номера сходятся, короткие — null", () => {
     expect(svc.phoneKey("+7 981 790-34-51")).toBe("9817903451");
