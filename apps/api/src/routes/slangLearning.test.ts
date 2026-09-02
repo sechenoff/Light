@@ -55,6 +55,19 @@ describe("POST /propose — auto-approve", () => {
     );
   });
 
+  it("число-модель не срезается: «Джокер-800» → «джокер 800», а не «джокер» (иначе Joker-800 и Joker-400 легли бы под один ключ)", async () => {
+    mockPrisma.slangAlias.findMany.mockResolvedValue([]);
+    mockPrisma.slangAlias.upsert.mockResolvedValue({ id: "alias-j", phraseNormalized: "джокер 800", phraseOriginal: "Джокер-800", equipmentId: "eq-800", confidence: 0.9, source: "AUTO_LEARNED", usageCount: 1 });
+    mockPrisma.slangLearningCandidate.create.mockResolvedValue({ id: "cand-j", rawPhrase: "Джокер-800", normalizedPhrase: "джокер 800", proposedEquipmentId: "eq-800", status: "APPROVED", confidence: 0.9 });
+
+    const res = await request(app).post("/propose").send({ rawPhrase: "Джокер-800", proposedEquipmentId: "eq-800", confidence: 0.9 });
+
+    expect(res.status).toBe(201);
+    expect(mockPrisma.slangAlias.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { phraseNormalized_equipmentId: { phraseNormalized: "джокер 800", equipmentId: "eq-800" } } }),
+    );
+  });
+
   it("upserts SlangAlias with source AUTO_LEARNED and creates APPROVED candidate", async () => {
     const aliasResult = {
       id: "alias-1",

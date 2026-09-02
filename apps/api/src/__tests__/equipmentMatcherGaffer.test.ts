@@ -143,6 +143,9 @@ describe("stripQuantityTokens", () => {
     expect(stripQuantityTokens("Дом 125(1)")).toBe("Дом 125");
     expect(stripQuantityTokens("2600 2шт")).toBe("2600");
     expect(stripQuantityTokens("Софтбокс x2")).toBe("Софтбокс");
+    expect(stripQuantityTokens("Быт-25")).toBe("Быт");
+    expect(stripQuantityTokens("Стойка - 2")).toBe("Стойка");
+    expect(stripQuantityTokens("Капы - 8ш")).toBe("Капы");
   });
 
   it("не трогает размеры, модели и голое число в начале", () => {
@@ -152,6 +155,14 @@ describe("stripQuantityTokens", () => {
     expect(stripQuantityTokens("Рама 20×20 трубная — 1 шт.")).toBe("Рама 20×20 трубная");
     expect(stripQuantityTokens("4 систенда")).toBe("4 систенда");
     expect(stripQuantityTokens("32/380(24)")).toBe("32/380");
+  });
+
+  it("число-модель после дефиса — не количество (иначе словарь получил бы «джокер» для Joker-800)", () => {
+    expect(stripQuantityTokens("Джокер-800")).toBe("Джокер-800");
+    expect(stripQuantityTokens("K5600 Joker-800")).toBe("K5600 Joker-800");
+    expect(stripQuantityTokens("M-18")).toBe("M-18");
+    expect(stripQuantityTokens("Кино 4-4")).toBe("Кино 4-4");
+    expect(stripQuantityTokens("Автополе 235 - 410")).toBe("Автополе 235 - 410");
   });
 });
 
