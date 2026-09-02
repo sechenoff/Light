@@ -144,5 +144,7 @@ describe("EXTRACT_PROMPT_REVIEW", () => {
   it("велит разбивать «прибор + насадка» на две позиции и держать «все» во фразе", () => {
     expect(EXTRACT_PROMPT_REVIEW).toMatch(/SEPARATE items/);
     expect(EXTRACT_PROMPT_REVIEW).toMatch(/all units in stock/);
+    expect(EXTRACT_PROMPT_REVIEW).toMatch(/one item per element/);
+    expect(EXTRACT_PROMPT_REVIEW).toMatch(/Skip lines that are not equipment requests/);
   });
 });

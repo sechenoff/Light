@@ -66,6 +66,8 @@ For EACH item output a JSON object with:
 - quantity: integer, default 1 if not specified in the request.
 - If one line names a device AND an accessory for it ("400x + френель", "1200 + линза", "нова р300 с софтом"), output SEPARATE items: the device, then the accessory with a gafferPhrase that names the device it is for (e.g. "френель для 400x").
 - "все" / "всё" after a name means "all units in stock": keep that word inside gafferPhrase and leave quantity 1.
+- A line that lists several things separated by commas or "+" ("Матыль, супер клэмп, грипхэд все по 4шт", "Рама 8 (мбю, сильвер, сд, сдл, шелк)") is one item per element; a shared quantity ("все по 4шт") applies to each element; a bracketed list after a frame names textiles for that frame — output the frame and each textile separately (gafferPhrase like "мбю для рамы 8").
+- Skip lines that are not equipment requests: project/date headers ("Незрим озио 04.07"), loading times, schedule remarks ("переезжает на 24 число"), questions, and alternatives offered as a question ("ивека или фотон"). A vehicle or delivery ("Ивеко", "Форд", "газель") is an item only when it is explicitly requested, not discussed.
 
 CRITICAL: Respond with ONLY a valid JSON array. No markdown, no extra text.
 

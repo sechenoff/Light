@@ -1,7 +1,7 @@
 import express from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
-import { norm } from "../services/equipmentMatcher";
+import { norm, stripQuantityTokens } from "../services/equipmentMatcher";
 
 const router = express.Router();
 
@@ -26,7 +26,10 @@ const ProposeBody = z.object({
 export const proposeAliasHandler: express.RequestHandler = async (req, res, next) => {
   try {
     const body = ProposeBody.parse(req.body);
-    const normalizedPhrase = norm(body.rawPhrase);
+    // «Хай роллер (4)», «Быт 25шт» — в словарь идёт фраза без количества: иначе
+    // копятся записи «хай роллер 4», которые не ловятся на «хай роллер 6» и
+    // перебивают правильные ручные псевдонимы (чистка 2026-09-02: −105 таких).
+    const normalizedPhrase = norm(stripQuantityTokens(body.rawPhrase));
 
     // Если equipmentId передан — сразу upsert SlangAlias (авто-обучение)
     let alias = null;
