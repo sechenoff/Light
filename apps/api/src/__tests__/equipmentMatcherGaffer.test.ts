@@ -45,6 +45,13 @@ beforeAll(async () => {
     ["Рельсы раскладные алюминевые 210х18см", "Периферия", 1],
     ["Дестрибьютор 32/380 - 3х32/220", "Электрика/Коммутация", 5],
     ["Дестрибьютор 63/380 - 2х32/380", "Электрика/Коммутация", 2],
+    // «Штатив …» — родовое слово: семь позиций с тем же первым словом — это не семья.
+    ["Штатив Manfrotto 1004BAC", "Штативы / Стойки", 3],
+    ["Штатив Kupo 40", "Штативы / Стойки", 3],
+    ["Штатив Kupo 20", "Штативы / Стойки", 3],
+    ["Штатив Super B250", "Штативы / Стойки", 3],
+    ["Штатив 5-ти метровый", "Штативы / Стойки", 1],
+    ["Штатив 6-Метровый", "Штативы / Стойки", 1],
   ] as const;
   const created: Record<string, string> = {};
   let sortOrder = 0;
@@ -65,6 +72,7 @@ beforeAll(async () => {
       { phraseNormalized: "трубный бум", phraseOriginal: "трубный бум", equipmentId: created["Трубный бум двойной D42"], source: "AUTO_LEARNED", usageCount: 6 },
       { phraseNormalized: "мбю", phraseOriginal: "мбю", equipmentId: created["Текстиль 8' х 8'  MattBounce/Ultrabounce"], source: "AUTO_LEARNED", usageCount: 3 },
       { phraseNormalized: "12 мбю", phraseOriginal: "12 мбю", equipmentId: created["Текстиль 12' х 12'  MattBounce/Ultrabounce"], source: "AUTO_LEARNED", usageCount: 2 },
+      { phraseNormalized: "штатив", phraseOriginal: "штатив", equipmentId: created["Штатив Manfrotto 1004BAC"], source: "AUTO_LEARNED", usageCount: 1 },
     ],
   });
 });
@@ -233,5 +241,13 @@ describe("matchGafferRequestOrdered — семейства позиций и у�
         ["Дестрибьютор 32/380 - 3х32/220", "Дестрибьютор 63/380 - 2х32/380"],
       );
     }
+  });
+});
+
+describe("matchGafferRequestOrdered — родовое слово не образует семью", () => {
+  it("«Штатив» при семи+ соседях по первому слову остаётся уверенным словарным выбором", async () => {
+    const [res] = await matchGafferRequestOrdered([{ name: "stand", quantity: 1, gafferPhrase: "Штатив" }]);
+    expect(res.kind).toBe("resolved");
+    if (res.kind === "resolved") expect(res.catalogName).toBe("Штатив Manfrotto 1004BAC");
   });
 });

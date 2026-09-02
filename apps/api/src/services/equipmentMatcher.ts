@@ -412,6 +412,8 @@ function scoreRow(query: string, row: CatalogRow): number {
 
 /** Псевдоним, подтверждённый столько раз, считаем домашней конвенцией и не переспрашиваем. */
 const TRUSTED_ALIAS_USAGE = 8;
+/** Больше соседей — уже не семья, а вся категория («штатив»): такой список ничего не подсказывает. */
+const MAX_FAMILY_SIBLINGS = 5;
 
 const wordTokens = (s: string): string[] => norm(s).split(" ").filter((t) => t && !/\d/.test(t));
 const digitTokens = (s: string): string[] => norm(s).split(" ").filter((t) => /\d/.test(t));
@@ -440,7 +442,7 @@ function familySiblings(target: CatalogRow, phraseNorm: string, pins: string[], 
     const tokens = norm(row.name).split(" ");
     if (pins.every((p) => tokens.some((t) => t.includes(p) || p.includes(t)))) out.push(row);
   }
-  return out;
+  return out.length > MAX_FAMILY_SIBLINGS ? [] : out;
 }
 
 /**
