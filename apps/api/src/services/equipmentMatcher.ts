@@ -253,7 +253,9 @@ function lookupAliases(dbAliases: DbAliasMap, keys: Array<string | null>): DbAli
     if (direct && direct.length > 0) return direct;
     const compact = key.replace(/ /g, "");
     if (compact !== key) {
-      const byCompact = dbAliases.get(COMPACT_ALIAS_PREFIX + compact);
+      // Псевдоним мог быть записан и слитно («хайроллер») — тогда он лежит под
+      // своим именем, а не под служебным ключом.
+      const byCompact = dbAliases.get(COMPACT_ALIAS_PREFIX + compact) ?? dbAliases.get(compact);
       if (byCompact && byCompact.length > 0) return byCompact;
     }
   }
@@ -473,11 +475,15 @@ function findTopCandidates(
   // («chinavise grip») или перевести на английский («metal clamp 160mm» для
   // «Прищепка металлическая большая, 160 мм…»). Скорим обе строки и берём
   // лучший счёт: так позиция из каталога не теряется из-за орфографии модели.
-  const rawPhrase = gafferPhrase && gafferCore && gafferCore !== q ? stripQuantityTokens(gafferPhrase) : null;
+  // Скорим и полную фразу, и без количества: «K5600 Joker-800» после усечения
+  // теряет «-800» и уравнялся бы с «Joker-400», а полная фраза даёт точное 1.0.
+  const rawVariants = Array.from(
+    new Set([gafferPhrase, gafferPhrase ? stripQuantityTokens(gafferPhrase) : null].filter((v): v is string => typeof v === "string" && v.length > 0 && norm(v) !== q)),
+  );
   const scored = catalog
     .map((row) => ({
       row,
-      score: Math.max(scoreRow(phrase, row), rawPhrase ? scoreRow(rawPhrase, row) : 0),
+      score: Math.max(scoreRow(phrase, row), ...rawVariants.map((v) => scoreRow(v, row))),
     }))
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
