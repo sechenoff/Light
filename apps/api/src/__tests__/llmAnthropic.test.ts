@@ -174,3 +174,35 @@ describe("AnthropicLlmProvider — документ заявки", () => {
     ).rejects.toThrow(/refusal/);
   });
 });
+
+describe("AnthropicLlmProvider — подбор каталога", () => {
+  beforeEach(() => {
+    parseMock.mockReset();
+    ctorMock.mockReset();
+  });
+
+  it("каталог уходит кэшируемым блоком, ответ нормализуется по входу", async () => {
+    parseMock.mockResolvedValue(reply({ parsed_output: { decisions: [{ line: 1, rows: [1, 99] }, { line: 2, rows: [2] }] } }));
+    const input = {
+      catalog: [
+        { row: 1, name: "Aputure Electric storm 52XT (Blair)", category: "COB Light" },
+        { row: 2, name: "Линза френеля Aputure CF16 для 52xt", category: "Насадки" },
+      ],
+      lines: [
+        { line: 1, gafferPhrase: "2 шт 52xt блэр", interpretedName: "52xt", quantity: 2, decide: true, candidateRows: [1, 2] },
+        { line: 2, gafferPhrase: "линза", interpretedName: "lens", quantity: 1, decide: false, matchedRow: 2 },
+      ],
+    };
+
+    const res = await new AnthropicLlmProvider("k").pickCatalogMatches(input);
+
+    expect(res).toEqual([{ line: 1, rows: [1] }]);
+    const params = lastParams();
+    expect(params.system).toContain("DECIDE");
+    const [catalogBlock, linesBlock] = params.messages[0].content;
+    expect(catalogBlock.cache_control).toEqual({ type: "ephemeral" });
+    expect(catalogBlock.text).toContain("1. [COB Light] Aputure Electric storm 52XT (Blair)");
+    expect(linesBlock.text).toContain("L1 DECIDE");
+    expect(params.output_config.format.schema.properties).toHaveProperty("decisions");
+  });
+});

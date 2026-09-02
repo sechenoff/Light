@@ -47,6 +47,12 @@ export interface LlmProvider {
    * цепочка fallback такие ноги пропускает.
    */
   extractGafferDocument?(doc: GafferDocumentInput): Promise<GafferDocumentExtraction>;
+  /**
+   * Подобрать позиции каталога для спорных строк заявки: модель видит весь
+   * каталог и соседние строки, поэтому различает «52xt» (прибор) и «линзу
+   * для 52xt», а «нова с софтом» разворачивает в две позиции.
+   */
+  pickCatalogMatches?(input: CatalogPickInput): Promise<CatalogPickDecision[]>;
 }
 
 /** System prompt for gaffer text extraction (shared across providers). */
@@ -203,4 +209,92 @@ export function normalizeDocumentExtraction(raw: unknown): GafferDocumentExtract
       endDate: normalizeIsoDate(d.endDate),
     },
   };
+}
+
+// ── AI-подбор позиций каталога для спорных строк ─────────────────────────────
+
+/** Строка каталога для модели: короткий номер вместо cuid — экономим токены. */
+export type CatalogPickRow = { row: number; name: string; category: string };
+
+/** Строка заявки: спорная (decide) или уже сопоставленная — для контекста. */
+export type CatalogPickLine = {
+  /** Номер строки заявки, с единицы, в исходном порядке. */
+  line: number;
+  gafferPhrase: string;
+  interpretedName: string;
+  quantity: number;
+  decide: boolean;
+  /** Что предложил матчер (номера строк каталога) — подсказка, не ответ. */
+  candidateRows?: number[];
+  /** Куда матчер уже уверенно сопоставил строку. */
+  matchedRow?: number;
+};
+
+export type CatalogPickInput = { catalog: CatalogPickRow[]; lines: CatalogPickLine[] };
+
+/** Решение модели по одной спорной строке: номера строк каталога (пусто — в каталоге нет). */
+export type CatalogPickDecision = { line: number; rows: number[] };
+
+export const PICK_CATALOG_PROMPT = `You match lines of a film-lighting rental request to the rental house's equipment catalog.
+
+Input: the full catalog as numbered rows, then the request lines in their original order. Lines marked "ok" are already matched — context only. For every line marked "DECIDE" choose the catalog rows the gaffer is asking for.
+
+Rules:
+- Return every catalog item the line explicitly asks for, in the order mentioned: "nova p300 with a softbox" = the light AND its softbox (two rows). Never add accessories the line does not mention.
+- A bare model code means the device itself, not an accessory made for it: "52xt" is the light, not "lens for 52xt".
+- Neighbouring lines are context: a lens or barndoor line right after a light belongs to that light.
+- Gaffer slang, transliteration and Cyrillic spellings are normal: "ц-стенд" = C-stand, "нова р300" = Nova P300, "блэр" = Blair, "апутура" = Aputure, "48х48" = 48"x48".
+- The matcher's candidates are hints, not the answer — the right row may be elsewhere in the catalog.
+- If nothing in the catalog is the requested item, return an empty rows list. Do not substitute a "similar" device — the manager decides that.
+- Return decisions ONLY for DECIDE lines, as JSON: { "decisions": [ { "line": <line number>, "rows": [<catalog row numbers>] } ] }
+`;
+
+/** Текстовое представление входа — общее для всех провайдеров. */
+export function renderCatalogPickInput(input: CatalogPickInput): { catalogText: string; linesText: string } {
+  const catalogText = input.catalog.map((r) => `${r.row}. [${r.category}] ${r.name}`).join("\n");
+  const linesText = input.lines
+    .map((l) => {
+      const head = `L${l.line} ${l.decide ? "DECIDE" : "ok"}: «${l.gafferPhrase}» (AI name: ${l.interpretedName}, qty ${l.quantity})`;
+      if (!l.decide) return l.matchedRow ? `${head} → row ${l.matchedRow}` : head;
+      return l.candidateRows && l.candidateRows.length > 0
+        ? `${head}; matcher candidates: rows ${l.candidateRows.join(", ")}`
+        : `${head}; matcher found nothing`;
+    })
+    .join("\n");
+  return { catalogText, linesText };
+}
+
+/**
+ * Сырой JSON решения → проверенные решения: только спорные строки, только
+ * существующие номера каталога, без дублей, не больше трёх позиций на строку.
+ */
+export function normalizePickDecisions(raw: unknown, input: CatalogPickInput): CatalogPickDecision[] {
+  const arr = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === "object" && Array.isArray((raw as { decisions?: unknown }).decisions)
+      ? ((raw as { decisions: unknown[] }).decisions)
+      : [];
+  const decidable = new Set(input.lines.filter((l) => l.decide).map((l) => l.line));
+  const maxRow = input.catalog.length;
+  const toInt = (v: unknown): number | null => {
+    const n = typeof v === "number" ? v : Number(String(v).trim());
+    return Number.isInteger(n) ? n : null;
+  };
+  const out: CatalogPickDecision[] = [];
+  const seenLines = new Set<number>();
+  for (const item of arr) {
+    if (!item || typeof item !== "object") continue;
+    const line = toInt((item as { line?: unknown }).line);
+    if (line === null || !decidable.has(line) || seenLines.has(line)) continue;
+    const rawRows = (item as { rows?: unknown }).rows;
+    const rows: number[] = [];
+    for (const r of Array.isArray(rawRows) ? rawRows : []) {
+      const n = toInt(r);
+      if (n !== null && n >= 1 && n <= maxRow && !rows.includes(n)) rows.push(n);
+      if (rows.length >= 3) break;
+    }
+    seenLines.add(line);
+    out.push({ line, rows });
+  }
+  return out;
 }

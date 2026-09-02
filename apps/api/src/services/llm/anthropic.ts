@@ -9,8 +9,13 @@ import {
   type GafferDocumentExtraction,
   EXTRACT_PROMPT_REVIEW,
   EXTRACT_DOCUMENT_PROMPT,
+  PICK_CATALOG_PROMPT,
   normalizeRawLines,
   normalizeDocumentExtraction,
+  renderCatalogPickInput,
+  normalizePickDecisions,
+  type CatalogPickInput,
+  type CatalogPickDecision,
 } from "./provider";
 
 export const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5";
@@ -54,6 +59,10 @@ const DocumentOutput = z.object({
   startDate: z.string().nullable(),
   endDate: z.string().nullable(),
   items: LinesOutput.shape.items,
+});
+
+const PickOutput = z.object({
+  decisions: z.array(z.object({ line: z.number().int(), rows: z.array(z.number().int()) })),
 });
 
 const LINES_SUFFIX = '\n\nВерни объект с единственным ключом "items" — массивом позиций.';
@@ -153,5 +162,27 @@ export class AnthropicLlmProvider implements LlmProvider {
       output_config: { effort: this.effort, format: zodOutputFormat(DocumentOutput) },
     });
     return normalizeDocumentExtraction(extractPayload(message));
+  }
+
+  async pickCatalogMatches(input: CatalogPickInput): Promise<CatalogPickDecision[]> {
+    const { catalogText, linesText } = renderCatalogPickInput(input);
+    const message = await this.client.messages.parse({
+      model: this.model,
+      max_tokens: 4096,
+      system: PICK_CATALOG_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: [
+            // Каталог — самый большой и самый стабильный кусок запроса: кэшируем,
+            // чтобы повторные подборы в течение нескольких минут шли по цене чтения кэша.
+            { type: "text", text: `Catalog:\n${catalogText}`, cache_control: { type: "ephemeral" } },
+            { type: "text", text: `Request lines:\n${linesText}` },
+          ],
+        },
+      ],
+      output_config: { effort: this.effort, format: zodOutputFormat(PickOutput) },
+    });
+    return normalizePickDecisions(extractPayload(message), input);
   }
 }

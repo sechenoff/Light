@@ -1,4 +1,11 @@
-import type { LlmProvider, GafferExtractedLine, GafferDocumentInput, GafferDocumentExtraction } from "./provider";
+import type {
+  LlmProvider,
+  GafferExtractedLine,
+  GafferDocumentInput,
+  GafferDocumentExtraction,
+  CatalogPickInput,
+  CatalogPickDecision,
+} from "./provider";
 
 export type NamedProvider = {
   /** Short label for logs, e.g. "anthropic" / "gemini". */
@@ -72,6 +79,19 @@ export class FallbackLlmProvider implements LlmProvider {
       capable,
       (p) => (p.extractGafferDocument as NonNullable<LlmProvider["extractGafferDocument"]>).call(p, doc),
       (r) => r.lines.length === 0,
+    );
+  }
+
+  /** Подбор по каталогу — тоже только ноги, которые это умеют; пустой список решений — легитимный ответ. */
+  async pickCatalogMatches(input: CatalogPickInput): Promise<CatalogPickDecision[]> {
+    const capable = this.legs.filter((l) => typeof l.provider.pickCatalogMatches === "function");
+    if (capable.length === 0) {
+      throw new Error("Ни один провайдер в LLM_FALLBACK_CHAIN не умеет подбирать позиции каталога");
+    }
+    return this.run(
+      capable,
+      (p) => (p.pickCatalogMatches as NonNullable<LlmProvider["pickCatalogMatches"]>).call(p, input),
+      () => false,
     );
   }
 

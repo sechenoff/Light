@@ -23,7 +23,9 @@ process.env.VISION_PROVIDER = "mock";
 
 const llm = vi.hoisted(() => ({
   extractGafferDocument: vi.fn(),
+  pickCatalogMatches: vi.fn(),
   hasVision: true,
+  hasPick: false,
 }));
 
 vi.mock("../services/llm", async (importOriginal) => {
@@ -32,7 +34,11 @@ vi.mock("../services/llm", async (importOriginal) => {
     ...orig,
     getLlmProvider: () =>
       llm.hasVision
-        ? { extractGafferLines: vi.fn(), extractGafferDocument: llm.extractGafferDocument }
+        ? {
+            extractGafferLines: vi.fn(),
+            extractGafferDocument: llm.extractGafferDocument,
+            ...(llm.hasPick ? { pickCatalogMatches: llm.pickCatalogMatches } : {}),
+          }
         : { extractGafferLines: vi.fn() },
   };
 });
@@ -108,7 +114,9 @@ afterAll(async () => {
 
 beforeEach(() => {
   llm.extractGafferDocument.mockReset();
+  llm.pickCatalogMatches.mockReset();
   llm.hasVision = true;
+  llm.hasPick = false;
 });
 
 function post() {
@@ -265,4 +273,40 @@ describe("POST /api/bookings/parse-gaffer-document — лимит размера
     }
     expect(llm.extractGafferDocument).not.toHaveBeenCalled();
   }, 30_000);
+});
+
+describe("POST /api/bookings/parse-gaffer-document — AI-подбор спорных строк", () => {
+  const LINES = [
+    { gafferPhrase: "Aputure STORM 700x", interpretedName: "aputure storm 700x", quantity: 1 },
+    { gafferPhrase: "Хейзер 1800W Мощный", interpretedName: "hazer 1800w", quantity: 2 },
+  ];
+
+  it("сбой подбора не ломает ответ — остаётся результат матчера", async () => {
+    llm.hasPick = true;
+    llm.extractGafferDocument.mockResolvedValue({ lines: LINES, meta: META });
+    llm.pickCatalogMatches.mockRejectedValue(new Error("529 overloaded"));
+
+    const res = await post().attach("file", PDF, { filename: "z.pdf", contentType: "application/pdf" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.items[1].match.kind).toBe("unmatched");
+    expect(llm.pickCatalogMatches).toHaveBeenCalledTimes(1);
+  });
+
+  it("решение модели превращает ненайденную строку в resolved с уверенностью 0.95", async () => {
+    llm.hasPick = true;
+    llm.extractGafferDocument.mockResolvedValue({ lines: LINES, meta: META });
+    llm.pickCatalogMatches.mockImplementation(async (input: { catalog: Array<{ row: number; name: string }>; lines: Array<{ line: number; decide: boolean }> }) => {
+      const storm = input.catalog.find((r) => r.name === "Aputure STORM 700x")!;
+      const disputed = input.lines.filter((l) => l.decide).map((l) => l.line);
+      return disputed.map((line) => ({ line, rows: [storm.row] }));
+    });
+
+    const res = await post().attach("file", PDF, { filename: "z.pdf", contentType: "application/pdf" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.items[1].match).toMatchObject({ kind: "resolved", catalogName: "Aputure STORM 700x", confidence: 0.95 });
+    expect(res.body.items[1].quantity).toBe(2);
+  });
 });

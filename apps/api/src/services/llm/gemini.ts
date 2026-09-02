@@ -6,8 +6,13 @@ import {
   type GafferDocumentExtraction,
   EXTRACT_PROMPT_REVIEW,
   EXTRACT_DOCUMENT_PROMPT,
+  PICK_CATALOG_PROMPT,
   normalizeRawLines,
   normalizeDocumentExtraction,
+  renderCatalogPickInput,
+  normalizePickDecisions,
+  type CatalogPickInput,
+  type CatalogPickDecision,
 } from "./provider";
 
 function readGeminiText(result: {
@@ -142,5 +147,18 @@ export class GeminiLlmProvider implements LlmProvider {
       throw new Error(`Gemini ответила не JSON: ${raw.slice(0, 120)}`);
     }
     return normalizeDocumentExtraction(parsed);
+  }
+
+  async pickCatalogMatches(input: CatalogPickInput): Promise<CatalogPickDecision[]> {
+    const { catalogText, linesText } = renderCatalogPickInput(input);
+    const raw = await this.generate(
+      [`${PICK_CATALOG_PROMPT}\nCatalog:\n${catalogText}\n\nRequest lines:\n${linesText}`],
+      4096,
+    );
+    const parsed = parseLooseJson(raw);
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error(`Gemini ответила не JSON: ${raw.slice(0, 120)}`);
+    }
+    return normalizePickDecisions(parsed, input);
   }
 }
