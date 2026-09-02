@@ -222,17 +222,61 @@ export function norm(s: string): string {
  * Строит карту DB-псевдонимов: phraseNormalized → [{equipmentId, usageCount}],
  * отсортированных по usageCount убыванию.
  */
+const COMPACT_ALIAS_PREFIX = "~";
+
+/**
+ * Убирает из фразы гаффера обозначения количества: «Быт 25шт», «Хай роллер (4)»,
+ * «Мотыль-6», «Капа — 12 шт.», «x2». Количество парсер уже вынес в отдельное поле,
+ * а в словаре псевдонимы лежат без него — «быт» есть, «быт 25шт» нет.
+ * Голое число в начале («12 мбю» — это размер 12×12, «4 систенда» — количество)
+ * не трогаем: без контекста их не различить, а псевдонимы с числом ищутся по
+ * полной фразе раньше усечённой.
+ */
+export function stripQuantityTokens(s: string): string {
+  return s
+    .replace(/\(\s*\d+\s*(?:шт\.?|штук|pcs)?\s*\)/gi, " ")
+    .replace(/[-—–]\s*\d+\s*(?:шт\.?|штук|pcs)?\s*\.?\s*$/i, " ")
+    .replace(/(?<![\d,.])\b\d+\s*(?:шт\.?|штук|pcs)(?![a-zа-яё])\.?/gi, " ")
+    .replace(/\s[x×]\s*\d+\s*$/i, " ")
+    .replace(/^\s*\d+\s*[x×]\s+/i, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Ищет псевдонимы по списку ключей: сначала как есть, потом без пробелов. */
+function lookupAliases(dbAliases: DbAliasMap, keys: Array<string | null>): DbAliasEntry[] | undefined {
+  const tried = new Set<string>();
+  for (const key of keys) {
+    if (!key || tried.has(key)) continue;
+    tried.add(key);
+    const direct = dbAliases.get(key);
+    if (direct && direct.length > 0) return direct;
+    const compact = key.replace(/ /g, "");
+    if (compact !== key) {
+      const byCompact = dbAliases.get(COMPACT_ALIAS_PREFIX + compact);
+      if (byCompact && byCompact.length > 0) return byCompact;
+    }
+  }
+  return undefined;
+}
+
 function buildDbAliasMap(
   rows: { phraseNormalized: string; equipmentId: string; usageCount: number }[],
 ): DbAliasMap {
   const map: DbAliasMap = new Map();
+  const add = (key: string, entry: DbAliasEntry) => {
+    const existing = map.get(key);
+    if (existing) existing.push(entry);
+    else map.set(key, [entry]);
+  };
   for (const row of rows) {
-    const existing = map.get(row.phraseNormalized);
-    if (existing) {
-      existing.push({ equipmentId: row.equipmentId, usageCount: row.usageCount });
-    } else {
-      map.set(row.phraseNormalized, [{ equipmentId: row.equipmentId, usageCount: row.usageCount }]);
-    }
+    const entry = { equipmentId: row.equipmentId, usageCount: row.usageCount };
+    add(row.phraseNormalized, entry);
+    // Тот же псевдоним без пробелов под служебным префиксом: «хай роллер» и
+    // «хайроллер» — одно слово в разных написаниях. norm() тильду не пропускает,
+    // поэтому с настоящими фразами такой ключ не пересечётся.
+    const compact = row.phraseNormalized.replace(/ /g, "");
+    if (compact !== row.phraseNormalized) add(COMPACT_ALIAS_PREFIX + compact, entry);
   }
   // Сортируем каждый массив по usageCount убыванию
   for (const entries of map.values()) {
@@ -380,7 +424,9 @@ function findTopCandidates(
 
   // 1. Check DB SlangAlias first — try original gaffer phrase, then AI-interpreted name
   const gafferQ = gafferPhrase ? norm(gafferPhrase) : null;
-  const aliasEntries = (gafferQ && gafferQ !== q ? dbAliases.get(gafferQ) : null) ?? dbAliases.get(q);
+  const gafferCore = gafferPhrase ? norm(stripQuantityTokens(gafferPhrase)) : null;
+  // Порядок важен: полная фраза гаффера («12 мбю» — размер) раньше усечённой.
+  const aliasEntries = lookupAliases(dbAliases, [gafferQ, gafferCore, q, norm(stripQuantityTokens(phrase))]);
   if (aliasEntries && aliasEntries.length > 0) {
     if (aliasEntries.length === 1) {
       // Один однозначный псевдоним → resolved
@@ -427,7 +473,7 @@ function findTopCandidates(
   // («chinavise grip») или перевести на английский («metal clamp 160mm» для
   // «Прищепка металлическая большая, 160 мм…»). Скорим обе строки и берём
   // лучший счёт: так позиция из каталога не теряется из-за орфографии модели.
-  const rawPhrase = gafferPhrase && gafferQ !== q ? gafferPhrase : null;
+  const rawPhrase = gafferPhrase && gafferCore && gafferCore !== q ? stripQuantityTokens(gafferPhrase) : null;
   const scored = catalog
     .map((row) => ({
       row,
