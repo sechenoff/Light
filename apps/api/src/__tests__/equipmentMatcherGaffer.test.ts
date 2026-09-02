@@ -75,6 +75,13 @@ describe("matchGafferRequestOrdered — исходная фраза гаффер
     if (res.kind === "resolved") expect(res.catalogName).toBe("Aputure STORM 700x");
   });
 
+  it("фраза без букв и цифр («—») не даёт ложного совпадения на 0.9", async () => {
+    const [res] = await matchGafferRequestOrdered([
+      { name: "неизвестный прибор xyz", quantity: 1, gafferPhrase: "—" },
+    ]);
+    expect(res.kind).toBe("unmatched");
+  });
+
   it("чего нет в каталоге — честный unmatched, порядок результата совпадает с входом", async () => {
     const res = await matchGafferRequestOrdered([
       { name: "green ball", quantity: 10, gafferPhrase: "Green Ball" },

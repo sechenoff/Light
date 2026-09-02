@@ -336,6 +336,10 @@ function scoreRow(query: string, row: CatalogRow): number {
   const q = norm(query);
   const n = norm(row.name);
 
+  // Пустая после нормализации строка («—», эмодзи) — не запрос: иначе
+  // `n.includes("")` ставит 0.9 первой же строке каталога.
+  if (!q || !n) return 0;
+
   if (q === n) return 1.0;
 
   const qInN = n.includes(q);
