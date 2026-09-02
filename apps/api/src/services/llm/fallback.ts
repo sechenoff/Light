@@ -1,7 +1,7 @@
-import type { LlmProvider, GafferExtractedLine } from "./provider";
+import type { LlmProvider, GafferExtractedLine, GafferDocumentInput, GafferDocumentExtraction } from "./provider";
 
 export type NamedProvider = {
-  /** Short label for logs, e.g. "chatmock" / "openai". */
+  /** Short label for logs, e.g. "anthropic" / "gemini". */
   name: string;
   provider: LlmProvider;
 };
@@ -23,19 +23,17 @@ const defaultLog: LogFn = (message, error) => {
  * Wraps an ordered list of LLM providers and tries each in turn.
  *
  * A provider is considered "failed for this request" when it throws OR
- * returns an empty array (empty = it could not recognise anything, so the
- * next, more reliable provider should get a chance). The LAST provider's
- * result is always returned as-is — an empty array from the final leg is a
- * legitimate "no equipment in this text" answer, not an error.
+ * returns an empty result (empty = it could not recognise anything, so the
+ * next provider should get a chance). The LAST provider's result is always
+ * returned as-is — an empty array from the final leg is a legitimate
+ * "no equipment in this text" answer, not an error.
  *
- * Primary use: ChatMock (free, ChatGPT Plus session, but rate-limited with
- * HTTP 429 "usage limit reached") as leg 1, direct api.openai.com (billed,
- * reliable) as leg 2. When ChatMock hits its Plus cap, recognition
- * transparently continues via the paid API instead of failing with 503.
+ * Боевая цепочка — anthropic → gemini (см. getLlmProvider): Claude отдаёт
+ * позиции structured output'ом, Gemini подхватывает при 429/5xx/отказе.
  *
  * Latency budget: each leg's own internal retry/back-off runs before this
- * wrapper sees a failure. Construct the primary leg with maxRetries=1 (see
- * getLlmProvider) so a sustained ChatMock 429 hands off in ~1 round-trip
+ * wrapper sees a failure. Construct non-final legs with fewer internal
+ * retries (see buildLlmLeg) so a sustained outage hands off in ~1 round-trip
  * rather than stalling on exponential back-off.
  */
 export class FallbackLlmProvider implements LlmProvider {
@@ -50,16 +48,47 @@ export class FallbackLlmProvider implements LlmProvider {
     this.log = log;
   }
 
-  async extractGafferLines(text: string): Promise<GafferExtractedLine[]> {
+  /** Имена ног по порядку — для логов при старте и для тестов конфигурации. */
+  get legNames(): string[] {
+    return this.legs.map((l) => l.name);
+  }
+
+  extractGafferLines(text: string): Promise<GafferExtractedLine[]> {
+    return this.run(this.legs, (p) => p.extractGafferLines(text), (r) => r.length === 0);
+  }
+
+  /**
+   * Документы читают только ноги со зрением; остальные пропускаем молча —
+   * это конфигурация, а не сбой. Ни одной такой ноги — ошибка конфигурации.
+   */
+  async extractGafferDocument(doc: GafferDocumentInput): Promise<GafferDocumentExtraction> {
+    const capable = this.legs.filter((l) => typeof l.provider.extractGafferDocument === "function");
+    if (capable.length === 0) {
+      throw new Error(
+        "Ни один провайдер в LLM_FALLBACK_CHAIN не умеет читать документы — нужна нога anthropic или gemini",
+      );
+    }
+    return this.run(
+      capable,
+      (p) => (p.extractGafferDocument as NonNullable<LlmProvider["extractGafferDocument"]>).call(p, doc),
+      (r) => r.lines.length === 0,
+    );
+  }
+
+  private async run<T>(
+    legs: NamedProvider[],
+    call: (provider: LlmProvider) => Promise<T>,
+    isEmpty: (result: T) => boolean,
+  ): Promise<T> {
     let lastError: unknown;
 
-    for (let i = 0; i < this.legs.length; i++) {
-      const leg = this.legs[i];
-      const isLast = i === this.legs.length - 1;
+    for (let i = 0; i < legs.length; i++) {
+      const leg = legs[i];
+      const isLast = i === legs.length - 1;
 
       try {
-        const result = await leg.provider.extractGafferLines(text);
-        if (result.length > 0 || isLast) {
+        const result = await call(leg.provider);
+        if (!isEmpty(result) || isLast) {
           if (i > 0) {
             this.log(`provider "${leg.name}" succeeded after ${i} fallback(s)`);
           }

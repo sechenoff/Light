@@ -6,12 +6,47 @@ export type GafferExtractedLine = {
   quantity: number;
 };
 
+/** MIME-типы документов заявки, которые умеем читать (PDF и фото/скан). */
+export const GAFFER_DOCUMENT_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"] as const;
+export type GafferDocumentMimeType = (typeof GAFFER_DOCUMENT_MIME_TYPES)[number];
+
+/** Документ заявки, который прислал гаффер: PDF из его программы или фото листка. */
+export type GafferDocumentInput = {
+  data: Buffer;
+  mimeType: GafferDocumentMimeType;
+  /** Только для логов и подсказки модели. */
+  fileName?: string;
+};
+
+/** Что удалось вычитать из документа помимо позиций. `null` — в документе этого нет. */
+export type GafferDocumentMeta = {
+  projectName: string | null;
+  gafferName: string | null;
+  phone: string | null;
+  email: string | null;
+  telegram: string | null;
+  /** Даты съёмки в формате YYYY-MM-DD. */
+  startDate: string | null;
+  endDate: string | null;
+};
+
+export type GafferDocumentExtraction = {
+  lines: GafferExtractedLine[];
+  meta: GafferDocumentMeta;
+};
+
 export interface LlmProvider {
   /**
    * Extract equipment lines from gaffer's free-form Russian text.
    * Should handle retries and JSON parsing quirks internally.
    */
   extractGafferLines(text: string): Promise<GafferExtractedLine[]>;
+  /**
+   * Прочитать заявку-документ (PDF/фото): позиции + шапка (проект, контакты, даты).
+   * Не у каждого провайдера есть зрение — у таких метод отсутствует, и
+   * цепочка fallback такие ноги пропускает.
+   */
+  extractGafferDocument?(doc: GafferDocumentInput): Promise<GafferDocumentExtraction>;
 }
 
 /** System prompt for gaffer text extraction (shared across providers). */
@@ -36,6 +71,30 @@ Example:
 If no equipment items can be identified, return an empty array: []
 
 Gaffer request:
+`;
+
+/**
+ * Промпт для заявки-документа (PDF/фото). Общий для провайдеров со зрением:
+ * у Claude форму ответа дополнительно держит structured output, у Gemini —
+ * JSON-режим плюс описание формы в самом промпте.
+ */
+export const EXTRACT_DOCUMENT_PROMPT = `You are reading an equipment request that a gaffer sent to a film lighting rental house. The input is a PDF or a photo/scan of that request.
+
+Typical layout: a header with the gaffer's name and contacts (phone, email, Telegram, Instagram), a project title, a date or a date range, then a table of equipment lines with a quantity column ("Кол-во"), often grouped under section headings such as СВЕТ / ГРИП / ПРОЧЕЕ. Layouts vary — use judgement.
+
+Extract:
+- projectName: the production/project title only — without the rental house name, dates or separators. null if absent.
+- gafferName, phone, email, telegram: contacts of the person who sent the request. Keep the phone digits as written. null when absent.
+- startDate / endDate: shooting dates as YYYY-MM-DD. A range fills both; a single date fills startDate and leaves endDate null. A date printed next to the project title counts as the shooting start date. null when there is no date at all.
+- items: EVERY equipment line in document order. For each line:
+  - gafferPhrase: the line text exactly as written in the document;
+  - interpretedName: a short normalized equipment name for inventory matching (Latin/brand/model style when obvious, e.g. "aputure 1200x pro", "c-stand"). Do NOT put quantity here;
+  - quantity: integer from the quantity column; 1 if missing.
+
+Skip section headings, page headers/footers, logos, totals and empty rows. Do not merge or split lines. Do not invent items that are not in the document.
+
+Respond with ONLY a JSON object of this shape, no markdown:
+{ "projectName": string|null, "gafferName": string|null, "phone": string|null, "email": string|null, "telegram": string|null, "startDate": string|null, "endDate": string|null, "items": [ { "gafferPhrase": string, "interpretedName": string, "quantity": integer } ] }
 `;
 
 /** Coerce "2", 2, "2шт", null → integer; default 1 */
@@ -77,4 +136,71 @@ export function normalizeRawLines(raw: unknown): GafferExtractedLine[] {
     out.push({ gafferPhrase: gaffer, interpretedName: interpreted, quantity: data.quantity });
   }
   return out;
+}
+
+/** Пустая шапка — когда модель ничего не нашла или ответила не по форме. */
+export const EMPTY_DOCUMENT_META: GafferDocumentMeta = {
+  projectName: null,
+  gafferName: null,
+  phone: null,
+  email: null,
+  telegram: null,
+  startDate: null,
+  endDate: null,
+};
+
+/**
+ * Дату из документа приводим к YYYY-MM-DD. Модель просят отдавать ISO, но в
+ * заявках даты пишут «02.09.2026», и модели порой копируют как есть.
+ */
+export function normalizeIsoDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const s = value.trim();
+  let y: number, m: number, d: number;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  const ru = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/.exec(s);
+  if (iso) [y, m, d] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+  else if (ru) [y, m, d] = [Number(ru[3]), Number(ru[2]), Number(ru[1])];
+  else return null;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+const nullableText = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() ? v.trim() : null),
+  z.string().nullable(),
+);
+
+const rawDocumentSchema = z.object({
+  projectName: nullableText.optional(),
+  gafferName: nullableText.optional(),
+  phone: nullableText.optional(),
+  email: nullableText.optional(),
+  telegram: nullableText.optional(),
+  startDate: z.unknown().optional(),
+  endDate: z.unknown().optional(),
+});
+
+/**
+ * Сырой JSON ответа по документу → строго типизированный результат.
+ * Позиции идут через тот же normalizeRawLines, что и текстовая заявка;
+ * незнакомая форма ответа даёт пустой список и пустую шапку, а не исключение.
+ */
+export function normalizeDocumentExtraction(raw: unknown): GafferDocumentExtraction {
+  const lines = normalizeRawLines(raw);
+  const parsed = rawDocumentSchema.safeParse(raw);
+  if (!parsed.success) return { lines, meta: { ...EMPTY_DOCUMENT_META } };
+  const d = parsed.data;
+  return {
+    lines,
+    meta: {
+      projectName: d.projectName ?? null,
+      gafferName: d.gafferName ?? null,
+      phone: d.phone ?? null,
+      email: d.email ?? null,
+      telegram: d.telegram ?? null,
+      startDate: normalizeIsoDate(d.startDate),
+      endDate: normalizeIsoDate(d.endDate),
+    },
+  };
 }
