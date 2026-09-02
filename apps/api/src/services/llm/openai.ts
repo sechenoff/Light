@@ -184,6 +184,7 @@ export class OpenAiLlmProvider implements LlmProvider {
       max_completion_tokens: 16000,
     });
 
+    if (!content) throw new Error("Пустой ответ OpenAI на документ");
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
