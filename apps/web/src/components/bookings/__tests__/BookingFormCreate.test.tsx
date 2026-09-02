@@ -299,3 +299,133 @@ describe("BookingForm create — шаги и inline-валидация (4.8)", (
     });
   });
 });
+
+// ─── Импорт заявки документом (PDF/фото) ─────────────────────────────────────
+
+const DOC_IMPORT_RESPONSE = {
+  items: [
+    {
+      id: "rev-1",
+      gafferPhrase: "Aputure STORM 700x",
+      interpretedName: "aputure storm 700x",
+      quantity: 1,
+      match: {
+        kind: "needsReview",
+        candidates: [
+          {
+            equipmentId: "eq-1",
+            catalogName: "Arri SkyPanel S60",
+            category: "Свет",
+            availableQuantity: 5,
+            rentalRatePerShift: "5000",
+            confidence: 0.7,
+          },
+        ],
+      },
+    },
+  ],
+  document: {
+    projectName: "Яндекс Книги",
+    gafferName: "Белых Геннадий",
+    phone: "+7 981 790-34-51",
+    email: null,
+    telegram: "Belyhph",
+    startDate: "2026-09-02",
+    endDate: "2026-09-04",
+    fileName: "заявка.pdf",
+  },
+  client: { id: "c1", name: "Гена Белых", phone: "+7 981 790-34-51", matchedBy: "phone" },
+};
+
+/** Перехватываем только импорт документа, остальное — общий мок выше. */
+function mockDocumentImport(response: unknown, clients: unknown[] = []) {
+  const prev = global.fetch;
+  global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes("/api/bookings/parse-gaffer-document")) {
+      fetchCalls.push({ url, init });
+      return jsonResponse(response);
+    }
+    // Автокомплит проверяет подставленное имя по базе — отдаём ему клиента.
+    if (url.includes("/api/clients")) return jsonResponse({ clients });
+    return prev(input, init);
+  }) as unknown as typeof fetch;
+}
+
+async function importDocument() {
+  fireEvent.click(screen.getByRole("button", { name: /заявка от гафера/i }));
+  const input = await screen.findByLabelText(/загрузить заявку файлом/i);
+  const file = new File(["%PDF-1.4"], "заявка.pdf", { type: "application/pdf" });
+  fireEvent.change(input, { target: { files: [file] } });
+  await waitFor(() => {
+    expect(screen.getByText(/Распознано — подтвердите позиции/)).toBeInTheDocument();
+  });
+}
+
+describe("BookingForm create — импорт заявки документом", () => {
+  it("файл уходит multipart'ом; клиент, проект и даты подставляются из документа, позиции — на подтверждение", async () => {
+    searchParams.set("start", "2026-07-10T10:00");
+    searchParams.set("end", "2026-07-11T10:00");
+    mockDocumentImport(DOC_IMPORT_RESPONSE, [{ id: "c1", name: "Гена Белых", phone: "+7 981 790-34-51" }]);
+    render(<BookingForm mode="create" />);
+    await waitFor(() => expect(availabilityCalls().length).toBeGreaterThan(0));
+
+    await importDocument();
+
+    const call = fetchCalls.find((c) => c.url.includes("/api/bookings/parse-gaffer-document"));
+    expect(call?.init?.method).toBe("POST");
+    expect(call?.init?.body).toBeInstanceOf(FormData);
+    expect((call?.init?.body as FormData).get("file")).toBeInstanceOf(File);
+    // Content-Type для multipart выставляет браузер — руками его задавать нельзя
+    expect(new Headers(call?.init?.headers).get("Content-Type")).toBeNull();
+
+    expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("Гена Белых");
+    expect(screen.getByDisplayValue("Яндекс Книги")).toBeInTheDocument();
+    const dates = document.querySelectorAll('input[type="date"]');
+    expect((dates[0] as HTMLInputElement).value).toBe("2026-09-02");
+    expect((dates[1] as HTMLInputElement).value).toBe("2026-09-04");
+    // Клиент найден в базе — автокомплит сверяет имя с сервером, и поле
+    // телефона «нового клиента» не остаётся на экране.
+    await waitFor(() => {
+      expect(screen.queryByPlaceholderText("+7 916 123-45-67")).toBeNull();
+    });
+  });
+
+  it("клиента в базе нет — подставляются имя и телефон гаффера как новый клиент; одна дата → возврат +24 ч", async () => {
+    searchParams.set("start", "2026-07-10T10:00");
+    searchParams.set("end", "2026-07-11T10:00");
+    mockDocumentImport({
+      ...DOC_IMPORT_RESPONSE,
+      document: { ...DOC_IMPORT_RESPONSE.document, endDate: null },
+      client: null,
+    });
+    render(<BookingForm mode="create" />);
+    await waitFor(() => expect(availabilityCalls().length).toBeGreaterThan(0));
+
+    await importDocument();
+
+    expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("Белых Геннадий");
+    expect((await screen.findByPlaceholderText("+7 916 123-45-67") as HTMLInputElement).value).toBe("+7 981 790-34-51");
+    const dates = document.querySelectorAll('input[type="date"]');
+    expect((dates[0] as HTMLInputElement).value).toBe("2026-09-02");
+    expect((dates[1] as HTMLInputElement).value).toBe("2026-09-03");
+  });
+
+  it("пустые поля документа не перетирают то, что уже введено", async () => {
+    seedDraft({ clientName: "Студия Тест", projectName: "Клип" });
+    mockDocumentImport({
+      ...DOC_IMPORT_RESPONSE,
+      document: { ...DOC_IMPORT_RESPONSE.document, projectName: null, gafferName: null, phone: null, startDate: null, endDate: null },
+      client: null,
+    });
+    render(<BookingForm mode="create" />);
+    await waitFor(() => expect(availabilityCalls().length).toBeGreaterThan(0));
+
+    await importDocument();
+
+    expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("Студия Тест");
+    expect(screen.getByDisplayValue("Клип")).toBeInTheDocument();
+    const dates = document.querySelectorAll('input[type="date"]');
+    expect((dates[0] as HTMLInputElement).value).toBe("2026-07-10");
+  });
+});

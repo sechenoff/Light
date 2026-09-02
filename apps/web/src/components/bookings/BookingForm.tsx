@@ -1127,6 +1127,9 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
     const doc = res.document;
     const filled: string[] = [];
 
+    // В режиме правки шапку брони (клиент, проект, даты) документ не трогает:
+    // импорт здесь нужен ради позиций, а сроки уже могут держать склад и
+    // транспорт — менять их «по PDF» без явного подтверждения нельзя.
     if (!isEdit) {
       if (res.client) {
         setClientName(res.client.name);
@@ -1138,28 +1141,27 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         setIsNewClient(true);
         filled.push(`новый клиент «${doc.gafferName}»`);
       }
-    }
-    if (doc.projectName) {
-      setProjectName(doc.projectName);
-      filled.push(`проект «${doc.projectName}»`);
-    }
-    if (doc.startDate) {
-      handlePickupChange(`${doc.startDate}T${IMPORT_DEFAULT_TIME}`);
-      if (doc.endDate && doc.endDate > doc.startDate) {
-        handleReturnChange(`${doc.endDate}T${IMPORT_DEFAULT_TIME}`);
+      if (doc.projectName) {
+        setProjectName(doc.projectName);
+        filled.push(`проект «${doc.projectName}»`);
       }
-      filled.push("даты съёмки");
+      if (doc.startDate) {
+        handlePickupChange(`${doc.startDate}T${IMPORT_DEFAULT_TIME}`);
+        const hasEnd = Boolean(doc.endDate && doc.endDate > doc.startDate);
+        if (hasEnd) handleReturnChange(`${doc.endDate}T${IMPORT_DEFAULT_TIME}`);
+        filled.push(hasEnd ? "даты съёмки" : "дата съёмки");
+      }
     }
 
     showReviewItems(res.items);
 
+    const filledNote = filled.length > 0 ? ` · подставлены ${filled.join(", ")} — проверьте` : "";
     const n = res.items.length;
     if (n === 0) {
-      toast.info(res.message ?? "AI не нашёл позиций оборудования в документе");
+      toast.info(`${res.message ?? "AI не нашёл позиций оборудования в документе"}${filledNote}`);
+      return;
     }
-    const summary =
-      n > 0 ? `Из заявки прочитано ${n} ${pluralize(n, "позиция", "позиции", "позиций")}` : "Заявка прочитана";
-    toast.success(filled.length > 0 ? `${summary} · подставлены ${filled.join(", ")} — проверьте` : summary);
+    toast.success(`Из заявки прочитано ${n} ${pluralize(n, "позиция", "позиции", "позиций")}${filledNote}`);
   }
 
   function handleClear() {

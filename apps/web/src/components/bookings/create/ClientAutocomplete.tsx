@@ -60,6 +60,9 @@ export function ClientAutocomplete({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Последнее значение, которое ввёл или выбрал сам пользователь: по нему
+  // отличаем локальный ввод от значения, подставленного родителем снаружи.
+  const lastLocalValueRef = useRef(value);
   const baseId = useId();
   const inputId = id ?? `${baseId}-input`;
   const listId = `${baseId}-list`;
@@ -94,6 +97,7 @@ export function ClientAutocomplete({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
+    lastLocalValueRef.current = v;
     onChange(v);
     // User typed something → this is no longer a selected existing client.
     setSelectedName(null);
@@ -130,6 +134,7 @@ export function ClientAutocomplete({
   };
 
   const selectOption = (name: string) => {
+    lastLocalValueRef.current = name;
     onChange(name);
     setSelectedName(name);
     setOpen(false);
@@ -221,6 +226,16 @@ export function ClientAutocomplete({
       if (abortRef.current) abortRef.current.abort();
     };
   }, []);
+
+  // Значение пришло снаружи — например, импорт заявки подставил клиента из
+  // базы. Локальный ввод сюда не попадает (lastLocalValueRef обновляется в
+  // handleChange / selectOption). Проверяем имя по базе, иначе «Гена Белых»
+  // из документа считался бы новым клиентом и показывал поле телефона.
+  useEffect(() => {
+    if (value === lastLocalValueRef.current) return;
+    lastLocalValueRef.current = value;
+    if (value.trim()) void fetchOptions(value);
+  }, [value, fetchOptions]);
 
   const showDropdown = open && (displayItems.length > 0);
 

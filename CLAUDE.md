@@ -69,7 +69,7 @@ light-rental-system/
 | `apps/api/src/services/smetaExport/renderXlsx.ts` | XLSX сметы (exceljs) с печатью A4: `pageSetup` (paperSize 9, portrait, fitToWidth 1, printTitlesRow), колонтитул «Стр. N из M», freeze у шапки; `appendTransportAndGrandTotal` для полной сметы |
 | `apps/api/src/services/smetaExport/buildFullDocument.ts` | Полная смета: main + addon + транспорт (`buildTransportSection` из BookingVehicle, блок скрыт при сумме 0), `grandTotal` = сумма всех блоков |
 | `apps/api/src/routes/bookingRequestParser.ts` | AI-разбор заявки гаффера: `parse-gaffer-review` (текст) и `parse-gaffer-document` (PDF/фото, multipart) → `services/llm` → матчинг каталога (`matchLinesToItems`, общий); `match-equipment` — без LLM |
-| `apps/api/src/services/llm/` | Слой LLM: `provider.ts` (контракт, промпты, нормализация), `anthropic.ts` (Claude Opus 5, structured output, документы), `gemini.ts` (JSON-режим + `inlineData`), `openai.ts` (только текст; `baseURL` всегда явный), `fallback.ts` (цепочка ног), `index.ts` (`getLlmProvider`, `buildLlmLeg`, `LLM_FALLBACK_CHAIN`) |
+| `apps/api/src/services/llm/` | Слой LLM: `provider.ts` (контракт, промпты, нормализация), `anthropic.ts` (Claude Opus 5, structured output, документы), `gemini.ts` (JSON-режим + `inlineData`), `openai.ts` (gpt-5.x: `max_completion_tokens`, strict json_schema, PDF/фото; `baseURL` всегда явный), `fallback.ts` (цепочка ног), `index.ts` (`getLlmProvider`, `buildLlmLeg`, `LLM_FALLBACK_CHAIN`) |
 | `apps/api/src/services/gafferDocumentImport.ts` | Импорт заявки-документа: сигнатуры файлов, `findClientForGaffer` (телефон → почта → однозначное имя), `importGafferDocument` |
 | `apps/bot/src/scenes/booking.ts` | Hub-and-spoke booking scene (~1000 LOC): hub step is central cart screen, spokes: catalog, inline needsReview confirmations |
 | `apps/bot/src/services/api.ts` | Bot API client: gaffer review types (GafferReviewItem, GafferMatchCandidate), parseGafferReview() |
@@ -475,15 +475,20 @@ SUPER_ADMIN обходит все лимиты.
   умолчанию). Обрыв по `max_tokens` и `stop_reason=refusal` — исключение ноги, а не «пустая
   заявка». Server-side `fallbacks` Anthropic не включены осознанно: страховка живёт в
   `FallbackLlmProvider` (Gemini), а списку приборов классификатору отказывать не в чем.
-- **Документы (PDF/JPEG/PNG/WEBP) читают только ноги со зрением** — `anthropic`
-  (document/image-блоки) и `gemini` (`inlineData`); `openai` — только текст.
-  `FallbackLlmProvider.extractGafferDocument` слепые ноги пропускает молча, а без единой
-  зрячей отвечает ошибкой конфигурации.
-- **Прод сейчас на `LLM_PROVIDER=gemini`** (временная заплатка 2026-09-02, бэкап
-  `apps/api/.env.bak-2026-09-02-llm` на сервере): ключ Gemini живой, Anthropic-ключа на
-  сервере нет. После добавления `ANTHROPIC_API_KEY` в `apps/api/.env` →
-  `LLM_PROVIDER=fallback`, `LLM_FALLBACK_CHAIN=anthropic,gemini`, `pm2 restart api`.
-  ChatMock (`go-chatmock serve`, вне pm2) после этого не нужен.
+- **OpenAI-нога рассчитана на gpt-5.x**: `max_completion_tokens` (старый `max_tokens` эти
+  модели отвергают с 400), без `temperature` (reasoning-модели принимают только значение по
+  умолчанию), strict `json_schema` для текста и документов; `refusal` и
+  `finish_reason=length` — ошибка ноги. gpt-4o / 4.1 тот же набор параметров понимают.
+- **Документы (PDF/JPEG/PNG/WEBP) читают все три ноги**: `anthropic` (document/image-блоки),
+  `openai` (file-часть для PDF, image_url для фото), `gemini` (`inlineData`). Нога без
+  `extractGafferDocument` цепочкой пропускается молча, а без единой зрячей —
+  ошибка конфигурации.
+- **Прод: `LLM_PROVIDER=fallback`, `LLM_FALLBACK_CHAIN=anthropic,openai,gemini`** — ключи
+  Anthropic и OpenAI добавлены в `apps/api/.env` 2026-09-02 (`ANTHROPIC_MODEL=claude-opus-5`,
+  `OPENAI_MODEL=gpt-5.6-sol`, `OPENAI_BASE_URL` убран). На пробе 2026-09-02 Claude Opus 5 и
+  gpt-5.6-sol дали одинаковый результат: текст ~5 с, PDF на 54 позиции ~30 с, шапка без ошибок;
+  gpt-5.4-mini втрое быстрее при чуть менее аккуратной шапке. ChatMock (`go-chatmock serve`,
+  вне pm2) остановлен. Бэкапы `.env.bak-2026-09-02-llm` / `-keys` на сервере.
 
 **Импорт заявки-документом** — `POST /api/bookings/parse-gaffer-document` (multipart, поле
 `file`, ≤ 10 МБ, SA + WAREHOUSE): модель читает позиции и шапку (проект, имя / телефон /

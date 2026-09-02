@@ -246,3 +246,23 @@ describe("gafferDocumentImport — сервисные функции", () => {
     expect(nobody).toBeNull();
   });
 });
+
+describe("POST /api/bookings/parse-gaffer-document — лимит размера", () => {
+  it("файл больше лимита отсекается до модели (413 FILE_TOO_LARGE)", async () => {
+    const big = Buffer.concat([PDF, Buffer.alloc(svc.GAFFER_DOCUMENT_MAX_BYTES + 4096)]);
+    // multer отвечает 413, не дочитав тело; node при этом может сбросить
+    // соединение раньше, чем supertest получит ответ. Оба исхода — «файл не
+    // прошёл»; главное, что модель не была вызвана.
+    const outcome: unknown = await post()
+      .attach("file", big, { filename: "big.pdf", contentType: "application/pdf" })
+      .then((res) => res, (err) => err);
+    if (outcome instanceof Error) {
+      expect(String((outcome as { code?: string }).code ?? outcome.message)).toMatch(/ECONNRESET|EPIPE|socket hang up/);
+    } else {
+      const res = outcome as { status: number; body: { code?: string } };
+      expect(res.status).toBe(413);
+      expect(res.body.code).toBe("FILE_TOO_LARGE");
+    }
+    expect(llm.extractGafferDocument).not.toHaveBeenCalled();
+  }, 30_000);
+});
