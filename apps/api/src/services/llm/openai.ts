@@ -6,8 +6,13 @@ import {
   type GafferDocumentExtraction,
   EXTRACT_PROMPT_REVIEW,
   EXTRACT_DOCUMENT_PROMPT,
+  PICK_CATALOG_PROMPT,
   normalizeRawLines,
   normalizeDocumentExtraction,
+  renderCatalogPickInput,
+  normalizePickDecisions,
+  type CatalogPickInput,
+  type CatalogPickDecision,
 } from "./provider";
 
 /** Прямой endpoint OpenAI — сюда идёт нога без прокси. */
@@ -64,6 +69,30 @@ export const OPENAI_DOCUMENT_FORMAT: OpenAI.ResponseFormatJSONSchema = {
         startDate: NULLABLE_STRING,
         endDate: NULLABLE_STRING,
         items: { type: "array", items: LINE_SCHEMA },
+      },
+    },
+  },
+};
+
+export const OPENAI_PICK_FORMAT: OpenAI.ResponseFormatJSONSchema = {
+  type: "json_schema",
+  json_schema: {
+    name: "catalog_pick",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["decisions"],
+      properties: {
+        decisions: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["line", "rows"],
+            properties: { line: { type: "integer" }, rows: { type: "array", items: { type: "integer" } } },
+          },
+        },
       },
     },
   },
@@ -192,5 +221,26 @@ export class OpenAiLlmProvider implements LlmProvider {
       throw new Error(`OpenAI ответил не JSON: ${content.slice(0, 120)}`);
     }
     return normalizeDocumentExtraction(parsed);
+  }
+
+  async pickCatalogMatches(input: CatalogPickInput): Promise<CatalogPickDecision[]> {
+    const { catalogText, linesText } = renderCatalogPickInput(input);
+    const content = await this.complete({
+      model: this.model,
+      messages: [
+        { role: "system", content: PICK_CATALOG_PROMPT },
+        { role: "user", content: `Catalog:\n${catalogText}\n\nRequest lines:\n${linesText}` },
+      ],
+      response_format: OPENAI_PICK_FORMAT,
+      max_completion_tokens: 4096,
+    });
+    if (!content) throw new Error("Пустой ответ OpenAI на подбор каталога");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      throw new Error(`OpenAI ответил не JSON: ${content.slice(0, 120)}`);
+    }
+    return normalizePickDecisions(parsed, input);
   }
 }

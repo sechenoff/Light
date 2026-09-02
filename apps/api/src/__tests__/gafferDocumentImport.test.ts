@@ -23,7 +23,9 @@ process.env.VISION_PROVIDER = "mock";
 
 const llm = vi.hoisted(() => ({
   extractGafferDocument: vi.fn(),
+  pickCatalogMatches: vi.fn(),
   hasVision: true,
+  hasPick: false,
 }));
 
 vi.mock("../services/llm", async (importOriginal) => {
@@ -32,7 +34,11 @@ vi.mock("../services/llm", async (importOriginal) => {
     ...orig,
     getLlmProvider: () =>
       llm.hasVision
-        ? { extractGafferLines: vi.fn(), extractGafferDocument: llm.extractGafferDocument }
+        ? {
+            extractGafferLines: vi.fn(),
+            extractGafferDocument: llm.extractGafferDocument,
+            ...(llm.hasPick ? { pickCatalogMatches: llm.pickCatalogMatches } : {}),
+          }
         : { extractGafferLines: vi.fn() },
   };
 });
@@ -108,7 +114,9 @@ afterAll(async () => {
 
 beforeEach(() => {
   llm.extractGafferDocument.mockReset();
+  llm.pickCatalogMatches.mockReset();
   llm.hasVision = true;
+  llm.hasPick = false;
 });
 
 function post() {
@@ -265,4 +273,75 @@ describe("POST /api/bookings/parse-gaffer-document — лимит размера
     }
     expect(llm.extractGafferDocument).not.toHaveBeenCalled();
   }, 30_000);
+});
+
+describe("POST /api/bookings/parse-gaffer-document — AI-подбор спорных строк", () => {
+  const LINES = [
+    { gafferPhrase: "Aputure STORM 700x", interpretedName: "aputure storm 700x", quantity: 1 },
+    { gafferPhrase: "Хейзер 1800W Мощный", interpretedName: "hazer 1800w", quantity: 2 },
+  ];
+
+  it("сбой подбора не ломает ответ — остаётся результат матчера", async () => {
+    llm.hasPick = true;
+    llm.extractGafferDocument.mockResolvedValue({ lines: LINES, meta: META });
+    llm.pickCatalogMatches.mockRejectedValue(new Error("529 overloaded"));
+
+    const res = await post().attach("file", PDF, { filename: "z.pdf", contentType: "application/pdf" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+    expect(res.body.items[1].match.kind).toBe("unmatched");
+    expect(llm.pickCatalogMatches).toHaveBeenCalledTimes(1);
+  });
+
+  it("две строки каталога в решении → вторая позиция вставляется сразу после своей строки с той же фразой", async () => {
+    llm.hasPick = true;
+    llm.extractGafferDocument.mockResolvedValue({
+      lines: [
+        { gafferPhrase: "Aputure STORM 700x", interpretedName: "aputure storm 700x", quantity: 1 },
+        { gafferPhrase: "нова р300 с софтом", interpretedName: "nova p300", quantity: 3 },
+        { gafferPhrase: "Хейзер 1800W Мощный", interpretedName: "hazer 1800w", quantity: 2 },
+      ],
+      meta: META,
+    });
+    llm.pickCatalogMatches.mockImplementation(async (input: { catalog: Array<{ row: number; name: string }>; lines: Array<{ line: number; decide: boolean }> }) => {
+      const storm = input.catalog.find((r) => r.name === "Aputure STORM 700x")!;
+      // спорная строка №2 → две позиции (в тестовом каталоге одна, дублируем её как «аксессуар»)
+      return [{ line: 2, rows: [storm.row, storm.row] }];
+    });
+
+    const res = await post().attach("file", PDF, { filename: "z.pdf", contentType: "application/pdf" });
+
+    expect(res.status).toBe(200);
+    // normalizePickDecisions в моке не участвует — дубли строк режет сам picker? Нет: picker берёт rows как есть,
+    // поэтому проверяем механику вставки, а не дедупликацию (она в провайдерах).
+    expect(res.body.items.map((i: { gafferPhrase: string }) => i.gafferPhrase)).toEqual([
+      "Aputure STORM 700x",
+      "нова р300 с софтом",
+      "нова р300 с софтом",
+      "Хейзер 1800W Мощный",
+    ]);
+    const [, primary, extra] = res.body.items;
+    expect(primary.match).toMatchObject({ kind: "resolved", confidence: 0.95 });
+    expect(extra.match).toMatchObject({ kind: "resolved", confidence: 0.95 });
+    expect(extra.interpretedName).toBe("Aputure STORM 700x");
+    expect(extra.quantity).toBe(3);
+    expect(new Set(res.body.items.map((i: { id: string }) => i.id)).size).toBe(4);
+  });
+
+  it("решение модели превращает ненайденную строку в resolved с уверенностью 0.95", async () => {
+    llm.hasPick = true;
+    llm.extractGafferDocument.mockResolvedValue({ lines: LINES, meta: META });
+    llm.pickCatalogMatches.mockImplementation(async (input: { catalog: Array<{ row: number; name: string }>; lines: Array<{ line: number; decide: boolean }> }) => {
+      const storm = input.catalog.find((r) => r.name === "Aputure STORM 700x")!;
+      const disputed = input.lines.filter((l) => l.decide).map((l) => l.line);
+      return disputed.map((line) => ({ line, rows: [storm.row] }));
+    });
+
+    const res = await post().attach("file", PDF, { filename: "z.pdf", contentType: "application/pdf" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.items[1].match).toMatchObject({ kind: "resolved", catalogName: "Aputure STORM 700x", confidence: 0.95 });
+    expect(res.body.items[1].quantity).toBe(2);
+  });
 });

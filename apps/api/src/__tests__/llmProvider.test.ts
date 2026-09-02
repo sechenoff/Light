@@ -84,3 +84,57 @@ describe("parseLooseJson", () => {
     expect(parseLooseJson("Сначала разберём список приборов")).toBeUndefined();
   });
 });
+
+import { normalizePickDecisions, renderCatalogPickInput, type CatalogPickInput } from "../services/llm/provider";
+
+const PICK_INPUT: CatalogPickInput = {
+  catalog: [
+    { row: 1, name: "Aputure Electric storm 52XT (Blair)", category: "COB Light" },
+    { row: 2, name: "Линза френеля Aputure CF16 Fresnel Motorised для 52xt", category: "Насадки на приборы" },
+    { row: 3, name: "Aputure NOVA P300C RGBWW", category: "Led Panel" },
+  ],
+  lines: [
+    { line: 1, gafferPhrase: "2 шт 52xt блэр", interpretedName: "52xt", quantity: 2, decide: true, candidateRows: [1, 2] },
+    { line: 2, gafferPhrase: "4 ц-стенда", interpretedName: "c-stand", quantity: 4, decide: false, matchedRow: 3 },
+    { line: 3, gafferPhrase: "апутура 600д", interpretedName: "aputure 600d", quantity: 1, decide: true },
+  ],
+};
+
+describe("renderCatalogPickInput", () => {
+  it("каталог нумерован, спорные строки помечены DECIDE с подсказками матчера", () => {
+    const { catalogText, linesText } = renderCatalogPickInput(PICK_INPUT);
+    expect(catalogText.split("\n")).toHaveLength(3);
+    expect(catalogText).toContain("1. [COB Light] Aputure Electric storm 52XT (Blair)");
+    expect(linesText).toContain("L1 DECIDE: «2 шт 52xt блэр» (AI name: 52xt, qty 2); matcher candidates: rows 1, 2");
+    expect(linesText).toContain("L2 ok: «4 ц-стенда» (AI name: c-stand, qty 4) → row 3");
+    expect(linesText).toContain("L3 DECIDE: «апутура 600д» (AI name: aputure 600d, qty 1); matcher found nothing");
+  });
+});
+
+describe("normalizePickDecisions", () => {
+  it("принимает объект с decisions и голый массив; строки в числа", () => {
+    expect(normalizePickDecisions({ decisions: [{ line: "1", rows: ["1"] }] }, PICK_INPUT)).toEqual([{ line: 1, rows: [1] }]);
+    expect(normalizePickDecisions([{ line: 3, rows: [] }], PICK_INPUT)).toEqual([{ line: 3, rows: [] }]);
+  });
+
+  it("отбрасывает уверенные строки, чужие номера, дубли и лишние позиции", () => {
+    const res = normalizePickDecisions(
+      {
+        decisions: [
+          { line: 2, rows: [1] }, // строка не спорная
+          { line: 1, rows: [2, 2, 0, 99, 1, 3, 1] }, // дубль, вне диапазона, больше трёх
+          { line: 1, rows: [3] }, // повтор строки — игнор
+          { line: 9, rows: [1] }, // такой строки нет
+          "мусор",
+        ],
+      },
+      PICK_INPUT,
+    );
+    expect(res).toEqual([{ line: 1, rows: [2, 1, 3] }]);
+  });
+
+  it("мусор вместо ответа → пустой список решений", () => {
+    expect(normalizePickDecisions("nope", PICK_INPUT)).toEqual([]);
+    expect(normalizePickDecisions(null, PICK_INPUT)).toEqual([]);
+  });
+});

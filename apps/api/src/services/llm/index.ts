@@ -113,6 +113,10 @@ export {
   type GafferDocumentExtraction,
   type GafferDocumentMeta,
   type GafferDocumentMimeType,
+  type CatalogPickInput,
+  type CatalogPickDecision,
+  type CatalogPickLine,
+  type CatalogPickRow,
   GAFFER_DOCUMENT_MIME_TYPES,
 } from "./provider";
 

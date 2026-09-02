@@ -302,3 +302,34 @@ describe("OpenAiLlmProvider — куда реально уходят запро�
     expect((buildLlmLeg("chatmock") as OpenAiLlmProvider).baseURL).toBe("http://127.0.0.1:8000/v1");
   });
 });
+
+describe("FallbackLlmProvider — подбор каталога", () => {
+  const INPUT = { catalog: [{ row: 1, name: "A", category: "X" }], lines: [{ line: 1, gafferPhrase: "a", interpretedName: "a", quantity: 1, decide: true }] };
+
+  it("ноги без подбора пропускаются, сбойная нога уступает следующей", async () => {
+    const blind = ok([LINE]);
+    const broken: LlmProvider = { extractGafferLines: vi.fn(async () => []), pickCatalogMatches: vi.fn(async () => { throw new Error("529"); }) };
+    const good: LlmProvider = { extractGafferLines: vi.fn(async () => []), pickCatalogMatches: vi.fn(async () => [{ line: 1, rows: [1] }]) };
+    const fb = new FallbackLlmProvider([
+      { name: "openai", provider: blind },
+      { name: "anthropic", provider: broken },
+      { name: "gemini", provider: good },
+    ], quiet);
+
+    expect(await fb.pickCatalogMatches(INPUT)).toEqual([{ line: 1, rows: [1] }]);
+    expect(broken.pickCatalogMatches).toHaveBeenCalledWith(INPUT);
+  });
+
+  it("пустой список решений — легитимный ответ первой ноги, дальше не идём", async () => {
+    const first: LlmProvider = { extractGafferLines: vi.fn(async () => []), pickCatalogMatches: vi.fn(async () => []) };
+    const second: LlmProvider = { extractGafferLines: vi.fn(async () => []), pickCatalogMatches: vi.fn(async () => [{ line: 1, rows: [1] }]) };
+    const fb = new FallbackLlmProvider([{ name: "a", provider: first }, { name: "b", provider: second }], quiet);
+    expect(await fb.pickCatalogMatches(INPUT)).toEqual([]);
+    expect(second.pickCatalogMatches).not.toHaveBeenCalled();
+  });
+
+  it("ни одной ноги с подбором → ошибка конфигурации", async () => {
+    const fb = new FallbackLlmProvider([{ name: "openai", provider: ok([LINE]) }], quiet);
+    await expect(fb.pickCatalogMatches(INPUT)).rejects.toThrow(/подбирать позиции/);
+  });
+});

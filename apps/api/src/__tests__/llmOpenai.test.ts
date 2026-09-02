@@ -167,3 +167,27 @@ describe("OpenAiLlmProvider — документ заявки", () => {
     ).rejects.toThrow(/не JSON/);
   });
 });
+
+describe("OpenAiLlmProvider — подбор каталога", () => {
+  beforeEach(() => {
+    createMock.mockReset();
+    ctorMock.mockReset();
+  });
+
+  it("strict json_schema catalog_pick, решения нормализуются", async () => {
+    createMock.mockResolvedValue(reply({ message: { content: '{"decisions":[{"line":1,"rows":[2]}]}' } }));
+    const input = {
+      catalog: [
+        { row: 1, name: "A", category: "X" },
+        { row: 2, name: "B", category: "Y" },
+      ],
+      lines: [{ line: 1, gafferPhrase: "b", interpretedName: "b", quantity: 1, decide: true }],
+    };
+    const res = await new OpenAiLlmProvider("k", "gpt-5.6-sol").pickCatalogMatches(input);
+    expect(res).toEqual([{ line: 1, rows: [2] }]);
+    const params = lastParams();
+    expect(params.response_format.json_schema.name).toBe("catalog_pick");
+    expect(params.response_format.json_schema.strict).toBe(true);
+    expect(params.messages[1].content).toContain("Catalog:\n1. [X] A\n2. [Y] B");
+  });
+});

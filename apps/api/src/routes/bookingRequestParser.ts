@@ -12,6 +12,7 @@ import {
   validateGafferDocumentBytes,
   type GafferDocumentImportResult,
 } from "../services/gafferDocumentImport";
+import { refineMatchesWithAi, type RefinedMatches } from "../services/catalogPicker";
 import { HttpError } from "../utils/errors";
 
 const router = express.Router();
@@ -71,13 +72,42 @@ async function matchLinesToItems(lines: GafferExtractedLine[], logTag: string): 
     };
   }
 
-  const items: GafferReviewApiItem[] = lines.map((line, i) => ({
-    id: randomUUID(),
-    gafferPhrase: line.gafferPhrase,
-    interpretedName: line.interpretedName,
-    quantity: line.quantity,
-    match: matches[i] ?? { kind: "unmatched" as const },
-  }));
+  // AI-подбор для спорных строк: модель видит весь каталог и соседние строки.
+  // Любой сбой здесь — не ошибка запроса: остаётся результат матчера.
+  let extras: RefinedMatches["extras"] = [];
+  try {
+    const refined = await refineMatchesWithAi(lines, matches);
+    matches = refined.matches;
+    extras = refined.extras;
+    if (refined.aiDecided > 0) console.info(`[${logTag}] AI-подбор каталога решил строк: ${refined.aiDecided}`);
+  } catch (err: unknown) {
+    console.warn(
+      `[${logTag}] AI-подбор каталога не удался, остаётся результат матчера:`,
+      (err as Error)?.message ?? err,
+    );
+  }
+
+  const items: GafferReviewApiItem[] = [];
+  lines.forEach((line, i) => {
+    items.push({
+      id: randomUUID(),
+      gafferPhrase: line.gafferPhrase,
+      interpretedName: line.interpretedName,
+      quantity: line.quantity,
+      match: matches[i] ?? { kind: "unmatched" as const },
+    });
+    // Явно запрошенные дополнения («…с софтом» → софтбокс) — отдельными
+    // позициями сразу после своей строки, с той же фразой гаффера.
+    for (const extra of extras.filter((e) => e.lineIndex === i)) {
+      items.push({
+        id: randomUUID(),
+        gafferPhrase: line.gafferPhrase,
+        interpretedName: extra.match.catalogName,
+        quantity: line.quantity,
+        match: extra.match,
+      });
+    }
+  });
   return { ok: true, items };
 }
 
