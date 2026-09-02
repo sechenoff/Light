@@ -18,7 +18,11 @@ const mockPrisma = {
 };
 
 vi.mock("../prisma", () => ({ prisma: mockPrisma }));
-vi.mock("../services/equipmentMatcher", () => ({ norm: (s: string) => s.toLowerCase().replace(/[^a-zа-яё0-9\s]/gi, " ").replace(/\s+/g, " ").trim() }));
+vi.mock("../services/equipmentMatcher", async (importOriginal) => {
+  // norm и stripQuantityTokens — чистые функции, берём настоящие; prisma внутри модуля уже подменена выше.
+  const orig = await importOriginal<typeof import("../services/equipmentMatcher")>();
+  return { norm: orig.norm, stripQuantityTokens: orig.stripQuantityTokens };
+});
 
 // Import after mocks are set up
 import request from "supertest";
@@ -38,6 +42,32 @@ beforeEach(async () => {
 // ── Task 1: POST /propose → auto-approve ──────────────────────────────────────
 
 describe("POST /propose — auto-approve", () => {
+  it("количество из фразы не попадает в псевдоним: «Хай роллер (4)» → «хай роллер»", async () => {
+    mockPrisma.slangAlias.findMany.mockResolvedValue([]);
+    mockPrisma.slangAlias.upsert.mockResolvedValue({ id: "alias-q", phraseNormalized: "хай роллер", phraseOriginal: "Хай роллер (4)", equipmentId: "eq-1", confidence: 0.9, source: "AUTO_LEARNED", usageCount: 1 });
+    mockPrisma.slangLearningCandidate.create.mockResolvedValue({ id: "cand-q", rawPhrase: "Хай роллер (4)", normalizedPhrase: "хай роллер", proposedEquipmentId: "eq-1", status: "APPROVED", confidence: 0.9 });
+
+    const res = await request(app).post("/propose").send({ rawPhrase: "Хай роллер (4)", proposedEquipmentId: "eq-1", confidence: 0.9 });
+
+    expect(res.status).toBe(201);
+    expect(mockPrisma.slangAlias.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { phraseNormalized_equipmentId: { phraseNormalized: "хай роллер", equipmentId: "eq-1" } } }),
+    );
+  });
+
+  it("число-модель не срезается: «Джокер-800» → «джокер 800», а не «джокер» (иначе Joker-800 и Joker-400 легли бы под один ключ)", async () => {
+    mockPrisma.slangAlias.findMany.mockResolvedValue([]);
+    mockPrisma.slangAlias.upsert.mockResolvedValue({ id: "alias-j", phraseNormalized: "джокер 800", phraseOriginal: "Джокер-800", equipmentId: "eq-800", confidence: 0.9, source: "AUTO_LEARNED", usageCount: 1 });
+    mockPrisma.slangLearningCandidate.create.mockResolvedValue({ id: "cand-j", rawPhrase: "Джокер-800", normalizedPhrase: "джокер 800", proposedEquipmentId: "eq-800", status: "APPROVED", confidence: 0.9 });
+
+    const res = await request(app).post("/propose").send({ rawPhrase: "Джокер-800", proposedEquipmentId: "eq-800", confidence: 0.9 });
+
+    expect(res.status).toBe(201);
+    expect(mockPrisma.slangAlias.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { phraseNormalized_equipmentId: { phraseNormalized: "джокер 800", equipmentId: "eq-800" } } }),
+    );
+  });
+
   it("upserts SlangAlias with source AUTO_LEARNED and creates APPROVED candidate", async () => {
     const aliasResult = {
       id: "alias-1",

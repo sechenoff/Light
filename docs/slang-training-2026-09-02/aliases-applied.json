@@ -1,0 +1,134 @@
+{
+ "aliases": [
+  {
+   "phrase": "капы",
+   "catalogId": "cmn3j5g4e006pvast6g6tumcb",
+   "catalogName": "Кабельканалы",
+   "replace": true,
+   "evidence": "ПЕРЕПРИВЯЗКА: сейчас MANUAL_ADMIN 'капы'/'капа'/'каппы' → Matthellini. Три разных гаффера (pair1 n39 «Капы 5шт», pair7 n76 «Капа — 12 шт.», pair8 n79 «Капы - 8ш"
+  },
+  {
+   "phrase": "капа",
+   "catalogId": "cmn3j5g4e006pvast6g6tumcb",
+   "catalogName": "Кабельканалы",
+   "replace": true,
+   "evidence": "ПЕРЕПРИВЯЗКА (сейчас MANUAL_ADMIN → Matthellini). pair7 n76 «Капа — 12 шт.» → Кабельканалы; та же семантика, что 'капы'."
+  },
+  {
+   "phrase": "грипхед",
+   "catalogId": "cmn3j5g1n0056vastd51w9du7",
+   "catalogName": "GripHead",
+   "replace": true,
+   "evidence": "ПЕРЕПРИВЯЗКА: сейчас MANUAL_ADMIN 'грипхед'/'грипхеды' → JUMBO GRIP HEAD. pair8 n59 «Грипхед - 6шт.» → GripHead ×6; в той же заявке джамбо назван отдельно («джа"
+  },
+  {
+   "phrase": "грипхеды",
+   "catalogId": "cmn3j5g1n0056vastd51w9du7",
+   "catalogName": "GripHead",
+   "replace": true,
+   "evidence": "ПЕРЕПРИВЯЗКА (MANUAL_ADMIN → Jumbo), множественное число 'грипхед'."
+  },
+  {
+   "phrase": "мешочница",
+   "catalogId": "cmt7gcw1c01hgy1y0swlytsqw",
+   "catalogName": "Мешочница",
+   "replace": true,
+   "evidence": "ПЕРЕПРИВЯЗКА: AUTO u=1 'мешочница' → Мешок для песка 12кг — выучен до появления позиции «Мешочница» в каталоге. pair8 n35 «Мешочница - 1шт.» → Мешочница (LLM пр"
+  },
+  {
+   "phrase": "63 380",
+   "catalogId": "cmn3j5g43006jvastddqgpnl4",
+   "catalogName": "Кабель 63/380  (10-29м)",
+   "replace": true,
+   "evidence": "ПЕРЕПРИВЯЗКА: AUTO u=1 '63 380' → Сопля 63/380 перебивает '63 380 кабель' (u=2) и 'кабло 63 380' → Кабель. pair3 n44 «63 380 3шт» и pair4 n49 «63/380 (4)» — в о"
+  },
+  {
+   "phrase": "джамбо грип",
+   "catalogId": "cmn3j5g0w004rvastwvjsiio9",
+   "catalogName": "Зажим Avenger 4.5\" JUMBO GRIP HEAD",
+   "replace": true,
+   "evidence": "ПЕРЕПРИВЯЗКА: AUTO u=1 'джамбо грип' → Штатив Avenger A100 (мусор), сработал с 1.0 в pair1 n36. Все остальные формы ('джамбо грип хед/хэд', 'jumbo grip') → JUMB"
+  },
+  {
+   "phrase": "джамбо под трубный",
+   "catalogId": "cmn3j5g0w004rvastwvjsiio9",
+   "catalogName": "Зажим Avenger 4.5\" JUMBO GRIP HEAD",
+   "replace": false,
+   "evidence": "pair6 n40 «джамбо под трубный (1)» → unmatched (LLM: «jumbo stand»); голое 'джамбо' — осознанный needsReview (зажим vs Jumbo 12 kW), но уточнение «под трубный/п"
+  },
+  {
+   "phrase": "трубный бум комплект широкий",
+   "catalogId": "cmn3j5g0l004lvasteo23i87x",
+   "catalogName": "Трубный бум двойной D48",
+   "replace": true,
+   "evidence": "ПЕРЕПРИВЯЗКА: AUTO u=1 → D42. pair3 n26 → D48: «широкий» = труба 48 мм, трубы 4/3 м в той же заявке тоже D48 (4м есть только D48)."
+  },
+  {
+   "phrase": "рама 12 трубная",
+   "catalogId": "cmn3j5g0n004mvast5fkburol",
+   "catalogName": "Углы трубной рамы комплект D42",
+   "replace": true,
+   "evidence": "ПЕРЕПРИВЯЗКА (AUTO → модульная 12х12+6х6). pair8 n38 «Рама 12х12 - трубная» → углы D42 + Трубы 1,8м D42 ×8. Перевесить и 'рама трубная 12х12'."
+  },
+  {
+   "phrase": "сильвер вайт 8",
+   "catalogId": "cmn3j5fzi003zvastra1mk6h0",
+   "catalogName": "Текстиль 8' х 8' Silver/Gold (чекер)",
+   "replace": true,
+   "evidence": "ПЕРЕПРИВЯЗКА: AUTO 'сильвер вайт 8' и 'сильвер 8 1' → 12х12 Silver/White ошибочны (размер 8 указан явно). pair8 n46: Silver/White в 8×8 нет — сотрудник ставит 8"
+  },
+  {
+   "phrase": "сильвер 8",
+   "catalogId": "cmn3j5fzi003zvastra1mk6h0",
+   "catalogName": "Текстиль 8' х 8' Silver/Gold (чекер)",
+   "replace": false,
+   "evidence": "pair3 n40 «Рама 8 (мбю, сильвер, …)» → 8' Silver/Gold; '8 сильвер голд' (u=5) есть, 'сильвер 8' — нет, а 'сильвер 8 1' → 12×12 (мусор, удалить)."
+  },
+  {
+   "phrase": "чокер 8",
+   "catalogId": "cmn3j5fzi003zvastra1mk6h0",
+   "catalogName": "Текстиль 8' х 8' Silver/Gold (чекер)",
+   "replace": false,
+   "evidence": "pair12 n6 «Чокер 8» — восьмёрка здесь размер 8'×8', а не количество (LLM приняла за qty 8)."
+  },
+  {
+   "phrase": "apple box set",
+   "catalogId": "cmn3j5fzy0047vastzb2cwnn0",
+   "catalogName": "Подставка \"Apple Block Set\" (4шт)  Русский Грип",
+   "replace": false,
+   "evidence": "pair7 n77 «Ящики Apple Box Set (20; 10; 5; 2,5) — 2 шт.» → Apple Block Set; есть 'apple box kit', 'эпл бокс сет', 'эплбокс сет', но не 'apple box set'. Система "
+  },
+  {
+   "phrase": "колодка 63/380 3х32/380",
+   "catalogId": "cmn3j5g390061vastup8l32b7",
+   "catalogName": "Дестрибьютор 63/380 - 2х32/380",
+   "replace": false,
+   "evidence": "pair7 n65 и pair8 n67: точной конфигурации 63 → 3×32/380 в каталоге нет, сотрудник ставит ближайшую 63-амперную с выходами 380; система выбрала 32/380-3х32/220 "
+  },
+  {
+   "phrase": "удлинитель бытовой",
+   "catalogId": "cmn3j5g4b006ovastxiy8lfbb",
+   "catalogName": "Удлинитель PCE (15м)",
+   "replace": false,
+   "evidence": "extra-unresolved «Удлинитель бытовой (12)» → unmatched; 'бытовой удлинитель' (u=2), 'бытовые', 'бытовой кабель' → Удлинитель PCE уже есть, обратный порядок слов"
+  }
+ ],
+ "deletes": [
+  {
+   "phrase": "френель",
+   "catalogNameContains": "Fresnel 650"
+  },
+  {
+   "phrase": "фринели",
+   "catalogNameContains": "Fresnel 650"
+  },
+  {
+   "phrase": "фринель",
+   "catalogNameContains": "Fresnel 650"
+  },
+  {
+   "phrase": "1200х френель",
+   "catalogNameContains": "CF12"
+  }
+ ]
+}
