@@ -68,10 +68,12 @@ light-rental-system/
 | `apps/api/src/services/smetaExport/renderPdf.ts` | A4-PDF сметы (pdfkit): ручная пагинация (нулевые поля + bufferPages), реквизиты организации, группировка по категориям, повтор шапки/категории на переносе, футер «Стр. N из M», `renderSmetaPdfToBuffer` для ЛК |
 | `apps/api/src/services/smetaExport/renderXlsx.ts` | XLSX сметы (exceljs) с печатью A4: `pageSetup` (paperSize 9, portrait, fitToWidth 1, printTitlesRow), колонтитул «Стр. N из M», freeze у шапки; `appendTransportAndGrandTotal` для полной сметы |
 | `apps/api/src/services/smetaExport/buildFullDocument.ts` | Полная смета: main + addon + транспорт (`buildTransportSection` из BookingVehicle, блок скрыт при сумме 0), `grandTotal` = сумма всех блоков |
-| `apps/api/src/routes/bookingRequestParser.ts` | Gemini AI gaffer text -> equipment list parsing (used by web); match-equipment endpoint (used by bot, no LLM) |
+| `apps/api/src/routes/bookingRequestParser.ts` | AI-разбор заявки гаффера: `parse-gaffer-review` (текст) и `parse-gaffer-document` (PDF/фото, multipart) → `services/llm` → матчинг каталога (`matchLinesToItems`, общий); `match-equipment` — без LLM |
+| `apps/api/src/services/llm/` | Слой LLM: `provider.ts` (контракт, промпты, нормализация), `anthropic.ts` (Claude Opus 5, structured output, документы), `gemini.ts` (JSON-режим + `inlineData`), `openai.ts` (gpt-5.x: `max_completion_tokens`, strict json_schema, PDF/фото; `baseURL` всегда явный), `fallback.ts` (цепочка ног), `index.ts` (`getLlmProvider`, `buildLlmLeg`, `LLM_FALLBACK_CHAIN`) |
+| `apps/api/src/services/gafferDocumentImport.ts` | Импорт заявки-документа: сигнатуры файлов, `findClientForGaffer` (телефон → почта → однозначное имя), `importGafferDocument` |
 | `apps/bot/src/scenes/booking.ts` | Hub-and-spoke booking scene (~1000 LOC): hub step is central cart screen, spokes: catalog, inline needsReview confirmations |
 | `apps/bot/src/services/api.ts` | Bot API client: gaffer review types (GafferReviewItem, GafferMatchCandidate), parseGafferReview() |
-| `apps/bot/src/services/llm.ts` | Equipment matching via parseGafferReview API (3-tier: resolved/needsReview/unmatched), date parsing |
+| `apps/bot/src/services/llm.ts` | Equipment matching via parseGafferReview API (3-tier: resolved/needsReview/unmatched); `parseDates` / `parseCatalogIntent` / `validateBookingSummary` до сих пор ходят в OpenAI напрямую по мёртвому ключу — см. Known Issues №8 |
 | `apps/api/src/services/importSession.ts` | Import session service: XLSX/CSV parsing, 4-tier matching (exact→alias→fuzzy→AI), diff, bulk actions, apply with optimistic locking |
 | `apps/api/src/routes/importSessions.ts` | Import session API: upload, map, match, rows (filter: changed/unmatched/action), bulk accept/reject, apply, rematch, XLSX export |
 | `apps/api/src/services/barcode.ts` | Barcode generation (Code128 via bwip-js), HMAC-SHA256 verification, label rendering (PNG/PDF), dual resolution via `resolveBarcode()` |
@@ -443,6 +445,70 @@ SUPER_ADMIN обходит все лимиты.
 
 **Мины на жёстких датах.** Попутно протухли два теста с зашитыми датами: фикстура броней с `2026-09-01` (гард «выдача раньше срока» перестал срабатывать в этот день) и период каталога с `2026-08-20` (дата ушла в прошлое, попап признал период некорректным). Оба переведены на относительные даты. Правило: **в тестах не зашивать календарные даты** — считать от `Date.now()`.
 
+## AI-разбор заявок: провайдеры LLM и импорт документа (2026-09-02)
+
+Разбор заявки гаффера (`POST /api/bookings/parse-gaffer-review`) падал примерно в каждом
+десятом запросе, а «страховочная» нога не сработала ни разу за всю историю логов. Три
+причины, все разные:
+
+- **ChatMock (подписка ChatGPT Plus через локальный прокси :8000)** — модель `gpt-5.4-mini`
+  стала отвечать прозой («Сначала разберём…») вместо JSON; `response_format: json_object`
+  прокси не соблюдает.
+- **Нога `openai-api` никогда не доходила до api.openai.com.** `new OpenAI({ apiKey })` без
+  `baseURL` — это не «прямой endpoint»: SDK сам читает `OPENAI_BASE_URL` из env, и обе ноги
+  ходили в один и тот же ChatMock. Теперь `OpenAiLlmProvider` задаёт `baseURL` всегда
+  (`OPENAI_DIRECT_BASE_URL` по умолчанию); регрессионный тест — в `llmFallback.test.ts`.
+- **Оба sk-proj ключа (у API и у бота) мертвы** — api.openai.com отвечает 401. Даже с
+  починенным baseURL нога не заработала бы.
+
+Слой `apps/api/src/services/llm/`: ноги `anthropic` (Claude, основная), `gemini`, `openai`
+(оно же историческое `chatmock` — через `OPENAI_BASE_URL`), `openai-api` (всегда прямой).
+`LLM_PROVIDER=fallback` + `LLM_FALLBACK_CHAIN=anthropic,gemini` — боевая цепочка: следующая
+нога берёт запрос, если предыдущая упала или не нашла ни одной позиции; не последние ноги
+собираются с меньшим числом внутренних повторов (`failFast` в `buildLlmLeg`).
+
+- **Claude отдаёт позиции structured output'ом** (`messages.parse` + `zodOutputFormat`; схемы
+  на `zod/v4` — helper SDK не понимает v3-схемы, поэтому зависимость `zod` поднята до
+  `^3.25`). Класс ошибок «проза вместо JSON» исчезает целиком. Модель `claude-opus-5`
+  (`ANTHROPIC_MODEL`), `ANTHROPIC_EFFORT=low` — разбор списка приборов не требует
+  рассуждений, `high` лишь дольше и дороже. `thinking` не задаём (на Opus 5 adaptive по
+  умолчанию). Обрыв по `max_tokens` и `stop_reason=refusal` — исключение ноги, а не «пустая
+  заявка». Server-side `fallbacks` Anthropic не включены осознанно: страховка живёт в
+  `FallbackLlmProvider` (Gemini), а списку приборов классификатору отказывать не в чем.
+- **OpenAI-нога рассчитана на gpt-5.x**: `max_completion_tokens` (старый `max_tokens` эти
+  модели отвергают с 400), без `temperature` (reasoning-модели принимают только значение по
+  умолчанию), strict `json_schema` для текста и документов; `refusal` и
+  `finish_reason=length` — ошибка ноги. gpt-4o / 4.1 тот же набор параметров понимают.
+- **Документы (PDF/JPEG/PNG/WEBP) читают все три ноги**: `anthropic` (document/image-блоки),
+  `openai` (file-часть для PDF, image_url для фото), `gemini` (`inlineData`). Нога без
+  `extractGafferDocument` цепочкой пропускается молча, а без единой зрячей —
+  ошибка конфигурации.
+- **Прод: `LLM_PROVIDER=fallback`, `LLM_FALLBACK_CHAIN=anthropic,openai,gemini`** — ключи
+  Anthropic и OpenAI добавлены в `apps/api/.env` 2026-09-02 (`ANTHROPIC_MODEL=claude-opus-5`,
+  `OPENAI_MODEL=gpt-5.6-sol`, `OPENAI_BASE_URL` убран). На пробе 2026-09-02 Claude Opus 5 и
+  gpt-5.6-sol дали одинаковый результат: текст ~5 с, PDF на 54 позиции ~30 с, шапка без ошибок;
+  gpt-5.4-mini втрое быстрее при чуть менее аккуратной шапке. ChatMock (`go-chatmock serve`,
+  вне pm2) остановлен. Бэкапы `.env.bak-2026-09-02-llm` / `-keys` на сервере.
+
+**Импорт заявки-документом** — `POST /api/bookings/parse-gaffer-document` (multipart, поле
+`file`, ≤ 10 МБ, SA + WAREHOUSE): модель читает позиции и шапку (проект, имя / телефон /
+почта / telegram гаффера, даты), позиции матчатся с каталогом тем же `matchLinesToItems`,
+что и текст; ответ `{ items, document, client }`. Сервис — `services/gafferDocumentImport.ts`.
+
+- **Сигнатуры файлов проверяются** (`%PDF`, `FF D8 FF`, `89 PNG`, `RIFF…WEBP`) — MIME из
+  запроса подделать тривиально; тот же паттерн, что в `expenses.ts`.
+- **Клиент подбирается по телефону (последние 10 цифр), потом по почте, потом по имени — и по
+  имени только при единственном совпадении** («Белых Геннадий» ↔ «Гена Белых» — один человек;
+  два «Иванова» — вопрос к менеджеру, `client: null`). Токены имени — от четырёх букв.
+- **Имя файла из multipart** приходит через busboy как latin1 — `decodeOriginalName`
+  перекодирует только если в строке нет символов выше U+00FF; настоящая кириллица не трогается.
+- **UI** — вторая зона в `AiRequestModal` («Загрузить заявку файлом — PDF или фото», drag &
+  drop). `BookingForm.handleImportDocument` → `applyImportedDocument`: клиент из базы или
+  новый с телефоном из шапки (не в режиме правки), проект, даты (`T10:00`, как у быстрой
+  брони; возврат — из `endDate` или авто +24 ч), позиции — в ту же панель подтверждения
+  `ReviewPanel` (`showReviewItems`, общий с текстовым разбором). Пустое поле в документе
+  ничего не перетирает.
+
 ## Known Issues
 
 1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
@@ -452,6 +518,7 @@ SUPER_ADMIN обходит все лимиты.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
 6. **`npm run lint` fails on main** — ESLint v9 expects `eslint.config.(js|mjs|cjs)` but the repo has `.eslintrc.json`. Pre-existing, unrelated to feature work. Fix before any lint-gated CI. **STILL OPEN** — not fixed by the Warehouse Scan Redesign. Working path для проверки фронта: `cd apps/web && npx next lint --dir <dir>` (Next бандлит ESLint 8, чтит repo-config). Для api eslint-пути нет из-за v9 — полагаемся на `tsc --noEmit` (clean).
 7. **Old warehouse-scan UI assumptions superseded** — Key Files row для `apps/web/app/warehouse/scan/page.tsx` («5-step scan wizard») и раздел «Sprint 4 → Сканирование возврата с поломкой» (`brokenUnits`) устарели. См. раздел «Warehouse Scan Redesign» — kiosk перестроен в adaptive-shell, `complete` принимает `repairUnits` + `problemUnits` (не `brokenUnits`).
+8. **Telegram-бот (`apps/bot`) фактически мёртв с июня 2026** — три независимые причины: (1) его `OPENAI_API_KEY` (sk-proj) отвергается api.openai.com (401) — падают `parseDates`, `parseCatalogIntent`, `validateBookingSummary` в `apps/bot/src/services/llm.ts`, которые ходят в OpenAI напрямую, минуя `services/llm` API; (2) `API_KEY` бота отсутствует в `API_KEYS` API (`AUTH_MODE=enforce` → 401 на любой запрос); (3) `/api/bookings/parse-gaffer-review` под `rolesGuard(SA, WAREHOUSE)` требует JWT-сессию, а ключ бота не с префиксом `openclaw-`, и `botScopeGuard` его не пропускает. Последний старт бота — 04.06.2026. Решение владельца: чинить (перевести дату/intent на API-эндпоинты, ключ `openclaw-*` + whitelist) или выключить процесс `rental-bot` в pm2.
 
 ## Sprint 2: Navigation, Design Canon & Audit UI
 

@@ -1,4 +1,4 @@
-import { render, screen, within, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { BookingForm, type BookingDetail } from "../BookingForm";
 
@@ -141,5 +141,64 @@ describe("BookingForm in edit mode", () => {
   it("does not render 'Отправить на согласование' button in edit mode", () => {
     render(<BookingForm mode="edit" initialBooking={BOOKING} bookingId="booking-123" />);
     expect(screen.queryByRole("button", { name: /согласован/i })).toBeNull();
+  });
+});
+
+// ─── Импорт заявки документом в режиме правки ────────────────────────────────
+
+describe("BookingForm edit — импорт заявки документом", () => {
+  it("подставляет только позиции: клиент, проект и даты брони не меняются", async () => {
+    const DOC = {
+      items: [
+        {
+          id: "rev-1",
+          gafferPhrase: "Aputure STORM 700x",
+          interpretedName: "aputure storm 700x",
+          quantity: 1,
+          match: { kind: "unmatched" },
+        },
+      ],
+      document: {
+        projectName: "Яндекс Книги",
+        gafferName: "Белых Геннадий",
+        phone: "+7 981 790-34-51",
+        email: null,
+        telegram: null,
+        startDate: "2026-09-02",
+        endDate: "2026-09-04",
+        fileName: "заявка.pdf",
+      },
+      client: { id: "c1", name: "Гена Белых", phone: null, matchedBy: "phone" },
+    };
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const data = url.includes("/api/bookings/parse-gaffer-document") ? DOC : { vehicles: [] };
+      return { ok: true, status: 200, json: async () => data, text: async () => JSON.stringify(data) };
+    }) as unknown as typeof fetch;
+
+    render(<BookingForm mode="edit" initialBooking={BOOKING} bookingId="booking-123" />);
+    const datesBefore = Array.from(document.querySelectorAll('input[type="date"]')).map(
+      (i) => (i as HTMLInputElement).value,
+    );
+    expect(datesBefore.length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /заявка от гафера/i }));
+    const input = await screen.findByLabelText(/загрузить заявку файлом/i);
+    fireEvent.change(input, {
+      target: { files: [new File(["%PDF-1.4"], "заявка.pdf", { type: "application/pdf" })] },
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Распознано — подтвердите позиции/)).toBeInTheDocument();
+    });
+
+    // Шапка брони на правке неприкосновенна: клиент, проект, даты — как были.
+    expect(screen.getByText("Студия Свет")).toBeInTheDocument();
+    expect(screen.queryByText("Гена Белых")).toBeNull();
+    expect(screen.getByDisplayValue("Клип «Лето»")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Яндекс Книги")).toBeNull();
+    const datesAfter = Array.from(document.querySelectorAll('input[type="date"]')).map(
+      (i) => (i as HTMLInputElement).value,
+    );
+    expect(datesAfter).toEqual(datesBefore);
   });
 });
