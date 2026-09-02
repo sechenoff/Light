@@ -40,6 +40,15 @@ function toParsedItems(lines: GafferExtractedLine[]): ParsedRequestItem[] {
   return lines.map((l) => ({ name: l.interpretedName, quantity: l.quantity, gafferPhrase: l.gafferPhrase }));
 }
 
+/** «МС все», «павослимы все» — всё наличие: количество = сколько есть у выбранной позиции. */
+const WANTS_ALL_RE = /(^|[\s,(])(все|всё|all)([\s,.)!]|$)/i;
+function quantityFor(line: GafferExtractedLine, match: GafferOrderedRowMatch): number {
+  if (match.kind === "resolved" && line.quantity <= 1 && WANTS_ALL_RE.test(line.gafferPhrase)) {
+    return Math.max(1, match.availableQuantity);
+  }
+  return line.quantity;
+}
+
 type MatchOutcome =
   | { ok: true; items: GafferReviewApiItem[] }
   | { ok: false; status: 503; body: { error: string; code: string } };
@@ -89,12 +98,13 @@ async function matchLinesToItems(lines: GafferExtractedLine[], logTag: string): 
 
   const items: GafferReviewApiItem[] = [];
   lines.forEach((line, i) => {
+    const match = matches[i] ?? { kind: "unmatched" as const };
     items.push({
       id: randomUUID(),
       gafferPhrase: line.gafferPhrase,
       interpretedName: line.interpretedName,
-      quantity: line.quantity,
-      match: matches[i] ?? { kind: "unmatched" as const },
+      quantity: quantityFor(line, match),
+      match,
     });
     // Явно запрошенные дополнения («…с софтом» → софтбокс) — отдельными
     // позициями сразу после своей строки, с той же фразой гаффера.
@@ -103,7 +113,7 @@ async function matchLinesToItems(lines: GafferExtractedLine[], logTag: string): 
         id: randomUUID(),
         gafferPhrase: line.gafferPhrase,
         interpretedName: extra.match.catalogName,
-        quantity: line.quantity,
+        quantity: quantityFor(line, extra.match),
         match: extra.match,
       });
     }

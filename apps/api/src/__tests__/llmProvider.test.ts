@@ -138,3 +138,11 @@ describe("normalizePickDecisions", () => {
     expect(normalizePickDecisions(null, PICK_INPUT)).toEqual([]);
   });
 });
+
+import { EXTRACT_PROMPT_REVIEW } from "../services/llm/provider";
+describe("EXTRACT_PROMPT_REVIEW", () => {
+  it("велит разбивать «прибор + насадка» на две позиции и держать «все» во фразе", () => {
+    expect(EXTRACT_PROMPT_REVIEW).toMatch(/SEPARATE items/);
+    expect(EXTRACT_PROMPT_REVIEW).toMatch(/all units in stock/);
+  });
+});
