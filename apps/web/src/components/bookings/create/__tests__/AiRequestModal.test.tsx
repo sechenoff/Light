@@ -9,7 +9,11 @@ const base = {
   onParse: vi.fn(),
   onClose: vi.fn(),
   parsing: false,
+  onImportFile: vi.fn(),
+  importing: false,
 };
+
+const pdf = () => new File(["%PDF-1.4"], "заявка.pdf", { type: "application/pdf" });
 
 describe("AiRequestModal", () => {
   it("закрыта — ничего не рендерит", () => {
@@ -75,5 +79,47 @@ describe("AiRequestModal", () => {
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("dialog"));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  describe("заявка файлом", () => {
+    it("поле принимает PDF и фото; выбранный файл уходит в onImportFile", () => {
+      const onImportFile = vi.fn();
+      render(<AiRequestModal {...base} onImportFile={onImportFile} />);
+      const input = screen.getByLabelText(/загрузить заявку файлом/i);
+      expect(input).toHaveAttribute("accept", expect.stringContaining("application/pdf"));
+      expect(input).toHaveAttribute("accept", expect.stringContaining("image/jpeg"));
+
+      const file = pdf();
+      fireEvent.change(input, { target: { files: [file] } });
+
+      expect(onImportFile).toHaveBeenCalledTimes(1);
+      expect(onImportFile.mock.calls[0][0]).toBe(file);
+    });
+
+    it("перетаскивание файла на зону тоже зовёт onImportFile", () => {
+      const onImportFile = vi.fn();
+      render(<AiRequestModal {...base} onImportFile={onImportFile} />);
+      const zone = screen.getByText(/загрузить заявку файлом/i).closest("label")!;
+      const file = pdf();
+      fireEvent.drop(zone, { dataTransfer: { files: [file] } });
+      expect(onImportFile).toHaveBeenCalledWith(file);
+    });
+
+    it("importing=true — «Читаю документ», textarea заблокирована, Esc не закрывает", () => {
+      const onClose = vi.fn();
+      render(<AiRequestModal {...base} importing={true} onClose={onClose} />);
+      expect(screen.getByText(/читаю документ/i)).toBeInTheDocument();
+      expect(screen.getByRole("textbox")).toBeDisabled();
+      expect(screen.getByLabelText(/загрузить заявку файлом/i)).toBeDisabled();
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("пока идёт текстовое распознавание, файл не принимается", () => {
+      const onImportFile = vi.fn();
+      render(<AiRequestModal {...base} text="строка" parsing={true} onImportFile={onImportFile} />);
+      fireEvent.change(screen.getByLabelText(/загрузить заявку файлом/i), { target: { files: [pdf()] } });
+      expect(onImportFile).not.toHaveBeenCalled();
+    });
   });
 });

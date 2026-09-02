@@ -14,13 +14,13 @@ describe("ClientPortalAccessCard: служебный домен", () => {
 
   it("предупреждает, когда вместо почты служебный логин", async () => {
     mockAccount("petya-kub@svetobazarent.lk");
-    render(<ClientPortalAccessCard clientId="c1" />);
+    render(<ClientPortalAccessCard clientId="c1" defaultEmail={null} />);
     expect(await screen.findByText(/служебный логин, а не почта/i)).toBeInTheDocument();
   });
 
   it("молчит, когда адрес настоящий", async () => {
     mockAccount("petya@example.com");
-    render(<ClientPortalAccessCard clientId="c1" />);
+    render(<ClientPortalAccessCard clientId="c1" defaultEmail={null} />);
     await screen.findByText("petya@example.com");
     expect(screen.queryByText(/служебный логин/i)).not.toBeInTheDocument();
   });

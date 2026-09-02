@@ -186,3 +186,32 @@ export type PendingReviewItem = {
   /** Discriminated union mirroring GafferOrderedMatch. */
   match: GafferOrderedMatch;
 };
+
+/** Шапка заявки-документа, прочитанная AI (POST /api/bookings/parse-gaffer-document) */
+export type GafferDocumentMeta = {
+  projectName: string | null;
+  gafferName: string | null;
+  phone: string | null;
+  email: string | null;
+  telegram: string | null;
+  /** YYYY-MM-DD */
+  startDate: string | null;
+  endDate: string | null;
+  fileName: string;
+};
+
+/** Клиент из базы, подобранный по контактам из заявки */
+export type GafferDocumentClientMatch = {
+  id: string;
+  name: string;
+  phone: string | null;
+  matchedBy: "phone" | "email" | "name";
+};
+
+/** Response from POST /api/bookings/parse-gaffer-document */
+export type GafferDocumentApiResponse = {
+  items: GafferReviewApiItem[];
+  document: GafferDocumentMeta;
+  client: GafferDocumentClientMatch | null;
+  message?: string;
+};

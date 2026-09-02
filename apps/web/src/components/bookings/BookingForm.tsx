@@ -33,6 +33,8 @@ import type {
   CatalogRowAdjustment,
   CatalogSelectedItem,
   CustomItem,
+  GafferDocumentApiResponse,
+  GafferReviewApiItem,
   GafferReviewApiResponse,
   QuoteResponse,
   ValidationCheck,
@@ -108,6 +110,11 @@ export type BookingFormProps = {
 };
 
 // ─── Helper: ISO → datetime-local string ─────────────────────────────────────
+
+/** Зеркало GAFFER_DOCUMENT_MAX_BYTES на сервере — заведомо большой файл отсекаем до загрузки. */
+const IMPORT_FILE_MAX_BYTES = 10 * 1024 * 1024;
+/** Время выдачи/возврата, когда в заявке есть только дата. Как у быстрой брони. */
+const IMPORT_DEFAULT_TIME = "10:00";
 
 function isoToDatetimeLocal(iso: string): string {
   const d = new Date(iso);
@@ -383,6 +390,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
   // AI flow (always starts at defaults — no AI state carries over in edit mode)
   const [gafferText, setGafferText] = useState(isEdit ? "" : (draft?.gafferText ?? ""));
   const [parsing, setParsing] = useState(false);
+  // Импорт заявки файлом (PDF/фото) — отдельный флаг: у него своя зона в модалке.
+  const [importing, setImporting] = useState(false);
   const [parsed, setParsed] = useState(false);
   const [parseResolved, setParseResolved] = useState(0);
   const [parseTotal, setParseTotal] = useState(0);
@@ -1060,26 +1069,97 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         method: "POST",
         body: JSON.stringify({ requestText: gafferText.trim(), startDate: pickupISO, endDate: returnISO }),
       });
-      const reviewItems: PendingReviewItem[] = res.items.map((it) => ({
-        reviewId: it.id,
-        gafferPhrase: it.gafferPhrase,
-        interpretedName: it.interpretedName,
-        quantity: it.quantity,
-        match: it.match,
-      }));
-      setPendingReview(reviewItems);
-      setGafferText("");
-      setSearchQuery("");
-      setParsed(false);
-      setParseResolved(0);
-      setParseTotal(0);
-      setUnmatchedFromAi([]);
-      setSuccessBannerDismissed(true);
+      showReviewItems(res.items);
     } catch (err: unknown) {
       toast.error((err as { message?: string })?.message ?? "Ошибка AI");
     } finally {
       setParsing(false);
     }
+  }
+
+  /** Позиции от AI (текст или документ) → панель подтверждения; AI-состояние обнуляется. */
+  function showReviewItems(items: GafferReviewApiItem[]) {
+    const reviewItems: PendingReviewItem[] = items.map((it) => ({
+      reviewId: it.id,
+      gafferPhrase: it.gafferPhrase,
+      interpretedName: it.interpretedName,
+      quantity: it.quantity,
+      match: it.match,
+    }));
+    setPendingReview(reviewItems);
+    setGafferText("");
+    setSearchQuery("");
+    setParsed(false);
+    setParseResolved(0);
+    setParseTotal(0);
+    setUnmatchedFromAi([]);
+    setSuccessBannerDismissed(true);
+  }
+
+  /**
+   * Заявка файлом: гаффер прислал PDF/фото — модель читает позиции и шапку.
+   * Проект, клиент и даты подставляются из документа поверх текущих значений:
+   * человек сам выбрал импорт именно этой заявки, а пустое поле в документе
+   * ничего не перетирает. В режиме правки клиент брони не меняется.
+   */
+  async function handleImportDocument(file: File) {
+    if (file.size > IMPORT_FILE_MAX_BYTES) {
+      toast.error("Файл больше 10 МБ — сожмите PDF или сфотографируйте заявку в меньшем разрешении");
+      return;
+    }
+    setImporting(true);
+    try {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      const res = await apiFetch<GafferDocumentApiResponse>("/api/bookings/parse-gaffer-document", {
+        method: "POST",
+        body: form,
+      });
+      applyImportedDocument(res);
+    } catch (err: unknown) {
+      toast.error((err as { message?: string })?.message ?? "Не удалось прочитать заявку");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function applyImportedDocument(res: GafferDocumentApiResponse) {
+    const doc = res.document;
+    const filled: string[] = [];
+
+    if (!isEdit) {
+      if (res.client) {
+        setClientName(res.client.name);
+        setIsNewClient(false);
+        filled.push(`клиент «${res.client.name}»`);
+      } else if (doc.gafferName) {
+        setClientName(doc.gafferName);
+        if (doc.phone) setClientPhone(doc.phone);
+        setIsNewClient(true);
+        filled.push(`новый клиент «${doc.gafferName}»`);
+      }
+    }
+    if (doc.projectName) {
+      setProjectName(doc.projectName);
+      filled.push(`проект «${doc.projectName}»`);
+    }
+    if (doc.startDate) {
+      handlePickupChange(`${doc.startDate}T${IMPORT_DEFAULT_TIME}`);
+      if (doc.endDate && doc.endDate > doc.startDate) {
+        handleReturnChange(`${doc.endDate}T${IMPORT_DEFAULT_TIME}`);
+      }
+      filled.push("даты съёмки");
+    }
+
+    showReviewItems(res.items);
+
+    const n = res.items.length;
+    if (n === 0) {
+      toast.info(res.message ?? "AI не нашёл позиций оборудования в документе");
+    }
+    const summary =
+      n > 0 ? `Из заявки прочитано ${n} ${pluralize(n, "позиция", "позиции", "позиций")}` : "Заявка прочитана";
+    toast.success(filled.length > 0 ? `${summary} · подставлены ${filled.join(", ")} — проверьте` : summary);
   }
 
   function handleClear() {
@@ -1436,6 +1516,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             unmatchedFromAi={unmatchedFromAi}
             successBannerDismissed={successBannerDismissed}
             onParse={handleParse}
+            onImportFile={handleImportDocument}
+            importing={importing}
             onClear={handleClear}
             onDismissSuccess={handleDismissSuccess}
             onIgnoreUnmatched={handleIgnoreUnmatched}

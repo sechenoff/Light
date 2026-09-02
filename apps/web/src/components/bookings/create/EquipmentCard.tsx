@@ -45,6 +45,9 @@ type Props = {
   unmatchedFromAi: string[];
   successBannerDismissed: boolean;
   onParse: () => void;
+  /** Импорт заявки файлом (PDF/фото) — вторая зона той же модалки. */
+  onImportFile: (file: File) => void;
+  importing: boolean;
   onClear: () => void;
   onDismissSuccess: () => void;
   onIgnoreUnmatched: () => void;
@@ -96,6 +99,8 @@ export function EquipmentCard({
   unmatchedFromAi,
   successBannerDismissed,
   onParse,
+  onImportFile,
+  importing,
   onDismissSuccess,
   onIgnoreUnmatched,
   onAddOffCatalog,
@@ -245,6 +250,8 @@ export function EquipmentCard({
         onParse={onParse}
         onClose={() => setAiOpen(false)}
         parsing={parsing}
+        onImportFile={onImportFile}
+        importing={importing}
       />
 
       {/* Каталог */}
