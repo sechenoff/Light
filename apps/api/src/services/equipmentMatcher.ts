@@ -336,6 +336,10 @@ function scoreRow(query: string, row: CatalogRow): number {
   const q = norm(query);
   const n = norm(row.name);
 
+  // Пустая после нормализации строка («—», эмодзи) — не запрос: иначе
+  // `n.includes("")` ставит 0.9 первой же строке каталога.
+  if (!q || !n) return 0;
+
   if (q === n) return 1.0;
 
   const qInN = n.includes(q);
@@ -417,9 +421,18 @@ function findTopCandidates(
     }
   }
 
-  // 2. Score all catalog rows
+  // 2. Score all catalog rows — по AI-имени И по исходной фразе гаффера.
+  // Заявки из программ гафферов часто содержат наши же названия дословно
+  // («ChineVise Grip (цепной)»), а модель при нормализации может исказить
+  // («chinavise grip») или перевести на английский («metal clamp 160mm» для
+  // «Прищепка металлическая большая, 160 мм…»). Скорим обе строки и берём
+  // лучший счёт: так позиция из каталога не теряется из-за орфографии модели.
+  const rawPhrase = gafferPhrase && gafferQ !== q ? gafferPhrase : null;
   const scored = catalog
-    .map((row) => ({ row, score: scoreRow(phrase, row) }))
+    .map((row) => ({
+      row,
+      score: Math.max(scoreRow(phrase, row), rawPhrase ? scoreRow(rawPhrase, row) : 0),
+    }))
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, topN);
