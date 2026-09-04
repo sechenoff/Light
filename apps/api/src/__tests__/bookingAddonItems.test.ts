@@ -187,6 +187,26 @@ beforeAll(async () => {
     data: { clientId: client.id, projectName: "Черновик", startDate: startB, endDate: endB, status: "DRAFT", finalAmount: "0" },
   });
   draftBookingId = draft.id;
+
+  // Просроченная выданная бронь с ЧУЖИМИ датами держит третий юнит SkyPanel в
+  // ISSUED: агрегат по датам его не вычтет, а на полке его нет — потолок UNIT
+  // обязан считаться по реальному пулу свободных экземпляров.
+  const overdueStart = new Date(Date.now() - 20 * DAY);
+  const overdueEnd = new Date(overdueStart.getTime() + 2 * DAY);
+  const unit3 = await prisma.equipmentUnit.findUnique({ where: { internalInventoryNumber: "UNIT-3" } });
+  await prisma.equipmentUnit.update({ where: { id: unit3.id }, data: { status: "ISSUED" } });
+  await prisma.booking.create({
+    data: {
+      clientId: client.id,
+      projectName: "Просроченная",
+      startDate: overdueStart,
+      endDate: overdueEnd,
+      status: "ISSUED",
+      issuedAt: overdueStart,
+      finalAmount: "1000",
+      items: { create: [{ equipmentId: eqUnitId, quantity: 1, unitReservations: { create: [{ equipmentUnitId: unit3.id }] } }] },
+    },
+  });
 });
 
 afterAll(async () => {
@@ -220,7 +240,8 @@ describe("GET /api/bookings/:id/addon-search", () => {
     expect(count.stockTrackingMode).toBe("COUNT");
 
     const unit = byId.get(eqUnitId);
-    expect(unit.addCap).toBe(3);
+    // Пригодных 3, но один застрял в ISSUED у просроченной брони — свободных 2.
+    expect(unit.addCap).toBe(2);
     expect(unit.stockTrackingMode).toBe("UNIT");
 
     const busy = byId.get(eqBusyId);
@@ -359,8 +380,9 @@ describe("POST /api/bookings/:id/addon-items", () => {
     expect(item.unitReservations.every((r: any) => r.equipmentUnit.status === "ISSUED")).toBe(true);
 
     const units = await prisma.equipmentUnit.findMany({ where: { equipmentId: eqUnitId } });
-    expect(units.filter((u: any) => u.status === "ISSUED")).toHaveLength(2);
-    expect(units.filter((u: any) => u.status === "AVAILABLE")).toHaveLength(1);
+    // Два выданы в A, третий — у просроченной брони; свободных не осталось.
+    expect(units.filter((u: any) => u.status === "ISSUED")).toHaveLength(3);
+    expect(units.filter((u: any) => u.status === "AVAILABLE")).toHaveLength(0);
 
     const { addon } = await loadEstimates(bookingAId);
     const unitLine = addon.lines.find((l: any) => l.equipmentId === eqUnitId);
@@ -368,15 +390,16 @@ describe("POST /api/bookings/:id/addon-items", () => {
     expect(num(unitLine.unitPrice)).toBe(1000); // 500 × 2 смены
   });
 
-  it("hard cap: сверх физического склада → 409 ADDON_OVER_STOCK с деталями", async () => {
-    // Пригодных единиц 3, две уже в брони → добрать можно ещё 1.
+  it("hard cap: сверх реально свободных юнитов → 409 ADDON_OVER_STOCK с деталями", async () => {
+    // Агрегат по датам обещал бы ещё 1 (пригодных 3 − в брони 2), но третий юнит
+    // застрял у просроченной брони — свободных 0.
     const res = await request(app)
       .post(`/api/bookings/${bookingAId}/addon-items`)
       .set(H(whToken))
-      .send({ items: [{ equipmentId: eqUnitId, quantity: 2 }] });
+      .send({ items: [{ equipmentId: eqUnitId, quantity: 1 }] });
     expect(res.status).toBe(409);
     expect(res.body.code).toBe("ADDON_OVER_STOCK");
-    expect(res.body.details).toMatchObject({ equipmentId: eqUnitId, addCap: 1, requested: 2, alreadyInBooking: 2 });
+    expect(res.body.details).toMatchObject({ equipmentId: eqUnitId, addCap: 0, requested: 1, alreadyInBooking: 2 });
 
     // Отказ ничего не записал.
     const item = await prisma.bookingItem.findUnique({
@@ -429,7 +452,8 @@ describe("POST /api/bookings/:id/addon-estimate/merge", () => {
     expect(before.addon).toBeTruthy();
     const finalBefore = num(before.booking.finalAmount);
 
-    const res = await request(app).post(`/api/bookings/${bookingAId}/addon-estimate/merge`).set(H(saToken));
+    // Кладовщик тоже может: роут за rolesGuard(SA, WAREHOUSE), отдельного гарда нет.
+    const res = await request(app).post(`/api/bookings/${bookingAId}/addon-estimate/merge`).set(H(whToken));
     expect(res.status).toBe(200);
     expect(res.body.mergedLines).toBe(3); // COUNT ×3, UNIT ×2, занятый ×1
     expect(res.body.mergedQuantity).toBe(6);
@@ -449,6 +473,55 @@ describe("POST /api/bookings/:id/addon-estimate/merge", () => {
       where: { entityType: "Booking", entityId: bookingAId, action: "BOOKING_ADDON_MERGED" },
     });
     expect(audit).toHaveLength(1);
+  });
+});
+
+describe("активная складская сессия блокирует добор", () => {
+  it("RETURN-сессия открыта → 409 SCAN_SESSION_ACTIVE; после отмены сессии добор проходит", async () => {
+    const session = await prisma.scanSession.create({
+      data: { bookingId: bookingBId, workerName: "Иван Кладовщик", operation: "RETURN", status: "ACTIVE" },
+    });
+    const blocked = await request(app)
+      .post(`/api/bookings/${bookingBId}/addon-items`)
+      .set(H(saToken))
+      .send({ items: [{ equipmentId: eqCountId, quantity: 1 }] });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.code).toBe("SCAN_SESSION_ACTIVE");
+    expect(blocked.body.details).toMatchObject({ sessionId: session.id, operation: "RETURN", workerName: "Иван Кладовщик" });
+    expect(blocked.body.message).toMatch(/приёмка/);
+
+    // Ничего не записано.
+    const item = await prisma.bookingItem.findUnique({
+      where: { bookingId_equipmentId: { bookingId: bookingBId, equipmentId: eqCountId } },
+    });
+    expect(item.quantity).toBe(1);
+
+    await prisma.scanSession.update({ where: { id: session.id }, data: { status: "CANCELLED" } });
+    const ok = await request(app)
+      .post(`/api/bookings/${bookingBId}/addon-items`)
+      .set(H(saToken))
+      .send({ items: [{ equipmentId: eqCountId, quantity: 1 }] });
+    expect(ok.status).toBe(201);
+    // Откатываем, чтобы сценарий продления ниже считал от исходного состава.
+    await prisma.bookingItem.update({
+      where: { bookingId_equipmentId: { bookingId: bookingBId, equipmentId: eqCountId } },
+      data: { quantity: 1 },
+    });
+    const { recomputeAddonEstimate } = await import("../services/addonEstimate");
+    const { recomputeBookingFinance } = await import("../services/finance");
+    await recomputeAddonEstimate(bookingBId);
+    await recomputeBookingFinance(bookingBId);
+  });
+});
+
+describe("PATCH extendEndDate вместе с items", () => {
+  it("→ 409 ITEMS_LOCKED_UNTIL_RETURN: продление не меняет состав", async () => {
+    const res = await request(app)
+      .patch(`/api/bookings/${bookingBId}`)
+      .set(H(saToken))
+      .send({ extendEndDate: new Date(endB.getTime() + DAY).toISOString(), items: [{ equipmentId: eqCountId, quantity: 5 }] });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("ITEMS_LOCKED_UNTIL_RETURN");
   });
 });
 

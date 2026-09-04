@@ -116,6 +116,7 @@ export const ADDON_ERROR_CODES = {
   NOT_ENOUGH_UNITS: "NOT_ENOUGH_UNITS",
   NO_MAIN: "MAIN_ESTIMATE_NOT_FOUND",
   NO_ADDON: "ADDON_ESTIMATE_NOT_FOUND",
+  SCAN_SESSION_ACTIVE: "SCAN_SESSION_ACTIVE",
 } as const;
 
 // ── Поиск по каталогу с доступностью на даты брони ───────────────────────────
@@ -163,6 +164,20 @@ export async function searchAddonCandidates(args: {
           ? await findAddonConflict(row.equipment.id, booking.startDate, booking.endDate, args.bookingId)
           : null;
       const alreadyInBooking = alreadyByEquipment.get(row.equipment.id) ?? 0;
+      let addCap = Math.max(0, row.availableQuantity - alreadyInBooking);
+      if (row.equipment.stockTrackingMode === "UNIT") {
+        // Агрегат считает по датам, а выдаётся конкретный экземпляр: юнит,
+        // застрявший в ISSUED у просроченной брони с чужими датами, агрегат
+        // не вычтет, но на полке его нет. Потолок — реальный пул свободных.
+        const free = await listFreeUnitIds(prisma, {
+          bookingId: args.bookingId,
+          bookingItemId: null,
+          equipmentId: row.equipment.id,
+          start: booking.startDate,
+          end: booking.endDate,
+        });
+        addCap = Math.min(addCap, free.length);
+      }
       return {
         equipmentId: row.equipment.id,
         name: row.equipment.name,
@@ -172,7 +187,7 @@ export async function searchAddonCandidates(args: {
         stockTrackingMode: row.equipment.stockTrackingMode === "UNIT" ? "UNIT" : "COUNT",
         rentalRatePerShift: row.equipment.rentalRatePerShift.toString(),
         availableQuantity: row.availableQuantity,
-        addCap: Math.max(0, row.availableQuantity - alreadyInBooking),
+        addCap,
         alreadyInBooking,
         availability,
         conflict,
@@ -234,24 +249,18 @@ async function computeOccupiedByOthers(
 }
 
 /**
- * Резервирует под позицию `quantity` свободных юнитов и, если бронь уже выдана,
- * сразу переводит их в ISSUED. Юниты, занятые живыми резервами пересекающихся
- * броней, и уже зарезервированные этой же позицией — не берём.
+ * Свободные экземпляры UNIT-позиции, которые реально можно довезти: статус
+ * AVAILABLE, не в живом резерве пересекающейся брони и не зарезервированы этой
+ * же позицией. Общая выборка для потолка (поиск, hard cap) и для резерва —
+ * иначе «свободно ×N» и отказ NOT_ENOUGH_UNITS считали бы по разным спискам.
+ * Под ответственность чужие резервы НЕ отдаём: юнит, зарезервированный другой
+ * подтверждённой бронью, физически нужен ей на выдаче.
  */
-async function reserveUnitsForAddon(
-  tx: TxClient,
-  args: {
-    bookingId: string;
-    bookingItemId: string;
-    equipmentId: string;
-    equipmentName: string;
-    quantity: number;
-    start: Date;
-    end: Date;
-    issueNow: boolean;
-  },
+async function listFreeUnitIds(
+  client: TxClient | typeof prisma,
+  args: { bookingId: string; bookingItemId: string | null; equipmentId: string; start: Date; end: Date },
 ): Promise<string[]> {
-  const takenByOthers = await tx.bookingItemUnit.findMany({
+  const takenByOthers = await client.bookingItemUnit.findMany({
     where: {
       returnedAt: null,
       bookingItem: {
@@ -266,20 +275,48 @@ async function reserveUnitsForAddon(
     },
     select: { equipmentUnitId: true },
   });
-  const mine = await tx.bookingItemUnit.findMany({
-    where: { bookingItemId: args.bookingItemId, returnedAt: null },
-    select: { equipmentUnitId: true },
-  });
+  const mine = args.bookingItemId
+    ? await client.bookingItemUnit.findMany({
+        where: { bookingItemId: args.bookingItemId, returnedAt: null },
+        select: { equipmentUnitId: true },
+      })
+    : [];
   const excluded = new Set<string>([
     ...takenByOthers.map((r) => r.equipmentUnitId),
     ...mine.map((r) => r.equipmentUnitId),
   ]);
-  const candidates = await tx.equipmentUnit.findMany({
+  const candidates = await client.equipmentUnit.findMany({
     where: { equipmentId: args.equipmentId, status: "AVAILABLE" },
     select: { id: true },
     orderBy: { id: "asc" },
   });
-  const free = candidates.map((u) => u.id).filter((id) => !excluded.has(id));
+  return candidates.map((u) => u.id).filter((id) => !excluded.has(id));
+}
+
+/**
+ * Резервирует под позицию `quantity` свободных юнитов и, если бронь уже выдана,
+ * сразу переводит их в ISSUED.
+ */
+async function reserveUnitsForAddon(
+  tx: TxClient,
+  args: {
+    bookingId: string;
+    bookingItemId: string;
+    equipmentId: string;
+    equipmentName: string;
+    quantity: number;
+    start: Date;
+    end: Date;
+    issueNow: boolean;
+  },
+): Promise<string[]> {
+  const free = await listFreeUnitIds(tx, {
+    bookingId: args.bookingId,
+    bookingItemId: args.bookingItemId,
+    equipmentId: args.equipmentId,
+    start: args.start,
+    end: args.end,
+  });
   if (free.length < args.quantity) {
     throw new HttpError(
       409,
@@ -428,6 +465,29 @@ async function recomputeAfterAddon(bookingId: string, tag: string): Promise<void
   });
 }
 
+/**
+ * Добор со страницы живёт вне складских сессий, и это опасно, пока сессия
+ * открыта: приёмка (RETURN) по завершении переводит все живые резервы, которых
+ * не было в сканах, в MISSING — довезённый только что юнит попал бы в «не
+ * принято». Во время выдачи (ISSUE) позиция добавляется в чек-листе киоска —
+ * там же её и сканируют. Поэтому при активной сессии — 409 с подсказкой.
+ */
+async function assertNoActiveScanSession(client: TxClient | typeof prisma, bookingId: string): Promise<void> {
+  const active = await client.scanSession.findFirst({
+    where: { bookingId, status: "ACTIVE" },
+    select: { id: true, operation: true, workerName: true, startedAt: true },
+  });
+  if (!active) return;
+  throw new HttpError(
+    409,
+    active.operation === "RETURN"
+      ? "На складе идёт приёмка по этой брони — завершите или отмените её в киоске, иначе довезённое попадёт в «не принято»"
+      : "На складе идёт выдача по этой брони — добавьте позицию в чек-листе киоска или завершите сессию",
+    ADDON_ERROR_CODES.SCAN_SESSION_ACTIVE,
+    { sessionId: active.id, operation: active.operation, workerName: active.workerName, startedAt: active.startedAt.toISOString() },
+  );
+}
+
 async function loadBookingForAddon(bookingId: string) {
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
@@ -471,6 +531,7 @@ export async function addAddonItems(args: {
   if (!main) {
     throw new HttpError(409, "У брони нет основной сметы — добор считать не от чего", ADDON_ERROR_CODES.NO_MAIN);
   }
+  await assertNoActiveScanSession(prisma, bookingId);
 
   const equipments = await prisma.equipment.findMany({
     where: { id: { in: items.map((it) => it.equipmentId) } },
@@ -516,6 +577,8 @@ export async function addAddonItems(args: {
         status: txBooking.status,
       });
     }
+    // Повторно внутри транзакции: сессию могли открыть между проверкой и записью.
+    await assertNoActiveScanSession(tx, bookingId);
     const issueNow = txBooking.status === "ISSUED";
 
     const result: AddedAddonItem[] = [];
@@ -523,7 +586,7 @@ export async function addAddonItems(args: {
       const equipment = equipmentById.get(it.equipmentId)!;
       const existing = await tx.bookingItem.findUnique({
         where: { bookingId_equipmentId: { bookingId, equipmentId: it.equipmentId } },
-        select: { quantity: true },
+        select: { id: true, quantity: true },
       });
       const alreadyMine = existing?.quantity ?? 0;
       const hadConflict = conflictedEquipment.has(it.equipmentId);
@@ -540,7 +603,19 @@ export async function addAddonItems(args: {
             start: txBooking.startDate,
             end: txBooking.endDate,
           });
-      const addCap = Math.max(0, physicalStock - occupiedByOthers - alreadyMine);
+      let addCap = Math.max(0, physicalStock - occupiedByOthers - alreadyMine);
+      if (equipment.stockTrackingMode === "UNIT") {
+        // Агрегат по датам может обещать юнит, застрявший в ISSUED у просроченной
+        // брони с чужими датами; выдать можно только реально свободный экземпляр.
+        const free = await listFreeUnitIds(tx, {
+          bookingId,
+          bookingItemId: existing?.id ?? null,
+          equipmentId: it.equipmentId,
+          start: txBooking.startDate,
+          end: txBooking.endDate,
+        });
+        addCap = Math.min(addCap, free.length);
+      }
       if (it.quantity > addCap) {
         throw new HttpError(
           409,

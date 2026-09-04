@@ -326,6 +326,12 @@ export function AddonItemsModal({
         setSubmitError(e.message ?? "Не хватает на складе");
         return;
       }
+      // Прочие 409 (например, SCAN_SESSION_ACTIVE — на складе идёт приёмка) —
+      // объяснение сервера показываем прямо в модалке, оно содержит подсказку.
+      if (isApiError(e) && e.status === 409 && e.message) {
+        setSubmitError(e.message);
+        return;
+      }
       toast.error(isApiError(e) && e.message ? e.message : "Не удалось добавить добор");
     } finally {
       setBusy(false);

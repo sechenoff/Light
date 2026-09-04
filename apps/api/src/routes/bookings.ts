@@ -853,6 +853,15 @@ router.patch("/:id", async (req, res, next) => {
         "ITEMS_LOCKED_UNTIL_RETURN",
       );
     }
+    // Продление меняет только срок: состав в том же запросе не принимаем, иначе
+    // пересборка сметы с preserveAddonSplit ниже перепутала бы правку MAIN с добором.
+    if (isExtendIssued && !retroactiveEdit && (body.items || body.transport)) {
+      throw new HttpError(
+        409,
+        "Продление выданной брони не меняет состав — позиции и транспорт правятся после приёмки.",
+        "ITEMS_LOCKED_UNTIL_RETURN",
+      );
+    }
 
     // Захватываем исходные данные для аудит-записи (если бронь в статусе PENDING_APPROVAL)
     const wasInReview = existing.status === "PENDING_APPROVAL";
