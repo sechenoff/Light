@@ -24,6 +24,7 @@ type AuditEntityType =
   | "OrgSettings"
   | "ProblemItem"
   | "Feedback"
+  | "SlangAlias"
   | "ClientPortalAccount";
 
 /**

@@ -1,0 +1,12 @@
+{
+  "name": "Test",
+  "type": "private_supergroup",
+  "id": 1,
+  "messages": [
+    { "id": 100, "type": "message", "date": "2026-01-17T05:03:15", "from": "Старость", "text": "17.01 бага погруз\nЛантерн 120 (1)\nЛайтдом 150 (2)\nСдл 8 (2)" },
+    { "id": 101, "type": "message", "date": "2026-01-17T16:33:45", "from": "Андрей Свет Водитель", "text": "вот", "file": "files/17.01 Старость 4500.xlsx" },
+    { "id": 200, "type": "message", "date": "2026-02-10T10:00:00", "from": "Гена Белых", "text": "10.02 проект\nМбю 12 (1)" },
+    { "id": 201, "type": "message", "date": "2026-02-11T09:00:00", "from": "Гена Белых", "text": "Просто болтовня" },
+    { "id": 300, "type": "message", "date": "2026-03-01T12:00:00", "from": "Vitaly Sechenov", "text": "", "file": "files/SVETOBAZA_инвентаризация.xlsx" }
+  ]
+}
