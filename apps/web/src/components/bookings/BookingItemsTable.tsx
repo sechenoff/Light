@@ -32,6 +32,16 @@ export type ItemsTableBooking = {
       lineSum: string;
     }> | null;
   } | null;
+  /** Доп-смета (доборы поверх согласованной): строка таблицы показывает
+   *  общее количество, поэтому и сумма по строке — MAIN + добор. */
+  addonEstimate?: {
+    lines?: Array<{
+      equipmentId?: string | null;
+      quantity: number;
+      unitPrice: string;
+      lineSum: string;
+    }> | null;
+  } | null;
 };
 
 export interface BookingItemsTableProps {
@@ -57,6 +67,10 @@ export function BookingItemsTable({
   for (const l of estLines) {
     if (l.equipmentId) priceByEquipmentId.set(l.equipmentId, { unitPrice: l.unitPrice, lineSum: l.lineSum });
     priceByName.set(l.nameSnapshot, { unitPrice: l.unitPrice, lineSum: l.lineSum });
+  }
+  const addonByEquipmentId = new Map<string, { quantity: number; unitPrice: string; lineSum: string }>();
+  for (const l of booking.addonEstimate?.lines ?? []) {
+    if (l.equipmentId) addonByEquipmentId.set(l.equipmentId, { quantity: l.quantity, unitPrice: l.unitPrice, lineSum: l.lineSum });
   }
   const showPrices = estLines.length > 0;
   // В retro-edit добавляется столбец «✕» (delete) + цены в таблице отображаются read-only.
@@ -105,9 +119,19 @@ export function BookingItemsTable({
           </thead>
           <tbody>
             {displayItems.map((it) => {
-              const price =
+              const mainPrice =
                 (it.equipmentId ? priceByEquipmentId.get(it.equipmentId) : undefined) ??
                 priceByName.get(it.equipment?.name ?? it.customName ?? "");
+              const addon = it.equipmentId ? addonByEquipmentId.get(it.equipmentId) : undefined;
+              // Позиция целиком добор — цены берём из доп-сметы; частичный добор —
+              // цена за единицу та же, сумма строки = основная + добор.
+              const price = mainPrice
+                ? addon
+                  ? { unitPrice: mainPrice.unitPrice, lineSum: String(Number(mainPrice.lineSum) + Number(addon.lineSum)) }
+                  : mainPrice
+                : addon
+                  ? { unitPrice: addon.unitPrice, lineSum: addon.lineSum }
+                  : undefined;
               const anyIt = it as RetroEditItem;
               const qtyChanged =
                 retroEditMode &&
@@ -136,6 +160,11 @@ export function BookingItemsTable({
                         </span>
                       )}
                       {anyIt._added && <span className="text-emerald ml-1">· новая позиция</span>}
+                      {addon && !retroEditMode && (
+                        <span className="text-accent ml-1" title="Добавлено поверх согласованной сметы">
+                          · добор ×{addon.quantity}
+                        </span>
+                      )}
                       {anyIt._deleted && <span className="text-rose ml-1">· к удалению</span>}
                     </div>
                   </td>

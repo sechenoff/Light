@@ -36,6 +36,13 @@ import { rolesGuard } from "../middleware/rolesGuard";
 import { writeAuditEntry, diffFields } from "../services/audit";
 import { buildBookingEstimatePdf, buildBookingActPdf } from "../services/documentExport/bookingPdf";
 import { toMoscowDateString, fromMoscowDateString, moscowTodayStart, addDays } from "../utils/moscowDate";
+import { recomputeAddonEstimate } from "../services/addonEstimate";
+import {
+  ADDON_MODES,
+  addAddonItems,
+  mergeAddonIntoMain,
+  searchAddonCandidates,
+} from "../services/bookingAddon";
 
 const router = express.Router();
 
@@ -1127,7 +1134,12 @@ router.patch("/:id", async (req, res, next) => {
     // отражать актуальный набор позиций, дат и скидки.
     let warning: string | null = null;
     try {
-      await rebuildBookingEstimate(id);
+      // Продление выданной брони состав не меняет — доборы остаются отдельной
+      // доп-сметой и пересчитываются под новое число смен. В остальных правках
+      // MAIN собирается из всех позиций, и recomputeAddonEstimate снимает
+      // устаревший ADDON — иначе добор попал бы в финансы дважды.
+      await rebuildBookingEstimate(id, { preserveAddonSplit: isExtendIssued });
+      await recomputeAddonEstimate(id);
       await recomputeBookingFinance(id);
       await createFinanceEvent({ bookingId: id, eventType: "BOOKING_EDITED" });
     } catch (financeErr) {
@@ -3060,6 +3072,88 @@ router.get(
     }
   },
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Добор в подтверждённую / выданную бронь со страницы брони.
+// Логика — services/bookingAddon.ts (там же объяснено, почему не PATCH items).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const addonSearchQuerySchema = z.object({
+  q: z.string().trim().min(1).max(100),
+});
+
+const addonItemsBodySchema = z.object({
+  items: z
+    .array(
+      z.object({
+        equipmentId: z.string().min(1),
+        quantity: z.number().int().positive().max(1000),
+      }),
+    )
+    .min(1)
+    .max(50),
+  /** ADDON — отдельной доп-сметой (по умолчанию); MERGE — в основную смету. */
+  mode: z.enum(ADDON_MODES).default("ADDON"),
+  /** Осознанное «под ответственность» при конфликте по датам (409 ADDON_CONFLICT). */
+  acknowledgedConflict: z.boolean().optional().default(false),
+});
+
+/** Бронь для ответа добора — та же форма, что у GET /:id (без платежей/событий). */
+async function loadBookingAfterAddon(id: string) {
+  const fresh = await prisma.booking.findUnique({
+    where: { id },
+    include: {
+      client: true,
+      items: { include: { equipment: true } },
+      estimates: { include: { lines: true } },
+      vehicles: { include: { vehicle: true }, orderBy: { createdAt: "asc" } },
+    },
+  });
+  return fresh ? serializeBookingForApi(fresh as any) : null;
+}
+
+/** GET /:id/addon-search?q= — каталог с доступностью на даты брони и потолком добора. */
+router.get("/:id/addon-search", async (req, res, next) => {
+  try {
+    const { q } = addonSearchQuerySchema.parse(req.query);
+    const results = await searchAddonCandidates({ bookingId: req.params.id, q });
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /:id/addon-items — добавить позиции в CONFIRMED/ISSUED бронь. */
+router.post("/:id/addon-items", async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const body = addonItemsBodySchema.parse(req.body);
+    await assertBookingNotArchived(id);
+    const result = await addAddonItems({
+      bookingId: id,
+      items: body.items,
+      mode: body.mode,
+      acknowledgedConflict: body.acknowledgedConflict,
+      userId: req.adminUser?.userId ?? null,
+      createdBy: req.adminUser?.username ?? "api",
+    });
+    res.status(201).json({ ...result, booking: await loadBookingAfterAddon(id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /:id/addon-estimate/merge — влить доп-смету в основную (документ один). */
+router.post("/:id/addon-estimate/merge", async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    await assertBookingNotArchived(id);
+    const result = await mergeAddonIntoMain({ bookingId: id, userId: req.adminUser?.userId ?? null });
+    res.json({ ...result, booking: await loadBookingAfterAddon(id) });
+  } catch (err) {
+    next(err);
+  }
+});
 
 export { router as bookingsRouter };
 

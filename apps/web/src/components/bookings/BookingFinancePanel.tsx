@@ -33,6 +33,8 @@ function paymentMethodLabel(method: string | null): string {
 
 /** Минимальная форма брони для панели (структурно совместима с BookingDetail). */
 export type FinanceBooking = {
+  /** Доп-смета (доборы поверх согласованной) — отдельная строка в разбивке суммы. */
+  addonEstimate?: { totalAfterDiscount: string } | null;
   id: string;
   status: string;
   paymentStatus?: string | null;
@@ -152,6 +154,9 @@ export function BookingFinancePanel({
             ? Number(booking.estimate.totalAfterDiscount)
             : Number(booking.finalAmount ?? "0") - Number(booking.transportSubtotalRub ?? "0");
           const transport = Number(booking.transportSubtotalRub ?? "0");
+          // Добор — отдельный документ поверх основной сметы: finalAmount его
+          // уже содержит, значит и разбивка обязана показать его строкой.
+          const addonAfterDiscount = Number(booking.addonEstimate?.totalAfterDiscount ?? "0");
           const transportVehicles = booking.vehicles ?? [];
           const hasMultiVehicles = transportVehicles.length > 0;
           const hasTransport =
@@ -160,7 +165,7 @@ export function BookingFinancePanel({
           const discount = booking.estimate ? Number(booking.estimate.discountAmount) : Number(booking.discountAmount ?? "0");
           const rentBeforeDiscount = booking.estimate ? Number(booking.estimate.subtotal) : Number(booking.totalEstimateAmount ?? "0");
           // Сигнал рассинхрона: снапшот сметы + транспорт ≠ сохранённый finalAmount.
-          const recomposed = equipAfterDiscount + transport;
+          const recomposed = equipAfterDiscount + addonAfterDiscount + transport;
           const drifted = booking.estimate != null && Math.abs(recomposed - finalNum) > 0.01;
           return (
             <div className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm space-y-1.5">
@@ -181,6 +186,12 @@ export function BookingFinancePanel({
                 <span className="text-ink-2">Аренда после скидки</span>
                 <span className="mono-num text-ink-2">{formatMoneyRub(equipAfterDiscount)}</span>
               </div>
+              {addonAfterDiscount > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-ink-2">Добор (доп-смета)</span>
+                  <span className="mono-num text-ink-2">+{formatMoneyRub(addonAfterDiscount)}</span>
+                </div>
+              )}
               {hasTransport && hasMultiVehicles && (
                 <>
                   {transportVehicles.map((v) => (

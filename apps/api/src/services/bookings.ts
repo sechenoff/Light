@@ -600,13 +600,27 @@ async function computeBookingTransportSubtotal(booking: {
  * Если у брони ещё нет сметы — создаёт её.
  * Вызывается после PATCH-редактирования, чтобы цены и суммы обновились.
  */
-export async function rebuildBookingEstimate(bookingId: string) {
+/**
+ * Пересобирает MAIN-снапшот из текущих позиций брони.
+ *
+ * `preserveAddonSplit` — для правок, которые НЕ меняют состав (продление
+ * выданной брони): если у брони есть доп-смета, количество каждой каталожной
+ * строки MAIN остаётся прежним (не больше, чем было в старом снапшоте), а всё
+ * сверх него по-прежнему живёт в ADDON — его пересчитает recomputeAddonEstimate
+ * с новым числом смен. Без флага MAIN собирается из всех позиций целиком, и
+ * доборы вливаются в основную смету; вызывающая сторона обязана следом вызвать
+ * recomputeAddonEstimate, иначе живой ADDON посчитается в финансах дважды.
+ */
+export async function rebuildBookingEstimate(
+  bookingId: string,
+  opts?: { preserveAddonSplit?: boolean },
+) {
   return prisma.$transaction(async (tx) => {
     const booking = await tx.booking.findUnique({
       where: { id: bookingId },
       include: {
         items: { include: { equipment: true } },
-        estimates: true,
+        estimates: { include: { lines: true } },
         vehicles: true,
       },
     });
@@ -630,7 +644,20 @@ export async function rebuildBookingEstimate(bookingId: string) {
 
     const shifts = billableShifts24h(booking.startDate, booking.endDate, booking.skipPartialDay ?? false);
 
-    const lines: Array<{
+    // Потолок количества каталожной строки MAIN при сохранении раскладки
+    // «основная / добор»: сколько было в старом снапшоте. null — потолка нет.
+    const previousMain = booking.estimates.find((e) => e.kind === "MAIN");
+    const hasAddon = booking.estimates.some((e) => e.kind === "ADDON");
+    const mainQtyCap =
+      opts?.preserveAddonSplit && previousMain && hasAddon
+        ? new Map(
+            previousMain.lines
+              .filter((l) => l.equipmentId != null)
+              .map((l) => [l.equipmentId as string, l.quantity] as const),
+          )
+        : null;
+
+    type MainLine = {
       equipmentId: string | null;
       categorySnapshot: string;
       nameSnapshot: string;
@@ -641,29 +668,37 @@ export async function rebuildBookingEstimate(bookingId: string) {
       lineSum: Decimal;
       listUnitPrice: Decimal | null;
       isNegotiated: boolean;
-    }> = booking.items.map((it) => {
+    };
+    // Явный тип возврата: у каталожной и произвольной строки разные литеральные
+    // типы (equipmentId: string | null), и flatMap иначе выводит тип по первой ветке.
+    const lines: MainLine[] = booking.items.flatMap((it): MainLine[] => {
       if (it.equipmentId != null && it.equipment != null) {
+        const quantity = mainQtyCap
+          ? Math.min(it.quantity, mainQtyCap.get(it.equipmentId) ?? 0)
+          : it.quantity;
+        // Позиция целиком добор — в MAIN ей места нет.
+        if (quantity <= 0) return [];
         const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
           ratePerShift: it.equipment.rentalRatePerShift.toString(),
           shifts,
           negotiatedRatePerShift: it.negotiatedRatePerShift?.toString() ?? null,
         });
-        return {
+        return [{
           equipmentId: it.equipmentId,
           categorySnapshot: it.equipment.category,
           nameSnapshot: it.equipment.name,
           brandSnapshot: it.equipment.brand,
           modelSnapshot: it.equipment.model,
-          quantity: it.quantity,
+          quantity,
           unitPrice,
-          lineSum: unitPrice.mul(it.quantity),
+          lineSum: unitPrice.mul(quantity),
           listUnitPrice,
           isNegotiated,
-        };
+        }];
       }
       // Произвольная позиция — фиксированная цена без умножения на shifts
       const unitPrice = new Decimal(it.customUnitPrice!.toString());
-      return {
+      return [{
         equipmentId: null,
         categorySnapshot: it.customCategory ?? CUSTOM_LINE_CATEGORY,
         nameSnapshot: it.customName!,
@@ -674,7 +709,7 @@ export async function rebuildBookingEstimate(bookingId: string) {
         lineSum: unitPrice.mul(it.quantity),
         listUnitPrice: null,
         isNegotiated: false,
-      };
+      }];
     });
 
     const discountPercent = booking.discountPercent ? new Decimal(booking.discountPercent.toString()) : new Decimal(0);
@@ -705,10 +740,10 @@ export async function rebuildBookingEstimate(bookingId: string) {
       listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
     }));
 
-    // Удаляем существующий MAIN Estimate (если есть) — ADDON оставляем нетронутым.
-    const existingMain = booking.estimates.find((e) => e.kind === "MAIN");
-    if (existingMain) {
-      await tx.estimate.delete({ where: { id: existingMain.id } });
+    // Удаляем существующий MAIN Estimate (если есть) — ADDON оставляем нетронутым:
+    // его судьбу решает recomputeAddonEstimate у вызывающей стороны.
+    if (previousMain) {
+      await tx.estimate.delete({ where: { id: previousMain.id } });
     }
 
     await tx.estimate.create({

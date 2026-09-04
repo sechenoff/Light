@@ -26,13 +26,12 @@ import {
   getChecklistState,
   addExtraItem,
 } from "../services/checklistService";
-import { findAddonConflict } from "../services/addonAvailability";
+import { searchAddonCandidates } from "../services/bookingAddon";
 import {
   computeShift,
   computeJournal,
   computeProblems,
 } from "../services/warehouseWorkstation";
-import { getAvailability } from "../services/availability";
 import {
   ALLOWED_MIME_TYPES,
   MAX_FILE_SIZE,
@@ -783,7 +782,11 @@ warehouseScanRouter.post("/sessions/:id/uncheck", warehouseAuth, async (req, res
   }
 });
 
-/** GET /api/warehouse/sessions/:id/addon-search — поиск артикулов для quick-add */
+/**
+ * GET /api/warehouse/sessions/:id/addon-search — поиск артикулов для quick-add.
+ * Расчёт (доступность на даты брони, потолок добора, конфликт) — общий с
+ * добором со страницы брони: services/bookingAddon.ts → searchAddonCandidates.
+ */
 warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req, res, next) => {
   try {
     const { q } = addonSearchQuerySchema.parse(req.query);
@@ -797,70 +800,7 @@ warehouseScanRouter.get("/sessions/:id/addon-search", warehouseAuth, async (req,
       return;
     }
 
-    const booking = await prisma.booking.findUnique({
-      where: { id: session.bookingId },
-      select: { startDate: true, endDate: true },
-    });
-    if (!booking) {
-      res.status(404).json({ message: "Бронь не найдена", code: "BOOKING_NOT_FOUND" });
-      return;
-    }
-
-    const rows = await getAvailability({
-      startDate: booking.startDate,
-      endDate: booking.endDate,
-      search: q,
-      excludeBookingId: session.bookingId,
-    });
-
-    const trimmedRows = rows.slice(0, 30);
-
-    // Batch-load BookingItem.quantity for the current booking × visible equipment.
-    // addCap = max(0, availableQuantity − alreadyInThisBooking). `availableQuantity`
-    // уже исключает текущую бронь через excludeBookingId, поэтому остаётся вычесть
-    // только то, что эта же бронь уже держит.
-    const visibleEquipmentIds = trimmedRows.map((r) => r.equipment.id);
-    const existingItems =
-      visibleEquipmentIds.length > 0
-        ? await prisma.bookingItem.findMany({
-            where: {
-              bookingId: session.bookingId,
-              equipmentId: { in: visibleEquipmentIds },
-            },
-            select: { equipmentId: true, quantity: true },
-          })
-        : [];
-    const alreadyMineByEquipment = new Map<string, number>();
-    for (const it of existingItems) {
-      if (it.equipmentId) alreadyMineByEquipment.set(it.equipmentId, it.quantity);
-    }
-
-    const results = await Promise.all(
-      trimmedRows.map(async (row) => {
-        const availability = row.availableQuantity > 0 ? "AVAILABLE" : "UNAVAILABLE";
-        const conflict =
-          availability === "UNAVAILABLE"
-            ? await findAddonConflict(
-                row.equipment.id,
-                booking.startDate,
-                booking.endDate,
-                session.bookingId,
-              )
-            : null;
-        const alreadyMine = alreadyMineByEquipment.get(row.equipment.id) ?? 0;
-        const addCap = Math.max(0, row.availableQuantity - alreadyMine);
-        return {
-          equipmentId: row.equipment.id,
-          name: row.equipment.name,
-          category: row.equipment.category,
-          availableQuantity: row.availableQuantity,
-          addCap,
-          availability,
-          conflict,
-        };
-      }),
-    );
-
+    const results = await searchAddonCandidates({ bookingId: session.bookingId, q });
     res.json({ results });
   } catch (err) {
     next(err);

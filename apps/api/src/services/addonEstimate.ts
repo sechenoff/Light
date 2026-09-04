@@ -13,6 +13,16 @@
  * но не знали о последующих уменьшениях quantity). `AddonRecord` остаётся
  * как чисто аудитная таблица.
  *
+ * Цены считаются ТЕМИ ЖЕ правилами, что и в основной смете
+ * (`resolveCatalogLinePrice` + `splitEquipmentDiscount`):
+ *   - `EstimateLine.unitPrice` — цена ЗА ВЕСЬ ПЕРИОД (ставка × смены MAIN).
+ *     Экспорт делит unitPrice на число смен, чтобы напечатать «цена/смена»;
+ *     раньше сюда писалась ставка за смену, и колонка в PDF доб-сметы
+ *     многосменной брони уменьшалась во столько раз, сколько смен в периоде.
+ *   - договорная ставка позиции (`BookingItem.negotiatedRatePerShift`)
+ *     действует и на добор: клиент договорился о цене на прибор, а не на
+ *     первые N штук; процентная скидка на договорные строки не начисляется.
+ *
  * Идемпотентна: delete-then-create в транзакции. Если ни одного добора нет —
  * существующий ADDON удаляется и новый не создаётся.
  *
@@ -24,6 +34,7 @@
 import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
+import { resolveCatalogLinePrice, splitEquipmentDiscount } from "./pricing";
 
 export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
   const main = await prisma.estimate.findFirst({
@@ -60,6 +71,8 @@ export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
     quantity: number;
     unitPrice: Decimal;
     lineSum: Decimal;
+    listUnitPrice: Decimal | null;
+    isNegotiated: boolean;
   };
 
   const lines: AddonLineInput[] = [];
@@ -69,8 +82,11 @@ export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
     const inMain = mainQtyByEquipment.get(bi.equipmentId) ?? 0;
     const addonQty = bi.quantity - inMain;
     if (addonQty <= 0) continue;
-    const unitPrice = new Decimal(bi.equipment.rentalRatePerShift.toString());
-    const lineSum = unitPrice.mul(addonQty).mul(shifts);
+    const { unitPrice, listUnitPrice, isNegotiated } = resolveCatalogLinePrice({
+      ratePerShift: bi.equipment.rentalRatePerShift.toString(),
+      shifts,
+      negotiatedRatePerShift: bi.negotiatedRatePerShift?.toString() ?? null,
+    });
     lines.push({
       equipmentId: bi.equipmentId,
       categorySnapshot: bi.equipment.category,
@@ -79,13 +95,13 @@ export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
       modelSnapshot: bi.equipment.model ?? null,
       quantity: addonQty,
       unitPrice,
-      lineSum,
+      lineSum: unitPrice.mul(addonQty),
+      listUnitPrice,
+      isNegotiated,
     });
   }
 
-  const subtotal = lines.reduce((acc, l) => acc.add(l.lineSum), new Decimal(0));
-  const discountAmount = subtotal.mul(discountPercent).div(100);
-  const totalAfterDiscount = subtotal.sub(discountAmount);
+  const { subtotal, discountAmount, totalAfterDiscount } = splitEquipmentDiscount(lines, discountPercent);
 
   await prisma.$transaction(async (tx) => {
     await tx.estimate.deleteMany({ where: { bookingId, kind: "ADDON" } });
@@ -115,6 +131,7 @@ export async function recomputeAddonEstimate(bookingId: string): Promise<void> {
             quantity: l.quantity,
             unitPrice: l.unitPrice.toDecimalPlaces(2).toString(),
             lineSum: l.lineSum.toDecimalPlaces(2).toString(),
+            listUnitPrice: l.listUnitPrice ? l.listUnitPrice.toDecimalPlaces(2).toString() : null,
           })),
         },
       },
