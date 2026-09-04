@@ -51,6 +51,7 @@ import { CancelWithDepositModal } from "../../../src/components/finance/CancelWi
 import { CreditNoteApplyModal } from "../../../src/components/finance/CreditNoteApplyModal";
 import { ClientPortalAccessCard } from "../../../src/components/admin/ClientPortalAccessCard";
 import { AddonEstimateSection } from "../../../src/components/bookings/AddonEstimateSection";
+import { AddonItemsModal } from "../../../src/components/bookings/AddonItemsModal";
 import { ForgiveOutstandingModal } from "../../../src/components/bookings/ForgiveOutstandingModal";
 import { VehicleDriverRow } from "../../../src/components/bookings/VehicleDriverRow";
 
@@ -141,6 +142,24 @@ type BookingDetail = {
       lineSum: string;
     }>;
   };
+  /** Доп-смета: доборы поверх согласованной сметы (при выдаче или довезённые позже). */
+  addonEstimate?: null | {
+    id: string;
+    shifts: number;
+    subtotal: string;
+    discountPercent: string | null;
+    discountAmount: string;
+    totalAfterDiscount: string;
+    lines: Array<{
+      id: string;
+      equipmentId: string | null;
+      categorySnapshot: string;
+      nameSnapshot: string;
+      quantity: number;
+      unitPrice: string;
+      lineSum: string;
+    }>;
+  };
   // Transport snapshot — flat add-on, не участвует в скидке оборудования.
   // Multi-vehicle: vehicles[]. Legacy single columns kept for old bookings.
   vehicles?: Array<{
@@ -204,6 +223,8 @@ export default function BookingDetailPage() {
   // F-EXTEND: продление выданной (ISSUED) брони — инлайн-поле новой даты возврата.
   // F-EXTEND: повторная отправка на согласование правленной CONFIRMED-брони (WAREHOUSE).
   const [resubmitBusy, setResubmitBusy] = useState(false);
+  // Добор в выданную бронь — модалка AddonItemsModal (кнопка «+ Добор» в шапке).
+  const [addonOpen, setAddonOpen] = useState(false);
   const [cancelWriteOffBusy, setCancelWriteOffBusy] = useState(false);
 
   // Ретро-редактирование закрытой брони (SUPER_ADMIN + RETURNED) вынесено в
@@ -537,6 +558,7 @@ export default function BookingDetailPage() {
           onResubmit={resubmitForApproval}
           onEnterRetroEdit={enterRetroEdit}
           onOpenExtend={openExtend}
+          onOpenAddon={() => setAddonOpen(true)}
           onChangeExtendDate={setExtendEndDate}
           onSubmitExtend={submitExtend}
           onCancelExtend={cancelExtend}
@@ -956,7 +978,7 @@ export default function BookingDetailPage() {
               onPrint={printEstimatePdf}
               onDownloadEstimateFallback={downloadEstimatePdfWithFallback}
             />
-            <AddonEstimateSection bookingId={booking.id} />
+            <AddonEstimateSection booking={booking} userRole={user?.role} onMerged={reloadBooking} />
             <BookingJournalSection financeEvents={booking.financeEvents} />
           </div>
           </div>
@@ -1063,6 +1085,22 @@ export default function BookingDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Добор в выданную бронь: поиск с доступностью, корзина, «доп-сметой / в основную». */}
+      {booking && (
+        <AddonItemsModal
+          open={addonOpen}
+          bookingId={booking.id}
+          shifts={booking.estimate?.shifts ?? 1}
+          discountPercent={booking.estimate?.discountPercent ?? booking.discountPercent ?? null}
+          hasManualFinalAmount={booking.manualFinalAmount != null}
+          onClose={() => setAddonOpen(false)}
+          onAdded={async () => {
+            setAddonOpen(false);
+            await reloadBooking();
+          }}
+        />
       )}
 
       {/* Equipment picker для retro-edit: добавление новой позиции в RETURNED-бронь */}

@@ -29,6 +29,8 @@ export interface BookingHeaderProps {
   onResubmit: () => void;
   onEnterRetroEdit: () => void;
   onOpenExtend: () => void;
+  /** Добор в выданную бронь — модалка на странице (AddonItemsModal). */
+  onOpenAddon?: () => void;
   onChangeExtendDate: (value: string) => void;
   onSubmitExtend: () => void;
   onCancelExtend: () => void;
@@ -51,6 +53,7 @@ export function BookingHeader({
   onResubmit,
   onEnterRetroEdit,
   onOpenExtend,
+  onOpenAddon,
   onChangeExtendDate,
   onSubmitExtend,
   onCancelExtend,
@@ -106,6 +109,19 @@ export function BookingHeader({
                 className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors disabled:opacity-40"
               >
                 Вернуть
+              </button>
+            )}
+            {/* Добор: гафер забыл прибор и просит довезти — позиции добавляются
+                в выданную бронь отдельной доп-сметой или в основную смету. */}
+            {booking.status === "ISSUED" && (userRole === "SUPER_ADMIN" || userRole === "WAREHOUSE") && onOpenAddon && (
+              <button
+                type="button"
+                disabled={lifecycleBusy}
+                onClick={onOpenAddon}
+                className="rounded border border-accent-border bg-accent-soft text-accent px-3 py-1.5 text-sm hover:bg-accent hover:text-surface transition-colors disabled:opacity-40"
+                title="Довезти клиенту ещё оборудование — отдельной доп-сметой или в основную смету"
+              >
+                + Добор
               </button>
             )}
             {/* F-EXTEND (1): продление выданной брони — только SUPER_ADMIN.
