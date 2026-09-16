@@ -1,6 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+import { decideProxyAuth } from "@/lib/proxyAuthGate";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,26 @@ function buildTargetUrl(req: NextRequest, pathSegments: string[]): string | null
 }
 
 async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResponse> {
+  // Ключ API подставляется ниже безусловно, поэтому анонимный запрос из интернета
+  // приходил на бэкенд подписанным — и любой маршрут без rolesGuard оказывался
+  // публичным. Отсекаем анонимов здесь, до сети: прокси не орган авторизации,
+  // он лишь перестаёт выдавать ключ тому, у кого нет ни одного признака сессии.
+  // Отказ отдаём сами, а не «просто без ключа»: без ключа исход зависел бы от
+  // AUTH_MODE, и в режиме warn запрос прошёл бы дальше.
+  const sub = pathSegments.join("/");
+  const gate = decideProxyAuth({
+    method: req.method,
+    apiPath: `/api${sub ? `/${sub}` : ""}`,
+    cookie: req.headers.get("cookie"),
+    authorization: req.headers.get("authorization"),
+  });
+  if (!gate.allow) {
+    return NextResponse.json(
+      { message: gate.message, error: gate.message, code: gate.code },
+      { status: gate.status },
+    );
+  }
+
   const targetUrl = buildTargetUrl(req, pathSegments);
   if (!targetUrl) {
     return NextResponse.json(

@@ -25,7 +25,10 @@ process.env.JWT_SECRET = "test-jwt-secret-eq-cat-min16chars";
 let app: Express;
 let prisma: any;
 
-const AUTH = () => ({ "X-API-Key": "test-key-1" });
+let readerToken: string;
+// Чтение каталога закрыто rolesGuard — одного ключа API мало,
+// нужна сессия (ключ подставляет прокси любому запросу из интернета).
+const AUTH = () => ({ "X-API-Key": "test-key-1", Authorization: `Bearer ${readerToken}` });
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -42,6 +45,12 @@ beforeAll(async () => {
   app = mod.app;
   const pmod = await import("../prisma");
   prisma = pmod.prisma;
+
+  const { hashPassword, signSession } = await import("../services/auth");
+  const reader = await prisma.adminUser.create({
+    data: { username: "eq_cat_reader", passwordHash: await hashPassword("test-pass-123"), role: "WAREHOUSE" },
+  });
+  readerToken = signSession({ userId: reader.id, username: reader.username, role: "WAREHOUSE" });
 
   await prisma.equipment.createMany({
     data: [

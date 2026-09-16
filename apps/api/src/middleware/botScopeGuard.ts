@@ -6,6 +6,10 @@ import type { Request, Response, NextFunction } from "express";
  */
 const BOT_WHITELIST: Array<{ method: string; pattern: RegExp }> = [
   { method: "GET",   pattern: /^\/api\/equipment(\/[^/]+)?$/ },
+  // Бот регистрирует Telegram-пользователя при первом /start. Ручка закрыта
+  // rolesGuard (раньше была анонимной записью), и botAccess — единственный путь
+  // к ней для ключа без JWT-сессии.
+  { method: "POST",  pattern: /^\/api\/users\/upsert$/ },
   { method: "GET",   pattern: /^\/api\/availability(\/.*)?$/ },
   { method: "GET",   pattern: /^\/api\/bookings(\/[^/]+)?$/ },
   { method: "POST",  pattern: /^\/api\/bookings\/draft$/ },
