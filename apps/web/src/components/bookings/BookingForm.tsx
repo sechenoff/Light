@@ -230,6 +230,10 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
   // (черновик → на согласование → одобрить одной цепочкой), чтобы не гонять
   // руководителя на страницу брони ради лишнего клика «Одобрить».
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  // APPROVAL_MODE=auto — согласования руководителем нет: «отправить» и есть
+  // подтверждение. Тогда отдельная SA-кнопка «Создать и подтвердить» — дубль,
+  // и вместо неё подпись основной кнопки говорит правду прямо.
+  const approvalMode: "auto" | "manual" = user?.approvalMode === "auto" ? "auto" : "manual";
 
   // ── Search params (only used in create mode) ──
   const startParam = isEdit ? null : sp.get("start");
@@ -1292,8 +1296,13 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
 
   // ── Save / submit (mode-aware) ──
 
-  // Create mode: save as draft (returns new booking id)
-  async function saveDraft(): Promise<string | null> {
+  /**
+   * Create-mode: сохранить заявку ЧЕРНОВИКОМ. POST /draft всегда возвращает
+   * DRAFT — публикует бронь отдельное действие (submit-for-approval), в том
+   * числе при APPROVAL_MODE=auto. `announce: false` гасит тост на путях
+   * «отправить»/«подтвердить», иначе пользователь ловит два тоста подряд.
+   */
+  async function saveDraft(opts?: { announce?: boolean }): Promise<string | null> {
     setSubmitting(true);
     try {
       const finalComment = bookingComment.trim() || undefined;
@@ -1325,23 +1334,14 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
           ? { expectedPaymentDate: new Date(`${expectedPaymentDateLocal}T00:00:00+03:00`).toISOString() }
           : {}),
       };
-      const res = await apiFetch<{
-        booking: { id: string; status?: string };
-        autoConfirm?: { ok: false; message: string };
-      }>("/api/bookings/draft", { method: "POST", body: JSON.stringify(body) });
+      const res = await apiFetch<{ booking: { id: string; status?: string } }>(
+        "/api/bookings/draft",
+        { method: "POST", body: JSON.stringify(body) },
+      );
       // Бронь на сервере — локальный черновик больше не нужен.
       draftPersistDisabledRef.current = true;
       clearDraftSnapshot();
-      // APPROVAL_MODE=auto: сервер сразу подтверждает заявку. Если не смог
-      // (не хватает оборудования) — бронь осталась черновиком, показываем
-      // человекочитаемую причину; оператор правит количества на карточке.
-      if (res.booking.status === "CONFIRMED") {
-        toast.success("Бронь создана и подтверждена — оборудование зарезервировано");
-      } else if (res.autoConfirm && res.autoConfirm.ok === false) {
-        toast.error(res.autoConfirm.message);
-      } else {
-        toast.success("Черновик сохранён");
-      }
+      if (opts?.announce !== false) toast.success("Черновик сохранён");
       return res.booking.id;
     } catch (err: unknown) {
       toast.error((err as { message?: string })?.message ?? "Ошибка сохранения");
@@ -1359,14 +1359,24 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
 
   async function handleSubmitForApproval() {
     if (!validateForSubmit()) return;
-    const id = await saveDraft();
+    const id = await saveDraft({ announce: false });
     if (!id) return;
     try {
-      await apiFetch(`/api/bookings/${id}/submit-for-approval`, { method: "POST" });
-      toast.success("Отправлено на согласование");
-      router.push(`/bookings/${id}`);
+      const res = await apiFetch<{ booking: { status?: string } }>(
+        `/api/bookings/${id}/submit-for-approval`,
+        { method: "POST" },
+      );
+      // APPROVAL_MODE=auto: тот же эндпоинт подтверждает бронь сразу.
+      toast.success(
+        res.booking?.status === "CONFIRMED"
+          ? "Бронь создана и подтверждена — оборудование зарезервировано"
+          : "Отправлено на согласование",
+      );
     } catch (err: unknown) {
+      // Черновик уже сохранён на сервере — не теряем его: показываем причину
+      // (обычно нехватка оборудования) и ведём на карточку брони.
       toast.error((err as { message?: string })?.message ?? "Ошибка отправки");
+    } finally {
       router.push(`/bookings/${id}`);
     }
   }
@@ -1376,11 +1386,18 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
   // проводим бронь по штатной цепочке, но без ухода со страницы на «Одобрить».
   async function handleCreateAndConfirm() {
     if (!validateForSubmit()) return;
-    const id = await saveDraft();
+    const id = await saveDraft({ announce: false });
     if (!id) return;
     try {
-      await apiFetch(`/api/bookings/${id}/submit-for-approval`, { method: "POST" });
-      await apiFetch(`/api/bookings/${id}/approve`, { method: "POST" });
+      const submitted = await apiFetch<{ booking: { status?: string } }>(
+        `/api/bookings/${id}/submit-for-approval`,
+        { method: "POST" },
+      );
+      // APPROVAL_MODE=auto: submit уже подтвердил бронь — второй шаг упал бы
+      // INVALID_BOOKING_STATE (та же развилка, что на карточке брони).
+      if (submitted.booking?.status !== "CONFIRMED") {
+        await apiFetch(`/api/bookings/${id}/approve`, { method: "POST" });
+      }
       toast.success("Бронь создана и подтверждена");
     } catch (err: unknown) {
       // Черновик уже создан — не теряем его, ведём на страницу брони, где
@@ -1663,7 +1680,12 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
             quoteError={quoteError}
             checks={checks}
             onSubmitForApproval={isEdit ? undefined : handleSubmitForApproval}
-            onCreateAndConfirm={isEdit || !isSuperAdmin ? undefined : handleCreateAndConfirm}
+            approvalMode={approvalMode}
+            onCreateAndConfirm={
+              isEdit || !isSuperAdmin || approvalMode === "auto"
+                ? undefined
+                : handleCreateAndConfirm
+            }
             onSaveDraft={isEdit ? undefined : handleSaveDraftClick}
             onSaveEdit={isEdit ? handleSaveEdit : undefined}
             canSubmit={canSubmit}

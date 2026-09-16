@@ -32,6 +32,10 @@ type SummaryPanelProps = {
    *  Когда задан — становится основным CTA, «на согласование» уходит вторичным. */
   onCreateAndConfirm?: () => void;
   onSaveDraft?: () => void;
+  /** Режим согласования из /api/auth/me. В "auto" шага согласования нет:
+   *  основная кнопка создаёт бронь сразу подтверждённой — подпись это говорит
+   *  прямо, вместо «отправить на согласование», которое никуда не отправляет. */
+  approvalMode?: "auto" | "manual";
   // Edit-mode button
   onSaveEdit?: () => void;
   canSubmit: boolean;
@@ -80,6 +84,7 @@ export function SummaryPanel({
   onSubmitForApproval,
   onCreateAndConfirm,
   onSaveDraft,
+  approvalMode = "manual",
   onSaveEdit,
   canSubmit,
   transportBreakdowns,
@@ -96,6 +101,11 @@ export function SummaryPanel({
   const equipTotal = quote ? Number(quote.equipmentTotal ?? quote.totalAfterDiscount) : localTotal;
   const discPct = quote ? Number(quote.discountPercent) : discountPercent;
   const effectiveShifts = quote ? quote.shifts : shifts;
+
+  // В auto-режиме «отправить на согласование» и есть подтверждение брони.
+  const isAutoApproval = approvalMode === "auto";
+  const primaryLabel = isAutoApproval ? "Создать и подтвердить →" : "Отправить на согласование →";
+  const primaryBusyLabel = isAutoApproval ? "Создание…" : "Отправка…";
 
   // Transport: prefer server quote, fallback to local calculation.
   // Multi-vehicle: array of per-vehicle breakdowns; total = sum.
@@ -301,6 +311,9 @@ export function SummaryPanel({
           >
             {submitting ? "Сохранение…" : "Сохранить черновик"}
           </button>
+          <p className="text-center text-[11px] leading-snug text-ink-3">
+            Черновик не занимает оборудование — можно дособрать позже.
+          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -310,7 +323,7 @@ export function SummaryPanel({
             onClick={onSubmitForApproval}
             className="w-full rounded bg-inverse px-4 py-2.5 text-sm font-medium text-on-inverse hover:bg-inverse disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {submitting ? "Отправка…" : "Отправить на согласование →"}
+            {submitting ? primaryBusyLabel : primaryLabel}
           </button>
           <button
             type="button"
@@ -320,6 +333,9 @@ export function SummaryPanel({
           >
             {submitting ? "Сохранение…" : "Сохранить черновик"}
           </button>
+          <p className="text-center text-[11px] leading-snug text-ink-3">
+            Черновик не занимает оборудование — можно дособрать позже.
+          </p>
         </div>
       )}
 

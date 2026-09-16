@@ -1958,47 +1958,13 @@ router.post("/draft", async (req, res, next) => {
       transport: transportSnapshots,
     });
 
-    // APPROVAL_MODE=auto: согласование выключено — заявка сразу подтверждается
-    // (проверка доступности + резервирование в confirmBooking). При конфликте
-    // бронь ОСТАЁТСЯ черновиком, а ответ несёт autoConfirm-предупреждение —
-    // оператор правит количества на карточке и подтверждает вручную.
-    if (approvalMode() === "auto") {
-      try {
-        const confirmed = await autoConfirmBooking(booking.id, req.adminUser?.userId ?? null);
-        let financeWarning: string | null = null;
-        try {
-          await recomputeBookingFinance(booking.id);
-          await createFinanceEvent({
-            bookingId: booking.id,
-            eventType: "BOOKING_CONFIRMED",
-            payload: { status: confirmed.status, via: "auto" },
-          });
-        } catch (financeErr) {
-          financeWarning = financeWarningFromError(financeErr);
-          // eslint-disable-next-line no-console
-          console.error("Finance side-effects failed after auto-confirm:", financeErr);
-        }
-        res.json({
-          booking: serializeBookingForApi(confirmed as any),
-          ...(financeWarning ? { warning: financeWarning } : {}),
-        });
-        return;
-      } catch (autoErr) {
-        if (autoErr instanceof HttpError && autoErr.status === 409) {
-          res.json({
-            booking: serializeBookingForApi(booking as any),
-            autoConfirm: {
-              ok: false,
-              message: autoErr.message,
-              details: (autoErr as any).details ?? null,
-            },
-          });
-          return;
-        }
-        throw autoErr;
-      }
-    }
-
+    // NB: черновик здесь и остаётся черновиком — даже при APPROVAL_MODE=auto.
+    // «auto» отменяет ШАГ СОГЛАСОВАНИЯ руководителем, а не саму стадию
+    // черновика: заявку копят по позициям в течение дня и публикуют явным
+    // действием (POST /:id/submit-for-approval, который в этом режиме сразу
+    // подтверждает). Раньше автоподтверждение стояло прямо здесь, и кнопка
+    // «Сохранить черновик» публиковала бронь — резервировала склад и уводила
+    // заявку из-под правок ещё до того, как её дособрали.
     res.json({ booking: serializeBookingForApi(booking as any) });
   } catch (err) {
     if (isSchemaOutOfSyncError(err)) {
