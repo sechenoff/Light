@@ -105,9 +105,13 @@ export function BookingItemsTable({
           </button>
         )}
       </div>
-      <div className="overflow-auto max-h-[560px]">
-        <table className="min-w-[860px] w-full text-sm">
-          <thead className="bg-surface-subtle text-ink-2 border-b border-border sticky top-0">
+      {/* Вертикального окна нет: список разворачивается целиком, страница скроллится сама.
+          По горизонтали скролл оставлен страховкой — на узких экранах колонки иначе
+          нечитаемо сжимаются. С lg жёсткий min-w снят, и на широком экране таблица
+          укладывается в колонку целиком: раньше «Сумма» уезжала за горизонтальный скролл. */}
+      <div className="overflow-x-auto">
+        <table className="min-w-[860px] lg:min-w-0 w-full text-sm">
+          <thead className="bg-surface-subtle text-ink-2 border-b border-border">
             <tr>
               <th className="text-left px-3 py-2 font-medium">Категория</th>
               <th className="text-left px-3 py-2 font-medium">Наименование</th>
