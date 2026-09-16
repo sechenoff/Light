@@ -25,6 +25,13 @@ interface OrgSettings {
   invoiceNumberPrefix: string | null;
   migrationCutoffAt: string | null;
   defaultPaymentTermsDays: number | null;
+  /** Надбавка за безналичный расчёт по умолчанию, % */
+  cashlessSurchargePercent: string | number | null;
+  /** Реквизиты для печатного «Счёта на оплату» */
+  ogrn: string | null;
+  signerName: string | null;
+  signerTitle: string | null;
+  taxNote: string | null;
 }
 
 const INPUT_CLASS =
@@ -46,13 +53,14 @@ function emptyToNull(value: string | null | undefined): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
-type FieldErrorKey = "inn" | "bankBik" | "rschet" | "kschet" | "defaultPaymentTermsDays";
+type FieldErrorKey = "inn" | "bankBik" | "rschet" | "kschet" | "defaultPaymentTermsDays" | "cashlessSurchargePercent" | "ogrn";
 type FieldErrors = Partial<Record<FieldErrorKey, string>>;
 
 function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
   const [form, setForm] = useState<Partial<OrgSettings>>({});
   // Хранится строкой: Number("") снапал бы очищенное поле в 0
   const [paymentTermsDays, setPaymentTermsDays] = useState("");
+  const [surchargePercent, setSurchargePercent] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -69,6 +77,7 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
         if (cancelled) return;
         setForm(d);
         setPaymentTermsDays(d.defaultPaymentTermsDays != null ? String(d.defaultPaymentTermsDays) : "");
+        setSurchargePercent(d.cashlessSurchargePercent != null ? String(Number(d.cashlessSurchargePercent)) : "");
         setDirty(false);
       })
       .catch((e: unknown) => {
@@ -115,6 +124,15 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
       const n = Number(days);
       if (!Number.isInteger(n) || n < 0 || n > 90) {
         errors.defaultPaymentTermsDays = "Срок оплаты — целое число от 0 до 90";
+    }
+    const pct = surchargePercent.trim().replace(",", ".");
+    if (pct !== "") {
+      const n = Number(pct);
+      if (!Number.isFinite(n) || n < 0 || n > 100) errors.cashlessSurchargePercent = "Процент — число от 0 до 100";
+    }
+    const ogrn = (form.ogrn ?? "").trim();
+    if (ogrn !== "" && !/^\d{13}$|^\d{15}$/.test(ogrn)) {
+      errors.ogrn = "ОГРН — 13 цифр, ОГРНИП — 15";
       }
     }
     setFieldErrors(errors);
@@ -149,12 +167,21 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
             ? new Date(form.migrationCutoffAt).toISOString()
             : undefined,
           defaultPaymentTermsDays: days === "" ? undefined : Number(days),
+          cashlessSurchargePercent:
+            surchargePercent.trim() === "" ? undefined : Number(surchargePercent.trim().replace(",", ".")),
+          ogrn: emptyToNull(form.ogrn),
+          signerName: emptyToNull(form.signerName),
+          signerTitle: emptyToNull(form.signerTitle),
+          taxNote: emptyToNull(form.taxNote),
         }),
       });
       // Ресинк формы из ответа сервера — сбрасывает dirty и нормализует значения
       setForm(updated);
       setPaymentTermsDays(
         updated.defaultPaymentTermsDays != null ? String(updated.defaultPaymentTermsDays) : "",
+      );
+      setSurchargePercent(
+        updated.cashlessSurchargePercent != null ? String(Number(updated.cashlessSurchargePercent)) : "",
       );
       setDirty(false);
       toast.success("Настройки сохранены");
@@ -398,6 +425,97 @@ function OrgSettingsForm({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
           <p className="text-xs text-ink-3 mt-1">
             0 = оплата в день сдачи · 7 = через неделю · 30 = через месяц. Применится к новым броням; существующие — через скрипт-бекфил.
           </p>
+        </div>
+
+        <div>
+          <label htmlFor="org-surcharge" className="eyebrow block mb-1">Надбавка за безналичный расчёт</label>
+          <div className="flex items-center gap-2">
+            <input
+              id="org-surcharge"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={100}
+              step={0.5}
+              className="w-24 border border-border rounded px-3 py-2 text-sm bg-surface text-ink font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              value={surchargePercent}
+              onChange={(e) => {
+                setSurchargePercent(e.target.value);
+                setDirty(true);
+                setFieldErrors((prev) =>
+                  prev.cashlessSurchargePercent ? { ...prev, cashlessSurchargePercent: undefined } : prev,
+                );
+              }}
+            />
+            <span className="text-sm text-ink-2">%</span>
+          </div>
+          {fieldErrors.cashlessSurchargePercent && (
+            <p className={FIELD_ERROR_CLASS}>{fieldErrors.cashlessSurchargePercent}</p>
+          )}
+          <p className="text-xs text-ink-3 mt-1">
+            Подставляется в новые брони с формой оплаты «По счёту (ИП)» и печатается в смете отдельной строкой. На конкретной брони процент можно перебить; уже созданные брони не меняются.
+          </p>
+        </div>
+      </div>
+
+      {/* Bill (счёт на оплату) */}
+      <div className="bg-surface border border-border rounded-lg p-5 space-y-4">
+        <p className="eyebrow text-ink-3 mb-1">Счёт на оплату</p>
+        <p className="text-xs text-ink-3 -mt-2">
+          Эти данные попадают в печатную форму счёта контрагенту вместе с юридическими и банковскими реквизитами выше.
+        </p>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="org-ogrn" className="eyebrow block mb-1">ОГРНИП / ОГРН</label>
+            <input
+              id="org-ogrn"
+              type="text"
+              inputMode="numeric"
+              className={INPUT_CLASS_MONO}
+              value={form.ogrn ?? ""}
+              onChange={(e) => {
+                set("ogrn", e.target.value);
+                setFieldErrors((prev) => (prev.ogrn ? { ...prev, ogrn: undefined } : prev));
+              }}
+              placeholder="15 цифр для ИП"
+            />
+            {fieldErrors.ogrn && <p className={FIELD_ERROR_CLASS}>{fieldErrors.ogrn}</p>}
+          </div>
+          <div>
+            <label htmlFor="org-tax-note" className="eyebrow block mb-1">Пометка о налоге</label>
+            <input
+              id="org-tax-note"
+              type="text"
+              className={INPUT_CLASS}
+              value={form.taxNote ?? ""}
+              onChange={(e) => set("taxNote", e.target.value)}
+              placeholder="Без НДС (УСН, освобождение по ст. 145 НК РФ)"
+            />
+            <p className="text-xs text-ink-3 mt-1">Печатается в итогах и в назначении платежа. Пусто — «Без НДС».</p>
+          </div>
+          <div>
+            <label htmlFor="org-signer-title" className="eyebrow block mb-1">Подписант — должность</label>
+            <input
+              id="org-signer-title"
+              type="text"
+              className={INPUT_CLASS}
+              value={form.signerTitle ?? ""}
+              onChange={(e) => set("signerTitle", e.target.value)}
+              placeholder="Индивидуальный предприниматель"
+            />
+          </div>
+          <div>
+            <label htmlFor="org-signer-name" className="eyebrow block mb-1">Подписант — Ф. И. О.</label>
+            <input
+              id="org-signer-name"
+              type="text"
+              className={INPUT_CLASS}
+              value={form.signerName ?? ""}
+              onChange={(e) => set("signerName", e.target.value)}
+              placeholder="Иванов И. И."
+            />
+          </div>
         </div>
       </div>
 

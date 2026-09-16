@@ -26,7 +26,7 @@ export async function writeFullSmetaXlsx(
   // Договорной итог требует общего блока так же, как добор и транспорт: без
   // него лист заканчивался расчётной суммой и спорил со счётом.
   let nextRow = last.nextRow;
-  if (doc.addon || doc.transport || doc.agreedTotal != null) {
+  if (doc.addon || doc.transport || doc.agreedTotal != null || doc.surcharge) {
     nextRow = appendTransportAndGrandTotal(last.sheet, nextRow, doc);
   }
   // Реквизиты для оплаты — всегда, как и в PDF: платёжный документ обязан

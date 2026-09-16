@@ -345,6 +345,21 @@ export function appendTransportAndGrandTotal(
     row += 2;
   }
 
+  // Надбавка за безнал — своей строкой: клиент видит, откуда «+9 %».
+  if (full.surcharge) {
+    sheet.mergeCells(row, 1, row, 4);
+    const sl = sheet.getCell(row, 1);
+    sl.value = `Безналичный расчёт (+${full.surcharge.percent} %)`;
+    sl.font = { size: 10, color: { argb: XC.muted } };
+    sl.alignment = { horizontal: "right", vertical: "middle" };
+    const sv = sheet.getCell(row, LAST_COL);
+    sv.value = parseMoney(full.surcharge.amount);
+    sv.numFmt = RUB_FMT;
+    sv.font = { size: 10, color: { argb: XC.ink2 } };
+    sv.alignment = { horizontal: "right", vertical: "middle" };
+    row++;
+  }
+
   // Договорной итог: расчёт остаётся на листе отдельной строкой, платить — по
   // согласованной сумме. Молчаливая подмена цифры спорила бы со счётом.
   const hasAgreed = full.agreedTotal != null && full.agreedTotal !== full.grandTotal;

@@ -46,7 +46,8 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Финансы",
       items: [
         { href: "/finance", label: "Обзор", icon: "money" },
-        { href: "/finance/invoices", label: "Счета", icon: "invoice" },
+        { href: "/finance/invoices", label: "Счета по броням", icon: "invoice" },
+        { href: "/finance/bills", label: "Счета на оплату", icon: "invoice" },
         { href: "/finance/payments", label: "Платежи", icon: "receipt" },
         { href: "/finance/debts", label: "Долги", icon: "alert" },
         { href: "/finance/expenses", label: "Расходы", icon: "expense" },
@@ -109,7 +110,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       // L1: WAREHOUSE видит счета в режиме read-only (без CTAs создания/выпуска/аннулирования)
       title: "Финансы",
       items: [
-        { href: "/finance/invoices", label: "Счета", icon: "invoice" },
+        { href: "/finance/invoices", label: "Счета по броням", icon: "invoice" },
       ],
     },
     {

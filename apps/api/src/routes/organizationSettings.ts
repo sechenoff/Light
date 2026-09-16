@@ -25,6 +25,13 @@ const updateSchema = z.object({
   invoiceNumberPrefix: z.string().min(1).max(10).optional(),
   migrationCutoffAt: z.string().datetime().optional(),
   defaultPaymentTermsDays: z.number().int().min(0).max(90).optional(),
+  // Надбавка за безналичный расчёт по умолчанию (для новых броней «По счёту (ИП)»)
+  cashlessSurchargePercent: z.number().min(0).max(100).optional(),
+  // Реквизиты для печатного «Счёта на оплату»
+  ogrn: z.string().regex(/^\d{13}$|^\d{15}$/, "ОГРН — 13 цифр, ОГРНИП — 15").nullable().optional().or(z.literal("")),
+  signerName: z.string().max(200).nullable().optional(),
+  signerTitle: z.string().max(200).nullable().optional(),
+  taxNote: z.string().max(300).nullable().optional(),
 });
 
 /**
@@ -52,6 +59,7 @@ router.patch("/organization", rolesGuard(["SUPER_ADMIN"]), async (req, res, next
     const settings = await updateSettings(
       {
         ...body,
+        ogrn: body.ogrn === "" ? null : body.ogrn,
         migrationCutoffAt: body.migrationCutoffAt ? new Date(body.migrationCutoffAt) : undefined,
       },
       userId,

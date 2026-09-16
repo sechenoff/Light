@@ -25,6 +25,7 @@ import { EquipmentCard } from "./create/EquipmentCard";
 import { TransportCard } from "./create/TransportCard";
 import { CommentCard } from "./create/CommentCard";
 import { DiscountCard } from "./create/DiscountCard";
+import { PaymentFormCard, type PaymentForm } from "./create/PaymentFormCard";
 import { SummaryPanel } from "./create/SummaryPanel";
 import { computeTransportListClient } from "./create/transportClientCalc";
 import { AddCustomItemModal } from "./create/AddCustomItemModal";
@@ -58,6 +59,9 @@ export type BookingDetail = {
   discountPercent: string | null;
   /** Договорной итог брони; null — считаем по смете. */
   manualFinalAmount?: string | null;
+  /** Форма оплаты и снапшот процента надбавки за безнал. */
+  paymentForm?: PaymentForm;
+  cashlessSurchargePercent?: string | null;
   skipPartialDay?: boolean;
   expectedPaymentDate?: string | null;
   // Transport — multi-vehicle. New bookings use `vehicles[]`; legacy single
@@ -148,6 +152,8 @@ type FormDraftSnapshot = {
   /** Договорной итог брони — без него перезагрузка стирала итог переговоров. */
   negotiatedTotal?: number | null;
   expectedPaymentDateLocal: string;
+  paymentForm?: PaymentForm;
+  surchargePercent?: number | null;
 };
 
 function readDraftSnapshot(): FormDraftSnapshot | null {
@@ -173,6 +179,8 @@ function readDraftSnapshot(): FormDraftSnapshot | null {
       selectedVehicles: Array.isArray(p.selectedVehicles) ? p.selectedVehicles : [],
       expectedPaymentDateLocal:
         typeof p.expectedPaymentDateLocal === "string" ? p.expectedPaymentDateLocal : "",
+      paymentForm: p.paymentForm === "CASHLESS" ? "CASHLESS" : "CASH",
+      surchargePercent: typeof p.surchargePercent === "number" ? p.surchargePercent : null,
     };
   } catch {
     return null;
@@ -278,6 +286,26 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
     }
     return draft?.negotiatedTotal ?? null;
   });
+  /**
+   * Форма оплаты. «По счёту (ИП)» плюсует к итогу процент: дефолт живёт в
+   * настройках организации, на брони его можно перебить (surchargePercent).
+   * null — дефолт; сервер сам подставит его в quote и в бронь.
+   */
+  const [paymentForm, setPaymentForm] = useState<PaymentForm>(() => {
+    if (isEdit) return initialBooking?.paymentForm === "CASHLESS" ? "CASHLESS" : "CASH";
+    return draft?.paymentForm ?? "CASH";
+  });
+  const [surchargePercent, setSurchargePercent] = useState<number | null>(() => {
+    if (isEdit) {
+      return initialBooking?.cashlessSurchargePercent != null
+        ? Number(initialBooking.cashlessSurchargePercent)
+        : null;
+    }
+    return draft?.surchargePercent ?? null;
+  });
+  // Дефолтный процент узнаём из ответа сметы: сервер резолвит его из настроек,
+  // и WAREHOUSE (без доступа к /api/settings) видит ту же цифру, что руководитель.
+  const [defaultSurchargePercent, setDefaultSurchargePercent] = useState<number | null>(null);
 
   // ── Dates ──
   const [pickupLocal, setPickupLocal] = useState(() => {
@@ -513,6 +541,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
           selectedVehicles,
           negotiatedTotal,
           expectedPaymentDateLocal,
+          paymentForm,
+          surchargePercent,
         };
         window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(snapshot));
       } catch {
@@ -536,6 +566,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
     selectedVehicles,
     negotiatedTotal,
     expectedPaymentDateLocal,
+    paymentForm,
+    surchargePercent,
   ]);
 
   // ── beforeunload-гард: не терять несохранённый ввод при закрытии вкладки ──
@@ -549,6 +581,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         bookingComment,
         discountPercent,
         negotiatedTotal,
+        paymentForm,
+        surchargePercent,
         pickupLocal,
         returnLocal,
         skipPartialDay,
@@ -573,6 +607,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
       // negotiatedTotal участвует в подписи и обязан быть в зависимостях:
       // без него смена договорного итога подпись не пересчитывала.
       negotiatedTotal,
+      paymentForm,
+      surchargePercent,
       pickupLocal,
       returnLocal,
       skipPartialDay,
@@ -901,11 +937,17 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
           skipPartialDay,
           items,
           transport: transportPayload,
+          paymentForm,
+          cashlessSurchargePercent: surchargePercent,
         };
         const data = await apiFetch<QuoteResponse>("/api/bookings/quote", { method: "POST", body: JSON.stringify(body) });
         if (!cancelled) {
           setQuote(data);
           setQuoteError(false);
+          // Процент без перебивки — это и есть дефолт из настроек.
+          if (data.paymentForm === "CASHLESS" && surchargePercent == null && data.surchargePercent != null) {
+            setDefaultSurchargePercent(Number(data.surchargePercent));
+          }
         }
       } catch {
         if (!cancelled) {
@@ -917,7 +959,7 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
       }
     }, debounceMs);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [clientName, projectName, pickupISO, returnISO, dateOrderInvalid, discountPercent, skipPartialDay, apiItems, customItems, transportPayload]);
+  }, [clientName, projectName, pickupISO, returnISO, dateOrderInvalid, discountPercent, skipPartialDay, apiItems, customItems, transportPayload, paymentForm, surchargePercent]);
 
   // ── Date handlers ──
   function handlePickupChange(v: string) {
@@ -1275,6 +1317,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         comment: finalComment,
         items,
         transport: transportPayload,
+        paymentForm,
+        cashlessSurchargePercent: surchargePercent,
         ...(negotiatedTotal != null ? { manualFinalAmount: negotiatedTotal } : {}),
         // Если пользователь оставил поле пустым — не передаём (backend вычислит default)
         ...(expectedPaymentDateLocal
@@ -1373,6 +1417,8 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         items,
         transport: transportPayload,
         manualFinalAmount: negotiatedTotal,
+        paymentForm,
+        cashlessSurchargePercent: surchargePercent,
         // null = сбросить до auto-default; строка = пользовательский выбор
         expectedPaymentDate: expectedPaymentDateLocal
           ? new Date(`${expectedPaymentDateLocal}T00:00:00+03:00`).toISOString()
@@ -1591,8 +1637,18 @@ function BookingFormInner({ mode, initialBooking, bookingId, onResetForm }: Book
         {/* Right column: Discount, Summary, Transport */}
         <div className="sticky top-20 flex max-h-[calc(100vh-6rem)] flex-col gap-3.5 self-start overflow-y-auto pr-1">
           <DiscountCard value={discountPercent} onChange={setDiscountPercent} />
+          <PaymentFormCard
+            value={paymentForm}
+            onChange={setPaymentForm}
+            surchargePercent={surchargePercent}
+            onChangeSurchargePercent={setSurchargePercent}
+            defaultPercent={defaultSurchargePercent}
+            canEditPercent={isSuperAdmin}
+          />
           <SummaryPanel
             quote={quote}
+            paymentForm={paymentForm}
+            surchargePercent={surchargePercent ?? defaultSurchargePercent}
             negotiatedTotal={negotiatedTotal}
             onChangeNegotiatedTotal={isSuperAdmin ? setNegotiatedTotal : undefined}
             localSubtotal={localSubtotal}

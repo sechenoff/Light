@@ -85,6 +85,10 @@ type BookingDetail = {
   finalAmount?: string | null;
   /** Ручной override итоговой суммы. `null` → автоматический расчёт. */
   manualFinalAmount?: string | null;
+  /** Форма оплаты: наличные или по счёту ИП с надбавкой (снапшот процента). */
+  paymentForm?: "CASH" | "CASHLESS";
+  cashlessSurchargePercent?: string | null;
+  surchargeAmount?: string | null;
   amountPaid?: string | null;
   amountOutstanding?: string | null;
   /** Прощённый остаток долга («простить хвост» со страницы долгов). */

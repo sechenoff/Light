@@ -15,10 +15,10 @@ export function writeFullSmetaPdf(
   // Договорной итог обязан попасть в документ даже когда нет ни добора, ни
   // транспорта: иначе одиночная смета напечатает расчётную сумму вместо той,
   // о которой договорились.
-  if (!doc.addon && !doc.transport && doc.agreedTotal == null) {
+  if (!doc.addon && !doc.transport && doc.agreedTotal == null && !doc.surcharge) {
     writeSmetaPdf(res, doc.main, downloadName);
     return;
   }
   const sections = doc.addon ? [doc.main, doc.addon] : [doc.main];
-  writeSmetaPdfMulti(res, sections, downloadName, doc.grandTotal, doc.transport, doc.agreedTotal ?? null);
+  writeSmetaPdfMulti(res, sections, downloadName, doc.grandTotal, doc.transport, doc.agreedTotal ?? null, doc.surcharge ?? null);
 }

@@ -124,6 +124,18 @@ export function BookingHeader({
                 + Добор
               </button>
             )}
+            {/* Счёт на оплату контрагенту по этой брони — печатный документ для
+                бухгалтерии заказчика. Только руководитель: там реквизиты и деньги. */}
+            {userRole === "SUPER_ADMIN" &&
+              (booking.status === "CONFIRMED" || booking.status === "ISSUED" || booking.status === "RETURNED") && (
+                <Link
+                  href={`/finance/bills/new?bookingId=${bookingId}`}
+                  className="rounded border border-border px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-muted transition-colors"
+                  title="Выставить контрагенту счёт на оплату по этой брони"
+                >
+                  Счёт на оплату
+                </Link>
+              )}
             {/* F-EXTEND (1): продление выданной брони — только SUPER_ADMIN.
                 Клиент оставил оборудование ещё на день — сдвигаем дату
                 возврата, не дожидаясь физического возврата. */}

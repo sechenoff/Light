@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Счёт на оплату № 12 — концепт B «Платёжный фокус»</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ---------- токены: палитра renderPdf.ts (смета) ---------- */
+  :root {
+    --ink: #0f172a;
+    --ink2: #334155;
+    --muted: #64748b;
+    --faint: #94a3b8;
+    --border: #cbd5e1;
+    --hair: #e2e8f0;
+    --head-bg: #f1f5f9;
+    --accent: #1e3a8a;
+    --accent-bright: #1d4ed8;
+    --accent-soft: #eff6ff;   /* тинт ≈ 6 % — в ч/б светло-серый */
+    --accent-border: #bfdbfe;
+
+    --font-body: "IBM Plex Sans", "DejaVu Sans", Verdana, Arial, sans-serif;
+    --font-head: "IBM Plex Sans Condensed", "IBM Plex Sans", "DejaVu Sans", Arial, sans-serif;
+    --font-mono: "IBM Plex Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  }
+  /* стресс-тест метрик pdfkit: DejaVu шире Plex на ~8 % (Verdana — ближайший родственник на macOS) */
+  html.dejavu {
+    --font-body: "DejaVu Sans", Verdana, sans-serif;
+    --font-head: "DejaVu Sans", Verdana, sans-serif;
+    --font-mono: "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  }
+  html.bw .sheet { filter: grayscale(1); }
+
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #d9dee5;
+    font-family: var(--font-body);
+    color: var(--ink);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .stage {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  /* ---------- лист А4 ---------- */
+  .sheet {
+    flex: none;
+    width: 210mm;
+    height: 297mm;
+    padding: 16mm;
+    background: #fff;
+    box-shadow: 0 2px 14px rgba(15, 23, 42, .18);
+    font-size: 9.5pt;
+    line-height: 1.3;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .eyebrow {
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    line-height: 1.2;
+  }
+  .eyebrow--accent { color: var(--accent); }
+  .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .r { text-align: right; }
+  .c { text-align: center; }
+
+  /* ---------- 1. банк-блок «как в платёжном поручении» ---------- */
+  table.bank {
+    width: 178mm;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  table.bank td {
+    border: 0.5pt solid var(--ink2);
+    padding: 1.1mm 2mm;
+    vertical-align: top;
+    font-size: 9.5pt;
+    line-height: 1.3;
+  }
+  table.bank .bank-v { font-weight: 600; color: var(--ink); }
+  table.bank .bank-v--payee { font-weight: 400; } /* 57 знаков DejaVu 9,5 pt ≈ 97 мм — одна строка в колонке 106 мм; при более широких метриках переносится, а не наезжает */
+  table.bank .bank-tag { font-size: 7.5pt; color: var(--muted); margin-top: .4mm; }
+  table.bank td.lbl {
+    font-size: 8pt;
+    color: var(--ink2);
+    vertical-align: middle;
+    padding-right: 1mm;
+  }
+  table.bank td.acc {
+    font-family: var(--font-mono);
+    font-size: 10.5pt;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;             /* цифры без разрядки — копируются одним куском */
+    white-space: nowrap;
+    vertical-align: middle;
+    color: var(--ink);
+  }
+  table.bank td.inn .bank-tag, table.bank td.kpp .bank-tag { display: inline; margin: 0 1.5mm 0 0; font-size: 8pt; color: var(--ink2); }
+  table.bank td.inn .acc-inline { font-family: var(--font-mono); font-size: 10.5pt; font-weight: 500; letter-spacing: 0; }
+
+  /* ---------- 2. заголовок ---------- */
+  .doc-title { margin-top: 4.5mm; }
+  .doc-title h1 {
+    margin: 0;
+    font-family: var(--font-head);
+    font-size: 18pt;
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .accent-rule { height: 0.7mm; background: var(--accent); margin-top: 1.8mm; }
+
+  /* ---------- 3. полоса: стороны + назначение | карточка оплаты ---------- */
+  .band {
+    display: grid;
+    grid-template-columns: 112mm 60mm;
+    column-gap: 6mm;
+    align-items: start;
+    margin-top: 4.5mm;
+  }
+  .party { margin: 0 0 3mm; }
+  .party dt { margin-bottom: .8mm; }
+  .party dd { margin: 0; font-size: 9.5pt; line-height: 1.32; color: var(--ink); }
+  .party dd strong { font-weight: 600; }
+  .party dd .sub { color: var(--ink2); }
+
+  .purpose {
+    margin-top: 4mm;
+    padding: 1.6mm 0 1.6mm 3mm;
+    border-left: 0.7mm solid var(--accent-border);
+  }
+  .purpose-text {
+    margin: .9mm 0 0;
+    font-size: 9.5pt;
+    font-weight: 500;
+    line-height: 1.32;
+    color: var(--ink);
+  }
+  .purpose-hint { margin-top: 1mm; font-size: 7.5pt; color: var(--faint); }
+
+  .paycard {
+    background: var(--accent-soft);
+    border-top: 1pt solid var(--accent-border);
+    border-bottom: 1pt solid var(--accent-border);
+    padding: 2.5mm 3mm 2.5mm;
+  }
+  .pay-sum {
+    display: flex;
+    align-items: baseline;
+    gap: 1.6mm;
+    margin-top: 1mm;
+    white-space: nowrap;
+  }
+  .pay-digits {
+    font-size: 20pt;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .pay-cur { font-size: 11pt; font-weight: 700; color: var(--ink); }
+  .pay-vat { margin-top: 1.2mm; font-size: 10pt; font-weight: 700; color: var(--ink); }
+  .pay-due {
+    display: flex;
+    align-items: baseline;
+    gap: 2mm;
+    margin-top: 1.6mm;
+  }
+  .pay-due strong { font-size: 11pt; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .pay-hr { height: 0.3pt; background: var(--accent-border); margin: 2.2mm 0 2mm; }
+
+  .qr-wrap { display: flex; justify-content: center; }
+  .qr-quiet { width: 34mm; height: 34mm; padding: 2mm; background: #fff; } /* тихая зона 2 мм */
+  .qr { position: relative; width: 30mm; height: 30mm; background: #fff; border: 0.3pt solid var(--border); }
+  .qr .f { position: absolute; width: 4.2mm; height: 4.2mm; border: 0.6mm solid var(--ink); }
+  .qr .f::after { content: ""; position: absolute; left: 0.6mm; top: 0.6mm; width: 1.8mm; height: 1.8mm; background: var(--ink); }
+  .qr .f.tl { left: 0.6mm; top: 0.6mm; }
+  .qr .f.tr { right: 0.6mm; top: 0.6mm; }
+  .qr .f.bl { left: 0.6mm; bottom: 0.6mm; }
+  .qr .a { position: absolute; right: 4.8mm; bottom: 4.8mm; width: 3mm; height: 3mm; border: 0.6mm solid var(--ink); }
+  .qr .a::after { content: ""; position: absolute; left: 0.6mm; top: 0.6mm; width: 0.6mm; height: 0.6mm; background: var(--ink); }
+  .qr .m { position: absolute; background: var(--ink); }
+  .qr .qr-label {
+    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+    text-align: center; font-size: 6pt; line-height: 1.25; color: var(--faint);
+    letter-spacing: .02em;
+  }
+  .qr-cap { margin-top: 1.2mm; text-align: center; font-size: 8.5pt; font-weight: 700; color: var(--ink); }
+  .qr-micro { text-align: center; font-size: 7.5pt; color: var(--muted); line-height: 1.25; }
+
+  /* ---------- 4. таблица позиций ---------- */
+  table.items {
+    width: 178mm;
+    border-collapse: collapse;
+    table-layout: fixed;
+    margin-top: 5mm;
+    font-size: 9pt;
+  }
+  table.items th {
+    font-size: 7.5pt;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: left;
+    padding: 0 1.5mm 1.4mm;
+    border-bottom: 0.5pt solid var(--ink2);
+    vertical-align: bottom;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  table.items td {
+    padding: 1.5mm 1.5mm;
+    border-bottom: 0.3pt solid var(--border);
+    vertical-align: top;
+    line-height: 1.3;
+    color: var(--ink);
+  }
+  table.items tbody tr:last-child td { border-bottom: 0.5pt solid var(--ink2); }
+  table.items td.idx { color: var(--muted); }
+  table.items td.unit { color: var(--ink2); white-space: nowrap; }
+
+  /* ---------- 5. итоги ---------- */
+  .totals { display: flex; justify-content: flex-end; margin-top: 2mm; }
+  table.tot { border-collapse: collapse; width: 134mm; }
+  table.tot td { padding: 1mm 1.5mm; font-size: 9.5pt; line-height: 1.3; }
+  table.tot td.lbl { text-align: right; color: var(--ink2); }
+  table.tot td.val { text-align: right; width: 36mm; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink); }
+  table.tot tr.grand td {
+    font-size: 11pt;
+    font-weight: 700;
+    color: var(--ink);
+    border-top: 0.3pt solid var(--border);
+    padding-top: 1.5mm;
+  }
+  .count { margin: 1mm 0 0; font-size: 8.5pt; color: var(--muted); }
+
+  /* ---------- 6. сумма прописью, 7. срок, 8. подпись ---------- */
+  .words {
+    margin: 3mm 0 0;
+    padding-top: 2.5mm;
+    border-top: 0.3pt solid var(--border);
+    font-size: 10pt;
+    line-height: 1.35;
+  }
+  .words .words-lbl { color: var(--ink2); }
+  .words strong { font-weight: 700; color: var(--ink); }
+  .terms { margin: 2.5mm 0 0; font-size: 8.5pt; line-height: 1.35; color: var(--ink2); }
+  .sign {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 9mm;
+    font-size: 9.5pt;
+  }
+  .sign-line { display: inline-block; width: 42mm; height: 1em; margin: 0 2mm; border-bottom: 0.5pt solid var(--ink); vertical-align: baseline; }
+  .sign-mp { font-size: 8pt; color: var(--muted); }
+
+  /* ---------- заметки к концепту (только экран) ---------- */
+  .notes {
+    flex: 0 1 320px;
+    max-width: 360px;
+    background: #fff;
+    border: 1px solid var(--border);
+    padding: 18px 20px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--ink2);
+  }
+  .notes h2 { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--ink); }
+  .notes .tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+  .notes h3 { margin: 14px 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes li { margin-bottom: 4px; }
+  .notes code { font-family: var(--font-mono); font-size: 11px; word-break: break-all; color: var(--ink); background: var(--head-bg); padding: 6px 8px; display: block; line-height: 1.4; }
+  .notes label { display: block; margin-top: 6px; cursor: pointer; }
+  .notes .warn { border-left: 3px solid var(--accent-border); padding-left: 10px; }
+
+  @media print {
+    body { background: #fff; }
+    .stage { display: block; padding: 0; gap: 0; }
+    .sheet { box-shadow: none; margin: 0; page-break-after: always; }
+    .notes { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+<main class="sheet" aria-label="Счёт на оплату № 12 от 16 сентября 2026 г.">
+
+  <!-- 1. Реквизиты получателя — сетка платёжного поручения (1С) -->
+  <section aria-label="Реквизиты получателя">
+    <table class="bank">
+      <colgroup>
+        <col style="width:53mm">
+        <col style="width:53mm">
+        <col style="width:14mm">
+        <col style="width:58mm">
+      </colgroup>
+      <tr>
+        <td colspan="2" rowspan="2">
+          <div class="bank-v">АО «АЛЬФА-БАНК»</div>
+          <div class="bank-tag">Банк получателя</div>
+        </td>
+        <td class="lbl">БИК</td>
+        <td class="acc">044525593</td>
+      </tr>
+      <tr>
+        <td class="lbl">Сч. №</td>
+        <td class="acc">30101810200000000593</td>
+      </tr>
+      <tr>
+        <td class="inn"><span class="bank-tag">ИНН</span><span class="acc-inline">771577899514</span></td>
+        <td class="kpp"><span class="bank-tag">КПП</span></td>
+        <td class="lbl" rowspan="2">Сч. №</td>
+        <td class="acc" rowspan="2">40802810202810000838</td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <div class="bank-v bank-v--payee">Индивидуальный предприниматель Сеченов Виталий Андреевич</div>
+          <div class="bank-tag">Получатель</div>
+        </td>
+      </tr>
+    </table>
+  </section>
+
+  <!-- 2. Заголовок -->
+  <header class="doc-title">
+    <h1>Счёт на оплату №&nbsp;12 от 16 сентября 2026 г.</h1>
+    <div class="accent-rule"></div>
+  </header>
+
+  <!-- 3. Стороны и назначение | карточка оплаты -->
+  <section class="band">
+    <div class="band-left">
+      <dl class="party">
+        <dt class="eyebrow">Поставщик (Исполнитель)</dt>
+        <dd>
+          <strong>Индивидуальный предприниматель Сеченов Виталий Андреевич</strong><br>
+          ИНН 771577899514<br>
+          <span class="sub">127576, Москва, ул. Илимская, д. 6, кв. 390</span>
+        </dd>
+      </dl>
+      <dl class="party">
+        <dt class="eyebrow">Покупатель (Заказчик)</dt>
+        <dd>
+          <strong>ООО «ЭПИКПРО»</strong><br>
+          ИНН 7702807486, КПП 770201001, ОГРН 1137746067392<br>
+          <span class="sub">127051, г. Москва, Малый Сухаревский пер., д. 9, стр. 1, оф. 36</span>
+        </dd>
+      </dl>
+      <dl class="party">
+        <dt class="eyebrow">Основание</dt>
+        <dd>Смета №&nbsp;СМ-2026-0042 от 12.09.2026<br><span class="sub">аренда 12–15.09.2026 (3&nbsp;смены)</span></dd>
+      </dl>
+
+      <div class="purpose">
+        <div class="eyebrow">Назначение платежа</div>
+        <p class="purpose-text">Оплата по счёту №&nbsp;12 от 16.09.2026 за аренду светового оборудования по смете №&nbsp;СМ-2026-0042. Без НДС</p>
+        <div class="purpose-hint">скопируйте в поле «Назначение платежа» платёжного поручения</div>
+      </div>
+    </div>
+
+    <aside class="paycard" aria-label="Итого к оплате">
+      <div class="eyebrow eyebrow--accent">Итого к оплате</div>
+      <div class="pay-sum"><span class="pay-digits">52&nbsp;102,00</span><span class="pay-cur">руб.</span></div>
+      <div class="pay-vat">Без НДС</div>
+      <div class="pay-due"><span class="eyebrow">Оплатить до</span><strong>23.09.2026</strong></div>
+      <div class="pay-hr"></div>
+      <div class="qr-wrap">
+        <div class="qr-quiet">
+          <div class="qr" role="img" aria-label="QR-код для оплаты по ГОСТ Р 56042-2014">
+            <span class="f tl"></span><span class="f tr"></span><span class="f bl"></span>
+            <span class="a"></span>
+            <span class="m" style="left:7.2mm;top:1.2mm;width:1.2mm;height:1.2mm"></span>
+            <span class="m" style="left:9.6mm;top:0.6mm;width:1.8mm;height:1.2mm"></span>
+            <span class="m" style="left:13.2mm;top:1.8mm;width:1.2mm;height:1.8mm"></span>
+            <span class="m" style="left:16.8mm;top:0.6mm;width:1.2mm;height:1.2mm"></span>
+            <span class="m" style="left:19.8mm;top:2.4mm;width:1.8mm;height:1.2mm"></span>
+            <span class="m" style="left:7.2mm;top:4.2mm;width:1.8mm;height:1.8mm"></span>
+            <span class="m" style="left:12mm;top:5.4mm;width:1.2mm;height:1.2mm"></span>
+            <span class="m" style="left:18mm;top:4.8mm;width:1.2mm;height:1.8mm"></span>
+            <span class="m" style="left:1.2mm;top:7.2mm;width:1.2mm;height:1.8mm"></span>
+            <span class="m" style="left:4.2mm;top:8.4mm;width:1.8mm;height:1.2mm"></span>
+            <span class="m" style="left:26.4mm;top:7.2mm;width:1.8mm;height:1.2mm"></span>
+            <span class="m" style="left:23.4mm;top:9mm;width:1.2mm;height:1.8mm"></span>
+            <span class="m" style="left:28.2mm;top:10.2mm;width:1.2mm;height:1.2mm"></span>
+            <span class="m" style="left:0.6mm;top:12mm;width:1.8mm;height:1.2mm"></span>
+            <span class="m" style="left:3.6mm;top:13.8mm;width:1.2mm;height:1.2mm"></span>
+            <span class="m" style="left:26.4mm;top:13.2mm;width:1.2mm;height:1.8mm"></span>
+            <span class="m" style="left:1.8mm;top:16.8mm;width:1.2mm;height:1.8mm"></span>
+            <span class="m" style="left:28.2mm;top:16.2mm;width:1.2mm;height:1.2mm"></span>
+            <span class="m" style="left:4.2mm;top:19.2mm;width:1.8mm;height:1.2mm"></span>
+            <span class="m" style="left:26.4mm;top:19.8mm;width:1.8mm;height:1.2mm"></span>
+            <span class="m" style="left:7.8mm;top:24mm;width:1.2mm;height:1.2mm"></span>
+            <span class="m" style="left:10.2mm;top:26.4mm;width:1.8mm;height:1.2mm"></span>
+            <span class="m" style="left:13.8mm;top:24.6mm;width:1.2mm;height:1.8mm"></span>
+            <span class="m" style="left:16.8mm;top:27.6mm;width:1.2mm;height:1.2mm"></span>
+            <span class="m" style="left:19.2mm;top:25.2mm;width:1.8mm;height:1.2mm"></span>
+            <span class="m" style="left:22.2mm;top:28.2mm;width:1.2mm;height:1.2mm"></span>
+            <span class="m" style="left:8.4mm;top:21mm;width:1.2mm;height:1.8mm"></span>
+            <span class="m" style="left:21.6mm;top:21.6mm;width:1.2mm;height:1.2mm"></span>
+            <span class="qr-label">QR-код<br>ГОСТ Р 56042-2014</span>
+          </div>
+        </div>
+      </div>
+      <div class="qr-cap">Оплатить по QR</div>
+      <div class="qr-micro">сканируйте в приложении банка</div>
+    </aside>
+  </section>
+
+  <!-- 4. Таблица позиций -->
+  <table class="items">
+    <colgroup>
+      <col style="width:8mm">
+      <col style="width:90mm">
+      <col style="width:16mm">
+      <col style="width:16mm">
+      <col style="width:24mm">
+      <col style="width:24mm">
+    </colgroup>
+    <thead>
+      <tr>
+        <th class="c">№</th>
+        <th>Товары (работы, услуги)</th>
+        <th class="r">Кол-во</th>
+        <th class="c">Ед.</th>
+        <th class="r">Цена</th>
+        <th class="r">Сумма</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="c idx num">1</td>
+        <td>Аренда светового оборудования по смете <span class="num">№&nbsp;СМ-2026-0042</span></td>
+        <td class="r num">1</td>
+        <td class="c unit">усл. ед.</td>
+        <td class="r num">43&nbsp;800,00</td>
+        <td class="r num">43&nbsp;800,00</td>
+      </tr>
+      <tr>
+        <td class="c idx num">2</td>
+        <td>Транспорт (Газель, смена 12 ч)</td>
+        <td class="r num">1</td>
+        <td class="c unit">усл. ед.</td>
+        <td class="r num">4&nbsp;000,00</td>
+        <td class="r num">4&nbsp;000,00</td>
+      </tr>
+      <tr>
+        <td class="c idx num">3</td>
+        <td>Безналичный расчёт, +9 %</td>
+        <td class="r num">1</td>
+        <td class="c unit">усл. ед.</td>
+        <td class="r num">4&nbsp;302,00</td>
+        <td class="r num">4&nbsp;302,00</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 5. Итоги -->
+  <section class="totals">
+    <table class="tot">
+      <tr>
+        <td class="lbl">Итого:</td>
+        <td class="val">52&nbsp;102,00</td>
+      </tr>
+      <tr>
+        <td class="lbl">Без НДС (УСН, освобождение по ст. 145 НК РФ)</td>
+        <td class="val">—</td>
+      </tr>
+      <tr class="grand">
+        <td class="lbl">Всего к оплате:</td>
+        <td class="val">52&nbsp;102,00 руб.</td>
+      </tr>
+    </table>
+  </section>
+  <p class="count">Всего наименований 3, на сумму 52&nbsp;102,00 руб.</p>
+
+  <!-- 6. Сумма прописью -->
+  <p class="words"><span class="words-lbl">Сумма прописью:</span> <strong>Пятьдесят две тысячи сто два рубля 00 копеек</strong></p>
+
+  <!-- 7. Срок -->
+  <p class="terms">Счёт действителен до 23.09.2026 (5 банковских дней с даты выставления). В платёжном поручении укажите назначение платежа как в счёте и пометку «Без НДС».</p>
+
+  <!-- 8. Подпись -->
+  <footer class="sign">
+    <div>Индивидуальный предприниматель <span class="sign-line"></span> (Сеченов В.А.)</div>
+    <div class="sign-mp">М.П.</div>
+  </footer>
+
+</main>
+
+<!-- Пояснения к концепту — на экране, в печать не попадают -->
+<aside class="notes">
+  <span class="tag">Концепт B</span>
+  <h2>«Платёжный фокус»</h2>
+  <p>За три секунды: <b>кому</b> — сетка 1С сверху, <b>сколько</b> и <b>куда</b> — карточка справа под колонкой «Сч. №», <b>за что</b> — готовое назначение платежа слева от QR.</p>
+
+  <h3>Что перестроено</h3>
+  <ul>
+    <li>Плашка «Итого к оплате» поднята в шапку и стала карточкой: сумма 20 pt — самый крупный числовой элемент, рядом «Без НДС» и дата. Под таблицей остаётся служебная тройка 1С: Итого / Без НДС / Всего к оплате (11 pt).</li>
+    <li>Зона оплаты (назначение + QR) переехала из подвала в шапку: назначение — слева, QR 30 мм с тихой зоной 2 мм — справа. Внизу остались срок и подпись.</li>
+    <li>Всё остальное — на своих местах: сетка платёжки до заголовка, стороны, основание, таблица, прописью, подпись ИП, М.П.</li>
+  </ul>
+
+  <h3>Проверки</h3>
+  <label><input type="checkbox" id="t-dejavu"> Метрики DejaVu / Verdana (+8 %)</label>
+  <label><input type="checkbox" id="t-bw"> Ч/Б печать</label>
+  <p style="margin:8px 0 0;font-size:12px;color:var(--muted)">Ёмкость листа при этих размерах — до 8 позиций; дальше перенос с повтором шапки таблицы и «Стр. N из M» по правилам сметы.</p>
+
+  <h3>Строка QR (ГОСТ Р 56042-2014)</h3>
+  <code>ST00012|Name=Индивидуальный предприниматель Сеченов Виталий Андреевич|PersonalAcc=40802810202810000838|BankName=АО «АЛЬФА-БАНК»|BIC=044525593|CorrespAcc=30101810200000000593|PayeeINN=771577899514|Sum=5210200|Purpose=Оплата по счёту № 12 от 16.09.2026 за аренду светового оборудования по смете № СМ-2026-0042. Без НДС</code>
+  <p style="margin:6px 0 0;font-size:12px;color:var(--muted)">Sum — в копейках, KPP для ИП не передаётся. Purpose 100 знаков / 163 байта UTF-8 (лимит 210 знаков). При UTF-8 код ~версии 12 — модуль на 30 мм ≈ 0,45 мм, в норме; ST00011 (WIN1251) вдвое компактнее.</p>
+
+  <h3 class="warn">Владельцу</h3>
+  <ul class="warn">
+    <li>Строка «Безналичный расчёт, +9 %» оставлена как в данных; у бухгалтера покупателя вызовет вопрос — лучше формулировка из сметы или включение в цену.</li>
+    <li>Контакты продавца (телефон, e-mail) берутся из настроек; пустые не печатаются — в макете их нет.</li>
+    <li>Единица «усл.» заменена на «усл. ед.» (ОКЕИ 876).</li>
+  </ul>
+</aside>
+
+</div>
+<script>
+  document.getElementById('t-dejavu').addEventListener('change', function (e) {
+    document.documentElement.classList.toggle('dejavu', e.target.checked);
+  });
+  document.getElementById('t-bw').addEventListener('change', function (e) {
+    document.documentElement.classList.toggle('bw', e.target.checked);
+  });
+</script>
+</body>
+</html>

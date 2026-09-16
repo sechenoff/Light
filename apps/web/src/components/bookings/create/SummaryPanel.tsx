@@ -48,6 +48,10 @@ type SummaryPanelProps = {
   bookingId?: string;
   /** В форме есть правки, которых нет в сохранённой смете. */
   hasUnsavedChanges?: boolean;
+  /** Форма оплаты на форме — для предварительного расчёта надбавки, пока сметы нет. */
+  paymentForm?: "CASH" | "CASHLESS";
+  /** Действующий процент надбавки (перебитый или дефолт из настроек). */
+  surchargePercent?: number | null;
 };
 
 const CHECK_BADGE: Record<ValidationCheck["type"], { symbol: string; colorClass: string }> = {
@@ -84,6 +88,8 @@ export function SummaryPanel({
   cancelHref,
   bookingId,
   hasUnsavedChanges = false,
+  paymentForm = "CASH",
+  surchargePercent = null,
 }: SummaryPanelProps) {
   const equipSubtotal = quote ? Number(quote.equipmentSubtotal ?? quote.subtotal) : localSubtotal;
   const discount = quote ? Number(quote.discountAmount) : localDiscount;
@@ -99,10 +105,23 @@ export function SummaryPanel({
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const transportTotal = round2(transportRows.reduce((acc, t) => acc + Number(t.total), 0));
 
+  // Надбавка за безнал: сервер отдаёт готовую сумму; до ответа считаем сами от
+  // оборудования после скидки + транспорт — тем же правилом, что бэкенд.
+  const localSurchargePct =
+    paymentForm === "CASHLESS" && surchargePercent != null && surchargePercent > 0 ? surchargePercent : 0;
+  const surchargePct = quote
+    ? quote.surchargePercent != null
+      ? Number(quote.surchargePercent)
+      : 0
+    : localSurchargePct;
+  const surcharge = quote
+    ? Number(quote.surchargeAmount ?? 0)
+    : round2((equipTotal + transportTotal) * (localSurchargePct / 100));
+
   // Grand total: prefer server, fallback to local
   const grandTotal = quote?.grandTotal
     ? Number(quote.grandTotal)
-    : round2(equipTotal + transportTotal);
+    : round2(equipTotal + transportTotal + surcharge);
   // Legacy: subtotal for backward compat in display
   const subtotal = equipSubtotal;
   // Договорной итог перебивает расчётный: о сумме сговорились, и она держится,
@@ -205,6 +224,12 @@ export function SummaryPanel({
             <span className="mono-num text-ink">{formatMoneyRubWhole(Number(t.total))} ₽</span>
           </div>
         ))}
+        {surchargePct > 0 && surcharge > 0 && (
+          <div className="flex justify-between">
+            <span className="text-ink-2">Безналичный расчёт (+{surchargePct} %)</span>
+            <span className="mono-num text-ink">+{formatMoneyRubWhole(surcharge)} ₽</span>
+          </div>
+        )}
         {negotiatedTotal != null && Math.abs(negotiatedDelta) >= 1 && (
           <div className="flex justify-between">
             <span className="text-ink-2">

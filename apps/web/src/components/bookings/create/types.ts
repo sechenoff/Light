@@ -99,6 +99,11 @@ export type QuoteResponse = {
   // Transport — array of per-vehicle breakdowns (empty when none) + summed subtotal
   transport?: TransportBreakdown[] | null;
   transportSubtotal?: string;
+  /** Форма оплаты и надбавка за безнал: строка «Безналичный расчёт (+N %)». */
+  paymentForm?: "CASH" | "CASHLESS";
+  surchargePercent?: string | null;
+  surchargeAmount?: string;
+  /** Итог с транспортом и надбавкой. */
   grandTotal?: string;
   lines: Array<{
     equipmentId: string;

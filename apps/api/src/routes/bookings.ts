@@ -1,10 +1,11 @@
 import express from "express";
 import { z } from "zod";
+import { PAYMENT_FORMS, computeSurcharge, formatPercent, resolveSurchargePercent } from "../services/paymentForm";
 import { Prisma } from "@prisma/client";
 import Decimal from "decimal.js";
 
 import { prisma } from "../prisma";
-import { createBookingDraft, createQuickBooking, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, CUSTOM_LINE_CATEGORY } from "../services/bookings";
+import { createBookingDraft, createQuickBooking, confirmBooking, quoteEstimate, rebuildBookingEstimate, releaseBookingUnits, resolveBookingSurchargePercent, CUSTOM_LINE_CATEGORY } from "../services/bookings";
 import type { BookingTransportSnapshot } from "../services/bookings";
 import { submitForApproval, approveBooking, rejectBooking, autoConfirmBooking, approvalMode } from "../services/bookingApproval";
 import { writeOffBookingDebt, cancelBookingDebtWriteOff } from "../services/debtWriteOff";
@@ -26,6 +27,7 @@ import {
   writeFullSmetaPdf,
   writeFullSmetaXlsx,
   smetaOrgFromSettings,
+  writeSmetaPdfMulti,
 } from "../services/smetaExport";
 import { getSettings } from "../services/organizationService";
 import { formatExportHourCalculationLine } from "../utils/dates";
@@ -156,6 +158,10 @@ const bookingCreateSchema = z.object({
   estimateIncludeOptionalInExport: z.boolean().optional(),
   /** «Не считать вторые сутки»: прощать хвост ≤ 4 ч сверх целых суток */
   skipPartialDay: z.boolean().optional().default(false),
+  /** Форма оплаты: наличные (как в смете) или по счёту ИП с надбавкой */
+  paymentForm: z.enum(PAYMENT_FORMS).optional(),
+  /** Процент надбавки за безнал; не передан при CASHLESS → дефолт из настроек */
+  cashlessSurchargePercent: z.number().min(0).max(100).optional().nullable(),
   /** Переопределить строку «Просчёт часов» (иначе считается по датам) */
   hourCalculationOverride: z.string().optional().nullable(),
   items: z.array(bookingItemSchema).min(1),
@@ -179,6 +185,9 @@ const bookingUpdateSchema = z.object({
   items: z.array(bookingItemSchema).min(1).optional(),
   /** «Не считать вторые сутки»: прощать хвост ≤ 4 ч сверх целых суток */
   skipPartialDay: z.boolean().optional(),
+  /** Форма оплаты; CASH сбрасывает процент, CASHLESS без процента берёт дефолт из настроек */
+  paymentForm: z.enum(PAYMENT_FORMS).optional(),
+  cashlessSurchargePercent: z.number().min(0).max(100).optional().nullable(),
   /** Если true — возвращает превью изменений брони без записи в БД */
   dryRun: z.boolean().optional().default(false),
   /**
@@ -729,6 +738,9 @@ router.patch("/:id", async (req, res, next) => {
     const id = req.params.id;
     await assertBookingNotArchived(id);
     const body = bookingUpdateSchema.parse(req.body);
+    // Перебить процент надбавки может только руководитель — как и договорной
+    // итог (manualFinalAmount). Форму оплаты кладовщик выбирать может.
+    const percentInput = req.adminUser?.role === "SUPER_ADMIN" ? body.cashlessSurchargePercent : undefined;
     const existing = await prisma.booking.findUnique({
       where: { id },
       include: { client: true, items: { include: { equipment: true } }, estimates: { include: { lines: true } } },
@@ -755,6 +767,17 @@ router.patch("/:id", async (req, res, next) => {
       }))
         : existing.items.map((i) => ({ equipmentId: i.equipmentId ?? undefined, customName: (i as any).customName ?? undefined, customUnitPrice: (i as any).customUnitPrice != null ? Number((i as any).customUnitPrice.toString()) : undefined, quantity: i.quantity }));
 
+      // Форма оплаты в превью: из тела, иначе как на брони.
+      const dryRunPaymentForm = body.paymentForm ?? existing.paymentForm;
+      const dryRunSurchargePercent = await resolveBookingSurchargePercent(
+        dryRunPaymentForm,
+        percentInput !== undefined
+          ? percentInput
+          : body.paymentForm === undefined
+            ? existing.cashlessSurchargePercent?.toString() ?? null
+            : null,
+      );
+
       const estimate = await quoteEstimate({
         startDate: start,
         endDate: end,
@@ -768,6 +791,8 @@ router.patch("/:id", async (req, res, next) => {
         items: itemsAfter,
         transport: body.transport ?? null,
         skipPartialDay: body.skipPartialDay !== undefined ? body.skipPartialDay : (existing.skipPartialDay ?? false),
+        paymentForm: dryRunPaymentForm,
+        cashlessSurchargePercent: dryRunSurchargePercent?.toString() ?? null,
       });
 
       // grandTotal mirrors the non-dryRun PATCH path: equipment total-after-discount
@@ -781,7 +806,11 @@ router.patch("/:id", async (req, res, next) => {
           : existing.transportSubtotalRub
             ? new Decimal(existing.transportSubtotalRub.toString())
             : new Decimal(0);
-      const dryRunGrandTotal = estimate.totalAfterDiscount.add(dryRunTransportSubtotal);
+      const dryRunSurcharge = computeSurcharge(
+        estimate.totalAfterDiscount.add(dryRunTransportSubtotal),
+        estimate.surchargePercent,
+      );
+      const dryRunGrandTotal = dryRunSurcharge.total;
 
       res.json({
         dryRun: true,
@@ -801,7 +830,10 @@ router.patch("/:id", async (req, res, next) => {
             // Transport — array of per-vehicle breakdowns (empty when none) + summed subtotal
             transport: estimate.transport,
             transportSubtotal: dryRunTransportSubtotal.toFixed(2),
-            // Grand total = equipment-after-discount + transportSubtotal (same as persisted finalAmount)
+            paymentForm: estimate.paymentForm,
+            surchargePercent: estimate.surchargePercent?.toString() ?? null,
+            surchargeAmount: dryRunSurcharge.amount.toFixed(2),
+            // Grand total = equipment-after-discount + transportSubtotal + надбавка за безнал (same as persisted finalAmount)
             grandTotal: dryRunGrandTotal.toFixed(2),
             lines: estimate.lines.map((l) => ({
               equipmentId: l.equipmentId,
@@ -817,6 +849,25 @@ router.patch("/:id", async (req, res, next) => {
     }
 
     const isSuperAdmin = req.adminUser?.role === "SUPER_ADMIN";
+    // Форма оплаты меняется, если пришла форма или процент. Смена процента без
+    // формы имеет смысл только у безнала — у наличных надбавки нет.
+    const paymentFormPatch =
+      body.paymentForm !== undefined
+        ? body.paymentForm
+        : percentInput !== undefined && existing.paymentForm === "CASHLESS"
+          ? existing.paymentForm
+          : undefined;
+    const surchargePercentPatch =
+      paymentFormPatch !== undefined
+        ? await resolveBookingSurchargePercent(
+            paymentFormPatch,
+            percentInput !== undefined
+              ? percentInput
+              : body.paymentForm !== undefined && body.paymentForm !== existing.paymentForm
+                ? null
+                : existing.cashlessSurchargePercent?.toString() ?? null,
+          )
+        : null;
     // SUPER_ADMIN с явным флагом `retroactive: true` может править RETURNED.
     // Это «правка задним числом» — фиксируется отдельным audit-action ниже.
     // Без флага RETURNED не редактируется никем (закрытая бронь, как и было).
@@ -1044,6 +1095,14 @@ router.patch("/:id", async (req, res, next) => {
           discountPercent: body.discountPercent === undefined ? undefined : body.discountPercent != null ? new Decimal(body.discountPercent) : null,
           expectedPaymentDate: resolvedExpectedPaymentDate,
           skipPartialDay: body.skipPartialDay === undefined ? undefined : body.skipPartialDay,
+          // Форма оплаты: CASH обнуляет процент; CASHLESS без явного процента
+          // фиксирует дефолт из настроек (снапшот, см. resolveBookingSurchargePercent).
+          ...(paymentFormPatch !== undefined
+            ? {
+                paymentForm: paymentFormPatch,
+                cashlessSurchargePercent: surchargePercentPatch ? surchargePercentPatch.toDecimalPlaces(2).toString() : null,
+              }
+            : {}),
           // Транспорт заменён: обновляем итог и гасим legacy-колонку vehicleId,
           // иначе fallback в computeBookingTransportSubtotal «воскресит» старый
           // одиночный транспорт при очистке vehicles[].
@@ -1183,7 +1242,7 @@ router.patch("/:id", async (req, res, next) => {
           transport: null,
           skipPartialDay: body.skipPartialDay !== undefined ? body.skipPartialDay : (existing.skipPartialDay ?? false),
         });
-        // finalAmount = equipment-after-discount + transportSubtotal.
+        // finalAmount = equipment-after-discount + transportSubtotal + надбавка за безнал.
         // Если PATCH заменил транспорт — берём новый итог; иначе — сохранённый.
         const transportSubtotal =
           transportReplacementSubtotal !== null
@@ -1191,12 +1250,22 @@ router.patch("/:id", async (req, res, next) => {
             : existing.transportSubtotalRub
               ? new Decimal(existing.transportSubtotalRub.toString())
               : new Decimal(0);
-        const finalAmount = new Decimal(quote.totalAfterDiscount).add(transportSubtotal);
+        const reviewPaymentForm = paymentFormPatch ?? existing.paymentForm;
+        const reviewPercent =
+          paymentFormPatch !== undefined
+            ? surchargePercentPatch
+            : resolveSurchargePercent({
+                paymentForm: existing.paymentForm,
+                cashlessSurchargePercent: existing.cashlessSurchargePercent,
+              });
+        const reviewSurcharge = computeSurcharge(new Decimal(quote.totalAfterDiscount).add(transportSubtotal), reviewPaymentForm === "CASHLESS" ? reviewPercent : null);
+        const finalAmount = reviewSurcharge.total;
         await prisma.booking.update({
           where: { id },
           data: {
             totalEstimateAmount: quote.subtotal,
             discountAmount: quote.discountAmount,
+            surchargeAmount: reviewSurcharge.amount.toDecimalPlaces(2).toString(),
             finalAmount: finalAmount.toDecimalPlaces(2).toString(),
           },
         });
@@ -1566,6 +1635,8 @@ router.post("/quote", async (req, res, next) => {
       })),
       transport: body.transport ?? null,
       skipPartialDay: body.skipPartialDay ?? false,
+      paymentForm: body.paymentForm ?? null,
+      cashlessSurchargePercent: body.cashlessSurchargePercent ?? null,
     });
 
     const duration = formatRentalDurationDetails(start, end, body.skipPartialDay ?? false);
@@ -1590,7 +1661,11 @@ router.post("/quote", async (req, res, next) => {
       // Transport — array of per-vehicle breakdowns (empty when none) + summed subtotal
       transport: estimate.transport,
       transportSubtotal: estimate.transportSubtotal.toFixed(2),
-      // Grand total
+      // Форма оплаты и надбавка за безнал (строка «Безналичный расчёт (+N %)»)
+      paymentForm: estimate.paymentForm,
+      surchargePercent: estimate.surchargePercent?.toString() ?? null,
+      surchargeAmount: estimate.surchargeAmount.toFixed(2),
+      // Grand total — с транспортом и надбавкой
       grandTotal: estimate.grandTotal.toFixed(2),
       lines: estimate.lines.map((l) => ({
         equipmentId: l.equipmentId,
@@ -1655,6 +1730,8 @@ router.post("/quote/export", async (req, res, next) => {
         negotiatedRatePerShift: it.negotiatedRatePerShift ?? null,
       })),
       skipPartialDay: body.skipPartialDay ?? false,
+      paymentForm: body.paymentForm ?? null,
+      cashlessSurchargePercent: body.cashlessSurchargePercent ?? null,
     });
 
     const duration = formatRentalDurationDetails(start, end, body.skipPartialDay ?? false);
@@ -1701,12 +1778,30 @@ router.post("/quote/export", async (req, res, next) => {
       lines: estimate.lines,
     });
 
+    // Надбавка за безнал в превью-экспорте печатается тем же общим блоком, что и
+    // в полной смете — иначе документ терял бы ~9 % от того, что клиент платит.
+    const quoteSurcharge = estimate.surchargePercent
+      ? { percent: formatPercent(estimate.surchargePercent), amount: estimate.surchargeAmount.toDecimalPlaces(2).toString() }
+      : null;
+    const quoteGrandTotal = estimate.grandTotal.toDecimalPlaces(2).toString();
     if (body.format === "pdf") {
+      if (quoteSurcharge) {
+        writeSmetaPdfMulti(res, [smetaDoc], `${fileBase}.pdf`, quoteGrandTotal, null, null, quoteSurcharge);
+        return;
+      }
       writeSmetaPdf(res, smetaDoc, `${fileBase}.pdf`);
       return;
     }
 
     if (body.format === "xlsx") {
+      if (quoteSurcharge) {
+        await writeFullSmetaXlsx(
+          res,
+          { main: smetaDoc, addon: null, transport: null, grandTotal: quoteGrandTotal, surcharge: quoteSurcharge },
+          `${fileBase}.xlsx`,
+        );
+        return;
+      }
       await writeSmetaXlsx(res, smetaDoc, `${fileBase}.xlsx`);
       return;
     }
@@ -1756,6 +1851,8 @@ router.post("/draft", async (req, res, next) => {
       })),
         transport: body.transport ?? null,
         skipPartialDay: body.skipPartialDay ?? false,
+        paymentForm: body.paymentForm ?? null,
+        cashlessSurchargePercent: body.cashlessSurchargePercent ?? null,
       });
 
       res.json({
@@ -1782,7 +1879,10 @@ router.post("/draft", async (req, res, next) => {
             // and the /quote response shape exactly.
             transport: estimate.transport,
             transportSubtotal: estimate.transportSubtotal.toFixed(2),
-            // Grand total = equipment-after-discount + transportSubtotal (== persisted finalAmount)
+            paymentForm: estimate.paymentForm,
+            surchargePercent: estimate.surchargePercent?.toString() ?? null,
+            surchargeAmount: estimate.surchargeAmount.toFixed(2),
+            // Grand total = equipment-after-discount + transportSubtotal + надбавка (== persisted finalAmount)
             grandTotal: estimate.grandTotal.toFixed(2),
             lines: estimate.lines.map((l) => ({
               equipmentId: l.equipmentId,
@@ -1844,6 +1944,10 @@ router.post("/draft", async (req, res, next) => {
       skipPartialDay: body.skipPartialDay ?? false,
       manualFinalAmount:
         req.adminUser?.role === "SUPER_ADMIN" ? body.manualFinalAmount ?? null : null,
+      paymentForm: body.paymentForm ?? null,
+      // Перебить процент может только руководитель; остальным — дефолт из настроек.
+      cashlessSurchargePercent:
+        req.adminUser?.role === "SUPER_ADMIN" ? body.cashlessSurchargePercent ?? null : null,
       items: body.items.map((it) => ({
         equipmentId: it.equipmentId,
         customName: it.customName,
@@ -2993,7 +3097,17 @@ router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
     const org = smetaOrgFromSettings(await getSettings());
     // Договорной итог обязан дойти до документа: счёт его уже чтит, и без него
     // смета спорила бы со счётом на одной и той же брони.
-    const doc = buildFullSmeta({ booking, main, addon, org, agreedTotal: booking.manualFinalAmount });
+    const doc = buildFullSmeta({
+      booking,
+      main,
+      addon,
+      org,
+      agreedTotal: booking.manualFinalAmount,
+      surchargePercent: resolveSurchargePercent({
+        paymentForm: booking.paymentForm,
+        cashlessSurchargePercent: booking.cashlessSurchargePercent,
+      }),
+    });
     // Сумма в имени файла обязана совпадать с тем, что документ печатает как
     // «К оплате» (renderPdf: agreedTotal ?? grandTotal). Раньше сюда шёл
     // main.totalAfterDiscount — только оборудование, — и у любой брони
@@ -3029,7 +3143,17 @@ router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
     const org = smetaOrgFromSettings(await getSettings());
     // Договорной итог обязан дойти до документа: счёт его уже чтит, и без него
     // смета спорила бы со счётом на одной и той же брони.
-    const doc = buildFullSmeta({ booking, main, addon, org, agreedTotal: booking.manualFinalAmount });
+    const doc = buildFullSmeta({
+      booking,
+      main,
+      addon,
+      org,
+      agreedTotal: booking.manualFinalAmount,
+      surchargePercent: resolveSurchargePercent({
+        paymentForm: booking.paymentForm,
+        cashlessSurchargePercent: booking.cashlessSurchargePercent,
+      }),
+    });
     // Сумма в имени файла обязана совпадать с тем, что документ печатает как
     // «К оплате» (renderPdf: agreedTotal ?? grandTotal). Раньше сюда шёл
     // main.totalAfterDiscount — только оборудование, — и у любой брони

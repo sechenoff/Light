@@ -46,6 +46,7 @@ describe("menuByRole — grouped sections", () => {
         "/vehicles",
         "/finance",
         "/finance/invoices",
+        "/finance/bills",
         "/finance/payments",
         "/finance/debts",
         "/finance/expenses",
@@ -71,14 +72,15 @@ describe("menuByRole — grouped sections", () => {
     expect(archive!.icon).not.toBe("alert");
   });
 
-  it("SUPER_ADMIN Финансы section has 5 items including /finance/invoices", () => {
+  it("SUPER_ADMIN Финансы section has 6 items including /finance/invoices and /finance/bills", () => {
     const finance = menuByRole.SUPER_ADMIN.find((s) => s.title === "Финансы");
     expect(finance).toBeDefined();
-    expect(finance!.items).toHaveLength(5);
+    expect(finance!.items).toHaveLength(6);
     const hrefs = finance!.items.map((i) => i.href);
     expect(hrefs).toEqual([
       "/finance",
       "/finance/invoices",
+      "/finance/bills",
       "/finance/payments",
       "/finance/debts",
       "/finance/expenses",
