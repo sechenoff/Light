@@ -21,6 +21,7 @@ type AuditEntityType =
   | "Invoice"
   | "Refund"
   | "CreditNote"
+  | "Bill"
   | "OrgSettings"
   | "ProblemItem"
   | "Feedback"

@@ -100,4 +100,10 @@ export type SmetaFullExportDocument = {
    * отдельной строкой, чтобы разница была видна, а не спрятана в цифре.
    */
   agreedTotal?: string | null;
+  /**
+   * Надбавка за безналичный расчёт («По счёту (ИП)»): процент и сумма от
+   * (main + addon + transport). null — наличные, строка не печатается.
+   * Входит в grandTotal: это то, что клиент реально переводит на счёт.
+   */
+  surcharge?: { percent: string; amount: string } | null;
 };

@@ -21,6 +21,19 @@ enum BookingStatus {
   CANCELLED
 }
 
+/// Форма оплаты брони: наличные или по счёту через расчётный счёт ИП.
+enum PaymentForm {
+  CASH
+  CASHLESS
+}
+
+/// Статус счёта на оплату контрагенту (печатный документ).
+enum BillStatus {
+  ISSUED
+  PAID
+  CANCELLED
+}
+
 enum BookingPaymentStatus {
   NOT_PAID
   PARTIALLY_PAID
@@ -208,10 +221,24 @@ model Client {
   email            String?
   comment          String?
   lastReminderAt   DateTime?
+  /// Реквизиты контрагента для счёта на оплату. Все опциональны: у физлица
+  /// достаточно имени, у юрлица — полный набор. `legalName` — официальное
+  /// название («ООО «ЭПИКПРО»»), когда оно отличается от рабочего `name`.
+  legalName        String?
+  inn              String?
+  kpp              String?
+  ogrn             String?
+  legalAddress     String?
+  postalAddress    String?
+  bankName         String?
+  bankBik          String?
+  rschet           String?
+  kschet           String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   bookings      Booking[]
+  bills         Bill[]
   portalAccount ClientPortalAccount?
 
   @@index([name])
@@ -314,6 +341,17 @@ model Booking {
   /// возврата (когда автомат сметы не отражает реальную сделку).
   manualFinalAmount Decimal?
 
+  /// Форма оплаты: наличные или по счёту через ИП (безнал). При CASHLESS к сумме
+  /// брони (оборудование после скидки + добор + транспорт) плюсуется
+  /// cashlessSurchargePercent — компенсация налога и комиссии за проведение
+  /// через расчётный счёт. Процент — снапшот на брони: дефолт берётся из
+  /// OrganizationSettings.cashlessSurchargePercent, но на конкретной брони его
+  /// можно перебить. null при CASH.
+  paymentForm              PaymentForm @default(CASH)
+  cashlessSurchargePercent Decimal?
+  /// Сумма надбавки за безнал — производная, пересчитывается recomputeBookingFinance.
+  surchargeAmount          Decimal     @default(0)
+
   /// Soft-delete: когда бронь «удалена» из списка — она не стирается из БД,
   /// а помечается deletedAt = now(). Архив виден на /bookings/archive
   /// (только SUPER_ADMIN), там можно восстановить или удалить навсегда.
@@ -382,6 +420,8 @@ model Booking {
   legacyFinance Boolean @default(true)
 
   invoices       Invoice[]
+  /// Счета на оплату, выставленные по этой брони (печатные документы).
+  bills          Bill[]
 
   /// Записи пробега, снятые на возврате этой брони. Опционально (если в броне
   /// не было машин — пусто). См. модель VehicleMileageLog.
@@ -1209,6 +1249,17 @@ model OrganizationSettings {
   migrationCutoffAt    DateTime @default(now())
   /// Срок оплаты по умолчанию для новых броней. expectedPaymentDate = booking.endDate + defaultPaymentTermsDays. 0 = в день возврата.
   defaultPaymentTermsDays Int   @default(0)
+  /// Надбавка за безналичный расчёт по умолчанию, % — подставляется в новую
+  /// бронь с paymentForm = CASHLESS (Booking.cashlessSurchargePercent).
+  cashlessSurchargePercent Decimal @default(9)
+  /// Подписант счёта на оплату: «Сеченов В.А.» и форма/должность
+  /// («Индивидуальный предприниматель»). null — строка подписи без имени.
+  signerName  String?
+  signerTitle String?
+  /// Пометка о налоге в счёте: «Без НДС в связи с применением УСН». null — не печатать.
+  taxNote     String?
+  /// ОГРН / ОГРНИП — печатается в реквизитах продавца, если задан.
+  ogrn        String?
   updatedAt            DateTime @updatedAt
 }
 
@@ -1417,4 +1468,65 @@ model ClientPortalMagicLink {
 
   @@index([accountId, purpose])
   @@index([expiresAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Счета на оплату контрагентам (печатный документ «Счёт на оплату»)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Счёт на оплату — то, что ИП выставляет контрагенту и печатает. НЕ путать с
+/// Invoice: тот — финансовое обязательство по броне, к которому привязаны
+/// платежи и дебиторка. Bill живёт отдельным реестром: может быть без брони
+/// (монтаж ролика, консультация), а может быть выписан по брони одной строкой.
+/// Нумерация сквозная в пределах года: «Счёт № 12 от 16.09.2026».
+model Bill {
+  id          String     @id @default(cuid())
+  year        Int
+  number      Int
+  date        DateTime
+  status      BillStatus @default(ISSUED)
+  clientId    String
+  client      Client     @relation(fields: [clientId], references: [id])
+  bookingId   String?
+  booking     Booking?   @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  /// Основание: «Смета № СМ-2026-0042 от 12.09.2026», договор и т.п.
+  basis       String?
+  /// Пометка о налоге на момент выставления (снапшот из настроек).
+  taxNote     String?
+  /// «Оплатить до …». null — срок не печатается.
+  dueDate     DateTime?
+  total       Decimal
+  /// Снапшоты реквизитов сторон на момент выставления (JSON-текст): выписанный
+  /// документ не должен меняться задним числом при правке карточки клиента
+  /// или настроек организации.
+  sellerSnapshot String
+  payerSnapshot  String
+  notes       String?
+  paidAt      DateTime?
+  cancelledAt DateTime?
+  createdBy   String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  lines BillLine[]
+
+  @@unique([year, number])
+  @@index([clientId])
+  @@index([bookingId])
+  @@index([status])
+  @@index([date])
+}
+
+model BillLine {
+  id       String  @id @default(cuid())
+  billId   String
+  bill     Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
+  position Int
+  name     String
+  unit     String  @default("шт.")
+  quantity Decimal
+  price    Decimal
+  sum      Decimal
+
+  @@index([billId])
 }

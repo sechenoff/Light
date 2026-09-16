@@ -128,6 +128,8 @@ type RenderOptions = {
   grandTotal?: string | null;
   /** Согласованная вручную сумма брони; перебивает расчётный итог. */
   agreedTotal?: string | null;
+  /** Надбавка за безналичный расчёт — строка перед итогом, входит в grandTotal. */
+  surcharge?: { percent: string; amount: string } | null;
 };
 
 /**
@@ -185,13 +187,24 @@ class SmetaPdfWriter {
       return;
     }
 
-    if (org.name) {
-      d.font(this.fonts.bold).fontSize(11.5).fillColor(C.accent);
-      d.text(org.name, MARGIN, this.y, { width: CONTENT_W - 190, lineBreak: false, ellipsis: true });
-    }
     const idBits = [org.inn ? `ИНН ${org.inn}` : null, org.kpp ? `КПП ${org.kpp}` : null]
       .filter(Boolean)
       .join("  ·  ");
+    if (org.name) {
+      // Длинное юр. имя («Индивидуальный предприниматель Фамилия Имя Отчество»)
+      // ужимаем кеглем, а не переносим: pdfkit при заданной width переносит
+      // строку даже с lineBreak:false, и вторая строка ложилась поверх контактов.
+      // Имени отдаём всё, что не занял блок ИНН/КПП справа.
+      d.font(this.fonts.body).fontSize(8);
+      const idW = idBits ? Math.max(120, d.widthOfString(idBits) + 16) : 0;
+      const nameW = CONTENT_W - idW;
+      d.font(this.fonts.bold).fillColor(C.accent);
+      let size = 11.5;
+      while (size > 9 && d.fontSize(size).widthOfString(org.name) > nameW) size -= 0.5;
+      let name = org.name;
+      while (name.length > 1 && d.widthOfString(name) > nameW) name = `${name.slice(0, -2).trimEnd()}…`;
+      d.text(name, MARGIN, this.y + (11.5 - size) / 2, { width: nameW, lineBreak: false });
+    }
     if (idBits) {
       d.font(this.fonts.body).fontSize(8).fillColor(C.faint);
       d.text(idBits, MARGIN + CONTENT_W - 190, this.y + 2, { width: 190, align: "right", lineBreak: false });
@@ -580,6 +593,7 @@ class SmetaPdfWriter {
     transport: SmetaTransportSection | null,
     grandTotal: string,
     agreedTotal?: string | null,
+    surcharge?: { percent: string; amount: string } | null,
   ): void {
     const blockW = 276;
     const x = RIGHT_X - blockW;
@@ -591,6 +605,9 @@ class SmetaPdfWriter {
     const addon = sections[1];
     if (addon) composition.push({ label: "Доб-смета (после скидки)", value: rub(addon.totalAfterDiscount) });
     if (transport) composition.push({ label: "Транспорт", value: rub(transport.subtotal) });
+    // Надбавка за безнал печатается своей строкой: клиент должен видеть, из
+    // чего сложились «+9 %», а не гадать, почему итог больше сметы.
+    if (surcharge) composition.push({ label: `Безналичный расчёт (+${surcharge.percent} %)`, value: rub(surcharge.amount) });
     // Договорную сумму не подменяем молча: показываем расчёт, потом уступку,
     // потом то, что платить. Иначе документ спорит со счётом без объяснения.
     const hasAgreed = agreedTotal != null && agreedTotal !== grandTotal;
@@ -714,7 +731,7 @@ class SmetaPdfWriter {
     // где расчётная сумма подменяется согласованной, просто не вызывается, и
     // на брони без добора и транспорта лист печатал расчёт, споря со счётом.
     const showGrand =
-      sections.length > 1 || Boolean(transport) || opts.agreedTotal != null;
+      sections.length > 1 || Boolean(transport) || opts.agreedTotal != null || Boolean(opts.surcharge);
 
     sections.forEach((section, idx) => {
       if (idx > 0) {
@@ -726,7 +743,7 @@ class SmetaPdfWriter {
 
     if (transport) this.drawTransport(transport);
     if (showGrand && opts.grandTotal) {
-      this.drawGrandTotal(sections, transport, opts.grandTotal, opts.agreedTotal ?? null);
+      this.drawGrandTotal(sections, transport, opts.grandTotal, opts.agreedTotal ?? null, opts.surcharge ?? null);
     }
 
     this.drawPaymentDetails(sections[0]?.org ?? null);
@@ -773,13 +790,14 @@ export function writeSmetaPdfMulti(
   grandTotal: string,
   transport: SmetaTransportSection | null = null,
   agreedTotal: string | null = null,
+  surcharge: { percent: string; amount: string } | null = null,
 ): void {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", buildAttachmentContentDisposition(downloadName, "estimate.pdf"));
 
   const doc = createSmetaDoc(sections[0]);
   doc.pipe(res);
-  new SmetaPdfWriter(doc).render(sections, { transport, grandTotal, agreedTotal });
+  new SmetaPdfWriter(doc).render(sections, { transport, grandTotal, agreedTotal, surcharge });
   doc.end();
 }
 
@@ -789,6 +807,7 @@ export function renderSmetaPdfToBuffer(
   grandTotal: string | null = null,
   transport: SmetaTransportSection | null = null,
   agreedTotal: string | null = null,
+  surcharge: { percent: string; amount: string } | null = null,
 ): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const doc = createSmetaDoc(sections[0]);
@@ -796,7 +815,7 @@ export function renderSmetaPdfToBuffer(
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
-    new SmetaPdfWriter(doc).render(sections, { transport, grandTotal, agreedTotal });
+    new SmetaPdfWriter(doc).render(sections, { transport, grandTotal, agreedTotal, surcharge });
     doc.end();
   });
 }

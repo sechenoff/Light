@@ -1,5 +1,6 @@
 import type { BookingPaymentStatus, PaymentDirection, PaymentRecordStatus, Prisma } from "@prisma/client";
 import Decimal from "decimal.js";
+import { computeSurcharge, resolveSurchargePercent } from "./paymentForm";
 import ExcelJS from "exceljs";
 
 import { prisma } from "../prisma";
@@ -134,8 +135,20 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
   // by transport on each recompute (regression covered by
   // recomputeBookingFinanceFallback.test). Now we leave finalAmount untouched and
   // only refresh derived fields (amountPaid, amountOutstanding, paymentStatus).
+  // Надбавка за безналичный расчёт («По счёту (ИП)»): процент — снапшот на
+  // брони, база — всё, что клиент платит: оборудование после скидки + доп-смета +
+  // транспорт. Без MAIN-сметы базы нет — надбавка не пересчитывается, остаётся
+  // как записана (та же логика, что у finalAmount ниже).
+  const surchargePercent = resolveSurchargePercent({
+    paymentForm: booking.paymentForm,
+    cashlessSurchargePercent: booking.cashlessSurchargePercent,
+  });
+  const surchargeAmount = main
+    ? computeSurcharge(mainAfterDiscount.add(addonAfterDiscount).add(transportSubtotal), surchargePercent).amount
+    : new Decimal(booking.surchargeAmount.toString());
+
   const computedFinalAmount = main
-    ? mainAfterDiscount.add(addonAfterDiscount).add(transportSubtotal)
+    ? mainAfterDiscount.add(addonAfterDiscount).add(transportSubtotal).add(surchargeAmount)
     : new Decimal(booking.finalAmount.toString());
 
   // Manual override: SUPER_ADMIN мог зафиксировать «фактическую сумму после
@@ -201,6 +214,7 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
         discountAmount: discountAmount.toDecimalPlaces(2).toString(),
         finalAmount: finalAmount.toDecimalPlaces(2).toString(),
         addonAmount: addonAfterDiscount.toDecimalPlaces(2).toString(),
+        surchargeAmount: surchargeAmount.toDecimalPlaces(2).toString(),
         amountPaid: amountPaid.toDecimalPlaces(2).toString(),
         amountOutstanding: amountOutstanding.toDecimalPlaces(2).toString(),
         paymentStatus: status,
@@ -248,7 +262,8 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
     (!main ||
       (!decChanged(booking.totalEstimateAmount, totalEstimateAmount.toDecimalPlaces(2).toString()) &&
         !decChanged(booking.discountAmount, discountAmount.toDecimalPlaces(2).toString()) &&
-        !decChanged(booking.addonAmount, addonAfterDiscount.toDecimalPlaces(2).toString()))) &&
+        !decChanged(booking.addonAmount, addonAfterDiscount.toDecimalPlaces(2).toString()) &&
+        !decChanged(booking.surchargeAmount, surchargeAmount.toDecimalPlaces(2).toString()))) &&
     (!(main || overrideActive) ||
       !decChanged(booking.finalAmount, finalAmount.toDecimalPlaces(2).toString()));
 

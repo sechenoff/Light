@@ -7,7 +7,8 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const TABS = [
   { href: "/finance", label: "Сводка" },
-  { href: "/finance/invoices", label: "Счета" },
+  { href: "/finance/invoices", label: "Счета по броням" },
+  { href: "/finance/bills", label: "Счета на оплату" },
   { href: "/finance/payments", label: "Платежи" },
   { href: "/finance/debts", label: "Долги", badgeKey: "debts" as const },
   { href: "/finance/expenses", label: "Расходы" },

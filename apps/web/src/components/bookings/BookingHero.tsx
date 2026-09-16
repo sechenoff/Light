@@ -31,6 +31,9 @@ export type HeroBooking = {
   manualFinalAmount?: string | null;
   /** Прощённый остаток долга — объясняет, почему «к оплате» ноль. */
   writeOffAmount?: string | null;
+  /** Форма оплаты: «По счёту (ИП)» печатается чипом с процентом надбавки. */
+  paymentForm?: "CASH" | "CASHLESS" | null;
+  cashlessSurchargePercent?: string | null;
 };
 
 export function BookingHero({ booking, showHero }: { booking: HeroBooking; showHero: boolean }) {
@@ -94,6 +97,14 @@ export function BookingHero({ booking, showHero }: { booking: HeroBooking; showH
               <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-3">
                 <StatusPill variant={statusVariant(booking.status)} label={statusText(booking.status)} />
                 <StatusPill variant={payVariant} label={payLabel} />
+                {booking.paymentForm === "CASHLESS" && (
+                  <StatusPill
+                    variant="info"
+                    label={`По счёту (ИП)${
+                      booking.cashlessSurchargePercent ? ` · +${Number(booking.cashlessSurchargePercent)} %` : ""
+                    }`}
+                  />
+                )}
                 <span className="text-border-strong">·</span>
                 <span>{booking.client.name}</span>
                 <span className="text-border-strong">·</span>
@@ -119,7 +130,9 @@ export function BookingHero({ booking, showHero }: { booking: HeroBooking; showH
                 <p className="mt-0.5 text-[11px] text-ink-3">
                   {booking.manualFinalAmount != null
                     ? "override SUPER_ADMIN'а — автомат не применяется"
-                    : "оборудование + транспорт − скидка"}
+                    : booking.paymentForm === "CASHLESS"
+                      ? "оборудование + транспорт − скидка + надбавка за безнал"
+                      : "оборудование + транспорт − скидка"}
                 </p>
               </div>
               <div className={`rounded-lg border shadow-xs p-3 ${paidCardTone ? "border-emerald-border bg-gradient-to-b from-emerald-soft to-surface" : "border-border bg-surface"}`}>

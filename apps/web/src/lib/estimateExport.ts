@@ -18,12 +18,12 @@ export function fullEstimatePath(bookingId: string, format: "pdf" | "xlsx"): str
 
 const NO_ESTIMATE = "Смета ещё не сформирована — сохраните бронь";
 
-async function fetchEstimateBlob(path: string): Promise<Blob | null> {
+async function fetchEstimateBlob(path: string, notFoundMessage: string = NO_ESTIMATE): Promise<Blob | null> {
   const res = await apiFetchRaw(path, { method: "GET", credentials: "include" });
   if (!res.ok) {
     // У старых черновиков без снапшота full-estimate отвечает 404
     // MAIN_ESTIMATE_NOT_FOUND — говорим об этом человеческими словами.
-    toast.error(NO_ESTIMATE);
+    toast.error(notFoundMessage);
     return null;
   }
   const blob = await res.blob();
@@ -35,9 +35,9 @@ async function fetchEstimateBlob(path: string): Promise<Blob | null> {
 }
 
 /** Скачивает файл, называя его так же, как назвал сервер. */
-export async function downloadEstimate(path: string, fallbackName: string): Promise<void> {
+export async function downloadEstimate(path: string, fallbackName: string, notFoundMessage?: string): Promise<void> {
   try {
-    const blob = await fetchEstimateBlob(path);
+    const blob = await fetchEstimateBlob(path, notFoundMessage);
     if (!blob) return;
     const disposition = (blob as Blob & { __disposition?: string }).__disposition ?? "";
     const url = URL.createObjectURL(blob);
@@ -61,9 +61,9 @@ export async function downloadEstimate(path: string, fallbackName: string): Prom
  * отправляется в печать из скрытого iframe. Safari печатать PDF из iframe не
  * умеет — там открываем вкладку и подсказываем ⌘P.
  */
-export async function printEstimate(path: string): Promise<void> {
+export async function printEstimate(path: string, notFoundMessage?: string): Promise<void> {
   try {
-    const blob = await fetchEstimateBlob(path);
+    const blob = await fetchEstimateBlob(path, notFoundMessage);
     if (!blob) return;
     const url = URL.createObjectURL(blob);
 

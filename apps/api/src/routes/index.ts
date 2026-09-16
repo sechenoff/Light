@@ -38,6 +38,7 @@ import { refundsRouter } from "./refunds";
 import { creditNotesRouter } from "./creditNotes";
 import { organizationSettingsRouter } from "./organizationSettings";
 import clientPortalAdminRouter from "./clientPortalAdmin";
+import { billsRouter } from "./bills";
 
 const router = express.Router();
 
@@ -167,6 +168,10 @@ router.use("/api/refunds", refundsRouter);
 
 // /api/credit-notes — POST/apply: SA only; GET: SA + WH
 router.use("/api/credit-notes", creditNotesRouter);
+
+// /api/bills — счета на оплату контрагентам (печатный «Счёт на оплату»): SUPER_ADMIN only.
+// НЕ в botScope whitelist.
+router.use("/api/bills", rolesGuard(["SUPER_ADMIN"]), billsRouter);
 
 // /api/settings — GET/PATCH organization: SA only
 router.use("/api/settings", organizationSettingsRouter);

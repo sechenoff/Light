@@ -46,6 +46,10 @@ export type FinanceBooking = {
   discountAmount?: string | null;
   totalEstimateAmount?: string | null;
   transportSubtotalRub?: string | null;
+  /** Форма оплаты и надбавка за безнал — отдельная строка разбивки. */
+  paymentForm?: "CASH" | "CASHLESS" | null;
+  cashlessSurchargePercent?: string | null;
+  surchargeAmount?: string | null;
   vehicleId?: string | null;
   vehicle?: { name?: string | null } | null;
   vehicles?: Array<{
@@ -164,8 +168,14 @@ export function BookingFinancePanel({
           const finalNum = Number(booking.finalAmount ?? "0");
           const discount = booking.estimate ? Number(booking.estimate.discountAmount) : Number(booking.discountAmount ?? "0");
           const rentBeforeDiscount = booking.estimate ? Number(booking.estimate.subtotal) : Number(booking.totalEstimateAmount ?? "0");
-          // Сигнал рассинхрона: снапшот сметы + транспорт ≠ сохранённый finalAmount.
-          const recomposed = equipAfterDiscount + addonAfterDiscount + transport;
+          // Надбавка за безнал — часть finalAmount, поэтому и часть разбивки.
+          const surcharge =
+            booking.paymentForm === "CASHLESS" ? Number(booking.surchargeAmount ?? "0") : 0;
+          const surchargePct = booking.cashlessSurchargePercent
+            ? Number(booking.cashlessSurchargePercent)
+            : null;
+          // Сигнал рассинхрона: снапшот сметы + транспорт + надбавка ≠ сохранённый finalAmount.
+          const recomposed = equipAfterDiscount + addonAfterDiscount + transport + surcharge;
           const drifted = booking.estimate != null && Math.abs(recomposed - finalNum) > 0.01;
           return (
             <div className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm space-y-1.5">
@@ -212,6 +222,14 @@ export function BookingFinancePanel({
                     Доставка / транспорт{booking.vehicle?.name ? ` (${booking.vehicle.name})` : ""}
                   </span>
                   <span className="mono-num text-ink-2">+{formatMoneyRub(transport)}</span>
+                </div>
+              )}
+              {surcharge > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-ink-2">
+                    Безналичный расчёт{surchargePct != null ? ` (+${surchargePct} %)` : ""}
+                  </span>
+                  <span className="mono-num text-ink-2">+{formatMoneyRub(surcharge)}</span>
                 </div>
               )}
               <div className="flex justify-between border-t border-border pt-1.5 font-semibold">

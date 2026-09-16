@@ -1,5 +1,7 @@
 import Decimal from "decimal.js";
 
+import { computeSurcharge, formatPercent } from "../paymentForm";
+
 import { buildSmetaFromPersistedEstimate } from "./buildDocument";
 import type {
   SmetaFullExportDocument,
@@ -62,6 +64,8 @@ export function buildFullSmeta(args: {
   org?: SmetaOrgInfo | null;
   /** Booking.manualFinalAmount — сумма, о которой договорились вручную. */
   agreedTotal?: MoneyLike | null;
+  /** Процент надбавки за безнал (null — наличные). База — main + addon + транспорт. */
+  surchargePercent?: Decimal | null;
 }): SmetaFullExportDocument {
   const mainDoc = buildSmetaFromPersistedEstimate({
     booking: args.booking,
@@ -80,7 +84,15 @@ export function buildFullSmeta(args: {
   const mainTotal = new Decimal(mainDoc.totalAfterDiscount);
   const addonTotal = addonDoc ? new Decimal(addonDoc.totalAfterDiscount) : new Decimal(0);
   const transportTotal = transport ? new Decimal(transport.subtotal) : new Decimal(0);
-  const grandTotal = mainTotal.add(addonTotal).add(transportTotal).toDecimalPlaces(2).toString();
+  const base = mainTotal.add(addonTotal).add(transportTotal);
+  // Надбавка за безнал считается от всего, что клиент платит; в документе —
+  // отдельной строкой перед итогом, чтобы «+9 %» было видно, а не растворялось.
+  const surchargePercent = args.surchargePercent && args.surchargePercent.gt(0) ? args.surchargePercent : null;
+  const surchargeCalc = computeSurcharge(base, surchargePercent);
+  const surcharge = surchargePercent
+    ? { percent: formatPercent(surchargePercent), amount: surchargeCalc.amount.toDecimalPlaces(2).toString() }
+    : null;
+  const grandTotal = surchargeCalc.total.toDecimalPlaces(2).toString();
 
   // Договорной итог не заменяет расчёт молча: обе цифры уходят в документ, и
   // рендерер показывает разницу отдельной строкой. Иначе платёжный документ
@@ -90,5 +102,5 @@ export function buildFullSmeta(args: {
       ? new Decimal(args.agreedTotal.toString()).toDecimalPlaces(2).toString()
       : null;
 
-  return { main: mainDoc, addon: addonDoc, transport, grandTotal, agreedTotal: agreed };
+  return { main: mainDoc, addon: addonDoc, transport, grandTotal, agreedTotal: agreed, surcharge };
 }

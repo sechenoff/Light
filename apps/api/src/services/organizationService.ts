@@ -43,8 +43,12 @@ export type UpdateSettingsInput = Partial<
     | "invoiceNumberPrefix"
     | "migrationCutoffAt"
     | "defaultPaymentTermsDays"
+    | "ogrn"
+    | "signerName"
+    | "signerTitle"
+    | "taxNote"
   >
->;
+> & { cashlessSurchargePercent?: number | string };
 
 /**
  * Обновляет настройки организации (partial update).
@@ -90,6 +94,11 @@ export async function updateSettings(
         email: before.email,
         invoiceNumberPrefix: before.invoiceNumberPrefix,
         migrationCutoffAt: before.migrationCutoffAt?.toISOString() ?? null,
+        cashlessSurchargePercent: before.cashlessSurchargePercent.toString(),
+        ogrn: before.ogrn,
+        signerName: before.signerName,
+        signerTitle: before.signerTitle,
+        taxNote: before.taxNote,
       } as Record<string, unknown>),
       after: diffFields({
         legalName: updated.legalName,
@@ -104,6 +113,11 @@ export async function updateSettings(
         email: updated.email,
         invoiceNumberPrefix: updated.invoiceNumberPrefix,
         migrationCutoffAt: updated.migrationCutoffAt?.toISOString() ?? null,
+        cashlessSurchargePercent: updated.cashlessSurchargePercent.toString(),
+        ogrn: updated.ogrn,
+        signerName: updated.signerName,
+        signerTitle: updated.signerTitle,
+        taxNote: updated.taxNote,
       } as Record<string, unknown>),
     });
 

@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Счёт на оплату № 12 — концепт A «Канон 1С, доведённый»</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ---------- Печать: A4 портрет без полей браузера ---------- */
+  @page { size: A4 portrait; margin: 0; }
+
+  /* ---------- Токены — палитра renderPdf.ts (смета) ---------- */
+  :root {
+    --ink: #0f172a;
+    --ink-2: #334155;
+    --muted: #64748b;
+    --faint: #94a3b8;
+    --border: #cbd5e1;
+    --hairline: #e2e8f0;
+    --grid: #94a3b8;            /* сетка банк-блока */
+    --accent: #1e3a8a;          /* business blue */
+    --accent-soft: #eff6ff;     /* тинт ~6 % — в ч/б светло-серый */
+    --accent-border: #bfdbfe;
+
+    --font-body: "IBM Plex Sans", "DejaVu Sans", Arial, sans-serif;
+    --font-cond: "IBM Plex Sans Condensed", "IBM Plex Sans", "DejaVu Sans Condensed", "DejaVu Sans", Arial, sans-serif;
+    --font-mono: "IBM Plex Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+
+    --page-pad: 16mm;           /* поля страницы → контент 178 мм */
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #e4e7ec;
+    font-family: var(--font-body);
+    color: var(--ink);
+    font-size: 9.5pt;
+    line-height: 1.3;
+    hyphens: none;
+    -webkit-font-smoothing: antialiased;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page {
+    width: 210mm;
+    height: 297mm;
+    margin: 24px auto;
+    padding: var(--page-pad);
+    background: #fff;
+    border: 1px solid var(--border);   /* только экран */
+    position: relative;
+  }
+
+  @media print {
+    body { background: #fff; }
+    .page { margin: 0; border: 0; page-break-after: always; }
+    .notes { display: none; }
+  }
+
+  /* ---------- Общие атомы ---------- */
+  .eyebrow {
+    font-size: 7.5pt;
+    font-weight: 600;
+    letter-spacing: .08em;      /* трекинг только на буквах, никогда на цифрах */
+    text-transform: uppercase;
+    color: var(--muted);
+    line-height: 1.2;
+  }
+  .num {
+    font-variant-numeric: tabular-nums lining-nums;
+    white-space: nowrap;
+  }
+  .nb { white-space: nowrap; }  /* номера документов не рвутся по дефису */
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;          /* цифры без трекинга и пробелов: копируются одним куском */
+    white-space: nowrap;
+  }
+
+  /* ---------- 1. Банк-блок «как в платёжном поручении» ---------- */
+  table.bank {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  .bank td {
+    border: 0.5pt solid var(--grid);
+    padding: 1.1mm 2mm 1mm;
+    vertical-align: top;
+  }
+  .bank .name {
+    font-size: 8.5pt;      /* «Индивидуальный предприниматель Сеченов Виталий Андреевич» — одной строкой в 100 мм */
+    font-weight: 500;
+    line-height: 1.3;
+  }
+  .bank .cap { margin-top: 0.7mm; font-size: 7pt; }
+  .bank .lbl {
+    font-size: 8.5pt;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .bank .lbl-cell {
+    padding-top: 1.5mm;      /* оптическое выравнивание метки с моно-номером */
+  }
+  .bank .acc {
+    font-size: 10pt;
+    line-height: 1.2;
+    color: var(--ink);
+  }
+  .bank .inn-cell .acc { font-size: 9.5pt; }
+  .bank .inn-cell .lbl { margin-right: 1.5mm; }
+
+  /* ---------- 2. Заголовок + микро-сводка + линия-акцент ---------- */
+  .title-row {
+    display: flex;
+    flex-wrap: wrap;           /* при более широком шрифте сводка уходит под заголовок, а не за край */
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.5mm 4mm;
+    margin-top: 4.5mm;
+  }
+  h1 {
+    margin: 0;
+    font-family: var(--font-cond);
+    font-size: 16pt;
+    font-weight: 700;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+  .summary {
+    margin-left: auto;         /* и в одну строку, и при переносе — прижата вправо */
+    text-align: right;
+    font-size: 9pt;
+    line-height: 1.35;
+    color: var(--ink-2);
+    white-space: nowrap;
+    padding-bottom: 0.4mm;
+  }
+  .summary b { color: var(--ink); font-weight: 600; }
+  .summary .sep { color: var(--faint); padding: 0 0.6em; }
+  .rule {
+    height: 0.7mm;
+    background: var(--accent);
+    margin-top: 1.6mm;
+  }
+
+  /* ---------- 3. Стороны ---------- */
+  .parties {
+    display: grid;
+    grid-template-columns: 38mm 1fr;
+    column-gap: 4mm;
+    row-gap: 1.6mm;
+    margin-top: 4mm;
+  }
+  .parties .eyebrow { font-size: 8pt; padding-top: 0.6mm; }
+  .parties p { margin: 0; font-size: 9.5pt; line-height: 1.3; }
+  .parties .who { font-weight: 600; }
+  .parties .sub { color: var(--ink-2); }
+
+  /* ---------- 4. Таблица позиций ---------- */
+  table.items {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    margin-top: 4.5mm;
+    font-size: 9pt;
+  }
+  .items th {
+    text-align: left;
+    padding: 0 1.5mm 1.4mm;
+    white-space: nowrap;
+    border-bottom: 0.6pt solid var(--ink-2);
+    vertical-align: bottom;
+    font-size: 7.5pt;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    line-height: 1.2;
+  }
+  .items td {
+    padding: 1.25mm 1.5mm;
+    border-bottom: 0.3pt solid var(--hairline);
+    vertical-align: top;
+    line-height: 1.28;
+  }
+  .items tr:last-child td { border-bottom: 0.5pt solid var(--border); }
+  .items th:first-child, .items td:first-child { padding-left: 0; }
+  .items th:last-child,  .items td:last-child  { padding-right: 2.5mm; }
+  .items .r { text-align: right; }
+  .items td.idx { color: var(--muted); text-align: right; }
+  .items td.unit { color: var(--ink-2); white-space: nowrap; }
+
+  /* ---------- 5. Итоги ---------- */
+  .totals {
+    margin-left: auto;
+    width: 106mm;
+    margin-top: 2mm;
+  }
+  .totals .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 4mm;
+    padding: 0.9mm 2.5mm 0.9mm 0;
+    font-size: 9.5pt;
+  }
+  .totals .row .k { color: var(--ink-2); }
+  .totals .row .v { font-weight: 600; }
+  .totals .row.vat .k { color: var(--ink); }
+  .totals .row.vat .v { color: var(--muted); font-weight: 400; }
+  .totals .grand {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 4mm;
+    background: var(--accent-soft);
+    border-top: 0.75pt solid var(--accent-border);
+    border-bottom: 0.75pt solid var(--accent-border);
+    padding: 1.9mm 2.5mm 1.7mm 3mm;
+    margin-top: 1.2mm;
+  }
+  .totals .grand .k {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .totals .grand .v {
+    font-size: 13.5pt;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .totals .grand .v small {
+    font-size: 9.5pt;
+    font-weight: 600;
+    margin-left: 0.3em;
+  }
+  .count {
+    margin: 1.8mm 0 0;
+    font-size: 8.5pt;
+    color: var(--ink-2);
+  }
+
+  /* ---------- 6. Сумма прописью ---------- */
+  .words {
+    margin: 2.5mm 0 0;
+    padding-top: 2.2mm;
+    border-top: 0.3pt solid var(--hairline);
+    font-size: 10pt;
+    line-height: 1.35;
+  }
+  .words .k { color: var(--ink-2); }
+  .words b { font-weight: 700; }
+
+  /* ---------- 7. Зона оплаты ---------- */
+  .pay {
+    display: grid;
+    grid-template-columns: 1fr 34mm;
+    grid-template-rows: auto auto;
+    column-gap: 6mm;
+    align-items: start;
+    margin-top: 4.5mm;
+  }
+  .pay-left { grid-column: 1; grid-row: 1; }
+  .purpose {
+    margin: 1.6mm 0 0;
+    border-left: 0.6mm solid var(--accent-border);
+    padding: 0.5mm 0 0.5mm 3mm;
+    font-size: 9.5pt;
+    line-height: 1.4;
+    user-select: all;          /* один клик — вся строка выделена */
+  }
+  .due { margin-top: 2.5mm; }
+  .due p {
+    margin: 0.8mm 0 0;
+    font-size: 9pt;
+    line-height: 1.35;
+    color: var(--ink-2);
+  }
+  .due b { color: var(--ink); font-weight: 600; }
+
+  .qr {
+    grid-column: 2;
+    grid-row: 1 / span 2;      /* QR стоит справа и от назначения, и от подписи */
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .qr-quiet {                  /* тихая зона ≥ 2 мм — белое поле вокруг кода */
+    width: 34mm;
+    height: 34mm;
+    padding: 2mm;
+    background: #fff;
+  }
+  .qr-box {
+    position: relative;
+    width: 30mm;
+    height: 30mm;
+    border: 0.5pt solid var(--grid);
+    background: #fff;
+  }
+  .finder {
+    position: absolute;
+    width: 6.5mm;
+    height: 6.5mm;
+    border: 1.1mm solid var(--ink);
+  }
+  .finder::after {
+    content: "";
+    position: absolute;
+    inset: 1mm;
+    background: var(--ink);
+  }
+  .finder.tl { top: 1.5mm; left: 1.5mm; }
+  .finder.tr { top: 1.5mm; right: 1.5mm; }
+  .finder.bl { bottom: 1.5mm; left: 1.5mm; }
+  .qr-box .tag {
+    position: absolute;
+    right: 2.2mm;
+    bottom: 2.2mm;
+    font-family: var(--font-mono);
+    font-size: 6pt;
+    color: var(--faint);
+    line-height: 1.2;
+    text-align: right;
+  }
+  .qr-cap {
+    margin-top: 0.6mm;
+    font-size: 8.5pt;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  .qr-sub {
+    margin-top: 0.4mm;
+    font-size: 7.5pt;
+    color: var(--muted);
+    line-height: 1.25;
+  }
+
+  /* ---------- 8. Подпись ---------- */
+  .sign {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: end;           /* подпись — последний элемент потока, внизу левой колонки */
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 4mm;
+    margin-top: 5mm;
+    padding-bottom: 2.5mm;
+    font-size: 9.5pt;
+  }
+  .sign .left {
+    display: flex;
+    align-items: flex-end;
+    gap: 3mm;
+    white-space: nowrap;
+  }
+  .sig-line {
+    position: relative;
+    width: 40mm;
+    height: 5mm;
+    border-bottom: 0.5pt solid var(--ink-2);
+  }
+  .sig-line span {
+    position: absolute;
+    top: 100%;
+    left: 0; right: 0;
+    margin-top: 0.7mm;
+    text-align: center;
+    font-size: 6.5pt;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .sign .mp {
+    font-size: 8pt;
+    color: var(--muted);
+    padding-bottom: 0.4mm;
+  }
+
+  /* ---------- Заметки для реализации (только экран) ---------- */
+  .notes {
+    width: 210mm;
+    margin: 0 auto 40px;
+    padding: 16px 20px;
+    background: #fff;
+    border: 1px solid var(--border);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--ink-2);
+  }
+  .notes h2 {
+    margin: 0 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes li { margin: 3px 0; }
+  .notes code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: #f1f5f9;
+    padding: 0 4px;
+    border-radius: 2px;
+    word-break: break-all;
+  }
+</style>
+</head>
+<body>
+
+<main class="page">
+
+  <!-- 1. Банк-блок «как в платёжном поручении» — сетка 1С: 100 | 16 | 62 мм -->
+  <table class="bank" aria-label="Реквизиты получателя для платёжного поручения">
+    <colgroup>
+      <col style="width:50mm">
+      <col style="width:50mm">
+      <col style="width:16mm">
+      <col style="width:62mm">
+    </colgroup>
+    <tr>
+      <td colspan="2" rowspan="2">
+        <div class="name">АО «АЛЬФА-БАНК»</div>
+        <div class="eyebrow cap">Банк получателя</div>
+      </td>
+      <td class="lbl-cell"><span class="lbl">БИК</span></td>
+      <td><span class="mono acc">044525593</span></td>
+    </tr>
+    <tr>
+      <td class="lbl-cell"><span class="lbl">Сч.&nbsp;№</span></td>
+      <td><span class="mono acc">30101810200000000593</span></td>
+    </tr>
+    <tr>
+      <td class="inn-cell"><span class="lbl">ИНН</span><span class="mono acc">771577899514</span></td>
+      <td class="inn-cell"><span class="lbl">КПП</span></td>
+      <td class="lbl-cell" rowspan="2"><span class="lbl">Сч.&nbsp;№</span></td>
+      <td rowspan="2"><span class="mono acc">40802810202810000838</span></td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <div class="name">Индивидуальный предприниматель Сеченов Виталий Андреевич</div>
+        <div class="eyebrow cap">Получатель</div>
+      </td>
+    </tr>
+  </table>
+
+  <!-- 2. Заголовок + микро-сводка на одной оси, под ними линия-акцент -->
+  <header class="title-row">
+    <h1>Счёт на оплату №&nbsp;12 от 16 сентября 2026&nbsp;г.</h1>
+    <div class="summary">
+      <div>К оплате <b class="num">52&nbsp;102,00 руб.</b><span class="sep">·</span><b>Без НДС</b></div>
+      <div>Оплатить до <b class="num">23.09.2026</b></div>
+    </div>
+  </header>
+  <div class="rule" role="presentation"></div>
+
+  <!-- 3. Стороны и основание -->
+  <section class="parties" aria-label="Стороны">
+    <div class="eyebrow">Поставщик (Исполнитель)</div>
+    <p>
+      <span class="who">Индивидуальный предприниматель Сеченов Виталий Андреевич</span>,
+      <span class="sub">ИНН <span class="num">771577899514</span>, 127576, Москва, ул.&nbsp;Илимская, д.&nbsp;6, кв.&nbsp;390,
+      info@svetobazarent.ru</span>
+    </p>
+
+    <div class="eyebrow">Покупатель (Заказчик)</div>
+    <p>
+      <span class="who">ООО «ЭПИКПРО»</span>,
+      <span class="sub">ИНН <span class="num">7702807486</span>, КПП <span class="num">770201001</span>, ОГРН <span class="num">1137746067392</span>,
+      127051, г.&nbsp;Москва, Малый Сухаревский пер., д.&nbsp;9, стр.&nbsp;1, оф.&nbsp;36</span>
+    </p>
+
+    <div class="eyebrow">Основание</div>
+    <p>
+      <span class="who">Смета №&nbsp;<span class="nb">СМ-2026-0042</span> от <span class="num">12.09.2026</span></span><span class="sub">, аренда 12–15.09.2026 (3&nbsp;смены)</span>
+    </p>
+  </section>
+
+  <!-- 4. Таблица позиций: 8 | 92 | 16 | 14 | 24 | 24 мм -->
+  <table class="items" aria-label="Позиции счёта">
+    <colgroup>
+      <col style="width:8mm">
+      <col style="width:92mm">
+      <col style="width:16mm">
+      <col style="width:14mm">
+      <col style="width:24mm">
+      <col style="width:24mm">
+    </colgroup>
+    <thead>
+      <tr>
+        <th class="r">№</th>
+        <th>Товары (работы, услуги)</th>
+        <th class="r">Кол-во</th>
+        <th>Ед.</th>
+        <th class="r">Цена</th>
+        <th class="r">Сумма</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="idx num">1</td>
+        <td>Аренда светового оборудования по смете №&nbsp;<span class="nb">СМ-2026-0042</span></td>
+        <td class="r num">1</td>
+        <td class="unit">усл.&nbsp;ед.</td>
+        <td class="r num">43&nbsp;800,00</td>
+        <td class="r num">43&nbsp;800,00</td>
+      </tr>
+      <tr>
+        <td class="idx num">2</td>
+        <td>Транспорт (Газель, смена 12&nbsp;ч)</td>
+        <td class="r num">1</td>
+        <td class="unit">усл.&nbsp;ед.</td>
+        <td class="r num">4&nbsp;000,00</td>
+        <td class="r num">4&nbsp;000,00</td>
+      </tr>
+      <tr>
+        <td class="idx num">3</td>
+        <td>Безналичный расчёт, +9&nbsp;%</td>
+        <td class="r num">1</td>
+        <td class="unit">усл.&nbsp;ед.</td>
+        <td class="r num">4&nbsp;302,00</td>
+        <td class="r num">4&nbsp;302,00</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 5. Итоги правым столбиком -->
+  <section class="totals" aria-label="Итоги">
+    <div class="row">
+      <span class="k">Итого:</span>
+      <span class="v num">52&nbsp;102,00</span>
+    </div>
+    <div class="row vat">
+      <span class="k">Без НДС (УСН, освобождение по ст.&nbsp;145 НК&nbsp;РФ)</span>
+      <span class="v">—</span>
+    </div>
+    <div class="grand">
+      <span class="k">Итого к оплате</span>
+      <span class="v num">52&nbsp;102,00<small>руб.</small></span>
+    </div>
+  </section>
+  <p class="count">Всего наименований 3, на сумму <span class="num">52&nbsp;102,00</span> руб.</p>
+
+  <!-- 6. Сумма прописью -->
+  <p class="words"><span class="k">Сумма прописью:</span> <b>Пятьдесят две тысячи сто два рубля 00 копеек</b></p>
+
+  <!-- 7. Зона оплаты: назначение + срок | QR по ГОСТ Р 56042-2014 (QR тянется на две строки — до подписи) -->
+  <section class="pay" aria-label="Оплата">
+    <div class="pay-left">
+      <div class="eyebrow">Назначение платежа</div>
+      <p class="purpose">Оплата по счёту №&nbsp;12 от 16.09.2026 за аренду светового оборудования по смете №&nbsp;<span class="nb">СМ-2026-0042</span>. Без НДС</p>
+      <div class="due">
+        <div class="eyebrow">Срок оплаты</div>
+        <p><b>Оплатить до 23.09.2026</b> — 5 банковских дней с даты счёта. Счёт действителен до 30.09.2026.</p>
+      </div>
+    </div>
+    <figure class="qr">
+      <div class="qr-quiet">
+        <div class="qr-box" role="img" aria-label="QR-код для оплаты по ГОСТ Р 56042-2014">
+          <span class="finder tl"></span>
+          <span class="finder tr"></span>
+          <span class="finder bl"></span>
+          <span class="tag">ST00012</span>
+        </div>
+      </div>
+      <figcaption>
+        <div class="qr-cap">Оплатить по QR</div>
+        <div class="qr-sub">сканируйте<br>в приложении банка</div>
+      </figcaption>
+    </figure>
+
+    <!-- 8. Подпись — последний элемент потока, не прибита к низу страницы; QR справа продолжается вдоль неё -->
+    <footer class="sign">
+      <div class="left">
+        <span>Индивидуальный предприниматель</span>
+        <span class="sig-line"><span>подпись</span></span>
+        <span>(Сеченов&nbsp;В.А.)</span>
+      </div>
+      <div class="mp">М.П.</div>
+    </footer>
+  </section>
+
+</main>
+
+<!-- Заметки для реализации в pdfkit — на печать не идут -->
+<aside class="notes">
+  <h2>Концепт A — заметки для реализации в pdfkit</h2>
+  <ul>
+    <li><b>Геометрия.</b> A4 портрет, поля 16 мм, контент 178 мм. Банк-блок: 50 | 50 | 16 | 62 мм, сетка 0,5 pt <code>#94a3b8</code>, высота ≈ 30 мм. Таблица: 8 | 92 | 16 | 14 | 24 | 24 мм — линии только горизонтальные: шапка 0,6 pt <code>#334155</code>, строки 0,3 pt <code>#e2e8f0</code>, последняя 0,5 pt <code>#cbd5e1</code>; строка ≈ 6,8 мм. Бюджет высоты: при метриках Plex на один лист встают 12 однострочных позиций вместе с QR-зоной и подписью (QR занимает правую колонку и зоны оплаты, и строки подписи — так экономится ~14 мм); в DejaVu (шире на ~8 %) — 10–11. Длиннее — перенос с повтором шапки таблицы и футером «Стр. N из M» по правилам сметы. Итоги — столбик 106 мм справа; плашка «ИТОГО К ОПЛАТЕ» — <code>#eff6ff</code> с линиями 0,75 pt <code>#bfdbfe</code>, как в смете.</li>
+    <li><b>Кегли.</b> Тело 9,5 pt; таблица 9 pt; eyebrow 7,5–8 pt капителью, трекинг +0,08 em (только на буквах); заголовок 16 pt Plex Sans Condensed Bold (115 мм) + сводка 54 мм + зазор 4 мм = 173 мм из 178 — в pdfkit это DejaVu Sans Bold 14 pt, иначе микро-сводка справа не встанет на ту же ось (при нехватке ширины она уходит второй строкой вправо под заголовок); итог 13,5 pt Bold; сумма прописью 10 pt Bold; номера счетов — Plex Mono 10 pt (DejaVu Sans Mono), без пробелов и трекинга.</li>
+    <li><b>Цвета — из <code>renderPdf.ts</code>.</b> ink <code>#0f172a</code>, ink2 <code>#334155</code>, muted <code>#64748b</code> (eyebrow — на ступень темнее сметных <code>#94a3b8</code>, чтобы пережить факс-качество), accent <code>#1e3a8a</code> (только линия под заголовком, метка плашки, полоска у назначения), accentSoft <code>#eff6ff</code>. Сумма в плашке — ink, не accent: в ч/б иерархию несут вес и размер.</li>
+    <li><b>QR (ГОСТ Р 56042-2014).</b> 30 × 30 мм + тихая зона 2 мм, коррекция M. Строка: <code>ST00012|Name=ИП Сеченов Виталий Андреевич|PersonalAcc=40802810202810000838|BankName=АО «АЛЬФА-БАНК»|BIC=044525593|CorrespAcc=30101810200000000593|PayeeINN=771577899514|Sum=5210200|Purpose=Оплата по счёту № 12 от 16.09.2026 за аренду светового оборудования по смете № СМ-2026-0042. Без НДС</code>. Sum — в копейках, KPP для ИП не передаётся. Если версия кода выше 12 — переключиться на WIN1251 (<code>ST00011</code>).</li>
+    <li><b>Назначение платежа</b> — 100 знаков (лимит 210). Даты в назначении и основании — только <code>ДД.ММ.ГГГГ</code>; словесная дата — только в заголовке. Номера документов (<code>СМ-2026-0042</code>) не переносятся по дефису.</li>
+    <li><b>Из настроек:</b> контакты поставщика (телефон/e-mail — пустые не печатаются), срок оплаты (5 банковских дней → 23.09.2026), срок действия счёта (до 30.09.2026), формулировка про НДС.</li>
+    <li><b>Владельцу.</b> Позиция 3 «Безналичный расчёт, +9 %» оставлена как в данных; бухгалтер покупателя спросит «комиссия за что?» — лучше формулировка из сметы или включение в цену позиций.</li>
+  </ul>
+</aside>
+
+</body>
+</html>

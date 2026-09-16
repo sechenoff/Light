@@ -1,4 +1,6 @@
 import Decimal from "decimal.js";
+import { computeSurcharge, resolveSurchargePercent, type PaymentForm } from "./paymentForm";
+import { getSettings } from "./organizationService";
 import type { Booking, Equipment, BookingItem, Prisma } from "@prisma/client";
 
 import { prisma } from "../prisma";
@@ -125,6 +127,10 @@ export async function quoteEstimate(args: {
   }>;
   transport?: QuoteTransportInput[] | null;
   skipPartialDay?: boolean;
+  /** Форма оплаты: «По счёту (ИП)» добавляет надбавку к итогу. По умолчанию — наличные. */
+  paymentForm?: PaymentForm | null;
+  /** Процент надбавки за безнал; null при CASHLESS → берём дефолт из настроек организации. */
+  cashlessSurchargePercent?: number | string | null;
 }) {
   const shifts = billableShifts24h(args.startDate, args.endDate, args.skipPartialDay ?? false);
 
@@ -203,10 +209,23 @@ export async function quoteEstimate(args: {
   }
 
   const transportSubtotal = sumDec(transport.map((t) => new Decimal(t.total)));
-  const grandTotal = equipmentTotal.add(transportSubtotal);
+  const surchargeBase = equipmentTotal.add(transportSubtotal);
+
+  // Надбавка за безналичный расчёт — поверх всего, что клиент платит по брони.
+  const paymentForm: PaymentForm = args.paymentForm ?? "CASH";
+  const surchargePercent = resolveSurchargePercent({
+    paymentForm,
+    cashlessSurchargePercent: args.cashlessSurchargePercent,
+    fallbackPercent: paymentForm === "CASHLESS" ? (await getSettings()).cashlessSurchargePercent : null,
+  });
+  const { amount: surchargeAmount, total: grandTotal } = computeSurcharge(surchargeBase, surchargePercent);
 
   return {
     shifts,
+    paymentForm,
+    /** Действующий процент надбавки или null (наличные / процент не задан). */
+    surchargePercent,
+    surchargeAmount,
     lines,
     subtotal,              // legacy alias = equipmentSubtotal
     equipmentSubtotal,
@@ -336,6 +355,23 @@ export async function createQuickBooking(args: {
   });
 }
 
+/**
+ * Процент надбавки, который ляжет снапшотом на бронь: для наличных — null; для
+ * безнала — переданный процент, а без него дефолт из настроек организации.
+ * Снапшот нужен, чтобы смена дефолта в настройках не переписала старые брони.
+ */
+export async function resolveBookingSurchargePercent(
+  paymentForm: PaymentForm,
+  explicitPercent: number | string | null | undefined,
+): Promise<Decimal | null> {
+  if (paymentForm !== "CASHLESS") return null;
+  return resolveSurchargePercent({
+    paymentForm,
+    cashlessSurchargePercent: explicitPercent,
+    fallbackPercent: (await getSettings()).cashlessSurchargePercent,
+  });
+}
+
 export async function createBookingDraft(args: {
   clientId: string;
   projectName: string;
@@ -353,6 +389,9 @@ export async function createBookingDraft(args: {
    * «Договорная скидка». Право фиксировать итог проверяет маршрут.
    */
   manualFinalAmount?: number | null;
+  /** Форма оплаты; CASHLESS фиксирует на брони процент надбавки (снапшот дефолта из настроек). */
+  paymentForm?: PaymentForm | null;
+  cashlessSurchargePercent?: number | string | null;
   items: Array<{
     equipmentId?: string;
     customName?: string;
@@ -364,6 +403,9 @@ export async function createBookingDraft(args: {
   transport?: BookingTransportSnapshot[] | null;
 }) {
   if (args.items.length === 0) throw new HttpError(400, "At least one equipment item is required.");
+
+  const paymentForm: PaymentForm = args.paymentForm ?? "CASH";
+  const surchargePercent = await resolveBookingSurchargePercent(paymentForm, args.cashlessSurchargePercent);
 
   const transportRows = args.transport ?? [];
   const transportSubtotal = sumDec(
@@ -402,6 +444,8 @@ export async function createBookingDraft(args: {
       skipPartialDay: args.skipPartialDay ?? false,
       manualFinalAmount:
         args.manualFinalAmount != null ? new Decimal(args.manualFinalAmount) : null,
+      paymentForm,
+      cashlessSurchargePercent: surchargePercent ? surchargePercent.toDecimalPlaces(2).toString() : null,
       // Transport snapshot — multi-vehicle via `vehicles[]`. Legacy single
       // columns left at defaults (null/false) for new bookings; only
       // `transportSubtotalRub` (the total) is populated for back-compat with
@@ -466,7 +510,8 @@ export async function createBookingDraft(args: {
         skipPartialDay: args.skipPartialDay ?? false,
       });
       const equipmentAfterDiscount = new Decimal(quote.totalAfterDiscount);
-      const computedFinal = equipmentAfterDiscount.add(transportSubtotal);
+      const surcharge = computeSurcharge(equipmentAfterDiscount.add(transportSubtotal), surchargePercent);
+      const computedFinal = surcharge.total;
       // Договорной итог перебивает расчётный — ровно так же его трактует
       // recomputeBookingFinance. Без этого бронь создавалась бы с суммой по
       // смете, и долг сразу расходился бы с договорённостью.
@@ -477,6 +522,7 @@ export async function createBookingDraft(args: {
         data: {
           totalEstimateAmount: quote.subtotal,
           discountAmount: quote.discountAmount,
+          surchargeAmount: surcharge.amount.toDecimalPlaces(2).toString(),
           finalAmount: finalAmount.toDecimalPlaces(2).toString(),
           amountOutstanding: finalAmount.toDecimalPlaces(2).toString(),
         },

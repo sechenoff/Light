@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { resolveSurchargePercent } from "../../services/paymentForm";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { Decimal } from "decimal.js";
@@ -263,6 +264,10 @@ router.get("/:id/estimate.pdf", lkAuth, async (req, res, next) => {
         addon,
         org,
         agreedTotal: booking.manualFinalAmount,
+        surchargePercent: resolveSurchargePercent({
+          paymentForm: booking.paymentForm,
+          cashlessSurchargePercent: booking.cashlessSurchargePercent,
+        }),
       });
       const sections = full.addon ? [full.main, full.addon] : [full.main];
       pdfBuf = await renderSmetaPdfToBuffer(
@@ -270,6 +275,7 @@ router.get("/:id/estimate.pdf", lkAuth, async (req, res, next) => {
         full.grandTotal,
         full.transport,
         full.agreedTotal ?? null,
+        full.surcharge ?? null,
       );
     } else {
       pdfBuf = await buildBookingEstimatePdf(req.params.id);

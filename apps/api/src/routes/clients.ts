@@ -20,6 +20,51 @@ const listQuerySchema = z.object({
   sort: z.enum(["name", "recent"]).default("name"),
 });
 
+/**
+ * Реквизиты контрагента для «Счёта на оплату». Заполняются из формы счёта или
+ * карточки клиента; у физлиц остаются пустыми — бланк печатает только имя.
+ */
+const clientLegalSelect = {
+  legalName: true,
+  inn: true,
+  kpp: true,
+  ogrn: true,
+  legalAddress: true,
+  postalAddress: true,
+  bankName: true,
+  bankBik: true,
+  rschet: true,
+  kschet: true,
+} as const;
+
+const clientCardSelect = {
+  id: true,
+  name: true,
+  phone: true,
+  email: true,
+  comment: true,
+  createdAt: true,
+  ...clientLegalSelect,
+} as const;
+
+type ClientLegal = Prisma.ClientGetPayload<{ select: typeof clientLegalSelect }>;
+type ClientCard = Prisma.ClientGetPayload<{ select: typeof clientCardSelect }>;
+
+function pickLegal(c: ClientLegal): ClientLegal {
+  return {
+    legalName: c.legalName,
+    inn: c.inn,
+    kpp: c.kpp,
+    ogrn: c.ogrn,
+    legalAddress: c.legalAddress,
+    postalAddress: c.postalAddress,
+    bankName: c.bankName,
+    bankBik: c.bankBik,
+    rschet: c.rschet,
+    kschet: c.kschet,
+  };
+}
+
 const clientListSelect = {
   id: true,
   name: true,
@@ -27,6 +72,7 @@ const clientListSelect = {
   email: true,
   comment: true,
   createdAt: true,
+  ...clientLegalSelect,
   _count: { select: { bookings: true } },
   // Статус личного кабинета — одним include, без N+1 запросов
   // per-client к /api/admin/clients/:id/portal-account.
@@ -43,6 +89,7 @@ function serializeClientListRow(c: ClientListRow) {
     email: c.email,
     comment: c.comment,
     createdAt: c.createdAt,
+    ...pickLegal(c),
     bookingCount: c._count.bookings,
     portalStatus: c.portalAccount?.status ?? null,
     portalLastLoginAt: c.portalAccount?.lastLoginAt ?? null,
@@ -59,9 +106,31 @@ const clientBodySchema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined)),
   comment: z.string().trim().max(1000).optional().or(z.literal("").transform(() => undefined)),
+  // Реквизиты для счетов — пустая строка = очистить поле
+  legalName: z.string().trim().max(300).nullable().optional().or(z.literal("").transform(() => null)),
+  inn: z.string().trim().regex(/^\d{10}$|^\d{12}$/, "ИНН — 10 или 12 цифр").nullable().optional().or(z.literal("").transform(() => null)),
+  kpp: z.string().trim().regex(/^\d{9}$/, "КПП — 9 цифр").nullable().optional().or(z.literal("").transform(() => null)),
+  ogrn: z.string().trim().regex(/^\d{13}$|^\d{15}$/, "ОГРН — 13 цифр, ОГРНИП — 15").nullable().optional().or(z.literal("").transform(() => null)),
+  legalAddress: z.string().trim().max(500).nullable().optional().or(z.literal("").transform(() => null)),
+  postalAddress: z.string().trim().max(500).nullable().optional().or(z.literal("").transform(() => null)),
+  bankName: z.string().trim().max(300).nullable().optional().or(z.literal("").transform(() => null)),
+  bankBik: z.string().trim().regex(/^\d{9}$/, "БИК — 9 цифр").nullable().optional().or(z.literal("").transform(() => null)),
+  rschet: z.string().trim().regex(/^\d{20}$/, "Расчётный счёт — 20 цифр").nullable().optional().or(z.literal("").transform(() => null)),
+  kschet: z.string().trim().regex(/^\d{20}$/, "Корр. счёт — 20 цифр").nullable().optional().or(z.literal("").transform(() => null)),
 });
 
 const clientPatchSchema = clientBodySchema.partial();
+
+const LEGAL_KEYS = ["legalName", "inn", "kpp", "ogrn", "legalAddress", "postalAddress", "bankName", "bankBik", "rschet", "kschet"] as const;
+
+/** Только переданные реквизиты — PATCH не должен обнулять то, чего в теле не было. */
+function legalDataFromBody(body: Partial<Record<(typeof LEGAL_KEYS)[number], string | null | undefined>>) {
+  const data: Record<string, string | null> = {};
+  for (const key of LEGAL_KEYS) {
+    if (body[key] !== undefined) data[key] = body[key] ?? null;
+  }
+  return data;
+}
 
 /**
  * GET /api/clients
@@ -129,7 +198,7 @@ router.post("/", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
   try {
     const body = clientBodySchema.parse(req.body);
     const userId = req.adminUser!.userId;
-    let created: { id: string; name: string; phone: string | null; email: string | null; comment: string | null; createdAt: Date };
+    let created: ClientCard;
     try {
       created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const client = await tx.client.create({
@@ -138,8 +207,9 @@ router.post("/", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
             phone: body.phone ?? null,
             email: body.email ?? null,
             comment: body.comment ?? null,
+            ...legalDataFromBody(body),
           },
-          select: { id: true, name: true, phone: true, email: true, comment: true, createdAt: true },
+          select: clientCardSelect,
         });
         await writeAuditEntry({
           tx,
@@ -148,7 +218,7 @@ router.post("/", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
           entityType: "Client",
           entityId: client.id,
           before: null,
-          after: { name: client.name, phone: client.phone, email: client.email, comment: client.comment },
+          after: { name: client.name, phone: client.phone, email: client.email, comment: client.comment, ...pickLegal(client) },
         });
         return client;
       });
@@ -174,12 +244,12 @@ router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
     const body = clientPatchSchema.parse(req.body);
     const { id } = req.params;
     const userId = req.adminUser!.userId;
-    let updated: { id: string; name: string; phone: string | null; email: string | null; comment: string | null; createdAt: Date };
+    let updated: ClientCard;
     try {
       updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const existing = await tx.client.findUnique({
           where: { id },
-          select: { id: true, name: true, phone: true, email: true, comment: true, createdAt: true },
+          select: clientCardSelect,
         });
         if (!existing) throw new HttpError(404, "Клиент не найден", "CLIENT_NOT_FOUND");
         const client = await tx.client.update({
@@ -189,8 +259,9 @@ router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
             ...(body.phone !== undefined ? { phone: body.phone ?? null } : {}),
             ...(body.email !== undefined ? { email: body.email ?? null } : {}),
             ...(body.comment !== undefined ? { comment: body.comment ?? null } : {}),
+            ...legalDataFromBody(body),
           },
-          select: { id: true, name: true, phone: true, email: true, comment: true, createdAt: true },
+          select: clientCardSelect,
         });
         await writeAuditEntry({
           tx,
@@ -198,8 +269,8 @@ router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
           action: "CLIENT_UPDATE",
           entityType: "Client",
           entityId: id,
-          before: diffFields({ name: existing.name, phone: existing.phone, email: existing.email, comment: existing.comment } as Record<string, unknown>),
-          after: diffFields({ name: client.name, phone: client.phone, email: client.email, comment: client.comment } as Record<string, unknown>),
+          before: diffFields({ name: existing.name, phone: existing.phone, email: existing.email, comment: existing.comment, ...pickLegal(existing) } as Record<string, unknown>),
+          after: diffFields({ name: client.name, phone: client.phone, email: client.email, comment: client.comment, ...pickLegal(client) } as Record<string, unknown>),
         });
         return client;
       });
@@ -228,7 +299,7 @@ router.delete("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const existing = await tx.client.findUnique({
           where: { id },
-          select: { id: true, name: true, phone: true, email: true, comment: true },
+          select: clientCardSelect,
         });
         if (!existing) throw new HttpError(404, "Клиент не найден", "CLIENT_NOT_FOUND");
         await tx.client.delete({ where: { id } });
