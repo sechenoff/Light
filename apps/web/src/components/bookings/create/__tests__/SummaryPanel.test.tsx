@@ -219,6 +219,19 @@ describe("SummaryPanel", () => {
     expect(screen.queryByText(/обновлено сейчас/i)).not.toBeInTheDocument();
   });
 
+  it("в auto-режиме основная кнопка называется «Создать и подтвердить»", () => {
+    // Согласования нет — «отправить на согласование» никуда не отправляет.
+    render(<SummaryPanel {...defaultProps} approvalMode="auto" />);
+    expect(screen.getByRole("button", { name: /создать и подтвердить/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /на согласование/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /черновик/i })).toBeInTheDocument();
+  });
+
+  it("под кнопкой черновика объясняет, что он не занимает склад", () => {
+    render(<SummaryPanel {...defaultProps} />);
+    expect(screen.getByText(/Черновик не занимает оборудование/i)).toBeInTheDocument();
+  });
+
   it("renders as aside element", () => {
     const { container } = render(<SummaryPanel {...defaultProps} />);
     const root = container.firstChild as HTMLElement;

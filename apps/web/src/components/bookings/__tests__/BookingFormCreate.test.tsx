@@ -298,6 +298,21 @@ describe("BookingForm create — шаги и inline-валидация (4.8)", (
       expect(fetchCalls.some((c) => c.url.includes("/api/bookings/draft"))).toBe(true);
     });
   });
+
+  it("«Сохранить черновик» не публикует бронь — submit-for-approval не вызывается", async () => {
+    seedDraft();
+    render(<BookingForm mode="create" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Сохранить черновик/ }));
+    await waitFor(() => {
+      expect(fetchCalls.some((c) => c.url.includes("/api/bookings/draft"))).toBe(true);
+    });
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/bookings/b-new-1"));
+    // Публикация — отдельное действие. Кнопка черновика её не запускает даже
+    // при APPROVAL_MODE=auto (регрессия: черновик уходил в бронь сразу).
+    expect(fetchCalls.some((c) => c.url.includes("/submit-for-approval"))).toBe(false);
+    expect(fetchCalls.some((c) => c.url.includes("/approve"))).toBe(false);
+  });
 });
 
 // ─── Импорт заявки документом (PDF/фото) ─────────────────────────────────────

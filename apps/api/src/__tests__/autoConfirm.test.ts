@@ -1,9 +1,16 @@
 /**
- * Интеграционные тесты APPROVAL_MODE=auto (согласование выключено):
- *  (a) POST /draft → бронь сразу CONFIRMED, юниты зарезервированы,
- *      MAIN-смета есть, аудит BOOKING_AUTO_CONFIRMED записан.
- *  (b) POST /draft с превышением парка → бронь ОСТАЁТСЯ DRAFT, ответ несёт
- *      autoConfirm.ok=false и человекочитаемое сообщение с именем позиции.
+ * Интеграционные тесты APPROVAL_MODE=auto (согласование выключено).
+ *
+ * Ключевая граница: «auto» отменяет ШАГ СОГЛАСОВАНИЯ, а не сам черновик.
+ * Создание заявки остаётся созданием ЧЕРНОВИКА — публикует её только явное
+ * действие (submit-for-approval), которое в этом режиме сразу подтверждает.
+ *
+ *  (a) POST /draft → бронь остаётся DRAFT: MAIN-смета есть, аудита
+ *      BOOKING_AUTO_CONFIRMED нет, склад не занят.
+ *  (a2) Черновик не резервирует оборудование: два черновика на единственный
+ *      экземпляр сохраняются оба, стоку мешает только подтверждение.
+ *  (b) POST /draft с количеством больше парка → тоже обычный DRAFT:
+ *      сохранить черновик можно всегда, конфликт всплывает на публикации.
  *  (c) POST /:id/submit-for-approval для DRAFT в auto → сразу CONFIRMED
  *      (WAREHOUSE может — руководитель не нужен).
  *  (d) Конфликтная бронь после правки количества подтверждается повторным
@@ -112,7 +119,7 @@ describe("APPROVAL_MODE=auto", () => {
     expect(res.body.approvalMode).toBe("auto");
   });
 
-  it("(a) POST /draft → сразу CONFIRMED со сметой и аудитом", async () => {
+  it("(a) POST /draft → бронь остаётся черновиком, аудита автоподтверждения нет", async () => {
     const res = await request(app)
       .post("/api/bookings/draft")
       .set(AUTH_WH())
@@ -123,17 +130,53 @@ describe("APPROVAL_MODE=auto", () => {
         items: [{ equipmentId, quantity: 2 }],
       });
     expect(res.status).toBe(200);
-    expect(res.body.booking.status).toBe("CONFIRMED");
+    expect(res.body.booking.status).toBe("DRAFT");
+    // Смета-снапшот у черновика есть — печатать и согласовывать можно сразу.
     expect(res.body.booking.estimate).toBeTruthy();
+    // Никаких сюрпризов в ответе: черновик сохранён, и всё.
     expect(res.body.autoConfirm).toBeUndefined();
 
     const audit = await prisma.auditEntry.findFirst({
       where: { action: "BOOKING_AUTO_CONFIRMED", entityId: res.body.booking.id },
     });
-    expect(audit).toBeTruthy();
+    expect(audit).toBeNull();
   });
 
-  it("(b) POST /draft с превышением парка → DRAFT + читаемое предупреждение", async () => {
+  it("(a2) черновик не занимает склад — публикует только submit", async () => {
+    const d = dates();
+    const mk = (name: string) =>
+      request(app)
+        .post("/api/bookings/draft")
+        .set(AUTH_WH())
+        .send({
+          client: { name },
+          projectName: "Единственный экземпляр",
+          ...d,
+          items: [{ equipmentId: scarceEquipmentId, quantity: 1 }],
+        });
+
+    const first = await mk("Авто-Клиент 1a");
+    const second = await mk("Авто-Клиент 1b");
+    expect(first.body.booking.status).toBe("DRAFT");
+    expect(second.body.booking.status).toBe("DRAFT");
+
+    // Публикуем первый — вот теперь единственный экземпляр занят.
+    const published = await request(app)
+      .post(`/api/bookings/${first.body.booking.id}/submit-for-approval`)
+      .set(AUTH_WH())
+      .send({});
+    expect(published.status).toBe(200);
+    expect(published.body.booking.status).toBe("CONFIRMED");
+
+    const conflict = await request(app)
+      .post(`/api/bookings/${second.body.booking.id}/submit-for-approval`)
+      .set(AUTH_WH())
+      .send({});
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.message).toContain("Редкий прибор AC");
+  });
+
+  it("(b) POST /draft с превышением парка → всё равно сохраняется черновиком", async () => {
     const res = await request(app)
       .post("/api/bookings/draft")
       .set(AUTH_WH())
@@ -145,12 +188,9 @@ describe("APPROVAL_MODE=auto", () => {
       });
     expect(res.status).toBe(200);
     expect(res.body.booking.status).toBe("DRAFT");
-    expect(res.body.autoConfirm.ok).toBe(false);
-    expect(res.body.autoConfirm.message).toContain("Редкий прибор AC");
-    expect(res.body.autoConfirm.message).toContain("нужно 4");
-    const conflicts = res.body.autoConfirm.details.conflicts;
-    expect(conflicts[0].equipmentName).toBe("Редкий прибор AC");
-    expect(conflicts[0].totalQuantity).toBe(1);
+    // Черновик — рабочий документ: копить позиции можно и сверх парка,
+    // нехватку показывает публикация (тест (d)), а не сохранение.
+    expect(res.body.autoConfirm).toBeUndefined();
   });
 
   it("(c) submit-for-approval из DRAFT в auto → сразу CONFIRMED от WAREHOUSE", async () => {
