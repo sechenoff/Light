@@ -82,6 +82,9 @@ export function botScopeGuard(req, res, next) {
 - Всё, что не в whitelist (по умолчанию deny)
 - Все DELETE
 - `/api/admin-users/*`, `/api/admin/slang-learning/*`, `/api/warehouse/*`, `/api/users/*`
+  — с 2026-09-16 из `/api/users/*` разрешён ровно `POST /api/users/upsert`: ручка получила
+  `rolesGuard` (до этого была анонимной записью, доступной через прокси), и `botAccess` —
+  единственный путь к ней для ключа бота без JWT-сессии. Остальное `/api/users/*` по-прежнему 403.
 - `/api/photo-analysis/*`, `/api/analyses/*`, `/api/import-sessions/*`, `/api/pricelist/*`
 - `/api/equipment/import/*`
 

@@ -71,7 +71,9 @@ export type ProxyAuthInput = {
 };
 
 function isPublicRoute(method: string, apiPath: string): boolean {
-  const upperMethod = method.toUpperCase();
+  const raw = method.toUpperCase();
+  // HEAD — это GET без тела; публичный GET обязан отвечать и на него.
+  const upperMethod = raw === "HEAD" ? "GET" : raw;
   return PUBLIC_API_ROUTES.some((route) => {
     if (route.method !== null && route.method !== upperMethod) return false;
     return route.prefix

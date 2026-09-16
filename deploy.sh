@@ -189,6 +189,19 @@ if $DEPLOY_WEB; then
   if [ -f "$ROOT/apps/api/.env" ]; then
     API_KEY_FROM_API=$(grep -E '^API_KEYS=' "$ROOT/apps/api/.env" | head -1 \
       | sed -E 's/^API_KEYS=//' | cut -d',' -f1 | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+    # Ключ веб-прокси берётся ПЕРВЫМ из API_KEYS. Если первым окажется
+    # openclaw-ключ, весь веб унаследует scope бота: botScopeGuard выставит
+    # req.botAccess, а rolesGuard пропускает botAccess БЕЗ проверки роли — то
+    # есть каждый whitelist-роут (включая запись POST /api/users/upsert) станет
+    # доступен любому, кто дотянулся до прокси. Падаем громко: тихо выкатить
+    # такую конфигурацию хуже, чем не выкатить ничего.
+    case "${API_KEY_FROM_API:-}" in
+      openclaw-*)
+        echo "  ✗ Первый ключ в API_KEYS — openclaw-*. Веб-прокси получил бы scope бота" >&2
+        echo "    в обход проверки ролей. Поставьте обычный ключ первым в apps/api/.env." >&2
+        exit 1
+        ;;
+    esac
     if [ -n "${API_KEY_FROM_API:-}" ]; then
       touch "$ROOT/apps/web/.env.local"
       if grep -q '^API_KEY=' "$ROOT/apps/web/.env.local"; then

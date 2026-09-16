@@ -25,8 +25,24 @@ function makeRequest(
   });
 }
 
+/**
+ * Сегменты пути в том виде, в каком их отдаёт Next: он декодирует каждый
+ * сегмент ОДИН раз. Именно поэтому `%252e%252e` приезжает в роут как литерал
+ * `%2e%2e`, а не как `..` — на этом и держался обход из описания ниже.
+ * Модель должна повторять это декодирование, иначе тест проверяет не то.
+ */
 function ctx(path: string) {
-  return { params: { path: path.replace(/^\/api\//, "").split("/") } };
+  const segments = path
+    .replace(/^\/api\//, "")
+    .split("/")
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    });
+  return { params: { path: segments } };
 }
 
 let fetchSpy: ReturnType<typeof vi.fn>;
@@ -71,6 +87,53 @@ describe("прокси: анонимный запрос", () => {
 
     expect(res.status).toBe(200);
     expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+});
+
+// Обход, найденный на ревью. Гард проверял путь, который склеивал сам, а fetch
+// отправлял путь, нормализованный по правилам WHATWG-URL: `..` схлопывается,
+// `%2e` декодируется. `/api/lk/%252e%252e/equipment` Next декодирует ОДИН раз —
+// гард видел сегмент `%2e%2e` внутри публичной ветки портала и пропускал, а на
+// бэкенд уходило `/api/equipment` с подставленным ключом API.
+//
+// Проверять только статус здесь мало: баг — это сам факт запроса на бэкенд,
+// поэтому ассертим, что fetch не вызывался.
+describe("прокси: обход через нормализацию пути", () => {
+  const traversals = [
+    "/api/lk/%252e%252e/equipment",
+    "/api/auth/%252e%252e/equipment",
+    "/api/lk/%2e%2e/equipment",
+    "/api/auth/../equipment",
+    "/api/lk/..%2fequipment",
+  ];
+
+  for (const path of traversals) {
+    it(`${path} не уходит на бэкенд и не получает ключ`, async () => {
+      const res = await GET(makeRequest(path), ctx(path));
+
+      expect(res.status).not.toBe(200);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+  }
+
+  it("POST через ту же щель тоже не проходит", async () => {
+    const path = "/api/lk/%252e%252e/users/upsert";
+    const res = await POST(makeRequest(path, { method: "POST" }), ctx(path));
+
+    expect(res.status).not.toBe(200);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("обход с валидной сессией всё равно отклоняется — путь некорректен сам по себе", async () => {
+    const path = "/api/lk/%252e%252e/equipment";
+    const res = await GET(
+      makeRequest(path, { cookie: "lr_session=token.value.sig" }),
+      ctx(path),
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ code: "BAD_PROXY_PATH" });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

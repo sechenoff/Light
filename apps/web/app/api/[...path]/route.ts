@@ -28,25 +28,67 @@ function upstreamBase(): string | null {
   return null;
 }
 
-function buildTargetUrl(req: NextRequest, pathSegments: string[]): string | null {
+/**
+ * Путь запроса ровно в том виде, в каком его увидит бэкенд.
+ *
+ * Считать его надо ОДИН раз и от него же строить адрес апстрима. Если гард
+ * смотрит на одну строку, а `fetch` отправляет другую, гарда нет: WHATWG-URL
+ * внутри `fetch` схлопывает `..` и декодирует `%2e`, поэтому
+ * `/api/lk/%252e%252e/equipment` для наивной проверки — безобидная ветка
+ * портала из публичного списка, а на бэкенд уходит `/api/equipment`.
+ * Нормализуем от фиксированного origin, а не от `upstreamBase()`: база может
+ * нести собственный префикс пути, и тогда сравнение с `/api/...` сломалось бы.
+ */
+function normalizeApiPath(pathSegments: string[]): string {
+  const sub = pathSegments.join("/");
+  return new URL(`/api${sub ? `/${sub}` : ""}`, "http://proxy.invalid").pathname;
+}
+
+/** Декодирует сегмент, не падая на битой escape-последовательности (`%zz`). */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+/**
+ * Обход по сегментам: ни один клиент приложения не шлёт `.`, `..` или слэш
+ * внутри сегмента — это всегда попытка показать гарду один путь, а бэкенду
+ * другой. Отсекаем явно, не полагаясь на одну лишь нормализацию.
+ */
+function hasTraversalSegment(pathSegments: string[]): boolean {
+  return pathSegments.some((segment) => {
+    const decoded = decodeSegment(segment);
+    return decoded === "." || decoded === ".." || decoded.includes("/") || decoded.includes("\\");
+  });
+}
+
+function buildTargetUrl(req: NextRequest, apiPath: string): string | null {
   const base = upstreamBase();
   if (!base) return null;
-  const sub = pathSegments.join("/");
-  const suffix = sub ? `/${sub}` : "";
-  return `${base}/api${suffix}${req.nextUrl.search}`;
+  return `${base}${apiPath}${req.nextUrl.search}`;
 }
 
 async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResponse> {
+  if (hasTraversalSegment(pathSegments)) {
+    return NextResponse.json(
+      { message: "Некорректный путь запроса", code: "BAD_PROXY_PATH" },
+      { status: 400 },
+    );
+  }
+
   // Ключ API подставляется ниже безусловно, поэтому анонимный запрос из интернета
   // приходил на бэкенд подписанным — и любой маршрут без rolesGuard оказывался
   // публичным. Отсекаем анонимов здесь, до сети: прокси не орган авторизации,
   // он лишь перестаёт выдавать ключ тому, у кого нет ни одного признака сессии.
   // Отказ отдаём сами, а не «просто без ключа»: без ключа исход зависел бы от
   // AUTH_MODE, и в режиме warn запрос прошёл бы дальше.
-  const sub = pathSegments.join("/");
+  const apiPath = normalizeApiPath(pathSegments);
   const gate = decideProxyAuth({
     method: req.method,
-    apiPath: `/api${sub ? `/${sub}` : ""}`,
+    apiPath,
     cookie: req.headers.get("cookie"),
     authorization: req.headers.get("authorization"),
   });
@@ -57,7 +99,8 @@ async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResp
     );
   }
 
-  const targetUrl = buildTargetUrl(req, pathSegments);
+  // Тот же apiPath, что проверил гард, — разойтись нечему.
+  const targetUrl = buildTargetUrl(req, apiPath);
   if (!targetUrl) {
     return NextResponse.json(
       {

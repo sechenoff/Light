@@ -10,7 +10,7 @@
 
 1. Есть REST API на Express (Node.js/TypeScript), оно живёт на VPS. Адрес вида `https://<host>/api`.
 2. Бот = отдельное приложение (OpenClaw). Он ходит в API по HTTPS с заголовком `X-API-Key: openclaw-<32hex>`.
-3. Ключи с префиксом `openclaw-` имеют **ограниченный scope** — whitelist из 16 роутов. Всё остальное → 403. DELETE заблокирован глобально.
+3. Ключи с префиксом `openclaw-` имеют **ограниченный scope** — whitelist из 17 роутов. Всё остальное → 403. DELETE заблокирован глобально.
 4. Бот умеет: искать оборудование, проверять доступность, **создавать и редактировать брони** (но не удалять), видеть **кто должен и сколько**.
 5. Для LLM-части (function-calling) уже подготовлены 12 готовых JSON-схем — лежат в `docs/bot-api-tools.json`. Их просто `import`-ят в Chat Completions как `tools`.
 6. Деньги везде — **строки**, не числа (`"1234.56"`). Это Decimal, не float.
@@ -149,7 +149,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 ### 4.2 Точный whitelist
 
-Whitelist живёт в `apps/api/src/middleware/botScopeGuard.ts`. На момент написания — **16 роутов**:
+Whitelist живёт в `apps/api/src/middleware/botScopeGuard.ts`. На момент написания — **17 роутов**:
 
 | # | Метод | Путь | Назначение |
 |---|-------|------|------------|
@@ -169,6 +169,7 @@ Whitelist живёт в `apps/api/src/middleware/botScopeGuard.ts`. На мом�
 | 14 | GET | `/api/finance/dashboard` | Метрики |
 | 15 | GET | `/api/receivables` | Плоская дебиторка |
 | 16 | GET | `/api/payments` | Список платежей |
+| 17 | POST | `/api/users/upsert` | Регистрация Telegram-пользователя при `/start` |
 
 > Если в будущем добавят новый роут — реальный актуальный whitelist смотреть в `apps/api/src/middleware/botScopeGuard.ts`.
 

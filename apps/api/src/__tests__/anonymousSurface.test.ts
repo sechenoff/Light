@@ -63,7 +63,7 @@ type RouteRow = { method: string; path: string };
  * для этого у Express 4 нет, поэтому форму регулярки проверяем явной ассертой
  * ниже (маршрутов должно набраться заметно больше сотни).
  */
-function collectRoutes(stack: any[], prefix: string, out: RouteRow[]): void {
+function collectRoutes(stack: any[], prefix: string, out: RouteRow[], skipped: string[]): void {
   for (const layer of stack) {
     if (layer.route) {
       const routePath = layer.route.path === "/" ? "" : layer.route.path;
@@ -76,7 +76,16 @@ function collectRoutes(stack: any[], prefix: string, out: RouteRow[]): void {
       continue;
     }
     if (layer.name === "router" && layer.handle?.stack) {
-      collectRoutes(layer.handle.stack, prefix + mountPath(layer), out);
+      collectRoutes(layer.handle.stack, prefix + mountPath(layer), out, skipped);
+      continue;
+    }
+    // Слой несёт поддерево маршрутов, но мы в него не пошли — значит, обход
+    // МОЛЧА недосчитал целую ветку и тест превратился бы в зелёную пустышку.
+    // Единственный способ добавить маршруты невидимо для этого сторожа.
+    // `handle._router` — случай вложенного express-приложения (app.use(subApp)):
+    // у него стек лежит на уровень глубже, чем у обычного Router.
+    if (layer.handle?.stack || layer.handle?._router?.stack) {
+      skipped.push(`${layer.name ?? "<anonymous>"} @ ${prefix || "/"}`);
     }
   }
 }
@@ -105,6 +114,8 @@ function concreteUrl(routePath: string): string {
 let app: Express;
 let prisma: any;
 let routes: RouteRow[];
+/** Слои с поддеревом маршрутов, в которые обход не зашёл. Должен оставаться пустым. */
+let skippedSubtrees: string[];
 
 beforeAll(async () => {
   execSync("npx prisma db push --skip-generate --force-reset", {
@@ -121,7 +132,8 @@ beforeAll(async () => {
   prisma = (await import("../prisma")).prisma;
 
   routes = [];
-  collectRoutes((app as any)._router.stack, "", routes);
+  skippedSubtrees = [];
+  collectRoutes((app as any)._router.stack, "", routes, skippedSubtrees);
 });
 
 afterAll(async () => {
@@ -139,14 +151,44 @@ afterAll(async () => {
 });
 
 describe("публичная поверхность API", () => {
+  // Сторож, который тихо недосчитал маршруты, опаснее его отсутствия: он
+  // отчитывается зелёным за ветки, которые не проверял. Три проверки ниже
+  // закрывают все известные способы это сделать.
+  it("обход не пропустил ни одного поддерева маршрутов", () => {
+    expect(
+      skippedSubtrees,
+      "Слой несёт маршруты, но обход в него не зашёл — проверка этой ветки не выполнялась:\n  " +
+        skippedSubtrees.join("\n  "),
+    ).toEqual([]);
+  });
+
+  it("собранные пути не содержат остатков регулярок", () => {
+    // Если разбор `layer.regexp` сломается после апгрейда Express, путь
+    // превратится в мусор. Такой запрос отдаст 404, а 404 !== 401 — тест ниже
+    // всё равно упадёт. Но падать он должен с внятной причиной, а не с
+    // «маршрут отвечает анонимному запросу».
+    const malformed = routes.filter((r) => /[(?\\^$]/.test(r.path));
+    expect(
+      malformed.map((r) => `${r.method} ${r.path}`),
+      "Реконструкция пути монтирования сломалась — проверьте mountPath после апгрейда Express",
+    ).toEqual([]);
+  });
+
   it("обход таблицы маршрутов находит все зарегистрированные роуты", () => {
-    // Если разбор `layer.regexp` сломается после апгрейда Express, сборщик
-    // тихо вернёт огрызок — и весь тест превратится в зелёный no-op.
-    expect(routes.length).toBeGreaterThan(150);
+    // На момент написания — 265 маршрутов. Нижняя граница страхует от обвала
+    // сборщика; от ЧАСТИЧНОЙ потери веток страхует проверка skippedSubtrees выше.
+    expect(routes.length).toBeGreaterThan(250);
+    // Якоря из разных роутеров: корневого, вложенного с параметром и смонтированного
+    // до apiKeyAuth — чтобы «нашлось много маршрутов» не означало «все из одного места».
     expect(routes.some((r) => r.method === "GET" && r.path === "/api/equipment")).toBe(true);
     expect(
       routes.some((r) => r.method === "GET" && r.path === "/api/equipment/:equipmentId/units"),
     ).toBe(true);
+    expect(routes.some((r) => r.method === "POST" && r.path === "/api/bookings/bulk")).toBe(true);
+    expect(routes.some((r) => r.method === "GET" && r.path === "/api/lk/me")).toBe(true);
+    expect(routes.some((r) => r.method === "POST" && r.path === "/api/warehouse/sessions")).toBe(
+      true,
+    );
   });
 
   it("ни один маршрут вне PUBLIC_SURFACE не отвечает без сессии", async () => {
@@ -174,6 +216,38 @@ describe("публичная поверхность API", () => {
         leaked.join("\n  "),
     ).toEqual([]);
   }, 120_000);
+
+  // Публичность живёт в двух местах: здесь (что разрешает API) и в
+  // `apps/web/src/lib/proxyAuthGate.ts` (что пропускает прокси). Списки
+  // хранятся раздельно намеренно — у них разные задачи, — но расходиться им
+  // нельзя: маршрут, публичный на API и закрытый на прокси, отвалится молча,
+  // и поймает это только ручной проход по браузеру.
+  //
+  // Импорт из соседнего воркспейса возможен, потому что gate — чистый модуль
+  // без зависимостей от Next, а тесты API исключены из tsc (`tsconfig.json`).
+  it("прокси пропускает всё, что API объявил публичным", async () => {
+    const { decideProxyAuth } = await import("../../../web/src/lib/proxyAuthGate");
+
+    const blockedByProxy = Object.keys(PUBLIC_SURFACE)
+      // /health не идёт через прокси: тот обслуживает только /api/*.
+      .filter((key) => key !== "GET /health")
+      .filter((key) => {
+        const [method, apiPath] = key.split(" ");
+        return !decideProxyAuth({
+          method: method!,
+          apiPath: apiPath!,
+          cookie: null,
+          authorization: null,
+        }).allow;
+      });
+
+    expect(
+      blockedByProxy,
+      "API считает эти маршруты публичными, а прокси их не пропускает — " +
+        "внесите их в PUBLIC_API_ROUTES в apps/web/src/lib/proxyAuthGate.ts:\n  " +
+        blockedByProxy.join("\n  "),
+    ).toEqual([]);
+  });
 
   it("каждая запись PUBLIC_SURFACE соответствует живому маршруту", () => {
     const registered = new Set(routes.map((r) => `${r.method} ${r.path}`));
