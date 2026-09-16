@@ -1,6 +1,15 @@
 import type { UserRole } from "./auth";
 
 export type MenuItem = { href: string; label: string; icon?: string };
+
+/**
+ * Куда вести роль «по умолчанию»: у всех это «Мой день», а у взыскания —
+ * сам реестр долгов. Сотруднику, у которого одна задача, промежуточный экран
+ * не нужен, а `/day` для него просто пуст.
+ */
+export function homeForRole(role: UserRole): string {
+  return role === "COLLECTOR" ? "/finance/debts" : "/day";
+}
 export type MenuSection = { title: string; items: MenuItem[] };
 
 export const menuByRole: Record<UserRole, MenuSection[]> = {
@@ -117,6 +126,16 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       title: "Система",
       items: [
         { href: "/feedback", label: "Обратная связь", icon: "feedback" },
+      ],
+    },
+  ],
+  // Взыскание долгов: одна задача — один раздел. Всё остальное этой роли
+  // не просто не нужно, а противопоказано: у неё на руках контакты клиентов.
+  COLLECTOR: [
+    {
+      title: "Взыскание",
+      items: [
+        { href: "/finance/debts", label: "Реестр долгов", icon: "alert" },
       ],
     },
   ],

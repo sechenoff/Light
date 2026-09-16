@@ -18,13 +18,40 @@ export function fullEstimatePath(bookingId: string, format: "pdf" | "xlsx"): str
 
 const NO_ESTIMATE = "Смета ещё не сформирована — сохраните бронь";
 
-async function fetchEstimateBlob(path: string, notFoundMessage: string = NO_ESTIMATE): Promise<Blob | null> {
-  const res = await apiFetchRaw(path, { method: "GET", credentials: "include" });
+async function fetchEstimateBlob(
+  path: string,
+  notFoundMessage: string = NO_ESTIMATE,
+  init?: RequestInit,
+): Promise<Blob | null> {
+  const res = await apiFetchRaw(path, { method: "GET", credentials: "include", ...init });
   if (!res.ok) {
+    // Документ собирается из выбора пользователя (отчёт по долгам) — сервер
+    // объясняет отказ человеческими словами, и прятать их за общей фразой
+    // «не найдено» значит заставить гадать, что не так с выбором.
+    const detail = await res
+      .json()
+      .then((b: { message?: string }) => (typeof b?.message === "string" ? b.message : null))
+      .catch(() => null);
+    if (detail) {
+      toast.error(detail);
+      return null;
+    }
     // У старых черновиков без снапшота full-estimate отвечает 404
     // MAIN_ESTIMATE_NOT_FOUND — говорим об этом человеческими словами.
     toast.error(notFoundMessage);
     return null;
+  }
+  // Сервер может сообщить, что часть выбранного в документ не попала
+  // (долг успели погасить, бронь отменили). Тело ответа — сам файл, поэтому
+  // сообщение приезжает заголовком; молча отдавать документ короче, чем
+  // показывал экран, нельзя.
+  const notice = res.headers.get("x-export-notice");
+  if (notice) {
+    try {
+      toast.info(decodeURIComponent(notice));
+    } catch {
+      /* битый percent-encoding — не роняем сам экспорт */
+    }
   }
   const blob = await res.blob();
   const disposition = res.headers.get("content-disposition") ?? "";
@@ -35,9 +62,14 @@ async function fetchEstimateBlob(path: string, notFoundMessage: string = NO_ESTI
 }
 
 /** Скачивает файл, называя его так же, как назвал сервер. */
-export async function downloadEstimate(path: string, fallbackName: string, notFoundMessage?: string): Promise<void> {
+export async function downloadEstimate(
+  path: string,
+  fallbackName: string,
+  notFoundMessage?: string,
+  init?: RequestInit,
+): Promise<void> {
   try {
-    const blob = await fetchEstimateBlob(path, notFoundMessage);
+    const blob = await fetchEstimateBlob(path, notFoundMessage, init);
     if (!blob) return;
     const disposition = (blob as Blob & { __disposition?: string }).__disposition ?? "";
     const url = URL.createObjectURL(blob);
@@ -61,9 +93,9 @@ export async function downloadEstimate(path: string, fallbackName: string, notFo
  * отправляется в печать из скрытого iframe. Safari печатать PDF из iframe не
  * умеет — там открываем вкладку и подсказываем ⌘P.
  */
-export async function printEstimate(path: string, notFoundMessage?: string): Promise<void> {
+export async function printEstimate(path: string, notFoundMessage?: string, init?: RequestInit): Promise<void> {
   try {
-    const blob = await fetchEstimateBlob(path, notFoundMessage);
+    const blob = await fetchEstimateBlob(path, notFoundMessage, init);
     if (!blob) return;
     const url = URL.createObjectURL(blob);
 

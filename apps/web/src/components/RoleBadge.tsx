@@ -6,6 +6,7 @@ const STYLES: Record<UserRole, BadgeStyle> = {
   SUPER_ADMIN: { bg: "bg-indigo-soft", text: "text-indigo", border: "border-indigo-border", label: "Руководитель" },
   WAREHOUSE:   { bg: "bg-teal-soft",   text: "text-teal",   border: "border-teal-border",   label: "Кладовщик"   },
   TECHNICIAN:  { bg: "bg-amber-soft",  text: "text-amber",  border: "border-amber-border",  label: "Техник"      },
+  COLLECTOR:   { bg: "bg-rose-soft",   text: "text-rose",   border: "border-rose-border",   label: "Взыскание"   },
 };
 
 export function RoleBadge({ role }: { role: UserRole }) {

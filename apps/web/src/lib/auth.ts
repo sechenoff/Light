@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { apiFetch } from "./api";
 
-export type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN";
+export type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" | "COLLECTOR";
 
 /** @deprecated используй UserRole */
 export type AdminRole = UserRole;

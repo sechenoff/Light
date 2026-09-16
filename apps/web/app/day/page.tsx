@@ -456,6 +456,19 @@ function daysSince(iso: string): number {
   return Math.max(0, Math.floor(ms / 86_400_000));
 }
 
+/**
+ * У роли взыскания «своего дня» нет: её единственный экран — реестр долгов.
+ * Рендерим редирект, а не пустую страницу, чтобы вход и любой отказ доступа
+ * приводили сотрудника ровно туда, где он работает.
+ */
+function DayCollectorRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/finance/debts");
+  }, [router]);
+  return <div className="p-8 text-sm text-ink-3">Открываю реестр долгов…</div>;
+}
+
 function DayTechnician({ userId, username }: { userId: string; username: string }) {
   const router = useRouter();
   const [newRepairs, setNewRepairs] = useState<RepairListItem[] | null>(null);
@@ -639,6 +652,7 @@ export default function DayPage() {
       {user.role === "SUPER_ADMIN" && <DaySuperAdmin username={user.username} />}
       {user.role === "WAREHOUSE" && <DayWarehouse username={user.username} />}
       {user.role === "TECHNICIAN" && <DayTechnician userId={user.userId ?? ""} username={user.username} />}
+      {user.role === "COLLECTOR" && <DayCollectorRedirect />}
     </div>
   );
 }

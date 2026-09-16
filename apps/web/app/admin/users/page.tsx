@@ -11,7 +11,7 @@ import { toast } from "@/components/ToastProvider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN";
+type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" | "COLLECTOR";
 
 type AdminUserRow = {
   id: string;
@@ -29,6 +29,7 @@ function roleLabel(role: UserRole): string {
     case "SUPER_ADMIN": return "Руководитель";
     case "WAREHOUSE": return "Кладовщик";
     case "TECHNICIAN": return "Техник";
+    case "COLLECTOR": return "Взыскание";
   }
 }
 
@@ -41,6 +42,7 @@ const AVATAR_BG: Record<UserRole, string> = {
   SUPER_ADMIN: "bg-indigo",
   WAREHOUSE: "bg-teal",
   TECHNICIAN: "bg-amber",
+  COLLECTOR: "bg-rose",
 };
 
 function formatDate(iso: string): string {
@@ -295,7 +297,7 @@ export default function AdminUsersPage() {
 
         {/* Role count pills */}
         <div className="flex items-center gap-2">
-          {(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"] as UserRole[]).map((role) => (
+          {(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN", "COLLECTOR"] as UserRole[]).map((role) => (
             <span key={role} className="inline-flex items-center gap-1">
               <RoleBadge role={role} />
               {roleCounts[role] !== undefined && (
@@ -369,6 +371,7 @@ export default function AdminUsersPage() {
                 >
                   <option value="WAREHOUSE">Кладовщик</option>
                   <option value="TECHNICIAN">Техник</option>
+                  <option value="COLLECTOR">Взыскание</option>
                   <option value="SUPER_ADMIN">Руководитель</option>
                 </select>
               </div>
@@ -460,6 +463,7 @@ export default function AdminUsersPage() {
                           >
                             <option value="WAREHOUSE">Кладовщик</option>
                             <option value="TECHNICIAN">Техник</option>
+                  <option value="COLLECTOR">Взыскание</option>
                             <option value="SUPER_ADMIN">Руководитель</option>
                           </select>
                           <button
@@ -552,7 +556,7 @@ export default function AdminUsersPage() {
       {users && users.length > 0 && (
         <div className="flex items-center gap-4 flex-wrap text-xs text-ink-3 pt-2 border-t border-border">
           <span>Всего: {realUserCount}</span>
-          {(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"] as UserRole[]).map((role) =>
+          {(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN", "COLLECTOR"] as UserRole[]).map((role) =>
             roleCounts[role] ? (
               <span key={role}>
                 {roleLabel(role)}: {roleCounts[role]}

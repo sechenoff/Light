@@ -3,8 +3,8 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../prisma";
 
 /** @deprecated Используй UserRole. AdminRole оставлен для обратной совместимости с requireRole(). */
-export type AdminRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN";
-export type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN";
+export type AdminRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" | "COLLECTOR";
+export type UserRole = "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" | "COLLECTOR";
 
 export type SessionPayload = {
   userId: string;

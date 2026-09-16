@@ -8,6 +8,7 @@ import { StatusPill } from "../../src/components/StatusPill";
 import { formatRub } from "../../src/lib/format";
 import { toMoscowDateString } from "../../src/lib/moscowDate";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
+import { useRequireRole } from "../../src/hooks/useRequireRole";
 import { unitStatusLabel } from "../../src/lib/unitStatus";
 import { useAvailability, type AvailabilityItem } from "../../src/hooks/useAvailability";
 import { addHoursToDatetimeLocal, datetimeLocalToISO } from "../../src/lib/rentalTime";
@@ -43,6 +44,12 @@ function defaultPickupDatetimeLocal(): string {
 }
 
 export default function EquipmentPage() {
+  // Гард роли на самой странице, а не только в меню: по прямому URL раньше
+  // открывался пустой каркас с красной ошибкой «Доступ запрещён по роли» —
+  // данные API и так не отдаёт, но выглядело это как поломка системы.
+  // Список ролей — зеркало menuByRole.
+  const { authorized: roleOk, loading: roleLoading } = useRequireRole(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]);
+
   const { user } = useCurrentUser();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   // Empty until mounted: server and client render the same markup, then the
@@ -181,6 +188,8 @@ export default function EquipmentPage() {
     startIso && endIso
       ? `/bookings/new?start=${startIso}&end=${endIso}`
       : "/bookings/new";
+
+  if (roleLoading || !roleOk) return null;
 
   return (
     <div className="pb-6">

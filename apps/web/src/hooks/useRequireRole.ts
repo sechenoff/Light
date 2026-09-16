@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCurrentUser, type UserRole } from "../lib/auth";
+import { homeForRole } from "../lib/roleMatrix";
 import { toast } from "../components/ToastProvider";
 
 export function useRequireRole(allowed: UserRole[]) {
@@ -18,7 +19,9 @@ export function useRequireRole(allowed: UserRole[]) {
     }
     if (!allowed.includes(user.role)) {
       toast.error("Нет доступа");
-      router.replace("/day");
+      // Не жёстко на /day: у роли взыскания он пуст, и отказ доступа
+      // отправлял бы её на белый экран вместо своего раздела.
+      router.replace(homeForRole(user.role));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, loading, allowedKey, router]);

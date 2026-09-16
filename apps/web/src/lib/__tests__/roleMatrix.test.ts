@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { menuByRole, type MenuSection, type MenuItem } from "../roleMatrix";
+import { menuByRole, type MenuSection, type MenuItem, homeForRole } from "../roleMatrix";
 
 describe("menuByRole — grouped sections", () => {
   it("returns MenuSection[] (not MenuItem[]) for each role", () => {
@@ -126,5 +126,38 @@ describe("menuByRole — grouped sections", () => {
         }
       }
     }
+  });
+});
+
+describe("menuByRole — роль взыскания (COLLECTOR)", () => {
+  it("видит ровно один раздел — реестр долгов", () => {
+    const menu = menuByRole.COLLECTOR;
+    expect(menu).toHaveLength(1);
+    expect(menu[0].title).toBe("Взыскание");
+    expect(menu[0].items.map((i) => i.href)).toEqual(["/finance/debts"]);
+  });
+
+  it("никаких финансов, броней, склада и настроек", () => {
+    const hrefs = menuByRole.COLLECTOR.flatMap((s) => s.items.map((i) => i.href));
+    for (const forbidden of [
+      "/day",
+      "/bookings",
+      "/finance",
+      "/finance/payments",
+      "/finance/expenses",
+      "/equipment",
+      "/warehouse/scan",
+      "/settings/organization",
+      "/admin/users",
+    ]) {
+      expect(hrefs).not.toContain(forbidden);
+    }
+  });
+
+  it("homeForRole ведёт взыскание в реестр, остальных — на «Мой день»", () => {
+    expect(homeForRole("COLLECTOR")).toBe("/finance/debts");
+    expect(homeForRole("SUPER_ADMIN")).toBe("/day");
+    expect(homeForRole("WAREHOUSE")).toBe("/day");
+    expect(homeForRole("TECHNICIAN")).toBe("/day");
   });
 });

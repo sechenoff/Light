@@ -21,6 +21,11 @@ export interface MatrixRow {
   super: PermissionCell;
   warehouse: PermissionCell;
   technician: PermissionCell;
+  /**
+   * Роль взыскания. Не задано — значит «нет»: у неё ровно один доступный
+   * раздел, и перечислять сорок запретов построчно было бы шумом.
+   */
+  collector?: PermissionCell;
 }
 
 export interface MatrixSection {
@@ -72,6 +77,13 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, RoleDescription> = {
     subtitle: "Repair specialist",
     desc: "Чинит оборудование. Видит только «Мой день» и «Мастерскую». Никаких денег, договоров, клиентов — только единицы техники и их состояние.",
     count: "1–2 человека",
+  },
+  COLLECTOR: {
+    tag: "Collector",
+    title: "Взыскание",
+    subtitle: "Debt collector",
+    desc: "Возвращает долги. Видит только реестр задолженности: кто, за какой проект и сколько должен, — и печатает по нему отчёт для обзвона. Ни выручки, ни расходов, ни броней, ни каталога; изменить в системе ничего не может.",
+    count: "1 человек",
   },
 };
 
@@ -132,6 +144,7 @@ export const MATRIX_SECTIONS: MatrixSection[] = [
         super:      { level: "full", label: "полный" },
         warehouse:  { level: "none", label: "нет" },
         technician: { level: "none", label: "нет" },
+        collector:  { level: "limited", label: "только долги" },
       },
       {
         capability: "Админка",
@@ -225,6 +238,14 @@ export const MATRIX_SECTIONS: MatrixSection[] = [
     rows: [
       { capability: "Открыть любую финансовую страницу",
         super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "none", label: "нет" } },
+      { capability: "Реестр долгов — читать",
+        hint: "роль взыскания: видит клиента, проект, суммы и просрочку; изменить ничего не может",
+        super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "none", label: "нет" },
+        collector: { level: "view", label: "читает" } },
+      { capability: "Отчёт по выбранным долгам — PDF / XLSX",
+        hint: "«Сформировать отчёт» в реестре долгов: выбранные строки, печать и выгрузка",
+        super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "none", label: "нет" },
+        collector: { level: "view", label: "выгружает" } },
       { capability: "Принять платёж по брони",
         hint: "кладовщик: только наличные/карта, ≤ 100 000 ₽, бронь в статусе «Выдана» или «Возвращена»",
         super: { level: "full", label: "да" }, warehouse: { level: "limited", label: "с лимитами" }, technician: { level: "none", label: "нет" } },
@@ -310,7 +331,8 @@ export const EDGE_CASES: EdgeCase[] = [
 
 /** Технические заметки — bullet points в футере. */
 export const TECH_NOTES: TechNote[] = [
-  { text: "**Prisma-схема.** В модели `AdminUser` поле `role: UserRole` имеет 3 значения: `SUPER_ADMIN`, `WAREHOUSE`, `TECHNICIAN`." },
+  { text: "**Взыскание — роль одного экрана.** `COLLECTOR` проходит `rolesGuard([\"SUPER_ADMIN\", \"COLLECTOR\"])` только на `/api/finance/debts`, `debts.xlsx` и `debts/report.{pdf,xlsx}`. Остальные ручки `financeRouter` остаются `superAdminOnly`. На фронте `menuByRole.COLLECTOR` — один пункт, `FinanceTabNav` показывает одну вкладку, а строки реестра теряют все действия руководителя (платёж, правка брони, напоминание, списание)." },
+  { text: "**Prisma-схема.** В модели `AdminUser` поле `role: UserRole` имеет 4 значения: `SUPER_ADMIN`, `WAREHOUSE`, `TECHNICIAN`, `COLLECTOR`. На SQLite enum хранится как TEXT — добавление значения не трогает данные." },
   { text: "**Middleware `rolesGuard`** в `apps/api/src/middleware/rolesGuard.ts`. Принимает массив разрешённых ролей, читает `req.adminUser.role`, возвращает `403 { code: \"FORBIDDEN_BY_ROLE\" }`. Навешивается на роуты в `routes/index.ts`." },
   { text: "**Фронт — сокрытие меню.** В `apps/web/src/lib/roleMatrix.ts` объявлен `menuByRole: Record<UserRole, MenuItem[]>`. `AppShell` фильтрует по `currentUser.role`. При попытке прямого URL — `useRequireRole` редиректит на `/day`." },
   { text: "**Аудит-лог.** Таблица `AuditEntry` (`userId, action, entityType, entityId, before, after, createdAt`). Пишется через `writeAuditEntry()` внутри `prisma.$transaction` на деструктивных операциях (delete booking, admin-users CRUD и т.п.)." },
