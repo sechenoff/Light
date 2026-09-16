@@ -80,11 +80,22 @@ function collectRoutes(stack: any[], prefix: string, out: RouteRow[], skipped: s
       continue;
     }
     // Слой несёт поддерево маршрутов, но мы в него не пошли — значит, обход
-    // МОЛЧА недосчитал целую ветку и тест превратился бы в зелёную пустышку.
-    // Единственный способ добавить маршруты невидимо для этого сторожа.
-    // `handle._router` — случай вложенного express-приложения (app.use(subApp)):
-    // у него стек лежит на уровень глубже, чем у обычного Router.
-    if (layer.handle?.stack || layer.handle?._router?.stack) {
+    // МОЛЧА недосчитал целую ветку и тест отчитался бы зелёным за то, чего не
+    // проверял. Три формы, в которых поддерево вообще опознаётся:
+    //   • `handle.stack`         — Router, смонтированный не как `router`;
+    //   • `handle._router.stack` — `Router.use(path, subApp)`: там под-приложение
+    //     лежит хендлером напрямую, и его стек на уровень глубже;
+    //   • `name === "mounted_app"` — `app.use(path, subApp)`. Express оборачивает
+    //     под-приложение в именованную функцию (`lib/application.js`), само app
+    //     остаётся в замыкании, поэтому у слоя НЕТ ни `handle.stack`, ни
+    //     `handle._router` — опознать можно только по имени.
+    //
+    // Чего этот список не ловит: роутер, завёрнутый в замыкание
+    // (`(q,s,n) => router(q,s,n)`, `router.handle.bind(router)`, адаптер из
+    // библиотеки). Такой слой статически неотличим от обычного middleware —
+    // сигнала не существует. Поэтому пустой `skippedSubtrees` означает «не
+    // пропущено ничего с опознаваемым поддеревом», а не «не пропущено ничего».
+    if (layer.handle?.stack || layer.handle?._router?.stack || layer.name === "mounted_app") {
       skipped.push(`${layer.name ?? "<anonymous>"} @ ${prefix || "/"}`);
     }
   }
