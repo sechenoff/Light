@@ -29,6 +29,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Скрипт деплоя уезжает на прод через appleboy/ssh-action и там ломается
+      # на ветках `case`: bash сообщает «syntax error near unexpected token ';'».
+      # Локальный `bash -n` это НЕ ловит — сам по себе `case` валиден, дело в
+      # том, как action передаёт скрипт. В комментариях про это предупреждали
+      # дважды, и всё равно наступили третий раз (2026-09-16): скрипт умер уже
+      # ПОСЛЕ «atomic stop: web» и оставил прод лежать с 502.
+      # Поэтому проверка живёт в build — до того, как что-либо остановлено.
+      - name: no `case` in deploy script (ломает appleboy/ssh-action)
+        run: |
+          if grep -nE '^\s*case .* in\s*$' .github/workflows/deploy-rsync.yml; then
+            echo "✗ В скрипте деплоя есть case — он падает на проде. Используйте if/elif." >&2
+            exit 1
+          fi
+          echo "✓ case в скрипте деплоя нет"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -230,12 +245,13 @@ jobs:
               # openclaw-ключ первым в API_KEYS отдал бы всему вебу scope бота:
               # botScopeGuard ставит req.botAccess, а rolesGuard пропускает его
               # без проверки роли. Останавливаем деплой, а не выкатываем молча.
-              case "${KEY:-}" in
-                openclaw-*)
-                  echo "✗ Первый ключ в API_KEYS — openclaw-*: веб-прокси унаследовал бы scope бота" >&2
-                  exit 1
-                  ;;
-              esac
+              # Без `case`: скрипт уезжает на прод через bash -c, и ветки case
+              # тут уже дважды ломали деплой синтаксической ошибкой (см. выше).
+              # `${KEY#openclaw-}` != `$KEY` — это и есть проверка префикса.
+              if [ -n "${KEY:-}" ] && [ "${KEY#openclaw-}" != "$KEY" ]; then
+                echo "✗ Первый ключ в API_KEYS — openclaw-*: веб-прокси унаследовал бы scope бота" >&2
+                exit 1
+              fi
               if [ -n "${KEY:-}" ]; then
                 touch apps/web/.env.local
                 if grep -q '^API_KEY=' apps/web/.env.local; then
