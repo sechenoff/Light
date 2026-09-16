@@ -10,6 +10,9 @@ apps/api/prisma/test.db*
 apps/api/prisma/test-*.db
 apps/api/prisma/test-*.db-journal
 apps/api/prisma/dev.db.before-*
+# Черновая база рабочего дерева (DATABASE_URL в worktree-локальном .env).
+# Канонический apps/api/prisma/dev.db отслеживается и под это правило не попадает.
+apps/api/prisma/dev-worktree.db*
 apps/api/prisma/backups/
 apps/web/.env.local
 apps/bot/.env

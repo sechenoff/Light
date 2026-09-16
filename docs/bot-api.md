@@ -85,6 +85,7 @@ AUTH_MODE=enforce
 | GET    | `/api/finance/dashboard`                   | Финансовые метрики                |
 | GET    | `/api/receivables`                         | Плоский список дебиторки          |
 | GET    | `/api/payments`                            | Список платежей                   |
+| POST   | `/api/users/upsert`                        | Регистрация Telegram-пользователя |
 
 ### Пример запрещённого действия
 

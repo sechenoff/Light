@@ -3,6 +3,7 @@
  * H1 — rolesGuard на /api/warehouse/workers/*
  * H2 — per-route guards на /api/equipment/:id/units/* и /api/equipment-units/*
  * H4 — аудит-записи при DELETE /api/bookings/:id и CRUD /api/admin-users
+ * A1 — анонимная поверхность: /api/equipment/* и /api/users/upsert требуют сессии
  * MH — PATCH-гарды admin-users (своя роль / последний SUPER_ADMIN) + isActive («уволить»)
  */
 
@@ -16,7 +17,7 @@ import type { Express } from "express";
 const TEST_DB_PATH = path.resolve(__dirname, "../../prisma/test-roles-holistic.db");
 process.env.DATABASE_URL = `file:${TEST_DB_PATH}`;
 process.env.RATE_LIMIT_DISABLED = "true";
-process.env.API_KEYS = "test-key-holistic";
+process.env.API_KEYS = "test-key-holistic,openclaw-holistic";
 process.env.AUTH_MODE = "enforce";
 process.env.NODE_ENV = "test";
 process.env.BARCODE_SECRET = "test-secret-holistic-xxxxxxxxxxx";
@@ -80,6 +81,8 @@ function SA() { return { "X-API-Key": "test-key-holistic", Authorization: `Beare
 function WH() { return { "X-API-Key": "test-key-holistic", Authorization: `Bearer ${warehouseToken}` }; }
 function TECH() { return { "X-API-Key": "test-key-holistic", Authorization: `Bearer ${technicianToken}` }; }
 function NOAUTH() { return { "X-API-Key": "test-key-holistic" }; }
+/** Ключ бота: botScopeGuard выставляет req.botAccess, rolesGuard пропускает без роли. */
+function BOT() { return { "X-API-Key": "openclaw-holistic" }; }
 
 // ──────────────────────────────────────────────────────────────────
 // H1: /api/warehouse/workers — rolesGuard(SA + WH)
@@ -597,5 +600,132 @@ describe("MH: PATCH /api/admin-users гарды и isActive", () => {
     for (const u of res.body.users) {
       expect(typeof u.isActive).toBe("boolean");
     }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// A1: анонимная поверхность — /api/equipment/* и /api/users/upsert
+//
+// Маршруты висели без rolesGuard, а Next-прокси подставляет X-API-Key КАЖДОМУ
+// запросу, включая анонимный. Поэтому «нет сессии → 401» здесь не формальность:
+// до фикса это был прайс-лист и состав парка, открытые из интернета, и анонимная
+// запись в таблицу User. Сплошной обход маршрутов — в anonymousSurface.test.ts;
+// здесь точечно зафиксированы обе стороны: дыра закрыта, матрица прав цела.
+// ──────────────────────────────────────────────────────────────────
+
+describe("A1: каталог требует сессии", () => {
+  let equipmentId: string;
+
+  beforeAll(async () => {
+    const eq = await prisma.equipment.create({
+      data: {
+        category: "Свет",
+        name: "A1 Тестовый прибор",
+        importKey: "a1-test-fixture",
+        totalQuantity: 2,
+        rentalRatePerShift: "5000",
+      },
+    });
+    equipmentId = eq.id;
+  });
+
+  it("GET /api/equipment — нет сессии → 401, каталог наружу не уходит", async () => {
+    const res = await request(app).get("/api/equipment").set(NOAUTH());
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("UNAUTHENTICATED");
+    expect(res.body.equipments).toBeUndefined();
+  });
+
+  it("GET /api/equipment/categories — нет сессии → 401", async () => {
+    const res = await request(app).get("/api/equipment/categories").set(NOAUTH());
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("GET /api/equipment/:id — нет сессии → 401", async () => {
+    const res = await request(app).get(`/api/equipment/${equipmentId}`).set(NOAUTH());
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("GET /api/equipment — TECHNICIAN → 200 (матрица прав: чтение каталога у всех трёх ролей)", async () => {
+    const res = await request(app).get("/api/equipment").set(TECH());
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.equipments)).toBe(true);
+  });
+
+  it("GET /api/equipment/categories — WAREHOUSE → 200", async () => {
+    const res = await request(app).get("/api/equipment/categories").set(WH());
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.categories)).toBe(true);
+  });
+
+  it("GET /api/equipment/:id — TECHNICIAN → 200", async () => {
+    const res = await request(app).get(`/api/equipment/${equipmentId}`).set(TECH());
+    expect(res.status).toBe(200);
+    expect(res.body.equipment?.id ?? res.body.id).toBe(equipmentId);
+  });
+
+  it("PATCH /api/equipment/:id — WAREHOUSE → 403 (per-route гард не размыт router-level гардом)", async () => {
+    const res = await request(app)
+      .patch(`/api/equipment/${equipmentId}`)
+      .set(WH())
+      .send({ name: "Переименован кладовщиком" });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("FORBIDDEN_BY_ROLE");
+  });
+
+  it("бот-ключ openclaw-* читает каталог без JWT-сессии", async () => {
+    const list = await request(app).get("/api/equipment").set(BOT());
+    expect(list.status).toBe(200);
+    expect(Array.isArray(list.body.equipments)).toBe(true);
+
+    const categories = await request(app).get("/api/equipment/categories").set(BOT());
+    expect(categories.status).toBe(200);
+
+    const detail = await request(app).get(`/api/equipment/${equipmentId}`).set(BOT());
+    expect(detail.status).toBe(200);
+  });
+
+  it("бот-ключ не получил права на запись в каталог", async () => {
+    const res = await request(app)
+      .post("/api/equipment")
+      .set(BOT())
+      .send({ category: "Свет", name: "Бот не должен", totalQuantity: 1, rentalRatePerShift: "1" });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("BOT_SCOPE_FORBIDDEN");
+  });
+});
+
+describe("A1: POST /api/users/upsert требует сессии", () => {
+  const body = { telegramId: "770077007", username: "anon_probe", firstName: "Аноним" };
+
+  it("нет сессии → 401, запись в БД не появляется", async () => {
+    const res = await request(app).post("/api/users/upsert").set(NOAUTH()).send(body);
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("UNAUTHENTICATED");
+
+    const created = await prisma.user.findUnique({ where: { telegramId: BigInt(body.telegramId) } });
+    expect(created).toBeNull();
+  });
+
+  it("TECHNICIAN → 403", async () => {
+    const res = await request(app).post("/api/users/upsert").set(TECH()).send(body);
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("FORBIDDEN_BY_ROLE");
+  });
+
+  it("бот-ключ openclaw-* → 200 (путь бота сохранён)", async () => {
+    const res = await request(app).post("/api/users/upsert").set(BOT()).send(body);
+    expect(res.status).toBe(200);
+    expect(res.body.user.telegramId).toBe(body.telegramId);
+  });
+
+  it("WAREHOUSE → 200", async () => {
+    const res = await request(app)
+      .post("/api/users/upsert")
+      .set(WH())
+      .send({ ...body, telegramId: "770077008" });
+    expect(res.status).toBe(200);
   });
 });

@@ -63,20 +63,31 @@ const API_KEY = "test-key-1";
 // AUTH включает JWT-токен SUPER_ADMIN, т.к. rolesGuard теперь строгий (§2.1)
 function AUTH() { return { "X-API-Key": API_KEY, Authorization: `Bearer ${superAdminToken}` }; }
 
+// Два независимых слоя, и порядок важен: apiKeyAuth отвечает «этот клиент вообще
+// имеет право стучаться», rolesGuard — «за этим клиентом стоит сотрудник с ролью».
+// Валидный ключ САМ ПО СЕБЕ доступа не даёт: Next-прокси подставляет его каждому
+// запросу, включая анонимный из интернета, — то есть ключ отличает «наш фронт»
+// от постороннего софта, но не сотрудника от анонима.
 describe("Auth middleware", () => {
   it("returns 401 without API key", async () => {
     const res = await request(app).get("/api/equipment");
     expect(res.status).toBe(401);
   });
 
-  it("returns 200 with valid X-API-Key", async () => {
-    const res = await request(app).get("/api/equipment").set("X-API-Key", "test-key-1");
-    expect(res.status).toBe(200);
-  });
-
   it("returns 401 with wrong API key", async () => {
     const res = await request(app).get("/api/equipment").set("X-API-Key", "wrong-key");
     expect(res.status).toBe(401);
+  });
+
+  it("валидный ключ без сессии — 401 UNAUTHENTICATED, ключ доступа не заменяет", async () => {
+    const res = await request(app).get("/api/equipment").set("X-API-Key", "test-key-1");
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("returns 200 with valid X-API-Key + сессия", async () => {
+    const res = await request(app).get("/api/equipment").set(AUTH());
+    expect(res.status).toBe(200);
   });
 });
 

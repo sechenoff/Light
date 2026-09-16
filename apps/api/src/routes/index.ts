@@ -67,7 +67,11 @@ router.use("/api/equipment/import", rolesGuard(["SUPER_ADMIN"]), equipmentImport
 router.use("/api/equipment/:equipmentId/units", equipmentUnitsRouter);
 
 // /api/equipment — GET: все роли (SUPER_ADMIN, WAREHOUSE, TECHNICIAN); POST/PATCH/DELETE: per-route в equipmentRouter
-router.use("/api/equipment", equipmentRouter);
+// Гард стоит на монтировании, а не на трёх GET-хендлерах: без него роутер был голым, и
+// каталог с прайсом отдавался анониму через Next-прокси (тот подставляет X-API-Key любому
+// запросу). Префикс — единица защиты, иначе следующий добавленный read-маршрут снова уедет
+// наружу. Бот проходит по req.botAccess: каталог есть в BOT_WHITELIST.
+router.use("/api/equipment", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), equipmentRouter);
 
 // /api/availability — все роли
 router.use("/api/availability", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), availabilityRouter);
@@ -93,8 +97,11 @@ router.use("/api", financeRouter);
 // /api/photo-analysis — SUPER_ADMIN, WAREHOUSE
 router.use("/api/photo-analysis", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), photoAnalysisRouter);
 
-// /api/users — только для web-auth (не adminUsers), доступ любой аутентифицированной сессии
-router.use("/api/users", usersRouter);
+// /api/users — upsert Telegram-пользователя. Единственный потребитель — бот
+// (apps/bot/src/services/api.ts), он проходит по req.botAccess (строка в BOT_WHITELIST).
+// Гард нужен потому, что без него это была анонимная ЗАПИСЬ в таблицу User: прокси
+// подставляет X-API-Key любому запросу, и ручка принимала данные прямо из интернета.
+router.use("/api/users", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), usersRouter);
 
 // /api/analyses — SUPER_ADMIN, WAREHOUSE
 router.use("/api/analyses", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), analysesRouter);

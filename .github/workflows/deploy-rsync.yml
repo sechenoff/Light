@@ -227,6 +227,15 @@ jobs:
             # и при ручных npm start вне PM2).
             if [ -f apps/api/.env ]; then
               KEY=$(grep -E '^API_KEYS=' apps/api/.env | head -1 | sed -E 's/^API_KEYS=//' | cut -d',' -f1 | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+              # openclaw-ключ первым в API_KEYS отдал бы всему вебу scope бота:
+              # botScopeGuard ставит req.botAccess, а rolesGuard пропускает его
+              # без проверки роли. Останавливаем деплой, а не выкатываем молча.
+              case "${KEY:-}" in
+                openclaw-*)
+                  echo "✗ Первый ключ в API_KEYS — openclaw-*: веб-прокси унаследовал бы scope бота" >&2
+                  exit 1
+                  ;;
+              esac
               if [ -n "${KEY:-}" ]; then
                 touch apps/web/.env.local
                 if grep -q '^API_KEY=' apps/web/.env.local; then

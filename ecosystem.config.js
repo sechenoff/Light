@@ -22,7 +22,23 @@ function readApiKeyFromApi() {
     const content = fs.readFileSync(envFile, "utf8");
     const match = content.match(/^API_KEYS=(.+)$/m);
     if (match) {
-      return match[1].split(",")[0].replace(/^['"]|['"]$/g, "").trim();
+      const key = match[1].split(",")[0].replace(/^['"]|['"]$/g, "").trim();
+      // Бот-ключ у веб-прокси = эскалация: botScopeGuard выставит req.botAccess,
+      // а rolesGuard пропускает botAccess БЕЗ проверки роли, то есть весь
+      // whitelist (включая запись POST /api/users/upsert) стал бы доступен
+      // любому, кто дотянулся до прокси. Отдаём пустой ключ: веб сломается
+      // громко (401 от apiKeyAuth), а не заработает с чужими правами.
+      // deploy.sh и deploy-rsync.yml ловят это раньше и валят деплой; здесь —
+      // последний рубеж, потому что pm2 reload читает .env в обход них.
+      if (key.startsWith("openclaw-")) {
+        // eslint-disable-next-line no-console
+        console.error(
+          "[ecosystem] Первый ключ в API_KEYS — openclaw-*. Веб-прокси остаётся без ключа: " +
+            "бот-ключ дал бы ему scope бота в обход проверки ролей. Поставьте обычный ключ первым.",
+        );
+        return "";
+      }
+      return key;
     }
   } catch (_e) {
     // .env может не существовать на dev-машинах — это OK, web просто не будет авторизован
