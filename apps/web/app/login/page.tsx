@@ -15,7 +15,7 @@ function safeRedirect(from: string | null): string {
 }
 
 type LoginResponse = {
-  user: { userId: string; username: string; role: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" };
+  user: { userId: string; username: string; role: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" | "COLLECTOR" };
 };
 
 export default function LoginPage() {

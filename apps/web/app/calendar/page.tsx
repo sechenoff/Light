@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState, useMemo, useCallback, Suspense } from "r
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../src/lib/api";
+import { useRequireRole } from "../../src/hooks/useRequireRole";
 import { CalendarTooltip } from "../../src/components/CalendarTooltip";
 import { buildOccupancyMap, type CalendarEvent } from "../../src/lib/calendarUtils";
 import { toMoscowDateString } from "../../src/lib/moscowDate";
@@ -119,6 +120,11 @@ function SkeletonMobile() {
 // ──────────────────────────────────────────────────────────────────
 
 function CalendarPageInner() {
+  // Гард роли на самой странице, а не только в меню: по прямому URL раньше
+  // открывался пустой каркас с ошибкой «Доступ запрещён по роли» — данные API
+  // и так не отдаёт, но выглядело это как поломка. Зеркало menuByRole.
+  const { authorized: roleOk, loading: roleLoading } = useRequireRole(["SUPER_ADMIN", "WAREHOUSE"]);
+
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -340,6 +346,8 @@ function CalendarPageInner() {
 
   // ── Пустое состояние ──
   const isEmpty = !loading && !error && filteredResources.length === 0;
+
+  if (roleLoading || !roleOk) return null;
 
   return (
     <div className="p-4 lg:p-6 space-y-4">

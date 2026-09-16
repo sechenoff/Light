@@ -13,19 +13,21 @@ import {
   type MatrixRow,
 } from "../../../src/lib/rolesMatrix";
 
-const ROLE_KEYS = ["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"] as const;
+const ROLE_KEYS = ["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN", "COLLECTOR"] as const;
 
 /** Цвет-акцент сверху колонки роли — индиго/тил/эмбер по токенам. */
 const ROLE_STRIPE: Record<(typeof ROLE_KEYS)[number], string> = {
   SUPER_ADMIN: "bg-indigo",
   WAREHOUSE:   "bg-teal",
   TECHNICIAN:  "bg-amber",
+  COLLECTOR: "bg-rose",
 };
 
 const ROLE_TAG_CLS: Record<(typeof ROLE_KEYS)[number], string> = {
   SUPER_ADMIN: "bg-indigo-soft text-indigo border-indigo-border",
   WAREHOUSE:   "bg-teal-soft text-teal border-teal-border",
   TECHNICIAN:  "bg-amber-soft text-amber border-amber-border",
+  COLLECTOR: "bg-rose-soft text-rose border-rose-border",
 };
 
 /** Почти-прозрачная заливка ячейки по роли (вместо `color-mix` из мокапа). */
@@ -33,6 +35,7 @@ const ROLE_CELL_BG: Record<(typeof ROLE_KEYS)[number], string> = {
   SUPER_ADMIN: "bg-indigo-soft/40",
   WAREHOUSE:   "bg-teal-soft/40",
   TECHNICIAN:  "bg-amber-soft/40",
+  COLLECTOR: "bg-rose-soft/20",
 };
 
 /**
@@ -92,7 +95,7 @@ export default function AdminRolesPage() {
 
       {/* Шапка трёх ролей */}
       <div className="bg-surface border border-border rounded-lg shadow-xs overflow-x-auto">
-        <div className="grid grid-cols-[260px_1fr_1fr_1fr] min-w-[680px]">
+        <div className="grid grid-cols-[240px_1fr_1fr_1fr_1fr] min-w-[860px]">
           <div className="p-5 bg-slate-soft border-r border-border flex items-end eyebrow">
             Раздел / Роль
           </div>
@@ -129,7 +132,7 @@ export default function AdminRolesPage() {
 
       {/* Матрица */}
       <div className="bg-surface border border-border rounded-lg shadow-xs overflow-x-auto">
-        <table className="w-full min-w-[680px] text-sm">
+        <table className="w-full min-w-[860px] text-sm">
           <colgroup>
             <col style={{ width: "260px" }} />
             <col />
@@ -218,8 +221,10 @@ function MatrixTableRow({ row }: { row: MatrixRow }) {
         {row.hint && <div className="text-[11.5px] text-ink-3 mt-0.5">{row.hint}</div>}
       </td>
       {ROLE_KEYS.map((key) => {
-        const roleKey = key === "SUPER_ADMIN" ? "super" : key === "WAREHOUSE" ? "warehouse" : "technician";
-        const cell = row[roleKey];
+        const roleKey =
+          key === "SUPER_ADMIN" ? "super" : key === "WAREHOUSE" ? "warehouse" : key === "TECHNICIAN" ? "technician" : "collector";
+        // У взыскания ячейка задаётся только там, где доступ есть; остальное — «нет».
+        const cell = row[roleKey] ?? { level: "none" as const, label: "нет" };
         return (
           <td key={key} className={`px-5 py-3 text-center align-middle border-l border-border ${ROLE_CELL_BG[key]}`}>
             <StatusPill variant={cell.level} label={cell.label} />

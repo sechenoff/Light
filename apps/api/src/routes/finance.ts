@@ -19,6 +19,9 @@ import {
   computeClientDebtReport,
 } from "../services/finance";
 import { renderClientDebtReportPdf } from "../services/documentExport/clientDebtReport/renderClientDebtReportPdf";
+import { buildDebtReport, debtReportFileBase, describeSkipped } from "../services/debtReport/buildDebtReport";
+import { renderDebtReportPdf } from "../services/debtReport/renderDebtReportPdf";
+import { renderDebtReportXlsx } from "../services/debtReport/renderDebtReportXlsx";
 import { getSettings } from "../services/organizationService";
 import { GeminiVisionProvider } from "../services/gemini";
 import { importLegacyBookings } from "../services/legacyBookingImport";
@@ -39,6 +42,13 @@ const geminiProvider = new GeminiVisionProvider();
 const router = express.Router();
 
 const superAdminOnly = rolesGuard(["SUPER_ADMIN"]);
+/**
+ * Реестр долгов и отчёт по нему — единственное, что видит роль COLLECTOR
+ * (сотрудник, который взыскивает). Остальные финансовые ручки этого роутера
+ * остаются за руководителем: выручка, расходы, платежи и прогноз к взысканию
+ * отношения не имеют.
+ */
+const debtsAccess = rolesGuard(["SUPER_ADMIN", "COLLECTOR"]);
 
 // ── B1: GET /api/finance/forecast ────────────────────────────────────────────
 
@@ -88,7 +98,7 @@ const debtsQuerySchema = z.object({
   order: z.enum(["asc", "desc"]).optional(),
 });
 
-router.get("/finance/debts", superAdminOnly, async (req, res, next) => {
+router.get("/finance/debts", debtsAccess, async (req, res, next) => {
   try {
     await paymentStatusSyncForAllBookings();
     const query = debtsQuerySchema.parse(req.query);
@@ -117,7 +127,7 @@ router.get("/finance/debts", superAdminOnly, async (req, res, next) => {
  * Те же фильтры что и у /finance/debts: ?overdueOnly, ?minAmount.
  * Колонки: Клиент, Контакт, Сумма долга, Дата ожидаемой оплаты, Просрочка (дней), Бронь №
  */
-router.get("/finance/debts.xlsx", superAdminOnly, async (req, res, next) => {
+router.get("/finance/debts.xlsx", debtsAccess, async (req, res, next) => {
   try {
     await paymentStatusSyncForAllBookings();
     const query = debtsQuerySchema.parse(req.query);
@@ -164,11 +174,96 @@ router.get("/finance/debts.xlsx", superAdminOnly, async (req, res, next) => {
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
+    // Кириллица в ASCII-части `filename=` — это ERR_INVALID_CHAR в Node:
+    // роут молча отдавал 500, и кнопка «Весь реестр в XLSX» не работала.
+    // Общий хелпер транслитерирует ASCII-вариант и оставляет UTF-8 рядом.
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="Дебиторка_${dateStr}.xlsx"; filename*=UTF-8''${encodeURIComponent(`Дебиторка_${dateStr}.xlsx`)}`,
+      buildAttachmentContentDisposition(`Дебиторка_${dateStr}.xlsx`, "debts.xlsx"),
     );
     res.end(nodeBuf);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/finance/debts/report.{pdf,xlsx}
+ *
+ * Отчёт по ОТМЕЧЕННЫМ в реестре долгам — рабочий документ обзвона.
+ * POST, а не GET: список броней бывает на десятки позиций и в query-строку не
+ * помещается, плюс это генерация документа, а не адресуемый ресурс.
+ *
+ * Объявлены ДО `/finance/debts/:clientId/...`: там два сегмента после «debts»,
+ * здесь один — пересечения нет, но соседство с остальными debts-маршрутами
+ * держит их в одном месте (та же причина, что у `/finance/debts/remindable`).
+ */
+const debtReportBodySchema = z.object({
+  bookingIds: z.array(z.string().min(1)).min(1, "Не выбрано ни одной брони").max(500),
+  title: z.string().trim().max(120).optional().nullable(),
+  note: z.string().trim().max(1000).optional().nullable(),
+  includeContacts: z.boolean().optional(),
+});
+
+async function buildReportFromBody(body: unknown) {
+  const parsed = debtReportBodySchema.parse(body);
+  // Свежие суммы: долг мог быть погашен, пока руководитель отмечал строки.
+  await paymentStatusSyncForAllBookings();
+  return buildDebtReport({
+    bookingIds: parsed.bookingIds,
+    title: parsed.title,
+    note: parsed.note,
+    includeContacts: parsed.includeContacts ?? false,
+  });
+}
+
+/**
+ * Отсеянное нельзя проглатывать молча: панель показала N долгов, а в документе
+ * их меньше. Тело ответа — сам файл, поэтому сообщение уходит заголовком, а
+ * фронт всплывает им рядом с документом. Заголовок — только ASCII, отсюда
+ * percent-encoding.
+ */
+function setSkippedNotice(res: express.Response, report: { skipped: Parameters<typeof describeSkipped>[0] }): void {
+  const notice = describeSkipped(report.skipped);
+  if (notice) res.setHeader("X-Export-Notice", encodeURIComponent(notice));
+}
+
+router.post("/finance/debts/report.pdf", debtsAccess, async (req, res, next) => {
+  try {
+    const report = await buildReportFromBody(req.body);
+    setSkippedNotice(res, report);
+    const pdf = await renderDebtReportPdf(report);
+    res.setHeader("Content-Type", "application/pdf");
+    // inline — фронт печатает документ из скрытого iframe, не скачивая его.
+    res.setHeader(
+      "Content-Disposition",
+      buildAttachmentContentDisposition(`${debtReportFileBase(report)}.pdf`, "debt-report.pdf").replace(
+        "attachment;",
+        "inline;",
+      ),
+    );
+    res.setHeader("Content-Length", String(pdf.length));
+    res.end(pdf);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/finance/debts/report.xlsx", debtsAccess, async (req, res, next) => {
+  try {
+    const report = await buildReportFromBody(req.body);
+    setSkippedNotice(res, report);
+    const buf = await renderDebtReportXlsx(report);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      buildAttachmentContentDisposition(`${debtReportFileBase(report)}.xlsx`, "debt-report.xlsx"),
+    );
+    res.setHeader("Content-Length", String(buf.length));
+    res.end(buf);
   } catch (err) {
     next(err);
   }

@@ -18,11 +18,18 @@ const TABS = [
 // (rolesGuard на API + useRequireRole на страницах). Раньше таб-нав показывал все
 // 5 вкладок, и WAREHOUSE кликал в 403/редирект. Фильтруем по роли.
 const WAREHOUSE_ALLOWED = new Set(["/finance/invoices"]);
+// Роль взыскания видит ровно один раздел финансов — свой реестр долгов.
+const COLLECTOR_ALLOWED = new Set(["/finance/debts"]);
 
 export function FinanceTabNav({ debtCount }: { debtCount?: number }) {
   const pathname = usePathname();
   const { user } = useCurrentUser();
-  const tabs = user?.role === "WAREHOUSE" ? TABS.filter((t) => WAREHOUSE_ALLOWED.has(t.href)) : TABS;
+  const tabs =
+    user?.role === "WAREHOUSE"
+      ? TABS.filter((t) => WAREHOUSE_ALLOWED.has(t.href))
+      : user?.role === "COLLECTOR"
+        ? TABS.filter((t) => COLLECTOR_ALLOWED.has(t.href))
+        : TABS;
 
   return (
     <div className="flex border-b border-border bg-surface px-6">

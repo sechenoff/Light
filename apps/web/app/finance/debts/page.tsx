@@ -16,9 +16,10 @@ import { AIReminderModal } from "../../../src/components/finance/AIReminderModal
 import { BookingPaymentsModal } from "../../../src/components/finance/BookingPaymentsModal";
 import { ContactChips } from "../../../src/components/finance/ContactChips";
 import { WriteOffDebtModal } from "../../../src/components/finance/WriteOffDebtModal";
+import { DebtReportModal, type DebtReportSelection } from "../../../src/components/finance/DebtReportModal";
 import type { UserRole } from "../../../src/lib/auth";
 
-const ALLOWED: UserRole[] = ["SUPER_ADMIN"];
+const ALLOWED: UserRole[] = ["SUPER_ADMIN", "COLLECTOR"];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -303,6 +304,12 @@ function DebtsPageInner() {
     { bookingId: string; projectName: string; clientName: string; outstanding: string } | null
   >(null);
 
+  // Отчёт для взыскания: отмеченные строки НЕ сбрасываются при смене фильтра —
+  // в этом весь смысл. Руководитель проходит по клиентам (фильтр за фильтром)
+  // и накапливает один документ, а не начинает выбор заново на каждом шаге.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [reportOpen, setReportOpen] = useState(false);
+
   // D7: track in-flight request to abort previous on new call
   const loadAbortRef = useRef<AbortController | null>(null);
 
@@ -332,6 +339,21 @@ function DebtsPageInner() {
     if (!authorized) return;
     return loadDebts();
   }, [authorized, loadDebts]);
+
+  // Погашенный долг уходит из выдачи — держать его id в выборе значит врать
+  // счётчиком «выбрано N» и отправлять на сервер заведомо лишнее.
+  useEffect(() => {
+    if (!data) return;
+    const alive = new Set(data.debts.flatMap((c) => c.projects.map((p) => p.bookingId)));
+    setSelected((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => alive.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [data]);
+
+  // Роль взыскания: читает реестр и печатает отчёт, но ничего не меняет —
+  // ни платежей, ни броней, ни списаний.
+  const isCollector = currentUser?.user?.role === "COLLECTOR";
 
   // ── Flatten data ───────────────────────────────────────────────────────────────
 
@@ -382,6 +404,51 @@ function DebtsPageInner() {
 
   // Sort rows
   const sortedRows = sortRows(filtered, sort, order);
+
+  // ── Выбор для отчёта ───────────────────────────────────────────────────────────
+
+  const selectedRows: DebtReportSelection[] = allRows
+    .filter((r) => selected.has(r.bookingId))
+    .map((r) => ({
+      bookingId: r.bookingId,
+      clientId: r.clientId,
+      clientName: r.clientName,
+      projectName: r.projectName,
+      amountOutstanding: r.amountOutstanding,
+      daysOverdue: r.daysOverdue,
+    }));
+  const selectedTotal = selectedRows.reduce((sum, r) => sum + Number(r.amountOutstanding), 0);
+  const selectedClients = new Set(selectedRows.map((r) => r.clientId)).size;
+  // Сколько из выбранного сейчас не видно — фильтр скрыл, но в отчёт это войдёт.
+  const hiddenSelected = selectedRows.length - sortedRows.filter((r) => selected.has(r.bookingId)).length;
+  const allVisibleSelected =
+    sortedRows.length > 0 && sortedRows.every((r) => selected.has(r.bookingId));
+
+  function toggleRow(bookingId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(bookingId)) next.delete(bookingId);
+      else next.add(bookingId);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) sortedRows.forEach((r) => next.delete(r.bookingId));
+      else sortedRows.forEach((r) => next.add(r.bookingId));
+      return next;
+    });
+  }
+
+  function removeClientFromSelection(clientId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      allRows.filter((r) => r.clientId === clientId).forEach((r) => next.delete(r.bookingId));
+      return next;
+    });
+  }
 
   // ── URL helpers ────────────────────────────────────────────────────────────────
 
@@ -435,7 +502,9 @@ function DebtsPageInner() {
   const activeReminderClient = reminderClientDebt;
 
   return (
-    <div className="pb-10 bg-surface-subtle min-h-screen">
+    // Нижний отступ растёт под липкую панель выбора — иначе она накрывает
+    // последние строки реестра ровно тогда, когда по ним и работают.
+    <div className={`bg-surface-subtle min-h-screen ${selectedRows.length > 0 ? "pb-28" : "pb-10"}`}>
       <FinanceTabNav debtCount={totalClients} />
 
       <div className="p-4 lg:p-6">
@@ -467,9 +536,30 @@ function DebtsPageInner() {
                 const q = statusFilter === "overdue" ? "?overdueOnly=true" : "";
                 window.location.href = `/api/finance/debts.xlsx${q}`;
               }}
+              title="Выгрузить весь реестр без выбора строк"
               className="px-3.5 py-2 text-[12px] font-medium border border-border bg-surface rounded-lg hover:bg-surface-subtle"
             >
-              Экспорт XLSX
+              Весь реестр в XLSX
+            </button>
+            {/* Отчёт для взыскания: отметьте нужные строки — кнопка соберёт из
+                них печатный документ. Без выбора кнопка объясняет, что делать,
+                вместо того чтобы молча ничего не делать. */}
+            <button
+              onClick={() => {
+                if (selectedRows.length === 0) {
+                  toast.info("Отметьте галочками долги, которые войдут в отчёт");
+                  return;
+                }
+                setReportOpen(true);
+              }}
+              className={`px-3.5 py-2 text-[12px] font-semibold rounded-lg ${
+                selectedRows.length > 0
+                  ? "bg-accent-bright text-surface hover:opacity-90"
+                  : "border border-border bg-surface text-ink-2 hover:bg-surface-subtle"
+              }`}
+            >
+              Сформировать отчёт
+              {selectedRows.length > 0 && <span className="mono-num"> · {selectedRows.length}</span>}
             </button>
           </div>
         </div>
@@ -661,6 +751,16 @@ function DebtsPageInner() {
               <table className="w-full border-collapse bg-surface border border-border rounded-lg overflow-hidden text-[13.5px]">
                 <thead className="bg-surface-subtle text-[11px] uppercase tracking-wide text-ink-3">
                   <tr>
+                    <th className="w-[38px] px-3 py-2.5 border-b border-border">
+                      <input
+                        type="checkbox"
+                        aria-label="Отметить все долги в текущем фильтре"
+                        title="Отметить все долги в текущем фильтре"
+                        className="rounded border-border align-middle"
+                        checked={allVisibleSelected}
+                        onChange={toggleAllVisible}
+                      />
+                    </th>
                     <th
                       className={`text-left px-3 py-2.5 border-b border-border cursor-pointer select-none w-[92px] ${sort === "startDate" ? "text-accent-bright" : ""}`}
                       onClick={() => handleSort("startDate")}
@@ -703,8 +803,21 @@ function DebtsPageInner() {
                     return (
                       <tr
                         key={row.bookingId}
-                        className="border-t border-border hover:bg-surface-subtle transition-colors"
+                        className={`border-t border-border transition-colors ${
+                          selected.has(row.bookingId) ? "bg-accent-soft/40" : "hover:bg-surface-subtle"
+                        }`}
                       >
+                        {/* Выбор для отчёта */}
+                        <td className="px-3 py-2.5">
+                          <input
+                            type="checkbox"
+                            aria-label={`Добавить в отчёт: ${row.clientName} — ${row.projectName}`}
+                            className="rounded border-border align-middle"
+                            checked={selected.has(row.bookingId)}
+                            onChange={() => toggleRow(row.bookingId)}
+                          />
+                        </td>
+
                         {/* Date */}
                         <td className={`px-3 py-2.5 font-mono font-semibold leading-tight ${dateColor}`}>
                           {dateInfo ? (
@@ -754,6 +867,9 @@ function DebtsPageInner() {
 
                         {/* Actions — Variant 2: CTA + icons */}
                         <td className="px-3 py-2.5">
+                          {isCollector ? (
+                            <span className="text-[11.5px] text-ink-3">только просмотр</span>
+                          ) : (
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => openPayment(row)}
@@ -775,6 +891,7 @@ function DebtsPageInner() {
                               onWriteOff={() => setWriteOffRow({ bookingId: row.bookingId, projectName: row.projectName, clientName: row.clientName, outstanding: row.amountOutstanding })}
                             />
                           </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -790,11 +907,25 @@ function DebtsPageInner() {
                 const dateColor = startDateColor(row.startDate, row.daysOverdue);
                 const pill = statusPill(row.paymentStatus, row.daysOverdue, row.expectedPaymentDate);
                 return (
-                  <div key={row.bookingId} className="bg-surface border border-border rounded-lg p-3.5">
+                  <div
+                    key={row.bookingId}
+                    className={`rounded-lg border p-3.5 ${
+                      selected.has(row.bookingId) ? "border-accent-border bg-accent-soft/40" : "border-border bg-surface"
+                    }`}
+                  >
                     <div className="flex items-center justify-between mb-2">
-                      <div className={`font-mono font-semibold text-[14px] ${dateColor}`}>
-                        {dateInfo ? `${dateInfo.dayMon} ${dateInfo.year}` : "—"}
-                      </div>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          aria-label={`Добавить в отчёт: ${row.clientName} — ${row.projectName}`}
+                          className="rounded border-border"
+                          checked={selected.has(row.bookingId)}
+                          onChange={() => toggleRow(row.bookingId)}
+                        />
+                        <span className={`font-mono font-semibold text-[14px] ${dateColor}`}>
+                          {dateInfo ? `${dateInfo.dayMon} ${dateInfo.year}` : "—"}
+                        </span>
+                      </label>
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${pill.cls}`}>
                         {pill.label}
                       </span>
@@ -821,6 +952,8 @@ function DebtsPageInner() {
                       )}
                     </div>
                     {/* D4: 3-button layout — row 1: full-width CTA, row 2: ✏️ + ⋯ at ≥44px */}
+                    {!isCollector && (
+                      <>
                     <div className="grid grid-cols-2 gap-1.5 mb-1.5">
                       <button
                         onClick={() => openPayment(row)}
@@ -843,6 +976,8 @@ function DebtsPageInner() {
                               onWriteOff={() => setWriteOffRow({ bookingId: row.bookingId, projectName: row.projectName, clientName: row.clientName, outstanding: row.amountOutstanding })}
                       />
                     </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -851,6 +986,63 @@ function DebtsPageInner() {
         )}
 
       </div>
+
+      {/* Панель выбора для отчёта — появляется, как только что-то отмечено.
+          z-30, не z-40: на z-40 живёт скрим мобильного меню (AppShell). */}
+      {selectedRows.length > 0 && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-surface shadow-lg lg:left-56"
+          role="region"
+          aria-label="Выбранные долги для отчёта"
+        >
+          {/* Правый отступ на десктопе — под плавающую кнопку «Сообщить». */}
+          <div className="flex flex-col gap-2 py-3 pl-4 pr-4 lg:flex-row lg:flex-wrap lg:items-center lg:pl-6 lg:pr-40">
+            <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 pr-28 text-sm lg:pr-0">
+              <span className="font-semibold text-ink whitespace-nowrap">
+                Выбрано: <span className="mono-num">{selectedRows.length}</span>{" "}
+                <span className="font-normal text-ink-2">
+                  {pluralize(selectedRows.length, "долг", "долга", "долгов")}
+                </span>
+              </span>
+              <span className="text-ink-3">·</span>
+              <span className="text-ink-2">
+                {selectedClients} {pluralize(selectedClients, "клиент", "клиента", "клиентов")}
+              </span>
+              <span className="text-ink-3">·</span>
+              <span className="mono-num font-semibold text-ink">{formatRub(selectedTotal)}</span>
+              {hiddenSelected > 0 && (
+                <span className="text-[11.5px] text-ink-3">
+                  (из них {hiddenSelected} скрыто текущим фильтром — в отчёт войдут)
+                </span>
+              )}
+            </span>
+            <div className="flex gap-2 overflow-x-auto lg:ml-auto">
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                className="whitespace-nowrap rounded border border-border bg-surface px-3 py-2 text-[12.5px] text-ink-2 hover:bg-surface-subtle"
+              >
+                Снять выбор
+              </button>
+              <button
+                type="button"
+                onClick={() => setReportOpen(true)}
+                className="whitespace-nowrap rounded bg-accent-bright px-4 py-2 text-[12.5px] font-semibold text-surface hover:opacity-90"
+              >
+                Сформировать отчёт →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <DebtReportModal
+        open={reportOpen}
+        rows={selectedRows}
+        onClose={() => setReportOpen(false)}
+        onRemove={toggleRow}
+        onRemoveClient={removeClientFromSelection}
+      />
 
       {/* Modals */}
       <RecordPaymentModal

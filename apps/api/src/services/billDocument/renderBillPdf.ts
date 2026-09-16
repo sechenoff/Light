@@ -481,7 +481,10 @@ async function drawPaymentZone(
     leftH += doc.heightOfString(bill.notes, { width: leftW }) + 8;
   }
   const rightH = png ? qrSize + quiet * 2 + 22 : 0;
-  ensure(ctx, Math.max(leftH, rightH) + 8);
+  // Подпись резервируем ВМЕСТЕ с зоной оплаты: по отдельности у длинного счёта
+  // зона влезала в остаток страницы, а подпись — уже нет, и последний лист
+  // выходил пустым с одной строчкой «ИП ____ (Фамилия)».
+  ensure(ctx, Math.max(leftH, rightH) + 8 + SIGNATURE_H);
   const top = ctx.y;
 
   // Левая колонка
@@ -523,9 +526,12 @@ async function drawPaymentZone(
   ctx.y = Math.max(y, top + rightH) + 10;
 }
 
+/** Высота блока подписи — её же резервирует зона оплаты выше. */
+const SIGNATURE_H = 34;
+
 function drawSignature(ctx: Ctx, seller: SellerSnapshot): void {
   const { doc, fonts } = ctx;
-  ensure(ctx, 40);
+  ensure(ctx, SIGNATURE_H);
   const title = seller.signerTitle ?? "Индивидуальный предприниматель";
   doc.font(fonts.bold).fontSize(9.5).fillColor(C.ink);
   const titleW = Math.min(doc.widthOfString(title), CONTENT_W * 0.45);
@@ -567,7 +573,12 @@ export async function renderBillPdf(bill: BillWithLines): Promise<Buffer> {
 
   const doc = new PDFDocument({
     size: "A4",
-    margins: { top: MARGIN.top, right: MARGIN.right, bottom: MARGIN.bottom, left: MARGIN.left },
+    // Поля НУЛЕВЫЕ, отступы держим сами (MARGIN): при ненулевых полях pdfkit
+    // добавляет страницу сам, как только текст доходит до нижнего поля, —
+    // параллельно с нашей ручной пагинацией. Получались полупустые листы:
+    // 36 строк разъезжались на 9 страниц вместо 4. Тот же приём, что в
+    // смете (renderPdf.ts) — там это уже задокументировано.
+    margins: { top: 0, right: 0, bottom: 0, left: 0 },
     bufferPages: true,
     autoFirstPage: true,
     info: {

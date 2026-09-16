@@ -52,12 +52,12 @@ const createSchema = z.object({
     .regex(/^[a-zA-Z0-9_.-]+$/, "Логин: только латиница, цифры, дефис, подчёркивание, точка")
     .transform(normalizeUsername),
   password: z.string().min(3, "Пароль не короче 3 символов").max(200),
-  role: z.enum(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]).default("WAREHOUSE"),
+  role: z.enum(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN", "COLLECTOR"]).default("WAREHOUSE"),
 });
 
 const updateSchema = z.object({
   password: z.string().min(3).max(200).optional(),
-  role: z.enum(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]).optional(),
+  role: z.enum(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN", "COLLECTOR"]).optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -155,7 +155,7 @@ router.patch("/:id", async (req, res, next) => {
 
     const before = diffFields({ username: existing.username, role: existing.role, isActive: existing.isActive } as Record<string, unknown>);
 
-    const data: { passwordHash?: string; role?: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN"; isActive?: boolean } = {};
+    const data: { passwordHash?: string; role?: "SUPER_ADMIN" | "WAREHOUSE" | "TECHNICIAN" | "COLLECTOR"; isActive?: boolean } = {};
     if (body.password) data.passwordHash = await hashPassword(body.password);
     if (body.role) data.role = body.role;
     if (body.isActive !== undefined) data.isActive = body.isActive;

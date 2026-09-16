@@ -39,6 +39,7 @@ import { useBulkBookingActions } from "../../src/components/bookings/useBulkBook
 import { formatRub, formatWaitingTime, pluralize } from "../../src/lib/format";
 import { toast } from "../../src/components/ToastProvider";
 import { useCurrentUser } from "../../src/hooks/useCurrentUser";
+import { useRequireRole } from "../../src/hooks/useRequireRole";
 
 type BookingRow = {
   id: string;
@@ -68,6 +69,12 @@ function bookingRowTitle(r: BookingRow): string {
 }
 
 function BookingHistoryPageInner() {
+  // Гард роли на самой странице, а не только в меню: по прямому URL раньше
+  // открывался пустой каркас с красной ошибкой «Доступ запрещён по роли» —
+  // данные API и так не отдаёт, но выглядело это как поломка системы.
+  // Список ролей — зеркало menuByRole.
+  const { authorized: roleOk, loading: roleLoading } = useRequireRole(["SUPER_ADMIN", "WAREHOUSE"]);
+
   const { user } = useCurrentUser();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const searchParams = useSearchParams();
@@ -603,6 +610,8 @@ function BookingHistoryPageInner() {
   }
 
   const SKELETON_KEYS = ["s1", "s2", "s3", "s4", "s5", "s6"];
+
+  if (roleLoading || !roleOk) return null;
 
   return (
     // Нижний отступ при активном выборе — чтобы липкая панель групповых
