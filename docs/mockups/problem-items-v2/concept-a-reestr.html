@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Потеряшки · концепт A «Реестр расследований» · Light Rental</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!--
+  ============================================================================
+  КОНЦЕПТ A · ПОТЕРЯШКИ КАК РЕЕСТР РАССЛЕДОВАНИЙ (десктоп 1440 + врезки)
+
+  ОРГАНИЗУЮЩАЯ ИДЕЯ: потеряшка — это не запись «чего-то нет», а открытое
+  дело: что пропало, где видели в последний раз, кто ищет, сколько дней
+  висит и чем закончится (нашлось / списали / выставили компенсацию).
+
+  Что меняется относительно текущего экрана:
+   + пропажу можно завести ВРУЧНУЮ — из реестра (руководитель) и из киоска
+     (кладовщик, рядом с «Поломкой»), а не только на приёмке брони;
+   + новая причина «Не нашли на складе» и источник записи
+     (приёмка / сверка / вручную);
+   + «след» — последние брони, где позиция выдавалась: первое, что нужно
+     при поиске, и оно уже есть в базе;
+   + ответственный («ищет: Иван»), возраст в днях и «📣 объявлено в поиск»
+     (карточка на «Моём дне» у всех ролей + задача ответственному);
+   + порядок — по срочности, а не по дате заведения (как в мастерской);
+   + закрытие делом: Найдено / Не найдено / Списать / Компенсация в смету.
+
+  Соседний файл: concept-b-sverka.html (инвентаризация как источник).
+  Данные вымышленные, названия позиций — из каталога. Сегодня — четверг,
+  17 сентября 2026.
+  ============================================================================
+-->
+
+<style>
+/* ─── ТОКЕНЫ. Зеркало tailwind.config.js. Сырых hex вне этого блока нет. ─── */
+:root{
+  --ink:#09090b; --ink-2:#52525b; --ink-3:#a1a1aa;
+  --surface:#ffffff; --surface-muted:#fafafa; --surface-subtle:#f4f4f5;
+  --border:#e4e4e7; --border-strong:#d4d4d8;
+  --accent:#1e3a8a; --accent-bright:#1d4ed8; --accent-soft:#eff6ff; --accent-border:#bfdbfe;
+  --accent-chrome:#1e3a8a;
+  --teal:#0f766e;    --teal-soft:#ccfbf1;    --teal-border:#99f6e4;
+  --amber:#a16207;   --amber-soft:#fef3c7;   --amber-border:#fde68a;
+  --rose:#9f1239;    --rose-soft:#ffe4e6;    --rose-border:#fecdd3;
+  --indigo:#4338ca;  --indigo-soft:#e0e7ff;  --indigo-border:#c7d2fe;
+  --slate:#334155;   --slate-soft:#f1f5f9;   --slate-border:#cbd5e1;
+  --emerald:#047857; --emerald-soft:#d1fae5; --emerald-border:#a7f3d0;
+  --ok:#15803d;      --ok-soft:#dcfce7;      --warn:#a16207; --warn-soft:#fef9c3;
+  --scrim:#09090b;
+  --r:4px; --r-lg:6px; --shadow-xs:0 1px 0 rgba(9,9,11,.03);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--surface-subtle);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;font-size:13.5px;line-height:1.6}
+h1,h2,h3,h4,p,ul,ol{margin:0}
+a{color:inherit;text-decoration:none}
+button,input,select,textarea{font-family:inherit}
+
+/* Утилиты канона */
+.eyebrow{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:10px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);line-height:1.4}
+.m{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;word-spacing:-.16em}
+.icon{width:13px;height:13px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.5;
+  stroke-linecap:round;stroke-linejoin:round}
+.muted{color:var(--ink-3)} .dim{color:var(--ink-2)}
+.pill{display:inline-flex;align-items:center;gap:4px;border:1px solid;border-radius:var(--r);
+  padding:1px 7px;font-size:11px;font-weight:600;white-space:nowrap;line-height:1.55}
+.pill-ok{background:var(--ok-soft);color:var(--ok);border-color:var(--emerald-border)}
+.pill-warn{background:var(--warn-soft);color:var(--warn);border-color:var(--amber-border)}
+.pill-info{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-border)}
+.pill-alert{background:var(--rose-soft);color:var(--rose);border-color:var(--rose-border)}
+.pill-view{background:var(--slate-soft);color:var(--slate);border-color:var(--slate-border)}
+.pill-none{background:var(--surface);color:var(--ink-3);border-color:var(--border)}
+.pill-teal{background:var(--teal-soft);color:var(--teal);border-color:var(--teal-border)}
+.pill-indigo{background:var(--indigo-soft);color:var(--indigo);border-color:var(--indigo-border)}
+.link{color:var(--accent-bright);font-weight:600;font-size:11.5px;white-space:nowrap}
+.link:hover{color:var(--accent);text-decoration:underline}
+.mini{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);
+  border-radius:var(--r);background:var(--surface);color:var(--ink-2);font-size:11px;
+  font-weight:600;padding:2px 8px;line-height:1.55;cursor:pointer;white-space:nowrap;
+  transition:border-color .12s,color .12s,background .12s}
+.mini:hover{border-color:var(--accent-border);background:var(--accent-soft);color:var(--accent-bright)}
+.mini-rose:hover{border-color:var(--rose-border);background:var(--rose-soft);color:var(--rose)}
+.mini-ok:hover{border-color:var(--emerald-border);background:var(--emerald-soft);color:var(--emerald)}
+.btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--accent-bright);
+  border-radius:var(--r);background:var(--accent-bright);color:var(--surface);font-size:12px;
+  font-weight:600;padding:4px 11px;line-height:1.6;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--accent);border-color:var(--accent)}
+.btn-ghost{background:var(--surface);color:var(--ink-2);border-color:var(--border)}
+.btn-ghost:hover{background:var(--surface-muted);color:var(--ink);border-color:var(--border-strong)}
+.src{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:9.5px;font-weight:600;
+  letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);border:1px dashed var(--border-strong);
+  border-radius:3px;padding:0 4px;line-height:1.7;white-space:nowrap}
+.role-tag{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:9.5px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);
+  border:1px solid var(--indigo-border);border-radius:3px;padding:0 4px;line-height:1.6;white-space:nowrap}
+
+/* ─── КАРКАС ─── */
+.page{max-width:1240px;margin:0 auto;padding:20px 20px 56px}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  padding-bottom:11px;border-bottom:1px solid var(--border)}
+.page-head h1{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:24px;font-weight:700;
+  line-height:1.15;letter-spacing:-.01em;margin-top:2px}
+.page-head .sub{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.page-head .acts{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* ─── 1. ГЛАВНЫЙ СИГНАЛ ─── */
+.siren{margin-top:14px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;
+  background:var(--rose-soft);border:1px solid var(--rose-border);border-left:3px solid var(--rose);
+  border-radius:var(--r-lg);overflow:hidden}
+.siren-n{padding:13px 16px 13px 15px;display:flex;align-items:center;gap:11px;border-right:1px solid var(--rose-border)}
+.siren-n .big{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:38px;
+  font-weight:600;line-height:1;color:var(--rose);letter-spacing:-.03em}
+.siren-n .cap{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:14.5px;font-weight:700;
+  color:var(--rose);line-height:1.18;max-width:150px}
+.siren-list{padding:9px 16px;display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:0}
+.siren-row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:12.5px}
+.siren-row .d{font-family:"IBM Plex Mono",monospace;font-weight:600;color:var(--rose);white-space:nowrap}
+.siren-row .p{font-weight:600}
+.siren-row .who{color:var(--ink-2)}
+.siren-act{padding:11px 16px;display:flex;flex-direction:column;justify-content:center;gap:6px;
+  border-left:1px solid var(--rose-border);background:rgba(255,255,255,.45)}
+.siren-act .link{color:var(--rose);text-decoration:underline}
+
+/* ─── 2. СВЕТОФОР + ДЕНЬГИ ─── */
+.strip{margin-top:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-xs);overflow:hidden}
+.strip-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto)}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.tile{padding:11px 15px;border-right:1px solid var(--border);min-width:0}
+.tile .v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:20px;
+  font-weight:600;line-height:1.2;margin-top:3px;letter-spacing:-.015em}
+.tile .v small{font-family:"IBM Plex Sans",sans-serif;font-size:12px;font-weight:500;color:var(--ink-2);letter-spacing:0}
+.tile .v.is-rose{color:var(--rose)} .tile .v.is-amber{color:var(--amber)}
+.tile .s{font-size:11.5px;color:var(--ink-3);line-height:1.45;margin-top:1px}
+.money{padding:10px 15px;background:var(--surface-muted);border-left:1px solid var(--border);
+  min-width:300px;display:flex;flex-direction:column;gap:7px}
+.money-head{display:flex;align-items:center;gap:7px}
+.money-row{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
+.money-cell .v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:16px;
+  font-weight:600;line-height:1.3;white-space:nowrap;word-spacing:-.16em;margin-top:1px}
+.money-cell .v.ok{color:var(--emerald)} .money-cell .v.pend{color:var(--amber)}
+.roleline{border-top:1px dashed var(--border-strong);background:var(--surface-muted);padding:7px 15px;
+  font-size:11.5px;color:var(--ink-2);display:flex;gap:14px;flex-wrap:wrap}
+.roleline b{color:var(--ink);font-weight:600}
+
+/* ─── 3. ПАНЕЛЬ РЕЕСТРА ─── */
+.toolbar{margin-top:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-bottom:9px;
+  border-bottom:1px solid var(--border)}
+.search-in{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:var(--r);
+  background:var(--surface);padding:3px 9px;min-width:260px;color:var(--ink-3);font-size:12px}
+.search-in span{color:var(--ink-3)}
+.toolbar .grp{display:inline-flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.toolbar .grp button{font-size:11px;font-weight:600;color:var(--ink-2);background:transparent;border:0;
+  border-right:1px solid var(--border);padding:3px 10px;cursor:pointer;line-height:1.6;white-space:nowrap}
+.toolbar .grp button:last-child{border-right:0}
+.toolbar .grp button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+.toolbar .grp button .n{font-family:"IBM Plex Mono",monospace;font-size:10.5px;opacity:.75;margin-left:3px}
+.toolbar .sp{margin-left:auto}
+.toolbar .lbl{font-size:11px;color:var(--ink-3)}
+
+.gh{display:flex;align-items:center;gap:9px;margin:16px 0 7px}
+.gh h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:14px;font-weight:700;line-height:1.2}
+.gh .n{font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:600;color:var(--ink-3)}
+.gh .rule{flex:1;height:1px;background:var(--border)}
+.gh .why{font-size:11.5px;color:var(--ink-3)}
+.gh.hot h2{color:var(--rose)} .gh.warm h2{color:var(--amber)}
+
+.list{display:flex;flex-direction:column;gap:7px}
+.r{display:grid;grid-template-columns:minmax(0,1fr) 236px 206px 128px;background:var(--surface);
+  border:1px solid var(--border);border-left:3px solid var(--border-strong);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-xs);transition:border-color .12s}
+.r:hover{border-color:var(--border-strong)}
+.r.hot,.r.hot:hover{border-left-color:var(--rose)}
+.r.warm,.r.warm:hover{border-left-color:var(--amber)}
+.r-main{padding:10px 14px;min-width:0}
+.r-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.r-name{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:16px;font-weight:700;line-height:1.2;letter-spacing:-.005em}
+.r-qty{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;color:var(--ink-2);
+  background:var(--surface-subtle);border:1px solid var(--border);border-radius:var(--r);padding:0 6px;line-height:1.7}
+.r-cat{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:10px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3)}
+.r-reason{font-size:12.5px;color:var(--ink-2);margin-top:2px;line-height:1.45}
+.r-reason b{color:var(--ink);font-weight:600}
+.r-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:7px;font-size:11.5px;color:var(--ink-2)}
+.r-meta .sep{color:var(--border-strong)}
+.r-meta .who{display:inline-flex;align-items:center;gap:4px;color:var(--ink);font-weight:600}
+.r-meta .who.none{color:var(--amber);font-weight:600}
+.r-meta .ann{display:inline-flex;align-items:center;gap:3px;color:var(--accent-bright);font-weight:600}
+
+.r-trail{padding:10px 14px;border-left:1px solid var(--border);min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.r-trail .t{font-size:12.5px;line-height:1.4}
+.r-trail .t b{font-weight:600}
+.r-trail .t2{font-size:11.5px;color:var(--ink-2);line-height:1.4}
+.r-trail .t3{font-size:11px;color:var(--ink-3);line-height:1.4}
+.r-trail .t3 .d{font-family:"IBM Plex Mono",monospace}
+.r-trail .none{font-size:12px;color:var(--ink-3)}
+
+.r-state{padding:10px 14px;border-left:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;gap:4px;min-width:0}
+.r-state .lead{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;line-height:1.4}
+.r-state .lead .icon{margin-top:2px}
+.r-state .date{font-family:"IBM Plex Mono",monospace;font-weight:600;white-space:nowrap}
+.r-state .sub{font-size:11px;color:var(--ink-3);line-height:1.4}
+.st-late{color:var(--rose)} .st-ok{color:var(--ink)} .st-none{color:var(--ink-3)}
+.r-act{padding:10px 12px;border-left:1px solid var(--border);display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:5px}
+.r-act .mini{justify-content:center}
+.r-act .more{text-align:center;font-size:11px;color:var(--ink-3)}
+
+/* Тихий хвост */
+details.tail{margin-top:14px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);
+  box-shadow:var(--shadow-xs);overflow:hidden}
+details.tail>summary{list-style:none;cursor:pointer;padding:9px 14px;display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--ink-2)}
+details.tail>summary::-webkit-details-marker{display:none}
+details.tail>summary b{color:var(--ink);font-weight:600}
+details.tail>summary .sp{margin-left:auto;color:var(--accent-bright);font-weight:600;font-size:11.5px}
+details.tail[open]>summary{border-bottom:1px solid var(--border);background:var(--surface-muted)}
+.tail-row{display:grid;grid-template-columns:minmax(0,1fr) 108px 84px 92px minmax(0,1.1fr);gap:10px;align-items:center;
+  padding:6px 14px;border-bottom:1px solid var(--border);font-size:12.5px}
+.tail-row:last-child{border-bottom:0}
+.tail-row:hover{background:var(--surface-muted)}
+.tail-row .n{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tail-row .n small{font-weight:400;color:var(--ink-3)}
+.tail-row .e{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.tail-row .w{font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.tail-row .note{font-size:11.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ─── 4. ВРЕЗКИ ─── */
+.peeks{margin-top:22px;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px;align-items:start}
+.peek{border:1px dashed var(--border-strong);border-radius:var(--r-lg);padding:11px;background:var(--surface-muted)}
+.peek-cap{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.peek-cap h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:14px;font-weight:700}
+.peek-cap .path{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);background:var(--surface);
+  border:1px solid var(--border);border-radius:3px;padding:0 5px}
+
+/* Модалка */
+.modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-lg);
+  box-shadow:0 8px 24px rgba(9,9,11,.10);overflow:hidden}
+.m-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.m-head h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700}
+.m-head .x{margin-left:auto;color:var(--ink-3)}
+.step{display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;padding:12px 15px;border-bottom:1px solid var(--border)}
+.step:last-of-type{border-bottom:0}
+.step-n{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;color:var(--ink-3);border:1px solid var(--border);
+  border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;line-height:1;margin-top:1px}
+.step.done .step-n{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.step-body{min-width:0}
+.step-t{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:6px}
+.step-t .opt{font-weight:400;color:var(--ink-3)}
+.fld{width:100%;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:6px 8px;
+  font-size:12.5px;color:var(--ink-3);font-family:inherit;line-height:1.5}
+.fld.ink{color:var(--ink)}
+.search{position:relative}
+.search .fld{padding-left:26px;color:var(--ink)}
+.search .icon{position:absolute;left:8px;top:9px;color:var(--ink-3)}
+.picked{display:flex;align-items:center;gap:9px;border:1px solid var(--accent-border);background:var(--accent-soft);
+  border-radius:var(--r);padding:7px 10px;font-size:12.5px;flex-wrap:wrap}
+.picked .n{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700}
+.picked .k{color:var(--ink-2);font-size:11.5px}
+.picked .sp{margin-left:auto}
+.stock{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px}
+.stock div{border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:5px 8px}
+.stock .v{font-family:"IBM Plex Mono",monospace;font-size:15px;font-weight:600;line-height:1.2}
+.stock .v.rose{color:var(--rose)}
+.stock .l{font-size:10.5px;color:var(--ink-3);line-height:1.3}
+.qty{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.qty button{border:0;background:var(--surface-subtle);width:28px;height:28px;font-size:15px;color:var(--ink-2);cursor:pointer}
+.qty span{font-family:"IBM Plex Mono",monospace;font-weight:600;padding:0 12px;font-size:14px}
+.hrow{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.hrow .lbl{font-size:11.5px;color:var(--ink-2)}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{font-size:11px;font-weight:600;color:var(--ink-2);background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:1px 9px;cursor:pointer;line-height:1.6;white-space:nowrap}
+.chip.sel{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+.chip.rose.sel{background:var(--rose);border-color:var(--rose)}
+.trail{margin-top:8px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);overflow:hidden}
+.trail .th{padding:5px 9px;font-size:11px;color:var(--ink-3);border-bottom:1px solid var(--border);background:var(--surface-muted)}
+.trail .tr{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 9px;
+  border-bottom:1px solid var(--border);font-size:12px}
+.trail .tr:last-child{border-bottom:0}
+.trail .tr.on{background:var(--accent-soft)}
+.trail .radio{width:13px;height:13px;border:1.5px solid var(--border-strong);border-radius:50%;display:inline-block}
+.trail .tr.on .radio{border-color:var(--accent-bright);background:radial-gradient(circle,var(--accent-bright) 45%,transparent 50%)}
+.trail .tr b{font-weight:600}
+.trail .tr .k{font-size:11px;color:var(--ink-3);white-space:nowrap}
+.trail .tr .d{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-2)}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.f-lbl{font-size:11.5px;font-weight:600;color:var(--ink-2);margin-bottom:4px;display:block}
+.sel{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:var(--r);
+  background:var(--surface);padding:6px 8px;font-size:12.5px;color:var(--ink)}
+.sel .icon{color:var(--ink-3)}
+.toggle{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--accent-border);background:var(--accent-soft);
+  border-radius:var(--r);padding:8px 10px}
+.sw{width:30px;height:17px;border-radius:9px;background:var(--accent-bright);position:relative;flex:0 0 auto;margin-top:2px}
+.sw::after{content:"";position:absolute;right:2px;top:2px;width:13px;height:13px;border-radius:50%;background:var(--surface)}
+.toggle b{font-weight:600;font-size:12.5px}
+.toggle p{font-size:11.5px;color:var(--ink-2);line-height:1.45;margin-top:1px}
+.m-foot{padding:10px 14px;border-top:1px solid var(--border);background:var(--surface-muted);display:flex;align-items:center;gap:9px 14px;flex-wrap:wrap}
+.m-foot .note{flex:1 1 260px}
+.m-foot .btns{display:flex;gap:8px;margin-left:auto}
+.m-foot .note{font-size:11.5px;color:var(--ink-2)}
+.m-foot .note b{color:var(--ink);font-weight:600}
+
+/* Телефон-киоск */
+.phone{width:100%;max-width:390px;margin:0 auto;background:var(--surface-subtle);border:1px solid var(--border-strong);
+  border-radius:18px;overflow:hidden;box-shadow:0 8px 40px rgba(9,9,11,.10)}
+.ph-hdr{background:var(--accent-chrome);color:#fff;padding:12px 14px 10px}
+.ph-hdr .e{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.75}
+.ph-hdr h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:18px;font-weight:700;line-height:1.2;margin-top:2px}
+.ph-hdr .who{font-size:11.5px;opacity:.85;margin-top:1px}
+.ph-body{padding:12px 12px 14px;display:flex;flex-direction:column;gap:9px}
+.ph-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:10px 11px}
+.ph-big{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ph-big a{display:flex;flex-direction:column;align-items:flex-start;gap:4px;border:1px solid var(--border);border-radius:var(--r-lg);
+  background:var(--surface);padding:12px 11px;min-height:74px}
+.ph-big a.on{border-color:var(--rose-border);background:var(--rose-soft)}
+.ph-big .t{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700;line-height:1.15}
+.ph-big .s{font-size:11px;color:var(--ink-2);line-height:1.35}
+.ph-big a.on .t{color:var(--rose)}
+.ph-lbl{font-size:11.5px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
+.ph-in{border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:9px 10px;font-size:13px;color:var(--ink-3);min-height:44px;display:flex;align-items:center;gap:7px}
+.ph-in.ink{color:var(--ink)}
+.ph-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px}
+.ph-row .n{font-weight:600;font-size:13px;line-height:1.3}
+.ph-row .k{font-size:11px;color:var(--ink-3)}
+.qty.lg button{width:40px;height:40px;font-size:18px}
+.qty.lg span{font-size:17px;padding:0 16px}
+.ph-chips{display:flex;gap:6px;flex-wrap:wrap}
+.ph-chips .chip{font-size:12.5px;padding:8px 12px;border-radius:var(--r);min-height:40px;display:inline-flex;align-items:center}
+.ph-switch{display:flex;align-items:center;gap:10px;border:1px solid var(--accent-border);background:var(--accent-soft);border-radius:var(--r);padding:9px 10px;min-height:48px}
+.ph-switch b{font-size:13px;font-weight:600}
+.ph-switch p{font-size:11px;color:var(--ink-2);line-height:1.35}
+.ph-primary{display:flex;align-items:center;justify-content:center;background:var(--accent-bright);color:#fff;border-radius:var(--r-lg);
+  padding:13px;font-size:15px;font-weight:700;min-height:50px}
+.ph-tabs{display:grid;grid-template-columns:repeat(6,1fr);border-top:1px solid var(--border);background:var(--surface)}
+.ph-tabs div{padding:8px 2px 9px;text-align:center;font-size:9.5px;font-weight:600;color:var(--ink-3);line-height:1.2}
+.ph-tabs div.on{color:var(--accent-bright)}
+.ph-tabs .ic{display:block;width:16px;height:16px;margin:0 auto 3px;border-radius:4px;background:currentColor;opacity:.45}
+
+/* Карточка дела */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-xs);overflow:hidden}
+.c-head{padding:11px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.c-head h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:17px;font-weight:700;line-height:1.2}
+.c-head .sub{font-size:11.5px;color:var(--ink-2);margin-top:2px}
+.c-head .sp{margin-left:auto}
+.c-zone{padding:10px 14px;border-bottom:1px solid var(--border)}
+.c-zone:last-child{border-bottom:0}
+.zh{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.zh .sp{margin-left:auto}
+.tl{display:flex;flex-direction:column}
+.tl-row{display:grid;grid-template-columns:78px 14px minmax(0,1fr);gap:8px;padding:4px 0;font-size:12px;align-items:start}
+.tl-row .d{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.tl-row .dot{width:8px;height:8px;border-radius:50%;background:var(--border-strong);margin-top:6px;justify-self:center}
+.tl-row .dot.acc{background:var(--accent-bright)} .tl-row .dot.rose{background:var(--rose)} .tl-row .dot.amb{background:var(--amber)}
+.tl-row .t b{font-weight:600}
+.tl-row .t small{display:block;color:var(--ink-3);font-size:11px}
+.composer{margin-top:8px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface-muted);padding:7px 8px;font-size:12px;color:var(--ink-3)}
+.close-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.close-opt{border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;background:var(--surface)}
+.close-opt b{display:block;font-weight:600;font-size:12.5px}
+.close-opt p{font-size:11px;color:var(--ink-2);line-height:1.4;margin-top:2px}
+.close-opt.rose{border-color:var(--rose-border);background:var(--rose-soft)} .close-opt.rose b{color:var(--rose)}
+.close-opt.ok{border-color:var(--emerald-border);background:var(--emerald-soft)} .close-opt.ok b{color:var(--emerald)}
+.close-opt.sa{border-style:dashed}
+.close-opt .tag{margin-left:6px}
+.warnbox{display:flex;gap:7px;align-items:flex-start;border:1px solid var(--amber-border);background:var(--amber-soft);color:var(--amber);
+  border-radius:var(--r);padding:7px 10px;font-size:12px;line-height:1.45;margin-top:8px}
+.warnbox .icon{margin-top:2px}
+
+/* Заметки */
+.annot{margin-top:26px;border:1px dashed var(--border-strong);border-radius:var(--r-lg);background:var(--surface);padding:13px 16px}
+.annot h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700;margin-bottom:2px}
+.annot ol{margin:8px 0 0;padding-left:19px;font-size:12.5px;color:var(--ink-2);line-height:1.7}
+.annot li{margin-bottom:3px}
+.annot b{color:var(--ink)}
+.annot code{font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:var(--surface-subtle);border:1px solid var(--border);border-radius:3px;padding:0 4px}
+
+/* ─── АДАПТИВ ─── */
+@media (max-width:1120px){
+  .strip-top{grid-template-columns:minmax(0,1fr)}
+  .money{border-left:0;border-top:1px solid var(--border);min-width:0}
+  .peeks{grid-template-columns:minmax(0,1fr)}
+  .r{grid-template-columns:minmax(0,1fr) 206px 128px}
+  .r-trail{grid-column:1/-1;border-left:0;border-top:1px dashed var(--border);flex-direction:row;gap:10px;flex-wrap:wrap;align-items:baseline}
+}
+@media (max-width:980px){
+  .siren{grid-template-columns:auto minmax(0,1fr)}
+  .siren-act{grid-column:1/-1;border-left:0;border-top:1px solid var(--rose-border);flex-direction:row;align-items:center}
+  .r{grid-template-columns:minmax(0,1fr)}
+  .r-state,.r-act,.r-trail{border-left:0;border-top:1px dashed var(--border)}
+  .r-act{flex-direction:row;justify-content:flex-end;align-items:center}
+  .tail-row{grid-template-columns:minmax(0,1fr) 108px;row-gap:2px}
+  .tail-row .w,.tail-row .note,.tail-row>.pill{display:none}
+}
+@media (max-width:620px){
+  body{font-size:13px}
+  .page{padding:14px 12px 44px}
+  .page-head h1{font-size:20px}
+  .siren{grid-template-columns:minmax(0,1fr)}
+  .siren-n{border-right:0;border-bottom:1px solid var(--rose-border)}
+  .siren-n .cap{max-width:none}
+  .tiles{grid-template-columns:minmax(0,1fr)}
+  .tile{border-right:0;border-bottom:1px solid var(--border)}
+  .search-in{min-width:0;width:100%}
+  .toolbar .sp{margin-left:0}
+  .stock{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .two{grid-template-columns:minmax(0,1fr)}
+  .close-grid{grid-template-columns:minmax(0,1fr)}
+  .r-act{flex-wrap:wrap}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ШАПКА -->
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Склад · реестр расследований</p>
+      <h1>Потеряшки</h1>
+      <p class="sub">7 открытых дел · 11 шт вне оборота · 2 просрочены с площадки</p>
+    </div>
+    <div class="acts">
+      <a class="link" href="#">Экспорт XLSX</a>
+      <a class="link" href="#">Сверка склада →</a>
+      <button class="btn" type="button">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        Завести потеряшку
+      </button>
+    </div>
+  </header>
+
+  <!-- 1. ГЛАВНЫЙ СИГНАЛ -->
+  <section class="siren" aria-label="Просроченные ожидания">
+    <div class="siren-n">
+      <span class="big">2</span>
+      <span class="cap">просрочены с площадки</span>
+    </div>
+    <div class="siren-list">
+      <div class="siren-row"><span class="d">−5 дн</span><span class="p">страховка цепь ×3</span><span class="who">«Северный ветер» · Эпикпро · обещали к 12.09</span></div>
+      <div class="siren-row"><span class="d">−1 дн</span><span class="p">Ручка для стойки B200 ×1</span><span class="who">Клип «Лето» · Ф. Ильин · обещали к 16.09</span></div>
+    </div>
+    <div class="siren-act">
+      <a class="link" href="#">Позвонить клиенту → карточка брони</a>
+      <a class="link" href="#">Напомнить ещё раз</a>
+    </div>
+  </section>
+
+  <!-- 2. СВЕТОФОР + ДЕНЬГИ -->
+  <section class="strip" aria-label="Сводка">
+    <div class="strip-top">
+      <div class="tiles">
+        <div class="tile">
+          <p class="eyebrow">На поиске</p>
+          <div class="v is-amber">4 <small>дела · 8 шт</small></div>
+          <div class="s">1 без ответственного — никто не ищет</div>
+        </div>
+        <div class="tile">
+          <p class="eyebrow">Ждём с площадки</p>
+          <div class="v is-rose">3 <small>дела · 2 просрочены</small></div>
+          <div class="s">возвращаются повторной приёмкой сами</div>
+        </div>
+        <div class="tile">
+          <p class="eyebrow">Не сдаётся в аренду</p>
+          <div class="v">2 630 ₽ <small>за смену</small></div>
+          <div class="s">ставки позиций, что выпали из оборота</div>
+        </div>
+      </div>
+      <div class="money">
+        <div class="money-head"><p class="eyebrow">За 30 дней</p><span class="src">сентябрь</span></div>
+        <div class="money-row">
+          <div class="money-cell"><p class="eyebrow">найдено</p><div class="v ok">3</div></div>
+          <div class="money-cell"><p class="eyebrow">не найдено</p><div class="v">1</div></div>
+          <div class="money-cell"><p class="eyebrow">списано</p><div class="v">1</div></div>
+          <div class="money-cell"><p class="eyebrow">компенсация</p><div class="v pend m">4 800 ₽</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="roleline">
+      <span><b>Кладовщик</b> заводит и закрывает «найдено»</span>
+      <span><b>Руководитель</b> — «не найдено», списание, компенсация в смету</span>
+      <span><b>Все роли</b> видят объявленные в поиск на «Моём дне»</span>
+    </div>
+  </section>
+
+  <!-- 3. ПАНЕЛЬ РЕЕСТРА -->
+  <div class="toolbar" role="toolbar" aria-label="Фильтры">
+    <div class="search-in">
+      <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span>Название, клиент, проект…</span>
+    </div>
+    <div class="grp" aria-label="Статус">
+      <button type="button" aria-pressed="true">Открытые<span class="n">7</span></button>
+      <button type="button" aria-pressed="false">Ожидается<span class="n">3</span></button>
+      <button type="button" aria-pressed="false">На поиске<span class="n">4</span></button>
+      <button type="button" aria-pressed="false">Найдено</button>
+      <button type="button" aria-pressed="false">Не найдено</button>
+      <button type="button" aria-pressed="false">Списано</button>
+    </div>
+    <div class="grp" aria-label="Источник">
+      <button type="button" aria-pressed="true">Все источники</button>
+      <button type="button" aria-pressed="false">Приёмка</button>
+      <button type="button" aria-pressed="false">Сверка</button>
+      <button type="button" aria-pressed="false">Вручную</button>
+    </div>
+    <span class="sp lbl">порядок:</span>
+    <div class="grp" aria-label="Порядок">
+      <button type="button" aria-pressed="true">По срочности</button>
+      <button type="button" aria-pressed="false">По дате</button>
+    </div>
+  </div>
+
+  <!-- ГОРИТ -->
+  <div class="gh hot">
+    <h2>Горит</h2><span class="n">3</span><span class="rule"></span>
+    <span class="why">просрочен срок с площадки · на поиске больше 14 дней · никто не ищет</span>
+  </div>
+  <div class="list">
+
+    <article class="r hot">
+      <div class="r-main">
+        <div class="r-title">
+          <span class="r-name">страховка цепь</span><span class="r-qty">×3</span>
+          <span class="r-cat">Грип</span>
+          <span class="src">приёмка</span>
+        </div>
+        <p class="r-reason"><b>Остался на площадке.</b> Не доехали с «Северного ветра», гаффер обещал завезти на неделе.</p>
+        <div class="r-meta">
+          <span class="who"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>ищет: Марина</span>
+          <span class="sep">·</span><span>заведено 08.09 · Иван, приёмка</span>
+          <span class="sep">·</span><span class="ann">📣 объявлено</span>
+        </div>
+      </div>
+      <div class="r-trail">
+        <p class="eyebrow">След</p>
+        <div class="t"><b>«Северный ветер»</b> · Эпикпро</div>
+        <div class="t2">5–8 сен · выдано 6, принято 3</div>
+        <div class="t3">принимал Иван · <span class="d">08.09 18:40</span></div>
+      </div>
+      <div class="r-state st-late">
+        <div class="lead"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>ожидалось к <span class="date">12.09</span></span></div>
+        <div class="sub">просрочено на 5 дней · напоминали 15.09</div>
+        <span class="pill pill-info">Ожидается</span>
+      </div>
+      <div class="r-act">
+        <button class="mini mini-ok" type="button">Найдено</button>
+        <button class="mini mini-rose" type="button">Не найдено</button>
+        <span class="more">⋯ ещё</span>
+      </div>
+    </article>
+
+    <article class="r hot">
+      <div class="r-main">
+        <div class="r-title">
+          <span class="r-name">RGB лампочка Aputure B7C в кейсе</span><span class="r-qty">×2</span>
+          <span class="r-cat">Battery / Аккумуляторный свет</span>
+          <span class="src">приёмка</span>
+        </div>
+        <p class="r-reason"><b>Потерян.</b> Кейс вернулся без двух ламп, гаффер говорит — всё сдавал.</p>
+        <div class="r-meta">
+          <span class="who none"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>никто не ищет</span>
+          <span class="sep">·</span><span>заведено 01.09 · Олег, приёмка</span>
+        </div>
+      </div>
+      <div class="r-trail">
+        <p class="eyebrow">След</p>
+        <div class="t"><b>Клип «Лето»</b> · Фёдор Ильин</div>
+        <div class="t2">30 авг – 1 сен · выдано 24, принято 22</div>
+        <div class="t3">принимал Олег · <span class="d">01.09 21:15</span></div>
+      </div>
+      <div class="r-state st-ok">
+        <div class="lead"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>на поиске <span class="date">16 дн</span></span></div>
+        <div class="sub">1 100 ₽/смена не сдаётся</div>
+        <span class="pill pill-warn">На поиске</span>
+      </div>
+      <div class="r-act">
+        <button class="mini" type="button">Назначить</button>
+        <button class="mini mini-ok" type="button">Найдено</button>
+        <span class="more">⋯ ещё</span>
+      </div>
+    </article>
+
+    <article class="r hot">
+      <div class="r-main">
+        <div class="r-title">
+          <span class="r-name">флаг 40х40</span><span class="r-qty">×1</span>
+          <span class="r-cat">Флаги / каттеры / флоппи</span>
+          <span class="src">приёмка</span>
+        </div>
+        <p class="r-reason"><b>Украден.</b> Пропал с площадки в ночь, гаффер написал заявление.</p>
+        <div class="r-meta">
+          <span class="who"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>ищет: руководитель</span>
+          <span class="sep">·</span><span>заведено 11.09 · Иван, приёмка</span>
+          <span class="sep">·</span><span class="pill pill-alert">к компенсации</span>
+        </div>
+      </div>
+      <div class="r-trail">
+        <p class="eyebrow">След</p>
+        <div class="t"><b>Сериал «Тихий дом»</b> · Кинокомпания «Север»</div>
+        <div class="t2">9–11 сен · выдано 2, принято 1</div>
+        <div class="t3">принимал Иван · <span class="d">11.09 19:05</span></div>
+      </div>
+      <div class="r-state st-ok">
+        <div class="lead"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>на поиске <span class="date">6 дн</span></span></div>
+        <div class="sub">клиент признаёт · ждём решения по сумме</div>
+        <span class="pill pill-warn">На поиске</span>
+      </div>
+      <div class="r-act">
+        <button class="mini mini-rose" type="button">Не найдено</button>
+        <button class="mini" type="button">Компенсация</button>
+        <span class="more">⋯ ещё</span>
+      </div>
+    </article>
+  </div>
+
+  <!-- В РАБОТЕ -->
+  <div class="gh warm">
+    <h2>В работе</h2><span class="n">4</span><span class="rule"></span>
+    <span class="why">есть ответственный, срок не вышел</span>
+  </div>
+  <div class="list">
+
+    <article class="r warm">
+      <div class="r-main">
+        <div class="r-title">
+          <span class="r-name">Светодиодная панель Aputure MC PRO в кейсе</span><span class="r-qty">×1</span>
+          <span class="r-cat">Battery / Аккумуляторный свет</span>
+          <span class="src">сверка 15.09</span>
+        </div>
+        <p class="r-reason"><b>Не нашли на складе.</b> По учёту 3, на полке 2. Считали вдвоём.</p>
+        <div class="r-meta">
+          <span class="who"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>ищет: Иван</span>
+          <span class="sep">·</span><span>заведено 15.09 · Иван, сверка</span>
+          <span class="sep">·</span><span class="ann">📣 объявлено</span>
+        </div>
+      </div>
+      <div class="r-trail">
+        <p class="eyebrow">След · вероятно</p>
+        <div class="t"><b>Сериал «Тихий дом»</b> · Кинокомпания «Север»</div>
+        <div class="t2">последняя выдача 9–11 сен · 3 из 3 принято</div>
+        <div class="t3">до этого — «Лето», 30 авг · <span class="d">2 брони за месяц</span></div>
+      </div>
+      <div class="r-state st-ok">
+        <div class="lead"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>на поиске <span class="date">2 дн</span></span></div>
+        <div class="sub">1 000 ₽/смена не сдаётся</div>
+        <span class="pill pill-warn">На поиске</span>
+      </div>
+      <div class="r-act">
+        <button class="mini mini-ok" type="button">Найдено</button>
+        <button class="mini mini-rose" type="button">Не найдено</button>
+        <span class="more">⋯ ещё</span>
+      </div>
+    </article>
+
+    <article class="r warm">
+      <div class="r-main">
+        <div class="r-title">
+          <span class="r-name">Гринболы (теннисные мячики-насадки)</span><span class="r-qty">×4</span>
+          <span class="r-cat">Грип</span>
+          <span class="src">сверка 15.09</span>
+        </div>
+        <p class="r-reason"><b>Не нашли на складе.</b> Коробка пустая, по учёту 6.</p>
+        <div class="r-meta">
+          <span class="who"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>ищет: Олег</span>
+          <span class="sep">·</span><span>заведено 15.09 · Иван, сверка</span>
+        </div>
+      </div>
+      <div class="r-trail">
+        <p class="eyebrow">След</p>
+        <div class="none">Не выдавались с 22 авг (Реклама «Сбер») — скорее всего, на складе</div>
+      </div>
+      <div class="r-state st-ok">
+        <div class="lead"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>на поиске <span class="date">2 дн</span></span></div>
+        <span class="pill pill-warn">На поиске</span>
+      </div>
+      <div class="r-act">
+        <button class="mini mini-ok" type="button">Найдено</button>
+        <button class="mini mini-rose" type="button">Не найдено</button>
+        <span class="more">⋯ ещё</span>
+      </div>
+    </article>
+
+    <article class="r warm">
+      <div class="r-main">
+        <div class="r-title">
+          <span class="r-name">зажим Kupo KCP-844 TV Coupler</span><span class="r-qty">×1</span>
+          <span class="r-cat">Грип</span>
+          <span class="src">приёмка</span>
+        </div>
+        <p class="r-reason"><b>Остался на площадке.</b> Остался на трубе в павильоне, довезут с реквизитом.</p>
+        <div class="r-meta">
+          <span class="who"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>ищет: Марина</span>
+          <span class="sep">·</span><span>заведено 16.09 · Олег, приёмка</span>
+        </div>
+      </div>
+      <div class="r-trail">
+        <p class="eyebrow">След</p>
+        <div class="t"><b>«Северный ветер»</b> · Эпикпро</div>
+        <div class="t2">14–16 сен · выдано 4, принято 3</div>
+        <div class="t3">принимал Олег · <span class="d">16.09 20:10</span></div>
+      </div>
+      <div class="r-state st-ok">
+        <div class="lead"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>ожидается к <span class="date">19.09</span></span></div>
+        <div class="sub">через 2 дня · закроется повторной приёмкой</div>
+        <span class="pill pill-info">Ожидается</span>
+      </div>
+      <div class="r-act">
+        <button class="mini mini-ok" type="button">Найдено</button>
+        <button class="mini mini-rose" type="button">Не найдено</button>
+        <span class="more">⋯ ещё</span>
+      </div>
+    </article>
+
+    <article class="r warm">
+      <div class="r-main">
+        <div class="r-title">
+          <span class="r-name">Ручка для стойки B200</span><span class="r-qty">×1</span>
+          <span class="r-cat">Штативы / Стойки</span>
+          <span class="src">вручную</span>
+        </div>
+        <p class="r-reason"><b>Остался на площадке.</b> Заведено руководителем после звонка гаффера.</p>
+        <div class="r-meta">
+          <span class="who"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>ищет: Марина</span>
+          <span class="sep">·</span><span>заведено 12.09 · руководитель</span>
+        </div>
+      </div>
+      <div class="r-trail">
+        <p class="eyebrow">След</p>
+        <div class="t"><b>Клип «Лето»</b> · Фёдор Ильин</div>
+        <div class="t2">10–11 сен · выдано 2, принято 2</div>
+        <div class="t3">ручка не входит в состав — привязана вручную</div>
+      </div>
+      <div class="r-state st-late">
+        <div class="lead"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>ожидалось к <span class="date">16.09</span></span></div>
+        <div class="sub">просрочено на 1 день</div>
+        <span class="pill pill-info">Ожидается</span>
+      </div>
+      <div class="r-act">
+        <button class="mini mini-ok" type="button">Найдено</button>
+        <button class="mini mini-rose" type="button">Не найдено</button>
+        <span class="more">⋯ ещё</span>
+      </div>
+    </article>
+  </div>
+
+  <!-- ТИХИЙ ХВОСТ -->
+  <details class="tail" open>
+    <summary>
+      <svg class="icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+      <b>Закрытые за 30 дней</b> · 5 · найдено 3, не найдено 1, списано 1
+      <span class="sp">вся история →</span>
+    </summary>
+    <div class="tail-row">
+      <div class="n">Sidus One <small>×1 · Battery</small></div>
+      <span class="pill pill-ok">Найдено</span><span class="e">14.09</span><span class="w">Олег</span>
+      <span class="note">нашлась в кейсе Astera, лежала под ложементом</span>
+    </div>
+    <div class="tail-row">
+      <div class="n">страховка цепь <small>×2 · Грип</small></div>
+      <span class="pill pill-ok">Найдено</span><span class="e">10.09</span><span class="w">авто</span>
+      <span class="note">возвращены повторной приёмкой · «Северный ветер»</span>
+    </div>
+    <div class="tail-row">
+      <div class="n">Astera Titan Tube <small>1 из 8 · Battery</small></div>
+      <span class="pill pill-none">Списано</span><span class="e">03.09</span><span class="w">руководитель</span>
+      <span class="note">компенсация 4 800 ₽ выставлена в смету «Лето»</span>
+    </div>
+    <div class="tail-row">
+      <div class="n">Гибкая трубка Magic Flex ARM 50см <small>×1 · Грип</small></div>
+      <span class="pill pill-alert">Не найдено</span><span class="e">29.08</span><span class="w">Марина</span>
+      <span class="note">клиент отрицает, спор — оставлено на решение руководителя</span>
+    </div>
+    <div class="tail-row">
+      <div class="n">Зажим прищепка Manfrotto Spring Clamp <small>×1 · Грип</small></div>
+      <span class="pill pill-ok">Найдено</span><span class="e">26.08</span><span class="w">Иван</span>
+      <span class="note">был в машине, выпал из кофра</span>
+    </div>
+  </details>
+
+  <!-- 4. ВРЕЗКИ -->
+  <div class="peeks">
+
+    <!-- Модалка «Завести потеряшку» -->
+    <div class="peek">
+      <div class="peek-cap">
+        <h2>Врезка 1 · «Завести потеряшку» из реестра</h2>
+        <span class="path">/warehouse/problems → модалка</span>
+        <span class="role-tag">SA · WAREHOUSE</span>
+      </div>
+      <div class="modal" role="dialog" aria-label="Завести потеряшку">
+        <div class="m-head">
+          <h3>Завести потеряшку</h3>
+          <span class="src">вручную</span>
+          <span class="x">✕</span>
+        </div>
+
+        <div class="step done">
+          <span class="step-n">1</span>
+          <div class="step-body">
+            <div class="step-t">Что пропало</div>
+            <div class="search">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <div class="fld">зарядки</div>
+            </div>
+            <div class="picked" style="margin-top:8px">
+              <span class="n">Набор «зарядки» (повербанк / провода / блоки)</span>
+              <span class="k">Battery / Аккумуляторный свет · без штучного учёта</span>
+              <a class="link sp" href="#">изменить</a>
+            </div>
+            <div class="stock">
+              <div><div class="v">2</div><div class="l">всего по учёту</div></div>
+              <div><div class="v">1</div><div class="l">сейчас на съёмке</div></div>
+              <div><div class="v">0</div><div class="l">в мастерской</div></div>
+              <div><div class="v rose">1</div><div class="l">должно быть на полке</div></div>
+            </div>
+            <div class="hrow">
+              <span class="lbl">Не хватает:</span>
+              <span class="qty"><button type="button">−</button><span>1</span><button type="button">+</button></span>
+              <span class="lbl muted">из 1 на полке · больше, чем должно лежать, завести нельзя</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="step done">
+          <span class="step-n">2</span>
+          <div class="step-body">
+            <div class="step-t">Что случилось</div>
+            <div class="chips">
+              <span class="chip rose sel">Не нашли на складе</span>
+              <span class="chip">Остался на площадке</span>
+              <span class="chip">Потерян</span>
+              <span class="chip">Украден</span>
+              <span class="chip">Уничтожен</span>
+            </div>
+            <div class="trail">
+              <div class="th">Где видели в последний раз — последние выдачи этой позиции. Отметьте вероятную, если есть</div>
+              <div class="tr on"><span class="radio"></span><div><b>Сериал «Тихий дом»</b> · Кинокомпания «Север» <span class="k">выдано 1 · принято 1 · принимал Иван</span></div><span class="d">9–11 сен</span></div>
+              <div class="tr"><span class="radio"></span><div><b>Клип «Лето»</b> · Фёдор Ильин <span class="k">выдано 2 · принято 2 · принимал Олег</span></div><span class="d">30 авг – 1 сен</span></div>
+              <div class="tr"><span class="radio"></span><div><b>Не связано с бронью</b> <span class="k">пропало на складе / в машине</span></div><span class="d"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="step-n">3</span>
+          <div class="step-body">
+            <div class="step-t">Детали</div>
+            <div class="fld ink">При сверке Battery 15.09 в кейсе один набор вместо двух. Возможно, уехал вторым кейсом на «Тихий дом».</div>
+            <div class="two" style="margin-top:8px">
+              <div>
+                <span class="f-lbl">Ищет</span>
+                <div class="sel">Иван (кладовщик) <svg class="icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></div>
+              </div>
+              <div>
+                <span class="f-lbl">Ожидается к <span class="muted">— только для «Остался на площадке»</span></span>
+                <div class="sel muted">—</div>
+              </div>
+            </div>
+            <div class="toggle" style="margin-top:9px">
+              <span class="sw"></span>
+              <div><b>Объявить в поиск</b><p>Карточка «Ищем: набор зарядок ×1» появится на «Моём дне» у всех ролей, Ивану — задача со сроком 3 дня. Снимается автоматически при закрытии.</p></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="m-foot">
+          <span class="note">Доступность позиции уменьшится на <b>1</b> до закрытия дела — календарь перестанет её продавать.</span>
+          <div class="btns">
+            <button class="btn btn-ghost" type="button">Отмена</button>
+            <button class="btn" type="button">Завести потеряшку</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Киоск -->
+    <div class="peek">
+      <div class="peek-cap">
+        <h2>Врезка 2 · киоск: «Не нашли на складе»</h2>
+        <span class="path">/warehouse/scan?tab=problems</span>
+        <span class="role-tag">кладовщик</span>
+      </div>
+      <div class="phone">
+        <div class="ph-hdr">
+          <div class="e">Склад · Иван</div>
+          <h3>Поломки и пропажи</h3>
+          <div class="who">рядом с «Поломкой» — тот же экран, второй сценарий</div>
+        </div>
+        <div class="ph-body">
+          <div class="ph-big">
+            <a href="#"><span class="t">🔧 Поломка</span><span class="s">сломалось на складе или после съёмки</span></a>
+            <a href="#" class="on"><span class="t">🔍 Не нашли</span><span class="s">при сверке или по ходу смены</span></a>
+          </div>
+          <div class="ph-card">
+            <div class="ph-lbl">Что не нашли</div>
+            <div class="ph-in ink"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>гринбол</div>
+            <div class="ph-row" style="margin-top:8px">
+              <div><div class="n">Гринболы (теннисные мячики)</div><div class="k">Грип · на полке должно быть 6</div></div>
+              <span class="qty lg"><button type="button">−</button><span>4</span><button type="button">+</button></span>
+            </div>
+          </div>
+          <div class="ph-card">
+            <div class="ph-lbl">Что случилось</div>
+            <div class="ph-chips">
+              <span class="chip rose sel">Не нашли на складе</span>
+              <span class="chip">Остался на площадке</span>
+              <span class="chip">Потерян</span>
+            </div>
+            <div class="ph-in" style="margin-top:8px;min-height:60px;align-items:flex-start">Комментарий — обязательно. Например: «коробка пустая, считали вдвоём»</div>
+          </div>
+          <div class="ph-switch">
+            <span class="sw"></span>
+            <div><b>Объявить в поиск</b><p>появится у всех на «Моём дне», Иван — ответственный</p></div>
+          </div>
+          <a class="ph-primary" href="#">В потеряшки — ×4</a>
+        </div>
+        <div class="ph-tabs">
+          <div><span class="ic"></span>Смена</div><div><span class="ic"></span>Выдача</div><div><span class="ic"></span>Приёмка</div>
+          <div><span class="ic"></span>В работе</div><div><span class="ic"></span>Журнал</div><div class="on"><span class="ic"></span>Поломки</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Карточка дела -->
+    <div class="peek" style="grid-column:1/-1">
+      <div class="peek-cap">
+        <h2>Врезка 3 · карточка дела: хроника и закрытие</h2>
+        <span class="path">строка реестра → раскрытие (без отдельной страницы)</span>
+      </div>
+      <div class="card">
+        <div class="c-head">
+          <div>
+            <h3>флаг 40х40 ×1 <span class="pill pill-warn">На поиске</span></h3>
+            <div class="sub">Флаги / каттеры / флоппи · Украден · след — Сериал «Тихий дом», принимал Иван 11.09 19:05 · ищет руководитель</div>
+          </div>
+          <div class="sp"><a class="link" href="#">Открыть бронь →</a></div>
+        </div>
+        <div class="two" style="gap:0">
+          <div class="c-zone" style="border-right:1px solid var(--border)">
+            <div class="zh"><p class="eyebrow">Хроника</p><span class="sp muted" style="font-size:11px">из журнала аудита + комментарии</span></div>
+            <div class="tl">
+              <div class="tl-row"><span class="d">11.09 19:05</span><span class="dot rose"></span><div class="t"><b>Заведена на приёмке</b> · Иван<small>«украден» · выдано 2, принято 1 · сессия приёмки «Тихий дом»</small></div></div>
+              <div class="tl-row"><span class="d">12.09 09:30</span><span class="dot acc"></span><div class="t"><b>Объявлена в поиск</b> · руководитель<small>карточка на «Моём дне» у всех · задача Марине «уточнить у гаффера»</small></div></div>
+              <div class="tl-row"><span class="d">12.09 14:10</span><span class="dot"></span><div class="t">Марина: «гаффер подтвердил, ночью вскрыли машину. Заявление в полицию есть, фото пришлёт»</div></div>
+              <div class="tl-row"><span class="d">15.09 11:00</span><span class="dot amb"></span><div class="t"><b>Помечена «к компенсации»</b> · руководитель<small>ставка 380 ₽/смена · стоимости замены в каталоге нет — сумма вводится вручную</small></div></div>
+            </div>
+            <div class="composer">Написать в хронику… (⌘/Ctrl+Enter)</div>
+          </div>
+          <div class="c-zone">
+            <div class="zh"><p class="eyebrow">Закрыть дело</p></div>
+            <div class="close-grid">
+              <div class="close-opt ok"><b>Найдено</b><p>вернётся в оборот, доступность восстановится. Кладовщик или руководитель</p></div>
+              <div class="close-opt rose"><b>Не найдено</b><p>остаётся вне оборота, дело закрыто без денег. Руководитель</p></div>
+              <div class="close-opt sa"><b>Списать <span class="role-tag tag">SA</span></b><p>количество позиции уменьшается насовсем; для штучных — единица «списана»</p></div>
+              <div class="close-opt sa"><b>Компенсация в смету <span class="role-tag tag">SA</span></b><p>строка «Утрата: флаг 40х40 ×1 — 3 500 ₽» в доп-смету брони-источника, долг клиента растёт</p></div>
+            </div>
+            <div class="warnbox">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+              <span>Компенсация возможна только у дела с бронью-источником. У «сверки» без следа — сначала привязать бронь, иначе платить некому.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ЗАМЕТКИ -->
+  <section class="annot">
+    <h2>Почему так</h2>
+    <ol>
+      <li><b>Две точки ручного ввода, не одна.</b> Руководитель заводит из реестра (модалка, врезка 1), кладовщик — из киоска рядом с «Поломкой» (врезка 2). Ровно так уже устроены поломки вне брони: экран <code>RegisterBreakageScreen</code> + <code>AddRepairModal</code>. Потеряшки получают симметричный вход, а не третий способ.</li>
+      <li><b>Новая причина «Не нашли на складе» и поле «источник».</b> Сегодня все четыре причины — про площадку клиента. Недостача при сверке — другая история: клиента может не быть вовсе. Источник (приёмка / сверка / вручную) нужен, чтобы отличать «клиент не вернул» от «сами потеряли» — это разные разговоры и разные деньги.</li>
+      <li><b>Позиция каталога на самой потеряшке.</b> В базе 295 позиций, 294 — без штучного учёта. Сейчас COUNT-потеряшка вычитается из наличия только через <code>bookingItem.equipmentId</code>; у ручной записи брони нет, и календарь продолжил бы продавать пропавшее. Нужно <code>ProblemItem.equipmentId</code> — тот же ход, что сделан для <code>Repair.equipmentId</code>.</li>
+      <li><b>«След» — не новая сущность, а выборка.</b> Последние брони, где позиция выдавалась, уже лежат в <code>BookingItem</code> + сессиях приёмки. Это первое, что делает человек при поиске («кому последнему выдавали?»), и сейчас он идёт за этим в список броней вручную. В модалке след даёт кнопку «вероятно здесь» → <code>sourceBookingId</code>, без которого позже некому выставить компенсацию.</li>
+      <li><b>Ответственный и «объявить в поиск».</b> Дело без имени не ищет никто — строка «никто не ищет» намеренно жёлтая. «Объявить» = карточка на «Моём дне» у всех ролей (там уже есть <code>DayProblemAlert</code>) + задача ответственному в существующем модуле задач; при закрытии дела снимается само.</li>
+      <li><b>Порядок по срочности</b> — принцип мастерской v2: просроченные ожидания, зависшие дольше 14 дней и бесхозные — сверху; остальное — ровным списком; закрытое — в свёрнутом хвосте.</li>
+      <li><b>Деньги — честные.</b> «Не сдаётся в аренду ₽/смена» считается из <code>rentalRatePerShift × qty</code> — это есть в базе. Стоимости замены в каталоге нет, поэтому сумма компенсации вводится руководителем вручную; поле <code>replacementValue</code> у позиции — отдельное продуктовое решение, здесь не выдумываем.</li>
+      <li><b>Четыре исхода вместо двух.</b> К «Найдено / Не найдено» добавляются «Списать» и «Компенсация в смету» — оба только руководителю. Компенсация — это тот самый <code>// FUTURE</code>-хук в <code>resolveProblemItem</code>: строка в доп-смету брони-источника через уже существующий механизм добора.</li>
+      <li><b>Без штрихкодов</b> — как и раньше: в реестре и в модалке только названия, категории и количества.</li>
+    </ol>
+  </section>
+
+</div>
+</body>
+</html>
