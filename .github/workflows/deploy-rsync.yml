@@ -126,6 +126,25 @@ jobs:
           CURRENT_SHA=$(gh api "repos/$RELEASE_REPO/git/ref/heads/main" --jq .object.sha)
           test "$RELEASE_SHA" = "$CURRENT_SHA" || { echo "A newer main revision exists; refusing stale deploy"; exit 1; }
 
+      # Пробный db push новой схемы на КОПИИ боевой базы — до того, как деплой
+      # что-либо тронет. Настоящий db push ниже тоже откажется удалять данные,
+      # но к тому моменту исходники и артефакты уже заменены rsync'ом, а web
+      # остановлен — прод остался бы наполовину обновлённым. Здесь отказ
+      # случается раньше, и прод остаётся на прежней версии целиком.
+      # Типичный случай — ветка отстала от main и вернула старую schema.prisma.
+      # Останавливает деплой только явный отказ Prisma; нет CLI после прерванного
+      # npm ci или сбой движка — пропуск, чтобы сломанный прод чинился деплоем.
+      - name: schema preflight (db push на копии боевой базы)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          SSH_OPTS="-i $HOME/.ssh/deploy_id -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" 'rm -rf /tmp/lr-preflight && mkdir -p /tmp/lr-preflight'
+          scp $SSH_OPTS apps/api/prisma/schema.prisma "$DEPLOY_USER@$DEPLOY_HOST:/tmp/lr-preflight/schema.prisma"
+          ssh $SSH_OPTS "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' < scripts/deploy/schema-preflight.sh
+
       - name: rsync source tree (без dist, .next, node_modules — приходят отдельно)
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
