@@ -97,7 +97,7 @@ export const LEGEND_ITEMS: Array<{ level: Permission; label: string; hint: strin
   { level: "none",    label: "нет",         hint: "доступа нет (пункт меню скрыт)" },
 ];
 
-/** Полная матрица — 8 секций. Порядок и содержание ровно как в мокапе. */
+/** Полная матрица. Восемь секций — как в мокапе roles-matrix.html; «Инвентаризация» добавлена со спекой 2026-09-18 (§8 «Права»). */
 export const MATRIX_SECTIONS: MatrixSection[] = [
   {
     title: "Меню и навигация",
@@ -196,6 +196,32 @@ export const MATRIX_SECTIONS: MatrixSection[] = [
         super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "limited", label: "предлагает" } },
       { capability: "Удалить позицию из каталога",
         super: { level: "full", label: "да" }, warehouse: { level: "none", label: "нет" }, technician: { level: "none", label: "нет" } },
+    ],
+  },
+  {
+    title: "Инвентаризация",
+    hint: "пересчёт склада: счёт → решения по расхождениям → завершение одной операцией и акт",
+    rows: [
+      { capability: "Смотреть, начать и отменить инвентаризацию",
+        hint: "одновременно идёт только одна; отмена ничего не записывает в учёт",
+        super: { level: "full", label: "да" }, warehouse: { level: "edit", label: "да" }, technician: { level: "none", label: "нет" } },
+      { capability: "Считать полку",
+        hint: "здесь — под своей учётной записью; в киоске — по PIN кладовщика",
+        super: { level: "full", label: "да" }, warehouse: { level: "full", label: "да" }, technician: { level: "none", label: "нет" } },
+      { capability: "Решать по расхождениям",
+        hint: "«Пропало → потеряшки», «Нашлось», «Пересчитать»",
+        super: { level: "full", label: "да" }, warehouse: { level: "edit", label: "да" }, technician: { level: "none", label: "нет" } },
+      { capability: "«Ошибка учёта» — поправить количество в каталоге",
+        hint: "только с причиной: она уходит в журнал вместе с именем",
+        super: { level: "full", label: "да" }, warehouse: { level: "limited", label: "с причиной" }, technician: { level: "none", label: "нет" } },
+      { capability: "Завершить — записать потеряшки, поправки и отметки «сверено»",
+        hint: "заблокировано, пока есть расхождения без решения",
+        super: { level: "full", label: "да" }, warehouse: { level: "edit", label: "да" }, technician: { level: "none", label: "нет" } },
+      { capability: "Акт инвентаризации — PDF / XLSX",
+        super: { level: "full", label: "да" }, warehouse: { level: "view", label: "выгружает" }, technician: { level: "none", label: "нет" } },
+      { capability: "Завести потеряшку вручную",
+        hint: "заметили посреди смены — не дожидаясь инвентаризации",
+        super: { level: "full", label: "да" }, warehouse: { level: "edit", label: "да" }, technician: { level: "none", label: "нет" } },
     ],
   },
   {

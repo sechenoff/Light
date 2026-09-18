@@ -17,7 +17,10 @@
  *  - `?tab=` в URL — раздел переживает перезагрузку планшета;
  *  - страница держит одну activeSession: переключение таба НЕ теряет
  *    открытый чек-лист (сессия ACTIVE, возврат на таб продолжает её);
- *  - /api/warehouse/shift питает и экран «Смена», и бейджи таб-бара.
+ *  - /api/warehouse/shift питает и экран «Смена», и бейджи таб-бара;
+ *  - вместе со сменой читается идущая инвентаризация: карточка на «Смене» ведёт
+ *    в счёт полки (`?tab=count`, своей вкладки нет). Сбой этого запроса смену
+ *    не ломает — карточки просто нет.
  *
  * Мокап: docs/mockups/warehouse-scan/05-workstation-v2.html.
  */
@@ -44,7 +47,9 @@ import {
 import { JournalScreen } from "../../../src/components/warehouse/JournalScreen";
 import { ProblemsScreen } from "../../../src/components/warehouse/ProblemsScreen";
 import { ResumedSessionBanner } from "../../../src/components/warehouse/ResumedSessionBanner";
+import { StockCountScreen } from "../../../src/components/warehouse/StockCountScreen";
 import { scanApi, type ShiftSummaryData } from "../../../src/components/warehouse/api";
+import type { StockCountDetail } from "../../../src/components/inventory/types";
 import type {
   BookingSummary,
   ScanOperation,
@@ -58,7 +63,20 @@ const VALID_TABS: WorkstationTab[] = [
   "inwork",
   "journal",
   "problems",
+  "count",
 ];
+
+/**
+ * Идущая инвентаризация для карточки на «Смене». Сбой — `undefined`: карточка
+ * остаётся как была, а экран смены не падает из-за второстепенного запроса.
+ */
+async function fetchActiveStockCount(): Promise<StockCountDetail | null | undefined> {
+  try {
+    return await scanApi.getActiveStockCount();
+  } catch {
+    return undefined;
+  }
+}
 
 interface ActiveSession {
   sessionId: string;
@@ -104,6 +122,7 @@ function WarehouseScanInner({
   const [shift, setShift] = useState<ShiftSummaryData | null>(null);
   const [shiftError, setShiftError] = useState<string | null>(null);
   const [shiftVersion, setShiftVersion] = useState(0);
+  const [activeStockCount, setActiveStockCount] = useState<StockCountDetail | null>(null);
 
   useEffect(() => {
     if (!authed) return;
@@ -117,6 +136,9 @@ function WarehouseScanInner({
       .catch(() => {
         if (!cancelled) setShiftError("Не удалось загрузить смену");
       });
+    void fetchActiveStockCount().then((sc) => {
+      if (!cancelled && sc !== undefined) setActiveStockCount(sc);
+    });
     return () => {
       cancelled = true;
     };
@@ -343,8 +365,23 @@ function WarehouseScanInner({
                 goTab(entry.kind === "ISSUE" ? "issue" : "return");
               }
             }}
+            stockCount={activeStockCount}
+            onGoCount={() => goTab("count")}
           />
         }
+      />
+    );
+  }
+
+  // ── Инвентаризация: счёт полки ─────────────────────────────────────────────
+  if (tab === "count") {
+    return (
+      <StockCountScreen
+        shell={shellCommon}
+        workerName={displayName}
+        initial={activeStockCount}
+        onExit={() => goTab("shift")}
+        onUnauth={goToLogin}
       />
     );
   }

@@ -1,6 +1,7 @@
 /**
  * HTTP-тесты /api/problem-items — реестр «Потеряшки» (list + resolve)
  * Матрица прав: SUPER_ADMIN / WAREHOUSE → доступ; TECHNICIAN → 403.
+ * Ручное заведение, источник и сторож инвентаризации — problemItemsManual.test.ts.
  */
 
 import path from "path";
@@ -218,6 +219,10 @@ describe("GET /api/problem-items", () => {
       expect(item.equipmentUnit?.equipment?.category).toBe("Осветительные приборы");
       // никаких barcode в выдаче
       expect(item.equipmentUnit?.barcode).toBeUndefined();
+      // источник, инвентаризация и позиция по правилу «единица → бронь → прямо»
+      expect(item.source).toBe("RETURN");
+      expect(item.stockCount).toBeNull();
+      expect(item.equipment).toEqual({ name: "Прожектор Потеряшка", category: "Осветительные приборы" });
     }
   });
 
@@ -272,6 +277,12 @@ describe("POST /api/problem-items/:id/resolve", () => {
     expect(res.status).toBe(200);
     expect(res.body.item.status).toBe("FOUND");
     expect(res.body.item.resolutionNote).toBe("нашёлся");
+    // В карточку — имя сотрудника (его показывает реестр), не cuid
+    expect(res.body.item.resolvedBy).toBe("pi_super");
+    const audit = await prisma.auditEntry.findFirst({
+      where: { action: "PROBLEM_ITEM_RESOLVE", entityId: resolveUnitId },
+    });
+    expect(audit.userId).toBe(superAdminId);
 
     const updated = await prisma.problemItem.findUnique({ where: { id: resolveItemId } });
     expect(updated.status).toBe("FOUND");

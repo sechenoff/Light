@@ -525,6 +525,8 @@ export async function computeProblems(): Promise<ProblemsSummary> {
       include: {
         equipmentUnit: { include: { equipment: { select: { name: true } } } },
         bookingItem: { include: { equipment: { select: { name: true } } } },
+        // Ручные и из инвентаризации: ни единицы, ни брони — позиция напрямую.
+        equipment: { select: { name: true } },
       },
     }),
   ]);
@@ -562,6 +564,7 @@ export async function computeProblems(): Promise<ProblemsSummary> {
       equipmentName:
         p.equipmentUnit?.equipment.name ??
         p.bookingItem?.equipment?.name ??
+        p.equipment?.name ??
         "Оборудование",
       quantity: p.quantity,
       reason: p.reason,

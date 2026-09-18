@@ -147,7 +147,14 @@ async function aggregateIncidents(
     }),
     prismaClient.problemItem.findMany({
       where: { createdAt: { gte: rangeFrom, lte: rangeTo } },
-      select: { equipmentUnit: { select: { equipmentId: true } } },
+      // Позиция потеряшки: прямая ссылка (ручные и из инвентаризации) →
+      // единица → позиция брони (COUNT с приёмки). Иначе безъюнитные карточки
+      // в счётчик инцидентов не попадали вовсе.
+      select: {
+        equipmentId: true,
+        equipmentUnit: { select: { equipmentId: true } },
+        bookingItem: { select: { equipmentId: true } },
+      },
     }),
   ]);
 
@@ -160,7 +167,7 @@ async function aggregateIncidents(
     out.set(eid, e);
   }
   for (const p of problems) {
-    const eid = p.equipmentUnit?.equipmentId;
+    const eid = p.equipmentId ?? p.equipmentUnit?.equipmentId ?? p.bookingItem?.equipmentId;
     if (!eid) continue;
     const e = out.get(eid) ?? { repairCount: 0, problemCount: 0 };
     e.problemCount += 1;

@@ -25,7 +25,10 @@ type AuditEntityType =
   | "OrgSettings"
   | "ProblemItem"
   | "Feedback"
-  | "ClientPortalAccount";
+  | "ClientPortalAccount"
+  // Инвентаризация склада: сама сессия пересчёта и поправка количества позиции.
+  | "StockCount"
+  | "Equipment";
 
 /**
  * Записывает событие в аудит-лог.

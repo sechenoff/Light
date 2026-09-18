@@ -938,6 +938,20 @@ export async function completeSession(
   //     reason используется только как enum-метка в строке (без авто-WROTE_OFF).
   const problemUnits = options?.problemUnits ?? [];
   if (problemUnits.length > 0 && session.operation === "RETURN") {
+    // Позиция каталога COUNT-потеряшки — одной выборкой на все строки: карточка
+    // пишет прямой equipmentId (как потеряшки из инвентаризации), чтобы доступность,
+    // реестр и «Как пропало» находили её по позиции, а не только через бронь.
+    const countBookingItemIds = problemUnits
+      .map((p) => ("bookingItemId" in p && p.bookingItemId ? p.bookingItemId : null))
+      .filter((id): id is string => id != null);
+    const equipmentIdByBookingItem = new Map<string, string | null>();
+    if (countBookingItemIds.length > 0) {
+      const rows = await prisma.bookingItem.findMany({
+        where: { id: { in: countBookingItemIds } },
+        select: { id: true, equipmentId: true },
+      });
+      for (const row of rows) equipmentIdByBookingItem.set(row.id, row.equipmentId);
+    }
     for (const p of problemUnits) {
       if ("equipmentUnitId" in p && p.equipmentUnitId) {
         // ── UNIT-mode (legacy) ─────────────────────────────────────────────
@@ -972,6 +986,7 @@ export async function completeSession(
           const pi = await prisma.problemItem.create({
             data: {
               bookingItemId: p.bookingItemId,
+              equipmentId: equipmentIdByBookingItem.get(p.bookingItemId) ?? null,
               quantity: p.quantity,
               sourceBookingId: session.bookingId,
               reason: p.reason,

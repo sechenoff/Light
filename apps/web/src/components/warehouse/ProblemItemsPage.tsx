@@ -15,6 +15,10 @@
  *
  * Правило продукта: НИКАКИХ штрихкодов в UX — бэкенд их и не отдаёт.
  * Resolve-модалка (ResolveProblemModal) зеркалит RejectBookingModal.
+ *
+ * Инвентаризация (спека 2026-09-18 §7): подменю склада, источник карточки
+ * (приёмка / инвентаризация № N / вручную) — меткой и фильтром, причина «Не
+ * нашли на складе», ручной вход «Завести потеряшку» (AddProblemItemModal).
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -25,45 +29,21 @@ import { toMoscowDateString } from "../../lib/moscowDate";
 import { toast } from "../ToastProvider";
 import { StatusPill, type StatusPillVariant } from "../StatusPill";
 import { ResolveProblemModal, type ResolveOutcome } from "./ResolveProblemModal";
-import type { ProblemReason } from "./types";
+import { AddProblemItemModal } from "./AddProblemItemModal";
+import { WarehouseSubnav } from "./WarehouseSubnav";
+import type {
+  ProblemItemReason,
+  ProblemItemStatus,
+  ProblemRegistryItem,
+  ProblemSource,
+} from "./types";
 
 // ── Типы (зеркалят select в apps/api/src/routes/problemItems.ts) ──────────────
 
-type ProblemStatus = "EXPECTED" | "SEARCHING" | "FOUND" | "NOT_FOUND" | "WROTE_OFF";
-
-interface ProblemItem {
-  id: string;
-  // UNIT-mode: equipmentUnitId + equipmentUnit are set; COUNT-mode (per-bookingItem)
-  // → both are null, and `bookingItem` + `quantity` carry the equipment info.
-  equipmentUnitId: string | null;
-  sourceBookingId: string | null;
-  reason: ProblemReason;
-  comment: string;
-  expectedBackDate: string | null;
-  status: ProblemStatus;
-  createdBy: string;
-  createdAt: string;
-  resolvedAt: string | null;
-  resolvedBy: string | null;
-  resolutionNote: string | null;
-  equipmentUnit: {
-    id: string;
-    equipment: { name: string; category: string };
-  } | null;
-  bookingItem: {
-    id: string;
-    quantity: number;
-    equipment: { name: string; category: string };
-  } | null;
-  quantity: number;
-  // Обогащение бронью (batch-fetch на бэкенде): клиент + проект, чтобы
-  // менеджер сразу видел, кому звонить. null — если бронь не привязана.
-  booking: {
-    id: string;
-    projectName: string;
-    client: { name: string; phone: string | null } | null;
-  } | null;
-}
+type ProblemStatus = ProblemItemStatus;
+// UNIT-mode: equipmentUnit задан; COUNT с приёмки — bookingItem + quantity;
+// ручные и из инвентаризации — прямая позиция (`equipment`).
+type ProblemItem = ProblemRegistryItem;
 
 interface ProblemItemsResponse {
   items: ProblemItem[];
@@ -72,11 +52,12 @@ interface ProblemItemsResponse {
 
 // ── Лейблы (русские человекочитаемые, никогда не сырой ENUM) ──────────────────
 
-const REASON_LABEL: Record<ProblemReason, string> = {
+const REASON_LABEL: Record<ProblemItemReason, string> = {
   LEFT_ON_SITE: "Остался на площадке",
   LOST: "Потерян",
   DESTROYED: "Уничтожен",
   STOLEN: "Украден",
+  NOT_ON_SHELF: "Не нашли на складе",
 };
 
 const STATUS_LABEL: Record<ProblemStatus, string> = {
@@ -104,6 +85,15 @@ const FILTER_PILLS: ReadonlyArray<{ value: StatusFilter; label: string }> = [
   { value: "FOUND", label: "Найдено" },
   { value: "NOT_FOUND", label: "Не найдено" },
   { value: "WROTE_OFF", label: "Списано" },
+];
+
+type SourceFilter = "" | ProblemSource;
+
+const SOURCE_PILLS: ReadonlyArray<{ value: SourceFilter; label: string }> = [
+  { value: "", label: "Все источники" },
+  { value: "RETURN", label: "Приёмка" },
+  { value: "STOCK_COUNT", label: "Инвентаризация" },
+  { value: "MANUAL", label: "Вручную" },
 ];
 
 const OPEN_STATUSES: ReadonlySet<ProblemStatus> = new Set<ProblemStatus>([
@@ -144,6 +134,31 @@ function isOverdueExpected(item: ProblemItem): boolean {
   const d = new Date(item.expectedBackDate);
   if (Number.isNaN(d.getTime())) return false;
   return toMoscowDateString(d) < toMoscowDateString(new Date());
+}
+
+/** Код ошибки API: `code` (4-арг HttpError) или строковый `details` (3-арг). */
+function errorCode(e: unknown): string | undefined {
+  if (typeof e !== "object" || e === null) return undefined;
+  const { code, details } = e as { code?: unknown; details?: unknown };
+  if (typeof code === "string") return code;
+  return typeof details === "string" ? details : undefined;
+}
+
+/** «приёмка» / «инвентаризация № N» / «вручную». */
+function sourceLabel(item: ProblemItem): string {
+  if (item.source === "STOCK_COUNT") {
+    return item.stockCount ? `инвентаризация № ${item.stockCount.number}` : "инвентаризация";
+  }
+  return item.source === "MANUAL" ? "вручную" : "приёмка";
+}
+
+/** Метка источника — пунктирная «src», как в мокапе реестра. */
+function SourceBadge({ item }: { item: ProblemItem }) {
+  return (
+    <span className="inline-block whitespace-nowrap rounded-[3px] border border-dashed border-border-strong px-1 align-middle font-cond text-[9.5px] font-semibold uppercase leading-[1.7] tracking-[0.05em] text-ink-3">
+      {sourceLabel(item)}
+    </span>
+  );
 }
 
 /**
@@ -228,30 +243,56 @@ function ItemActions({
 }
 
 /**
- * Pick equipment info from either the UNIT-mode (`equipmentUnit`) or
- * COUNT-mode (`bookingItem`) relation. UNIT-mode rows always have
- * `equipmentUnit` populated; COUNT-mode rows have only `bookingItem`.
+ * Позиция карточки по правилу системы: единица (штучный учёт) → позиция брони
+ * (COUNT с приёмки) → прямая ссылка (вручную / инвентаризация). Бэкенд уже
+ * кладёт результат в `equipment`; цепочка здесь — страховка для старых ответов.
  */
 function itemEquipment(item: ProblemItem): {
   name: string;
   category: string;
   qty: number;
 } {
-  if (item.equipmentUnit) {
-    return {
-      name: item.equipmentUnit.equipment.name,
-      category: item.equipmentUnit.equipment.category,
-      qty: 1,
-    };
-  }
-  if (item.bookingItem) {
-    return {
-      name: item.bookingItem.equipment.name,
-      category: item.bookingItem.equipment.category,
-      qty: item.quantity,
-    };
-  }
-  return { name: "Без позиции", category: "—", qty: 1 };
+  const eq =
+    item.equipmentUnit?.equipment ?? item.bookingItem?.equipment ?? item.equipment ?? null;
+  const qty = item.equipmentUnit ? 1 : item.quantity;
+  if (!eq) return { name: "Позиция удалена из каталога", category: "—", qty };
+  return { name: eq.name, category: eq.category, qty };
+}
+
+/** Ряд пилюль-фильтров (статус / источник) — один визуальный контракт. */
+function FilterPills<T extends string>({
+  label,
+  pills,
+  value,
+  onChange,
+}: {
+  label: string;
+  pills: ReadonlyArray<{ value: T; label: string }>;
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2" role="group" aria-label={label}>
+      {pills.map((pill) => {
+        const active = value === pill.value;
+        return (
+          <button
+            key={pill.value || "all"}
+            type="button"
+            onClick={() => onChange(pill.value)}
+            aria-pressed={active}
+            className={`inline-flex h-9 items-center rounded-md border px-3 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright ${
+              active
+                ? "bg-accent-soft text-accent border-accent-border font-medium"
+                : "bg-surface text-ink-2 border-border hover:border-border-strong"
+            }`}
+          >
+            {pill.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 // ── Строка-карточка (mobile) ──────────────────────────────────────────────────
@@ -287,6 +328,9 @@ function ProblemCard({
           <p className="text-sm font-semibold text-ink mt-0.5 break-words">
             {itemEquipment(item).name}
             {itemEquipment(item).qty > 1 ? ` ×${itemEquipment(item).qty}` : ""}
+          </p>
+          <p className="mt-1">
+            <SourceBadge item={item} />
           </p>
         </div>
         <StatusPill
@@ -363,7 +407,8 @@ function ProblemRow({
         <p className="eyebrow">{itemEquipment(item).category}</p>
         <p className="text-sm font-medium text-ink mt-0.5">
           {itemEquipment(item).name}
-          {itemEquipment(item).qty > 1 ? ` ×${itemEquipment(item).qty}` : ""}
+          {itemEquipment(item).qty > 1 ? ` ×${itemEquipment(item).qty}` : ""}{" "}
+          <SourceBadge item={item} />
         </p>
       </td>
       <td className="py-3 px-3 text-xs whitespace-nowrap max-w-[200px]">
@@ -420,24 +465,32 @@ export function ProblemItemsPage() {
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("");
+  const [addOpen, setAddOpen] = useState(false);
 
   // Resolve-модалка
   const [resolveTarget, setResolveTarget] = useState<ProblemItem | null>(null);
   const [resolveOutcome, setResolveOutcome] = useState<ResolveOutcome>("FOUND");
   const [resolving, setResolving] = useState(false);
 
+  const listUrl = useCallback(
+    (cursor?: string) => {
+      const params = new URLSearchParams();
+      if (statusFilter) params.set("status", statusFilter);
+      if (sourceFilter) params.set("source", sourceFilter);
+      params.set("limit", "50");
+      if (cursor) params.set("cursor", cursor);
+      return `/api/problem-items?${params.toString()}`;
+    },
+    [statusFilter, sourceFilter],
+  );
+
   const load = useCallback(
     async (cursor?: string) => {
       setFetching(true);
       setError(null);
       try {
-        const params = new URLSearchParams();
-        if (statusFilter) params.set("status", statusFilter);
-        params.set("limit", "50");
-        if (cursor) params.set("cursor", cursor);
-        const data = await apiFetch<ProblemItemsResponse>(
-          `/api/problem-items?${params.toString()}`,
-        );
+        const data = await apiFetch<ProblemItemsResponse>(listUrl(cursor));
         setItems((prev) => (cursor ? [...prev, ...data.items] : data.items));
         setNextCursor(data.nextCursor);
       } catch (e: unknown) {
@@ -446,7 +499,7 @@ export function ProblemItemsPage() {
         setFetching(false);
       }
     },
-    [statusFilter],
+    [listUrl],
   );
 
   // Первичная загрузка + рефетч при смене фильтра. cancelled-flag — защита
@@ -456,10 +509,7 @@ export function ProblemItemsPage() {
     let cancelled = false;
     setFetching(true);
     setError(null);
-    const params = new URLSearchParams();
-    if (statusFilter) params.set("status", statusFilter);
-    params.set("limit", "50");
-    apiFetch<ProblemItemsResponse>(`/api/problem-items?${params.toString()}`)
+    apiFetch<ProblemItemsResponse>(listUrl())
       .then((data) => {
         if (cancelled) return;
         setItems(data.items);
@@ -475,7 +525,7 @@ export function ProblemItemsPage() {
     return () => {
       cancelled = true;
     };
-  }, [authorized, statusFilter]);
+  }, [authorized, listUrl]);
 
   const openResolve = useCallback((item: ProblemItem, outcome: ResolveOutcome) => {
     setResolveTarget(item);
@@ -532,6 +582,18 @@ export function ProblemItemsPage() {
           typeof e === "object" && e !== null && "details" in e
             ? (e as { details?: unknown }).details
             : undefined;
+        if (errorCode(e) === "STOCK_COUNT_LINE_COUNTED") {
+          // Позицию уже посчитали в идущей инвентаризации: «Найдено» решается
+          // там («Нашлось»), иначе излишек закрыл бы карточку второй раз.
+          // Сообщение сервера уже по-русски и с номером инвентаризации.
+          toast.error(
+            e instanceof Error && e.message
+              ? e.message
+              : "Позиция уже посчитана в идущей инвентаризации — решите там («Нашлось»)",
+          );
+          setResolveTarget(null);
+          return;
+        }
         const isClosed =
           status === 409 || details === "PROBLEM_ITEM_CLOSED";
         if (isClosed) {
@@ -556,42 +618,49 @@ export function ProblemItemsPage() {
   if (!authorized) return null;
 
   const isEmpty = !fetching && items.length === 0;
+  const isFiltered = Boolean(statusFilter || sourceFilter);
 
   return (
     <div className="p-4 lg:p-6 space-y-4 w-full">
-      {/* Заголовок */}
+      {/* Заголовок + подменю склада */}
       <div>
-        <p className="eyebrow">Склад</p>
-        <h1 className="text-[22px] font-semibold text-ink mt-0.5 tracking-tight">
-          Потеряшки
-        </h1>
-        <p className="text-[13px] text-ink-3 mt-0.5">
-          Реестр проблемных единиц — заявки на поиск и разбор
-        </p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow">Склад</p>
+            <h1 className="text-[22px] font-semibold text-ink mt-0.5 tracking-tight">
+              Потеряшки
+            </h1>
+            <p className="text-[13px] text-ink-3 mt-0.5">
+              Реестр пропавших позиций — заявки на поиск и разбор
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="inline-flex h-9 items-center rounded-md border border-accent-bright bg-accent-bright px-3.5 text-[13px] font-semibold text-surface transition-colors hover:border-accent hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bright focus-visible:ring-offset-2"
+          >
+            Завести потеряшку
+          </button>
+        </div>
+        <div className="mt-3">
+          <WarehouseSubnav active="problems" />
+        </div>
       </div>
 
-      {/* Фильтр-пилюли */}
-      <div className="bg-surface border border-border rounded-[10px] px-4 py-3">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Фильтр по статусу">
-          {FILTER_PILLS.map((pill) => {
-            const active = statusFilter === pill.value;
-            return (
-              <button
-                key={pill.value || "all"}
-                type="button"
-                onClick={() => setStatusFilter(pill.value)}
-                aria-pressed={active}
-                className={`inline-flex h-9 items-center rounded-md border px-3 text-[13px] transition-colors ${
-                  active
-                    ? "bg-accent-soft text-accent border-accent-border font-medium"
-                    : "bg-surface text-ink-2 border-border hover:border-border-strong"
-                }`}
-              >
-                {pill.label}
-              </button>
-            );
-          })}
-        </div>
+      {/* Фильтр-пилюли: статус и источник */}
+      <div className="bg-surface border border-border rounded-[10px] px-4 py-3 space-y-2.5">
+        <FilterPills
+          label="Фильтр по статусу"
+          pills={FILTER_PILLS}
+          value={statusFilter}
+          onChange={setStatusFilter}
+        />
+        <FilterPills
+          label="Фильтр по источнику"
+          pills={SOURCE_PILLS}
+          value={sourceFilter}
+          onChange={setSourceFilter}
+        />
       </div>
 
       {/* Ошибка */}
@@ -617,11 +686,13 @@ export function ProblemItemsPage() {
       )}
 
       {/* Пустое состояние */}
-      {isEmpty && (
+      {isEmpty && !error && (
         <div className="bg-surface border border-border rounded-lg p-10 text-center shadow-xs">
           <p className="text-sm text-ink-2 font-medium">Потеряшек нет</p>
           <p className="text-[13px] text-ink-3 mt-1">
-            Проблемные единицы с приёмки появятся здесь автоматически
+            {isFiltered
+              ? "По выбранным фильтрам карточек нет — сбросьте фильтр, чтобы увидеть весь реестр"
+              : "Карточки появляются с приёмки, из инвентаризации или вручную — кнопкой «Завести потеряшку»"}
           </p>
         </div>
       )}
@@ -699,6 +770,15 @@ export function ProblemItemsPage() {
           {fetching ? "Загрузка…" : "Загрузить ещё"}
         </button>
       )}
+
+      {/* «Завести потеряшку» */}
+      <AddProblemItemModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreated={() => {
+          void load();
+        }}
+      />
 
       {/* Resolve-модалка */}
       {resolveTarget && (
