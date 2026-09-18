@@ -37,6 +37,10 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+      - name: pdftotext для e2e-тестов PDF
+        # zze2e-*.test.ts читают готовый PDF через pdftotext (poppler) — на машинах
+        # разработчиков он стоит, на чистом раннере нет.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
       - run: npm ci --no-audit --no-fund
       - name: prisma generate
         run: cd apps/api && npx prisma generate
