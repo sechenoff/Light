@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { findDestructiveChanges } from "./schema-guard.mjs";
+import { analyzeSchemaChange, findDestructiveChanges } from "./schema-guard.mjs";
 
 const BASE = `
 model Booking {
@@ -69,8 +69,63 @@ test("удалённое значение enum и переименованная
   const head = BASE.replace("  CONFIRMED // подтверждена\n", "").replace('@@map("stock_counts")', '@@map("counts")');
   assert.deepEqual(findDestructiveChanges(BASE, head), [
     "модель StockCount: таблица «stock_counts» → «counts» (на SQLite это пересоздание)",
-    "из enum BookingStatus удалено значение CONFIRMED",
+    "из enum BookingStatus удалено значение CONFIRMED — строки с ним перестанут читаться",
   ]);
+});
+
+test("смена @map у значения enum — ловится (db push на SQLite её не видит)", () => {
+  const base = BASE.replace("  DRAFT\n", '  DRAFT @map("draft")\n');
+  const head = BASE.replace("  DRAFT\n", '  DRAFT @map("DRAFT_NEW")\n');
+  assert.deepEqual(findDestructiveChanges(base, head), [
+    "enum BookingStatus.DRAFT: в базе «draft» → «DRAFT_NEW» — старые строки перестанут читаться",
+  ]);
+});
+
+test("добавления, которые не накатятся на заполненную таблицу, — ловятся как blocks", () => {
+  const head = BASE
+    .replace("  clientId  String\n", [
+      "  clientId  String",
+      "  code      String   @default(cuid())",
+      "  updatedAt DateTime @updatedAt",
+      "  slug      String?  @unique",
+      "  number    Int",
+      "",
+    ].join("\n"))
+    .replace('@map("booking_note")', '@map("booking_note") @unique')
+    .replace("  note      String?", "  note      String ")
+    .replace("  @@index([status])\n", "  @@index([status])\n  @@unique([clientId, status])\n");
+  const { drops, blocks } = analyzeSchemaChange(BASE, head);
+  assert.deepEqual(drops, []);
+  assert.equal(blocks.length, 7);
+  assert.ok(blocks.some((b) => b.includes("добавлен @@unique([clientId,status])")));
+  assert.ok(blocks.some((b) => b.includes("Booking.note стало обязательным")));
+  assert.ok(blocks.some((b) => b.includes("на поле Booking.note добавлен @unique")));
+  assert.ok(blocks.some((b) => b.includes("новое обязательное поле Booking.code")));
+  assert.ok(blocks.some((b) => b.includes("новое обязательное поле Booking.updatedAt")));
+  assert.ok(blocks.some((b) => b.includes("новое поле Booking.slug с @unique")));
+  assert.ok(blocks.some((b) => b.includes("новое обязательное поле Booking.number")));
+});
+
+test("безопасные добавления в существующую модель — не ловятся", () => {
+  const head = BASE
+    .replace("  clientId  String\n", [
+      "  clientId  String",
+      "  paidAt    DateTime?",
+      '  mode      String   @default("STANDARD")',
+      "  count     Int      @default(0)",
+      "  createdAt DateTime @default(now())",
+      "  touchedAt DateTime @default(now()) @updatedAt",
+      "  owner     Client?  @relation(\"owner\", fields: [ownerId], references: [id])",
+      "  ownerId   String?",
+      "",
+    ].join("\n"))
+    .replace("  @@index([status])\n", "  @@index([status])\n  @@index([clientId])\n");
+  assert.deepEqual(findDestructiveChanges(BASE, head), []);
+});
+
+test("новая модель с @unique и обязательными полями — не ловится (таблица пустая)", () => {
+  const head = BASE + "\nmodel Bill {\n  id     String @id @default(cuid())\n  number Int    @unique\n  total  Int\n  @@unique([number, total])\n}\n";
+  assert.deepEqual(findDestructiveChanges(BASE, head), []);
 });
 
 test("настоящая схема проекта разбирается и сама с собой сходится", () => {
