@@ -95,11 +95,13 @@ export function AddRepairModal({
   open,
   onClose,
   onCreated,
+  sourceBooking,
 }: {
   open: boolean;
   onClose: () => void;
   /** Вызывается после успешного создания — страница перечитывает очередь. */
   onCreated: () => void;
+  sourceBooking?: { id: string; name: string };
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<EquipmentSearchItem[]>([]);
@@ -243,6 +245,7 @@ export function AddRepairModal({
         method: "POST",
         body: JSON.stringify({
           equipmentId: picked.id,
+          ...(sourceBooking ? { sourceBookingId: sourceBooking.id } : {}),
           ...(unitId ? { unitId } : {}),
           quantity: isUnitMode ? 1 : quantity,
           reason: reason.trim(),
@@ -376,6 +379,7 @@ export function AddRepairModal({
           </button>
         </div>
 
+        {sourceBooking && <p className="border-b border-border bg-accent-soft px-4 py-3 text-sm text-ink-2">Проект: <strong className="break-words">{sourceBooking.name}</strong>. Выберите оборудование, вернувшееся с этого проекта.</p>}
         {/* ШАГ 1 · какой прибор */}
         <Step n="1" title="Что сломалось" done={picked !== null}>
           {picked ? (

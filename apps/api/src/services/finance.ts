@@ -1,3 +1,4 @@
+import { invoiceAmount } from "../utils/invoiceAmount";
 import type { BookingPaymentStatus, PaymentDirection, PaymentRecordStatus, Prisma } from "@prisma/client";
 import Decimal from "decimal.js";
 import { computeSurcharge, resolveSurchargePercent } from "./paymentForm";
@@ -109,6 +110,11 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
     },
   });
   if (!booking) return null;
+
+  if (booking.mode === "PROJECT") {
+    const { recomputeProjectFinance } = await import("./projectFinance");
+    return (await recomputeProjectFinance(bookingId, tx)).booking;
+  }
 
   const previousStatus = booking.paymentStatus;
   const main  = booking.estimates.find((e) => e.kind === "MAIN")  ?? null;
@@ -1248,7 +1254,7 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
       dueDate: { gte: horizonStart, lte: horizonEnd },
       voidedAt: null,
     },
-    select: { dueDate: true, total: true, paidAmount: true },
+    select: { dueDate: true, total: true, adjustmentAmount: true, paidAmount: true },
   });
 
   // Fetch DRAFT invoices with dueDate in horizon
@@ -1258,7 +1264,7 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
       dueDate: { gte: horizonStart, lte: horizonEnd },
       voidedAt: null,
     },
-    select: { dueDate: true, total: true, paidAmount: true },
+    select: { dueDate: true, total: true, adjustmentAmount: true, paidAmount: true },
   });
 
   // Fetch CONFIRMED/ISSUED/RETURNED/PENDING_APPROVAL bookings without any invoice, startDate in horizon.
@@ -1297,7 +1303,7 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
     const label = monthSlotLabel(inv.dueDate);
     if (!label) continue;
     const outstanding = Decimal.max(
-      new Decimal(inv.total.toString()).sub(new Decimal(inv.paidAmount.toString())),
+      invoiceAmount(inv).sub(new Decimal(inv.paidAmount.toString())),
       new Decimal(0),
     );
     slotData.get(label)!.confirmed = slotData.get(label)!.confirmed.add(outstanding);
@@ -1308,7 +1314,7 @@ export async function computeForecast(horizonMonths = 6): Promise<ForecastResult
     const label = monthSlotLabel(inv.dueDate);
     if (!label) continue;
     const outstanding = Decimal.max(
-      new Decimal(inv.total.toString()).sub(new Decimal(inv.paidAmount.toString())),
+      invoiceAmount(inv).sub(new Decimal(inv.paidAmount.toString())),
       new Decimal(0),
     );
     slotData.get(label)!.potential = slotData.get(label)!.potential.add(outstanding);
@@ -1394,6 +1400,7 @@ export async function computeAgingPerClient(asOf: Date = new Date()): Promise<Ag
     select: {
       dueDate: true,
       total: true,
+      adjustmentAmount: true,
       paidAmount: true,
       booking: {
         select: {
@@ -1418,7 +1425,7 @@ export async function computeAgingPerClient(asOf: Date = new Date()): Promise<Ag
 
   for (const inv of invoices) {
     if (!inv.dueDate) continue;
-    const outstanding = new Decimal(inv.total.toString()).sub(new Decimal(inv.paidAmount.toString()));
+    const outstanding = invoiceAmount(inv).sub(new Decimal(inv.paidAmount.toString()));
     if (outstanding.lessThanOrEqualTo(0)) continue;
 
     const daysOverdue = Math.floor((asOf.getTime() - inv.dueDate.getTime()) / 86400000);
@@ -1629,7 +1636,7 @@ export async function buildClientDebtExport(clientId: string): Promise<{ buf: Bu
       wsInvoices.addRow([
         inv.number,
         inv.booking?.projectName ?? "",
-        Number(inv.total.toString()),
+        invoiceAmount(inv).toNumber(),
         Number(inv.paidAmount.toString()),
         inv.dueDate ? inv.dueDate.toLocaleDateString("ru-RU") : "—",
         INVOICE_STATUS_RU[inv.status] ?? inv.status,
@@ -1682,7 +1689,7 @@ export async function getRemindableClients(): Promise<
     const daysOverdue = inv.dueDate
       ? Math.floor((now.getTime() - inv.dueDate.getTime()) / 86400000)
       : 0;
-    const outstanding = new Decimal(inv.total.toString()).sub(new Decimal(inv.paidAmount.toString()));
+    const outstanding = invoiceAmount(inv).sub(new Decimal(inv.paidAmount.toString()));
     if (outstanding.lte(0)) continue;
 
     const existing = clientMap.get(clientId) ?? {

@@ -7,7 +7,7 @@
 # What it does:
 #   1. Pre-flight: on main, synced with origin
 #   2. Server: git pull + smart install (skip if lockfile unchanged)
-#   3. Server: prisma generate + db push (safe — SQLite with accept-data-loss)
+#   3. Server: prisma generate + db push (refuses destructive changes)
 #   4. Server: api build (tsc in apps/api — fast, low memory)
 #   5. Server: pm2 restart api
 #   6. Health check: /health → {"ok":true}
@@ -89,7 +89,7 @@ cd /opt/light-rental-system
 echo "  ▸ Prisma generate + db push"
 cd apps/api
 npx prisma@6.5.0 generate > /dev/null 2>&1 || echo "  ⚠ prisma generate warnings (proceeding)"
-npx prisma@6.5.0 db push --accept-data-loss --skip-generate 2>&1 | tail -2
+npx prisma@6.5.0 db push  --skip-generate 2>&1 | tail -2
 
 echo "  ▸ Building API (tsc)"
 npm run build 2>&1 | tail -3

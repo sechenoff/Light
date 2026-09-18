@@ -312,7 +312,7 @@ export function TaskArchivePage() {
         </h1>
         <p className="text-[13px] text-ink-2 mt-1 max-w-[760px] leading-[1.65]">
           Задачи, выполненные более 24 часов назад. Фильтруй по датам, исполнителю или тексту.
-          Нужно вернуть что-то в работу — наведи на строку и нажми «Вернуть».
+          Чтобы вернуть задачу в работу, нажмите «Вернуть» в её строке.
         </p>
       </div>
 
@@ -517,7 +517,7 @@ function ArchiveTaskRow({
   const creator = task.createdByUser;
 
   return (
-    <div className="grid grid-cols-[22px_1fr_auto_auto_auto] gap-3.5 items-center px-5 py-3 opacity-85 hover:bg-surface-muted hover:opacity-100 transition-all group">
+    <div className="grid grid-cols-[22px_minmax(0,1fr)] sm:grid-cols-[22px_minmax(0,1fr)_auto_auto_auto] gap-3.5 items-center px-4 sm:px-5 py-3 opacity-85 hover:bg-surface-muted hover:opacity-100 transition-all group">
       {/* Зелёная галочка */}
       <span className="w-5 h-5 rounded-[6px] bg-emerald border-2 border-emerald text-surface text-xs font-bold flex items-center justify-center shrink-0">
         ✓
@@ -541,10 +541,10 @@ function ArchiveTaskRow({
       </div>
 
       {/* Исполнитель */}
-      <TaskAssigneePill user={task.assignedToUser} />
+      <div className="col-start-2 min-w-0 sm:col-start-auto"><TaskAssigneePill user={task.assignedToUser} /></div>
 
       {/* Время выполнения */}
-      <span className="text-[11px] font-mono text-ink-3 whitespace-nowrap">
+      <span className="col-start-2 sm:col-start-auto text-[11px] font-mono text-ink-3 whitespace-nowrap">
         {formatTime(task.completedAt)}
       </span>
 
@@ -552,7 +552,7 @@ function ArchiveTaskRow({
       <button
         onClick={() => void onReopen(task.id)}
         aria-label={`Вернуть задачу «${task.title.trim() || "Без названия"}» в работу`}
-        className="text-xs font-medium px-2.5 py-1.5 rounded-md border border-border bg-surface text-ink-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent-soft hover:text-accent-bright hover:border-accent-border inline-flex items-center gap-1 whitespace-nowrap"
+        className="col-start-2 sm:col-start-auto justify-self-start min-h-[44px] sm:min-h-0 text-xs font-medium px-2.5 py-1.5 rounded-md border border-border bg-surface text-ink-2 sm:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-accent-soft hover:text-accent-bright hover:border-accent-border inline-flex items-center gap-1 whitespace-nowrap"
       >
         ↩ Вернуть
       </button>

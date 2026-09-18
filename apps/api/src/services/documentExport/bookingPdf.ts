@@ -10,6 +10,7 @@
  */
 
 import Decimal from "decimal.js";
+import { HttpError } from "../../utils/errors";
 import { prisma } from "../../prisma";
 import { getSettings } from "../organizationService";
 import { renderInvoicePdf, coalesceWithEnv, type InvoiceLine } from "./invoice/renderInvoicePdf";
@@ -29,6 +30,11 @@ export async function buildBookingEstimatePdf(bookingId: string): Promise<Buffer
       items: { include: { equipment: true } },
     },
   });
+
+  if (booking.mode === "PROJECT") {
+    const { exportProjectDocument } = await import("../projectDocuments");
+    return exportProjectDocument(bookingId, "forecast", "pdf");
+  }
 
   const orgSettings = await getSettings();
   const org = coalesceWithEnv(orgSettings);
@@ -100,6 +106,19 @@ export async function buildBookingActPdf(bookingId: string): Promise<Buffer> {
 
   let actLines: ActLine[];
   let totalAmount: string;
+
+  if (booking.mode === "PROJECT") {
+    const { projectDetail } = await import("../bookingProjects");
+    const p = await projectDetail(bookingId);
+    const closed = p.periods.filter(x => x.kind === "PERIOD").map(x => x.throughDate).sort().at(-1) ?? "";
+    const lastDay = [...p.lots.flatMap(l => l.returns.map(r => r.lastBillableDate)), ...p.charges.map(c => c.date)].sort().at(-1) ?? p.fromDate;
+    if (p.booking.status !== "RETURNED" || closed < lastDay || new Decimal(p.booking.amountOutstanding.toString()).gt(0)) throw new HttpError(409, "Сначала завершите проект, закройте последний период и погасите долг");
+    const lines: ActLine[] = p.periods.flatMap(period => (JSON.parse(period.linesJson) as Array<{ name: string; amount: string; quantity: number }>).map(l => ({
+      index: 0, name: `${l.name} (${period.fromDate} — ${period.throughDate})`, quantity: l.quantity,
+      unitPrice: new Decimal(l.amount).div(l.quantity).toFixed(2), lineSum: l.amount,
+    }))).map((l, i) => ({ ...l, index: i + 1 }));
+    return renderActPdf({ actNumber, actDate, clientName: booking.client.name, lines, totalAmount: p.booking.finalAmount.toString() }, org);
+  }
 
   const mainEstimate = booking.estimates?.find((e) => e.kind === "MAIN");
   if (mainEstimate) {

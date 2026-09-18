@@ -4,6 +4,7 @@ import { z } from "zod";
 import { equipmentRouter } from "./equipment";
 import { availabilityRouter } from "./availability";
 import { bookingsRouter } from "./bookings";
+import { bookingProjectsRouter } from "./bookingProjects";
 import { equipmentImportRouter } from "./equipmentImport";
 import { estimatesRouter } from "./estimates";
 import { addonEstimatesRouter } from "./addonEstimates";
@@ -78,6 +79,7 @@ router.use("/api/equipment", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN
 router.use("/api/availability", rolesGuard(["SUPER_ADMIN", "WAREHOUSE", "TECHNICIAN"]), availabilityRouter);
 
 // /api/bookings — GET/POST: SUPER_ADMIN, WAREHOUSE; DELETE: SUPER_ADMIN (per-route в bookingsRouter)
+router.use("/api/booking-projects", bookingProjectsRouter);
 router.use("/api/bookings", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), bookingsRouter);
 
 // /api/import-sessions — SUPER_ADMIN only

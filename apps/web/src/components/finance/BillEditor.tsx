@@ -458,7 +458,7 @@ export function BillEditor(props: BillEditorProps) {
         }}
         className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]"
       >
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           {/* Контрагент */}
           <section className="rounded-lg border border-border bg-surface p-5 shadow-xs">
             <div className="mb-3 flex items-center justify-between">
@@ -524,12 +524,12 @@ export function BillEditor(props: BillEditorProps) {
               {lines.map((l, i) => (
                 <div
                   key={l.key}
-                  className="grid grid-cols-[minmax(0,1fr)_72px_96px_112px_88px_24px] gap-2 rounded border border-border p-2 xl:grid-cols-[minmax(0,1fr)_72px_96px_112px_104px_24px] xl:items-center xl:border-0 xl:p-0"
+                  className="grid grid-cols-2 gap-2 rounded border border-border p-2 xl:grid-cols-[minmax(0,1fr)_72px_96px_112px_104px_24px] xl:items-center xl:border-0 xl:p-0"
                 >
                   <input
                     type="text"
                     aria-label={`Наименование позиции ${i + 1}`}
-                    className={`${INPUT} col-span-6 xl:col-span-1`}
+                    className={`${INPUT} col-span-2 xl:col-span-1`}
                     placeholder="Аренда светового оборудования 10–12.09.2026"
                     value={l.name}
                     disabled={readOnly}

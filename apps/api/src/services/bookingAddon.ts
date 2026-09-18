@@ -1,3 +1,4 @@
+import { assertProjectStockForBooking } from "./projectStockGuard";
 /**
  * Добор в подтверждённую / выданную бронь со страницы брони (не из киоска).
  *
@@ -232,20 +233,8 @@ async function computeOccupiedByOthers(
   tx: TxClient,
   args: { equipmentId: string; bookingId: string; start: Date; end: Date },
 ): Promise<number> {
-  const rows = await tx.bookingItem.findMany({
-    where: {
-      equipmentId: args.equipmentId,
-      bookingId: { not: args.bookingId },
-      booking: {
-        status: { in: [...BLOCKING_STATUSES] },
-        deletedAt: null,
-        startDate: { lte: args.end },
-        endDate: { gte: args.start },
-      },
-    },
-    select: { quantity: true },
-  });
-  return rows.reduce((sum, r) => sum + r.quantity, 0);
+  const rows = await getAvailability({ startDate: args.start, endDate: args.end, equipmentIds: [args.equipmentId], excludeBookingId: args.bookingId, tx });
+  return rows[0]?.occupiedQuantity ?? 0;
 }
 
 /**
@@ -589,6 +578,7 @@ export async function addAddonItems(args: {
         select: { id: true, quantity: true },
       });
       const alreadyMine = existing?.quantity ?? 0;
+      if (issueNow) await assertProjectStockForBooking(tx, bookingId, [{ equipmentId: it.equipmentId, quantity: alreadyMine + it.quantity }]);
       const hadConflict = conflictedEquipment.has(it.equipmentId);
 
       // Hard cap — физический склад. «Под ответственность» разрешает подвинуть

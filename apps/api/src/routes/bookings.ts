@@ -1,3 +1,6 @@
+import { assertProjectStockForBooking } from "../services/projectStockGuard";
+import { listBookingRegister } from "../services/bookingRegister";
+import { getBookingIssues } from "../services/bookingIssues";
 import express from "express";
 import { z } from "zod";
 import { PAYMENT_FORMS, computeSurcharge, formatPercent, resolveSurchargePercent } from "../services/paymentForm";
@@ -47,6 +50,15 @@ import {
 } from "../services/bookingAddon";
 
 const router = express.Router();
+// Проекты меняются через операции: обычная правка/приёмка потеряла бы историю.
+router.use("/:id", async (req, res, next) => {
+  try {
+    if (req.method === "GET" || !req.params.id) return next();
+    const project = await prisma.bookingProject.findUnique({ where: { bookingId: req.params.id } });
+    if (project) throw new HttpError(409, "Используйте действия в карточке длинного проекта", "PROJECT_ACTION_REQUIRED");
+    next();
+  } catch (e) { next(e); }
+});
 
 /** YYYY-MM-DD или ISO с временем (как от datetime-local → toISOString()). */
 const bookingRangeStringSchema = z.string().min(10, "Укажите дату/время начала и окончания аренды");
@@ -367,6 +379,14 @@ async function computeTransportSnapshots(
   return snapshots;
 }
 
+router.get("/:id/issues", async (req, res, next) => {
+  try { res.json(await getBookingIssues(req.params.id)); } catch (err) { next(err); }
+});
+
+router.get("/register", async (req, res, next) => {
+  try { res.json(await listBookingRegister(req.query)); } catch (err) { next(err); }
+});
+
 router.get("/", async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit ?? 50), 200);
@@ -409,6 +429,7 @@ router.get("/", async (req, res, next) => {
     const qParam = (typeof req.query.q === "string" ? req.query.q : "").trim();
 
     const whereBase: Prisma.BookingWhereInput = {
+      ...(["STANDARD", "PROJECT"].includes(String(req.query.mode)) ? { mode: String(req.query.mode) } : {}),
       ...(statusFilter ? { status: statusFilter } : {}),
       ...(archivedFilter ? { deletedAt: { not: null } } : { deletedAt: null }),
       ...paidWhere,
@@ -430,6 +451,7 @@ router.get("/", async (req, res, next) => {
 
     const bookingListSelect = {
       id: true,
+      mode: true,
       status: true,
       projectName: true,
       startDate: true,
@@ -583,9 +605,9 @@ router.get("/", async (req, res, next) => {
  *  - issued — на руках (status ISSUED).
  * Путь /summary/counts не коллизирует с /:id (два сегмента vs один).
  */
-router.get("/summary/counts", async (_req, res, next) => {
+router.get("/summary/counts", async (req, res, next) => {
   try {
-    const live: Prisma.BookingWhereInput = { deletedAt: null };
+    const live: Prisma.BookingWhereInput = { deletedAt: null, ...(["STANDARD", "PROJECT"].includes(String(req.query.mode)) ? { mode: String(req.query.mode) } : {}) };
     const [pendingApproval, overdue, issued] = await Promise.all([
       prisma.booking.count({ where: { ...live, status: "PENDING_APPROVAL" } }),
       prisma.booking.count({ where: { ...live, ...buildPaidWhere("OVERDUE") } }),
@@ -1457,6 +1479,7 @@ router.post("/:id/status", async (req, res, next) => {
       // сканером или живущие своим циклом (MAINTENANCE/RETIRED/MISSING),
       // не трогаем — фильтруем по текущему статусу.
       updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        if (body.action === "issue") await assertProjectStockForBooking(tx, id);
         const u = await tx.booking.update({
           where: { id },
           data: {
@@ -3056,6 +3079,13 @@ router.get("/:id/full-estimate/export/pdf", async (req, res, next) => {
     });
     if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
 
+    if (booking.mode === "PROJECT") {
+      const { exportProjectDocument } = await import("../services/projectDocuments");
+      res.type("application/pdf").setHeader("Content-Disposition", "attachment; filename=project-forecast.pdf");
+      res.end(await exportProjectDocument(booking.id, "forecast", "pdf"));
+      return;
+    }
+
     const main = booking.estimates.find((e) => e.kind === "MAIN");
     if (!main) throw new HttpError(404, "Основная смета не создана", "MAIN_ESTIMATE_NOT_FOUND");
     const addon = booking.estimates.find((e) => e.kind === "ADDON") ?? null;
@@ -3101,6 +3131,13 @@ router.get("/:id/full-estimate/export/xlsx", async (req, res, next) => {
       },
     });
     if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+
+    if (booking.mode === "PROJECT") {
+      const { exportProjectDocument } = await import("../services/projectDocuments");
+      res.type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet").setHeader("Content-Disposition", "attachment; filename=project-forecast.xlsx");
+      res.end(await exportProjectDocument(booking.id, "forecast", "xlsx"));
+      return;
+    }
 
     const main = booking.estimates.find((e) => e.kind === "MAIN");
     if (!main) throw new HttpError(404, "Основная смета не создана", "MAIN_ESTIMATE_NOT_FOUND");
@@ -3255,4 +3292,3 @@ router.post("/:id/addon-estimate/merge", async (req, res, next) => {
 });
 
 export { router as bookingsRouter };
-

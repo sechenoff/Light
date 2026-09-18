@@ -93,6 +93,7 @@ enum TaskStatus {
 }
 
 enum InvoiceKind {
+  PERIOD
   FULL
   DEPOSIT
   BALANCE
@@ -258,6 +259,8 @@ model AppSetting {
 // 3) Стоимость → rentalRatePerShift (за смену)
 // Не храним: «Общая стоимость», «Заказ Количество», «Сумма аренды» — только вычисляются при брони/смете.
 model Equipment {
+  projectLots ProjectLot[]
+
   id                String            @id @default(cuid())
   importKey         String            @unique
   stockTrackingMode StockTrackingMode @default(COUNT)
@@ -306,6 +309,8 @@ model Equipment {
 }
 
 model EquipmentUnit {
+  projectAssignments ProjectLotUnit[]
+
   id                      String     @id @default(cuid())
   equipmentId             String
   serialNumber            String?    @unique
@@ -328,6 +333,9 @@ model EquipmentUnit {
 }
 
 model Booking {
+  mode String @default("STANDARD")
+  project BookingProject?
+
   id         String        @id @default(cuid())
   clientId   String
   client     Client        @relation(fields: [clientId], references: [id])
@@ -1177,6 +1185,10 @@ model TaskChecklistItem {
 /// Счёт (Invoice) — финансовый документ-обязательство, привязанный к броне.
 /// Нумерация: LR-YYYY-NNNN (настраивается через OrganizationSettings.invoiceNumberPrefix).
 model Invoice {
+  projectPeriod ProjectBillingPeriod?
+  /// Derived corrections; original total and issued document remain immutable.
+  adjustmentAmount Decimal @default(0)
+
   id          String        @id @default(cuid())
   number      String        @unique  // LR-2026-0042
   bookingId   String
@@ -1650,4 +1662,120 @@ model BillLine {
   sum      Decimal
 
   @@index([billId])
+}
+
+/// Проект использует ту же бронь, клиентов, склад и платежи.
+model BookingProject {
+  bookingId        String                 @id
+  booking          Booking                @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  restFactor       Decimal                @default(0.5)
+  billingCycle     String                 @default("WEEKLY")
+  paymentTermsDays Int                    @default(7)
+  revision         Int                    @default(0)
+  days             ProjectDay[]
+  lots             ProjectLot[]
+  periods          ProjectBillingPeriod[]
+  events           ProjectEvent[]
+  charges          ProjectCharge[]
+}
+
+model ProjectDay {
+  id        String         @id @default(cuid())
+  bookingId String
+  project   BookingProject @relation(fields: [bookingId], references: [bookingId], onDelete: Cascade)
+  date      String
+  kind      String         @default("SHOOT")
+
+  @@unique([bookingId, date])
+}
+
+/// Отдельная поставка; даты тарификации включают обе границы.
+model ProjectLot {
+  id           String             @id @default(cuid())
+  bookingId    String
+  project      BookingProject     @relation(fields: [bookingId], references: [bookingId], onDelete: Cascade)
+  equipmentId  String
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  nameSnapshot String
+  quantity     Int
+  ratePerShift Decimal
+  fromDate     String
+  throughDate  String
+  status       String             @default("PLANNED")
+  issuedAt     DateTime?
+  createdAt    DateTime           @default(now())
+  returns      ProjectLotReturn[]
+  units        ProjectLotUnit[]
+
+  @@index([bookingId, status])
+  @@index([equipmentId, fromDate, throughDate])
+}
+
+model ProjectLotUnit {
+  id              String     @id @default(cuid())
+  lotId           String
+  lot             ProjectLot @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  equipmentUnitId String
+  equipmentUnit EquipmentUnit @relation(fields: [equipmentUnitId], references: [id], onDelete: Restrict)
+  returnedAt      DateTime?
+
+  @@unique([lotId, equipmentUnitId])
+  @@index([equipmentUnitId, returnedAt])
+}
+
+model ProjectLotReturn {
+  id               String     @id @default(cuid())
+  lotId            String
+  lot              ProjectLot @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  quantity         Int
+  lastBillableDate String
+  returnedAt       DateTime   @default(now())
+  createdBy        String
+}
+
+model ProjectBillingPeriod {
+  id          String         @id @default(cuid())
+  bookingId   String
+  project     BookingProject @relation(fields: [bookingId], references: [bookingId], onDelete: Cascade)
+  requestKey  String
+  fromDate    String
+  throughDate String
+  kind        String         @default("PERIOD")
+  correctsId  String?
+  amount      Decimal
+  documentJson String @default("{}")
+  linesJson   String
+  dueDate     DateTime
+  invoiceId   String?        @unique
+  invoice     Invoice?       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  createdBy   String
+  createdAt   DateTime       @default(now())
+
+  @@unique([bookingId, requestKey])
+  @@index([bookingId, fromDate])
+}
+
+model ProjectEvent {
+  id        String         @id @default(cuid())
+  bookingId String
+  project   BookingProject @relation(fields: [bookingId], references: [bookingId], onDelete: Cascade)
+  kind      String
+  text      String
+  createdBy String
+  createdAt DateTime       @default(now())
+
+  @@index([bookingId, createdAt])
+}
+
+/// Разовая доставка или другая согласованная услуга, без коэффициента выходного.
+model ProjectCharge {
+  id          String         @id @default(cuid())
+  bookingId   String
+  project     BookingProject @relation(fields: [bookingId], references: [bookingId], onDelete: Cascade)
+  date        String
+  description String
+  amount      Decimal
+  createdAt   DateTime       @default(now())
+
+  @@index([bookingId, date])
 }

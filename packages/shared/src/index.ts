@@ -29,3 +29,5 @@ export {
   calculateCrewCost,
 } from "./crewCalculator";
 export type { CrewInput, RoleBreakdown, CalculationResult } from "./crewCalculator";
+export * from "./bookingRegister";
+export * from "./bookingIssues";

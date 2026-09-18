@@ -1,3 +1,4 @@
+import { assertProjectStockForBooking } from "./projectStockGuard";
 /**
  * Сервис управления сессиями сканирования на складе.
  *
@@ -178,6 +179,7 @@ export async function createSession(
   operation: ScanOperation,
 ) {
   const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+  if (booking?.mode === "PROJECT") throw new HttpError(409, "Откройте карточку проекта и выберите конкретную поставку для выдачи или частичного возврата", "PROJECT_ACTION_REQUIRED");
   if (!booking) {
     throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
   }
@@ -645,6 +647,7 @@ export async function completeSession(
     };
 
     if (session.operation === "ISSUE") {
+      await assertProjectStockForBooking(tx, session.bookingId, [], session.scans.map(s => s.equipmentUnitId));
       // Для каждого отсканированного юнита: статус → ISSUED + BookingItemUnit
       for (const scan of session.scans) {
         const unit = scan.equipmentUnit;

@@ -32,7 +32,7 @@ export function FinanceTabNav({ debtCount }: { debtCount?: number }) {
         : TABS;
 
   return (
-    <div className="flex border-b border-border bg-surface px-6">
+    <nav aria-label="Разделы финансов" className="flex min-w-0 max-w-full overflow-x-auto border-b border-border bg-surface px-3 sm:px-6">
       {tabs.map((tab) => {
         const active =
           tab.href === "/finance"
@@ -42,7 +42,7 @@ export function FinanceTabNav({ debtCount }: { debtCount?: number }) {
           <Link
             key={tab.href}
             href={tab.href}
-            className={`px-4 py-3.5 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
+            className={`shrink-0 whitespace-nowrap px-4 py-3.5 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
               active
                 ? "text-accent border-accent font-semibold"
                 : "text-ink-2 border-transparent hover:text-ink"
@@ -59,6 +59,6 @@ export function FinanceTabNav({ debtCount }: { debtCount?: number }) {
           </Link>
         );
       })}
-    </div>
+    </nav>
   );
 }

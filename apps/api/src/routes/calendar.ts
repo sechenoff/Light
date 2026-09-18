@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { BookingStatus } from "@prisma/client";
 
 import { prisma } from "../prisma";
+import { projectReservations } from "../services/projectReservations";
 import { HttpError } from "../utils/errors";
 import { parseBookingRangeBound, diffDaysInclusive, assertBookingRangeOrder } from "../utils/dates";
 import { getUsableUnitBaseMap, getLostCountByEquipmentMap } from "../services/availability";
@@ -89,6 +90,7 @@ router.get("/", async (req, res, next) => {
       }),
       prisma.booking.findMany({
         where: {
+          mode: "STANDARD",
           status: { in: statuses },
           // RR-2: архивные (soft-deleted) брони не показываем и не считаем занятость.
           deletedAt: null,
@@ -211,6 +213,19 @@ router.get("/", async (req, res, next) => {
           quantity: item.quantity,
           status: booking.status,
         });
+      }
+    }
+
+    const projectRows = await projectReservations({ start, end });
+    if (projectRows.length) {
+      const projectBookings = await prisma.booking.findMany({ where: { id: { in: [...new Set(projectRows.map(r => r.bookingId))] } }, include: { client: true } });
+      for (const row of projectRows) {
+        const booking = projectBookings.find(b => b.id === row.bookingId);
+        const eq = allEquipment.find(e => e.id === row.equipmentId);
+        if (!booking || !eq || (q.category && q.category !== eq.category)) continue;
+        if (searchLower && ![booking.projectName, booking.client.name, eq.name].some(s => s.toLocaleLowerCase("ru-RU").includes(searchLower))) continue;
+        if (!resourcesMap.has(eq.id)) resourcesMap.set(eq.id, { id: eq.id, name: eq.name, category: eq.category, totalQuantity: effectiveQty(eq, usableUnitBase, lostCountBase), trackingMode: eq.stockTrackingMode });
+        events.push({ id: `${row.lotId}-${row.end}`, bookingId: booking.id, resourceId: eq.id, title: booking.projectName, clientName: booking.client.name, start: new Date(row.start).toISOString(), end: new Date(row.end - 1).toISOString(), quantity: row.quantity, status: booking.status });
       }
     }
 

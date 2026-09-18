@@ -30,6 +30,7 @@ async function computeTotalFromBooking(bookingId: string): Promise<Decimal> {
     include: { estimates: true },
   });
   if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+  if (booking.mode === "PROJECT") throw new HttpError(409, "Счета проекта создаются при закрытии периода", "PROJECT_ACTION_REQUIRED");
 
   // Зафиксированный вручную итог авторитетнее автомата — ровно так же его
   // трактует recomputeBookingFinance при расчёте долга. Без этой ветки счёт
@@ -63,6 +64,8 @@ async function computeTotalFromBooking(bookingId: string): Promise<Decimal> {
 export async function createInvoice(args: CreateInvoiceArgs, userId: string) {
   const booking = await prisma.booking.findUnique({ where: { id: args.bookingId } });
   if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+
+  if (booking.mode === "PROJECT" || args.kind === "PERIOD") throw new HttpError(409, "Счета проекта создаются при закрытии периода", "PROJECT_ACTION_REQUIRED");
 
   // H1: Запрет создания инвойсов для pre-cutoff (legacy) броней
   if (booking.legacyFinance) {
@@ -200,6 +203,7 @@ export async function issueInvoice(invoiceId: string, userId: string) {
 export async function voidInvoice(invoiceId: string, reason: string, userId: string) {
   const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
   if (!invoice) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
+  if (invoice.kind === "PERIOD") throw new HttpError(409, "Закрытый период изменяется отдельной корректировкой", "PROJECT_PERIOD_LOCKED");
   if (invoice.status === "VOID") {
     throw new HttpError(409, "Счёт уже аннулирован", "INVOICE_ALREADY_VOID");
   }
@@ -259,6 +263,11 @@ export async function recomputeInvoiceStatus(invoiceId: string, txArg?: TxClient
   });
 
   if (!invoice) return null;
+  if (invoice.kind === "PERIOD") {
+    const { recomputeProjectFinance } = await import("./projectFinance");
+    await recomputeProjectFinance(invoice.bookingId, tx);
+    return tx.invoice.findUnique({ where: { id: invoiceId } });
+  }
   if (invoice.status === "VOID") return invoice;
 
   const total = new Decimal(invoice.total.toString());
@@ -316,6 +325,7 @@ export async function updateInvoice(
 ) {
   const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
   if (!invoice) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
+  if (invoice.kind === "PERIOD") throw new HttpError(409, "Закрытый период изменяется отдельной корректировкой", "PROJECT_PERIOD_LOCKED");
   if (invoice.status !== "DRAFT") {
     throw new HttpError(409, "Редактировать можно только счёт в статусе DRAFT", "INVOICE_NOT_DRAFT");
   }

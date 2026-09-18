@@ -1,4 +1,6 @@
 import path from "path";
+import fs from "node:fs";
+import { beforeAll } from "vitest";
 import supertest from "supertest";
 
 // Set env vars BEFORE any app imports — this file runs as a setupFile in vitest
@@ -63,3 +65,13 @@ supertestTestProto.serverAddress = function (this: { _server?: unknown }, app: u
   if (address?.family !== "IPv6") return url;
   return url.replace("://127.0.0.1:", "://[::1]:");
 };
+
+// Some SQLite schema-engine builds cannot create the initial file. Test modules
+// assign DATABASE_URL before hooks run; only initialise named test databases.
+beforeAll(() => {
+  const url = process.env.DATABASE_URL ?? "";
+  if (!url.startsWith("file:")) return;
+  const file = url.slice(5);
+  if (path.dirname(file) !== path.resolve(__dirname, "../../prisma") || !/^test(?:-.*)?\.db$/.test(path.basename(file))) return;
+  fs.closeSync(fs.openSync(file, "a"));
+});

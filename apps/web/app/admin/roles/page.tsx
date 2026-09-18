@@ -58,7 +58,7 @@ function renderInline(text: string): React.ReactNode[] {
       parts.push(<strong key={key++} className="font-semibold text-ink">{token.slice(2, -2)}</strong>);
     } else {
       parts.push(
-        <code key={key++} className="font-mono text-xs bg-surface border border-border rounded px-1 py-0.5 text-ink">
+        <code key={key++} className="break-all font-mono text-xs bg-surface border border-border rounded px-1 py-0.5 text-ink">
           {token.slice(1, -1)}
         </code>
       );

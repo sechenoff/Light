@@ -1,6 +1,7 @@
 import type { Equipment, BookingStatus } from "@prisma/client";
 
 import { prisma } from "../prisma";
+import { projectReservations, peakOccupancy, type Reservation } from "./projectReservations";
 import { getMergedCategoryOrder } from "./categoryOrder";
 import { compareEquipmentTransportLast } from "../utils/equipmentSort";
 
@@ -162,6 +163,7 @@ export async function getAvailability(args: {
   search?: string;
   category?: string;
   excludeBookingId?: string;
+  excludeProjectLotId?: string;
   tx?: TxClient;
 }) {
   const tx = args.tx ?? prisma;
@@ -220,83 +222,23 @@ export async function getAvailability(args: {
       : clampNonNegative(e.totalQuantity - (lostCountBase.get(e.id) ?? 0) - inRepair);
   };
 
-  // Find all blocking bookings overlapping the requested range.
-  const overlappingBookings = await tx.booking.findMany({
+  const ordinary = await tx.booking.findMany({
     where: {
-      status: { in: BLOCKING_STATUSES },
-      // RR-2: архивные (soft-deleted) брони не занимают доступность.
-      deletedAt: null,
-      startDate: { lte: args.endDate },
-      endDate: { gte: args.startDate },
+      mode: "STANDARD", status: { in: BLOCKING_STATUSES }, deletedAt: null,
+      startDate: { lte: args.endDate }, endDate: { gte: args.startDate },
       ...(args.excludeBookingId ? { id: { not: args.excludeBookingId } } : {}),
     },
-    select: { id: true },
+    include: { items: { where: { equipmentId: { in: equipmentIds } }, include: { unitReservations: true } } },
   });
-  const overlappingBookingIds = overlappingBookings.map((b) => b.id);
-
-  if (overlappingBookingIds.length === 0) {
-    return equipments.map((e) => ({
-      equipment: e,
-      occupiedQuantity: 0,
-      availableQuantity: baseQtyOf(e),
-    }));
-  }
-
-  const bookingItems = await tx.bookingItem.findMany({
-    where: {
-      bookingId: { in: overlappingBookingIds },
-      equipmentId: { in: equipmentIds },
-    },
-    select: {
-      id: true,
-      equipmentId: true,
-      quantity: true,
-    },
-  });
-
-  // Count-based occupancy: sum BookingItem.quantity.
-  const occupiedCountByEquipment = new Map<string, number>();
-  for (const bi of bookingItems) {
-    if (!bi.equipmentId) continue;
-    occupiedCountByEquipment.set(bi.equipmentId, (occupiedCountByEquipment.get(bi.equipmentId) ?? 0) + bi.quantity);
-  }
-
-  // Unit-based occupancy: count distinct reserved equipment units via BookingItemUnit.
-  const bookingItemIds = bookingItems.map((b) => b.id);
-  const bookingItemIdToEquipmentId = new Map<string, string>();
-  for (const bi of bookingItems) {
-    if (bi.equipmentId) bookingItemIdToEquipmentId.set(bi.id, bi.equipmentId);
-  }
-
-  const occupiedUnitsByEquipment = new Map<string, Set<string>>();
-  if (bookingItemIds.length > 0) {
-    const reserved = await tx.bookingItemUnit.findMany({
-      where: { bookingItemId: { in: bookingItemIds } },
-      select: { bookingItemId: true, equipmentUnitId: true },
-    });
-    for (const r of reserved) {
-      const equipmentId = bookingItemIdToEquipmentId.get(r.bookingItemId);
-      if (!equipmentId) continue;
-      if (!occupiedUnitsByEquipment.has(equipmentId)) occupiedUnitsByEquipment.set(equipmentId, new Set());
-      occupiedUnitsByEquipment.get(equipmentId)!.add(r.equipmentUnitId);
-    }
-  }
-
-  return equipments.map((e) => {
-    // WSU-1: для UNIT-режима occupied = max(число зарезервированных юнитов,
-    // сумма quantity по BookingItem). Quick-add/inline-добор со склада увеличивают
-    // quantity БЕЗ создания BookingItemUnit — если считать только по резервациям,
-    // добранное количество не занимает доступность и возможна двойная выдача.
-    const occupied =
-      e.stockTrackingMode === "UNIT"
-        ? Math.max(occupiedUnitsByEquipment.get(e.id)?.size ?? 0, occupiedCountByEquipment.get(e.id) ?? 0)
-        : (occupiedCountByEquipment.get(e.id) ?? 0);
-    const available = clampNonNegative(baseQtyOf(e) - occupied);
-    return {
-      equipment: e,
-      occupiedQuantity: occupied,
-      availableQuantity: available,
-    };
+  const reservations: Reservation[] = ordinary.flatMap(b => b.items.filter(i => i.equipmentId).map(i => ({
+    bookingId: b.id, equipmentId: i.equipmentId!, start: b.startDate.getTime(), end: b.endDate.getTime() + 1,
+    quantity: Math.max(i.quantity, i.unitReservations.length),
+  })));
+  reservations.push(...await projectReservations({ start: args.startDate, end: args.endDate, equipmentIds,
+    excludeBookingId: args.excludeBookingId, excludeLotId: args.excludeProjectLotId }, tx));
+  return equipments.map(e => {
+    const occupied = peakOccupancy(reservations.filter(r => r.equipmentId === e.id), args.startDate.getTime(), args.endDate.getTime());
+    return { equipment: e, occupiedQuantity: occupied, availableQuantity: clampNonNegative(baseQtyOf(e) - occupied) };
   });
 }
 

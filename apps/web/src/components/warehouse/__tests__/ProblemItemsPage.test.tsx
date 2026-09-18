@@ -23,6 +23,7 @@ vi.mock("../../../hooks/useRequireRole", () => ({
 const routerPush = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: routerPush, replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 const toastSuccess = vi.fn();

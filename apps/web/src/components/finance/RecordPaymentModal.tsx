@@ -60,6 +60,7 @@ const KIND_LABELS: Record<string, string> = {
   DEPOSIT: "Предоплата",
   BALANCE: "Остаток",
   CORRECTION: "Корректировка",
+  PERIOD: "Период проекта",
 };
 
 /**
@@ -105,6 +106,8 @@ export function RecordPaymentModal({
   const [invoicesLoading, setInvoicesLoading] = useState(false);
 
   const amountRef = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(false);
+  const requestKeyRef = useRef<string>();
 
   // Auto-focus amount on open
   useEffect(() => {
@@ -118,7 +121,7 @@ export function RecordPaymentModal({
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !savingRef.current) onClose();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -185,6 +188,7 @@ export function RecordPaymentModal({
   // Reset form on open
   useEffect(() => {
     if (open) {
+      requestKeyRef.current = crypto.randomUUID();
       setBookingId(defaultBookingId ?? "");
       setAmount(bookingContext?.amountOutstanding ?? "");
       setMethod(defaultMethod);
@@ -201,18 +205,22 @@ export function RecordPaymentModal({
   }, [open]);
 
   const handleSubmit = async () => {
+    if (savingRef.current) return;
     const bid = defaultBookingId ?? bookingId;
     if (!bid) { toast.error("Выберите бронирование"); return; }
     const amt = Number(amount);
     if (!amount || !Number.isFinite(amt) || amt <= 0) { toast.error("Введите корректную сумму"); return; }
+    if (!receivedAt || !Number.isFinite(new Date(`${receivedAt}+03:00`).getTime())) { toast.error("Укажите дату платежа по Москве"); return; }
+    savingRef.current = true;
     setSaving(true);
     try {
       // D2: include invoiceId when available (post-cutoff mode)
       const payload: Record<string, unknown> = {
+        requestKey: requestKeyRef.current,
         bookingId: bid,
         amount: amt,
         method,
-        receivedAt: new Date(receivedAt).toISOString(),
+        receivedAt: new Date(`${receivedAt}+03:00`).toISOString(),
         note: note.trim() || undefined,
       };
       if (legacyFinance === false && invoiceId) {
@@ -243,6 +251,7 @@ export function RecordPaymentModal({
         toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
       }
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -265,13 +274,13 @@ export function RecordPaymentModal({
   return (
     <div
       className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget && !savingRef.current) onClose(); }}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="record-payment-title"
-        className="bg-surface rounded-lg border border-border shadow-xl w-full max-w-md"
+        className="bg-surface rounded-lg border border-border shadow-xl w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto"
       >
         {/* Header */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-border">
@@ -280,7 +289,7 @@ export function RecordPaymentModal({
             <h2 id="record-payment-title" className="text-base font-semibold text-ink">Записать платёж</h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => { if (!savingRef.current) onClose(); }}
             aria-label="Закрыть"
             className="text-ink-3 hover:text-ink text-xl leading-none mt-0.5"
           >
@@ -402,7 +411,7 @@ export function RecordPaymentModal({
 
           {/* Date */}
           <div>
-            <label className="eyebrow block mb-1">Дата получения</label>
+            <label className="eyebrow block mb-1">Дата получения (МСК)</label>
             <input
               type="datetime-local"
               className="w-full border border-border rounded px-3 py-2 text-sm bg-surface text-ink"
@@ -427,7 +436,7 @@ export function RecordPaymentModal({
         {/* Actions */}
         <div className="flex gap-2 justify-end px-5 pb-5 border-t border-border pt-4">
           <button
-            onClick={onClose}
+            onClick={() => { if (!savingRef.current) onClose(); }}
             className="px-4 py-2 text-sm border border-border rounded-lg text-ink-2 hover:bg-surface-muted transition-colors"
           >
             Отмена

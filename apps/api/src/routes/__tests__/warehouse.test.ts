@@ -160,7 +160,7 @@ describe("GET /api/warehouse/bookings", () => {
     // на складе не показываем, выдавать в них нечего)
     expect(mockPrisma.booking.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { status: "CONFIRMED", deletedAt: null, items: { some: {} } },
+        where: { status: "CONFIRMED", mode: "STANDARD", deletedAt: null, items: { some: {} } },
       }),
     );
   });
@@ -175,7 +175,7 @@ describe("GET /api/warehouse/bookings", () => {
     expect(res.status).toBe(200);
     expect(mockPrisma.booking.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { status: "ISSUED", deletedAt: null, items: { some: {} } },
+        where: { status: "ISSUED", mode: "STANDARD", deletedAt: null, items: { some: {} } },
       }),
     );
   });

@@ -604,14 +604,14 @@ function CalendarPageInner() {
       ================================================================ */}
       <div className="lg:hidden space-y-4">
         {/* Тулбар мобильный */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && applySearch()}
             placeholder="Поиск оборудования..."
-            className="flex-1 border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-bright"
+            className="w-full min-w-0 basis-full border border-border rounded-md px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-accent-bright"
           />
           <select
             value={category}
@@ -619,7 +619,7 @@ function CalendarPageInner() {
               setCategory(e.target.value);
               syncUrl(periodStart, period, e.target.value, appliedSearch, includeDrafts);
             }}
-            className="border border-border rounded-md px-2 py-2 text-sm bg-surface text-ink-2 focus:outline-none focus:ring-2 focus:ring-accent-bright"
+            className="min-w-0 w-0 flex-1 border border-border rounded-md px-2 py-2 text-base bg-surface text-ink-2 focus:outline-none focus:ring-2 focus:ring-accent-bright"
           >
             <option value="">Все</option>
             {categories.map((c) => (

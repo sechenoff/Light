@@ -249,7 +249,7 @@ warehouseScanRouter.get("/bookings", warehouseAuth, async (req, res, next) => {
       // сумма) кладовщику не нужны: выдавать и принимать нечего, а пустые
       // карточки только засоряют рабочий стол. В списке броней, календаре и
       // финансах они видны как обычно.
-      where: { status, deletedAt: null, items: { some: {} } },
+      where: { mode: "STANDARD", status, deletedAt: null, items: { some: {} } },
       select: {
         id: true,
         client: true,
@@ -1108,7 +1108,7 @@ warehouseScanRouter.get("/in-work", warehouseAuth, async (_req, res, next) => {
       // RR-4: архивные брони скрываем и из списка «в работе».
       // items: { some: {} } — быстрые брони (без оборудования) на складе не
       // показываем; см. комментарий в GET /bookings выше.
-      where: { status: "ISSUED", deletedAt: null, items: { some: {} } },
+      where: { mode: "STANDARD", status: "ISSUED", deletedAt: null, items: { some: {} } },
       orderBy: { endDate: "asc" },
       include: {
         client: { select: { name: true, phone: true } },
@@ -1210,4 +1210,21 @@ warehouseScanRouter.get("/in-work/:bookingId/details", warehouseAuth, async (req
   } catch (err) {
     next(err);
   }
+});
+
+// Отдельные поставки длинных проектов: приёмка не завершает всю бронь.
+warehouseScanRouter.get("/project-operations", warehouseAuth, async (_req, res, next) => {
+  try { const { projectWarehouseOperations } = await import("../services/bookingProjects"); res.json({ operations: await projectWarehouseOperations() }); } catch (e) { next(e); }
+});
+warehouseScanRouter.post("/project-operations/:bookingId/:lotId/:action", warehouseAuth, async (req, res, next) => {
+  try {
+    const body = z.object({ revision: z.number().int().nonnegative(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), quantity: z.number().int().min(1).max(10000), unitIds: z.array(z.string()).max(500).default([]), condition: z.enum(["OK", "REPAIR", "MISSING"]).default("OK"), reason: z.string().max(500).optional() }).parse(req.body);
+    const { projectDate } = await import("../services/projectPricing"); projectDate(body.date);
+    const service = await import("../services/bookingProjects");
+    const actor = req.adminUser?.userId ?? `warehouse:${req.warehouseWorker?.name ?? "Склад"}`;
+    if (req.params.action === "issue") await service.issueProjectLot(req.params.bookingId, req.params.lotId, { revision: body.revision, fromDate: body.date, unitIds: body.unitIds }, actor);
+    else if (req.params.action === "return") await service.returnProjectLot(req.params.bookingId, req.params.lotId, { ...body, lastBillableDate: body.date }, actor);
+    else throw new HttpError(400, "Неизвестная операция");
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });

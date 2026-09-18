@@ -46,6 +46,7 @@ export async function writeOffBookingDebt(
       where: { id: bookingId },
       select: {
         id: true,
+        mode: true,
         status: true,
         deletedAt: true,
         amountOutstanding: true,
@@ -54,6 +55,7 @@ export async function writeOffBookingDebt(
       },
     });
     if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
+    if (booking.mode === "PROJECT") throw new HttpError(409, "Уменьшение долга проекта оформляется корректировкой закрытого периода в карточке проекта", "PROJECT_ACTION_REQUIRED");
     if (booking.deletedAt) {
       throw new HttpError(409, "Бронь в архиве", "BOOKING_ARCHIVED");
     }

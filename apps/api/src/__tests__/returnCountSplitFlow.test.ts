@@ -14,6 +14,7 @@
  */
 
 import path from "path";
+import fs from "node:fs";
 import { execSync } from "child_process";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
@@ -39,7 +40,7 @@ let sessionId: string;
 let bookingItemId: string;
 
 beforeAll(async () => {
-  execSync(`rm -f ${TEST_DB_PATH}`);
+  fs.writeFileSync(TEST_DB_PATH, "");
   execSync("npx prisma db push --skip-generate --force-reset", {
     cwd: path.resolve(__dirname, "../.."),
     env: {

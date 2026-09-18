@@ -91,6 +91,8 @@ router.get("/", lkAuth, async (req, res, next) => {
         take: q.limit + 1,
         select: {
           id: true,
+          mode: true,
+          project: { select: { _count: { select: { lots: true } } } },
           projectName: true,
           startDate: true,
           endDate: true,
@@ -120,7 +122,7 @@ router.get("/", lkAuth, async (req, res, next) => {
         status: b.status,
         finalAmount: b.finalAmount.toString(),
         amountOutstanding: b.amountOutstanding.toString(),
-        itemCount: b._count.items,
+        itemCount: b.project?._count.lots ?? b._count.items,
       })),
       nextCursor,
       totalCount,
@@ -137,6 +139,7 @@ router.get("/:id", lkAuth, async (req, res, next) => {
       where: { id: req.params.id },
       select: {
         id: true,
+        mode: true,
         clientId: true,
         deletedAt: true,
         status: true,
@@ -185,6 +188,25 @@ router.get("/:id", lkAuth, async (req, res, next) => {
     }
     if (!VISIBLE_STATUSES.includes(booking.status as any)) {
       throw new HttpError(404, "Не найдено", "NOT_FOUND");
+    }
+
+    if (booking.mode === "PROJECT") {
+      const { projectDetail } = await import("../../services/bookingProjects");
+      const p = await projectDetail(booking.id);
+      const lastBillable = [...p.lots.flatMap(l => l.returns.map(r => r.lastBillableDate)), ...p.charges.map(c => c.date)].sort().at(-1) ?? p.fromDate;
+      const closedThrough = p.periods.filter(x => x.kind === "PERIOD").map(x => x.throughDate).sort().at(-1) ?? "";
+      res.json({
+        id: booking.id, mode: "PROJECT", bookingNo: `#${booking.id.slice(-6).toUpperCase()}`, projectName: booking.projectName,
+        startDate: p.fromDate + "T12:00:00+03:00", endDate: p.throughDate + "T12:00:00+03:00", status: booking.status,
+        shifts: p.days.filter(d => d.kind === "SHOOT").length, restDays: p.days.filter(d => d.kind === "REST").length, restPercent: Number(p.restFactor) * 100,
+        items: p.forecast.lines.map(l => ({ categorySnapshot: `${l.fromDate} — ${l.throughDate}`, nameSnapshot: l.name, quantity: l.quantity, unitPrice: l.rate, lineSum: l.amount })),
+        subtotal: p.forecast.total, discountAmount: "0", totalAfterDiscount: p.forecast.total, forecastTotal: p.forecast.total, transportSubtotal: "0",
+        finalAmount: p.booking.finalAmount.toString(), amountPaid: p.booking.amountPaid.toString(), amountOutstanding: p.booking.amountOutstanding.toString(),
+        hasConfirmedEstimate: true, hasInvoice: p.periods.some(x => x.kind === "PERIOD"), invoiceNumber: booking.invoices[0]?.number ?? null,
+        hasAct: booking.status === "RETURNED" && closedThrough >= lastBillable && Number(p.booking.amountOutstanding) === 0,
+        periods: p.periods.map(x => ({ id: x.id, kind: x.kind, fromDate: x.fromDate, throughDate: x.throughDate, amount: x.amount.toString(), number: x.invoice?.number ?? null })),
+      });
+      return;
     }
 
     // The MAIN estimate is the authoritative financial snapshot (EstimateKind has MAIN and ADDON only)
@@ -337,6 +359,14 @@ router.get("/:id/invoice.pdf", lkAuth, async (req, res, next) => {
     const invoice = booking.invoices[0];
     if (!invoice) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
 
+    if (booking.mode === "PROJECT") {
+      const period = await prisma.projectBillingPeriod.findUniqueOrThrow({ where: { invoiceId: invoice.id } });
+      const { exportProjectDocument } = await import("../../services/projectDocuments");
+      res.type("application/pdf").setHeader("Content-Disposition", "attachment; filename=project-period.pdf");
+      res.end(await exportProjectDocument(booking.id, period.id, "pdf"));
+      return;
+    }
+
     const orgSettings = await getSettings();
     const org = coalesceWithEnv(orgSettings);
 
@@ -403,6 +433,18 @@ router.get("/:id/invoice.pdf", lkAuth, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+router.get("/:id/project-documents/:documentId/:format", lkAuth, async (req, res, next) => {
+  try {
+    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { clientId: true, deletedAt: true, status: true, mode: true } });
+    if (!booking || booking.clientId !== lkClientId(req) || booking.deletedAt || booking.mode !== "PROJECT" || !VISIBLE_STATUSES.includes(booking.status as typeof VISIBLE_STATUSES[number])) throw new HttpError(404, "Не найдено");
+    const format = z.enum(["pdf", "xlsx"]).parse(req.params.format);
+    const { exportProjectDocument } = await import("../../services/projectDocuments");
+    const buffer = await exportProjectDocument(req.params.id, req.params.documentId, format);
+    res.type(format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet").setHeader("Content-Disposition", `attachment; filename=project-document.${format}`);
+    res.end(buffer);
+  } catch (e) { next(e); }
 });
 
 export default router;
