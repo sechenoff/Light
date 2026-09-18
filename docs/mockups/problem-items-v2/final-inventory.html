@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Инвентаризация · финал · Light Rental</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!--
+  ============================================================================
+  ФИНАЛ · ИНВЕНТАРИЗАЦИЯ СКЛАДА (десктоп 1440 + киоск + акт)
+
+  ОРГАНИЗУЮЩАЯ ИДЕЯ: пройти весь склад, пересчитать и узнать — что пропало
+  и как. «Что» даёт пересчёт. «Как» — окно между пересчётами: в каких бронях
+  позиция была за это время и пересчитывали ли её на приёмке.
+
+  Почему это главное, а не ручной ввод (данные прода, 18.09.2026):
+   · из 435 возвращённых броней с пересчётом в киоске приняты 4 — остальные
+     закрыты сменой статуса, пропажи на возврате никто не видит;
+   · каталог ни разу не пересчитывали: 295 позиций, 1 808 шт;
+   · 3 подтверждённые брони сегодня по датам на съёмке, но не «выданы» —
+     формула «ожидаем на полке» обязана это учитывать.
+
+  Вырос из concept-b-sverka.html; из concept-a-reestr.html взяты «след» и
+  ручной ввод. Три экрана + врезки: 1) идёт счёт, 2) итог и решения,
+  3) киоск, 4) акт.
+  Названия и ставки позиций — из каталога, остальное вымышлено.
+  Сегодня — пятница, 18 сентября 2026.
+  ============================================================================
+-->
+
+<style>
+/* ─── ТОКЕНЫ. Зеркало tailwind.config.js. Сырых hex вне этого блока нет. ─── */
+:root{
+  --ink:#09090b; --ink-2:#52525b; --ink-3:#a1a1aa;
+  --surface:#ffffff; --surface-muted:#fafafa; --surface-subtle:#f4f4f5;
+  --border:#e4e4e7; --border-strong:#d4d4d8;
+  --accent:#1e3a8a; --accent-bright:#1d4ed8; --accent-soft:#eff6ff; --accent-border:#bfdbfe;
+  --accent-chrome:#1e3a8a; --on-chrome:#ffffff;
+  --teal:#0f766e;    --teal-soft:#ccfbf1;    --teal-border:#99f6e4;
+  --amber:#a16207;   --amber-soft:#fef3c7;   --amber-border:#fde68a;
+  --rose:#9f1239;    --rose-soft:#ffe4e6;    --rose-border:#fecdd3;
+  --indigo:#4338ca;  --indigo-soft:#e0e7ff;  --indigo-border:#c7d2fe;
+  --slate:#334155;   --slate-soft:#f1f5f9;   --slate-border:#cbd5e1;
+  --emerald:#047857; --emerald-soft:#d1fae5; --emerald-border:#a7f3d0;
+  --ok:#15803d;      --ok-soft:#dcfce7;      --warn:#a16207; --warn-soft:#fef9c3;
+  --r:4px; --r-lg:6px; --shadow-xs:0 1px 0 rgba(9,9,11,.03);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--surface-subtle);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;font-size:13.5px;line-height:1.6}
+h1,h2,h3,h4,p,ul,ol{margin:0}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
+
+.eyebrow{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);line-height:1.4}
+.m{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;word-spacing:-.16em}
+.icon{width:13px;height:13px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.muted{color:var(--ink-3)} .dim{color:var(--ink-2)}
+.pill{display:inline-flex;align-items:center;gap:4px;border:1px solid;border-radius:var(--r);padding:1px 7px;font-size:11px;font-weight:600;white-space:nowrap;line-height:1.55}
+.pill-ok{background:var(--ok-soft);color:var(--ok);border-color:var(--emerald-border)}
+.pill-warn{background:var(--warn-soft);color:var(--warn);border-color:var(--amber-border)}
+.pill-info{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-border)}
+.pill-alert{background:var(--rose-soft);color:var(--rose);border-color:var(--rose-border)}
+.pill-none{background:var(--surface);color:var(--ink-3);border-color:var(--border)}
+.link{color:var(--accent-bright);font-weight:600;font-size:11.5px;white-space:nowrap}
+.link:hover{color:var(--accent);text-decoration:underline}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1px solid var(--accent-bright);border-radius:var(--r);background:var(--accent-bright);
+  color:var(--surface);font-size:12px;font-weight:600;padding:4px 11px;line-height:1.6;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--accent);border-color:var(--accent)}
+.btn-ghost{background:var(--surface);color:var(--ink-2);border-color:var(--border)}
+.btn-ghost:hover{background:var(--surface-muted);color:var(--ink);border-color:var(--border-strong)}
+.btn[aria-disabled="true"]{background:var(--surface-subtle);border-color:var(--border);color:var(--ink-3);cursor:not-allowed}
+.src{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);
+  border:1px dashed var(--border-strong);border-radius:3px;padding:0 4px;line-height:1.7;white-space:nowrap}
+.role-tag{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);
+  background:var(--indigo-soft);border:1px solid var(--indigo-border);border-radius:3px;padding:0 4px;line-height:1.6;white-space:nowrap}
+
+/* ─── КАРКАС ─── */
+.page{max-width:1240px;margin:0 auto;padding:20px 20px 56px}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-bottom:11px;border-bottom:1px solid var(--border)}
+.page-head h1{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:24px;font-weight:700;line-height:1.15;letter-spacing:-.01em;margin-top:2px}
+.page-head .sub{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.page-head .acts{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.subnav{display:flex;gap:2px;margin-top:12px;border-bottom:1px solid var(--border);overflow-x:auto}
+.subnav a{padding:6px 12px 7px;font-size:12.5px;font-weight:600;color:var(--ink-2);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.subnav a.on{color:var(--accent-bright);border-bottom-color:var(--accent-bright)}
+.subnav a .n{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);margin-left:4px}
+
+.screen-cap{display:flex;align-items:center;gap:9px;margin:22px 0 8px}
+.screen-cap .no{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;color:var(--surface);background:var(--ink);border-radius:3px;padding:0 6px;line-height:1.7}
+.screen-cap h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700}
+.screen-cap .why{font-size:11.5px;color:var(--ink-3)}
+.screen-cap .rule{flex:1;height:1px;background:var(--border)}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-xs);overflow:hidden}
+
+/* ─── ЭКРАН 1 · ИДЁТ СЧЁТ ─── */
+.s1{display:grid;grid-template-columns:292px minmax(0,1fr);gap:14px;align-items:start}
+.sess-head{padding:11px 14px;border-bottom:1px solid var(--border)}
+.sess-head h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:16px;font-weight:700;line-height:1.2}
+.sess-head .who{font-size:11.5px;color:var(--ink-2);margin-top:1px}
+.tot{padding:9px 14px;border-bottom:1px solid var(--border)}
+.tot .row{display:flex;align-items:baseline;justify-content:space-between;font-size:12px;color:var(--ink-2)}
+.tot .row b{font-family:"IBM Plex Mono",monospace;font-size:15px;color:var(--ink)}
+.bar{height:6px;border-radius:3px;background:var(--surface-subtle);overflow:hidden;position:relative;margin-top:6px}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent-bright);border-radius:3px}
+.rail{display:flex;flex-direction:column}
+.cat{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:7px;align-items:center;padding:6px 14px;border-bottom:1px solid var(--border);font-size:12.5px}
+.cat:last-child{border-bottom:0}
+.cat .st{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--border-strong);display:flex;align-items:center;justify-content:center}
+.cat.done .st{background:var(--emerald);border-color:var(--emerald);color:var(--surface)}
+.cat.done .st .icon{width:9px;height:9px;stroke-width:2.5}
+.cat.now .st{border-color:var(--accent-bright);background:radial-gradient(circle,var(--accent-bright) 38%,transparent 42%)}
+.cat .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat .nm small{color:var(--ink-3);font-size:11px;margin-left:4px}
+.cat .ct{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.cat.now{background:var(--accent-soft)}
+.cat.now .nm{font-weight:600}
+.cat.done .ct{color:var(--emerald)}
+.cat .diff{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;color:var(--rose);margin-left:4px}
+.cat.more{color:var(--ink-3);font-size:11.5px}
+
+.lines-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lines-head h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:16px;font-weight:700;line-height:1.2}
+.lines-head .who{font-size:11.5px;color:var(--ink-2)}
+.lines-head .sp{margin-left:auto;display:flex;gap:8px;align-items:center}
+.ln{display:grid;grid-template-columns:minmax(0,1fr) 196px 150px 112px;gap:12px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--border)}
+.ln:last-child{border-bottom:0}
+.ln .n{font-weight:600;font-size:13px;line-height:1.3}
+.ln .n small{display:block;font-weight:400;font-size:11px;color:var(--ink-3)}
+.ln .exp{font-size:11.5px;color:var(--ink-2);line-height:1.35}
+.ln .exp b{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--ink);font-weight:600}
+.ln .exp .note{display:block;color:var(--amber);font-size:11px}
+.ln.minus{background:var(--rose-soft)} .ln.plus{background:var(--emerald-soft)} .ln.cur{box-shadow:inset 3px 0 0 var(--accent-bright);background:var(--accent-soft)}
+.ln.wait .n{color:var(--ink-3)}
+.cnt{display:inline-flex;align-items:center;border:1px solid var(--border-strong);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.cnt button{border:0;background:var(--surface-subtle);width:26px;height:28px;font-size:14px;color:var(--ink-2);cursor:pointer;line-height:1}
+.cnt span{font-family:"IBM Plex Mono",monospace;font-weight:600;padding:0 8px;font-size:13.5px;min-width:44px;text-align:center}
+.cnt.empty span{color:var(--ink-3);font-weight:400}
+.same{display:inline-flex;align-items:center;border:1px solid var(--emerald-border);background:var(--emerald-soft);color:var(--emerald);border-radius:var(--r);font-size:11px;font-weight:600;padding:3px 8px;margin-left:6px;white-space:nowrap}
+.dv{font-family:"IBM Plex Mono",monospace;font-weight:700;font-size:14px;white-space:nowrap;text-align:right}
+.dv.minus{color:var(--rose)} .dv.plus{color:var(--emerald)} .dv.zero{color:var(--emerald);font-weight:600;font-size:12px;font-family:"IBM Plex Sans",sans-serif}
+.dv.none{color:var(--ink-3);font-weight:400;font-size:12px;font-family:"IBM Plex Sans",sans-serif}
+.dv small{display:block;font-family:"IBM Plex Sans",sans-serif;font-weight:400;font-size:10.5px;color:var(--ink-3)}
+.ln-more{padding:7px 14px;font-size:11.5px;color:var(--ink-3);background:var(--surface-muted)}
+
+/* ─── ЭКРАН 2 · ИТОГ ─── */
+.first{margin-top:0;display:flex;gap:10px;align-items:flex-start;border:1px solid var(--amber-border);border-left:3px solid var(--amber);background:var(--amber-soft);
+  border-radius:var(--r-lg);padding:9px 14px;font-size:12.5px;color:var(--ink);line-height:1.5}
+.first .icon{color:var(--amber);margin-top:3px}
+.first b{font-weight:600}
+.tiles{margin-top:10px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-xs);overflow:hidden}
+.tile{padding:10px 14px;border-right:1px solid var(--border);min-width:0}
+.tile:last-child{border-right:0}
+.tile .v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;line-height:1.2;margin-top:3px;letter-spacing:-.015em}
+.tile .v small{font-family:"IBM Plex Sans",sans-serif;font-size:12px;font-weight:500;color:var(--ink-2);letter-spacing:0}
+.tile .v.rose{color:var(--rose)} .tile .v.ok{color:var(--emerald)}
+.tile .s{font-size:11.5px;color:var(--ink-3);line-height:1.4;margin-top:1px}
+
+.review{margin-top:12px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
+.gh{display:flex;align-items:center;gap:9px;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--surface-muted)}
+.gh h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:14px;font-weight:700}
+.gh .n{font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:600;color:var(--ink-3)}
+.gh .sp{margin-left:auto;display:flex;gap:6px;align-items:center}
+.gh.rose h3{color:var(--rose)} .gh.ok h3{color:var(--emerald)}
+.fchip{font-size:11px;font-weight:600;color:var(--ink-2);background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:0 9px;line-height:1.7;white-space:nowrap}
+.fchip.sel{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+
+.dr{border-bottom:1px solid var(--border)}
+.dr:last-child{border-bottom:0}
+.dr-top{display:grid;grid-template-columns:minmax(0,1fr) 128px auto;gap:12px;align-items:center;padding:9px 14px}
+.dr .n{font-weight:600;font-size:13px;line-height:1.3}
+.dr .n small{font-weight:400;font-size:11px;color:var(--ink-3);margin-left:4px}
+.dr .ctx{font-size:11.5px;color:var(--ink-2);margin-top:2px;line-height:1.4}
+.dr .ctx .amb{color:var(--amber);font-weight:600}
+.dr .ctx .hint{color:var(--accent-bright);font-weight:600}
+.nums{font-family:"IBM Plex Mono",monospace;font-size:12.5px;text-align:right;white-space:nowrap;line-height:1.35}
+.nums .d{display:block;font-weight:700;font-size:14.5px}
+.nums .d.minus{color:var(--rose)} .nums .d.plus{color:var(--emerald)}
+.nums small{display:block;font-family:"IBM Plex Sans",sans-serif;font-size:10.5px;color:var(--ink-3)}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--surface);flex-wrap:nowrap}
+.seg button{border:0;border-right:1px solid var(--border);background:transparent;font-size:11px;font-weight:600;color:var(--ink-2);padding:4px 9px;cursor:pointer;white-space:nowrap;line-height:1.5}
+.seg button:last-child{border-right:0}
+.seg button:hover{background:var(--surface-muted);color:var(--ink)}
+.seg button.on-rose{background:var(--rose);color:var(--surface)}
+.seg button.on-slate{background:var(--slate);color:var(--surface)}
+.seg button.on-ok{background:var(--emerald);color:var(--surface)}
+.seg button .sa{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:9px;letter-spacing:.05em;opacity:.75;margin-left:3px}
+.dr.open{box-shadow:inset 3px 0 0 var(--rose)}
+.dr .toggle{font-size:11px;font-weight:600;color:var(--accent-bright);margin-top:3px;display:inline-flex;align-items:center;gap:3px}
+.dr.decided .dr-top{background:var(--surface-muted)}
+.dr .decided-note{font-size:11px;color:var(--ink-3);margin-top:3px}
+
+/* Как пропало */
+.how{margin:0 14px 12px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);overflow:hidden}
+.how-h{padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface-muted);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.how-h h4{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:14px;font-weight:700}
+.how-h .s{font-size:11.5px;color:var(--ink-2)}
+.tr{display:grid;grid-template-columns:104px minmax(0,1fr) 64px minmax(0,190px) 118px;gap:10px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px}
+.tr .d{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.tr .p b{font-weight:600}
+.tr .p small{color:var(--ink-3)}
+.tr .q{font-family:"IBM Plex Mono",monospace;text-align:right;font-weight:600;white-space:nowrap}
+.tr .how-ret{font-size:11.5px;color:var(--ink-2);min-width:0}
+.tr .chk{font-size:11px;font-weight:600;white-space:nowrap;text-align:right}
+.tr .chk.no{color:var(--amber)} .tr .chk.yes{color:var(--emerald)}
+.tr.more{color:var(--ink-3);font-size:11.5px;display:block}
+.verdict{padding:9px 12px;border-top:1px solid var(--border);background:var(--amber-soft);font-size:12px;line-height:1.5;color:var(--ink)}
+.verdict b{font-weight:600}
+.verdict .ic{color:var(--amber)}
+.advice{padding:8px 12px;border-top:1px dashed var(--border-strong);font-size:11.5px;color:var(--ink-2);line-height:1.5;display:flex;gap:7px}
+.advice .icon{color:var(--accent-bright);margin-top:2px}
+.advice b{color:var(--ink);font-weight:600}
+.bind{padding:8px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2)}
+.selx{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:2px 8px;font-size:11.5px;color:var(--ink)}
+.dr-more{padding:8px 14px;font-size:11.5px;color:var(--ink-2);background:var(--surface-muted);display:flex;gap:10px;flex-wrap:wrap}
+
+/* Боковая панель итога */
+.fin{position:sticky;top:14px}
+.fin-h{padding:10px 14px;border-bottom:1px solid var(--border)}
+.fin-h h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700}
+.fin-h .s{font-size:11.5px;color:var(--ink-2)}
+.prog2{padding:9px 14px;border-bottom:1px solid var(--border)}
+.prog2 .row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--ink-2)}
+.prog2 .row b{font-family:"IBM Plex Mono",monospace;font-size:15px;color:var(--ink)}
+.prog2 .bar i{background:var(--emerald)}
+.eff{padding:4px 14px 8px}
+.eff-row{display:grid;grid-template-columns:10px minmax(0,1fr);gap:8px;padding:6px 0;border-bottom:1px dashed var(--border);font-size:12px;line-height:1.45}
+.eff-row:last-child{border-bottom:0}
+.eff-row .dot{width:8px;height:8px;border-radius:2px;margin-top:5px}
+.eff-row .dot.rose{background:var(--rose)} .eff-row .dot.slate{background:var(--slate)} .eff-row .dot.ok{background:var(--emerald)} .eff-row .dot.ink{background:var(--border-strong)}
+.eff-row b{font-weight:600}
+.eff-row small{display:block;color:var(--ink-3);font-size:11px}
+.money{margin:0 14px 10px;border:1px solid var(--rose-border);background:var(--rose-soft);border-radius:var(--r);padding:7px 10px;font-size:12px;color:var(--rose);line-height:1.45}
+.money b{font-weight:700}
+.fin-foot{padding:10px 14px;border-top:1px solid var(--border);background:var(--surface-muted);display:flex;flex-direction:column;gap:7px}
+.fin-foot .note{font-size:11px;color:var(--ink-2);line-height:1.45}
+.fin-foot .note b{color:var(--ink)}
+
+/* ─── ВРЕЗКИ ─── */
+.peeks{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:14px;align-items:start}
+.peek{border:1px dashed var(--border-strong);border-radius:var(--r-lg);padding:11px;background:var(--surface-muted)}
+.peek-cap{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.peek-cap h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:14px;font-weight:700}
+.peek-cap .path{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:0 5px}
+
+/* Киоск */
+.phone{width:100%;max-width:390px;margin:0 auto;background:var(--surface-subtle);border:1px solid var(--border-strong);border-radius:18px;overflow:hidden;box-shadow:0 8px 40px rgba(9,9,11,.10)}
+.ph-hdr{background:var(--accent-chrome);color:var(--on-chrome);padding:10px 14px 11px}
+.ph-back{font-size:12px;opacity:.85;display:flex;align-items:center;gap:4px}
+.ph-hdr .e{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin-top:6px}
+.ph-hdr h3{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:19px;font-weight:700;line-height:1.2;margin-top:1px;display:flex;align-items:center;gap:8px}
+.ph-hdr .tag{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;background:rgba(255,255,255,.16);border-radius:4px;padding:0 6px}
+.ph-hdr .bar{background:rgba(255,255,255,.2);height:4px;margin-top:9px}
+.ph-hdr .bar i{background:var(--on-chrome)}
+.ph-body{padding:10px 10px 12px;display:flex;flex-direction:column;gap:7px}
+.pi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:10px 11px}
+.pi.cur{border-color:var(--accent-border);box-shadow:0 0 0 2px var(--accent-soft)}
+.pi.done{background:var(--surface-muted)}
+.pi .n{font-weight:600;font-size:14px;line-height:1.3}
+.pi .k{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+.pi .k .amb{color:var(--amber);font-weight:600}
+.pi .row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.pi .exp{font-size:12.5px;color:var(--ink-2);line-height:1.3}
+.pi .exp b{font-family:"IBM Plex Mono",monospace;font-size:17px;color:var(--ink)}
+.cnt.lg button{width:42px;height:42px;font-size:19px} .cnt.lg span{font-size:18px;padding:0 12px;min-width:52px}
+.two-big{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px}
+.two-big a{display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;border-radius:var(--r-lg);font-size:14.5px;font-weight:700;border:1px solid var(--border)}
+.two-big a.yes{border-color:var(--emerald-border);background:var(--emerald-soft);color:var(--emerald)}
+.two-big a.no{border-color:var(--rose-border);background:var(--surface);color:var(--rose)}
+.quick{display:grid;grid-template-columns:1fr;gap:7px;margin-top:8px}
+.quick a{display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:var(--r);font-size:13.5px;font-weight:600;border:1px solid var(--emerald-border);background:var(--emerald-soft);color:var(--emerald)}
+.pi .res{margin-top:7px;font-size:12px;font-weight:600}
+.pi .res.minus{color:var(--rose)} .pi .res.ok{color:var(--emerald)}
+.ph-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 12px;border-top:1px solid var(--border);background:var(--surface);font-size:12.5px;color:var(--ink-2)}
+.ph-foot a{color:var(--accent-bright);font-weight:600}
+.ph-foot b{font-family:"IBM Plex Mono",monospace;color:var(--ink)}
+.ph-foot .r{color:var(--rose)}
+
+/* Акт */
+.act{background:var(--surface);border:1px solid var(--border-strong);border-radius:2px;box-shadow:0 4px 18px rgba(9,9,11,.08);padding:18px 22px;aspect-ratio:1.414/1;overflow:hidden;font-size:10.5px;line-height:1.45}
+.act-h{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1.5px solid var(--ink);padding-bottom:6px}
+.act-h .org{font-family:"IBM Plex Sans Condensed",sans-serif;font-weight:700;font-size:12px}
+.act-h .org small{display:block;font-family:"IBM Plex Sans",sans-serif;font-weight:400;color:var(--ink-2);font-size:9.5px}
+.act-h .doc{text-align:right}
+.act-h .doc b{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:14px;display:block;line-height:1.2}
+.act-meta{display:flex;gap:16px;flex-wrap:wrap;color:var(--ink-2);margin-top:6px;font-size:10px}
+.act-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px}
+.act-sum div{border:1px solid var(--border);border-radius:2px;padding:3px 6px}
+.act-sum .v{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:12px}
+.act-sum .l{font-size:9px;color:var(--ink-3)}
+.act table{width:100%;border-collapse:collapse;margin-top:8px}
+.act th{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-2);text-align:left;border-bottom:1px solid var(--ink);padding:2px 4px}
+.act td{padding:2px 4px;border-bottom:1px solid var(--border);vertical-align:top}
+.act td.r,.act th.r{text-align:right;font-family:"IBM Plex Mono",monospace}
+.act td .minus{color:var(--rose);font-weight:600} .act td .plus{color:var(--emerald);font-weight:600}
+.act .sign{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-top:12px;font-size:9.5px;color:var(--ink-2)}
+.act .sign div{border-top:1px solid var(--ink);padding-top:2px}
+
+/* Заметки */
+.annot{margin-top:26px;border:1px dashed var(--border-strong);border-radius:var(--r-lg);background:var(--surface);padding:13px 16px}
+.annot h2{font-family:"IBM Plex Sans Condensed",sans-serif;font-size:15px;font-weight:700;margin-bottom:2px}
+.annot ol{margin:8px 0 0;padding-left:19px;font-size:12.5px;color:var(--ink-2);line-height:1.7}
+.annot li{margin-bottom:3px}
+.annot b{color:var(--ink)}
+.annot code{font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:var(--surface-subtle);border:1px solid var(--border);border-radius:3px;padding:0 4px}
+
+/* ─── АДАПТИВ ─── */
+@media (max-width:1120px){
+  .review{grid-template-columns:minmax(0,1fr)}
+  .fin{position:static}
+  .peeks{grid-template-columns:minmax(0,1fr)}
+  .tiles{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .tile:nth-child(3){border-right:0}
+  .tile:nth-child(n+4){border-top:1px solid var(--border)}
+}
+@media (max-width:980px){
+  .s1{grid-template-columns:minmax(0,1fr)}
+  .ln{grid-template-columns:minmax(0,1fr) auto;row-gap:6px}
+  .ln .exp{grid-column:1/-1;order:2}
+  .ln .ctl{order:3}
+  .ln .dv{order:4}
+  .tr{grid-template-columns:96px minmax(0,1fr) 54px;row-gap:2px}
+  .tr .how-ret{grid-column:2/3}
+  .tr .chk{grid-column:3/4;text-align:right}
+  .dr-top{grid-template-columns:minmax(0,1fr) auto}
+  .dr-top .dec{grid-column:1/-1}
+}
+@media (max-width:620px){
+  body{font-size:13px}
+  .page{padding:14px 12px 44px}
+  .page-head h1{font-size:20px}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tile{border-right:1px solid var(--border)!important;border-top:1px solid var(--border)}
+  .tile:nth-child(-n+2){border-top:0}
+  .tile:nth-child(2n){border-right:0!important}
+  .tr{grid-template-columns:minmax(0,1fr) auto}
+  .tr .d{grid-column:1/-1}
+  .tr .how-ret{grid-column:1/2}
+  .seg{flex-wrap:wrap}
+  .act{aspect-ratio:auto;padding:12px}
+  .act-sum{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .act table{font-size:9.5px}
+  .act .sign{grid-template-columns:1fr}
+  .lines-head .sp{margin-left:0}
+  .screen-cap{flex-wrap:wrap;row-gap:2px}
+  .screen-cap .rule{display:none}
+  .screen-cap .why{flex-basis:100%}
+  .seg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);width:100%}
+  .seg button{border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-align:center;padding:7px 6px;white-space:normal}
+  .seg button:nth-child(2){border-right:0}
+  .seg button:last-child{grid-column:1/-1;border-bottom:0;border-right:0}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ШАПКА -->
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Склад</p>
+      <h1>Инвентаризация</h1>
+      <p class="sub">пройти весь склад, пересчитать и узнать, что пропало и как</p>
+    </div>
+    <div class="acts">
+      <a class="link" href="#">Акт № 1 (PDF)</a>
+      <a class="link" href="#">XLSX</a>
+      <button class="btn" type="button">Продолжить счёт</button>
+    </div>
+  </header>
+  <nav class="subnav" aria-label="Разделы склада">
+    <a href="#">Потеряшки<span class="n">4</span></a>
+    <a href="#" class="on">Инвентаризация № 1<span class="n">идёт</span></a>
+    <a href="#">История инвентаризаций</a>
+  </nav>
+
+  <!-- ═══ ЭКРАН 1 · ИДЁТ СЧЁТ ═══ -->
+  <div class="screen-cap"><span class="no">1</span><h2>Идёт счёт · 11:40</h2><span class="rule"></span><span class="why">руководитель видит, кто где считает и где уже расхождения</span></div>
+  <section class="s1">
+    <aside class="card" aria-label="Прогресс по категориям">
+      <div class="sess-head">
+        <h3>Инвентаризация № 1</h3>
+        <div class="who">весь склад · начата 18.09 в 09:30 · Иван, Олег</div>
+      </div>
+      <div class="tot">
+        <div class="row"><span>посчитано</span><span><b>186</b> из 295</span></div>
+        <div class="bar"><i style="width:63%"></i></div>
+        <div class="row" style="margin-top:6px"><span>расхождений пока</span><span class="m" style="color:var(--rose);font-weight:600">14</span></div>
+      </div>
+      <div class="rail">
+        <div class="cat done"><span class="st"><svg class="icon" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span><span class="nm">Грип<small>Иван</small></span><span class="ct">51/51<span class="diff">−3</span></span></div>
+        <div class="cat done"><span class="st"><svg class="icon" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span><span class="nm">Насадки на приборы<small>Олег</small></span><span class="ct">31/31</span></div>
+        <div class="cat done"><span class="st"><svg class="icon" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span><span class="nm">Флаги / каттеры / флоппи<small>Олег</small></span><span class="ct">27/27<span class="diff">−2</span></span></div>
+        <div class="cat done"><span class="st"><svg class="icon" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span><span class="nm">Штативы / Стойки<small>Иван</small></span><span class="ct">25/25<span class="diff">−1</span></span></div>
+        <div class="cat done"><span class="st"><svg class="icon" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span><span class="nm">Battery / Аккумуляторный свет<small>Олег</small></span><span class="ct">13/13<span class="diff">−2</span></span></div>
+        <div class="cat done"><span class="st"><svg class="icon" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span><span class="nm">Текстиль<small>Олег</small></span><span class="ct">21/21</span></div>
+        <div class="cat now"><span class="st"></span><span class="nm">Электрика / Коммутация<small>Иван</small></span><span class="ct">12/30<span class="diff">−3</span></span></div>
+        <div class="cat now"><span class="st"></span><span class="nm">COB Light<small>Олег</small></span><span class="ct">6/17</span></div>
+        <div class="cat"><span class="st"></span><span class="nm">Трубы</span><span class="ct">0/14</span></div>
+        <div class="cat"><span class="st"></span><span class="nm">Прочее</span><span class="ct">0/13</span></div>
+        <div class="cat"><span class="st"></span><span class="nm">Led Panel</span><span class="ct">0/12</span></div>
+        <div class="cat"><span class="st"></span><span class="nm">Периферия</span><span class="ct">0/11</span></div>
+        <div class="cat"><span class="st"></span><span class="nm">Pipe / Надувные приборы</span><span class="ct">0/8</span></div>
+        <div class="cat"><span class="st"></span><span class="nm">Дымы / Haze</span><span class="ct">0/7</span></div>
+        <div class="cat more"><span></span><span class="nm">ещё 5 категорий · Транспорт, Связь, LED…</span><span class="ct">0/15</span></div>
+      </div>
+    </aside>
+
+    <div class="card">
+      <div class="lines-head">
+        <div>
+          <h3>Электрика / Коммутация</h3>
+          <div class="who">считает Иван · 12 из 30 · строки сохраняются сразу</div>
+        </div>
+        <div class="sp"><span class="pill pill-info">в работе</span></div>
+      </div>
+      <div class="ln minus">
+        <div class="n">Удлинитель PCE (15м)<small>всего по учёту 50</small></div>
+        <div class="exp">на полке должно быть <b>50</b><span class="note" style="color:var(--ink-3)">на съёмках — 0</span></div>
+        <div class="ctl"><span class="cnt"><button type="button">−</button><span>47</span><button type="button">+</button></span></div>
+        <div class="dv minus">−3<small>750 ₽/смена</small></div>
+      </div>
+      <div class="ln">
+        <div class="n">Переходник PCE на 3 розетки<small>всего по учёту 30</small></div>
+        <div class="exp">на полке должно быть <b>30</b></div>
+        <div class="ctl"><span class="cnt"><button type="button">−</button><span>30</span><button type="button">+</button></span></div>
+        <div class="dv zero">сошлось</div>
+      </div>
+      <div class="ln">
+        <div class="n">Кабель 32/220 (15м)<small>всего по учёту 25</small></div>
+        <div class="exp">на полке должно быть <b>21</b><span class="note">4 по календарю у «Лето» — бронь подтверждена, но не отмечена выданной</span></div>
+        <div class="ctl"><span class="cnt"><button type="button">−</button><span>21</span><button type="button">+</button></span></div>
+        <div class="dv zero">сошлось</div>
+      </div>
+      <div class="ln plus">
+        <div class="n">Vmount<small>всего по учёту 19</small></div>
+        <div class="exp">на полке должно быть <b>19</b></div>
+        <div class="ctl"><span class="cnt"><button type="button">−</button><span>21</span><button type="button">+</button></span></div>
+        <div class="dv plus">+2<small>излишек</small></div>
+      </div>
+      <div class="ln">
+        <div class="n">Кабель 16/220<small>всего по учёту 15</small></div>
+        <div class="exp">на полке должно быть <b>14</b><span class="note" style="color:var(--ink-3)">1 в мастерской</span></div>
+        <div class="ctl"><span class="cnt"><button type="button">−</button><span>14</span><button type="button">+</button></span></div>
+        <div class="dv zero">сошлось</div>
+      </div>
+      <div class="ln cur">
+        <div class="n">Кабельканалы<small>всего по учёту 11</small></div>
+        <div class="exp">на полке должно быть <b>11</b></div>
+        <div class="ctl"><span class="cnt empty"><button type="button">−</button><span>—</span><button type="button">+</button></span><span class="same">= 11</span></div>
+        <div class="dv none">считаем</div>
+      </div>
+      <div class="ln wait">
+        <div class="n">Блок Type-C двойной<small>всего по учёту 10</small></div>
+        <div class="exp">на полке должно быть <b>10</b></div>
+        <div class="ctl"><span class="cnt empty"><button type="button">−</button><span>—</span><button type="button">+</button></span></div>
+        <div class="dv none">не посчитано</div>
+      </div>
+      <div class="ln-more">ещё 23 позиции · сошедшиеся строки можно свернуть</div>
+    </div>
+  </section>
+
+  <!-- ═══ ЭКРАН 2 · ИТОГ ═══ -->
+  <div class="screen-cap"><span class="no">2</span><h2>Итог и решения · 16:20</h2><span class="rule"></span><span class="why">счёт закончен, руководитель решает по каждой строке</span></div>
+
+  <div class="first">
+    <svg class="icon" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <div><b>Это первая инвентаризация.</b> Каталог ни разу не пересчитывали, а на приёмке из 435 броней с пересчётом прошли 4. Часть расхождений — ошибки в учёте, а не пропажи: решайте по каждой строке. Со следующей инвентаризации «как пропало» станет точнее — окно сузится до броней между пересчётами.</div>
+  </div>
+
+  <section class="tiles" aria-label="Сводка">
+    <div class="tile"><p class="eyebrow">Посчитано</p><div class="v">278 <small>из 295</small></div><div class="s">17 отложены: надувные, дымы и др.</div></div>
+    <div class="tile"><p class="eyebrow">Сошлось</p><div class="v ok">251</div><div class="s">получат отметку «сверено 18.09»</div></div>
+    <div class="tile"><p class="eyebrow">Недостача</p><div class="v rose">19 <small>поз · 47 шт</small></div><div class="s">решено 13 из 19</div></div>
+    <div class="tile"><p class="eyebrow">Излишек</p><div class="v ok">8 <small>поз · 11 шт</small></div><div class="s">решено 7 из 8</div></div>
+    <div class="tile"><p class="eyebrow">Под вопросом</p><div class="v">≈ 6 450 ₽ <small>/смена</small></div><div class="s">ставки позиций с недостачей</div></div>
+  </section>
+
+  <section class="review">
+    <div class="card">
+      <div class="gh rose">
+        <h3>Недостача</h3><span class="n">19</span>
+        <div class="sp"><span class="fchip sel">без решения · 6</span><span class="fchip">все</span></div>
+      </div>
+
+      <!-- Удлинитель — раскрыто «как пропало» -->
+      <div class="dr open">
+        <div class="dr-top">
+          <div>
+            <div class="n">Удлинитель PCE (15м)<small>Электрика / Коммутация</small></div>
+            <div class="ctx">ходовая позиция: 17 выдач за 60 дней, до 25 шт за раз</div>
+            <span class="toggle">Как пропало ▴</span>
+          </div>
+          <div class="nums">50 → 47<span class="d minus">−3</span><small>750 ₽/смена</small></div>
+          <div class="dec"><div class="seg" role="group" aria-label="Решение"><button type="button">Пропало → потеряшки</button><button type="button">Ошибка учёта<span class="sa">РУК</span></button><button type="button">Пересчитать</button></div></div>
+        </div>
+        <div class="how" aria-label="Как пропало">
+          <div class="how-h">
+            <h4>Как пропало: 3 удлинителя</h4>
+            <span class="s">прошлой инвентаризации не было — смотрим 60 дней · 17 броней с этой позицией</span>
+          </div>
+          <div class="tr"><span class="d">14–16 сен</span><span class="p"><b>«Северный ветер»</b> <small>· Студия «Норд»</small></span><span class="q">25 шт</span><span class="how-ret">возврат отмечен вручную</span><span class="chk no">без пересчёта</span></div>
+          <div class="tr"><span class="d">9–11 сен</span><span class="p"><b>Сериал «Тихий дом»</b> <small>· Кинокомпания «Север»</small></span><span class="q">12 шт</span><span class="how-ret">отмечен автоматически</span><span class="chk no">без пересчёта</span></div>
+          <div class="tr"><span class="d">5–8 сен</span><span class="p"><b>Реклама «Полёт»</b> <small>· Агентство «Мост»</small></span><span class="q">20 шт</span><span class="how-ret">принято в киоске · Иван</span><span class="chk yes">без замечаний</span></div>
+          <div class="tr"><span class="d">30 авг – 1 сен</span><span class="p"><b>Клип «Лето»</b> <small>· Фёдор Ильин</small></span><span class="q">8 шт</span><span class="how-ret">возврат отмечен вручную</span><span class="chk no">без пересчёта</span></div>
+          <div class="tr"><span class="d">22–24 авг</span><span class="p"><b>Фильм «Река»</b> <small>· Студия «Норд»</small></span><span class="q">25 шт</span><span class="how-ret">отмечен автоматически</span><span class="chk no">без пересчёта</span></div>
+          <div class="tr more">ещё 12 броней — все без пересчёта на приёмке · <a class="link" href="#">показать</a></div>
+          <div class="verdict"><b>С пересчётом принята 1 бронь из 17</b> (5–8 сен, без замечаний). Остальные 16 закрыты отметкой статуса — никто не считал. 3 удлинителя ушли в одной из них или потерялись на складе; точнее по данным не сказать.</div>
+          <div class="advice"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Чтобы в следующий раз знать точно</b> — принимайте эту позицию в киоске с пересчётом. Тогда недостача всплывёт в день возврата, а виновная бронь будет одна.</span></div>
+          <div class="bind"><span>Если в потеряшки — привязать к брони:</span><span class="selx">не определено <svg class="icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span><span class="muted">без брони компенсацию выставить будет некому</span></div>
+        </div>
+      </div>
+
+      <div class="dr">
+        <div class="dr-top">
+          <div>
+            <div class="n">RGB лампочка Aputure B7C в кейсе<small>Battery / Аккумуляторный свет</small></div>
+            <div class="ctx"><span class="amb">уже 2 в потеряшках</span> с «Лето» (01.09) — эти 2 пропали сверху</div>
+            <span class="toggle">Как пропало ▾</span>
+          </div>
+          <div class="nums">22 → 20<span class="d minus">−2</span><small>1 100 ₽/смена</small></div>
+          <div class="dec"><div class="seg" role="group" aria-label="Решение"><button type="button">Пропало → потеряшки</button><button type="button">Ошибка учёта<span class="sa">РУК</span></button><button type="button">Пересчитать</button></div></div>
+        </div>
+      </div>
+
+      <div class="dr decided">
+        <div class="dr-top">
+          <div>
+            <div class="n">Мешок для песка на 12кг Русский грип<small>Периферия</small></div>
+            <div class="ctx">вероятно — «Северный ветер» (26 шт, 14–16 сен): единственная бронь после приёмки с пересчётом</div>
+            <div class="decided-note">решил руководитель · 16:05 · привязано к «Северному ветру»</div>
+          </div>
+          <div class="nums">42 → 38<span class="d minus">−4</span><small>600 ₽/смена</small></div>
+          <div class="dec"><div class="seg" role="group" aria-label="Решение"><button type="button" class="on-rose">Пропало → потеряшки</button><button type="button">Ошибка учёта<span class="sa">РУК</span></button><button type="button">Пересчитать</button></div></div>
+        </div>
+      </div>
+
+      <div class="dr decided">
+        <div class="dr-top">
+          <div>
+            <div class="n">Флоппи 48" х 48"<small>Флаги / каттеры / флоппи</small></div>
+            <div class="ctx">«в каталоге с импорта 5, по факту всегда было 3» — учёт поправится до 3</div>
+            <div class="decided-note">решил руководитель · 15:58 · причина записана в журнал</div>
+          </div>
+          <div class="nums">5 → 3<span class="d minus">−2</span><small>ошибка учёта</small></div>
+          <div class="dec"><div class="seg" role="group" aria-label="Решение"><button type="button">Пропало → потеряшки</button><button type="button" class="on-slate">Ошибка учёта<span class="sa">РУК</span></button><button type="button">Пересчитать</button></div></div>
+        </div>
+      </div>
+
+      <div class="dr-more"><span>ещё 15 строк: 4 без решения, 11 решено</span><a class="link" href="#">показать все</a></div>
+
+      <div class="gh ok" style="border-top:1px solid var(--border)">
+        <h3>Излишек</h3><span class="n">8</span>
+        <div class="sp"><span class="fchip">без решения · 1</span><span class="fchip sel">все</span></div>
+      </div>
+      <div class="dr decided">
+        <div class="dr-top">
+          <div>
+            <div class="n">флаг 40х40<small>Флаги / каттеры / флоппи</small></div>
+            <div class="ctx">была открытая потеряшка «украден» с «Тихого дома» (11.09) — нашёлся</div>
+            <div class="decided-note">потеряшка закроется как «найдено»</div>
+          </div>
+          <div class="nums">1 → 2<span class="d plus">+1</span><small>нашёлся</small></div>
+          <div class="dec"><div class="seg" role="group" aria-label="Решение"><button type="button" class="on-ok">Нашлось</button><button type="button">Ошибка учёта<span class="sa">РУК</span></button><button type="button">Пересчитать</button></div></div>
+        </div>
+      </div>
+      <div class="dr decided">
+        <div class="dr-top">
+          <div>
+            <div class="n">Vmount<small>Электрика / Коммутация</small></div>
+            <div class="ctx">открытых потеряшек по позиции нет — учёт поправится с 19 до 21</div>
+            <div class="decided-note">решил руководитель · 16:11 · «докупали весной, в каталог не внесли»</div>
+          </div>
+          <div class="nums">19 → 21<span class="d plus">+2</span><small>ошибка учёта</small></div>
+          <div class="dec"><div class="seg" role="group" aria-label="Решение"><button type="button">Нашлось</button><button type="button" class="on-slate">Ошибка учёта<span class="sa">РУК</span></button><button type="button">Пересчитать</button></div></div>
+        </div>
+      </div>
+      <div class="dr-more"><span>ещё 6 строк: 1 без решения, 5 решено</span><a class="link" href="#">показать все</a></div>
+    </div>
+
+    <aside class="card fin" aria-label="Что произойдёт">
+      <div class="fin-h"><h3>Завершить инвентаризацию</h3><div class="s">пока не завершена — в учёт ничего не записано</div></div>
+      <div class="prog2">
+        <div class="row"><span>решено расхождений</span><span><b>20</b> из 27</span></div>
+        <div class="bar"><i style="width:74%"></i></div>
+      </div>
+      <div class="eff">
+        <div class="eff-row"><span class="dot rose"></span><div><b>В потеряшки — 7 позиций · 16 шт</b><small>источник «инвентаризация № 1», причина «не нашли на складе», со следом по броням</small></div></div>
+        <div class="eff-row"><span class="dot slate"></span><div><b>Поправки учёта — 10 позиций</b><small>6 недостач −14 шт, 4 излишка +6 шт · каталог изменится, в журнале — кто и почему</small></div></div>
+        <div class="eff-row"><span class="dot ok"></span><div><b>Нашлось — 3 потеряшки закроются</b><small>вернутся в оборот, календарь снова их продаёт</small></div></div>
+        <div class="eff-row"><span class="dot ink"></span><div><b>251 позиция — «сверено 18.09»</b><small>17 непосчитанных останутся без отметки</small></div></div>
+      </div>
+      <div class="money">Если все 19 недостач признать пропажей — из оборота выпадает <b>≈ 6 450 ₽ за смену</b></div>
+      <div class="fin-foot">
+        <button class="btn" type="button" aria-disabled="true">Завершить — осталось решить 7</button>
+        <div class="note">Всё запишется одной операцией: <b>потеряшки, поправки учёта и акт</b>. До этого можно пересчитать любую строку.</div>
+        <a class="link" href="#" style="text-align:center">Скачать акт-черновик (PDF)</a>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ═══ ВРЕЗКИ ═══ -->
+  <div class="screen-cap"><span class="no">3</span><h2>Киоск и акт</h2><span class="rule"></span><span class="why">кладовщик считает с телефона, владелец получает документ</span></div>
+  <div class="peeks">
+    <div class="peek">
+      <div class="peek-cap"><h2>Киоск · считаем полку</h2><span class="path">«Смена» → «Идёт инвентаризация — ваш участок: Грип»</span><span class="role-tag">кладовщик</span></div>
+      <div class="phone">
+        <div class="ph-hdr">
+          <div class="ph-back"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>Смена</div>
+          <div class="e">Инвентаризация № 1 · Иван</div>
+          <h3>Грип <span class="tag">23 / 51</span></h3>
+          <div class="bar"><i style="width:45%"></i></div>
+        </div>
+        <div class="ph-body">
+          <div class="pi done">
+            <div class="n">Зажим прищепка Manfrotto Spring Clamp</div>
+            <div class="res ok">✓ на месте · 1 из 1</div>
+          </div>
+          <div class="pi cur">
+            <div class="n">Гибкая трубка Magic Flex ARM 50см (на прищепке)</div>
+            <div class="k">по учёту 1 шт</div>
+            <div class="two-big"><a href="#" class="yes">✓ На месте</a><a href="#" class="no">Нет на полке</a></div>
+          </div>
+          <div class="pi">
+            <div class="n">страховка цепь</div>
+            <div class="k">всего 41 · <span class="amb">6 у «Лето» по календарю</span></div>
+            <div class="row">
+              <div class="exp">на полке<br>должно быть <b>35</b></div>
+              <span class="cnt lg"><button type="button">−</button><span>33</span><button type="button">+</button></span>
+            </div>
+            <div class="res minus">−2 · решит руководитель после счёта</div>
+          </div>
+          <div class="pi">
+            <div class="n">Гринболы (теннисные мячики-насадки на стойки)</div>
+            <div class="k">по учёту 6 шт</div>
+            <div class="row">
+              <div class="exp">на полке<br>должно быть <b>6</b></div>
+              <span class="cnt lg empty"><button type="button">−</button><span>—</span><button type="button">+</button></span>
+            </div>
+            <div class="quick"><a href="#">Всё на месте · 6</a></div>
+          </div>
+        </div>
+        <div class="ph-foot"><span>расхождений <b class="r">−2</b> · сошлось 21</span><a href="#">Пауза</a></div>
+      </div>
+    </div>
+
+    <div class="peek">
+      <div class="peek-cap"><h2>Акт инвентаризации</h2><span class="path">PDF, A4 альбомный · XLSX</span><span class="role-tag">руководитель</span></div>
+      <div class="act" aria-label="Акт инвентаризации">
+        <div class="act-h">
+          <div class="org">ИП Сеченов В. А.<small>склад световой техники</small></div>
+          <div class="doc"><b>Акт инвентаризации № 1</b>от 18 сентября 2026 г.</div>
+        </div>
+        <div class="act-meta"><span>Охват: весь склад, 295 позиций</span><span>Считали: Иван, Олег · 09:30–16:05</span><span>Завершено: 18.09 16:48 · руководитель</span></div>
+        <div class="act-sum">
+          <div><div class="v">278</div><div class="l">позиций посчитано</div></div>
+          <div><div class="v">251</div><div class="l">сошлось</div></div>
+          <div><div class="v" style="color:var(--rose)">19 / 47 шт</div><div class="l">недостача</div></div>
+          <div><div class="v" style="color:var(--emerald)">8 / 11 шт</div><div class="l">излишек</div></div>
+        </div>
+        <table>
+          <thead><tr><th>№</th><th>Наименование</th><th class="r">По учёту</th><th class="r">Факт</th><th class="r">Разн.</th><th>Решение</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Удлинитель PCE (15м)</td><td class="r">50</td><td class="r">47</td><td class="r"><span class="minus">−3</span></td><td>пропажа → потеряшка</td></tr>
+            <tr><td>2</td><td>Мешок для песка на 12кг Русский грип</td><td class="r">42</td><td class="r">38</td><td class="r"><span class="minus">−4</span></td><td>пропажа → «Северный ветер»</td></tr>
+            <tr><td>3</td><td>RGB лампочка Aputure B7C в кейсе</td><td class="r">22</td><td class="r">20</td><td class="r"><span class="minus">−2</span></td><td>пропажа → потеряшка</td></tr>
+            <tr><td>4</td><td>Флоппи 48" х 48"</td><td class="r">5</td><td class="r">3</td><td class="r"><span class="minus">−2</span></td><td>ошибка учёта: 5 → 3</td></tr>
+            <tr><td>5</td><td>флаг 40х40</td><td class="r">1</td><td class="r">2</td><td class="r"><span class="plus">+1</span></td><td>нашлось (потеряшка от 11.09)</td></tr>
+            <tr><td>6</td><td>Vmount</td><td class="r">19</td><td class="r">21</td><td class="r"><span class="plus">+2</span></td><td>ошибка учёта: 19 → 21</td></tr>
+            <tr><td colspan="6" class="muted">… ещё 21 строка расхождений · сошедшиеся позиции — во втором разделе акта</td></tr>
+          </tbody>
+        </table>
+        <div class="sign"><div>Пересчитали: Иван</div><div>Пересчитали: Олег</div><div>Руководитель</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ЗАМЕТКИ -->
+  <section class="annot">
+    <h2>Почему так</h2>
+    <ol>
+      <li><b>Инвентаризация главнее ручного ввода.</b> На проде из 435 возвращённых броней с пересчётом в киоске приняты 4, остальные закрыты сменой статуса. Пропажи на возврате никто не видит — значит, узнать о них можно только пересчётом полки. Ручное «Завести потеряшку» остаётся для случая «заметили посреди смены», но это второй путь.</li>
+      <li><b>Весь склад по умолчанию, участки — по категориям.</b> 295 позиций, 1 808 шт. Двое считают параллельно, каждый видит свой участок; «Пауза» — штатная кнопка, каждая строка сохраняется сразу — закрытый киоск ничего не теряет.</li>
+      <li><b>«На полке должно быть» — та же формула, что у календаря</b>: всего − выдано − в мастерской − открытые потеряшки, <b>плюс брони, которые по датам на съёмке, но не отмечены выданными</b>. Сегодня таких 3 — без этой поправки их позиции выглядели бы пропавшими. Ожидание фиксируется в момент счёта строки: выдачи и возвраты во время инвентаризации итог не сбивают.</li>
+      <li><b>Ввод под реальный парк.</b> 114 позиций из 295 — в одном экземпляре: для них две большие кнопки «на месте / нет на полке». Для остальных — степпер и «Всё на месте · N»: большинство строк сходится одним касанием. Штрихкоды не нужны — 294 позиции из 295 без штучного учёта.</li>
+      <li><b>Три решения, а не одно.</b> «Пропало → потеряшки», «Ошибка учёта» (поправить количество в каталоге), «Пересчитать». Первая инвентаризация — это в первую очередь сверка учёта: каталог завели импортом и ни разу не пересчитывали. Поправку учёта делает только руководитель, с причиной, в журнал.</li>
+      <li><b>«Как пропало» — окно между пересчётами.</b> Для каждой недостачи — брони с этой позицией с прошлой инвентаризации (в первый раз — за 60 дней) и то, как их принимали: в киоске с пересчётом, вручную или автоматически. Если бронь с пересчётом одна — система подсказывает её. Когда точнее сказать нельзя, так и пишем — и подсказываем, что изменить в приёмке.</li>
+      <li><b>Ничего не пишется до «Завершить».</b> Потеряшки, поправки учёта, закрытие найденного и отметки «сверено» — одной операцией и одной записью в журнал. Пока хоть одно расхождение без решения, завершить нельзя; непосчитанные позиции не блокируют — остаются «не сверены».</li>
+      <li><b>Акт</b> — документ для владельца, A4 альбомный (как реестр долгов): сводка, строки расхождений с решениями, подписи. Плюс XLSX.</li>
+      <li><b>В киоске — не новая вкладка.</b> Инвентаризация — редкое событие; вкладка ради неё занимала бы место каждый день. Пока инвентаризация идёт, на «Смене» висит карточка «Ваш участок: Грип → продолжить».</li>
+      <li><b>Не входит в первый релиз:</b> компенсация клиенту и «стоимость замены» (нужно решение владельца), объявление в поиск, подсказки «пора пересчитать» для ходовых позиций. После первой инвентаризации будет видно, что из этого действительно нужно.</li>
+    </ol>
+  </section>
+
+</div>
+</body>
+</html>
