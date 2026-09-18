@@ -5,24 +5,49 @@
  * «ожидали → посчитали», решение и раскрывающееся «Как пропало».
  *
  * Привязка «Пропало» к брони — только к той, которую руководитель видел.
- * У недостачи без решения след подгружается сам при появлении строки, и
- * подсказка (единственная бронь, принятая без пересчёта) сразу пишется в
- * контекст строки: «вероятно — «…» (N шт, даты)…». «Пропало → потеряшки»
- * берёт бронь, выбранную в «Как пропало», а если там не трогали — эту
- * подсказку. Пока след не загрузился (или не загрузился вовсе), «Пропало»
+ * Подсказка (единственная бронь, принятая без пересчёта) приходит для всех
+ * недостач разом (`suggestion`, GET …/trail-suggestions) и сразу пишется в
+ * контекст строки: «вероятно — «…» (N шт, даты)…». Полный след грузится
+ * только по «Как пропало ▾». «Пропало → потеряшки» берёт бронь, выбранную в
+ * следе, а если там не трогали — показанную подсказку; подсказки нет —
  * уходит с уже записанной бронью строки или без брони («бронь не определена»),
  * а не с невидимой догадкой: по привязке потом выставляют компенсацию.
+ *
+ * Решение привязано к тому, что видно на экране: с ним уходят счёт и «должно
+ * быть» строки (строку пересчитали — 409 LINE_CHANGED). Если учёт позиции
+ * изменился после счёта, строка говорит, что именно, и предлагает выбрать:
+ * «Обновить ожидание» (учёт лишь догнал полку) или «Оставить как посчитано»
+ * (движение было после счёта) — тогда «Пропало» / «Ошибка учёта» уходят с
+ * подтверждением.
  */
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
 import { toast } from "../ToastProvider";
-import { errorCode, explainInventoryError, inventoryApi } from "./api";
+import { errorCode, explainInventoryError, inventoryApi, type DecisionBody } from "./api";
 import { AdjustReasonDialog } from "./AdjustReasonDialog";
 import { DecisionControl, type DecisionOption } from "./DecisionControl";
-import { effectiveDecision, fmtRange, fmtTime, quoteName, ratePerShiftOf, rubWhole, signed } from "./format";
+import {
+  adjustPreview,
+  booksChangeText,
+  effectiveDecision,
+  fmtRange,
+  fmtTime,
+  quoteName,
+  ratePerShiftOf,
+  readyForPickupText,
+  rubWhole,
+  signed,
+} from "./format";
 import { NO_BOOKING, TrailPanel } from "./TrailPanel";
-import type { Decision, EquipmentTrail, StockCountLineView, StockCountStatus, TrailBooking } from "./types";
+import type {
+  Decision,
+  EquipmentTrail,
+  StockCountLineView,
+  StockCountStatus,
+  TrailBooking,
+  TrailSuggestion,
+} from "./types";
 import { FOCUS } from "./ui";
 
 export interface DiscrepancyRowProps {
@@ -38,9 +63,19 @@ export interface DiscrepancyRowProps {
   onChanged: () => void;
   /** Данные устарели (закрыта, строка сошлась) — перечитать всё. */
   onStale: () => void;
+  /** Подсказка следа из общего запроса «Итога»; раскрытый след её заменяет. */
+  suggestion?: TrailSuggestion | null;
 }
 
-const STALE_CODES = new Set(["STOCK_COUNT_NOT_OPEN", "LINE_NOT_DISCREPANT", "LINE_NOT_COUNT_MODE", "LINE_NOT_FOUND"]);
+const STALE_CODES = new Set([
+  "STOCK_COUNT_NOT_OPEN",
+  "LINE_NOT_DISCREPANT",
+  "LINE_NOT_COUNT_MODE",
+  "LINE_NOT_FOUND",
+  "LINE_CHANGED",
+  "LINE_BOOKS_CHANGED",
+  "LINE_NOT_COUNTED",
+]);
 
 type ContextTone = "amber" | "hint" | "muted";
 
@@ -61,6 +96,16 @@ export function visibleSuggestion(trail: EquipmentTrail | null): TrailBooking | 
   return trail.bookings.find((b) => b.bookingId === trail.suggestedBookingId) ?? null;
 }
 
+/** «при счёте на съёмках 4 · по календарю 2» — откуда могло взяться «лишнее». */
+function surplusExplanation(line: StockCountLineView): string | null {
+  const b = line.expected;
+  const parts = [
+    b.issued > 0 ? `на съёмках ${b.issued}` : null,
+    b.calendar > 0 ? `по календарю ${b.calendar}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? `при счёте ${parts.join(" · ")}` : null;
+}
+
 /**
  * Контекст под названием: почему расхождение и что с ним будет. У завершённой
  * инвентаризации — в прошедшем времени, у отменённой — «не применено»: живые
@@ -72,18 +117,19 @@ function contextLine(
   line: StockCountLineView,
   decision: Decision | null,
   status: StockCountStatus,
-  suggestion: TrailBooking | null,
+  suggestion: TrailSuggestion | null,
 ): ContextLine {
   const b = line.expected;
   const diff = line.diff ?? 0;
   const nextTotal = Math.max(0, b.total + diff);
   if (decision === "ADJUST") {
+    const preview = adjustPreview(line);
     const text =
       status === "CLOSED"
         ? `учёт поправлен с ${b.total} до ${nextTotal}`
         : status === "CANCELLED"
           ? "поправка не применена — инвентаризация отменена"
-          : `учёт поправится с ${b.total} до ${nextTotal}`;
+          : `учёт поправится с ${preview.from} до ${preview.to}`;
     return { tone: "muted", text };
   }
   if (diff < 0) {
@@ -112,7 +158,12 @@ function contextLine(
       text: `открыто потеряшек — ${line.openProblemQty} шт: «Нашлось» закроет их как найденные`,
     };
   }
-  return { tone: "muted", text: `открытых потеряшек по позиции нет — учёт поправится с ${b.total} до ${nextTotal}` };
+  const preview = adjustPreview(line);
+  const explain = surplusExplanation(line);
+  return {
+    tone: "muted",
+    text: `${explain ? `${explain} · ` : ""}открытых потеряшек по позиции нет — учёт поправится с ${preview.from} до ${preview.to}`,
+  };
 }
 
 function decidedNote(line: StockCountLineView, decision: Decision, status: StockCountStatus): string {
@@ -126,7 +177,16 @@ function decidedNote(line: StockCountLineView, decision: Decision, status: Stock
   return `${who} · потеряшка ${status === "CLOSED" ? "закрыта" : "закроется"} как «найдено»`;
 }
 
-export function DiscrepancyRow({ stockCountId, line, status, onLineChange, onRecount, onChanged, onStale }: DiscrepancyRowProps) {
+export function DiscrepancyRow({
+  stockCountId,
+  line,
+  status,
+  onLineChange,
+  onRecount,
+  onChanged,
+  onStale,
+  suggestion: givenSuggestion = null,
+}: DiscrepancyRowProps) {
   const readOnly = status !== "OPEN";
   const panelId = useId();
   const [open, setOpen] = useState(false);
@@ -137,13 +197,19 @@ export function DiscrepancyRow({ stockCountId, line, status, onLineChange, onRec
   const [bindTouched, setBindTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
+  // «Оставить как посчитано» нажато в этом заходе — следующее «Пропало» /
+  // «Ошибка учёта» уходит с подтверждением.
+  const [keepAsCounted, setKeepAsCounted] = useState(false);
 
   const diff = line.diff ?? 0;
   const shortage = diff < 0;
   const decision = effectiveDecision(line);
   const canTrail = shortage && line.equipmentId != null;
-  const suggestion = visibleSuggestion(trail);
+  // Раскрытый след авторитетнее общей подсказки: он свежее и его видно целиком.
+  const suggestion: TrailSuggestion | null = trail ? visibleSuggestion(trail) : givenSuggestion;
   const suggestedId = suggestion?.bookingId ?? null;
+  const booksText = readOnly ? null : booksChangeText(line);
+  const acknowledged = keepAsCounted || line.booksAcknowledged;
 
   // Выбор в следе повторяет записанное: у «Пропало» без брони — «не
   // определено», а не подсказка, иначе селект показывал бы не то, что решено.
@@ -151,6 +217,11 @@ export function DiscrepancyRow({ stockCountId, line, status, onLineChange, onRec
     if (bindTouched) return;
     setBindValue(line.sourceBookingId ?? (decision === "LOST" ? null : suggestedId) ?? NO_BOOKING);
   }, [line.sourceBookingId, decision, suggestedId, bindTouched]);
+
+  // Учёт больше не расходится со снапшотом — прежнее «оставить» не в силе.
+  useEffect(() => {
+    if (!line.booksChangedSinceCount) setKeepAsCounted(false);
+  }, [line.booksChangedSinceCount]);
 
   const loadTrail = useCallback(async (): Promise<EquipmentTrail | null> => {
     setTrailLoading(true);
@@ -167,33 +238,35 @@ export function DiscrepancyRow({ stockCountId, line, status, onLineChange, onRec
     }
   }, [stockCountId, line.id]);
 
-  // Недостача ждёт решения — след подгружается сам, один раз на строку, чтобы
-  // подсказка брони стояла в строке ДО нажатия «Пропало». Сбой тут молчит:
-  // строка остаётся с разбивкой, красную ошибку покажет раскрытый след.
-  const autoTrailForRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!canTrail || readOnly || decision != null) return;
-    if (autoTrailForRef.current === line.id) return;
-    autoTrailForRef.current = line.id;
-    if (!trail && !trailLoading) void loadTrail();
-  }, [canTrail, readOnly, decision, line.id, trail, trailLoading, loadTrail]);
-
   const toggleTrail = () => {
     const next = !open;
     setOpen(next);
     if (next && !trail && !trailLoading) void loadTrail();
   };
 
-  const decide = async (next: Decision | null, extra: { note?: string | null; sourceBookingId?: string | null } = {}) => {
+  const decide = async (
+    next: Decision | null,
+    extra: { note?: string | null; sourceBookingId?: string | null; acknowledge?: boolean } = {},
+  ) => {
     setBusy(true);
     try {
-      const { line: fresh } = await inventoryApi.decide(stockCountId, line.id, { decision: next, ...extra });
+      const { acknowledge, ...rest } = extra;
+      const body: DecisionBody = { decision: next, ...rest };
+      if (next !== null) {
+        // Решение — ровно по тому, что на экране (строку пересчитали — 409 LINE_CHANGED).
+        body.seenCountedQty = line.countedQty ?? undefined;
+        body.seenExpectedQty = line.expected.expected;
+        const books = next === "LOST" || next === "ADJUST";
+        if (books && line.booksChangedSinceCount && (acknowledge || acknowledged)) body.acknowledgeBooksChanged = true;
+      }
+      const { line: fresh } = await inventoryApi.decide(stockCountId, line.id, body);
       onLineChange(fresh);
       onChanged();
       return true;
     } catch (e) {
       toast.error(explainInventoryError(e, "Не удалось сохранить решение"));
       const code = errorCode(e);
+      if (code === "LINE_BOOKS_CHANGED") setKeepAsCounted(false);
       if (code && STALE_CODES.has(code)) onStale();
       return false;
     } finally {
@@ -202,13 +275,15 @@ export function DiscrepancyRow({ stockCountId, line, status, onLineChange, onRec
   };
 
   /**
-   * Бронь для «Пропало»: выбранная в следе, иначе его подсказка — она уже
-   * видна в строке. След не загружен — только то, что строке уже записано;
-   * догадку, которую не показали, не отправляем.
+   * Бронь для «Пропало»: выбранная в следе, иначе подсказка — она уже видна в
+   * строке (из раскрытого следа, если он загружен, иначе из общего запроса).
+   * Подсказки нет — только то, что строке уже записано; догадку, которую не
+   * показали, не отправляем. Выводится из того же, что на экране, а не из
+   * `bindValue`: эффект, который его синхронизирует, отстаёт на кадр.
    */
   const resolveLostBooking = (): string | null => {
-    if (bindTouched || trail) return bindValue || null;
-    return line.sourceBookingId ?? null;
+    if (bindTouched) return bindValue || null;
+    return line.sourceBookingId ?? suggestedId ?? null;
   };
 
   const handleSelect = async (option: DecisionOption) => {
@@ -245,6 +320,40 @@ export function DiscrepancyRow({ stockCountId, line, status, onLineChange, onRec
     setBindValue(value);
     setBindTouched(true);
     if (decision === "LOST") void decide("LOST", { note: line.decisionNote, sourceBookingId: value || null });
+  };
+
+  /** «Обновить ожидание»: учёт лишь догнал то, что уже лежало на полке при счёте. */
+  const handleRefreshExpected = async () => {
+    setBusy(true);
+    try {
+      const { line: fresh } = await inventoryApi.refreshExpected(stockCountId, line.id);
+      setKeepAsCounted(false);
+      onLineChange(fresh);
+      onChanged();
+    } catch (e) {
+      toast.error(explainInventoryError(e, "Не удалось обновить ожидание"));
+      const code = errorCode(e);
+      if (code && STALE_CODES.has(code)) onStale();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * «Оставить как посчитано»: движение было после счёта. Решение уже есть —
+   * подтверждается сразу; нет — следующее «Пропало» / «Ошибка учёта» уйдёт
+   * с подтверждением.
+   */
+  const handleKeepAsCounted = async () => {
+    if (decision === "LOST") {
+      await decide("LOST", { note: line.decisionNote, sourceBookingId: line.sourceBookingId, acknowledge: true });
+      return;
+    }
+    if (decision === "ADJUST") {
+      await decide("ADJUST", { note: line.decisionNote, acknowledge: true });
+      return;
+    }
+    setKeepAsCounted(true);
   };
 
   const ctx = contextLine(line, decision, status, suggestion);
@@ -287,7 +396,20 @@ export function DiscrepancyRow({ stockCountId, line, status, onLineChange, onRec
             )}
             {ctx.text}
           </p>
+          {shortage && !readOnly && readyForPickupText(line.readyForPickupQty) && (
+            <p className="mt-0.5 text-[11px] text-ink-3">{readyForPickupText(line.readyForPickupQty)}</p>
+          )}
           {decision && <p className="mt-0.5 text-[11px] text-ink-3">{decidedNote(line, decision, status)}</p>}
+          {booksText && (
+            <BooksChangedNote
+              text={booksText}
+              acknowledged={acknowledged && decision !== "FOUND"}
+              canKeep={decision !== "FOUND"}
+              busy={busy}
+              onRefresh={() => void handleRefreshExpected()}
+              onKeep={() => void handleKeepAsCounted()}
+            />
+          )}
           {canTrail && (
             <button
               type="button"
@@ -341,10 +463,56 @@ export function DiscrepancyRow({ stockCountId, line, status, onLineChange, onRec
         busy={busy}
         onClose={() => setAdjusting(false)}
         onSubmit={async (note) => {
+          // Отказ (строку пересчитали, учёт изменился) диалог не закрывает:
+          // набранная причина остаётся, а расхождение в нём уже новое.
           const ok = await decide("ADJUST", { note });
           if (ok) setAdjusting(false);
         }}
       />
     </li>
+  );
+}
+
+/**
+ * Учёт позиции изменился после счёта: что именно и два честных выхода.
+ * Кнопки подписаны видимым текстом, а не только подсказкой — на планшете
+ * наведения нет.
+ */
+function BooksChangedNote({
+  text,
+  acknowledged,
+  canKeep,
+  busy,
+  onRefresh,
+  onKeep,
+}: {
+  text: string;
+  acknowledged: boolean;
+  canKeep: boolean;
+  busy: boolean;
+  onRefresh: () => void;
+  onKeep: () => void;
+}) {
+  const btn = `rounded-sm text-[11px] font-semibold text-accent-bright hover:text-accent hover:underline disabled:opacity-50 ${FOCUS}`;
+  return (
+    <div className="mt-1 rounded border border-amber-border bg-amber-soft px-2 py-1.5 text-[11px] leading-snug text-ink-2">
+      <p>
+        <b className="font-semibold text-amber">{text}</b>
+        {acknowledged && <span className="text-ink-3"> · оставлено как посчитано</span>}
+      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <button type="button" onClick={onRefresh} disabled={busy} className={btn}>
+          Обновить ожидание
+        </button>
+        {canKeep && !acknowledged && (
+          <button type="button" onClick={onKeep} disabled={busy} className={btn}>
+            Оставить как посчитано
+          </button>
+        )}
+      </div>
+      <p className="mt-0.5 text-[10.5px] text-ink-3">
+        обновить — если оборудование уже лежало на полке при счёте; оставить — если движение было после счёта
+      </p>
+    </div>
   );
 }

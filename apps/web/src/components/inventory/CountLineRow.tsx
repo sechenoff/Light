@@ -98,6 +98,12 @@ export function CountLineRow({
             {n.text}
           </span>
         ))}
+        {!readOnly && line.live && line.live.expected !== expected && (
+          <span className="block text-[11px] font-semibold text-amber">
+            после счёта учёт изменился (сейчас должно быть {line.live.expected}) — чтобы изменить число, нажмите
+            «Пересчитать»
+          </span>
+        )}
       </div>
 
       <div className="order-3 flex flex-wrap items-center gap-1.5 lg:order-none">

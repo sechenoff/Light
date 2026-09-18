@@ -1,7 +1,9 @@
 /**
  * «Начать инвентаризацию»: весь склад по умолчанию (categories: null) или
- * выбранные категории — ровно отмеченные, в порядке каталога. 409 «уже идёт» —
- * объяснение и переход в идущую.
+ * выбранные категории — ровно отмеченные, в порядке каталога. Счётчики — только
+ * позиции с учётом количеством (GET /api/stock-counts/scope); категорию, где
+ * пересчитывать нечего, выбрать нельзя. 409 «уже идёт» — объяснение и переход
+ * в идущую.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,9 +26,17 @@ vi.mock("../../../lib/api", () => ({
 import { StartInventoryPanel } from "../StartInventoryPanel";
 import { apiError, makeDetail } from "./fixtures";
 
-const CATEGORIES = {
+const SCOPE = {
   categories: ["Грип", "Электрика / Коммутация", "Текстиль"],
   counts: { Грип: 51, "Электрика / Коммутация": 30, Текстиль: 21 },
+  unitCounts: { Грип: 0, "Электрика / Коммутация": 0, Текстиль: 0 },
+};
+
+/** Каталог, где «COB Light» — только штучный прибор, а в «Свете» штучный один из трёх. */
+const SCOPE_WITH_UNIT_ONLY = {
+  categories: ["Свет", "COB Light", "Грип"],
+  counts: { Свет: 2, "COB Light": 0, Грип: 4 },
+  unitCounts: { Свет: 1, "COB Light": 1, Грип: 0 },
 };
 
 function startBody() {
@@ -56,8 +66,8 @@ describe("StartInventoryPanel", () => {
 
   it("выбранные категории: грузит список со счётчиками и отправляет отмеченные в порядке каталога", async () => {
     apiFetch.mockImplementation((path: string) =>
-      path === "/api/equipment/categories"
-        ? Promise.resolve(CATEGORIES)
+      path === "/api/stock-counts/scope"
+        ? Promise.resolve(SCOPE)
         : Promise.resolve({ stockCount: makeDetail({ categories: ["Грип", "Текстиль"] }) }),
     );
     const onStarted = vi.fn();
@@ -81,12 +91,40 @@ describe("StartInventoryPanel", () => {
   });
 
   it("«выбрать все» отмечает все категории", async () => {
-    apiFetch.mockResolvedValueOnce(CATEGORIES);
+    apiFetch.mockResolvedValueOnce(SCOPE);
     render(<StartInventoryPanel onStarted={vi.fn()} onAlreadyOpen={vi.fn()} />);
     fireEvent.click(screen.getByRole("radio", { name: /Выбранные категории/ }));
     fireEvent.click(await screen.findByRole("button", { name: "выбрать все" }));
     expect(screen.getAllByRole("checkbox").every((c) => (c as HTMLInputElement).checked)).toBe(true);
     expect(screen.getByText("выбрано 3 из 3")).toBeInTheDocument();
+  });
+
+  it("категория только со штучным учётом — не выбирается, «выбрать все» её пропускает", async () => {
+    apiFetch.mockImplementation((path: string) =>
+      path === "/api/stock-counts/scope"
+        ? Promise.resolve(SCOPE_WITH_UNIT_ONLY)
+        : Promise.resolve({ stockCount: makeDetail({ categories: ["Свет", "Грип"] }) }),
+    );
+    const onStarted = vi.fn();
+    render(<StartInventoryPanel onStarted={onStarted} onAlreadyOpen={vi.fn()} />);
+    fireEvent.click(screen.getByRole("radio", { name: /Выбранные категории/ }));
+
+    const cob = (await screen.findByRole("checkbox", { name: /COB Light/ })) as HTMLInputElement;
+    expect(cob).toBeDisabled();
+    expect(screen.getByText("только штучный учёт — сверяется в карточке единиц")).toBeInTheDocument();
+    // Счётчик смешанной категории — только позиции количеством.
+    expect(screen.getByText("2 поз.")).toBeInTheDocument();
+    expect(screen.getByText("выбрано 0 из 2")).toBeInTheDocument();
+
+    fireEvent.click(cob);
+    expect(cob).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "выбрать все" }));
+    expect(cob).not.toBeChecked();
+    expect(screen.getByText("выбрано 2 из 2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Начать инвентаризацию" }));
+    await waitFor(() => expect(onStarted).toHaveBeenCalled());
+    expect(startBody()).toEqual({ categories: ["Свет", "Грип"] });
   });
 
   it("409 «уже идёт» — текст сервера и переход в идущую", async () => {

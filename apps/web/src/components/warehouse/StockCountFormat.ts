@@ -6,7 +6,7 @@
  * Никаких кодов и штрихкодов. Минус — типографский «−» (U+2212), как в мокапе.
  */
 
-import { quoteName } from "../inventory/format";
+import { quoteName, readyForPickupText } from "../inventory/format";
 import type {
   StockCountCategory,
   StockCountLineView,
@@ -65,19 +65,23 @@ function calendarText(line: StockCountLineView): string {
 
 /**
  * Пояснение под названием: «по учёту 6 шт», если с полки ничего не уходило,
- * иначе разбивка формулы «всего 41 · 6 у «Лето» по календарю».
+ * иначе разбивка формулы «всего 41 · 6 у «Лето» по календарю». Починенное за
+ * неделю — отдельным приглушённым пояснением: по учёту оно уже на полке, а
+ * физически может лежать на верстаке.
  */
 export function lineExplanation(line: StockCountLineView): ExplanationPart[] {
   const b = line.expected;
   const reduced = b.issued + b.calendar + b.repair + b.lost;
-  if (reduced === 0) return [{ text: `по учёту ${b.total} шт`, tone: "muted" }];
+  const pickup = readyForPickupText(line.readyForPickupQty);
+  const tail: ExplanationPart[] = pickup ? [{ text: pickup, tone: "muted" }] : [];
+  if (reduced === 0) return [{ text: `по учёту ${b.total} шт`, tone: "muted" }, ...tail];
 
   const parts: ExplanationPart[] = [{ text: `всего ${b.total}`, tone: "muted" }];
   if (b.issued > 0) parts.push({ text: `${b.issued} на съёмках`, tone: "muted" });
   if (b.calendar > 0) parts.push({ text: calendarText(line), tone: "amber" });
   if (b.repair > 0) parts.push({ text: `${b.repair} в мастерской`, tone: "muted" });
   if (b.lost > 0) parts.push({ text: `${b.lost} в потеряшках`, tone: "muted" });
-  return parts;
+  return [...parts, ...tail];
 }
 
 export interface LinesSummary {
@@ -130,6 +134,9 @@ export function withReset(line: StockCountLineView): StockCountLineView {
     decisionNote: null,
     decidedBy: null,
     decidedAt: null,
+    live: null,
+    booksChangedSinceCount: false,
+    booksAcknowledged: false,
   };
 }
 

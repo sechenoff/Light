@@ -138,12 +138,18 @@ beforeAll(async () => {
     data: { bookingId: booking.auto, workerName: "Пётр", operation: "RETURN", status: "CANCELLED" },
   });
 
-  // Возврат кнопкой и системой.
+  // Возврат кнопкой и системой — в день окончания брони.
   await prisma.auditEntry.create({
-    data: { userId: manager.id, action: "BOOKING_RETURNED", entityType: "Booking", entityId: booking.manual },
+    data: {
+      userId: manager.id, action: "BOOKING_RETURNED", entityType: "Booking", entityId: booking.manual,
+      createdAt: daysFromNow(-18),
+    },
   });
   await prisma.auditEntry.create({
-    data: { userId: system.id, action: "BOOKING_RETURNED", entityType: "Booking", entityId: booking.auto },
+    data: {
+      userId: system.id, action: "BOOKING_RETURNED", entityType: "Booking", entityId: booking.auto,
+      createdAt: daysFromNow(-28),
+    },
   });
 
   // Замечания приёмки в киоске: по этой позиции — потеряшка 1 шт. и ремонт 2 шт.
@@ -390,5 +396,130 @@ describe("getEquipmentTrail", () => {
       status: 404,
       code: "EQUIPMENT_NOT_FOUND",
     });
+  });
+});
+
+// ─── Поздние возвраты и мастерская ───────────────────────────────────────────
+
+describe("getEquipmentTrail — поздние возвраты и события мастерской", () => {
+  let client: any;
+  let manager: any;
+
+  async function position(key: string, lastCountedDays: number | null) {
+    const e = await prisma.equipment.create({
+      data: {
+        importKey: `trail-late-${key}`,
+        name: `Позиция ${key}`,
+        category: "Поздние",
+        totalQuantity: 8,
+        rentalRatePerShift: "200",
+        stockTrackingMode: "COUNT",
+        lastCountedAt: lastCountedDays == null ? null : daysFromNow(lastCountedDays),
+      },
+    });
+    return e.id as string;
+  }
+
+  async function overdue(eqId: string, key: string) {
+    const b = await prisma.booking.create({
+      data: {
+        clientId: client.id,
+        projectName: `Просрочка ${key}`,
+        status: "RETURNED",
+        startDate: daysFromNow(-20),
+        endDate: daysFromNow(-15),
+        items: { create: [{ equipmentId: eqId, quantity: 2 }] },
+      },
+    });
+    booking[key] = b.id;
+    return b;
+  }
+
+  beforeAll(async () => {
+    client = await prisma.client.findFirst({ where: { name: "Клиент Следа" } });
+    manager = await prisma.adminUser.findFirst({ where: { username: "sechenoff" } });
+  });
+
+  it("просроченная бронь, принятая кнопкой после прошлой сверки, — в следе и подсказка", async () => {
+    const eqId = await position("button", -10);
+    await overdue(eqId, "lateButton");
+    await prisma.auditEntry.create({
+      data: {
+        userId: manager.id, action: "BOOKING_RETURNED", entityType: "Booking", entityId: booking.lateButton,
+        createdAt: daysFromNow(-3),
+      },
+    });
+    const trail = await getEquipmentTrail(eqId);
+    expect(trail.bookings.map((b) => b.bookingId)).toEqual([booking.lateButton]);
+    expect(trail.bookings[0]).toMatchObject({ returnMode: "MANUAL", returnedBy: "sechenoff" });
+    expect(trail.suggestedBookingId).toBe(booking.lateButton);
+
+    // На момент до возврата она ещё была у клиента — вычтена из полки, а не кандидат.
+    const before = await getEquipmentTrail(eqId, { at: daysFromNow(-5) });
+    expect(before.bookings[0]).toMatchObject({ bookingId: booking.lateButton, returnMode: "OUT" });
+    expect(before.suggestedBookingId).toBeNull();
+  });
+
+  it("просроченная бронь, принятая в киоске после прошлой сверки, — в следе как принятая с пересчётом", async () => {
+    const eqId = await position("kiosk", -10);
+    await overdue(eqId, "lateKiosk");
+    await prisma.scanSession.create({
+      data: {
+        bookingId: booking.lateKiosk, workerName: "Олег", operation: "RETURN", status: "COMPLETED",
+        completedAt: daysFromNow(-3),
+      },
+    });
+    const trail = await getEquipmentTrail(eqId);
+    expect(trail.bookings.map((b) => b.bookingId)).toEqual([booking.lateKiosk]);
+    expect(trail.bookings[0]).toMatchObject({ returnMode: "KIOSK", returnedBy: "Олег" });
+    expect(trail.verifiedReturns).toBe(1);
+  });
+
+  it("возврат до окна — вне следа, как и раньше", async () => {
+    const eqId = await position("early", -10);
+    await overdue(eqId, "earlyReturn");
+    await prisma.auditEntry.create({
+      data: {
+        userId: manager.id, action: "BOOKING_RETURNED", entityType: "Booking", entityId: booking.earlyReturn,
+        createdAt: daysFromNow(-14),
+      },
+    });
+    const trail = await getEquipmentTrail(eqId);
+    expect(trail.bookings).toEqual([]);
+  });
+
+  it("мастерская списала или починила — подсказки брони нет, события в следе", async () => {
+    const eqId = await position("repair", -10);
+    const b = await prisma.booking.create({
+      data: {
+        clientId: client.id,
+        projectName: "Единственная",
+        status: "RETURNED",
+        startDate: daysFromNow(-6),
+        endDate: daysFromNow(-5),
+        items: { create: [{ equipmentId: eqId, quantity: 1 }] },
+      },
+    });
+    const clean = await getEquipmentTrail(eqId);
+    expect(clean.suggestedBookingId).toBe(b.id);
+    expect(clean.repairEvents).toEqual({ writtenOffQty: 0, readyForPickupQty: 0 });
+
+    await prisma.repair.create({
+      data: { equipmentId: eqId, quantity: 2, reason: "сгорели", status: "WROTE_OFF", closedAt: daysFromNow(-4), createdBy: "x" },
+    });
+    // Списание до окна и починенное больше недели назад — не в счёт.
+    await prisma.repair.create({
+      data: { equipmentId: eqId, quantity: 5, reason: "давно", status: "WROTE_OFF", closedAt: daysFromNow(-20), createdBy: "x" },
+    });
+    await prisma.repair.create({
+      data: { equipmentId: eqId, quantity: 7, reason: "давно", status: "CLOSED", closedAt: daysFromNow(-9), createdBy: "x" },
+    });
+    await prisma.repair.create({
+      data: { equipmentId: eqId, quantity: 1, reason: "перепаяли", status: "CLOSED", closedAt: daysFromNow(-2), createdBy: "x" },
+    });
+    const trail = await getEquipmentTrail(eqId);
+    expect(trail.repairEvents).toEqual({ writtenOffQty: 2, readyForPickupQty: 1 });
+    expect(trail.suggestedBookingId).toBeNull();
+    expect(trail.bookings.map((x) => x.bookingId)).toEqual([b.id]);
   });
 });

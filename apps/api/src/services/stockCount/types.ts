@@ -109,10 +109,36 @@ export interface StockCountLineView {
   decidedAt: string | null;
   sourceBookingId: string | null;
   sourceBooking: { id: string; projectName: string; clientName: string } | null;
-  /** Для доступности «Нашлось». */
+  /**
+   * Для доступности «Нашлось»: открытые безъюнитные потеряшки позиции, заведённые
+   * не позже счёта строки (у посчитанной строки; у непосчитанной — все открытые).
+   */
   openProblemQty: number;
   /** Вычисляется сервером. */
   allowedDecisions: Decision[];
+  /**
+   * Позиция на штучном учёте (её перевели после старта) — решения не ждёт:
+   * сверяют по единицам в карточке оборудования.
+   */
+  isUnitMode: boolean;
+  /**
+   * Живая разбивка ожидания на момент запроса — только у посчитанной строки
+   * идущей инвентаризации с позицией в каталоге, иначе null. `expected` у такой
+   * строки остаётся снапшотом.
+   */
+  live: Breakdown | null;
+  /** Учёт позиции изменился после счёта: хоть одно слагаемое live ≠ снапшоту. */
+  booksChangedSinceCount: boolean;
+  /**
+   * Текущее «Пропало» / «Ошибка учёта» подтверждено «оставить как посчитано»
+   * против ровно этого живого учёта — завершение его примет.
+   */
+  booksAcknowledged: boolean;
+  /**
+   * Починено за последние 7 суток (безъюнитные ремонты позиции) — может ещё
+   * лежать на верстаке. Живое, только у идущей инвентаризации; в формулу §3 не входит.
+   */
+  readyForPickupQty: number;
 }
 
 export type ReturnMode = "KIOSK" | "MANUAL" | "AUTO" | "OUT";
@@ -139,6 +165,16 @@ export interface TrailOpenProblem {
   projectName: string | null;
 }
 
+/**
+ * События мастерской в окне следа по безъюнитным ремонтам позиции: списанное
+ * (с начала окна до момента следа) и починенное за 7 суток до него. Любое из них
+ * объясняет недостачу не хуже брони — подсказка брони при них не даётся.
+ */
+export interface TrailRepairEvents {
+  writtenOffQty: number;
+  readyForPickupQty: number;
+}
+
 export interface EquipmentTrail {
   equipmentId: string;
   name: string;
@@ -152,6 +188,26 @@ export interface EquipmentTrail {
   suggestedBookingId: string | null;
   openProblems: TrailOpenProblem[];
   onShelf: Breakdown;
+  repairEvents: TrailRepairEvents;
+}
+
+/**
+ * Подсказка следа для строки «Итога» без полного следа: та же бронь, что
+ * `visibleSuggestion(trail)` (единственный кандидат среди показанных броней).
+ */
+export type TrailSuggestion = Pick<
+  TrailBooking,
+  "bookingId" | "projectName" | "clientName" | "quantity" | "startDate" | "endDate"
+>;
+
+/** Охват для «Начать инвентаризацию»: только позиции с учётом количеством. */
+export interface StockCountScope {
+  /** Порядок каталога. */
+  categories: string[];
+  /** Позиций с учётом количеством — их и посчитает инвентаризация. */
+  counts: Record<string, number>;
+  /** Позиций со штучным учётом — сверяются в карточке единиц. */
+  unitCounts: Record<string, number>;
 }
 
 export interface CompleteResult {

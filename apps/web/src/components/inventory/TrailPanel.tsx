@@ -25,7 +25,31 @@ function howReturned(b: TrailBooking): string {
   if (b.returnMode === "KIOSK") return `${RETURN_MODE_LABEL.KIOSK}${b.returnedBy ? ` · ${b.returnedBy}` : ""}`;
   // CONFIRMED с вышедшим сроком: выдачу и возврат никто не отметил.
   if (b.returnMode === "MANUAL" && b.status === "CONFIRMED") return "срок вышел, возврат не отмечен";
+  // При счёте была у клиента, приняли уже после — из полки вычтена, не кандидат.
+  if (b.returnMode === "OUT" && b.status === "RETURNED") return "вернули после счёта";
   return RETURN_MODE_LABEL[b.returnMode];
+}
+
+/**
+ * Мастерская в окне следа: «За это время в мастерской списали N шт и починили
+ * M шт — …». null — событий нет.
+ */
+export function repairVerdict(trail: Pick<EquipmentTrail, "repairEvents">): string | null {
+  const { writtenOffQty, readyForPickupQty } = trail.repairEvents;
+  if (writtenOffQty + readyForPickupQty === 0) return null;
+  const did = [
+    writtenOffQty > 0 ? `списали ${writtenOffQty} шт` : null,
+    readyForPickupQty > 0 ? `починили ${readyForPickupQty} шт` : null,
+  ]
+    .filter(Boolean)
+    .join(" и ");
+  const hints = [
+    readyForPickupQty > 0 ? "починенное может лежать на верстаке" : null,
+    writtenOffQty > 0 ? "если списанное не вычтено из учёта, это «Ошибка учёта»" : null,
+  ]
+    .filter(Boolean)
+    .join("; ");
+  return `За это время в мастерской ${did} — ${hints}.`;
 }
 
 function remarkOf(b: TrailBooking): { tone: "ok" | "amber" | "muted"; text: string } {
@@ -49,9 +73,12 @@ export function trailVerdict(trail: EquipmentTrail, qty: number): { lead: string
   const unverified = Math.max(0, back - verified);
 
   if (back === 0) {
+    const repairs = repairVerdict(trail);
     return {
       lead: "В окне нет вернувшихся броней с этой позицией.",
-      rest: " Скорее всего, недостача на складе (переложили, не нашли) или это ошибка в учёте.",
+      rest: repairs
+        ? ` ${repairs}`
+        : " Скорее всего, недостача на складе (переложили, не нашли) или это ошибка в учёте.",
     };
   }
 
@@ -78,7 +105,11 @@ export function trailVerdict(trail: EquipmentTrail, qty: number): { lead: string
   const suggested = trail.suggestedBookingId
     ? trail.bookings.find((b) => b.bookingId === trail.suggestedBookingId)
     : undefined;
-  if (suggested) {
+  const repairs = repairVerdict(trail);
+  if (repairs) {
+    // Мастерская объясняет недостачу не хуже брони — на клиента её не вешаем.
+    parts.push(repairs);
+  } else if (suggested) {
     parts.push(`Без пересчёта приняли только ${quoteName(suggested.projectName)} — вероятнее всего, ${qty} шт ушли с ней.`);
   } else if (unverified > 1) {
     parts.push(`${qty} шт ушли в одной из них или потерялись на складе; точнее по данным не сказать.`);

@@ -9,8 +9,14 @@
  *   в карточке оборудования. Позицию, переведённую на штучный учёт уже после
  *   старта, считать и решать нельзя (409 LINE_NOT_COUNT_MODE), а завершение её
  *   пропускает: totalQuantity штучной позиции выводится из единиц.
- * - Счёт снимает снапшот «на полке должно быть» и сбрасывает решение, если итог
- *   строки изменился.
+ * - Снапшот «на полке должно быть» снимается при первом счёте строки (или после
+ *   «Пересчитать»); правка посчитанной строки сравнивается с тем же снапшотом, а
+ *   если «должно быть» с тех пор изменилось — 409 EXPECTATION_CHANGED, нужно
+ *   «Пересчитать» (или «Обновить ожидание», если учёт лишь догнал полку). Любое
+ *   изменение счёта сбрасывает решение.
+ * - Решение привязано к тому, что руководитель видел (seen-значения, 409
+ *   LINE_CHANGED), а «Пропало» / «Ошибка учёта» на строке, чей учёт изменился
+ *   после счёта, — явный выбор «оставить как посчитано» (409 LINE_BOOKS_CHANGED).
  * - Завершение применяет ВСЕ решения одной транзакцией: либо склад сверен целиком,
  *   либо не изменилось ничего.
  *
@@ -26,29 +32,36 @@ import { HttpError } from "../../utils/errors";
 import { compareEquipmentTransportLast } from "../../utils/equipmentSort";
 import { getMergedCategoryOrder } from "../categoryOrder";
 import { writeAuditEntry } from "../audit";
-import { computeExpectedOnShelf } from "./expected";
-import { getEquipmentTrail } from "./equipmentTrail";
+import { computeExpectedOnShelf, toBreakdown } from "./expected";
+import { getEquipmentTrail, getTrailSuggestionsFor, resolveTrailWindow, type TrailTarget } from "./equipmentTrail";
 import {
+  booksDecisionHolds,
   buildDetail,
   buildLineViews,
   buildSummary,
   filterLines,
+  getFoundOpenMap,
   getOpenProblemQtyMap,
   getUnitModeIds,
   isUndecided,
   isUnitModeLine,
   lineDiff,
   lineEquipmentIds,
+  sameBooks,
+  snapshotBreakdown,
   type TxClient,
 } from "./stockCountView";
 import type {
+  Breakdown,
   CompleteResult,
   Decision,
   EquipmentTrail,
   StockCountDetail,
   StockCountLineFilter,
   StockCountLineView,
+  StockCountScope,
   StockCountSummary,
+  TrailSuggestion,
 } from "./types";
 
 /** Кто действует с десктопа: id — для аудита, username — для подписей в акте. */
@@ -155,7 +168,12 @@ export async function listStockCounts(): Promise<StockCountSummary[]> {
     list.push(line);
     byCount.set(line.stockCountId, list);
   }
-  return counts.map((sc) => buildSummary(sc, byCount.get(sc.id) ?? [], unitModeIds));
+  const summaries: StockCountSummary[] = [];
+  for (const sc of counts) {
+    const own = byCount.get(sc.id) ?? [];
+    summaries.push(buildSummary(sc, own, unitModeIds, await getFoundOpenMap(sc.status, own)));
+  }
+  return summaries;
 }
 
 export async function listStockCountLines(
@@ -165,15 +183,61 @@ export async function listStockCountLines(
   const sc = await loadStockCount(prisma, id);
   const all = await loadLines(prisma, id, opts.category);
   const unitModeIds = await getUnitModeIds(lineEquipmentIds(all));
-  const lines = filterLines(all, opts.filter ?? "all", unitModeIds);
+  const foundOpen = opts.filter === "undecided" ? await getFoundOpenMap(sc.status, all) : undefined;
+  const lines = filterLines(all, opts.filter ?? "all", unitModeIds, foundOpen);
   return buildLineViews(sc.status, lines, new Date());
 }
 
 /**
- * «Как пропало» для строки. Окно — от закрытия прошлой инвентаризации, в которой
- * позиция была посчитана. У завершённой инвентаризации `lastCountedAt` позиции
- * уже указывает на неё саму, поэтому окно выводится из истории строк, а след
- * строится на момент закрытия.
+ * Прошлые сверки позиций: equipmentId → момент счёта её строки в последней
+ * ЗАВЕРШЁННОЙ инвентаризации до этой. Отменённые не в счёт, сама текущая —
+ * тоже (у завершённой `lastCountedAt` позиции уже указывает на неё саму).
+ */
+async function previousCountedAt(sc: StockCount, equipmentIds: string[]): Promise<Map<string, Date>> {
+  const result = new Map<string, Date>();
+  if (equipmentIds.length === 0) return result;
+  const rows = await prisma.stockCountLine.findMany({
+    where: {
+      equipmentId: { in: equipmentIds },
+      countedQty: { not: null },
+      stockCount: { status: "CLOSED", number: { lt: sc.number } },
+    },
+    select: { equipmentId: true, countedAt: true, stockCount: { select: { number: true } } },
+  });
+  const best = new Map<string, number>();
+  for (const row of rows) {
+    if (!row.equipmentId || !row.countedAt) continue;
+    if ((best.get(row.equipmentId) ?? -1) >= row.stockCount.number) continue;
+    best.set(row.equipmentId, row.stockCount.number);
+    result.set(row.equipmentId, row.countedAt);
+  }
+  return result;
+}
+
+/**
+ * На какой момент строится след строки: посчитанной — на момент счёта (тогда
+ * «ещё у клиента» совпадает со снапшотом), иначе — сейчас у идущей и момент
+ * закрытия у завершённой / отменённой.
+ */
+function trailAt(sc: StockCount, line: StockCountLine, now: Date): Date {
+  if (line.countedQty != null && line.countedAt) return line.countedAt;
+  return sc.status === "OPEN" ? now : (sc.closedAt ?? sc.cancelledAt ?? now);
+}
+
+/**
+ * Окно следа строки: от момента, когда позицию посчитали в прошлой завершённой
+ * инвентаризации. Прошлой нет: у идущей — `lastCountedAt` позиции (или окно по
+ * умолчанию), у завершённой / отменённой — окно по умолчанию (её собственная
+ * сверка окном быть не может).
+ */
+function trailSince(sc: StockCount, previous: Date | undefined): Date | null | undefined {
+  if (previous) return previous;
+  return sc.status === "OPEN" ? undefined : null;
+}
+
+/**
+ * «Как пропало» для строки. Окно — от момента счёта позиции в прошлой
+ * завершённой инвентаризации; след строится на момент счёта строки.
  */
 export async function getStockCountLineTrail(id: string, lineId: string): Promise<EquipmentTrail> {
   const sc = await loadStockCount(prisma, id);
@@ -181,23 +245,72 @@ export async function getStockCountLineTrail(id: string, lineId: string): Promis
   if (!line.equipmentId) {
     throw new HttpError(404, "Позиция удалена из каталога", "EQUIPMENT_NOT_FOUND");
   }
-  const previous = await prisma.stockCountLine.findFirst({
-    where: {
-      equipmentId: line.equipmentId,
-      countedQty: { not: null },
-      stockCount: { status: "CLOSED", number: { lt: sc.number } },
-    },
-    orderBy: { stockCount: { number: "desc" } },
-    select: { stockCount: { select: { closedAt: true } } },
-  });
-  const previousClosedAt = previous?.stockCount.closedAt ?? null;
-  if (sc.status === "OPEN") {
-    return getEquipmentTrail(line.equipmentId, { since: previousClosedAt ?? undefined });
-  }
+  const previous = (await previousCountedAt(sc, [line.equipmentId])).get(line.equipmentId);
   return getEquipmentTrail(line.equipmentId, {
-    since: previousClosedAt,
-    at: sc.closedAt ?? sc.cancelledAt ?? new Date(),
+    since: trailSince(sc, previous),
+    at: trailAt(sc, line, new Date()),
   });
+}
+
+/**
+ * Подсказки «Как пропало» для всех недостач идущей инвентаризации — одним
+ * набором запросов, без полного следа на строку. lineId → бронь или null.
+ * Ровно то, что показал бы раскрытый след строки (`visibleSuggestion`).
+ */
+export async function getTrailSuggestions(id: string): Promise<Record<string, TrailSuggestion | null>> {
+  const sc = await loadStockCount(prisma, id);
+  if (sc.status !== "OPEN") return {};
+  const lines = (await loadLines(prisma, id)).filter((l) => l.equipmentId && (lineDiff(l) ?? 0) < 0);
+  if (lines.length === 0) return {};
+  const ids = lineEquipmentIds(lines);
+  const previous = await previousCountedAt(sc, ids);
+  const equipments = await prisma.equipment.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, lastCountedAt: true },
+  });
+  const lastCounted = new Map(equipments.map((e) => [e.id, e.lastCountedAt]));
+  const now = new Date();
+  const targets: Array<TrailTarget & { lineId: string }> = [];
+  for (const line of lines) {
+    const equipmentId = line.equipmentId as string;
+    if (!lastCounted.has(equipmentId)) continue;
+    const at = trailAt(sc, line, now);
+    const { windowFrom } = resolveTrailWindow(
+      lastCounted.get(equipmentId) ?? null,
+      trailSince(sc, previous.get(equipmentId)),
+      at,
+    );
+    targets.push({ lineId: line.id, equipmentId, windowFrom, at });
+  }
+  const byEquipment = await getTrailSuggestionsFor(targets);
+  const result: Record<string, TrailSuggestion | null> = {};
+  for (const t of targets) result[t.lineId] = byEquipment.get(t.equipmentId) ?? null;
+  return result;
+}
+
+/**
+ * Охват для «Начать инвентаризацию»: категории в порядке каталога и сколько в
+ * каждой позиций с учётом количеством (их и посчитает инвентаризация) и
+ * штучных (сверяются в карточке единиц). Ключ — сырое имя категории: старт
+ * фильтрует тем же точным равенством.
+ */
+export async function getStockCountScope(): Promise<StockCountScope> {
+  const categories = await getMergedCategoryOrder();
+  const counts: Record<string, number> = {};
+  const unitCounts: Record<string, number> = {};
+  const rows = await prisma.equipment.groupBy({
+    by: ["category", "stockTrackingMode"],
+    _count: { _all: true },
+  });
+  for (const row of rows) {
+    const target = row.stockTrackingMode === "UNIT" ? unitCounts : counts;
+    target[row.category] = (target[row.category] ?? 0) + row._count._all;
+  }
+  for (const c of categories) {
+    counts[c] ??= 0;
+    unitCounts[c] ??= 0;
+  }
+  return { categories, counts, unitCounts };
 }
 
 // ── Старт ────────────────────────────────────────────────────────────────────
@@ -289,10 +402,57 @@ const CLEARED_DECISION = {
   decision: null,
   decisionNote: null,
   decidedBy: null,
+  decidedById: null,
   decidedAt: null,
   sourceBookingId: null,
+  decisionBasis: null,
 } as const;
 
+/** Снапшот ожидания строки из живой разбивки. */
+function snapshotFields(expected: Breakdown) {
+  return {
+    totalAtCount: expected.total,
+    issuedAtCount: expected.issued,
+    calendarAtCount: expected.calendar,
+    repairAtCount: expected.repair,
+    lostAtCount: expected.lost,
+    expectedQty: expected.expected,
+  };
+}
+
+/**
+ * Живое ожидание позиции строки внутри транзакции мутации. Позиция удалена из
+ * каталога — считать и сверять не с чем (409 EQUIPMENT_DELETED).
+ */
+async function liveExpectation(
+  tx: TxClient,
+  line: StockCountLine,
+  now: Date,
+): Promise<{ equipmentId: string; expected: Breakdown }> {
+  const equipmentId = line.equipmentId;
+  if (equipmentId) await assertLineCountMode(tx, equipmentId);
+  const expected = equipmentId ? (await computeExpectedOnShelf([equipmentId], now, tx)).get(equipmentId) : undefined;
+  if (!equipmentId || !expected) {
+    throw new HttpError(409, "Позиция удалена из каталога — считать нечего", "EQUIPMENT_DELETED");
+  }
+  return { equipmentId, expected: toBreakdown(expected) };
+}
+
+/**
+ * Счёт строки.
+ *
+ *  - Первый счёт (или после «Пересчитать») снимает снапшот «на полке должно
+ *    быть» — дальше выдачи и возвраты итог строки не сбивают.
+ *  - То же число ещё раз (повтор запроса, второй клик «на месте», досылка
+ *    отложенного) — ничего не меняет: ни снапшот, ни решение, ни `countedAt`.
+ *  - Правка посчитанной строки сравнивается с ТЕМ ЖЕ снапшотом: новое число
+ *    против старого ожидания. Если «должно быть» с тех пор изменилось (выдача,
+ *    возврат, календарь, мастерская, потеряшки), правка против старого
+ *    снапшота показала бы расхождение, которого нет, а против нового — смешала
+ *    бы старый счёт полки с новым учётом. Тогда 409 EXPECTATION_CHANGED: строку
+ *    нужно «Пересчитать» и посчитать полку заново.
+ *  Любое изменение числа сбрасывает решение строки.
+ */
 export async function recordCount(
   stockCountId: string,
   lineId: string,
@@ -304,31 +464,56 @@ export async function recordCount(
   }
   await prisma.$transaction(async (tx) => {
     const { line } = await loadOpenLine(tx, stockCountId, lineId);
-    const equipmentId = line.equipmentId;
-    if (equipmentId) await assertLineCountMode(tx, equipmentId);
     const now = new Date();
-    const expected = equipmentId ? (await computeExpectedOnShelf([equipmentId], now, tx)).get(equipmentId) : undefined;
-    if (!equipmentId || !expected) {
-      throw new HttpError(409, "Позиция удалена из каталога — считать нечего", "EQUIPMENT_DELETED");
+    const { expected } = await liveExpectation(tx, line, now);
+
+    if (line.countedQty == null) {
+      await tx.stockCountLine.update({
+        where: { id: line.id },
+        data: { ...snapshotFields(expected), countedQty: qty, countedBy, countedAt: now, ...CLEARED_DECISION },
+      });
+      return;
     }
-    // Любое изменение итога строки (посчитано или «должно быть») сбрасывает
-    // решение: «Пропало» на строке, которая после пересчёта сошлась или ушла в
-    // излишек, применило бы на завершении неправду.
-    const changed = line.countedQty !== qty || line.expectedQty !== expected.expected;
+    if (line.countedQty === qty) return;
+    if (expected.expected !== line.expectedQty) {
+      throw new HttpError(
+        409,
+        "Учёт позиции изменился после счёта (выдача, возврат, календарь, мастерская или потеряшки) — нажмите «Пересчитать» и посчитайте полку заново",
+        "EXPECTATION_CHANGED",
+        { snapshotExpected: line.expectedQty, liveExpected: expected.expected },
+      );
+    }
+    // Ожидание то же — правка сравнивается с прежним снапшотом.
     await tx.stockCountLine.update({
       where: { id: line.id },
-      data: {
-        totalAtCount: expected.total,
-        issuedAtCount: expected.issued,
-        calendarAtCount: expected.calendar,
-        repairAtCount: expected.repair,
-        lostAtCount: expected.lost,
-        expectedQty: expected.expected,
-        countedQty: qty,
-        countedBy,
-        countedAt: now,
-        ...(changed ? CLEARED_DECISION : {}),
-      },
+      data: { countedQty: qty, countedBy, countedAt: now, ...CLEARED_DECISION },
+    });
+  });
+  return lineView(stockCountId, lineId);
+}
+
+/**
+ * «Обновить ожидание»: снапшот снимается заново по живому учёту, счёт полки
+ * остаётся. Верно, когда учёт лишь догнал то, что уже было на полке при счёте
+ * (бронь вернули кнопкой после того, как оборудование разгрузили). Неверно,
+ * когда движение случилось ПОСЛЕ счёта — тогда «оставить как посчитано».
+ * Поэтому только явное действие руководителя, а не автоматика.
+ *
+ * `countedAt` не трогается: полку посчитали тогда же, когда и раньше (от него
+ * считаются окно следа и отсечка «Нашлось»). Изменилось «должно быть» —
+ * решение сбрасывается, как при любом изменении итога строки.
+ */
+export async function refreshExpectation(stockCountId: string, lineId: string): Promise<StockCountLineView> {
+  await prisma.$transaction(async (tx) => {
+    const { line } = await loadOpenLine(tx, stockCountId, lineId);
+    if (line.countedQty == null) {
+      throw new HttpError(409, "Строка ещё не посчитана — обновлять нечего", "LINE_NOT_COUNTED");
+    }
+    const { expected } = await liveExpectation(tx, line, new Date());
+    const changed = expected.expected !== line.expectedQty;
+    await tx.stockCountLine.update({
+      where: { id: line.id },
+      data: { ...snapshotFields(expected), ...(changed ? CLEARED_DECISION : { decisionBasis: null }) },
     });
   });
   return lineView(stockCountId, lineId);
@@ -367,28 +552,87 @@ export interface DecisionInput {
   decision: Decision | null;
   note?: string | null;
   sourceBookingId?: string | null;
+  /** Счёт строки, который руководитель видел, принимая решение (обязателен для решения). */
+  seenCountedQty?: number;
+  /** «На полке должно быть», которое он видел (снапшот строки). */
+  seenExpectedQty?: number;
+  /** «Оставить как посчитано»: учёт изменился после счёта, но решение — по счёту. */
+  acknowledgeBooksChanged?: boolean;
+}
+
+/**
+ * Решение привязано к ровно тому расхождению, которое видел руководитель: если
+ * строку тем временем пересчитали (киоск, другая вкладка), решение с чужой
+ * причиной легло бы на новое расхождение — 409 LINE_CHANGED. Сравниваются счёт
+ * и ожидание (а не только разница) — то же правило, по которому счёт сбрасывает
+ * решение.
+ */
+function assertSeenLine(line: StockCountLine, input: DecisionInput): void {
+  if (input.seenCountedQty == null || input.seenExpectedQty == null) {
+    throw new HttpError(400, "Не указано, какой счёт строки вы видели", "SEEN_VALUES_REQUIRED");
+  }
+  if (line.countedQty !== input.seenCountedQty || line.expectedQty !== input.seenExpectedQty) {
+    throw new HttpError(409, "Строку пересчитали — проверьте новое расхождение и решите заново", "LINE_CHANGED", {
+      countedQty: line.countedQty,
+      expectedQty: line.expectedQty,
+      diff: lineDiff(line),
+    });
+  }
+}
+
+/**
+ * «Пропало» и «Ошибка учёта» опираются на снапшот. Если учёт позиции изменился
+ * после счёта, это либо учёт догнал полку («Обновить ожидание»), либо движение
+ * случилось после счёта («оставить как посчитано»). Выбор — только явный:
+ * без `acknowledgeBooksChanged` — 409 LINE_BOOKS_CHANGED. Подтверждённый живой
+ * учёт запоминается в `decisionBasis`, и завершение сверит его ещё раз.
+ */
+async function booksBasisFor(
+  tx: TxClient,
+  line: StockCountLine,
+  input: DecisionInput,
+  now: Date,
+): Promise<string | null> {
+  if (!line.equipmentId) return null;
+  const liveEntry = (await computeExpectedOnShelf([line.equipmentId], now, tx)).get(line.equipmentId);
+  if (!liveEntry) return null;
+  const live = toBreakdown(liveEntry);
+  const snapshot = snapshotBreakdown(line);
+  if (sameBooks(live, snapshot)) return null;
+  if (!input.acknowledgeBooksChanged) {
+    throw new HttpError(
+      409,
+      "Учёт позиции изменился после счёта — обновите ожидание или подтвердите «оставить как посчитано»",
+      "LINE_BOOKS_CHANGED",
+      { snapshot, live },
+    );
+  }
+  return JSON.stringify(live);
 }
 
 export async function decideLine(
   stockCountId: string,
   lineId: string,
   input: DecisionInput,
-  decidedBy: string,
+  decider: StockCountActor,
 ): Promise<StockCountLineView> {
   await prisma.$transaction(async (tx) => {
-    const { line } = await loadOpenLine(tx, stockCountId, lineId);
+    const { sc, line } = await loadOpenLine(tx, stockCountId, lineId);
     if (input.decision === null) {
       // Снять решение можно всегда — в том числе у позиции, ушедшей на штучный учёт.
       await tx.stockCountLine.update({ where: { id: line.id }, data: CLEARED_DECISION });
       return;
     }
     if (line.equipmentId) await assertLineCountMode(tx, line.equipmentId);
+    assertSeenLine(line, input);
     const diff = lineDiff(line);
     if (diff == null || diff === 0) {
       throw new HttpError(409, "Решение нужно только для посчитанной строки с расхождением", "LINE_NOT_DISCREPANT");
     }
+    const now = new Date();
     const note = input.note?.trim() ? input.note.trim() : null;
     let sourceBookingId: string | null = null;
+    let decisionBasis: string | null = null;
 
     if (input.decision === "LOST") {
       if (diff > 0) {
@@ -399,15 +643,19 @@ export async function decideLine(
         if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
         sourceBookingId = booking.id;
       }
+      decisionBasis = await booksBasisFor(tx, line, input, now);
     } else if (input.decision === "ADJUST") {
       if (!note || note.length < ADJUST_REASON_MIN) {
         throw new HttpError(400, "Укажите причину поправки — не короче 3 символов", "REASON_REQUIRED");
       }
+      decisionBasis = await booksBasisFor(tx, line, input, now);
     } else if (input.decision === "FOUND") {
-      if (diff < 0 || !line.equipmentId) {
+      if (diff < 0 || !line.equipmentId || !line.countedAt) {
         throw new HttpError(400, "«Нашлось» — только для излишка", "DECISION_NOT_APPLICABLE");
       }
-      const open = (await getOpenProblemQtyMap([line.equipmentId], tx)).get(line.equipmentId) ?? 0;
+      // Закрыть можно только потеряшки, заведённые не позже счёта строки.
+      const cutoff = new Map([[line.equipmentId, line.countedAt]]);
+      const open = (await getOpenProblemQtyMap([line.equipmentId], tx, cutoff)).get(line.equipmentId) ?? 0;
       if (open === 0) {
         throw new HttpError(400, "По позиции нет открытых потеряшек — закрывать нечего", "DECISION_NOT_APPLICABLE");
       }
@@ -418,11 +666,33 @@ export async function decideLine(
       data: {
         decision: input.decision,
         decisionNote: note,
-        decidedBy,
-        decidedAt: new Date(),
+        decidedBy: decider.username,
+        decidedById: decider.userId,
+        decidedAt: now,
         sourceBookingId,
+        decisionBasis,
       },
     });
+    // «Ошибка учёта» — единственный путь, которым кладовщик меняет количество в
+    // каталоге. Кто и почему решил — в журнал сразу, а не только при завершении.
+    if (input.decision === "ADJUST") {
+      await writeAuditEntry({
+        tx,
+        userId: decider.userId,
+        action: "STOCK_COUNT_DECISION",
+        entityType: "StockCount",
+        entityId: sc.id,
+        before: null,
+        after: {
+          lineId: line.id,
+          equipmentId: line.equipmentId,
+          name: line.nameSnapshot,
+          diff,
+          reason: note,
+          stockCountNumber: sc.number,
+        },
+      });
+    }
   });
   return lineView(stockCountId, lineId);
 }
@@ -484,6 +754,12 @@ async function applyAdjust(ctx: ApplyContext, line: StockCountLine, equipmentId:
       reason: line.decisionNote,
       stockCountId: ctx.sc.id,
       stockCountNumber: ctx.sc.number,
+      // Кто решил — отдельно от того, кто завершил (userId записи). В userId
+      // решившего не пишем: AuditEntry.userId — FK на AdminUser, и удалённый до
+      // завершения пользователь откатил бы всю транзакцию.
+      decidedBy: line.decidedBy,
+      decidedById: line.decidedById,
+      decidedAt: line.decidedAt?.toISOString() ?? null,
     },
   });
   ctx.result.adjustedPositions += 1;
@@ -495,19 +771,25 @@ async function applyAdjust(ctx: ApplyContext, line: StockCountLine, equipmentId:
  * не помещается — у открытой уменьшается количество, а найденная часть
  * выделяется копией в статусе FOUND (история «что и когда нашли» не теряется).
  * Излишек сверх открытых потеряшек учёт не меняет и уходит в акт.
+ *
+ * Только потеряшки, заведённые не позже счёта строки (они и были в снапшоте), и
+ * не больше, чем их было в снапшоте (`lostAtCount`). Заведённые позже — вещи,
+ * которых на полке при счёте не было (например, «остался на площадке» с
+ * приёмки во время инвентаризации): их никто не нашёл, они остаются открытыми.
  */
-async function applyFound(ctx: ApplyContext, equipmentId: string, diff: number) {
+async function applyFound(ctx: ApplyContext, line: StockCountLine, equipmentId: string, diff: number) {
   const resolutionNote = `Найдено при инвентаризации № ${ctx.sc.number}`;
   const rows = await ctx.tx.problemItem.findMany({
     where: {
       equipmentUnitId: null,
       status: { in: ["EXPECTED", "SEARCHING"] },
       OR: [{ equipmentId }, { bookingItem: { equipmentId } }],
+      ...(line.countedAt ? { createdAt: { lte: line.countedAt } } : {}),
     },
     include: { bookingItem: { select: { equipmentId: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
-  let remaining = diff;
+  let remaining = Math.min(diff, line.lostAtCount ?? 0);
   let found = 0;
   for (const row of rows) {
     if (remaining <= 0) break;
@@ -556,7 +838,7 @@ async function applyFound(ctx: ApplyContext, equipmentId: string, diff: number) 
   }
   ctx.result.foundPositions += 1;
   ctx.result.foundQty += found;
-  ctx.result.unexplainedSurplusQty += remaining;
+  ctx.result.unexplainedSurplusQty += diff - found;
 }
 
 function emptyResult(): CompleteResult {
@@ -575,6 +857,58 @@ function emptyResult(): CompleteResult {
   };
 }
 
+/**
+ * «Сверено» — когда полку посчитали, а не когда нажали «Завершить»: от этого
+ * момента считается окно «Как пропало» следующей инвентаризации, а между счётом
+ * и завершением могут пройти дни. Строк с одним моментом счёта — одним запросом.
+ */
+async function markVerified(tx: TxClient, verified: Array<{ equipmentId: string; countedAt: Date }>): Promise<void> {
+  const byMoment = new Map<number, string[]>();
+  for (const v of verified) {
+    const list = byMoment.get(v.countedAt.getTime()) ?? [];
+    list.push(v.equipmentId);
+    byMoment.set(v.countedAt.getTime(), list);
+  }
+  for (const [moment, ids] of byMoment) {
+    await tx.equipment.updateMany({ where: { id: { in: ids } }, data: { lastCountedAt: new Date(moment) } });
+  }
+}
+
+/**
+ * «Пропало» и «Ошибка учёта» применяются по снапшоту. Если учёт позиции успел
+ * измениться после счёта и руководитель не подтвердил ровно этот учёт («оставить
+ * как посчитано»), применять нельзя: поправка легла бы поверх уже учтённого
+ * движения (возврат кнопкой, заведённый ремонт, правка количества) — 409
+ * LINE_BOOKS_CHANGED, и не применяется ничего. «Нашлось» не проверяется: оно и
+ * так ограничено потеряшками, живыми на момент применения.
+ */
+async function assertBooksHold(
+  tx: TxClient,
+  lines: StockCountLine[],
+  unitModeIds: ReadonlySet<string>,
+  now: Date,
+): Promise<void> {
+  const applied = lines.filter((l) => {
+    const diff = lineDiff(l);
+    if (diff == null || diff === 0 || !l.equipmentId || isUnitModeLine(l, unitModeIds)) return false;
+    return l.decision === "ADJUST" || (l.decision === "LOST" && diff < 0);
+  });
+  if (applied.length === 0) return;
+  const live = await computeExpectedOnShelf(lineEquipmentIds(applied), now, tx);
+  const stale = applied.filter((l) => {
+    const entry = live.get(l.equipmentId as string);
+    return entry != null && !booksDecisionHolds(l, toBreakdown(entry));
+  });
+  if (stale.length > 0) {
+    throw new HttpError(
+      409,
+      `Учёт изменился после счёта у ${stale.length} ${stale.length === 1 ? "строки" : "строк"} — проверьте их в «Итоге»`,
+      "LINE_BOOKS_CHANGED",
+      { count: stale.length, lineIds: stale.map((l) => l.id) },
+    );
+  }
+}
+
 export async function completeStockCount(
   id: string,
   actor: StockCountActor,
@@ -591,13 +925,17 @@ export async function completeStockCount(
     // Режим учёта читается на момент завершения: позиция могла уйти на штучный
     // учёт после старта. Такие строки решения не ждут и эффектов не дают.
     const unitModeIds = await getUnitModeIds(lineEquipmentIds(lines), tx);
-    const undecided = lines.filter((l) => isUndecided(l, unitModeIds)).length;
+    // «Нашлось», которому больше нечего закрывать (потеряшки разобрали в
+    // реестре), — решение, которое не подходит, как и решение с чужим знаком.
+    const foundOpen = await getFoundOpenMap(sc.status, lines, tx);
+    const undecided = lines.filter((l) => isUndecided(l, unitModeIds, foundOpen)).length;
     if (undecided > 0) {
       throw new HttpError(409, `Осталось решить: ${undecided}`, "UNDECIDED_LINES", { count: undecided });
     }
 
     const ctx: ApplyContext = { tx, sc, actor, now: new Date(), result: emptyResult() };
-    const verifiedIds: string[] = [];
+    await assertBooksHold(tx, lines, unitModeIds, ctx.now);
+    const verified: Array<{ equipmentId: string; countedAt: Date }> = [];
     for (const line of lines) {
       const diff = lineDiff(line);
       if (diff == null) {
@@ -613,17 +951,15 @@ export async function completeStockCount(
         ctx.result.unitModeSkipped += 1;
         continue;
       }
-      verifiedIds.push(line.equipmentId);
+      verified.push({ equipmentId: line.equipmentId, countedAt: line.countedAt ?? ctx.now });
       if (diff === 0) continue;
       if (line.decision === "LOST" && diff < 0) await applyLost(ctx, line, line.equipmentId, diff);
       else if (line.decision === "ADJUST") await applyAdjust(ctx, line, line.equipmentId, diff);
-      else if (line.decision === "FOUND" && diff > 0) await applyFound(ctx, line.equipmentId, diff);
+      else if (line.decision === "FOUND" && diff > 0) await applyFound(ctx, line, line.equipmentId, diff);
     }
 
-    if (verifiedIds.length > 0) {
-      await tx.equipment.updateMany({ where: { id: { in: verifiedIds } }, data: { lastCountedAt: ctx.now } });
-    }
-    ctx.result.verifiedPositions = verifiedIds.length;
+    await markVerified(tx, verified);
+    ctx.result.verifiedPositions = verified.length;
 
     await tx.stockCount.update({
       where: { id },

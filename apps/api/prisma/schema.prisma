@@ -1416,8 +1416,10 @@ model StockCountLine {
   rateSnapshot     Decimal
   /// Порядок: категория (порядок каталога), затем позиция.
   position         Int
-  // Снапшот ожидания: фиксируется В МОМЕНТ СЧЁТА строки (null — не посчитано).
-  // Выдачи и возвраты во время инвентаризации итог уже посчитанной строки не сбивают.
+  // Снапшот ожидания: фиксируется при ПЕРВОМ счёте строки (или после «Пересчитать» /
+  // «Обновить ожидание»; null — не посчитано). Выдачи и возвраты во время
+  // инвентаризации итог уже посчитанной строки не сбивают; правка счёта сравнивается
+  // с тем же снапшотом (изменилось «должно быть» — 409 EXPECTATION_CHANGED).
   totalAtCount     Int?
   issuedAtCount    Int?
   calendarAtCount  Int?
@@ -1431,9 +1433,15 @@ model StockCountLine {
   decision         StockCountDecision?
   decisionNote     String?
   decidedBy        String?
+  /// AdminUser.id того, кто решил (без FK, как StockCount.createdById) — для журнала.
+  decidedById      String?
   decidedAt        DateTime?
   /// Только для LOST: вероятная бронь, с которой ушло.
   sourceBookingId  String?
+  /// «Оставить как посчитано»: JSON живой разбивки ожидания, которую руководитель
+  /// видел, подтверждая LOST / ADJUST после того, как учёт изменился после счёта.
+  /// Завершение сверяет её с учётом на момент применения (409 LINE_BOOKS_CHANGED).
+  decisionBasis    String?
 
   @@unique([stockCountId, equipmentId])
   @@index([stockCountId, categorySnapshot])

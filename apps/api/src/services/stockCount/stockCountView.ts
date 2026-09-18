@@ -5,16 +5,20 @@
  * строки с вычисленными сервером допустимыми решениями. Мутации — в
  * stockCountService.ts.
  *
- * Расхождение строки = counted − expected, где expected — СНАПШОТ, снятый в
- * момент счёта. Выдачи и возвраты во время инвентаризации итог уже посчитанной
- * строки не сбивают; для непосчитанной строки ожидание показывается живым.
+ * Расхождение строки = counted − expected, где expected — СНАПШОТ, снятый при
+ * первом счёте строки (или после «Пересчитать» / «Обновить ожидание»). Выдачи и
+ * возвраты во время инвентаризации итог уже посчитанной строки не сбивают; для
+ * непосчитанной строки ожидание показывается живым. Если учёт позиции изменился
+ * после счёта, строка идущей инвентаризации отдаёт и живую разбивку (`live`,
+ * `booksChangedSinceCount`): снапшот остаётся по умолчанию, но расхождение с
+ * учётом видно, и «Пропало» / «Ошибка учёта» на такой строке — явный выбор.
  */
 
 import Decimal from "decimal.js";
 import type { Prisma, StockCount, StockCountLine, StockCountStatus as DbStatus } from "@prisma/client";
 
 import { prisma } from "../../prisma";
-import { computeExpectedOnShelf, EMPTY_BREAKDOWN, toBreakdown } from "./expected";
+import { computeExpectedOnShelf, EMPTY_BREAKDOWN, getReadyForPickupQtyMap, toBreakdown } from "./expected";
 import type {
   Breakdown,
   CalendarBooking,
@@ -63,14 +67,64 @@ export function isUnitModeLine(line: Pick<StockCountLine, "equipmentId">, unitMo
 }
 
 /**
+ * Открытые потеряшки, которые «Нашлось» каждой FOUND-строки ещё может закрыть:
+ * equipmentId → шт (только потеряшки из снапшота строки, см. getOpenProblemQtyMap).
+ * Передаётся лишь для идущей инвентаризации: у завершённой потеряшки уже
+ * закрыты ею самой, у отменённой решения ничего не значат.
+ */
+export type FoundOpenMap = ReadonlyMap<string, number>;
+
+/**
  * Посчитанное расхождение, которое ждёт решения. Решение, чей знак больше не
  * подходит расхождению, считается отсутствующим: иначе завершение пропустило бы
- * строку молча (ни применения, ни ошибки). Штучные строки решения не ждут.
+ * строку молча (ни применения, ни ошибки). Так же — «Нашлось», которому больше
+ * нечего закрывать (`foundOpen`: потеряшки разобрали в реестре): иначе оно
+ * тихо легло бы в «лишнее без объяснения». Штучные строки решения не ждут.
  */
-export function isUndecided(line: StockCountLine, unitModeIds: ReadonlySet<string> = NO_UNIT_MODE_IDS): boolean {
+export function isUndecided(
+  line: StockCountLine,
+  unitModeIds: ReadonlySet<string> = NO_UNIT_MODE_IDS,
+  foundOpen?: FoundOpenMap,
+): boolean {
   const diff = lineDiff(line);
   if (diff == null || diff === 0 || isUnitModeLine(line, unitModeIds)) return false;
-  return line.decision == null || !decisionFits(line.decision, diff);
+  if (line.decision == null || !decisionFits(line.decision, diff)) return true;
+  return foundOpen != null && isFoundExhausted(line, foundOpen);
+}
+
+/** «Нашлось» без единой открытой потеряшки из снапшота строки — закрывать нечего. */
+export function isFoundExhausted(line: Pick<StockCountLine, "decision" | "equipmentId">, foundOpen: FoundOpenMap): boolean {
+  if (line.decision !== "FOUND") return false;
+  return !line.equipmentId || (foundOpen.get(line.equipmentId) ?? 0) === 0;
+}
+
+/**
+ * Отсечка «Нашлось» по строкам: equipmentId → момент счёта строки. Закрыть можно
+ * только потеряшки, заведённые не позже счёта (они и были в снапшоте); заведённые
+ * позже — вещи, которых на полке при счёте не было (например, остались на
+ * площадке по приёмке во время инвентаризации).
+ */
+export function countedCutoffs(lines: StockCountLine[]): Map<string, Date> {
+  const result = new Map<string, Date>();
+  for (const line of lines) {
+    if (line.equipmentId && line.countedQty != null && line.countedAt) result.set(line.equipmentId, line.countedAt);
+  }
+  return result;
+}
+
+/**
+ * Открытые потеряшки для «Нашлось»-строк идущей инвентаризации (с отсечкой по
+ * счёту). Для остальных статусов — undefined: решения там уже не проверяются.
+ */
+export async function getFoundOpenMap(
+  status: DbStatus,
+  lines: StockCountLine[],
+  tx: TxClient = prisma,
+): Promise<FoundOpenMap | undefined> {
+  if (status !== "OPEN") return undefined;
+  const found = lines.filter((l) => l.decision === "FOUND" && l.equipmentId && l.countedQty != null);
+  if (found.length === 0) return new Map();
+  return getOpenProblemQtyMap(lineEquipmentIds(found), tx, countedCutoffs(found));
 }
 
 /** Какие позиции из списка сейчас на штучном учёте — одним запросом. */
@@ -122,6 +176,7 @@ export function collectCounters(lines: StockCountLine[]): string[] {
 export function computeTotals(
   lines: StockCountLine[],
   unitModeIds: ReadonlySet<string> = NO_UNIT_MODE_IDS,
+  foundOpen?: FoundOpenMap,
 ): StockCountTotals {
   const totals: StockCountTotals = {
     lines: lines.length,
@@ -143,7 +198,7 @@ export function computeTotals(
       totals.matched += 1;
       continue;
     }
-    if (isUndecided(line, unitModeIds)) totals.undecided += 1;
+    if (isUndecided(line, unitModeIds, foundOpen)) totals.undecided += 1;
     if (diff < 0) {
       totals.shortagePositions += 1;
       totals.shortageQty += -diff;
@@ -178,10 +233,15 @@ export function computeCategoryProgress(lines: StockCountLine[]): StockCountCate
  * Открытые (EXPECTED / SEARCHING) безъюнитные потеряшки по позициям — то, что
  * «Нашлось» может закрыть. Позиция строки — `equipmentId ?? bookingItem.equipmentId`,
  * как в getLostCountByEquipmentMap.
+ *
+ * `createdBefore` — отсечка по позиции (момент счёта строки): потеряшки,
+ * заведённые позже, не считаются. Фильтр в приложении, а не `createdAt: { lte }`
+ * на позицию: так остаётся один запрос на весь набор строк.
  */
 export async function getOpenProblemQtyMap(
   equipmentIds: string[],
   tx: TxClient = prisma,
+  createdBefore?: ReadonlyMap<string, Date>,
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   const ids = Array.from(new Set(equipmentIds));
@@ -193,11 +253,18 @@ export async function getOpenProblemQtyMap(
       status: { in: ["EXPECTED", "SEARCHING"] },
       OR: [{ equipmentId: { in: ids } }, { bookingItem: { equipmentId: { in: ids } } }],
     },
-    select: { quantity: true, equipmentId: true, bookingItem: { select: { equipmentId: true } } },
+    select: {
+      quantity: true,
+      createdAt: true,
+      equipmentId: true,
+      bookingItem: { select: { equipmentId: true } },
+    },
   });
   for (const row of rows) {
     const equipmentId = row.equipmentId ?? row.bookingItem?.equipmentId;
     if (!equipmentId || !requested.has(equipmentId)) continue;
+    const cutoff = createdBefore?.get(equipmentId);
+    if (cutoff && row.createdAt.getTime() > cutoff.getTime()) continue;
     result.set(equipmentId, (result.get(equipmentId) ?? 0) + row.quantity);
   }
   return result;
@@ -227,6 +294,7 @@ export function filterLines(
   lines: StockCountLine[],
   filter: StockCountLineFilter,
   unitModeIds: ReadonlySet<string> = NO_UNIT_MODE_IDS,
+  foundOpen?: FoundOpenMap,
 ): StockCountLine[] {
   switch (filter) {
     case "uncounted":
@@ -234,13 +302,13 @@ export function filterLines(
     case "discrepancy":
       return lines.filter(isDiscrepant);
     case "undecided":
-      return lines.filter((l) => isUndecided(l, unitModeIds));
+      return lines.filter((l) => isUndecided(l, unitModeIds, foundOpen));
     default:
       return lines;
   }
 }
 
-function snapshotBreakdown(line: StockCountLine): Breakdown {
+export function snapshotBreakdown(line: StockCountLine): Breakdown {
   return {
     total: line.totalAtCount ?? 0,
     issued: line.issuedAtCount ?? 0,
@@ -249,6 +317,40 @@ function snapshotBreakdown(line: StockCountLine): Breakdown {
     lost: line.lostAtCount ?? 0,
     expected: line.expectedQty ?? 0,
   };
+}
+
+/** Слагаемые учёта совпадают (total / issued / calendar / repair / lost). */
+export function sameBooks(a: Breakdown, b: Breakdown): boolean {
+  return (
+    a.total === b.total &&
+    a.issued === b.issued &&
+    a.calendar === b.calendar &&
+    a.repair === b.repair &&
+    a.lost === b.lost
+  );
+}
+
+/** Разбивка, которую руководитель подтвердил («оставить как посчитано»); null — не подтверждал. */
+export function parseDecisionBasis(raw: string | null): Breakdown | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<Record<keyof Breakdown, unknown>>;
+    const keys: (keyof Breakdown)[] = ["total", "issued", "calendar", "repair", "lost", "expected"];
+    if (!keys.every((k) => typeof parsed[k] === "number")) return null;
+    return parsed as Breakdown;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Решение LOST / ADJUST держится против живого учёта: либо учёт не менялся со
+ * счёта, либо руководитель подтвердил ровно этот живой учёт.
+ */
+export function booksDecisionHolds(line: StockCountLine, live: Breakdown): boolean {
+  if (sameBooks(live, snapshotBreakdown(line))) return true;
+  const basis = parseDecisionBasis(line.decisionBasis);
+  return basis != null && sameBooks(basis, live);
 }
 
 /**
@@ -268,8 +370,11 @@ export async function buildLineViews(
   if (lines.length === 0) return [];
   const equipmentIds = lineEquipmentIds(lines);
   const live = await computeExpectedOnShelf(equipmentIds, at, tx);
-  const openProblems = await getOpenProblemQtyMap(equipmentIds, tx);
+  // «Нашлось» закрывает только потеряшки из снапшота строки — заведённые не позже счёта.
+  const openProblems = await getOpenProblemQtyMap(equipmentIds, tx, countedCutoffs(lines));
   const unitModeIds = await getUnitModeIds(equipmentIds, tx);
+  const readyForPickup =
+    status === "OPEN" ? await getReadyForPickupQtyMap(equipmentIds, at, tx) : new Map<string, number>();
 
   const sourceIds = Array.from(
     new Set(lines.map((l) => l.sourceBookingId).filter((id): id is string => id != null)),
@@ -302,6 +407,12 @@ export async function buildLineViews(
 
     const diff = lineDiff(line);
     const openProblemQty = line.equipmentId ? (openProblems.get(line.equipmentId) ?? 0) : 0;
+    const isUnitMode = isUnitModeLine(line, unitModeIds);
+    // Живой учёт посчитанной строки — только пока инвентаризация идёт: у
+    // завершённой и отменённой сравнивать не с чем, их итог уже зафиксирован.
+    const liveBooks = status === "OPEN" && isSnapshot && liveEntry && !isUnitMode ? toBreakdown(liveEntry) : null;
+    const booksChanged = liveBooks != null && !sameBooks(liveBooks, expected);
+    const bookDecision = line.decision === "ADJUST" || (line.decision === "LOST" && diff != null && diff < 0);
     return {
       id: line.id,
       equipmentId: line.equipmentId,
@@ -323,13 +434,12 @@ export async function buildLineViews(
       sourceBookingId: line.sourceBookingId,
       sourceBooking: line.sourceBookingId ? (sourceById.get(line.sourceBookingId) ?? null) : null,
       openProblemQty,
-      allowedDecisions: allowedDecisionsFor(
-        status,
-        diff,
-        openProblemQty,
-        line.equipmentId != null,
-        isUnitModeLine(line, unitModeIds),
-      ),
+      allowedDecisions: allowedDecisionsFor(status, diff, openProblemQty, line.equipmentId != null, isUnitMode),
+      isUnitMode,
+      live: liveBooks,
+      booksChangedSinceCount: booksChanged,
+      booksAcknowledged: booksChanged && bookDecision && liveBooks != null && booksDecisionHolds(line, liveBooks),
+      readyForPickupQty: line.equipmentId ? (readyForPickup.get(line.equipmentId) ?? 0) : 0,
     };
   });
 }
@@ -338,6 +448,7 @@ export function buildSummary(
   sc: StockCount,
   lines: StockCountLine[],
   unitModeIds: ReadonlySet<string> = NO_UNIT_MODE_IDS,
+  foundOpen?: FoundOpenMap,
 ): StockCountSummary {
   return {
     id: sc.id,
@@ -350,21 +461,23 @@ export function buildSummary(
     createdByName: sc.createdByName,
     closedByName: sc.closedByName,
     counters: collectCounters(lines),
-    totals: computeTotals(lines, unitModeIds),
+    totals: computeTotals(lines, unitModeIds, foundOpen),
   };
 }
 
 /**
  * План завершения: что произойдёт по принятым решениям. «Нашлось» закроет не
- * больше, чем открыто потеряшек, — остаток уйдёт в акт как «лишнее без
- * объяснения», поэтому foundQty считается с этим потолком. Решения, которые
- * завершение не применит (знак не подходит расхождению, позиция ушла на штучный
- * учёт), в план не попадают.
+ * больше, чем открыто потеряшек из снапшота строки (заведённых не позже счёта)
+ * и чем их было в снапшоте, — остаток уйдёт в акт как «лишнее без объяснения»,
+ * поэтому foundQty считается с этим потолком. Решения, которые завершение не
+ * применит (знак не подходит расхождению, позиция ушла на штучный учёт,
+ * «Нашлось» без открытых потеряшек), в план не попадают.
  */
 async function computeDecisionsPlan(
   lines: StockCountLine[],
   unitModeIds: ReadonlySet<string>,
   tx: TxClient,
+  foundOpen?: FoundOpenMap,
 ): Promise<StockCountDecisionsPlan> {
   const plan: StockCountDecisionsPlan = {
     lostPositions: 0,
@@ -375,7 +488,7 @@ async function computeDecisionsPlan(
     foundPositions: 0,
     foundQty: 0,
   };
-  const decided = lines.filter((l) => {
+  const decidedFits = lines.filter((l) => {
     const diff = lineDiff(l);
     return (
       l.decision != null &&
@@ -385,10 +498,10 @@ async function computeDecisionsPlan(
       !isUnitModeLine(l, unitModeIds)
     );
   });
-  const foundIds = decided
-    .filter((l) => l.decision === "FOUND" && l.equipmentId)
-    .map((l) => l.equipmentId as string);
-  const openProblems = await getOpenProblemQtyMap(foundIds, tx);
+  const foundLines = decidedFits.filter((l) => l.decision === "FOUND" && l.equipmentId);
+  const openProblems =
+    foundOpen ?? (await getOpenProblemQtyMap(lineEquipmentIds(foundLines), tx, countedCutoffs(foundLines)));
+  const decided = decidedFits.filter((l) => !(foundOpen && isFoundExhausted(l, foundOpen)));
 
   for (const line of decided) {
     const diff = lineDiff(line) as number;
@@ -401,11 +514,24 @@ async function computeDecisionsPlan(
       else plan.adjustPlusQty += diff;
     } else if (line.decision === "FOUND") {
       plan.foundPositions += 1;
-      const open = line.equipmentId ? (openProblems.get(line.equipmentId) ?? 0) : 0;
-      plan.foundQty += Math.min(Math.max(diff, 0), open);
+      plan.foundQty += foundQtyFor(line, diff, openProblems);
     }
   }
   return plan;
+}
+
+/**
+ * Сколько «Нашлось» закроет по строке: не больше излишка, открытых потеряшек из
+ * снапшота и того, сколько их было в снапшоте (`lostAtCount` — страховка сверху).
+ * Та же арифметика, что у применения (applyFound).
+ */
+export function foundQtyFor(
+  line: Pick<StockCountLine, "equipmentId" | "lostAtCount">,
+  diff: number,
+  openProblems: ReadonlyMap<string, number>,
+): number {
+  const open = line.equipmentId ? (openProblems.get(line.equipmentId) ?? 0) : 0;
+  return Math.max(0, Math.min(diff, open, line.lostAtCount ?? 0));
 }
 
 export async function buildDetail(
@@ -416,6 +542,7 @@ export async function buildDetail(
   const categories = parseCategories(sc.categories);
   const equipmentIds = lineEquipmentIds(lines);
   const unitModeIds = await getUnitModeIds(equipmentIds, tx);
+  const foundOpen = await getFoundOpenMap(sc.status, lines, tx);
   // Позиция, переведённая на штучный учёт уже после старта, осталась строкой —
   // «вне охвата» её второй раз не считаем.
   const unitWhere: Prisma.EquipmentWhereInput = {
@@ -428,10 +555,10 @@ export async function buildDetail(
     where: { status: { in: ["OPEN", "CLOSED"] }, number: { lt: sc.number } },
   });
   return {
-    ...buildSummary(sc, lines, unitModeIds),
+    ...buildSummary(sc, lines, unitModeIds, foundOpen),
     categoryProgress: computeCategoryProgress(lines),
     unitModeExcluded,
     isFirst: earlier === 0,
-    decisionsPlan: await computeDecisionsPlan(lines, unitModeIds, tx),
+    decisionsPlan: await computeDecisionsPlan(lines, unitModeIds, tx, foundOpen),
   };
 }

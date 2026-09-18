@@ -378,11 +378,13 @@ const DISC_COLS: Col[] = [
   { title: "№", w: 8 * MM, align: "left" },
   { title: "Наименование", w: 66 * MM, align: "left" },
   { title: "Категория", w: 30 * MM, align: "left" },
-  { title: "По учёту", w: 17 * MM, align: "right" },
+  // «На полке должно быть» (спека §1), а не «по учёту»: «по учёту» в акте — это
+  // totalQuantity (им говорит фраза «ошибка учёта: 25 → 23» в той же строке).
+  { title: "Должно быть", w: 22 * MM, align: "right" },
   { title: "Факт", w: 14 * MM, align: "right" },
   { title: "Разн.", w: 14 * MM, align: "right" },
   { title: "Решение", w: 68 * MM, align: "left" },
-  { title: "Причина / примечание", w: 56 * MM, align: "left" },
+  { title: "Причина / примечание", w: 51 * MM, align: "left" },
 ];
 const DISC_X = DISC_COLS.reduce<number[]>(
   (acc, _c, i) => [...acc, i === 0 ? MARGIN.left : acc[i - 1] + DISC_COLS[i - 1].w],

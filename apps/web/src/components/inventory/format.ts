@@ -169,22 +169,70 @@ export function discrepancyCount(totals: StockCountTotals): number {
 /**
  * Решение, которое завершение применит: знак должен подходить расхождению
  * (зеркало `decisionFits` на сервере). «Пропало» у строки, ушедшей в излишек
- * после пересчёта, считается отсутствующим.
+ * после пересчёта, считается отсутствующим. Так же — «Нашлось», которому в
+ * идущей инвентаризации больше нечего закрывать (сервер не предлагает его в
+ * `allowedDecisions`, хотя решения строке доступны); у завершённой и отменённой
+ * решений не предлагается вовсе, и записанное «Нашлось» остаётся как есть.
  */
-export function effectiveDecision(line: Pick<StockCountLineView, "decision" | "diff">): Decision | null {
+export function effectiveDecision(
+  line: Pick<StockCountLineView, "decision" | "diff" | "allowedDecisions">,
+): Decision | null {
   const { decision, diff } = line;
   if (!decision || diff == null || diff === 0) return null;
   if (decision === "ADJUST") return decision;
   if (decision === "LOST" && diff < 0) return decision;
-  if (decision === "FOUND" && diff > 0) return decision;
+  if (decision === "FOUND" && diff > 0) {
+    const exhausted = line.allowedDecisions.length > 0 && !line.allowedDecisions.includes("FOUND");
+    return exhausted ? null : decision;
+  }
   return null;
 }
 
-/** Расхождение ждёт решения (зеркало `isUndecided`: штучные строки не ждут). */
+/**
+ * Расхождение ждёт решения — точное зеркало `isUndecided` сервера для любого
+ * статуса: штучные строки (`isUnitMode`) не ждут, решение с неподходящим знаком
+ * или «Нашлось» без потеряшек считается отсутствующим.
+ */
 export function isLineUndecided(line: StockCountLineView): boolean {
-  if (line.diff == null || line.diff === 0) return false;
-  if (line.allowedDecisions.length === 0) return false;
+  if (line.diff == null || line.diff === 0 || line.isUnitMode) return false;
   return effectiveDecision(line) == null;
+}
+
+const BOOK_TERMS: Array<{ key: keyof Omit<Breakdown, "expected">; label: string }> = [
+  { key: "total", label: "всего по учёту" },
+  { key: "issued", label: "на съёмках" },
+  { key: "calendar", label: "по календарю" },
+  { key: "repair", label: "в мастерской" },
+  { key: "lost", label: "в потеряшках" },
+];
+
+/**
+ * Что изменилось в учёте после счёта строки: «учёт изменился после счёта: на
+ * съёмках 4 → 0 (ожидание 6 → 10)». null — не изменилось (или сравнивать не с чем).
+ */
+export function booksChangeText(line: Pick<StockCountLineView, "expected" | "live" | "booksChangedSinceCount">): string | null {
+  const live = line.live;
+  if (!line.booksChangedSinceCount || !live) return null;
+  const snap = line.expected;
+  const terms = BOOK_TERMS.filter((t) => snap[t.key] !== live[t.key]).map(
+    (t) => `${t.label} ${snap[t.key]} → ${live[t.key]}`,
+  );
+  const expectation = snap.expected !== live.expected ? ` (ожидание ${snap.expected} → ${live.expected})` : "";
+  return `учёт изменился после счёта: ${terms.join(", ")}${expectation}`;
+}
+
+/**
+ * Каким будет учёт после «Ошибки учёта»: поправка ложится дельтой на ТЕКУЩЕЕ
+ * количество (у идущей — живое, если учёт менялся после счёта), как на сервере.
+ */
+export function adjustPreview(line: Pick<StockCountLineView, "live" | "expected" | "diff">): { from: number; to: number } {
+  const from = line.live?.total ?? line.expected.total;
+  return { from, to: Math.max(0, from + (line.diff ?? 0)) };
+}
+
+/** «2 починено за неделю — может лежать на верстаке»; null — нечего сказать. */
+export function readyForPickupText(qty: number): string | null {
+  return qty > 0 ? `${qty} починено за неделю — может лежать на верстаке` : null;
 }
 
 /**
@@ -223,5 +271,7 @@ export function expectationNotes(line: StockCountLineView, showZeroIssued = fals
   if (b.issued > 0 || showZeroIssued) notes.push({ tone: "muted", text: `на съёмках — ${b.issued}` });
   if (b.repair > 0) notes.push({ tone: "muted", text: `${b.repair} в мастерской` });
   if (b.lost > 0) notes.push({ tone: "muted", text: `${b.lost} в потеряшках` });
+  const pickup = readyForPickupText(line.readyForPickupQty);
+  if (pickup) notes.push({ tone: "muted", text: pickup });
   return notes;
 }

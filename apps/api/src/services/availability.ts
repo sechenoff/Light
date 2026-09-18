@@ -127,7 +127,8 @@ export async function getLostCountByEquipmentMap(
  *
  * Активный ремонт — любой статус, кроме CLOSED и WROTE_OFF: пока карточка
  * открыта, прибор не выдаётся. WROTE_OFF исключён потому, что списание — это
- * уже вопрос `totalQuantity`, а не временного изъятия.
+ * уже вопрос `totalQuantity`, а не временного изъятия: `writeOffRepair` у
+ * безъюнитного ремонта COUNT-позиции уменьшает `totalQuantity` на его количество.
  */
 export async function getRepairCountByEquipmentMap(
   equipmentIds: string[],

@@ -160,7 +160,7 @@ const DISC_HEADERS = [
   "№",
   "Наименование",
   "Категория",
-  "По учёту",
+  "На полке должно быть",
   "Факт",
   "Разница",
   "Решение",
@@ -168,7 +168,7 @@ const DISC_HEADERS = [
   "Посчитал",
   "Решение принял",
 ];
-const DISC_WIDTHS = [5, 40, 18, 10, 9, 10, 38, 36, 16, 16];
+const DISC_WIDTHS = [5, 40, 18, 14, 9, 10, 38, 36, 16, 16];
 const DISC_NUMERIC = new Set([0, 3, 4, 5]);
 
 function writeDiscrepancies(ws: ExcelJS.Worksheet, act: StockCountActDocument): void {
@@ -206,7 +206,7 @@ const ALL_HEADERS = [
   "Наименование",
   "Категория",
   "Итог",
-  "По учёту",
+  "На полке должно быть",
   "Факт",
   "Разница",
   "Решение",
@@ -214,7 +214,7 @@ const ALL_HEADERS = [
   "Посчитал",
   "Когда посчитано",
 ];
-const ALL_WIDTHS = [5, 40, 18, 14, 10, 9, 10, 34, 30, 16, 16];
+const ALL_WIDTHS = [5, 40, 18, 14, 14, 9, 10, 34, 30, 16, 16];
 const ALL_NUMERIC = new Set([0, 4, 5, 6]);
 
 type AllRow = {

@@ -90,7 +90,12 @@ describe("DecisionControl — доступность решений", () => {
   it("позиция ушла на штучный учёт: решения заблокированы одной причиной, «Пересчитать» — нет", () => {
     const onSelect = vi.fn();
     render(
-      <DecisionControl line={shortageLine({ allowedDecisions: [] })} readOnly={false} busy={false} onSelect={onSelect} />,
+      <DecisionControl
+        line={shortageLine({ allowedDecisions: [], isUnitMode: true })}
+        readOnly={false}
+        busy={false}
+        onSelect={onSelect}
+      />,
     );
     expect(button("Пропало → потеряшки")).toHaveAttribute("aria-disabled", "true");
     expect(button("Ошибка учёта")).toHaveAttribute("aria-disabled", "true");
@@ -157,7 +162,7 @@ describe("DiscrepancyRow — «Ошибка учёта» доходит до с�
   it("ADJUST спрашивает причину и шлёт POST /decision { decision: ADJUST, note }", async () => {
     const line = shortageLine();
     const decided = shortageLine({ decision: "ADJUST", decisionNote: "с импорта 50, по факту 47", decidedBy: "sechenoff" });
-    // Строка без решения сама подгружает «Как пропало» — ради подсказки брони.
+    // След по «Как пропало ▾» — сам по себе строка его не грузит.
     apiFetch.mockImplementation((path: string) =>
       String(path).endsWith("/trail") ? Promise.resolve({ trail: makeTrail() }) : Promise.resolve({ line: decided }),
     );
@@ -191,7 +196,13 @@ describe("DiscrepancyRow — «Ошибка учёта» доходит до с�
     const [path, init] = decisionCalls()[0]!;
     expect(path).toBe("/api/stock-counts/sc-1/lines/line-1/decision");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body)).toEqual({ decision: "ADJUST", note: "с импорта 50, по факту 47" });
+    // С решением уходит то, что руководитель видел: счёт и «должно быть» строки.
+    expect(JSON.parse(init.body)).toEqual({
+      decision: "ADJUST",
+      note: "с импорта 50, по факту 47",
+      seenCountedQty: 47,
+      seenExpectedQty: 50,
+    });
     expect(onChanged).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });

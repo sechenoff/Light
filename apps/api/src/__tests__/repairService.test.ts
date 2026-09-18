@@ -369,6 +369,7 @@ describe("writeOffRepair", () => {
     const woUnit = await prisma.equipmentUnit.create({
       data: { equipmentId, barcode: "WRITEOFF-001", status: "AVAILABLE" },
     });
+    const totalBefore = (await prisma.equipment.findUnique({ where: { id: equipmentId } })).totalQuantity;
 
     const repair = await createRepair({
       unitId: woUnit.id,
@@ -387,6 +388,59 @@ describe("writeOffRepair", () => {
       where: { entityType: "Repair", action: "REPAIR_WRITE_OFF", entityId: repair.id },
     });
     expect(audit).not.toBeNull();
+
+    // Штучное списание количество позиции не трогает: оно выводится из единиц.
+    const equipment = await prisma.equipment.findUnique({ where: { id: equipmentId } });
+    expect(equipment.totalQuantity).toBe(totalBefore);
+    expect(await prisma.auditEntry.count({ where: { action: "STOCK_ADJUST", entityId: equipmentId } })).toBe(0);
+  });
+
+  it("безъюнитное списание позиции количеством уменьшает totalQuantity — один раз", async () => {
+    const { createRepair, writeOffRepair } = await import("../services/repairService");
+    const { computeExpectedOnShelf } = await import("../services/stockCount/expected");
+    const { getAvailability } = await import("../services/availability");
+
+    const cable = await prisma.equipment.create({
+      data: {
+        importKey: "repair-test-count-cable",
+        name: "Удлинитель",
+        category: "Коммутация",
+        rentalRatePerShift: 100,
+        stockTrackingMode: "COUNT",
+        totalQuantity: 10,
+      },
+    });
+    const repair = await createRepair({
+      equipmentId: cable.id,
+      quantity: 2,
+      reason: "Перебиты",
+      urgency: "NORMAL",
+      createdBy: superAdminId,
+    });
+    expect((await computeExpectedOnShelf([cable.id], new Date())).get(cable.id)?.expected).toBe(8);
+
+    await writeOffRepair(repair.id, superAdminId);
+
+    expect((await prisma.equipment.findUnique({ where: { id: cable.id } })).totalQuantity).toBe(8);
+    expect((await computeExpectedOnShelf([cable.id], new Date())).get(cable.id)?.expected).toBe(8);
+    const [row] = await getAvailability({
+      startDate: new Date(Date.now() + 86_400_000),
+      endDate: new Date(Date.now() + 2 * 86_400_000),
+      equipmentIds: [cable.id],
+    });
+    expect(row.availableQuantity).toBe(8);
+
+    const adjust = await prisma.auditEntry.findFirst({ where: { action: "STOCK_ADJUST", entityId: cable.id } });
+    expect(adjust.entityType).toBe("Equipment");
+    expect(adjust.userId).toBe(superAdminId);
+    expect(JSON.parse(adjust.before)).toEqual({ totalQuantity: 10 });
+    expect(JSON.parse(adjust.after)).toMatchObject({ totalQuantity: 8, reason: "Списано в мастерской", repairId: repair.id });
+
+    await expect(writeOffRepair(repair.id, superAdminId)).rejects.toMatchObject({
+      status: 400,
+      details: "REPAIR_ALREADY_CLOSED",
+    });
+    expect((await prisma.equipment.findUnique({ where: { id: cable.id } })).totalQuantity).toBe(8);
   });
 });
 

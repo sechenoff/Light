@@ -89,6 +89,11 @@ export function makeLine(patch: Partial<StockCountLineView> = {}): StockCountLin
     sourceBooking: null,
     openProblemQty: 0,
     allowedDecisions: [],
+    isUnitMode: false,
+    live: null,
+    booksChangedSinceCount: false,
+    booksAcknowledged: false,
+    readyForPickupQty: 0,
     ...patch,
   };
 }
@@ -186,6 +191,7 @@ export function makeTrail(patch: Partial<EquipmentTrail> = {}): EquipmentTrail {
     suggestedBookingId: null,
     openProblems: [],
     onShelf: { total: 50, issued: 8, calendar: 0, repair: 0, lost: 0, expected: 42 },
+    repairEvents: { writtenOffQty: 0, readyForPickupQty: 0 },
     ...patch,
   };
 }

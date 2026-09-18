@@ -5,7 +5,7 @@
  * говорить одно и то же.
  *
  * Разделы:
- *   1. Расхождения — по учёту / факт / разница / решение / причина;
+ *   1. Расхождения — на полке должно быть / факт / разница / решение / причина;
  *   2. Сверено без расхождений — компактным списком;
  *   3. Не посчитано — позиции, которые остались не сверены.
  *
@@ -30,7 +30,9 @@ import {
   collectCounters,
   computeTotals,
   decisionFits,
+  getFoundOpenMap,
   getUnitModeIds,
+  isFoundExhausted,
   isUnitModeLine,
   lineDiff,
   lineEquipmentIds,
@@ -378,10 +380,13 @@ async function loadAppliedFacts(
 
   const adjustIds = idsWithDecision(discrepant, "ADJUST");
   if (adjustIds.length > 0) {
+    // Сортировка сначала по entityId — именно она заставляет SQLite взять индекс
+    // (entityType, entityId); с одним ORDER BY createdAt он выбрал бы
+    // (entityType, createdAt) и прошёл бы всю историю аудита позиций.
     const audits = await prisma.auditEntry.findMany({
       where: { entityType: "Equipment", action: "STOCK_ADJUST", entityId: { in: adjustIds } },
       select: { entityId: true, before: true, after: true },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ entityId: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     });
     for (const a of audits) {
       if (readStockCountId(a.after) !== sc.id) continue;
@@ -524,15 +529,16 @@ async function matchDeletedFound(sc: StockCount, orphan: StockCountLine[], facts
 
 /**
  * Черновик и отменённая: что закрыло бы «Нашлось» — открытые безъюнитные
- * потеряшки позиции от старых к новым на величину излишка (тот же порядок, что
- * у завершения). Остальных эффектов для фразы знать не нужно.
+ * потеряшки позиции, заведённые не позже счёта строки, от старых к новым на
+ * величину излишка и не больше, чем их было в снапшоте (те же правила, что у
+ * завершения). Остальных эффектов для фразы знать не нужно.
  */
 async function loadPlannedFacts(discrepant: StockCountLine[]): Promise<LineFacts> {
   const facts = emptyFacts();
   const foundLines = discrepant.filter((l) => l.decision === "FOUND" && l.equipmentId != null);
   if (foundLines.length === 0) return facts;
   const ids = foundLines.map((l) => l.equipmentId as string);
-  const requested = new Set(ids);
+  const cutoff = new Map(foundLines.map((l) => [l.equipmentId as string, l.countedAt]));
 
   const rows = await prisma.problemItem.findMany({
     where: {
@@ -546,7 +552,9 @@ async function loadPlannedFacts(discrepant: StockCountLine[]): Promise<LineFacts
   const open = new Map<string, FoundProblemRef[]>();
   for (const row of rows) {
     const equipmentId = row.equipmentId ?? row.bookingItem?.equipmentId;
-    if (!equipmentId || !requested.has(equipmentId)) continue;
+    if (!equipmentId || !cutoff.has(equipmentId)) continue;
+    const countedAt = cutoff.get(equipmentId);
+    if (countedAt && row.createdAt.getTime() > countedAt.getTime()) continue;
     const list = open.get(equipmentId) ?? [];
     list.push({ quantity: row.quantity, createdAt: row.createdAt });
     open.set(equipmentId, list);
@@ -554,7 +562,7 @@ async function loadPlannedFacts(discrepant: StockCountLine[]): Promise<LineFacts
 
   for (const line of foundLines) {
     const equipmentId = line.equipmentId as string;
-    let remaining = Math.max(lineDiff(line) ?? 0, 0);
+    let remaining = Math.min(Math.max(lineDiff(line) ?? 0, 0), line.lostAtCount ?? 0);
     const allocated: FoundProblemRef[] = [];
     for (const p of open.get(equipmentId) ?? []) {
       if (remaining <= 0) break;
@@ -617,7 +625,10 @@ export async function buildStockCountAct(id: string, opts: { now?: Date } = {}):
     orderBy: { position: "asc" },
   });
   const unitModeIds = await getUnitModeIds(lineEquipmentIds(lines));
-  const totals = computeTotals(lines, unitModeIds);
+  // Черновик: «Нашлось», которому больше нечего закрывать, ждёт решения — как в
+  // «Итоге» и на завершении.
+  const foundOpen = await getFoundOpenMap(sc.status, lines);
+  const totals = computeTotals(lines, unitModeIds, foundOpen);
 
   const discrepant = lines.filter((l) => {
     const diff = lineDiff(l);
@@ -630,8 +641,9 @@ export async function buildStockCountAct(id: string, opts: { now?: Date } = {}):
   const toRow = (line: StockCountLine): ActDiscrepancyRow => {
     const diff = lineDiff(line) as number;
     const equipmentId = line.equipmentId;
+    const decision = foundOpen && isFoundExhausted(line, foundOpen) ? null : line.decision;
     const described = describeDecision(
-      { decision: line.decision, diff, totalAtCount: line.totalAtCount, hasEquipment: equipmentId != null },
+      { decision, diff, totalAtCount: line.totalAtCount, hasEquipment: equipmentId != null },
       {
         status: sc.status,
         isUnitMode: isUnitModeLine(line, unitModeIds),

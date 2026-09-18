@@ -22,7 +22,10 @@
 
 import { prisma } from "../../prisma";
 import { getLostCountByEquipmentMap, getRepairCountByEquipmentMap } from "../availability";
+import { READY_FOR_PICKUP_WINDOW_DAYS } from "../warehouseWorkstation";
 import type { Breakdown, CalendarBooking } from "./types";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 type TxClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;
 
@@ -140,4 +143,37 @@ export function toBreakdown(e: ExpectedOnShelf): Breakdown {
     lost: e.lost,
     expected: e.expected,
   };
+}
+
+/**
+ * Починено за READY_FOR_PICKUP_WINDOW_DAYS суток до `at` — безъюнитные
+ * ремонты позиции в статусе CLOSED (тот же источник, что блок «Вернулось из
+ * ремонта» на «Смене»). Закрытый ремонт по формуле §3 уже «на полке», а
+ * физически прибор может ещё лежать на верстаке — это пояснение к недостаче,
+ * а не слагаемое формулы. Позиция ремонта — `equipmentId ?? bookingItem.equipmentId`.
+ */
+export async function getReadyForPickupQtyMap(
+  equipmentIds: string[],
+  at: Date,
+  tx: TxClient = prisma,
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  const ids = Array.from(new Set(equipmentIds));
+  if (ids.length === 0) return result;
+  const requested = new Set(ids);
+  const rows = await tx.repair.findMany({
+    where: {
+      unitId: null,
+      status: "CLOSED",
+      closedAt: { gte: new Date(at.getTime() - READY_FOR_PICKUP_WINDOW_DAYS * DAY_MS), lte: at },
+      OR: [{ equipmentId: { in: ids } }, { bookingItem: { equipmentId: { in: ids } } }],
+    },
+    select: { quantity: true, equipmentId: true, bookingItem: { select: { equipmentId: true } } },
+  });
+  for (const row of rows) {
+    const equipmentId = row.equipmentId ?? row.bookingItem?.equipmentId;
+    if (!equipmentId || !requested.has(equipmentId)) continue;
+    result.set(equipmentId, (result.get(equipmentId) ?? 0) + row.quantity);
+  }
+  return result;
 }

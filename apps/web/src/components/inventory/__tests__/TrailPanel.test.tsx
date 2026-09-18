@@ -1,8 +1,9 @@
 /**
  * «Как пропало»: как принимали каждую бронь (киоск / вручную / автоматически /
- * ещё у клиента / срок вышел), честный вердикт и привязка «Пропало» к брони —
- * по умолчанию к подсказке сервера (единственная бронь без пересчёта), но
- * только если эту подсказку руководитель уже видел: в строке или в следе.
+ * ещё у клиента / срок вышел / вернули после счёта), честный вердикт и привязка
+ * «Пропало» к брони — по умолчанию к подсказке сервера (единственная бронь без
+ * пересчёта), но только если эту подсказку руководитель уже видел: в строке
+ * (общий запрос «Итога») или в раскрытом следе. Сама строка след не грузит.
  */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,8 +19,9 @@ vi.mock("../../../lib/api", () => ({
 }));
 
 import { DiscrepancyRow } from "../DiscrepancyRow";
-import { TrailPanel, trailVerdict } from "../TrailPanel";
-import { apiError, makeTrail, makeTrailBooking, shortageLine } from "./fixtures";
+import { TrailPanel, repairVerdict, trailVerdict } from "../TrailPanel";
+import type { StockCountLineView, TrailSuggestion } from "../types";
+import { makeTrail, makeTrailBooking, shortageLine } from "./fixtures";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -101,15 +103,26 @@ describe("DiscrepancyRow — привязка «Пропало» к брони",
       makeTrailBooking({ bookingId: "b-3", projectName: "Полёт", returnMode: "KIOSK", returnedBy: "Иван", remarks: { problemQty: 0, repairQty: 0 } }),
     ],
   });
+  /** Подсказка из общего запроса «Итога» — та же бронь b-1. */
+  const SUGGESTION: TrailSuggestion = {
+    bookingId: "b-1",
+    projectName: "Северный ветер",
+    clientName: "Студия «Норд»",
+    quantity: 25,
+    startDate: "2026-09-14T07:00:00.000Z",
+    endDate: "2026-09-16T07:00:00.000Z",
+  };
+  const SEEN = { seenCountedQty: 47, seenExpectedQty: 50 };
 
-  function renderRow() {
+  function renderRow(opts: { line?: StockCountLineView; suggestion?: TrailSuggestion | null } = {}) {
     const onLineChange = vi.fn();
     render(
       <ul>
         <DiscrepancyRow
           stockCountId="sc-1"
-          line={shortageLine()}
+          line={opts.line ?? shortageLine()}
           status="OPEN"
+          suggestion={opts.suggestion ?? null}
           onLineChange={onLineChange}
           onRecount={vi.fn()}
           onChanged={vi.fn()}
@@ -123,6 +136,10 @@ describe("DiscrepancyRow — привязка «Пропало» к брони",
   function decisionBody() {
     const call = apiFetch.mock.calls.find(([path]) => String(path).endsWith("/decision"));
     return call ? JSON.parse(String(call[1].body)) : null;
+  }
+
+  function trailCalls() {
+    return apiFetch.mock.calls.filter(([path]) => String(path).endsWith("/trail"));
   }
 
   it("раскрытый след предвыбирает подсказанную бронь, «Пропало» уходит с ней", async () => {
@@ -141,7 +158,7 @@ describe("DiscrepancyRow — привязка «Пропало» к брони",
 
     fireEvent.click(screen.getByRole("button", { name: "Пропало → потеряшки" }));
     await waitFor(() => expect(onLineChange).toHaveBeenCalled());
-    expect(decisionBody()).toEqual({ decision: "LOST", sourceBookingId: "b-1" });
+    expect(decisionBody()).toEqual({ decision: "LOST", sourceBookingId: "b-1", ...SEEN });
   });
 
   it("«не определено» — «Пропало» без брони", async () => {
@@ -150,7 +167,7 @@ describe("DiscrepancyRow — привязка «Пропало» к брони",
         ? Promise.resolve({ trail: SUGGESTED })
         : Promise.resolve({ line: shortageLine({ decision: "LOST" }) }),
     );
-    const onLineChange = renderRow();
+    const onLineChange = renderRow({ suggestion: SUGGESTION });
 
     fireEvent.click(screen.getByRole("button", { name: /Как пропало/ }));
     const select = await screen.findByLabelText("Если в потеряшки — привязать к брони:");
@@ -158,87 +175,65 @@ describe("DiscrepancyRow — привязка «Пропало» к брони",
     fireEvent.click(screen.getByRole("button", { name: "Пропало → потеряшки" }));
 
     await waitFor(() => expect(onLineChange).toHaveBeenCalled());
-    expect(decisionBody()).toEqual({ decision: "LOST", sourceBookingId: null });
+    expect(decisionBody()).toEqual({ decision: "LOST", sourceBookingId: null, ...SEEN });
   });
 
-  it("подсказка видна в строке до решения — «Пропало» уходит с той бронью, которую показали", async () => {
-    apiFetch.mockImplementation((path: string) =>
-      String(path).endsWith("/trail")
-        ? Promise.resolve({ trail: SUGGESTED })
-        : Promise.resolve({ line: shortageLine({ decision: "LOST", sourceBookingId: "b-1" }) }),
-    );
-    const onLineChange = renderRow();
+  it("общая подсказка видна в строке до решения — «Пропало» уходит с ней, след не грузится", async () => {
+    apiFetch.mockImplementation(() => Promise.resolve({ line: shortageLine({ decision: "LOST", sourceBookingId: "b-1" }) }));
+    const onLineChange = renderRow({ suggestion: SUGGESTION });
 
-    // До любого клика: след подгрузился сам, подсказка — прямо в строке.
     expect(
-      await screen.findByText(
-        "вероятно — «Северный ветер» (25 шт, 14–16 сен): единственная бронь, принятая без пересчёта",
-      ),
+      screen.getByText("вероятно — «Северный ветер» (25 шт, 14–16 сен): единственная бронь, принятая без пересчёта"),
     ).toBeInTheDocument();
-    expect(apiFetch.mock.calls.some(([path]) => String(path).endsWith("/decision"))).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Пропало → потеряшки" }));
     await waitFor(() => expect(onLineChange).toHaveBeenCalled());
-    expect(decisionBody()).toEqual({ decision: "LOST", sourceBookingId: "b-1" });
+    expect(decisionBody()).toEqual({ decision: "LOST", sourceBookingId: "b-1", ...SEEN });
+    expect(trailCalls()).toHaveLength(0);
   });
 
-  it("след не загрузился — «Пропало» без брони, в строке прежняя разбивка и без красной ошибки", async () => {
-    apiFetch.mockImplementation((path: string) =>
-      String(path).endsWith("/trail")
-        ? Promise.reject(apiError(500, "INTERNAL", "Request failed 500"))
-        : Promise.resolve({ line: shortageLine({ decision: "LOST" }) }),
-    );
+  it("подсказки нет — «Пропало» без брони, в строке прежняя разбивка, след сам не грузится", async () => {
+    apiFetch.mockImplementation(() => Promise.resolve({ line: shortageLine({ decision: "LOST" }) }));
     const onLineChange = renderRow();
 
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/stock-counts/sc-1/lines/line-1/trail", undefined));
     await act(async () => {
       for (let i = 0; i < 6; i += 1) await Promise.resolve();
     });
     expect(screen.getByText("по учёту 50")).toBeInTheDocument();
     expect(screen.queryByText(/вероятно — «/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Не удалось собрать брони с этой позицией")).not.toBeInTheDocument();
+    expect(trailCalls()).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Пропало → потеряшки" }));
     await waitFor(() => expect(onLineChange).toHaveBeenCalled());
-    expect(decisionBody()).toEqual({ decision: "LOST", sourceBookingId: null });
+    expect(decisionBody()).toEqual({ decision: "LOST", sourceBookingId: null, ...SEEN });
   });
 
-  it("подсказка вне загруженного окна следа — в строке её нет, и «Пропало» её не привязывает", async () => {
+  it("раскрытый след авторитетнее общей подсказки: подсказки в нём не видно — строка её не обещает", async () => {
     apiFetch.mockImplementation((path: string) =>
       String(path).endsWith("/trail")
         ? Promise.resolve({ trail: { ...SUGGESTED, suggestedBookingId: "b-old" } })
         : Promise.resolve({ line: shortageLine({ decision: "LOST" }) }),
     );
-    const onLineChange = renderRow();
+    const onLineChange = renderRow({ suggestion: SUGGESTION });
+    expect(screen.getByText(/вероятно — «Северный ветер»/)).toBeInTheDocument();
 
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/stock-counts/sc-1/lines/line-1/trail", undefined));
-    await act(async () => {
-      for (let i = 0; i < 6; i += 1) await Promise.resolve();
-    });
+    fireEvent.click(screen.getByRole("button", { name: /Как пропало/ }));
+    await screen.findByLabelText("Если в потеряшки — привязать к брони:");
     expect(screen.queryByText(/вероятно — «/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Пропало → потеряшки" }));
     await waitFor(() => expect(onLineChange).toHaveBeenCalled());
-    expect(decisionBody()).toEqual({ decision: "LOST", sourceBookingId: null });
+    expect(decisionBody()).toEqual({ decision: "LOST", sourceBookingId: null, ...SEEN });
   });
 
   it("«Пропало» уже записано без брони — в следе выбрано «не определено», а не подсказка", async () => {
     apiFetch.mockImplementation((path: string) =>
       String(path).endsWith("/trail") ? Promise.resolve({ trail: SUGGESTED }) : Promise.reject(new Error(path)),
     );
-    render(
-      <ul>
-        <DiscrepancyRow
-          stockCountId="sc-1"
-          line={shortageLine({ decision: "LOST", sourceBookingId: null, decidedBy: "sechenoff" })}
-          status="OPEN"
-          onLineChange={vi.fn()}
-          onRecount={vi.fn()}
-          onChanged={vi.fn()}
-          onStale={vi.fn()}
-        />
-      </ul>,
-    );
+    renderRow({
+      line: shortageLine({ decision: "LOST", sourceBookingId: null, decidedBy: "sechenoff" }),
+      suggestion: SUGGESTION,
+    });
     expect(screen.getByText(/бронь не определена/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Как пропало/ }));
@@ -246,45 +241,40 @@ describe("DiscrepancyRow — привязка «Пропало» к брони",
     expect(select.value).toBe("");
   });
 
-  it("у строки с решением след сам не грузится; уже в потеряшках — это остаётся в строке рядом с подсказкой", async () => {
-    apiFetch.mockImplementation((path: string) =>
-      String(path).endsWith("/trail") ? Promise.resolve({ trail: SUGGESTED }) : Promise.reject(new Error(path)),
-    );
-    const { rerender } = render(
-      <ul>
-        <DiscrepancyRow
-          stockCountId="sc-1"
-          line={shortageLine({ decision: "ADJUST", decisionNote: "ошибка", decidedBy: "sechenoff" })}
-          status="OPEN"
-          onLineChange={vi.fn()}
-          onRecount={vi.fn()}
-          onChanged={vi.fn()}
-          onStale={vi.fn()}
-        />
-      </ul>,
-    );
-    await act(async () => {
-      for (let i = 0; i < 6; i += 1) await Promise.resolve();
-    });
-    expect(apiFetch).not.toHaveBeenCalled();
-
-    // Решение сняли (пересчёт) — строка ждёт решения, след подгружается.
+  it("уже в потеряшках — это остаётся в строке рядом с подсказкой", () => {
     const lost = { ...shortageLine(), expected: { total: 50, issued: 0, calendar: 0, repair: 0, lost: 2, expected: 48 } };
-    rerender(
-      <ul>
-        <DiscrepancyRow
-          stockCountId="sc-1"
-          line={lost}
-          status="OPEN"
-          onLineChange={vi.fn()}
-          onRecount={vi.fn()}
-          onChanged={vi.fn()}
-          onStale={vi.fn()}
-        />
-      </ul>,
-    );
-    expect(await screen.findByText(/вероятно — «Северный ветер»/)).toBeInTheDocument();
+    renderRow({ line: lost, suggestion: SUGGESTION });
+    expect(screen.getByText(/вероятно — «Северный ветер»/)).toBeInTheDocument();
     expect(screen.getByText("уже 2 в потеряшках — эти 3 пропали сверху")).toBeInTheDocument();
-    expect(apiFetch).toHaveBeenCalledTimes(1);
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("TrailPanel — мастерская в окне", () => {
+  it("списанное и починенное — в вердикте вместо подсказки брони", () => {
+    const trail = makeTrail({
+      totalBookings: 1,
+      verifiedReturns: 0,
+      bookings: [makeTrailBooking()],
+      suggestedBookingId: null,
+      repairEvents: { writtenOffQty: 2, readyForPickupQty: 1 },
+    });
+    const v = trailVerdict(trail, 3);
+    expect(v.rest).toBe(
+      " За это время в мастерской списали 2 шт и починили 1 шт — починенное может лежать на верстаке; если списанное не вычтено из учёта, это «Ошибка учёта».",
+    );
+    expect(repairVerdict({ repairEvents: { writtenOffQty: 0, readyForPickupQty: 0 } })).toBeNull();
+  });
+
+  it("бронь, принятая после счёта, — «вернули после счёта», не кандидат", () => {
+    renderTrail(
+      makeTrail({
+        totalBookings: 1,
+        verifiedReturns: 0,
+        bookings: [makeTrailBooking({ returnMode: "OUT", status: "RETURNED", returnedBy: null })],
+      }),
+    );
+    expect(screen.getByText("вернули после счёта")).toBeInTheDocument();
+    expect(screen.getByText("на съёмке")).toBeInTheDocument();
   });
 });

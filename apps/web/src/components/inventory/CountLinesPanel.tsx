@@ -10,6 +10,11 @@
  * и сброса в пути: второй кладовщик считает параллельно. Ответ опроса,
  * ушедшего до своего изменения (сохранение, «Пересчитать») или до смены
  * категории, выбрасывается — иначе он вернул бы строки, прочитанные раньше.
+ *
+ * Правка посчитанной строки, у которой после счёта изменился учёт, сервер
+ * отклоняет (409 EXPECTATION_CHANGED): несохранённое значение сбрасывается
+ * (useCountSaver), а строки категории тихо перечитываются — на экране снова
+ * сохранённый счёт и его снапшот, с подсказкой «Пересчитать».
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,6 +57,18 @@ export function CountLinesPanel({ stockCountId, category, readOnly, focusLineId,
     setLines((prev) => prev.map((l) => (l.id === line.id ? line : l)));
   }, []);
 
+  /** Перечитать строки категории без скелетона — если за это время не было своей записи. */
+  const refetchQuietly = useCallback(() => {
+    linesGenRef.current += 1;
+    const gen = linesGenRef.current;
+    inventoryApi
+      .lines(stockCountId, { category: category.category })
+      .then(({ lines: data }) => {
+        if (linesGenRef.current === gen) setLines(data);
+      })
+      .catch(() => setReloadKey((k) => k + 1));
+  }, [stockCountId, category.category]);
+
   const saver = useCountSaver({
     stockCountId,
     onSaved: (line) => {
@@ -63,6 +80,7 @@ export function CountLinesPanel({ stockCountId, category, readOnly, focusLineId,
       const code = errorCode(e);
       if (code === "STOCK_COUNT_NOT_OPEN") onChanged();
       if (code === "LINE_NOT_COUNT_MODE" || code === "EQUIPMENT_DELETED") setReloadKey((k) => k + 1);
+      if (code === "EXPECTATION_CHANGED") refetchQuietly();
     },
   });
 

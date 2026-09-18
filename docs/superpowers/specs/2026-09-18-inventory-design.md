@@ -76,7 +76,7 @@ model StockCountLine {
   categorySnapshot String
   rateSnapshot     Decimal             // rentalRatePerShift на старте — для «₽/смена»
   position         Int                 // порядок: категория (порядок каталога), затем позиция
-  // Снапшот ожидания: фиксируется В МОМЕНТ СЧЁТА строки (null — не посчитано)
+  // Снапшот ожидания: при ПЕРВОМ счёте строки / «Пересчитать» / «Обновить ожидание» (null — не посчитано)
   totalAtCount     Int?
   issuedAtCount    Int?
   calendarAtCount  Int?
@@ -89,8 +89,10 @@ model StockCountLine {
   decision         StockCountDecision?
   decisionNote     String?
   decidedBy        String?
+  decidedById      String?             // AdminUser.id решившего (без FK) — для журнала
   decidedAt        DateTime?
   sourceBookingId  String?             // только для LOST: вероятная бронь
+  decisionBasis    String?             // JSON живой разбивки, подтверждённой «оставить как посчитано»
   @@unique([stockCountId, equipmentId])
   @@index([stockCountId, categorySnapshot])
 }
@@ -131,8 +133,16 @@ expected = max(0, total − issued − calendar − repair − lost)
 календарь, дашборд, чек-листы, добор, мастерскую — все они автоматически начнут видеть новые
 потеряшки.
 
-Ожидание **снапшотится при счёте строки**: выдачи и возвраты во время инвентаризации итог не
-сбивают. Для непосчитанных строк ожидание показывается живым (на момент запроса).
+Ожидание **снапшотится при первом счёте строки** (или после «Пересчитать»): выдачи и возвраты во
+время инвентаризации итог не сбивают. Для непосчитанных строк ожидание показывается живым (на
+момент запроса). У посчитанной строки идущей инвентаризации рядом со снапшотом отдаётся и живая
+разбивка (`live`, `booksChangedSinceCount`): снапшот остаётся по умолчанию, но то, что учёт
+изменился после счёта, видно, и «Пропало» / «Ошибка учёта» на такой строке — явный выбор (§4.3).
+
+Списание безъюнитного ремонта COUNT-позиции (`writeOffRepair`) уменьшает `totalQuantity` на его
+количество (аудит `STOCK_ADJUST`, «Списано в мастерской»): иначе списанное возвращалось бы и в
+доступность, и в «на полке должно быть». Починенное за 7 суток (`CLOSED`) в формулу не входит, но
+отдаётся строке пояснением (`readyForPickupQty`: «N починено за неделю — может лежать на верстаке»).
 
 ## 4. Жизненный цикл
 
@@ -140,20 +150,39 @@ expected = max(0, total − issued − calendar − repair − lost)
    инвентаризация на систему (409 `STOCK_COUNT_ALREADY_OPEN`). Строки создаются сразу для всех
    COUNT-позиций охвата, упорядоченные как каталог (`getMergedCategoryOrder` +
    `compareEquipmentTransportLast`). Пустой охват → 400 `EMPTY_SCOPE`. Аудит `STOCK_COUNT_START`.
-2. **Счёт** (киоск по PIN, десктоп SA + WH): `count {qty}` — целое 0…100000. Сохраняет снапшот
-   ожидания + `countedQty/By/At`. Любое изменение счёта **сбрасывает решение** строки.
-   «Пересчитать» (`reset`) обнуляет счёт, снапшот и решение. Счёт в закрытой/отменённой → 409
-   `STOCK_COUNT_NOT_OPEN`. Аудит на каждый счёт не пишется (высокочастотно, как галочки чек-листа).
+2. **Счёт** (киоск по PIN, десктоп SA + WH): `count {qty}` — целое 0…100000. Снапшот снимается
+   при первом счёте строки (или после «Пересчитать») вместе с `countedQty/By/At`; то же число ещё
+   раз ничего не меняет (ни снапшот, ни решение, ни `countedAt`). Правка посчитанной строки
+   сравнивается с тем же снапшотом, а если «должно быть» с тех пор изменилось — 409
+   `EXPECTATION_CHANGED` `{ snapshotExpected, liveExpected }`, нужно «Пересчитать». Любое изменение
+   счёта **сбрасывает решение** строки. «Пересчитать» (`reset`) обнуляет счёт, снапшот и решение.
+   «Обновить ожидание» (`refresh-expected`, только десктоп) снимает снапшот заново по живому учёту,
+   оставляя счёт и `countedAt` (полку посчитали тогда же); изменилось «должно быть» — решение
+   сбрасывается; непосчитанная строка → 409 `LINE_NOT_COUNTED`. Это верно, когда учёт лишь догнал
+   полку (возврат отметили после разгрузки), поэтому только явным действием. Счёт в
+   закрытой/отменённой → 409 `STOCK_COUNT_NOT_OPEN`. Аудит на каждый счёт не пишется
+   (высокочастотно, как галочки чек-листа).
 3. **Решения** (SA + WH) — только для посчитанных строк с `diff ≠ 0` (иначе 409
    `LINE_NOT_DISCREPANT`):
+   - Любое решение, кроме снятия, несёт то, что руководитель видел: `seenCountedQty` и
+     `seenExpectedQty` (снапшот). Не совпали со строкой (её пересчитали в киоске или другой
+     вкладке) — 409 `LINE_CHANGED` `{ countedQty, expectedQty, diff }`; решение не записывается.
+     Сравниваются счёт и ожидание, как в правиле сброса решения при счёте.
    - `LOST` — только недостача (`diff < 0`). Необязательные `note` и `sourceBookingId`
      (бронь должна существовать, 404 иначе).
    - `ADJUST` — любой знак. `note` обязательна, ≥ 3 символов после trim (400 `REASON_REQUIRED`).
+     Пишется аудит `STOCK_COUNT_DECISION` (`userId` — решивший, `entityType: "StockCount"`).
+   - `LOST` и `ADJUST` на строке, чей учёт изменился после счёта (живая разбивка ≠ снапшоту хоть
+     в одном слагаемом total/issued/calendar/repair/lost), — только с `acknowledgeBooksChanged:
+     true` («оставить как посчитано»), иначе 409 `LINE_BOOKS_CHANGED` `{ snapshot, live }`.
+     Подтверждённая живая разбивка сохраняется в `decisionBasis`.
    - `FOUND` — только излишек (`diff > 0`) и только если по позиции есть открытые (`EXPECTED` /
-     `SEARCHING`) безъюнитные потеряшки (400 `DECISION_NOT_APPLICABLE`).
+     `SEARCHING`) безъюнитные потеряшки, заведённые не позже счёта строки (`createdAt ≤
+     countedAt`); заведённые позже остаются открытыми (400 `DECISION_NOT_APPLICABLE`).
    - `decision: null` — снять решение.
    - Решение, чей знак больше не подходит расхождению, считается отсутствующим (фильтр
-     `undecided`, `totals.undecided`, план и 409 `UNDECIDED_LINES` согласованы).
+     `undecided`, `totals.undecided`, план и 409 `UNDECIDED_LINES` согласованы). Так же у идущей
+     инвентаризации — `FOUND`, которому больше нечего закрывать (потеряшки разобрали другим путём).
 
    **Позицию перевели на штучный учёт посреди инвентаризации** (SA может сделать это через
    `PATCH /api/equipment/:id`): счёт и новое решение по строке → 409 `LINE_NOT_COUNT_MODE`
@@ -162,19 +191,25 @@ expected = max(0, total − issued − calendar − repair − lost)
    эффектов не даёт (ни поправки, ни потеряшки, ни `lastCountedAt`): `totalQuantity` штучной
    позиции выводится из единиц. В `unitModeExcluded` она второй раз не считается.
 4. **Завершение** (SA + WH): 409 `UNDECIDED_LINES` `{ details: { count } }`, если есть посчитанные
-   строки с расхождением без решения. Непосчитанные не мешают. Всё — **в одной `$transaction`**:
-   - `diff = 0` → `Equipment.lastCountedAt = now`.
+   строки с расхождением без решения. Непосчитанные не мешают. 409 `LINE_BOOKS_CHANGED`
+   `{ details: { count, lineIds } }`, если у строки с `LOST` / `ADJUST` учёт изменился после счёта
+   и живая разбивка не равна подтверждённой (`decisionBasis`); ничего не применяется. Всё — **в
+   одной `$transaction`**:
+   - `diff = 0` → `Equipment.lastCountedAt = countedAt` строки.
    - `LOST` → `ProblemItem { equipmentId, quantity: −diff, reason: NOT_ON_SHELF, status: SEARCHING,
      source: STOCK_COUNT, stockCountId, sourceBookingId, comment: note ?? "Не нашли при
      инвентаризации № N", createdBy: username }`.
    - `ADJUST` → `totalQuantity = max(0, текущий totalQuantity + diff)` (дельта к ТЕКУЩЕМУ значению,
-     не к снапшоту); аудит `STOCK_ADJUST` (`entityType: "Equipment"`, before/after + причина + № ).
-   - `FOUND` → закрыть открытые безъюнитные потеряшки позиции от старых к новым на `diff` штук:
+     не к снапшоту); аудит `STOCK_ADJUST` (`entityType: "Equipment"`, before/after + причина + № +
+     кто решил: `decidedBy` / `decidedById` / `decidedAt` в `after`; `userId` — завершивший).
+   - `FOUND` → закрыть открытые безъюнитные потеряшки позиции, заведённые не позже счёта строки,
+     от старых к новым на `min(diff, lostAtCount)` штук:
      строка целиком помещается → `status FOUND`, `resolvedAt/By`, `resolutionNote "Найдено при
      инвентаризации № N"`; не помещается → у открытой уменьшить `quantity`, создать копию
      `status FOUND` на найденное количество. Если `diff` больше открытых потеряшек — закрываем все,
      остаток «лишнее без объяснения» попадает в акт, учёт не меняется.
-   - Все посчитанные строки со ссылкой на позицию → `lastCountedAt = now`.
+   - Все посчитанные строки со ссылкой на позицию → `lastCountedAt = countedAt` строки (когда полку
+     посчитали, а не когда нажали «Завершить»).
    - `status CLOSED`, `closedAt/By`. Аудит `STOCK_COUNT_CLOSE` со сводкой.
    - Строки, чья позиция удалена из каталога (`equipmentId = null`), эффектов не дают; посчитанные
      строки позиций, ушедших на штучный учёт, — тоже (счётчик `unitModeSkipped`).
@@ -186,12 +221,18 @@ expected = max(0, total − issued − calendar − repair − lost)
 
 ## 5. «Как пропало»
 
-`getEquipmentTrail(equipmentId, { since? })`:
-- окно: `since ?? equipment.lastCountedAt ?? now − 60 дней`; `windowIsDefault = true`, если
-  прошлой сверки не было;
+`getEquipmentTrail(equipmentId, { since?, at? })`:
+- момент `at`: для посчитанной строки инвентаризации — её `countedAt` (тогда «ещё у клиента»
+  совпадает со снапшотом), иначе сейчас (у идущей) или момент закрытия/отмены;
+- окно: `since ?? equipment.lastCountedAt ?? at − 60 дней`; для строки инвентаризации `since` —
+  `countedAt` строки этой позиции в прошлой ЗАВЕРШЁННОЙ инвентаризации; `windowIsDefault = true`,
+  если прошлой сверки не было;
 - брони с этой позицией: `BookingItem.equipmentId = X`, `deletedAt = null`, статус
-  `ISSUED | RETURNED | CONFIRMED` (CONFIRMED — только если `startDate ≤ now`), `endDate ≥ окно`,
-  `startDate ≤ now`; по `startDate desc`, не больше 50;
+  `ISSUED | RETURNED | CONFIRMED`, `startDate ≤ at`, и одно из: `endDate ≥ окно`, ISSUED
+  независимо от дат, или фактически принятые в окне (ScanSession RETURN `completedAt` / аудит
+  `BOOKING_RETURNED` ≥ окно — просроченная бронь, которую вернули после прошлой сверки). RETURNED
+  без единого следа возврата (путь бот-ключа, легаси-импорт) и `endDate < окно` датировать нечем —
+  они в след не попадают; по `startDate desc`, не больше 50;
 - как принимали (`returnMode`):
   - `KIOSK` — есть завершённая `ScanSession` RETURN; `returnedBy = workerName`; замечания —
     потеряшки/ремонты по этой позиции этой брони;
@@ -199,15 +240,25 @@ expected = max(0, total − issued − calendar − repair − lost)
   - `MANUAL` — любой другой аудит `BOOKING_RETURNED` или его отсутствие у RETURNED, или CONFIRMED,
     чей срок уже прошёл (ни выдача, ни возврат не отмечены; по формуле §3 уже на полке),
     `returnedBy = null`, статус в строке остаётся CONFIRMED;
-  - `OUT` — бронь ещё у клиента: ISSUED или CONFIRMED с `startDate ≤ at ≤ endDate` (ровно те, что
-    формула §3 вычитает из полки);
+  - `OUT` — бронь была у клиента на `at`: ISSUED, CONFIRMED с `startDate ≤ at ≤ endDate` (ровно те,
+    что формула §3 вычитает из полки) или RETURNED, чей фактический возврат (max сессии киоска /
+    аудита) позже `at` (UI: «вернули после счёта»);
 - `verifiedReturns` — число `KIOSK`; кандидаты — брони в окне, принятые НЕ через киоск и не `OUT`;
-  `suggestedBookingId` — если кандидат ровно один;
+  `suggestedBookingId` — если кандидат ровно один и в окне нет событий мастерской;
+- `repairEvents` — безъюнитные ремонты позиции: `writtenOffQty` (WROTE_OFF, `closedAt` в окне до
+  `at`) и `readyForPickupQty` (CLOSED за 7 суток до `at`). Любое из них объясняет недостачу не хуже
+  брони — подсказки нет, вердикт говорит про мастерскую;
 - `openProblems` — открытые потеряшки позиции;
 - `onShelf` — разбивка формулы §3 на сейчас.
 
 Приёмка в киоске подтверждает только свою бронь, а не склад, поэтому окно сужает только
 инвентаризация.
+
+«Итог» не строит полный след на каждую недостачу: подсказки всех недостач идущей инвентаризации
+отдаёт `GET /:id/trail-suggestions` одним набором запросов — тем же загрузчиком и той же
+классификацией, что полный след (подсказка видна, только если она среди первых 50 броней).
+Полный след строка грузит по «Как пропало ▾». Выборка аудита возвратов сортируется сначала по
+`entityId` — иначе SQLite берёт индекс `(entityType, createdAt)` и проходит всю историю аудита.
 
 ## 6. API
 
@@ -218,13 +269,16 @@ expected = max(0, total − issued − calendar − repair − lost)
 |---|---|---|
 | GET `/api/stock-counts` | — | `{ items: StockCountSummary[] }` новые сверху |
 | GET `/api/stock-counts/active` | — | `{ stockCount: StockCountDetail \| null }` |
+| GET `/api/stock-counts/scope` | — | `StockCountScope` (категории, `counts` — позиций количеством, `unitCounts` — штучных) |
 | POST `/api/stock-counts` | `{ categories?: string[] }` | 201 `{ stockCount: StockCountDetail }` |
 | GET `/api/stock-counts/:id` | — | `{ stockCount: StockCountDetail }` |
 | GET `/api/stock-counts/:id/lines` | `category?`, `filter? = all\|uncounted\|discrepancy\|undecided` | `{ lines: StockCountLineView[] }` |
 | POST `/api/stock-counts/:id/lines/:lineId/count` | `{ qty }` | `{ line }` |
 | POST `/api/stock-counts/:id/lines/:lineId/reset` | — | `{ line }` |
-| POST `/api/stock-counts/:id/lines/:lineId/decision` | `{ decision: LOST\|ADJUST\|FOUND\|null, note?, sourceBookingId? }` | `{ line }` |
+| POST `/api/stock-counts/:id/lines/:lineId/refresh-expected` | — | `{ line }` («Обновить ожидание») |
+| POST `/api/stock-counts/:id/lines/:lineId/decision` | `{ decision: LOST\|ADJUST\|FOUND\|null, note?, sourceBookingId?, seenCountedQty, seenExpectedQty, acknowledgeBooksChanged? }` (seen — обязательны, кроме `decision: null`) | `{ line }` |
 | GET `/api/stock-counts/:id/lines/:lineId/trail` | — | `{ trail: EquipmentTrail }` |
+| GET `/api/stock-counts/:id/trail-suggestions` | — | `{ suggestions: Record<lineId, TrailSuggestion \| null> }` (только у идущей) |
 | POST `/api/stock-counts/:id/complete` | — | `{ stockCount, result: CompleteResult }` |
 | POST `/api/stock-counts/:id/cancel` | — | `{ stockCount }` |
 | GET `/api/stock-counts/:id/act.pdf` | — | PDF A4 альбомный (черновик, пока OPEN) |
@@ -252,6 +306,11 @@ UNIT-позиция — обязателен `equipmentUnitId` этой пози
 
 Имена в выдачах потеряшек: `equipmentUnit.equipment ?? bookingItem.equipment ?? equipment`.
 Новые потеряшки с приёмки (UNIT и COUNT) тоже пишут `equipmentId`.
+
+Сторож двойного счёта: пока позиция посчитана в идущей инвентаризации, ручная потеряшка и ЛЮБОЙ
+разбор (`FOUND` и `NOT_FOUND`) безъюнитной карточки позиции → 409 `STOCK_COUNT_LINE_COUNTED`
+`{ stockCountId, stockCountNumber }`. «Не найдено» доступность не меняет, но выводит карточку из
+того, что может закрыть «Нашлось» строки. Отмена или завершение инвентаризации сторож снимают.
 
 ### Типы ответов
 
@@ -291,8 +350,13 @@ interface StockCountLineView {
   diff: number | null;                    // counted − expected
   decision: Decision | null; decisionNote: string | null; decidedBy: string | null; decidedAt: string | null;
   sourceBookingId: string | null; sourceBooking: { id: string; projectName: string; clientName: string } | null;
-  openProblemQty: number;                 // для доступности «Нашлось»
+  openProblemQty: number;                 // для «Нашлось»: открытые, заведённые не позже счёта
   allowedDecisions: Decision[];           // вычисляется сервером
+  isUnitMode: boolean;                    // позиция на штучном учёте — решения не ждёт
+  live: Breakdown | null;                 // живая разбивка посчитанной строки идущей, иначе null
+  booksChangedSinceCount: boolean;        // live ≠ снапшоту хоть в одном слагаемом
+  booksAcknowledged: boolean;             // LOST/ADJUST подтверждено против этого live
+  readyForPickupQty: number;              // починено за 7 суток — пояснение, не слагаемое
 }
 interface TrailBooking {
   bookingId: string; projectName: string; clientName: string;
@@ -308,7 +372,10 @@ interface EquipmentTrail {
   suggestedBookingId: string | null;
   openProblems: { id: string; quantity: number; reason: string; status: string; createdAt: string; projectName: string | null }[];
   onShelf: Breakdown;
+  repairEvents: { writtenOffQty: number; readyForPickupQty: number };
 }
+type TrailSuggestion = Pick<TrailBooking, "bookingId" | "projectName" | "clientName" | "quantity" | "startDate" | "endDate">;
+interface StockCountScope { categories: string[]; counts: Record<string, number>; unitCounts: Record<string, number> }
 interface CompleteResult {
   matched: number; lostPositions: number; lostQty: number; createdProblemItemIds: string[];
   adjustedPositions: number; foundPositions: number; foundQty: number; unexplainedSurplusQty: number;
@@ -324,7 +391,9 @@ interface CompleteResult {
 - Подменю склада `WarehouseSubnav`: «Потеряшки» · «Инвентаризация» · «История инвентаризаций»
   (на `/warehouse/problems`, `/warehouse/inventory`, `/warehouse/inventory/history`).
 - `/warehouse/inventory`: если есть открытая — переход в неё; иначе пустое состояние с
-  объяснением и «Начать инвентаризацию» (охват: весь склад по умолчанию, по желанию — категории).
+  объяснением и «Начать инвентаризацию» (охват: весь склад по умолчанию, по желанию — категории;
+  счётчики — только позиции количеством, категорию только со штучным учётом выбрать нельзя:
+  «только штучный учёт — сверяется в карточке единиц»).
 - `/warehouse/inventory/[id]`: шапка (№, статус, кто, акт PDF/XLSX, «Отменить»); переключатель
   «Счёт / Итог».
   - **Счёт** — слева рейл категорий с прогрессом, кто считает, счётчик расхождений; справа строки
@@ -334,7 +403,11 @@ interface CompleteResult {
   - **Итог** — баннер «первая инвентаризация» (если `isFirst`), 5 плиток (посчитано, сошлось,
     недостача, излишек, под вопросом ₽/смена), список недостач и излишков с фильтром
     «без решения / все», решения сегментом, «Как пропало ▾» с таблицей броней, вердиктом,
-    советом и выбором брони для LOST; ADJUST спрашивает причину. Справа — «Завершить»:
+    советом и выбором брони для LOST; ADJUST спрашивает причину и обещает поправку от текущего
+    количества («поправится с X до Y»), а излишек при броне на съёмке предупреждает «может быть
+    бронью, не отмеченной возвращённой». Учёт изменился после счёта — янтарная строка «учёт
+    изменился после счёта: на съёмках 4 → 0 (ожидание 6 → 10)» и два выхода: «Обновить ожидание»
+    и «Оставить как посчитано». Справа — «Завершить»:
     прогресс решений, что произойдёт (потеряшки / поправки / нашлось / сверено), деньги,
     кнопка заблокирована с текстом «осталось решить N».
 - `/warehouse/inventory/history` — список завершённых/отменённых со сводкой и ссылками на акт.
@@ -350,7 +423,9 @@ interface CompleteResult {
 ### Акт — мокап «Акт инвентаризации»
 PDF A4 **альбомный** (pdfkit, **нулевые поля + ручная пагинация**, DejaVu для кириллицы): шапка с
 организацией, № и датой (или «ЧЕРНОВИК» пока OPEN), охват, кто считал, время; сводка; раздел 1 —
-расхождения с решениями; раздел 2 — сверено без расхождений; раздел 3 — не посчитано; подписи
+расхождения с решениями (колонка ожидания — «Должно быть» / «На полке должно быть»: «по учёту» в
+акте — это `totalQuantity`, им говорит «ошибка учёта: 25 → 23»); раздел 2 — сверено без
+расхождений; раздел 3 — не посчитано; подписи
 «Пересчитали: …» и «Руководитель». XLSX: лист «Расхождения», лист «Все позиции». Имя файла —
 через `buildAttachmentContentDisposition` (кириллица).
 
@@ -374,7 +449,11 @@ PDF A4 **альбомный** (pdfkit, **нулевые поля + ручная 
 
 ## 9. Тесты
 
-API (изолированная SQLite на файл, как `problemItems.routes.test.ts`): старт/одна открытая/охват/
+API (изолированная SQLite на файл, как `problemItems.routes.test.ts`; целостность решений —
+`stockCountIntegrity.test.ts`): учёт изменился после счёта (EXPECTATION_CHANGED, LINE_BOOKS_CHANGED,
+«Обновить ожидание»), seen-значения (LINE_CHANGED), отсечка «Нашлось» по счёту, «Нашлось» без
+потеряшек ждёт решения, кто решил «Ошибку учёта», паритет подсказок следа с полным следом, охват
+только COUNT; старт/одна открытая/охват/
 UNIT исключены; формула (issued, calendar, repair, lost — включая новую ручную потеряшку);
 снапшот при счёте; сброс решения при пересчёте; валидации решений; завершение — все эффекты,
 частичное закрытие FOUND, дельта ADJUST к текущему значению, непосчитанные не трогаются,

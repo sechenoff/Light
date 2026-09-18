@@ -710,6 +710,7 @@ describe("сторож двойного счёта с идущей инвент�
   let foundTargetId: string;
   let notFoundTargetId: string;
   let freeFoundTargetId: string;
+  let freeNotFoundTargetId: string;
 
   const openProblem = async (equipmentId: string, comment: string) =>
     (
@@ -730,6 +731,7 @@ describe("сторож двойного счёта с идущей инвент�
     foundTargetId = await openProblem(eq.guardCounted, "для «Найдено» по посчитанной");
     notFoundTargetId = await openProblem(eq.guardCounted, "для «Не найдено» по посчитанной");
     freeFoundTargetId = await openProblem(eq.guardFree, "для «Найдено» по непосчитанной");
+    freeNotFoundTargetId = await openProblem(eq.guardFree, "для «Не найдено» по непосчитанной");
 
     const start = await request(app)
       .post("/api/stock-counts")
@@ -811,9 +813,24 @@ describe("сторож двойного счёта с идущей инвент�
     expect(row.status).toBe("SEARCHING");
   });
 
-  it("«Не найдено» по посчитанной позиции разрешено — доступность оно не меняет", async () => {
+  it("409 и на «Не найдено» посчитанной позиции: иначе «Нашлось» строки нечего будет закрыть", async () => {
     const res = await request(app)
       .post(`/api/problem-items/${notFoundTargetId}/resolve`)
+      .set(auth(whToken))
+      .send({ outcome: "NOT_FOUND", note: "клиент не отвечает" });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("STOCK_COUNT_LINE_COUNTED");
+    expect(res.body.message).toBe(
+      `Позиция уже посчитана в идущей инвентаризации № ${stockCountNumber} — разберите карточку после её завершения — если вещь на полке, это «Нашлось» там`,
+    );
+    expect(res.body.details).toEqual({ stockCountId, stockCountNumber });
+    const row = await prisma.problemItem.findUnique({ where: { id: notFoundTargetId } });
+    expect(row.status).toBe("SEARCHING");
+  });
+
+  it("«Не найдено» по непосчитанной позиции разрешено", async () => {
+    const res = await request(app)
+      .post(`/api/problem-items/${freeNotFoundTargetId}/resolve`)
       .set(auth(whToken))
       .send({ outcome: "NOT_FOUND", note: "клиент не отвечает" });
     expect(res.status).toBe(200);
@@ -849,6 +866,12 @@ describe("сторож двойного счёта с идущей инвент�
       .set(auth(saToken))
       .send({ outcome: "FOUND", note: "нашёлся за стеллажом" });
     expect(resolved.status).toBe(200);
+    const notFound = await request(app)
+      .post(`/api/problem-items/${notFoundTargetId}/resolve`)
+      .set(auth(saToken))
+      .send({ outcome: "NOT_FOUND", note: "клиент не отвечает" });
+    expect(notFound.status).toBe(200);
+    expect(notFound.body.item.status).toBe("NOT_FOUND");
   });
 });
 

@@ -30,6 +30,11 @@ function line(over: Partial<StockCountLineView> = {}): StockCountLineView {
     sourceBooking: null,
     openProblemQty: 0,
     allowedDecisions: [],
+    isUnitMode: false,
+    live: null,
+    booksChangedSinceCount: false,
+    booksAcknowledged: false,
+    readyForPickupQty: 0,
     ...over,
   };
 }
@@ -189,5 +194,12 @@ describe("StockCountLineCard — «Пересчитать»", () => {
     fireEvent.click(screen.getByRole("button", { name: "Пересчитать всё равно" }));
     expect(onReset).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/пересчёт снимет решение/)).not.toBeInTheDocument();
+  });
+});
+
+describe("StockCountLineCard — починенное за неделю", () => {
+  it("пояснением под названием: может лежать на верстаке", () => {
+    renderCard(line({ readyForPickupQty: 2 }));
+    expect(screen.getByText("2 починено за неделю — может лежать на верстаке")).toBeInTheDocument();
   });
 });

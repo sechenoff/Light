@@ -91,6 +91,11 @@ function line(over: Partial<StockCountLineView>): StockCountLineView {
     sourceBooking: null,
     openProblemQty: 0,
     allowedDecisions: [],
+    isUnitMode: false,
+    live: null,
+    booksChangedSinceCount: false,
+    booksAcknowledged: false,
+    readyForPickupQty: 0,
     ...over,
   };
 }
@@ -404,6 +409,32 @@ describe("StockCountScreen — очередь сохранения", () => {
 
     expect(await within(card).findByRole("alert")).toHaveTextContent(/Нет связи/);
     // Не «не посчитано» — последнее подтверждённое сервером число.
+    expect(within(card).getByText("−1 · решит руководитель после счёта")).toBeInTheDocument();
+    expect(within(card).getByLabelText("Посчитано — Гринболы")).toHaveValue("5");
+  });
+
+  it("учёт изменился после счёта (409 EXPECTATION_CHANGED) — подсказка «Пересчитать» и откат к сохранённому", async () => {
+    const d2 = deferred<StockCountLineView>();
+    api.countStockCountLine
+      .mockResolvedValueOnce(counted(BALLS, 5))
+      .mockReturnValueOnce(d2.promise);
+    await openGrip();
+    const minus = screen.getByRole("button", { name: "Меньше — Гринболы" });
+
+    fireEvent.click(minus);
+    await waitFor(() => expect(api.countStockCountLine).toHaveBeenCalledTimes(1), { timeout: 2000 });
+    const card = screen.getByRole("article", { name: "Гринболы" });
+    await waitFor(() => expect(within(card).queryByText("сохраняем…")).not.toBeInTheDocument());
+
+    fireEvent.click(minus);
+    await waitFor(() => expect(api.countStockCountLine).toHaveBeenCalledTimes(2), { timeout: 2000 });
+    await act(async () =>
+      d2.reject(scanError(409, "EXPECTATION_CHANGED", "Учёт позиции изменился после счёта")),
+    );
+
+    expect(await within(card).findByRole("alert")).toHaveTextContent(
+      "С момента счёта учёт позиции изменился — нажмите «Пересчитать» и посчитайте полку заново",
+    );
     expect(within(card).getByText("−1 · решит руководитель после счёта")).toBeInTheDocument();
     expect(within(card).getByLabelText("Посчитано — Гринболы")).toHaveValue("5");
   });

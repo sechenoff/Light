@@ -374,9 +374,22 @@ export async function closeRepair(
 
 // ─── writeOffRepair ──────────────────────────────────────────────────────────
 
+/**
+ * Списание в мастерской.
+ *
+ * Штучный ремонт: единица → RETIRED (из доступности она выпадает по статусу).
+ * Безъюнитный ремонт позиции с учётом количеством: `totalQuantity` уменьшается
+ * на количество ремонта в той же транзакции. Иначе списанные штуки вернулись бы
+ * и в доступность, и в «на полке должно быть» (активный ремонт их вычитал, а
+ * WROTE_OFF — уже нет), и первая же инвентаризация показала бы недостачу,
+ * которую «Как пропало» повесило бы на чужую бронь. Поправка пишется в журнал
+ * как STOCK_ADJUST — тем же словом, что поправка количества инвентаризацией.
+ */
 export async function writeOffRepair(id: string, userId: string) {
   return prisma.$transaction(async (tx: TxClient) => {
-    const repair = await tx.repair.findUniqueOrThrow({ where: { id } }).catch((e) => notFoundToHttpError(e));
+    const repair = await tx.repair
+      .findUniqueOrThrow({ where: { id }, include: { bookingItem: { select: { equipmentId: true } } } })
+      .catch((e) => notFoundToHttpError(e));
 
     if (CLOSED_STATUSES.includes(repair.status as RepairStatus)) {
       throw new HttpError(400, "Ремонт уже закрыт", "REPAIR_ALREADY_CLOSED");
@@ -394,6 +407,8 @@ export async function writeOffRepair(id: string, userId: string) {
         where: { id: repair.unitId },
         data: { status: "RETIRED" },
       });
+    } else {
+      await writeOffCountQuantity(tx, repair, userId);
     }
 
     await writeAuditEntry({
@@ -407,6 +422,37 @@ export async function writeOffRepair(id: string, userId: string) {
     });
 
     return updated;
+  });
+}
+
+/** Безъюнитное списание: totalQuantity позиции − количество ремонта (не ниже нуля) + журнал. */
+async function writeOffCountQuantity(
+  tx: TxClient,
+  repair: { id: string; quantity: number; equipmentId: string | null; bookingItem: { equipmentId: string | null } | null },
+  userId: string,
+): Promise<void> {
+  const equipmentId = repair.equipmentId ?? repair.bookingItem?.equipmentId ?? null;
+  if (!equipmentId) return;
+  const equipment = await tx.equipment.findUnique({
+    where: { id: equipmentId },
+    select: { totalQuantity: true, stockTrackingMode: true },
+  });
+  if (!equipment || equipment.stockTrackingMode !== "COUNT") return;
+  const next = Math.max(0, equipment.totalQuantity - repair.quantity);
+  await tx.equipment.update({ where: { id: equipmentId }, data: { totalQuantity: next } });
+  await writeAuditEntry({
+    tx,
+    userId,
+    action: "STOCK_ADJUST",
+    entityType: "Equipment",
+    entityId: equipmentId,
+    before: { totalQuantity: equipment.totalQuantity },
+    after: {
+      totalQuantity: next,
+      diff: next - equipment.totalQuantity,
+      reason: "Списано в мастерской",
+      repairId: repair.id,
+    },
   });
 }
 

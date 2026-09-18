@@ -24,6 +24,7 @@ export function completeSummary(number: number, r: CompleteResult): string {
   if (r.lostPositions > 0) parts.push(`в потеряшки — ${positions(r.lostPositions)} · ${r.lostQty} шт`);
   if (r.adjustedPositions > 0) parts.push(`поправлен учёт — ${positions(r.adjustedPositions)}`);
   if (r.foundQty > 0) parts.push(`нашлось — ${r.foundQty} шт`);
+  if (r.unexplainedSurplusQty > 0) parts.push(`лишнее без объяснения — ${r.unexplainedSurplusQty} шт`);
   parts.push(`сверено — ${positions(r.verifiedPositions)}`);
   if (r.uncounted > 0) parts.push(`не посчитано — ${r.uncounted}`);
   return `Инвентаризация № ${number} завершена: ${parts.join(", ")}`;
@@ -74,7 +75,7 @@ export function CompletePanel({
       setConfirmOpen(false);
       toast.error(explainInventoryError(e, "Не удалось завершить инвентаризацию"));
       const code = errorCode(e);
-      if (code === "UNDECIDED_LINES" || code === "STOCK_COUNT_NOT_OPEN") onStale();
+      if (code === "UNDECIDED_LINES" || code === "STOCK_COUNT_NOT_OPEN" || code === "LINE_BOOKS_CHANGED") onStale();
     } finally {
       setBusy(false);
     }

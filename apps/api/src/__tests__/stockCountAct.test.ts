@@ -40,6 +40,7 @@ const daysFromNow = (d: number) => new Date(Date.now() + d * DAY);
 let app: Express;
 let prisma: any;
 let saToken: string;
+let saId: string;
 let whToken: string;
 let techToken: string;
 
@@ -110,6 +111,7 @@ beforeAll(async () => {
   const { hashPassword, signSession } = await import("../services/auth");
   const hash = await hashPassword("stock-count-act-pass");
   const sa = await prisma.adminUser.create({ data: { username: "sca_super", passwordHash: hash, role: "SUPER_ADMIN" } });
+  saId = sa.id;
   const wh = await prisma.adminUser.create({ data: { username: "sca_warehouse", passwordHash: hash, role: "WAREHOUSE" } });
   const tech = await prisma.adminUser.create({ data: { username: "sca_tech", passwordHash: hash, role: "TECHNICIAN" } });
   saToken = signSession({ userId: sa.id, username: sa.username, role: "SUPER_ADMIN" });
@@ -178,8 +180,11 @@ function lineId(lines: any[], key: string): string {
   return line.id;
 }
 
+/** Решение от лица того, кто видит строку сейчас (seen-значения — из базы). */
 async function decide(id: string, lId: string, body: Record<string, unknown>) {
-  const res = await request(app).post(`/api/stock-counts/${id}/lines/${lId}/decision`).set(auth(saToken)).send(body);
+  const row = await prisma.stockCountLine.findUnique({ where: { id: lId } });
+  const payload = { seenCountedQty: row?.countedQty, seenExpectedQty: row?.expectedQty, ...body };
+  const res = await request(app).post(`/api/stock-counts/${id}/lines/${lId}/decision`).set(auth(saToken)).send(payload);
   expect(res.status, JSON.stringify(res.body)).toBe(200);
 }
 
@@ -504,9 +509,15 @@ describe("акт идущей инвентаризации — черновик"
     expect(disc.pageSetup.orientation).toBe("landscape");
     expect(disc.pageSetup.paperSize).toBe(9);
     let cable: ExcelJS.Row | undefined;
+    const cellTexts: string[] = [];
     disc.eachRow((row) => {
       if (row.getCell(2).value === "Кабель 25 м") cable = row;
+      row.eachCell((cell) => cellTexts.push(String(cell.value)));
     });
+    // Колонка ожидания — словами спеки: «по учёту» в акте — это totalQuantity
+    // (им говорит «ошибка учёта: 25 → 23»), а не «на полке должно быть».
+    expect(cellTexts).toContain("На полке должно быть");
+    expect(cellTexts).not.toContain("По учёту");
     expect(cable).toBeDefined();
     expect(cable!.getCell(4).value).toBe(10);
     expect(cable!.getCell(5).value).toBe(7);
@@ -542,9 +553,15 @@ describe("акт завершённой инвентаризации", () => {
   beforeAll(async () => {
     const lines = await linesOf(countId);
     await decide(countId, lineId(lines, "D"), { decision: "ADJUST", note: "две банки не внесли в каталог" });
-    // Пока шла инвентаризация, «Флоппи» докупили: 5 → 6. Поправка ляжет дельтой
-    // к текущему значению (6 − 2 = 4), и акт должен напечатать записанное.
+    // Пока шла инвентаризация, «Флоппи» докупили: 5 → 6. Руководитель видит это
+    // и оставляет поправку как посчитано — она ляжет дельтой к текущему значению
+    // (6 − 2 = 4), и акт должен напечатать записанное.
     await prisma.equipment.update({ where: { id: eq.B }, data: { totalQuantity: 6 } });
+    await decide(countId, lineId(lines, "B"), {
+      decision: "ADJUST",
+      note: "ошибка при импорте каталога",
+      acknowledgeBooksChanged: true,
+    });
     const res = await request(app).post(`/api/stock-counts/${countId}/complete`).set(auth(saToken));
     expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
@@ -633,8 +650,10 @@ describe("длинный акт — страницы без пустых лис�
           {
             decision: "ADJUST",
             note: "Длинная причина поправки: при импорте каталога количество завели по старой накладной, пересчёт на полке это подтвердил, коробки сверены вдвоём.",
+            seenCountedQty: 8,
+            seenExpectedQty: 10,
           },
-          "sca_super",
+          { userId: saId, username: "sca_super" },
         );
       }
     }

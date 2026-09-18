@@ -32,13 +32,12 @@ const FILLED: Record<Decision, string> = {
 /** Почему решение недоступно — человеческим языком. */
 export function unavailableReason(
   option: Decision,
-  line: Pick<StockCountLineView, "allowedDecisions" | "diff" | "equipmentId">,
+  line: Pick<StockCountLineView, "allowedDecisions" | "diff" | "equipmentId" | "isUnitMode">,
 ): string | null {
   if (line.allowedDecisions.includes(option)) return null;
+  if (line.isUnitMode) return "позиция на штучном учёте — её сверяют по единицам в карточке оборудования";
   if (line.allowedDecisions.length === 0) {
-    return line.equipmentId
-      ? "позиция на штучном учёте — её сверяют по единицам в карточке оборудования"
-      : "позицию удалили из каталога";
+    return line.equipmentId ? "решения недоступны" : "позицию удалили из каталога";
   }
   if (option === "FOUND") return "нет открытых потеряшек по позиции — закрывать нечего";
   if (option === "LOST") return "«Пропало» — только для недостачи";

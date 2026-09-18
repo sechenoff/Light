@@ -17,17 +17,19 @@ vi.mock("../../../lib/api", () => ({
 }));
 
 import { ReviewPanel } from "../ReviewPanel";
-import type { StockCountDetail, StockCountLineView, StockCountTotals } from "../types";
+import type { StockCountDetail, StockCountLineView, StockCountTotals, TrailSuggestion } from "../types";
 import { makeDetail, makeTotals, makeTrail, shortageLine } from "./fixtures";
 
 const DECIDED_AT = "2026-09-18T12:05:00.000Z";
 
 let listLines: StockCountLineView[] = [];
 let decisionReply: StockCountLineView | null = null;
+let suggestions: Record<string, TrailSuggestion | null> = {};
 
 function routeApi() {
   apiFetch.mockImplementation((path: string, init?: RequestInit) => {
     if (path.includes("/lines?filter=discrepancy")) return Promise.resolve({ lines: listLines });
+    if (path.endsWith("/trail-suggestions")) return Promise.resolve({ suggestions });
     if (path.endsWith("/trail")) return Promise.resolve({ trail: makeTrail() });
     if (path.endsWith("/decision") && init?.method === "POST") return Promise.resolve({ line: decisionReply });
     return Promise.reject(new Error(`unexpected ${path}`));
@@ -79,6 +81,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   listLines = [];
   decisionReply = null;
+  suggestions = {};
   routeApi();
 });
 
@@ -176,5 +179,64 @@ describe("ReviewPanel — список догоняет сервер", () => {
     expect(await screen.findByTestId("discrepancy-line-3")).toBeInTheDocument();
     await settle();
     expect(listCalls()).toHaveLength(2);
+  });
+});
+
+describe("ReviewPanel — подсказки «Как пропало» одним запросом", () => {
+  it("N недостач на «Итоге» — ни одного запроса следа, подсказки из общего запроса уже в строках", async () => {
+    listLines = [
+      shortageLine(),
+      shortageLine({ id: "line-3", name: "Кабель 32/220 (15м)", countedQty: 24, diff: -1 }),
+      shortageLine({ id: "line-4", name: "Удлинитель 5 м", countedQty: 10, diff: -2 }),
+    ];
+    suggestions = {
+      "line-1": {
+        bookingId: "b-1",
+        projectName: "Северный ветер",
+        clientName: "Студия «Норд»",
+        quantity: 25,
+        startDate: "2026-09-14T07:00:00.000Z",
+        endDate: "2026-09-16T07:00:00.000Z",
+      },
+      "line-3": null,
+      "line-4": null,
+    };
+    renderPanel(detailWith({ counted: 3, shortagePositions: 3, shortageQty: 6, undecided: 3 }));
+
+    expect(await screen.findByText(/вероятно — «Северный ветер» \(25 шт/)).toBeInTheDocument();
+    await settle();
+    expect(apiFetch.mock.calls.filter(([path]) => String(path).endsWith("/trail"))).toHaveLength(0);
+    expect(apiFetch.mock.calls.filter(([path]) => String(path).endsWith("/trail-suggestions"))).toHaveLength(1);
+  });
+});
+
+describe("ReviewPanel — отменённая инвентаризация", () => {
+  it("решения показываются как записаны: «решено 1 из 2», как в итогах сервера", async () => {
+    // У отменённой сервер не предлагает решений ни одной строке — пустой
+    // allowedDecisions не значит «штучная».
+    listLines = [
+      shortageLine({ decision: "LOST", decidedBy: "sechenoff", decidedAt: DECIDED_AT, allowedDecisions: [] }),
+      shortageLine({ id: "line-3", name: "Кабель 32/220 (15м)", countedQty: 24, diff: -2, allowedDecisions: [] }),
+    ];
+    renderPanel(
+      makeDetail({
+        status: "CANCELLED",
+        cancelledAt: DECIDED_AT,
+        isFirst: false,
+        totals: makeTotals({
+          lines: 4,
+          counted: 2,
+          matched: 0,
+          shortagePositions: 2,
+          shortageQty: 5,
+          surplusPositions: 0,
+          surplusQty: 0,
+          undecided: 1,
+        }),
+      }),
+    );
+    await screen.findByTestId("discrepancy-line-3");
+    expect(screen.getByText("решено 1 из 2")).toBeInTheDocument();
+    expect(apiFetch.mock.calls.filter(([path]) => String(path).endsWith("/trail-suggestions"))).toHaveLength(0);
   });
 });

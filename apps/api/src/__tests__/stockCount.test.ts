@@ -207,8 +207,20 @@ async function count(id: string, lineId: string, qty: number, token = whToken) {
   return request(app).post(`/api/stock-counts/${id}/lines/${lineId}/count`).set(auth(token)).send({ qty });
 }
 
+/**
+ * Решение — от лица того, кто видит строку сейчас: если тест не указал, какой
+ * счёт он «видел», берём текущий из базы (seen-значения обязательны, 409
+ * LINE_CHANGED проверяется отдельно).
+ */
 async function decide(id: string, lineId: string, body: Record<string, unknown>, token = saToken) {
-  return request(app).post(`/api/stock-counts/${id}/lines/${lineId}/decision`).set(auth(token)).send(body);
+  let payload = body;
+  if (body.decision != null && !("seenCountedQty" in body)) {
+    const row = await prisma.stockCountLine.findUnique({ where: { id: lineId } });
+    if (row?.countedQty != null) {
+      payload = { seenCountedQty: row.countedQty, seenExpectedQty: row.expectedQty, ...body };
+    }
+  }
+  return request(app).post(`/api/stock-counts/${id}/lines/${lineId}/decision`).set(auth(token)).send(payload);
 }
 
 // ─── Права ────────────────────────────────────────────────────────────────────
@@ -401,11 +413,19 @@ describe("полная инвентаризация", () => {
     expect(missing.body.code).toBe("LINE_NOT_FOUND");
   });
 
-  it("решение без расхождения → 409 LINE_NOT_DISCREPANT (и на непосчитанной строке)", async () => {
+  it("решение без расхождения → 409 LINE_NOT_DISCREPANT; на непосчитанной — отказ", async () => {
     const lines = await linesOf(id);
-    const uncounted = await decide(id, lineFor(lines, "B").id, { decision: "LOST" });
+    // Без «что видел» решение не принимается вовсе.
+    const blind = await decide(id, lineFor(lines, "B").id, { decision: "LOST" });
+    expect(blind.status).toBe(400);
+    // Непосчитанную строку «видеть посчитанной» нельзя — её пересчитали.
+    const uncounted = await decide(id, lineFor(lines, "B").id, {
+      decision: "LOST",
+      seenCountedQty: 4,
+      seenExpectedQty: 5,
+    });
     expect(uncounted.status).toBe(409);
-    expect(uncounted.body.code).toBe("LINE_NOT_DISCREPANT");
+    expect(uncounted.body.code).toBe("LINE_CHANGED");
 
     const matched = await count(id, lineFor(lines, "B").id, 5);
     expect(matched.body.line.diff).toBe(0);
@@ -491,7 +511,7 @@ describe("полная инвентаризация", () => {
     });
   });
 
-  it("изменилось «должно быть» при том же счёте — решение сбрасывается, завершение блокируется", async () => {
+  it("учёт изменился после счёта: тот же счёт — ничего не меняет, правка — 409, «Пересчитать» — заново", async () => {
     const lines = await linesOf(id);
     const lineId = lineFor(lines, "G").id;
     const first = await count(id, lineId, 6); // ожидание 8 → −2
@@ -501,39 +521,52 @@ describe("полная инвентаризация", () => {
     const client = await prisma.client.findFirst({ where: { name: "Клиент Инвентаризации" } });
     const issued = await createBooking(client.id, "Удлинители выдали во время счёта", "ISSUED", 0, 2, [[eq.G, 3]]);
 
-    // Тот же счёт, но ожидание теперь 5 → +1: «Пропало» на излишке — неправда.
+    // Тот же счёт (повтор, досылка) — снапшот, решение и итог строки те же.
     const same = await count(id, lineId, 6);
-    expect(same.body.line.expected.expected).toBe(5);
-    expect(same.body.line.diff).toBe(1);
-    expect(same.body.line.decision).toBeNull();
-    expect(same.body.line.allowedDecisions).toEqual(["ADJUST"]);
-    const undecided = await linesOf(id, saToken, "?filter=undecided");
-    expect(undecided.map((l) => l.equipmentId)).toContain(eq.G);
-    const blocked = await request(app).post(`/api/stock-counts/${id}/complete`).set(auth(saToken));
-    expect(blocked.status).toBe(409);
-    expect(blocked.body.code).toBe("UNDECIDED_LINES");
+    expect(same.status).toBe(200);
+    expect(same.body.line.expected.expected).toBe(8);
+    expect(same.body.line.diff).toBe(-2);
+    expect(same.body.line.decision).toBe("LOST");
+    expect(same.body.line.booksChangedSinceCount).toBe(true);
+    expect(same.body.line.live).toMatchObject({ issued: 3, expected: 5 });
+
+    // Правка против старого снапшота показала бы расхождение, которого нет.
+    const before = await prisma.stockCountLine.findUnique({ where: { id: lineId } });
+    const edit = await count(id, lineId, 7);
+    expect(edit.status).toBe(409);
+    expect(edit.body.code).toBe("EXPECTATION_CHANGED");
+    const after = await prisma.stockCountLine.findUnique({ where: { id: lineId } });
+    expect(after).toEqual(before);
+
+    // «Пересчитать» и посчитать заново — снапшот по новому учёту.
+    const reset = await request(app).post(`/api/stock-counts/${id}/lines/${lineId}/reset`).set(auth(whToken));
+    expect(reset.status).toBe(200);
+    const recount = await count(id, lineId, 3);
+    expect(recount.body.line.expected.expected).toBe(5);
+    expect(recount.body.line.diff).toBe(-2);
+    expect(recount.body.line.booksChangedSinceCount).toBe(false);
 
     // Страховка на случай, если сброс когда-нибудь потеряется: решение, чей знак
     // не подходит расхождению, считается «без решения» везде — в фильтре, итогах,
     // плане и на завершении, — а не выпадает молча на применении.
     await prisma.stockCountLine.update({
       where: { id: lineId },
-      data: { decision: "LOST", decidedBy: "sc_super", decidedAt: new Date() },
+      data: { decision: "FOUND", decidedBy: "sc_super", decidedAt: new Date() },
     });
     const stale = await linesOf(id, saToken, "?filter=undecided");
     expect(stale.map((l) => l.equipmentId)).toEqual([eq.G]);
     const detail = await request(app).get(`/api/stock-counts/${id}`).set(auth(saToken));
     expect(detail.body.stockCount.totals.undecided).toBe(1);
-    // В плане — только «Пропало» у «Флага» (−3), лишняя «пропажа» излишка не учтена.
-    expect(detail.body.stockCount.decisionsPlan).toMatchObject({ lostPositions: 1, lostQty: 3 });
+    // В плане — только «Пропало» у «Флага» (−3), неподходящее «Нашлось» не учтено.
+    expect(detail.body.stockCount.decisionsPlan).toMatchObject({ lostPositions: 1, lostQty: 3, foundPositions: 0 });
     const blockedStale = await request(app).post(`/api/stock-counts/${id}/complete`).set(auth(saToken));
     expect(blockedStale.status).toBe(409);
     expect(blockedStale.body.code).toBe("UNDECIDED_LINES");
     expect(blockedStale.body.details).toEqual({ count: 1 });
 
     // Вернуть историю в исходное состояние для следующих шагов.
-    const reset = await request(app).post(`/api/stock-counts/${id}/lines/${lineId}/reset`).set(auth(whToken));
-    expect(reset.status).toBe(200);
+    const back = await request(app).post(`/api/stock-counts/${id}/lines/${lineId}/reset`).set(auth(whToken));
+    expect(back.status).toBe(200);
     await prisma.booking.update({ where: { id: issued.id }, data: { deletedAt: new Date() } });
   });
 
@@ -623,12 +656,48 @@ describe("полная инвентаризация", () => {
     expect(JSON.stringify(res.body)).not.toMatch(/barcode/i);
   });
 
-  it("завершение: все эффекты одной транзакцией", async () => {
+  it("учёт позиций изменился после решения — завершение ждёт «оставить как посчитано»", async () => {
     // За время инвентаризации «Прищепку» докупили (20 → 25), а «Грузик» частично
-    // списали (2 → 1): поправка прикладывается к ТЕКУЩЕМУ значению.
+    // списали (2 → 1). Поправки уже решены по снапшоту — молча применять их
+    // поверх нового количества нельзя.
     await prisma.equipment.update({ where: { id: eq.D }, data: { totalQuantity: 25 } });
     await prisma.equipment.update({ where: { id: eq.Z }, data: { totalQuantity: 1 } });
 
+    let lines = await linesOf(id);
+    const pins = lineFor(lines, "D");
+    const weight = lineFor(lines, "Z");
+    expect(pins).toMatchObject({ booksChangedSinceCount: true, booksAcknowledged: false });
+    expect(pins.expected.total).toBe(20);
+    expect(pins.live.total).toBe(25);
+
+    const blocked = await request(app).post(`/api/stock-counts/${id}/complete`).set(auth(whToken));
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.code).toBe("LINE_BOOKS_CHANGED");
+    expect(blocked.body.details.count).toBe(2);
+    expect(blocked.body.details.lineIds.sort()).toEqual([pins.id, weight.id].sort());
+    expect((await prisma.equipment.findUnique({ where: { id: eq.D } })).totalQuantity).toBe(25);
+
+    // Новое решение без подтверждения — тоже 409, с тем, что изменилось.
+    const unacked = await decide(id, pins.id, { decision: "ADJUST", note: "Пересорт при закупке" }, whToken);
+    expect(unacked.status).toBe(409);
+    expect(unacked.body.code).toBe("LINE_BOOKS_CHANGED");
+    expect(unacked.body.details.snapshot.total).toBe(20);
+    expect(unacked.body.details.live.total).toBe(25);
+
+    // «Оставить как посчитано»: поправка ляжет дельтой на ТЕКУЩЕЕ значение.
+    for (const [lineId, note] of [
+      [pins.id, "Пересорт при закупке"],
+      [weight.id, "Списаны давно"],
+    ] as const) {
+      const ack = await decide(id, lineId, { decision: "ADJUST", note, acknowledgeBooksChanged: true }, whToken);
+      expect(ack.status).toBe(200);
+      expect(ack.body.line).toMatchObject({ booksChangedSinceCount: true, booksAcknowledged: true });
+    }
+    lines = await linesOf(id);
+    expect(lineFor(lines, "D").booksAcknowledged).toBe(true);
+  });
+
+  it("завершение: все эффекты одной транзакцией", async () => {
     const res = await request(app).post(`/api/stock-counts/${id}/complete`).set(auth(whToken));
     expect(res.status).toBe(200);
     expect(res.body.stockCount.status).toBe("CLOSED");
@@ -672,7 +741,13 @@ describe("полная инвентаризация", () => {
     const dAudit = adjustAudit.find((a: any) => a.entityId === eq.D);
     expect(dAudit.entityType).toBe("Equipment");
     expect(JSON.parse(dAudit.before)).toEqual({ totalQuantity: 25 });
-    expect(JSON.parse(dAudit.after)).toMatchObject({ totalQuantity: 22, diff: -3, reason: "Пересорт при закупке", stockCountNumber: 2 });
+    expect(JSON.parse(dAudit.after)).toMatchObject({
+      totalQuantity: 22,
+      diff: -3,
+      reason: "Пересорт при закупке",
+      stockCountNumber: 2,
+      decidedBy: "sc_warehouse",
+    });
 
     // FOUND → старые потеряшки закрываются первыми, последняя делится.
     const frameRows = await prisma.problemItem.findMany({
@@ -697,11 +772,17 @@ describe("полная инвентаризация", () => {
     const bagRows = await prisma.problemItem.findMany({ where: { equipmentId: eq.F } });
     expect(bagRows.every((r: any) => r.status === "FOUND")).toBe(true);
 
-    // Посчитанные позиции сверены, непосчитанные не тронуты.
+    // Посчитанные позиции сверены — в момент, когда их посчитали, а не когда
+    // нажали «Завершить»; непосчитанные не тронуты.
     const verified = await prisma.equipment.findMany({
       where: { id: { in: [eq.A, eq.B, eq.C, eq.D, eq.Z, eq.E, eq.F, eq.H] } },
     });
-    expect(verified.every((e: any) => e.lastCountedAt instanceof Date)).toBe(true);
+    const countedLines = await prisma.stockCountLine.findMany({ where: { stockCountId: id, countedQty: { not: null } } });
+    const countedAtOf = new Map(countedLines.map((l: any) => [l.equipmentId, l.countedAt.getTime()]));
+    for (const e of verified) {
+      expect(e.lastCountedAt, e.name).toBeInstanceOf(Date);
+      expect(e.lastCountedAt.getTime(), e.name).toBe(countedAtOf.get(e.id));
+    }
     const untouched = await prisma.equipment.findMany({ where: { id: { in: [eq.G, eq.T] } } });
     expect(untouched.every((e: any) => e.lastCountedAt === null)).toBe(true);
     expect(untouched.find((e: any) => e.id === eq.G).totalQuantity).toBe(8);
@@ -711,17 +792,15 @@ describe("полная инвентаризация", () => {
     expect(JSON.parse(closeAudit.after)).toMatchObject({ status: "CLOSED", number: 2, lostQty: 3 });
   });
 
-  it("«Как пропало» у завершённой: окно от момента закрытия, а не от только что проставленной сверки", async () => {
+  it("«Как пропало» у завершённой: на момент счёта строки, а не от только что проставленной сверки", async () => {
     // После закрытия lastCountedAt «Флага» указывает на эту же инвентаризацию —
-    // окно от него было бы пустым. Прошлой сверки не было → 60 дней до закрытия.
+    // окно от него было бы пустым. Прошлой сверки не было → 60 дней до счёта строки.
     const lines = await linesOf(id);
-    const res = await request(app)
-      .get(`/api/stock-counts/${id}/lines/${lineFor(lines, "C").id}/trail`)
-      .set(auth(saToken));
+    const flag = lineFor(lines, "C");
+    const res = await request(app).get(`/api/stock-counts/${id}/lines/${flag.id}/trail`).set(auth(saToken));
     expect(res.status).toBe(200);
-    const sc = await prisma.stockCount.findUnique({ where: { id } });
     expect(res.body.trail.windowIsDefault).toBe(true);
-    expect(res.body.trail.windowFrom).toBe(new Date(sc.closedAt.getTime() - 60 * DAY).toISOString());
+    expect(res.body.trail.windowFrom).toBe(new Date(new Date(flag.countedAt).getTime() - 60 * DAY).toISOString());
     expect(res.body.trail.bookings.map((b: any) => b.bookingId)).toContain(returnedBookingId);
   });
 
@@ -772,12 +851,12 @@ describe("полная инвентаризация", () => {
     const cable = lineFor(lines, "A");
     expect(cable.expected.issued).toBe(4);
 
-    // Окно следа идущей № 3 — от закрытия № 2, где «Кабель» посчитали.
-    const sc2 = await prisma.stockCount.findUnique({ where: { id } });
+    // Окно следа идущей № 3 — от момента, когда «Кабель» посчитали в № 2.
+    const cable2 = await prisma.stockCountLine.findFirst({ where: { stockCountId: id, equipmentId: eq.A } });
     const trail = await request(app).get(`/api/stock-counts/${nextId}/lines/${cable.id}/trail`).set(auth(saToken));
     expect(trail.status).toBe(200);
     expect(trail.body.trail.windowIsDefault).toBe(false);
-    expect(trail.body.trail.windowFrom).toBe(sc2.closedAt.toISOString());
+    expect(trail.body.trail.windowFrom).toBe(cable2.countedAt.toISOString());
 
     // «Кабель» посчитан и в № 3 — но она будет отменена и окно не сдвинет.
     const counted = await count(nextId, cable.id, cable.expected.expected);
@@ -789,7 +868,7 @@ describe("полная инвентаризация", () => {
   });
 
   it("окно следа — от прошлой ЗАВЕРШЁННОЙ со счётом позиции: отменённая и сама текущая не в счёт", async () => {
-    const sc2 = await prisma.stockCount.findUnique({ where: { id } });
+    const cable2 = await prisma.stockCountLine.findFirst({ where: { stockCountId: id, equipmentId: eq.A } });
     const start = await request(app).post("/api/stock-counts").set(auth(whToken)).send({ categories: ["Свет"] });
     expect(start.status).toBe(201);
     const fourthId = start.body.stockCount.id;
@@ -805,12 +884,12 @@ describe("полная инвентаризация", () => {
     expect(done.status).toBe(200);
     expect(done.body.result).toMatchObject({ matched: 1, verifiedPositions: 1, uncounted: 3 });
 
-    // № 4 закрыта и «Кабель» в ней посчитан, но окно — от № 2: отменённая № 3
-    // (без closedAt) пропущена, а № 4 не выбирает сама себя.
+    // № 4 закрыта и «Кабель» в ней посчитан, но окно — от счёта в № 2:
+    // отменённая № 3 пропущена, а № 4 не выбирает сама себя.
     const trail = await request(app).get(`/api/stock-counts/${fourthId}/lines/${cable.id}/trail`).set(auth(saToken));
     expect(trail.status).toBe(200);
     expect(trail.body.trail.windowIsDefault).toBe(false);
-    expect(trail.body.trail.windowFrom).toBe(sc2.closedAt.toISOString());
+    expect(trail.body.trail.windowFrom).toBe(cable2.countedAt.toISOString());
   });
 });
 
@@ -968,5 +1047,101 @@ describe("гонки: двойной клик", () => {
     expect((await prisma.equipment.findUnique({ where: { id: eq.D } })).totalQuantity).toBe(dBefore - 2);
     expect(await prisma.auditEntry.count({ where: { action: "STOCK_COUNT_CLOSE", entityId: raceId } })).toBe(1);
     expect((await prisma.stockCount.findUnique({ where: { id: raceId } })).status).toBe("CLOSED");
+  });
+});
+
+// ─── Правка посчитанной строки ───────────────────────────────────────────────
+
+describe("правка посчитанной строки сравнивается с тем же снапшотом", () => {
+  let scId: string;
+  const lineOf = async (key: string) => lineFor(await linesOf(scId), key);
+
+  it("учёт догнал полку после счёта: правка → 409, строка как была; «Пересчитать» — сошлось", async () => {
+    await createEquipment("EXT", "Удлинитель 10 м", "Проверка правки", 10, { sortOrder: 1 });
+    await createEquipment("EDT", "Разветвитель", "Проверка правки", 8, { sortOrder: 2 });
+    await createEquipment("SEEN", "Тройник", "Проверка правки", 7, { sortOrder: 3 });
+    const client = await prisma.client.findFirst({ where: { name: "Клиент Инвентаризации" } });
+    const out = await createBooking(client.id, "Удлинители на площадке", "ISSUED", -2, -1, [[eq.EXT, 3]]);
+
+    const start = await request(app).post("/api/stock-counts").set(auth(saToken)).send({ categories: ["Проверка правки"] });
+    expect(start.status).toBe(201);
+    scId = start.body.stockCount.id;
+
+    // Ожидание 7 (3 на съёмке), на полке 6 → −1.
+    const ext = await lineOf("EXT");
+    const first = await count(scId, ext.id, 6);
+    expect(first.body.line).toMatchObject({ countedQty: 6, diff: -1 });
+    expect(first.body.line.expected.expected).toBe(7);
+
+    // Бронь вернули — 3 удлинителя снова на полке (живое ожидание 10).
+    await prisma.booking.update({ where: { id: out.id }, data: { status: "RETURNED" } });
+
+    // Кладовщик нашёл недостающий, руководитель жмёт «+»: 7 против нового учёта
+    // — это −3, против старого — «сошлось». Ни то, ни другое не правда.
+    const edit = await count(scId, ext.id, 7);
+    expect(edit.status).toBe(409);
+    expect(edit.body.code).toBe("EXPECTATION_CHANGED");
+    expect(edit.body.details).toEqual({ snapshotExpected: 7, liveExpected: 10 });
+    const row = await prisma.stockCountLine.findUnique({ where: { id: ext.id } });
+    expect(row).toMatchObject({ countedQty: 6, expectedQty: 7 });
+
+    const reset = await request(app).post(`/api/stock-counts/${scId}/lines/${ext.id}/reset`).set(auth(whToken));
+    expect(reset.status).toBe(200);
+    const recount = await count(scId, ext.id, 10);
+    expect(recount.body.line).toMatchObject({ countedQty: 10, diff: 0 });
+    expect(recount.body.line.expected.expected).toBe(10);
+  });
+
+  it("ожидание не менялось: правка сравнивается с прежним снапшотом и снимает решение", async () => {
+    const edt = await lineOf("EDT");
+    const first = await count(scId, edt.id, 6); // ожидание 8 → −2
+    expect(first.body.line.diff).toBe(-2);
+    const decided = await decide(scId, edt.id, { decision: "ADJUST", note: "пересорт" }, whToken);
+    expect(decided.status).toBe(200);
+
+    const edit = await count(scId, edt.id, 7);
+    expect(edit.status).toBe(200);
+    expect(edit.body.line).toMatchObject({ countedQty: 7, diff: -1, decision: null, decidedBy: null });
+    const row = await prisma.stockCountLine.findUnique({ where: { id: edt.id } });
+    expect(row).toMatchObject({ expectedQty: 8, totalAtCount: 8, decisionNote: null, decidedById: null });
+  });
+
+  it("решение привязано к тому, что видел руководитель: строку пересчитали → 409 LINE_CHANGED", async () => {
+    const seen = await lineOf("SEEN");
+    const counted = await count(scId, seen.id, 5); // ожидание 7 → −2
+    expect(counted.body.line.diff).toBe(-2);
+    // Тем временем кладовщик пересчитал: 8 → излишек +1.
+    const recount = await count(scId, seen.id, 8);
+    expect(recount.body.line.diff).toBe(1);
+
+    const stale = await decide(scId, seen.id, {
+      decision: "ADJUST",
+      note: "2 шт списаны в 2024, в учёте не сняли",
+      seenCountedQty: 5,
+      seenExpectedQty: 7,
+    });
+    expect(stale.status).toBe(409);
+    expect(stale.body.code).toBe("LINE_CHANGED");
+    expect(stale.body.details).toEqual({ countedQty: 8, expectedQty: 7, diff: 1 });
+    expect((await prisma.stockCountLine.findUnique({ where: { id: seen.id } })).decision).toBeNull();
+
+    // С тем, что на строке сейчас, — принимается; снять решение можно без seen-значений.
+    const fresh = await decide(scId, seen.id, {
+      decision: "ADJUST",
+      note: "не завели при покупке",
+      seenCountedQty: 8,
+      seenExpectedQty: 7,
+    });
+    expect(fresh.status).toBe(200);
+    expect(fresh.body.line.decision).toBe("ADJUST");
+    const cleared = await request(app)
+      .post(`/api/stock-counts/${scId}/lines/${seen.id}/decision`)
+      .set(auth(saToken))
+      .send({ decision: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.line.decision).toBeNull();
+
+    const cancel = await request(app).post(`/api/stock-counts/${scId}/cancel`).set(auth(saToken));
+    expect(cancel.status).toBe(200);
   });
 });

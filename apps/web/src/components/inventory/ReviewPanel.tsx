@@ -14,6 +14,11 @@
  * пересчитал её в киоске и сервер снял решение (спека §4.2), решение сняли
  * в другой вкладке. Своё решение перечитывания не вызывает: сервер
  * возвращает строку, и она заменяется на месте.
+ *
+ * Подсказки «Как пропало» для всех недостач приходят одним запросом вместе со
+ * строками (GET …/trail-suggestions): полный след строка грузит только по
+ * «Как пропало ▾». Иначе каждое возвращение на «Итог» слало бы по запросу
+ * следа на каждую недостачу — сотни на первой инвентаризации.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,7 +28,7 @@ import { ClosedPanel, CompletePanel } from "./CompletePanel";
 import { DiscrepancyRow } from "./DiscrepancyRow";
 import { fmtDayMonth, isLineUndecided } from "./format";
 import { SummaryTiles } from "./SummaryTiles";
-import type { CompleteResult, StockCountDetail, StockCountLineView } from "./types";
+import type { CompleteResult, StockCountDetail, StockCountLineView, TrailSuggestion } from "./types";
 import { CARD, FOCUS } from "./ui";
 
 type GroupFilter = "undecided" | "all";
@@ -39,6 +44,7 @@ export interface ReviewPanelProps {
 export function ReviewPanel({ detail, onChanged, onStale, onRecount, onCompleted }: ReviewPanelProps) {
   const readOnly = detail.status !== "OPEN";
   const [lines, setLines] = useState<StockCountLineView[] | null>(null);
+  const [suggestions, setSuggestions] = useState<Record<string, TrailSuggestion | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -54,6 +60,20 @@ export function ReviewPanel({ detail, onChanged, onStale, onRecount, onCompleted
       .catch((e: unknown) => {
         if (!cancelled) setError(explainInventoryError(e, "Не удалось загрузить расхождения"));
       });
+    // Подсказки — только у идущей; сбой молчит: строки остаются с разбивкой,
+    // а полный след по «Как пропало ▾» покажет свою ошибку.
+    if (detail.status === "OPEN") {
+      inventoryApi
+        .trailSuggestions(detail.id)
+        .then(({ suggestions: data }) => {
+          if (!cancelled) setSuggestions(data);
+        })
+        .catch(() => {
+          if (!cancelled) setSuggestions({});
+        });
+    } else {
+      setSuggestions({});
+    }
     return () => {
       cancelled = true;
     };
@@ -172,6 +192,7 @@ export function ReviewPanel({ detail, onChanged, onStale, onRecount, onCompleted
                   title="Недостача"
                   tone="rose"
                   lines={shortage}
+                  suggestions={suggestions}
                   readOnly={readOnly}
                   detail={detail}
                   onLineChange={replaceLine}
@@ -183,6 +204,7 @@ export function ReviewPanel({ detail, onChanged, onStale, onRecount, onCompleted
                   title="Излишек"
                   tone="emerald"
                   lines={surplus}
+                  suggestions={suggestions}
                   readOnly={readOnly}
                   detail={detail}
                   onLineChange={replaceLine}
@@ -228,6 +250,7 @@ function DiscrepancyGroup({
   title,
   tone,
   lines,
+  suggestions,
   readOnly,
   detail,
   onLineChange,
@@ -238,6 +261,7 @@ function DiscrepancyGroup({
   title: string;
   tone: "rose" | "emerald";
   lines: StockCountLineView[];
+  suggestions: Record<string, TrailSuggestion | null>;
   readOnly: boolean;
   detail: StockCountDetail;
   onLineChange: (line: StockCountLineView) => void;
@@ -300,6 +324,7 @@ function DiscrepancyGroup({
               stockCountId={detail.id}
               line={line}
               status={detail.status}
+              suggestion={suggestions[line.id] ?? null}
               onLineChange={handleLineChange}
               onRecount={onRecount}
               onChanged={onChanged}

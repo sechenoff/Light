@@ -8,17 +8,29 @@
  * Форма сбрасывается только при открытии и при переходе к другой строке.
  * Список расхождений перечитывается, пока диалог открыт (раз в 20 с и при
  * чужом счёте), и та же строка приходит новым объектом — набранная причина
- * от этого стираться не должна.
+ * от этого стираться не должна. Так же и после 409 LINE_CHANGED (строку
+ * пересчитали, пока диалог был открыт): диалог остаётся открытым с набранной
+ * причиной и уже новым расхождением — руководитель проверяет его и
+ * отправляет причину заново, не набирая её ещё раз.
+ *
+ * «Учёт поправится: X → Y» — от ТЕКУЩЕГО количества (живого, если учёт менялся
+ * после счёта): поправка ложится дельтой на него, как на сервере.
  */
 
 import { useRef, useState } from "react";
 
 import { InventoryDialog } from "./InventoryDialog";
-import { signed } from "./format";
+import { adjustPreview, signed } from "./format";
 import type { StockCountLineView } from "./types";
 import { BTN_GHOST, BTN_PRIMARY } from "./ui";
 
 export const ADJUST_REASON_MIN = 3;
+
+/** Излишек, который может быть бронью, не отмеченной возвращённой. */
+export function surplusMayBeUnreturned(line: StockCountLineView): boolean {
+  const diff = line.diff ?? 0;
+  return diff > 0 && line.expected.issued + line.expected.calendar >= diff;
+}
 
 export function AdjustReasonDialog({
   line,
@@ -53,8 +65,8 @@ export function AdjustReasonDialog({
   const trimmed = note.trim();
   const valid = trimmed.length >= ADJUST_REASON_MIN;
   const diff = line?.diff ?? 0;
-  const total = line?.expected.total ?? 0;
-  const nextTotal = Math.max(0, total + diff);
+  const preview = line ? adjustPreview(line) : { from: 0, to: 0 };
+  const warnUnreturned = line != null && surplusMayBeUnreturned(line);
 
   const submit = () => {
     setTouched(true);
@@ -85,10 +97,16 @@ export function AdjustReasonDialog({
         Расхождение <b className="mono-num text-ink">{signed(diff)}</b> — не пропажа, а неверное количество в каталоге.
         При завершении учёт поправится:{" "}
         <b className="mono-num text-ink">
-          {total} → {nextTotal}
+          {preview.from} → {preview.to}
         </b>
         .
       </p>
+      {warnUnreturned && (
+        <p className="mt-2 rounded border border-amber-border bg-amber-soft px-2 py-1.5 text-xs text-ink">
+          <b className="font-semibold text-amber">Излишек может быть бронью, не отмеченной возвращённой</b> — сначала
+          отметьте возврат и обновите ожидание.
+        </p>
+      )}
       <label htmlFor="adjust-reason" className="mt-3 block text-xs font-semibold text-ink">
         Причина <span className="text-rose">*</span>
       </label>

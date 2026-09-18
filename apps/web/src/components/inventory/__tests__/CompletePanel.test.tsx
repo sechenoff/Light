@@ -90,6 +90,32 @@ describe("CompletePanel", () => {
     );
   });
 
+  it("лишнее без объяснения — в итоге завершения, а не молча", () => {
+    expect(
+      completeSummary(2, { ...RESULT, lostPositions: 0, adjustedPositions: 0, foundPositions: 1, foundQty: 1, unexplainedSurplusQty: 2 }),
+    ).toBe(
+      "Инвентаризация № 2 завершена: нашлось — 1 шт, лишнее без объяснения — 2 шт, сверено — 6 позиций, не посчитано — 4",
+    );
+  });
+
+  it("409 LINE_BOOKS_CHANGED — объяснение и перечитать: строки ждут подтверждения", async () => {
+    apiFetch.mockRejectedValueOnce(
+      apiError(409, "LINE_BOOKS_CHANGED", "Учёт изменился", { count: 2, lineIds: ["line-1", "line-2"] }),
+    );
+    const onStale = vi.fn();
+    render(<CompletePanel detail={makeDetail()} onCompleted={vi.fn()} onStale={onStale} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Завершить инвентаризацию" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Завершить" }));
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "Учёт изменился после счёта у 2 строк — проверьте их в списке и подтвердите решение",
+      ),
+    );
+    expect(onStale).toHaveBeenCalled();
+  });
+
   it("409 UNDECIDED_LINES — тост «осталось решить N», перечитать, ничего не завершено", async () => {
     apiFetch.mockRejectedValueOnce(apiError(409, "UNDECIDED_LINES", "Осталось решить: 2", { count: 2 }));
     const onCompleted = vi.fn();

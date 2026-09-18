@@ -216,6 +216,56 @@ describe("CountLinesPanel — строка счёта", () => {
     expect(screen.getByText("не посчитано")).toBeInTheDocument();
     expect(onChanged).toHaveBeenCalled();
   });
+
+  it("правка после изменения учёта (409 EXPECTATION_CHANGED) — строки перечитываются, на экране сохранённый счёт", async () => {
+    // Посчитано 6 при «должно быть» 7; с тех пор бронь вернули — живое ожидание 10.
+    const saved = counted(
+      makeLine({
+        id: "line-ext",
+        name: EXTENDER.name,
+        expected: { total: 10, issued: 3, calendar: 0, repair: 0, lost: 0, expected: 7 },
+      }),
+      6,
+    );
+    const fresh: StockCountLineView = {
+      ...saved,
+      live: { total: 10, issued: 0, calendar: 0, repair: 0, lost: 0, expected: 10 },
+      booksChangedSinceCount: true,
+    };
+    let listed = 0;
+    apiFetch.mockImplementation((path: string) => {
+      if (String(path).includes("/lines?")) {
+        listed += 1;
+        return Promise.resolve({ lines: [listed === 1 ? saved : fresh] });
+      }
+      if (String(path).endsWith("/count")) {
+        return Promise.reject(
+          apiError(409, "EXPECTATION_CHANGED", "Учёт позиции изменился", { snapshotExpected: 7, liveExpected: 10 }),
+        );
+      }
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    render(
+      <CountLinesPanel stockCountId="sc-1" category={makeCategory({ lines: 1, counted: 1 })} readOnly={false} onChanged={vi.fn()} />,
+    );
+    const input = (await screen.findByRole("textbox", { name: `Посчитано: ${EXTENDER.name}` })) as HTMLInputElement;
+    expect(input).toHaveValue("6");
+
+    fireEvent.change(input, { target: { value: "7" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "С момента счёта учёт позиции изменился — нажмите «Пересчитать» и посчитайте полку заново",
+      ),
+    );
+    await waitFor(() => expect(linesCalls()).toHaveLength(2));
+    expect(await screen.findByText(/после счёта учёт изменился \(сейчас должно быть 10\)/)).toBeInTheDocument();
+    fireEvent.blur(input);
+    expect(screen.getByRole("textbox", { name: `Посчитано: ${EXTENDER.name}` })).toHaveValue("6");
+    expect(screen.getByText("−1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Пересчитать" })).toBeInTheDocument();
+  });
 });
 
 describe("CountLinesPanel — фоновое перечитывание не затирает свежее", () => {

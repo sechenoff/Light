@@ -80,6 +80,8 @@ function saveErrorMessage(err: unknown): string {
       return "Позицию удалили из каталога — считать нечего";
     case "LINE_NOT_FOUND":
       return "Строки больше нет в инвентаризации — вернитесь к участкам";
+    case "EXPECTATION_CHANGED":
+      return "С момента счёта учёт позиции изменился — нажмите «Пересчитать» и посчитайте полку заново";
     default:
       return err.message ? `Не сохранилось: ${err.message}` : "Не сохранилось — повторите";
   }

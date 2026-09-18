@@ -2,8 +2,11 @@
 
 /**
  * «Начать инвентаризацию»: охват — весь склад (по умолчанию) или выбранные
- * категории (`GET /api/equipment/categories` — порядок каталога и счётчики).
- * Позиции со штучным учётом не входят: их сверяют по единицам в карточке.
+ * категории (`GET /api/stock-counts/scope` — порядок каталога и сколько в
+ * категории позиций с учётом количеством). Позиции со штучным учётом не
+ * входят: их сверяют по единицам в карточке. Категорию, где пересчитывать
+ * нечего (только штучные), выбрать нельзя — иначе старт упёрся бы в
+ * «нет позиций для пересчёта».
  */
 
 import { useEffect, useId, useState } from "react";
@@ -27,6 +30,7 @@ export function StartInventoryPanel({
   const [scope, setScope] = useState<Scope>("all");
   const [categories, setCategories] = useState<string[] | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [unitCounts, setUnitCounts] = useState<Record<string, number>>({});
   const [catError, setCatError] = useState<string | null>(null);
   const [catReload, setCatReload] = useState(0);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -37,11 +41,12 @@ export function StartInventoryPanel({
     let cancelled = false;
     setCatError(null);
     inventoryApi
-      .categories()
+      .scope()
       .then((data) => {
         if (cancelled) return;
         setCategories(data.categories);
         setCounts(data.counts ?? {});
+        setUnitCounts(data.unitCounts ?? {});
       })
       .catch((e: unknown) => {
         if (!cancelled) setCatError(explainInventoryError(e, "Не удалось загрузить категории"));
@@ -60,7 +65,10 @@ export function StartInventoryPanel({
     });
   };
 
-  const chosen = categories ? categories.filter((c) => selected.has(c)) : [];
+  /** Есть что пересчитать количеством. */
+  const countable = categories ? categories.filter((c) => (counts[c] ?? 0) > 0) : [];
+  const chosen = countable.filter((c) => selected.has(c));
+  const allChosen = countable.length > 0 && chosen.length === countable.length;
   const canStart = !busy && (scope === "all" || chosen.length > 0);
 
   const start = async () => {
@@ -137,33 +145,48 @@ export function StartInventoryPanel({
               <>
                 <div className="flex items-center justify-between gap-2 border-b border-border bg-surface-muted px-3 py-1.5 text-[11.5px] text-ink-2">
                   <span>
-                    выбрано {chosen.length} из {categories.length}
+                    выбрано {chosen.length} из {countable.length}
                   </span>
                   <button
                     type="button"
-                    onClick={() => setSelected(chosen.length === categories.length ? new Set() : new Set(categories))}
+                    onClick={() => setSelected(allChosen ? new Set() : new Set(countable))}
                     className={`rounded-sm font-semibold text-accent-bright hover:underline ${FOCUS}`}
                   >
-                    {chosen.length === categories.length ? "снять все" : "выбрать все"}
+                    {allChosen ? "снять все" : "выбрать все"}
                   </button>
                 </div>
                 <ul className="max-h-72 overflow-y-auto py-1">
-                  {categories.map((name) => (
-                    <li key={name}>
-                      <label className="flex cursor-pointer items-center gap-2.5 px-3 py-1 text-[12.5px] text-ink hover:bg-surface-muted">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(name)}
-                          onChange={() => toggle(name)}
-                          className={`accent-accent-bright ${FOCUS}`}
-                        />
-                        <span className="min-w-0 flex-1 truncate">{name}</span>
-                        {counts[name] != null && (
-                          <span className="mono-num text-[11px] text-ink-3">{counts[name]} поз.</span>
-                        )}
-                      </label>
-                    </li>
-                  ))}
+                  {categories.map((name) => {
+                    const n = counts[name] ?? 0;
+                    const unitOnly = n === 0;
+                    return (
+                      <li key={name}>
+                        <label
+                          className={`flex items-center gap-2.5 px-3 py-1 text-[12.5px] ${
+                            unitOnly ? "cursor-not-allowed text-ink-3" : "cursor-pointer text-ink hover:bg-surface-muted"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!unitOnly && selected.has(name)}
+                            disabled={unitOnly}
+                            onChange={() => toggle(name)}
+                            className={`accent-accent-bright ${FOCUS}`}
+                          />
+                          <span className="min-w-0 flex-1 truncate">{name}</span>
+                          {unitOnly ? (
+                            <span className="text-[11px] text-ink-3">
+                              {(unitCounts[name] ?? 0) > 0
+                                ? "только штучный учёт — сверяется в карточке единиц"
+                                : "нет позиций"}
+                            </span>
+                          ) : (
+                            <span className="mono-num text-[11px] text-ink-3">{n} поз.</span>
+                          )}
+                        </label>
+                      </li>
+                    );
+                  })}
                 </ul>
               </>
             )}
