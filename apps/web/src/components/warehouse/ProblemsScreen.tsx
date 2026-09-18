@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { scanApi, type ProblemsData } from "./api";
-import { isScanApiError } from "./types";
+import { isScanApiError, type ProblemItemReason } from "./types";
 import { RegisterBreakageScreen } from "./RegisterBreakageScreen";
 import { IconSearch, IconWrench } from "./workstationIcons";
 
@@ -25,12 +25,19 @@ const PROBLEM_STATUS: Record<string, { label: string; cls: string }> = {
   SEARCHING: { label: "В розыске", cls: "bg-rose-soft text-rose" },
 };
 
-const PROBLEM_REASON: Record<string, string> = {
+const PROBLEM_REASON: Record<ProblemItemReason, string> = {
   LEFT_ON_SITE: "оставлен на площадке",
   LOST: "утерян",
   DESTROYED: "уничтожен",
   STOLEN: "украден",
+  // Ручные потеряшки и «Пропало» из инвентаризации.
+  NOT_ON_SHELF: "не нашли на складе",
 };
+
+/** Причина словами; код из API в интерфейс не попадает даже для новой причины. */
+function problemReasonLabel(reason: string): string {
+  return (PROBLEM_REASON as Record<string, string | undefined>)[reason] ?? "причина не указана";
+}
 
 function shortDate(iso: string | null): string {
   if (!iso) return "—";
@@ -211,7 +218,7 @@ export function ProblemsScreen({
                     {p.quantity > 1 ? ` ×${p.quantity}` : ""}
                   </span>
                   <span className="block truncate text-[11px] text-ink-3">
-                    {PROBLEM_REASON[p.reason] ?? p.reason}
+                    {problemReasonLabel(p.reason)}
                     {p.sourceProject ? ` · ${p.sourceProject}` : ""}
                     {p.status === "EXPECTED" && p.expectedBackDate
                       ? ` · ждём ${shortDate(p.expectedBackDate)}`

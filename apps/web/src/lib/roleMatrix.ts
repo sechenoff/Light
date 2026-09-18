@@ -31,6 +31,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       items: [
         { href: "/warehouse/scan", label: "Выдачи и возвраты", icon: "scan" },
         { href: "/warehouse/problems", label: "Потеряшки", icon: "alert" },
+        { href: "/warehouse/inventory", label: "Инвентаризация", icon: "tasks" },
       ],
     },
     {
@@ -92,6 +93,7 @@ export const menuByRole: Record<UserRole, MenuSection[]> = {
       items: [
         { href: "/warehouse/scan", label: "Выдачи и возвраты", icon: "scan" },
         { href: "/warehouse/problems", label: "Потеряшки", icon: "alert" },
+        { href: "/warehouse/inventory", label: "Инвентаризация", icon: "tasks" },
       ],
     },
     {

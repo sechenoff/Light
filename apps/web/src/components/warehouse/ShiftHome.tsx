@@ -8,14 +8,18 @@
  *  - KPI: выдачи/возвраты «сделано / план», просрочка;
  *  - две большие кнопки «Выдача» / «Приёмка» (переход на табы);
  *  - ленту «План на сегодня» (время · клиент · проект · статус);
- *  - карточку «Моя смена» (сессии, позиции, средняя, время с начала).
+ *  - карточку «Моя смена» (сессии, позиции, средняя, время с начала);
+ *  - карточку «Идёт инвентаризация № N → Считать», пока инвентаризация идёт
+ *    (StockCountShiftCard; своей вкладки у счёта нет).
  *
  * Данные приходят сверху (page-level fetch /api/warehouse/shift) — они же
  * питают бейджи таб-бара, чтобы не дублировать запрос.
  */
 
 import type { ShiftSummaryData, ShiftTimelineEntry } from "./api";
+import type { StockCountDetail } from "../inventory/types";
 import { pluralize } from "../../lib/format";
+import { StockCountShiftCard } from "./StockCountShiftCard";
 import {
   IconAlert,
   IconCheck,
@@ -191,6 +195,8 @@ export function ShiftHome({
   onGoReturn,
   onGoOverdue,
   onOpenEntry,
+  stockCount = null,
+  onGoCount,
 }: {
   data: ShiftSummaryData | null;
   error: string | null;
@@ -201,18 +207,36 @@ export function ShiftHome({
   onGoOverdue: () => void;
   /** Тап по строке ленты (PENDING) → открыть соответствующий поток. */
   onOpenEntry: (entry: ShiftTimelineEntry) => void;
+  /** Идущая инвентаризация — карточка наверху; null — не идёт. */
+  stockCount?: StockCountDetail | null;
+  /** «Считать →» — экран счёта (`?tab=count`). */
+  onGoCount?: () => void;
 }) {
+  // Карточка не зависит от /shift: смена может не загрузиться, а считать
+  // полку всё равно нужно.
+  const countCard =
+    stockCount && stockCount.status === "OPEN" && onGoCount ? (
+      <StockCountShiftCard
+        stockCount={stockCount}
+        workerName={data?.myShift.workerName}
+        onCount={onGoCount}
+      />
+    ) : null;
+
   if (error) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-12 text-center">
-        <p className="text-sm text-rose">{error}</p>
-        <button
-          type="button"
-          onClick={onRetry}
-          className="rounded border border-border-strong bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted"
-        >
-          Повторить
-        </button>
+      <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-5 lg:py-4">
+        {countCard}
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-12 text-center">
+          <p className="text-sm text-rose">{error}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded border border-border-strong bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted"
+          >
+            Повторить
+          </button>
+        </div>
       </div>
     );
   }
@@ -220,6 +244,7 @@ export function ShiftHome({
   if (!data) {
     return (
       <div className="flex flex-1 flex-col gap-3 px-3 py-3 lg:px-5 lg:py-4">
+        {countCard}
         {[64, 76, 60, 200].map((h, i) => (
           <div
             key={i}
@@ -267,6 +292,8 @@ export function ShiftHome({
           </button>
         </div>
       )}
+
+      {countCard}
 
       {/* KPI */}
       <div className="grid grid-cols-3 gap-2">

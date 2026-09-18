@@ -37,7 +37,13 @@ export type WorkstationTab =
   | "return"
   | "inwork"
   | "journal"
-  | "problems";
+  | "problems"
+  /**
+   * Счёт инвентаризации. НЕ отдельная вкладка: инвентаризация — редкое
+   * событие, место в навигации ей не нужно. Вход — карточка на «Смене»,
+   * в навигации при этом подсвечена «Смена». `?tab=count` — диплинк.
+   */
+  | "count";
 
 export interface WorkstationBadges {
   /** Починенное, что ещё лежит на верстаке (блок «Вернулось из ремонта»). */
@@ -48,12 +54,23 @@ export interface WorkstationBadges {
   problems?: number;
 }
 
-interface WorkstationShellProps {
+/** Прогресс в шапке (счёт инвентаризации): тонкая полоса под заголовком. */
+export interface WorkstationHeaderProgress {
+  done: number;
+  total: number;
+  /** Подпись для скринридера, например «Посчитано 23 из 51». */
+  label: string;
+}
+
+export interface WorkstationShellProps {
   tab: WorkstationTab;
   onTab: (tab: WorkstationTab) => void;
   badges?: WorkstationBadges;
   eyebrow?: string;
   title: string;
+  /** Моно-метка рядом с заголовком, например «23 / 51». */
+  titleTag?: string;
+  headerProgress?: WorkstationHeaderProgress;
   workerName?: string;
   onLogout?: () => void;
   /** Кнопка «назад» в шапке (внутри под-потока, например чек-листа). */
@@ -104,12 +121,34 @@ function TabBadge({ count, tone }: { count: number; tone: string }) {
   );
 }
 
+function HeaderProgressBar({ done, total, label }: WorkstationHeaderProgress) {
+  const ratio = total > 0 ? Math.min(1, Math.max(0, done / total)) : 0;
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={total}
+      aria-valuenow={done}
+      className="mt-2 h-1 overflow-hidden rounded-full bg-white/20"
+    >
+      {/* scaleX, а не width: полоса двигается на каждом посчитанном — без reflow. */}
+      <div
+        className="h-full origin-left bg-white motion-safe:transition-transform motion-safe:duration-300"
+        style={{ transform: `scaleX(${ratio})` }}
+      />
+    </div>
+  );
+}
+
 export function WorkstationShell({
   tab,
   onTab,
   badges = {},
   eyebrow,
   title,
+  titleTag,
+  headerProgress,
   workerName,
   onLogout,
   onBack,
@@ -119,8 +158,10 @@ export function WorkstationShell({
   detail,
 }: WorkstationShellProps) {
   const twoPane = list != null;
-  // «Журнал» подсвечен и когда открыт под-экран «Поломки».
-  const activeNavKey: WorkstationTab = tab === "problems" ? "journal" : tab;
+  // «Журнал» подсвечен и когда открыт под-экран «Поломки»; «Смена» — когда
+  // идёт счёт инвентаризации (в него входят с карточки на «Смене»).
+  const activeNavKey: WorkstationTab =
+    tab === "problems" ? "journal" : tab === "count" ? "shift" : tab;
 
   // Горизонтальные табы раздела — тот же визуальный контракт, что AdminTabNav
   // в админке (подчёркивание активной, скролл самого бара на узких экранах).
@@ -212,9 +253,17 @@ export function WorkstationShell({
           )}
           <div className="min-w-0 flex-1">
             {eyebrow && <p className="eyebrow !text-white/70">{eyebrow}</p>}
-            <h1 className="truncate text-[15px] font-semibold leading-snug">
-              {title}
-            </h1>
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="truncate text-[15px] font-semibold leading-snug">
+                {title}
+              </h1>
+              {titleTag && (
+                <span className="mono-num shrink-0 rounded bg-white/15 px-1.5 text-[12px] font-semibold leading-5">
+                  {titleTag}
+                </span>
+              )}
+            </div>
+            {headerProgress && <HeaderProgressBar {...headerProgress} />}
           </div>
           {workerName && (
             <div className="flex shrink-0 items-center gap-3">

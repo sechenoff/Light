@@ -40,6 +40,10 @@ import type {
   UncheckResult,
   WorkerAuthResult,
 } from "./types";
+import type {
+  StockCountDetail,
+  StockCountLineView,
+} from "../inventory/types";
 
 // ── Token + transport ────────────────────────────────────────────────────────
 
@@ -627,6 +631,58 @@ export function getInWorkDetails(bookingId: string): Promise<InWorkDetails> {
   );
 }
 
+// ── Инвентаризация: счёт полки с киоска ──────────────────────────────────────
+// Киоск только СЧИТАЕТ: решения, завершение и отмена — десктоп
+// (/api/stock-counts). Кто считал, сервер берёт из PIN-токена.
+
+/** GET /api/warehouse/stock-count — идущая инвентаризация или null. */
+export async function getActiveStockCount(): Promise<StockCountDetail | null> {
+  const data = await request<{ stockCount: StockCountDetail | null }>(
+    "/api/warehouse/stock-count",
+  );
+  return data?.stockCount ?? null;
+}
+
+/** GET /api/warehouse/stock-count/:id/lines?category= — строки участка. */
+export async function listStockCountLines(
+  stockCountId: string,
+  category?: string,
+): Promise<StockCountLineView[]> {
+  const qs = category ? `?category=${encodeURIComponent(category)}` : "";
+  const data = await request<{ lines: StockCountLineView[] }>(
+    `/api/warehouse/stock-count/${encodeURIComponent(stockCountId)}/lines${qs}`,
+  );
+  return data.lines;
+}
+
+/**
+ * POST /api/warehouse/stock-count/:id/lines/:lineId/count { qty }.
+ * 409 `STOCK_COUNT_NOT_OPEN` — инвентаризацию завершили или отменили.
+ */
+export async function countStockCountLine(
+  stockCountId: string,
+  lineId: string,
+  qty: number,
+): Promise<StockCountLineView> {
+  const data = await request<{ line: StockCountLineView }>(
+    `/api/warehouse/stock-count/${encodeURIComponent(stockCountId)}/lines/${encodeURIComponent(lineId)}/count`,
+    { method: "POST", body: { qty } },
+  );
+  return data.line;
+}
+
+/** POST /api/warehouse/stock-count/:id/lines/:lineId/reset — «Пересчитать». */
+export async function resetStockCountLine(
+  stockCountId: string,
+  lineId: string,
+): Promise<StockCountLineView> {
+  const data = await request<{ line: StockCountLineView }>(
+    `/api/warehouse/stock-count/${encodeURIComponent(stockCountId)}/lines/${encodeURIComponent(lineId)}/reset`,
+    { method: "POST" },
+  );
+  return data.line;
+}
+
 // ── Aggregate export (ergonomic single import) ───────────────────────────────
 
 export const scanApi = {
@@ -658,6 +714,10 @@ export const scanApi = {
   fullEstimatePdfUrl,
   listInWork,
   getInWorkDetails,
+  getActiveStockCount,
+  listStockCountLines,
+  countStockCountLine,
+  resetStockCountLine,
   getWarehouseToken,
   setWarehouseToken,
   clearWarehouseToken,

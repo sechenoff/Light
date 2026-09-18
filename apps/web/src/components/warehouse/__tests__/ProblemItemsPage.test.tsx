@@ -493,3 +493,231 @@ describe("ProblemItemsPage", () => {
     expect(normalRow!.className).not.toContain("bg-rose-soft");
   });
 });
+
+// --- Инвентаризация: источник, «Не нашли на складе», ручной вход ---
+
+const MANUAL_ITEM = {
+  id: "pi-manual",
+  equipmentUnitId: null,
+  equipmentId: "eq-charger",
+  sourceBookingId: null,
+  reason: "NOT_ON_SHELF" as const,
+  comment: "в кейсе один набор вместо двух",
+  expectedBackDate: null,
+  status: "SEARCHING" as const,
+  source: "MANUAL" as const,
+  stockCountId: null,
+  createdBy: "sechenoff",
+  createdAt: "2026-09-15T08:00:00.000Z",
+  resolvedAt: null,
+  resolvedBy: null,
+  resolutionNote: null,
+  quantity: 2,
+  equipmentUnit: null,
+  bookingItem: null,
+  // Прямая позиция — у ручных карточек нет ни единицы, ни брони.
+  equipment: { name: "Набор зарядок", category: "Аккумуляторный свет" },
+  stockCount: null,
+  booking: null,
+};
+
+const STOCK_COUNT_ITEM = {
+  ...MANUAL_ITEM,
+  id: "pi-sc",
+  equipmentId: "eq-cable",
+  source: "STOCK_COUNT" as const,
+  stockCountId: "sc-3",
+  stockCount: { id: "sc-3", number: 3 },
+  comment: "Не нашли при инвентаризации № 3",
+  quantity: 1,
+  equipment: { name: "Удлинитель PCE 15 м", category: "Коммутация" },
+};
+
+const RETURN_ITEM = { ...OPEN_ITEM, source: "RETURN" as const, stockCount: null, equipment: null };
+
+describe("ProblemItemsPage — источники и ручной вход", () => {
+  it("подменю склада, метки источника и причина «Не нашли на складе»; позиция ручной карточки видна", async () => {
+    apiFetch.mockResolvedValueOnce({
+      items: [MANUAL_ITEM, STOCK_COUNT_ITEM, RETURN_ITEM],
+      nextCursor: null,
+    });
+    const { container } = render(<ProblemItemsPage />);
+    await waitFor(() =>
+      expect(screen.getAllByText(/Набор зарядок/).length).toBeGreaterThan(0),
+    );
+
+    // Подменю склада: активна «Потеряшки»
+    const subnav = screen.getByRole("navigation", { name: "Разделы склада" });
+    expect(within(subnav).getByRole("link", { name: "Потеряшки" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(subnav).getByRole("link", { name: "Инвентаризация" })).toHaveAttribute(
+      "href",
+      "/warehouse/inventory",
+    );
+
+    // Позиция ручной карточки — из прямой ссылки, количество ×2
+    expect(screen.getAllByText(/Набор зарядок/).some((el) => /×2/.test(el.textContent ?? ""))).toBe(true);
+    expect(screen.getAllByText("Удлинитель PCE 15 м").length).toBeGreaterThan(0);
+
+    // Метки источника (desktop + mobile)
+    expect(screen.getAllByText("вручную").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("инвентаризация № 3").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("приёмка").length).toBeGreaterThan(0);
+
+    // Новая причина — по-русски, без кода
+    expect(screen.getAllByText("Не нашли на складе").length).toBeGreaterThan(0);
+    expect(container.textContent).not.toMatch(/NOT_ON_SHELF|STOCK_COUNT|MANUAL|RETURN/);
+    expect(container.textContent).not.toMatch(/Без позиции/);
+  });
+
+  it("фильтр по источнику: перезапрос с ?source=, сочетается со статусом", async () => {
+    apiFetch.mockResolvedValue({ items: [], nextCursor: null });
+    render(<ProblemItemsPage />);
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
+
+    const sourceGroup = screen.getByRole("group", { name: "Фильтр по источнику" });
+    expect(within(sourceGroup).getByRole("button", { name: "Все источники" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(within(sourceGroup).getByRole("button", { name: "Инвентаризация" }));
+    await waitFor(() =>
+      expect(
+        apiFetch.mock.calls.some((c) => String(c[0]).includes("source=STOCK_COUNT")),
+      ).toBe(true),
+    );
+
+    const statusGroup = screen.getByRole("group", { name: "Фильтр по статусу" });
+    fireEvent.click(within(statusGroup).getByRole("button", { name: "На поиске" }));
+    await waitFor(() =>
+      expect(
+        apiFetch.mock.calls.some(
+          (c) =>
+            String(c[0]).includes("source=STOCK_COUNT") &&
+            String(c[0]).includes("status=SEARCHING"),
+        ),
+      ).toBe(true),
+    );
+
+    // Пустой результат под фильтром — честная подсказка, а не «только с приёмки»
+    expect(await screen.findByText(/По выбранным фильтрам карточек нет/)).toBeInTheDocument();
+  });
+
+  it("пустой реестр без фильтров объясняет все три источника", async () => {
+    apiFetch.mockResolvedValueOnce({ items: [], nextCursor: null });
+    render(<ProblemItemsPage />);
+    expect(await screen.findByText("Потеряшек нет")).toBeInTheDocument();
+    expect(
+      screen.getByText(/с приёмки, из инвентаризации или вручную/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/появятся здесь автоматически/)).not.toBeInTheDocument();
+  });
+
+  it("409 STOCK_COUNT_LINE_COUNTED на «Найдено»: сообщение сервера, модалка закрыта, без перезапроса", async () => {
+    apiFetch.mockResolvedValueOnce({ items: [MANUAL_ITEM], nextCursor: null });
+    render(<ProblemItemsPage />);
+    await waitFor(() =>
+      expect(screen.getAllByText(/Набор зарядок/).length).toBeGreaterThan(0),
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Отметить «Найдено»" })[0]);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/Заметка/), {
+      target: { value: "нашёлся за стеллажом" },
+    });
+    apiFetch.mockRejectedValueOnce(
+      Object.assign(
+        new Error("Позиция уже посчитана в идущей инвентаризации № 3 — решите там («Нашлось»)"),
+        {
+          status: 409,
+          code: "STOCK_COUNT_LINE_COUNTED",
+          details: { stockCountId: "sc-3", stockCountNumber: 3 },
+        },
+      ),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Подтвердить «Найдено»" }));
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "Позиция уже посчитана в идущей инвентаризации № 3 — решите там («Нашлось»)",
+      ),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // не путаем с «уже разобрана»: ни этого сообщения, ни перезапроса
+    expect(toastError).not.toHaveBeenCalledWith("Карточка уже разобрана другим пользователем");
+    expect(apiFetch).toHaveBeenCalledTimes(2); // list + resolve(409)
+  });
+
+  it("«Завести потеряшку» открывает модалку; после создания реестр перечитывается", async () => {
+    apiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith("/api/problem-items?")) {
+        return Promise.resolve({ items: [], nextCursor: null });
+      }
+      if (path.startsWith("/api/equipment?search=")) {
+        return Promise.resolve({
+          equipments: [
+            {
+              id: "eq-charger",
+              name: "Набор зарядок",
+              category: "Аккумуляторный свет",
+              totalQuantity: 2,
+              stockTrackingMode: "COUNT",
+              unitStatusCounts: null,
+            },
+          ],
+        });
+      }
+      if (path.startsWith("/api/problem-items/trail")) {
+        return Promise.resolve({
+          trail: {
+            equipmentId: "eq-charger",
+            name: "Набор зарядок",
+            category: "Аккумуляторный свет",
+            windowFrom: "2026-07-20T09:00:00.000Z",
+            windowIsDefault: true,
+            totalBookings: 0,
+            verifiedReturns: 0,
+            bookings: [],
+            suggestedBookingId: null,
+            openProblems: [],
+            onShelf: { total: 2, issued: 0, calendar: 0, repair: 0, lost: 0, expected: 2 },
+          },
+        });
+      }
+      if (path === "/api/problem-items" && init?.method === "POST") {
+        return Promise.resolve({ item: MANUAL_ITEM });
+      }
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+
+    render(<ProblemItemsPage />);
+    await screen.findByText("Потеряшек нет");
+    const listCallsBefore = apiFetch.mock.calls.filter((c) =>
+      String(c[0]).startsWith("/api/problem-items?"),
+    ).length;
+
+    fireEvent.click(screen.getByRole("button", { name: "Завести потеряшку" }));
+    const dialog = await screen.findByRole("dialog", { name: "Завести потеряшку" });
+    fireEvent.change(within(dialog).getByLabelText("Поиск позиции"), {
+      target: { value: "заряд" },
+    });
+    fireEvent.click(await within(dialog).findByRole("button", { name: /Набор зарядок/ }));
+    await within(dialog).findByText("должно быть на полке");
+    fireEvent.change(within(dialog).getByLabelText(/Комментарий/), {
+      target: { value: "не нашли на полке" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Завести потеряшку" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Завести потеряшку" })).not.toBeInTheDocument(),
+    );
+    expect(toastSuccess).toHaveBeenCalledWith("Потеряшка заведена: Набор зарядок");
+    await waitFor(() =>
+      expect(
+        apiFetch.mock.calls.filter((c) => String(c[0]).startsWith("/api/problem-items?")).length,
+      ).toBe(listCallsBefore + 1),
+    );
+  });
+});

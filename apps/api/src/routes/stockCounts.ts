@@ -27,6 +27,10 @@ import {
   MAX_COUNT_QTY,
   type StockCountActor,
 } from "../services/stockCount/stockCountService";
+import { buildStockCountAct, stockCountActFileBase } from "../services/stockCount/act/buildStockCountAct";
+import { renderStockCountActPdf } from "../services/stockCount/act/renderStockCountActPdf";
+import { renderStockCountActXlsx } from "../services/stockCount/act/renderStockCountActXlsx";
+import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 
 const router = express.Router();
 
@@ -162,6 +166,49 @@ router.post("/:id/complete", async (req, res, next) => {
 router.post("/:id/cancel", async (req, res, next) => {
   try {
     res.json({ stockCount: await cancelStockCount(req.params.id, actorOf(req)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Акт инвентаризации (спека §7 «Акт») ──────────────────────────────────────
+
+/**
+ * GET /api/stock-counts/:id/act.pdf — акт, A4 альбомный. Пока инвентаризация
+ * идёт — черновик с пометкой «ЧЕРНОВИК». inline: фронт открывает и печатает
+ * документ из вкладки, не скачивая его.
+ */
+router.get("/:id/act.pdf", async (req, res, next) => {
+  try {
+    const act = await buildStockCountAct(req.params.id);
+    const pdf = await renderStockCountActPdf(act);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      buildAttachmentContentDisposition(`${stockCountActFileBase(act)}.pdf`, "stock-count-act.pdf").replace(
+        "attachment;",
+        "inline;",
+      ),
+    );
+    res.setHeader("Content-Length", String(pdf.length));
+    res.end(pdf);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/stock-counts/:id/act.xlsx — акт в XLSX: «Расхождения» + «Все позиции». */
+router.get("/:id/act.xlsx", async (req, res, next) => {
+  try {
+    const act = await buildStockCountAct(req.params.id);
+    const buf = await renderStockCountActXlsx(act);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader(
+      "Content-Disposition",
+      buildAttachmentContentDisposition(`${stockCountActFileBase(act)}.xlsx`, "stock-count-act.xlsx"),
+    );
+    res.setHeader("Content-Length", String(buf.length));
+    res.end(buf);
   } catch (err) {
     next(err);
   }

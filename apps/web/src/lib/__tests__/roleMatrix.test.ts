@@ -36,6 +36,7 @@ describe("menuByRole — grouped sections", () => {
         "/tasks/archive",
         "/warehouse/scan",
         "/warehouse/problems",
+        "/warehouse/inventory",
         "/bookings",
         "/bookings/new",
         "/calendar",
@@ -57,6 +58,18 @@ describe("menuByRole — grouped sections", () => {
         "/feedback",
       ].sort(),
     );
+  });
+
+  it("«Инвентаризация» — в секции «Склад» сразу после «Потеряшек» у руководителя и кладовщика", () => {
+    for (const role of ["SUPER_ADMIN", "WAREHOUSE"] as const) {
+      const sklad = menuByRole[role].find((s) => s.title === "Склад");
+      const hrefs = sklad!.items.map((i) => i.href);
+      expect(hrefs.indexOf("/warehouse/inventory")).toBe(hrefs.indexOf("/warehouse/problems") + 1);
+    }
+    for (const role of ["TECHNICIAN", "COLLECTOR"] as const) {
+      const hrefs = menuByRole[role].flatMap((s) => s.items.map((i) => i.href));
+      expect(hrefs).not.toContain("/warehouse/inventory");
+    }
   });
 
   it("SUPER_ADMIN: «Клиенты» — в рабочей зоне «Бронирование», а не в «Системе» (MD-3)", () => {

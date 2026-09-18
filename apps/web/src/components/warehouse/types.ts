@@ -602,3 +602,70 @@ export interface InWorkDetails {
     paymentStatus: string;
   };
 }
+
+// ── Реестр «Потеряшки» (mirrors /api/problem-items) ──────────────────────────
+
+/**
+ * Причины в РЕЕСТРЕ. Шире, чем {@link ProblemReason} приёмки: «Не нашли на
+ * складе» рождается инвентаризацией или ручным вводом и в чек-листе возврата
+ * не предлагается — поэтому отдельный тип, а не расширение `ProblemReason`.
+ */
+export type ProblemItemReason = ProblemReason | "NOT_ON_SHELF";
+
+export type ProblemItemStatus = "EXPECTED" | "SEARCHING" | "FOUND" | "NOT_FOUND" | "WROTE_OFF";
+
+/** Откуда карточка: приёмка / инвентаризация № N / вручную. */
+export type ProblemSource = "RETURN" | "STOCK_COUNT" | "MANUAL";
+
+/**
+ * Карточка реестра — `GET /api/problem-items` (`routes/problemItems.ts`).
+ * `equipment` — позиция по правилу системы: единица → позиция брони → прямая
+ * ссылка; `null`, если позицию удалили из каталога. Штрихкодов нет.
+ */
+export interface ProblemRegistryItem {
+  id: string;
+  equipmentUnitId: string | null;
+  equipmentId: string | null;
+  sourceBookingId: string | null;
+  reason: ProblemItemReason;
+  comment: string;
+  expectedBackDate: string | null;
+  status: ProblemItemStatus;
+  source: ProblemSource;
+  stockCountId: string | null;
+  createdBy: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  resolutionNote: string | null;
+  quantity: number;
+  equipmentUnit: { id: string; equipment: { name: string; category: string } } | null;
+  bookingItem: {
+    id: string;
+    quantity: number;
+    equipment: { name: string; category: string } | null;
+  } | null;
+  equipment: { name: string; category: string } | null;
+  stockCount: { id: string; number: number } | null;
+  /** Бронь (клиент + проект) — batch-обогащение на бэкенде; null без брони. */
+  booking: {
+    id: string;
+    projectName: string;
+    client: { name: string; phone: string | null } | null;
+  } | null;
+}
+
+/**
+ * Тело `POST /api/problem-items` — «Завести потеряшку» вручную.
+ * Позиция без штучного учёта — `quantity`, штучная — `equipmentUnitId`.
+ * `expectedBackDate` — ISO datetime и только для «Остался на площадке».
+ */
+export interface ManualProblemPayload {
+  equipmentId: string;
+  equipmentUnitId?: string;
+  quantity?: number;
+  reason: ProblemItemReason;
+  comment: string;
+  expectedBackDate?: string;
+  sourceBookingId: string | null;
+}
