@@ -53,6 +53,9 @@ export async function createProblemItem(args: CreateProblemArgs, tx?: TxClient) 
     const pi = await db.problemItem.create({
       data: {
         equipmentUnitId: args.equipmentUnitId,
+        // Позиция каталога — прямой ссылкой, как у потеряшек из инвентаризации:
+        // реестр и «Как пропало» находят карточку по позиции одним условием.
+        equipmentId: unit.equipmentId,
         sourceBookingId: args.sourceBookingId ?? null,
         reason: args.reason,
         comment: args.comment,

@@ -285,6 +285,17 @@ model Equipment {
   competitorAliases  CompetitorAlias[]
   addonRecords AddonRecord[]
   directRepairs Repair[] @relation("RepairEquipment")
+  /// Строки инвентаризаций, в которых позиция пересчитывалась.
+  stockCountLines StockCountLine[]
+  /// Потеряшки, привязанные к позиции напрямую (заведены вручную, из
+  /// инвентаризации или с приёмки — см. ProblemItem.equipmentId).
+  problemItems ProblemItem[] @relation("ProblemItemEquipment")
+
+  /// Когда позиция последний раз сверена пересчётом полки (завершённая
+  /// инвентаризация, строка посчитана). null — ни разу не сверялась. Отсюда
+  /// начинается окно «Как пропало»: приёмка в киоске подтверждает только свою
+  /// бронь, а склад целиком подтверждает лишь пересчёт.
+  lastCountedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1294,6 +1305,15 @@ enum ProblemReason {
   LOST
   DESTROYED
   STOLEN
+  /// «Не нашли на складе» — недостача, выявленная инвентаризацией.
+  NOT_ON_SHELF
+}
+
+/// Откуда взялась потеряшка: приёмка брони / инвентаризация / заведена вручную.
+enum ProblemSource {
+  RETURN
+  STOCK_COUNT
+  MANUAL
 }
 
 enum ProblemStatus {
@@ -1323,10 +1343,100 @@ model ProblemItem {
   resolvedBy       String?
   resolutionNote   String?
 
+  /// Позиция каталога напрямую. У потеряшек с приёмки она выводима и через
+  /// bookingItem / equipmentUnit, но у заведённых вручную и из инвентаризации
+  /// ни брони, ни единицы нет — без этого поля они не знали бы, ЧТО пропало.
+  /// Позиция строки = equipmentId ?? bookingItem.equipmentId (см.
+  /// getLostCountByEquipmentMap).
+  equipmentId      String?
+  equipment        Equipment?     @relation("ProblemItemEquipment", fields: [equipmentId], references: [id], onDelete: SetNull)
+  source           ProblemSource  @default(RETURN)
+  /// Инвентаризация, которая завела карточку (source = STOCK_COUNT).
+  stockCountId     String?
+  stockCount       StockCount?    @relation(fields: [stockCountId], references: [id], onDelete: SetNull)
+
   @@index([status])
   @@index([equipmentUnitId])
   @@index([bookingItemId])
   @@index([sourceBookingId])
+  @@index([equipmentId])
+  @@index([source])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Инвентаризация склада (docs/superpowers/specs/2026-09-18-inventory-design.md)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum StockCountStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+/// Решение по строке с расхождением: пропало → потеряшки / ошибка учёта
+/// (поправка totalQuantity) / нашлось (закрыть открытые потеряшки).
+enum StockCountDecision {
+  LOST
+  ADJUST
+  FOUND
+}
+
+/// Инвентаризация — сессия пересчёта склада.
+model StockCount {
+  id            String           @id @default(cuid())
+  /// № по порядку, max+1.
+  number        Int              @unique
+  status        StockCountStatus @default(OPEN)
+  /// JSON string[] охвата по категориям; null — весь склад.
+  categories    String?
+  /// AdminUser.id (без FK, как Repair.createdBy).
+  createdById   String
+  createdByName String
+  startedAt     DateTime         @default(now())
+  closedAt      DateTime?
+  closedById    String?
+  closedByName  String?
+  cancelledAt   DateTime?
+  lines         StockCountLine[]
+  problemItems  ProblemItem[]
+
+  @@index([status])
+}
+
+/// Строка инвентаризации — одна позиция каталога (только учёт количеством).
+model StockCountLine {
+  id               String              @id @default(cuid())
+  stockCountId     String
+  stockCount       StockCount          @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+  equipmentId      String?
+  equipment        Equipment?          @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  nameSnapshot     String
+  categorySnapshot String
+  /// rentalRatePerShift на старте — для «₽/смена» в недостаче.
+  rateSnapshot     Decimal
+  /// Порядок: категория (порядок каталога), затем позиция.
+  position         Int
+  // Снапшот ожидания: фиксируется В МОМЕНТ СЧЁТА строки (null — не посчитано).
+  // Выдачи и возвраты во время инвентаризации итог уже посчитанной строки не сбивают.
+  totalAtCount     Int?
+  issuedAtCount    Int?
+  calendarAtCount  Int?
+  repairAtCount    Int?
+  lostAtCount      Int?
+  expectedQty      Int?
+  countedQty       Int?
+  /// Имя: WarehousePin.name (киоск) или AdminUser.username (десктоп).
+  countedBy        String?
+  countedAt        DateTime?
+  decision         StockCountDecision?
+  decisionNote     String?
+  decidedBy        String?
+  decidedAt        DateTime?
+  /// Только для LOST: вероятная бронь, с которой ушло.
+  sourceBookingId  String?
+
+  @@unique([stockCountId, equipmentId])
+  @@index([stockCountId, categorySnapshot])
 }
 
 /// Фото поломки, привязанное к карточке ремонта

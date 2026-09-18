@@ -28,6 +28,7 @@ import { paymentsRouter } from "./payments";
 import { expensesRouter } from "./expenses";
 import { repairsRouter } from "./repairs";
 import { problemItemsRouter } from "./problemItems";
+import { stockCountsRouter } from "./stockCounts";
 import { tasksRouter } from "./tasks";
 import { feedbackRouter } from "./feedback";
 import { clientsRouter } from "./clients";
@@ -151,6 +152,11 @@ router.use("/api/repairs", repairsRouter);
 
 // /api/problem-items — реестр «Потеряшки»: SUPER_ADMIN, WAREHOUSE (router-level guard; TECHNICIAN → 403)
 router.use("/api/problem-items", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), problemItemsRouter);
+
+// /api/stock-counts — инвентаризация склада: SUPER_ADMIN, WAREHOUSE (router-level guard;
+// TECHNICIAN / COLLECTOR → 403, без сессии → 401). Счёт с киоска по PIN живёт отдельно —
+// в warehouseScanRouter (/api/warehouse/stock-count*). НЕ в botScope whitelist.
+router.use("/api/stock-counts", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), stockCountsRouter);
 
 // /api/tasks — SUPER_ADMIN, WAREHOUSE, TECHNICIAN (router-level guard; дополнительные per-route проверки внутри tasksRouter)
 // НЕ добавлять в botScopeGuard whitelist — openclaw-* ключи должны получать 403 BOT_SCOPE_FORBIDDEN

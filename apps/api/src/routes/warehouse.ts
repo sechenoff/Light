@@ -28,6 +28,13 @@ import {
 } from "../services/checklistService";
 import { searchAddonCandidates } from "../services/bookingAddon";
 import {
+  getActiveStockCount,
+  listStockCountLines,
+  recordCount,
+  resetCount,
+} from "../services/stockCount/stockCountService";
+import { countBodySchema, linesQuerySchema } from "./stockCounts";
+import {
   computeShift,
   computeJournal,
   computeProblems,
@@ -878,6 +885,51 @@ warehouseScanRouter.get("/journal", warehouseAuth, async (req, res, next) => {
 warehouseScanRouter.get("/problems", warehouseAuth, async (_req, res, next) => {
   try {
     res.json(await computeProblems());
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Инвентаризация: счёт полки с киоска ──────────────────────────────────────
+// Киоск только СЧИТАЕТ: решения по расхождениям, завершение и отмена — десктоп
+// (/api/stock-counts, SUPER_ADMIN + WAREHOUSE). Кто считал — имя из PIN-токена
+// (или username основной сессии SA/WH через fallback warehouseAuth). Аудит на
+// счёт не пишется: высокочастотно, а имя кладовщика — не AdminUser.id.
+
+/** GET /api/warehouse/stock-count — идущая инвентаризация или null. */
+warehouseScanRouter.get("/stock-count", warehouseAuth, async (_req, res, next) => {
+  try {
+    res.json({ stockCount: await getActiveStockCount() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/warehouse/stock-count/:id/lines?category= — строки для счёта. */
+warehouseScanRouter.get("/stock-count/:id/lines", warehouseAuth, async (req, res, next) => {
+  try {
+    const query = linesQuerySchema.parse(req.query);
+    res.json({ lines: await listStockCountLines(req.params.id, query) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/warehouse/stock-count/:id/lines/:lineId/count { qty } */
+warehouseScanRouter.post("/stock-count/:id/lines/:lineId/count", warehouseAuth, async (req, res, next) => {
+  try {
+    const { qty } = countBodySchema.parse(req.body);
+    const countedBy = req.warehouseWorker!.name;
+    res.json({ line: await recordCount(req.params.id, req.params.lineId, qty, countedBy) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/warehouse/stock-count/:id/lines/:lineId/reset — «Пересчитать». */
+warehouseScanRouter.post("/stock-count/:id/lines/:lineId/reset", warehouseAuth, async (req, res, next) => {
+  try {
+    res.json({ line: await resetCount(req.params.id, req.params.lineId) });
   } catch (err) {
     next(err);
   }

@@ -64,12 +64,27 @@ export async function getUsableUnitBaseMap(
  * F-LOST-1: сколько единиц COUNT-позиции сейчас безвозвратно вне оборота из-за
  * открытых «потеряшек». UNIT-потеряшка честно выводит юнит (status MISSING) и уже
  * учтена в usableUnitBase. Для COUNT нет юнита — потеря живёт строкой ProblemItem
- * (bookingItemId + quantity, equipmentUnitId = null). Пока карточка не закрыта как
- * FOUND (найдено, вернулось в оборот), это количество физически недоступно и должно
- * уменьшать эффективный totalQuantity — иначе календарь и проверка доступности
- * продолжают «продавать» утерянное. equipmentId берём с bookingItem, не с самой
- * потеряшки. WROTE_OFF/NOT_FOUND/SEARCHING/EXPECTED — все «не в наличии»; только
- * FOUND исключаем.
+ * (quantity, equipmentUnitId = null). Пока карточка не закрыта как FOUND (найдено,
+ * вернулось в оборот), это количество физически недоступно и должно уменьшать
+ * эффективный totalQuantity — иначе календарь и проверка доступности продолжают
+ * «продавать» утерянное. WROTE_OFF/NOT_FOUND/SEARCHING/EXPECTED — все «не в
+ * наличии»; только FOUND исключаем.
+ *
+ * Позиция строки — `equipmentId ?? bookingItem.equipmentId`. Потеряшка с приёмки
+ * знает позицию через свою BookingItem (исторически — ТОЛЬКО через неё; новые
+ * пишут и прямой equipmentId). А у потеряшки, заведённой вручную или
+ * инвентаризацией («не нашли на складе»), брони нет вовсе — позиция живёт только
+ * в `equipmentId`. Раньше фильтр шёл по одному `bookingItem.equipmentId`, и такие
+ * строки просто не попадали в выборку: пропажа, найденная пересчётом полки, не
+ * уменьшала бы доступность, и календарь продолжал бы продавать то, чего нет.
+ *
+ * Строка, у которой заполнены ОБА поля, приходит из запроса одной записью (OR по
+ * условиям, а не два запроса), поэтому считается ровно один раз. Если два поля
+ * вдруг указывают на разные позиции, побеждает прямой `equipmentId`, и строка
+ * засчитывается только той позиции — и только если её спросили.
+ *
+ * Функция питает календарь, дашборд, чек-листы, добор, мастерскую и
+ * инвентаризацию («на полке должно быть») — все они видят новые потеряшки сразу.
  */
 export async function getLostCountByEquipmentMap(
   countEquipmentIds: string[],
@@ -77,17 +92,21 @@ export async function getLostCountByEquipmentMap(
 ): Promise<Map<string, number>> {
   const lostByEquipment = new Map<string, number>();
   if (countEquipmentIds.length === 0) return lostByEquipment;
+  const requested = new Set(countEquipmentIds);
   const lostRows = await tx.problemItem.findMany({
     where: {
       equipmentUnitId: null,
       status: { not: "FOUND" },
-      bookingItem: { equipmentId: { in: countEquipmentIds } },
+      OR: [
+        { equipmentId: { in: countEquipmentIds } },
+        { bookingItem: { equipmentId: { in: countEquipmentIds } } },
+      ],
     },
-    select: { quantity: true, bookingItem: { select: { equipmentId: true } } },
+    select: { quantity: true, equipmentId: true, bookingItem: { select: { equipmentId: true } } },
   });
   for (const row of lostRows) {
-    const equipmentId = row.bookingItem?.equipmentId;
-    if (!equipmentId) continue;
+    const equipmentId = row.equipmentId ?? row.bookingItem?.equipmentId;
+    if (!equipmentId || !requested.has(equipmentId)) continue;
     lostByEquipment.set(equipmentId, (lostByEquipment.get(equipmentId) ?? 0) + row.quantity);
   }
   return lostByEquipment;

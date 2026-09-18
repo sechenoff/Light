@@ -152,6 +152,15 @@ expected = max(0, total − issued − calendar − repair − lost)
    - `FOUND` — только излишек (`diff > 0`) и только если по позиции есть открытые (`EXPECTED` /
      `SEARCHING`) безъюнитные потеряшки (400 `DECISION_NOT_APPLICABLE`).
    - `decision: null` — снять решение.
+   - Решение, чей знак больше не подходит расхождению, считается отсутствующим (фильтр
+     `undecided`, `totals.undecided`, план и 409 `UNDECIDED_LINES` согласованы).
+
+   **Позицию перевели на штучный учёт посреди инвентаризации** (SA может сделать это через
+   `PATCH /api/equipment/:id`): счёт и новое решение по строке → 409 `LINE_NOT_COUNT_MODE`
+   («её сверяют по единицам в карточке оборудования»); снять решение и «Пересчитать» можно.
+   Такая строка не предлагает решений (`allowedDecisions: []`), не ждёт решения и на завершении
+   эффектов не даёт (ни поправки, ни потеряшки, ни `lastCountedAt`): `totalQuantity` штучной
+   позиции выводится из единиц. В `unitModeExcluded` она второй раз не считается.
 4. **Завершение** (SA + WH): 409 `UNDECIDED_LINES` `{ details: { count } }`, если есть посчитанные
    строки с расхождением без решения. Непосчитанные не мешают. Всё — **в одной `$transaction`**:
    - `diff = 0` → `Equipment.lastCountedAt = now`.
@@ -167,7 +176,11 @@ expected = max(0, total − issued − calendar − repair − lost)
      остаток «лишнее без объяснения» попадает в акт, учёт не меняется.
    - Все посчитанные строки со ссылкой на позицию → `lastCountedAt = now`.
    - `status CLOSED`, `closedAt/By`. Аудит `STOCK_COUNT_CLOSE` со сводкой.
-   - Строки, чья позиция удалена из каталога (`equipmentId = null`), эффектов не дают.
+   - Строки, чья позиция удалена из каталога (`equipmentId = null`), эффектов не дают; посчитанные
+     строки позиций, ушедших на штучный учёт, — тоже (счётчик `unitModeSkipped`).
+   - Одна открытая инвентаризация и однократное применение решений держатся проверками ВНУТРИ
+     транзакции (частичный уникальный индекс на `status = OPEN` в Prisma для SQLite не объявить);
+     двойной клик «Начать» / «Завершить» даёт 409, а не вторую инвентаризацию или двойные эффекты.
 5. **Отмена** (SA + WH): `POST /:id/cancel` → `CANCELLED`, ничего не применяется, аудит
    `STOCK_COUNT_CANCEL`.
 
@@ -183,9 +196,12 @@ expected = max(0, total − issued − calendar − repair − lost)
   - `KIOSK` — есть завершённая `ScanSession` RETURN; `returnedBy = workerName`; замечания —
     потеряшки/ремонты по этой позиции этой брони;
   - `AUTO` — аудит `BOOKING_RETURNED` от пользователя, чьё имя начинается с `system` или `_system`;
-  - `MANUAL` — любой другой аудит `BOOKING_RETURNED` или его отсутствие у RETURNED;
-  - `OUT` — бронь ещё у клиента (ISSUED или CONFIRMED по календарю);
-- `verifiedReturns` — число `KIOSK`; кандидаты — брони в окне, принятые НЕ через киоск;
+  - `MANUAL` — любой другой аудит `BOOKING_RETURNED` или его отсутствие у RETURNED, или CONFIRMED,
+    чей срок уже прошёл (ни выдача, ни возврат не отмечены; по формуле §3 уже на полке),
+    `returnedBy = null`, статус в строке остаётся CONFIRMED;
+  - `OUT` — бронь ещё у клиента: ISSUED или CONFIRMED с `startDate ≤ at ≤ endDate` (ровно те, что
+    формула §3 вычитает из полки);
+- `verifiedReturns` — число `KIOSK`; кандидаты — брони в окне, принятые НЕ через киоск и не `OUT`;
   `suggestedBookingId` — если кандидат ровно один;
 - `openProblems` — открытые потеряшки позиции;
 - `onShelf` — разбивка формулы §3 на сейчас.
@@ -297,6 +313,7 @@ interface CompleteResult {
   matched: number; lostPositions: number; lostQty: number; createdProblemItemIds: string[];
   adjustedPositions: number; foundPositions: number; foundQty: number; unexplainedSurplusQty: number;
   verifiedPositions: number; uncounted: number;
+  unitModeSkipped: number;                // посчитанные строки позиций, ушедших на штучный учёт
 }
 ```
 
