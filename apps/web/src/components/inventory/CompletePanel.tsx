@@ -95,6 +95,19 @@ export function CompletePanel({
           </span>
         </div>
         <ProgressBar value={decided} total={discrepancies} tone="emerald" />
+        {/* Кнопка — сразу под прогрессом, а не в подвале карточки: внизу правой колонки
+            её закрывает глобальная плавающая «Сообщить» (1440×900 без прокрутки).
+            Последствия всё равно повторяются в диалоге подтверждения. */}
+        <div className="mt-2.5">
+          <button
+            type="button"
+            disabled={blocked || busy}
+            onClick={() => setConfirmOpen(true)}
+            className={`${BTN_PRIMARY} w-full py-1.5`}
+          >
+            {blocked ? `Завершить — осталось решить ${totals.undecided}` : "Завершить инвентаризацию"}
+          </button>
+        </div>
       </div>
 
       <ul className="px-3.5 pb-2 pt-1">
@@ -144,14 +157,6 @@ export function CompletePanel({
       )}
 
       <div className="flex flex-col gap-2 border-t border-border bg-surface-muted px-3.5 py-2.5">
-        <button
-          type="button"
-          disabled={blocked || busy}
-          onClick={() => setConfirmOpen(true)}
-          className={`${BTN_PRIMARY} w-full py-1.5`}
-        >
-          {blocked ? `Завершить — осталось решить ${totals.undecided}` : "Завершить инвентаризацию"}
-        </button>
         <p className="text-[11px] leading-snug text-ink-2">
           Всё запишется одной операцией: <b className="text-ink">потеряшки, поправки учёта и акт</b>. До этого можно
           пересчитать любую строку.

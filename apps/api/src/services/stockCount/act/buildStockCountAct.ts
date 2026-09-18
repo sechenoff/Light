@@ -39,6 +39,14 @@ import {
 import type { Decision, StockCountStatus } from "../types";
 import { fmtDayMonth, pluralRu, positionsLabel } from "./format";
 
+/** Название в «ёлочках» без удвоения — проекты часто уже записаны с кавычками. */
+export function quoteName(name: string): string {
+  const t = name.trim();
+  if (/^[«„"“]/.test(t) && /[»“"”]$/.test(t)) return t;
+  return `«${t}»`;
+}
+
+
 // ── Модель ───────────────────────────────────────────────────────────────────
 
 /**
@@ -215,7 +223,7 @@ function fittingDecision(line: DecisionLineInput): Decision | null {
 /** Фраза самого решения — без оглядки на режим учёта и на то, жива ли позиция. */
 function decisionPhrase(decision: Decision, line: DecisionLineInput, facts: DecisionFacts): string {
   if (decision === "LOST") {
-    return facts.sourceProjectName ? `пропажа → «${facts.sourceProjectName}»` : "пропажа → потеряшка";
+    return facts.sourceProjectName ? `пропажа → ${quoteName(facts.sourceProjectName)}` : "пропажа → потеряшка";
   }
   if (decision === "ADJUST") {
     const applied = facts.status === "CLOSED" ? facts.adjustApplied : null;

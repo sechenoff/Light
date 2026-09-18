@@ -20,7 +20,7 @@ import { toast } from "../ToastProvider";
 import { errorCode, explainInventoryError, inventoryApi } from "./api";
 import { AdjustReasonDialog } from "./AdjustReasonDialog";
 import { DecisionControl, type DecisionOption } from "./DecisionControl";
-import { effectiveDecision, fmtRange, fmtTime, ratePerShiftOf, rubWhole, signed } from "./format";
+import { effectiveDecision, fmtRange, fmtTime, quoteName, ratePerShiftOf, rubWhole, signed } from "./format";
 import { NO_BOOKING, TrailPanel } from "./TrailPanel";
 import type { Decision, EquipmentTrail, StockCountLineView, StockCountStatus, TrailBooking } from "./types";
 import { FOCUS } from "./ui";
@@ -92,7 +92,7 @@ function contextLine(
       return {
         tone: "hint",
         lead: alreadyLost ?? undefined,
-        text: `вероятно — «${suggestion.projectName}» (${suggestion.quantity} шт, ${fmtRange(
+        text: `вероятно — ${quoteName(suggestion.projectName)} (${suggestion.quantity} шт, ${fmtRange(
           suggestion.startDate,
           suggestion.endDate,
         )}): единственная бронь, принятая без пересчёта`,
@@ -119,7 +119,7 @@ function decidedNote(line: StockCountLineView, decision: Decision, status: Stock
   const who = line.decidedBy ? `решил ${line.decidedBy}${line.decidedAt ? ` · ${fmtTime(line.decidedAt)}` : ""}` : "решено";
   const cancelled = status === "CANCELLED" ? " · не применено" : "";
   if (decision === "LOST") {
-    return `${who} · ${line.sourceBooking ? `привязано к «${line.sourceBooking.projectName}»` : "бронь не определена"}${cancelled}`;
+    return `${who} · ${line.sourceBooking ? `привязано к ${quoteName(line.sourceBooking.projectName)}` : "бронь не определена"}${cancelled}`;
   }
   if (decision === "ADJUST") return `${who}${line.decisionNote ? ` · «${line.decisionNote}»` : ""}`;
   if (status === "CANCELLED") return `${who}${cancelled}`;

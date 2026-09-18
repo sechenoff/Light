@@ -6,6 +6,7 @@
  * Никаких кодов и штрихкодов. Минус — типографский «−» (U+2212), как в мокапе.
  */
 
+import { quoteName } from "../inventory/format";
 import type {
   StockCountCategory,
   StockCountLineView,
@@ -57,7 +58,7 @@ function calendarText(line: StockCountLineView): string {
     .map((b) => (b.projectName || b.clientName || "").trim())
     .filter((n) => n.length > 0);
   if (names.length === 0) return `${qty} на съёмке по календарю`;
-  const shown = names.slice(0, 2).map((n) => `«${n}»`).join(", ");
+  const shown = names.slice(0, 2).map((n) => quoteName(n)).join(", ");
   const rest = names.length > 2 ? ` и ещё ${names.length - 2}` : "";
   return `${qty} у ${shown}${rest} по календарю`;
 }

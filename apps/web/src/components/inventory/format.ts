@@ -50,6 +50,16 @@ export const RETURN_MODE_LABEL: Record<ReturnMode, string> = {
 // ── Числа и деньги ───────────────────────────────────────────────────────────
 
 /** Знак минуса — типографский (U+2212), как в мокапе. */
+/**
+ * Название в «ёлочках» без удвоения: проекты часто уже записаны с кавычками
+ * («Северный ветер», „Лето“, "Река") — оборачивать их второй раз нельзя.
+ */
+export function quoteName(name: string): string {
+  const t = name.trim();
+  if (/^[«„"“]/.test(t) && /[»“"”]$/.test(t)) return t;
+  return `«${t}»`;
+}
+
 export function signed(n: number): string {
   if (n > 0) return `+${n}`;
   if (n < 0) return `−${Math.abs(n)}`;
@@ -195,10 +205,10 @@ export function expectationNotes(line: StockCountLineView, showZeroIssued = fals
     if (named.length === 1) {
       notes.push({
         tone: "amber",
-        text: `${named[0]!.quantity} по календарю у «${named[0]!.projectName}» — бронь подтверждена, но не отмечена выданной`,
+        text: `${named[0]!.quantity} по календарю у ${quoteName(named[0]!.projectName)} — бронь подтверждена, но не отмечена выданной`,
       });
     } else if (named.length > 1) {
-      const list = named.map((c) => `${c.quantity} у «${c.projectName}»`).join(", ");
+      const list = named.map((c) => `${c.quantity} у ${quoteName(c.projectName)}`).join(", ");
       notes.push({
         tone: "amber",
         text: `по календарю: ${list} — брони подтверждены, но не отмечены выданными`,

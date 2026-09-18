@@ -44,7 +44,7 @@ export function WarehouseSubnav({
             }`}
           >
             {item.label}
-            {badge && <span className="ml-1 font-mono text-[10.5px] text-ink-3">{badge}</span>}
+            {badge && <span className="ml-1 text-[10.5px] font-medium tabular-nums text-ink-3">{badge}</span>}
           </Link>
         );
       })}

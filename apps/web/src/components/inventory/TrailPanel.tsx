@@ -12,7 +12,7 @@
 import { useId, useState } from "react";
 
 import { pluralize } from "../../lib/format";
-import { fmtDayMonth, fmtRange, RETURN_MODE_LABEL } from "./format";
+import { fmtDayMonth, fmtRange, quoteName, RETURN_MODE_LABEL } from "./format";
 import type { EquipmentTrail, TrailBooking } from "./types";
 import { FOCUS } from "./ui";
 
@@ -79,7 +79,7 @@ export function trailVerdict(trail: EquipmentTrail, qty: number): { lead: string
     ? trail.bookings.find((b) => b.bookingId === trail.suggestedBookingId)
     : undefined;
   if (suggested) {
-    parts.push(`Без пересчёта приняли только «${suggested.projectName}» — вероятнее всего, ${qty} шт ушли с ней.`);
+    parts.push(`Без пересчёта приняли только ${quoteName(suggested.projectName)} — вероятнее всего, ${qty} шт ушли с ней.`);
   } else if (unverified > 1) {
     parts.push(`${qty} шт ушли в одной из них или потерялись на складе; точнее по данным не сказать.`);
   } else if (unverified === 0) {
@@ -178,7 +178,7 @@ export function TrailPanel({
                   {fmtRange(b.startDate, b.endDate)}
                 </span>
                 <span className="min-w-0">
-                  <b className="font-semibold text-ink">«{b.projectName}»</b>{" "}
+                  <b className="font-semibold text-ink">{quoteName(b.projectName)}</b>{" "}
                   <small className="text-ink-3">· {b.clientName}</small>
                 </span>
                 <span className="mono-num whitespace-nowrap text-right font-semibold text-ink">{b.quantity} шт</span>
@@ -214,7 +214,7 @@ export function TrailPanel({
         <p className="border-b border-border px-3 py-1.5 text-[11.5px] text-ink-2">
           <span className="font-semibold text-amber">Уже в потеряшках:</span>{" "}
           {trail.openProblems
-            .map((p) => `${p.quantity} шт${p.projectName ? ` с «${p.projectName}»` : ""} (${fmtDayMonth(p.createdAt)})`)
+            .map((p) => `${p.quantity} шт${p.projectName ? ` с ${quoteName(p.projectName)}` : ""} (${fmtDayMonth(p.createdAt)})`)
             .join("; ")}
         </p>
       )}
@@ -252,7 +252,7 @@ export function TrailPanel({
               <optgroup label="Приняты без пересчёта">
                 {candidates.map((b) => (
                   <option key={b.bookingId} value={b.bookingId}>
-                    «{b.projectName}» · {b.clientName} · {fmtRange(b.startDate, b.endDate)}
+                    {quoteName(b.projectName)} · {b.clientName} · {fmtRange(b.startDate, b.endDate)}
                   </option>
                 ))}
               </optgroup>
@@ -261,14 +261,14 @@ export function TrailPanel({
               <optgroup label="Приняты в киоске">
                 {others.map((b) => (
                   <option key={b.bookingId} value={b.bookingId}>
-                    «{b.projectName}» · {b.clientName} · {fmtRange(b.startDate, b.endDate)}
+                    {quoteName(b.projectName)} · {b.clientName} · {fmtRange(b.startDate, b.endDate)}
                   </option>
                 ))}
               </optgroup>
             )}
             {extraBooking && !inTrail.has(extraBooking.id) && (
               <option value={extraBooking.id}>
-                «{extraBooking.projectName}» · {extraBooking.clientName}
+                {quoteName(extraBooking.projectName)} · {extraBooking.clientName}
               </option>
             )}
           </select>
