@@ -22,6 +22,7 @@
  */
 
 import type { ReactNode } from "react";
+import { ProjectWarehouseOperations } from "./ProjectWarehouseOperations";
 import {
   IconHome,
   IconIssue,
@@ -283,6 +284,7 @@ export function WorkstationShell({
           )}
         </div>
       </header>
+      {!navHidden && !onBack && <ProjectWarehouseOperations tab={tab} />}
 
       {navHidden ? (
         <main className="flex flex-1 items-center justify-center px-4 py-8">

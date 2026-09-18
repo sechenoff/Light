@@ -13,6 +13,7 @@ export type BulkAction = "approve" | "submit" | "cancel" | "archive";
 
 /** Минимум полей строки, нужный для решения о применимости. */
 export type BulkBookingRow = {
+  mode?: "STANDARD" | "PROJECT";
   id: string;
   status: "DRAFT" | "PENDING_APPROVAL" | "CONFIRMED" | "ISSUED" | "RETURNED" | "CANCELLED";
   amountPaid: string;
@@ -41,6 +42,7 @@ export function isActionApplicable(
   row: BulkBookingRow,
   ctx: BulkActionContext,
 ): boolean {
+  if (row.mode === "PROJECT") return false;
   switch (action) {
     case "approve":
       return ctx.isSuperAdmin && row.status === "PENDING_APPROVAL";

@@ -16,6 +16,12 @@ import { releaseBookingUnits } from "./bookings";
  */
 
 /** Из каких статусов бронь можно отменить. Зеркалит allowedActionsByStatus. */
+async function requireOrdinaryBooking(bookingId: string) {
+  if (await prisma.bookingProject.findUnique({ where: { bookingId } })) {
+    throw new HttpError(409, "Действие выполняется в карточке длинного проекта", "PROJECT_ACTION_REQUIRED");
+  }
+}
+
 const CANCELLABLE_STATUSES = ["DRAFT", "PENDING_APPROVAL", "CONFIRMED"] as const;
 
 const bookingInclude = {
@@ -42,6 +48,7 @@ export async function cancelBooking(
   userId: string,
   patch: CancelBookingPatch = {},
 ) {
+  await requireOrdinaryBooking(bookingId);
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
     select: { id: true, status: true },
@@ -101,6 +108,7 @@ export async function archiveBooking(
   bookingId: string,
   userId: string,
 ): Promise<ArchiveBookingResult> {
+  await requireOrdinaryBooking(bookingId);
   const existing = await prisma.booking.findUnique({
     where: { id: bookingId },
     select: {

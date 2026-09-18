@@ -12,6 +12,11 @@ const STATUS_LABEL = LK_STATUS_LABEL;
 // Локальное расширение LkBookingDetail: транспорт и счёт добавлены в ответ
 // GET /api/lk/bookings/:id (routes/lk/bookings.ts) и нужны только на этой странице.
 type LkBookingDetailExt = LkBookingDetail & {
+  mode?: string;
+  forecastTotal?: string;
+  restDays?: number;
+  restPercent?: number;
+  periods?: Array<{ id: string; kind: string; number: string | null; fromDate: string; throughDate: string; amount: string }>;
   transportSubtotal: string;
   hasInvoice: boolean;
   invoiceNumber: string | null;
@@ -86,17 +91,18 @@ export default function LkBookingDetailPage() {
           <span>·</span>
           <span className={STATUS_CLASS[b.status]}>{STATUS_LABEL[b.status]}</span>
         </div>
+        {b.mode === "PROJECT" && <p className="text-sm text-ink-2">Выходных: {b.restDays} по {b.restPercent}%. Расчёты фиксируются по периодам.</p>}
       </header>
 
       <section aria-label="Позиции заказа" className="bg-surface-muted border border-border rounded-lg overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
-          <p className="eyebrow">Позиции</p>
+          <p className="eyebrow">{b.mode === "PROJECT" ? "Прогноз состава и стоимости проекта" : "Позиции"}</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[480px]">
             <thead>
               <tr className="text-left text-ink-2">
-                <th className="px-4 py-2 font-normal">Категория</th>
+                <th className="px-4 py-2 font-normal">{b.mode === "PROJECT" ? "Период" : "Категория"}</th>
                 <th className="px-4 py-2 font-normal">Название</th>
                 <th className="px-4 py-2 font-normal text-right">Кол-во</th>
                 <th className="px-4 py-2 font-normal text-right">Цена / смена</th>
@@ -122,8 +128,8 @@ export default function LkBookingDetailPage() {
           база, от которой считаются «Оплачено» и «Остаток», иначе числа не бьются. */}
       <section aria-label="Финансовая сводка" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-surface-muted border border-border rounded-lg p-3">
-          <p className="eyebrow">Скидка</p>
-          <p className="mono-num text-lg mt-1">{formatRub(Number(b.discountAmount))}</p>
+          <p className="eyebrow">{b.mode === "PROJECT" ? "Прогноз проекта" : "Скидка"}</p>
+          <p className="mono-num text-lg mt-1">{formatRub(Number(b.mode === "PROJECT" ? b.forecastTotal : b.discountAmount))}</p>
         </div>
         {Number(b.transportSubtotal) > 0 && (
           <div className="bg-surface-muted border border-border rounded-lg p-3">
@@ -132,7 +138,7 @@ export default function LkBookingDetailPage() {
           </div>
         )}
         <div className="bg-surface-muted border border-border rounded-lg p-3">
-          <p className="eyebrow">Итого</p>
+          <p className="eyebrow">{b.mode === "PROJECT" ? "Начислено по периодам" : "Итого"}</p>
           <p className="mono-num text-lg mt-1">{formatRub(Number(b.finalAmount))}</p>
         </div>
         <div className="bg-surface-muted border border-border rounded-lg p-3">
@@ -146,6 +152,8 @@ export default function LkBookingDetailPage() {
           </p>
         </div>
       </section>
+
+      {b.periods && b.periods.length > 0 && <section aria-label="Расчёты по периодам" className="space-y-3"><h2 className="font-medium">Расчёты по периодам</h2>{b.periods.map(p => <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-border p-3 text-sm" key={p.id}><div><p>{p.kind === "CORRECTION" ? "Корректировка" : p.number} · {p.fromDate} — {p.throughDate}</p><p>{formatRub(Number(p.amount))}</p></div><div className="flex gap-3">{["pdf", "xlsx"].map(f => <a className="underline" key={f} href={`/api/lk/bookings/${b.id}/project-documents/${p.id}/${f}`} target="_blank" rel="noreferrer">{f.toUpperCase()}</a>)}</div></div>)}</section>}
 
       {(b.comment || b.optionalNote) && (
         <section aria-label="Комментарии" className="bg-surface-muted border border-border rounded-lg p-4 space-y-2">

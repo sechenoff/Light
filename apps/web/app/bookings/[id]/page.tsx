@@ -26,6 +26,8 @@ import {
   BookingFinancePanel,
   type InvoiceItem,
 } from "../../../src/components/bookings/BookingFinancePanel";
+import { ProjectBookingDetail } from "../../../src/components/bookings/project/ProjectBookingDetail";
+import { BookingIssuesButton } from "../../../src/components/bookings/issues/BookingIssuesPanel";
 import { BookingHero } from "../../../src/components/bookings/BookingHero";
 import { BookingTransportSection } from "../../../src/components/bookings/BookingTransportSection";
 import { BookingScanSection } from "../../../src/components/bookings/BookingScanSection";
@@ -539,6 +541,8 @@ export default function BookingDetailPage() {
   const showApprovalView =
     booking?.status === "PENDING_APPROVAL" && user?.role === "SUPER_ADMIN";
 
+  if ((booking as { mode?: string } | null)?.mode === "PROJECT") return <ProjectBookingDetail bookingId={id} />;
+
   return (
     <div className="p-4 lg:p-6 pb-24 md:pb-6">
       {/* Parent top-bar — hidden when ApprovalReviewView is rendered; that view brings its own header.
@@ -898,6 +902,7 @@ export default function BookingDetailPage() {
           {/* Hero + финансовые карточки + печатная шапка — вынесено в BookingHero (фаза 4.10).
               Экранная часть скрыта в retro-режиме, печатная — рендерится всегда. */}
           <BookingHero booking={booking} showHero={!retroEditMode} />
+          <BookingIssuesButton bookingId={booking.id} />
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 print-booking">
           {/* Таблица позиций — вынесена в BookingItemsTable (фаза 4.10). */}

@@ -99,6 +99,9 @@ async function runOne(
   userId: string,
   role: UserRole,
 ): Promise<BulkItemResult> {
+  if (await prisma.bookingProject.findUnique({ where: { bookingId: id } })) {
+    throw new HttpError(409, "Используйте действия в карточке длинного проекта", "PROJECT_ACTION_REQUIRED");
+  }
   if (action === "archive") {
     await archiveBooking(id, userId);
     return { id, ok: true, status: "ARCHIVED" };

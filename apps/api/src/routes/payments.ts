@@ -13,6 +13,7 @@ const router = Router();
 router.use(rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]));
 
 const createSchema = z.object({
+  requestKey: z.string().uuid().optional(),
   bookingId: z.string().min(1),
   amount: z.coerce.number().positive(),
   method: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]),
@@ -22,7 +23,7 @@ const createSchema = z.object({
   invoiceId: z.string().optional(),
 });
 
-const patchSchema = createSchema.partial().omit({ bookingId: true });
+const patchSchema = createSchema.partial().omit({ bookingId: true, requestKey: true });
 
 const listQuerySchema = z.object({
   bookingId: z.string().optional(),
@@ -68,6 +69,7 @@ router.post("/", async (req, res, next) => {
     const userId = req.adminUser!.userId;
     const role = req.adminUser!.role;
     const payment = await paymentService.createPayment({
+      requestKey: body.requestKey,
       bookingId: body.bookingId,
       amount: new Decimal(body.amount),
       method: body.method,

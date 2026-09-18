@@ -20,7 +20,7 @@ All UI text, comments, and business logic use Russian language.
 7. **Web proxies API** -- `apps/web/app/api/[...path]/route.ts` forwards all `/api/*` requests to Express backend. In dev it targets `http://127.0.0.1:4000`. Do not duplicate API endpoints in Next.js.
 8. **Prisma pinned** to `>=6.5.0 <7.0.0` -- v7 broke `url` in datasource, <6.5 lacks SQLite enum support.
 9. **User-facing text in Russian** -- bot messages, web UI labels, error messages, PDF exports.
-10. **deploy.sh uses `prisma db push --accept-data-loss`** -- do not make schema changes without a DB backup.
+10. **Production deployment refuses destructive schema sync** -- never add `--accept-data-loss` or `--force-reset`; schema changes require a consistent DB backup and a data-preserving migration. Booking changes must be committed to main before considering a production release complete.
 11. **API key auth** -- `apps/api/src/middleware/apiKeyAuth.ts` validates `X-API-Key` header. `AUTH_MODE=warn` logs violations; `AUTH_MODE=enforce` rejects them. Set `API_KEYS` env var (comma-separated). Health endpoint `/health` is exempt.
 
 ## Architecture

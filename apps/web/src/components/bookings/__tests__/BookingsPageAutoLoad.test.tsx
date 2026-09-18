@@ -42,9 +42,11 @@ function booking(id: string) {
     amountPaid: "0",
     amountOutstanding: "10000",
     client: { id: `c-${id}`, name: `Клиент ${id}` },
-    items: [],
+    items: [], mode: "STANDARD", financeState: "UNPAID", overdueAmount: "0", overdueDays: 0, creditAmount: "0", completed: false, onHand: 0, actions: ["issue"], projectSummary: null, writeOffAmount: "0",
   };
 }
+
+function response(body: any) { return { scopeCounts: {}, summary: { active: 1, issued: 0, outstanding: "10000", overdue: "0", unpaid: 1, overdueCount: 0 }, options: { clients: [], projects: [] }, totals: { count: body.totalCount ?? 3, outstanding: "10000", overdue: "0" }, day: { events: [], bookings: [] }, asOf: "2026-09-17T12:00:00Z", totalCount: 3, ...body }; }
 
 /** Ответы /api/bookings по порядку обращения; остальные ручки — пустые. */
 function mockApi(pages: Array<{ bookings: unknown[]; nextCursor: string | null; totalCount?: number }>) {
@@ -52,11 +54,11 @@ function mockApi(pages: Array<{ bookings: unknown[]; nextCursor: string | null; 
   let page = 0;
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.includes("/api/bookings?")) {
+    if (url.includes("/api/bookings/register?")) {
       listCalls.push(url);
       const body = pages[Math.min(page, pages.length - 1)];
       page += 1;
-      return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as Response;
+      return { ok: true, status: 200, json: async () => response(body), text: async () => JSON.stringify(body) } as Response;
     }
     const empty = { pendingApproval: 0, overdue: 0, issued: 0 };
     return { ok: true, status: 200, json: async () => empty, text: async () => JSON.stringify(empty) } as Response;
@@ -109,27 +111,26 @@ describe("/bookings — автоподгрузка при доскролле", (
     expect(withCursor).toHaveLength(1);
   });
 
-  it("кнопка «Загрузить ещё» не мозолит глаза, но остаётся доступной с клавиатуры", async () => {
+  it("кнопка ручной подгрузки остаётся доступной вместе с автоматической", async () => {
     mockApi([{ bookings: [booking("a1")], nextCursor: "cur-1", totalCount: 2 }]);
     render(<BookingsPage />);
     await screen.findAllByText("Проект a1");
 
-    const button = screen.getByRole("button", { name: "Загрузить ещё" });
-    expect(button.className).toContain("sr-only");
-    expect(button.className).toContain("focus:not-sr-only");
+    const button = screen.getByRole("button", { name: /Показать ещё/ });
+    expect(button).toBeEnabled();
   });
 
   it("после ошибки сети показывает «Повторить» и больше не долбит запросами", async () => {
     let listCalls = 0;
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/api/bookings?")) {
+      if (url.includes("/api/bookings/register?")) {
         listCalls += 1;
         if (url.includes("cursor=")) {
           return { ok: false, status: 500, text: async () => "boom" } as Response;
         }
         const body = { bookings: [booking("a1")], nextCursor: "cur-1", totalCount: 2 };
-        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as Response;
+        return { ok: true, status: 200, json: async () => response(body), text: async () => JSON.stringify(body) } as Response;
       }
       const empty = { pendingApproval: 0, overdue: 0, issued: 0 };
       return { ok: true, status: 200, json: async () => empty, text: async () => JSON.stringify(empty) } as Response;
@@ -167,7 +168,7 @@ describe("/bookings — автоподгрузка при доскролле", (
       const pages = [
         { bookings: [booking("a1")], nextCursor: "cur-1", totalCount: 3 },
         { bookings: [booking("b1")], nextCursor: "cur-2" },
-        { bookings: [booking("c1")], nextCursor: null },
+        { bookings: [booking("b1"), booking("c1")], nextCursor: null },
       ];
       global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -177,13 +178,13 @@ describe("/bookings — автоподгрузка при доскролле", (
             releaseBulk = r;
           });
           const body = { action: "archive", results: [{ id: "a1", ok: true }], counts: { total: 1, ok: 1, failed: 0 } };
-          return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as Response;
+          return { ok: true, status: 200, json: async () => response(body), text: async () => JSON.stringify(body) } as Response;
         }
-        if (url.includes("/api/bookings?")) {
+        if (url.includes("/api/bookings/register?")) {
           listCalls.push(url);
           const body = pages[Math.min(page, pages.length - 1)];
           page += 1;
-          return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as Response;
+          return { ok: true, status: 200, json: async () => response(body), text: async () => JSON.stringify(body) } as Response;
         }
         const empty = { pendingApproval: 0, overdue: 0, issued: 0 };
         return { ok: true, status: 200, json: async () => empty, text: async () => JSON.stringify(empty) } as Response;
@@ -232,7 +233,7 @@ describe("/bookings — автоподгрузка при доскролле", (
     await screen.findAllByText("Проект a1");
 
     await waitFor(() => expect(screen.getByText(/Показаны все брони/)).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: "Загрузить ещё" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Показать ещё/ })).toBeNull();
   });
 
   it("«выбрать все» ограничено потолком пачки", async () => {

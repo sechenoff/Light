@@ -14,6 +14,8 @@ import { renderInvoicePdf, coalesceWithEnv, type InvoiceLine } from "../services
 import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 import { getSettings } from "../services/organizationService";
 
+import { invoiceReadModel } from "../utils/invoiceAmount";
+
 const router = express.Router();
 
 const invoiceKindEnum = z.enum(["FULL", "DEPOSIT", "BALANCE", "CORRECTION"]);
@@ -217,7 +219,7 @@ router.get("/", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, next)
         // MF-5: частично оплаченный просроченный счёт тоже показываем OVERDUE.
         displayStatus = "OVERDUE";
       }
-      return { ...inv, displayStatus };
+      return { ...invoiceReadModel(inv), displayStatus };
     });
 
     res.json({ items: itemsWithDisplayStatus, total, counts });
@@ -250,7 +252,7 @@ router.get("/:id", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res, ne
 
     if (!invoice) throw new HttpError(404, "Счёт не найден", "INVOICE_NOT_FOUND");
 
-    res.json(invoice);
+    res.json(invoiceReadModel(invoice));
   } catch (err) {
     next(err);
   }
@@ -275,7 +277,7 @@ router.patch("/:id", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => {
       userId,
     );
 
-    res.json(invoice);
+    res.json(invoiceReadModel(invoice));
   } catch (err) {
     next(err);
   }
@@ -289,7 +291,7 @@ router.post("/:id/issue", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) =>
   try {
     const userId = req.adminUser!.userId;
     const invoice = await issueInvoice(req.params.id, userId);
-    res.json(invoice);
+    res.json(invoiceReadModel(invoice));
   } catch (err) {
     next(err);
   }
@@ -304,7 +306,7 @@ router.post("/:id/void", rolesGuard(["SUPER_ADMIN"]), async (req, res, next) => 
     const { reason } = voidSchema.parse(req.body);
     const userId = req.adminUser!.userId;
     const invoice = await voidInvoice(req.params.id, reason, userId);
-    res.json(invoice);
+    res.json(invoiceReadModel(invoice));
   } catch (err) {
     next(err);
   }
@@ -335,6 +337,14 @@ router.get("/:id/pdf", rolesGuard(["SUPER_ADMIN", "WAREHOUSE"]), async (req, res
       throw new HttpError(409, "Аннулированный счёт не может быть скачан", "INVOICE_VOID");
     }
 
+    if (invoice.kind === "PERIOD") {
+      const period = await prisma.projectBillingPeriod.findUnique({ where: { invoiceId: invoice.id } });
+      if (!period) throw new HttpError(404, "Расчётный период не найден");
+      const { exportProjectDocument } = await import("../services/projectDocuments");
+      const buffer = await exportProjectDocument(invoice.bookingId, period.id, "pdf");
+      res.type("application/pdf").setHeader("Content-Disposition", "attachment; filename=project-period.pdf");
+      return res.send(buffer);
+    }
     const booking = invoice.booking;
     const orgSettings = await getSettings();
     const org = coalesceWithEnv(orgSettings);

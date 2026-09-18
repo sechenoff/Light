@@ -295,6 +295,7 @@ export function ShiftHome({
 
       {countCard}
 
+      <h2 className="text-sm font-medium text-ink">Обычные брони · сводка смены</h2>
       {/* KPI */}
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-lg border border-border bg-surface px-3 py-2.5 shadow-xs">
@@ -425,7 +426,7 @@ export function ShiftHome({
         </div>
         {timeline.length === 0 && overdue.length === 0 ? (
           <p className="px-3.5 py-6 text-center text-sm text-ink-3">
-            На сегодня выдач и возвратов нет.
+            По обычным броням на сегодня выдач и возвратов нет.
           </p>
         ) : (
           <div>

@@ -96,7 +96,7 @@ export function DictionaryAccordion({ groups, onDelete, onRebind, onExport }: Pr
         </select>
 
         {/* Source filter */}
-        <div className="flex gap-px p-0.5 bg-surface-muted border border-border rounded-lg">
+        <div className="flex flex-wrap gap-px p-0.5 bg-surface-muted border border-border rounded-lg">
           {FILTERS.map(({ key, label, icon }) => {
             const active = sourceFilter === key;
             const count = sourceCounts[key];

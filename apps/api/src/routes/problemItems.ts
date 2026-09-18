@@ -36,6 +36,7 @@ const PROBLEM_REASONS = ["LEFT_ON_SITE", "LOST", "DESTROYED", "STOLEN", "NOT_ON_
 const listQuerySchema = z.object({
   status: z.enum(["EXPECTED", "SEARCHING", "FOUND", "NOT_FOUND", "WROTE_OFF"]).optional(),
   source: z.enum(["RETURN", "STOCK_COUNT", "MANUAL"]).optional(),
+  bookingId: z.string().min(1).max(100).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
   cursor: z.string().optional(),
 });
@@ -99,6 +100,7 @@ const ITEM_SELECT = {
   bookingItem: {
     select: {
       id: true,
+      bookingId: true,
       quantity: true,
       equipment: { select: { name: true, category: true } },
     },
@@ -121,7 +123,7 @@ type ItemRow = Prisma.ProblemItemGetPayload<{ select: typeof ITEM_SELECT }>;
  */
 async function serializeItems(rows: ItemRow[]) {
   const bookingIds = [
-    ...new Set(rows.map((r) => r.sourceBookingId).filter((id): id is string => Boolean(id))),
+    ...new Set(rows.map((r) => r.sourceBookingId ?? r.bookingItem?.bookingId).filter((id): id is string => Boolean(id))),
   ];
   const bookings = bookingIds.length
     ? await prisma.booking.findMany({
@@ -138,7 +140,7 @@ async function serializeItems(rows: ItemRow[]) {
   return rows.map((r) => ({
     ...r,
     equipment: r.equipmentUnit?.equipment ?? r.bookingItem?.equipment ?? r.equipment ?? null,
-    booking: r.sourceBookingId ? (bookingMap.get(r.sourceBookingId) ?? null) : null,
+    booking: bookingMap.get(r.sourceBookingId ?? r.bookingItem?.bookingId ?? "") ?? null,
   }));
 }
 
@@ -152,6 +154,7 @@ const listProblemItems: RequestHandler = async (req, res, next) => {
     const where: Prisma.ProblemItemWhereInput = {};
     if (q.status) where.status = q.status;
     if (q.source) where.source = q.source;
+    if (q.bookingId) where.OR = [{ sourceBookingId: q.bookingId }, { sourceBookingId: null, bookingItem: { bookingId: q.bookingId } }];
 
     // Keyset-пагинация по (createdAt desc, id) — зеркалит audit.ts.
     const rows = await prisma.problemItem.findMany({

@@ -1,4 +1,5 @@
 import type { PaymentMethod, Payment, Prisma, BookingStatus, UserRole } from "@prisma/client";
+import { createHash } from "node:crypto";
 import { Decimal } from "decimal.js";
 import { prisma } from "../prisma";
 import { HttpError } from "../utils/errors";
@@ -64,6 +65,8 @@ type TxClient = Omit<
 >;
 
 export interface CreatePaymentArgs {
+  /** Stable across retries of one submission; scoped to its author. */
+  requestKey?: string;
   bookingId: string;
   amount: Decimal | number | string;
   method: PaymentMethod;
@@ -81,6 +84,22 @@ export interface CreatePaymentArgs {
 }
 
 export async function createPayment(args: CreatePaymentArgs): Promise<Payment> {
+  const paymentId = args.requestKey
+    ? `idem_${createHash("sha256").update(`${args.createdBy}:${args.requestKey}`).digest("hex")}` : undefined;
+  const replay = async () => {
+    if (!paymentId) return null;
+    const previous = await prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!previous) return null;
+    if (previous.bookingId !== args.bookingId || previous.createdBy !== args.createdBy ||
+      !new Decimal(previous.amount.toString()).eq(args.amount.toString()) || previous.method !== args.method ||
+      previous.receivedAt?.getTime() !== args.receivedAt.getTime() || previous.note !== (args.note ?? null) ||
+      previous.invoiceId !== (args.invoiceId ?? null) || previous.voidedAt) {
+      throw new HttpError(409, "Этот платёж уже обрабатывался с другими данными. Проверьте журнал платежей.", "PAYMENT_REQUEST_CONFLICT");
+    }
+    return previous;
+  };
+  const previous = await replay();
+  if (previous) return previous;
   // Validate booking exists
   const booking = await prisma.booking.findUnique({ where: { id: args.bookingId } });
   if (!booking) throw new HttpError(404, "Бронь не найдена", "BOOKING_NOT_FOUND");
@@ -122,9 +141,11 @@ export async function createPayment(args: CreatePaymentArgs): Promise<Payment> {
   // Аудит-экшен зависит от роли
   const auditAction = role === "WAREHOUSE" ? "PAYMENT_CREATE_BY_WH" : "PAYMENT_CREATE";
 
-  return prisma.$transaction(async (tx) => {
+  try {
+  return await prisma.$transaction(async (tx) => {
     const payment = await tx.payment.create({
       data: {
+        ...(paymentId ? { id: paymentId } : {}),
         bookingId: args.bookingId,
         amount: amount,
         method: args.method,
@@ -164,6 +185,14 @@ export async function createPayment(args: CreatePaymentArgs): Promise<Payment> {
 
     return payment;
   });
+  } catch (error) {
+    // The unique primary key also protects simultaneous network retries.
+    if ((error as { code?: string }).code === "P2002") {
+      const concurrent = await replay();
+      if (concurrent) return concurrent;
+    }
+    throw error;
+  }
 }
 
 export async function updatePayment(

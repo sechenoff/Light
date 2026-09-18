@@ -12,6 +12,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 const FIXTURE_DB_PATH = path.resolve(__dirname, "../../prisma/test-migration-fixture.db");
 
 beforeAll(async () => {
+  fs.closeSync(fs.openSync(FIXTURE_DB_PATH, "a"));
   // Создаём тестовую БД с RENTAL_ADMIN пользователем
   execSync("npx prisma db push --skip-generate --force-reset", {
     cwd: path.resolve(__dirname, "../.."),

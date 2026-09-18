@@ -49,6 +49,9 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: guard production deployment
+        run: python3 scripts/check-deploy-safety.py
+
       - name: npm ci (workspace, full)
         run: npm ci --no-audit --no-fund
 
@@ -113,6 +116,16 @@ jobs:
           chmod 600 ~/.ssh/deploy_id
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
+      - name: refuse stale production release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          CURRENT_SHA=$(gh api "repos/$RELEASE_REPO/git/ref/heads/main" --jq .object.sha)
+          test "$RELEASE_SHA" = "$CURRENT_SHA" || { echo "A newer main revision exists; refusing stale deploy"; exit 1; }
+
       - name: rsync source tree (без dist, .next, node_modules — приходят отдельно)
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -128,7 +141,7 @@ jobs:
             --exclude 'dist' \
             --exclude '.next' \
             --exclude '.env' --exclude '.env.*' --exclude '*.env' \
-            --exclude '*.db' \
+            --exclude '*.db*' \
             --exclude 'logs/' \
             --exclude 'data/' --exclude 'storage/' --exclude 'backups/' --exclude 'uploads/' \
             --exclude 'artifacts.tar.gz' \
@@ -232,7 +245,7 @@ jobs:
               echo "  ✗ БЭКАП НЕ СДЕЛАН: файл БД не найден ($DB_FILE)" >&2
               exit 1
             fi
-            npx prisma db push --accept-data-loss
+            npx prisma db push
             npx tsx scripts/seed-admin-users.ts || true
             npx tsx scripts/seed-system-user.ts || true
             cd ../..

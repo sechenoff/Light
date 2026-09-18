@@ -32,6 +32,8 @@ vi.mock("../../prisma", () => ({
     bookingVehicle: {
       findMany: vi.fn(),
     },
+    projectLot: { findMany: vi.fn() },
+    projectLotUnit: { count: vi.fn() },
     bookingItem: {
       findFirst: vi.fn(),
       findMany: vi.fn(),
@@ -244,8 +246,11 @@ describe("completeSession", () => {
     db.scanSession.findUnique.mockResolvedValue(session);
 
     db.bookingItem.findMany.mockResolvedValue([
-      { id: "bi-1", equipmentId: "eq-1", quantity: 1 },
+      { id: "bi-1", equipmentId: "eq-1", quantity: 1, unitReservations: [] },
     ]);
+
+    db.projectLot.findMany.mockResolvedValue([]);
+    db.projectLotUnit.count.mockResolvedValue(0);
 
     // Reserved units (BookingItemUnit) — same unit is reserved
     db.bookingItemUnit.findMany.mockResolvedValue([

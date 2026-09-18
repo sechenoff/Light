@@ -18,7 +18,7 @@ import { FINANCE_TERMS } from "../../../src/lib/financeTerms";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type InvoiceStatus = "DRAFT" | "ISSUED" | "PARTIAL_PAID" | "PAID" | "OVERDUE" | "VOID";
-type InvoiceKind = "FULL" | "DEPOSIT" | "BALANCE" | "CORRECTION";
+type InvoiceKind = "FULL" | "DEPOSIT" | "BALANCE" | "CORRECTION" | "PERIOD";
 
 interface Invoice {
   id: string;
@@ -29,6 +29,8 @@ interface Invoice {
    *  сразу, не дожидаясь ночного cron. Опционален для обратной совместимости. */
   displayStatus?: InvoiceStatus;
   total: string;
+  originalTotal?: string;
+  adjustmentAmount?: string;
   paidAmount: string;
   dueDate: string | null;
   createdAt: string;
@@ -115,6 +117,7 @@ const KIND_LABELS: Record<InvoiceKind, string> = {
   DEPOSIT: "Предоплата",
   BALANCE: "Остаток",
   CORRECTION: "Корректировка",
+  PERIOD: "Период проекта",
 };
 
 function statusVariant(s: InvoiceStatus): "view" | "info" | "warn" | "ok" | "alert" | "none" {
@@ -502,7 +505,7 @@ function InvoicesPage() {
                           </Link>
                         </td>
                         <td className="px-3 py-3 text-ink-2">{KIND_LABELS[inv.kind]}</td>
-                        <td className={`px-3 py-3 text-right mono-num ${isVoid ? "line-through text-ink-3" : ""}`}>{formatRub(Number(inv.total))}</td>
+                        <td className={`px-3 py-3 text-right mono-num ${isVoid ? "line-through text-ink-3" : ""}`}>{formatRub(Number(inv.total))}{Number(inv.adjustmentAmount ?? 0) !== 0 && <span className="block text-xs text-ink-3">С корректировкой · исходно {formatRub(Number(inv.originalTotal))}</span>}</td>
                         <td className="px-3 py-3 text-right mono-num text-ink-2">
                           {isVoid ? "—" : formatRub(Number(inv.paidAmount))}
                         </td>
@@ -607,7 +610,7 @@ function InvoicesPage() {
                         <StatusPill variant={statusVariant(effStatus)} label={statusLabel(effStatus)} />
                       </div>
                       <div className="mono-num text-[18px] font-semibold mb-3">
-                        {formatRub(Number(inv.total))}
+                        {formatRub(Number(inv.total))}{Number(inv.adjustmentAmount ?? 0) !== 0 && <span className="block text-xs text-ink-3">С корректировкой · исходно {formatRub(Number(inv.originalTotal))}</span>}
                       </div>
                       <div className="flex gap-2">
                         {["ISSUED", "PARTIAL_PAID", "OVERDUE"].includes(inv.status) && (

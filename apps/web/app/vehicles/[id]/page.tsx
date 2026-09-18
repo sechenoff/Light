@@ -407,9 +407,9 @@ function ActiveBookingBanner({ booking }: { booking: ActiveBookingRef | null }) 
   return (
     <Link
       href={`/bookings/${booking.bookingId}`}
-      className={`mt-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 shadow-xs transition-colors hover:border-accent ${tone}`}
+      className={`mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2.5 shadow-xs transition-colors hover:border-accent ${tone}`}
     >
-      <div className="flex items-center gap-2.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-2.5">
         <StatusPill
           variant={booking.isCurrent ? "warn" : "info"}
           label={

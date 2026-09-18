@@ -22,7 +22,8 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { useRequireRole } from "../../hooks/useRequireRole";
 import { apiFetch } from "../../lib/api";
 import { toMoscowDateString } from "../../lib/moscowDate";
@@ -448,6 +449,7 @@ function ProblemRow({
 
 export function ProblemItemsPage() {
   const router = useRouter();
+  const bookingId = useSearchParams().get("bookingId");
   const { authorized, loading: authLoading } = useRequireRole([
     "SUPER_ADMIN",
     "WAREHOUSE",
@@ -478,11 +480,12 @@ export function ProblemItemsPage() {
       const params = new URLSearchParams();
       if (statusFilter) params.set("status", statusFilter);
       if (sourceFilter) params.set("source", sourceFilter);
+      if (bookingId) params.set("bookingId", bookingId);
       params.set("limit", "50");
       if (cursor) params.set("cursor", cursor);
       return `/api/problem-items?${params.toString()}`;
     },
-    [statusFilter, sourceFilter],
+    [statusFilter, sourceFilter, bookingId],
   );
 
   const load = useCallback(
@@ -647,6 +650,13 @@ export function ProblemItemsPage() {
         </div>
       </div>
 
+      {bookingId && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-accent-border bg-accent-soft p-3 text-sm">
+          <span>Показаны потеряшки выбранного проекта</span>
+          <Link href={`/bookings/${encodeURIComponent(bookingId)}`} className="text-accent underline">Открыть бронь</Link>
+          <Link href="/warehouse/problems" className="text-accent underline">Все потеряшки</Link>
+        </div>
+      )}
       {/* Фильтр-пилюли: статус и источник */}
       <div className="bg-surface border border-border rounded-[10px] px-4 py-3 space-y-2.5">
         <FilterPills

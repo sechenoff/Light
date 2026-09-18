@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useRequireRole } from "../../../src/hooks/useRequireRole";
@@ -655,7 +656,11 @@ function DebtsPageInner() {
 
         {/* PDF-отчёт по выбранному клиенту */}
         {clientFilter && (
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {currentUser?.user?.role === "SUPER_ADMIN" && <Link
+              href={`/bookings?scope=unpaid&clientId=${encodeURIComponent(clientFilter)}`}
+              className="inline-flex min-h-[44px] items-center rounded border border-border px-3 text-xs text-accent hover:bg-accent-soft"
+            >Бронирования клиента →</Link>}
             <a
               href={`/api/finance/debts/${clientFilter}/report.pdf`}
               className="inline-flex items-center gap-1.5 h-[30px] min-h-[44px] sm:min-h-0 px-3 text-[12px] font-medium border border-border bg-surface text-ink-2 rounded hover:bg-surface-subtle transition-colors"
