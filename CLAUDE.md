@@ -170,6 +170,18 @@ light-rental-system/
 | `apps/api/src/routes/problemItems.ts` | `/api/problem-items`: GET список (keyset-пагинация по createdAt, фильтр `?status=`, без barcode в выдаче) + POST `/:id/resolve` (Zod: outcome FOUND/NOT_FOUND + note min 3). Router-level `rolesGuard(["SUPER_ADMIN","WAREHOUSE"])` в `routes/index.ts` |
 | `apps/web/src/components/warehouse/` | Все компоненты редизайна kiosk: `WorkstationShell` (тёмная шапка + таб-бар рабочего стола v2), `LoginStep`, `BookingList` (без фильтров, группировка по дате), `UnitRow` (2-кн ВЫДАЧА / 3-кн ВОЗВРАТ), `IssueChecklist`, `AddonSearch` (bottom-sheet/inline + focus-trap/scroll-lock/slide-up), `RepairPanel` (нативная камера), `ProblemPanel` (4 причины), `ReturnChecklist`, `ReturnResultView`, `ProblemItemsPage`, `ResolveProblemModal`, `useScanSession`, `api.ts`, `types.ts` (вкл. shared `isScanApiError`) |
 | `apps/web/app/warehouse/problems/page.tsx` | Manager-реестр «Потеряшки»: обычный AppShell + JWT (НЕ kiosk). `Suspense` → `<ProblemItemsPage />` |
+| `apps/api/src/services/stockCount/stockCountService.ts` | Инвентаризация: старт (одна открытая), счёт со снапшотом ожидания, сброс, «Обновить ожидание», решения, завершение одной транзакцией, отмена. Проверки «одна открытая» и «применить один раз» — ВНУТРИ транзакции |
+| `apps/api/src/services/stockCount/expected.ts` | `computeExpectedOnShelf` — «на полке должно быть» = всего − выдано − по календарю у клиента − в мастерской − открытые потеряшки (та же база, что у доступности) |
+| `apps/api/src/services/stockCount/equipmentTrail.ts` | «Как пропало»: брони позиции в окне между пересчётами, режим приёмки (KIOSK / MANUAL / AUTO / OUT), подсказка брони; `getTrailSuggestionsFor` — подсказки для всех недостач одним батчем |
+| `apps/api/src/services/stockCount/stockCountView.ts` | Чтение: строки, итоги, прогресс категорий, план решений, `allowedDecisions` |
+| `apps/api/src/services/stockCount/types.ts` | Контракт ответов API инвентаризации; зеркало — `apps/web/src/components/inventory/types.ts` (править оба) |
+| `apps/api/src/services/stockCount/act/` | Акт инвентаризации: `buildStockCountAct` (модель), PDF A4 альбомный (нулевые поля + ручная пагинация, «ЧЕРНОВИК» пока идёт), XLSX |
+| `apps/api/src/routes/stockCounts.ts` | `/api/stock-counts` (SA + WH): список, `/active`, `/scope`, старт, строки, счёт, сброс, решение, «как пропало», завершение, отмена, акт. Статичные пути — до `/:id` |
+| `apps/web/src/components/inventory/` | Десктоп инвентаризации: `InventoryPage` (переключатель «Счёт · Итог»), `CategoryRail`, `CountLinesPanel`/`CountLineRow` (степпер, «= N», дебаунс-сохранение `useCountSaver`), `ReviewPanel`/`DiscrepancyRow`/`DecisionControl`, `TrailPanel`, `CompletePanel`, старт и история |
+| `apps/web/app/warehouse/inventory/` | Страницы `/warehouse/inventory` (открытая → редирект, иначе старт), `/[id]`, `/history` |
+| `apps/web/src/components/warehouse/StockCount*.tsx` | Киоск: карточка «Идёт инвентаризация» на «Смене», экран счёта `?tab=count` (не вкладка), крупные кнопки «на месте / нет», степпер, «Всё на месте · N» |
+| `apps/web/src/components/warehouse/AddProblemItemModal.tsx` | «Завести потеряшку» вручную: поиск позиции, плитки наличия, лимит по полке, причина, «где видели в последний раз» |
+| `apps/web/src/components/warehouse/WarehouseSubnav.tsx` | Подменю склада: Потеряшки · Инвентаризация · История инвентаризаций |
 | `apps/web/app/warehouse/layout.tsx` | Прозрачный passthrough (`<>{children}</>`). Kiosk-фрейм живёт в `WorkstationShell`, не в layout — иначе двойная шапка над редизайн-страницей |
 | `docs/superpowers/specs/2026-05-19-warehouse-scan-redesign-design.md` | Утверждённая спецификация редизайна (adaptive UX, потеряшки, фото) |
 | `docs/superpowers/plans/2026-05-19-warehouse-scan-redesign.md` | План реализации редизайна (по задачам) |
@@ -196,7 +208,7 @@ npm run build
 npm run lint
 
 # Tests
-npm test                          # run all (shared + bot + api) — 1604 tests
+npm test                          # run all (shared + bot + api) — 1760 tests
 npm run test -w apps/api          # API tests (smoke + barcode integration)
 npm run test -w apps/bot          # bot booking-helpers tests only (31 tests)
 npm run test -w packages/shared   # shared package tests only
@@ -566,7 +578,7 @@ SUPER_ADMIN обходит все лимиты.
 
 1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
 2. **~~Crew calculator duplication~~** — RESOLVED: extracted to `packages/shared` (`@light-rental/shared`).
-3. **~~Minimal test coverage~~** — RESOLVED: 1604 tests (API 1528 / shared 45 / bot 31) + 831 web-тестов across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, importSession routes, dashboard, calendar, calendarUtils, rolesGuard holistic, approval tests. Plus 4 web component tests (ApprovalTimeline) via vitest + jsdom.
+3. **~~Minimal test coverage~~** — RESOLVED: 1760 tests (API 1684 / shared 45 / bot 31) + 1011 web-тестов across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, importSession routes, dashboard, calendar, calendarUtils, rolesGuard holistic, approval tests. Plus 4 web component tests (ApprovalTimeline) via vitest + jsdom.
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
 6. **`npm run lint` fails on main** — ESLint v9 expects `eslint.config.(js|mjs|cjs)` but the repo has `.eslintrc.json`. Pre-existing, unrelated to feature work. Fix before any lint-gated CI. **STILL OPEN** — not fixed by the Warehouse Scan Redesign. Working path для проверки фронта: `cd apps/web && npx next lint --dir <dir>` (Next бандлит ESLint 8, чтит repo-config). Для api eslint-пути нет из-за v9 — полагаемся на `tsc --noEmit` (clean).
@@ -1112,6 +1124,67 @@ Admin (под обычным `apiKeyAuth + rolesGuard(["SUPER_ADMIN"])`):
 - **Тесты.** API: `addonAvailability`, `addonItems`, `problemItemService`, `problemItems.routes`, `repairPhotos`, `repairPhotosRoutes`, `repairs.routes`, `warehouseProblemUnit`, обновлён `warehouseScan.brokenUnits`; удалён `warehouseLostUnit` (контракт устарел). Web: компонентные тесты на все новые warehouse-компоненты + design-fidelity capture vs мокапы. `RepairPanel.tsx` имеет один намеренный `@next/next/no-img-element` warning (blob-thumbnail превью) — документированное отклонение, не новая ошибка.
 
 <!-- updated-by-superflow:2026-04-25 -->
+
+## Инвентаризация склада (2026-09-18)
+
+Пересчёт полки → расхождения → решения → запись одной операцией → акт. Зачем: на приёмке
+пропажи никто не видит — на проде из 435 возвращённых броней с пересчётом в киоске приняты 4,
+остальные закрыты сменой статуса. Спека — `docs/superpowers/specs/2026-09-18-inventory-design.md`,
+мокап — `docs/mockups/problem-items-v2/final-inventory.html`.
+
+- **Модели:** `StockCount` (№ по порядку, OPEN/CLOSED/CANCELLED, охват категориями или весь склад),
+  `StockCountLine` (снапшот ожидания, счёт, решение, `decidedById`, `decisionBasis`),
+  `Equipment.lastCountedAt`, у `ProblemItem` — `equipmentId`, `source` (RETURN / STOCK_COUNT / MANUAL),
+  `stockCountId`, причина `NOT_ON_SHELF` «Не нашли на складе». Всё аддитивно.
+- **Только позиции с учётом количеством.** Штучные (`UNIT`) не входят — сверяются по единицам в
+  карточке оборудования; позицию, переведённую на штучный учёт посреди счёта, нельзя ни считать, ни
+  решать (409 `LINE_NOT_COUNT_MODE`), на завершении она без эффектов.
+- **«На полке должно быть»** = всего − выдано (ISSUED, любые даты) − по календарю у клиента
+  (CONFIRMED с датами, покрывающими момент) − в мастерской − открытые потеряшки. На проде статусы
+  отстают: подтверждённая бронь бывает уже на съёмке без отметки «выдана» — без этого слагаемого её
+  позиции выглядели бы пропавшими.
+- **`getLostCountByEquipmentMap` видит потеряшки, привязанные к позиции напрямую** (`equipmentId`),
+  а не только через `bookingItem` — иначе ручные и инвентаризационные потеряшки не уменьшали бы
+  доступность. Строка с обоими полями считается один раз. Потеряшки с приёмки теперь тоже пишут
+  `equipmentId`.
+- **Снапшот при ПЕРВОМ счёте строки.** Выдачи и возвраты во время инвентаризации итог посчитанной
+  строки не сбивают: они двигают учёт и полку вместе. Правка счёта сравнивается с тем же снапшотом;
+  изменилось «должно быть» — 409 `EXPECTATION_CHANGED` («Пересчитать»). Если учёт изменился после счёта
+  бухгалтерски (ремонт, возврат, ручная поправка), строка помечается, и LOST/ADJUST требуют явного
+  «Оставить как посчитано» (`acknowledgeBooksChanged`) или «Обновить ожидание»; завершение перепроверяет
+  (409 `LINE_BOOKS_CHANGED`). Иначе одна и та же поправка применилась бы дважды.
+- **Решения** (руководитель И кладовщик — решение владельца): «Пропало → потеряшки» (только
+  недостача; можно привязать бронь), «Ошибка учёта» (поправка `totalQuantity` дельтой к ТЕКУЩЕМУ
+  значению, причина ≥ 3 символов обязательна, аудит `STOCK_ADJUST`), «Нашлось» (только излишек и только
+  при открытых безъюнитных потеряшках, заведённых ДО счёта строки; закрывает от старых к новым с
+  расщеплением строки). Решение привязано к расхождению, которое видел человек (`seenCountedQty`,
+  `seenExpectedQty` → 409 `LINE_CHANGED`). Любая смена счёта сбрасывает решение.
+- **Завершение** — одна транзакция: потеряшки, поправки, закрытие найденного, `lastCountedAt` = момент
+  счёта строки. Непосчитанные строки не мешают (остаются «не сверены»); расхождение без решения — 409
+  `UNDECIDED_LINES`. Двойной клик «Начать» / «Завершить» — 409, а не вторая инвентаризация.
+- **Защита от двойного учёта в потеряшках:** пока позиция посчитана в идущей инвентаризации, ручное
+  «Завести потеряшку» и ручные «Найдено / Не найдено» по её безъюнитным карточкам — 409
+  `STOCK_COUNT_LINE_COUNTED` (решать в инвентаризации). Непосчитанная позиция не блокируется.
+- **«Как пропало»** — брони позиции в окне с прошлого счёта этой позиции (в первый раз — 60 дней), с
+  поздними возвратами внутри окна; режим приёмки: `KIOSK` (с пересчётом), `MANUAL`, `AUTO` (пользователь
+  `system*`), `OUT` (ещё у клиента). Подсказка брони — если кандидат без пересчёта ровно один; списание
+  или готовность в мастерской в окне подсказку гасят. Приёмка в киоске подтверждает только свою бронь,
+  окно сужает только инвентаризация.
+- **Киоск считает, но не решает.** PIN-кладовщик: `/api/warehouse/stock-count*` (чтение, счёт, сброс);
+  решения, завершение, отмена, старт и акт — только десктоп (SA + WH). В киоске это не вкладка, а
+  карточка на «Смене» → `?tab=count`.
+- **Акт** — PDF A4 альбомный (тот же урок, что со счётом на оплату: нулевые поля + ручная пагинация)
+  и XLSX; пока инвентаризация идёт — «ЧЕРНОВИК». Колонка — «Должно быть», не «По учёту».
+- **Мастерская (побочно):** списание безъюнитного ремонта теперь уменьшает `totalQuantity` позиции
+  (аудит `STOCK_ADJUST`). Раньше списанное снова считалось доступным: активный ремонт вычитался, а
+  `WROTE_OFF` — уже нет.
+- **Названия проектов** в «ёлочках» — через `quoteName` (web `inventory/format.ts`, API — в акте): не
+  удваивает кавычки у названий, которые уже записаны в них.
+- **Подпись с «№» не в моноширинном шрифте** — в IBM Plex Mono нет этого глифа.
+- Журнал аудита показывает события инвентаризации по-русски (`apps/web/src/lib/auditLabels.ts`).
+- Тесты: `stockCount`, `stockCountKiosk`, `stockCountIntegrity`, `equipmentTrail`, `stockCountAct`,
+  `availabilityManualProblem`, `problemItemsManual`; web — `components/inventory/__tests__`, киоск
+  `StockCount*.test.tsx`, `AddProblemItemModal.test.tsx`.
 
 ## Добор в выданную бронь со страницы брони (2026-09-04)
 
