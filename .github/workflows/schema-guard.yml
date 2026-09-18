@@ -1,0 +1,39 @@
+name: Schema guard
+
+# Что PR УБИРАЕТ из schema.prisma по сравнению с main (scripts/schema-guard.mjs).
+# Отдельный файл, а не джоб в ci.yml: он должен перезапускаться при установке
+# метки schema-drop-ok, а полный прогон тестов из-за метки — лишний.
+#
+# Сравнивается base-ветка с merge-коммитом PR, то есть ровно то, что изменится
+# в main после слияния. Разрушающее изменение (удалённая таблица, колонка,
+# значение enum, смена типа) без метки — красная проверка, PR не вливается.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: schema-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  schema-guard:
+    name: schema-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: схема main → схема после слияния
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          SCHEMA_DROP_OK: ${{ contains(github.event.pull_request.labels.*.name, 'schema-drop-ok') && '1' || '' }}
+        run: |
+          set -euo pipefail
+          git show "origin/$BASE_REF:apps/api/prisma/schema.prisma" > "$RUNNER_TEMP/base.prisma"
+          node scripts/schema-guard.mjs "$RUNNER_TEMP/base.prisma" apps/api/prisma/schema.prisma

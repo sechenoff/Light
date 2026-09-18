@@ -1,0 +1,115 @@
+name: CI
+
+# Проверки каждого PR в main. В репозитории работают два агента (Claude Code и
+# ChatGPT) — см. AGENTS.md. Защита ветки main требует зелёный job «checks» и
+# ветку, актуальную относительно main: PR, начатый до чужого слияния, не
+# вольётся, пока его не перенесут на свежий main и не прогонят тесты вместе с
+# чужой работой. Деплой (deploy-rsync.yml) запускается уже после слияния.
+#
+# Секретов здесь нет и быть не должно: репозиторий публичный.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Тесты пишутся и гоняются на машинах в МСК; часть проверок дат зависит от
+  # часового пояса (см. окно 00:00–03:00 МСК в CLAUDE.md). Держим CI в том же поясе.
+  TZ: Europe/Moscow
+  CHECKPOINT_DISABLE: "1"
+
+jobs:
+  api:
+    name: api — типы и тесты
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci --no-audit --no-fund
+      - name: prisma generate
+        run: cd apps/api && npx prisma generate
+      - name: build shared
+        run: npm run build -w packages/shared
+      - name: типы API
+        run: npx tsc --noEmit -p apps/api/tsconfig.json
+      - name: тесты API
+        run: npm test -w apps/api
+
+  web:
+    name: web — типы, тесты, линт, сборка
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci --no-audit --no-fund
+      - name: build shared
+        run: npm run build -w packages/shared
+      - name: типы web
+        run: npx tsc --noEmit -p apps/web/tsconfig.json
+      - name: тесты web
+        run: npm test -w apps/web
+      - name: линт web
+        run: cd apps/web && npx next lint
+      - name: сборка web
+        run: NODE_OPTIONS="--max-old-space-size=4096" npm run build -w apps/web
+
+  misc:
+    name: shared, бот, сторожа деплоя
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci --no-audit --no-fund
+      - name: build shared
+        run: npm run build -w packages/shared
+      - name: тесты shared
+        run: npm test -w packages/shared
+      - name: сборка и тесты бота
+        run: npm run build -w apps/bot && npm test -w apps/bot
+      - name: тесты сторожа схемы
+        run: node --test scripts/schema-guard.test.mjs
+      - name: сторож деплоя
+        run: python3 scripts/check-deploy-safety.py
+      - name: скрипты деплоя без синтаксических ошибок
+        run: bash -n scripts/deploy/schema-preflight.sh
+
+  # Единственная обязательная проверка в защите main: одно имя вместо трёх,
+  # чтобы состав джобов можно было менять, не трогая настройки репозитория.
+  checks:
+    name: checks
+    if: always()
+    needs: [api, web, misc]
+    runs-on: ubuntu-latest
+    steps:
+      - name: все проверки зелёные
+        env:
+          RESULTS: ${{ needs.api.result }} ${{ needs.web.result }} ${{ needs.misc.result }}
+        run: |
+          echo "api / web / misc: $RESULTS"
+          for r in $RESULTS; do
+            if [ "$r" != "success" ]; then
+              echo "✗ Не все проверки прошли — PR в main не вливается" >&2
+              exit 1
+            fi
+          done
+          echo "✓ Все проверки прошли"
