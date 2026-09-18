@@ -1,5 +1,10 @@
 # CLAUDE.md — Light Rental System
 
+> В репозитории параллельно работают два агента — Claude Code и ChatGPT. Правила
+> совместной работы (ветки, PR, единственный путь на прод, схема базы) обязательны:
+>
+> @AGENTS.md
+
 ## Project Overview
 
 Film lighting equipment rental platform for a Russian cinematography rental house. Three apps in an npm workspaces monorepo:
@@ -208,9 +213,10 @@ npm run build
 npm run lint
 
 # Tests
-npm test                          # run all (shared + bot + api) — 1760 tests
+npm test                          # run all (shared + bot + api)
 npm run test -w apps/api          # API tests (smoke + barcode integration)
-npm run test -w apps/bot          # bot booking-helpers tests only (31 tests)
+npm run test -w apps/web          # web tests (vitest + jsdom)
+npm run test -w apps/bot          # bot booking-helpers tests only
 npm run test -w packages/shared   # shared package tests only
 
 # Database
@@ -219,11 +225,9 @@ npm run prisma:migrate        # Run migrations (dev)
 npm run seed                  # Seed database
 # Also: cd apps/api && npx prisma studio   (DB browser)
 
-# Deploy (on VPS)
-./deploy.sh                   # Full deploy (all apps)
-./deploy.sh --api             # API only
-./deploy.sh --web             # Web only
-./deploy.sh --rental-bot      # Bot only
+# Deploy — только автоматически: слияние PR в main → «Build & Deploy».
+# deploy.sh на сервере — аварийный ручной путь владельца; агенты его не запускают
+# (см. AGENTS.md, раздел 1).
 ```
 
 ## Conventions
@@ -574,11 +578,17 @@ SUPER_ADMIN обходит все лимиты.
   `ReviewPanel` (`showReviewItems`, общий с текстовым разбором). Пустое поле в документе
   ничего не перетирает.
 
+## Описания функций (docs/features)
+
+Новые функции описываются отдельным файлом `docs/features/<ГГГГ-ММ-ДД>-<тема>.md`,
+а сюда добавляется одна строка со ссылкой (AGENTS.md, раздел 6). Разделы ниже —
+история до 2026-09-18, их не переносим.
+
 ## Known Issues
 
 1. **~~No authentication~~** — RESOLVED: `apiKeyAuth` middleware enforces `X-API-Key` header (`AUTH_MODE=warn|enforce`).
 2. **~~Crew calculator duplication~~** — RESOLVED: extracted to `packages/shared` (`@light-rental/shared`).
-3. **~~Minimal test coverage~~** — RESOLVED: 1760 tests (API 1684 / shared 45 / bot 31) + 1011 web-тестов across shared, bot (booking-helpers), API smoke, barcode integration, importSession, competitorMatcher, importSession routes, dashboard, calendar, calendarUtils, rolesGuard holistic, approval tests. Plus 4 web component tests (ApprovalTimeline) via vitest + jsdom.
+3. **~~Minimal test coverage~~** — RESOLVED: тесты во всех пакетах (API — интеграционные на изолированной SQLite, web — vitest + jsdom, shared, bot); CI гоняет их на каждый PR. Счётчики здесь не ведём — их правит каждый PR, и параллельные PR двух агентов на них конфликтуют.
 4. **~~Hardcoded aliases~~** — RESOLVED: TYPE_SYNONYMS migrated to SlangAlias DB table, auto-learning enabled.
 5. **Production `web` PM2 process unstable** — investigate 8646+ restarts, likely needs `npm run build` in deploy.
 6. **`npm run lint` fails on main** — ESLint v9 expects `eslint.config.(js|mjs|cjs)` but the repo has `.eslintrc.json`. Pre-existing, unrelated to feature work. Fix before any lint-gated CI. **STILL OPEN** — not fixed by the Warehouse Scan Redesign. Working path для проверки фронта: `cd apps/web && npx next lint --dir <dir>` (Next бандлит ESLint 8, чтит repo-config). Для api eslint-пути нет из-за v9 — полагаемся на `tsc --noEmit` (clean).
