@@ -78,6 +78,7 @@ export type ProjectData = {
     text: string;
     createdAt: string;
     createdBy: string;
+    createdByName?: string | null;
   }>;
   payments: Array<{
     id: string;

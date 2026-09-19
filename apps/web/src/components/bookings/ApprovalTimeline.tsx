@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { auditTimestamp, parseAuditSnapshot } from "@/lib/auditFormat";
 import { pluralize } from "@/lib/format";
 
 type AuditItem = {
@@ -9,8 +10,8 @@ type AuditItem = {
   action: string;
   entityType: string;
   entityId: string;
-  before: Record<string, unknown> | null;
-  after: Record<string, unknown> | null;
+  before: string | Record<string, unknown> | null;
+  after: string | Record<string, unknown> | null;
   createdAt: string;
   user?: { username: string } | null;
 };
@@ -63,21 +64,6 @@ function actionDotClass(action: string): string {
     case "BOOKING_SUBMITTED":
     default:
       return "bg-amber";
-  }
-}
-
-function formatTs(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
   }
 }
 
@@ -142,8 +128,8 @@ export function ApprovalTimeline({ bookingId }: { bookingId: string }) {
 
   function renderItem(it: AuditItem) {
     const reason =
-      it.action === "BOOKING_REJECTED" && it.after && typeof (it.after as any).rejectionReason === "string"
-        ? ((it.after as any).rejectionReason as string)
+      it.action === "BOOKING_REJECTED" && it.after && typeof parseAuditSnapshot(it.after).rejectionReason === "string"
+        ? (parseAuditSnapshot(it.after).rejectionReason as string)
         : null;
     const username = it.user?.username ?? it.userId;
     return (
@@ -155,7 +141,7 @@ export function ApprovalTimeline({ bookingId }: { bookingId: string }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
             <span className="font-semibold text-ink">{actionLabel(it.action)}</span>
-            <span className="text-xs text-ink-3">{formatTs(it.createdAt)}</span>
+            <span className="text-xs text-ink-3">{auditTimestamp(it.createdAt)}</span>
           </div>
           <div className="text-xs text-ink-2">{username}</div>
           {reason && (

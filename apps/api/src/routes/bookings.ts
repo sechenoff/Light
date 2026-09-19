@@ -38,6 +38,7 @@ import { buildBookingHumanName, safeFileName } from "../utils/bookingName";
 import { calcBookingPaymentStatus, computeBookingTimeline, computeRelatedExpenses, createFinanceEvent, recomputeBookingFinance } from "../services/finance";
 import { buildAttachmentContentDisposition } from "../utils/contentDisposition";
 import { rolesGuard } from "../middleware/rolesGuard";
+import { bookingAuditSnapshot } from "../services/bookingAudit";
 import { writeAuditEntry, diffFields } from "../services/audit";
 import { buildBookingEstimatePdf, buildBookingActPdf } from "../services/documentExport/bookingPdf";
 import { toMoscowDateString, fromMoscowDateString, moscowTodayStart, addDays } from "../utils/moscowDate";
@@ -998,6 +999,7 @@ router.patch("/:id", async (req, res, next) => {
         : null;
 
     const booking = await prisma.$transaction(async (tx) => {
+      const auditBefore = await bookingAuditSnapshot(tx, id);
       if (body.items) {
         await tx.bookingItem.deleteMany({ where: { bookingId: id } });
         await tx.bookingItem.createMany({
@@ -1217,6 +1219,11 @@ router.patch("/:id", async (req, res, next) => {
         }
       }
 
+      const auditAfter = await bookingAuditSnapshot(tx, id);
+      if (req.adminUser?.userId && JSON.stringify(auditBefore) !== JSON.stringify(auditAfter)) {
+        await writeAuditEntry({ tx, userId: req.adminUser.userId, action: "BOOKING_UPDATE",
+          entityType: "Booking", entityId: id, maxSnapshotBytes: 2 * 1024 * 1024, before: auditBefore, after: auditAfter });
+      }
       return updated;
     });
 
@@ -2080,27 +2087,6 @@ router.post("/quick", async (req, res, next) => {
       financeWarning = financeWarningFromError(financeErr);
       // eslint-disable-next-line no-console
       console.error("Finance recompute failed after quick booking:", financeErr);
-    }
-
-    if (req.adminUser?.userId) {
-      await writeAuditEntry({
-        userId: req.adminUser.userId,
-        action: "BOOKING_QUICK_CREATE",
-        entityType: "Booking",
-        entityId: booking.id,
-        before: null,
-        after: {
-          clientName,
-          amount: body.amount,
-          projectName: booking.projectName,
-          startDate: start.toISOString(),
-          endDate: end.toISOString(),
-          status: booking.status,
-        },
-      }).catch((err: unknown) => {
-        // eslint-disable-next-line no-console
-        console.warn("[quick booking] audit failed:", err);
-      });
     }
 
     const fresh = await prisma.booking.findUnique({

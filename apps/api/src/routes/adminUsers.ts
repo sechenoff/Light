@@ -173,7 +173,7 @@ router.patch("/:id", async (req, res, next) => {
         entityType: "AdminUser",
         entityId: id,
         before,
-        after: diffFields({ username: updated.username, role: updated.role, isActive: updated.isActive } as Record<string, unknown>),
+        after: diffFields({ username: updated.username, role: updated.role, isActive: updated.isActive, ...(body.password ? { passwordChanged: true } : {}) } as Record<string, unknown>),
       });
       return updated;
     });
