@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
@@ -447,6 +449,10 @@ export default function AdminUsersPage() {
                         <div>
                           <div className="font-medium text-ink">{u.username}</div>
                           <div className="text-[11px] text-ink-3">{roleLabel(u.role)}</div>
+                          <div className="flex flex-wrap gap-x-3 mt-1 text-xs">
+                            <Link className="text-accent-bright hover:underline py-1" href={`/admin/audit?userId=${encodeURIComponent(u.id)}`}>Действия сотрудника</Link>
+                            <Link className="text-accent-bright hover:underline py-1" href={`/admin/audit?entityType=AdminUser&entityId=${encodeURIComponent(u.id)}`}>Изменения аккаунта</Link>
+                          </div>
                         </div>
                       </div>
                     </td>

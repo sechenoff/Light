@@ -10,7 +10,7 @@
 import path from "path";
 import { execSync } from "child_process";
 import fs from "fs";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
 const TEST_DB_PATH = path.resolve(__dirname, "../../prisma/test-docnumber-race.db");
 process.env.DATABASE_URL = `file:${TEST_DB_PATH}`;
@@ -91,6 +91,13 @@ describe("номер сметы под гонкой", () => {
     // первая запись проходила, остальные падали на уникальном индексе — и
     // до пользователя доезжал отказ вместо созданной брони.
     const { client, equipment } = await makeClientAndEquipment("гонка");
+    const audit = await import("../services/bookingAudit");
+    const originalAudit = audit.recordBookingCreated;
+    const auditSpy = vi.spyOn(audit, "recordBookingCreated").mockImplementation(async (...args) => {
+      // На быстром Mac короткая транзакция прячет конкуренцию, видимую в CI.
+      await new Promise(resolve => setTimeout(resolve, 25));
+      await originalAudit(...args);
+    });
 
     const results = await Promise.allSettled(
       Array.from({ length: 5 }, (_, i) =>
@@ -99,7 +106,10 @@ describe("номер сметы под гонкой", () => {
     );
 
     const rejected = results.filter((r) => r.status === "rejected");
-    expect(rejected).toHaveLength(0);
+    auditSpy.mockRestore();
+    expect(rejected.map((r) => r.status === "rejected"
+      ? { code: r.reason?.code, message: String(r.reason) }
+      : null)).toEqual([]);
 
     const numbers = results
       .filter((r): r is PromiseFulfilledResult<{ docNumber: string }> => r.status === "fulfilled")

@@ -12,6 +12,7 @@ import { HttpError } from "./utils/errors";
 import { rateLimiter } from "./middleware/rateLimiter";
 import { apiKeyAuth } from "./middleware/apiKeyAuth";
 import { botScopeGuard } from "./middleware/botScopeGuard";
+import { auditContext } from "./services/auditContext";
 import { sessionParser } from "./middleware/sessionAuth";
 import { warehousePublicRouter, warehouseScanRouter } from "./routes/warehouse";
 import lkRouter from "./routes/lk";
@@ -65,7 +66,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 // Auth routes — публичные (до apiKeyAuth), но login/logout не требует авторизации; /me использует cookie.
 app.use("/api/auth", sessionParser, authRouter);
 // sessionParser здесь нужен для fallback warehouseAuth → main session (SA/WH без PIN)
-app.use("/api/warehouse", sessionParser, warehouseScanRouter);
+app.use("/api/warehouse", sessionParser, auditContext, warehouseScanRouter);
 // LK (клиентский портал) — публичный (до apiKeyAuth), собственная auth система (lkAuth cookie/Bearer).
 app.use("/api/lk", lkRouter);
 app.use(apiKeyAuth);
@@ -76,6 +77,7 @@ app.use(apiKeyAuth);
 // подставляет X-API-Key, поэтому вход с планшета продолжает работать.
 app.use("/api/warehouse", warehousePublicRouter);
 app.use(sessionParser);
+app.use(auditContext);
 app.use(botScopeGuard);
 app.use(router);
 

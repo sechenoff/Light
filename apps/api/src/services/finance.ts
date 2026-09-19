@@ -1,3 +1,4 @@
+import { financeAuditPayload } from "./auditContext";
 import { invoiceAmount } from "../utils/invoiceAmount";
 import type { BookingPaymentStatus, PaymentDirection, PaymentRecordStatus, Prisma } from "@prisma/client";
 import Decimal from "decimal.js";
@@ -282,6 +283,7 @@ export async function recomputeBookingFinance(bookingId: string, txArg?: TxLike)
       data: {
         bookingId,
         eventType: "PAYMENT_STATUS_CHANGED",
+        payloadJson: JSON.stringify(financeAuditPayload({ automaticCalculation: true })),
         statusFrom: previousStatus,
         statusTo: status,
         amountDelta: amountPaid.toDecimalPlaces(2).toString(),
@@ -305,7 +307,7 @@ export async function createFinanceEvent(args: {
       bookingId: args.bookingId,
       eventType: args.eventType,
       amountDelta: args.amountDelta != null ? toDec(args.amountDelta).toDecimalPlaces(2).toString() : null,
-      payloadJson: args.payload ? JSON.stringify(args.payload) : null,
+      payloadJson: JSON.stringify(financeAuditPayload(args.payload)),
     },
   });
 }

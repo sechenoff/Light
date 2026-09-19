@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import { recordBookingCreated } from "./bookingAudit";
 import { computeSurcharge, resolveSurchargePercent, type PaymentForm } from "./paymentForm";
 import { getSettings } from "./organizationService";
 import type { Booking, Equipment, BookingItem, Prisma } from "@prisma/client";
@@ -280,7 +281,11 @@ async function createWithRetriedDocNumber<T>(
   for (let attempt = 0; ; attempt++) {
     const docNumber = await generateEstimateDocNumber(new Date().getFullYear());
     try {
-      return (await prisma.booking.create(build(docNumber))) as T;
+      return await prisma.$transaction(async (tx) => {
+        const created = await tx.booking.create(build(docNumber));
+        await recordBookingCreated(tx, created.id);
+        return created as T;
+      });
     } catch (err: unknown) {
       const e = err as { code?: string; meta?: { target?: unknown } };
       const target = Array.isArray(e.meta?.target) ? e.meta?.target.join(",") : String(e.meta?.target ?? "");
@@ -335,23 +340,27 @@ export async function createQuickBooking(args: {
   const resolvedPaymentDate =
     args.expectedPaymentDate ?? (await computeDefaultPaymentDate(args.endDate));
 
-  return prisma.booking.create({
-    data: {
-      clientId: args.clientId,
-      projectName: args.projectName?.trim() || QUICK_BOOKING_DEFAULT_PROJECT,
-      startDate: args.startDate,
-      endDate: args.endDate,
-      status: "CONFIRMED",
-      confirmedAt: new Date(),
-      legacyFinance: false,
-      comment: args.comment?.trim() || null,
-      expectedPaymentDate: resolvedPaymentDate,
-      totalEstimateAmount: amount.toString(),
-      discountAmount: "0",
-      finalAmount: amount.toString(),
-      manualFinalAmount: amount.toString(),
-    },
-    include: { client: true, items: true },
+  return prisma.$transaction(async (tx) => {
+    const created = await tx.booking.create({
+      data: {
+        clientId: args.clientId,
+        projectName: args.projectName?.trim() || QUICK_BOOKING_DEFAULT_PROJECT,
+        startDate: args.startDate,
+        endDate: args.endDate,
+        status: "CONFIRMED",
+        confirmedAt: new Date(),
+        legacyFinance: false,
+        comment: args.comment?.trim() || null,
+        expectedPaymentDate: resolvedPaymentDate,
+        totalEstimateAmount: amount.toString(),
+        discountAmount: "0",
+        finalAmount: amount.toString(),
+        manualFinalAmount: amount.toString(),
+      },
+      include: { client: true, items: true },
+    });
+    await recordBookingCreated(tx, created.id, "BOOKING_QUICK_CREATE");
+    return created;
   });
 }
 
